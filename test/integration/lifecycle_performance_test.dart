@@ -14,16 +14,19 @@ void main() {
     final componentCounts = [100, 500, 1000, 2500, 5000];
     for (final n in componentCounts) {
       testWidgets('Lifecycle.ComponentMutation ($n)', (tester) async {
-        final rootTag = GameTag('root_$n');
+        const rootTag = 'root';
         await tester.pumpWidget(
           MaterialApp(
             home: Game(
-              child: GameObjectWidget(key: rootTag, name: 'root'),
+              child: GameObjectWidget(tag: rootTag, name: rootTag),
             ),
           ),
         );
         await tester.pump();
-        final rootObject = rootTag.gameObject!;
+        final rootObject = GameObject.findWithTag(
+          tester.element(find.byType(MaterialApp).first),
+          rootTag,
+        )!;
         final colliders = List.generate(n, (_) => BoxCollider());
 
         await binding.traceAction(() async {

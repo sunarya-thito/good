@@ -16,7 +16,7 @@ void main() {
                 // Camera object at 5000, 5000
                 GameObjectWidget(
                   name: 'CameraObject',
-                  key: const GameTag('MainCamera'),
+                  tag: 'MainCamera',
                   children: [
                     ComponentWidget(
                       Camera.new,
@@ -78,7 +78,7 @@ void main() {
             child: GameObjectWidget(
               children: [
                 GameObjectWidget(
-                  key: const GameTag('MainCamera'),
+                  tag: 'MainCamera',
                   children: [
                     ComponentWidget(
                       Camera.new,

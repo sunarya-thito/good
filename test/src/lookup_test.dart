@@ -215,16 +215,15 @@ void main() {
     });
 
     testWidgets('findWithTag should work', (tester) async {
-      const tag = GameTag('Player');
       await tester.pumpWidget(
         Game(
-          child: GameObjectWidget(key: tag, name: 'Hero'),
+          child: GameObjectWidget(tag: 'Player', name: 'Hero'),
         ),
       );
       await tester.pump();
       final context = tester.element(find.byType(GameObjectWidget).first);
 
-      final found = GameObject.findWithTag(context, tag);
+      final found = GameObject.findWithTag(context, 'Player');
       expect(found, isNotNull);
       expect(found!.name, equals('Hero'));
     });

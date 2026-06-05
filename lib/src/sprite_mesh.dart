@@ -133,25 +133,56 @@ class GridMesh extends SpriteMesh {
 
   /// A function that provides the [SpriteFit] for a specific grid cell.
   ///
-  /// This allows for granular control over how each slice is rendered. 
-  /// Typically, corners use [FixedFit] while edges and the center use 
+  /// This allows for granular control over how each slice is rendered.
+  /// Typically, corners use [FixedFit] while edges and the center use
   /// [StretchFit] or [TileFit].
   final SpriteFit Function(int row, int col) fitProvider;
 
+  late final int _rows;
+  late final int _cols;
+
+  /// Flat row-major cache of all cell fits.
+  late final List<SpriteFit> _fits;
+
+  /// Per-column flex values derived from [_fits].
+  late final List<double?> _colFlex;
+
+  /// Per-row flex values derived from [_fits].
+  late final List<double?> _rowFlex;
+
   /// Creates a [GridMesh] with explicit borders and a fit provider.
   ///
-  /// This low-level constructor allows for non-standard grid configurations. 
-  /// For most UI needs, the [GridMesh.nineSlice] or [GridMesh.twentyFiveSlice] 
+  /// This low-level constructor allows for non-standard grid configurations.
+  /// For most UI needs, the [GridMesh.nineSlice] or [GridMesh.twentyFiveSlice]
   /// factories are more convenient and readable.
   ///
   /// * [xBorders]: Horizontal slice offsets.
   /// * [yBorders]: Vertical slice offsets.
   /// * [fitProvider]: Logic for cell-specific scaling.
-  const GridMesh({
+  GridMesh({
     required this.xBorders,
     required this.yBorders,
     required this.fitProvider,
-  });
+  }) {
+    _rows = yBorders.length + 1;
+    _cols = xBorders.length + 1;
+    _fits = List<SpriteFit>.generate(
+      _rows * _cols,
+      (i) => fitProvider(i ~/ _cols, i % _cols),
+    );
+    _colFlex = List<double?>.generate(_cols, (col) {
+      for (int row = 0; row < _rows; row++) {
+        if ((_fits[row * _cols + col].flex ?? 0) <= 0) return null;
+      }
+      return 1.0;
+    });
+    _rowFlex = List<double?>.generate(_rows, (row) {
+      for (int col = 0; col < _cols; col++) {
+        if ((_fits[row * _cols + col].flex ?? 0) <= 0) return null;
+      }
+      return 1.0;
+    });
+  }
 
   /// Creates a standard 9-slice mesh for adaptive UI elements.
   ///
@@ -226,13 +257,20 @@ class GridMesh extends SpriteMesh {
       xBorders: [leftOuter, leftInner, rightInner, rightOuter],
       yBorders: [topOuter, topInner, bottomInner, bottomOuter],
       fitProvider: (row, col) {
-        final distRow = (row - 2).abs(); // 0 at center, 2 at outer
+        // Cells at the intersection of a border row and border column are fixed
+        // in both dimensions. Returning cornerFit (FixedFit by default) ensures
+        // GridMesh anchors those columns and rows at their source pixel size.
+        // Visual output is identical to the previous edgeFit/edgeCenterFit since
+        // cellDst.size == cellSrc.size for all such cells.
+        if (row != 2 && col != 2) return cornerFit;
+
+        final distRow = (row - 2).abs();
         final distCol = (col - 2).abs();
         final maxDist = distRow > distCol ? distRow : distCol;
 
         if (maxDist == 0) return centerFit;
         if (maxDist == 1) return edgeCenterFit;
-        return (distRow == 2 && distCol == 2) ? cornerFit : edgeFit;
+        return edgeFit;
       },
     );
   }
@@ -249,14 +287,11 @@ class GridMesh extends SpriteMesh {
     final List<double> xSrc = _computeSourceLines(xBorders, src.width);
     final List<double> ySrc = _computeSourceLines(yBorders, src.height);
 
-    final List<double> xDst = _computeDestLines(xSrc, destinationSize.width);
-    final List<double> yDst = _computeDestLines(ySrc, destinationSize.height);
+    final List<double> xDst = _computeDestLines(xSrc, destinationSize.width, _colFlex);
+    final List<double> yDst = _computeDestLines(ySrc, destinationSize.height, _rowFlex);
 
-    final int rows = ySrc.length - 1;
-    final int cols = xSrc.length - 1;
-
-    for (int row = 0; row < rows; row++) {
-      for (int col = 0; col < cols; col++) {
+    for (int row = 0; row < _rows; row++) {
+      for (int col = 0; col < _cols; col++) {
         final cellSrc = ui.Rect.fromLTWH(
           src.left + xSrc[col],
           src.top + ySrc[row],
@@ -277,10 +312,7 @@ class GridMesh extends SpriteMesh {
           continue;
         }
 
-        fitProvider(
-          row,
-          col,
-        ).draw(canvas, sprite.texture.image, cellSrc, cellDst, paint);
+        _fits[row * _cols + col].draw(canvas, sprite.texture.image, cellSrc, cellDst, paint);
       }
     }
   }
@@ -307,36 +339,32 @@ class GridMesh extends SpriteMesh {
     return lines;
   }
 
-  List<double> _computeDestLines(List<double> srcLines, double destTotal) {
+  List<double> _computeDestLines(
+    List<double> srcLines,
+    double destTotal,
+    List<double?> flex,
+  ) {
     final count = srcLines.length;
-    final List<double> dst = List.filled(count, 0.0);
-    final int half = (count - 1) ~/ 2;
 
-    // Start side fixed
-    dst[0] = 0.0;
-    for (int i = 1; i <= half; i++) {
-      dst[i] = dst[i - 1] + (srcLines[i] - srcLines[i - 1]);
+    double fixedSum = 0.0;
+    double totalFlex = 0.0;
+    for (int i = 0; i < count - 1; i++) {
+      final f = flex[i];
+      if (f == null || f <= 0) {
+        fixedSum += srcLines[i + 1] - srcLines[i];
+      } else {
+        totalFlex += f;
+      }
     }
 
-    // End side fixed
-    dst[count - 1] = destTotal;
-    for (int i = count - 2; i >= count - 1 - (count - 1 - half) + 1; i--) {
-      dst[i] = dst[i + 1] - (srcLines[i + 1] - srcLines[i]);
-    }
-
-    // Middle segments distribution (proportional if multiple, but usually just one)
-    final srcMiddleTotal = srcLines[count - 1 - half] - srcLines[half];
-    final dstMiddleTotal = dst[count - 1 - half] - dst[half];
-
-    if (srcMiddleTotal > 0 && dstMiddleTotal > 0) {
-      for (int i = half + 1; i < count - 1 - half; i++) {
-        final ratio = (srcLines[i] - srcLines[i - 1]) / srcMiddleTotal;
-        dst[i] = dst[i - 1] + (dstMiddleTotal * ratio);
-      }
-    } else {
-      for (int i = half + 1; i < count - 1 - half; i++) {
-        dst[i] = dst[i - 1];
-      }
+    final available = (destTotal - fixedSum).clamp(0.0, double.infinity);
+    final dst = List<double>.filled(count, 0.0);
+    for (int i = 0; i < count - 1; i++) {
+      final f = flex[i];
+      final segSize = (f == null || f <= 0)
+          ? srcLines[i + 1] - srcLines[i]
+          : totalFlex > 0 ? (f / totalFlex) * available : 0.0;
+      dst[i + 1] = dst[i] + segSize;
     }
 
     return dst;

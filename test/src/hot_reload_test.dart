@@ -14,7 +14,7 @@ void main() {
       await tester.pumpWidget(
         Game(
           child: GameObjectWidget(
-            key: const GameTag('test'),
+            tag: 'test',
             children: [
               ComponentWidget(
                 SpriteRenderer.new.withInitialValues(
@@ -28,7 +28,9 @@ void main() {
       );
 
       expect(
-        const GameTag('test').gameObject!.getComponent<SpriteRenderer>().color,
+        (tester.element(find.byType(GameObjectWidget).first) as GameObject)
+            .getComponent<SpriteRenderer>()
+            .color,
         equals(const ui.Color(0xFFFF0000)),
       );
 
@@ -36,7 +38,7 @@ void main() {
       await tester.pumpWidget(
         Game(
           child: GameObjectWidget(
-            key: const GameTag('test'),
+            tag: 'test',
             children: [
               ComponentWidget(
                 SpriteRenderer.new.withInitialValues(
@@ -49,9 +51,10 @@ void main() {
         ),
       );
 
-      final currentColor = const GameTag(
-        'test',
-      ).gameObject!.getComponent<SpriteRenderer>().color;
+      final currentColor =
+          (tester.element(find.byType(GameObjectWidget).first) as GameObject)
+              .getComponent<SpriteRenderer>()
+              .color;
 
       expect(
         currentColor,
@@ -67,19 +70,18 @@ void main() {
       await tester.pumpWidget(
         Game(
           child: GameObjectWidget(
-            key: const GameTag('test'),
+            tag: 'test',
             children: [ComponentWidget(ObjectTransform.new)],
           ),
         ),
       );
 
-      final transform = const GameTag(
-        'test',
-      ).gameObject!.getComponent<ObjectTransform>();
+      final element = tester.element(find.byType(GameObjectWidget).first);
+      final transform =
+          (element as GameObject).getComponent<ObjectTransform>();
       transform.position = Vector2(50, 60); // Runtime change
 
       // Trigger reassemble
-      final element = tester.element(find.byKey(const GameTag('test')));
       // ignore: invalid_use_of_protected_member
       element.reassemble();
 
@@ -165,15 +167,17 @@ void main() {
       expect(compA2.color, equals(const ui.Color(0xFFFF0000)));
     });
 
-    testWidgets('should preserve state with GameTag across tree changes', (
+    testWidgets('should preserve state with GlobalKey across tree changes', (
       tester,
     ) async {
+      final heroKey = GlobalKey();
       await tester.pumpWidget(
         Game(
           child: Column(
             children: [
               GameObjectWidget(
-                key: const GameTag('hero'),
+                key: heroKey,
+                tag: 'hero',
                 children: [
                   ComponentWidget(ObjectTransform.new),
                   ComponentWidget(
@@ -189,7 +193,7 @@ void main() {
         ),
       );
 
-      final hero = const GameTag('hero').gameObject!;
+      final hero = tester.element(find.byKey(heroKey)) as GameObject;
       hero.getComponent<ObjectTransform>().position = Vector2(123, 456);
 
       // Move hero into a Container
@@ -200,7 +204,8 @@ void main() {
               // ignore: avoid_unnecessary_containers
               Container(
                 child: GameObjectWidget(
-                  key: const GameTag('hero'),
+                  key: heroKey,
+                  tag: 'hero',
                   children: [
                     ComponentWidget(ObjectTransform.new),
                     ComponentWidget(
@@ -217,7 +222,7 @@ void main() {
         ),
       );
 
-      final heroAfter = const GameTag('hero').gameObject!;
+      final heroAfter = tester.element(find.byKey(heroKey)) as GameObject;
       expect(heroAfter, same(hero));
       final heroPos = heroAfter.getComponent<ObjectTransform>().position;
       expect(heroPos.x, closeTo(123.0, 0.0001));

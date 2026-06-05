@@ -13,12 +13,6 @@ import 'package:vector_math/vector_math_64.dart' hide Colors;
 /// game objects are drawn. It is essential for optimizing performance and
 /// achieving specific visual effects, such as UI overlays or complex skyboxes.
 enum CameraClearFlags {
-  /// Clears the background using a skybox or environmental texture.
-  ///
-  /// This is typically used for 3D environments where a distant background
-  /// should be visible behind all scene objects.
-  skybox,
-
   /// Clears the background using a single solid [backgroundColor].
   ///
   /// This is the most common flag for 2D games, providing a clean slate for
@@ -113,6 +107,7 @@ class Camera extends Behavior with LifecycleListener {
   Matrix4? _cachedFullMatrixInverse;
   Size? _cachedFullMatrixSize;
   int? _cachedFullMatrixTransformVersion;
+
   /// The rendering priority of the camera.
   ///
   /// Cameras with lower depth values are rendered first. If multiple cameras

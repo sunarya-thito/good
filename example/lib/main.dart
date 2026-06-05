@@ -121,11 +121,11 @@ class BattleWorldState extends GameState<BattleWorld> with Tickable {
 
   @override
   Iterable<Widget> build(BuildContext context) sync* {
-    const playerTag = GameTag('Player');
+    const playerTag = 'Player';
 
     // Background & Music
     yield GameObjectWidget(
-      key: const GameTag('Background'),
+      tag: 'Background',
       children: [
         ComponentWidget(ObjectTransform.new),
         ComponentWidget(TiledBackground.new),
@@ -143,12 +143,12 @@ class BattleWorldState extends GameState<BattleWorld> with Tickable {
     // Player
     yield BattleWorldProvider(
       world: this,
-      child: Player(key: playerTag),
+      child: Player(tag: playerTag),
     );
 
     // Cameras
     yield GameObjectWidget(
-      key: const GameTag('MainCamera'),
+      tag: 'MainCamera',
       children: [
         ComponentWidget(ObjectTransform.new),
         ComponentWidget(
@@ -167,7 +167,7 @@ class BattleWorldState extends GameState<BattleWorld> with Tickable {
     );
 
     yield GameObjectWidget(
-      key: const GameTag('MinimapCamera'),
+      tag: 'MinimapCamera',
       children: [
         ComponentWidget(ObjectTransform.new),
         ComponentWidget(
@@ -190,12 +190,12 @@ class BattleWorldState extends GameState<BattleWorld> with Tickable {
 
     // HUD
     yield const InstructionsUI(
-      key: GameTag('Instructions'),
+      tag: 'Instructions',
       layer: RenderLayer.ui,
     );
-    yield const MinimapUI(key: GameTag('Minimap'), layer: RenderLayer.ui);
-    yield const FPSUI(key: GameTag('FPS'), layer: RenderLayer.ui);
-    yield const MuteUI(key: GameTag('Mute'), layer: RenderLayer.ui);
+    yield const MinimapUI(tag: 'Minimap', layer: RenderLayer.ui);
+    yield const FPSUI(tag: 'FPS', layer: RenderLayer.ui);
+    yield const MuteUI(tag: 'Mute', layer: RenderLayer.ui);
   }
 
   @override
@@ -208,7 +208,7 @@ class BattleWorldState extends GameState<BattleWorld> with Tickable {
   }
 
   void _spawnEnemy() {
-    final player = const GameTag('Player').gameObject;
+    final player = GameObject.findWithTag(gameObject, 'Player');
     if (player == null) return;
     final pTrans = player.getComponent<ObjectTransform>();
 
@@ -220,9 +220,11 @@ class BattleWorldState extends GameState<BattleWorld> with Tickable {
         pTrans.position + Vector2(math.cos(angle), math.sin(angle)) * 15.0;
 
     setState(() {
+      final key = UniqueKey();
       enemies.add(
         GameObjectWidget(
-          key: GameTag(UniqueKey()),
+          key: key,
+          tag: key,
           children: [
             ComponentWidget(
               ObjectTransform.new.withInitialValues((c) => c.position = pos),
@@ -254,9 +256,11 @@ class BattleWorldState extends GameState<BattleWorld> with Tickable {
 
   void _spawnExplosion(Vector2 position) {
     setState(() {
+      final key = UniqueKey();
       enemies.add(
         GameObjectWidget(
-          key: GameTag(UniqueKey()),
+          key: key,
+          tag: key,
           children: [
             ComponentWidget(
               ObjectTransform.new.withInitialValues(
@@ -300,7 +304,7 @@ class BattleWorldState extends GameState<BattleWorld> with Tickable {
 // --- Player & Entities ---
 
 class Player extends StatefulGameWidget {
-  const Player({super.key});
+  const Player({super.key, super.tag});
   @override
   GameState<Player> createState() => PlayerState();
 }
@@ -395,9 +399,11 @@ class PlayerState extends GameState<Player> with Tickable {
     _shootTimer -= dt;
     if (shootAction.inProgress && _shootTimer <= 0) {
       _audioSource.play();
+      final key = UniqueKey();
       _world.addBullet(
         GameObjectWidget(
-          key: GameTag(UniqueKey()),
+          key: key,
+          tag: key,
           children: [
             ComponentWidget(
               ObjectTransform.new.withInitialValues(
@@ -481,7 +487,7 @@ class EnemyController extends Behavior
 
   @override
   void onUpdate(double dt) {
-    final player = const GameTag('Player').gameObject;
+    final player = GameObject.findWithTag(gameObject, 'Player');
     if (player == null) return;
     final toPlayer =
         player.getComponent<ObjectTransform>().position - _transform.position;
@@ -501,14 +507,14 @@ class EnemyController extends Behavior
   @override
   Future<void> onCollisionEnter(Collision collision) async {
     final other = collision.otherCollider;
-    if (other.gameObject.tag == const GameTag('Player')) {
-      const GameTag(
-        'MainCamera',
-      ).gameObject?.getComponent<CameraShake>().shake();
+    if (other.gameObject.tag == 'Player') {
+      GameObject.findWithTag(gameObject, 'MainCamera')
+          ?.getComponent<CameraShake>()
+          .shake();
       other.gameObject.getComponent<BlinkEffect>().blink();
     }
     if (other.gameObject.tryGetComponent<BulletController>() != null ||
-        other.gameObject.tag == const GameTag('Player')) {
+        other.gameObject.tag == 'Player') {
       world._spawnExplosion(_transform.position);
       world._destroyObject(gameObject);
     }
@@ -518,10 +524,11 @@ class EnemyController extends Behavior
 // --- Reusable Behaviors & Helpers ---
 
 class FollowTarget extends Behavior with LifecycleListener, LateTickable {
-  late GameTag targetTag;
+  late Object targetTag;
   @override
   void onLateUpdate(double dt) {
-    final target = targetTag.gameObject?.tryGetComponent<ObjectTransform>();
+    final target = GameObject.findWithTag(gameObject, targetTag)
+        ?.tryGetComponent<ObjectTransform>();
     if (target != null) {
       getComponent<ObjectTransform>().position = target.position;
     }
@@ -722,7 +729,7 @@ class TiledBackground extends Component with LifecycleListener, Renderable {
 // --- UI Components ---
 
 class InstructionsUI extends StatefulGameWidget {
-  const InstructionsUI({super.key, super.layer});
+  const InstructionsUI({super.key, super.layer, super.tag});
   @override
   GameState<InstructionsUI> createState() => InstructionsState();
 }
@@ -754,7 +761,7 @@ class InstructionsState extends GameState<InstructionsUI> {
 }
 
 class MinimapUI extends StatefulGameWidget {
-  const MinimapUI({super.key, super.layer});
+  const MinimapUI({super.key, super.layer, super.tag});
   @override
   GameState<MinimapUI> createState() => MinimapState();
 }
@@ -779,7 +786,7 @@ class MinimapState extends GameState<MinimapUI> {
             border: Border.all(color: Colors.white, width: 2),
           ),
           decoration: const BoxDecoration(color: Colors.black87),
-          child: const CameraView(cameraTag: GameTag('MinimapCamera')),
+          child: const CameraView(cameraTag: 'MinimapCamera'),
         ),
       ),
     );
@@ -801,7 +808,7 @@ class BattleWorldProvider extends InheritedWidget {
 }
 
 class FPSUI extends StatefulGameWidget {
-  const FPSUI({super.key, super.layer});
+  const FPSUI({super.key, super.layer, super.tag});
   @override
   GameState<FPSUI> createState() => FPSState();
 }
@@ -850,7 +857,7 @@ class FPSState extends GameState<FPSUI> with Tickable {
 }
 
 class MuteUI extends StatefulGameWidget {
-  const MuteUI({super.key, super.layer});
+  const MuteUI({super.key, super.layer, super.tag});
   @override
   GameState<MuteUI> createState() => MuteState();
 }

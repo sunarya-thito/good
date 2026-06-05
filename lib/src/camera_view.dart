@@ -17,7 +17,7 @@ import 'package:goo2d/src/render.dart';
 ///   width: 200,
 ///   height: 200,
 ///   decoration: BoxDecoration(border: Border.all(color: Colors.white)),
-///   child: const CameraView(cameraTag: GameTag('minimap')),
+///   child: const CameraView(cameraTag: 'minimap'),
 /// );
 /// ```
 ///
@@ -30,7 +30,7 @@ class CameraView extends SingleChildRenderObjectWidget {
   /// The [CameraView] will look up a [GameObject] with this tag and attempt
   /// to find a [Camera] component on it. If no such camera is found or if the
   /// camera is disabled, the view will render as empty (or show its child).
-  final GameTag cameraTag;
+  final Object cameraTag;
 
   /// Creates a new [CameraView] for the given [cameraTag].
   ///
@@ -66,7 +66,7 @@ class CameraView extends SingleChildRenderObjectWidget {
 /// void setupView(GameEngine game) {
 ///   RenderCameraView(
 ///     game: game,
-///     cameraTag: const GameTag('minimap'),
+///     cameraTag: 'minimap',
 ///   );
 /// }
 /// ```
@@ -85,7 +85,7 @@ class RenderCameraView extends RenderProxyBox {
   ///
   /// This tag is used at runtime to find the active [Camera] component. If the
   /// camera state changes, the view will automatically reflect the new settings.
-  GameTag cameraTag;
+  Object cameraTag;
 
   /// Creates a [RenderCameraView] with the required engine and camera references.
   ///
@@ -120,7 +120,7 @@ class RenderCameraView extends RenderProxyBox {
       return;
     }
 
-    final camera = cameraTag.gameObject?.tryGetComponent<Camera>();
+    final camera = tagRegistry[cameraTag]?.firstOrNull?.tryGetComponent<Camera>();
     if (camera == null || !camera.gameObject.active || !camera.enabled) {
       super.paint(context, offset);
       return;
@@ -214,7 +214,7 @@ class RenderCameraView extends RenderProxyBox {
       });
     } else {
       if (node is GameRenderObject) {
-        final camera = cameraTag.gameObject?.tryGetComponent<Camera>();
+        final camera = tagRegistry[cameraTag]?.firstOrNull?.tryGetComponent<Camera>();
         if (camera != null && (node.object.layer & camera.cullingMask) == 0) {
           return;
         }
@@ -228,7 +228,7 @@ class RenderCameraView extends RenderProxyBox {
     final cameraSystem = game.getSystem<CameraSystem>();
     if (cameraSystem?.isSecondaryPass ?? false) return false;
 
-    final camera = cameraTag.gameObject?.tryGetComponent<Camera>();
+    final camera = tagRegistry[cameraTag]?.firstOrNull?.tryGetComponent<Camera>();
     if (camera == null || !camera.gameObject.active || !camera.enabled) {
       return super.hitTestChildren(result, position: position);
     }

@@ -13,8 +13,8 @@ void main() {
     final depths = [5, 10, 25, 50, 75, 100, 125, 150];
     for (final d in depths) {
       testWidgets('Transform.worldMatrixDeep (Depth $d)', (tester) async {
-        final rootTag = GameTag('root_obj_$d');
-        final leafTag = GameTag('leaf_obj_$d');
+        final rootTag = 'root_obj_$d';
+        final leafTag = 'leaf_obj_$d';
 
         await tester.pumpWidget(
           MaterialApp(
@@ -29,8 +29,9 @@ void main() {
         );
         await tester.pump();
 
-        final rootObject = rootTag.gameObject!;
-        final leafObject = leafTag.gameObject!;
+        final context = tester.element(find.byType(MaterialApp).first);
+        final rootObject = GameObject.findWithTag(context, rootTag)!;
+        final leafObject = GameObject.findWithTag(context, leafTag)!;
         final rootTransform = rootObject.getComponent<ObjectTransform>();
         final leafTransform = leafObject.getComponent<ObjectTransform>();
 
@@ -48,8 +49,8 @@ void main() {
 
 class WorldMatrixStressScene extends StatelessWidget {
   final int depth;
-  final GameTag rootTag;
-  final GameTag leafTag;
+  final Object rootTag;
+  final Object leafTag;
   const WorldMatrixStressScene({
     super.key,
     required this.depth,
@@ -66,7 +67,7 @@ class WorldMatrixStressScene extends StatelessWidget {
     final bool isRoot = current == 0;
     final bool isLeaf = current == max;
     return GameObjectWidget(
-      key: isRoot ? rootTag : (isLeaf ? leafTag : null),
+      tag: isRoot ? rootTag : (isLeaf ? leafTag : null),
       name: isRoot ? 'root' : (isLeaf ? 'leaf' : 'd_$current'),
       children: [
         ComponentWidget(ObjectTransform.new),

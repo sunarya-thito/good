@@ -71,10 +71,22 @@ abstract class SpriteFit {
 
   /// Base constructor for all [SpriteFit] strategies.
   ///
-  /// This constructor is kept protected and const to allow for efficient 
-  /// instantiation of specific fit implementations. It establishes the 
+  /// This constructor is kept protected and const to allow for efficient
+  /// instantiation of specific fit implementations. It establishes the
   /// interface that all scaling strategies must follow.
   const SpriteFit();
+
+  /// The flex weight this fit contributes to [GridMesh] layout.
+  ///
+  /// When [GridMesh] computes destination sizes, a column is flexible only if
+  /// every cell in that column returns a non-null [flex]. A single null (i.e.,
+  /// a [FixedFit] cell) anchors the column at its source pixel width. The same
+  /// rule applies to rows.
+  ///
+  /// Returns null by default, meaning the cell is fixed at its source pixel
+  /// size. Override with a positive value (typically `1.0`) in fits that should
+  /// expand to fill available space.
+  double? get flex => null;
 
   /// Draws the [image] region specified by [src] into the [dst] area on the [canvas].
   ///
@@ -119,6 +131,9 @@ class StretchFit extends SpriteFit {
   /// [SpriteFit.stretch] constant. It requires no configuration as the 
   /// stretching behavior is uniform across all instances.
   const StretchFit();
+
+  @override
+  double? get flex => 1.0;
 
   @override
   void draw(
@@ -178,6 +193,9 @@ class TileFit extends SpriteFit {
     matrix.scaleByDouble(sx, sy, 1.0, 1.0);
     return matrix;
   }
+
+  @override
+  double? get flex => 1.0;
 
   @override
   void draw(
@@ -280,6 +298,9 @@ class CoverFit extends SpriteFit {
   const CoverFit({this.alignment = Alignment.center});
 
   @override
+  double? get flex => 1.0;
+
+  @override
   void draw(
     ui.Canvas canvas,
     ui.Image image,
@@ -322,6 +343,9 @@ class ContainFit extends SpriteFit {
   ///
   /// * [alignment]: The position of the sprite within the letterbox area.
   const ContainFit({this.alignment = Alignment.center});
+
+  @override
+  double? get flex => 1.0;
 
   @override
   void draw(

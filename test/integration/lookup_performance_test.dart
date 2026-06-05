@@ -17,7 +17,7 @@ void main() {
       testWidgets('Lookup.getComponentsInChildren ($n objects)', (
         tester,
       ) async {
-        final rootTag = GameTag('root_obj_$n');
+        final rootTag = 'root_obj_$n';
         await tester.pumpWidget(
           MaterialApp(
             home: Game(
@@ -26,7 +26,10 @@ void main() {
           ),
         );
         await tester.pump();
-        final rootObject = rootTag.gameObject!;
+        final rootObject = GameObject.findWithTag(
+          tester.element(find.byType(MaterialApp).first),
+          rootTag,
+        )!;
 
         await binding.traceAction(() async {
           final _ = rootObject.getComponentsInChildren<BoxCollider>();
@@ -38,7 +41,7 @@ void main() {
     final pathDepths = [10, 50, 100, 250, 500];
     for (final d in pathDepths) {
       testWidgets('Lookup.findChildPath (Depth $d)', (tester) async {
-        final rootTag = GameTag('path_root_$d');
+        final rootTag = 'path_root_$d';
         await tester.pumpWidget(
           MaterialApp(
             home: Game(
@@ -47,7 +50,10 @@ void main() {
           ),
         );
         await tester.pump();
-        final rootObject = rootTag.gameObject!;
+        final rootObject = GameObject.findWithTag(
+          tester.element(find.byType(MaterialApp).first),
+          rootTag,
+        )!;
         final path = List.generate(d, (i) => 'child_$i').join('/');
 
         await binding.traceAction(() async {
@@ -60,7 +66,7 @@ void main() {
 
 class LookupStressScene extends StatelessWidget {
   final int count;
-  final GameTag rootTag;
+  final Object rootTag;
   const LookupStressScene({
     super.key,
     required this.count,
@@ -70,7 +76,7 @@ class LookupStressScene extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GameObjectWidget(
-      key: rootTag,
+      tag: rootTag,
       name: 'root',
       children: [_buildWideTree(count)],
     );
@@ -93,7 +99,7 @@ class LookupStressScene extends StatelessWidget {
 
 class PathStressScene extends StatelessWidget {
   final int depth;
-  final GameTag rootTag;
+  final Object rootTag;
   const PathStressScene({
     super.key,
     required this.depth,
@@ -103,7 +109,7 @@ class PathStressScene extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GameObjectWidget(
-      key: rootTag,
+      tag: rootTag,
       name: 'root',
       children: [_buildPathIterative(depth)],
     );

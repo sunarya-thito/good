@@ -22,7 +22,7 @@ library;
 export 'src/game.dart' hide GameProvider;
 export 'src/event.dart';
 export 'src/component.dart';
-export 'src/object.dart';
+export 'src/object.dart' hide tagRegistry;
 export 'src/element.dart' hide GameObjectElement;
 export 'src/widget.dart';
 export 'src/render.dart' hide GameRenderObject, GameParentData;
@@ -48,9 +48,12 @@ export 'src/sprite.dart';
 export 'src/sprite_mesh.dart';
 export 'src/sprite_pivot.dart';
 export 'src/sprite_fit.dart';
+export 'src/tile_renderer.dart';
 export 'src/utility.dart';
 export 'src/audio.dart';
 export 'src/world.dart' hide RenderWorld;
+export 'src/transitions/transition.dart';
+export 'src/transitions/layer.dart';
 
 // bundled
 export 'package:vector_math/vector_math_64.dart' hide Colors;
