@@ -39,7 +39,10 @@ enum TestAssets with AssetEnum {
   ;
 
   @override
-  GameAsset register() => MockAsset(name);
+  GameAsset createAsset() => MockAsset(name);
+
+  @override
+  AssetSource get source => MockSource(name);
 
   MockAsset get mock => asset as MockAsset;
 }

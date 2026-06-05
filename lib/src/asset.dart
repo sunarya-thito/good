@@ -154,13 +154,13 @@ mixin AssetEnum on Enum implements GameAsset {
   ///
   /// This is called internally when the [asset] getter is first accessed.
   @protected
-  GameAsset register();
+  GameAsset createAsset();
 
   /// Retrieves the [GameAsset] instance for this enum value, creating it if necessary.
   ///
   /// This getter ensures that each enum value maps to a unique, cached
   /// asset instance, preventing redundant allocations and double-loading.
-  GameAsset get asset => _registries.putIfAbsent(this, register);
+  GameAsset get asset => _registries.putIfAbsent(this, createAsset);
 
   /// Resets the internal asset registry.
   ///
@@ -170,9 +170,6 @@ mixin AssetEnum on Enum implements GameAsset {
   static void reset() {
     _registries.clear();
   }
-
-  @override
-  AssetSource get source => asset.source;
 
   @override
   Future<void> load() => asset.load();
@@ -191,10 +188,7 @@ mixin AssetEnum on Enum implements GameAsset {
 /// pixel manipulation functions.
 mixin TextureAssetEnum on AssetEnum implements GameTexture {
   @override
-  AssetSource get source;
-
-  @override
-  GameAsset register() => GameTexture(source);
+  GameAsset createAsset() => GameTexture(source);
 
   GameTexture get _instance => asset as GameTexture;
 
@@ -246,10 +240,7 @@ mixin TextureAssetEnum on AssetEnum implements GameTexture {
 /// methods directly on the enum values, primarily the [audioSource].
 mixin AudioAssetEnum on AssetEnum implements GameAudio {
   @override
-  AssetSource get source;
-
-  @override
-  GameAsset register() => GameAudio(source);
+  GameAsset createAsset() => GameAudio(source);
 
   GameAudio get _instance => asset as GameAudio;
 

@@ -53,6 +53,7 @@ class GameObjectElement extends RenderObjectElement implements GameObject {
   final HashSet<Element> _forgottenChildren = HashSet<Element>();
 
   int _layer = RenderLayer.defaultLayer;
+  Object? _tag;
 
   @override
   StatefulGameWidget get widget => super.widget as StatefulGameWidget;
@@ -69,7 +70,7 @@ class GameObjectElement extends RenderObjectElement implements GameObject {
   bool get active => mounted;
 
   @override
-  GameTag? get tag => widget.key is GameTag ? widget.key as GameTag : null;
+  Object? get tag => _tag;
 
   @override
   GameObject? get parentObject => _parentObject;
@@ -588,6 +589,8 @@ class GameObjectElement extends RenderObjectElement implements GameObject {
     _isMounting = true;
     super.mount(parent, newSlot);
     _game = parent?.dependOnInheritedWidgetOfExactType<GameProvider>()?.game;
+    _tag = widget.tag;
+    if (_tag != null) (tagRegistry[_tag!] ??= []).add(this);
     _attachToParent();
     _layer = widget.layer;
 
@@ -642,6 +645,19 @@ class GameObjectElement extends RenderObjectElement implements GameObject {
   @override
   void update(GameWidget newWidget) {
     final oldWidget = widget as GameWidget;
+    final oldTag = _tag;
+    final newTag = newWidget.tag;
+    if (oldTag != newTag) {
+      if (oldTag != null) {
+        final list = tagRegistry[oldTag];
+        if (list != null) {
+          list.remove(this);
+          if (list.isEmpty) tagRegistry.remove(oldTag);
+        }
+      }
+      _tag = newTag;
+      if (newTag != null) (tagRegistry[newTag] ??= []).add(this);
+    }
     super.update(newWidget);
     _layer = newWidget.layer;
     if (_state != null) {
@@ -704,6 +720,15 @@ class GameObjectElement extends RenderObjectElement implements GameObject {
 
   @override
   void unmount() {
+    final t = _tag;
+    if (t != null) {
+      final list = tagRegistry[t];
+      if (list != null) {
+        list.remove(this);
+        if (list.isEmpty) tagRegistry.remove(t);
+      }
+      _tag = null;
+    }
     for (final component in _components) {
       _onComponentRemoved(component);
     }

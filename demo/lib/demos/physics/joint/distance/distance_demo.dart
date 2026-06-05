@@ -75,7 +75,7 @@ class _DistanceDemoState extends GameState<DistanceDemo> {
       final color = _linkColors[i];
 
       yield GameObjectWidget(
-        key: GameTag('_dist_link_$i'),
+        tag: '_dist_link_$i',
         children: [
           ComponentWidget(
             ObjectTransform.new.withInitialValues(
@@ -109,7 +109,7 @@ class _DistanceDemoState extends GameState<DistanceDemo> {
             ),
             ComponentWidget(
               _ChainLinkSetup.new.withInitialValues(
-                (s) => s.prevTag = GameTag('_dist_link_${i - 1}'),
+                (s) => s.prevTag = '_dist_link_${i - 1}',
               ),
             ),
             ComponentWidget(DragBehavior.new),
@@ -129,12 +129,12 @@ class _DistanceDemoState extends GameState<DistanceDemo> {
 }
 
 class _ChainLinkSetup extends Behavior with LifecycleListener {
-  GameTag? prevTag;
+  Object? prevTag;
 
   @override
   void onMounted() {
     if (prevTag == null) return;
-    final prevRb = prevTag!.gameObject?.tryGetComponent<Rigidbody>();
+    final prevRb = GameObject.findWithTag(gameObject, prevTag!)?.tryGetComponent<Rigidbody>();
     if (prevRb != null) {
       gameObject.tryGetComponent<DistanceJoint>()?.connectedBody = prevRb;
     }

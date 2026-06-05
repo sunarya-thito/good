@@ -24,7 +24,7 @@ void main() {
           Game(
             game: game, // Corrected from engine
             child: GameObjectWidget(
-              key: const GameTag('MainCamera'),
+              tag: 'MainCamera',
               children: [
                 ComponentWidget(Camera.new),
                 ComponentWidget(
@@ -67,7 +67,7 @@ void main() {
         await tester.pumpWidget(
           Game(
             child: GameObjectWidget(
-              key: const GameTag('MainCamera'),
+              tag: 'MainCamera',
               children: [
                 ComponentWidget(
                   Camera.new,

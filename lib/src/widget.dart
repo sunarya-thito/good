@@ -51,7 +51,15 @@ abstract class GameWidget extends RenderObjectWidget {
   /// within the hierarchy. It does not need to be unique across the game.
   final String? name;
 
-  /// Creates a [GameWidget] with an optional [layer] and [name].
+  /// An optional tag for the [GameObject] created by this widget.
+  ///
+  /// Any value (string, enum, or any [Object] with equality) can be used.
+  /// Unlike Flutter widget keys, multiple objects may share the same tag,
+  /// matching Unity's tag behavior. Use [GameObject.findWithTag] or
+  /// [GameObject.findGameObjectsWithTag] to look up tagged objects.
+  final Object? tag;
+
+  /// Creates a [GameWidget] with an optional [layer], [name], and [tag].
   ///
   /// The [key] parameter follows standard Flutter widget behavior, allowing
   /// for efficient identity checks during the widget reconciliation phase.
@@ -59,10 +67,12 @@ abstract class GameWidget extends RenderObjectWidget {
   /// * [key]: The Flutter widget key for identity.
   /// * [layer]: The rendering layer for the game object.
   /// * [name]: The debug name for the game object.
+  /// * [tag]: The lookup tag for the game object.
   const GameWidget({
     super.key,
     this.layer = RenderLayer.defaultLayer,
     this.name,
+    this.tag,
   });
 
   @override
@@ -119,10 +129,12 @@ abstract class StatefulGameWidget extends GameWidget {
   /// * [key]: The Flutter widget key for identity.
   /// * [layer]: The rendering layer for the game object.
   /// * [name]: The debug name for the game object.
+  /// * [tag]: The lookup tag for the game object.
   const StatefulGameWidget({
     super.key,
     super.layer,
     super.name,
+    super.tag,
   });
 
   @override
@@ -165,10 +177,12 @@ abstract class StatelessGameWidget extends StatefulGameWidget {
   /// * [key]: The Flutter widget key for identity.
   /// * [layer]: The rendering layer for the game object.
   /// * [name]: The debug name for the game object.
+  /// * [tag]: The lookup tag for the game object.
   const StatelessGameWidget({
     super.key,
     super.layer,
     super.name,
+    super.tag,
   });
 
   /// Describes the children or components of this game object.
@@ -226,11 +240,13 @@ class GameObjectWidget extends StatefulGameWidget {
   /// * [key]: The Flutter widget key for identity.
   /// * [layer]: The rendering layer for the game object.
   /// * [name]: The debug name for the game object.
+  /// * [tag]: The lookup tag for the game object.
   /// * [children]: The list of child entities.
   const GameObjectWidget({
     super.key,
     super.layer,
     super.name,
+    super.tag,
     this.children = const [],
   });
 

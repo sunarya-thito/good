@@ -36,7 +36,7 @@ void main() {
               children: [
                 Expanded(
                   child: GameObjectWidget(
-                    key: const GameTag('MainCamera'),
+                    tag: 'MainCamera',
                     children: [
                       ComponentWidget(Camera.new),
                       ComponentWidget(ObjectTransform.new),
@@ -94,7 +94,7 @@ void main() {
             children: [
               Expanded(
                 child: GameObjectWidget(
-                  key: const GameTag('MainCamera'),
+                  tag: 'MainCamera',
                   children: [
                     ComponentWidget(Camera.new),
                     ComponentWidget(ObjectTransform.new),

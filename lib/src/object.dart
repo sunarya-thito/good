@@ -4,42 +4,10 @@ import 'package:goo2d/src/component.dart';
 import 'package:goo2d/src/event.dart';
 import 'package:goo2d/src/coroutine.dart';
 
-/// A unique identifier for a [GameObject] that allows for global lookups.
-///
-/// [GameTag] extends [GlobalObjectKey] to provide a mechanism for identifying
-/// specific objects across the scene graph regardless of their position in the
-/// hierarchy. This is particularly useful for referencing singleton-like
-/// objects such as the player or a specific manager.
-///
-/// ```dart
-/// const playerTag = GameTag('player');
-///
-/// void resetPlayer(BuildContext context) {
-///   // Efficiently find the player object from anywhere in the app
-///   final player = GameObject.findWithTag(context, playerTag);
-///   player?.getComponent<SpriteRenderer>().color = const Color(0xFFFFFFFF);
-/// }
-/// ```
-///
-/// See also:
-/// * [GameObject.tag], the property that holds this identifier.
-/// * [GameObject.findWithTag], for retrieving objects by their tag.
-class GameTag extends GlobalObjectKey {
-  /// Creates a new [GameTag] with the given [value].
-  ///
-  /// Tags are used for efficient lookups of specific entities. The value should
-  /// be unique within the game instance to ensure that lookups return the
-  /// expected object.
-  ///
-  /// * [value]: The unique string identifier for this tag.
-  const GameTag(super.value);
-
-  /// The [GameObject] currently associated with this tag, if any.
-  ///
-  /// This retrieves the object by looking up its context in the global key
-  /// registry. Returns null if no object is currently active with this tag.
-  GameObject? get gameObject => currentContext as GameObject?;
-}
+// Registry mapping tag values to their live GameObjects.
+// Maintained by GameObjectElement on mount/unmount/update.
+// ignore: library_private_types_in_public_api
+final Map<Object, List<GameObject>> tagRegistry = {};
 
 /// The primary interface for all entities within the Goo2D game engine.
 ///
@@ -103,11 +71,13 @@ abstract class GameObject implements BuildContext {
   /// input, and the world rendering context.
   GameEngine get game;
 
-  /// An optional unique identifier for this object.
+  /// An optional tag for this object, used for global lookups.
   ///
-  /// Setting a tag allows the object to be efficiently retrieved from
-  /// anywhere in the application using [GameObject.findWithTag].
-  GameTag? get tag;
+  /// Any value can serve as a tag — strings, enums, or any [Object] that
+  /// implements equality. Multiple objects may share the same tag value,
+  /// matching Unity's tag behavior. Use [GameObject.findWithTag] to get the
+  /// first matching object or [GameObject.findGameObjectsWithTag] for all.
+  Object? get tag;
 
   /// Whether this object is currently active in the simulation.
   ///
@@ -453,41 +423,28 @@ abstract class GameObject implements BuildContext {
     return null;
   }
 
-  /// Global search for a [GameObject] by its [GameTag].
+  /// Finds the first active [GameObject] with the given [tag], or null.
   ///
-  /// This is the most efficient way to find a specific object, as it
-  /// uses the global tag registry instead of traversing the hierarchy.
+  /// Queries the global tag registry in O(1). Multiple objects may share the
+  /// same tag; use [findGameObjectsWithTag] to retrieve all of them.
   ///
-  /// * [context]: The build context to use for engine lookup.
-  /// * [tag]: The unique tag of the object to find.
-  static GameObject? findWithTag(BuildContext context, GameTag tag) {
-    return tag.gameObject;
+  /// * [context]: The build context (kept for API consistency).
+  /// * [tag]: The tag value to search for.
+  static GameObject? findWithTag(BuildContext context, Object tag) {
+    return tagRegistry[tag]?.firstOrNull;
   }
 
-  /// Finds all active [GameObject]s associated with a specific [GameTag].
+  /// Finds all active [GameObject]s that share the given [tag].
   ///
-  /// While tags are ideally unique, this method supports scenarios where
-  /// multiple objects might share a category tag.
+  /// Returns an empty iterable when no object carries the tag. The order
+  /// reflects mount order (earliest-mounted first).
   ///
-  /// * [context]: The build context to use for engine lookup.
-  /// * [tag]: The tag to search for.
+  /// * [context]: The build context (kept for API consistency).
+  /// * [tag]: The tag value to search for.
   static Iterable<GameObject> findGameObjectsWithTag(
     BuildContext context,
-    GameTag tag,
-  ) {
-    final engine = GameEngine.of(context);
-    final roots = engine.getSystem<TickerState>()?.rootObjects ?? [];
-    return roots.expand((e) => _findAllWithTag(e, tag));
-  }
-
-  static Iterable<GameObject> _findAllWithTag(GameObject root, GameTag tag) {
-    final result = <GameObject>[];
-    if (root.tag == tag) result.add(root);
-    for (final child in root.childrenObjects) {
-      result.addAll(_findAllWithTag(child, tag));
-    }
-    return result;
-  }
+    Object tag,
+  ) => List<GameObject>.from(tagRegistry[tag] ?? const []);
 
   /// Starts a [coroutine] on this object.
   ///

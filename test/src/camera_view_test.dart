@@ -5,7 +5,7 @@ import 'package:goo2d/goo2d.dart';
 void main() {
   group('CameraView', () {
     testWidgets('should render children through tagged camera', (tester) async {
-      const camTag = GameTag('SecondaryCamera');
+      const camTag = 'SecondaryCamera';
       final cam = Camera()..backgroundColor = const Color(0xFFFF0000);
 
       await tester.pumpWidget(
@@ -15,7 +15,7 @@ void main() {
             child: Stack(
               children: [
                 GameObjectWidget(
-                  key: camTag,
+                  tag: camTag,
                   children: [
                     ComponentWidget(ObjectTransform.new),
                     ComponentWidget(() => cam),
