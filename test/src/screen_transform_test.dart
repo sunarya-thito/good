@@ -7,13 +7,15 @@ void main() {
     testWidgets('should render children in screen space even when camera is moved', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerState.new, CameraSystem.new});
+      addTearDown(() => engine.dispose());
       bool hit = false;
       await tester.pumpWidget(
         MaterialApp(
           home: Game(
+            engine: engine,
             child: GameObjectWidget(
               children: [
-                // Camera object at 5000, 5000
                 GameObjectWidget(
                   name: 'CameraObject',
                   tag: 'MainCamera',
@@ -28,7 +30,6 @@ void main() {
                     ),
                   ],
                 ),
-                // HUD object in screen space
                 GameObjectWidget(
                   name: 'HUDObject',
                   children: [
@@ -56,9 +57,6 @@ void main() {
       );
       await tester.pump();
 
-      // Tap at screen (50, 50).
-      // Camera is at (5000, 5000), so world space (5050, 5050) maps to screen (50, 50).
-      // ScreenTransform should revert this, so tapping at (50, 50) hits the child.
       await tester.tapAt(const Offset(50, 50));
       expect(
         hit,
@@ -71,10 +69,13 @@ void main() {
     testWidgets('should handle nested ScreenTransforms by applying identity', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerState.new, CameraSystem.new});
+      addTearDown(() => engine.dispose());
       bool hit = false;
       await tester.pumpWidget(
         MaterialApp(
           home: Game(
+            engine: engine,
             child: GameObjectWidget(
               children: [
                 GameObjectWidget(
@@ -124,10 +125,13 @@ void main() {
     });
 
     testWidgets('should respect BoxConstraints', (tester) async {
+      final engine = await GameEngine.create({TickerState.new, CameraSystem.new});
+      addTearDown(() => engine.dispose());
       Size? reportedSize;
       await tester.pumpWidget(
         MaterialApp(
           home: Game(
+            engine: engine,
             child: GameObjectWidget(
               name: 'Root',
               children: [

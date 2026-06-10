@@ -76,10 +76,18 @@ class _TestState extends GameState<TestStatefulWidget> {
   }
 }
 
+Future<GameEngine> _createEngine() => GameEngine.create({
+      TickerState.new,
+      InputSystem.new,
+      CameraSystem.new,
+      ScreenSystem.new,
+    });
+
 void main() {
   testWidgets('GameState should follow strict Flutter lifecycle invariants', (
     tester,
   ) async {
+    final engine = await _createEngine();
     final tracker = LifecycleTracker();
 
     // 1. Mount
@@ -87,6 +95,7 @@ void main() {
       Directionality(
         textDirection: TextDirection.ltr,
         child: Game(
+          engine: engine,
           child: TestStatefulWidget(tracker: tracker, value: 1),
         ),
       ),
@@ -98,7 +107,7 @@ void main() {
             as _TestState;
 
     expect(tracker.initCount, equals(1));
-    expect(tracker.didChangeDepsCount, equals(1)); // Called during mount
+    expect(tracker.didChangeDepsCount, equals(1));
     expect(tracker.buildCount, equals(1));
     expect(state.mounted, isTrue);
 
@@ -107,12 +116,13 @@ void main() {
       Directionality(
         textDirection: TextDirection.ltr,
         child: Game(
+          engine: engine,
           child: TestStatefulWidget(tracker: tracker, value: 2),
         ),
       ),
     );
 
-    expect(tracker.initCount, equals(1)); // Should NOT be called again
+    expect(tracker.initCount, equals(1));
     expect(tracker.didUpdateCount, equals(1));
     expect(tracker.buildCount, equals(2));
 
@@ -123,28 +133,32 @@ void main() {
 
     // 4. Unmount
     await tester.pumpWidget(
-      const Directionality(
+      Directionality(
         textDirection: TextDirection.ltr,
-        child: Game(child: SizedBox()),
+        child: Game(engine: engine, child: const SizedBox()),
       ),
     );
 
     expect(tracker.disposeCount, equals(1));
-    expect(state.mounted, isFalse); // Should be false after unmount
+    expect(state.mounted, isFalse);
 
     // 5. Verify setState fails after dispose
     expect(() => state.setState(() {}), throwsAssertionError);
+
+    await engine.dispose();
   });
 
   testWidgets(
     'GameState should receive didChangeDependencies when InheritedWidget changes',
     (tester) async {
+      final engine = await _createEngine();
       final tracker = LifecycleTracker();
 
       await tester.pumpWidget(
         Directionality(
           textDirection: TextDirection.ltr,
           child: Game(
+            engine: engine,
             child: TestStatefulWidget(tracker: tracker),
           ),
         ),
@@ -152,18 +166,15 @@ void main() {
 
       expect(tracker.didChangeDepsCount, equals(1));
 
-      // Pump again with same data - should NOT trigger unless something changed
       await tester.pumpWidget(
         Directionality(
           textDirection: TextDirection.ltr,
           child: Game(
+            engine: engine,
             child: TestStatefulWidget(tracker: tracker),
           ),
         ),
       );
-      // Note: Flutter's dependOnInheritedWidgetOfExactType registers a dependency.
-      // If the InheritedWidget rebuilds, the element's didChangeDependencies is called.
-      // Since Directionality is above Game, and we haven't changed it yet...
 
       expect(tracker.didChangeDepsCount, equals(1));
 
@@ -172,12 +183,15 @@ void main() {
         Directionality(
           textDirection: TextDirection.rtl,
           child: Game(
+            engine: engine,
             child: TestStatefulWidget(tracker: tracker),
           ),
         ),
       );
 
       expect(tracker.didChangeDepsCount, equals(2));
+
+      await engine.dispose();
     },
   );
 }

@@ -10,69 +10,73 @@ class MockSystem implements GameSystem {
   bool disposed = false;
 
   @override
-  void attach(GameEngine game) {
+  Future<void> attach(GameEngine game) async {
     this.game = game;
     _attached = true;
   }
 
   @override
-  void dispose() => disposed = true;
+  Future<void> dispose() async => disposed = true;
 }
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   group('GameSystem', () {
-    test('GameEngine should initialize default systems', () {
-      final engine = GameEngine();
-      engine.initialize();
+    test('GameEngine should initialize systems', () async {
+      final engine = await GameEngine.create({
+        TickerState.new,
+        InputSystem.new,
+        CameraSystem.new,
+        ScreenSystem.new,
+      });
 
       expect(engine.hasSystem<TickerState>(), isTrue);
       expect(engine.hasSystem<InputSystem>(), isTrue);
-      expect(engine.hasSystem<PhysicsSystem>(), isTrue);
       expect(engine.hasSystem<CameraSystem>(), isTrue);
       expect(engine.hasSystem<ScreenSystem>(), isTrue);
-      expect(engine.hasSystem<AudioSystem>(), isTrue);
+
+      await engine.dispose();
     });
 
-    test('GameEngine should support custom system configurations', () {
-      final engine = GameEngine({
-        MockSystem.new,
-      });
-      engine.initialize();
+    test('GameEngine should support custom system configurations', () async {
+      final engine = await GameEngine.create({MockSystem.new});
 
       expect(engine.hasSystem<MockSystem>(), isTrue);
       expect(engine.hasSystem<TickerState>(), isFalse);
+
+      await engine.dispose();
     });
 
-    test('Operator - and ~ should exclude systems', () {
-      final engine = GameEngine({
-        ...GameEngine.defaultSystems,
+    test('Operator - and ~ should exclude systems', () async {
+      final engine = await GameEngine.create({
+        TickerState.new,
+        InputSystem.new,
+        CameraSystem.new,
+        ScreenSystem.new,
         -InputSystem.new,
-        ~PhysicsSystem.new,
+        ~CameraSystem.new,
       });
-      engine.initialize();
 
       expect(engine.hasSystem<TickerState>(), isTrue);
       expect(engine.hasSystem<InputSystem>(), isFalse);
-      expect(engine.hasSystem<PhysicsSystem>(), isFalse);
-      expect(engine.hasSystem<CameraSystem>(), isTrue);
+      expect(engine.hasSystem<CameraSystem>(), isFalse);
+
+      await engine.dispose();
     });
 
-    test('Systems should be disposed when engine is disposed', () {
+    test('Systems should be disposed when engine is disposed', () async {
       final system = MockSystem();
-      final engine = GameEngine({
-        () => system,
-      });
-      engine.initialize();
+      final engine = await GameEngine.create({() => system});
       expect(system.gameAttached, isTrue);
 
-      engine.dispose();
+      await engine.dispose();
       expect(system.disposed, isTrue);
     });
 
-    test('getSystem should return null for missing systems', () {
-      final engine = GameEngine({});
+    test('getSystem should return null for missing systems', () async {
+      final engine = await GameEngine.create({});
       expect(engine.getSystem<TickerState>(), isNull);
+      await engine.dispose();
     });
   });
 }

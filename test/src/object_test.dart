@@ -38,16 +38,28 @@ class EventComponent extends Component with TestEventListener {
   }
 }
 
+Future<GameEngine> _createEngine() => GameEngine.create({
+      TickerState.new,
+      InputSystem.new,
+      CameraSystem.new,
+      ScreenSystem.new,
+    });
+
 void main() {
   AutomatedTestWidgetsFlutterBinding.ensureInitialized();
 
   group('GameObject', () {
+    late GameEngine engine;
+    setUp(() async => engine = await _createEngine());
+    tearDown(() async => engine.dispose());
+
     testWidgets('should add and remove components correctly', (tester) async {
       final component = MockComponent();
       late GameObject gameObject;
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             key: GlobalKey(),
             children: [ComponentWidget(() => component)],
@@ -73,6 +85,7 @@ void main() {
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [ComponentWidget(() => eventComponent)],
           ),
@@ -96,6 +109,7 @@ void main() {
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => parentEventComponent),
@@ -114,8 +128,7 @@ void main() {
                     .byWidgetPredicate(
                       (w) =>
                           w is GameObjectWidget &&
-                          w.name ==
-                              null, // Root GameWidget in this test has no name
+                          w.name == null,
                     )
                     .first,
               )
@@ -132,6 +145,7 @@ void main() {
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(children: [ComponentWidget(() => component)]),
         ),
       );
@@ -147,7 +161,7 @@ void main() {
 
     testWidgets('should throw error when getComponent fails', (tester) async {
       await tester.pumpWidget(
-        Game(child: const GameObjectWidget(children: [])),
+        Game(engine: engine, child: const GameObjectWidget(children: [])),
       );
       await tester.pump();
 

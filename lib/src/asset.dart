@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart' as soloud;
 import 'package:http/http.dart' as http;
 
@@ -248,6 +249,722 @@ mixin AudioAssetEnum on AssetEnum implements GameAudio {
   soloud.AudioSource get audioSource => _instance.audioSource;
 }
 
+mixin FontAssetEnum on AssetEnum implements GameFont {
+  @override
+  GameAsset createAsset() => GameFont(source, family);
+
+  @override
+  String get family => name;
+
+  @override
+  TextStyle get delegate => TextStyle(fontFamily: family);
+
+  @override
+  String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
+    return super.toString();
+  }
+
+  @override
+  TextStyle apply({
+    ui.Color? color,
+    ui.Color? backgroundColor,
+    ui.TextDecoration? decoration,
+    ui.Color? decorationColor,
+    ui.TextDecorationStyle? decorationStyle,
+    double decorationThicknessFactor = 1.0,
+    double decorationThicknessDelta = 0.0,
+    String? fontFamily,
+    List<String>? fontFamilyFallback,
+    double fontSizeFactor = 1.0,
+    double fontSizeDelta = 0.0,
+    int fontWeightDelta = 0,
+    ui.FontStyle? fontStyle,
+    double letterSpacingFactor = 1.0,
+    double letterSpacingDelta = 0.0,
+    double wordSpacingFactor = 1.0,
+    double wordSpacingDelta = 0.0,
+    double heightFactor = 1.0,
+    double heightDelta = 0.0,
+    ui.TextBaseline? textBaseline,
+    ui.TextLeadingDistribution? leadingDistribution,
+    ui.Locale? locale,
+    List<ui.Shadow>? shadows,
+    List<ui.FontFeature>? fontFeatures,
+    List<ui.FontVariation>? fontVariations,
+    String? package,
+    TextOverflow? overflow,
+  }) {
+    return delegate.apply(
+      color: color,
+      backgroundColor: backgroundColor,
+      decoration: decoration,
+      decorationColor: decorationColor,
+      decorationStyle: decorationStyle,
+      decorationThicknessFactor: decorationThicknessFactor,
+      decorationThicknessDelta: decorationThicknessDelta,
+      fontFamily: fontFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSizeFactor: fontSizeFactor,
+      fontSizeDelta: fontSizeDelta,
+      fontWeightDelta: fontWeightDelta,
+      fontStyle: fontStyle,
+      letterSpacingFactor: letterSpacingFactor,
+      letterSpacingDelta: letterSpacingDelta,
+      wordSpacingFactor: wordSpacingFactor,
+      wordSpacingDelta: wordSpacingDelta,
+      heightFactor: heightFactor,
+      heightDelta: heightDelta,
+      textBaseline: textBaseline,
+      leadingDistribution: leadingDistribution,
+      locale: locale,
+      shadows: shadows,
+      fontFeatures: fontFeatures,
+      fontVariations: fontVariations,
+      package: package,
+      overflow: overflow,
+    );
+  }
+
+  @override
+  ui.Paint? get background => delegate.background;
+
+  @override
+  ui.Color? get backgroundColor => delegate.backgroundColor;
+
+  @override
+  ui.Color? get color => delegate.color;
+
+  @override
+  RenderComparison compareTo(TextStyle other) {
+    return delegate.compareTo(other);
+  }
+
+  @override
+  TextStyle copyWith({
+    bool? inherit,
+    ui.Color? color,
+    ui.Color? backgroundColor,
+    double? fontSize,
+    ui.FontWeight? fontWeight,
+    ui.FontStyle? fontStyle,
+    double? letterSpacing,
+    double? wordSpacing,
+    ui.TextBaseline? textBaseline,
+    double? height,
+    ui.TextLeadingDistribution? leadingDistribution,
+    ui.Locale? locale,
+    ui.Paint? foreground,
+    ui.Paint? background,
+    List<ui.Shadow>? shadows,
+    List<ui.FontFeature>? fontFeatures,
+    List<ui.FontVariation>? fontVariations,
+    ui.TextDecoration? decoration,
+    ui.Color? decorationColor,
+    ui.TextDecorationStyle? decorationStyle,
+    double? decorationThickness,
+    String? debugLabel,
+    String? fontFamily,
+    List<String>? fontFamilyFallback,
+    String? package,
+    TextOverflow? overflow,
+  }) {
+    return delegate.copyWith(
+      inherit: inherit,
+      color: color,
+      backgroundColor: backgroundColor,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      fontStyle: fontStyle,
+      letterSpacing: letterSpacing,
+      wordSpacing: wordSpacing,
+      textBaseline: textBaseline,
+      height: height,
+      leadingDistribution: leadingDistribution,
+      locale: locale,
+      foreground: foreground,
+      background: background,
+      shadows: shadows,
+      fontFeatures: fontFeatures,
+      fontVariations: fontVariations,
+      decoration: decoration,
+      decorationColor: decorationColor,
+      decorationStyle: decorationStyle,
+      decorationThickness: decorationThickness,
+      debugLabel: debugLabel,
+      fontFamily: fontFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      package: package,
+      overflow: overflow,
+    );
+  }
+
+  @override
+  TextStyle call({
+    bool? inherit,
+    ui.Color? color,
+    ui.Color? backgroundColor,
+    double? fontSize,
+    ui.FontWeight? fontWeight,
+    ui.FontStyle? fontStyle,
+    double? letterSpacing,
+    double? wordSpacing,
+    ui.TextBaseline? textBaseline,
+    double? height,
+    ui.TextLeadingDistribution? leadingDistribution,
+    ui.Locale? locale,
+    ui.Paint? foreground,
+    ui.Paint? background,
+    List<ui.Shadow>? shadows,
+    List<ui.FontFeature>? fontFeatures,
+    List<ui.FontVariation>? fontVariations,
+    ui.TextDecoration? decoration,
+    ui.Color? decorationColor,
+    ui.TextDecorationStyle? decorationStyle,
+    double? decorationThickness,
+    String? debugLabel,
+    String? fontFamily,
+    List<String>? fontFamilyFallback,
+    String? package,
+    TextOverflow? overflow,
+  }) {
+    return delegate.copyWith(
+      inherit: inherit,
+      color: color,
+      backgroundColor: backgroundColor,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      fontStyle: fontStyle,
+      letterSpacing: letterSpacing,
+      wordSpacing: wordSpacing,
+      textBaseline: textBaseline,
+      height: height,
+      leadingDistribution: leadingDistribution,
+      locale: locale,
+      foreground: foreground,
+      background: background,
+      shadows: shadows,
+      fontFeatures: fontFeatures,
+      fontVariations: fontVariations,
+      decoration: decoration,
+      decorationColor: decorationColor,
+      decorationStyle: decorationStyle,
+      decorationThickness: decorationThickness,
+      debugLabel: debugLabel,
+      fontFamily: fontFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      package: package,
+      overflow: overflow,
+    );
+  }
+
+  @override
+  void debugFillProperties(
+    DiagnosticPropertiesBuilder properties, {
+    String prefix = '',
+  }) {
+    delegate.debugFillProperties(properties, prefix: prefix);
+  }
+
+  @override
+  String? get debugLabel => delegate.debugLabel;
+
+  @override
+  ui.TextDecoration? get decoration => delegate.decoration;
+
+  @override
+  ui.Color? get decorationColor => delegate.decorationColor;
+
+  @override
+  ui.TextDecorationStyle? get decorationStyle => delegate.decorationStyle;
+
+  @override
+  double? get decorationThickness => delegate.decorationThickness;
+
+  @override
+  String? get fontFamily => delegate.fontFamily;
+
+  @override
+  List<String>? get fontFamilyFallback => delegate.fontFamilyFallback;
+
+  @override
+  List<ui.FontFeature>? get fontFeatures => delegate.fontFeatures;
+
+  @override
+  double? get fontSize => delegate.fontSize;
+
+  @override
+  ui.FontStyle? get fontStyle => delegate.fontStyle;
+
+  @override
+  List<ui.FontVariation>? get fontVariations => delegate.fontVariations;
+
+  @override
+  ui.FontWeight? get fontWeight => delegate.fontWeight;
+
+  @override
+  ui.Paint? get foreground => delegate.foreground;
+
+  @override
+  ui.ParagraphStyle getParagraphStyle({
+    ui.TextAlign? textAlign,
+    ui.TextDirection? textDirection,
+    TextScaler textScaler = TextScaler.noScaling,
+    String? ellipsis,
+    int? maxLines,
+    ui.TextHeightBehavior? textHeightBehavior,
+    ui.Locale? locale,
+    String? fontFamily,
+    double? fontSize,
+    ui.FontWeight? fontWeight,
+    ui.FontStyle? fontStyle,
+    double? height,
+    StrutStyle? strutStyle,
+  }) {
+    return delegate.getParagraphStyle(
+      textAlign: textAlign,
+      textDirection: textDirection,
+      textScaler: textScaler,
+      ellipsis: ellipsis,
+      maxLines: maxLines,
+      textHeightBehavior: textHeightBehavior,
+      locale: locale,
+      fontFamily: fontFamily,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      fontStyle: fontStyle,
+      height: height,
+      strutStyle: strutStyle,
+    );
+  }
+
+  @override
+  ui.TextStyle getTextStyle({
+    double textScaleFactor = 1.0,
+    TextScaler textScaler = TextScaler.noScaling,
+  }) {
+    return delegate.getTextStyle(
+      textScaleFactor: textScaleFactor,
+      textScaler: textScaler,
+    );
+  }
+
+  @override
+  double? get height => delegate.height;
+
+  @override
+  bool get inherit => delegate.inherit;
+
+  @override
+  ui.TextLeadingDistribution? get leadingDistribution =>
+      delegate.leadingDistribution;
+
+  @override
+  double? get letterSpacing => delegate.letterSpacing;
+
+  @override
+  ui.Locale? get locale => delegate.locale;
+
+  @override
+  TextStyle merge(TextStyle? other) {
+    return delegate.merge(other);
+  }
+
+  @override
+  TextOverflow? get overflow => delegate.overflow;
+
+  @override
+  List<ui.Shadow>? get shadows => delegate.shadows;
+
+  @override
+  ui.TextBaseline? get textBaseline => delegate.textBaseline;
+
+  @override
+  DiagnosticsNode toDiagnosticsNode({
+    String? name,
+    DiagnosticsTreeStyle? style,
+  }) {
+    return delegate.toDiagnosticsNode(name: name, style: style);
+  }
+
+  @override
+  String toStringShort() {
+    return delegate.toStringShort();
+  }
+
+  @override
+  double? get wordSpacing => delegate.wordSpacing;
+}
+
+mixin TextStyleWannabe implements TextStyle {
+  TextStyle get delegate;
+
+  @override
+  TextStyle apply({
+    ui.Color? color,
+    ui.Color? backgroundColor,
+    ui.TextDecoration? decoration,
+    ui.Color? decorationColor,
+    ui.TextDecorationStyle? decorationStyle,
+    double decorationThicknessFactor = 1.0,
+    double decorationThicknessDelta = 0.0,
+    String? fontFamily,
+    List<String>? fontFamilyFallback,
+    double fontSizeFactor = 1.0,
+    double fontSizeDelta = 0.0,
+    int fontWeightDelta = 0,
+    ui.FontStyle? fontStyle,
+    double letterSpacingFactor = 1.0,
+    double letterSpacingDelta = 0.0,
+    double wordSpacingFactor = 1.0,
+    double wordSpacingDelta = 0.0,
+    double heightFactor = 1.0,
+    double heightDelta = 0.0,
+    ui.TextBaseline? textBaseline,
+    ui.TextLeadingDistribution? leadingDistribution,
+    ui.Locale? locale,
+    List<ui.Shadow>? shadows,
+    List<ui.FontFeature>? fontFeatures,
+    List<ui.FontVariation>? fontVariations,
+    String? package,
+    TextOverflow? overflow,
+  }) {
+    return delegate.apply(
+      color: color,
+      backgroundColor: backgroundColor,
+      decoration: decoration,
+      decorationColor: decorationColor,
+      decorationStyle: decorationStyle,
+      decorationThicknessFactor: decorationThicknessFactor,
+      decorationThicknessDelta: decorationThicknessDelta,
+      fontFamily: fontFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSizeFactor: fontSizeFactor,
+      fontSizeDelta: fontSizeDelta,
+      fontWeightDelta: fontWeightDelta,
+      fontStyle: fontStyle,
+      letterSpacingFactor: letterSpacingFactor,
+      letterSpacingDelta: letterSpacingDelta,
+      wordSpacingFactor: wordSpacingFactor,
+      wordSpacingDelta: wordSpacingDelta,
+      heightFactor: heightFactor,
+      heightDelta: heightDelta,
+      textBaseline: textBaseline,
+      leadingDistribution: leadingDistribution,
+      locale: locale,
+      shadows: shadows,
+      fontFeatures: fontFeatures,
+      fontVariations: fontVariations,
+      package: package,
+      overflow: overflow,
+    );
+  }
+
+  @override
+  ui.Paint? get background => delegate.background;
+
+  @override
+  ui.Color? get backgroundColor => delegate.backgroundColor;
+
+  @override
+  ui.Color? get color => delegate.color;
+
+  @override
+  RenderComparison compareTo(TextStyle other) {
+    return delegate.compareTo(other);
+  }
+
+  @override
+  TextStyle copyWith({
+    bool? inherit,
+    ui.Color? color,
+    ui.Color? backgroundColor,
+    double? fontSize,
+    ui.FontWeight? fontWeight,
+    ui.FontStyle? fontStyle,
+    double? letterSpacing,
+    double? wordSpacing,
+    ui.TextBaseline? textBaseline,
+    double? height,
+    ui.TextLeadingDistribution? leadingDistribution,
+    ui.Locale? locale,
+    ui.Paint? foreground,
+    ui.Paint? background,
+    List<ui.Shadow>? shadows,
+    List<ui.FontFeature>? fontFeatures,
+    List<ui.FontVariation>? fontVariations,
+    ui.TextDecoration? decoration,
+    ui.Color? decorationColor,
+    ui.TextDecorationStyle? decorationStyle,
+    double? decorationThickness,
+    String? debugLabel,
+    String? fontFamily,
+    List<String>? fontFamilyFallback,
+    String? package,
+    TextOverflow? overflow,
+  }) {
+    return delegate.copyWith(
+      inherit: inherit,
+      color: color,
+      backgroundColor: backgroundColor,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      fontStyle: fontStyle,
+      letterSpacing: letterSpacing,
+      wordSpacing: wordSpacing,
+      textBaseline: textBaseline,
+      height: height,
+      leadingDistribution: leadingDistribution,
+      locale: locale,
+      foreground: foreground,
+      background: background,
+      shadows: shadows,
+      fontFeatures: fontFeatures,
+      fontVariations: fontVariations,
+      decoration: decoration,
+      decorationColor: decorationColor,
+      decorationStyle: decorationStyle,
+      decorationThickness: decorationThickness,
+      debugLabel: debugLabel,
+      fontFamily: fontFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      package: package,
+      overflow: overflow,
+    );
+  }
+
+  TextStyle call({
+    bool? inherit,
+    ui.Color? color,
+    ui.Color? backgroundColor,
+    double? fontSize,
+    ui.FontWeight? fontWeight,
+    ui.FontStyle? fontStyle,
+    double? letterSpacing,
+    double? wordSpacing,
+    ui.TextBaseline? textBaseline,
+    double? height,
+    ui.TextLeadingDistribution? leadingDistribution,
+    ui.Locale? locale,
+    ui.Paint? foreground,
+    ui.Paint? background,
+    List<ui.Shadow>? shadows,
+    List<ui.FontFeature>? fontFeatures,
+    List<ui.FontVariation>? fontVariations,
+    ui.TextDecoration? decoration,
+    ui.Color? decorationColor,
+    ui.TextDecorationStyle? decorationStyle,
+    double? decorationThickness,
+    String? debugLabel,
+    String? fontFamily,
+    List<String>? fontFamilyFallback,
+    String? package,
+    TextOverflow? overflow,
+  }) {
+    return delegate.copyWith(
+      inherit: inherit,
+      color: color,
+      backgroundColor: backgroundColor,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      fontStyle: fontStyle,
+      letterSpacing: letterSpacing,
+      wordSpacing: wordSpacing,
+      textBaseline: textBaseline,
+      height: height,
+      leadingDistribution: leadingDistribution,
+      locale: locale,
+      foreground: foreground,
+      background: background,
+      shadows: shadows,
+      fontFeatures: fontFeatures,
+      fontVariations: fontVariations,
+      decoration: decoration,
+      decorationColor: decorationColor,
+      decorationStyle: decorationStyle,
+      decorationThickness: decorationThickness,
+      debugLabel: debugLabel,
+      fontFamily: fontFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      package: package,
+      overflow: overflow,
+    );
+  }
+
+  @override
+  void debugFillProperties(
+    DiagnosticPropertiesBuilder properties, {
+    String prefix = '',
+  }) {
+    delegate.debugFillProperties(properties, prefix: prefix);
+  }
+
+  @override
+  String? get debugLabel => delegate.debugLabel;
+
+  @override
+  ui.TextDecoration? get decoration => delegate.decoration;
+
+  @override
+  ui.Color? get decorationColor => delegate.decorationColor;
+
+  @override
+  ui.TextDecorationStyle? get decorationStyle => delegate.decorationStyle;
+
+  @override
+  double? get decorationThickness => delegate.decorationThickness;
+
+  @override
+  String? get fontFamily => delegate.fontFamily;
+
+  @override
+  List<String>? get fontFamilyFallback => delegate.fontFamilyFallback;
+
+  @override
+  List<ui.FontFeature>? get fontFeatures => delegate.fontFeatures;
+
+  @override
+  double? get fontSize => delegate.fontSize;
+
+  @override
+  ui.FontStyle? get fontStyle => delegate.fontStyle;
+
+  @override
+  List<ui.FontVariation>? get fontVariations => delegate.fontVariations;
+
+  @override
+  ui.FontWeight? get fontWeight => delegate.fontWeight;
+
+  @override
+  ui.Paint? get foreground => delegate.foreground;
+
+  @override
+  ui.ParagraphStyle getParagraphStyle({
+    ui.TextAlign? textAlign,
+    ui.TextDirection? textDirection,
+    TextScaler textScaler = TextScaler.noScaling,
+    String? ellipsis,
+    int? maxLines,
+    ui.TextHeightBehavior? textHeightBehavior,
+    ui.Locale? locale,
+    String? fontFamily,
+    double? fontSize,
+    ui.FontWeight? fontWeight,
+    ui.FontStyle? fontStyle,
+    double? height,
+    StrutStyle? strutStyle,
+  }) {
+    return delegate.getParagraphStyle(
+      textAlign: textAlign,
+      textDirection: textDirection,
+      textScaler: textScaler,
+      ellipsis: ellipsis,
+      maxLines: maxLines,
+      textHeightBehavior: textHeightBehavior,
+      locale: locale,
+      fontFamily: fontFamily,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      fontStyle: fontStyle,
+      height: height,
+      strutStyle: strutStyle,
+    );
+  }
+
+  @override
+  ui.TextStyle getTextStyle({
+    double textScaleFactor = 1.0,
+    TextScaler textScaler = TextScaler.noScaling,
+  }) {
+    return delegate.getTextStyle(
+      textScaleFactor: textScaleFactor,
+      textScaler: textScaler,
+    );
+  }
+
+  @override
+  double? get height => delegate.height;
+
+  @override
+  bool get inherit => delegate.inherit;
+
+  @override
+  ui.TextLeadingDistribution? get leadingDistribution =>
+      delegate.leadingDistribution;
+
+  @override
+  double? get letterSpacing => delegate.letterSpacing;
+
+  @override
+  ui.Locale? get locale => delegate.locale;
+
+  @override
+  TextStyle merge(TextStyle? other) {
+    return delegate.merge(other);
+  }
+
+  @override
+  TextOverflow? get overflow => delegate.overflow;
+
+  @override
+  List<ui.Shadow>? get shadows => delegate.shadows;
+
+  @override
+  ui.TextBaseline? get textBaseline => delegate.textBaseline;
+
+  @override
+  DiagnosticsNode toDiagnosticsNode({
+    String? name,
+    DiagnosticsTreeStyle? style,
+  }) {
+    return delegate.toDiagnosticsNode(name: name, style: style);
+  }
+
+  @override
+  String toStringShort() {
+    return delegate.toStringShort();
+  }
+
+  @override
+  double? get wordSpacing => delegate.wordSpacing;
+
+  @override
+  String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
+    return super.toString();
+  }
+}
+
+// ignore: must_be_immutable
+class GameFont extends GameAsset with TextStyleWannabe {
+  final String family;
+  @override
+  final AssetSource source;
+
+  GameFont(this.source, this.family);
+
+  @override
+  TextStyle get delegate => TextStyle(fontFamily: family);
+
+  bool _isLoaded = false;
+
+  @override
+  Future<void> load() async {
+    if (isLoaded) return;
+    final bytes = await source.loadBytes();
+    await (FontLoader(
+      source.name,
+    )..addFont(Future.value(ByteData.view(bytes.buffer)))).load();
+    _isLoaded = true;
+  }
+
+  @override
+  bool get isLoaded => _isLoaded;
+
+  @override
+  void unload() {
+    _isLoaded = false;
+  }
+}
+
 /// Represents the current progress of an asynchronous asset loading operation.
 ///
 /// This class provides metadata about how many assets have been loaded out of
@@ -303,6 +1020,8 @@ class GameAssetProgress {
   /// This is a convenience getter that divides [assetLoaded] by [assetCount]
   /// to determine the overall progress of the batch.
   double get progress => assetLoaded / assetCount;
+
+  double get percentage => progress * 100;
 }
 
 /// The base class for all managed resources within the engine.

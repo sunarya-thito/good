@@ -12,11 +12,14 @@ void main() {
     testWidgets(
       'should prevent adding multiple components of the same type by default',
       (tester) async {
+        final engine = await GameEngine.create({TickerState.new});
+        addTearDown(() => engine.dispose());
         final a = SingleComp();
         final b = SingleComp();
 
         await tester.pumpWidget(
           Game(
+            engine: engine,
             child: GameObjectWidget(
               children: [
                 ComponentWidget(() => a),
@@ -33,11 +36,14 @@ void main() {
     testWidgets(
       'should allow multiple components of the same type if they implement MultiComponent',
       (tester) async {
+        final engine = await GameEngine.create({TickerState.new});
+        addTearDown(() => engine.dispose());
         final a = MultiComp();
         final b = MultiComp();
 
         await tester.pumpWidget(
           Game(
+            engine: engine,
             child: GameObjectWidget(
               children: [
                 ComponentWidget(() => a),
@@ -58,9 +64,13 @@ void main() {
     testWidgets(
       'imperative addComponent should also enforce MultiComponent rules',
       (tester) async {
+        final engine = await GameEngine.create({TickerState.new});
+        addTearDown(() => engine.dispose());
+
         await tester.pumpWidget(
-          const Game(
-            child: GameObjectWidget(),
+          Game(
+            engine: engine,
+            child: const GameObjectWidget(),
           ),
         );
 
@@ -78,9 +88,13 @@ void main() {
     testWidgets(
       'imperative addComponent should allow multiple MultiComponents',
       (tester) async {
+        final engine = await GameEngine.create({TickerState.new});
+        addTearDown(() => engine.dispose());
+
         await tester.pumpWidget(
-          const Game(
-            child: GameObjectWidget(),
+          Game(
+            engine: engine,
+            child: const GameObjectWidget(),
           ),
         );
 

@@ -122,9 +122,7 @@ class GameObjectElement extends RenderObjectElement implements GameObject {
     if (active && component is LifecycleListener) {
       if (_isMounting) {
         _deferredLifecycleComponents.add(component);
-      } else {
-        component.onMounted();
-      }
+      } else {}
     }
   }
 
@@ -182,7 +180,7 @@ class GameObjectElement extends RenderObjectElement implements GameObject {
 
   void _onComponentRemoved(Component component) {
     if (active && component is LifecycleListener) {
-      component.onUnmounted();
+      (component as LifecycleListener).onUnmounted();
     }
     component.internalDetach();
   }
@@ -333,7 +331,7 @@ class GameObjectElement extends RenderObjectElement implements GameObject {
 
   @override
   Future<void> sendEventAsync(AsyncEvent event) async {
-    for (final element in _children) {
+    for (final element in List.of(_children)) {
       await _sendEventAsyncDown(event, element);
     }
   }
@@ -636,7 +634,7 @@ class GameObjectElement extends RenderObjectElement implements GameObject {
 
     for (final component in _deferredLifecycleComponents) {
       if (component is LifecycleListener) {
-        component.onMounted();
+        (component as LifecycleListener).onMounted();
       }
     }
     _deferredLifecycleComponents.clear();

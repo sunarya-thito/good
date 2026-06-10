@@ -24,11 +24,14 @@ void main() {
 
   group('Component', () {
     testWidgets('should find components by type', (tester) async {
+      final engine = await GameEngine.create({TickerState.new});
+      addTearDown(() => engine.dispose());
       final a = CompA();
       final b = CompB();
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [ComponentWidget(() => a), ComponentWidget(() => b)],
           ),
@@ -46,11 +49,14 @@ void main() {
     testWidgets(
       'should only keep one component of the same type (last one wins)',
       (tester) async {
+        final engine = await GameEngine.create({TickerState.new});
+        addTearDown(() => engine.dispose());
         final a1 = CompA();
         final a2 = CompA();
 
         await tester.pumpWidget(
           Game(
+            engine: engine,
             child: GameObjectWidget(
               children: [ComponentWidget(() => a1), ComponentWidget(() => a2)],
             ),
@@ -61,10 +67,13 @@ void main() {
     );
 
     testWidgets('should find components in children', (tester) async {
+      final engine = await GameEngine.create({TickerState.new});
+      addTearDown(() => engine.dispose());
       final a = CompA();
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               GameObjectWidget(
@@ -81,10 +90,13 @@ void main() {
     });
 
     testWidgets('should find components in parents', (tester) async {
+      final engine = await GameEngine.create({TickerState.new});
+      addTearDown(() => engine.dispose());
       final a = CompA();
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => a),
@@ -100,10 +112,13 @@ void main() {
     });
 
     testWidgets('should access stateObject correctly', (tester) async {
+      final engine = await GameEngine.create({TickerState.new});
+      addTearDown(() => engine.dispose());
       final comp = CompA();
       await tester.pumpWidget(
-        const Game(
-          child: MyGameWidget(),
+        Game(
+          engine: engine,
+          child: const MyGameWidget(),
         ),
       );
       final gameObject =
@@ -117,11 +132,14 @@ void main() {
     testWidgets('should allow adding components from within a component', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerState.new});
+      addTearDown(() => engine.dispose());
       final b = CompB();
       final a = CompA();
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [ComponentWidget(() => a)],
           ),

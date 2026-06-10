@@ -11,8 +11,11 @@ void main() {
     testWidgets('should update component properties after widget update', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerState.new});
+      addTearDown(() => engine.dispose());
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             tag: 'test',
             children: [
@@ -34,9 +37,9 @@ void main() {
         equals(const ui.Color(0xFFFF0000)),
       );
 
-      // Update with NEW widget, different property in the factory
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             tag: 'test',
             children: [
@@ -67,8 +70,11 @@ void main() {
     testWidgets('should preserve GameObject position after reassemble', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerState.new});
+      addTearDown(() => engine.dispose());
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             tag: 'test',
             children: [ComponentWidget(ObjectTransform.new)],
@@ -79,9 +85,8 @@ void main() {
       final element = tester.element(find.byType(GameObjectWidget).first);
       final transform =
           (element as GameObject).getComponent<ObjectTransform>();
-      transform.position = Vector2(50, 60); // Runtime change
+      transform.position = Vector2(50, 60);
 
-      // Trigger reassemble
       // ignore: invalid_use_of_protected_member
       element.reassemble();
 
@@ -92,8 +97,11 @@ void main() {
     testWidgets('should preserve state when children are shuffled with keys', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerState.new});
+      addTearDown(() => engine.dispose());
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               GameObjectWidget(
@@ -128,9 +136,9 @@ void main() {
               .getComponent<SpriteRenderer>();
       expect(compA.color, equals(const ui.Color(0xFFFF0000)));
 
-      // Swap them
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               GameObjectWidget(
@@ -170,9 +178,12 @@ void main() {
     testWidgets('should preserve state with GlobalKey across tree changes', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerState.new});
+      addTearDown(() => engine.dispose());
       final heroKey = GlobalKey();
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: Column(
             children: [
               GameObjectWidget(
@@ -196,9 +207,9 @@ void main() {
       final hero = tester.element(find.byKey(heroKey)) as GameObject;
       hero.getComponent<ObjectTransform>().position = Vector2(123, 456);
 
-      // Move hero into a Container
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: Column(
             children: [
               // ignore: avoid_unnecessary_containers
@@ -232,8 +243,11 @@ void main() {
     testWidgets(
       'should reset/swap state when children are shuffled WITHOUT keys',
       (tester) async {
+        final engine = await GameEngine.create({TickerState.new});
+        addTearDown(() => engine.dispose());
         await tester.pumpWidget(
           Game(
+            engine: engine,
             child: GameObjectWidget(
               children: [
                 GameObjectWidget(
@@ -267,9 +281,9 @@ void main() {
         final comp0 = element0.getComponent<SpriteRenderer>();
         expect(comp0.color, equals(const ui.Color(0xFFFF0000)));
 
-        // Swap them in the widget list WITHOUT keys
         await tester.pumpWidget(
           Game(
+            engine: engine,
             child: GameObjectWidget(
               children: [
                 GameObjectWidget(
@@ -302,11 +316,8 @@ void main() {
                 as GameObjectElement;
         final comp0After = element0After.getComponent<SpriteRenderer>();
 
-        // The element instance is likely the same (reused by Flutter because type matches)
-        // but the component properties were patched because of our new logic.
         expect(element0After, same(element0));
         expect(comp0After, same(comp0));
-        // Color changed because the new widget at this index says Green
         expect(comp0After.color, equals(const ui.Color(0xFF00FF00)));
       },
     );

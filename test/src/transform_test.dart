@@ -3,15 +3,28 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
+Future<GameEngine> _createEngine() => GameEngine.create({
+      TickerState.new,
+      InputSystem.new,
+      CameraSystem.new,
+      ScreenSystem.new,
+    });
+
 void main() {
   AutomatedTestWidgetsFlutterBinding.ensureInitialized();
 
   group('ObjectTransform', () {
+    late GameEngine engine;
+    setUp(() async => engine = await _createEngine());
+    tearDown(() async => engine.dispose());
+
     testWidgets('should have identity matrix by default', (tester) async {
       final transform = ObjectTransform();
       await tester.pumpWidget(
         Game(
-          child: GameObjectWidget(children: [ComponentWidget(() => transform)]),
+          engine: engine,
+          child:
+              GameObjectWidget(children: [ComponentWidget(() => transform)]),
         ),
       );
       await tester.pump();
@@ -31,6 +44,7 @@ void main() {
         final transform = ObjectTransform();
         await tester.pumpWidget(
           Game(
+            engine: engine,
             child: GameObjectWidget(
               children: [ComponentWidget(() => transform)],
             ),
@@ -64,6 +78,7 @@ void main() {
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => parentTransform),
@@ -82,7 +97,6 @@ void main() {
       expect(parentTransform.worldMatrix.getTranslation().x, equals(100));
       expect(parentTransform.worldMatrix.getTranslation().y, equals(100));
 
-      // Child world position should be parent (100,100) + child local (50,50) = (150,150)
       expect(childTransform.worldMatrix.getTranslation().x, equals(150));
       expect(childTransform.worldMatrix.getTranslation().y, equals(150));
       expect(childTransform.position.x, closeTo(150.0, 0.0001));
@@ -97,6 +111,7 @@ void main() {
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => parentTransform),
@@ -112,7 +127,6 @@ void main() {
       final initialParentVersion = parentTransform.version;
       final initialChildVersion = childTransform.version;
 
-      // Access worldMatrix to cache it
       var _ = childTransform.worldMatrix;
 
       parentTransform.localPosition = Vector2(1, 1);
@@ -120,7 +134,6 @@ void main() {
       expect(parentTransform.version, greaterThan(initialParentVersion));
       expect(childTransform.version, greaterThan(initialChildVersion));
 
-      // World position should update
       expect(childTransform.position.x, closeTo(1.0, 0.0001));
       expect(childTransform.position.y, closeTo(1.0, 0.0001));
     });
@@ -138,14 +151,14 @@ void main() {
         );
       }
 
-      await tester.pumpWidget(Game(child: buildHierarchy(0)));
+      await tester.pumpWidget(
+          Game(engine: engine, child: buildHierarchy(0)));
       await tester.pump();
 
       for (var t in transforms) {
         t.localPosition = Vector2(10, 0);
       }
 
-      // 10 levels of (10, 0) should result in (100, 0) world position for the last child
       expect(transforms.last.position.x, closeTo(100.0, 0.0001));
     });
 
@@ -155,7 +168,9 @@ void main() {
       final transform = ObjectTransform();
       await tester.pumpWidget(
         Game(
-          child: GameObjectWidget(children: [ComponentWidget(() => transform)]),
+          engine: engine,
+          child:
+              GameObjectWidget(children: [ComponentWidget(() => transform)]),
         ),
       );
       await tester.pump();
@@ -166,7 +181,6 @@ void main() {
       final localPoint = Vector2(10, 10);
       final worldPoint = transform.localToWorld(localPoint);
 
-      // Revert back
       final convertedBack = transform.worldToLocal(worldPoint);
       expect(convertedBack.x, closeTo(localPoint.x, 0.0001));
       expect(convertedBack.y, closeTo(localPoint.y, 0.0001));
@@ -180,6 +194,7 @@ void main() {
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => parentTransform),
@@ -193,19 +208,12 @@ void main() {
       await tester.pump();
 
       parentTransform.localPosition = Vector2(100, 100);
-      parentTransform.localAngle = math.pi / 2; // Parent rotated 90 deg
+      parentTransform.localAngle = math.pi / 2;
 
-      // We want the child to be at world position (100, 200)
       childTransform.position = Vector2(100, 200);
 
       expect(childTransform.position.x, closeTo(100.0, 0.0001));
       expect(childTransform.position.y, closeTo(200.0, 0.0001));
-
-      // In parent space (rotated 90 deg), (100, 200) relative to (100, 100)
-      // Vector (0, 100) in world.
-      // Parent's X axis is (0, 1) in world. Parent's Y axis is (-1, 0) in world.
-      // So world vector (0, 100) is 100 units along parent's X axis.
-      // localPosition should be (100, 0).
       expect(childTransform.localPosition.x, closeTo(100.0, 0.0001));
       expect(childTransform.localPosition.y, closeTo(0.0, 0.0001));
     });
