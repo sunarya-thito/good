@@ -7,6 +7,7 @@ import 'package:goo2d/src/physics/worker/physics_worker.dart';
 import 'package:goo2d/src/physics/worker/isolate/isolate_entry.dart';
 import 'package:goo2d/src/physics/worker/isolate/isolate_protocol.dart';
 import 'package:goo2d/src/physics/worker/data/collider_shape_type.dart';
+import 'package:goo2d/src/physics/worker/data/contact_delta.dart';
 import 'package:goo2d/src/physics/worker/data/raycast_hit_data.dart';
 import 'package:goo2d/src/physics/worker/data/contact_point_data.dart';
 import 'package:goo2d/src/rpc/buffer.dart';
@@ -156,6 +157,35 @@ class IsolatePhysicsWorker implements PhysicsWorker {
       });
       _opCount = asyncGapCount;
     }
+  }
+
+  @override
+  Future<ContactDelta> stepWithContactDelta(double deltaTime) async {
+    final sentCount = _opCount;
+    final sentData = _opsBuffer.compact;
+
+    final response = await _send(
+      IsolateProtocol.writeStepWithContactDeltaBatch(deltaTime, sentCount, sentData),
+    );
+
+    final asyncGapCount = _opCount - sentCount;
+    if (asyncGapCount == 0) {
+      _opsBuffer.clear();
+      _opCount = 0;
+    } else {
+      final fullData = _opsBuffer.compact;
+      _opsBuffer.clear();
+      _opCount = 0;
+      final gapBytes = fullData.sublist(sentData.length);
+      _opsBuffer.write(gapBytes.length, () {
+        for (var i = 0; i < gapBytes.length; i++) {
+          _opsBuffer.byteData.setUint8(_opsBuffer.offset + i, gapBytes[i]);
+        }
+      });
+      _opCount = asyncGapCount;
+    }
+
+    return IsolateProtocol.readContactDelta(response);
   }
 
   // ===================== Body (synchronous — queue into batch) =====================

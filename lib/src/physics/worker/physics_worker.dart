@@ -1,5 +1,6 @@
 import 'package:vector_math/vector_math_64.dart';
 import 'package:goo2d/src/physics/worker/data/collider_shape_type.dart';
+import 'package:goo2d/src/physics/worker/data/contact_delta.dart';
 import 'package:goo2d/src/physics/worker/data/raycast_hit_data.dart';
 import 'package:goo2d/src/physics/worker/data/contact_point_data.dart';
 
@@ -12,6 +13,7 @@ abstract class PhysicsWorker {
   Future<void> initialize();
   void dispose();
   Future<void> step(double deltaTime);
+  Future<ContactDelta> stepWithContactDelta(double deltaTime);
 
   // ===================== Global Settings =====================
   Future<void> setGravity(Vector2 value);

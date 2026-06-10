@@ -11,7 +11,7 @@ Vector2 _v(f.Vector2 v) => Vector2(v.x, v.y);
 /// Thin wrapper around a Forge2D [f.Body], preserving the existing public API.
 ///
 /// Rotation is in RADIANS, matching [ObjectTransform.angle] and Forge2D.
-class PhysicsBody {
+class EngineBody {
   final int handle;
 
   f.Body? _body;
@@ -36,7 +36,7 @@ class PhysicsBody {
   // Attached collider handles
   final List<int> colliderHandles = [];
 
-  PhysicsBody(this.handle);
+  EngineBody(this.handle);
 
   void initForgeBody(f.Body body) {
     _body = body;
