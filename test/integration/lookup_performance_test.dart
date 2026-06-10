@@ -17,10 +17,13 @@ void main() {
       testWidgets('Lookup.getComponentsInChildren ($n objects)', (
         tester,
       ) async {
+        final engine = await GameEngine.create({TickerState.new});
+        addTearDown(() => engine.dispose());
         final rootTag = 'root_obj_$n';
         await tester.pumpWidget(
           MaterialApp(
             home: Game(
+              engine: engine,
               child: LookupStressScene(count: n, rootTag: rootTag),
             ),
           ),
@@ -41,10 +44,13 @@ void main() {
     final pathDepths = [10, 50, 100, 250, 500];
     for (final d in pathDepths) {
       testWidgets('Lookup.findChildPath (Depth $d)', (tester) async {
+        final engine = await GameEngine.create({TickerState.new});
+        addTearDown(() => engine.dispose());
         final rootTag = 'path_root_$d';
         await tester.pumpWidget(
           MaterialApp(
             home: Game(
+              engine: engine,
               child: PathStressScene(depth: d, rootTag: rootTag),
             ),
           ),
