@@ -4,9 +4,27 @@ import 'package:goo2d/src/physics/worker/direct/direct_joint_ops.dart';
 import 'package:goo2d/src/physics/worker/data/joint_type.dart';
 import 'package:goo2d/goo2d.dart';
 
-/// Joint that restricts the motion of a Rigidbody2D object to a single line.
+/// Constrains this body to slide along a single axis defined by [angle], optionally with limits and a motor.
 ///
-/// Equivalent to Unity's `SliderJoint2D`.
+/// The body can translate along the axis but cannot rotate or move perpendicular to it.
+/// Set [useLimits] = true and assign [limits] to clamp the travel range in world units.
+/// Set [useMotor] = true and assign [motor] to drive the body along the axis at a target speed.
+///
+/// Typical uses: elevators, sliding doors, pistons.
+///
+/// ```dart
+/// addComponent(
+///   SliderJoint()
+///     ..connectedBody = frameBody
+///     ..angle = 90.0  // slide vertically
+///     ..useLimits = true
+///     ..limits = JointTranslationLimits(min: 0, max: 5),
+/// );
+/// ```
+///
+/// See also:
+/// * [HingeJoint] to rotate around a pivot instead of sliding.
+/// * [WheelJoint] for suspension combined with rotation.
 class SliderJoint extends Joint {
   @override
   int get jointType => JointType.slider;
@@ -24,50 +42,57 @@ class SliderJoint extends Joint {
     worker.setJointProperty(handle, JointProp.autoConfigureAngle, _autoConfigureAngle);
   }
 
-  final Vector2 _anchor = Vector2.zero();
+  /// Local-space attachment point on this body. Default `Vector2.zero()`.
   Vector2 get anchor => _anchor;
+  final Vector2 _anchor = Vector2.zero();
   set anchor(Vector2 value) {
     _anchor.setFrom(value);
     if (isAttached) worker.setJointProperty(handle, JointProp.anchor, value.clone());
   }
 
-  final Vector2 _connectedAnchor = Vector2.zero();
+  /// Local-space attachment point on [connectedBody], or world-space if no body is connected.
   Vector2 get connectedAnchor => _connectedAnchor;
+  final Vector2 _connectedAnchor = Vector2.zero();
   set connectedAnchor(Vector2 value) {
     _connectedAnchor.setFrom(value);
     if (isAttached) worker.setJointProperty(handle, JointProp.connectedAnchor, value.clone());
   }
 
-  bool _autoConfigureConnectedAnchor = true;
+  /// When true, the engine sets [connectedAnchor] automatically. Default true.
   bool get autoConfigureConnectedAnchor => _autoConfigureConnectedAnchor;
+  bool _autoConfigureConnectedAnchor = true;
   set autoConfigureConnectedAnchor(bool value) {
     _autoConfigureConnectedAnchor = value;
     if (isAttached) worker.setJointProperty(handle, JointProp.autoConfigureConnectedAnchor, value);
   }
 
-  bool _useMotor = false;
+  /// When true, the motor drives translation along the axis. Default false.
   bool get useMotor => _useMotor;
+  bool _useMotor = false;
   set useMotor(bool value) {
     _useMotor = value;
     if (isAttached) worker.setJointProperty(handle, JointProp.useMotor, value);
   }
 
-  double _angle = 0.0;
+  /// Axis angle in degrees along which sliding is permitted. 0 = horizontal. Default 0.0.
   double get angle => _angle;
+  double _angle = 0.0;
   set angle(double value) {
     _angle = value;
     if (isAttached) worker.setJointProperty(handle, JointProp.sliderAngle, value);
   }
 
-  bool _useLimits = false;
+  /// When true, the body cannot slide outside the range defined by [limits]. Default false.
   bool get useLimits => _useLimits;
+  bool _useLimits = false;
   set useLimits(bool value) {
     _useLimits = value;
     if (isAttached) worker.setJointProperty(handle, JointProp.useTranslationLimits, value);
   }
 
-  bool _autoConfigureAngle = true;
+  /// When true, the engine derives [angle] from the current body positions at attach time. Default true.
   bool get autoConfigureAngle => _autoConfigureAngle;
+  bool _autoConfigureAngle = true;
   set autoConfigureAngle(bool value) {
     _autoConfigureAngle = value;
     if (isAttached) worker.setJointProperty(handle, JointProp.autoConfigureAngle, value);
@@ -78,6 +103,7 @@ class SliderJoint extends Joint {
   double _lowerTranslation = 0.0;
   double _upperTranslation = 0.0;
 
+  /// Target speed (world units/s) and force cap (N) for the linear motor. Active when [useMotor] is true.
   JointMotor get motor => JointMotor(motorSpeed: _motorSpeed, maxMotorTorque: _maxMotorTorque);
   set motor(JointMotor value) {
     _motorSpeed = value.motorSpeed;
@@ -88,6 +114,7 @@ class SliderJoint extends Joint {
     }
   }
 
+  /// Minimum and maximum travel in world units. Active when [useLimits] is true.
   JointTranslationLimits get limits => JointTranslationLimits(min: _lowerTranslation, max: _upperTranslation);
   set limits(JointTranslationLimits value) {
     _lowerTranslation = value.min;

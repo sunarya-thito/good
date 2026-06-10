@@ -1,14 +1,35 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:meta/meta.dart';
 import 'package:vector_math/vector_math_64.dart';
+import 'package:goo2d/src/collision/worker/collision_worker.dart';
 import 'package:goo2d/src/physics/worker/direct/direct_collider_ops.dart';
 import 'package:goo2d/src/physics/worker/data/collider_shape_type.dart';
 import 'package:goo2d/goo2d.dart';
 
-/// Collider for 2D physics representing an arbitrary polygon defined by its vertices.
+/// Closed polygon collider for 2D physics.
 ///
-/// Equivalent to Unity's `PolygonCollider2D`.
+/// Defines the shape by a list of [points] that are treated as a closed loop — the last point
+/// connects back to the first. The polygon must be convex unless [useDelaunayMesh] is true, in
+/// which case the engine triangulates the shape using the Delaunay algorithm, allowing concave polygons.
+///
+/// [createFromSprite] can auto-generate a polygon outline by tracing the opaque pixels of a
+/// [GameSprite], which is convenient for irregular sprite shapes.
+///
+/// ```dart
+/// addComponent(
+///   ObjectTransform(),
+///   Rigidbody()..bodyType = RigidbodyType.static,
+///   PolygonCollider()..points = [
+///     Vector2(-1, 0), Vector2(0, 2), Vector2(1, 0),
+///   ],
+/// );
+/// ```
+///
+/// See also:
+/// * [EdgeCollider] for open-chain (non-closed) line shapes.
+/// * [CompositeCollider] to merge multiple polygon colliders.
 class PolygonCollider extends Collider {
   @override
   ColliderShapeType get shapeType => ColliderShapeType.polygon;
@@ -17,44 +38,66 @@ class PolygonCollider extends Collider {
   @protected
   void syncAllProperties() {
     super.syncAllProperties();
+    if (hasBoundsOnly) return;
     worker.setColliderProperty(handle, ColliderProp.polygonUseDelaunayMesh, _useDelaunayMesh);
     worker.setColliderProperty(handle, ColliderProp.polygonAutoTiling, _autoTiling);
     worker.setColliderProperty(handle, ColliderProp.polygonPathCount, _pathCount);
     worker.setColliderProperty(handle, ColliderProp.polygonPoints, List.from(_points));
   }
 
-  bool _useDelaunayMesh = false;
+  @override
+  @protected
+  void syncCollisionGeometry(CollisionWorker w) {
+    if (_points.length < 3) return;
+    final verts = Float32List(_points.length * 2);
+    for (var i = 0; i < _points.length; i++) {
+      verts[i * 2]     = _points[i].x;
+      verts[i * 2 + 1] = _points[i].y;
+    }
+    w.setShapePolygon(handle, verts);
+  }
+
+  /// When true, the engine triangulates the polygon using the Delaunay algorithm, enabling concave shapes. Default false.
   bool get useDelaunayMesh => _useDelaunayMesh;
+  bool _useDelaunayMesh = false;
   set useDelaunayMesh(bool value) {
     _useDelaunayMesh = value;
-    if (isAttached) worker.setColliderProperty(handle, ColliderProp.polygonUseDelaunayMesh, value);
+    if (isAttached && !hasBoundsOnly) worker.setColliderProperty(handle, ColliderProp.polygonUseDelaunayMesh, value);
   }
 
-  bool _autoTiling = false;
+  /// When true, adjusts the polygon to match the sprite's tiling bounds. Default false.
   bool get autoTiling => _autoTiling;
+  bool _autoTiling = false;
   set autoTiling(bool value) {
     _autoTiling = value;
-    if (isAttached) worker.setColliderProperty(handle, ColliderProp.polygonAutoTiling, value);
+    if (isAttached && !hasBoundsOnly) worker.setColliderProperty(handle, ColliderProp.polygonAutoTiling, value);
   }
 
-  int _pathCount = 1;
+  /// Number of separate paths (sub-shapes) this polygon contains. Default 1.
   int get pathCount => _pathCount;
+  int _pathCount = 1;
   set pathCount(int value) {
     _pathCount = value;
-    if (isAttached) worker.setColliderProperty(handle, ColliderProp.polygonPathCount, value);
+    if (isAttached && !hasBoundsOnly) worker.setColliderProperty(handle, ColliderProp.polygonPathCount, value);
   }
 
-  List<Vector2> _points = [];
+  /// Vertices of the polygon in local space. Must have at least 3 points. Last point connects to first.
   List<Vector2> get points => _points;
+  List<Vector2> _points = [];
   set points(List<Vector2> value) {
     _points = List.from(value);
-    if (isAttached) worker.setColliderProperty(handle, ColliderProp.polygonPoints, List.from(_points));
+    if (isAttached && !hasBoundsOnly) worker.setColliderProperty(handle, ColliderProp.polygonPoints, List.from(_points));
   }
 
   void setPath(int index, List<Vector2> points) {
     if (index == 0) this.points = points;
   }
 
+  /// Generates [points] by tracing the opaque pixels of [sprite].
+  ///
+  /// [detail] (0.01–1.0) controls vertex density — lower values produce fewer vertices.
+  /// Pixels with alpha below [alphaTolerance] (0–255) are treated as transparent.
+  /// Returns false if the sprite image is not loaded or no opaque region is found.
   Future<bool> createFromSprite(
     GameSprite sprite, {
     double detail = 0.25,

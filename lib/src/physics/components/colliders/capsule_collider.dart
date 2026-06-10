@@ -2,13 +2,31 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:meta/meta.dart';
 import 'package:vector_math/vector_math_64.dart';
+import 'package:goo2d/src/collision/worker/collision_worker.dart';
 import 'package:goo2d/src/physics/worker/direct/direct_collider_ops.dart';
 import 'package:goo2d/src/physics/worker/data/collider_shape_type.dart';
 import 'package:goo2d/goo2d.dart';
 
-/// A capsule-shaped primitive collider.
+/// Pill-shaped collider for 2D physics.
 ///
-/// Equivalent to Unity's `CapsuleCollider2D`.
+/// A capsule is a rectangle with semicircular caps on two ends. It is commonly used for
+/// characters because it produces smooth sliding along floors without catching on edge seams.
+/// [direction] controls whether the caps are on the top/bottom (`vertical`) or left/right (`horizontal`).
+/// [size] sets the full extent including the caps in world units.
+///
+/// ```dart
+/// addComponent(
+///   ObjectTransform(),
+///   Rigidbody()..freezeRotation = true,
+///   CapsuleCollider()
+///     ..size = Vector2(0.8, 1.8)
+///     ..direction = CapsuleDirection.vertical,
+/// );
+/// ```
+///
+/// See also:
+/// * [BoxCollider] for rectangular shapes.
+/// * [CircleCollider] for fully round shapes.
 class CapsuleCollider extends Collider {
   @override
   ColliderShapeType get shapeType => ColliderShapeType.capsule;
@@ -17,22 +35,35 @@ class CapsuleCollider extends Collider {
   @protected
   void syncAllProperties() {
     super.syncAllProperties();
+    if (hasBoundsOnly) return;
     worker.setColliderProperty(handle, ColliderProp.capsuleSize, _size.clone());
     worker.setColliderProperty(handle, ColliderProp.capsuleDirection, _direction.index);
   }
 
-  Vector2 _size = Vector2(1, 2);
-  Vector2 get size => _size;
-  set size(Vector2 value) {
-    _size.setFrom(value);
-    if (isAttached) worker.setColliderProperty(handle, ColliderProp.capsuleSize, value.clone());
+  @override
+  @protected
+  void syncCollisionGeometry(CollisionWorker w) {
+    final isVert = _direction == CapsuleDirection.vertical;
+    final radius = isVert ? _size.x / 2 : _size.y / 2;
+    final halfLen = ((isVert ? _size.y - _size.x : _size.x - _size.y) / 2)
+        .clamp(0.0, double.infinity);
+    w.setShapeCapsule(handle, halfLen, radius, _direction.index);
   }
 
-  CapsuleDirection _direction = CapsuleDirection.vertical;
+  /// Full extent of the capsule in world units, including the semicircular caps. Default `Vector2(1, 2)`.
+  Vector2 get size => _size;
+  Vector2 _size = Vector2(1, 2);
+  set size(Vector2 value) {
+    _size.setFrom(value);
+    if (isAttached && !hasBoundsOnly) worker.setColliderProperty(handle, ColliderProp.capsuleSize, value.clone());
+  }
+
+  /// Axis along which the capsule is elongated. `vertical` puts caps on the top and bottom; `horizontal` on the sides.
   CapsuleDirection get direction => _direction;
+  CapsuleDirection _direction = CapsuleDirection.vertical;
   set direction(CapsuleDirection value) {
     _direction = value;
-    if (isAttached) worker.setColliderProperty(handle, ColliderProp.capsuleDirection, value.index);
+    if (isAttached && !hasBoundsOnly) worker.setColliderProperty(handle, ColliderProp.capsuleDirection, value.index);
   }
 
   @override

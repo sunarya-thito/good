@@ -4,9 +4,31 @@ import 'package:goo2d/src/physics/worker/direct/direct_joint_ops.dart';
 import 'package:goo2d/src/physics/worker/data/joint_type.dart';
 import 'package:goo2d/goo2d.dart';
 
-/// Connects two Rigidbody2D together at their anchor points using a configurable spring.
+/// Rigidly connects this body to [connectedBody] (or the world) at matching anchor points.
 ///
-/// Equivalent to Unity's `FixedJoint2D`.
+/// The joint tries to keep the two bodies at a fixed relative position and orientation.
+/// [frequency] and [dampingRatio] introduce spring behavior — at the defaults of 0 the
+/// connection is completely rigid. Increase [frequency] (Hz) to allow some oscillation and
+/// [dampingRatio] (0–1) to control how quickly oscillations decay.
+///
+/// [anchor] is the local-space attachment point on this body.
+/// [connectedAnchor] is the local-space point on the connected body (or in world space if
+/// [connectedBody] is null). Set [autoConfigureConnectedAnchor] to have the engine compute it.
+///
+/// ```dart
+/// // Bolt a crate to a moving platform
+/// final platform = ...; // Rigidbody on another object
+/// addComponent(
+///   FixedJoint()
+///     ..connectedBody = platform
+///     ..frequency = 10.0
+///     ..dampingRatio = 0.5,
+/// );
+/// ```
+///
+/// See also:
+/// * [SpringJoint] for an explicit spring with a rest distance.
+/// * [HingeJoint] to allow rotation around the anchor.
 class FixedJoint extends Joint {
   @override
   int get jointType => JointType.fixed;
@@ -23,43 +45,49 @@ class FixedJoint extends Joint {
     worker.setJointProperty(handle, JointProp.angularOffset, _referenceAngle);
   }
 
-  final Vector2 _anchor = Vector2.zero();
+  /// Local-space attachment point on this body. Default `Vector2.zero()`.
   Vector2 get anchor => _anchor;
+  final Vector2 _anchor = Vector2.zero();
   set anchor(Vector2 value) {
     _anchor.setFrom(value);
     if (isAttached) worker.setJointProperty(handle, JointProp.anchor, value.clone());
   }
 
-  final Vector2 _connectedAnchor = Vector2.zero();
+  /// Local-space attachment point on [connectedBody], or world-space if no body is connected.
   Vector2 get connectedAnchor => _connectedAnchor;
+  final Vector2 _connectedAnchor = Vector2.zero();
   set connectedAnchor(Vector2 value) {
     _connectedAnchor.setFrom(value);
     if (isAttached) worker.setJointProperty(handle, JointProp.connectedAnchor, value.clone());
   }
 
-  bool _autoConfigureConnectedAnchor = true;
+  /// When true, the engine sets [connectedAnchor] automatically at attach time. Default true.
   bool get autoConfigureConnectedAnchor => _autoConfigureConnectedAnchor;
+  bool _autoConfigureConnectedAnchor = true;
   set autoConfigureConnectedAnchor(bool value) {
     _autoConfigureConnectedAnchor = value;
     if (isAttached) worker.setJointProperty(handle, JointProp.autoConfigureConnectedAnchor, value);
   }
 
-  double _frequency = 0.0;
+  /// Spring oscillation frequency in Hz. 0 = completely rigid. Default 0.0.
   double get frequency => _frequency;
+  double _frequency = 0.0;
   set frequency(double value) {
     _frequency = value;
     if (isAttached) worker.setJointProperty(handle, JointProp.springFrequency, value);
   }
 
-  double _dampingRatio = 0.0;
+  /// Damping ratio for the spring (0 = no damping, 1 = critically damped). Default 0.0.
   double get dampingRatio => _dampingRatio;
+  double _dampingRatio = 0.0;
   set dampingRatio(double value) {
     _dampingRatio = value;
     if (isAttached) worker.setJointProperty(handle, JointProp.springDampingRatio, value);
   }
 
-  double _referenceAngle = 0.0;
+  /// Target angle offset between the two bodies in radians. Default 0.0.
   double get referenceAngle => _referenceAngle;
+  double _referenceAngle = 0.0;
   set referenceAngle(double value) {
     _referenceAngle = value;
     if (isAttached) worker.setJointProperty(handle, JointProp.angularOffset, value);
