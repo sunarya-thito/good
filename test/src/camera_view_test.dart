@@ -5,6 +5,8 @@ import 'package:goo2d/goo2d.dart';
 void main() {
   group('CameraView', () {
     testWidgets('should render children through tagged camera', (tester) async {
+      final engine = await GameEngine.create({TickerState.new, CameraSystem.new});
+      addTearDown(() => engine.dispose());
       const camTag = 'SecondaryCamera';
       final cam = Camera()..backgroundColor = const Color(0xFFFF0000);
 
@@ -12,6 +14,7 @@ void main() {
         Directionality(
           textDirection: TextDirection.ltr,
           child: Game(
+            engine: engine,
             child: Stack(
               children: [
                 GameObjectWidget(

@@ -5,11 +5,14 @@ import 'package:goo2d/goo2d.dart';
 void main() {
   group('Camera', () {
     testWidgets('should resolve Camera.main by highest depth', (tester) async {
+      final engine = await GameEngine.create({TickerState.new, CameraSystem.new});
+      addTearDown(() => engine.dispose());
       final cam1 = Camera()..depth = 10;
       final cam2 = Camera()..depth = 20;
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: Column(
             children: [
               Expanded(
@@ -41,18 +44,20 @@ void main() {
       expect(game.cameras.main, same(cam2));
       expect(game.cameras.allCameras.length, equals(2));
 
-      // Update cam1 to have even higher depth
       cam1.depth = 30;
-      game.cameras.registerCamera(cam1); // Re-trigger sorting
+      game.cameras.registerCamera(cam1);
       expect(game.cameras.main, same(cam1));
     });
 
     testWidgets('should calculate worldToScreenPoint correctly', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerState.new, CameraSystem.new});
+      addTearDown(() => engine.dispose());
       final cam = Camera()..orthographicSize = 5;
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => cam),
@@ -63,8 +68,6 @@ void main() {
       );
       await tester.pump();
 
-      // With 800x600 viewport, 10 units high means 1 unit = 60 pixels
-      // (0,0) world should be (400, 300) screen
       final screenPoint = cam.worldToScreenPoint(
         Vector2.zero(),
         const Size(800, 600),
@@ -72,7 +75,6 @@ void main() {
       expect(screenPoint.x, closeTo(400, 0.001));
       expect(screenPoint.y, closeTo(300, 0.001));
 
-      // (5, 5) world -> X: 400 + 5*60 = 700. Y: 300 - 5*60 = 0.
       final screenPoint2 = cam.worldToScreenPoint(
         Vector2(5, 5),
         const Size(800, 600),
@@ -84,9 +86,12 @@ void main() {
     testWidgets('should calculate screenToWorldPoint correctly', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerState.new, CameraSystem.new});
+      addTearDown(() => engine.dispose());
       final cam = Camera()..orthographicSize = 5;
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => cam),
@@ -108,11 +113,14 @@ void main() {
     testWidgets('should respect camera transform (camera movement)', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerState.new, CameraSystem.new});
+      addTearDown(() => engine.dispose());
       final cam = Camera()..orthographicSize = 5;
       final camTransform = ObjectTransform()..localPosition = Vector2(10, 0);
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => cam),
@@ -123,7 +131,6 @@ void main() {
       );
       await tester.pump();
 
-      // World (10, 0) is now at camera center (400, 300)
       final screenPoint = cam.worldToScreenPoint(
         Vector2(10, 0),
         const Size(800, 600),
