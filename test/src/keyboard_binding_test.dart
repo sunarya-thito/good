@@ -9,12 +9,15 @@ void main() {
     testWidgets('should support Keyboard.key pattern (late binding)', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerState.new, InputSystem.new});
+      addTearDown(() => engine.dispose());
       final action = InputAction()
         ..name = 'test'
         ..bindings = [Keyboard.space];
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [ComponentWidget(() => action)],
           ),
@@ -25,10 +28,8 @@ void main() {
       final game =
           (tester.element(find.byType(GameObjectWidget)) as GameObject).game;
 
-      // Initially not pressed
       expect(action.inProgress, isFalse);
 
-      // Simulate press
       await simulateKeyDownEvent(LogicalKeyboardKey.space);
       game.input.update();
 
@@ -39,7 +40,6 @@ void main() {
       );
       expect(action.wasPressedThisFrame, isTrue);
 
-      // Simulate release
       await simulateKeyUpEvent(LogicalKeyboardKey.space);
       game.input.update();
 
@@ -52,6 +52,8 @@ void main() {
     });
 
     testWidgets('should support late-bound composite bindings', (tester) async {
+      final engine = await GameEngine.create({TickerState.new, InputSystem.new});
+      addTearDown(() => engine.dispose());
       final moveAction = InputAction()
         ..name = 'move'
         ..type = InputActionType.value
@@ -66,6 +68,7 @@ void main() {
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [ComponentWidget(() => moveAction)],
           ),
@@ -76,7 +79,6 @@ void main() {
       final game =
           (tester.element(find.byType(GameObjectWidget)) as GameObject).game;
 
-      // Press W
       await simulateKeyDownEvent(LogicalKeyboardKey.keyW);
       game.input.update();
 
@@ -84,7 +86,6 @@ void main() {
       expect(val.y, equals(1.0));
       expect(val.x, equals(0.0));
 
-      // Press D (simultaneous)
       await simulateKeyDownEvent(LogicalKeyboardKey.keyD);
       game.input.update();
 
@@ -96,10 +97,13 @@ void main() {
     testWidgets('should maintain backward compatibility with InputControl', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerState.new, InputSystem.new});
+      addTearDown(() => engine.dispose());
       final action = InputAction()..name = 'legacy';
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [ComponentWidget(() => action)],
           ),
@@ -109,7 +113,6 @@ void main() {
       final game =
           (tester.element(find.byType(GameObjectWidget)) as GameObject).game;
 
-      // Manually add binding after mount to test binding update
       action.bindings = [Keyboard.space];
 
       await simulateKeyDownEvent(LogicalKeyboardKey.space);

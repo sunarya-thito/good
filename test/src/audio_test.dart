@@ -50,9 +50,6 @@ void main() {
       final mockAudio = MockGameAudio('test_sound');
       final audioSource = AudioSource()..clip = mockAudio;
 
-      // We manually call play() here.
-      // Note: It will still attempt to call SoLoud.instance.play,
-      // but we want to verify the logic BEFORE that call.
       try {
         audioSource.play();
       } catch (_) {
@@ -65,10 +62,13 @@ void main() {
     testWidgets('should clean up handle registration on unmount', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerState.new});
+      addTearDown(() => engine.dispose());
       final audioSource = AudioSource();
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => audioSource),
@@ -79,8 +79,6 @@ void main() {
       );
       await tester.pump();
 
-      // Manually stop/unregistering check would go here if we could mock SoLoud
-      // For now, just ensuring it doesn't crash on standard mount/unmount flow
       await tester.pumpWidget(Container());
       await tester.pump();
     });
@@ -90,11 +88,14 @@ void main() {
     testWidgets('should be detected by AudioSource for 3D spatialization', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerState.new});
+      addTearDown(() => engine.dispose());
       final listener = AudioListener();
       final audioSource = AudioSource();
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => listener),
@@ -109,8 +110,6 @@ void main() {
       );
       await tester.pump();
 
-      // Internal check: trigger 3D update
-      // Since SoLoud will crash, we just verify the listener lookup logic doesn't crash
       try {
         audioSource.onLateUpdate(0.1);
       } catch (_) {}

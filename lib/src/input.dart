@@ -215,7 +215,7 @@ class InputSystem implements GameSystem {
   InputSystem();
 
   @override
-  void attach(GameEngine game) {
+  Future<void> attach(GameEngine game) async {
     _game = game;
     _keyboard = KeyboardState(game);
   }
@@ -254,7 +254,7 @@ class InputSystem implements GameSystem {
   }
 
   @override
-  void dispose() {
+  Future<void> dispose() async {
     _keyboard?.dispose();
     for (var action in List<InputAction>.from(_actions)) {
       action.dispose();

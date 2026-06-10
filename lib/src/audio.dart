@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'package:flutter/widgets.dart';
 import 'package:vector_math/vector_math_64.dart';
 import 'package:flutter_soloud/flutter_soloud.dart' as soloud;
 import 'package:goo2d/src/component.dart';
@@ -6,6 +7,7 @@ import 'package:goo2d/src/lifecycle.dart';
 import 'package:goo2d/src/asset.dart';
 import 'package:goo2d/src/transform.dart';
 import 'package:goo2d/src/ticker.dart';
+import 'package:goo2d/src/game.dart';
 
 /// Defines the point of hearing within the 3D spatial audio environment.
 ///
@@ -267,4 +269,96 @@ class AudioSource extends Behavior implements LifecycleListener, LateTickable {
     soloud.SoLoud.instance.setVolume(_handle!, volume);
     soloud.SoLoud.instance.setRelativePlaySpeed(_handle!, pitch);
   }
+}
+
+/// A Flutter widget that plays looping background music on a named channel.
+///
+/// Place [BackgroundMusic] anywhere in the widget tree inside a [Game]. When
+/// [audio] changes, the [transition] policy is applied to blend between tracks.
+/// When [channel] changes, the old track is hard-stopped and the new track
+/// starts fresh on the new channel.
+///
+/// Multiple [BackgroundMusic] widgets can coexist using different [channel]
+/// values (e.g. `0` for music, `1` for ambient).
+///
+/// ```dart
+/// BackgroundMusic(
+///   audio: MyAudio.menuTheme,
+///   transition: CrossFadeMusicTransition(duration: 1.5),
+///   child: MyGameWidget(),
+/// )
+/// ```
+class BackgroundMusic extends StatefulWidget {
+  final GameAudio audio;
+  final int channel;
+  final Widget? child;
+  final MusicTransition transition;
+
+  const BackgroundMusic({
+    super.key,
+    required this.audio,
+    this.channel = 0,
+    this.child,
+    this.transition = const MusicTransition.noTransition(),
+  });
+
+  @override
+  State<BackgroundMusic> createState() => _BackgroundMusicState();
+}
+
+class _BackgroundMusicState extends State<BackgroundMusic> {
+  AudioSystem? _audio;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_audio == null) {
+      _audio = GameProvider.of(context).audio;
+      _audio?.transitionMusic(
+        channel: widget.channel,
+        newAudio: widget.audio,
+        transition: widget.transition,
+        owner: this,
+      );
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant BackgroundMusic oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.channel != widget.channel) {
+      // Hard cut on old channel, fresh start on new.
+      _audio?.releaseMusic(
+        channel: oldWidget.channel,
+        owner: this,
+        transition: const NoMusicTransition(),
+      );
+      _audio?.transitionMusic(
+        channel: widget.channel,
+        newAudio: widget.audio,
+        transition: widget.transition,
+        owner: this,
+      );
+    } else if (oldWidget.audio != widget.audio) {
+      _audio?.transitionMusic(
+        channel: widget.channel,
+        newAudio: widget.audio,
+        transition: widget.transition,
+        owner: this,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _audio?.releaseMusic(
+      channel: widget.channel,
+      owner: this,
+      transition: widget.transition,
+    );
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child ?? const SizedBox.shrink();
 }
