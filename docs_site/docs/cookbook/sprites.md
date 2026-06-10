@@ -2,13 +2,11 @@
 sidebar_position: 2
 ---
 
-# Cookbook: Sprite Sheets & Grids
+# Sprites & Rendering
 
-For animations and tilemaps, sprite sheets are more efficient than individual images. This tutorial explains how to slice a texture into a uniform grid and render specific frames using the engine's declarative widget pattern.
+This page shows how to load a texture, slice it into a grid of frames, and cycle through those frames each tick to produce a sprite animation.
 
 ## Live Demo
-
-Click "Play" below to see the result. The demo slices a single texture and cycles through frames using a timer in the game loop.
 
 <iframe 
   src="/goo2d/play/#/sprites" 
@@ -19,7 +17,7 @@ Click "Play" below to see the result. The demo slices a single texture and cycle
 
 ## Assets Used
 
-This tutorial uses assets from the [ansimuz Explosion Pack](https://ansimuz.itch.io/explosion-animations-pack).
+This example uses assets from the [ansimuz Explosion Pack](https://ansimuz.itch.io/explosion-animations-pack).
 
 | Preview | Asset | Action |
 | :--- | :--- | :--- |
@@ -30,11 +28,10 @@ This tutorial uses assets from the [ansimuz Explosion Pack](https://ansimuz.itch
 ## Tutorial
 
 ### 0. Asset Setup
-Before writing any code, you must register your assets with Flutter.
 
-1.  Create a directory named `assets/sprites/` in your project root.
-2.  Place the `explosion.png` file into that directory.
-3.  Add the directory to your `pubspec.yaml` file:
+1. Create `assets/sprites/` in your project root.
+2. Place `explosion.png` in that directory.
+3. Register it in `pubspec.yaml`:
 
 ```yaml
 flutter:
@@ -42,21 +39,43 @@ flutter:
     - assets/sprites/
 ```
 
-### 1. Asset & Scaffolding
-Set up the textures and root widget. We pre-load the explosion texture using a `FutureBuilder` to ensure it's available for slicing during initialization.
+### 1. Imports, Asset Enum, and main()
+
+Set up the texture registry and entry point. The `AssetEnum` + `TextureAssetEnum` pattern gives you a strongly-typed reference to each asset. Call `GameAsset.loadAll` before the engine starts so textures are on the GPU before any `onMounted` runs.
+
+```dart
+// Add this: ------
+import 'package:flutter/material.dart';
+import 'package:goo2d/goo2d.dart';
+
+enum GameTextures with AssetEnum, TextureAssetEnum {
+  explosion;
+
+  @override
+  AssetSource get source => AssetSource.local('assets/sprites/$name.png');
+}
+
+void main() => runApp(const SpriteExample());
+// --------
+```
+
+### 2. Root Widget with Asset Loading
+
+Wrap the `Game` widget in a `FutureBuilder` that waits for all textures to finish loading.
 
 ```dart
 import 'package:flutter/material.dart';
 import 'package:goo2d/goo2d.dart';
 
-void main() => runApp(const SpriteExample());
-
 enum GameTextures with AssetEnum, TextureAssetEnum {
   explosion;
   @override
-  AssetSource get source => AssetSource.local("assets/sprites/$name.png");
+  AssetSource get source => AssetSource.local('assets/sprites/$name.png');
 }
 
+void main() => runApp(const SpriteExample());
+
+// Add this: ------
 class SpriteExample extends StatelessWidget {
   const SpriteExample({super.key});
 
@@ -69,118 +88,189 @@ class SpriteExample extends StatelessWidget {
           if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
-          return const Game(child: MyGameWidget());
+          return const Game(child: SpriteWorld());
         },
       ),
     );
   }
 }
+// --------
 ```
 
-### 2. Declaring the Sheet Reference
-In your `GameState`, declare a `late final` variable for the `SpriteSheet`. This variable will hold our sliced sub-textures once they are initialized.
+`GameAsset.loadAll` streams progress events while decoding each asset. Calling `.drain()` converts that stream into a single `Future` that resolves when all assets are ready.
+
+### 3. Empty Game World
+
+Define the game object that will hold the explosion animation.
 
 ```dart
-class MyGameWidget extends StatefulGameWidget {
-  const MyGameWidget({super.key});
+// Add this: ------
+class SpriteWorld extends StatefulGameWidget {
+  const SpriteWorld({super.key});
+
   @override
-  GameState<MyGameWidget> createState() => MyGameState();
+  GameState<SpriteWorld> createState() => SpriteWorldState();
 }
 
-class MyGameState extends GameState<MyGameWidget> {
-  // We initialize this sheet once the game state is created
-  late final SpriteSheet explosionSheet;
+class SpriteWorldState extends GameState<SpriteWorld> {
+  @override
+  Iterable<Widget> build(BuildContext context) sync* {}
+}
+// --------
+```
+
+`GameState.build` uses a `sync*` generator that yields child widgets. An empty generator is a valid starting point.
+
+### 4. Declaring the Sheet and Frame State
+
+Add the fields that will hold the sprite sheet and track the current animation frame.
+
+```dart
+class SpriteWorldState extends GameState<SpriteWorld> {
+  // Add this: ------
+  late SpriteSheet<TileCoord> sheet;
+  int currentFrame = 0;
+  double _timer = 0;
+  // --------
+
+  @override
+  Iterable<Widget> build(BuildContext context) sync* {}
 }
 ```
 
-### 3. Slicing the Texture Grid
-Override `initState` to define the grid dimensions. We slice the explosion texture into 13 horizontal frames. The `ppu` (Pixels Per Unit) determines the size of the sprite relative to the world coordinate system.
+`late` fields are fine here because they will be assigned in `initState` before any component accesses them.
+
+### 5. Slicing the Texture Grid
+
+Override `initState` to slice the explosion texture into 13 columns and 1 row.
 
 ```dart
-class MyGameState extends GameState<MyGameWidget> {
-  late final SpriteSheet explosionSheet;
+class SpriteWorldState extends GameState<SpriteWorld> {
+  late SpriteSheet<TileCoord> sheet;
+  int currentFrame = 0;
+  double _timer = 0;
 
+  // Add this: ------
   @override
   void initState() {
     super.initState();
-    
-    // Create a 13x1 grid from the explosion texture
-    explosionSheet = SpriteSheet.grid(
+    sheet = SpriteSheet.grid(
       texture: GameTextures.explosion,
       columns: 13,
       rows: 1,
-      ppu: 64.0, // Each frame is 64x64 pixels
+      ppu: 64.0,
     );
   }
-}
-```
-
-### 4. Creating the Animation Logic
-To make the example verifiable, add an `onUpdate` loop that increments the current frame index over time. This creates a running animation that we can see in the demo.
-
-```dart
-class MyGameState extends GameState<MyGameWidget> {
-  late final SpriteSheet explosionSheet;
-  int currentFrame = 0;
-  double timer = 0;
+  // --------
 
   @override
-  void onUpdate(double dt) {
-    timer += dt;
-    if (timer > 0.1) { // Change frame every 100ms
-      timer = 0;
-      setState(() {
-        currentFrame = (currentFrame + 1) % 13;
-      });
-    }
-  }
-  
-  // ... rest of the class ...
+  Iterable<Widget> build(BuildContext context) sync* {}
 }
 ```
 
-### 5. Rendering the Sprite
-Implement the `build` method to render the entity. We access a specific frame from our sheet using the `[(column, row)]` operator, passing in our dynamic `currentFrame` index.
+`ppu` (pixels per unit) controls how large each frame appears in world space. A 64×64 pixel frame with `ppu: 64.0` renders as 1×1 world unit.
+
+### 6. Advancing the Frame Each Tick
+
+Mix in `Tickable` and accumulate time each frame. When 100 ms has passed, advance to the next frame and rebuild.
 
 ```dart
-class MyGameState extends GameState<MyGameWidget> {
-  // ... variables and initState ...
+// Add this: ------
+class SpriteWorldState extends GameState<SpriteWorld> with Tickable {
+// --------
+  late SpriteSheet<TileCoord> sheet;
+  int currentFrame = 0;
+  double _timer = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    sheet = SpriteSheet.grid(
+      texture: GameTextures.explosion,
+      columns: 13,
+      rows: 1,
+      ppu: 64.0,
+    );
+  }
+
+  // Add this: ------
+  @override
+  void onUpdate(double dt) {
+    if ((_timer += dt) >= 0.1) {
+      _timer = 0;
+      setState(() => currentFrame = (currentFrame + 1) % 13);
+    }
+  }
+  // --------
+
+  @override
+  Iterable<Widget> build(BuildContext context) sync* {}
+}
+```
+
+`dt` is the elapsed time in seconds since the last frame. Accumulating it into `_timer` and comparing against `0.1` gives you a 10 FPS animation regardless of the game's frame rate.
+
+### 7. Rendering the Sprite
+
+Yield two game objects: the animated sprite, and a camera to view the scene.
+
+```dart
+class SpriteWorldState extends GameState<SpriteWorld> with Tickable {
+  late SpriteSheet<TileCoord> sheet;
+  int currentFrame = 0;
+  double _timer = 0;
+
+  @override
+  void initState() { /* ... */ }
+
+  @override
+  void onUpdate(double dt) { /* ... */ }
 
   @override
   Iterable<Widget> build(BuildContext context) sync* {
-    yield GameWidget(
-      components: () => [
-        ObjectTransform(),
-        SpriteRenderer()..sprite = explosionSheet[(currentFrame, 0)],
+    // Add this: ------
+    yield GameObjectWidget(
+      children: [
+        ComponentWidget(ObjectTransform.new),
+        ComponentWidget(
+          SpriteRenderer.new.withInitialValues(
+            (r) => r.sprite = sheet[(0, currentFrame)],
+          ),
+        ),
       ],
     );
 
-    // Add a camera to see the world
-    yield GameWidget(
-      components: () => [
-        ObjectTransform(),
-        Camera()..orthographicSize = 5.0,
+    yield GameObjectWidget(
+      children: [
+        ComponentWidget(ObjectTransform.new),
+        ComponentWidget(
+          Camera.new.withInitialValues((c) => c.orthographicSize = 2.0),
+        ),
       ],
     );
+    // --------
   }
 }
 ```
 
+`SpriteSheet` is indexed as `sheet[(row, column)]`. The first coordinate is the row — here always `0` since the sheet has one row. Each time `setState` updates `currentFrame`, `build` re-runs and passes the new frame index to `SpriteRenderer`.
+
 ---
 
-## Full Implementation
+## Final Code
 
 ```dart
 import 'package:flutter/material.dart';
 import 'package:goo2d/goo2d.dart';
 
-void main() => runApp(const SpriteExample());
-
 enum GameTextures with AssetEnum, TextureAssetEnum {
   explosion;
+
   @override
-  AssetSource get source => AssetSource.local("assets/sprites/$name.png");
+  AssetSource get source => AssetSource.local('assets/sprites/$name.png');
 }
+
+void main() => runApp(const SpriteExample());
 
 class SpriteExample extends StatelessWidget {
   const SpriteExample({super.key});
@@ -194,28 +284,29 @@ class SpriteExample extends StatelessWidget {
           if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
-          return const Game(child: MyGameWidget());
+          return const Game(child: SpriteWorld());
         },
       ),
     );
   }
 }
 
-class MyGameWidget extends StatefulGameWidget {
-  const MyGameWidget({super.key});
+class SpriteWorld extends StatefulGameWidget {
+  const SpriteWorld({super.key});
+
   @override
-  GameState<MyGameWidget> createState() => MyGameState();
+  GameState<SpriteWorld> createState() => SpriteWorldState();
 }
 
-class MyGameState extends GameState<MyGameWidget> {
-  late final SpriteSheet explosionSheet;
+class SpriteWorldState extends GameState<SpriteWorld> with Tickable {
+  late SpriteSheet<TileCoord> sheet;
   int currentFrame = 0;
-  double timer = 0;
+  double _timer = 0;
 
   @override
   void initState() {
     super.initState();
-    explosionSheet = SpriteSheet.grid(
+    sheet = SpriteSheet.grid(
       texture: GameTextures.explosion,
       columns: 13,
       rows: 1,
@@ -225,28 +316,31 @@ class MyGameState extends GameState<MyGameWidget> {
 
   @override
   void onUpdate(double dt) {
-    timer += dt;
-    if (timer > 0.1) {
-      timer = 0;
-      setState(() {
-        currentFrame = (currentFrame + 1) % 13;
-      });
+    if ((_timer += dt) >= 0.1) {
+      _timer = 0;
+      setState(() => currentFrame = (currentFrame + 1) % 13);
     }
   }
 
   @override
   Iterable<Widget> build(BuildContext context) sync* {
-    yield GameWidget(
-      components: () => [
-        ObjectTransform(),
-        SpriteRenderer()..sprite = explosionSheet[(currentFrame, 0)],
+    yield GameObjectWidget(
+      children: [
+        ComponentWidget(ObjectTransform.new),
+        ComponentWidget(
+          SpriteRenderer.new.withInitialValues(
+            (r) => r.sprite = sheet[(0, currentFrame)],
+          ),
+        ),
       ],
     );
 
-    yield GameWidget(
-      components: () => [
-        ObjectTransform(),
-        Camera()..orthographicSize = 5.0,
+    yield GameObjectWidget(
+      children: [
+        ComponentWidget(ObjectTransform.new),
+        ComponentWidget(
+          Camera.new.withInitialValues((c) => c.orthographicSize = 2.0),
+        ),
       ],
     );
   }

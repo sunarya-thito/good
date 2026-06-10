@@ -1,10 +1,10 @@
 # Web Platform
 
-Developing games for the web with Flutter requires specific considerations for performance and feature support. Goo2D is designed to be highly efficient on the web, especially when using modern Flutter features.
+Flutter web games have specific requirements around rendering and audio. This page covers what you need to set up.
 
 ## Performance: WASM and CanvasKit
 
-For the best possible performance, it is **highly recommended** to use the WASM compiler and the CanvasKit renderer. WASM significantly improves execution speed for game logic, while CanvasKit provides much faster and more consistent 2D rendering compared to the default HTML renderer.
+Use the WASM compiler and the CanvasKit renderer for web builds. WASM improves execution speed for game logic and CanvasKit provides more consistent 2D rendering than the default HTML renderer.
 
 ### Building for Web with WASM
 To build your game with WASM support:
@@ -14,7 +14,7 @@ flutter build web --wasm
 ```
 
 :::tip
-Using `--wasm` significantly optimizes many low-level engine operations, leading to much higher and more stable frame rates.
+Run with `--wasm` during development too so you catch any WASM-specific issues early.
 :::
 
 ```bash
