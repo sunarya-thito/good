@@ -1,351 +1,714 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
-import 'package:goo2d/src/sprite.dart';
+import 'package:goo2d/src/asset.dart';
+import 'package:goo2d/src/point.dart';
 import 'package:goo2d/src/sprite_fit.dart';
 
-/// A geometry definition that determines how a sprite is mapped to the screen.
+// ---------------------------------------------------------------------------
+// RenderHandle
+// ---------------------------------------------------------------------------
+
+/// A live handle to the GPU resources needed to render a [SpriteMesh].
 ///
-/// [SpriteMesh] provides the infrastructure for complex sprite rendering 
-/// techniques, such as 9-slice scaling and grid-based deformations. It 
-/// decouples the raw sprite data from its visual representation, allowing 
-/// for dynamic resizing while preserving specific regions like corners or 
-/// borders.
-///
-/// ```dart
-/// class CustomMesh extends SpriteMesh {
-///   @override
-///   void render(ui.Canvas canvas, GameSprite sprite, ui.Size size, ui.Paint paint) {
-///     // Custom rendering logic
-///   }
-/// }
-/// ```
-///
-/// See also:
-/// * [SimpleMesh] for standard, single-region rendering.
-/// * [GridMesh] for advanced multi-slice scaling (9-slice, 25-slice).
+/// Created via [SpriteMesh.createHandle]. The owner (a stateful widget or
+/// component) must call [dispose] when it is unmounted to release native
+/// resources such as [ui.FragmentShader].
+abstract class RenderHandle {
+  void render(ui.Canvas canvas, ui.Size size, ui.Paint paint);
+  void dispose();
+}
+
+// ---------------------------------------------------------------------------
+// SpriteMesh
+// ---------------------------------------------------------------------------
+
 abstract class SpriteMesh {
-  /// Base constructor for all [SpriteMesh] implementations.
-  ///
-  /// This constructor is kept const to enable efficient sharing of mesh 
-  /// definitions across multiple game objects. It establishes the contract 
-  /// for custom rendering logic in the Goo2D engine.
   const SpriteMesh();
 
-  /// Renders the [sprite] onto the [canvas] at the specified [destinationSize].
+  /// The natural pixel size of this mesh (used for aspect-ratio and bounds).
+  ui.Size get size;
+
+  /// The primary texture of this mesh.
   ///
-  /// This method is responsible for dividing the sprite into sub-regions 
-  /// and applying the appropriate scaling and alignment logic for each 
-  /// part. It uses the provided [paint] to control global properties 
-  /// like opacity and color filters.
+  /// For [GridMesh], throws a [StateError] if cells use more than one texture.
+  GameTexture get texture;
+
+  /// Source rectangle in texture-space coordinates, or `null` for the full texture.
   ///
-  /// * [canvas]: The rendering target.
-  /// * [sprite]: The source image and region data.
-  /// * [destinationSize]: The total area to fill in world coordinates.
-  /// * [paint]: Visual configuration for the draw call.
-  void render(
-    ui.Canvas canvas,
-    GameSprite sprite,
-    ui.Size destinationSize,
-    ui.Paint paint,
-  );
+  /// For [GridMesh] returns `null` — cells each own their own rect.
+  ui.Rect? get srcRect;
+
+  /// Returns a copy of this mesh with [tex] substituted as the texture.
+  ///
+  /// For [GridMesh], all cells are remapped to [tex].
+  SpriteMesh withTexture(GameTexture tex);
+
+  /// Returns a copy of this mesh with [r] as the source rectangle.
+  ///
+  /// For [GridMesh], throws a [StateError] — use cell-level access instead.
+  SpriteMesh withSrcRect(ui.Rect? r);
+
+  /// Creates a [RenderHandle] that owns GPU resources for this mesh.
+  ///
+  /// Call once when the owner mounts; dispose when the owner unmounts.
+  RenderHandle createHandle();
 }
 
-/// A basic mesh that maps the entire sprite to the destination area.
-///
-/// [SimpleMesh] is the default rendering strategy for most sprites. It 
-/// uses a single [SpriteFit] to determine how the source rectangle should 
-/// be scaled and aligned within the target dimensions, making it suitable 
-/// for characters, props, and simple icons.
-///
-/// ```dart
-/// void example(ui.Canvas canvas, GameSprite sprite, ui.Size size, ui.Paint paint) {
-///   const mesh = SimpleMesh(fit: SpriteFit.contain());
-///   mesh.render(canvas, sprite, size, paint);
-/// }
-/// ```
-///
-/// See also:
-/// * [SpriteFit] for the scaling strategies used by this mesh.
+// ---------------------------------------------------------------------------
+// SimpleMesh
+// ---------------------------------------------------------------------------
+
+/// A single-region mesh that maps one texture rect to the destination area.
 class SimpleMesh extends SpriteMesh {
-  /// The scaling and alignment strategy used by this mesh.
-  ///
-  /// This property determines how the sprite is fitted into the target 
-  /// area. For example, using [SpriteFit.contain] will ensure the sprite 
-  /// remains fully visible within the destination bounds.
+  @override
+  final GameTexture texture;
+  @override
+  final ui.Rect? srcRect;
   final SpriteFit fit;
 
-  /// Creates a [SimpleMesh] with the specified [fit] strategy.
-  ///
-  /// This constructor defaults to [SpriteFit.fixed], which renders the 
-  /// sprite at its original pixel size. Using a const constructor allows 
-  /// this mesh to be reused across many sprites efficiently.
-  ///
-  /// * [fit]: The strategy for scaling the sprite.
-  const SimpleMesh({this.fit = const SpriteFit.fixed()});
+  const SimpleMesh({
+    required this.texture,
+    this.srcRect,
+    this.fit = const StretchFit(),
+  });
 
   @override
-  void render(
-    ui.Canvas canvas,
-    GameSprite sprite,
-    ui.Size destinationSize,
-    ui.Paint paint,
-  ) {
-    fit.draw(
-      canvas,
-      sprite.texture.image,
-      sprite.rect,
-      ui.Rect.fromLTWH(0, 0, destinationSize.width, destinationSize.height),
-      paint,
-    );
+  ui.Size get size {
+    final r = srcRect;
+    return r != null
+        ? r.size
+        : ui.Size(texture.width.toDouble(), texture.height.toDouble());
   }
+
+  @override
+  SimpleMesh withTexture(GameTexture tex) =>
+      SimpleMesh(texture: tex, srcRect: srcRect, fit: fit);
+
+  @override
+  SimpleMesh withSrcRect(ui.Rect? r) =>
+      SimpleMesh(texture: texture, srcRect: r, fit: fit);
+
+  @override
+  RenderHandle createHandle() => _SimpleMeshHandle(this);
 }
 
-/// A mesh that divides a sprite into a grid for sophisticated scaling.
-///
-/// [GridMesh] implements flexible multi-slice scaling, supporting both 
-/// standard 9-slice (3x3) and complex 25-slice (5x5) configurations. This 
-/// allows UI elements like buttons and panels to resize without 
-/// distorting their borders or corners.
-///
-/// ```dart
-/// void example(ui.Canvas canvas, GameSprite sprite, ui.Size size, ui.Paint paint) {
-///   final mesh = GridMesh.nineSlice(
-///     left: 10, top: 10, right: 10, bottom: 10,
-///   );
-///   mesh.render(canvas, sprite, size, paint);
-/// }
-/// ```
-///
-/// See also:
-/// * [GridMesh.nineSlice] for the most common usage pattern.
-/// * [GridMesh.twentyFiveSlice] for highly detailed scaling needs.
-class GridMesh extends SpriteMesh {
-  /// The horizontal pixel offsets defining the vertical slicing lines.
-  ///
-  /// These borders determine which parts of the sprite are treated as 
-  /// fixed-width corners/edges and which parts are scalable center regions.
-  final List<double> xBorders;
+class _SimpleMeshHandle extends RenderHandle {
+  final SimpleMesh _mesh;
+  _SimpleMeshHandle(this._mesh);
 
-  /// The vertical pixel offsets defining the horizontal slicing lines.
-  ///
-  /// These borders determine which parts of the sprite are treated as 
-  /// fixed-height corners/edges and which parts are scalable center regions.
-  final List<double> yBorders;
-
-  /// A function that provides the [SpriteFit] for a specific grid cell.
-  ///
-  /// This allows for granular control over how each slice is rendered.
-  /// Typically, corners use [FixedFit] while edges and the center use
-  /// [StretchFit] or [TileFit].
-  final SpriteFit Function(int row, int col) fitProvider;
-
-  late final int _rows;
-  late final int _cols;
-
-  /// Flat row-major cache of all cell fits.
-  late final List<SpriteFit> _fits;
-
-  /// Per-column flex values derived from [_fits].
-  late final List<double?> _colFlex;
-
-  /// Per-row flex values derived from [_fits].
-  late final List<double?> _rowFlex;
-
-  /// Creates a [GridMesh] with explicit borders and a fit provider.
-  ///
-  /// This low-level constructor allows for non-standard grid configurations.
-  /// For most UI needs, the [GridMesh.nineSlice] or [GridMesh.twentyFiveSlice]
-  /// factories are more convenient and readable.
-  ///
-  /// * [xBorders]: Horizontal slice offsets.
-  /// * [yBorders]: Vertical slice offsets.
-  /// * [fitProvider]: Logic for cell-specific scaling.
-  GridMesh({
-    required this.xBorders,
-    required this.yBorders,
-    required this.fitProvider,
-  }) {
-    _rows = yBorders.length + 1;
-    _cols = xBorders.length + 1;
-    _fits = List<SpriteFit>.generate(
-      _rows * _cols,
-      (i) => fitProvider(i ~/ _cols, i % _cols),
-    );
-    _colFlex = List<double?>.generate(_cols, (col) {
-      for (int row = 0; row < _rows; row++) {
-        if ((_fits[row * _cols + col].flex ?? 0) <= 0) return null;
-      }
-      return 1.0;
-    });
-    _rowFlex = List<double?>.generate(_rows, (row) {
-      for (int col = 0; col < _cols; col++) {
-        if ((_fits[row * _cols + col].flex ?? 0) <= 0) return null;
-      }
-      return 1.0;
-    });
+  @override
+  void render(ui.Canvas canvas, ui.Size size, ui.Paint paint) {
+    final tex = _mesh.texture;
+    if (!tex.isLoaded) return;
+    final src =
+        _mesh.srcRect ??
+        ui.Rect.fromLTWH(0, 0, tex.width.toDouble(), tex.height.toDouble());
+    _mesh.fit.draw(canvas, tex.image, src, ui.Offset.zero & size, paint);
   }
 
-  /// Creates a standard 9-slice mesh for adaptive UI elements.
+  @override
+  void dispose() {}
+}
+
+// ---------------------------------------------------------------------------
+// MeshPart
+// ---------------------------------------------------------------------------
+
+/// One cell of a [GridMesh], carrying its own texture source and fit strategy.
+///
+/// Cells can be copied between grids with `mesh[(col, row)] = other[(col, row)]`,
+/// enabling effects like giving specific corners of a rounded button sharp edges.
+class MeshPart {
+  final SpriteFit fit;
+  final GameTexture texture;
+
+  /// Sub-rectangle of [texture] used as the source. Defaults to the full texture.
+  final ui.Rect? srcRect;
+
+  const MeshPart({
+    required this.fit,
+    required this.texture,
+    this.srcRect,
+  });
+
+  ui.Rect get rect =>
+      srcRect ??
+      ui.Rect.fromLTWH(
+        0,
+        0,
+        texture.width.toDouble(),
+        texture.height.toDouble(),
+      );
+
+  ui.Size get size => rect.size;
+}
+
+// ---------------------------------------------------------------------------
+// TileCoord
+// ---------------------------------------------------------------------------
+
+/// Column/row index pair for addressing a cell in a [GridMesh] or tile in a sheet.
+typedef TileCoord = (int x, int y);
+
+// ---------------------------------------------------------------------------
+// GridMesh constants
+// ---------------------------------------------------------------------------
+
+const int _kShaderMaxDim = 5;
+const int _kMaxTextures = 4;
+
+// ---------------------------------------------------------------------------
+// GridMesh
+// ---------------------------------------------------------------------------
+
+/// A mesh that divides a sprite into a grid for sophisticated 9/25-slice scaling.
+///
+/// Cells (see [MeshPart]) are addressed by [TileCoord] via `[]` / `[]=`.
+/// Swapping a cell from another [GridMesh] updates the visual only; the owning
+/// [RenderHandle] detects the change via an internal version counter.
+class GridMesh extends SpriteMesh {
+  static ui.FragmentProgram? _program;
+
+  // 1×1 transparent image used to pad unused sampler slots.
+  static ui.Image? _placeholder;
+
+  final List<MeshPart> _cells;
+  final int _cols;
+
+  // Incremented by operator[]= so handles can detect staleness.
+  int _version = 0;
+
+  int get _rows => _cells.length ~/ _cols;
+
+  GridMesh({required List<MeshPart> cells, required int cols})
+    : assert(cols > 0, 'GridMesh requires at least 1 column'),
+      assert(
+        cells.length % cols == 0,
+        'cells.length must be a multiple of cols',
+      ),
+      _cells = List<MeshPart>.of(cells),
+      _cols = cols;
+
+  static Future<void> loadShader() async {
+    if (_program == null) {
+      try {
+        _program = await ui.FragmentProgram.fromAsset(
+          'packages/goo2d/shaders/grid_mesh.frag',
+        );
+      } catch (_) {
+        _program = null;
+      }
+    }
+    _placeholder ??= _makePlaceholder();
+  }
+
+  static ui.Image _makePlaceholder() {
+    final recorder = ui.PictureRecorder();
+    ui.Canvas(recorder).drawRect(
+      const ui.Rect.fromLTWH(0, 0, 1, 1),
+      ui.Paint()..color = const ui.Color(0x00000000),
+    );
+    return recorder.endRecording().toImageSync(1, 1);
+  }
+
+  @override
+  ui.Size get size {
+    double w = 0;
+    for (int c = 0; c < _cols; c++) w += _cells[c].size.width;
+    double h = 0;
+    final rows = _rows;
+    for (int r = 0; r < rows; r++) h += _cells[r * _cols].size.height;
+    return ui.Size(w, h);
+  }
+
+  /// The shared texture of all cells.
   ///
-  /// [GridMesh.nineSlice] divides the sprite into a 3x3 grid where the 
-  /// corners remain at a fixed size, the edges scale in one dimension, 
-  /// and the center scales in both. This prevents distortion of decorative 
-  /// frame elements during resizing.
-  ///
-  /// * [left]: Pixel width of the left columns.
-  /// * [top]: Pixel height of the top rows.
-  /// * [right]: Pixel width of the right columns.
-  /// * [bottom]: Pixel height of the bottom rows.
-  /// * [centerFit]: How to fit the 1x1 center area.
-  /// * [edgeFit]: How to fit the 1x3 and 3x1 edge areas.
-  /// * [cornerFit]: How to fit the 1x1 corner areas.
-  factory GridMesh.nineSlice({
-    required double left,
-    required double top,
-    required double right,
-    required double bottom,
-    SpriteFit centerFit = const StretchFit(),
-    SpriteFit edgeFit = const StretchFit(),
-    SpriteFit cornerFit = const FixedFit(),
-  }) {
+  /// Throws [StateError] if cells use more than one distinct texture.
+  @override
+  GameTexture get texture {
+    final first = _cells.first.texture;
+    for (final cell in _cells) {
+      if (!identical(cell.texture, first)) {
+        throw StateError(
+          'GridMesh has more than one texture; access cells individually.',
+        );
+      }
+    }
+    return first;
+  }
+
+  /// Returns a new [GridMesh] with every cell remapped to [tex].
+  @override
+  GridMesh withTexture(GameTexture tex) {
     return GridMesh(
-      xBorders: [left, right],
-      yBorders: [top, bottom],
-      fitProvider: (row, col) {
+      cells: _cells
+          .map((c) => MeshPart(fit: c.fit, texture: tex, srcRect: c.srcRect))
+          .toList(),
+      cols: _cols,
+    );
+  }
+
+  /// Always `null` — a [GridMesh] has no single source rectangle.
+  @override
+  ui.Rect? get srcRect => null;
+
+  /// Not supported on [GridMesh] — cells each own their own source rect.
+  @override
+  GridMesh withSrcRect(ui.Rect? r) => throw StateError(
+    'GridMesh has no single srcRect; use cell-level access.',
+  );
+
+  /// Returns the [MeshPart] at [coord] = `(col, row)`.
+  MeshPart operator [](TileCoord coord) {
+    final (col, row) = coord;
+    assert(
+      col >= 0 && col < _cols && row >= 0 && row < _rows,
+      'MeshPart ($col, $row) out of bounds for ${_cols}×${_rows} grid',
+    );
+    return _cells[row * _cols + col];
+  }
+
+  /// Replaces the cell at [coord] with [part] and invalidates live handles.
+  void operator []=(TileCoord coord, MeshPart part) {
+    final (col, row) = coord;
+    assert(
+      col >= 0 && col < _cols && row >= 0 && row < _rows,
+      'MeshPart ($col, $row) out of bounds for ${_cols}×${_rows} grid',
+    );
+    _cells[row * _cols + col] = part;
+    _version++;
+  }
+
+  @override
+  RenderHandle createHandle() => _GridMeshHandle(this);
+
+  // -------------------------------------------------------------------------
+  // Factories
+  // -------------------------------------------------------------------------
+
+  /// Standard 3×3 nine-slice mesh.
+  ///
+  /// [left]/[right]/[top]/[bottom] are measured from their respective edges.
+  factory GridMesh.nineSlice({
+    required GameTexture texture,
+    ui.Rect? spriteRect,
+    Point left = const Point.frac(1 / 3),
+    Point top = const Point.frac(1 / 3),
+    Point right = const Point.frac(1 / 3),
+    Point bottom = const Point.frac(1 / 3),
+    SpriteFit cornerFit = const FixedFit(),
+    SpriteFit edgeFit = const StretchFit(),
+    SpriteFit centerFit = const StretchFit(),
+  }) {
+    final r =
+        spriteRect ??
+        ui.Rect.fromLTWH(
+          0,
+          0,
+          texture.width.toDouble(),
+          texture.height.toDouble(),
+        );
+    final xs = [
+      r.left,
+      r.left + left.resolve(r.width),
+      r.right - right.resolve(r.width),
+      r.right,
+    ];
+    final ys = [
+      r.top,
+      r.top + top.resolve(r.height),
+      r.bottom - bottom.resolve(r.height),
+      r.bottom,
+    ];
+    final cells = <MeshPart>[];
+    for (int row = 0; row < 3; row++) {
+      for (int col = 0; col < 3; col++) {
         final isRowEdge = row == 0 || row == 2;
         final isColEdge = col == 0 || col == 2;
-        if (isRowEdge && isColEdge) return cornerFit;
-        if (isRowEdge || isColEdge) return edgeFit;
-        return centerFit;
-      },
-    );
+        cells.add(
+          MeshPart(
+            fit: (isRowEdge && isColEdge)
+                ? cornerFit
+                : (isRowEdge || isColEdge)
+                ? edgeFit
+                : centerFit,
+            texture: texture,
+            srcRect: ui.Rect.fromLTRB(
+              xs[col],
+              ys[row],
+              xs[col + 1],
+              ys[row + 1],
+            ),
+          ),
+        );
+      }
+    }
+    return GridMesh(cells: cells, cols: 3);
   }
 
-  /// Creates a complex 25-slice mesh for high-fidelity adaptive visuals.
-  ///
-  /// [GridMesh.twentyFiveSlice] divides the sprite into a 5x5 grid, 
-  /// offering more control over complex borders and transitions. This is 
-  /// useful for windows with double-borders or specific interior patterns 
-  /// that must be preserved during scaling.
-  ///
-  /// * [leftOuter]: Outer left border width.
-  /// * [leftInner]: Inner left border width.
-  /// * [topOuter]: Outer top border height.
-  /// * [topInner]: Inner top border height.
-  /// * [rightOuter]: Outer right border width.
-  /// * [rightInner]: Inner right border width.
-  /// * [bottomOuter]: Outer bottom border height.
-  /// * [bottomInner]: Inner bottom border height.
-  /// * [centerFit]: How to fit the central core.
-  /// * [edgeCenterFit]: How to fit the inner edges.
-  /// * [edgeFit]: How to fit the outer edges.
-  /// * [cornerFit]: How to fit the outer corners.
+  /// 5×5 twenty-five-slice mesh with double borders.
   factory GridMesh.twentyFiveSlice({
-    required double leftOuter,
-    required double leftInner,
-    required double topOuter,
-    required double topInner,
-    required double rightOuter,
-    required double rightInner,
-    required double bottomOuter,
-    required double bottomInner,
+    required GameTexture texture,
+    ui.Rect? spriteRect,
+    Point leftOuter = const Point.frac(1 / 5),
+    Point leftInner = const Point.frac(1 / 5),
+    Point topOuter = const Point.frac(1 / 5),
+    Point topInner = const Point.frac(1 / 5),
+    Point rightOuter = const Point.frac(1 / 5),
+    Point rightInner = const Point.frac(1 / 5),
+    Point bottomOuter = const Point.frac(1 / 5),
+    Point bottomInner = const Point.frac(1 / 5),
     SpriteFit centerFit = const StretchFit(),
     SpriteFit edgeCenterFit = const StretchFit(),
     SpriteFit edgeFit = const StretchFit(),
     SpriteFit cornerFit = const FixedFit(),
   }) {
+    final r =
+        spriteRect ??
+        ui.Rect.fromLTWH(
+          0,
+          0,
+          texture.width.toDouble(),
+          texture.height.toDouble(),
+        );
+    final xs = [
+      r.left,
+      r.left + leftOuter.resolve(r.width),
+      r.left + leftOuter.resolve(r.width) + leftInner.resolve(r.width),
+      r.right - rightOuter.resolve(r.width) - rightInner.resolve(r.width),
+      r.right - rightOuter.resolve(r.width),
+      r.right,
+    ];
+    final ys = [
+      r.top,
+      r.top + topOuter.resolve(r.height),
+      r.top + topOuter.resolve(r.height) + topInner.resolve(r.height),
+      r.bottom - bottomOuter.resolve(r.height) - bottomInner.resolve(r.height),
+      r.bottom - bottomOuter.resolve(r.height),
+      r.bottom,
+    ];
+    final cells = <MeshPart>[];
+    for (int row = 0; row < 5; row++) {
+      for (int col = 0; col < 5; col++) {
+        final SpriteFit fit;
+        if (row != 2 && col != 2) {
+          fit = cornerFit;
+        } else {
+          final distRow = (row - 2).abs();
+          final distCol = (col - 2).abs();
+          final maxDist = distRow > distCol ? distRow : distCol;
+          fit = maxDist == 0
+              ? centerFit
+              : maxDist == 1
+              ? edgeCenterFit
+              : edgeFit;
+        }
+        cells.add(
+          MeshPart(
+            fit: fit,
+            texture: texture,
+            srcRect: ui.Rect.fromLTRB(
+              xs[col],
+              ys[row],
+              xs[col + 1],
+              ys[row + 1],
+            ),
+          ),
+        );
+      }
+    }
+    return GridMesh(cells: cells, cols: 5);
+  }
+
+  /// Horizontal 3×1 bar mesh (left cap | stretch | right cap).
+  factory GridMesh.horizontalSliceBar({
+    required GameTexture texture,
+    ui.Rect? spriteRect,
+    Point left = const Point.frac(1 / 3),
+    Point right = const Point.frac(1 / 3),
+    SpriteFit centerFit = const StretchFit(),
+    SpriteFit edgeFit = const FixedFit(),
+  }) {
+    final r =
+        spriteRect ??
+        ui.Rect.fromLTWH(
+          0,
+          0,
+          texture.width.toDouble(),
+          texture.height.toDouble(),
+        );
+    final x0 = r.left;
+    final x1 = r.left + left.resolve(r.width);
+    final x2 = r.right - right.resolve(r.width);
+    final x3 = r.right;
     return GridMesh(
-      xBorders: [leftOuter, leftInner, rightInner, rightOuter],
-      yBorders: [topOuter, topInner, bottomInner, bottomOuter],
-      fitProvider: (row, col) {
-        // Cells at the intersection of a border row and border column are fixed
-        // in both dimensions. Returning cornerFit (FixedFit by default) ensures
-        // GridMesh anchors those columns and rows at their source pixel size.
-        // Visual output is identical to the previous edgeFit/edgeCenterFit since
-        // cellDst.size == cellSrc.size for all such cells.
-        if (row != 2 && col != 2) return cornerFit;
-
-        final distRow = (row - 2).abs();
-        final distCol = (col - 2).abs();
-        final maxDist = distRow > distCol ? distRow : distCol;
-
-        if (maxDist == 0) return centerFit;
-        if (maxDist == 1) return edgeCenterFit;
-        return edgeFit;
-      },
+      cells: [
+        MeshPart(
+          fit: edgeFit,
+          texture: texture,
+          srcRect: ui.Rect.fromLTRB(x0, r.top, x1, r.bottom),
+        ),
+        MeshPart(
+          fit: centerFit,
+          texture: texture,
+          srcRect: ui.Rect.fromLTRB(x1, r.top, x2, r.bottom),
+        ),
+        MeshPart(
+          fit: edgeFit,
+          texture: texture,
+          srcRect: ui.Rect.fromLTRB(x2, r.top, x3, r.bottom),
+        ),
+      ],
+      cols: 3,
     );
   }
 
-  @override
-  void render(
-    ui.Canvas canvas,
-    GameSprite sprite,
-    ui.Size destinationSize,
-    ui.Paint paint,
-  ) {
-    final src = sprite.rect;
-
-    final List<double> xSrc = _computeSourceLines(xBorders, src.width);
-    final List<double> ySrc = _computeSourceLines(yBorders, src.height);
-
-    final List<double> xDst = _computeDestLines(xSrc, destinationSize.width, _colFlex);
-    final List<double> yDst = _computeDestLines(ySrc, destinationSize.height, _rowFlex);
-
-    for (int row = 0; row < _rows; row++) {
-      for (int col = 0; col < _cols; col++) {
-        final cellSrc = ui.Rect.fromLTWH(
-          src.left + xSrc[col],
-          src.top + ySrc[row],
-          xSrc[col + 1] - xSrc[col],
-          ySrc[row + 1] - ySrc[row],
+  /// Vertical 1×3 bar mesh (top cap | stretch | bottom cap).
+  factory GridMesh.verticalSliceBar({
+    required GameTexture texture,
+    ui.Rect? spriteRect,
+    Point top = const Point.frac(1 / 3),
+    Point bottom = const Point.frac(1 / 3),
+    SpriteFit centerFit = const StretchFit(),
+    SpriteFit edgeFit = const FixedFit(),
+  }) {
+    final r =
+        spriteRect ??
+        ui.Rect.fromLTWH(
+          0,
+          0,
+          texture.width.toDouble(),
+          texture.height.toDouble(),
         );
-        final cellDst = ui.Rect.fromLTWH(
-          xDst[col],
-          yDst[row],
-          xDst[col + 1] - xDst[col],
-          yDst[row + 1] - yDst[row],
-        );
+    final y0 = r.top;
+    final y1 = r.top + top.resolve(r.height);
+    final y2 = r.bottom - bottom.resolve(r.height);
+    final y3 = r.bottom;
+    return GridMesh(
+      cells: [
+        MeshPart(
+          fit: edgeFit,
+          texture: texture,
+          srcRect: ui.Rect.fromLTRB(r.left, y0, r.right, y1),
+        ),
+        MeshPart(
+          fit: centerFit,
+          texture: texture,
+          srcRect: ui.Rect.fromLTRB(r.left, y1, r.right, y2),
+        ),
+        MeshPart(
+          fit: edgeFit,
+          texture: texture,
+          srcRect: ui.Rect.fromLTRB(r.left, y2, r.right, y3),
+        ),
+      ],
+      cols: 1,
+    );
+  }
+}
 
-        if (cellSrc.width <= 0 ||
-            cellSrc.height <= 0 ||
-            cellDst.width <= 0 ||
-            cellDst.height <= 0) {
-          continue;
+// ---------------------------------------------------------------------------
+// _GridMeshHandle
+// ---------------------------------------------------------------------------
+
+class _GridMeshHandle extends RenderHandle {
+  final GridMesh _mesh;
+  ui.FragmentShader? _shader;
+
+  // Pre-built per-cell static arrays (25 slots for up to 5×5).
+  final _modes = Float32List(25);
+  final _alignX = Float32List(25);
+  final _alignY = Float32List(25);
+  final _srcX = Float32List(25); // cell.srcRect.left
+  final _srcY = Float32List(25); // cell.srcRect.top
+  final _texIdx = Float32List(25); // index into _uniqueTextures
+
+  List<GameTexture> _uniqueTextures = const [];
+  int _seenVersion = -1;
+
+  _GridMeshHandle(this._mesh);
+
+  // Rebuild static arrays when the mesh cells have changed.
+  void _ensureStatic() {
+    if (_seenVersion == _mesh._version) return;
+    _seenVersion = _mesh._version;
+
+    _shader?.dispose();
+    _shader = null;
+
+    final cells = _mesh._cells;
+    final cols = _mesh._cols;
+    final rows = _mesh._rows;
+
+    // Collect unique textures (insertion order, max 4).
+    final unique = <GameTexture>[];
+    for (final cell in cells) {
+      if (!unique.contains(cell.texture)) {
+        unique.add(cell.texture);
+        if (unique.length == _kMaxTextures) break;
+      }
+    }
+    _uniqueTextures = unique;
+
+    for (int r = 0; r < 5; r++) {
+      for (int c = 0; c < 5; c++) {
+        final i = r * 5 + c;
+        if (r < rows && c < cols) {
+          final cell = cells[r * cols + c];
+          _modes[i] = cell.fit.meshMode.toDouble();
+          _alignX[i] = cell.fit.alignment.x;
+          _alignY[i] = cell.fit.alignment.y;
+          final cr = cell.rect;
+          _srcX[i] = cr.left;
+          _srcY[i] = cr.top;
+          _texIdx[i] = unique.indexOf(cell.texture).toDouble();
+        } else {
+          _modes[i] = _alignX[i] = _alignY[i] = 0;
+          _srcX[i] = _srcY[i] = _texIdx[i] = 0;
         }
-
-        _fits[row * _cols + col].draw(canvas, sprite.texture.image, cellSrc, cellDst, paint);
       }
     }
   }
 
-  List<double> _computeSourceLines(List<double> borders, double total) {
-    final int half = borders.length ~/ 2;
-    final List<double> lines = [0.0];
+  @override
+  void render(ui.Canvas canvas, ui.Size size, ui.Paint paint) {
+    _ensureStatic();
 
-    double current = 0.0;
-    for (int i = 0; i < half; i++) {
-      current += borders[i];
-      lines.add(current);
+    final cells = _mesh._cells;
+    final cols = _mesh._cols;
+    final rows = _mesh._rows;
+
+    // Cumulative source widths / heights.
+    final xSrc = <double>[0.0];
+    for (int c = 0; c < cols; c++) xSrc.add(xSrc.last + cells[c].size.width);
+    final ySrc = <double>[0.0];
+    for (int r = 0; r < rows; r++)
+      ySrc.add(ySrc.last + cells[r * cols].size.height);
+
+    // Flex weights for destination layout.
+    final colFlex = List<double?>.generate(cols, (c) {
+      for (int r = 0; r < rows; r++) {
+        if ((cells[r * cols + c].fit.flex ?? 0) <= 0) return null;
+      }
+      return 1.0;
+    });
+    final rowFlex = List<double?>.generate(rows, (r) {
+      for (int c = 0; c < cols; c++) {
+        if ((cells[r * cols + c].fit.flex ?? 0) <= 0) return null;
+      }
+      return 1.0;
+    });
+
+    final xDst = _computeDestLines(xSrc, size.width, colFlex);
+    final yDst = _computeDestLines(ySrc, size.height, rowFlex);
+
+    final dst = ui.Offset.zero & size;
+    final prog = GridMesh._program;
+
+    if (prog != null && cols <= _kShaderMaxDim && rows <= _kShaderMaxDim) {
+      _renderWithShader(canvas, dst, paint, prog, xSrc, ySrc, xDst, yDst);
+    } else {
+      _renderFallback(canvas, dst, paint, xDst, yDst);
     }
-
-    final List<double> rightLines = [];
-    current = total;
-    for (int i = borders.length - 1; i >= half; i--) {
-      current -= borders[i];
-      rightLines.add(current);
-    }
-
-    lines.addAll(rightLines.reversed);
-    lines.add(total);
-    return lines;
   }
 
-  List<double> _computeDestLines(
+  void _renderWithShader(
+    ui.Canvas canvas,
+    ui.Rect destination,
+    ui.Paint paint,
+    ui.FragmentProgram program,
+    List<double> xSrc,
+    List<double> ySrc,
+    List<double> xDst,
+    List<double> yDst,
+  ) {
+    for (final tex in _uniqueTextures) {
+      if (!tex.isLoaded) return;
+    }
+    if (_uniqueTextures.isEmpty) return;
+
+    _shader ??= program.fragmentShader();
+    final shader = _shader!;
+
+    // Dynamic uniforms — layout documented in grid_mesh.frag.
+    shader.setFloat(0, destination.left);
+    shader.setFloat(1, destination.top);
+    for (int t = 0; t < 4; t++) {
+      final tex = t < _uniqueTextures.length ? _uniqueTextures[t] : null;
+      shader.setFloat(2 + t * 2, tex != null ? tex.width.toDouble() : 1.0);
+      shader.setFloat(3 + t * 2, tex != null ? tex.height.toDouble() : 1.0);
+    }
+    for (int i = 0; i < 6; i++) {
+      shader.setFloat(10 + i, i < xDst.length ? xDst[i] : xDst.last);
+    }
+    for (int i = 0; i < 6; i++) {
+      shader.setFloat(16 + i, i < yDst.length ? yDst[i] : yDst.last);
+    }
+    for (int i = 0; i < 6; i++) {
+      shader.setFloat(22 + i, i < xSrc.length ? xSrc[i] : xSrc.last);
+    }
+    for (int i = 0; i < 6; i++) {
+      shader.setFloat(28 + i, i < ySrc.length ? ySrc[i] : ySrc.last);
+    }
+    shader.setFloat(34, _mesh._cols.toDouble());
+    shader.setFloat(35, _mesh._rows.toDouble());
+
+    // Static uniforms — pre-built by _ensureStatic.
+    for (int i = 0; i < 25; i++) shader.setFloat(36 + i, _modes[i]);
+    for (int i = 0; i < 25; i++) shader.setFloat(61 + i, _alignX[i]);
+    for (int i = 0; i < 25; i++) shader.setFloat(86 + i, _alignY[i]);
+    for (int i = 0; i < 25; i++) shader.setFloat(111 + i, _srcX[i]);
+    for (int i = 0; i < 25; i++) shader.setFloat(136 + i, _srcY[i]);
+    for (int i = 0; i < 25; i++) shader.setFloat(161 + i, _texIdx[i]);
+
+    final placeholder = GridMesh._placeholder!;
+    for (int t = 0; t < 4; t++) {
+      final tex = t < _uniqueTextures.length ? _uniqueTextures[t] : null;
+      shader.setImageSampler(t, tex?.image ?? placeholder);
+    }
+
+    final sp = ui.Paint()
+      ..shader = shader
+      ..blendMode = paint.blendMode
+      ..isAntiAlias = paint.isAntiAlias;
+    if (paint.colorFilter != null) sp.colorFilter = paint.colorFilter;
+
+    canvas.drawRect(destination, sp);
+  }
+
+  void _renderFallback(
+    ui.Canvas canvas,
+    ui.Rect destination,
+    ui.Paint paint,
+    List<double> xDst,
+    List<double> yDst,
+  ) {
+    final cells = _mesh._cells;
+    final cols = _mesh._cols;
+    final rows = _mesh._rows;
+
+    for (int r = 0; r < rows; r++) {
+      for (int c = 0; c < cols; c++) {
+        final cell = cells[r * cols + c];
+        if (!cell.texture.isLoaded) continue;
+        final dstRect = ui.Rect.fromLTRB(
+          destination.left + xDst[c],
+          destination.top + yDst[r],
+          destination.left + xDst[c + 1],
+          destination.top + yDst[r + 1],
+        );
+        if (dstRect.width <= 0 || dstRect.height <= 0) continue;
+        cell.fit.draw(canvas, cell.texture.image, cell.rect, dstRect, paint);
+      }
+    }
+  }
+
+  static List<double> _computeDestLines(
     List<double> srcLines,
     double destTotal,
     List<double?> flex,
   ) {
     final count = srcLines.length;
-
     double fixedSum = 0.0;
     double totalFlex = 0.0;
     for (int i = 0; i < count - 1; i++) {
@@ -356,17 +719,23 @@ class GridMesh extends SpriteMesh {
         totalFlex += f;
       }
     }
-
     final available = (destTotal - fixedSum).clamp(0.0, double.infinity);
     final dst = List<double>.filled(count, 0.0);
     for (int i = 0; i < count - 1; i++) {
       final f = flex[i];
       final segSize = (f == null || f <= 0)
           ? srcLines[i + 1] - srcLines[i]
-          : totalFlex > 0 ? (f / totalFlex) * available : 0.0;
+          : totalFlex > 0
+          ? (f / totalFlex) * available
+          : 0.0;
       dst[i + 1] = dst[i] + segSize;
     }
-
     return dst;
+  }
+
+  @override
+  void dispose() {
+    _shader?.dispose();
+    _shader = null;
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
@@ -310,7 +312,10 @@ class GameRenderObject extends RenderBox
         position: position,
         hitTest: (BoxHitTestResult result, Offset? transformedPosition) {
           if (transformedPosition == null) return false;
-          final childrenHit = hitTestChildren(result, position: transformedPosition);
+          final childrenHit = hitTestChildren(
+            result,
+            position: transformedPosition,
+          );
           if (hitTestSelf(transformedPosition)) {
             result.add(BoxHitTestEntry(this, transformedPosition));
             return true;

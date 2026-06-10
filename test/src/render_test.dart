@@ -20,10 +20,13 @@ void main() {
 
   group('Render', () {
     testWidgets('should call render on Renderable components', (tester) async {
+      final engine = await GameEngine.create({TickerState.new});
+      addTearDown(() => engine.dispose());
       final renderable = MockRenderable();
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [ComponentWidget(() => renderable)],
           ),
@@ -38,11 +41,14 @@ void main() {
     testWidgets('should call render on multiple Renderable components', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerState.new});
+      addTearDown(() => engine.dispose());
       final r1 = MockRenderable();
       final r2 = MockRenderable2();
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => r1),
@@ -60,11 +66,14 @@ void main() {
     testWidgets('should propagate canvas to children in hierarchy', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerState.new});
+      addTearDown(() => engine.dispose());
       final parentR = MockRenderable();
       final childR = MockRenderable();
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => parentR),
