@@ -1,13 +1,28 @@
 import 'dart:ui' as ui;
 import 'package:meta/meta.dart';
 import 'package:vector_math/vector_math_64.dart';
+import 'package:goo2d/src/collision/worker/collision_worker.dart';
 import 'package:goo2d/src/physics/worker/direct/direct_collider_ops.dart';
 import 'package:goo2d/src/physics/worker/data/collider_shape_type.dart';
 import 'package:goo2d/goo2d.dart';
 
-/// Collider for 2D physics representing a circle.
+/// Circular collider for 2D physics.
 ///
-/// Equivalent to Unity's `CircleCollider2D`.
+/// Circles are computationally cheap and rotate symmetrically, making them a good default for
+/// small objects such as bullets, coins, and projectiles. Centered on [Collider.offset] from the
+/// [ObjectTransform] position.
+///
+/// ```dart
+/// addComponent(
+///   ObjectTransform(),
+///   Rigidbody()..gravityScale = 1.0,
+///   CircleCollider()..radius = 0.3,
+/// );
+/// ```
+///
+/// See also:
+/// * [BoxCollider] for rectangular shapes.
+/// * [CapsuleCollider] for tall or wide oblong shapes.
 class CircleCollider extends Collider {
   @override
   ColliderShapeType get shapeType => ColliderShapeType.circle;
@@ -16,14 +31,21 @@ class CircleCollider extends Collider {
   @protected
   void syncAllProperties() {
     super.syncAllProperties();
+    if (hasBoundsOnly) return;
     worker.setColliderProperty(handle, ColliderProp.circleRadius, _radius);
   }
 
-  double _radius = 0.5;
+  @override
+  @protected
+  void syncCollisionGeometry(CollisionWorker w) =>
+      w.setShapeCircle(handle, _radius);
+
+  /// Radius of the circle in world units. Default 0.5.
   double get radius => _radius;
+  double _radius = 0.5;
   set radius(double value) {
     _radius = value;
-    if (isAttached) worker.setColliderProperty(handle, ColliderProp.circleRadius, value);
+    if (isAttached && !hasBoundsOnly) worker.setColliderProperty(handle, ColliderProp.circleRadius, value);
   }
 
   @override

@@ -1,6 +1,6 @@
 name: goo2d
 description: "A modular, low-level 2D game engine for Flutter featuring a component system, physics, advanced rendering, multi-device input, and built-in RPC for networked games."
-version: 0.0.2
+version: 0.0.3
 homepage: https://sunarya-thito.github.io/goo2d/
 repository: https://github.com/sunarya-thito/goo2d
 issues: https://github.com/sunarya-thito/goo2d/issues

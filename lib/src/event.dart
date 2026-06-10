@@ -1,11 +1,22 @@
+import 'dart:async';
+
 import 'package:goo2d/src/component.dart';
 import 'package:goo2d/src/object.dart';
+
+abstract interface class EventListenerMixable {
+  void onEvent<T extends EventListener>(Event<T> event);
+  FutureOr<void> onEventAsync<T extends EventListener>(AsyncEvent<T> event);
+  bool onDispatchEvent<T extends EventListener>(Event<T> event);
+  FutureOr<bool> onDispatchEventAsync<T extends EventListener>(
+    AsyncEvent<T> event,
+  );
+}
 
 /// A mixin used to mark a [Component] as a subscriber to specific [Event]s.
 ///
 /// Components that implement this mixin can be targeted by events of the
 /// corresponding type.
-mixin EventListener on Component {}
+mixin EventListener on EventListenerMixable {}
 
 /// Base class for all events dispatched through the [GameObject] hierarchy.
 ///
@@ -43,12 +54,8 @@ abstract class Event<T extends EventListener> {
   ///
   /// * [object]: The game object whose components will receive the event.
   void dispatchTo(GameObject object) {
-    final listeners = object.components.whereType<T>().toList();
-    for (final listener in listeners) {
-      if (listener is Behavior && !(listener as Behavior).enabled) {
-        continue;
-      }
-      dispatch(listener);
+    for (final c in object.components) {
+      c.onDispatchEvent(this);
     }
   }
 }
@@ -56,16 +63,23 @@ abstract class Event<T extends EventListener> {
 abstract class AsyncEvent<T extends EventListener> extends Event<T> {
   const AsyncEvent();
   @override
-  Future<void> dispatch(T listener);
+  FutureOr<void> dispatch(T listener);
 
   @override
-  Future<void> dispatchTo(GameObject object) async {
-    final listeners = object.components.whereType<T>().toList();
-    for (final listener in listeners) {
-      if (listener is Behavior && !(listener as Behavior).enabled) {
-        continue;
+  FutureOr<void> dispatchTo(GameObject object) {
+    // TODO: avoid list copy, this is a bad way to handle concurrency
+    Future<void>? waitedFuture;
+    for (final c in List.of(object.components)) {
+      final result = c.onDispatchEventAsync(this);
+      switch (result) {
+        case Future<bool> f:
+          waitedFuture = (waitedFuture == null)
+              ? f
+              : waitedFuture.then((_) => f);
+        case bool _:
+          break;
       }
-      await dispatch(listener);
     }
+    return waitedFuture;
   }
 }

@@ -27,6 +27,8 @@ void main() {
     testWidgets('should dispatch events to PointerReceiver when hit', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final receiver = MockPointerReceiver();
       final collider = BoxCollider()
         ..size = Vector2(100, 100)
@@ -34,6 +36,7 @@ void main() {
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: Center(
             child: GameObjectWidget(
               children: [
@@ -63,6 +66,8 @@ void main() {
     });
 
     testWidgets('should NOT dispatch events when NOT hit', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final receiver = MockPointerReceiver();
       final collider = BoxCollider()
         ..size = Vector2(50, 50)
@@ -70,6 +75,7 @@ void main() {
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: Center(
             child: GameObjectWidget(
               children: [
@@ -89,7 +95,6 @@ void main() {
       );
       await tester.pump();
 
-      // Tap at (75, 75) local - inside the 100x100 widget but outside the 50x50 collider
       final widgetTopLeft = tester.getTopLeft(find.byType(GameObjectWidget));
       await tester.tapAt(widgetTopLeft + const Offset(75, 75));
       await tester.pump();
@@ -98,6 +103,8 @@ void main() {
     });
 
     testWidgets('should handle move and hover events', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final receiver = MockPointerReceiver();
       final collider = BoxCollider()
         ..size = Vector2(100, 100)
@@ -105,6 +112,7 @@ void main() {
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: Center(
             child: GameObjectWidget(
               children: [
@@ -130,7 +138,6 @@ void main() {
       await gesture.addPointer(location: center);
       await tester.pump();
 
-      // Hover/Move usually require mouse pointer kind
       await gesture.moveTo(center + const Offset(10, 10));
       await tester.pump();
     });

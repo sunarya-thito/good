@@ -3,6 +3,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:goo2d/goo2d.dart';
 
+Future<GameEngine> _createEngine() => GameEngine.create({
+  TickerSystem.new,
+  InputSystem.new,
+  CameraSystem.new,
+  ScreenSystem.new,
+});
+
 void main() {
   if (!const bool.fromEnvironment('INTEGRATION_TEST')) {
     return;
@@ -14,10 +21,12 @@ void main() {
     final componentCounts = [100, 500, 1000, 2500, 5000];
     for (final n in componentCounts) {
       testWidgets('Lifecycle.ComponentMutation ($n)', (tester) async {
+        final engine = await _createEngine();
         const rootTag = 'root';
         await tester.pumpWidget(
           MaterialApp(
             home: Game(
+              engine: engine,
               child: GameObjectWidget(tag: rootTag, name: rootTag),
             ),
           ),
@@ -27,16 +36,18 @@ void main() {
           tester.element(find.byType(MaterialApp).first),
           rootTag,
         )!;
-        final colliders = List.generate(n, (_) => BoxCollider());
+        final transforms = List.generate(n, (_) => ObjectTransform());
 
         await binding.traceAction(() async {
-          for (final c in colliders) {
+          for (final c in transforms) {
             rootObject.addComponent(c);
           }
-          for (final c in colliders) {
+          for (final c in transforms) {
             rootObject.removeComponent(c);
           }
         }, reportKey: 'lifecycle_components_$n');
+
+        await engine.dispose();
       });
     }
 
@@ -44,9 +55,13 @@ void main() {
     final rebuildCounts = [100, 500, 1000, 2500];
     for (final n in rebuildCounts) {
       testWidgets('Lifecycle.WidgetTreeRebuild ($n objects)', (tester) async {
+        final engine = await _createEngine();
         await tester.pumpWidget(
           MaterialApp(
-            home: Game(child: const GameObjectWidget(name: 'scene_a')),
+            home: Game(
+              engine: engine,
+              child: const GameObjectWidget(name: 'scene_a'),
+            ),
           ),
         );
         await tester.pump();
@@ -55,6 +70,7 @@ void main() {
           await tester.pumpWidget(
             MaterialApp(
               home: Game(
+                engine: engine,
                 child: GameObjectWidget(
                   name: 'scene_b',
                   children: List.generate(
@@ -63,7 +79,7 @@ void main() {
                       name: 'obj_$i',
                       children: [
                         ComponentWidget(ObjectTransform.new),
-                        ComponentWidget(BoxCollider.new),
+                        ComponentWidget(ObjectTransform.new),
                       ],
                     ),
                   ),
@@ -73,6 +89,8 @@ void main() {
           );
           await tester.pump();
         }, reportKey: 'lifecycle_rebuild_$n');
+
+        await engine.dispose();
       });
     }
   });

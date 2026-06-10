@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:analyzer/dart/analysis/utilities.dart';
-import 'package:analyzer/dart/ast/token.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
@@ -29,14 +28,19 @@ void main() {
     }
 
     final currentCode = currentFile.readAsStringSync();
-    
+
     // Get committed version from git
     // We use forward slashes for git paths
     final gitPath = fileToVerify.replaceAll('\\', '/');
-    final res = Process.runSync('git', ['show', 'HEAD:$gitPath'], workingDirectory: root);
-    
+    final res = Process.runSync('git', [
+      'show',
+      'HEAD:$gitPath',
+    ], workingDirectory: root);
+
     if (res.exitCode != 0) {
-      fail('Failed to get committed version of $fileToVerify from git: ${res.stderr}\nCommand: git show HEAD:$gitPath');
+      fail(
+        'Failed to get committed version of $fileToVerify from git: ${res.stderr}\nCommand: git show HEAD:$gitPath',
+      );
     }
     final committedCode = res.stdout.toString();
 
@@ -44,41 +48,67 @@ void main() {
     final committedTokens = _getMeaningfulTokens(committedCode);
 
     final mismatches = <int>[];
-    for (int i = 0; i < currentTokens.length && i < committedTokens.length; i++) {
+    for (
+      int i = 0;
+      i < currentTokens.length && i < committedTokens.length;
+      i++
+    ) {
       if (currentTokens[i].lexeme != committedTokens[i].lexeme) {
         mismatches.add(i);
       }
     }
 
     if (mismatches.isNotEmpty) {
-      print('========================================================================');
+      print(
+        '========================================================================',
+      );
       print('FOUND ${mismatches.length} TOKEN MISMATCHES');
-      print('========================================================================\n');
-      
+      print(
+        '========================================================================\n',
+      );
+
       for (final idx in mismatches) {
-        _reportMismatch(currentCode, committedCode, currentTokens[idx], committedTokens[idx]);
+        _reportMismatch(
+          currentCode,
+          committedCode,
+          currentTokens[idx],
+          committedTokens[idx],
+        );
       }
       fail('Integrity Failure: Found ${mismatches.length} token mismatches.');
     }
 
     if (currentTokens.length != committedTokens.length) {
-      final mismatchIdx = currentTokens.length < committedTokens.length ? currentTokens.length : committedTokens.length;
-      final curT = mismatchIdx < currentTokens.length ? currentTokens[mismatchIdx] : null;
-      final comT = mismatchIdx < committedTokens.length ? committedTokens[mismatchIdx] : null;
+      final mismatchIdx = currentTokens.length < committedTokens.length
+          ? currentTokens.length
+          : committedTokens.length;
+      final curT = mismatchIdx < currentTokens.length
+          ? currentTokens[mismatchIdx]
+          : null;
+      final comT = mismatchIdx < committedTokens.length
+          ? committedTokens[mismatchIdx]
+          : null;
       _reportMismatch(currentCode, committedCode, curT, comT);
-      fail('Integrity Failure: Code structure has changed. Expected ${committedTokens.length} tokens, found ${currentTokens.length}.');
+      fail(
+        'Integrity Failure: Code structure has changed. Expected ${committedTokens.length} tokens, found ${currentTokens.length}.',
+      );
     }
   });
 }
 
-void _reportMismatch(String currentCode, String committedCode, _TokenInfo? current, _TokenInfo? committed) {
+void _reportMismatch(
+  String currentCode,
+  String committedCode,
+  _TokenInfo? current,
+  _TokenInfo? committed,
+) {
   print('--- INTEGRITY FAILURE CONTEXT ---');
-  
+
   if (current != null) {
     print('Current version near Line ${current.line}:');
     _printSourceLines(currentCode, current.line);
   }
-  
+
   if (committed != null) {
     print('\nCommitted version near Line ${committed.line}:');
     _printSourceLines(committedCode, committed.line);
@@ -90,7 +120,7 @@ void _printSourceLines(String code, int targetLine) {
   final lines = code.split('\n');
   final start = (targetLine - 3).clamp(0, lines.length);
   final end = (targetLine + 2).clamp(0, lines.length);
-  
+
   for (int i = start; i < end; i++) {
     final ln = i + 1;
     final prefix = (ln == targetLine) ? '> ' : '  ';
@@ -105,10 +135,12 @@ List<_TokenInfo> _getMeaningfulTokens(String code) {
     var token = result.unit.beginToken;
     while (!token.isEof) {
       // Ignore comments for structural integrity
-      tokens.add(_TokenInfo(
-        token.lexeme,
-        result.lineInfo.getLocation(token.offset).lineNumber,
-      ));
+      tokens.add(
+        _TokenInfo(
+          token.lexeme,
+          result.lineInfo.getLocation(token.offset).lineNumber,
+        ),
+      );
       token = token.next!;
     }
     return tokens;

@@ -3,8 +3,10 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart' as soloud;
 import 'package:http/http.dart' as http;
+
 
 /// A source from which raw asset data can be retrieved.
 ///
@@ -136,7 +138,7 @@ class NetworkSource implements AssetSource {
 /// while maintaining type safety and centralized loading.
 ///
 /// ```dart
-/// enum MyImages with TextureAssetEnum {
+/// enum MyImages with AssetTextureEnum {
 ///   player('assets/player.png'),
 ///   enemy('assets/enemy.png');
 ///
@@ -148,6 +150,11 @@ class NetworkSource implements AssetSource {
 /// }
 /// ```
 mixin AssetEnum on Enum implements GameAsset {
+  /// The source from which this asset's data is loaded.
+  ///
+  /// Must be implemented by the enum to specify the asset origin.
+  AssetSource get source;
+
   static final Map<Enum, GameAsset> _registries = {};
 
   /// Registers the actual [GameAsset] instance associated with this enum value.
@@ -186,9 +193,9 @@ mixin AssetEnum on Enum implements GameAsset {
 /// This extends [AssetEnum] to provide texture-specific properties and
 /// methods directly on the enum values, such as [width], [height], and
 /// pixel manipulation functions.
-mixin TextureAssetEnum on AssetEnum implements GameTexture {
+mixin AssetTextureEnum on AssetEnum implements GameTexture {
   @override
-  GameAsset createAsset() => GameTexture(source);
+  GameAsset createAsset() => AssetTexture(source);
 
   GameTexture get _instance => asset as GameTexture;
 
@@ -232,6 +239,15 @@ mixin TextureAssetEnum on AssetEnum implements GameTexture {
 
   @override
   void setPixels32(Uint32List pixels) => _instance.setPixels32(pixels);
+
+  @override
+  Iterable<TextureGroup> get textureGroups => _instance.textureGroups;
+
+  @override
+  void addTextureGroup(TextureGroup g) => _instance.addTextureGroup(g);
+
+  @override
+  void removeTextureGroup(TextureGroup g) => _instance.removeTextureGroup(g);
 }
 
 /// A specialized mixin for enums representing audio assets.
@@ -248,6 +264,721 @@ mixin AudioAssetEnum on AssetEnum implements GameAudio {
   soloud.AudioSource get audioSource => _instance.audioSource;
 }
 
+mixin FontAssetEnum on AssetEnum implements GameFont {
+  @override
+  GameAsset createAsset() => GameFont(source, family);
+
+  @override
+  String get family => name;
+
+  @override
+  TextStyle get delegate => TextStyle(fontFamily: family);
+
+  @override
+  String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
+    return super.toString();
+  }
+
+  @override
+  TextStyle apply({
+    ui.Color? color,
+    ui.Color? backgroundColor,
+    ui.TextDecoration? decoration,
+    ui.Color? decorationColor,
+    ui.TextDecorationStyle? decorationStyle,
+    double decorationThicknessFactor = 1.0,
+    double decorationThicknessDelta = 0.0,
+    String? fontFamily,
+    List<String>? fontFamilyFallback,
+    double fontSizeFactor = 1.0,
+    double fontSizeDelta = 0.0,
+    int fontWeightDelta = 0,
+    ui.FontStyle? fontStyle,
+    double letterSpacingFactor = 1.0,
+    double letterSpacingDelta = 0.0,
+    double wordSpacingFactor = 1.0,
+    double wordSpacingDelta = 0.0,
+    double heightFactor = 1.0,
+    double heightDelta = 0.0,
+    ui.TextBaseline? textBaseline,
+    ui.TextLeadingDistribution? leadingDistribution,
+    ui.Locale? locale,
+    List<ui.Shadow>? shadows,
+    List<ui.FontFeature>? fontFeatures,
+    List<ui.FontVariation>? fontVariations,
+    String? package,
+    TextOverflow? overflow,
+  }) {
+    return delegate.apply(
+      color: color,
+      backgroundColor: backgroundColor,
+      decoration: decoration,
+      decorationColor: decorationColor,
+      decorationStyle: decorationStyle,
+      decorationThicknessFactor: decorationThicknessFactor,
+      decorationThicknessDelta: decorationThicknessDelta,
+      fontFamily: fontFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSizeFactor: fontSizeFactor,
+      fontSizeDelta: fontSizeDelta,
+      fontWeightDelta: fontWeightDelta,
+      fontStyle: fontStyle,
+      letterSpacingFactor: letterSpacingFactor,
+      letterSpacingDelta: letterSpacingDelta,
+      wordSpacingFactor: wordSpacingFactor,
+      wordSpacingDelta: wordSpacingDelta,
+      heightFactor: heightFactor,
+      heightDelta: heightDelta,
+      textBaseline: textBaseline,
+      leadingDistribution: leadingDistribution,
+      locale: locale,
+      shadows: shadows,
+      fontFeatures: fontFeatures,
+      fontVariations: fontVariations,
+      package: package,
+      overflow: overflow,
+    );
+  }
+
+  @override
+  ui.Paint? get background => delegate.background;
+
+  @override
+  ui.Color? get backgroundColor => delegate.backgroundColor;
+
+  @override
+  ui.Color? get color => delegate.color;
+
+  @override
+  RenderComparison compareTo(TextStyle other) {
+    return delegate.compareTo(other);
+  }
+
+  @override
+  TextStyle copyWith({
+    bool? inherit,
+    ui.Color? color,
+    ui.Color? backgroundColor,
+    double? fontSize,
+    ui.FontWeight? fontWeight,
+    ui.FontStyle? fontStyle,
+    double? letterSpacing,
+    double? wordSpacing,
+    ui.TextBaseline? textBaseline,
+    double? height,
+    ui.TextLeadingDistribution? leadingDistribution,
+    ui.Locale? locale,
+    ui.Paint? foreground,
+    ui.Paint? background,
+    List<ui.Shadow>? shadows,
+    List<ui.FontFeature>? fontFeatures,
+    List<ui.FontVariation>? fontVariations,
+    ui.TextDecoration? decoration,
+    ui.Color? decorationColor,
+    ui.TextDecorationStyle? decorationStyle,
+    double? decorationThickness,
+    String? debugLabel,
+    String? fontFamily,
+    List<String>? fontFamilyFallback,
+    String? package,
+    TextOverflow? overflow,
+  }) {
+    return delegate.copyWith(
+      inherit: inherit,
+      color: color,
+      backgroundColor: backgroundColor,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      fontStyle: fontStyle,
+      letterSpacing: letterSpacing,
+      wordSpacing: wordSpacing,
+      textBaseline: textBaseline,
+      height: height,
+      leadingDistribution: leadingDistribution,
+      locale: locale,
+      foreground: foreground,
+      background: background,
+      shadows: shadows,
+      fontFeatures: fontFeatures,
+      fontVariations: fontVariations,
+      decoration: decoration,
+      decorationColor: decorationColor,
+      decorationStyle: decorationStyle,
+      decorationThickness: decorationThickness,
+      debugLabel: debugLabel,
+      fontFamily: fontFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      package: package,
+      overflow: overflow,
+    );
+  }
+
+  @override
+  TextStyle call({
+    bool? inherit,
+    ui.Color? color,
+    ui.Color? backgroundColor,
+    double? fontSize,
+    ui.FontWeight? fontWeight,
+    ui.FontStyle? fontStyle,
+    double? letterSpacing,
+    double? wordSpacing,
+    ui.TextBaseline? textBaseline,
+    double? height,
+    ui.TextLeadingDistribution? leadingDistribution,
+    ui.Locale? locale,
+    ui.Paint? foreground,
+    ui.Paint? background,
+    List<ui.Shadow>? shadows,
+    List<ui.FontFeature>? fontFeatures,
+    List<ui.FontVariation>? fontVariations,
+    ui.TextDecoration? decoration,
+    ui.Color? decorationColor,
+    ui.TextDecorationStyle? decorationStyle,
+    double? decorationThickness,
+    String? debugLabel,
+    String? fontFamily,
+    List<String>? fontFamilyFallback,
+    String? package,
+    TextOverflow? overflow,
+  }) {
+    return delegate.copyWith(
+      inherit: inherit,
+      color: color,
+      backgroundColor: backgroundColor,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      fontStyle: fontStyle,
+      letterSpacing: letterSpacing,
+      wordSpacing: wordSpacing,
+      textBaseline: textBaseline,
+      height: height,
+      leadingDistribution: leadingDistribution,
+      locale: locale,
+      foreground: foreground,
+      background: background,
+      shadows: shadows,
+      fontFeatures: fontFeatures,
+      fontVariations: fontVariations,
+      decoration: decoration,
+      decorationColor: decorationColor,
+      decorationStyle: decorationStyle,
+      decorationThickness: decorationThickness,
+      debugLabel: debugLabel,
+      fontFamily: fontFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      package: package,
+      overflow: overflow,
+    );
+  }
+
+  @override
+  void debugFillProperties(
+    DiagnosticPropertiesBuilder properties, {
+    String prefix = '',
+  }) {
+    delegate.debugFillProperties(properties, prefix: prefix);
+  }
+
+  @override
+  String? get debugLabel => delegate.debugLabel;
+
+  @override
+  ui.TextDecoration? get decoration => delegate.decoration;
+
+  @override
+  ui.Color? get decorationColor => delegate.decorationColor;
+
+  @override
+  ui.TextDecorationStyle? get decorationStyle => delegate.decorationStyle;
+
+  @override
+  double? get decorationThickness => delegate.decorationThickness;
+
+  @override
+  String? get fontFamily => delegate.fontFamily;
+
+  @override
+  List<String>? get fontFamilyFallback => delegate.fontFamilyFallback;
+
+  @override
+  List<ui.FontFeature>? get fontFeatures => delegate.fontFeatures;
+
+  @override
+  double? get fontSize => delegate.fontSize;
+
+  @override
+  ui.FontStyle? get fontStyle => delegate.fontStyle;
+
+  @override
+  List<ui.FontVariation>? get fontVariations => delegate.fontVariations;
+
+  @override
+  ui.FontWeight? get fontWeight => delegate.fontWeight;
+
+  @override
+  ui.Paint? get foreground => delegate.foreground;
+
+  @override
+  ui.ParagraphStyle getParagraphStyle({
+    ui.TextAlign? textAlign,
+    ui.TextDirection? textDirection,
+    TextScaler textScaler = TextScaler.noScaling,
+    String? ellipsis,
+    int? maxLines,
+    ui.TextHeightBehavior? textHeightBehavior,
+    ui.Locale? locale,
+    String? fontFamily,
+    double? fontSize,
+    ui.FontWeight? fontWeight,
+    ui.FontStyle? fontStyle,
+    double? height,
+    StrutStyle? strutStyle,
+  }) {
+    return delegate.getParagraphStyle(
+      textAlign: textAlign,
+      textDirection: textDirection,
+      textScaler: textScaler,
+      ellipsis: ellipsis,
+      maxLines: maxLines,
+      textHeightBehavior: textHeightBehavior,
+      locale: locale,
+      fontFamily: fontFamily,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      fontStyle: fontStyle,
+      height: height,
+      strutStyle: strutStyle,
+    );
+  }
+
+  @override
+  ui.TextStyle getTextStyle({
+    double textScaleFactor = 1.0,
+    TextScaler textScaler = TextScaler.noScaling,
+  }) {
+    return delegate.getTextStyle(
+      textScaleFactor: textScaleFactor,
+      textScaler: textScaler,
+    );
+  }
+
+  @override
+  double? get height => delegate.height;
+
+  @override
+  bool get inherit => delegate.inherit;
+
+  @override
+  ui.TextLeadingDistribution? get leadingDistribution =>
+      delegate.leadingDistribution;
+
+  @override
+  double? get letterSpacing => delegate.letterSpacing;
+
+  @override
+  ui.Locale? get locale => delegate.locale;
+
+  @override
+  TextStyle merge(TextStyle? other) {
+    return delegate.merge(other);
+  }
+
+  @override
+  TextOverflow? get overflow => delegate.overflow;
+
+  @override
+  List<ui.Shadow>? get shadows => delegate.shadows;
+
+  @override
+  ui.TextBaseline? get textBaseline => delegate.textBaseline;
+
+  @override
+  DiagnosticsNode toDiagnosticsNode({
+    String? name,
+    DiagnosticsTreeStyle? style,
+  }) {
+    return delegate.toDiagnosticsNode(name: name, style: style);
+  }
+
+  @override
+  String toStringShort() {
+    return delegate.toStringShort();
+  }
+
+  @override
+  double? get wordSpacing => delegate.wordSpacing;
+}
+
+mixin TextStyleWannabe implements TextStyle {
+  TextStyle get delegate;
+
+  @override
+  TextStyle apply({
+    ui.Color? color,
+    ui.Color? backgroundColor,
+    ui.TextDecoration? decoration,
+    ui.Color? decorationColor,
+    ui.TextDecorationStyle? decorationStyle,
+    double decorationThicknessFactor = 1.0,
+    double decorationThicknessDelta = 0.0,
+    String? fontFamily,
+    List<String>? fontFamilyFallback,
+    double fontSizeFactor = 1.0,
+    double fontSizeDelta = 0.0,
+    int fontWeightDelta = 0,
+    ui.FontStyle? fontStyle,
+    double letterSpacingFactor = 1.0,
+    double letterSpacingDelta = 0.0,
+    double wordSpacingFactor = 1.0,
+    double wordSpacingDelta = 0.0,
+    double heightFactor = 1.0,
+    double heightDelta = 0.0,
+    ui.TextBaseline? textBaseline,
+    ui.TextLeadingDistribution? leadingDistribution,
+    ui.Locale? locale,
+    List<ui.Shadow>? shadows,
+    List<ui.FontFeature>? fontFeatures,
+    List<ui.FontVariation>? fontVariations,
+    String? package,
+    TextOverflow? overflow,
+  }) {
+    return delegate.apply(
+      color: color,
+      backgroundColor: backgroundColor,
+      decoration: decoration,
+      decorationColor: decorationColor,
+      decorationStyle: decorationStyle,
+      decorationThicknessFactor: decorationThicknessFactor,
+      decorationThicknessDelta: decorationThicknessDelta,
+      fontFamily: fontFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSizeFactor: fontSizeFactor,
+      fontSizeDelta: fontSizeDelta,
+      fontWeightDelta: fontWeightDelta,
+      fontStyle: fontStyle,
+      letterSpacingFactor: letterSpacingFactor,
+      letterSpacingDelta: letterSpacingDelta,
+      wordSpacingFactor: wordSpacingFactor,
+      wordSpacingDelta: wordSpacingDelta,
+      heightFactor: heightFactor,
+      heightDelta: heightDelta,
+      textBaseline: textBaseline,
+      leadingDistribution: leadingDistribution,
+      locale: locale,
+      shadows: shadows,
+      fontFeatures: fontFeatures,
+      fontVariations: fontVariations,
+      package: package,
+      overflow: overflow,
+    );
+  }
+
+  @override
+  ui.Paint? get background => delegate.background;
+
+  @override
+  ui.Color? get backgroundColor => delegate.backgroundColor;
+
+  @override
+  ui.Color? get color => delegate.color;
+
+  @override
+  RenderComparison compareTo(TextStyle other) {
+    return delegate.compareTo(other);
+  }
+
+  @override
+  TextStyle copyWith({
+    bool? inherit,
+    ui.Color? color,
+    ui.Color? backgroundColor,
+    double? fontSize,
+    ui.FontWeight? fontWeight,
+    ui.FontStyle? fontStyle,
+    double? letterSpacing,
+    double? wordSpacing,
+    ui.TextBaseline? textBaseline,
+    double? height,
+    ui.TextLeadingDistribution? leadingDistribution,
+    ui.Locale? locale,
+    ui.Paint? foreground,
+    ui.Paint? background,
+    List<ui.Shadow>? shadows,
+    List<ui.FontFeature>? fontFeatures,
+    List<ui.FontVariation>? fontVariations,
+    ui.TextDecoration? decoration,
+    ui.Color? decorationColor,
+    ui.TextDecorationStyle? decorationStyle,
+    double? decorationThickness,
+    String? debugLabel,
+    String? fontFamily,
+    List<String>? fontFamilyFallback,
+    String? package,
+    TextOverflow? overflow,
+  }) {
+    return delegate.copyWith(
+      inherit: inherit,
+      color: color,
+      backgroundColor: backgroundColor,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      fontStyle: fontStyle,
+      letterSpacing: letterSpacing,
+      wordSpacing: wordSpacing,
+      textBaseline: textBaseline,
+      height: height,
+      leadingDistribution: leadingDistribution,
+      locale: locale,
+      foreground: foreground,
+      background: background,
+      shadows: shadows,
+      fontFeatures: fontFeatures,
+      fontVariations: fontVariations,
+      decoration: decoration,
+      decorationColor: decorationColor,
+      decorationStyle: decorationStyle,
+      decorationThickness: decorationThickness,
+      debugLabel: debugLabel,
+      fontFamily: fontFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      package: package,
+      overflow: overflow,
+    );
+  }
+
+  TextStyle call({
+    bool? inherit,
+    ui.Color? color,
+    ui.Color? backgroundColor,
+    double? fontSize,
+    ui.FontWeight? fontWeight,
+    ui.FontStyle? fontStyle,
+    double? letterSpacing,
+    double? wordSpacing,
+    ui.TextBaseline? textBaseline,
+    double? height,
+    ui.TextLeadingDistribution? leadingDistribution,
+    ui.Locale? locale,
+    ui.Paint? foreground,
+    ui.Paint? background,
+    List<ui.Shadow>? shadows,
+    List<ui.FontFeature>? fontFeatures,
+    List<ui.FontVariation>? fontVariations,
+    ui.TextDecoration? decoration,
+    ui.Color? decorationColor,
+    ui.TextDecorationStyle? decorationStyle,
+    double? decorationThickness,
+    String? debugLabel,
+    String? fontFamily,
+    List<String>? fontFamilyFallback,
+    String? package,
+    TextOverflow? overflow,
+  }) {
+    return delegate.copyWith(
+      inherit: inherit,
+      color: color,
+      backgroundColor: backgroundColor,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      fontStyle: fontStyle,
+      letterSpacing: letterSpacing,
+      wordSpacing: wordSpacing,
+      textBaseline: textBaseline,
+      height: height,
+      leadingDistribution: leadingDistribution,
+      locale: locale,
+      foreground: foreground,
+      background: background,
+      shadows: shadows,
+      fontFeatures: fontFeatures,
+      fontVariations: fontVariations,
+      decoration: decoration,
+      decorationColor: decorationColor,
+      decorationStyle: decorationStyle,
+      decorationThickness: decorationThickness,
+      debugLabel: debugLabel,
+      fontFamily: fontFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      package: package,
+      overflow: overflow,
+    );
+  }
+
+  @override
+  void debugFillProperties(
+    DiagnosticPropertiesBuilder properties, {
+    String prefix = '',
+  }) {
+    delegate.debugFillProperties(properties, prefix: prefix);
+  }
+
+  @override
+  String? get debugLabel => delegate.debugLabel;
+
+  @override
+  ui.TextDecoration? get decoration => delegate.decoration;
+
+  @override
+  ui.Color? get decorationColor => delegate.decorationColor;
+
+  @override
+  ui.TextDecorationStyle? get decorationStyle => delegate.decorationStyle;
+
+  @override
+  double? get decorationThickness => delegate.decorationThickness;
+
+  @override
+  String? get fontFamily => delegate.fontFamily;
+
+  @override
+  List<String>? get fontFamilyFallback => delegate.fontFamilyFallback;
+
+  @override
+  List<ui.FontFeature>? get fontFeatures => delegate.fontFeatures;
+
+  @override
+  double? get fontSize => delegate.fontSize;
+
+  @override
+  ui.FontStyle? get fontStyle => delegate.fontStyle;
+
+  @override
+  List<ui.FontVariation>? get fontVariations => delegate.fontVariations;
+
+  @override
+  ui.FontWeight? get fontWeight => delegate.fontWeight;
+
+  @override
+  ui.Paint? get foreground => delegate.foreground;
+
+  @override
+  ui.ParagraphStyle getParagraphStyle({
+    ui.TextAlign? textAlign,
+    ui.TextDirection? textDirection,
+    TextScaler textScaler = TextScaler.noScaling,
+    String? ellipsis,
+    int? maxLines,
+    ui.TextHeightBehavior? textHeightBehavior,
+    ui.Locale? locale,
+    String? fontFamily,
+    double? fontSize,
+    ui.FontWeight? fontWeight,
+    ui.FontStyle? fontStyle,
+    double? height,
+    StrutStyle? strutStyle,
+  }) {
+    return delegate.getParagraphStyle(
+      textAlign: textAlign,
+      textDirection: textDirection,
+      textScaler: textScaler,
+      ellipsis: ellipsis,
+      maxLines: maxLines,
+      textHeightBehavior: textHeightBehavior,
+      locale: locale,
+      fontFamily: fontFamily,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      fontStyle: fontStyle,
+      height: height,
+      strutStyle: strutStyle,
+    );
+  }
+
+  @override
+  ui.TextStyle getTextStyle({
+    double textScaleFactor = 1.0,
+    TextScaler textScaler = TextScaler.noScaling,
+  }) {
+    return delegate.getTextStyle(
+      textScaleFactor: textScaleFactor,
+      textScaler: textScaler,
+    );
+  }
+
+  @override
+  double? get height => delegate.height;
+
+  @override
+  bool get inherit => delegate.inherit;
+
+  @override
+  ui.TextLeadingDistribution? get leadingDistribution =>
+      delegate.leadingDistribution;
+
+  @override
+  double? get letterSpacing => delegate.letterSpacing;
+
+  @override
+  ui.Locale? get locale => delegate.locale;
+
+  @override
+  TextStyle merge(TextStyle? other) {
+    return delegate.merge(other);
+  }
+
+  @override
+  TextOverflow? get overflow => delegate.overflow;
+
+  @override
+  List<ui.Shadow>? get shadows => delegate.shadows;
+
+  @override
+  ui.TextBaseline? get textBaseline => delegate.textBaseline;
+
+  @override
+  DiagnosticsNode toDiagnosticsNode({
+    String? name,
+    DiagnosticsTreeStyle? style,
+  }) {
+    return delegate.toDiagnosticsNode(name: name, style: style);
+  }
+
+  @override
+  String toStringShort() {
+    return delegate.toStringShort();
+  }
+
+  @override
+  double? get wordSpacing => delegate.wordSpacing;
+
+  @override
+  String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
+    return super.toString();
+  }
+}
+
+// ignore: must_be_immutable
+class GameFont extends GameAsset with TextStyleWannabe {
+  final String family;
+  final AssetSource source;
+
+  GameFont(this.source, this.family);
+
+  @override
+  TextStyle get delegate => TextStyle(fontFamily: family);
+
+  bool _isLoaded = false;
+
+  @override
+  Future<void> load() async {
+    if (isLoaded) return;
+    final bytes = await source.loadBytes();
+    await (FontLoader(
+      source.name,
+    )..addFont(Future.value(ByteData.view(bytes.buffer)))).load();
+    _isLoaded = true;
+  }
+
+  @override
+  bool get isLoaded => _isLoaded;
+
+  @override
+  void unload() {
+    _isLoaded = false;
+  }
+}
+
 /// Represents the current progress of an asynchronous asset loading operation.
 ///
 /// This class provides metadata about how many assets have been loaded out of
@@ -255,7 +986,7 @@ mixin AudioAssetEnum on AssetEnum implements GameAudio {
 /// transition screens.
 ///
 /// ```dart
-/// enum MyImages with AssetEnum, TextureAssetEnum {
+/// enum MyImages with AssetEnum, AssetTextureEnum {
 ///   hero;
 ///   @override
 ///   AssetSource get source => AssetSource.local('hero.png');
@@ -278,7 +1009,7 @@ class GameAssetProgress {
   ///
   /// This property provides access to the [GameAsset] instance that triggered
   /// this progress update, allowing for per-asset initialization if needed.
-  final GameAsset loadingAsset;
+  final AssetEnum loadingAsset;
 
   /// The total number of assets that have completed loading so far.
   ///
@@ -303,6 +1034,8 @@ class GameAssetProgress {
   /// This is a convenience getter that divides [assetLoaded] by [assetCount]
   /// to determine the overall progress of the batch.
   double get progress => assetLoaded / assetCount;
+
+  double get percentage => progress * 100;
 }
 
 /// The base class for all managed resources within the engine.
@@ -332,12 +1065,6 @@ class GameAssetProgress {
 /// See also:
 /// * [AssetSource] for the various origin points of asset data.
 abstract class GameAsset {
-  /// The source from which this asset retrieves its raw data.
-  ///
-  /// This getter must be implemented by subclasses to provide the appropriate
-  /// [AssetSource] (e.g., [LocalSource] or [NetworkSource]).
-  AssetSource get source;
-
   /// Batch loads multiple assets and reports progress over time.
   ///
   /// This static method returns a stream of [GameAssetProgress] objects,
@@ -376,6 +1103,35 @@ abstract class GameAsset {
   void unload();
 }
 
+/// Base class for a packed texture atlas.
+///
+/// Obtain an instance via [groupTexture] (in texture_group.dart).
+/// Query [atlasImageFor] and [atlasRectFor] to look up where a texture was
+/// packed. Both return null when [isDisposed] or when the texture was unloaded.
+abstract class TextureGroup {
+  static int _nextId = 0;
+
+  /// Globally unique identifier. Auto-incremented on construction.
+  final int id = _nextId++;
+
+  /// Whether this group has been disposed and its atlas image freed.
+  bool get isDisposed;
+
+  /// The atlas [ui.Image] that contains [tex], or null if not present / disposed.
+  ui.Image? atlasImageFor(GameTexture tex);
+
+  /// The pixel rect within [atlasImageFor] where [tex] was packed.
+  /// Returns null if not present or disposed.
+  ui.Rect? atlasRectFor(GameTexture tex);
+
+  /// Frees the atlas image(s). Does not repack — renderer falls back to
+  /// individual textures automatically.
+  void dispose();
+
+  /// Called by [GameTexture.unload]. Do not call externally.
+  void onTextureUnloaded(GameTexture texture);
+}
+
 /// A managed image resource that can be rendered or manipulated.
 ///
 /// This class handles the loading of image data from an [AssetSource] and
@@ -394,19 +1150,38 @@ abstract class GameAsset {
 ///
 /// See also:
 /// * [GameAsset] for the base asset lifecycle.
-/// * [TextureAssetEnum] for enum-based texture registries.
-class GameTexture extends GameAsset {
-  @override
-  final AssetSource source;
-
-  /// Creates a new texture from the specified [source].
+/// * [AssetTextureEnum] for enum-based texture registries.
+abstract class GameTexture extends GameAsset {
+  /// Creates a [GameTexture] that wraps an already-decoded [ui.Image].
   ///
-  /// * [source]: The origin of the texture data.
-  GameTexture(this.source);
+  /// The texture is immediately loaded — [isLoaded] returns `true` and no
+  /// [load] call is needed. Use this for procedurally generated images or
+  /// textures decoded outside the asset pipeline.
+  ///
+  /// Pixel-manipulation methods ([getPixel], [setPixel], etc.) are not
+  /// available on inline textures because the raw pixel buffer is not decoded.
+  factory GameTexture.fromImage(ui.Image image) => _InlineTexture(image);
+
+  GameTexture();
+  GameTexture._fromImage(ui.Image image) {
+    _loadedImage = image;
+  }
 
   ui.Image? _loadedImage;
   Uint32List? _buffer;
   bool _isDirty = false;
+
+  // Groups that have packed this texture into an atlas.
+  final List<TextureGroup> _groups = [];
+
+  /// Read-only view of atlas groups that contain this texture.
+  Iterable<TextureGroup> get textureGroups => _groups;
+
+  /// Registers [g] as an owner of this texture. Called by [groupTexture].
+  void addTextureGroup(TextureGroup g) => _groups.add(g);
+
+  /// Removes [g]. Called when a group is disposed externally.
+  void removeTextureGroup(TextureGroup g) => _groups.remove(g);
 
   /// The horizontal pixel count of the loaded texture.
   ///
@@ -422,24 +1197,11 @@ class GameTexture extends GameAsset {
   bool get isLoaded => _loadedImage != null;
 
   @override
-  Future<void> load() async {
-    if (isLoaded) return;
-    final bytes = await source.loadBytes();
-    final codec = await ui.instantiateImageCodec(bytes);
-    try {
-      final frameInfo = await codec.getNextFrame();
-      _loadedImage = frameInfo.image;
-      final byteData = await _loadedImage!.toByteData(
-        format: ui.ImageByteFormat.rawRgba,
-      );
-      _buffer = Uint32List.fromList(byteData!.buffer.asUint32List());
-    } finally {
-      codec.dispose();
-    }
-  }
-
-  @override
   void unload() {
+    for (final g in List.of(_groups)) {
+      g.onTextureUnloaded(this);
+    }
+    _groups.clear();
     _loadedImage = null;
     _buffer = null;
     _isDirty = false;
@@ -631,6 +1393,43 @@ class GameTexture extends GameAsset {
   }
 }
 
+// Pre-loaded texture wrapping a caller-supplied [ui.Image].
+// load() is a no-op; pixel buffer is not populated.
+class _InlineTexture extends GameTexture {
+  _InlineTexture(ui.Image image) : super._fromImage(image);
+
+  @override
+  Future<void> load() async {} // already loaded
+}
+
+/// A [GameTexture] loaded from an [AssetSource] (local bundle or network).
+///
+/// This is the standard texture type for assets packaged with the game.
+/// Use [AssetTexture] directly when you need to reference the [source], or
+/// prefer [AssetTextureEnum] for enum-based asset registries.
+class AssetTexture extends GameTexture {
+  final AssetSource source;
+
+  AssetTexture(this.source);
+
+  @override
+  Future<void> load() async {
+    if (isLoaded) return;
+    final bytes = await source.loadBytes();
+    final codec = await ui.instantiateImageCodec(bytes);
+    try {
+      final frameInfo = await codec.getNextFrame();
+      _loadedImage = frameInfo.image;
+      final byteData = await _loadedImage!.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      );
+      _buffer = Uint32List.fromList(byteData!.buffer.asUint32List());
+    } finally {
+      codec.dispose();
+    }
+  }
+}
+
 /// A managed audio resource that can be played by the engine.
 ///
 /// This class handles the loading of audio data from an [AssetSource] and
@@ -649,7 +1448,6 @@ class GameTexture extends GameAsset {
 /// * [GameAsset] for the base asset lifecycle.
 /// * [AudioAssetEnum] for enum-based audio registries.
 class GameAudio extends GameAsset {
-  @override
   final AssetSource source;
 
   /// Creates a new audio asset from the specified [source].

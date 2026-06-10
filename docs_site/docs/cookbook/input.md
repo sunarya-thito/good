@@ -2,13 +2,11 @@
 sidebar_position: 3
 ---
 
-# Cookbook: Input & Movement
+# Input & Movement
 
-Goo2D uses an action-based input system. Instead of checking for specific keys, you define logical actions (like "move") and bind keys to them. This tutorial explains how to implement smooth 2D movement and a polished "banking" effect.
+This page shows how to read keyboard input and move a game object in response. A ship moves in four directions using WASD keys, and tilts slightly to show which direction it is heading.
 
 ## Live Demo
-
-Click "Play" below to see the result. Use **WASD** or **Arrow Keys** to move the ship. Notice how it tilts as it turns.
 
 <iframe 
   src="/goo2d/play/#/input" 
@@ -19,7 +17,7 @@ Click "Play" below to see the result. Use **WASD** or **Arrow Keys** to move the
 
 ## Assets Used
 
-This tutorial uses assets from the [Kenney Pixel Shmup](https://kenney-assets.itch.io/pixel-shmup) pack.
+This example uses assets from the [Kenney Pixel Shmup](https://kenney-assets.itch.io/pixel-shmup) pack.
 
 | Preview | Asset | Action |
 | :--- | :--- | :--- |
@@ -30,11 +28,10 @@ This tutorial uses assets from the [Kenney Pixel Shmup](https://kenney-assets.it
 ## Tutorial
 
 ### 0. Asset Setup
-Before writing any code, you must register your assets with Flutter.
 
-1.  Create a directory named `assets/sprites/` in your project root.
-2.  Place the `ship.png` file into that directory.
-3.  Add the directory to your `pubspec.yaml` file:
+1. Create `assets/sprites/` in your project root.
+2. Place `ship.png` in that directory.
+3. Register it in `pubspec.yaml`:
 
 ```yaml
 flutter:
@@ -42,338 +39,293 @@ flutter:
     - assets/sprites/
 ```
 
-### 1. Basic Imports & main()
-Start with the minimum imports and the entry point of your application.
+### 1. Imports, Asset Enum, and main()
 
 ```dart
 // Add this: ------
 import 'package:flutter/material.dart';
 import 'package:goo2d/goo2d.dart';
 
-void main() => runApp(const InputExample());
-// ----------------
-```
-
-We import the Goo2D package and standard Flutter material library. The `main` function starts our root widget.
-
-### 2. The Root Widget
-Create a `StatelessWidget` that will act as the root of your application.
-
-```dart
-import 'package:flutter/material.dart';
-import 'package:goo2d/goo2d.dart';
-
-void main() => runApp(const InputExample());
-
-// Add this: ------
-class InputExample extends StatelessWidget {
-  const InputExample({super.key});
+enum GameTextures with AssetEnum, TextureAssetEnum {
+  ship;
 
   @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: Scaffold(
-        body: Center(child: Text("Loading...")),
-      ),
-    );
-  }
+  AssetSource get source => AssetSource.local('assets/sprites/$name.png');
 }
-// ----------------
+
+void main() => runApp(const InputExample());
+// --------
 ```
 
-The `InputExample` widget sets up a standard `MaterialApp`. For now, it just shows a simple loading text while we prepare the game assets.
-
-### 3. Defining Textures
-Use an `enum` with `AssetEnum` and `TextureAssetEnum` to manage your sprite assets cleanly.
+### 2. Root Widget
 
 ```dart
 import 'package:flutter/material.dart';
 import 'package:goo2d/goo2d.dart';
 
-void main() => runApp(const InputExample());
-
-// Add this: ------
 enum GameTextures with AssetEnum, TextureAssetEnum {
   ship;
   @override
-  AssetSource get source => AssetSource.local("assets/sprites/$name.png");
+  AssetSource get source => AssetSource.local('assets/sprites/$name.png');
 }
-// ----------------
 
-class InputExample extends StatelessWidget {
-  const InputExample({super.key});
+void main() => runApp(const InputExample());
 
-  @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: Scaffold(
-        body: Center(child: Text("Loading...")),
-      ),
-    );
-  }
-}
-```
-
-This enum acts as a strongly-typed registry for our sprites. The `AssetSource.local` helper automatically maps the enum names to the file paths in your assets folder.
-
-### 4. Loading Assets
-Wrap your game in a `FutureBuilder` and use `GameAsset.loadAll` to ensure textures are ready before the engine starts.
-
-```dart
+// Add this: ------
 class InputExample extends StatelessWidget {
   const InputExample({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      // Add this: ------
       home: FutureBuilder(
         future: GameAsset.loadAll(GameTextures.values).drain(),
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
-          return const Game(child: MyGameWidget());
+          return const Game(child: InputWorld());
         },
       ),
-      // ----------------
+    );
+  }
+}
+// --------
+```
+
+### 3. Game World Scaffold
+
+```dart
+// Add this: ------
+class InputWorld extends StatefulGameWidget {
+  const InputWorld({super.key});
+
+  @override
+  GameState<InputWorld> createState() => InputWorldState();
+}
+
+class InputWorldState extends GameState<InputWorld> {
+  @override
+  Iterable<Widget> build(BuildContext context) sync* {}
+}
+// --------
+```
+
+### 4. Camera
+
+Yield a camera so the game scene is visible.
+
+```dart
+class InputWorldState extends GameState<InputWorld> {
+  @override
+  Iterable<Widget> build(BuildContext context) sync* {
+    // Add this: ------
+    yield GameObjectWidget(
+      children: [
+        ComponentWidget(ObjectTransform.new),
+        ComponentWidget(
+          Camera.new.withInitialValues((c) => c.orthographicSize = 5.0),
+        ),
+      ],
+    );
+    // --------
+  }
+}
+```
+
+`orthographicSize` is the half-height of the camera in world units. A value of `5.0` means 10 units are visible top-to-bottom.
+
+### 5. Empty Player Widget
+
+Define the `Player` widget that will hold the ship sprite and movement logic.
+
+```dart
+// Add this: ------
+class Player extends StatefulGameWidget {
+  const Player({super.key});
+
+  @override
+  GameState<Player> createState() => PlayerState();
+}
+
+class PlayerState extends GameState<Player> {
+  @override
+  Iterable<Widget> build(BuildContext context) sync* {}
+}
+// --------
+```
+
+### 6. Add the Player to the World
+
+```dart
+class InputWorldState extends GameState<InputWorld> {
+  @override
+  Iterable<Widget> build(BuildContext context) sync* {
+    // Add this: ------
+    yield const Player();
+    // --------
+
+    yield GameObjectWidget(
+      children: [
+        ComponentWidget(ObjectTransform.new),
+        ComponentWidget(
+          Camera.new.withInitialValues((c) => c.orthographicSize = 5.0),
+        ),
+      ],
     );
   }
 }
 ```
 
-Game textures must be uploaded to the GPU before they can be rendered. `GameAsset.loadAll().drain()` waits for all registered assets to be fully loaded, preventing "flickering" or missing sprites when the game starts.
+### 7. Player Components
 
-### 5. The Empty Game Widget
-Define the `StatefulGameWidget` and its corresponding `GameState`.
-
-```dart
-// ... enum definitions ...
-
-// Add this: ------
-class MyGameWidget extends StatefulGameWidget {
-  const MyGameWidget({super.key});
-  @override
-  GameState<MyGameWidget> createState() => MyGameState();
-}
-
-class MyGameState extends GameState<MyGameWidget> {
-  @override
-  Iterable<Widget> build(BuildContext context) sync* {
-  }
-}
-// ----------------
-```
-
-The `MyGameWidget` widget is the container for our game simulation. It uses a `GameState` to manage the lifecycle and components of the game world.
-
-### 6. Adding the Camera
-Every game world needs a camera to define what part of the space is visible on screen.
+In `PlayerState.initState`, attach the transform and sprite renderer.
 
 ```dart
-class MyGameState extends GameState<MyGameWidget> {
-  @override
-  Iterable<Widget> build(BuildContext context) sync* {
-    // Add this: ------
-    yield GameWidget(components: () => [ObjectTransform(), Camera()..orthographicSize = 5.0]);
-    // ----------------
-  }
-}
-```
-
-We yield a `GameWidget` containing a `Camera` component. The `orthographicSize = 5.0` determines the vertical view size; specifically, it means 5 world units from the center of the screen to the top and bottom edges.
-
-### 7. Defining the Movement Behavior
-Create the `PlayerMovement` behavior class. Behaviours are used to add custom logic to your game objects.
-
-```dart
-// Add this: ------
-class PlayerMovement extends Behavior with Tickable {
-  @override
-  void onUpdate(double dt) {
-  }
-}
-// ----------------
-```
-
-We create a class that extends `Behavior` and mixes in `Tickable`.
-
-### 8. Adding the InputAction Property
-Behaviours need to know which input action they should listen to.
-
-```dart
-class PlayerMovement extends Behavior with Tickable {
-  // Add this: ------
-  late InputAction moveAction;
-  // ----------------
-
-  @override
-  void onUpdate(double dt) {
-  }
-}
-```
-
-We add a `late InputAction moveAction` property. This will be initialized when we spawn the player, allowing the behavior to read input values.
-
-### 9. Implementing Smooth Movement
-Read the input value and update the object's position every frame.
-
-```dart
-class PlayerMovement extends Behavior with Tickable {
-  late InputAction moveAction;
-
-  @override
-  void onUpdate(double dt) {
-    // Add this: ------
-    final moveVector = moveAction.readValue<Offset>();
-    final transform = getComponent<ObjectTransform>();
-    
-    // Move at 5.0 world units per second
-    transform.position += moveVector * 5.0 * dt;
-    // ----------------
-  }
-}
-```
-
-Inside `onUpdate`, we use `readValue<Offset>()` to get the current 2D movement vector (e.g., from a joystick or composite keys). We multiply this by a speed of `5.0` and `dt` (delta time) to ensure smooth, frame-independent movement.
-
-### 10. Adding the "Tilt" Effect
-Add a subtle rotation to the ship based on its horizontal movement.
-
-```dart
-class PlayerMovement extends Behavior with Tickable {
-  late InputAction moveAction;
-
-  @override
-  void onUpdate(double dt) {
-    final moveVector = moveAction.readValue<Offset>();
-    final transform = getComponent<ObjectTransform>();
-    
-    transform.position += moveVector * 5.0 * dt;
-
-    // Add this: ------
-    // Target rotation is based on horizontal movement
-    final targetRotation = -moveVector.dx * 0.5;
-    
-    // Smoothly interpolate (lerp) towards the target rotation
-    transform.angle = lerpDouble(transform.angle, targetRotation, 10.0 * dt);
-    // ----------------
-  }
-
-  // Add this: ------
-  double lerpDouble(double a, double b, double t) {
-    return a + (b - a) * t.clamp(0.0, 1.0);
-  }
-  // ----------------
-}
-```
-
-To create a polished feel, we calculate a `targetRotation` based on the horizontal input. We then use a custom `lerpDouble` helper to smoothly transition the ship's `angle`. This gives the ship a satisfying "banking" look when turning.
-
-### 11. Defining the Game State Action
-We need a place to store our persistent input action.
-
-```dart
-class MyGameState extends GameState<MyGameWidget> {
-  // Add this: ------
-  late final InputAction moveAction;
-  // ----------------
-
-  @override
-  Iterable<Widget> build(BuildContext context) sync* {
-    yield GameWidget(components: () => [ObjectTransform(), Camera()..orthographicSize = 5.0]);
-  }
-}
-```
-
-The `GameState` is the perfect place to define input actions that should persist across different game objects.
-
-### 12. Configuring Input Bindings
-In `initState`, bind both WASD and Arrow Keys to the move action.
-
-```dart
-class MyGameState extends GameState<MyGameWidget> {
-  late final InputAction moveAction;
-
+class PlayerState extends GameState<Player> {
   // Add this: ------
   @override
   void initState() {
     super.initState();
-    moveAction = createInputAction(
-      name: 'move',
-      type: InputActionType.value,
-      bindings: [
-        InputBinding.composite(
-          up: game.input.keyboard.keyW,
-          down: game.input.keyboard.keyS,
-          left: game.input.keyboard.keyA,
-          right: game.input.keyboard.keyD,
+    addComponent(
+      ObjectTransform()..position = Vector2.zero(),
+      SpriteRenderer()
+        ..sprite = GameSprite(
+          mesh: SimpleMesh(texture: GameTextures.ship),
+          pixelsPerUnit: 64.0,
         ),
-        InputBinding.composite(
-          up: game.input.keyboard.upArrow,
-          down: game.input.keyboard.downArrow,
-          left: game.input.keyboard.leftArrow,
-          right: game.input.keyboard.rightArrow,
-        ),
-      ],
     );
   }
-  // ----------------
+  // --------
 
   @override
-  Iterable<Widget> build(BuildContext context) sync* {
-    yield GameWidget(components: () => [ObjectTransform(), Camera()..orthographicSize = 5.0]);
-  }
+  Iterable<Widget> build(BuildContext context) sync* {}
 }
 ```
 
-We use `InputBinding.composite` to combine four individual keys into a single 2D vector. By adding both WASD and `upArrow`/`downArrow` etc., we provide multiple control schemes for the player.
+`SimpleMesh` wraps a loaded texture and passes it to `GameSprite`. `pixelsPerUnit` determines how large the sprite appears in world space — a 64×64 pixel image with `pixelsPerUnit: 64.0` renders as 1×1 world unit.
 
-### 13. Spawning the Player Entity
-Finally, yield the player ship into the game world using the `GameWidget`.
+### 8. Declare the Move Action
+
+Add an `InputAction` field and register it with WASD composite bindings.
 
 ```dart
-class MyGameState extends GameState<MyGameWidget> {
-  // ... initState and variables ...
+class PlayerState extends GameState<Player> {
+  // Add this: ------
+  late InputAction moveAction;
+  // --------
 
   @override
-  Iterable<Widget> build(BuildContext context) sync* {
+  void initState() {
+    super.initState();
     // Add this: ------
-    yield GameWidget(
-      components: () => [
-        ObjectTransform()..position = Offset.zero,
-        SpriteRenderer()
-          ..sprite = GameSprite(
-            texture: GameTextures.ship,
-            pixelsPerUnit: 32.0, // Larger visual size
-          ),
-        PlayerMovement()..moveAction = moveAction,
-      ],
-    );
-    // ----------------
+    moveAction = InputAction()
+      ..name = 'move'
+      ..type = InputActionType.value
+      ..bindings = [
+        InputBinding.composite(
+          up: Keyboard.keyW,
+          down: Keyboard.keyS,
+          left: Keyboard.keyA,
+          right: Keyboard.keyD,
+        ),
+      ];
+    addComponent(moveAction);
+    // --------
 
-    yield GameWidget(components: () => [ObjectTransform(), Camera()..orthographicSize = 5.0]);
+    addComponent(
+      ObjectTransform()..position = Vector2.zero(),
+      SpriteRenderer()
+        ..sprite = GameSprite(
+          mesh: SimpleMesh(texture: GameTextures.ship),
+          pixelsPerUnit: 64.0,
+        ),
+    );
   }
+
+  @override
+  Iterable<Widget> build(BuildContext context) sync* {}
 }
 ```
 
-We spawn the player at the center of the world. We set `pixelsPerUnit: 32.0` to make the ship appear larger and more prominent. We also pass our `moveAction` into the `PlayerMovement` behavior using the cascade operator.
+`InputActionType.value` means the action produces a continuous `Vector2` rather than a one-shot button event. `InputBinding.composite` maps four keys to the four cardinal directions of that vector — pressing W and D simultaneously gives `Vector2(1, 1)` before normalization.
+
+### 9. Apply Movement Each Frame
+
+Mix in `Tickable` and read the action's direction vector each frame.
+
+```dart
+// Add this: ------
+class PlayerState extends GameState<Player> with Tickable {
+// --------
+  late InputAction moveAction;
+
+  @override
+  void initState() { /* ... */ }
+
+  // Add this: ------
+  @override
+  void onUpdate(double dt) {
+    final dir = moveAction.readValue<Vector2>();
+    if (dir.length > 0) dir.normalize();
+    getComponent<ObjectTransform>().position += dir * 4.0 * dt;
+  }
+  // --------
+
+  @override
+  Iterable<Widget> build(BuildContext context) sync* {}
+}
+```
+
+`readValue<Vector2>()` returns the composite direction from the four bound keys. Normalizing it before multiplying prevents diagonal movement from being faster than axis-aligned movement. Multiplying by `dt` makes speed frame-rate independent.
+
+### 10. Add Visual Banking
+
+Tilt the ship left or right based on the horizontal input component.
+
+```dart
+class PlayerState extends GameState<Player> with Tickable {
+  late InputAction moveAction;
+
+  @override
+  void initState() { /* ... */ }
+
+  @override
+  void onUpdate(double dt) {
+    final dir = moveAction.readValue<Vector2>();
+    if (dir.length > 0) dir.normalize();
+    final transform = getComponent<ObjectTransform>();
+    transform.position += dir * 4.0 * dt;
+
+    // Add this: ------
+    final targetAngle = -dir.x * 0.4;
+    transform.angle += (targetAngle - transform.angle) * 10.0 * dt;
+    // --------
+  }
+
+  @override
+  Iterable<Widget> build(BuildContext context) sync* {}
+}
+```
+
+`transform.angle` is in radians. The target bank angle is ±0.4 radians (about ±23°) based on horizontal input. Lerping toward it at `10 * dt` gives a smooth banking effect instead of snapping.
 
 ---
 
-## Final Full Code
+## Final Code
 
 ```dart
 import 'package:flutter/material.dart';
 import 'package:goo2d/goo2d.dart';
 
-void main() => runApp(const InputExample());
-
 enum GameTextures with AssetEnum, TextureAssetEnum {
   ship;
+
   @override
-  AssetSource get source => AssetSource.local("assets/sprites/$name.png");
+  AssetSource get source => AssetSource.local('assets/sprites/$name.png');
 }
+
+void main() => runApp(const InputExample());
 
 class InputExample extends StatelessWidget {
   const InputExample({super.key});
@@ -387,84 +339,83 @@ class InputExample extends StatelessWidget {
           if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
-          return const Game(child: MyGameWidget());
+          return const Game(child: InputWorld());
         },
       ),
     );
   }
 }
 
-class MyGameWidget extends StatefulGameWidget {
-  const MyGameWidget({super.key});
+class InputWorld extends StatefulGameWidget {
+  const InputWorld({super.key});
+
   @override
-  GameState<MyGameWidget> createState() => MyGameState();
+  GameState<InputWorld> createState() => InputWorldState();
 }
 
-class MyGameState extends GameState<MyGameWidget> {
-  late final InputAction moveAction;
+class InputWorldState extends GameState<InputWorld> {
+  @override
+  Iterable<Widget> build(BuildContext context) sync* {
+    yield const Player();
+
+    yield GameObjectWidget(
+      children: [
+        ComponentWidget(ObjectTransform.new),
+        ComponentWidget(
+          Camera.new.withInitialValues((c) => c.orthographicSize = 5.0),
+        ),
+      ],
+    );
+  }
+}
+
+class Player extends StatefulGameWidget {
+  const Player({super.key});
+
+  @override
+  GameState<Player> createState() => PlayerState();
+}
+
+class PlayerState extends GameState<Player> with Tickable {
+  late InputAction moveAction;
 
   @override
   void initState() {
     super.initState();
-    moveAction = createInputAction(
-      name: 'move',
-      type: InputActionType.value,
-      bindings: [
+    moveAction = InputAction()
+      ..name = 'move'
+      ..type = InputActionType.value
+      ..bindings = [
         InputBinding.composite(
-          up: game.input.keyboard.keyW,
-          down: game.input.keyboard.keyS,
-          left: game.input.keyboard.keyA,
-          right: game.input.keyboard.keyD,
+          up: Keyboard.keyW,
+          down: Keyboard.keyS,
+          left: Keyboard.keyA,
+          right: Keyboard.keyD,
         ),
-        InputBinding.composite(
-          up: game.input.keyboard.upArrow,
-          down: game.input.keyboard.downArrow,
-          left: game.input.keyboard.leftArrow,
-          right: game.input.keyboard.rightArrow,
+      ];
+    addComponent(moveAction);
+
+    addComponent(
+      ObjectTransform()..position = Vector2.zero(),
+      SpriteRenderer()
+        ..sprite = GameSprite(
+          mesh: SimpleMesh(texture: GameTextures.ship),
+          pixelsPerUnit: 64.0,
         ),
-      ],
     );
   }
-
-  @override
-  Iterable<Widget> build(BuildContext context) sync* {
-    yield GameWidget(
-      components: () => [
-        ObjectTransform()..position = Offset.zero,
-        SpriteRenderer()
-          ..sprite = GameSprite(
-            texture: GameTextures.ship,
-            pixelsPerUnit: 32.0,
-          ),
-        PlayerMovement()..moveAction = moveAction,
-      ],
-    );
-
-    yield GameWidget(
-      components: () => [
-        ObjectTransform(),
-        Camera()..orthographicSize = 5.0,
-      ],
-    );
-  }
-}
-
-class PlayerMovement extends Behavior with Tickable {
-  late InputAction moveAction;
 
   @override
   void onUpdate(double dt) {
-    final moveVector = moveAction.readValue<Offset>();
+    final dir = moveAction.readValue<Vector2>();
+    if (dir.length > 0) dir.normalize();
     final transform = getComponent<ObjectTransform>();
-    
-    transform.position += moveVector * 5.0 * dt;
-
-    final targetRotation = -moveVector.dx * 0.5;
-    transform.angle = lerpDouble(transform.angle, targetRotation, 10.0 * dt);
+    transform.position += dir * 4.0 * dt;
+    final targetAngle = -dir.x * 0.4;
+    transform.angle += (targetAngle - transform.angle) * 10.0 * dt;
   }
 
-  double lerpDouble(double a, double b, double t) {
-    return a + (b - a) * t.clamp(0.0, 1.0);
-  }
+  @override
+  Iterable<Widget> build(BuildContext context) sync* {}
 }
 ```

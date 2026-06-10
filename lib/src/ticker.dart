@@ -102,7 +102,7 @@ mixin FixedTickable implements EventListener {
   /// lags behind the simulation.
   ///
   /// * [dt]: The constant time interval in seconds.
-  Future<void> onFixedUpdate(double dt);
+  FutureOr<void> onFixedUpdate(double dt);
 }
 
 /// An event that dispatches a fixed interval update to [FixedTickable] listeners.
@@ -137,7 +137,7 @@ class FixedTickEvent extends AsyncEvent<FixedTickable> {
   const FixedTickEvent(this.dt);
 
   @override
-  Future<void> dispatch(FixedTickable listener) {
+  FutureOr<void> dispatch(FixedTickable listener) {
     return listener.onFixedUpdate(dt);
   }
 }
@@ -275,7 +275,7 @@ class RenderGameLoop extends RenderProxyBox {
   /// The engine instance managed by this renderer.
   ///
   /// This field provides access to the engine's systems, allowing the
-  /// loop to dispatch ticks to the global [TickerState].
+  /// loop to dispatch ticks to the global [TickerSystem].
   GameEngine game;
 
   /// Ticker used to drive the frame updates.
@@ -329,7 +329,7 @@ class RenderGameLoop extends RenderProxyBox {
     if (_fixedTickRunning) return;
     _fixedTickRunning = true;
     try {
-      await game.getSystem<TickerState>()?.fixedTick();
+      await game.getSystem<TickerSystem>()?.fixedTick();
     } finally {
       _fixedTickRunning = false;
     }
@@ -350,7 +350,7 @@ class RenderGameLoop extends RenderProxyBox {
       game.screen.screenSize = size;
     }
 
-    game.getSystem<TickerState>()?.tick(dt);
+    game.getSystem<TickerSystem>()?.tick(dt);
 
     // After updating the game state, we need to ensure the renderer repaints.
     markNeedsPaint();

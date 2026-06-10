@@ -6,9 +6,26 @@ import 'package:goo2d/src/physics/worker/direct/direct_body_ops.dart';
 import 'package:goo2d/src/physics/worker/data/joint_type.dart';
 import 'package:goo2d/goo2d.dart';
 
-/// Joint that simulates a wheel by allowing rotation and applying a spring-force along a single line.
+/// Combines a spring-damper suspension axis with a free rotation pivot — suitable for vehicle wheels.
 ///
-/// Equivalent to Unity's `WheelJoint2D`.
+/// The body can rotate freely around [anchor], while also translating along the suspension axis
+/// with a spring governed by [JointSuspension.frequency] and [JointSuspension.dampingRatio].
+/// [suspension.angle] sets the axis direction in degrees (90 = vertical suspension).
+/// An optional [motor] drives rotation at a target speed (e.g. a wheel spinning).
+///
+/// ```dart
+/// addComponent(
+///   WheelJoint()
+///     ..connectedBody = chassisBody
+///     ..useMotor = true
+///     ..motor = JointMotor(motorSpeed: 300, maxMotorTorque: 50)
+///     ..suspension = JointSuspension(frequency: 4.0, dampingRatio: 0.7, angle: 90),
+/// );
+/// ```
+///
+/// See also:
+/// * [HingeJoint] for a pure pivot with no translation.
+/// * [SliderJoint] for a pure translation axis with no rotation.
 class WheelJoint extends Joint {
   @override
   int get jointType => JointType.wheel;
@@ -28,29 +45,33 @@ class WheelJoint extends Joint {
     worker.setJointProperty(handle, JointProp.wheelSuspensionAngle, _suspensionAngle);
   }
 
-  final Vector2 _anchor = Vector2.zero();
+  /// Local-space wheel attachment point on this body. Default `Vector2.zero()`.
   Vector2 get anchor => _anchor;
+  final Vector2 _anchor = Vector2.zero();
   set anchor(Vector2 value) {
     _anchor.setFrom(value);
     if (isAttached) worker.setJointProperty(handle, JointProp.anchor, value.clone());
   }
 
-  final Vector2 _connectedAnchor = Vector2.zero();
+  /// Local-space attachment point on the chassis body (or world-space if no body is connected).
   Vector2 get connectedAnchor => _connectedAnchor;
+  final Vector2 _connectedAnchor = Vector2.zero();
   set connectedAnchor(Vector2 value) {
     _connectedAnchor.setFrom(value);
     if (isAttached) worker.setJointProperty(handle, JointProp.connectedAnchor, value.clone());
   }
 
-  bool _autoConfigureConnectedAnchor = true;
+  /// When true, the engine sets [connectedAnchor] automatically. Default true.
   bool get autoConfigureConnectedAnchor => _autoConfigureConnectedAnchor;
+  bool _autoConfigureConnectedAnchor = true;
   set autoConfigureConnectedAnchor(bool value) {
     _autoConfigureConnectedAnchor = value;
     if (isAttached) worker.setJointProperty(handle, JointProp.autoConfigureConnectedAnchor, value);
   }
 
-  bool _useMotor = false;
+  /// When true, the motor applies torque to spin the wheel. Default false.
   bool get useMotor => _useMotor;
+  bool _useMotor = false;
   set useMotor(bool value) {
     _useMotor = value;
     if (isAttached) worker.setJointProperty(handle, JointProp.useMotor, value);
@@ -59,6 +80,7 @@ class WheelJoint extends Joint {
   double _motorSpeed = 0.0;
   double _maxMotorTorque = 10000.0;
 
+  /// Target spin speed (deg/s) and torque cap (N·m). Active when [useMotor] is true.
   JointMotor get motor => JointMotor(motorSpeed: _motorSpeed, maxMotorTorque: _maxMotorTorque);
   set motor(JointMotor value) {
     _motorSpeed = value.motorSpeed;
@@ -73,6 +95,7 @@ class WheelJoint extends Joint {
   double _frequency = 2.0;
   double _suspensionAngle = 90.0;
 
+  /// Spring suspension settings: oscillation [frequency] (Hz), [dampingRatio], and axis [angle] (degrees).
   JointSuspension get suspension => JointSuspension(frequency: _frequency, angle: _suspensionAngle, dampingRatio: _dampingRatio);
   set suspension(JointSuspension value) {
     _dampingRatio = value.dampingRatio;

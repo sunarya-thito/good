@@ -3,6 +3,13 @@ import 'dart:ui';
 
 import 'package:vector_math/vector_math_64.dart';
 
+extension ObjectExtension on Object? {
+  T as<T>() => this as T;
+  // because "is" is a reserved word, we can't have an "is<T>()" method, so we use "instanceof" instead.
+  bool instanceof<T>() => this is T;
+  bool isNot<T>() => this is! T;
+}
+
 /// Performs a linear interpolation between two values of type [T].
 ///
 /// This function calculates the value at the specified fraction [t] along

@@ -134,6 +134,42 @@ Uint8ListBuffer? _dispatch(PhysicsEngine engine, ByteData data) {
       }
       return Uint8ListBuffer();
 
+    case Opcode.stepWithContactDelta:
+      {
+        final dt = rd();
+        final opCount = ri();
+        for (var i = 0; i < opCount; i++) {
+          final opType = data.getUint8(off); off += 1;
+          switch (opType) {
+            case BatchOpType.createBody:
+              engine.createBodyWithHandle(ri());
+            case BatchOpType.destroyBody:
+              engine.destroyBody(ri());
+            case BatchOpType.setBodyProp:
+              final h = ri(); final p = ri(); DirectBodyOps.setProperty(engine, h, p, ro());
+            case BatchOpType.createCollider:
+              engine.createColliderWithHandle(ri(), ColliderShapeType.values[ri()], ri());
+            case BatchOpType.destroyCollider:
+              engine.destroyCollider(ri());
+            case BatchOpType.setColliderProp:
+              final h = ri(); final p = ri(); DirectColliderOps.setProperty(engine, h, p, ro());
+            case BatchOpType.createJoint:
+              engine.createJointWithHandle(ri(), ri(), ri());
+            case BatchOpType.destroyJoint:
+              engine.destroyJoint(ri());
+            case BatchOpType.setJointProp:
+              final h = ri(); final p = ri(); DirectJointOps.setProperty(engine, h, p, ro());
+            case BatchOpType.createEffector:
+              engine.createEffectorWithHandle(ri(), ri());
+            case BatchOpType.destroyEffector:
+              engine.destroyEffector(ri());
+            case BatchOpType.setEffectorProp:
+              final h = ri(); final p = ri(); DirectEffectorOps.setProperty(engine, h, p, ro());
+          }
+        }
+        return IsolateProtocol.writeContactDelta(engine.stepDelta(dt));
+      }
+
     case Opcode.step:
       engine.step(rd());
       return Uint8ListBuffer();
@@ -392,7 +428,7 @@ void _setProp(PhysicsEngine e, int entity, int h, int p, Object? v) {
   }
 }
 
-Object? _getBodyPropSync(PhysicsBody body, int p) {
+Object? _getBodyPropSync(EngineBody body, int p) {
   return switch (p) {
     BodyProp.position => body.position,
     BodyProp.rotation => body.rotation,

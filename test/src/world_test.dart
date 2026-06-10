@@ -11,6 +11,21 @@ class _MockPointerReceiver extends Component with PointerReceiver {
   void onPointerDown(PointerDownEvent event) => onDown();
 }
 
+Future<GameEngine> _createBaseEngine() => GameEngine.create({
+  TickerSystem.new,
+  InputSystem.new,
+  CameraSystem.new,
+  ScreenSystem.new,
+});
+
+Future<GameEngine> _createPhysicsEngine() => GameEngine.create({
+  TickerSystem.new,
+  InputSystem.new,
+  () => PhysicsSystem(forceDirectWorker: true),
+  CameraSystem.new,
+  ScreenSystem.new,
+});
+
 void main() {
   AutomatedTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -18,11 +33,11 @@ void main() {
     testWidgets(
       'should render children with camera transform when camera is ready',
       (tester) async {
-        final game = GameEngine();
+        final game = await _createBaseEngine();
 
         await tester.pumpWidget(
           Game(
-            game: game, // Corrected from engine
+            engine: game,
             child: GameObjectWidget(
               tag: 'MainCamera',
               children: [
@@ -43,20 +58,27 @@ void main() {
         final pos = camera.gameObject.getComponent<ObjectTransform>().position;
         expect(pos.x, closeTo(100, 0.0001));
         expect(pos.y, closeTo(200, 0.0001));
+
+        await game.dispose();
       },
     );
 
     testWidgets(
       'should fall back to default rendering when camera is NOT ready',
       (tester) async {
-        await tester.pumpWidget(Game(child: SizedBox(width: 100, height: 100)));
+        final engine = await _createBaseEngine();
+        await tester.pumpWidget(
+          Game(engine: engine, child: SizedBox(width: 100, height: 100)),
+        );
         await tester.pump();
 
         final renderWorld = tester.allRenderObjects
-            .whereType<RenderWorld>()
+            .whereType<RenderWorldSpace>()
             .firstOrNull;
         expect(renderWorld, isNotNull);
         expect(renderWorld!.game.cameras.isReady, isFalse);
+
+        await engine.dispose();
       },
     );
 
@@ -64,8 +86,11 @@ void main() {
       'should correctly transform hit test positions from screen to world space',
       (tester) async {
         bool hit = false;
+        final engine = await _createPhysicsEngine();
+
         await tester.pumpWidget(
           Game(
+            engine: engine,
             child: GameObjectWidget(
               tag: 'MainCamera',
               children: [
@@ -78,6 +103,7 @@ void main() {
                   update: (c) => c.position = Vector2.zero(),
                 ),
                 ComponentWidget(() => _MockPointerReceiver(() => hit = true)),
+                ComponentWidget(Rigidbody.new),
                 ComponentWidget(
                   BoxCollider.new,
                   update: (c) => c.size = Vector2(100, 100),
@@ -90,6 +116,8 @@ void main() {
 
         await tester.tapAt(const Offset(400, 300));
         expect(hit, isTrue);
+
+        await engine.dispose();
       },
     );
   });

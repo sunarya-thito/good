@@ -45,13 +45,22 @@ class _MockState extends GameState<MockStatefulWidget> {
   }
 }
 
+Future<GameEngine> _createEngine() => GameEngine.create({
+  TickerSystem.new,
+  InputSystem.new,
+  CameraSystem.new,
+  ScreenSystem.new,
+});
+
 void main() {
   testWidgets('StatefulGameWidget lifecycle', (tester) async {
+    final engine = await _createEngine();
     int initCalled = 0;
     int disposeCalled = 0;
 
     await tester.pumpWidget(
       Game(
+        engine: engine,
         child: Directionality(
           textDirection: TextDirection.ltr,
           child: Center(
@@ -82,6 +91,7 @@ void main() {
     // Update widget
     await tester.pumpWidget(
       Game(
+        engine: engine,
         child: Directionality(
           textDirection: TextDirection.ltr,
           child: Center(
@@ -105,15 +115,20 @@ void main() {
     expect(find.byKey(const ValueKey('child2')), findsOneWidget);
 
     // Dispose
-    await tester.pumpWidget(Game(child: const SizedBox()));
+    await tester.pumpWidget(Game(engine: engine, child: const SizedBox()));
     await tester.pump();
     expect(state.disposeCount, equals(1));
     expect(disposeCalled, equals(1));
+
+    await engine.dispose();
   });
 
   testWidgets('GameState.setState should trigger rebuild', (tester) async {
+    final engine = await _createEngine();
+
     await tester.pumpWidget(
       Game(
+        engine: engine,
         child: Directionality(
           textDirection: TextDirection.ltr,
           child: Center(
@@ -136,5 +151,7 @@ void main() {
     state.setState(() {});
     await tester.pump();
     expect(state.buildCount, equals(2));
+
+    await engine.dispose();
   });
 }

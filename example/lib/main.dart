@@ -8,7 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 // --- Assets ---
 
-enum MyGameTexture with AssetEnum, TextureAssetEnum {
+enum MyGameTexture with AssetEnum, AssetTextureEnum {
   ship,
   tilesPacked,
   enemy,
@@ -33,7 +33,6 @@ Future<void> loadAllGameAssets() async {
   await GoogleFonts.pendingFonts([
     GoogleFonts.jersey10(),
   ]);
-  await AudioSystem.initialize(); // we use audio, so we need to initialize it.
   await for (final p in GameAsset.loadAll(MyGameTexture.values)) {
     if (kDebugMode) {
       print(
@@ -62,12 +61,24 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+  GameEngine? _engine;
   late Future<void> _loadFuture;
 
   @override
   void initState() {
     super.initState();
-    _loadFuture = loadAllGameAssets();
+    _loadFuture = _initialize();
+  }
+
+  Future<void> _initialize() async {
+    _engine = await GameEngine.create();
+    await loadAllGameAssets();
+  }
+
+  @override
+  void dispose() {
+    _engine?.dispose();
+    super.dispose();
   }
 
   @override
@@ -84,6 +95,7 @@ class _MyAppState extends State<MyApp> {
             return DefaultTextStyle(
               style: GoogleFonts.jersey10(),
               child: Game(
+                engine: _engine!,
                 child: BattleWorld(),
               ),
             );
@@ -238,7 +250,7 @@ class BattleWorldState extends GameState<BattleWorld> with Tickable {
               SpriteRenderer.new.withInitialValues(
                 (c) => c
                   ..sprite = GameSprite(
-                    texture: MyGameTexture.enemy,
+                    mesh: SimpleMesh(texture: MyGameTexture.enemy),
                     pixelsPerUnit: 64.0,
                   )
                   ..filterQuality = ui.FilterQuality.none,
@@ -342,8 +354,8 @@ class PlayerState extends GameState<Player> with Tickable {
       Rigidbody()..bodyType = RigidbodyType.kinematic,
       SpriteRenderer()
         ..sprite = GameSprite(
-          texture: MyGameTexture.ship,
-          pivot: NormalizedPivot.center,
+          mesh: SimpleMesh(texture: MyGameTexture.ship),
+          pivot: Point2D.center,
           pixelsPerUnit: 64.0,
         )
         ..filterQuality = ui.FilterQuality.none,
@@ -442,7 +454,7 @@ class PlayerState extends GameState<Player> with Tickable {
 }
 
 class BulletController extends Behavior
-    with Tickable, LifecycleListener, CollisionListener {
+    with Tickable, LifecycleListener, PhysicsContactListener<Collider> {
   late Vector2 direction;
   late ObjectTransform _transform;
   late BattleWorldState world;
@@ -461,16 +473,15 @@ class BulletController extends Behavior
   }
 
   @override
-  Future<void> onCollisionEnter(Collision collision) async {
-    if (collision.otherCollider.gameObject.tryGetComponent<EnemyController>() !=
-        null) {
+  Future<void> onContactEnter(PhysicsContact<Collider> e) async {
+    if (e.bodyB.gameObject.tryGetComponent<EnemyController>() != null) {
       world._destroyObject(gameObject);
     }
   }
 }
 
 class EnemyController extends Behavior
-    with Tickable, LifecycleListener, CollisionListener {
+    with Tickable, LifecycleListener, PhysicsContactListener<Collider> {
   late ObjectTransform _transform;
   late BattleWorldState world;
   late double speed, _swerveOffset, _swerveSpeed;
@@ -505,8 +516,8 @@ class EnemyController extends Behavior
   }
 
   @override
-  Future<void> onCollisionEnter(Collision collision) async {
-    final other = collision.otherCollider;
+  Future<void> onContactEnter(PhysicsContact<Collider> e) async {
+    final other = e.bodyB;
     if (other.gameObject.tag == 'Player') {
       GameObject.findWithTag(gameObject, 'MainCamera')
           ?.getComponent<CameraShake>()
@@ -646,7 +657,8 @@ class TiledBackground extends Component with LifecycleListener, Renderable {
 
   @override
   void render(ui.Canvas canvas) {
-    final double size = _grass.rect.width / _grass.pixelsPerUnit;
+    final double size = _grass.size.width / _grass.pixelsPerUnit;
+    final grassMesh = _grass.mesh as SimpleMesh;
 
     // Get the visible area in world space.
     ui.Rect bounds = canvas.getLocalClipBounds();
@@ -703,8 +715,8 @@ class TiledBackground extends Component with LifecycleListener, Renderable {
       for (int x = startX; x <= enx; x++) {
         // Draw grass
         canvas.drawImageRect(
-          _grass.texture.image,
-          _grass.rect,
+          grassMesh.texture.image,
+          grassMesh.srcRect!,
           ui.Rect.fromLTWH(x * size, -(y * size + size), size, size),
           _paint,
         );
@@ -712,10 +724,10 @@ class TiledBackground extends Component with LifecycleListener, Renderable {
         // Draw deco (Random details)
         final h = _hash(x, y);
         if (h % 10 == 0) {
-          final deco = _sheet[(0, 3 + (h % 6))];
+          final decoMesh = _sheet[(0, 3 + (h % 6))].mesh as SimpleMesh;
           canvas.drawImageRect(
-            deco.texture.image,
-            deco.rect,
+            decoMesh.texture.image,
+            decoMesh.srcRect!,
             ui.Rect.fromLTWH(x * size, -(y * size + size), size, size),
             _paint,
           );

@@ -1,373 +1,348 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
-import 'package:goo2d/src/asset.dart';
-import 'package:goo2d/src/sprite_pivot.dart';
-import 'package:goo2d/src/sprite_mesh.dart';
-import 'package:goo2d/src/component.dart';
-import 'package:goo2d/src/render.dart';
+import 'package:goo2d/goo2d.dart';
 
-/// A representation of a single visual entity within a texture.
+/// Factory that builds a [SpriteMesh] for a given texture region.
 ///
-/// [GameSprite] defines a rectangular region of a [GameTexture] to be rendered 
-/// as a standalone image. It includes information about the sprite's pivot point, 
-/// its resolution (pixels per unit), and the mesh used for drawing.
+/// Used by [SpriteSheet] so each tile can get its own mesh (e.g. a
+/// [GridMesh.nineSlice]) without the sheet needing to know the texture up
+/// front. The default factory produces [SimpleMesh].
+typedef SpriteMeshFactory = SpriteMesh Function(
+  GameTexture texture,
+  ui.Rect srcRect,
+);
+
+/// Default [SpriteMeshFactory]: wraps each tile in a [SimpleMesh].
+SpriteMesh _defaultMeshFactory(GameTexture texture, ui.Rect srcRect) =>
+    SimpleMesh(texture: texture, srcRect: srcRect);
+
+// ---------------------------------------------------------------------------
+// GameSprite
+// ---------------------------------------------------------------------------
+
+/// A sprite backed by a [SpriteMesh] that owns its own texture and source rect.
 ///
 /// ```dart
-/// enum TextureAsset with AssetEnum, TextureAssetEnum {
-///   player('assets/player.png');
-///   const TextureAsset(this.path);
-///   final String path;
-///   @override
-///   AssetSource get source => AssetSource.local(path);
-/// }
-///
-/// void example() {
-///   final sprite = GameSprite(
-///     texture: TextureAsset.player,
-///     rect: const Rect.fromLTRB(0, 0, 32, 32),
-///     pivot: NormalizedPivot.center,
-///   );
-/// }
+/// final sprite = GameSprite(mesh: SimpleMesh(texture: Textures.player));
+/// final nineSliced = GameSprite(mesh: GridMesh.nineSlice(texture: Textures.button));
 /// ```
-///
-/// See also:
-/// * [SpriteRenderer] for the component that draws this sprite.
-/// * [GameTexture] for the source image data.
 class GameSprite {
-  /// The source texture containing the sprite's image data.
-  ///
-  /// This texture must be loaded before the sprite can be rendered. The sprite 
-  /// represents a view into this texture, either the whole thing or a sub-rect.
-  final GameTexture texture;
-
-  final ui.Rect? _rect;
-
-  /// The point within the sprite that acts as its origin for transformations.
-  ///
-  /// The pivot determines how the sprite is rotated and scaled. By default, 
-  /// most sprites use the center as their pivot.
-  final SpritePivot pivot;
-
-  /// The number of pixels that correspond to one world unit.
-  ///
-  /// This value is used to scale the sprite when rendering in world space. 
-  /// For example, a 100x100 pixel sprite with 100 pixels per unit will be 
-  /// 1x1 world units in size.
-  final double pixelsPerUnit;
-
-  /// The mesh used to define the geometry of the sprite.
-  ///
-  /// By default, a [SimpleMesh] is used, which renders a simple quad. Complex 
-  /// meshes can be used for effects like vertex deformation or sprite-sheet 
-  /// animations with shared geometry.
+  /// The mesh that owns this sprite's texture(s) and rendering geometry.
   final SpriteMesh mesh;
 
-  /// Creates a new [GameSprite] with the specified properties.
-  ///
-  /// This constructor allows for fine-grained control over how the texture 
-  /// region is interpreted and rendered within the game world.
-  ///
-  /// * [texture]: The source image for the sprite.
-  /// * [rect]: The rectangular region within the texture to use. Defaults 
-  /// to the entire texture.
-  /// * [pivot]: The origin point for transformations.
-  /// * [pixelsPerUnit]: The resolution scale for world-space rendering.
-  /// * [mesh]: The geometry used to draw the sprite.
+  /// The point within the sprite that acts as its origin for transformations.
+  final Point2D pivot;
+
+  /// The number of pixels that correspond to one world unit.
+  final double pixelsPerUnit;
+
   const GameSprite({
-    required this.texture,
-    ui.Rect? rect,
-    this.pivot = NormalizedPivot.center,
+    required this.mesh,
+    this.pivot = Point2D.center,
     this.pixelsPerUnit = 100.0,
-    this.mesh = const SimpleMesh(),
-  }) : _rect = rect;
+  });
 
-  /// The texture asset used by this sprite.
-  ///
-  /// This getter provides a semantic alias for [texture], emphasizing its 
-  /// role as a managed game asset.
-  GameTexture get textureAsset => texture;
+  /// The natural pixel size of the sprite, derived from [mesh].
+  ui.Size get size => mesh.size;
 
-  /// The rectangular region of the texture assigned to this sprite.
-  ///
-  /// If no specific rect was provided during construction, this returns 
-  /// the full dimensions of the underlying texture.
+  double get aspectRatio => size.width / size.height;
+
+  /// Shortcut for [mesh.texture]. Throws if the mesh uses multiple textures.
+  GameTexture get texture => mesh.texture;
+
+  /// Resolved source rect: [mesh.srcRect] if set, otherwise the full mesh size.
   ui.Rect get rect =>
-      _rect ??
-      ui.Rect.fromLTWH(
-        0,
-        0,
-        texture.width.toDouble(),
-        texture.height.toDouble(),
-      );
+      mesh.srcRect ?? ui.Rect.fromLTWH(0, 0, size.width, size.height);
 
-  /// Alias for [rect], specifically referring to its position on the texture.
-  ///
-  /// This property is often used by rendering systems to calculate UV 
-  /// coordinates for drawing the sprite's geometry.
-  ui.Rect get textureRect => rect;
+  /// Pivot offset in pixels from the sprite's top-left corner.
+  ui.Offset get pivotOffset => pivot.compute(size);
 
-  /// The dimensions of the sprite in pixels.
-  ///
-  /// This size is derived from the [rect] property and represents the 
-  /// unscaled visual area of the sprite.
-  ui.Size get size => rect.size;
-
-  /// The offset of the pivot point relative to the sprite's top-left corner.
-  ///
-  /// This value is calculated based on the [pivot] strategy and the 
-  /// sprite's [size]. It is used to position the sprite during rendering.
-  ui.Offset get pivotOffset => pivot.compute(rect.size);
-
-  /// The world-space boundaries of the sprite.
-  ///
-  /// This rectangle represents the area the sprite occupies in the game 
-  /// world, taking into account the [pixelsPerUnit] and [pivotOffset].
+  /// World-space bounding rectangle, taking [pixelsPerUnit] and [pivotOffset] into account.
   ui.Rect get bounds {
     final p = pivotOffset;
-    final r = rect;
     return ui.Rect.fromLTWH(
       -p.dx / pixelsPerUnit,
       -p.dy / pixelsPerUnit,
-      r.width / pixelsPerUnit,
-      r.height / pixelsPerUnit,
+      size.width / pixelsPerUnit,
+      size.height / pixelsPerUnit,
+    );
+  }
+
+  GameSprite copyWith({
+    SpriteMesh? mesh,
+    Point2D? pivot,
+    double? pixelsPerUnit,
+  }) {
+    return GameSprite(
+      mesh: mesh ?? this.mesh,
+      pivot: pivot ?? this.pivot,
+      pixelsPerUnit: pixelsPerUnit ?? this.pixelsPerUnit,
     );
   }
 }
 
-/// A component that renders a [GameSprite] onto the screen.
-///
-/// [SpriteRenderer] is the primary way to display images in the game world. It 
-/// handles positioning, scaling (via pixels per unit), flipping, and color 
-/// tinting. It also supports different blend modes and filter qualities.
-///
-/// ```dart
-/// void example(GameObject object, GameSprite sprite) {
-///   final renderer = SpriteRenderer()..sprite = sprite;
-///   object.addComponent(renderer);
-///   renderer.color = const Color(0xFFFF0000); // Red tint
-/// }
-/// ```
-///
-/// See also:
-/// * [GameSprite] for the image data to be rendered.
-/// * [Renderable] for the interface that provides the render call.
-class SpriteRenderer extends Behavior with Renderable {
-  /// The sprite to be rendered by this component.
-  ///
-  /// If this is null, the renderer will not draw anything. When set, the 
-  /// component uses the sprite's texture, rect, and pivot for rendering.
-  GameSprite? sprite;
+// ---------------------------------------------------------------------------
+// SpriteRenderer
+// ---------------------------------------------------------------------------
 
-  /// The color tint applied to the sprite during rendering.
-  ///
-  /// By default, this is white (no tint). The color is combined with the 
-  /// sprite's pixels using the current [blendMode] (typically [ui.BlendMode.modulate]).
-  ui.Color color = const ui.Color(0xFFFFFFFF);
+/// A component that renders a [GameSprite] onto the canvas.
+///
+/// Positions are pre-baked into world-space vertex coordinates using the
+/// sibling [ObjectTransform], avoiding any per-entity canvas state changes.
+/// [GridMesh] sprites delegate to [RenderHandle.renderWithMatrix] instead.
+class SpriteRenderer extends Behavior with Renderable, LifecycleListener {
+  GameSprite? _sprite;
+  RenderHandle? _handle;
+  bool _mounted = false;
 
-  /// Whether the sprite should be flipped horizontally.
-  ///
-  /// This transformation is applied relative to the sprite's pivot point. 
-  /// It is useful for reusing the same sprite for left and right-facing characters.
+  // Pre-baked world-space quad data: 4 corners (TL, TR, BL, BR).
+  final Float32List _bakedPositions = Float32List(8);
+  final Float32List _bakedUVs = Float32List(8);
+  final Int32List _bakedColors = Int32List(4);
+  ui.Image? _bakedAtlasImage;
+
+  bool _positionsDirty = true;
+  bool _uvsDirty = true;
+  bool _colorDirty = true;
+  int _lastTransformVersion = -1;
+  ui.Size? _lastSize;
+  bool _lastFlipX = false;
+  bool _lastFlipY = false;
+
+  // Shared across all SpriteRenderer instances — never mutated after init.
+  static final Uint16List _kQuadIndices =
+      Uint16List.fromList([0, 1, 2, 1, 3, 2]);
+  static final Float64List _kIdentity4x4 = _makeIdentity();
+  static Float64List _makeIdentity() {
+    final m = Float64List(16);
+    m[0] = m[5] = m[10] = m[15] = 1.0;
+    return m;
+  }
+
+  GameSprite? get sprite => _sprite;
+
+  set sprite(GameSprite? s) {
+    _sprite = s;
+    _positionsDirty = true;
+    _uvsDirty = true;
+    if (_mounted) {
+      _handle?.dispose();
+      _handle = s?.mesh.createHandle();
+    }
+  }
+
+  /// Color tint (ARGB). Default is opaque white — no tint.
+  ui.Color _color = const ui.Color(0xFFFFFFFF);
+  ui.Color get color => _color;
+  set color(ui.Color value) {
+    if (_color == value) return;
+    _color = value;
+    _colorDirty = true;
+  }
+
   bool flipX = false;
-
-  /// Whether the sprite should be flipped vertically.
-  ///
-  /// This transformation is applied relative to the sprite's pivot point. 
-  /// It is useful for effects like reflections or upside-down orientations.
   bool flipY = false;
-
-  /// The quality of filtering used when scaling the sprite.
-  ///
-  /// Defaults to [ui.FilterQuality.low] (bilinear). Higher quality filters 
-  /// provide better scaling results but may have a performance impact.
   ui.FilterQuality filterQuality = ui.FilterQuality.low;
 
-  /// The blend mode used when applying the [color] tint.
-  ///
-  /// Defaults to [ui.BlendMode.modulate], which multiplies the sprite's 
-  /// pixel colors with the [color] value.
-  ui.BlendMode blendMode = ui.BlendMode.modulate;
+  /// How this sprite blends with the canvas. Default is normal compositing.
+  ui.BlendMode blendMode = ui.BlendMode.srcOver;
 
-  /// A convenience setter to update the sprite's texture.
+  /// Explicit render size in pixels. Defaults to [GameSprite.size].
+  ui.Size? size;
+
+  /// Swaps the texture on the current sprite's mesh via [SpriteMesh.withTexture].
   ///
-  /// Setting this creates a new [GameSprite] with default properties for the 
-  /// provided [tex]. If the input is null, the [sprite] field is cleared.
-  ///
-  /// * [tex]: The new texture to assign to the renderer.
+  /// If no sprite is set yet, wraps [tex] in a bare [SimpleMesh].
+  /// Setting to `null` clears the sprite.
   set texture(GameTexture? tex) {
-    if (tex != null) {
-      sprite = GameSprite(texture: tex);
-    } else {
+    if (tex == null) {
       sprite = null;
+    } else if (_sprite != null) {
+      sprite = _sprite!.copyWith(mesh: _sprite!.mesh.withTexture(tex));
+    } else {
+      sprite = GameSprite(mesh: SimpleMesh(texture: tex));
     }
   }
 
   @override
+  void onMounted() {
+    _mounted = true;
+    _handle = _sprite?.mesh.createHandle();
+  }
+
+  @override
+  void onUnmounted() {
+    _mounted = false;
+    _handle?.dispose();
+    _handle = null;
+    _bakedAtlasImage = null;
+  }
+
+  void _rebakePositions(ObjectTransform transform, GameSprite sprite) {
+    // worldMatrix.storage is Float64List in column-major 4×4 order.
+    // col0=[a,c,0,0], col1=[b,d,0,0], col2=[0,0,1,0], col3=[tx,ty,0,1]
+    final s = transform.worldMatrix.storage;
+    final a = s[0], b = s[4], c = s[1], d = s[5];
+    final tx = s[12], ty = s[13];
+
+    final renderSize = size ?? sprite.size;
+    final ppu = sprite.pixelsPerUnit;
+    final p = sprite.pivot.compute(renderSize);
+
+    // Local corners with pivot and PPU applied. Flip is UV-side only.
+    final lx0 = -p.dx / ppu;
+    final lx1 = (renderSize.width - p.dx) / ppu;
+    final ly0 = -p.dy / ppu;
+    final ly1 = (renderSize.height - p.dy) / ppu;
+
+    // TL
+    _bakedPositions[0] = a * lx0 + b * ly0 + tx;
+    _bakedPositions[1] = c * lx0 + d * ly0 + ty;
+    // TR
+    _bakedPositions[2] = a * lx1 + b * ly0 + tx;
+    _bakedPositions[3] = c * lx1 + d * ly0 + ty;
+    // BL
+    _bakedPositions[4] = a * lx0 + b * ly1 + tx;
+    _bakedPositions[5] = c * lx0 + d * ly1 + ty;
+    // BR
+    _bakedPositions[6] = a * lx1 + b * ly1 + tx;
+    _bakedPositions[7] = c * lx1 + d * ly1 + ty;
+
+    _lastTransformVersion = transform.version;
+    _lastSize = size;
+  }
+
+  void _rebakeUVs(GameSprite sprite) {
+    final tex = sprite.texture;
+    if (!tex.isLoaded) {
+      _bakedAtlasImage = null;
+      return;
+    }
+    final group = UsedTextures.resolveGroup(gameObject, tex);
+    _bakedAtlasImage = group?.atlasImageFor(tex) ?? tex.image;
+
+    final src = sprite.mesh.srcRect ??
+        ui.Rect.fromLTWH(0, 0, tex.width.toDouble(), tex.height.toDouble());
+    final r = group?.atlasRectFor(tex) ?? src;
+
+    // Flip is applied by swapping UV extents rather than touching vertex positions.
+    final uMin = flipX ? r.right : r.left;
+    final uMax = flipX ? r.left : r.right;
+    final vMin = flipY ? r.bottom : r.top;
+    final vMax = flipY ? r.top : r.bottom;
+
+    _bakedUVs[0] = uMin; _bakedUVs[1] = vMin; // TL
+    _bakedUVs[2] = uMax; _bakedUVs[3] = vMin; // TR
+    _bakedUVs[4] = uMin; _bakedUVs[5] = vMax; // BL
+    _bakedUVs[6] = uMax; _bakedUVs[7] = vMax; // BR
+
+    _lastFlipX = flipX;
+    _lastFlipY = flipY;
+  }
+
+  @override
   void render(ui.Canvas canvas) {
-    final sprite = this.sprite;
+    final sprite = _sprite;
     if (sprite == null) return;
 
-    if (!sprite.texture.isLoaded) return;
+    final transform = gameObject.tryGetComponent<ObjectTransform>();
 
-    final paint = ui.Paint()
-      ..colorFilter = ui.ColorFilter.mode(color, blendMode)
-      ..filterQuality = filterQuality;
-
-    final p = sprite.pivotOffset;
-    final r = sprite.rect;
-
-    canvas.save();
-
-    // Scale from pixels to world units.
-    final scale = 1.0 / sprite.pixelsPerUnit;
-    canvas.scale(scale, scale);
-
-    // Position such that the pivot is at (0,0) in world space
-    canvas.translate(-p.dx, -p.dy);
-
-    if (flipX || flipY) {
-      canvas.scale(flipX ? -1.0 : 1.0, flipY ? -1.0 : 1.0);
+    // GridMesh sprites: world matrix is applied by the handle (step 14 will
+    // replace this with a direct world-space drawVertices call).
+    if (sprite.mesh is GridMesh) {
+      final handle = _handle;
+      if (handle == null || transform == null) return;
+      final ws = transform.worldMatrix.storage;
+      final m = Float32List(6);
+      m[0] = ws[0]; m[1] = ws[4]; // a, b
+      m[2] = ws[1]; m[3] = ws[5]; // c, d
+      m[4] = ws[12]; m[5] = ws[13]; // tx, ty
+      final paint = ui.Paint()
+        ..filterQuality = filterQuality
+        ..blendMode = blendMode
+        ..color = _color;
+      handle.renderWithMatrix(canvas, size ?? sprite.size, paint, m);
+      return;
     }
 
-    sprite.mesh.render(canvas, sprite, r.size, paint);
+    // SimpleMesh: lazy-rebake geometry then emit a single drawVertices call.
+    final tex = sprite.texture;
+    if (!tex.isLoaded) return;
 
-    canvas.restore();
+    if (_positionsDirty) {
+      if (transform == null) return; // no transform, nothing to draw
+      _rebakePositions(transform, sprite);
+      _positionsDirty = false;
+    } else if (transform != null &&
+        (transform.version != _lastTransformVersion || size != _lastSize)) {
+      _rebakePositions(transform, sprite);
+    }
+
+    if (_uvsDirty || flipX != _lastFlipX || flipY != _lastFlipY) {
+      _rebakeUVs(sprite);
+      _uvsDirty = false;
+    }
+
+    if (_colorDirty) {
+      final v = _color.toARGB32();
+      _bakedColors[0] = v;
+      _bakedColors[1] = v;
+      _bakedColors[2] = v;
+      _bakedColors[3] = v;
+      _colorDirty = false;
+    }
+
+    final atlasImage = _bakedAtlasImage;
+    if (atlasImage == null) return;
+
+    canvas.drawVertices(
+      ui.Vertices.raw(
+        ui.VertexMode.triangles,
+        _bakedPositions,
+        textureCoordinates: _bakedUVs,
+        colors: _bakedColors,
+        indices: _kQuadIndices,
+      ),
+      ui.BlendMode.modulate,
+      ui.Paint()
+        ..shader = ui.ImageShader(
+          atlasImage,
+          ui.TileMode.clamp,
+          ui.TileMode.clamp,
+          _kIdentity4x4,
+        )
+        ..filterQuality = filterQuality
+        ..blendMode = blendMode,
+    );
   }
 }
 
-/// A coordinate pair representing a tile's position in a grid-based sprite sheet.
-///
-/// The first value represents the horizontal index (column), and the second 
-/// value represents the vertical index (row). Both indices are zero-based.
-typedef TileCoord = (int x, int y);
+// ---------------------------------------------------------------------------
+// SheetEntry / SpriteSheet
+// ---------------------------------------------------------------------------
 
-/// A single entry in a tagged sprite sheet.
-///
-/// This class maps a unique [key] (often a string or enum) to a specific 
-/// [rect] within the texture. It is used to define named regions in 
-/// a texture atlas.
-///
-/// ```dart
-/// void example() {
-///   const entry = SheetEntry(
-///     key: 'player',
-///     rect: Rect.fromLTRB(0, 0, 32, 32),
-///   );
-/// }
-/// ```
-///
-/// See also:
-/// * [TaggedSpriteSheet] for using these entries to create a sheet.
-///
-/// * [K]: The type of the tag used to identify the sprite.
+/// A key-rect pair used by [TaggedSpriteSheet].
 class SheetEntry<K> {
-  /// The unique identifier for this sprite entry.
-  ///
-  /// This key is used when retrieving the sprite from a [TaggedSpriteSheet]. 
-  /// It can be any type, but is commonly a [String] or [Enum].
   final K key;
-
-  /// The rectangular region within the texture assigned to this tag.
-  ///
-  /// This rect defines the top-left corner and dimensions of the sprite in 
-  /// pixel coordinates relative to the texture's origin.
   final ui.Rect rect;
-
-  /// Creates a new [SheetEntry] with the specified [key] and [rect].
-  ///
-  /// * [key]: The tag used to retrieve this sprite.
-  /// * [rect]: The position and size of the sprite on the texture.
   const SheetEntry({required this.key, required this.rect});
 }
 
-/// A base class for organizing and retrieving multiple sprites from a single texture.
-///
-/// Sprite sheets help optimize rendering by grouping multiple images into 
-/// a single texture atlas. Subclasses implement different strategies for 
-/// partitioning the texture, such as uniform grids or tagged regions.
-///
-/// ```dart
-/// enum TextureAsset with AssetEnum, TextureAssetEnum {
-///   tiles('assets/tiles.png');
-///   const TextureAsset(this.path);
-///   final String path;
-///   @override
-///   AssetSource get source => AssetSource.local(path);
-/// }
-///
-/// void example() {
-///   final sheet = SpriteSheet.grid(
-///     texture: TextureAsset.tiles,
-///     rows: 4,
-///     columns: 4,
-///   );
-///   final sprite = sheet[(0, 0)];
-/// }
-/// ```
-///
-/// See also:
-/// * [GridSpriteSheet] for uniform grid partitioning.
-/// * [TaggedSpriteSheet] for arbitrary tagged regions.
 abstract class SpriteSheet<K> {
-  /// The source texture containing all the sprites in the sheet.
-  ///
-  /// This texture is used as the base for all [GameSprite] instances generated 
-  /// by this sheet. It must be loaded before any sprites from the sheet 
-  /// can be rendered.
   final GameTexture texture;
-
-  /// Creates a new [SpriteSheet] with the specified [texture].
-  ///
-  /// * [texture]: The shared image asset for all sprites in the sheet.
   const SpriteSheet({required this.texture});
 
-  /// Retrieves a sprite from the sheet using the provided [key].
-  ///
-  /// The interpretation of the [key] depends on the subclass implementation 
-  /// (e.g., a [TileCoord] for grids or a generic tag for tagged sheets).
-  ///
-  /// * [key]: The identifier for the desired sprite.
   GameSprite getTileAt(K key);
-
-  /// Convenience operator for [getTileAt].
-  ///
-  /// Allows retrieving sprites using the square bracket syntax: `sheet[key]`.
-  ///
-  /// * [key]: The identifier for the desired sprite.
   GameSprite operator [](K key) => getTileAt(key);
 
-  /// Creates a [TaggedSpriteSheet] from a list of entries.
-  ///
-  /// This factory is a convenience method for defining a sheet where 
-  /// sprites are identified by unique tags of type [K].
-  ///
-  /// * [texture]: The source image asset.
-  /// * [entries]: The list of named regions within the texture.
-  /// * [pivot]: The default pivot for all sprites in the sheet.
-  /// * [pixelsPerUnit]: The default resolution scale.
-  /// * [mesh]: The default geometry for the sprites.
   const factory SpriteSheet.tagged({
     required GameTexture texture,
     required List<SheetEntry<K>> entries,
-    SpritePivot pivot,
+    Point2D pivot,
     double pixelsPerUnit,
-    SpriteMesh mesh,
+    SpriteMeshFactory? meshFactory,
   }) = TaggedSpriteSheet<K>;
 
-  /// Creates a [GridSpriteSheet] with uniform tile sizes.
-  ///
-  /// This static method is a convenience for defining a sheet where 
-  /// the texture is divided into a regular grid of rows and columns.
-  ///
-  /// * [texture]: The source image asset.
-  /// * [rows]: The number of horizontal rows in the grid.
-  /// * [columns]: The number of vertical columns in the grid.
-  /// * [offset]: The top-left offset where the grid starts.
-  /// * [spacing]: The gap between individual tiles in the grid.
-  /// * [spriteSize]: The explicit size of each tile. If null, it is 
-  /// calculated from the texture dimensions and grid counts.
-  /// * [pivot]: The pivot for all tiles in the grid.
-  /// * [ppu]: The pixels per unit scale for the grid tiles.
-  /// * [mesh]: The geometry used for the grid tiles.
   static GridSpriteSheet grid({
     required GameTexture texture,
     required int rows,
@@ -375,9 +350,9 @@ abstract class SpriteSheet<K> {
     ui.Offset offset = ui.Offset.zero,
     ui.Offset spacing = ui.Offset.zero,
     ui.Size? spriteSize,
-    SpritePivot pivot = NormalizedPivot.center,
+    Point2D pivot = Point2D.center,
     double ppu = 100.0,
-    SpriteMesh mesh = const SimpleMesh(),
+    SpriteMeshFactory? meshFactory,
   }) {
     return GridSpriteSheet(
       texture: texture,
@@ -388,142 +363,73 @@ abstract class SpriteSheet<K> {
       spriteSize: spriteSize,
       pivot: pivot,
       pixelsPerUnit: ppu,
-      mesh: mesh,
+      meshFactory: meshFactory,
     );
   }
 
-  /// Manually splits a texture into a list of [GameSprite] objects.
-  ///
-  /// This utility method is useful for creating simple animations or 
-  /// batches of sprites that don't require the persistent state of 
-  /// a [SpriteSheet] object.
-  ///
-  /// * [texture]: The source image asset.
-  /// * [rows]: The number of horizontal rows to split.
-  /// * [columns]: The number of vertical columns to split.
-  /// * [offset]: The top-left starting position for the split.
-  /// * [spriteSize]: The explicit size of each split region.
-  /// * [pivot]: The pivot for all resulting sprites.
-  /// * [ppu]: The pixels per unit scale for the sprites.
-  /// * [mesh]: The geometry used for the sprites.
   static List<GameSprite> split(
     GameTexture texture, {
     required int rows,
     required int columns,
     ui.Offset offset = ui.Offset.zero,
     ui.Size? spriteSize,
-    SpritePivot pivot = NormalizedPivot.center,
+    Point2D pivot = Point2D.center,
     double ppu = 100.0,
-    SpriteMesh mesh = const SimpleMesh(),
+    SpriteMeshFactory? meshFactory,
   }) {
-    final List<GameSprite> sprites = [];
+    final factory = meshFactory ?? _defaultMeshFactory;
     final double width =
         spriteSize?.width ?? (texture.width - offset.dx) / columns;
     final double height =
         spriteSize?.height ?? (texture.height - offset.dy) / rows;
 
+    final sprites = <GameSprite>[];
     for (int y = 0; y < rows; y++) {
       for (int x = 0; x < columns; x++) {
-        sprites.add(
-          GameSprite(
-            texture: texture,
-            rect: ui.Rect.fromLTWH(
-              offset.dx + x * width,
-              offset.dy + y * height,
-              width,
-              height,
-            ),
-            pivot: pivot,
-            pixelsPerUnit: ppu,
-            mesh: mesh,
-          ),
+        final rect = ui.Rect.fromLTWH(
+          offset.dx + x * width,
+          offset.dy + y * height,
+          width,
+          height,
         );
+        sprites.add(GameSprite(
+          mesh: factory(texture, rect),
+          pivot: pivot,
+          pixelsPerUnit: ppu,
+        ));
       }
     }
     return sprites;
   }
 }
 
-/// A sprite sheet where sprites are identified by unique tags or keys.
-///
-/// [TaggedSpriteSheet] is ideal for texture atlases where sprites have 
-/// varying sizes or are placed irregularly. Each sprite is defined by a 
-/// [SheetEntry] that maps a key to a specific rectangle.
-///
-/// ```dart
-/// enum TextureAsset with AssetEnum, TextureAssetEnum {
-///   atlas('assets/atlas.png');
-///   const TextureAsset(this.path);
-///   final String path;
-///   @override
-///   AssetSource get source => AssetSource.local(path);
-/// }
-///
-/// void example() {
-///   final sheet = TaggedSpriteSheet(
-///     texture: TextureAsset.atlas,
-///     entries: [
-///       SheetEntry(key: 'player', rect: Rect.fromLTRB(0, 0, 32, 64)),
-///       SheetEntry(key: 'enemy', rect: Rect.fromLTRB(32, 0, 32, 32)),
-///     ],
-///   );
-///   final player = sheet['player'];
-/// }
-/// ```
-///
-/// See also:
-/// * [SpriteSheet] for the base class and shared properties.
-/// * [SheetEntry] for the definition of tagged regions.
+// ---------------------------------------------------------------------------
+// TaggedSpriteSheet
+// ---------------------------------------------------------------------------
+
 class TaggedSpriteSheet<T> extends SpriteSheet<T> {
-  /// The list of entries defining the tagged regions in the sheet.
-  ///
-  /// Each entry provides a key and a rectangle that specifies which part 
-  /// of the texture to use for that specific tag.
   final List<SheetEntry<T>> entries;
-
-  /// The default pivot point for all sprites retrieved from this sheet.
-  ///
-  /// This pivot is applied to every [GameSprite] created through the 
-  /// [getTileAt] method, ensuring consistent alignment across the sheet.
-  final SpritePivot pivot;
-
-  /// The default pixels per unit scale for all sprites in this sheet.
-  ///
-  /// This value determines the world-space size of the retrieved sprites 
-  /// relative to their pixel dimensions on the texture.
+  final Point2D pivot;
   final double pixelsPerUnit;
+  final SpriteMeshFactory? meshFactory;
 
-  /// The default mesh geometry for all sprites in this sheet.
-  ///
-  /// While most sprites use a [SimpleMesh], this property allows for 
-  /// custom geometry to be shared by all entries in the sheet.
-  final SpriteMesh mesh;
-
-  /// Creates a new [TaggedSpriteSheet] with the specified configuration.
-  ///
-  /// * [texture]: The shared source image.
-  /// * [entries]: The map of keys to texture regions.
-  /// * [pivot]: The default pivot point for the sprites.
-  /// * [pixelsPerUnit]: The default resolution scale.
-  /// * [mesh]: The default geometry used for rendering.
   const TaggedSpriteSheet({
     required super.texture,
     required this.entries,
-    this.pivot = NormalizedPivot.center,
+    this.pivot = Point2D.center,
     this.pixelsPerUnit = 100.0,
-    this.mesh = const SimpleMesh(),
+    this.meshFactory,
   });
 
   @override
   GameSprite getTileAt(T key) {
-    for (var entry in entries) {
+    final factory = meshFactory ?? _defaultMeshFactory;
+    for (final entry in entries) {
       if (entry.key == key) {
         return GameSprite(
-          texture: texture,
-          rect: entry.rect,
+          mesh: factory(texture, entry.rect),
           pivot: pivot,
           pixelsPerUnit: pixelsPerUnit,
-          mesh: mesh,
         );
       }
     }
@@ -531,93 +437,20 @@ class TaggedSpriteSheet<T> extends SpriteSheet<T> {
   }
 }
 
-/// A sprite sheet where the texture is divided into a regular grid.
-///
-/// [GridSpriteSheet] is used for textures containing uniformly sized tiles, 
-/// such as tilesets or simple character animation frames. Sprites are 
-/// retrieved using [TileCoord] indices.
-///
-/// ```dart
-/// enum TextureAsset with AssetEnum, TextureAssetEnum {
-///   terrain('assets/terrain.png');
-///   const TextureAsset(this.path);
-///   final String path;
-///   @override
-///   AssetSource get source => AssetSource.local(path);
-/// }
-///
-/// void example() {
-///   final sheet = GridSpriteSheet(
-///     texture: TextureAsset.terrain,
-///     rows: 8,
-///     columns: 8,
-///   );
-/// }
-/// ```
-///
-/// See also:
-/// * [SpriteSheet] for the base class and shared properties.
-/// * [TileCoord] for the coordinate system used by this sheet.
+// ---------------------------------------------------------------------------
+// GridSpriteSheet
+// ---------------------------------------------------------------------------
+
 class GridSpriteSheet extends SpriteSheet<TileCoord> {
-  /// The number of horizontal rows in the grid.
-  ///
-  /// This count is used to validate indices and calculate the default 
-  /// height of each tile when [spriteSize] is not provided.
   final int rows;
-
-  /// The number of vertical columns in the grid.
-  ///
-  /// This count is used to validate indices and calculate the default 
-  /// width of each tile when [spriteSize] is not provided.
   final int columns;
-
-  /// The top-left offset where the grid partitioning begins.
-  ///
-  /// This allows the sheet to ignore decorative borders or padding 
-  /// that might be present at the start of the texture.
   final ui.Offset offset;
-
-  /// The horizontal and vertical gaps between adjacent tiles.
-  ///
-  /// Spacing is taken into account when calculating tile rectangles to 
-  /// ensure that "gutters" in the texture are correctly skipped.
   final ui.Offset spacing;
-
-  /// The explicit size of each tile in the grid.
-  ///
-  /// If null, the size is automatically calculated based on the texture 
-  /// dimensions, grid counts, offset, and spacing.
   final ui.Size? spriteSize;
-
-  /// The default pivot point for all sprites retrieved from this sheet.
-  ///
-  /// This pivot is applied to every [GameSprite] created through the 
-  /// [getTileAt] method, ensuring consistent alignment across the grid.
-  final SpritePivot pivot;
-
-  /// The default pixels per unit scale for all sprites in this sheet.
-  ///
-  /// This value determines the world-space size of the retrieved sprites 
-  /// relative to their pixel dimensions on the texture.
+  final Point2D pivot;
   final double pixelsPerUnit;
+  final SpriteMeshFactory? meshFactory;
 
-  /// The default mesh geometry for all sprites in this sheet.
-  ///
-  /// While most sprites use a [SimpleMesh], this property allows for 
-  /// custom geometry to be shared by all tiles in the grid.
-  final SpriteMesh mesh;
-
-  /// Creates a new [GridSpriteSheet] with the specified grid configuration.
-  ///
-  /// * [texture]: The shared source image.
-  /// * [rows]: The number of rows in the grid.
-  /// * [columns]: The number of columns in the grid.
-  /// * [offset]: The starting position for the grid.
-  /// * [spacing]: The spacing between tiles.
-  /// * [spriteSize]: The explicit size for each tile.
-  /// * [pivot]: The default pivot for the sprites.
-  /// * [pixelsPerUnit]: The default resolution scale.
-  /// * [mesh]: The default geometry for rendering.
   const GridSpriteSheet({
     required super.texture,
     required this.rows,
@@ -625,9 +458,9 @@ class GridSpriteSheet extends SpriteSheet<TileCoord> {
     this.offset = ui.Offset.zero,
     this.spacing = ui.Offset.zero,
     this.spriteSize,
-    this.pivot = NormalizedPivot.center,
+    this.pivot = Point2D.center,
     this.pixelsPerUnit = 100.0,
-    this.mesh = const SimpleMesh(),
+    this.meshFactory,
   });
 
   @override
@@ -639,24 +472,23 @@ class GridSpriteSheet extends SpriteSheet<TileCoord> {
       );
     }
 
-    final double width =
-        spriteSize?.width ??
+    final double width = spriteSize?.width ??
         (texture.width - offset.dx - (columns - 1) * spacing.dx) / columns;
-    final double height =
-        spriteSize?.height ??
+    final double height = spriteSize?.height ??
         (texture.height - offset.dy - (rows - 1) * spacing.dy) / rows;
 
+    final rect = ui.Rect.fromLTWH(
+      offset.dx + keyX * (width + spacing.dx),
+      offset.dy + keyY * (height + spacing.dy),
+      width,
+      height,
+    );
+
+    final factory = meshFactory ?? _defaultMeshFactory;
     return GameSprite(
-      texture: texture,
-      rect: ui.Rect.fromLTWH(
-        offset.dx + keyX * (width + spacing.dx),
-        offset.dy + keyY * (height + spacing.dy),
-        width,
-        height,
-      ),
+      mesh: factory(texture, rect),
       pivot: pivot,
       pixelsPerUnit: pixelsPerUnit,
-      mesh: mesh,
     );
   }
 }

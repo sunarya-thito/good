@@ -215,7 +215,7 @@ class InputSystem implements GameSystem {
   InputSystem();
 
   @override
-  void attach(GameEngine game) {
+  Future<void> attach(GameEngine game) async {
     _game = game;
     _keyboard = KeyboardState(game);
   }
@@ -254,7 +254,7 @@ class InputSystem implements GameSystem {
   }
 
   @override
-  void dispose() {
+  Future<void> dispose() async {
     _keyboard?.dispose();
     for (var action in List<InputAction>.from(_actions)) {
       action.dispose();
@@ -325,13 +325,13 @@ abstract class InputControl<T> {
   ///
   /// This is useful for single-fire actions like jumping or shooting.
   bool get wasPressedThisFrame =>
-      lastFramePressed == game.getSystem<TickerState>()?.frameCount;
+      lastFramePressed == game.getSystem<TickerSystem>()?.frameCount;
 
   /// Whether the control was released during the current frame.
   ///
   /// This is useful for actions that trigger upon release, like charging a jump.
   bool get wasReleasedThisFrame =>
-      lastFrameReleased == game.getSystem<TickerState>()?.frameCount;
+      lastFrameReleased == game.getSystem<TickerSystem>()?.frameCount;
 }
 
 /// A specialized [InputControl] for binary button states.
@@ -371,7 +371,7 @@ class ButtonControl extends InputControl<bool> {
   /// This updates the frame and update indices to the current engine state.
   void press() {
     if (!_isPressed) {
-      lastFramePressed = game.getSystem<TickerState>()?.frameCount ?? -1;
+      lastFramePressed = game.getSystem<TickerSystem>()?.frameCount ?? -1;
       lastUpdatePressed =
           game.getSystem<InputSystem>()?.dynamicUpdateCount ?? -1;
     }
@@ -383,7 +383,7 @@ class ButtonControl extends InputControl<bool> {
   /// This updates the frame and update indices to the current engine state.
   void release() {
     if (_isPressed) {
-      lastFrameReleased = game.getSystem<TickerState>()?.frameCount ?? -1;
+      lastFrameReleased = game.getSystem<TickerSystem>()?.frameCount ?? -1;
       lastUpdateReleased =
           game.getSystem<InputSystem>()?.dynamicUpdateCount ?? -1;
     }
@@ -1185,19 +1185,19 @@ class InputAction extends Behavior with LifecycleListener, MultiComponent {
   ///
   /// This is used to query input state synchronously during the render loop.
   bool get wasPressedThisFrame =>
-      _lastFrameStarted == game.getSystem<TickerState>()?.frameCount;
+      _lastFrameStarted == game.getSystem<TickerSystem>()?.frameCount;
 
   /// Whether the action entered the performed phase during the current frame.
   ///
   /// This is used to query input state synchronously during the render loop.
   bool get wasPerformedThisFrame =>
-      _lastFramePerformed == game.getSystem<TickerState>()?.frameCount;
+      _lastFramePerformed == game.getSystem<TickerSystem>()?.frameCount;
 
   /// Whether the action entered the canceled phase during the current frame.
   ///
   /// This is used to query input state synchronously during the render loop.
   bool get wasCanceledThisFrame =>
-      _lastFrameCanceled == game.getSystem<TickerState>()?.frameCount;
+      _lastFrameCanceled == game.getSystem<TickerSystem>()?.frameCount;
 
   /// Whether the action was completed during the current frame.
   ///
@@ -1298,7 +1298,7 @@ class InputAction extends Behavior with LifecycleListener, MultiComponent {
     }
 
     final updateCount = game.getSystem<InputSystem>()?.dynamicUpdateCount ?? -1;
-    final currentFrame = game.getSystem<TickerState>()?.frameCount ?? -1;
+    final currentFrame = game.getSystem<TickerSystem>()?.frameCount ?? -1;
 
     if (_phase == InputActionPhase.waiting && currentlyPressed) {
       _phase = InputActionPhase.started;

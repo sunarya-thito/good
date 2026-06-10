@@ -2,9 +2,23 @@ import 'package:meta/meta.dart';
 import 'package:goo2d/src/physics/worker/direct/direct_joint_ops.dart';
 import 'package:goo2d/goo2d.dart';
 
-/// Applies both force and torque to reduce both the linear and angular velocities to zero.
+/// Applies damping forces to slow both the linear and angular velocity of the connected bodies toward zero.
 ///
-/// Equivalent to Unity's `FrictionJoint2D`.
+/// Unlike a collision's friction, this joint acts as a persistent drag source — useful for
+/// simulating sliding friction on a surface, a pivot with resistance, or a damped joint.
+/// [maxForce] caps the linear damping force (N) and [maxTorque] caps the angular (N·m).
+///
+/// ```dart
+/// addComponent(
+///   FrictionJoint()
+///     ..connectedBody = groundBody
+///     ..maxForce = 30.0
+///     ..maxTorque = 5.0,
+/// );
+/// ```
+///
+/// See also:
+/// * [HingeJoint] with a motor for explicit speed control.
 class FrictionJoint extends Joint {
   @override
   int get jointType => 2;
@@ -17,15 +31,17 @@ class FrictionJoint extends Joint {
     worker.setJointProperty(handle, JointProp.maxTorque, _maxTorque);
   }
 
-  double _maxForce = 0;
+  /// Maximum damping force (N) applied to slow linear velocity. Default 0.
   double get maxForce => _maxForce;
+  double _maxForce = 0;
   set maxForce(double value) {
     _maxForce = value;
     if (isAttached) worker.setJointProperty(handle, JointProp.maxForce, value);
   }
 
-  double _maxTorque = 0;
+  /// Maximum damping torque (N·m) applied to slow angular velocity. Default 0.
   double get maxTorque => _maxTorque;
+  double _maxTorque = 0;
   set maxTorque(double value) {
     _maxTorque = value;
     if (isAttached) worker.setJointProperty(handle, JointProp.maxTorque, value);

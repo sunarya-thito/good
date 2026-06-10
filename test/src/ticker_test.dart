@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
@@ -17,7 +19,7 @@ class MockFixedTickable extends Component with FixedTickable {
   double lastDt = 0;
 
   @override
-  Future<void> onFixedUpdate(double dt) async {
+  FutureOr<void> onFixedUpdate(double dt) {
     fixedUpdateCount++;
     lastDt = dt;
   }
@@ -30,10 +32,13 @@ void main() {
     testWidgets('should increment frameCount and update deltaTime', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final tickable = MockTickable();
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(children: [ComponentWidget(() => tickable)]),
         ),
       );
@@ -42,7 +47,6 @@ void main() {
           (tester.element(find.byType(GameObjectWidget)) as GameObject).game;
       final initialFrameCount = game.ticker.frameCount;
 
-      // Pump one frame
       await tester.pump(const Duration(milliseconds: 16));
 
       expect(game.ticker.frameCount, equals(initialFrameCount + 1));
@@ -54,10 +58,13 @@ void main() {
     testWidgets('should run multiple FixedUpdate ticks when delta is large', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final fixedTickable = MockFixedTickable();
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [ComponentWidget(() => fixedTickable)],
           ),
@@ -65,7 +72,6 @@ void main() {
       );
       await tester.pump();
 
-      // Default fixedDeltaTime is 0.02 (20ms)
       await tester.pump(const Duration(milliseconds: 61));
 
       expect(fixedTickable.fixedUpdateCount, equals(3));
@@ -73,10 +79,13 @@ void main() {
     });
 
     testWidgets('should respect custom fixedDeltaTime', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final fixedTickable = MockFixedTickable();
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [ComponentWidget(() => fixedTickable)],
           ),
@@ -86,23 +95,24 @@ void main() {
 
       final game =
           (tester.element(find.byType(GameObjectWidget)) as GameObject).game;
-      game.ticker.fixedDeltaTime = 0.01; // 10ms
+      game.ticker.fixedDeltaTime = 0.01;
 
-      // Pump 25ms, should trigger 2 fixed updates
       await tester.pump(const Duration(milliseconds: 25));
 
       expect(fixedTickable.fixedUpdateCount, equals(2));
 
-      // Pump another 10ms (total 35ms), should trigger 1 more (total 3)
       await tester.pump(const Duration(milliseconds: 10));
       expect(fixedTickable.fixedUpdateCount, equals(3));
     });
 
     testWidgets('should maintain accumulator between frames', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final fixedTickable = MockFixedTickable();
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [ComponentWidget(() => fixedTickable)],
           ),
@@ -112,17 +122,14 @@ void main() {
 
       final game =
           (tester.element(find.byType(GameObjectWidget)) as GameObject).game;
-      game.ticker.fixedDeltaTime = 0.02; // 20ms
+      game.ticker.fixedDeltaTime = 0.02;
 
-      // Frame 1: 15ms. Accumulator: 15ms. FixedUpdate: 0.
       await tester.pump(const Duration(milliseconds: 15));
       expect(fixedTickable.fixedUpdateCount, equals(0));
 
-      // Frame 2: 15ms. Accumulator: 15 + 15 = 30ms. FixedUpdate: 1 (20ms used, 10ms left).
       await tester.pump(const Duration(milliseconds: 15));
       expect(fixedTickable.fixedUpdateCount, equals(1));
 
-      // Frame 3: 15ms. Accumulator: 10 + 15 = 25ms. FixedUpdate: 1 (total 2).
       await tester.pump(const Duration(milliseconds: 15));
       expect(fixedTickable.fixedUpdateCount, equals(2));
     });

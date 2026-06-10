@@ -1,15 +1,9 @@
 import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:goo2d/goo2d.dart' hide AudioSource;
 import 'package:meta/meta.dart';
-import 'package:goo2d/src/input.dart';
-import 'package:goo2d/src/physics/physics_system.dart';
-import 'package:goo2d/src/camera.dart';
-import 'package:goo2d/src/screen.dart';
 import 'package:goo2d/src/ticker.dart';
-
-import 'package:goo2d/src/world.dart';
-import 'package:goo2d/src/object.dart';
 
 /// An interface for modular systems that extend the functionality of the [GameEngine].
 ///
@@ -21,13 +15,17 @@ import 'package:goo2d/src/object.dart';
 /// ```dart
 /// class MySystem implements GameSystem {
 ///   @override
-///   late final GameEngine game;
+///   late GameEngine game;
 ///   @override
-///   bool get gameAttached => true;
+///   bool get gameAttached => _attached;
+///   bool _attached = false;
 ///   @override
-///   void attach(GameEngine game) => this.game = game;
+///   Future<void> attach(GameEngine game) async {
+///     this.game = game;
+///     _attached = true;
+///   }
 ///   @override
-///   void dispose() {}
+///   Future<void> dispose() async {}
 /// }
 /// ```
 ///
@@ -46,19 +44,20 @@ abstract interface class GameSystem {
   /// [dispose] is completed.
   bool get gameAttached;
 
-  /// Attaches the system to a [GameEngine].
+  /// Attaches the system to a [GameEngine] and performs any async setup.
   ///
-  /// This is called during engine initialization. Use it to cache references
-  /// to other systems or initialize resources that require engine access.
+  /// Called by [GameEngine.create] or [GameEngine.addSystem]. Systems that
+  /// need to spawn isolates, initialize native libraries, or load resources
+  /// do so here instead of in a separate static initializer.
   ///
   /// * [game]: The engine instance to attach to.
-  void attach(GameEngine game);
+  Future<void> attach(GameEngine game);
 
   /// Disposes of the system and its resources.
   ///
-  /// This is called when the [GameEngine] is shut down. Use it to clean up
-  /// listeners, stop timers, and free memory.
-  void dispose();
+  /// Called by [GameEngine.removeSystem] or [GameEngine.dispose]. Tears down
+  /// all static state so the system can be reinitialized later via [attach].
+  Future<void> dispose();
 }
 
 typedef GameSystemFactory<T extends GameSystem> = T Function();
@@ -111,19 +110,24 @@ class _Unregister<T extends GameSystem> {
 ///   @override
 ///   late final GameEngine game;
 ///   @override
-///   bool get gameAttached => true;
+///   bool get gameAttached => _attached;
+///   bool _attached = false;
 ///   @override
-///   void attach(GameEngine game) => this.game = game;
+///   Future<void> attach(GameEngine game) async {
+///     this.game = game;
+///     _attached = true;
+///   }
 ///   @override
-///   void dispose() {}
+///   Future<void> dispose() async {}
 /// }
 ///
-/// void main() {
-///   final engine = GameEngine({
+/// void main() async {
+///   final engine = await GameEngine.create({
 ///     ...GameEngine.defaultSystems,
 ///     -InputSystem.new, // Remove default input system
 ///     MySystem.new,     // Add custom system
 ///   });
+///   runApp(Game(engine: engine, child: MyWorld()));
 /// }
 /// ```
 ///
@@ -136,7 +140,7 @@ class GameEngine {
   /// This set includes essential engine components like time management,
   /// input handling, physics, and rendering support.
   static const defaultSystems = {
-    TickerState.new,
+    TickerSystem.new,
     InputSystem.new,
     PhysicsSystem.new,
     CameraSystem.new,
@@ -155,24 +159,78 @@ class GameEngine {
   final List<GameSystem> _systems = [];
   final Map<Type, GameSystem?> _cachedSystems = {};
 
-  final Set<GameSystemFactory> _systemFactories;
+  GameEngine._();
 
-  /// Creates a new engine instance with the specified [systems].
+  /// Creates and fully initializes a [GameEngine] with the given [systems].
   ///
-  /// * [systems]: The set of system factories to initialize. Defaults to [defaultSystems].
-  GameEngine([
+  /// Each system's [GameSystem.attach] is awaited, so isolate spawning and
+  /// native library initialization happen here rather than in a separate
+  /// static call. The engine is ready to use when the returned [Future] completes.
+  ///
+  /// ```dart
+  /// final engine = await GameEngine.create({
+  ///   TickerState.new,
+  ///   CollisionSystem.new,
+  ///   CameraSystem.new,
+  /// });
+  /// runApp(Game(engine: engine, child: MyWorld()));
+  /// ```
+  static Future<GameEngine> create([
     Set<GameSystemFactory> systems = defaultSystems,
-  ]) : _systemFactories = systems;
+  ]) async {
+    final engine = GameEngine._();
+    for (final factory in systems) {
+      // TODO: This part is flawed, it forces the factory to register
+      // and then unregister the system if it's a _Unregister.
+      try {
+        final system = factory();
+        engine._systems.add(system);
+        await system.attach(engine);
+      } catch (e) {
+        if (e is _Unregister) {
+          final toDispose = engine._systems
+              .where((s) => e.isInstance(s))
+              .toList();
+          for (final s in toDispose) {
+            await s.dispose();
+            engine._systems.remove(s);
+          }
+          engine._cachedSystems.clear();
+        } else {
+          rethrow;
+        }
+      }
+    }
+    await GridMesh.loadShader();
+    return engine;
+  }
 
-  /// Retrieves a registered system of type [T].
+  /// Adds a single [system] to this engine at runtime and awaits its [GameSystem.attach].
   ///
-  /// This method returns null if the system is not registered. It caches
-  /// the result of the lookup for subsequent calls.
+  /// Use this to switch engines (e.g. from [PhysicsSystem] to `CollisionSystem`)
+  /// without rebuilding the whole engine.
+  Future<void> addSystem(GameSystem system) async {
+    _systems.add(system);
+    _cachedSystems.clear();
+    await system.attach(this);
+  }
+
+  /// Removes and disposes the system of type [T].
   ///
-  /// * [T]: The type of system to retrieve.
+  /// [GameSystem.dispose] is awaited so isolate teardown and static-state
+  /// reset complete before the system is removed from the registry.
+  Future<void> removeSystem<T extends GameSystem>() async {
+    final system = getSystem<T>();
+    if (system == null) return;
+    await system.dispose();
+    _systems.remove(system);
+    _cachedSystems.clear();
+  }
+
+  /// Retrieves a registered system of type [T], or null if not present.
   T? getSystem<T extends GameSystem>() {
     if (_cachedSystems.containsKey(T)) return _cachedSystems[T] as T?;
-    for (var system in _systems) {
+    for (final system in _systems) {
       if (system is T) {
         _cachedSystems[T] = system;
         return system;
@@ -183,55 +241,23 @@ class GameEngine {
   }
 
   /// Returns whether a system of type [T] is currently registered.
-  ///
-  /// * [T]: The type of system to check for.
   bool hasSystem<T extends GameSystem>() => getSystem<T>() != null;
 
-  /// Disposes of all registered systems and clears caches.
-  ///
-  /// This is called when the engine is no longer needed, ensuring that all
-  /// system resources (like timers or audio handles) are properly freed.
-  void dispose() {
-    for (var system in _systems) {
-      system.dispose();
+  /// Disposes all registered systems in reverse order and clears the cache.
+  Future<void> dispose() async {
+    for (final system in _systems.reversed.toList()) {
+      await system.dispose();
     }
     _systems.clear();
     _cachedSystems.clear();
-  }
-
-  /// Initializes all registered systems by invoking their factories.
-  ///
-  /// This method must be called before the engine is used. It handles
-  /// system registration, attachment, and de-registration logic.
-  void initialize() {
-    for (var factory in _systemFactories) {
-      try {
-        final result = factory();
-        _systems.add(result);
-        result.attach(this);
-      } catch (e) {
-        if (e is _Unregister) {
-          _systems.removeWhere((s) {
-            if (e.isInstance(s)) {
-              s.dispose();
-              return true;
-            }
-            return false;
-          });
-          _cachedSystems.clear();
-        } else {
-          rethrow;
-        }
-      }
-    }
   }
 
   /// The system responsible for managing time, frame counts, and the game loop.
   ///
   /// It provides high-precision delta times and coordinates the various
   /// update stages (Tick, FixedTick, LateTick) across the object hierarchy.
-  TickerState get ticker {
-    final tickerSystem = getSystem<TickerState>();
+  TickerSystem get ticker {
+    final tickerSystem = getSystem<TickerSystem>();
     assert(tickerSystem != null, 'TickerState not registered');
     return tickerSystem!;
   }
@@ -283,11 +309,16 @@ class GameEngine {
   /// It provides a high-level API for sound effects, music, and spatial
   /// audio using the SoLoud backend.
   AudioSystem? get audio => getSystem<AudioSystem>();
+
+  /// The system responsible for trigger-only collision detection without physics simulation.
+  ///
+  /// Available when [CollisionSystem] is registered in place of [PhysicsSystem].
+  CollisionSystem? get collision => getSystem<CollisionSystem>();
 }
 
 /// The system responsible for managing time, frame counts, and the game loop.
 ///
-/// [TickerState] tracks the delta time between frames, maintains a fixed
+/// [TickerSystem] tracks the delta time between frames, maintains a fixed
 /// update frequency for physics, and provides a stream of frame completion
 /// signals. It is the heartbeat of the Goo2D engine.
 ///
@@ -300,7 +331,7 @@ class GameEngine {
 /// See also:
 /// * [GameLoop], the widget that drives this ticker.
 /// * [YieldInstruction], for time-based synchronization in coroutines.
-class TickerState implements GameSystem {
+class TickerSystem implements GameSystem, CoroutineClock {
   @override
   late final GameEngine game;
 
@@ -309,29 +340,52 @@ class TickerState implements GameSystem {
   bool _attached = false;
 
   @override
-  void attach(GameEngine game) {
+  Future<void> attach(GameEngine game) async {
     this.game = game;
     _attached = true;
   }
 
-  final List<GameObject> _rootObjects = [];
+  List<GameObject?> _rootSlots = List.filled(64, null);
+  int _rootSlotCap = 64;
+
+  int _fixedTickCount = 0;
 
   /// The collection of root game objects managed by this ticker.
   ///
   /// Root objects are those without a parent in the game object hierarchy.
   /// They serve as the entry points for broadcasting update events.
-  List<GameObject> get rootObjects => List.unmodifiable(_rootObjects);
+  Iterable<GameObject> get rootObjects =>
+      _rootSlots.sublist(0, _rootSlotCap).whereType<GameObject>();
 
   @internal
   void registerRootObject(GameObject object) {
-    if (!_rootObjects.contains(object)) {
-      _rootObjects.add(object);
+    for (var i = 0; i < _rootSlotCap; i++) {
+      if (_rootSlots[i] == object) return;
     }
+    for (var i = 0; i < _rootSlotCap; i++) {
+      if (_rootSlots[i] == null) {
+        _rootSlots[i] = object;
+        return;
+      }
+    }
+    final newCap = _rootSlotCap * 2;
+    final newSlots = List<GameObject?>.filled(newCap, null);
+    for (var i = 0; i < _rootSlotCap; i++) {
+      newSlots[i] = _rootSlots[i];
+    }
+    newSlots[_rootSlotCap] = object;
+    _rootSlots = newSlots;
+    _rootSlotCap = newCap;
   }
 
   @internal
   void unregisterRootObject(GameObject object) {
-    _rootObjects.remove(object);
+    for (var i = 0; i < _rootSlotCap; i++) {
+      if (_rootSlots[i] == object) {
+        _rootSlots[i] = null;
+        return;
+      }
+    }
   }
 
   /// The time elapsed since the last frame, in seconds.
@@ -363,6 +417,7 @@ class TickerState implements GameSystem {
   ///
   /// This is used for frame-based synchronization and custom yield
   /// instructions in coroutines.
+  @override
   Future<void> get nextFrame {
     if (_frameController.isClosed) return Future.value();
     return _frameController.stream.first.catchError((e) {
@@ -380,23 +435,18 @@ class TickerState implements GameSystem {
     frameCount++;
   }
 
-  /// Executes a single engine tick, processing input and frame-rate dependent logic.
-  ///
-  /// Fixed-step physics and simulation are driven by a separate Timer via [fixedTick].
-  ///
-  /// * [dt]: The time elapsed since the last frame.
   void tick(double dt) {
     update(dt);
     game.getSystem<InputSystem>()?.update();
 
-    for (final obj in _rootObjects) {
-      obj.broadcastEvent(TickEvent(dt));
+    for (var i = 0; i < _rootSlotCap; i++) {
+      _rootSlots[i]?.broadcastEvent(TickEvent(dt));
     }
 
     game.screenPhysics?.update();
 
-    for (final obj in _rootObjects) {
-      obj.broadcastEvent(LateTickEvent(dt));
+    for (var i = 0; i < _rootSlotCap; i++) {
+      _rootSlots[i]?.broadcastEvent(LateTickEvent(dt));
     }
 
     signalFrameComplete();
@@ -408,10 +458,18 @@ class TickerState implements GameSystem {
   /// Broadcasts [FixedTickEvent] to all game objects, then steps the physics system.
   Future<void> fixedTick() async {
     final event = FixedTickEvent(fixedDeltaTime);
-    for (final obj in _rootObjects) {
-      await obj.broadcastEventAsync(event);
+    for (var i = 0; i < _rootSlotCap; i++) {
+      final obj = _rootSlots[i];
+      // if (obj != null) await obj.broadcastEventAsync(event);
+      if (obj != null) {
+        final result = obj.broadcastEventAsync(event);
+        if (result is Future) {
+          await result;
+        }
+      }
     }
     await game.getSystem<PhysicsSystem>()?.step();
+    await game.getSystem<CollisionSystem>()?.step();
   }
 
   /// Signals that the current frame has finished processing.
@@ -424,7 +482,7 @@ class TickerState implements GameSystem {
   }
 
   @override
-  void dispose() {
+  Future<void> dispose() async {
     _frameController.close();
   }
 }
@@ -437,8 +495,8 @@ class TickerState implements GameSystem {
 ///
 /// ```dart
 /// final camera = Camera();
-/// // Use a registered engine instance
-/// GameEngine().cameras.registerCamera(camera);
+/// // Use the engine instance obtained from GameEngine.create()
+/// engine.cameras.registerCamera(camera);
 /// ```
 ///
 /// See also:
@@ -468,7 +526,7 @@ class CameraSystem implements GameSystem {
   final List<Camera> _allCameras = [];
 
   @override
-  void attach(GameEngine game) {
+  Future<void> attach(GameEngine game) async {
     this.game = game;
     _attached = true;
   }
@@ -544,10 +602,203 @@ class CameraSystem implements GameSystem {
   }
 
   @override
-  void dispose() {
+  Future<void> dispose() async {
     _allCameras.clear();
     _main = null;
   }
+}
+
+void _stopSoundHandle(SoundHandle? handle) {
+  if (handle == null) return;
+  if (SoLoud.instance.isInitialized &&
+      SoLoud.instance.getIsValidVoiceHandle(handle)) {
+    SoLoud.instance.stop(handle);
+  }
+}
+
+/// Returned by [MusicTransition.transition] to represent an in-progress
+/// background music transition.
+///
+/// Each [MusicTransition] subclass provides its own implementation that tracks
+/// whatever state is needed (the fading-out handle, a deferred-start timer,
+/// etc.). The [AudioSystem] stores one handle per channel and calls the
+/// appropriate method when the channel is interrupted or disposed.
+abstract class MusicTransitionHandle {
+  /// The [SoundHandle] being established as the new audio on this channel,
+  /// or `null` when transitioning to silence.
+  SoundHandle? get handle;
+
+  /// Cancels any pending deferred actions without stopping audio.
+  ///
+  /// Called by [AudioSystem] before a new transition starts on the same
+  /// channel, preventing a stale [FadeOutInMusicTransition] timer from
+  /// unpausing a handle that is already being transitioned away.
+  void cancelDeferred();
+
+  /// Stops all audio involved in this transition immediately.
+  ///
+  /// Called when the [BackgroundMusic] widget is disposed or its [channel]
+  /// changes. Implementations should cancel deferred timers and stop both
+  /// the outgoing and incoming handles.
+  void stop();
+}
+
+class _NoTransitionHandle implements MusicTransitionHandle {
+  @override
+  final SoundHandle? handle;
+  const _NoTransitionHandle(this.handle);
+
+  @override
+  void cancelDeferred() {}
+
+  @override
+  void stop() => _stopSoundHandle(handle);
+}
+
+class _CrossFadeHandle implements MusicTransitionHandle {
+  @override
+  final SoundHandle? handle;
+  final SoundHandle? _fadingOut;
+
+  const _CrossFadeHandle(this.handle, this._fadingOut);
+
+  @override
+  void cancelDeferred() {}
+
+  @override
+  void stop() {
+    _stopSoundHandle(_fadingOut);
+    _stopSoundHandle(handle);
+  }
+}
+
+class _FadeOutInHandle implements MusicTransitionHandle {
+  @override
+  final SoundHandle? handle;
+  final SoundHandle? _fadingOut;
+  Timer? _timer;
+
+  _FadeOutInHandle(this.handle, this._fadingOut, this._timer);
+
+  @override
+  void cancelDeferred() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  @override
+  void stop() {
+    cancelDeferred();
+    _stopSoundHandle(_fadingOut);
+    _stopSoundHandle(handle);
+  }
+}
+
+/// Controls how background music transitions between tracks on a channel.
+///
+/// Implementations define the blend behaviour for three cases:
+/// - **Starting** ([oldHandle] is `null`): begin the first track.
+/// - **Stopping** ([newHandle] is `null`): fade to silence.
+/// - **Changing** (both non-null): crossfade or sequence the two tracks.
+///
+/// [AudioSystem.transitionMusic] starts [newHandle] paused at volume 0 before
+/// calling [transition], so each implementation is responsible for unpausing
+/// and adjusting volume at the appropriate time.
+///
+/// ```dart
+/// BackgroundMusic(
+///   audio: MyAudio.theme,
+///   transition: CrossFadeMusicTransition(duration: 2.0),
+/// )
+/// ```
+abstract class MusicTransition {
+  const MusicTransition();
+  const factory MusicTransition.noTransition() = NoMusicTransition;
+
+  /// Applies the transition from [oldHandle] to [newHandle] and returns a
+  /// [MusicTransitionHandle] that manages the resulting state.
+  MusicTransitionHandle transition(
+    SoundHandle? oldHandle,
+    SoundHandle? newHandle,
+  );
+}
+
+/// Stops the current track instantly and starts the next with no overlap.
+class NoMusicTransition implements MusicTransition {
+  const NoMusicTransition();
+
+  @override
+  MusicTransitionHandle transition(
+    SoundHandle? oldHandle,
+    SoundHandle? newHandle,
+  ) {
+    _stopSoundHandle(oldHandle);
+    if (newHandle != null) {
+      SoLoud.instance.setVolume(newHandle, 1.0);
+      SoLoud.instance.setPause(newHandle, false);
+    }
+    return _NoTransitionHandle(newHandle);
+  }
+}
+
+/// Simultaneously fades out the current track and fades in the next.
+class CrossFadeMusicTransition implements MusicTransition {
+  final double duration;
+  const CrossFadeMusicTransition({this.duration = 1.0});
+
+  @override
+  MusicTransitionHandle transition(
+    SoundHandle? oldHandle,
+    SoundHandle? newHandle,
+  ) {
+    final d = Duration(milliseconds: (duration * 1000).round());
+    if (oldHandle != null && SoLoud.instance.getIsValidVoiceHandle(oldHandle)) {
+      SoLoud.instance.fadeVolume(oldHandle, 0.0, d);
+      SoLoud.instance.scheduleStop(oldHandle, d);
+    }
+    if (newHandle != null) {
+      SoLoud.instance.setPause(newHandle, false);
+      SoLoud.instance.fadeVolume(newHandle, 1.0, d);
+    }
+    return _CrossFadeHandle(newHandle, oldHandle);
+  }
+}
+
+/// Fades out the current track completely, then fades in the next.
+///
+/// Each phase takes [duration] / 2 seconds, so the total transition is [duration].
+class FadeOutInMusicTransition implements MusicTransition {
+  final double duration;
+  const FadeOutInMusicTransition({this.duration = 1.0});
+
+  @override
+  MusicTransitionHandle transition(
+    SoundHandle? oldHandle,
+    SoundHandle? newHandle,
+  ) {
+    final half = Duration(milliseconds: (duration * 500).round());
+    if (oldHandle != null && SoLoud.instance.getIsValidVoiceHandle(oldHandle)) {
+      SoLoud.instance.fadeVolume(oldHandle, 0.0, half);
+      SoLoud.instance.scheduleStop(oldHandle, half);
+    }
+    Timer? timer;
+    if (newHandle != null) {
+      timer = Timer(half, () {
+        if (SoLoud.instance.getIsValidVoiceHandle(newHandle)) {
+          SoLoud.instance.setPause(newHandle, false);
+          SoLoud.instance.fadeVolume(newHandle, 1.0, half);
+        }
+      });
+    }
+    return _FadeOutInHandle(newHandle, oldHandle, timer);
+  }
+}
+
+/// Tracks the active [MusicTransitionHandle] on a single background music channel.
+class _MusicChannel {
+  MusicTransitionHandle? currentTransition;
+  GameAudio? currentAudio;
+  Object? owner;
 }
 
 /// The system responsible for playing and managing game audio.
@@ -558,9 +809,8 @@ class CameraSystem implements GameSystem {
 /// disposed.
 ///
 /// ```dart
-/// await AudioSystem.initialize();
-/// // Access via engine instance
-/// GameEngine().audio?.globalVolume = 0.5;
+/// // AudioSystem initializes automatically during GameEngine.create().
+/// engine.audio?.globalVolume = 0.5;
 /// ```
 ///
 /// See also:
@@ -569,35 +819,84 @@ class CameraSystem implements GameSystem {
 class AudioSystem implements GameSystem {
   static bool _isInitialized = false;
 
-  /// Initializes the underlying audio engine.
-  ///
-  /// This must be called once before any audio playback can occur. It
-  /// configures the sample rate, buffer size, and output device.
-  ///
-  /// * [device]: The output device to use.
-  /// * [automaticCleanup]: Whether to automatically stop sounds when finished.
-  /// * [sampleRate]: The playback sample rate.
-  /// * [bufferSize]: The audio buffer size.
-  /// * [channels]: The number of audio channels.
-  static Future<void> initialize({
-    PlaybackDevice? device,
-    bool automaticCleanup = false,
-    int sampleRate = 44100,
-    int bufferSize = 2048,
-    Channels channels = Channels.stereo,
-  }) async {
-    if (_isInitialized) return;
-    await SoLoud.instance.init(
-      device: device,
-      automaticCleanup: automaticCleanup,
-      sampleRate: sampleRate,
-      bufferSize: bufferSize,
-      channels: channels,
-    );
-    _isInitialized = true;
-  }
+  final PlaybackDevice? device;
+  final bool automaticCleanup;
+  final int sampleRate;
+  final int bufferSize;
+  final Channels channels;
+
+  AudioSystem({
+    this.device,
+    this.automaticCleanup = false,
+    this.sampleRate = 44100,
+    this.bufferSize = 2048,
+    this.channels = Channels.stereo,
+  });
 
   final Set<SoundHandle> _handles = {};
+  final Map<int, _MusicChannel> _musicChannels = {};
+
+  /// Transitions the background music on [channel] to [newAudio].
+  ///
+  /// Pass `newAudio: null` to stop music on the channel. The [transition]
+  /// controls how the old and new tracks blend — instant cut, crossfade, or
+  /// fade-out then fade-in.
+  ///
+  /// Any in-progress deferred action on the channel (e.g. a [FadeOutInMusicTransition]
+  /// timer) is cancelled before the new transition begins.
+  void transitionMusic({
+    required int channel,
+    required GameAudio? newAudio,
+    required MusicTransition transition,
+    Object? owner,
+  }) {
+    if (!_isInitialized) return;
+    final ch = _musicChannels.putIfAbsent(channel, _MusicChannel.new);
+
+    if (newAudio != null && newAudio == ch.currentAudio) {
+      // Transfer ownership so the old widget's dispose() won't stop the music.
+      ch.owner = owner;
+      return;
+    }
+
+    ch.currentTransition?.cancelDeferred();
+    final oldHandle = ch.currentTransition?.handle;
+    if (oldHandle != null) unregisterHandle(oldHandle);
+
+    SoundHandle? newHandle;
+    if (newAudio != null) {
+      assert(
+        newAudio.isLoaded,
+        'BackgroundMusic: audio must be loaded before calling transitionMusic()',
+      );
+      newHandle = SoLoud.instance.play(
+        newAudio.audioSource,
+        volume: 0.0,
+        looping: true,
+        paused: true,
+      );
+      registerHandle(newHandle);
+    }
+
+    ch.currentTransition = transition.transition(oldHandle, newHandle);
+    ch.currentAudio = newAudio;
+    ch.owner = owner;
+  }
+
+  /// Stops music on [channel] only if [owner] still owns it.
+  ///
+  /// Used by [BackgroundMusic] on dispose so that a widget being removed does
+  /// not stop audio that a newly-mounted widget with the same track has already
+  /// taken ownership of.
+  void releaseMusic({
+    required int channel,
+    required Object? owner,
+    required MusicTransition transition,
+  }) {
+    final ch = _musicChannels[channel];
+    if (ch == null || ch.owner != owner) return;
+    transitionMusic(channel: channel, newAudio: null, transition: transition);
+  }
 
   GameEngine? _game;
 
@@ -611,8 +910,18 @@ class AudioSystem implements GameSystem {
   bool get gameAttached => _game != null;
 
   @override
-  void attach(GameEngine game) {
+  Future<void> attach(GameEngine game) async {
     _game = game;
+    if (!_isInitialized) {
+      await SoLoud.instance.init(
+        device: device,
+        automaticCleanup: automaticCleanup,
+        sampleRate: sampleRate,
+        bufferSize: bufferSize,
+        channels: channels,
+      );
+      _isInitialized = true;
+    }
   }
 
   /// Registers an active sound [handle] for tracking.
@@ -654,15 +963,22 @@ class AudioSystem implements GameSystem {
   }
 
   @override
-  void dispose() {
+  Future<void> dispose() async {
+    for (final ch in _musicChannels.values) {
+      ch.currentTransition?.stop();
+    }
+    _musicChannels.clear();
     if (_isInitialized) {
       for (final handle in _handles) {
         if (SoLoud.instance.getIsValidVoiceHandle(handle)) {
           SoLoud.instance.stop(handle);
         }
       }
+      SoLoud.instance.deinit();
+      _isInitialized = false;
     }
     _handles.clear();
+    _game = null;
   }
 }
 
@@ -716,84 +1032,52 @@ class GameProvider extends InheritedWidget {
 
 /// The root widget of a Goo2D application.
 ///
-/// The [Game] widget initializes the [GameEngine], sets up the core systems,
-/// and establishes the rendering and update loops. It should typically be
-/// placed at the root of the game's widget tree.
+/// Requires a fully-initialized [GameEngine] created via [GameEngine.create].
+/// The engine's lifetime is owned by the caller — the widget does not dispose it.
 ///
 /// ```dart
-/// void main() {
-///   runApp(const Game(
-///     child: Placeholder(),
-///   ));
+/// void main() async {
+///   WidgetsFlutterBinding.ensureInitialized();
+///   final engine = await GameEngine.create();
+///   runApp(Game(engine: engine, child: MyWorld()));
 /// }
 /// ```
 ///
 /// See also:
-/// * [GameProvider], for accessing the engine instance.
-/// * [GameEngine], for manual engine configuration.
+/// * [GameEngine.create], the async factory that initializes all systems.
+/// * [GameProvider], for accessing the engine from descendant widgets.
 class Game extends StatefulWidget {
-  /// The root child widget of the game.
-  ///
-  /// This widget tree will be wrapped in the engine's rendering and
-  /// update pipelines.
   final Widget child;
 
-  /// An optional [GameEngine] instance to use.
-  ///
-  /// If not provided, a new engine instance with default systems will be
-  /// created automatically. This allows for custom engine configurations.
-  final GameEngine? game;
+  /// A fully-initialized engine created via [GameEngine.create].
+  final GameEngine engine;
 
-  /// Creates a root game widget.
-  ///
-  /// * [key]: The widget key.
-  /// * [game]: An optional custom engine instance.
-  /// * [child]: The root game world widget.
-  const Game({super.key, this.game, required this.child});
+  const Game({super.key, required this.engine, required this.child});
 
   @override
   State<Game> createState() => _GameState();
 }
 
 class _GameState extends State<Game> {
-  late GameEngine _game;
-
-  @override
-  void initState() {
-    super.initState();
-    _game = widget.game ?? GameEngine();
-    _game.initialize();
-  }
-
-  @override
-  void didUpdateWidget(covariant Game oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.game != oldWidget.game) {
-      _game.dispose();
-      _game = widget.game ?? GameEngine();
-      _game.initialize();
-    }
-  }
-
-  @override
-  void dispose() {
-    _game.dispose();
-    super.dispose();
-  }
+  GameEngine get _game => widget.engine;
 
   @override
   void reassemble() {
     super.reassemble();
-    _game.ticker.signalFrameComplete(); // Wake up any listeners
+    _game.ticker.signalFrameComplete();
   }
 
   @override
   Widget build(BuildContext context) {
-    return GameProvider(
-      game: _game,
-      child: GameLoop(
+    return FpsCounter(
+      child: GameProvider(
         game: _game,
-        child: GameRenderer(child: World(child: widget.child)),
+        child: GameLoop(
+          game: _game,
+          child: GameRenderer(
+            child: WorldSpace(child: widget.child),
+          ),
+        ),
       ),
     );
   }

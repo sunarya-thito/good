@@ -397,7 +397,7 @@ mixin MultiComponent on Component {}
 /// See also:
 /// * [GameObject], the container for components.
 /// * [Behavior], a specialized component for runtime logic.
-abstract class Component {
+abstract class Component implements EventListenerMixable {
   GameObject? _gameObject;
 
   /// The [GameObject] this component is currently attached to.
@@ -432,6 +432,32 @@ abstract class Component {
     _gameObject = null;
   }
 
+  @override
+  void onEvent<T extends EventListener>(Event<T> event) {
+    event.dispatch(this as T);
+  }
+
+  @override
+  FutureOr<void> onEventAsync<T extends EventListener>(AsyncEvent<T> event) {
+    return event.dispatch(this as T);
+  }
+
+  @override
+  bool onDispatchEvent<T extends EventListener>(Event<T> event) {
+    if (this is! T) return false;
+    event.dispatch(this as T);
+    return true;
+  }
+
+  @override
+  FutureOr<bool> onDispatchEventAsync<T extends EventListener>(
+    AsyncEvent<T> event,
+  ) async {
+    if (this is! T) return false;
+    await event.dispatch(this as T);
+    return true;
+  }
+
   /// Whether this component is currently attached to a [GameObject].
   ///
   /// Components are only fully functional when attached, as most of their
@@ -454,13 +480,13 @@ abstract class Component {
   ///
   /// This should be used to scale movement and animations to ensure they
   /// run at the same speed regardless of the frame rate.
-  double get deltaTime => game.getSystem<TickerState>()?.deltaTime ?? 0.0;
+  double get deltaTime => game.getSystem<TickerSystem>()?.deltaTime ?? 0.0;
 
   /// The total number of frames rendered since the engine started.
   ///
   /// This can be used for simple frame-based timing or to synchronize
   /// logic with specific rendering cycles.
-  int get frameCount => game.getSystem<TickerState>()?.frameCount ?? 0;
+  int get frameCount => game.getSystem<TickerSystem>()?.frameCount ?? 0;
 
   /// The name of the [GameObject] this component is attached to.
   ///
@@ -511,6 +537,7 @@ abstract class Component {
   /// This provides a low-level way to inspect all functionality currently
   /// assigned to the object.
   Iterable<Component> get components => gameObject.components;
+
   /// Adds one or more components to the [GameObject] this component is attached to.
   ///
   /// This allows for dynamic expansion of an object's capabilities at runtime.
@@ -540,6 +567,7 @@ abstract class Component {
     Component? i,
     Component? j,
   ]) => gameObject.addComponent(component, a, b, c, d, e, f, g, h, i, j);
+
   /// Removes one or more specific component instances from the [GameObject].
   ///
   /// This is used to strip functionality from an object when it is no longer
@@ -569,6 +597,7 @@ abstract class Component {
     Component? i,
     Component? j,
   ]) => gameObject.removeComponent(component, a, b, c, d, e, f, g, h, i, j);
+
   /// Removes all components of a specific exact type from the [GameObject].
   ///
   /// This is useful for clearing entire categories of functionality (e.g., all
@@ -599,6 +628,7 @@ abstract class Component {
     Type? j,
   ]) =>
       gameObject.removeComponentOfExactType(type, a, b, c, d, e, f, g, h, i, j);
+
   /// Removes the first component of type [T] from the [GameObject].
   ///
   /// This provides a type-safe way to remove a specific component kind.
@@ -606,6 +636,7 @@ abstract class Component {
   /// * [T]: The type of component to search for and remove.
   void removeComponentOfType<T extends Component>() =>
       gameObject.removeComponentOfType<T>();
+
   /// Adds a collection of components to the [GameObject] in bulk.
   ///
   /// Use this when you have a pre-calculated list of components to attach.
@@ -613,6 +644,7 @@ abstract class Component {
   /// * [components]: The iterable collection of components to add.
   void addComponents(Iterable<Component> components) =>
       gameObject.addComponents(components);
+
   /// Removes all components matching any of the specified [types] in bulk.
   ///
   /// This is an efficient way to clean up multiple component types at once.
@@ -620,6 +652,7 @@ abstract class Component {
   /// * [types]: The iterable collection of types to remove.
   void removeComponents(Iterable<Type> types) =>
       gameObject.removeComponents(types);
+
   /// Sends an event to this object and all of its descendants.
   ///
   /// This is used for broad notifications like "Game Started" or "Level Reset"
@@ -805,4 +838,18 @@ abstract class Behavior extends Component {
   /// When set to false, systems will typically skip this behavior during
   /// their update or tick cycles. The component remains attached to the object.
   bool enabled = true;
+
+  @override
+  bool onDispatchEvent<T extends EventListener>(Event<T> event) {
+    if (!enabled) return false;
+    return super.onDispatchEvent(event);
+  }
+
+  @override
+  FutureOr<bool> onDispatchEventAsync<T extends EventListener>(
+    AsyncEvent<T> event,
+  ) {
+    if (!enabled) return false;
+    return super.onDispatchEventAsync(event);
+  }
 }

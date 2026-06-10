@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:vector_math/vector_math_64.dart';
 import 'package:goo2d/src/rpc/buffer.dart';
+import 'package:goo2d/src/physics/worker/data/contact_delta.dart';
 import 'package:goo2d/src/physics/worker/data/raycast_hit_data.dart';
 import 'package:goo2d/src/physics/worker/data/contact_point_data.dart';
 
@@ -43,6 +44,7 @@ class Opcode {
   static const int overlapCollider = 34;
   static const int syncTransforms = 35;
   static const int stepWithBatch = 36;
+  static const int stepWithContactDelta = 37;
 }
 
 class GlobalPropId {
@@ -193,6 +195,20 @@ class IsolateProtocol {
   static Uint8ListBuffer writeOverlapCollider(int h) { final b = _buf(Opcode.overlapCollider); _writeInt(b, h); return b; }
   static Uint8ListBuffer writeSyncTransforms() => _buf(Opcode.syncTransforms);
 
+  static Uint8ListBuffer writeStepWithContactDeltaBatch(
+      double dt, int opCount, Uint8List opsData) {
+    final b = _buf(Opcode.stepWithContactDelta);
+    _writeDouble(b, dt);
+    _writeInt(b, opCount);
+    b.ensureCapacity(opsData.length);
+    b.write(opsData.length, () {
+      for (var i = 0; i < opsData.length; i++) {
+        b.byteData.setUint8(b.offset + i, opsData[i]);
+      }
+    });
+    return b;
+  }
+
   /// Serializes a full ordered-op batch + step into one message.
   ///
   /// Format:
@@ -262,6 +278,78 @@ class IsolateProtocol {
       off += 72;
     }
     return list;
+  }
+
+  // Header: 8 × Int32 (array lengths), then raw bytes for each array.
+  static Uint8ListBuffer writeContactDelta(ContactDelta d) {
+    void writeI32List(Uint8ListBuffer b, Int32List list) {
+      b.ensureCapacity(list.length * 4);
+      b.write(list.length * 4, () {
+        for (var i = 0; i < list.length; i++) {
+          b.byteData.setInt32(b.offset + i * 4, list[i]);
+        }
+      });
+    }
+
+    void writeF32List(Uint8ListBuffer b, Float32List list) {
+      b.ensureCapacity(list.length * 4);
+      b.write(list.length * 4, () {
+        for (var i = 0; i < list.length; i++) {
+          b.byteData.setFloat32(b.offset + i * 4, list[i]);
+        }
+      });
+    }
+
+    final b = Uint8ListBuffer(32);
+    _writeInt(b, d.enterContacts.length);
+    _writeInt(b, d.stayContacts.length);
+    _writeInt(b, d.exitContacts.length);
+    _writeInt(b, d.enterTriggers.length);
+    _writeInt(b, d.stayTriggers.length);
+    _writeInt(b, d.exitTriggers.length);
+    _writeInt(b, d.contactPoints.length);
+    _writeInt(b, d.contactPointCounts.length);
+    writeI32List(b, d.enterContacts);
+    writeI32List(b, d.stayContacts);
+    writeI32List(b, d.exitContacts);
+    writeI32List(b, d.enterTriggers);
+    writeI32List(b, d.stayTriggers);
+    writeI32List(b, d.exitTriggers);
+    writeF32List(b, d.contactPoints);
+    writeI32List(b, d.contactPointCounts);
+    return b;
+  }
+
+  static ContactDelta readContactDelta(ByteData d) {
+    var off = 0;
+    int ri() { final v = d.getInt32(off); off += 4; return v; }
+
+    final ecLen = ri(); final scLen = ri(); final xcLen = ri();
+    final etLen = ri(); final stLen = ri(); final xtLen = ri();
+    final ptLen = ri(); final pcLen = ri();
+
+    Int32List readI32(int len) {
+      final list = Int32List(len);
+      for (var i = 0; i < len; i++) { list[i] = d.getInt32(off); off += 4; }
+      return list;
+    }
+
+    Float32List readF32(int len) {
+      final list = Float32List(len);
+      for (var i = 0; i < len; i++) { list[i] = d.getFloat32(off); off += 4; }
+      return list;
+    }
+
+    return ContactDelta(
+      enterContacts: readI32(ecLen),
+      stayContacts: readI32(scLen),
+      exitContacts: readI32(xcLen),
+      enterTriggers: readI32(etLen),
+      stayTriggers: readI32(stLen),
+      exitTriggers: readI32(xtLen),
+      contactPoints: readF32(ptLen),
+      contactPointCounts: readI32(pcLen),
+    );
   }
 
   static List<ContactPointData> readContactPoints(ByteData d) {

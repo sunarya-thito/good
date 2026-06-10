@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'package:forge2d/forge2d.dart' as f;
 import 'package:forge2d/src/settings.dart' as f_settings; // ignore: implementation_imports
 import 'package:vector_math/vector_math_64.dart';
@@ -7,6 +8,7 @@ import 'package:goo2d/src/physics/worker/engine/physics_collider.dart';
 import 'package:goo2d/src/physics/worker/engine/physics_joint.dart';
 import 'package:goo2d/src/physics/worker/engine/physics_effector.dart';
 import 'package:goo2d/src/physics/worker/data/collider_shape_type.dart';
+import 'package:goo2d/src/physics/worker/data/contact_delta.dart';
 import 'package:goo2d/src/physics/worker/data/raycast_hit_data.dart';
 import 'package:goo2d/src/physics/worker/data/contact_point_data.dart';
 
@@ -98,9 +100,14 @@ class _LayerContactFilter extends f.ContactFilter {
 // ===================== Contact Listener =====================
 
 class EngineContactListener extends f.ContactListener {
-  // collider handle → set of currently touching collider handles
+  // bidirectional lookup for legacy getTouchingColliders / getContactPoints
   final Map<int, Set<int>> _activeContacts = {};
-  // (minHandle, maxHandle) → contact point data from last postSolve
+  // normalized (min, max) pair sets — diffed each frame
+  final Set<(int, int)> _activeContactPairs = {};
+  final Set<(int, int)> _activeTriggerPairs = {};
+  Set<(int, int)> _prevContactPairs = {};
+  Set<(int, int)> _prevTriggerPairs = {};
+  // (min, max) → contact point data from last postSolve
   final Map<(int, int), List<ContactPointData>> _contactPoints = {};
 
   @override
@@ -108,8 +115,14 @@ class EngineContactListener extends f.ContactListener {
     final cA = contact.fixtureA.userData as int?;
     final cB = contact.fixtureB.userData as int?;
     if (cA == null || cB == null) return;
-    (_activeContacts[cA] ??= {}).add(cB);
-    (_activeContacts[cB] ??= {}).add(cA);
+    final key = (math.min(cA, cB), math.max(cA, cB));
+    if (contact.fixtureA.isSensor || contact.fixtureB.isSensor) {
+      _activeTriggerPairs.add(key);
+    } else {
+      _activeContactPairs.add(key);
+      (_activeContacts[cA] ??= {}).add(cB);
+      (_activeContacts[cB] ??= {}).add(cA);
+    }
   }
 
   @override
@@ -117,10 +130,15 @@ class EngineContactListener extends f.ContactListener {
     final cA = contact.fixtureA.userData as int?;
     final cB = contact.fixtureB.userData as int?;
     if (cA == null || cB == null) return;
-    _activeContacts[cA]?.remove(cB);
-    _activeContacts[cB]?.remove(cA);
     final key = (math.min(cA, cB), math.max(cA, cB));
-    _contactPoints.remove(key);
+    if (contact.fixtureA.isSensor || contact.fixtureB.isSensor) {
+      _activeTriggerPairs.remove(key);
+    } else {
+      _activeContactPairs.remove(key);
+      _activeContacts[cA]?.remove(cB);
+      _activeContacts[cB]?.remove(cA);
+      _contactPoints.remove(key);
+    }
   }
 
   @override
@@ -155,6 +173,63 @@ class EngineContactListener extends f.ContactListener {
     }
     final key = (math.min(cA, cB), math.max(cA, cB));
     _contactPoints[key] = pts;
+  }
+
+  ContactDelta buildContactDelta() {
+    final enterC = _activeContactPairs.difference(_prevContactPairs).toList();
+    final stayC = _activeContactPairs.intersection(_prevContactPairs).toList();
+    final exitC = _prevContactPairs.difference(_activeContactPairs).toList();
+    final enterT = _activeTriggerPairs.difference(_prevTriggerPairs).toList();
+    final stayT = _activeTriggerPairs.intersection(_prevTriggerPairs).toList();
+    final exitT = _prevTriggerPairs.difference(_activeTriggerPairs).toList();
+
+    _prevContactPairs = Set.of(_activeContactPairs);
+    _prevTriggerPairs = Set.of(_activeTriggerPairs);
+
+    // Serialize pairs to flat Int32Lists
+    Int32List serializePairs(List<(int, int)> list) {
+      final buf = Int32List(list.length * 2);
+      for (var i = 0; i < list.length; i++) {
+        buf[i * 2] = list[i].$1;
+        buf[i * 2 + 1] = list[i].$2;
+      }
+      return buf;
+    }
+
+    // Contact points for solid enter pairs only
+    var totalPoints = 0;
+    final counts = Int32List(enterC.length);
+    for (var i = 0; i < enterC.length; i++) {
+      final n = _contactPoints[enterC[i]]?.length ?? 0;
+      counts[i] = n;
+      totalPoints += n;
+    }
+    final pts = Float32List(totalPoints * ContactDelta.floatsPerPoint);
+    var offset = 0;
+    for (var i = 0; i < enterC.length; i++) {
+      final cpList = _contactPoints[enterC[i]];
+      if (cpList == null) continue;
+      for (final cp in cpList) {
+        pts[offset++] = cp.point.x;
+        pts[offset++] = cp.point.y;
+        pts[offset++] = cp.normal.x;
+        pts[offset++] = cp.normal.y;
+        pts[offset++] = cp.separation;
+        pts[offset++] = cp.normalImpulse;
+        pts[offset++] = cp.tangentImpulse;
+      }
+    }
+
+    return ContactDelta(
+      enterContacts: serializePairs(enterC),
+      stayContacts: serializePairs(stayC),
+      exitContacts: serializePairs(exitC),
+      enterTriggers: serializePairs(enterT),
+      stayTriggers: serializePairs(stayT),
+      exitTriggers: serializePairs(exitT),
+      contactPoints: pts,
+      contactPointCounts: counts,
+    );
   }
 
   Set<int> getTouchingColliders(int handle) =>
@@ -212,7 +287,7 @@ class PhysicsEngine {
 
   // --- Handle storage ---
   int _nextHandle = 1;
-  final Map<int, PhysicsBody> bodies = {};
+  final Map<int, EngineBody> bodies = {};
   final Map<int, PhysicsCollider> colliders = {};
   final Map<int, PhysicsJoint> joints = {};
   final Map<int, PhysicsEffector> effectors = {};
@@ -242,7 +317,7 @@ class PhysicsEngine {
     final h = allocHandle();
     final def = f.BodyDef(type: f.BodyType.dynamic);
     final fb = _world.createBody(def);
-    final body = PhysicsBody(h);
+    final body = EngineBody(h);
     body.initForgeBody(fb);
     bodies[h] = body;
     return h;
@@ -251,7 +326,7 @@ class PhysicsEngine {
   void createBodyWithHandle(int h) {
     final def = f.BodyDef(type: f.BodyType.dynamic);
     final fb = _world.createBody(def);
-    final body = PhysicsBody(h);
+    final body = EngineBody(h);
     body.initForgeBody(fb);
     bodies[h] = body;
   }
@@ -280,7 +355,7 @@ class PhysicsEngine {
     _world.destroyBody(fb);
   }
 
-  PhysicsBody getBody(int handle) => bodies[handle]!;
+  EngineBody getBody(int handle) => bodies[handle]!;
 
   // ===================== Collider CRUD =====================
 
@@ -605,6 +680,11 @@ class PhysicsEngine {
     _checkJointBreaks();
 
     return true;
+  }
+
+  ContactDelta stepDelta(double dt) {
+    step(dt);
+    return _contactListener.buildContactDelta();
   }
 
   void _checkJointBreaks() {

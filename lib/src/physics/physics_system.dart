@@ -1,20 +1,39 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:goo2d/goo2d.dart';
 import 'package:goo2d/src/physics/worker/physics_worker.dart';
-import 'package:goo2d/src/physics/worker/data/contact_point_data.dart';
+import 'package:goo2d/src/physics/worker/data/contact_delta.dart';
 import 'package:goo2d/src/physics/worker/direct/direct_body_ops.dart';
 import 'package:goo2d/src/physics/worker/direct/direct_physics_worker.dart';
 import 'package:goo2d/src/physics/worker/isolate/isolate_physics_worker.dart';
 
 /// The [GameSystem] that manages the physics worker lifecycle and dispatches
-/// per-frame collision and trigger events to [CollisionListener] components.
+/// per-frame collision and trigger events to [PhysicsContactListener] components.
 class PhysicsSystem implements GameSystem {
   static bool _isInitialized = false;
   static PhysicsWorker? _worker;
 
   GameEngine? _game;
+  static PhysicsSystem? _instance;
 
-  PhysicsSystem();
+  /// The active [PhysicsSystem] instance, available after [initialize].
+  static PhysicsSystem get instance {
+    assert(_instance != null, 'PhysicsSystem has not been attached to a game.');
+    return _instance!;
+  }
+
+  /// Returns the active instance, or null if not currently attached to a game.
+  /// Safe to call across async gaps where the game engine may have been disposed.
+  static PhysicsSystem? get maybeInstance => _instance;
+
+  // Registered ECS world — when set, PhysicsWorldSystem owns the tick.
+  static Object? _ecsWorld;
+
+  final bool _forceDirectWorker;
+
+  PhysicsSystem({bool forceDirectWorker = false})
+    : _forceDirectWorker = forceDirectWorker;
 
   PhysicsWorker get worker {
     assert(_worker != null, 'PhysicsSystem has not been initialized.');
@@ -23,25 +42,6 @@ class PhysicsSystem implements GameSystem {
 
   static bool get platformSupportsIsolate => !kIsWeb;
 
-  /// Initializes the physics worker.
-  ///
-  /// Must be called once before the engine starts. Awaiting this ensures the
-  /// worker is ready before any physics operations are dispatched.
-  ///
-  /// * [forceDirectWorker]: When true, always uses [DirectPhysicsWorker] even
-  ///   on platforms that support isolates. Useful for debugging or testing.
-  static Future<void> initialize({bool forceDirectWorker = false}) async {
-    if (_isInitialized) return;
-    if (!forceDirectWorker && platformSupportsIsolate) {
-      _worker = IsolatePhysicsWorker();
-    } else {
-      _worker = DirectPhysicsWorker();
-    }
-    await _worker!.initialize();
-    Physics.initialize(_worker!);
-    _isInitialized = true;
-  }
-
   @override
   GameEngine get game => _game!;
 
@@ -49,56 +49,355 @@ class PhysicsSystem implements GameSystem {
   bool get gameAttached => _game != null;
 
   @override
-  void attach(GameEngine game) {
+  Future<void> attach(GameEngine game) async {
     _game = game;
+    _instance = this;
+    if (!_isInitialized) {
+      _worker = (!_forceDirectWorker && platformSupportsIsolate)
+          ? IsolatePhysicsWorker()
+          : DirectPhysicsWorker();
+      await _worker!.initialize();
+      Physics.initialize(_worker!);
+      _isInitialized = true;
+    }
   }
 
-  /// Steps the physics simulation then dispatches collision/trigger events.
-  Future<void> step() async {
-    await _syncTransformsToPhysics();
-    await _worker!.step(_game!.getSystem<TickerState>()!.fixedDeltaTime);
-    await _syncTransformsFromPhysics();
-    await _dispatchCollisionEvents();
+  // ── ECS world registration ──────────────────────────────────────────────
+
+  static void registerEcsWorld(Object world) => _ecsWorld = world;
+  static void unregisterEcsWorld() => _ecsWorld = null;
+
+  // ── Step ────────────────────────────────────────────────────────────────
+
+  /// Advances the simulation by one fixed tick.
+  /// When a PhysicsWorldSystem is attached, this is a no-op (ECS owns the tick).
+  FutureOr<void> step() {
+    if (_worker == null) return null;
+    if (_ecsWorld != null) return null;
+    final dt = _game!.getSystem<TickerSystem>()!.fixedDeltaTime;
+    final delta = stepWithDelta(dt);
+    return switch (delta) {
+      Future<ContactDelta> f => f.then(_dispatchEcEventsFromDelta),
+      ContactDelta d => _dispatchEcEventsFromDelta(d),
+    };
   }
 
-  /// Pushes game-driven (kinematic) positions to the physics body before each step
-  /// so the physics engine sees the correct positions for contact detection.
-  Future<void> _syncTransformsToPhysics() async {
-    if (_worker == null) return;
+  /// Advances the simulation and returns the contact delta.
+  /// Used directly by [PhysicsWorldSystem]; EC-only games go through [step()].
+  FutureOr<ContactDelta> stepWithDelta(double dt) {
+    var syncResult = _syncTransformsToPhysics();
+    return switch (syncResult) {
+      Future<void> f => f.then((_) => _worker!.stepWithContactDelta(dt)).then((
+        delta,
+      ) {
+        _syncTransformsFromPhysics();
+        return delta;
+      }),
+      _ => _worker!.stepWithContactDelta(dt).then((delta) {
+        _syncTransformsFromPhysics();
+        return delta;
+      }),
+    };
+  }
+
+  // ── Transform sync ──────────────────────────────────────────────────────
+
+  FutureOr<void> _syncTransformsToPhysics() {
+    if (_worker == null) return null;
     final entries = _rigidbodyRegistry.entries.toList();
+    Future<void>? result;
     for (final entry in entries) {
       final rb = entry.value;
       if (!rb.isAttached || rb.bodyType != RigidbodyType.kinematic) continue;
       final transform = rb.gameObject.tryGetComponent<ObjectTransform>();
       if (transform == null) continue;
-      await _worker!.bodyMovePositionAndRotation(entry.key, transform.position, transform.angle);
+      final future = _worker!.bodyMovePositionAndRotation(
+        entry.key,
+        transform.position,
+        transform.angle,
+      );
+      result = switch (future) {
+        Future<void> f => result == null ? f : result.then((_) => f),
+        _ => result,
+      };
     }
+    return result;
   }
 
-  /// Pulls simulation results back to game transforms — only for dynamic bodies
-  /// whose positions are owned by the physics engine, not the game.
-  Future<void> _syncTransformsFromPhysics() async {
-    if (_worker == null) return;
+  FutureOr<void> _syncTransformsFromPhysics() {
+    if (_worker == null) return null;
     final entries = _rigidbodyRegistry.entries.toList();
+    // for (final entry in entries) {
+    //   final rb = entry.value;
+    //   if (!rb.isAttached || rb.bodyType != RigidbodyType.dynamic) continue;
+    //   final pos =
+    //       (await _worker!.getBodyProperty(entry.key, BodyProp.position))
+    //           as Vector2;
+    //   final rot =
+    //       (await _worker!.getBodyProperty(entry.key, BodyProp.rotation))
+    //           as double;
+    //   rb.gameObject.tryGetComponent<ObjectTransform>()
+    //     ?..position = pos
+    //     ..angle = rot;
+    // }
+    Future<void>? result;
     for (final entry in entries) {
       final rb = entry.value;
       if (!rb.isAttached || rb.bodyType != RigidbodyType.dynamic) continue;
-      final pos = (await _worker!.getBodyProperty(entry.key, BodyProp.position)) as Vector2;
-      final rot = (await _worker!.getBodyProperty(entry.key, BodyProp.rotation)) as double;
-      rb.gameObject.tryGetComponent<ObjectTransform>()
-        ?..position = pos
-        ..angle = rot;
+      final posResult = _worker!.getBodyProperty(entry.key, BodyProp.position);
+      final rotResult = switch (posResult) {
+        Future<Vector2> f => f.then((pos) => _worker!.getBodyProperty(
+              entry.key,
+              BodyProp.rotation,
+            ).then((rot) => (pos, rot))),
+        Vector2 pos => _worker!.getBodyProperty(entry.key, BodyProp.rotation).then(
+              (rot) => (pos, rot),
+            ),
+      };
+  }
+
+  // ── EC-only event dispatch (fallback when no PhysicsWorldSystem) ────────
+
+  Future<void> _dispatchEcEventsFromDelta(ContactDelta delta) async {
+    const hasC = true;
+    const hasPB = true;
+
+    // Solid contacts
+    await _dispatchContactList(
+      delta.enterContacts,
+      delta.contactPoints,
+      delta.contactPointCounts,
+      isEnter: true,
+      hasC: hasC,
+      hasPB: hasPB,
+    );
+    await _dispatchContactList(
+      delta.stayContacts,
+      null,
+      null,
+      isEnter: false,
+      hasC: hasC,
+      hasPB: hasPB,
+    );
+    await _dispatchExitList(
+      delta.exitContacts,
+      isContact: true,
+      hasC: hasC,
+      hasPB: hasPB,
+    );
+
+    // Triggers
+    await _dispatchOverlapList(
+      delta.enterTriggers,
+      isEnter: true,
+      hasC: hasC,
+      hasPB: hasPB,
+    );
+    await _dispatchOverlapList(
+      delta.stayTriggers,
+      isEnter: false,
+      hasC: hasC,
+      hasPB: hasPB,
+    );
+    await _dispatchExitList(
+      delta.exitTriggers,
+      isContact: false,
+      hasC: hasC,
+      hasPB: hasPB,
+    );
+  }
+
+  Future<void> _dispatchContactList(
+    Int32List pairs,
+    Float32List? rawPoints,
+    Int32List? pointCounts, {
+    required bool isEnter,
+    required bool hasC,
+    required bool hasPB,
+  }) async {
+    final pairCount = pairs.length ~/ 2;
+    var ptOffset = 0;
+    for (var i = 0; i < pairCount; i++) {
+      final hA = pairs[i * 2], hB = pairs[i * 2 + 1];
+      final cA = _colliderRegistry[hA];
+      final cB = _colliderRegistry[hB];
+
+      List<PhysicsContactPoint> pts = const [];
+      if (isEnter && rawPoints != null && pointCounts != null) {
+        final n = pointCounts[i];
+        if (n > 0) {
+          pts = List.generate(n, (j) {
+            final base = (ptOffset + j) * ContactDelta.floatsPerPoint;
+            return PhysicsContactPoint(
+              point: Vector2(
+                rawPoints[base].toDouble(),
+                rawPoints[base + 1].toDouble(),
+              ),
+              normal: Vector2(
+                rawPoints[base + 2].toDouble(),
+                rawPoints[base + 3].toDouble(),
+              ),
+              separation: rawPoints[base + 4].toDouble(),
+              normalImpulse: rawPoints[base + 5].toDouble(),
+              tangentImpulse: rawPoints[base + 6].toDouble(),
+            );
+          });
+          ptOffset += n;
+        }
+      }
+
+      if (cA != null && cB != null && cA.isAttached && cB.isAttached) {
+        if (hasC) {
+          if (isEnter) {
+            await ContactEnterEvent(
+              PhysicsContact<Collider>(bodyA: cA, bodyB: cB, contacts: pts),
+            ).dispatchTo(cA.gameObject);
+            await ContactEnterEvent(
+              PhysicsContact<Collider>(bodyA: cB, bodyB: cA, contacts: pts),
+            ).dispatchTo(cB.gameObject);
+          } else {
+            await ContactStayEvent(
+              PhysicsContact<Collider>(bodyA: cA, bodyB: cB),
+            ).dispatchTo(cA.gameObject);
+            await ContactStayEvent(
+              PhysicsContact<Collider>(bodyA: cB, bodyB: cA),
+            ).dispatchTo(cB.gameObject);
+          }
+        }
+        if (hasPB) {
+          if (isEnter) {
+            await ContactEnterEvent(
+              PhysicsContact<PhysicsBody>(bodyA: cA, bodyB: cB, contacts: pts),
+            ).dispatchTo(cA.gameObject);
+            await ContactEnterEvent(
+              PhysicsContact<PhysicsBody>(bodyA: cB, bodyB: cA, contacts: pts),
+            ).dispatchTo(cB.gameObject);
+          } else {
+            await ContactStayEvent(
+              PhysicsContact<PhysicsBody>(bodyA: cA, bodyB: cB),
+            ).dispatchTo(cA.gameObject);
+            await ContactStayEvent(
+              PhysicsContact<PhysicsBody>(bodyA: cB, bodyB: cA),
+            ).dispatchTo(cB.gameObject);
+          }
+        }
+      }
+    }
+  }
+
+  Future<void> _dispatchExitList(
+    Int32List pairs, {
+    required bool isContact,
+    required bool hasC,
+    required bool hasPB,
+  }) async {
+    final pairCount = pairs.length ~/ 2;
+    for (var i = 0; i < pairCount; i++) {
+      final hA = pairs[i * 2], hB = pairs[i * 2 + 1];
+      final cA = _colliderRegistry[hA];
+      final cB = _colliderRegistry[hB];
+      if (cA == null || cB == null) continue;
+      if (!cA.isAttached || !cB.isAttached) continue;
+
+      if (isContact) {
+        if (hasC) {
+          await ContactExitEvent(
+            PhysicsContact<Collider>(bodyA: cA, bodyB: cB),
+          ).dispatchTo(cA.gameObject);
+          await ContactExitEvent(
+            PhysicsContact<Collider>(bodyA: cB, bodyB: cA),
+          ).dispatchTo(cB.gameObject);
+        }
+        if (hasPB) {
+          await ContactExitEvent(
+            PhysicsContact<PhysicsBody>(bodyA: cA, bodyB: cB),
+          ).dispatchTo(cA.gameObject);
+          await ContactExitEvent(
+            PhysicsContact<PhysicsBody>(bodyA: cB, bodyB: cA),
+          ).dispatchTo(cB.gameObject);
+        }
+      } else {
+        if (hasC) {
+          await OverlapExitEvent(
+            PhysicsOverlap<Collider>(trigger: cA, other: cB),
+          ).dispatchTo(cA.gameObject);
+          await OverlapExitEvent(
+            PhysicsOverlap<Collider>(trigger: cB, other: cA),
+          ).dispatchTo(cB.gameObject);
+        }
+        if (hasPB) {
+          await OverlapExitEvent(
+            PhysicsOverlap<PhysicsBody>(trigger: cA, other: cB),
+          ).dispatchTo(cA.gameObject);
+          await OverlapExitEvent(
+            PhysicsOverlap<PhysicsBody>(trigger: cB, other: cA),
+          ).dispatchTo(cB.gameObject);
+        }
+      }
+    }
+  }
+
+  Future<void> _dispatchOverlapList(
+    Int32List pairs, {
+    required bool isEnter,
+    required bool hasC,
+    required bool hasPB,
+  }) async {
+    final pairCount = pairs.length ~/ 2;
+    for (var i = 0; i < pairCount; i++) {
+      final hA = pairs[i * 2], hB = pairs[i * 2 + 1];
+      final cA = _colliderRegistry[hA];
+      final cB = _colliderRegistry[hB];
+      if (cA == null || cB == null) continue;
+      if (!cA.isAttached || !cB.isAttached) continue;
+
+      if (hasC) {
+        if (isEnter) {
+          await OverlapEnterEvent(
+            PhysicsOverlap<Collider>(trigger: cA, other: cB),
+          ).dispatchTo(cA.gameObject);
+          await OverlapEnterEvent(
+            PhysicsOverlap<Collider>(trigger: cB, other: cA),
+          ).dispatchTo(cB.gameObject);
+        } else {
+          await OverlapStayEvent(
+            PhysicsOverlap<Collider>(trigger: cA, other: cB),
+          ).dispatchTo(cA.gameObject);
+          await OverlapStayEvent(
+            PhysicsOverlap<Collider>(trigger: cB, other: cA),
+          ).dispatchTo(cB.gameObject);
+        }
+      }
+      if (hasPB) {
+        if (isEnter) {
+          await OverlapEnterEvent(
+            PhysicsOverlap<PhysicsBody>(trigger: cA, other: cB),
+          ).dispatchTo(cA.gameObject);
+          await OverlapEnterEvent(
+            PhysicsOverlap<PhysicsBody>(trigger: cB, other: cA),
+          ).dispatchTo(cB.gameObject);
+        } else {
+          await OverlapStayEvent(
+            PhysicsOverlap<PhysicsBody>(trigger: cA, other: cB),
+          ).dispatchTo(cA.gameObject);
+          await OverlapStayEvent(
+            PhysicsOverlap<PhysicsBody>(trigger: cB, other: cA),
+          ).dispatchTo(cB.gameObject);
+        }
+      }
     }
   }
 
   @override
-  void dispose() {
+  Future<void> dispose() async {
     _worker?.dispose();
     _worker = null;
     _isInitialized = false;
+    _instance = null;
+    _ecsWorld = null;
+    _colliderRegistry.clear();
+    _rigidbodyRegistry.clear();
     _game = null;
-    _prevContacts.clear();
-    _prevTriggers.clear();
   }
 
   // ── Collider registry ────────────────────────────────────────────────────
@@ -128,125 +427,4 @@ class PhysicsSystem implements GameSystem {
   }
 
   static Rigidbody? getRigidbody(int handle) => _rigidbodyRegistry[handle];
-
-  // ── Collision event dispatch ─────────────────────────────────────────────
-
-  // handle → { otherHandle → otherCollider } from the previous step
-  final Map<int, Map<int, Collider>> _prevContacts = {};
-  final Map<int, Map<int, Collider>> _prevTriggers = {};
-
-  Collision? _buildCollision(
-    Collider self,
-    Collider other,
-    List<ContactPointData> allContacts,
-    int otherHandle,
-  ) {
-    if (!self.isAttached || !other.isAttached) return null;
-    final contacts = allContacts
-        .where((d) =>
-            d.colliderHandle == otherHandle ||
-            d.otherColliderHandle == otherHandle)
-        .map(ContactPoint.fromData)
-        .whereType<ContactPoint>()
-        .toList();
-    return Collision()
-      ..collider = self
-      ..otherCollider = other
-      ..gameObject = other.gameObject
-      ..rigidbody = self.tryGetComponent<Rigidbody>()
-      ..otherRigidbody = other.tryGetComponent<Rigidbody>()
-      ..transform = other.tryGetComponent<ObjectTransform>()
-      ..contacts = contacts
-      ..contactCount = contacts.length;
-  }
-
-  Future<void> _dispatchCollisionEvents() async {
-    if (_worker == null) return;
-
-    final currentContacts = <int, Map<int, Collider>>{};
-    final currentTriggers = <int, Map<int, Collider>>{};
-
-    // Build current contact sets for this step
-    final colliderEntries = _colliderRegistry.entries.toList();
-    for (final entry in colliderEntries) {
-      final handle = entry.key;
-      final collider = entry.value;
-      if (!collider.isAttached) continue;
-      final otherHandles = await _worker!.getContactColliders(handle);
-      for (final otherHandle in otherHandles) {
-        final other = _colliderRegistry[otherHandle];
-        if (other == null || !other.isAttached) continue;
-        if (collider.isTrigger || other.isTrigger) {
-          currentTriggers.putIfAbsent(handle, () => {})[otherHandle] = other;
-        } else {
-          currentContacts.putIfAbsent(handle, () => {})[otherHandle] = other;
-        }
-      }
-    }
-
-    // Dispatch events by comparing current vs previous
-    for (final entry in colliderEntries) {
-      final handle = entry.key;
-      final collider = entry.value;
-      if (!collider.isAttached) continue;
-
-      // --- solid collisions ---
-      final prevC = _prevContacts[handle] ?? const {};
-      final currC = currentContacts[handle] ?? const {};
-
-      if (currC.isNotEmpty) {
-        final contactData = await _worker!.getContacts(handle);
-        for (final otherEntry in currC.entries) {
-          final other = otherEntry.value;
-          if (!other.isAttached) continue;
-          final collision = _buildCollision(collider, other, contactData, otherEntry.key);
-          if (collision == null) continue;
-          if (prevC.containsKey(otherEntry.key)) {
-            await CollisionStayEvent(collision).dispatchTo(collider.gameObject);
-          } else {
-            await CollisionEnterEvent(collision).dispatchTo(collider.gameObject);
-          }
-        }
-      }
-
-      for (final otherEntry in prevC.entries) {
-        if (!currC.containsKey(otherEntry.key)) {
-          final other = otherEntry.value;
-          if (!other.isAttached) continue;
-          final collision = _buildCollision(collider, other, const [], otherEntry.key);
-          if (collision == null) continue;
-          await CollisionExitEvent(collision).dispatchTo(collider.gameObject);
-        }
-      }
-
-      // --- triggers ---
-      final prevT = _prevTriggers[handle] ?? const {};
-      final currT = currentTriggers[handle] ?? const {};
-
-      for (final otherEntry in currT.entries) {
-        final other = otherEntry.value;
-        if (!other.isAttached) continue;
-        if (prevT.containsKey(otherEntry.key)) {
-          await TriggerStayEvent(other).dispatchTo(collider.gameObject);
-        } else {
-          await TriggerEnterEvent(other).dispatchTo(collider.gameObject);
-        }
-      }
-
-      for (final otherEntry in prevT.entries) {
-        if (!currT.containsKey(otherEntry.key)) {
-          final other = otherEntry.value;
-          if (!other.isAttached) continue;
-          await TriggerExitEvent(other).dispatchTo(collider.gameObject);
-        }
-      }
-    }
-
-    _prevContacts
-      ..clear()
-      ..addAll(currentContacts);
-    _prevTriggers
-      ..clear()
-      ..addAll(currentTriggers);
-  }
 }

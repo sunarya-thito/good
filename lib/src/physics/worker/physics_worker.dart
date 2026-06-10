@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:vector_math/vector_math_64.dart';
 import 'package:goo2d/src/physics/worker/data/collider_shape_type.dart';
+import 'package:goo2d/src/physics/worker/data/contact_delta.dart';
 import 'package:goo2d/src/physics/worker/data/raycast_hit_data.dart';
 import 'package:goo2d/src/physics/worker/data/contact_point_data.dart';
 
@@ -12,6 +15,7 @@ abstract class PhysicsWorker {
   Future<void> initialize();
   void dispose();
   Future<void> step(double deltaTime);
+  Future<ContactDelta> stepWithContactDelta(double deltaTime);
 
   // ===================== Global Settings =====================
   Future<void> setGravity(Vector2 value);
@@ -81,16 +85,25 @@ abstract class PhysicsWorker {
   int createBody();
   void destroyBody(int handle);
   // Property access uses generic get/set by property index
-  Future<Object?> getBodyProperty(int handle, int property);
+  FutureOr<Object?> getBodyProperty(int handle, int property);
   void setBodyProperty(int handle, int property, Object? value);
   // Methods
   Future<void> bodyAddForce(int handle, Vector2 force, int mode);
-  Future<void> bodyAddForceAtPosition(int handle, Vector2 force, Vector2 position, int mode);
+  Future<void> bodyAddForceAtPosition(
+    int handle,
+    Vector2 force,
+    Vector2 position,
+    int mode,
+  );
   Future<void> bodyAddTorque(int handle, double torque, int mode);
   Future<void> bodyAddRelativeForce(int handle, Vector2 force, int mode);
   Future<void> bodyMovePosition(int handle, Vector2 position);
   Future<void> bodyMoveRotation(int handle, double angle);
-  Future<void> bodyMovePositionAndRotation(int handle, Vector2 position, double angle);
+  FutureOr<void> bodyMovePositionAndRotation(
+    int handle,
+    Vector2 position,
+    double angle,
+  );
   Future<void> bodySetRotation(int handle, double angle);
   Future<void> bodyWakeUp(int handle);
   Future<void> bodySleep(int handle);
@@ -128,14 +141,72 @@ abstract class PhysicsWorker {
   void setEffectorProperty(int handle, int property, Object? value);
 
   // ===================== Queries =====================
-  Future<List<RaycastHitData>> raycast(Vector2 origin, Vector2 direction, double distance, int layerMask, double minDepth, double maxDepth);
-  Future<List<RaycastHitData>> linecast(Vector2 start, Vector2 end, int layerMask, double minDepth, double maxDepth);
-  Future<List<RaycastHitData>> boxCast(Vector2 origin, Vector2 size, double angle, Vector2 direction, double distance, int layerMask, double minDepth, double maxDepth);
-  Future<List<RaycastHitData>> circleCast(Vector2 origin, double radius, Vector2 direction, double distance, int layerMask, double minDepth, double maxDepth);
-  Future<List<RaycastHitData>> capsuleCast(Vector2 origin, Vector2 size, int capsuleDirection, double angle, Vector2 direction, double distance, int layerMask, double minDepth, double maxDepth);
-  Future<List<int>> overlapCircle(Vector2 point, double radius, int layerMask, double minDepth, double maxDepth);
-  Future<List<int>> overlapBox(Vector2 point, Vector2 size, double angle, int layerMask, double minDepth, double maxDepth);
-  Future<List<int>> overlapPoint(Vector2 point, int layerMask, double minDepth, double maxDepth);
+  Future<List<RaycastHitData>> raycast(
+    Vector2 origin,
+    Vector2 direction,
+    double distance,
+    int layerMask,
+    double minDepth,
+    double maxDepth,
+  );
+  Future<List<RaycastHitData>> linecast(
+    Vector2 start,
+    Vector2 end,
+    int layerMask,
+    double minDepth,
+    double maxDepth,
+  );
+  Future<List<RaycastHitData>> boxCast(
+    Vector2 origin,
+    Vector2 size,
+    double angle,
+    Vector2 direction,
+    double distance,
+    int layerMask,
+    double minDepth,
+    double maxDepth,
+  );
+  Future<List<RaycastHitData>> circleCast(
+    Vector2 origin,
+    double radius,
+    Vector2 direction,
+    double distance,
+    int layerMask,
+    double minDepth,
+    double maxDepth,
+  );
+  Future<List<RaycastHitData>> capsuleCast(
+    Vector2 origin,
+    Vector2 size,
+    int capsuleDirection,
+    double angle,
+    Vector2 direction,
+    double distance,
+    int layerMask,
+    double minDepth,
+    double maxDepth,
+  );
+  Future<List<int>> overlapCircle(
+    Vector2 point,
+    double radius,
+    int layerMask,
+    double minDepth,
+    double maxDepth,
+  );
+  Future<List<int>> overlapBox(
+    Vector2 point,
+    Vector2 size,
+    double angle,
+    int layerMask,
+    double minDepth,
+    double maxDepth,
+  );
+  Future<List<int>> overlapPoint(
+    Vector2 point,
+    int layerMask,
+    double minDepth,
+    double maxDepth,
+  );
   Future<Vector2> closestPoint(Vector2 position, int colliderHandle);
   Future<List<ContactPointData>> getContacts(int colliderHandle);
   Future<List<int>> getContactColliders(int colliderHandle);

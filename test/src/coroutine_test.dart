@@ -2,32 +2,41 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
+Future<GameEngine> _createEngine() => GameEngine.create({
+  TickerSystem.new,
+  InputSystem.new,
+  CameraSystem.new,
+  ScreenSystem.new,
+});
+
 void main() {
   AutomatedTestWidgetsFlutterBinding.ensureInitialized();
 
   group('Coroutine', () {
+    late GameEngine engine;
+    setUp(() async => engine = await _createEngine());
+    tearDown(() async => engine.dispose());
+
     testWidgets('should run a simple coroutine', (tester) async {
       bool reached = false;
       Stream myCoroutine() async* {
-        yield null; // Wait 1 frame
+        yield null;
         reached = true;
       }
 
       await tester.pumpWidget(
-        Game(
-          child: GameObjectWidget(),
-        ),
+        Game(engine: engine, child: GameObjectWidget()),
       );
       await tester.pump();
       final gameObject =
           tester.element(find.byType(GameObjectWidget)) as GameObject;
 
       gameObject.startCoroutine(myCoroutine);
-      await tester.idle(); // Let the Future in setupCoroutine run
+      await tester.idle();
       expect(reached, isFalse);
 
-      await tester.pump(); // Frame 1
-      await tester.pump(); // Frame 2
+      await tester.pump();
+      await tester.pump();
       expect(reached, isTrue);
     });
 
@@ -40,9 +49,7 @@ void main() {
       }
 
       await tester.pumpWidget(
-        Game(
-          child: GameObjectWidget(),
-        ),
+        Game(engine: engine, child: GameObjectWidget()),
       );
       await tester.pump();
       final gameObject =
@@ -53,7 +60,6 @@ void main() {
       await tester.pump();
       expect(count, equals(1));
 
-      // Wait 100ms
       await tester.pump(const Duration(milliseconds: 110));
       expect(count, equals(2));
     });
@@ -67,9 +73,7 @@ void main() {
       }
 
       await tester.pumpWidget(
-        Game(
-          child: GameObjectWidget(),
-        ),
+        Game(engine: engine, child: GameObjectWidget()),
       );
       await tester.pump();
       final gameObject =
@@ -84,7 +88,7 @@ void main() {
       expect(reached, isFalse);
 
       condition = true;
-      await tester.pump(); // Next frame triggers the check
+      await tester.pump();
       expect(reached, isTrue);
     });
 
@@ -96,16 +100,14 @@ void main() {
       }
 
       await tester.pumpWidget(
-        Game(
-          child: GameObjectWidget(),
-        ),
+        Game(engine: engine, child: GameObjectWidget()),
       );
       await tester.pump();
       final gameObject =
           tester.element(find.byType(GameObjectWidget)) as GameObject;
 
       final future = gameObject.startCoroutine(myCoroutine);
-      await tester.idle(); // Ensure it added itself to the list
+      await tester.idle();
 
       gameObject.stopCoroutine(future);
 
@@ -123,9 +125,7 @@ void main() {
       }
 
       await tester.pumpWidget(
-        Game(
-          child: GameObjectWidget(),
-        ),
+        Game(engine: engine, child: GameObjectWidget()),
       );
       await tester.pump();
       final obj = tester.element(find.byType(GameObjectWidget)) as GameObject;
@@ -136,16 +136,13 @@ void main() {
       expect(count, greaterThan(0));
       final lastCount = count;
 
-      // Unmount
-      await tester.pumpWidget(Game(child: const SizedBox()));
+      await tester.pumpWidget(Game(engine: engine, child: const SizedBox()));
       await tester.pump();
       await tester.idle();
 
-      // Pump a few more times to ensure it's really stopped
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump(const Duration(milliseconds: 100));
 
-      // It might increment once more if it was already waiting for a frame
       expect(count, lessThanOrEqualTo(lastCount + 1));
       final finalCount = count;
 
@@ -165,9 +162,7 @@ void main() {
       }
 
       await tester.pumpWidget(
-        Game(
-          child: GameObjectWidget(),
-        ),
+        Game(engine: engine, child: GameObjectWidget()),
       );
       await tester.pump();
       final gameObject =
@@ -175,9 +170,9 @@ void main() {
 
       gameObject.startCoroutine(outer);
       await tester.idle();
-      await tester.pump(); // Start outer, start inner, inner yields null
-      await tester.pump(); // Inner continues after frame
-      await tester.idle(); // Finish microtasks
+      await tester.pump();
+      await tester.pump();
+      await tester.idle();
 
       expect(innerReached, isTrue);
     });

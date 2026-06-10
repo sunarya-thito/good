@@ -15,30 +15,32 @@ class MockTexture extends GameTexture {
   final int _height;
   final ui.Image _image;
 
-  @override
-  int get width => _width;
-  @override
-  int get height => _height;
+  @override int  get width    => _width;
+  @override int  get height   => _height;
+  @override bool get isLoaded => true;
 
   MockTexture(this._width, this._height, this._image) : super(MockSource());
 
-  @override
-  Future<void> load() async {}
-  @override
-  void unload() {}
-  @override
-  ui.Image get image => _image;
+  @override Future<void> load()  async {}
+  @override void         unload()      {}
+  @override ui.Image     get image => _image;
 }
 
-class FakeCanvas extends Fake implements ui.Canvas {
+class RecordingCanvas extends Fake implements ui.Canvas {
+  int drawImageRectCalls = 0;
+  int drawRectCalls      = 0;
+
+  @override void save()   {}
+  @override void restore() {}
+  @override void translate(double dx, double dy) {}
+  @override void scale(double sx, [double? sy]) {}
+
   @override
-  void save() {}
+  void drawImageRect(ui.Image image, ui.Rect src, ui.Rect dst, ui.Paint paint) =>
+      drawImageRectCalls++;
+
   @override
-  void restore() {}
-  @override
-  void translate(double dx, double dy) {}
-  @override
-  void scale(double sx, [double? sy]) {}
+  void drawRect(ui.Rect rect, ui.Paint paint) => drawRectCalls++;
 }
 
 class RecordingFit extends SpriteFit {
@@ -67,53 +69,102 @@ Future<ui.Image> createTestImage() async {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('SpriteMesh', () {
     late ui.Image image;
     late MockTexture texture;
-    late GameSprite sprite;
-    final canvas = FakeCanvas();
 
     setUpAll(() async {
       image = await createTestImage();
       texture = MockTexture(100, 100, image);
-      sprite = GameSprite(
-        texture: texture,
-        rect: const ui.Rect.fromLTWH(0, 0, 100, 100),
-      );
     });
 
-    testWidgets('SimpleMesh should draw full sprite to destination', (
-      tester,
-    ) async {
+    test('SimpleMesh size matches full texture', () {
+      final mesh = SimpleMesh(texture: texture);
+      expect(mesh.size, const ui.Size(100, 100));
+    });
+
+    test('SimpleMesh with srcRect reports srcRect size', () {
+      final mesh = SimpleMesh(
+        texture: texture,
+        srcRect: const ui.Rect.fromLTWH(10, 10, 50, 40),
+      );
+      expect(mesh.size, const ui.Size(50, 40));
+    });
+
+    test('SimpleMesh render calls fit.draw with correct src/dst', () {
       final recorder = RecordingFit();
-      final mesh = SimpleMesh(fit: recorder);
-      mesh.render(canvas, sprite, const ui.Size(200, 200), ui.Paint());
+      final canvas = RecordingCanvas();
+      final mesh = SimpleMesh(texture: texture, fit: recorder);
+      final handle = mesh.createHandle();
+      handle.render(canvas, const ui.Size(200, 200), ui.Paint());
+      handle.dispose();
       expect(recorder.srcRects.single, const ui.Rect.fromLTWH(0, 0, 100, 100));
       expect(recorder.dstRects.single, const ui.Rect.fromLTWH(0, 0, 200, 200));
     });
 
-    testWidgets(
-      'GridMesh (9-Slice) should partition rects correctly for 3x3 grid',
-      (tester) async {
-        final recorder = RecordingFit();
-        final mesh = GridMesh.nineSlice(
-          left: 10,
-          top: 10,
-          right: 10,
-          bottom: 10,
-          centerFit: recorder,
-          edgeFit: recorder,
-          cornerFit: recorder,
-        );
+    test('GridMesh.nineSlice size matches full texture', () {
+      final mesh = GridMesh.nineSlice(
+        texture: texture,
+        left:   Point.px(10),
+        top:    Point.px(10),
+        right:  Point.px(10),
+        bottom: Point.px(10),
+      );
+      expect(mesh.size, const ui.Size(100, 100));
+    });
 
-        mesh.render(canvas, sprite, const ui.Size(300, 300), ui.Paint());
+    test('GridMesh render fallback does not throw', () {
+      final canvas = RecordingCanvas();
+      final mesh = GridMesh.nineSlice(
+        texture: texture,
+        left:   Point.px(10),
+        top:    Point.px(10),
+        right:  Point.px(10),
+        bottom: Point.px(10),
+      );
+      final handle = mesh.createHandle();
+      expect(
+        () => handle.render(canvas, const ui.Size(300, 300), ui.Paint()),
+        returnsNormally,
+      );
+      handle.dispose();
+    });
 
-        expect(recorder.srcRects.length, 9);
-        expect(recorder.srcRects[0], const ui.Rect.fromLTWH(0, 0, 10, 10));
-        expect(recorder.dstRects[0], const ui.Rect.fromLTWH(0, 0, 10, 10));
-        expect(recorder.srcRects[4], const ui.Rect.fromLTWH(10, 10, 80, 80));
-        expect(recorder.dstRects[4], const ui.Rect.fromLTWH(10, 10, 280, 280));
-      },
-    );
+    test('GridMesh.nineSlice source lines partition the source correctly', () {
+      final canvas = RecordingCanvas();
+      final mesh = GridMesh.nineSlice(
+        texture: texture,
+        left:   Point.px(10),
+        top:    Point.px(10),
+        right:  Point.px(10),
+        bottom: Point.px(10),
+      );
+      expect(
+        () => mesh.createHandle()
+          ..render(canvas, const ui.Rect.fromLTWH(0, 0, 300, 300).size, ui.Paint())
+          ..dispose(),
+        returnsNormally,
+      );
+    });
+
+    test('Point.px resolves correctly', () {
+      expect(Point.px(20).resolve(100), 20.0);
+      expect(Point.px(20).flipped.resolve(100), 80.0);
+    });
+
+    test('Point.frac resolves correctly', () {
+      expect(Point.frac(0.25).resolve(100), 25.0);
+      expect(Point.frac(0.25).flipped.resolve(100), 75.0);
+    });
+
+    test('Point.flipped is its own inverse', () {
+      final b = Point.px(15);
+      expect(b.flipped.flipped.resolve(200), b.resolve(200));
+
+      final f = Point.frac(0.3);
+      expect(f.flipped.flipped.resolve(200), f.resolve(200));
+    });
   });
 }

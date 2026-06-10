@@ -8,6 +8,7 @@ import 'package:goo2d/src/physics/worker/direct/direct_effector_ops.dart';
 import 'package:goo2d/src/physics/worker/direct/direct_query_ops.dart';
 import 'package:goo2d/src/physics/worker/direct/direct_global_ops.dart';
 import 'package:goo2d/src/physics/worker/data/collider_shape_type.dart';
+import 'package:goo2d/src/physics/worker/data/contact_delta.dart';
 import 'package:goo2d/src/physics/worker/data/raycast_hit_data.dart';
 import 'package:goo2d/src/physics/worker/data/contact_point_data.dart';
 
@@ -29,6 +30,10 @@ class DirectPhysicsWorker implements PhysicsWorker {
     engine.step(deltaTime);
     return Future.value();
   }
+
+  @override
+  Future<ContactDelta> stepWithContactDelta(double deltaTime) =>
+      Future.value(engine.stepDelta(deltaTime));
 
   // ===================== Global Settings =====================
   @override

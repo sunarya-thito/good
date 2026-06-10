@@ -47,9 +47,12 @@ void main() {
 
   group('ComponentWidget', () {
     testWidgets('should add component when mounted', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final a = CompA();
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => a),
@@ -65,9 +68,12 @@ void main() {
     });
 
     testWidgets('should remove component when unmounted', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final a = CompA();
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => a),
@@ -77,8 +83,9 @@ void main() {
       );
 
       await tester.pumpWidget(
-        const Game(
-          child: GameObjectWidget(
+        Game(
+          engine: engine,
+          child: const GameObjectWidget(
             children: [],
           ),
         ),
@@ -90,11 +97,14 @@ void main() {
     testWidgets(
       'components should find each other in onMounted regardless of order',
       (tester) async {
+        final engine = await GameEngine.create({TickerSystem.new});
+        addTearDown(() => engine.dispose());
         final a = CompA();
         final b = CompB();
 
         await tester.pumpWidget(
           Game(
+            engine: engine,
             child: GameObjectWidget(
               children: [
                 ComponentWidget(() => a),
@@ -104,7 +114,6 @@ void main() {
           ),
         );
 
-        // Both should find each other now because of deferred lifecycle!
         expect(
           a.foundB,
           equals(b),
@@ -115,6 +124,8 @@ void main() {
     );
 
     testWidgets('should apply parameters and update them', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       int value = 10;
       final comp = ConfigurableComp();
 
@@ -122,6 +133,7 @@ void main() {
         StatefulBuilder(
           builder: (context, setState) {
             return Game(
+              engine: engine,
               child: GameObjectWidget(
                 children: [
                   ComponentWidget(
@@ -153,12 +165,15 @@ void main() {
     testWidgets(
       'should not recreate component on rebuild if factory returns same instance',
       (tester) async {
+        final engine = await GameEngine.create({TickerSystem.new});
+        addTearDown(() => engine.dispose());
         final a = CompA();
 
         await tester.pumpWidget(
           StatefulBuilder(
             builder: (context, setState) {
               return Game(
+                engine: engine,
                 child: GameObjectWidget(
                   children: [
                     ComponentWidget(() => a),
@@ -186,9 +201,12 @@ void main() {
     );
 
     testWidgets('should work in nested GameWidgets', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final a = CompA();
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             name: 'Parent',
             children: [
@@ -211,11 +229,14 @@ void main() {
     });
 
     testWidgets('should recreate component if key changes', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final a1 = CompA();
       final a2 = CompA();
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => a1, key: const ValueKey('a')),
@@ -228,6 +249,7 @@ void main() {
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => a2, key: const ValueKey('b')),

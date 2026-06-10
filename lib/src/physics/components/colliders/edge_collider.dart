@@ -2,13 +2,33 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:meta/meta.dart';
 import 'package:vector_math/vector_math_64.dart';
+import 'package:goo2d/src/collision/worker/collision_worker.dart';
 import 'package:goo2d/src/physics/worker/direct/direct_collider_ops.dart';
 import 'package:goo2d/src/physics/worker/data/collider_shape_type.dart';
 import 'package:goo2d/goo2d.dart';
 
-/// Collider for 2D physics representing an arbitrary set of connected edges (lines) defined by its vertices.
+/// Open-chain line collider for 2D physics.
 ///
-/// Equivalent to Unity's `EdgeCollider2D`.
+/// Defines a sequence of connected line segments through a list of [points]. Unlike [PolygonCollider],
+/// the shape is not closed — the first and last points are not automatically joined. This makes it
+/// suitable for terrain edges, walls, and platforms where the interior of the shape should not matter.
+///
+/// Requires at least two points to produce any physics shape.
+///
+/// Adjacent point hints ([useAdjacentStartPoint], [useAdjacentEndPoint]) tell the solver how the edge
+/// continues outside the defined range, preventing ghost collisions at segment junctions.
+///
+/// ```dart
+/// addComponent(
+///   ObjectTransform(),
+///   Rigidbody()..bodyType = RigidbodyType.static,
+///   EdgeCollider()..points = [Vector2(-5, 0), Vector2(0, 1), Vector2(5, 0)],
+/// );
+/// ```
+///
+/// See also:
+/// * [PolygonCollider] for closed convex or concave polygons.
+/// * [CompositeCollider] to merge multiple edge colliders into one shape.
 class EdgeCollider extends Collider {
   @override
   ColliderShapeType get shapeType => ColliderShapeType.edge;
@@ -17,6 +37,7 @@ class EdgeCollider extends Collider {
   @protected
   void syncAllProperties() {
     super.syncAllProperties();
+    if (hasBoundsOnly) return;
     worker.setColliderProperty(handle, ColliderProp.edgePoints, List.from(_points));
     worker.setColliderProperty(handle, ColliderProp.edgeUseAdjacentStartPoint, _useAdjacentStartPoint);
     worker.setColliderProperty(handle, ColliderProp.edgeUseAdjacentEndPoint, _useAdjacentEndPoint);
@@ -25,49 +46,67 @@ class EdgeCollider extends Collider {
     worker.setColliderProperty(handle, ColliderProp.edgeRadius, _edgeRadius);
   }
 
-  List<Vector2> _points = [];
+  // In collision mode only the first segment is registered (single-edge limit of CollisionEngine).
+  @override
+  @protected
+  void syncCollisionGeometry(CollisionWorker w) {
+    if (_points.length < 2) return;
+    w.setShapeEdge(handle,
+        _points[0].x, _points[0].y, _points[1].x, _points[1].y);
+  }
+
+  /// Ordered list of vertices that define the edge chain in local space. Must have at least 2 points.
   List<Vector2> get points => _points;
+  List<Vector2> _points = [];
   set points(List<Vector2> value) {
     _points = List.from(value);
-    if (isAttached) worker.setColliderProperty(handle, ColliderProp.edgePoints, List.from(_points));
+    if (isAttached && !hasBoundsOnly) worker.setColliderProperty(handle, ColliderProp.edgePoints, List.from(_points));
   }
 
-  bool _useAdjacentStartPoint = false;
+  /// When true, [adjacentStartPoint] hints at the edge continuation before the first vertex, preventing ghost collisions.
   bool get useAdjacentStartPoint => _useAdjacentStartPoint;
+  bool _useAdjacentStartPoint = false;
   set useAdjacentStartPoint(bool value) {
     _useAdjacentStartPoint = value;
-    if (isAttached) worker.setColliderProperty(handle, ColliderProp.edgeUseAdjacentStartPoint, value);
+    if (isAttached && !hasBoundsOnly) worker.setColliderProperty(handle, ColliderProp.edgeUseAdjacentStartPoint, value);
   }
 
-  bool _useAdjacentEndPoint = false;
+  /// When true, [adjacentEndPoint] hints at the edge continuation after the last vertex, preventing ghost collisions.
   bool get useAdjacentEndPoint => _useAdjacentEndPoint;
+  bool _useAdjacentEndPoint = false;
   set useAdjacentEndPoint(bool value) {
     _useAdjacentEndPoint = value;
-    if (isAttached) worker.setColliderProperty(handle, ColliderProp.edgeUseAdjacentEndPoint, value);
+    if (isAttached && !hasBoundsOnly) worker.setColliderProperty(handle, ColliderProp.edgeUseAdjacentEndPoint, value);
   }
 
-  Vector2 _adjacentStartPoint = Vector2.zero();
+  /// Ghost vertex before the first point, used when [useAdjacentStartPoint] is true.
   Vector2 get adjacentStartPoint => _adjacentStartPoint;
+  Vector2 _adjacentStartPoint = Vector2.zero();
   set adjacentStartPoint(Vector2 value) {
     _adjacentStartPoint.setFrom(value);
-    if (isAttached) worker.setColliderProperty(handle, ColliderProp.edgeAdjacentStartPoint, value.clone());
+    if (isAttached && !hasBoundsOnly) worker.setColliderProperty(handle, ColliderProp.edgeAdjacentStartPoint, value.clone());
   }
 
-  Vector2 _adjacentEndPoint = Vector2.zero();
+  /// Ghost vertex after the last point, used when [useAdjacentEndPoint] is true.
   Vector2 get adjacentEndPoint => _adjacentEndPoint;
+  Vector2 _adjacentEndPoint = Vector2.zero();
   set adjacentEndPoint(Vector2 value) {
     _adjacentEndPoint.setFrom(value);
-    if (isAttached) worker.setColliderProperty(handle, ColliderProp.edgeAdjacentEndPoint, value.clone());
+    if (isAttached && !hasBoundsOnly) worker.setColliderProperty(handle, ColliderProp.edgeAdjacentEndPoint, value.clone());
   }
 
-  double _edgeRadius = 0;
+  /// Thickness added around each edge segment in world units. 0 = infinitely thin. Default 0.
   double get edgeRadius => _edgeRadius;
+  double _edgeRadius = 0;
   set edgeRadius(double value) {
     _edgeRadius = value;
-    if (isAttached) worker.setColliderProperty(handle, ColliderProp.edgeRadius, value);
+    if (isAttached && !hasBoundsOnly) worker.setColliderProperty(handle, ColliderProp.edgeRadius, value);
   }
 
+  /// Number of line segments (always `points.length - 1` when at least 2 points are set).
   int get edgeCount => _points.length > 1 ? _points.length - 1 : 0;
+
+  /// Number of vertices in [points].
   int get pointCount => _points.length;
 
   void reset() {

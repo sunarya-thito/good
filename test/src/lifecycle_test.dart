@@ -17,17 +17,26 @@ class TestLifecycleComponent extends Component with LifecycleListener {
   }
 }
 
+Future<GameEngine> _createEngine() => GameEngine.create({
+  TickerSystem.new,
+  InputSystem.new,
+  CameraSystem.new,
+  ScreenSystem.new,
+});
+
 void main() {
   AutomatedTestWidgetsFlutterBinding.ensureInitialized();
 
   group('Lifecycle', () {
+    late GameEngine engine;
+    setUp(() async => engine = await _createEngine());
+    tearDown(() async => engine.dispose());
+
     testWidgets('should call onMounted when added to mounted GameObject', (
       tester,
     ) async {
       await tester.pumpWidget(
-        Game(
-          child: const GameObjectWidget(),
-        ),
+        Game(engine: engine, child: const GameObjectWidget()),
       );
       await tester.pump();
       final gameObject =
@@ -47,6 +56,7 @@ void main() {
 
         await tester.pumpWidget(
           Game(
+            engine: engine,
             child: GameObjectWidget(
               children: [ComponentWidget(() => component)],
             ),
@@ -65,6 +75,7 @@ void main() {
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [ComponentWidget(() => component)],
           ),
@@ -85,6 +96,7 @@ void main() {
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [ComponentWidget(() => component)],
           ),
@@ -93,7 +105,7 @@ void main() {
       await tester.pump();
 
       // Unmount the whole scene
-      await tester.pumpWidget(Game(child: const SizedBox()));
+      await tester.pumpWidget(Game(engine: engine, child: const SizedBox()));
       await tester.pump();
 
       expect(component.unmountedCount, equals(1));
@@ -107,6 +119,7 @@ void main() {
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => parentComponent),
@@ -123,7 +136,7 @@ void main() {
       expect(childComponent.mountedCount, equals(1));
 
       // Unmount parent
-      await tester.pumpWidget(Game(child: const SizedBox()));
+      await tester.pumpWidget(Game(engine: engine, child: const SizedBox()));
       await tester.pump();
 
       expect(parentComponent.unmountedCount, equals(1));
@@ -136,9 +149,7 @@ void main() {
       final component = TestLifecycleComponent();
 
       await tester.pumpWidget(
-        Game(
-          child: const GameObjectWidget(),
-        ),
+        Game(engine: engine, child: const GameObjectWidget()),
       );
       await tester.pump();
       final gameObject =

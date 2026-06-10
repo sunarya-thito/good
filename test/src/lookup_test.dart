@@ -12,9 +12,12 @@ void main() {
     testWidgets('getComponentInChildren should find component in self', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final compA = ComponentA();
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             name: 'Root',
             children: [ComponentWidget(() => compA)],
@@ -31,9 +34,12 @@ void main() {
     testWidgets('getComponentInChildren should find component in children', (
       tester,
     ) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final compA = ComponentA();
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             name: 'Parent',
             children: [
@@ -59,9 +65,12 @@ void main() {
     });
 
     testWidgets('getComponentInParent should include self', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final compA = ComponentA();
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             name: 'Root',
             children: [ComponentWidget(() => compA)],
@@ -75,9 +84,12 @@ void main() {
     });
 
     testWidgets('getComponentInParent should find in parent', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final compA = ComponentA();
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             name: 'Parent',
             children: [
@@ -100,10 +112,13 @@ void main() {
     });
 
     testWidgets('getComponentsInParent should find all', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final compA1 = ComponentA();
       final compA2 = ComponentA();
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             name: 'Parent',
             children: [
@@ -131,8 +146,11 @@ void main() {
     });
 
     testWidgets('GameObject.find should find by name', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             name: 'Root',
             children: [GameObjectWidget(name: 'Target')],
@@ -148,8 +166,11 @@ void main() {
     });
 
     testWidgets('GameObject.find should find by path', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             name: 'A',
             children: [
@@ -170,8 +191,11 @@ void main() {
     });
 
     testWidgets('GameObject.find should find absolute path', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             name: 'A',
             children: [GameObjectWidget(name: 'B')],
@@ -187,8 +211,11 @@ void main() {
     });
 
     testWidgets('findChild should handle path', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             name: 'A',
             children: [
@@ -215,8 +242,11 @@ void main() {
     });
 
     testWidgets('findWithTag should work', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(tag: 'Player', name: 'Hero'),
         ),
       );

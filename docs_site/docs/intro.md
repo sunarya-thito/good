@@ -4,12 +4,12 @@ sidebar_position: 1
 
 # Getting Started
 
-Goo2D is a low-level 2D Entity-Component-System (ECS) engine built natively for Flutter. 
-It strips away standard UI boilerplate, providing the architectural primitives—GameObjects, Components, Coroutines, and Swept Collision—required to build games directly on the Flutter Canvas.
+Goo2D is a Flutter package for building 2D games. It uses an Entity-Component pattern where
+game objects are Flutter widgets and behaviors are components attached to those widgets.
 
 ## Installation
 
-Add Goo2D to your `pubspec.yaml` dependencies:
+Add goo2d to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
@@ -18,64 +18,51 @@ dependencies:
 
 ## Quickstart
 
-Building a game world uses the standard Flutter `build` syntax you already know, paired with a dedicated `onUpdate` game loop.
+The minimal setup below creates a moving object:
 
 ```dart
 import 'package:flutter/material.dart';
 import 'package:goo2d/goo2d.dart';
 
+void main() {
+  runApp(
+    const MaterialApp(
+      home: Scaffold(
+        body: Game(
+          child: Player(),
+        ),
+      ),
+    ),
+  );
+}
+
 class Player extends StatefulGameWidget {
   const Player({super.key});
-  
+
   @override
-  PlayerState createState() => PlayerState();
+  GameState createState() => PlayerState();
 }
 
 class PlayerState extends GameState<Player> with Tickable {
   @override
   void initState() {
     super.initState();
-    // Attach components: position, sprite, and hitbox
     addComponent(
-      ObjectTransform()..position = const Offset(0, 0),
-      SpriteRenderer()
-        ..sprite = GameSprite(
-          texture: MyTexture.ship,
-          pixelsPerUnit: 64.0,
-        ),
-      BoxCollisionTrigger()..rect = const Rect.fromLTWH(0, 0, 1, 1),
+      ObjectTransform()..position = Vector2.zero(),
     );
   }
 
   @override
   void onUpdate(double dt) {
-    // Runs automatically every frame
-    final transform = getComponent<ObjectTransform>();
-    transform.position += Offset(2 * dt, 0);
+    getComponent<ObjectTransform>().position += Vector2(2 * dt, 0);
   }
 }
 ```
 
-### Mount the Engine
-
-Wrap your game objects inside the `Game` widget. This initializes the core engine loop, input systems, and collision passes.
-
-```dart
-void main() {
-  runApp(
-    const MaterialApp(
-      home: Scaffold(
-        body: Game(
-          child: Player(), 
-        ),
-      ),
-    ),
-  );
-}
-```
+`Game` initializes the engine loop, input handling, and physics. Everything inside it participates in the game world.
 
 ## Platform Support
 
-Goo2D is a cross-platform engine. While it works seamlessly on mobile and desktop, the Web platform requires a few extra steps for audio and optimal performance.
+Goo2D runs on mobile, desktop, and web. Web requires extra setup for audio and may benefit from WASM builds.
 
-Check out the **[Web Platform Guide](./web)** for instructions on using **WASM** and setting up **Audio**.
+See the **[Web Platform Guide](./web)** for details.

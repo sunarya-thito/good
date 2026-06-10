@@ -1,4 +1,5 @@
-import 'dart:ui';
+import 'package:data_widget/data_widget.dart';
+import 'package:flutter/widgets.dart';
 import 'package:goo2d/src/event.dart';
 import 'package:goo2d/src/game.dart';
 import 'package:vector_math/vector_math_64.dart';
@@ -14,13 +15,13 @@ import 'package:vector_math/vector_math_64.dart';
 mixin ScreenCollidable implements EventListener {
   /// Called when any part of the game object's collider enters the screen.
   ///
-  /// Override this method to trigger effects that should occur as soon as 
+  /// Override this method to trigger effects that should occur as soon as
   /// an object becomes visible, such as starting a particle emitter.
   void onEnterScreen() {}
 
   /// Called when the entire game object's collider exits the screen.
   ///
-  /// Override this method to clean up or pause logic when an object is 
+  /// Override this method to clean up or pause logic when an object is
   /// completely off-screen, helping to save processing power.
   void onExitScreen() {}
 }
@@ -36,13 +37,13 @@ mixin ScreenCollidable implements EventListener {
 mixin OuterScreenCollidable implements EventListener {
   /// Called when any part of the game object's collider leaves the screen.
   ///
-  /// Override this method to handle logic that occurs when an object is 
+  /// Override this method to handle logic that occurs when an object is
   /// no longer fully visible, such as warning the player.
   void onOuterScreenEnter() {}
 
   /// Called when the entire game object's collider returns to being inside the screen.
   ///
-  /// Override this method to reset state when an object returns to being 
+  /// Override this method to reset state when an object returns to being
   /// fully contained within the viewport boundaries.
   void onOuterScreenExit() {}
 }
@@ -187,12 +188,12 @@ class ScreenSystem implements GameSystem {
   bool get gameAttached => _game != null;
 
   @override
-  void attach(GameEngine game) {
+  Future<void> attach(GameEngine game) async {
     _game = game;
   }
 
   @override
-  void dispose() {}
+  Future<void> dispose() async {}
 
   /// The current dimensions of the game viewport in logical pixels.
   ///
@@ -235,12 +236,12 @@ class ScreenPhysicsSystem implements GameSystem {
   bool get gameAttached => _game != null;
 
   @override
-  void attach(GameEngine game) {
+  Future<void> attach(GameEngine game) async {
     _game = game;
   }
 
   @override
-  void dispose() {}
+  Future<void> dispose() async {}
 
   /// Evaluates all active colliders against the screen boundaries.
   ///
@@ -302,4 +303,143 @@ class ScreenPhysicsSystem implements GameSystem {
       collider.wasFullyInsideScreen = fullyInside;
     }
   }
+}
+
+class ScreenFixedResolution extends StatelessWidget {
+  static const p1080 = Size(1920, 1080);
+  static const p720 = Size(1280, 720);
+  static const p480 = Size(854, 480);
+  static const p360 = Size(640, 360);
+  static const p240 = Size(426, 240);
+  static const p144 = Size(256, 144);
+  final Widget child;
+  final Size resolution;
+  final Orientation orientation;
+
+  const ScreenFixedResolution({
+    required this.child,
+    this.orientation = Orientation.landscape,
+    this.resolution = p1080,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    ({double width, double height}) orientedSize = switch (orientation) {
+      Orientation.landscape => (
+        width: resolution.width,
+        height: resolution.height,
+      ),
+      Orientation.portrait => (
+        width: resolution.height,
+        height: resolution.width,
+      ),
+    };
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final fit = switch (orientation) {
+          Orientation.landscape => BoxFit.fitHeight,
+          Orientation.portrait => BoxFit.fitWidth,
+        };
+        // Scale applied by FittedBox: content → screen pixels.
+        final scale = switch (orientation) {
+          Orientation.landscape => constraints.maxHeight / orientedSize.height,
+          Orientation.portrait => constraints.maxWidth / orientedSize.width,
+        };
+        return ColoredBox(
+          color: const Color(0xFF000000),
+          child: FittedBox(
+            fit: fit,
+            child: SizedBox(
+              width: orientedSize.width,
+              height: orientedSize.height,
+              child: Data.inherit(
+                data: ScreenFixedResolutionData(
+                  // Full physical screen expressed in content-space units.
+                  fullContentSize: Size(
+                    constraints.maxWidth / scale,
+                    constraints.maxHeight / scale,
+                  ),
+                ),
+                child: child,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Fills the full physical screen regardless of any letterboxing applied by
+/// [ScreenFixedResolution], then scales its child using [fit].
+///
+/// Place this anywhere inside a [ScreenFixedResolution] widget tree. It always
+/// covers the entire screen — not just the fixed-resolution content area — so
+/// it is suitable for full-bleed backgrounds, skyboxes, or parallax layers.
+///
+/// Nesting [BackgroundWidget] inside another [BackgroundWidget] works correctly:
+/// each one independently expands to the full screen and applies its own [fit],
+/// without being constrained by the ancestor's fit.
+///
+/// ```dart
+/// ScreenFixedResolution(
+///   child: Stack(
+///     children: [
+///       BackgroundWidget(
+///         fit: BoxFit.cover,
+///         child: Image.asset('assets/sky.png'),
+///       ),
+///       // UI widgets here — constrained to the fixed resolution area
+///     ],
+///   ),
+/// )
+/// ```
+class BackgroundWidget extends StatelessWidget {
+  final Widget child;
+  final BoxFit fit;
+
+  const BackgroundWidget({
+    required this.child,
+    this.fit = BoxFit.cover,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final data = Data.of<ScreenFixedResolutionData>(context);
+
+    // OverflowBox escapes the tight SizedBox constraints imposed by
+    // ScreenFixedResolution and sizes itself to the full physical screen in
+    // content-space units, centred over the content area.
+    return OverflowBox(
+      alignment: Alignment.center,
+      minWidth: data.fullContentSize.width,
+      maxWidth: data.fullContentSize.width,
+      minHeight: data.fullContentSize.height,
+      maxHeight: data.fullContentSize.height,
+      child: FittedBox(fit: fit, child: child),
+    );
+  }
+}
+
+class ScreenFixedResolutionData {
+  /// The full physical screen size expressed in content-space units
+  /// (i.e. divided by the [ScreenFixedResolution] scale factor).
+  ///
+  /// When there is no letterboxing this equals the fixed resolution size.
+  /// When there are black bars the relevant dimension is larger than the
+  /// fixed resolution, covering the bars.
+  final Size fullContentSize;
+
+  const ScreenFixedResolutionData({required this.fullContentSize});
+
+  @override
+  bool operator ==(Object other) {
+    return other is ScreenFixedResolutionData &&
+        fullContentSize == other.fullContentSize;
+  }
+
+  @override
+  int get hashCode => fullContentSize.hashCode;
 }

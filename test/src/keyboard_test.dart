@@ -3,12 +3,22 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
+Future<GameEngine> _createInputEngine() => GameEngine.create({
+  TickerSystem.new,
+  InputSystem.new,
+  CameraSystem.new,
+  ScreenSystem.new,
+});
+
 void main() {
   AutomatedTestWidgetsFlutterBinding.ensureInitialized();
 
   group('Keyboard', () {
     testWidgets('should detect key presses', (tester) async {
-      await tester.pumpWidget(Game(child: const GameObjectWidget()));
+      final engine = await _createInputEngine();
+      await tester.pumpWidget(
+        Game(engine: engine, child: const GameObjectWidget()),
+      );
       await tester.pump();
       final game =
           (tester.element(find.byType(GameObjectWidget)) as GameObject).game;
@@ -22,10 +32,14 @@ void main() {
       game.input.update();
 
       expect(Keyboard.space.isPressed(game), isFalse);
+      await engine.dispose();
     });
 
     testWidgets('should track frame-relative state', (tester) async {
-      await tester.pumpWidget(Game(child: const GameObjectWidget()));
+      final engine = await _createInputEngine();
+      await tester.pumpWidget(
+        Game(engine: engine, child: const GameObjectWidget()),
+      );
       await tester.pump();
       final game =
           (tester.element(find.byType(GameObjectWidget)) as GameObject).game;
@@ -52,13 +66,14 @@ void main() {
 
       expect(Keyboard.keyA.wasReleasedThisFrame(game), isTrue);
       expect(Keyboard.keyA.isPressed(game), isFalse);
+      await engine.dispose();
     });
 
     testWidgets('should support multiple game instances with independent state', (
       tester,
     ) async {
-      final game1 = GameEngine();
-      final game2 = GameEngine();
+      final game1 = await _createInputEngine();
+      final game2 = await _createInputEngine();
 
       await tester.pumpWidget(
         Directionality(
@@ -68,12 +83,12 @@ void main() {
               SizedBox(
                 width: 100,
                 height: 100,
-                child: Game(game: game1, child: const GameObjectWidget()),
+                child: Game(engine: game1, child: const GameObjectWidget()),
               ),
               SizedBox(
                 width: 100,
                 height: 100,
-                child: Game(game: game2, child: const GameObjectWidget()),
+                child: Game(engine: game2, child: const GameObjectWidget()),
               ),
             ],
           ),
@@ -99,11 +114,17 @@ void main() {
       expect(Keyboard.space.wasPressedThisFrame(game1), isFalse);
       // game2 still in its first frame (where space was pressed)
       expect(Keyboard.space.wasPressedThisFrame(game2), isTrue);
+
+      await game1.dispose();
+      await game2.dispose();
     });
 
     group('InputControl', () {
       testWidgets('should report correctly', (tester) async {
-        await tester.pumpWidget(Game(child: const GameObjectWidget()));
+        final engine = await _createInputEngine();
+        await tester.pumpWidget(
+          Game(engine: engine, child: const GameObjectWidget()),
+        );
         await tester.pump();
         final game =
             (tester.element(find.byType(GameObjectWidget)) as GameObject).game;
@@ -127,6 +148,8 @@ void main() {
         expect(btn.isPressed, isFalse);
         expect(btn.wasPressedThisFrame, isFalse);
         expect(btn.wasReleasedThisFrame, isTrue);
+
+        await engine.dispose();
       });
     });
   });

@@ -29,9 +29,12 @@ void main() {
 
   group('Event', () {
     testWidgets('should dispatch event to component', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final comp = TestComponent();
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [ComponentWidget(() => comp)],
           ),
@@ -46,10 +49,13 @@ void main() {
     });
 
     testWidgets('should dispatch event to multiple components', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final comp1 = TestComponent();
       final comp2 = TestComponent2();
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => comp1),
@@ -68,9 +74,12 @@ void main() {
     });
 
     testWidgets('should respect Behavior.enabled', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final behavior = TestBehavior()..enabled = false;
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [ComponentWidget(() => behavior)],
           ),
@@ -89,11 +98,14 @@ void main() {
     });
 
     testWidgets('should broadcast to children', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final parentComp = TestComponent();
       final childComp = TestComponent();
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => parentComp),
@@ -114,11 +126,14 @@ void main() {
     });
 
     testWidgets('should only send to children with sendEvent', (tester) async {
+      final engine = await GameEngine.create({TickerSystem.new});
+      addTearDown(() => engine.dispose());
       final parentComp = TestComponent();
       final childComp = TestComponent();
 
       await tester.pumpWidget(
         Game(
+          engine: engine,
           child: GameObjectWidget(
             children: [
               ComponentWidget(() => parentComp),

@@ -55,7 +55,7 @@ class CameraView extends SingleChildRenderObjectWidget {
   }
 }
 
-/// A render object that displays a transformed view of the [RenderWorld].
+/// A render object that displays a transformed view of the [RenderWorldSpace].
 ///
 /// This render object handles the complexity of mapping screen coordinates
 /// to world coordinates using a specific [Camera]. It performs a filtered
@@ -77,7 +77,7 @@ class CameraView extends SingleChildRenderObjectWidget {
 class RenderCameraView extends RenderProxyBox {
   /// The current game engine instance providing access to the systems and world.
   ///
-  /// This reference is used to look up the [CameraSystem] and the [RenderWorld]
+  /// This reference is used to look up the [CameraSystem] and the [RenderWorldSpace]
   /// ancestor during the painting and hit-testing phases.
   GameEngine game;
 
@@ -150,11 +150,11 @@ class RenderCameraView extends RenderProxyBox {
 
     final fullCameraMatrix = viewportMatrix * projMatrix * viewMatrix;
 
-    // 2. Find the RenderWorld ancestor
-    RenderWorld? world;
+    // 2. Find the RenderWorldSpace ancestor
+    RenderWorldSpace? world;
     RenderObject? current = parent;
     while (current != null) {
-      if (current is RenderWorld) {
+      if (current is RenderWorldSpace) {
         world = current;
         break;
       }
@@ -162,7 +162,7 @@ class RenderCameraView extends RenderProxyBox {
     }
 
     if (world == null) {
-      debugPrint('goo2d: Minimap could NOT find RenderWorld ancestor!');
+      debugPrint('goo2d: Minimap could NOT find RenderWorldSpace ancestor!');
     }
 
     if (world != null && world.child != null) {
@@ -261,10 +261,10 @@ class RenderCameraView extends RenderProxyBox {
       final fullCameraMatrix =
           localScaleMatrix * viewportMatrix * projMatrix * viewMatrix;
 
-      RenderWorld? world;
+      RenderWorldSpace? world;
       RenderObject? current = parent;
       while (current != null) {
-        if (current is RenderWorld) {
+        if (current is RenderWorldSpace) {
           world = current;
           break;
         }
