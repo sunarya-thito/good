@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:vector_math/vector_math_64.dart';
 import 'package:goo2d/src/event.dart';
 import 'package:goo2d/src/physics/physics_body.dart';
@@ -61,7 +63,7 @@ typedef BodyPair = (PhysicsBody, PhysicsBody);
 
 abstract interface class PhysicsEvent {
   BodyPair get bodies;
-  Future<void> _invokeOn<T extends PhysicsBody>(PhysicsContactListener<T> l);
+  FutureOr<void> _invokeOn<T extends PhysicsBody>(PhysicsContactListener<T> l);
 }
 
 // ---------------------------------------------------------------------------
@@ -75,23 +77,28 @@ abstract interface class PhysicsEvent {
 // ---------------------------------------------------------------------------
 
 mixin PhysicsContactListener<T extends PhysicsBody> on EventListener {
-  Future<void> onContactEnter(PhysicsContact<T> e) async {}
-  Future<void> onContactStay(PhysicsContact<T> e) async {}
-  Future<void> onContactExit(PhysicsContact<T> e) async {}
-  Future<void> onOverlapEnter(PhysicsOverlap<T> e) async {}
-  Future<void> onOverlapStay(PhysicsOverlap<T> e) async {}
-  Future<void> onOverlapExit(PhysicsOverlap<T> e) async {}
+  FutureOr<void> onContactEnter(PhysicsContact<T> e) async {}
+  FutureOr<void> onContactStay(PhysicsContact<T> e) async {}
+  FutureOr<void> onContactExit(PhysicsContact<T> e) async {}
+  FutureOr<void> onOverlapEnter(PhysicsOverlap<T> e) async {}
+  FutureOr<void> onOverlapStay(PhysicsOverlap<T> e) async {}
+  FutureOr<void> onOverlapExit(PhysicsOverlap<T> e) async {}
 
   @override
-  Future<bool> onDispatchEventAsync<L extends EventListener>(
+  FutureOr<bool> onDispatchEventAsync<L extends EventListener>(
     AsyncEvent<L> event,
-  ) async {
+  ) {
     if (event is PhysicsEvent) {
       final physicsEvent = event as PhysicsEvent;
       final (a, b) = physicsEvent.bodies;
       if (a is! T || b is! T) return false;
-      await physicsEvent._invokeOn(this);
-      return true;
+      // physicsEvent._invokeOn(this);
+      // return true;
+      final result = physicsEvent._invokeOn(this);
+      return switch (result) {
+        Future<void> f => f.then((_) => true),
+        _ => true,
+      };
     }
     return super.onDispatchEventAsync(event);
   }
@@ -109,16 +116,18 @@ class ContactEnterEvent<T extends PhysicsBody>
   @override
   BodyPair get bodies => (data.bodyA, data.bodyB);
   @override
-  Future<void> _invokeOn<S extends PhysicsBody>(PhysicsContactListener<S> l) =>
-      l.onContactEnter(
-        PhysicsContact(
-          bodyA: data.bodyA as S,
-          bodyB: data.bodyB as S,
-          contacts: data.contacts,
-        ),
-      );
+  FutureOr<void> _invokeOn<S extends PhysicsBody>(
+    PhysicsContactListener<S> l,
+  ) => l.onContactEnter(
+    PhysicsContact(
+      bodyA: data.bodyA as S,
+      bodyB: data.bodyB as S,
+      contacts: data.contacts,
+    ),
+  );
   @override
-  Future<void> dispatch(PhysicsContactListener<T> l) => l.onContactEnter(data);
+  FutureOr<void> dispatch(PhysicsContactListener<T> l) =>
+      l.onContactEnter(data);
 }
 
 class ContactStayEvent<T extends PhysicsBody>
@@ -129,16 +138,17 @@ class ContactStayEvent<T extends PhysicsBody>
   @override
   BodyPair get bodies => (data.bodyA, data.bodyB);
   @override
-  Future<void> _invokeOn<S extends PhysicsBody>(PhysicsContactListener<S> l) =>
-      l.onContactStay(
-        PhysicsContact(
-          bodyA: data.bodyA as S,
-          bodyB: data.bodyB as S,
-          contacts: data.contacts,
-        ),
-      );
+  FutureOr<void> _invokeOn<S extends PhysicsBody>(
+    PhysicsContactListener<S> l,
+  ) => l.onContactStay(
+    PhysicsContact(
+      bodyA: data.bodyA as S,
+      bodyB: data.bodyB as S,
+      contacts: data.contacts,
+    ),
+  );
   @override
-  Future<void> dispatch(PhysicsContactListener<T> l) => l.onContactStay(data);
+  FutureOr<void> dispatch(PhysicsContactListener<T> l) => l.onContactStay(data);
 }
 
 class ContactExitEvent<T extends PhysicsBody>
@@ -149,16 +159,17 @@ class ContactExitEvent<T extends PhysicsBody>
   @override
   BodyPair get bodies => (data.bodyA, data.bodyB);
   @override
-  Future<void> _invokeOn<S extends PhysicsBody>(PhysicsContactListener<S> l) =>
-      l.onContactExit(
-        PhysicsContact(
-          bodyA: data.bodyA as S,
-          bodyB: data.bodyB as S,
-          contacts: data.contacts,
-        ),
-      );
+  FutureOr<void> _invokeOn<S extends PhysicsBody>(
+    PhysicsContactListener<S> l,
+  ) => l.onContactExit(
+    PhysicsContact(
+      bodyA: data.bodyA as S,
+      bodyB: data.bodyB as S,
+      contacts: data.contacts,
+    ),
+  );
   @override
-  Future<void> dispatch(PhysicsContactListener<T> l) => l.onContactExit(data);
+  FutureOr<void> dispatch(PhysicsContactListener<T> l) => l.onContactExit(data);
 }
 
 class OverlapEnterEvent<T extends PhysicsBody>
@@ -169,12 +180,14 @@ class OverlapEnterEvent<T extends PhysicsBody>
   @override
   BodyPair get bodies => (data.trigger, data.other);
   @override
-  Future<void> _invokeOn<S extends PhysicsBody>(PhysicsContactListener<S> l) =>
-      l.onOverlapEnter(
-        PhysicsOverlap(trigger: data.trigger as S, other: data.other as S),
-      );
+  FutureOr<void> _invokeOn<S extends PhysicsBody>(
+    PhysicsContactListener<S> l,
+  ) => l.onOverlapEnter(
+    PhysicsOverlap(trigger: data.trigger as S, other: data.other as S),
+  );
   @override
-  Future<void> dispatch(PhysicsContactListener<T> l) => l.onOverlapEnter(data);
+  FutureOr<void> dispatch(PhysicsContactListener<T> l) =>
+      l.onOverlapEnter(data);
 }
 
 class OverlapStayEvent<T extends PhysicsBody>
@@ -185,12 +198,13 @@ class OverlapStayEvent<T extends PhysicsBody>
   @override
   BodyPair get bodies => (data.trigger, data.other);
   @override
-  Future<void> _invokeOn<S extends PhysicsBody>(PhysicsContactListener<S> l) =>
-      l.onOverlapStay(
-        PhysicsOverlap(trigger: data.trigger as S, other: data.other as S),
-      );
+  FutureOr<void> _invokeOn<S extends PhysicsBody>(
+    PhysicsContactListener<S> l,
+  ) => l.onOverlapStay(
+    PhysicsOverlap(trigger: data.trigger as S, other: data.other as S),
+  );
   @override
-  Future<void> dispatch(PhysicsContactListener<T> l) => l.onOverlapStay(data);
+  FutureOr<void> dispatch(PhysicsContactListener<T> l) => l.onOverlapStay(data);
 }
 
 class OverlapExitEvent<T extends PhysicsBody>
@@ -201,10 +215,11 @@ class OverlapExitEvent<T extends PhysicsBody>
   @override
   BodyPair get bodies => (data.trigger, data.other);
   @override
-  Future<void> _invokeOn<S extends PhysicsBody>(PhysicsContactListener<S> l) =>
-      l.onOverlapExit(
-        PhysicsOverlap(trigger: data.trigger as S, other: data.other as S),
-      );
+  FutureOr<void> _invokeOn<S extends PhysicsBody>(
+    PhysicsContactListener<S> l,
+  ) => l.onOverlapExit(
+    PhysicsOverlap(trigger: data.trigger as S, other: data.other as S),
+  );
   @override
-  Future<void> dispatch(PhysicsContactListener<T> l) => l.onOverlapExit(data);
+  FutureOr<void> dispatch(PhysicsContactListener<T> l) => l.onOverlapExit(data);
 }

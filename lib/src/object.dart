@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:goo2d/src/game.dart';
 import 'package:goo2d/src/component.dart';
@@ -123,6 +125,7 @@ abstract class GameObject implements BuildContext {
   ///
   /// * [value]: The new layer index.
   set layer(int value);
+
   /// Adds one or more [Component]s to this object.
   ///
   /// Components are the primary way to add functionality to a [GameObject].
@@ -290,10 +293,10 @@ abstract class GameObject implements BuildContext {
   void sendEvent(Event event);
 
   /// Broadcasts an async [event] to this object and all its descendants, awaiting each dispatch.
-  Future<void> broadcastEventAsync(AsyncEvent event);
+  FutureOr<void> broadcastEventAsync(AsyncEvent event);
 
   /// Sends an async [event] to this object's children, awaiting each dispatch.
-  Future<void> sendEventAsync(AsyncEvent event);
+  FutureOr<void> sendEventAsync(AsyncEvent event);
 
   /// Retrieves the first component of type [T] attached to this object.
   ///
@@ -380,6 +383,7 @@ abstract class GameObject implements BuildContext {
   ///
   /// * [component]: The component instance to locate.
   int getComponentIndex(Component component);
+
   /// Finds a child object by its [name] in the hierarchy.
   ///
   /// This performs a recursive search down the tree starting from the
@@ -401,7 +405,7 @@ abstract class GameObject implements BuildContext {
     final path = isAbsolute ? name.substring(1) : name;
     final parts = path.split('/');
 
-    final roots = engine.getSystem<TickerState>()?.rootObjects ?? [];
+    final roots = engine.getSystem<TickerSystem>()?.rootObjects ?? [];
     for (final root in roots) {
       if (root.name == parts[0]) {
         if (parts.length == 1) return root;

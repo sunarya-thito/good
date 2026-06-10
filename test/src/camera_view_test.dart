@@ -5,7 +5,10 @@ import 'package:goo2d/goo2d.dart';
 void main() {
   group('CameraView', () {
     testWidgets('should render children through tagged camera', (tester) async {
-      final engine = await GameEngine.create({TickerState.new, CameraSystem.new});
+      final engine = await GameEngine.create({
+        TickerSystem.new,
+        CameraSystem.new,
+      });
       addTearDown(() => engine.dispose());
       const camTag = 'SecondaryCamera';
       final cam = Camera()..backgroundColor = const Color(0xFFFF0000);

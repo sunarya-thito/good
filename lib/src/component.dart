@@ -438,7 +438,7 @@ abstract class Component implements EventListenerMixable {
   }
 
   @override
-  Future<void> onEventAsync<T extends EventListener>(AsyncEvent<T> event) {
+  FutureOr<void> onEventAsync<T extends EventListener>(AsyncEvent<T> event) {
     return event.dispatch(this as T);
   }
 
@@ -450,8 +450,9 @@ abstract class Component implements EventListenerMixable {
   }
 
   @override
-  Future<bool> onDispatchEventAsync<T extends EventListener>(
-      AsyncEvent<T> event) async {
+  FutureOr<bool> onDispatchEventAsync<T extends EventListener>(
+    AsyncEvent<T> event,
+  ) async {
     if (this is! T) return false;
     await event.dispatch(this as T);
     return true;
@@ -479,13 +480,13 @@ abstract class Component implements EventListenerMixable {
   ///
   /// This should be used to scale movement and animations to ensure they
   /// run at the same speed regardless of the frame rate.
-  double get deltaTime => game.getSystem<TickerState>()?.deltaTime ?? 0.0;
+  double get deltaTime => game.getSystem<TickerSystem>()?.deltaTime ?? 0.0;
 
   /// The total number of frames rendered since the engine started.
   ///
   /// This can be used for simple frame-based timing or to synchronize
   /// logic with specific rendering cycles.
-  int get frameCount => game.getSystem<TickerState>()?.frameCount ?? 0;
+  int get frameCount => game.getSystem<TickerSystem>()?.frameCount ?? 0;
 
   /// The name of the [GameObject] this component is attached to.
   ///
@@ -845,8 +846,9 @@ abstract class Behavior extends Component {
   }
 
   @override
-  Future<bool> onDispatchEventAsync<T extends EventListener>(
-      AsyncEvent<T> event) async {
+  FutureOr<bool> onDispatchEventAsync<T extends EventListener>(
+    AsyncEvent<T> event,
+  ) {
     if (!enabled) return false;
     return super.onDispatchEventAsync(event);
   }

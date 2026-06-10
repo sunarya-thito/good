@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
@@ -252,45 +250,14 @@ class GameRenderObject extends RenderBox
   void paint(PaintingContext context, Offset offset) {
     final cameraSystem = object.game.getSystem<CameraSystem>();
     final camera = cameraSystem?.currentRenderCamera;
-    if (camera != null && (object.layer & camera.cullingMask) == 0) {
-      return;
-    }
+    if (camera != null && (object.layer & camera.cullingMask) == 0) return;
 
-    final optionalTransform = object.tryGetComponent<ObjectTransform>();
-
-    if (optionalTransform != null) {
-      final screenSize = object.game.screen.screenSize;
-      final paintMatrix = optionalTransform.getPaintMatrix(
-        object.game,
-        screenSize,
-      );
-
-      if (cameraSystem?.isSecondaryPass ?? false || !needsCompositing) {
-        context.canvas.save();
-        context.canvas.translate(offset.dx, offset.dy);
-        context.canvas.transform(paintMatrix.storage);
-
-        RenderEvent(context.canvas).dispatchTo(object);
-        defaultPaint(context, Offset.zero);
-        context.canvas.restore();
-      } else {
-        layer = context.pushTransform(
-          needsCompositing,
-          offset,
-          paintMatrix,
-          (context, offset) {
-            RenderEvent(context.canvas).dispatchTo(object);
-            defaultPaint(context, offset);
-          },
-        );
-      }
-    } else {
-      context.canvas.save();
-      context.canvas.translate(offset.dx, offset.dy);
-      RenderEvent(context.canvas).dispatchTo(object);
-      context.canvas.restore();
-      defaultPaint(context, offset);
-    }
+    // No per-entity canvas transform. The canvas is in world space after the
+    // camera's single canvas.transform applied by RenderWorldSpace. Each
+    // Renderable component (e.g. SpriteRenderer) pre-bakes its world-space
+    // vertex positions and writes them directly into BufferManager.
+    RenderEvent(context.canvas).dispatchTo(object);
+    defaultPaint(context, offset);
   }
 
   @override

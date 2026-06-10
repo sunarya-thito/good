@@ -62,7 +62,7 @@ void main() {
     testWidgets('should clean up handle registration on unmount', (
       tester,
     ) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final audioSource = AudioSource();
 
@@ -88,7 +88,7 @@ void main() {
     testWidgets('should be detected by AudioSource for 3D spatialization', (
       tester,
     ) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final listener = AudioListener();
       final audioSource = AudioSource();

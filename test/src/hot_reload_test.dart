@@ -11,7 +11,7 @@ void main() {
     testWidgets('should update component properties after widget update', (
       tester,
     ) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       await tester.pumpWidget(
         Game(
@@ -70,7 +70,7 @@ void main() {
     testWidgets('should preserve GameObject position after reassemble', (
       tester,
     ) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       await tester.pumpWidget(
         Game(
@@ -83,8 +83,7 @@ void main() {
       );
 
       final element = tester.element(find.byType(GameObjectWidget).first);
-      final transform =
-          (element as GameObject).getComponent<ObjectTransform>();
+      final transform = (element as GameObject).getComponent<ObjectTransform>();
       transform.position = Vector2(50, 60);
 
       // ignore: invalid_use_of_protected_member
@@ -97,7 +96,7 @@ void main() {
     testWidgets('should preserve state when children are shuffled with keys', (
       tester,
     ) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       await tester.pumpWidget(
         Game(
@@ -178,7 +177,7 @@ void main() {
     testWidgets('should preserve state with GlobalKey across tree changes', (
       tester,
     ) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final heroKey = GlobalKey();
       await tester.pumpWidget(
@@ -243,7 +242,7 @@ void main() {
     testWidgets(
       'should reset/swap state when children are shuffled WITHOUT keys',
       (tester) async {
-        final engine = await GameEngine.create({TickerState.new});
+        final engine = await GameEngine.create({TickerSystem.new});
         addTearDown(() => engine.dispose());
         await tester.pumpWidget(
           Game(

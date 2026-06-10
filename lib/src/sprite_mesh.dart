@@ -4,6 +4,20 @@ import 'package:goo2d/src/asset.dart';
 import 'package:goo2d/src/point.dart';
 import 'package:goo2d/src/sprite_fit.dart';
 
+// 2D affine → column-major 4×4 Float64List for canvas.transform / ImageShader.
+Float64List _affineToMatrix4(Float32List m) {
+  // m = [a, b, c, d, tx, ty] where:
+  //   a = cos*sx, b = -sin*sy, c = sin*sx, d = cos*sy
+  // Column-major 4×4: indices [col*4+row]
+  //   col0 = [a,c,0,0], col1 = [b,d,0,0], col2=[0,0,1,0], col3=[tx,ty,0,1]
+  return Float64List.fromList([
+    m[0], m[2], 0, 0, // col 0
+    m[1], m[3], 0, 0, // col 1
+    0, 0, 1, 0, // col 2
+    m[4], m[5], 0, 1, // col 3
+  ]);
+}
+
 // ---------------------------------------------------------------------------
 // RenderHandle
 // ---------------------------------------------------------------------------
@@ -15,6 +29,19 @@ import 'package:goo2d/src/sprite_fit.dart';
 /// resources such as [ui.FragmentShader].
 abstract class RenderHandle {
   void render(ui.Canvas canvas, ui.Size size, ui.Paint paint);
+
+  /// Renders the mesh using a pre-baked 2D affine [matrix] = [a, b, c, d, tx, ty].
+  ///
+  /// No canvas state changes are made outside this call. The canvas must already
+  /// be in world space (camera transform applied once upstream). This is the
+  /// primary render entry point for the new batching-friendly pipeline.
+  void renderWithMatrix(
+    ui.Canvas canvas,
+    ui.Size size,
+    ui.Paint paint,
+    Float32List matrix,
+  );
+
   void dispose();
 }
 
@@ -104,6 +131,19 @@ class _SimpleMeshHandle extends RenderHandle {
         _mesh.srcRect ??
         ui.Rect.fromLTWH(0, 0, tex.width.toDouble(), tex.height.toDouble());
     _mesh.fit.draw(canvas, tex.image, src, ui.Offset.zero & size, paint);
+  }
+
+  @override
+  void renderWithMatrix(
+    ui.Canvas canvas,
+    ui.Size size,
+    ui.Paint paint,
+    Float32List matrix,
+  ) {
+    canvas.save();
+    canvas.transform(_affineToMatrix4(matrix));
+    render(canvas, size, paint);
+    canvas.restore();
   }
 
   @override
@@ -731,6 +771,21 @@ class _GridMeshHandle extends RenderHandle {
       dst[i + 1] = dst[i] + segSize;
     }
     return dst;
+  }
+
+  @override
+  void renderWithMatrix(
+    ui.Canvas canvas,
+    ui.Size size,
+    ui.Paint paint,
+    Float32List matrix,
+  ) {
+    // Temporary: apply world matrix via canvas transform, draw in local space.
+    // Step 14 will replace this with a direct world-space drawVertices call.
+    canvas.save();
+    canvas.transform(_affineToMatrix4(matrix));
+    render(canvas, size, paint);
+    canvas.restore();
   }
 
   @override

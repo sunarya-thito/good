@@ -29,7 +29,7 @@ void main() {
 
   group('Event', () {
     testWidgets('should dispatch event to component', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final comp = TestComponent();
       await tester.pumpWidget(
@@ -49,7 +49,7 @@ void main() {
     });
 
     testWidgets('should dispatch event to multiple components', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final comp1 = TestComponent();
       final comp2 = TestComponent2();
@@ -74,7 +74,7 @@ void main() {
     });
 
     testWidgets('should respect Behavior.enabled', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final behavior = TestBehavior()..enabled = false;
       await tester.pumpWidget(
@@ -98,7 +98,7 @@ void main() {
     });
 
     testWidgets('should broadcast to children', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final parentComp = TestComponent();
       final childComp = TestComponent();
@@ -126,7 +126,7 @@ void main() {
     });
 
     testWidgets('should only send to children with sendEvent', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final parentComp = TestComponent();
       final childComp = TestComponent();

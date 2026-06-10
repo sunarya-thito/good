@@ -5,11 +5,11 @@ import 'package:goo2d/src/game.dart';
 import 'package:goo2d/src/ticker.dart';
 
 Future<GameEngine> _createMinimalEngine() => GameEngine.create({
-      TickerState.new,
-      InputSystem.new,
-      CameraSystem.new,
-      ScreenSystem.new,
-    });
+  TickerSystem.new,
+  InputSystem.new,
+  CameraSystem.new,
+  ScreenSystem.new,
+});
 
 void main() {
   AutomatedTestWidgetsFlutterBinding.ensureInitialized();

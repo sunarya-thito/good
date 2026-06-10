@@ -27,7 +27,7 @@ void main() {
     testWidgets('should dispatch events to PointerReceiver when hit', (
       tester,
     ) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final receiver = MockPointerReceiver();
       final collider = BoxCollider()
@@ -66,7 +66,7 @@ void main() {
     });
 
     testWidgets('should NOT dispatch events when NOT hit', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final receiver = MockPointerReceiver();
       final collider = BoxCollider()
@@ -103,7 +103,7 @@ void main() {
     });
 
     testWidgets('should handle move and hover events', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final receiver = MockPointerReceiver();
       final collider = BoxCollider()

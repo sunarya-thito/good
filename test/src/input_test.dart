@@ -4,18 +4,19 @@ import 'package:goo2d/goo2d.dart';
 import 'package:goo2d/src/ticker.dart';
 
 Future<GameEngine> _createInputEngine() => GameEngine.create({
-      TickerState.new,
-      InputSystem.new,
-      CameraSystem.new,
-      ScreenSystem.new,
-    });
+  TickerSystem.new,
+  InputSystem.new,
+  CameraSystem.new,
+  ScreenSystem.new,
+});
 
 void main() {
   AutomatedTestWidgetsFlutterBinding.ensureInitialized();
 
   group('Input', () {
-    testWidgets('InputAction should transition phases for button type',
-        (tester) async {
+    testWidgets('InputAction should transition phases for button type', (
+      tester,
+    ) async {
       final engine = await _createInputEngine();
       final action = InputAction()
         ..name = 'test'
@@ -56,8 +57,9 @@ void main() {
       await engine.dispose();
     });
 
-    testWidgets('InputAction should transition phases for value type',
-        (tester) async {
+    testWidgets('InputAction should transition phases for value type', (
+      tester,
+    ) async {
       final engine = await _createInputEngine();
       final action = InputAction()
         ..name = 'test'
@@ -94,12 +96,12 @@ void main() {
       await engine.dispose();
     });
 
-    testWidgets('CompositeBinding should calculate direction correctly',
-        (tester) async {
+    testWidgets('CompositeBinding should calculate direction correctly', (
+      tester,
+    ) async {
       final engine = await _createInputEngine();
 
-      await tester.pumpWidget(
-          Game(engine: engine, child: const SizedBox()));
+      await tester.pumpWidget(Game(engine: engine, child: const SizedBox()));
       final game = (tester.widget(find.byType(GameLoop)) as GameLoop).game;
 
       final up = ButtonControl(game);

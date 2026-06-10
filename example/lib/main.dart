@@ -8,7 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 // --- Assets ---
 
-enum MyGameTexture with AssetEnum, TextureAssetEnum {
+enum MyGameTexture with AssetEnum, AssetTextureEnum {
   ship,
   tilesPacked,
   enemy,

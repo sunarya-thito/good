@@ -4,11 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
 Future<GameEngine> _createEngine() => GameEngine.create({
-      TickerState.new,
-      InputSystem.new,
-      CameraSystem.new,
-      ScreenSystem.new,
-    });
+  TickerSystem.new,
+  InputSystem.new,
+  CameraSystem.new,
+  ScreenSystem.new,
+});
 
 void main() {
   AutomatedTestWidgetsFlutterBinding.ensureInitialized();
@@ -23,8 +23,7 @@ void main() {
       await tester.pumpWidget(
         Game(
           engine: engine,
-          child:
-              GameObjectWidget(children: [ComponentWidget(() => transform)]),
+          child: GameObjectWidget(children: [ComponentWidget(() => transform)]),
         ),
       );
       await tester.pump();
@@ -151,8 +150,7 @@ void main() {
         );
       }
 
-      await tester.pumpWidget(
-          Game(engine: engine, child: buildHierarchy(0)));
+      await tester.pumpWidget(Game(engine: engine, child: buildHierarchy(0)));
       await tester.pump();
 
       for (var t in transforms) {
@@ -169,8 +167,7 @@ void main() {
       await tester.pumpWidget(
         Game(
           engine: engine,
-          child:
-              GameObjectWidget(children: [ComponentWidget(() => transform)]),
+          child: GameObjectWidget(children: [ComponentWidget(() => transform)]),
         ),
       );
       await tester.pump();

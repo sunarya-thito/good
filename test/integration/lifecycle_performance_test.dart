@@ -4,11 +4,11 @@ import 'package:integration_test/integration_test.dart';
 import 'package:goo2d/goo2d.dart';
 
 Future<GameEngine> _createEngine() => GameEngine.create({
-      TickerState.new,
-      InputSystem.new,
-      CameraSystem.new,
-      ScreenSystem.new,
-    });
+  TickerSystem.new,
+  InputSystem.new,
+  CameraSystem.new,
+  ScreenSystem.new,
+});
 
 void main() {
   if (!const bool.fromEnvironment('INTEGRATION_TEST')) {
@@ -59,8 +59,9 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             home: Game(
-                engine: engine,
-                child: const GameObjectWidget(name: 'scene_a')),
+              engine: engine,
+              child: const GameObjectWidget(name: 'scene_a'),
+            ),
           ),
         );
         await tester.pump();

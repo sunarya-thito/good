@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:goo2d/goo2d.dart';
 import 'package:meta/meta.dart';
 
@@ -20,15 +22,13 @@ abstract class WorldSystem implements EventListenerMixable {
   @internal
   void attachToWorld(WorldController w) => _world = w;
 
-  void onAttach() {}
-  void onDetach() {}
   @override
   void onEvent<T extends EventListener>(Event<T> event) {
     event.dispatch(this as T);
   }
 
   @override
-  Future<void> onEventAsync<T extends EventListener>(AsyncEvent<T> event) {
+  FutureOr<void> onEventAsync<T extends EventListener>(AsyncEvent<T> event) {
     return event.dispatch(this as T);
   }
 
@@ -40,11 +40,14 @@ abstract class WorldSystem implements EventListenerMixable {
   }
 
   @override
-  Future<bool> onDispatchEventAsync<T extends EventListener>(
+  FutureOr<bool> onDispatchEventAsync<T extends EventListener>(
     AsyncEvent<T> event,
-  ) async {
+  ) {
     if (this is! T) return false;
-    await event.dispatch(this as T);
-    return true;
+    final result = event.dispatch(this as T);
+    return switch (result) {
+      Future<void> f => f.then((_) => true),
+      _ => true,
+    };
   }
 }

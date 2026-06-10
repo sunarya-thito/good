@@ -13,7 +13,7 @@ void main() {
     final depths = [5, 10, 25, 50, 75, 100, 125, 150];
     for (final d in depths) {
       testWidgets('Transform.worldMatrixDeep (Depth $d)', (tester) async {
-        final engine = await GameEngine.create({TickerState.new});
+        final engine = await GameEngine.create({TickerSystem.new});
         addTearDown(() => engine.dispose());
         final rootTag = 'root_obj_$d';
         final leafTag = 'leaf_obj_$d';

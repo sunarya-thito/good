@@ -1,11 +1,6 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:goo2d/goo2d.dart';
-import 'package:goo2d/src/asset.dart';
-import 'package:goo2d/src/point.dart';
-import 'package:goo2d/src/sprite_mesh.dart';
-import 'package:goo2d/src/component.dart';
-import 'package:goo2d/src/lifecycle.dart';
-import 'package:goo2d/src/render.dart';
 
 /// Factory that builds a [SpriteMesh] for a given texture region.
 ///
@@ -92,31 +87,65 @@ class GameSprite {
 
 /// A component that renders a [GameSprite] onto the canvas.
 ///
-/// Holds a [RenderHandle] (created when mounted, disposed when unmounted) so
-/// that GPU resources such as [ui.FragmentShader] are properly managed.
+/// Positions are pre-baked into world-space vertex coordinates using the
+/// sibling [ObjectTransform], avoiding any per-entity canvas state changes.
+/// [GridMesh] sprites delegate to [RenderHandle.renderWithMatrix] instead.
 class SpriteRenderer extends Behavior with Renderable, LifecycleListener {
   GameSprite? _sprite;
   RenderHandle? _handle;
   bool _mounted = false;
 
+  // Pre-baked world-space quad data: 4 corners (TL, TR, BL, BR).
+  final Float32List _bakedPositions = Float32List(8);
+  final Float32List _bakedUVs = Float32List(8);
+  final Int32List _bakedColors = Int32List(4);
+  ui.Image? _bakedAtlasImage;
+
+  bool _positionsDirty = true;
+  bool _uvsDirty = true;
+  bool _colorDirty = true;
+  int _lastTransformVersion = -1;
+  ui.Size? _lastSize;
+  bool _lastFlipX = false;
+  bool _lastFlipY = false;
+
+  // Shared across all SpriteRenderer instances — never mutated after init.
+  static final Uint16List _kQuadIndices =
+      Uint16List.fromList([0, 1, 2, 1, 3, 2]);
+  static final Float64List _kIdentity4x4 = _makeIdentity();
+  static Float64List _makeIdentity() {
+    final m = Float64List(16);
+    m[0] = m[5] = m[10] = m[15] = 1.0;
+    return m;
+  }
+
   GameSprite? get sprite => _sprite;
 
   set sprite(GameSprite? s) {
     _sprite = s;
+    _positionsDirty = true;
+    _uvsDirty = true;
     if (_mounted) {
       _handle?.dispose();
       _handle = s?.mesh.createHandle();
     }
   }
 
-  /// Color tint applied via [blendMode].
-  ui.Color color = const ui.Color(0xFFFFFFFF);
+  /// Color tint (ARGB). Default is opaque white — no tint.
+  ui.Color _color = const ui.Color(0xFFFFFFFF);
+  ui.Color get color => _color;
+  set color(ui.Color value) {
+    if (_color == value) return;
+    _color = value;
+    _colorDirty = true;
+  }
 
   bool flipX = false;
   bool flipY = false;
-
   ui.FilterQuality filterQuality = ui.FilterQuality.low;
-  ui.BlendMode blendMode = ui.BlendMode.modulate;
+
+  /// How this sprite blends with the canvas. Default is normal compositing.
+  ui.BlendMode blendMode = ui.BlendMode.srcOver;
 
   /// Explicit render size in pixels. Defaults to [GameSprite.size].
   ui.Size? size;
@@ -146,28 +175,145 @@ class SpriteRenderer extends Behavior with Renderable, LifecycleListener {
     _mounted = false;
     _handle?.dispose();
     _handle = null;
+    _bakedAtlasImage = null;
+  }
+
+  void _rebakePositions(ObjectTransform transform, GameSprite sprite) {
+    // worldMatrix.storage is Float64List in column-major 4×4 order.
+    // col0=[a,c,0,0], col1=[b,d,0,0], col2=[0,0,1,0], col3=[tx,ty,0,1]
+    final s = transform.worldMatrix.storage;
+    final a = s[0], b = s[4], c = s[1], d = s[5];
+    final tx = s[12], ty = s[13];
+
+    final renderSize = size ?? sprite.size;
+    final ppu = sprite.pixelsPerUnit;
+    final p = sprite.pivot.compute(renderSize);
+
+    // Local corners with pivot and PPU applied. Flip is UV-side only.
+    final lx0 = -p.dx / ppu;
+    final lx1 = (renderSize.width - p.dx) / ppu;
+    final ly0 = -p.dy / ppu;
+    final ly1 = (renderSize.height - p.dy) / ppu;
+
+    // TL
+    _bakedPositions[0] = a * lx0 + b * ly0 + tx;
+    _bakedPositions[1] = c * lx0 + d * ly0 + ty;
+    // TR
+    _bakedPositions[2] = a * lx1 + b * ly0 + tx;
+    _bakedPositions[3] = c * lx1 + d * ly0 + ty;
+    // BL
+    _bakedPositions[4] = a * lx0 + b * ly1 + tx;
+    _bakedPositions[5] = c * lx0 + d * ly1 + ty;
+    // BR
+    _bakedPositions[6] = a * lx1 + b * ly1 + tx;
+    _bakedPositions[7] = c * lx1 + d * ly1 + ty;
+
+    _lastTransformVersion = transform.version;
+    _lastSize = size;
+  }
+
+  void _rebakeUVs(GameSprite sprite) {
+    final tex = sprite.texture;
+    if (!tex.isLoaded) {
+      _bakedAtlasImage = null;
+      return;
+    }
+    final group = UsedTextures.resolveGroup(gameObject, tex);
+    _bakedAtlasImage = group?.atlasImageFor(tex) ?? tex.image;
+
+    final src = sprite.mesh.srcRect ??
+        ui.Rect.fromLTWH(0, 0, tex.width.toDouble(), tex.height.toDouble());
+    final r = group?.atlasRectFor(tex) ?? src;
+
+    // Flip is applied by swapping UV extents rather than touching vertex positions.
+    final uMin = flipX ? r.right : r.left;
+    final uMax = flipX ? r.left : r.right;
+    final vMin = flipY ? r.bottom : r.top;
+    final vMax = flipY ? r.top : r.bottom;
+
+    _bakedUVs[0] = uMin; _bakedUVs[1] = vMin; // TL
+    _bakedUVs[2] = uMax; _bakedUVs[3] = vMin; // TR
+    _bakedUVs[4] = uMin; _bakedUVs[5] = vMax; // BL
+    _bakedUVs[6] = uMax; _bakedUVs[7] = vMax; // BR
+
+    _lastFlipX = flipX;
+    _lastFlipY = flipY;
   }
 
   @override
   void render(ui.Canvas canvas) {
     final sprite = _sprite;
-    final handle = _handle;
-    if (sprite == null || handle == null) return;
+    if (sprite == null) return;
 
-    final paint = ui.Paint()
-      ..colorFilter = ui.ColorFilter.mode(color, blendMode)
-      ..filterQuality = filterQuality;
+    final transform = gameObject.tryGetComponent<ObjectTransform>();
 
-    final p = sprite.pivotOffset;
-    canvas.save();
-    final scale = 1.0 / sprite.pixelsPerUnit;
-    canvas.scale(scale, scale);
-    canvas.translate(-p.dx, -p.dy);
-    if (flipX || flipY) {
-      canvas.scale(flipX ? -1.0 : 1.0, flipY ? -1.0 : 1.0);
+    // GridMesh sprites: world matrix is applied by the handle (step 14 will
+    // replace this with a direct world-space drawVertices call).
+    if (sprite.mesh is GridMesh) {
+      final handle = _handle;
+      if (handle == null || transform == null) return;
+      final ws = transform.worldMatrix.storage;
+      final m = Float32List(6);
+      m[0] = ws[0]; m[1] = ws[4]; // a, b
+      m[2] = ws[1]; m[3] = ws[5]; // c, d
+      m[4] = ws[12]; m[5] = ws[13]; // tx, ty
+      final paint = ui.Paint()
+        ..filterQuality = filterQuality
+        ..blendMode = blendMode
+        ..color = _color;
+      handle.renderWithMatrix(canvas, size ?? sprite.size, paint, m);
+      return;
     }
-    handle.render(canvas, size ?? sprite.size, paint);
-    canvas.restore();
+
+    // SimpleMesh: lazy-rebake geometry then emit a single drawVertices call.
+    final tex = sprite.texture;
+    if (!tex.isLoaded) return;
+
+    if (_positionsDirty) {
+      if (transform == null) return; // no transform, nothing to draw
+      _rebakePositions(transform, sprite);
+      _positionsDirty = false;
+    } else if (transform != null &&
+        (transform.version != _lastTransformVersion || size != _lastSize)) {
+      _rebakePositions(transform, sprite);
+    }
+
+    if (_uvsDirty || flipX != _lastFlipX || flipY != _lastFlipY) {
+      _rebakeUVs(sprite);
+      _uvsDirty = false;
+    }
+
+    if (_colorDirty) {
+      final v = _color.toARGB32();
+      _bakedColors[0] = v;
+      _bakedColors[1] = v;
+      _bakedColors[2] = v;
+      _bakedColors[3] = v;
+      _colorDirty = false;
+    }
+
+    final atlasImage = _bakedAtlasImage;
+    if (atlasImage == null) return;
+
+    canvas.drawVertices(
+      ui.Vertices.raw(
+        ui.VertexMode.triangles,
+        _bakedPositions,
+        textureCoordinates: _bakedUVs,
+        colors: _bakedColors,
+        indices: _kQuadIndices,
+      ),
+      ui.BlendMode.modulate,
+      ui.Paint()
+        ..shader = ui.ImageShader(
+          atlasImage,
+          ui.TileMode.clamp,
+          ui.TileMode.clamp,
+          _kIdentity4x4,
+        )
+        ..filterQuality = filterQuality
+        ..blendMode = blendMode,
+    );
   }
 }
 

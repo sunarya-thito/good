@@ -1,11 +1,13 @@
+import 'dart:async';
+
 import 'package:goo2d/src/component.dart';
 import 'package:goo2d/src/object.dart';
 
 abstract interface class EventListenerMixable {
   void onEvent<T extends EventListener>(Event<T> event);
-  Future<void> onEventAsync<T extends EventListener>(AsyncEvent<T> event);
+  FutureOr<void> onEventAsync<T extends EventListener>(AsyncEvent<T> event);
   bool onDispatchEvent<T extends EventListener>(Event<T> event);
-  Future<bool> onDispatchEventAsync<T extends EventListener>(
+  FutureOr<bool> onDispatchEventAsync<T extends EventListener>(
     AsyncEvent<T> event,
   );
 }
@@ -61,13 +63,23 @@ abstract class Event<T extends EventListener> {
 abstract class AsyncEvent<T extends EventListener> extends Event<T> {
   const AsyncEvent();
   @override
-  Future<void> dispatch(T listener);
+  FutureOr<void> dispatch(T listener);
 
   @override
-  Future<void> dispatchTo(GameObject object) async {
+  FutureOr<void> dispatchTo(GameObject object) {
     // TODO: avoid list copy, this is a bad way to handle concurrency
+    Future<void>? waitedFuture;
     for (final c in List.of(object.components)) {
-      await c.onDispatchEventAsync(this);
+      final result = c.onDispatchEventAsync(this);
+      switch (result) {
+        case Future<bool> f:
+          waitedFuture = (waitedFuture == null)
+              ? f
+              : waitedFuture.then((_) => f);
+        case bool _:
+          break;
+      }
     }
+    return waitedFuture;
   }
 }

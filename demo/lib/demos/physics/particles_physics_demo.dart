@@ -121,9 +121,8 @@ class _CleanupSystem extends WorldSystem with FixedTickable {
   @override
   Future<void> onFixedUpdate(double dt) async {
     (world.query()..withAll(_bt, _td)).withEntity().forEach((r) {
-      final s = r.entity.index;
-      final x = _td.x.getSlot(s);
-      final y = _td.y.getSlot(s);
+      final x = _td.x.get(r);
+      final y = _td.y.get(r);
       if (y < _kRemoveY || x.abs() > _kRemoveX) {
         despawnAcc.value++;
         world.commandBuffer.removeEntity(r.entity);
@@ -262,14 +261,17 @@ class _EcsPhysicsTabState extends State<_EcsPhysicsTab> {
   void initState() {
     super.initState();
     GameEngine.create({
-      TickerState.new,
+      TickerSystem.new,
       InputSystem.new,
       PhysicsSystem.new,
       CameraSystem.new,
       ScreenSystem.new,
       ScreenPhysicsSystem.new,
     }).then((engine) {
-      if (_disposed) { engine.dispose(); return; }
+      if (_disposed) {
+        engine.dispose();
+        return;
+      }
       setState(() => _engine = engine);
     });
     final spawnAcc = _Counter();
@@ -581,14 +583,17 @@ class _EcPhysicsTabState extends State<_EcPhysicsTab> {
   void initState() {
     super.initState();
     GameEngine.create({
-      TickerState.new,
+      TickerSystem.new,
       InputSystem.new,
       PhysicsSystem.new,
       CameraSystem.new,
       ScreenSystem.new,
       ScreenPhysicsSystem.new,
     }).then((engine) {
-      if (_disposed) { engine.dispose(); return; }
+      if (_disposed) {
+        engine.dispose();
+        return;
+      }
       setState(() => _engine = engine);
     });
   }

@@ -82,7 +82,7 @@ class CoroutineFuture implements Future<void> {
 /// [CoroutineClock] is the only timing primitive the coroutine system
 /// requires. Implement this to provide a custom frame signal source.
 ///
-/// The engine supplies [TickerState] as the game-context implementation.
+/// The engine supplies [TickerSystem] as the game-context implementation.
 /// A [CoroutineRunner] created without explicit clock uses a Flutter
 /// scheduler-based fallback, enabling coroutines outside the game widget tree.
 ///
@@ -339,7 +339,7 @@ class CoroutineRunner {
 
   /// Creates a runner using the given [clock], or Flutter's scheduler if omitted.
   CoroutineRunner({CoroutineClock? clock})
-      : _clock = clock ?? _FlutterCoroutineClock.instance;
+    : _clock = clock ?? _FlutterCoroutineClock.instance;
 
   final CoroutineClock _clock;
   final List<CoroutineFuture> _running = [];
@@ -394,11 +394,10 @@ Future<void> startCoroutine(CoroutineFunction coroutine) =>
 Future<void> startCoroutineWithOption<T>(
   CoroutineFunctionWithOptions<T> coroutine, {
   required T option,
-}) =>
-    CoroutineRunner.instance.startCoroutineWithOption(
-      coroutine,
-      option: option,
-    );
+}) => CoroutineRunner.instance.startCoroutineWithOption(
+  coroutine,
+  option: option,
+);
 
 /// Stops a specific global coroutine returned by [startCoroutine].
 void stopCoroutine(Future<void> coroutine) =>

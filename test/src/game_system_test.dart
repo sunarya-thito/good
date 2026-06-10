@@ -24,13 +24,13 @@ void main() {
   group('GameSystem', () {
     test('GameEngine should initialize systems', () async {
       final engine = await GameEngine.create({
-        TickerState.new,
+        TickerSystem.new,
         InputSystem.new,
         CameraSystem.new,
         ScreenSystem.new,
       });
 
-      expect(engine.hasSystem<TickerState>(), isTrue);
+      expect(engine.hasSystem<TickerSystem>(), isTrue);
       expect(engine.hasSystem<InputSystem>(), isTrue);
       expect(engine.hasSystem<CameraSystem>(), isTrue);
       expect(engine.hasSystem<ScreenSystem>(), isTrue);
@@ -42,14 +42,14 @@ void main() {
       final engine = await GameEngine.create({MockSystem.new});
 
       expect(engine.hasSystem<MockSystem>(), isTrue);
-      expect(engine.hasSystem<TickerState>(), isFalse);
+      expect(engine.hasSystem<TickerSystem>(), isFalse);
 
       await engine.dispose();
     });
 
     test('Operator - and ~ should exclude systems', () async {
       final engine = await GameEngine.create({
-        TickerState.new,
+        TickerSystem.new,
         InputSystem.new,
         CameraSystem.new,
         ScreenSystem.new,
@@ -57,7 +57,7 @@ void main() {
         ~CameraSystem.new,
       });
 
-      expect(engine.hasSystem<TickerState>(), isTrue);
+      expect(engine.hasSystem<TickerSystem>(), isTrue);
       expect(engine.hasSystem<InputSystem>(), isFalse);
       expect(engine.hasSystem<CameraSystem>(), isFalse);
 
@@ -75,7 +75,7 @@ void main() {
 
     test('getSystem should return null for missing systems', () async {
       final engine = await GameEngine.create({});
-      expect(engine.getSystem<TickerState>(), isNull);
+      expect(engine.getSystem<TickerSystem>(), isNull);
       await engine.dispose();
     });
   });

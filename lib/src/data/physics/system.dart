@@ -17,7 +17,7 @@ import 'package:goo2d/src/physics/worker/direct/direct_collider_ops.dart';
 /// - `PhysicsContactListener<Collider>` — EC↔EC contacts via `dispatchTo(gameObject)`
 /// - `PhysicsContactListener<Entity>` — ECS↔ECS contacts via `broadcastEventAsync`
 /// - `PhysicsContactListener<PhysicsBody>` — all contacts including cross-paradigm
-class PhysicsWorldSystem extends WorldSystem with FixedTickable {
+class PhysicsWorldSystem extends WorldSystem with FixedTickable, LifecycleListener {
   late final RigidbodyData _rbd = define(RigidbodyData.new);
   late final ColliderData _cold = define(ColliderData.new);
   late final TransformData _td = define(TransformData.new);
@@ -34,10 +34,10 @@ class PhysicsWorldSystem extends WorldSystem with FixedTickable {
   int _slotCount = 0;
 
   @override
-  void onAttach() => PhysicsSystem.registerEcsWorld(this);
+  void onMounted() => PhysicsSystem.registerEcsWorld(this);
 
   @override
-  void onDetach() => PhysicsSystem.unregisterEcsWorld();
+  void onUnmounted() => PhysicsSystem.unregisterEcsWorld();
 
   @override
   Future<void> onFixedUpdate(double dt) async {

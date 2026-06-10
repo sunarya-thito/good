@@ -1,7 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:goo2d/goo2d.dart';
-import 'package:goo2d/src/collision/worker/collision_delta.dart';
-import 'package:goo2d/src/collision/worker/collision_worker.dart';
 import 'package:goo2d/src/collision/worker/direct/direct_collision_worker.dart';
 import 'package:goo2d/src/collision/worker/isolate/isolate_collision_worker.dart';
 
@@ -27,7 +25,7 @@ class CollisionSystem implements GameSystem {
   final bool _forceDirectWorker;
 
   CollisionSystem({bool forceDirectWorker = false})
-      : _forceDirectWorker = forceDirectWorker;
+    : _forceDirectWorker = forceDirectWorker;
 
   static bool get platformSupportsIsolate => !kIsWeb;
 
@@ -80,7 +78,12 @@ class CollisionSystem implements GameSystem {
     if (_worker == null) return;
     if (_ecsWorld != null) return; // ECS world owns the tick
     _syncEcTransforms();
-    final delta = await _worker!.step();
+    final CollisionDelta delta;
+    try {
+      delta = await _worker!.step();
+    } catch (_) {
+      return; // worker disposed mid-step (e.g. tab switch during await)
+    }
     if (_game == null) return; // disposed mid-await
     await _dispatchEcEvents(delta);
   }
@@ -96,7 +99,11 @@ class CollisionSystem implements GameSystem {
       final t = collider.gameObject.tryGetComponent<ObjectTransform>();
       if (t == null) continue;
       _worker!.setShapeTransform(
-          _registryHandles[i], t.position.x, t.position.y, t.angle);
+        _registryHandles[i],
+        t.position.x,
+        t.position.y,
+        t.angle,
+      );
     }
   }
 
@@ -109,7 +116,10 @@ class CollisionSystem implements GameSystem {
   }
 
   Future<void> _dispatchPairs(
-      Int32List pairs, {required bool isEnter, required bool isExit}) async {
+    Int32List pairs, {
+    required bool isEnter,
+    required bool isExit,
+  }) async {
     final pairCount = pairs.length ~/ 2;
     for (var i = 0; i < pairCount; i++) {
       final hA = pairs[i * 2], hB = pairs[i * 2 + 1];
@@ -119,20 +129,26 @@ class CollisionSystem implements GameSystem {
       if (!cA.isAttached || !cB.isAttached) continue;
 
       if (isExit) {
-        await OverlapExitEvent(PhysicsOverlap<Collider>(trigger: cA, other: cB))
-            .dispatchTo(cA.gameObject);
-        await OverlapExitEvent(PhysicsOverlap<Collider>(trigger: cB, other: cA))
-            .dispatchTo(cB.gameObject);
+        await OverlapExitEvent(
+          PhysicsOverlap<Collider>(trigger: cA, other: cB),
+        ).dispatchTo(cA.gameObject);
+        await OverlapExitEvent(
+          PhysicsOverlap<Collider>(trigger: cB, other: cA),
+        ).dispatchTo(cB.gameObject);
       } else if (isEnter) {
-        await OverlapEnterEvent(PhysicsOverlap<Collider>(trigger: cA, other: cB))
-            .dispatchTo(cA.gameObject);
-        await OverlapEnterEvent(PhysicsOverlap<Collider>(trigger: cB, other: cA))
-            .dispatchTo(cB.gameObject);
+        await OverlapEnterEvent(
+          PhysicsOverlap<Collider>(trigger: cA, other: cB),
+        ).dispatchTo(cA.gameObject);
+        await OverlapEnterEvent(
+          PhysicsOverlap<Collider>(trigger: cB, other: cA),
+        ).dispatchTo(cB.gameObject);
       } else {
-        await OverlapStayEvent(PhysicsOverlap<Collider>(trigger: cA, other: cB))
-            .dispatchTo(cA.gameObject);
-        await OverlapStayEvent(PhysicsOverlap<Collider>(trigger: cB, other: cA))
-            .dispatchTo(cB.gameObject);
+        await OverlapStayEvent(
+          PhysicsOverlap<Collider>(trigger: cA, other: cB),
+        ).dispatchTo(cA.gameObject);
+        await OverlapStayEvent(
+          PhysicsOverlap<Collider>(trigger: cB, other: cA),
+        ).dispatchTo(cB.gameObject);
       }
     }
   }

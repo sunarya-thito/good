@@ -90,7 +90,9 @@ int entityDataGetBitmask(EntityData data) => data._bitmask;
 abstract class Field<T> {
   T get(QueryResult cursor);
   void set(QueryResult cursor, T value);
+  @internal
   T getSlot(int slot);
+  @internal
   void setSlot(int slot, T value);
 }
 

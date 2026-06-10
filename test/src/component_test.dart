@@ -24,7 +24,7 @@ void main() {
 
   group('Component', () {
     testWidgets('should find components by type', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final a = CompA();
       final b = CompB();
@@ -49,7 +49,7 @@ void main() {
     testWidgets(
       'should only keep one component of the same type (last one wins)',
       (tester) async {
-        final engine = await GameEngine.create({TickerState.new});
+        final engine = await GameEngine.create({TickerSystem.new});
         addTearDown(() => engine.dispose());
         final a1 = CompA();
         final a2 = CompA();
@@ -67,7 +67,7 @@ void main() {
     );
 
     testWidgets('should find components in children', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final a = CompA();
 
@@ -90,7 +90,7 @@ void main() {
     });
 
     testWidgets('should find components in parents', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final a = CompA();
 
@@ -112,7 +112,7 @@ void main() {
     });
 
     testWidgets('should access stateObject correctly', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final comp = CompA();
       await tester.pumpWidget(
@@ -132,7 +132,7 @@ void main() {
     testWidgets('should allow adding components from within a component', (
       tester,
     ) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final b = CompB();
       final a = CompA();

@@ -77,11 +77,11 @@ class _TestState extends GameState<TestStatefulWidget> {
 }
 
 Future<GameEngine> _createEngine() => GameEngine.create({
-      TickerState.new,
-      InputSystem.new,
-      CameraSystem.new,
-      ScreenSystem.new,
-    });
+  TickerSystem.new,
+  InputSystem.new,
+  CameraSystem.new,
+  ScreenSystem.new,
+});
 
 void main() {
   testWidgets('GameState should follow strict Flutter lifecycle invariants', (

@@ -4,11 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
 Future<GameEngine> _createInputEngine() => GameEngine.create({
-      TickerState.new,
-      InputSystem.new,
-      CameraSystem.new,
-      ScreenSystem.new,
-    });
+  TickerSystem.new,
+  InputSystem.new,
+  CameraSystem.new,
+  ScreenSystem.new,
+});
 
 void main() {
   AutomatedTestWidgetsFlutterBinding.ensureInitialized();
@@ -17,7 +17,8 @@ void main() {
     testWidgets('should detect key presses', (tester) async {
       final engine = await _createInputEngine();
       await tester.pumpWidget(
-          Game(engine: engine, child: const GameObjectWidget()));
+        Game(engine: engine, child: const GameObjectWidget()),
+      );
       await tester.pump();
       final game =
           (tester.element(find.byType(GameObjectWidget)) as GameObject).game;
@@ -37,7 +38,8 @@ void main() {
     testWidgets('should track frame-relative state', (tester) async {
       final engine = await _createInputEngine();
       await tester.pumpWidget(
-          Game(engine: engine, child: const GameObjectWidget()));
+        Game(engine: engine, child: const GameObjectWidget()),
+      );
       await tester.pump();
       final game =
           (tester.element(find.byType(GameObjectWidget)) as GameObject).game;
@@ -67,8 +69,9 @@ void main() {
       await engine.dispose();
     });
 
-    testWidgets('should support multiple game instances with independent state',
-        (tester) async {
+    testWidgets('should support multiple game instances with independent state', (
+      tester,
+    ) async {
       final game1 = await _createInputEngine();
       final game2 = await _createInputEngine();
 
@@ -80,14 +83,12 @@ void main() {
               SizedBox(
                 width: 100,
                 height: 100,
-                child:
-                    Game(engine: game1, child: const GameObjectWidget()),
+                child: Game(engine: game1, child: const GameObjectWidget()),
               ),
               SizedBox(
                 width: 100,
                 height: 100,
-                child:
-                    Game(engine: game2, child: const GameObjectWidget()),
+                child: Game(engine: game2, child: const GameObjectWidget()),
               ),
             ],
           ),
@@ -122,7 +123,8 @@ void main() {
       testWidgets('should report correctly', (tester) async {
         final engine = await _createInputEngine();
         await tester.pumpWidget(
-            Game(engine: engine, child: const GameObjectWidget()));
+          Game(engine: engine, child: const GameObjectWidget()),
+        );
         await tester.pump();
         final game =
             (tester.element(find.byType(GameObjectWidget)) as GameObject).game;

@@ -5,7 +5,10 @@ import 'package:goo2d/goo2d.dart';
 void main() {
   group('Camera', () {
     testWidgets('should resolve Camera.main by highest depth', (tester) async {
-      final engine = await GameEngine.create({TickerState.new, CameraSystem.new});
+      final engine = await GameEngine.create({
+        TickerSystem.new,
+        CameraSystem.new,
+      });
       addTearDown(() => engine.dispose());
       final cam1 = Camera()..depth = 10;
       final cam2 = Camera()..depth = 20;
@@ -52,7 +55,10 @@ void main() {
     testWidgets('should calculate worldToScreenPoint correctly', (
       tester,
     ) async {
-      final engine = await GameEngine.create({TickerState.new, CameraSystem.new});
+      final engine = await GameEngine.create({
+        TickerSystem.new,
+        CameraSystem.new,
+      });
       addTearDown(() => engine.dispose());
       final cam = Camera()..orthographicSize = 5;
       await tester.pumpWidget(
@@ -86,7 +92,10 @@ void main() {
     testWidgets('should calculate screenToWorldPoint correctly', (
       tester,
     ) async {
-      final engine = await GameEngine.create({TickerState.new, CameraSystem.new});
+      final engine = await GameEngine.create({
+        TickerSystem.new,
+        CameraSystem.new,
+      });
       addTearDown(() => engine.dispose());
       final cam = Camera()..orthographicSize = 5;
       await tester.pumpWidget(
@@ -113,7 +122,10 @@ void main() {
     testWidgets('should respect camera transform (camera movement)', (
       tester,
     ) async {
-      final engine = await GameEngine.create({TickerState.new, CameraSystem.new});
+      final engine = await GameEngine.create({
+        TickerSystem.new,
+        CameraSystem.new,
+      });
       addTearDown(() => engine.dispose());
       final cam = Camera()..orthographicSize = 5;
       final camTransform = ObjectTransform()..localPosition = Vector2(10, 0);

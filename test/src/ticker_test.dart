@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
@@ -17,7 +19,7 @@ class MockFixedTickable extends Component with FixedTickable {
   double lastDt = 0;
 
   @override
-  Future<void> onFixedUpdate(double dt) async {
+  FutureOr<void> onFixedUpdate(double dt) {
     fixedUpdateCount++;
     lastDt = dt;
   }
@@ -30,7 +32,7 @@ void main() {
     testWidgets('should increment frameCount and update deltaTime', (
       tester,
     ) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final tickable = MockTickable();
 
@@ -56,7 +58,7 @@ void main() {
     testWidgets('should run multiple FixedUpdate ticks when delta is large', (
       tester,
     ) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final fixedTickable = MockFixedTickable();
 
@@ -77,7 +79,7 @@ void main() {
     });
 
     testWidgets('should respect custom fixedDeltaTime', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final fixedTickable = MockFixedTickable();
 
@@ -104,7 +106,7 @@ void main() {
     });
 
     testWidgets('should maintain accumulator between frames', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final fixedTickable = MockFixedTickable();
 

@@ -70,6 +70,9 @@ export 'src/transitions/layer.dart';
 export 'src/route.dart';
 export 'src/painter.dart';
 export 'src/clipper.dart';
+export 'src/texture_group.dart';
+export 'src/used_textures.dart';
+export 'src/data/renderer/buffer_manager.dart';
 
 // bundled
 export 'package:vector_math/vector_math_64.dart' hide Colors;

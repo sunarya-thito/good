@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:goo2d/goo2d.dart';
 import 'package:goo2d/src/physics/worker/physics_worker.dart';
@@ -31,7 +33,7 @@ class PhysicsSystem implements GameSystem {
   final bool _forceDirectWorker;
 
   PhysicsSystem({bool forceDirectWorker = false})
-      : _forceDirectWorker = forceDirectWorker;
+    : _forceDirectWorker = forceDirectWorker;
 
   PhysicsWorker get worker {
     assert(_worker != null, 'PhysicsSystem has not been initialized.');
@@ -69,57 +71,89 @@ class PhysicsSystem implements GameSystem {
 
   /// Advances the simulation by one fixed tick.
   /// When a PhysicsWorldSystem is attached, this is a no-op (ECS owns the tick).
-  Future<void> step() async {
-    if (_worker == null) return;
-    if (_ecsWorld != null) return;
-    final dt = _game!.getSystem<TickerState>()!.fixedDeltaTime;
-    final delta = await stepWithDelta(dt);
-    await _dispatchEcEventsFromDelta(delta);
+  FutureOr<void> step() {
+    if (_worker == null) return null;
+    if (_ecsWorld != null) return null;
+    final dt = _game!.getSystem<TickerSystem>()!.fixedDeltaTime;
+    final delta = stepWithDelta(dt);
+    return switch (delta) {
+      Future<ContactDelta> f => f.then(_dispatchEcEventsFromDelta),
+      ContactDelta d => _dispatchEcEventsFromDelta(d),
+    };
   }
 
   /// Advances the simulation and returns the contact delta.
   /// Used directly by [PhysicsWorldSystem]; EC-only games go through [step()].
-  Future<ContactDelta> stepWithDelta(double dt) async {
-    await _syncTransformsToPhysics();
-    final delta = await _worker!.stepWithContactDelta(dt);
-    await _syncTransformsFromPhysics();
-    return delta;
+  FutureOr<ContactDelta> stepWithDelta(double dt) {
+    var syncResult = _syncTransformsToPhysics();
+    return switch (syncResult) {
+      Future<void> f => f.then((_) => _worker!.stepWithContactDelta(dt)).then((
+        delta,
+      ) {
+        _syncTransformsFromPhysics();
+        return delta;
+      }),
+      _ => _worker!.stepWithContactDelta(dt).then((delta) {
+        _syncTransformsFromPhysics();
+        return delta;
+      }),
+    };
   }
 
   // ── Transform sync ──────────────────────────────────────────────────────
 
-  Future<void> _syncTransformsToPhysics() async {
-    if (_worker == null) return;
+  FutureOr<void> _syncTransformsToPhysics() {
+    if (_worker == null) return null;
     final entries = _rigidbodyRegistry.entries.toList();
+    Future<void>? result;
     for (final entry in entries) {
       final rb = entry.value;
       if (!rb.isAttached || rb.bodyType != RigidbodyType.kinematic) continue;
       final transform = rb.gameObject.tryGetComponent<ObjectTransform>();
       if (transform == null) continue;
-      await _worker!.bodyMovePositionAndRotation(
+      final future = _worker!.bodyMovePositionAndRotation(
         entry.key,
         transform.position,
         transform.angle,
       );
+      result = switch (future) {
+        Future<void> f => result == null ? f : result.then((_) => f),
+        _ => result,
+      };
     }
+    return result;
   }
 
-  Future<void> _syncTransformsFromPhysics() async {
-    if (_worker == null) return;
+  FutureOr<void> _syncTransformsFromPhysics() {
+    if (_worker == null) return null;
     final entries = _rigidbodyRegistry.entries.toList();
+    // for (final entry in entries) {
+    //   final rb = entry.value;
+    //   if (!rb.isAttached || rb.bodyType != RigidbodyType.dynamic) continue;
+    //   final pos =
+    //       (await _worker!.getBodyProperty(entry.key, BodyProp.position))
+    //           as Vector2;
+    //   final rot =
+    //       (await _worker!.getBodyProperty(entry.key, BodyProp.rotation))
+    //           as double;
+    //   rb.gameObject.tryGetComponent<ObjectTransform>()
+    //     ?..position = pos
+    //     ..angle = rot;
+    // }
+    Future<void>? result;
     for (final entry in entries) {
       final rb = entry.value;
       if (!rb.isAttached || rb.bodyType != RigidbodyType.dynamic) continue;
-      final pos =
-          (await _worker!.getBodyProperty(entry.key, BodyProp.position))
-              as Vector2;
-      final rot =
-          (await _worker!.getBodyProperty(entry.key, BodyProp.rotation))
-              as double;
-      rb.gameObject.tryGetComponent<ObjectTransform>()
-        ?..position = pos
-        ..angle = rot;
-    }
+      final posResult = _worker!.getBodyProperty(entry.key, BodyProp.position);
+      final rotResult = switch (posResult) {
+        Future<Vector2> f => f.then((pos) => _worker!.getBodyProperty(
+              entry.key,
+              BodyProp.rotation,
+            ).then((rot) => (pos, rot))),
+        Vector2 pos => _worker!.getBodyProperty(entry.key, BodyProp.rotation).then(
+              (rot) => (pos, rot),
+            ),
+      };
   }
 
   // ── EC-only event dispatch (fallback when no PhysicsWorldSystem) ────────
@@ -130,27 +164,57 @@ class PhysicsSystem implements GameSystem {
 
     // Solid contacts
     await _dispatchContactList(
-      delta.enterContacts, delta.contactPoints, delta.contactPointCounts,
-      isEnter: true, hasC: hasC, hasPB: hasPB,
+      delta.enterContacts,
+      delta.contactPoints,
+      delta.contactPointCounts,
+      isEnter: true,
+      hasC: hasC,
+      hasPB: hasPB,
     );
     await _dispatchContactList(
-      delta.stayContacts, null, null,
-      isEnter: false, hasC: hasC, hasPB: hasPB,
+      delta.stayContacts,
+      null,
+      null,
+      isEnter: false,
+      hasC: hasC,
+      hasPB: hasPB,
     );
-    await _dispatchExitList(delta.exitContacts, isContact: true, hasC: hasC, hasPB: hasPB);
+    await _dispatchExitList(
+      delta.exitContacts,
+      isContact: true,
+      hasC: hasC,
+      hasPB: hasPB,
+    );
 
     // Triggers
-    await _dispatchOverlapList(delta.enterTriggers, isEnter: true, hasC: hasC, hasPB: hasPB);
-    await _dispatchOverlapList(delta.stayTriggers, isEnter: false, hasC: hasC, hasPB: hasPB);
-    await _dispatchExitList(delta.exitTriggers, isContact: false, hasC: hasC, hasPB: hasPB);
+    await _dispatchOverlapList(
+      delta.enterTriggers,
+      isEnter: true,
+      hasC: hasC,
+      hasPB: hasPB,
+    );
+    await _dispatchOverlapList(
+      delta.stayTriggers,
+      isEnter: false,
+      hasC: hasC,
+      hasPB: hasPB,
+    );
+    await _dispatchExitList(
+      delta.exitTriggers,
+      isContact: false,
+      hasC: hasC,
+      hasPB: hasPB,
+    );
   }
 
   Future<void> _dispatchContactList(
     Int32List pairs,
     Float32List? rawPoints,
-    Int32List? pointCounts,
-    {required bool isEnter, required bool hasC, required bool hasPB}
-  ) async {
+    Int32List? pointCounts, {
+    required bool isEnter,
+    required bool hasC,
+    required bool hasPB,
+  }) async {
     final pairCount = pairs.length ~/ 2;
     var ptOffset = 0;
     for (var i = 0; i < pairCount; i++) {
@@ -165,8 +229,14 @@ class PhysicsSystem implements GameSystem {
           pts = List.generate(n, (j) {
             final base = (ptOffset + j) * ContactDelta.floatsPerPoint;
             return PhysicsContactPoint(
-              point: Vector2(rawPoints[base].toDouble(), rawPoints[base + 1].toDouble()),
-              normal: Vector2(rawPoints[base + 2].toDouble(), rawPoints[base + 3].toDouble()),
+              point: Vector2(
+                rawPoints[base].toDouble(),
+                rawPoints[base + 1].toDouble(),
+              ),
+              normal: Vector2(
+                rawPoints[base + 2].toDouble(),
+                rawPoints[base + 3].toDouble(),
+              ),
               separation: rawPoints[base + 4].toDouble(),
               normalImpulse: rawPoints[base + 5].toDouble(),
               tangentImpulse: rawPoints[base + 6].toDouble(),
@@ -179,28 +249,36 @@ class PhysicsSystem implements GameSystem {
       if (cA != null && cB != null && cA.isAttached && cB.isAttached) {
         if (hasC) {
           if (isEnter) {
-            await ContactEnterEvent(PhysicsContact<Collider>(bodyA: cA, bodyB: cB, contacts: pts))
-                .dispatchTo(cA.gameObject);
-            await ContactEnterEvent(PhysicsContact<Collider>(bodyA: cB, bodyB: cA, contacts: pts))
-                .dispatchTo(cB.gameObject);
+            await ContactEnterEvent(
+              PhysicsContact<Collider>(bodyA: cA, bodyB: cB, contacts: pts),
+            ).dispatchTo(cA.gameObject);
+            await ContactEnterEvent(
+              PhysicsContact<Collider>(bodyA: cB, bodyB: cA, contacts: pts),
+            ).dispatchTo(cB.gameObject);
           } else {
-            await ContactStayEvent(PhysicsContact<Collider>(bodyA: cA, bodyB: cB))
-                .dispatchTo(cA.gameObject);
-            await ContactStayEvent(PhysicsContact<Collider>(bodyA: cB, bodyB: cA))
-                .dispatchTo(cB.gameObject);
+            await ContactStayEvent(
+              PhysicsContact<Collider>(bodyA: cA, bodyB: cB),
+            ).dispatchTo(cA.gameObject);
+            await ContactStayEvent(
+              PhysicsContact<Collider>(bodyA: cB, bodyB: cA),
+            ).dispatchTo(cB.gameObject);
           }
         }
         if (hasPB) {
           if (isEnter) {
-            await ContactEnterEvent(PhysicsContact<PhysicsBody>(bodyA: cA, bodyB: cB, contacts: pts))
-                .dispatchTo(cA.gameObject);
-            await ContactEnterEvent(PhysicsContact<PhysicsBody>(bodyA: cB, bodyB: cA, contacts: pts))
-                .dispatchTo(cB.gameObject);
+            await ContactEnterEvent(
+              PhysicsContact<PhysicsBody>(bodyA: cA, bodyB: cB, contacts: pts),
+            ).dispatchTo(cA.gameObject);
+            await ContactEnterEvent(
+              PhysicsContact<PhysicsBody>(bodyA: cB, bodyB: cA, contacts: pts),
+            ).dispatchTo(cB.gameObject);
           } else {
-            await ContactStayEvent(PhysicsContact<PhysicsBody>(bodyA: cA, bodyB: cB))
-                .dispatchTo(cA.gameObject);
-            await ContactStayEvent(PhysicsContact<PhysicsBody>(bodyA: cB, bodyB: cA))
-                .dispatchTo(cB.gameObject);
+            await ContactStayEvent(
+              PhysicsContact<PhysicsBody>(bodyA: cA, bodyB: cB),
+            ).dispatchTo(cA.gameObject);
+            await ContactStayEvent(
+              PhysicsContact<PhysicsBody>(bodyA: cB, bodyB: cA),
+            ).dispatchTo(cB.gameObject);
           }
         }
       }
@@ -208,8 +286,11 @@ class PhysicsSystem implements GameSystem {
   }
 
   Future<void> _dispatchExitList(
-    Int32List pairs, {required bool isContact, required bool hasC, required bool hasPB}
-  ) async {
+    Int32List pairs, {
+    required bool isContact,
+    required bool hasC,
+    required bool hasPB,
+  }) async {
     final pairCount = pairs.length ~/ 2;
     for (var i = 0; i < pairCount; i++) {
       final hA = pairs[i * 2], hB = pairs[i * 2 + 1];
@@ -220,37 +301,48 @@ class PhysicsSystem implements GameSystem {
 
       if (isContact) {
         if (hasC) {
-          await ContactExitEvent(PhysicsContact<Collider>(bodyA: cA, bodyB: cB))
-              .dispatchTo(cA.gameObject);
-          await ContactExitEvent(PhysicsContact<Collider>(bodyA: cB, bodyB: cA))
-              .dispatchTo(cB.gameObject);
+          await ContactExitEvent(
+            PhysicsContact<Collider>(bodyA: cA, bodyB: cB),
+          ).dispatchTo(cA.gameObject);
+          await ContactExitEvent(
+            PhysicsContact<Collider>(bodyA: cB, bodyB: cA),
+          ).dispatchTo(cB.gameObject);
         }
         if (hasPB) {
-          await ContactExitEvent(PhysicsContact<PhysicsBody>(bodyA: cA, bodyB: cB))
-              .dispatchTo(cA.gameObject);
-          await ContactExitEvent(PhysicsContact<PhysicsBody>(bodyA: cB, bodyB: cA))
-              .dispatchTo(cB.gameObject);
+          await ContactExitEvent(
+            PhysicsContact<PhysicsBody>(bodyA: cA, bodyB: cB),
+          ).dispatchTo(cA.gameObject);
+          await ContactExitEvent(
+            PhysicsContact<PhysicsBody>(bodyA: cB, bodyB: cA),
+          ).dispatchTo(cB.gameObject);
         }
       } else {
         if (hasC) {
-          await OverlapExitEvent(PhysicsOverlap<Collider>(trigger: cA, other: cB))
-              .dispatchTo(cA.gameObject);
-          await OverlapExitEvent(PhysicsOverlap<Collider>(trigger: cB, other: cA))
-              .dispatchTo(cB.gameObject);
+          await OverlapExitEvent(
+            PhysicsOverlap<Collider>(trigger: cA, other: cB),
+          ).dispatchTo(cA.gameObject);
+          await OverlapExitEvent(
+            PhysicsOverlap<Collider>(trigger: cB, other: cA),
+          ).dispatchTo(cB.gameObject);
         }
         if (hasPB) {
-          await OverlapExitEvent(PhysicsOverlap<PhysicsBody>(trigger: cA, other: cB))
-              .dispatchTo(cA.gameObject);
-          await OverlapExitEvent(PhysicsOverlap<PhysicsBody>(trigger: cB, other: cA))
-              .dispatchTo(cB.gameObject);
+          await OverlapExitEvent(
+            PhysicsOverlap<PhysicsBody>(trigger: cA, other: cB),
+          ).dispatchTo(cA.gameObject);
+          await OverlapExitEvent(
+            PhysicsOverlap<PhysicsBody>(trigger: cB, other: cA),
+          ).dispatchTo(cB.gameObject);
         }
       }
     }
   }
 
   Future<void> _dispatchOverlapList(
-    Int32List pairs, {required bool isEnter, required bool hasC, required bool hasPB}
-  ) async {
+    Int32List pairs, {
+    required bool isEnter,
+    required bool hasC,
+    required bool hasPB,
+  }) async {
     final pairCount = pairs.length ~/ 2;
     for (var i = 0; i < pairCount; i++) {
       final hA = pairs[i * 2], hB = pairs[i * 2 + 1];
@@ -261,20 +353,36 @@ class PhysicsSystem implements GameSystem {
 
       if (hasC) {
         if (isEnter) {
-          await OverlapEnterEvent(PhysicsOverlap<Collider>(trigger: cA, other: cB)).dispatchTo(cA.gameObject);
-          await OverlapEnterEvent(PhysicsOverlap<Collider>(trigger: cB, other: cA)).dispatchTo(cB.gameObject);
+          await OverlapEnterEvent(
+            PhysicsOverlap<Collider>(trigger: cA, other: cB),
+          ).dispatchTo(cA.gameObject);
+          await OverlapEnterEvent(
+            PhysicsOverlap<Collider>(trigger: cB, other: cA),
+          ).dispatchTo(cB.gameObject);
         } else {
-          await OverlapStayEvent(PhysicsOverlap<Collider>(trigger: cA, other: cB)).dispatchTo(cA.gameObject);
-          await OverlapStayEvent(PhysicsOverlap<Collider>(trigger: cB, other: cA)).dispatchTo(cB.gameObject);
+          await OverlapStayEvent(
+            PhysicsOverlap<Collider>(trigger: cA, other: cB),
+          ).dispatchTo(cA.gameObject);
+          await OverlapStayEvent(
+            PhysicsOverlap<Collider>(trigger: cB, other: cA),
+          ).dispatchTo(cB.gameObject);
         }
       }
       if (hasPB) {
         if (isEnter) {
-          await OverlapEnterEvent(PhysicsOverlap<PhysicsBody>(trigger: cA, other: cB)).dispatchTo(cA.gameObject);
-          await OverlapEnterEvent(PhysicsOverlap<PhysicsBody>(trigger: cB, other: cA)).dispatchTo(cB.gameObject);
+          await OverlapEnterEvent(
+            PhysicsOverlap<PhysicsBody>(trigger: cA, other: cB),
+          ).dispatchTo(cA.gameObject);
+          await OverlapEnterEvent(
+            PhysicsOverlap<PhysicsBody>(trigger: cB, other: cA),
+          ).dispatchTo(cB.gameObject);
         } else {
-          await OverlapStayEvent(PhysicsOverlap<PhysicsBody>(trigger: cA, other: cB)).dispatchTo(cA.gameObject);
-          await OverlapStayEvent(PhysicsOverlap<PhysicsBody>(trigger: cB, other: cA)).dispatchTo(cB.gameObject);
+          await OverlapStayEvent(
+            PhysicsOverlap<PhysicsBody>(trigger: cA, other: cB),
+          ).dispatchTo(cA.gameObject);
+          await OverlapStayEvent(
+            PhysicsOverlap<PhysicsBody>(trigger: cB, other: cA),
+          ).dispatchTo(cB.gameObject);
         }
       }
     }

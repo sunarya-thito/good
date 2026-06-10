@@ -40,6 +40,8 @@ abstract class WorldController {
   void removeSystem(WorldSystem system);
   void dispose();
 
+  T? getSystem<T extends WorldSystem>();
+
   T getResource<T extends WorldResource>();
   void setResource<T extends WorldResource>(T resource);
   bool hasResource<T extends WorldResource>();
@@ -707,6 +709,15 @@ class _EntityImpl implements Entity {
   }
 
   @override
+  void modifyData<T extends EntityData>(
+    void Function(Modifier modify, T data) callback,
+  ) {
+    _assertAlive();
+    final data = _world._pool.getSingleton<T>();
+    callback(_ModifierImpl(index), data);
+  }
+
+  @override
   int get colliderHandle {
     _assertAlive();
     return tryGetData<ColliderData>()?.colliderHandle.getSlot(index) ?? -1;
@@ -753,6 +764,14 @@ class _FetcherImpl implements Fetcher {
 
   @override
   T call<T>(Field<T> field) => field.getSlot(_slot);
+}
+
+class _ModifierImpl implements Modifier {
+  final int _slot;
+  _ModifierImpl(this._slot);
+
+  @override
+  void call<T>(Field<T> field, T value) => field.setSlot(_slot, value);
 }
 
 // ---------------------------------------------------------------------------
@@ -889,7 +908,6 @@ class _WorldControllerImpl implements WorldController {
   @override
   void insert(WorldSystem system, {Type? before, Type? after}) {
     system.attachToWorld(this);
-    system.onAttach();
     _entries.add(_SystemEntry(system, before: before, after: after));
     _sortedSystems = _topoSort(_entries);
     final globalIdx = _sortedSystems!.indexOf(system);
@@ -904,16 +922,29 @@ class _WorldControllerImpl implements WorldController {
       }
       entry.list.insert(insertIdx, system);
     }
+    if (_gameObject != null && system is LifecycleListener) {
+      const MountedEvent().dispatch(system as LifecycleListener);
+    }
   }
 
   @override
   void removeSystem(WorldSystem system) {
+    if (_gameObject != null && system is LifecycleListener) {
+      const UnmountedEvent().dispatch(system as LifecycleListener);
+    }
     _entries.removeWhere((e) => e.system == system);
-    system.onDetach();
     _sortedSystems?.remove(system);
     for (final entry in _listenerCache.values) {
       entry.list.remove(system);
     }
+  }
+
+  @override
+  T? getSystem<T extends WorldSystem>() {
+    for (final entry in _entries) {
+      if (entry.system is T) return entry.system as T;
+    }
+    return null;
   }
 
   @override
@@ -1052,9 +1083,24 @@ class _WorldState extends GameState<World> with LifecycleListener {
   _WorldControllerImpl get _worldImpl => _world as _WorldControllerImpl;
 
   @override
-  void onMounted() => _worldImpl._gameObject = gameObject;
+  void onMounted() {
+    _worldImpl._gameObject = gameObject;
+    for (final entry in _worldImpl._entries) {
+      if (entry.system is LifecycleListener) {
+        const MountedEvent().dispatch(entry.system as LifecycleListener);
+      }
+    }
+  }
+
   @override
-  void onUnmounted() => _worldImpl._gameObject = null;
+  void onUnmounted() {
+    for (final entry in _worldImpl._entries) {
+      if (entry.system is LifecycleListener) {
+        const UnmountedEvent().dispatch(entry.system as LifecycleListener);
+      }
+    }
+    _worldImpl._gameObject = null;
+  }
 
   @override
   bool onDispatchEvent<T extends EventListener>(Event<T> event) {

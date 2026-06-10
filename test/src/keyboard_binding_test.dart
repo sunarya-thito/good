@@ -9,7 +9,10 @@ void main() {
     testWidgets('should support Keyboard.key pattern (late binding)', (
       tester,
     ) async {
-      final engine = await GameEngine.create({TickerState.new, InputSystem.new});
+      final engine = await GameEngine.create({
+        TickerSystem.new,
+        InputSystem.new,
+      });
       addTearDown(() => engine.dispose());
       final action = InputAction()
         ..name = 'test'
@@ -52,7 +55,10 @@ void main() {
     });
 
     testWidgets('should support late-bound composite bindings', (tester) async {
-      final engine = await GameEngine.create({TickerState.new, InputSystem.new});
+      final engine = await GameEngine.create({
+        TickerSystem.new,
+        InputSystem.new,
+      });
       addTearDown(() => engine.dispose());
       final moveAction = InputAction()
         ..name = 'move'
@@ -97,7 +103,10 @@ void main() {
     testWidgets('should maintain backward compatibility with InputControl', (
       tester,
     ) async {
-      final engine = await GameEngine.create({TickerState.new, InputSystem.new});
+      final engine = await GameEngine.create({
+        TickerSystem.new,
+        InputSystem.new,
+      });
       addTearDown(() => engine.dispose());
       final action = InputAction()..name = 'legacy';
 

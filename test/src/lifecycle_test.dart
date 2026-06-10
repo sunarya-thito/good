@@ -18,11 +18,11 @@ class TestLifecycleComponent extends Component with LifecycleListener {
 }
 
 Future<GameEngine> _createEngine() => GameEngine.create({
-      TickerState.new,
-      InputSystem.new,
-      CameraSystem.new,
-      ScreenSystem.new,
-    });
+  TickerSystem.new,
+  InputSystem.new,
+  CameraSystem.new,
+  ScreenSystem.new,
+});
 
 void main() {
   AutomatedTestWidgetsFlutterBinding.ensureInitialized();
@@ -35,7 +35,9 @@ void main() {
     testWidgets('should call onMounted when added to mounted GameObject', (
       tester,
     ) async {
-      await tester.pumpWidget(Game(engine: engine, child: const GameObjectWidget()));
+      await tester.pumpWidget(
+        Game(engine: engine, child: const GameObjectWidget()),
+      );
       await tester.pump();
       final gameObject =
           tester.element(find.byType(GameObjectWidget)) as GameObject;
@@ -146,7 +148,9 @@ void main() {
     ) async {
       final component = TestLifecycleComponent();
 
-      await tester.pumpWidget(Game(engine: engine, child: const GameObjectWidget()));
+      await tester.pumpWidget(
+        Game(engine: engine, child: const GameObjectWidget()),
+      );
       await tester.pump();
       final gameObject =
           tester.element(find.byType(GameObjectWidget)) as GameObject;

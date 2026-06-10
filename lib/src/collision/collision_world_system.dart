@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:goo2d/goo2d.dart';
 import 'package:goo2d/src/collision/collision_system.dart';
 import 'package:goo2d/src/collision/worker/collision_delta.dart';
@@ -25,67 +26,108 @@ import 'package:goo2d/src/physics/worker/data/collider_shape_type.dart';
 /// - ECS–ECS: [PhysicsOverlap<Entity>] via [WorldController.broadcastEventAsync]
 /// - EC–EC: [PhysicsOverlap<Collider>] via [GameObject.dispatchTo] + world broadcast
 /// - Cross-paradigm: [PhysicsOverlap<PhysicsBody>] via [GameObject.dispatchTo] only
-class CollisionWorldSystem extends WorldSystem with FixedTickable {
+class CollisionWorldSystem extends WorldSystem with FixedTickable, LifecycleListener {
   late final ColliderData _cold = define(ColliderData.new);
   late final TransformData _td  = define(TransformData.new);
 
-  // resolved lazily on first fixed tick (gameObject is null at onAttach time)
   CollisionSystem? _cs;
 
-  // entity slot → collider handle; used to detect removed entities
+  // slot → collider handle (to detect removed entities)
   final Map<int, int> _trackedEntities = {};
+  // handle → Entity (incremental; updated on spawn/despawn, not rebuilt each tick)
+  final Map<int, Entity> _handleToEntity = {};
 
-  // collider handle → Entity reverse lookup (open-addressing hash, no Map)
-  Int32List _lookupHandles = Int32List(64)..fillRange(0, 64, -1);
-  List<Entity?> _lookupEntities = List.filled(64, null);
-  int _lookupCap = 64;
-  int _lookupMask = 63;
-  int _lookupCount = 0;
+  // Generation counter for zero-allocation dead-entity detection.
+  // _slotGen[s] == _syncGen means slot s was alive in the current tick.
+  int _syncGen = 0;
+  final Map<int, int> _slotGen = {};
+
+  bool _dbgFirstEnter = true;
 
   @override
-  void onAttach() => CollisionSystem.registerEcsWorld(this);
+  void onMounted() {
+    _cs = gameObject?.game.getSystem<CollisionSystem>();
+    _cs?.registerEcsWorld(this);
+    debugPrint('[CWS] onMounted: _cs=${_cs != null ? "OK" : "NULL"}, gameObject=${gameObject != null ? "OK" : "NULL"}');
+  }
 
   @override
-  void onDetach() => CollisionSystem.unregisterEcsWorld();
+  void onUnmounted() {
+    _cs?.unregisterEcsWorld();
+    _cs = null;
+  }
 
   @override
   Future<void> onFixedUpdate(double dt) async {
-    final cs = CollisionSystem.maybeInstance;
+    final cs = _cs;
     if (cs == null) return;
-    _syncEntityRegistrations(cs.worker);
-    _buildReverseLookup();
-    _syncTransforms(cs.worker);
-    final delta = await cs.worker.step();
-    if (CollisionSystem.maybeInstance == null) return;
+    _syncAll(cs.worker);
+    final CollisionDelta delta;
+    try {
+      delta = await cs.worker.step();
+    } catch (_) {
+      return; // worker disposed mid-step (e.g. tab switch during await)
+    }
+    if (_cs == null) return; // disposed mid-await
+    if (_dbgFirstEnter && delta.enterPairs.isNotEmpty) {
+      _dbgFirstEnter = false;
+      debugPrint('[CWS] first enter: ${delta.enterPairs.length ~/ 2} pairs, tracked=${_trackedEntities.length}');
+    }
     await _dispatchAll(delta);
   }
 
-  // ── Entity registration ──────────────────────────────────────────────────
+  // ── Single-pass sync: registration, reverse-lookup, and transforms ─────────
+  //
+  // Merging these three operations into one query eliminates two redundant
+  // full-entity iterations per fixed tick compared to the original three-pass
+  // approach. The handle→entity map is maintained incrementally (updated only
+  // on spawn/despawn) rather than rebuilt from scratch every tick.
 
-  void _syncEntityRegistrations(CollisionWorker w) {
-    final currentSlots = <int>{};
+  void _syncAll(CollisionWorker w) {
+    final gen = ++_syncGen;
 
-    (world.query()..withAll(_cold)).withEntity().forEach((r) {
+    (world.query()..withAll(_cold, _td)).withEntity().forEach((r) {
       final s = r.entity.index;
-      currentSlots.add(s);
-      if (_cold.colliderHandle.getSlot(s) >= 0) {
-        _trackedEntities.putIfAbsent(s, () => _cold.colliderHandle.getSlot(s));
-        return;
+      _slotGen[s] = gen;
+
+      int handle;
+      if (_cold.colliderHandle.getSlot(s) < 0) {
+        // New entity — if the slot was previously occupied, the old shape and
+        // its reverse-lookup entry must be cleaned up before registering a new one.
+        // This happens when an entity is destroyed and its pool slot is reused: the
+        // previous fixed tick saw the old entity alive, _trackedEntities still holds
+        // its handle, and the collision worker still has its shape alive.
+        final staleHandle = _trackedEntities[s];
+        if (staleHandle != null) {
+          _handleToEntity.remove(staleHandle);
+          _trackedEntities.remove(s);
+          w.destroyShape(staleHandle);
+        }
+        final st = _cold.shapeType.getSlot(s);
+        handle = w.createShape(st);
+        _cold.colliderHandle.setSlot(s, handle);
+        _trackedEntities[s] = handle;
+        _handleToEntity[handle] = r.entity;
+        w.setShapeOffset(handle, _cold.offsetX.getSlot(s), _cold.offsetY.getSlot(s));
+        _applyShapeGeometry(w, handle, s);
+      } else {
+        handle = _cold.colliderHandle.getSlot(s);
+        if (!_trackedEntities.containsKey(s)) {
+          _trackedEntities[s] = handle;
+          _handleToEntity[handle] = r.entity;
+        }
       }
-      final st = _cold.shapeType.getSlot(s);
-      final handle = w.createShape(st);
-      _cold.colliderHandle.setSlot(s, handle);
-      _trackedEntities[s] = handle;
-      w.setShapeOffset(handle, _cold.offsetX.getSlot(s), _cold.offsetY.getSlot(s));
-      _applyShapeGeometry(w, handle, s);
+
+      w.setShapeTransform(handle, _td.x.getSlot(s), _td.y.getSlot(s), _td.angle.getSlot(s));
     });
 
-    final deadSlots = _trackedEntities.keys
-        .where((s) => !currentSlots.contains(s))
-        .toList(growable: false);
-    for (final s in deadSlots) {
-      w.destroyShape(_trackedEntities.remove(s)!);
-    }
+    // Remove despawned entities — no allocation: removeWhere iterates in-place.
+    _trackedEntities.removeWhere((s, handle) {
+      if (_slotGen[s] == gen) return false;
+      _handleToEntity.remove(handle);
+      w.destroyShape(handle);
+      return true;
+    });
   }
 
   void _applyShapeGeometry(CollisionWorker w, int handle, int s) {
@@ -95,74 +137,6 @@ class CollisionWorldSystem extends WorldSystem with FixedTickable {
     } else if (st == ColliderShapeType.box) {
       w.setShapeBox(handle, _cold.width.getSlot(s) / 2, _cold.height.getSlot(s) / 2);
     }
-  }
-
-  // ── Reverse lookup (open-addressing hash, rebuilt each tick) ─────────────
-
-  static int _lHash(int h, int mask) => (h * 0x9E3779B9) & mask;
-
-  void _buildReverseLookup() {
-    _lookupHandles.fillRange(0, _lookupCap, -1);
-    for (var i = 0; i < _lookupCap; i++) { _lookupEntities[i] = null; }
-    _lookupCount = 0;
-
-    (world.query()..withAll(_cold)).withEntity().forEach((r) {
-      final handle = _cold.colliderHandle.getSlot(r.entity.index);
-      if (handle < 0) return;
-      _lookupInsert(handle, r.entity);
-    });
-  }
-
-  void _lookupInsert(int handle, Entity entity) {
-    if (_lookupCount >= _lookupCap * 3 ~/ 4) _growLookup();
-    var bucket = _lHash(handle, _lookupMask);
-    while (_lookupHandles[bucket] != -1) {
-      bucket = (bucket + 1) & _lookupMask;
-    }
-    _lookupHandles[bucket] = handle;
-    _lookupEntities[bucket] = entity;
-    _lookupCount++;
-  }
-
-  Entity? _lookupFind(int handle) {
-    var bucket = _lHash(handle, _lookupMask);
-    while (true) {
-      final h = _lookupHandles[bucket];
-      if (h == -1) return null;
-      if (h == handle) return _lookupEntities[bucket];
-      bucket = (bucket + 1) & _lookupMask;
-    }
-  }
-
-  void _growLookup() {
-    final newCap = _lookupCap * 2;
-    final newMask = newCap - 1;
-    final newHandles = Int32List(newCap)..fillRange(0, newCap, -1);
-    final newEntities = List<Entity?>.filled(newCap, null);
-    for (var i = 0; i < _lookupCap; i++) {
-      final h = _lookupHandles[i];
-      if (h == -1) continue;
-      var bucket = _lHash(h, newMask);
-      while (newHandles[bucket] != -1) { bucket = (bucket + 1) & newMask; }
-      newHandles[bucket] = h;
-      newEntities[bucket] = _lookupEntities[i];
-    }
-    _lookupCap = newCap;
-    _lookupMask = newMask;
-    _lookupHandles = newHandles;
-    _lookupEntities = newEntities;
-  }
-
-  // ── Transform sync ───────────────────────────────────────────────────────
-
-  void _syncTransforms(CollisionWorker w) {
-    (world.query()..withAll(_cold, _td)).withEntity().forEach((r) {
-      final s = r.entity.index;
-      final handle = _cold.colliderHandle.getSlot(s);
-      if (handle < 0) return;
-      w.setShapeTransform(
-          handle, _td.x.getSlot(s), _td.y.getSlot(s), _td.angle.getSlot(s));
-    });
   }
 
   // ── Event dispatch ────────────────────────────────────────────────────────
@@ -178,10 +152,10 @@ class CollisionWorldSystem extends WorldSystem with FixedTickable {
     final n = pairs.length ~/ 2;
     for (var i = 0; i < n; i++) {
       final hA = pairs[i * 2], hB = pairs[i * 2 + 1];
-      final cA = CollisionSystem.getCollider(hA);
-      final cB = CollisionSystem.getCollider(hB);
-      final eA = _lookupFind(hA);
-      final eB = _lookupFind(hB);
+      final cA = _cs?.getCollider(hA);
+      final cB = _cs?.getCollider(hB);
+      final eA = _handleToEntity[hA];
+      final eB = _handleToEntity[hB];
 
       if (isExit) {
         if (cA != null && cB != null && cA.isAttached && cB.isAttached) {

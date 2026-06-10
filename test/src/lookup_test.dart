@@ -12,7 +12,7 @@ void main() {
     testWidgets('getComponentInChildren should find component in self', (
       tester,
     ) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final compA = ComponentA();
       await tester.pumpWidget(
@@ -34,7 +34,7 @@ void main() {
     testWidgets('getComponentInChildren should find component in children', (
       tester,
     ) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final compA = ComponentA();
       await tester.pumpWidget(
@@ -65,7 +65,7 @@ void main() {
     });
 
     testWidgets('getComponentInParent should include self', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final compA = ComponentA();
       await tester.pumpWidget(
@@ -84,7 +84,7 @@ void main() {
     });
 
     testWidgets('getComponentInParent should find in parent', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final compA = ComponentA();
       await tester.pumpWidget(
@@ -112,7 +112,7 @@ void main() {
     });
 
     testWidgets('getComponentsInParent should find all', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       final compA1 = ComponentA();
       final compA2 = ComponentA();
@@ -146,7 +146,7 @@ void main() {
     });
 
     testWidgets('GameObject.find should find by name', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       await tester.pumpWidget(
         Game(
@@ -166,7 +166,7 @@ void main() {
     });
 
     testWidgets('GameObject.find should find by path', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       await tester.pumpWidget(
         Game(
@@ -191,7 +191,7 @@ void main() {
     });
 
     testWidgets('GameObject.find should find absolute path', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       await tester.pumpWidget(
         Game(
@@ -211,7 +211,7 @@ void main() {
     });
 
     testWidgets('findChild should handle path', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       await tester.pumpWidget(
         Game(
@@ -242,7 +242,7 @@ void main() {
     });
 
     testWidgets('findWithTag should work', (tester) async {
-      final engine = await GameEngine.create({TickerState.new});
+      final engine = await GameEngine.create({TickerSystem.new});
       addTearDown(() => engine.dispose());
       await tester.pumpWidget(
         Game(

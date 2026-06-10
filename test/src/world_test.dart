@@ -12,19 +12,19 @@ class _MockPointerReceiver extends Component with PointerReceiver {
 }
 
 Future<GameEngine> _createBaseEngine() => GameEngine.create({
-      TickerState.new,
-      InputSystem.new,
-      CameraSystem.new,
-      ScreenSystem.new,
-    });
+  TickerSystem.new,
+  InputSystem.new,
+  CameraSystem.new,
+  ScreenSystem.new,
+});
 
 Future<GameEngine> _createPhysicsEngine() => GameEngine.create({
-      TickerState.new,
-      InputSystem.new,
-      () => PhysicsSystem(forceDirectWorker: true),
-      CameraSystem.new,
-      ScreenSystem.new,
-    });
+  TickerSystem.new,
+  InputSystem.new,
+  () => PhysicsSystem(forceDirectWorker: true),
+  CameraSystem.new,
+  ScreenSystem.new,
+});
 
 void main() {
   AutomatedTestWidgetsFlutterBinding.ensureInitialized();
@@ -68,7 +68,8 @@ void main() {
       (tester) async {
         final engine = await _createBaseEngine();
         await tester.pumpWidget(
-            Game(engine: engine, child: SizedBox(width: 100, height: 100)));
+          Game(engine: engine, child: SizedBox(width: 100, height: 100)),
+        );
         await tester.pump();
 
         final renderWorld = tester.allRenderObjects

@@ -46,11 +46,11 @@ class _MockState extends GameState<MockStatefulWidget> {
 }
 
 Future<GameEngine> _createEngine() => GameEngine.create({
-      TickerState.new,
-      InputSystem.new,
-      CameraSystem.new,
-      ScreenSystem.new,
-    });
+  TickerSystem.new,
+  InputSystem.new,
+  CameraSystem.new,
+  ScreenSystem.new,
+});
 
 void main() {
   testWidgets('StatefulGameWidget lifecycle', (tester) async {

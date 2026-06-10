@@ -20,7 +20,7 @@ class MockScreenReceiver extends Component
 }
 
 Set<GameSystemFactory> get _screenSystems => {
-  TickerState.new,
+  TickerSystem.new,
   CameraSystem.new,
   ScreenSystem.new,
   ScreenPhysicsSystem.new,

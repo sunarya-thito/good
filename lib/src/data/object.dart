@@ -179,6 +179,7 @@ abstract class WorldResource {}
 // ---------------------------------------------------------------------------
 
 abstract class Entity implements Queryable, PhysicsBody {
+  @internal
   int get index;
 
   void addData(
@@ -211,6 +212,9 @@ abstract class Entity implements Queryable, PhysicsBody {
   V queryData<T extends EntityData, V>(
     V Function(Fetcher fetch, T data) callback,
   );
+  void modifyData<T extends EntityData>(
+    void Function(Modifier modify, T data) callback,
+  );
   T getData<T extends EntityData>();
   bool hasData<T extends EntityData>();
   T? tryGetData<T extends EntityData>();
@@ -218,6 +222,10 @@ abstract class Entity implements Queryable, PhysicsBody {
 
 abstract interface class Fetcher {
   T call<T>(Field<T> field);
+}
+
+abstract interface class Modifier {
+  void call<T>(Field<T> field, T value);
 }
 
 abstract interface class Queryable {}

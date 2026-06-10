@@ -140,7 +140,7 @@ class GameEngine {
   /// This set includes essential engine components like time management,
   /// input handling, physics, and rendering support.
   static const defaultSystems = {
-    TickerState.new,
+    TickerSystem.new,
     InputSystem.new,
     PhysicsSystem.new,
     CameraSystem.new,
@@ -256,8 +256,8 @@ class GameEngine {
   ///
   /// It provides high-precision delta times and coordinates the various
   /// update stages (Tick, FixedTick, LateTick) across the object hierarchy.
-  TickerState get ticker {
-    final tickerSystem = getSystem<TickerState>();
+  TickerSystem get ticker {
+    final tickerSystem = getSystem<TickerSystem>();
     assert(tickerSystem != null, 'TickerState not registered');
     return tickerSystem!;
   }
@@ -309,11 +309,16 @@ class GameEngine {
   /// It provides a high-level API for sound effects, music, and spatial
   /// audio using the SoLoud backend.
   AudioSystem? get audio => getSystem<AudioSystem>();
+
+  /// The system responsible for trigger-only collision detection without physics simulation.
+  ///
+  /// Available when [CollisionSystem] is registered in place of [PhysicsSystem].
+  CollisionSystem? get collision => getSystem<CollisionSystem>();
 }
 
 /// The system responsible for managing time, frame counts, and the game loop.
 ///
-/// [TickerState] tracks the delta time between frames, maintains a fixed
+/// [TickerSystem] tracks the delta time between frames, maintains a fixed
 /// update frequency for physics, and provides a stream of frame completion
 /// signals. It is the heartbeat of the Goo2D engine.
 ///
@@ -326,7 +331,7 @@ class GameEngine {
 /// See also:
 /// * [GameLoop], the widget that drives this ticker.
 /// * [YieldInstruction], for time-based synchronization in coroutines.
-class TickerState implements GameSystem, CoroutineClock {
+class TickerSystem implements GameSystem, CoroutineClock {
   @override
   late final GameEngine game;
 
@@ -342,6 +347,8 @@ class TickerState implements GameSystem, CoroutineClock {
 
   List<GameObject?> _rootSlots = List.filled(64, null);
   int _rootSlotCap = 64;
+
+  int _fixedTickCount = 0;
 
   /// The collection of root game objects managed by this ticker.
   ///
@@ -428,11 +435,6 @@ class TickerState implements GameSystem, CoroutineClock {
     frameCount++;
   }
 
-  /// Executes a single engine tick, processing input and frame-rate dependent logic.
-  ///
-  /// Fixed-step physics and simulation are driven by a separate Timer via [fixedTick].
-  ///
-  /// * [dt]: The time elapsed since the last frame.
   void tick(double dt) {
     update(dt);
     game.getSystem<InputSystem>()?.update();
@@ -458,7 +460,13 @@ class TickerState implements GameSystem, CoroutineClock {
     final event = FixedTickEvent(fixedDeltaTime);
     for (var i = 0; i < _rootSlotCap; i++) {
       final obj = _rootSlots[i];
-      if (obj != null) await obj.broadcastEventAsync(event);
+      // if (obj != null) await obj.broadcastEventAsync(event);
+      if (obj != null) {
+        final result = obj.broadcastEventAsync(event);
+        if (result is Future) {
+          await result;
+        }
+      }
     }
     await game.getSystem<PhysicsSystem>()?.step();
     await game.getSystem<CollisionSystem>()?.step();

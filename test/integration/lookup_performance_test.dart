@@ -17,7 +17,7 @@ void main() {
       testWidgets('Lookup.getComponentsInChildren ($n objects)', (
         tester,
       ) async {
-        final engine = await GameEngine.create({TickerState.new});
+        final engine = await GameEngine.create({TickerSystem.new});
         addTearDown(() => engine.dispose());
         final rootTag = 'root_obj_$n';
         await tester.pumpWidget(
@@ -44,7 +44,7 @@ void main() {
     final pathDepths = [10, 50, 100, 250, 500];
     for (final d in pathDepths) {
       testWidgets('Lookup.findChildPath (Depth $d)', (tester) async {
-        final engine = await GameEngine.create({TickerState.new});
+        final engine = await GameEngine.create({TickerSystem.new});
         addTearDown(() => engine.dispose());
         final rootTag = 'path_root_$d';
         await tester.pumpWidget(

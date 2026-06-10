@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 import 'package:flutter/widgets.dart';
 import 'package:goo2d/src/game.dart';
@@ -324,27 +325,43 @@ class GameObjectElement extends RenderObjectElement implements GameObject {
   }
 
   @override
-  Future<void> broadcastEventAsync(AsyncEvent event) async {
-    await event.dispatchTo(this);
-    await sendEventAsync(event);
+  FutureOr<void> broadcastEventAsync(AsyncEvent event) {
+    final result = event.dispatchTo(this);
+    return switch (result) {
+      Future<void> f => f.then((_) => sendEventAsync(event)),
+      _ => sendEventAsync(event),
+    };
   }
 
   @override
-  Future<void> sendEventAsync(AsyncEvent event) async {
+  FutureOr<void> sendEventAsync(AsyncEvent event) {
+    Future<void>? result;
     for (final element in List.of(_children)) {
-      await _sendEventAsyncDown(event, element);
+      // await _sendEventAsyncDown(event, element);
+      final sendResult = _sendEventAsyncDown(event, element);
+      result = switch (sendResult) {
+        Future<void> f => result == null ? f : result.then((_) => f),
+        _ => result,
+      };
     }
+    return result;
   }
 
-  Future<void> _sendEventAsyncDown(AsyncEvent event, Element element) async {
+  FutureOr<void> _sendEventAsyncDown(AsyncEvent event, Element element) {
     if (element is GameObject) {
-      await (element as GameObject).broadcastEventAsync(event);
+      return (element as GameObject).broadcastEventAsync(event);
     } else {
       final children = <Element>[];
       element.visitChildren(children.add);
+      Future<void>? result;
       for (final child in children) {
-        await _sendEventAsyncDown(event, child);
+        final sendResult = _sendEventAsyncDown(event, child);
+        result = switch (sendResult) {
+          Future<void> f => result == null ? f : result.then((_) => f),
+          _ => result,
+        };
       }
+      return result;
     }
   }
 
@@ -694,13 +711,13 @@ class GameObjectElement extends RenderObjectElement implements GameObject {
     _detachFromParent();
     _parentObject = _findParentGameObject(this);
     if (_parentObject == null) {
-      _game?.getSystem<TickerState>()?.registerRootObject(this);
+      _game?.getSystem<TickerSystem>()?.registerRootObject(this);
     }
   }
 
   void _detachFromParent() {
     if (_parentObject == null) {
-      _game?.getSystem<TickerState>()?.unregisterRootObject(this);
+      _game?.getSystem<TickerSystem>()?.unregisterRootObject(this);
     }
   }
 

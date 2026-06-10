@@ -50,64 +50,6 @@ ui.Image _makeCircleSprite(int diameter) {
   return recorder.endRecording().toImageSync(diameter, diameter);
 }
 
-class _ImageMesh extends SpriteMesh {
-  final ui.Image image;
-  _ImageMesh(this.image);
-
-  @override
-  ui.Size get size => ui.Size(image.width.toDouble(), image.height.toDouble());
-
-  @override
-  GameTexture get texture =>
-      throw UnsupportedError('_ImageMesh has no GameTexture');
-
-  @override
-  ui.Rect? get srcRect => null;
-
-  @override
-  SpriteMesh withTexture(GameTexture tex) =>
-      throw UnsupportedError('_ImageMesh cannot be re-textured');
-
-  @override
-  SpriteMesh withSrcRect(ui.Rect? r) =>
-      throw UnsupportedError('_ImageMesh cannot change srcRect');
-
-  @override
-  RenderHandle createHandle() => _ImageHandle(image);
-}
-
-class _ImageHandle extends RenderHandle {
-  final ui.Image _image;
-  _ImageHandle(this._image);
-
-  @override
-  void render(ui.Canvas canvas, ui.Size size, ui.Paint paint) {
-    final src = ui.Rect.fromLTWH(
-      0,
-      0,
-      _image.width.toDouble(),
-      _image.height.toDouble(),
-    );
-    final dst = ui.Rect.fromCenter(
-      center: ui.Offset.zero,
-      width: size.width,
-      height: size.height,
-    );
-    canvas.drawImageRect(
-      _image,
-      src,
-      dst,
-      ui.Paint()
-        ..colorFilter = ui.ColorFilter.mode(paint.color, ui.BlendMode.modulate)
-        ..blendMode = paint.blendMode
-        ..filterQuality = paint.filterQuality,
-    );
-  }
-
-  @override
-  void dispose() {}
-}
-
 // ---------------------------------------------------------------------------
 // ECS — particle data
 // ---------------------------------------------------------------------------
@@ -208,26 +150,23 @@ class _MoveSystem extends WorldSystem with Tickable {
   late final _rd = define(RenderData.new);
 
   @override
-  void onUpdate(double dt) {
+  Future<void> onUpdate(double dt) async {
     (world.query()..withAll(_pd, _td, _rd)).withEntity().forEach((r) {
-      final pd = _pd, td = _td, rd = _rd;
-      final s = r.entity.index;
+      final vy = _pd.vy.get(r) + _kGravity * dt;
+      _pd.vy.set(r, vy);
+      _td.x.set(r, _td.x.get(r) + _pd.vx.get(r) * dt);
+      _td.y.set(r, _td.y.get(r) + vy * dt);
 
-      final vy = pd.vy.getSlot(s) + _kGravity * dt;
-      pd.vy.setSlot(s, vy);
-      td.x.setSlot(s, td.x.getSlot(s) + pd.vx.getSlot(s) * dt);
-      td.y.setSlot(s, td.y.getSlot(s) + vy * dt);
-
-      final lt = pd.lifetime.getSlot(s) - dt;
-      pd.lifetime.setSlot(s, lt);
+      final lt = _pd.lifetime.get(r) - dt;
+      _pd.lifetime.set(r, lt);
 
       if (lt <= 0) {
         despawnAcc.value++;
         world.commandBuffer.removeEntity(r.entity);
       } else {
         final alpha = (255.0 * (lt / _kLifetime)).clamp(0.0, 255.0).round();
-        final argb = (pd.colorArgb.getSlot(s) & 0x00FFFFFF) | (alpha << 24);
-        rd.color.setSlot(s, Color(argb));
+        final argb = (_pd.colorArgb.get(r) & 0x00FFFFFF) | (alpha << 24);
+        _rd.color.set(r, Color(argb));
       }
     });
   }
@@ -369,15 +308,20 @@ class _EcsParticleTabState extends State<_EcsParticleTab> {
   void initState() {
     super.initState();
     GameEngine.create({
-      TickerState.new,
+      TickerSystem.new,
       InputSystem.new,
       CameraSystem.new,
       ScreenSystem.new,
     }).then((engine) {
-      if (_disposed) { engine.dispose(); return; }
+      if (_disposed) {
+        engine.dispose();
+        return;
+      }
       setState(() => _engine = engine);
     });
-    final circleSprite = GameSprite(mesh: _ImageMesh(_makeCircleSprite(64)));
+    final circleSprite = GameSprite(
+      mesh: SimpleMesh(texture: GameTexture.fromImage(_makeCircleSprite(64))),
+    );
     final spawnAcc = _Counter();
     final despawnAcc = _Counter();
     _world = WorldController();
@@ -441,7 +385,6 @@ class _EcsParticleTabState extends State<_EcsParticleTab> {
 
 class _ParticleBehavior extends Behavior with Tickable, LifecycleListener {
   double vx, vy;
-  final Color color;
   double lifetime = _kLifetime;
   final VoidCallback onExpired;
   bool _expired = false;
@@ -451,7 +394,6 @@ class _ParticleBehavior extends Behavior with Tickable, LifecycleListener {
   _ParticleBehavior({
     required this.vx,
     required this.vy,
-    required this.color,
     required this.onExpired,
   });
 
@@ -470,22 +412,6 @@ class _ParticleBehavior extends Behavior with Tickable, LifecycleListener {
       _expired = true;
       onExpired();
     }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// EC — circle renderer
-// ---------------------------------------------------------------------------
-
-class _CircleRenderer extends Behavior with Renderable {
-  Color color;
-  final double radius;
-
-  _CircleRenderer({required this.color, required this.radius});
-
-  @override
-  void render(Canvas canvas) {
-    canvas.drawCircle(Offset.zero, radius, Paint()..color = color);
   }
 }
 
@@ -510,6 +436,11 @@ class _EcParticleScene extends StatefulGameWidget {
 }
 
 class _EcParticleSceneState extends GameState<_EcParticleScene> with Tickable {
+  static final _circleSprite = GameSprite(
+    mesh: SimpleMesh(texture: GameTexture.fromImage(_makeCircleSprite(64))),
+    pixelsPerUnit: 1,
+  );
+
   final List<Widget> _particles = [];
   double _spawnAcc = 0;
   double _elapsed = 0;
@@ -549,11 +480,15 @@ class _EcParticleSceneState extends GameState<_EcParticleScene> with Tickable {
                 () => _ParticleBehavior(
                   vx: cos(angle) * speed,
                   vy: sin(angle) * speed,
-                  color: color,
                   onExpired: () => _removeParticle(key),
                 ),
               ),
-              ComponentWidget(() => _CircleRenderer(color: color, radius: r)),
+              ComponentWidget(
+                () => SpriteRenderer()
+                  ..sprite = _circleSprite
+                  ..color = color
+                  ..size = Size(r * 2, r * 2),
+              ),
             ],
           );
         });
@@ -617,12 +552,15 @@ class _EcParticleTabState extends State<_EcParticleTab> {
   void initState() {
     super.initState();
     GameEngine.create({
-      TickerState.new,
+      TickerSystem.new,
       InputSystem.new,
       CameraSystem.new,
       ScreenSystem.new,
     }).then((engine) {
-      if (_disposed) { engine.dispose(); return; }
+      if (_disposed) {
+        engine.dispose();
+        return;
+      }
       setState(() => _engine = engine);
     });
   }

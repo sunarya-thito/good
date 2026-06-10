@@ -39,11 +39,11 @@ class EventComponent extends Component with TestEventListener {
 }
 
 Future<GameEngine> _createEngine() => GameEngine.create({
-      TickerState.new,
-      InputSystem.new,
-      CameraSystem.new,
-      ScreenSystem.new,
-    });
+  TickerSystem.new,
+  InputSystem.new,
+  CameraSystem.new,
+  ScreenSystem.new,
+});
 
 void main() {
   AutomatedTestWidgetsFlutterBinding.ensureInitialized();
@@ -126,9 +126,7 @@ void main() {
           tester.element(
                 find
                     .byWidgetPredicate(
-                      (w) =>
-                          w is GameObjectWidget &&
-                          w.name == null,
+                      (w) => w is GameObjectWidget && w.name == null,
                     )
                     .first,
               )
@@ -161,7 +159,10 @@ void main() {
 
     testWidgets('should throw error when getComponent fails', (tester) async {
       await tester.pumpWidget(
-        Game(engine: engine, child: const GameObjectWidget(children: [])),
+        Game(
+          engine: engine,
+          child: const GameObjectWidget(children: []),
+        ),
       );
       await tester.pump();
 
