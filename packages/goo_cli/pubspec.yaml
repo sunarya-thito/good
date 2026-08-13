@@ -1,0 +1,24 @@
+name: goo_cli
+description: >
+  The `goo` build tool: asset packing/encryption, compile-time codegen for
+  ECS struct layouts, and platform build/packaging orchestration.
+  Dimension-agnostic - goo2d_render (and later goo3d_render) register their
+  own asset types into the same pipeline. Phase 4 of the project root plan;
+  this package is currently a placeholder.
+version: 0.0.1
+publish_to: none
+
+environment:
+  sdk: ^3.12.1
+
+dependencies:
+  args: ^2.6.0
+  goo:
+    path: ../goo
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: ^1.25.0
+
+executables:
+  goo: goo

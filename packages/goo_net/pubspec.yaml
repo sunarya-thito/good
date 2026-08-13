@@ -1,0 +1,18 @@
+name: goo_net
+description: >
+  Transport-agnostic networking interfaces for the goo engine family
+  (NetTransport/NetPeer/NetConnection/NetSession/Lobby). Dimension-agnostic -
+  shared by goo2d and, in the future, goo3d. Phase 3 of the project root
+  plan; this package is currently a placeholder.
+version: 0.0.1
+publish_to: none
+
+environment:
+  sdk: ^3.12.1
+
+dependencies:
+  meta: ^1.15.0
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: ^1.25.0
