@@ -284,8 +284,13 @@ final class MousePosition {
   /// this the space to hit-test a HUD in.
   final Vector2 viewSpace = Vector2.zero();
 
-  /// The `GameView`'s size in logical pixels, or zero before it has laid out
-  /// (or on a game with no widget at all - see `InputDevice`).
+  /// The size in logical pixels of the `GameView` the pointer is **currently
+  /// over**, or zero before anything has laid out (or on a game with no widget
+  /// at all - see `InputDevice`).
+  ///
+  /// Per view rather than per game: with two views on screen of different
+  /// sizes, "the view size" is only answerable relative to a pointer, and the
+  /// widget that received the event is what supplies it.
   ///
   /// Carried alongside the position because every use of [viewSpace] that is
   /// not a raw hit test wants it: centring, edge detection and the

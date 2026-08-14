@@ -10,6 +10,13 @@ import 'package:goo/src/scene.dart';
 import 'package:goo/src/scene_handle.dart';
 import 'package:goo/src/struct.dart';
 import 'package:goo/src/system.dart';
+import 'package:goo/src/handle.dart';
+
+/// The live run under test. A file-level binding: the bring-up helper
+/// returns the `Game` (the description) while tests also need the run, and
+/// one inline run per isolate means one binding is enough.
+late InlineGameHandle run;
+
 
 // Lifecycle at all three levels, and the scoping that decides who hears what.
 //
@@ -193,6 +200,13 @@ class _LifecycleState extends GameState<_LifecycleGame> {
     loadScene(game.level);
     loadScene(game.observer);
   }
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    descriptor.has(_Watcher());
+    descriptor.has(_Census());
+    descriptor.has(_Bystander());
+  }
 }
 
 class _LifecycleGame extends Game {
@@ -206,8 +220,12 @@ class _LifecycleGame extends Game {
   late final _Observer observer;
   late final _NosyScene nosyScene;
   late final _TrackedScene trackedScene;
-  late final _Watcher watcher;
-  late final _Census census;
+  /// Reached through the state, because that is where systems live. They were
+  /// `late final` fields on this class, assigned during `describeSystems` -
+  /// which is a `GameState` pass now, so a field here would be written on a
+  /// copy that no longer runs it.
+  _Watcher get watcher => run.state.getSystem<_Watcher>();
+  _Census get census => run.state.getSystem<_Census>();
 
   @override
   GameState createState() => _LifecycleState();
@@ -220,19 +238,13 @@ class _LifecycleGame extends Game {
     trackedScene = descriptor.has(_TrackedScene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    watcher = descriptor.has(_Watcher());
-    census = descriptor.has(_Census());
-    descriptor.has(_Bystander());
-  }
 }
 
 Future<_LifecycleGame> _boot() async {
   final game = _LifecycleGame();
-  await game.start(inline: true, autoTick: false);
+  run = await Game.startInline(game);
   addTearDown(() async {
-    if (game.isRunning) await game.stop();
+    if (run.isRunning) await run.stop();
   });
   return game;
 }
@@ -276,7 +288,7 @@ void main() {
 
     test('unmount fires while the world is still standing', () async {
       final game = await _boot();
-      await game.stop();
+      await run.stop();
 
       expect(game.watcher.log, ['game+', 'game-']);
     });
@@ -307,7 +319,7 @@ void main() {
 
     test('a prefab hears its own scene mount', () async {
       final game = await _boot();
-      final scene = await game.state!.loadScene(game.nosyScene);
+      final scene = await run.state.loadScene(game.nosyScene);
 
       expect(game.nosyScene.aware.heard, [scene],
           reason: 'a scene collects its prefabs, so this is in range - and it '
@@ -316,17 +328,17 @@ void main() {
 
     test('unload is announced while the entities are still readable', () async {
       final game = await _boot();
-      final scene = await game.state!.loadScene(game.nosyScene);
+      final scene = await run.state.loadScene(game.nosyScene);
       expect(game.nosyScene.aware.heard, hasLength(1));
 
-      game.state!.unloadScene(scene);
+      run.state.unloadScene(scene);
 
       expect(scene.isLoaded, isFalse);
     });
 
     test('one dispatch per load, including later ones', () async {
       final game = await _boot();
-      await game.state!.loadScene(game.observer);
+      await run.state.loadScene(game.observer);
 
       expect(game.observer.heard, hasLength(2),
           reason: 'two instances of one declaration are two mounts, and the '
@@ -341,7 +353,7 @@ void main() {
     test("the struct's own onMounted fires, for its own entities only",
         () async {
       final game = await _boot();
-      final scene = await game.state!.loadScene(game.trackedScene);
+      final scene = await run.state.loadScene(game.trackedScene);
       final entity = scene.addEntity(game.trackedScene.tracked);
 
       expect(game.trackedScene.tracked.mine, [entity],
@@ -356,7 +368,7 @@ void main() {
     test('a system offered in by a struct hears that struct\'s entities',
         () async {
       final game = await _boot();
-      final scene = await game.state!.loadScene(game.trackedScene);
+      final scene = await run.state.loadScene(game.trackedScene);
       final indexed = scene.addEntity(game.trackedScene.indexed);
 
       expect(game.census.mounted, [indexed],
@@ -366,7 +378,7 @@ void main() {
 
     test('and hears nothing from a struct that did not offer it', () async {
       final game = await _boot();
-      final scene = await game.state!.loadScene(game.trackedScene);
+      final scene = await run.state.loadScene(game.trackedScene);
       scene.addEntity(game.trackedScene.tracked);
 
       expect(game.census.mounted, isEmpty,
@@ -379,7 +391,7 @@ void main() {
     test('the event fires after the struct hook, on a finished entity',
         () async {
       final game = await _boot();
-      final scene = await game.state!.loadScene(game.trackedScene);
+      final scene = await run.state.loadScene(game.trackedScene);
       final indexed = scene.addEntity(game.trackedScene.indexed);
 
       expect(game.trackedScene.indexed.mark[indexed], 7,
@@ -390,12 +402,12 @@ void main() {
     test('unload tears entities down while their rows are still readable',
         () async {
       final game = await _boot();
-      final scene = await game.state!.loadScene(game.trackedScene);
+      final scene = await run.state.loadScene(game.trackedScene);
       final tracked = scene.addEntity(game.trackedScene.tracked);
       final indexed = scene.addEntity(game.trackedScene.indexed);
       game.trackedScene.indexed.mark[indexed] = 42;
 
-      game.state!.unloadScene(scene);
+      run.state.unloadScene(scene);
 
       expect(game.trackedScene.tracked.gone, [tracked],
           reason: 'the struct is told its own entity is going');
@@ -413,7 +425,7 @@ void main() {
   group('membership', () {
     test('a listener is only in the lists its type and scope allow', () async {
       final game = await _boot();
-      final state = game.state!;
+      final state = run.state;
 
       expect(state.gameMountedEvent.listenerCount, 2,
           reason: '_Watcher (a system) and _Nosy (a prefab). _Bystander '
@@ -432,8 +444,8 @@ void main() {
     test('a disabled system declines a lifecycle event like any other',
         () async {
       final game = await _boot();
-      await game.disableSystem<_Census>();
-      final scene = await game.state!.loadScene(game.trackedScene);
+      run.state.disableSystem<_Census>();
+      final scene = await run.state.loadScene(game.trackedScene);
       scene.addEntity(game.trackedScene.indexed);
 
       expect(game.census.mounted, isEmpty,

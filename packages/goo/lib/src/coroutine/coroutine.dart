@@ -11,13 +11,16 @@ mixin Coroutines {
     required T param,
   });
   void stopCoroutine(CoroutineFuture coroutine);
-  void stopAllCoroutines(Function coroutine);
+  void stopCoroutines(
+    Function coroutine,
+  ); // local to this mixin, does not stop all coroutines globally
+  void
+  stopAllCoroutines(); // local to this mixin, does not stop all coroutines globally
 
   void testApi() {
     final instance = startCoroutine(_myCoroutine);
     instance.stop();
     stopCoroutine(instance);
-    stopAllCoroutines(_myCoroutine);
   }
 
   Stream<FutureOr<double?>> _myCoroutine() async* {

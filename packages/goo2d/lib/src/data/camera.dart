@@ -7,16 +7,29 @@ import 'package:goo2d/src/data/world_transform.dart';
 /// resolves to (an entity with `Camera` must also mix in `Transform2D`/
 /// `WorldTransform2D`), so there is no separate transform to keep in sync.
 ///
-/// At most one enabled `Camera` should exist at a time. Consumers (
-/// `GameRenderer2D`; `MouseBinding`'s `worldSpace`
-/// conversion) use [ActiveCameraResolver] to find "the"
-/// active one and warn - not throw - if a second is found, rather than
-/// silently picking one with no explanation.
+/// A camera occupies a [CameraView] - one of the places the game declared it
+/// can be drawn - and at most one camera should occupy a given view at a time.
+/// [ActiveCameraResolver] finds the camera for a view and warns (not throws)
+/// if a second claims it, rather than silently picking one with no
+/// explanation.
 mixin Camera on Component {
   /// World units per screen pixel. `1` (the default) means one world unit
   /// draws as one pixel; `2` zooms in (things draw twice as large), `0.5`
   /// zooms out.
   late final DataPointer<double> zoom;
+
+  /// Which declared view this camera fills, or null for a camera that is not
+  /// currently shown anywhere.
+  ///
+  /// Set it from the game isolate with the handle the game declared:
+  ///
+  /// ```dart
+  /// player.camera.view[entity] = game.mainCamera;
+  /// ```
+  ///
+  /// Typed rather than an int, which is the payoff of `CameraView` being a
+  /// `GlobalObject`: a stray integer does not compile here.
+  late final DataPointer<CameraView?> view;
 
   @override
   void describeType(ComponentDescriptor component) {
@@ -28,6 +41,9 @@ mixin Camera on Component {
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
     zoom = data.hasFloat64(1);
+    // The declaring game's own view table - not a shared registry. An address
+    // read out of this field means nothing except against this table.
+    view = data.optObject<CameraView>(getScene<SceneStruct>().cameraViews);
   }
 }
 
@@ -42,8 +58,7 @@ mixin Camera on Component {
 /// passes it in, since only the consumer knows what else it also needs the
 /// result to satisfy.
 class ActiveCameraResolver {
-  /// Returns the first `Camera` entity [cameras] yields, or `null` if none
-  /// is currently active.
+  /// Returns the `Camera` entity occupying [view], or `null` if none does.
   ///
   /// More than one enabled camera trips a debug-only `assert` (RULES.md
   /// rule 7 - never `print`, which is swallowed in release and invisible in
@@ -51,10 +66,11 @@ class ActiveCameraResolver {
   /// compiles out and the first camera found is used, so a second camera is
   /// never fatal in production - it is a development-time mistake that
   /// should stop a debug run, not a runtime condition to tolerate silently.
-  Entity? resolve(Query cameras) {
+  Entity? resolve(Query cameras, CameraView view) {
     Entity? first;
     Entity? second;
     for (final entity in cameras.run()) {
+      if (entity.get<Camera>().view[entity]?.address != view.address) continue;
       if (first == null) {
         first = entity;
       } else {
@@ -64,10 +80,10 @@ class ActiveCameraResolver {
     }
     assert(
       second == null,
-      'more than one Camera is enabled at once ($first and $second, and '
-      'possibly more). A camera defines the single view origin, so a second '
-      'one has no meaning - $first, the first in query order, is what gets '
-      'used. Disable the others.',
+      'more than one Camera occupies $view ($first and $second, and possibly '
+      'more). A camera defines that view\'s origin, so a second one has no '
+      'meaning - $first, the first in query order, is what gets used. Point '
+      'the others at a different view, or at none.',
     );
     return first;
   }
@@ -97,10 +113,16 @@ class ActiveCameraResolver {
 /// Adding a camera at the origin therefore changes nothing, which would not
 /// be true if "no camera" meant a different anchor.
 ///
-/// [viewWidth]/[viewHeight] come from `Game.viewWidth`, i.e. from the
-/// Flutter isolate through the input block. A headless game reports zero and
-/// the centring term vanishes - which is what makes a test that never built
-/// a widget see plain world coordinates.
+/// The view size comes from the [CameraView] being drawn - the size the
+/// `GameView` showing it reported on layout, through that view's own two
+/// floats of shared memory. **Per view, not per game**: two `GameView`s of
+/// different sizes cannot share one number, because this is what the
+/// projection centres on, and a shared number would put one of the two
+/// cameras off-centre.
+///
+/// A headless game (or a view nothing is showing) reports zero and the
+/// centring term vanishes - which is what makes a test that never built a
+/// widget see plain world coordinates.
 ///
 /// Holds no query of its own for the same reason [ActiveCameraResolver]
 /// does not - the consumer knows what else it needs the camera to satisfy.
@@ -124,6 +146,16 @@ class CameraProjection {
   /// The camera [resolve] last found, or `null` if there was none.
   Entity? camera;
 
+  /// Which loaded scene that camera belongs to, or -1 when there is no
+  /// camera. A view draws the scene its camera is in, which is what replaced
+  /// the deleted global "front scene": each view answers it for itself, and
+  /// two views can be looking at different scenes at the same instant.
+  ///
+  /// -1 means "no camera, so no scoping" - the whole world draws, which is
+  /// exactly what an unconfigured game already did and keeps a game that has
+  /// not placed a camera yet from showing a black screen.
+  int sceneSlot = -1;
+
   /// Re-reads the active camera out of [cameras] - typically
   /// `descriptor.query().withAll(Camera, WorldTransform2D).build()` - and
   /// the view size, typically `game.viewWidth`/`game.viewHeight`.
@@ -131,17 +163,22 @@ class CameraProjection {
   /// No camera resets to the identity rather than keeping the last one:
   /// a camera that was removed should stop moving the view, not freeze it
   /// wherever it happened to be.
-  void resolve(Query cameras, double viewWidth, double viewHeight) {
-    halfViewWidth = viewWidth / 2;
-    halfViewHeight = viewHeight / 2;
-    final entity = _resolver.resolve(cameras);
+  void resolve(Query cameras, CameraView view) {
+    // Off the view, not off the game: two `GameView`s of different sizes
+    // cannot share one number, which is why this stopped being
+    // `Game.viewWidth`.
+    halfViewWidth = view.viewportWidth / 2;
+    halfViewHeight = view.viewportHeight / 2;
+    final entity = _resolver.resolve(cameras, view);
     camera = entity;
     if (entity == null) {
       originX = 0;
       originY = 0;
       zoom = 1;
+      sceneSlot = -1;
       return;
     }
+    sceneSlot = entity.sceneSlot;
     final world = entity.get<WorldTransform2D>();
     originX = world.worldX[entity];
     originY = world.worldY[entity];

@@ -6,6 +6,10 @@ import 'package:goo/goo.dart';
 import 'package:goo2d/src/data/camera.dart';
 import 'package:goo2d/src/data/world_transform.dart';
 import 'package:goo2d/src/render/draw/draw_2d.dart';
+// Mutual with this file, and deliberately so: `Renderer2D` and
+// `GameRenderer2D` are the two isolate-halves of one feature. The Game mixin
+// declares and drains the frame buffers; this system fills them.
+import 'package:goo2d/src/render/game_2d.dart';
 import 'package:goo2d/src/render/texture.dart';
 
 /// A position expressed as a fraction of some size *plus* an absolute offset,
@@ -245,9 +249,15 @@ class Sprite {
 /// `has*Collider` methods are the same shape) - so the common case needs no
 /// `onMounted` write at all.
 class SpriteDescriptor {
-  SpriteDescriptor._(this._data, this._sprites);
+  SpriteDescriptor._(this._data, this._assets, this._sprites);
 
   final DataDescriptor _data;
+
+  /// The table [Sprite.texture] resolves through. Threaded in from
+  /// `Renderable2D.describeStruct` rather than assumed, because an object
+  /// field's address only means anything against the table that issued it -
+  /// there is no shared registry to fall back on.
+  final ObjectTable _assets;
   final List<Sprite> _sprites;
 
   /// Declares one sprite and returns the handle to keep in a field
@@ -271,7 +281,7 @@ class SpriteDescriptor {
     NineSliceBorder nineSliceBorder = NineSliceBorder.none,
   }) {
     final sprite = Sprite(
-      texture: _data.optObject<Texture>(texture),
+      texture: _data.optObject<Texture>(_assets, texture),
       color: _data.hasUint32(color),
       width: _data.hasFloat64(width),
       height: _data.hasFloat64(height),
@@ -343,7 +353,9 @@ mixin Renderable2D on MultiComponent {
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    describeSprites(SpriteDescriptor._(data, sprites));
+    describeSprites(
+      SpriteDescriptor._(data, getScene<SceneStruct>().assets, sprites),
+    );
   }
 }
 
@@ -619,29 +631,41 @@ class GameRenderer2D extends GameSystem with Tickable {
   @override
   int compareTo(GameSystem other) => other is WorldTransformSystem ? 1 : 0;
 
-  /// The auxiliary buffer this system declares and writes into, and that
-  /// `GameView` reads on the other side.
+  /// The [Renderer2D] half of this game - where the frame buffers live.
   ///
-  /// A [BufferHandle] rather than a name (RULES.md rule 6): the *same* field
-  /// on the *same* declared system resolves it on both isolates, because both
-  /// copies of the `Game` run this system's `describeBuffers`. A consumer
-  /// reaches it through `game.getSystem<GameRenderer2D>().drawBuffer` - a
-  /// typed path the analyzer checks, where the old `getBuffer('...')` was a
-  /// string two packages had to agree on.
-  late final HandoffHandle drawFrames;
-
-  /// Sprites past this many in a single tick are dropped. A hard bound rather
-  /// than a growing buffer on purpose: the byte scratch and the ring are both
-  /// sized from it, and silently growing them mid-tick is an allocation on the
-  /// hot path. Override it if a scene genuinely draws more.
+  /// A `GameSystem` runs wholly on the game isolate and declares no shared
+  /// memory of its own: allocation happens on main, before the spawn, on the
+  /// copy that owns and frees it. So the storage this system writes into is
+  /// declared by the `Game` mixin that also *reads* it, and this system is
+  /// handed the handle rather than owning it.
   ///
-  /// Note this counts *sprites*, not entities - an entity declaring three
-  /// sprites spends three of them.
-  int get maxSpritesPerTick => 4096;
+  /// The cast is what a `GameSystem` pays for reaching a `Game`-side
+  /// capability. It cannot be static: `GameSystem.game` is a plain `Game`, and
+  /// a renderer declared into a game with no `Renderer2D` is a real
+  /// configuration mistake worth naming rather than a type error to design
+  /// around.
+  Renderer2D get _renderer {
+    final game = this.game;
+    if (game is! Renderer2D) {
+      throw StateError(
+        '$runtimeType is declared in a ${game.runtimeType}, which does not mix '
+        'in Renderer2D - so there is nowhere for its frame buffers to live. '
+        'Extend Game2D (or add `with Renderer2D`): the main-isolate half is '
+        'what allocates the storage this system fills and then drains it into '
+        'a GameView.',
+      );
+    }
+    return game;
+  }
 
-  /// Bytes one tick's sprite batch occupies, including its tick stamp.
-  int get spriteBatchBytes =>
-      DrawData2D.batchHeaderBytes + maxSpritesPerTick * DrawSpriteData2D.strideBytes;
+  /// The frame buffer [view] is drawn into - what the main-isolate half
+  /// samples. Throws for a view belonging to a different game, which is the
+  /// same diagnostic its table would give.
+  HandoffHandle framesFor(CameraView view) => _renderer.framesFor(view);
+
+  /// Bytes one tick's sprite batch occupies, including its tick stamp. Comes
+  /// from the `Game`, which sized the buffers from the same number.
+  int get spriteBatchBytes => _renderer.spriteBatchBytes;
 
   // There is no ring capacity to configure any more. This used to be a
   // `RingBuffer` sized to four batches, on the theory that a main isolate
@@ -710,11 +734,12 @@ class GameRenderer2D extends GameSystem with Tickable {
     _cameras = descriptor.query().withAll(Camera, WorldTransform2D).build();
   }
 
-  @override
-  void describeBuffers(BufferDescriptor descriptor) {
-    super.describeBuffers(descriptor);
-    drawFrames = descriptor.hasHandoff(slotBytes: spriteBatchBytes);
-  }
+  // There is no `describeBuffers` here, and there cannot be: a `GameSystem` is
+  // declared and run on the game isolate, while shared memory is allocated on
+  // main before the spawn. `Renderer2D.describeBuffers` declares one handoff
+  // per camera view instead - on the same object that drains them into a
+  // `GameView`, which is where the plan's own sorting rule puts a declaration:
+  // with whoever holds the handle.
 
   /// Whether [sprite] on [entity] draws as nine quads rather than one.
   ///
@@ -904,13 +929,38 @@ class GameRenderer2D extends GameSystem with Tickable {
 
   @override
   void onTick(Duration delta) {
+    // One pass per declared view. Each writes its own buffer, and each draws
+    // the scene *its* camera is in - which is what replaced the deleted
+    // global front scene. Two views can be looking at different scenes, or at
+    // the same scene from different places, in the same tick.
+    //
+    // Totals across views, so a one-view game (the overwhelmingly common
+    // case) reports exactly what it used to.
+    var sprites = 0;
+    var records = 0;
+    var dropped = false;
+    final views = game.cameraViews;
+    for (var i = 0; i < views.length; i++) {
+      _renderView(views[i], framesFor(views[i]));
+      sprites += lastSpriteCount;
+      records += lastRecordCount;
+      dropped = dropped || lastWriteDropped;
+    }
+    lastSpriteCount = sprites;
+    lastRecordCount = records;
+    lastWriteDropped = dropped;
+  }
+
+  void _renderView(CameraView cameraView, HandoffHandle handle) {
+    lastSpriteCount = 0;
+    lastRecordCount = 0;
     // Asked *before* any work is done, and that ordering is the point. Null
     // means main has not taken the last frame yet, so there is nowhere safe to
     // write - and rather than build a frame and throw it away, the whole pass
     // is skipped. The simulation is unaffected; only the drawing stops, and
     // only while nobody is looking. This is what stops a 200Hz tick building
     // and discarding two frames out of every three against a 60Hz display.
-    final frames = drawFrames.tryBuffer;
+    final frames = handle.tryBuffer;
     if (frames == null) return;
     final target = frames.beginWrite();
     if (target == null) {
@@ -936,8 +986,13 @@ class GameRenderer2D extends GameSystem with Tickable {
     // slightly different mappings - picking that disagreed with drawing by a
     // constant would mean clicking next to what you can see. No camera is
     // not an error: the projection resolves to the identity plus centring.
-    final projection = _projection..resolve(_cameras, game.viewWidth, game.viewHeight);
+    final projection = _projection..resolve(_cameras, cameraView);
     final zoom = projection.zoom;
+    // Which scene this view shows: the one its camera lives in. -1 means the
+    // view has no camera, and then nothing is scoped out - an unconfigured
+    // game draws its world rather than a black screen, which is the same
+    // answer "no camera" already gave for the projection itself.
+    final onlyScene = projection.sceneSlot;
 
     // Pass one: collect what is going to be drawn. Nothing is written to the
     // byte scratch yet, because the order is not known until every candidate
@@ -948,16 +1003,15 @@ class GameRenderer2D extends GameSystem with Tickable {
     // through and overrun the byte scratch, which is sized from this same
     // number times the record stride. Counting records keeps the two honest
     // against each other whatever mix of sliced and plain sprites shows up.
-    final limit = maxSpritesPerTick;
-    // Which scene is front, resolved once per frame rather than per entity.
-    // `switchScene` is informational - every loaded scene keeps ticking - and
-    // this is the framework honouring it: a preloaded level simulates in the
-    // background without being painted over the one the player is looking at.
-    // -1 when nothing is loaded, which matches nothing.
-    final activeSlot = SceneRegistry.active?.slot ?? -1;
+    final limit = _renderer.maxSpritesPerTick;
+    // Every loaded scene renders. There used to be a front-scene filter here,
+    // honouring `switchScene`; that is deleted, because "which scene do I
+    // draw" is a question a *view* answers and there can be several views. A
+    // game that wants a preloaded level to simulate unseen keeps its sprites
+    // invisible or unloads it.
     outer:
     for (final entity in _renderables.run()) {
-      if (entity.sceneSlot != activeSlot) continue;
+      if (onlyScene >= 0 && entity.sceneSlot != onlyScene) continue;
       final renderable = entity.get<Renderable2D>();
       final sprites = renderable.sprites;
       // An indexed loop, not `for (final sprite in sprites)`: this runs once
@@ -1034,7 +1088,7 @@ class GameRenderer2D extends GameSystem with Tickable {
 
       // The texture reaches the record as an *address*, never as an image.
       // Reading the field resolves the row's `Uint32` back to the declared
-      // `Texture` instance through `GlobalObjectRegistry` - which exists on
+      // `Texture` instance through the asset table - which exists on
       // this isolate and is allocation-free - and all that is taken from it is
       // `.address`. `.image` is never touched here and could not be: this
       // isolate has no Flutter engine and every `Texture` on it is
@@ -1097,7 +1151,7 @@ class GameRenderer2D extends GameSystem with Tickable {
     // queue reuses its arrays, the sort has no comparator object, the corner
     // maths is all local doubles, and `Entity.get` is a list index plus an
     // `is` test. The texture read has that same shape - an optional-field bit
-    // test, then a `GlobalObjectRegistry` list index and an `is` test handing
+    // test, then an asset-table list index and an `is` test handing
     // back the instance that already exists - and `writeQuad`'s named
     // arguments are statically resolved, so they compile to positional ones
     // and build no argument object.

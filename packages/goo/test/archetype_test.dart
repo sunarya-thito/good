@@ -1,4 +1,3 @@
-import 'package:goo/src/asset.dart';
 import 'package:goo/src/scene_handle.dart';
 import 'package:goo/src/archetype.dart';
 import 'package:goo/src/data.dart';
@@ -193,7 +192,7 @@ void main() {
       final pool = MemoryPool(pageSize: 256);
       addTearDown(pool.dispose);
       final owner = _Level();
-      final storage = ArchetypeRegistry.register(pool, GameAssets(), shared);
+      final storage = ArchetypeRegistry.register(pool, shared);
       shared.bindArchetype(owner, storage);
       expect(
         () => shared.bindArchetype(owner, storage),

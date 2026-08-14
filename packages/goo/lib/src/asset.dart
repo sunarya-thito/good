@@ -2,22 +2,18 @@ import 'dart:typed_data';
 import 'package:meta/meta.dart';
 import 'package:goo/src/data.dart';
 
-/// Assigns every declared asset instance a stable, process-global integer
+/// Assigns every declared asset instance a stable integer
 /// [GlobalObject.address] the moment it's declared - the exact pattern
 /// [ArchetypeRegistry] uses for archetype ids, and for the same reason:
 /// `DataPointer<T extends GlobalObject>` (see `hasObject`/`optObject` in
 /// data.dart) stores a plain `Uint32` in the row, never a heap reference
 /// (RULES.md rule 1 - a component row is native memory, it cannot hold a
-/// Dart object pointer), and resolves it back to the live instance on read
-/// through this registry rather than by threading an asset-manager
-/// reference through every field access. `data.dart`'s own note on
-/// `hasObject` ("we don't store the asset manager here") is this: no
-/// `DataPointer` implementation ever needs one.
+/// Dart object pointer).
 ///
-/// Global rather than per-manager for the same reason
-/// `ArchetypeRegistry` is global rather than per-scene: a `DataPointer`
-/// read has no way to reach back to "which manager loaded this," only the
-/// address baked into the row.
+/// The address is meaningful **only against this table**. `GameAssets` is one
+/// [ObjectTable] among however many a game has; a field declared against it
+/// resolves through it and through nothing else, which is what lets an
+/// unrelated population number itself from zero without colliding.
 
 /// The declare-time pass that names every asset a prefab or a scene needs -
 /// the third `describe*` hook alongside `describeType`/`describeStruct`, and
@@ -43,7 +39,7 @@ import 'package:goo/src/data.dart';
 ///   @override
 ///   void describeStruct(DataDescriptor data) {
 ///     super.describeStruct(data);
-///     sprite = data.hasObject(texture);          // usable as a row default
+///     sprite = data.hasObject(assets, texture);   // usable as a row default
 ///   }
 /// }
 /// ```
@@ -64,21 +60,20 @@ abstract class AssetDescriptor {
   T has<T extends GameAssetInstance>(GameAsset<T> key);
 }
 
-/// The process-global asset table: which [GameAsset] keys have been
-/// declared, the [GameAssetInstance] each one produced, and whether that
-/// instance's payload has actually been decoded yet.
+/// One game's asset table: which [GameAsset] keys have been declared, the
+/// [GameAssetInstance] each one produced, and whether that instance's payload
+/// has actually been decoded yet.
 ///
-/// Static rather than an injected instance, matching [ArchetypeRegistry],
-/// `ComponentTypeRegistry`, [GlobalObjectRegistry] and `HeapObjectRegistry`
-/// - and for the same reason they are. A `DataPointer<Texture>` read has
-/// nothing but the `Uint32` address in the row to work with; it cannot reach
-/// back to "which manager loaded this". One table, addressed by a key both
-/// isolate copies produce identically, is the only shape that works.
+/// Per-`Game` instance state (`Game.assets`), not a static - it rides the
+/// `Isolate.spawn` deep copy, so both copies address the same asset by the
+/// same integer without any snapshot/restore. A `DataPointer<Texture>` read
+/// reaches it because the *field* was declared against it (see
+/// `DataDescriptor.hasObject`), not because it is globally reachable.
 ///
 /// # Declaring and loading are two separate steps
 ///
 /// **Declaring** ([AssetDescriptor.has], which routes here through [declare])
-/// creates the instance and assigns its [GlobalObjectRegistry] address. It is
+/// creates the instance and assigns its address **in this table**. It is
 /// synchronous, allocation-cheap, and runs on **both** isolate copies, in the
 /// same order, because that order *is* the address assignment - exactly the
 /// argument that makes archetype ids agree (see `GameState.loadScene`).
@@ -93,8 +88,13 @@ abstract class AssetDescriptor {
 ///
 /// Reading a payload on a copy that never loaded it fails loudly and by name
 /// (see [GameAssetInstance.requireLoaded]) rather than null-dereferencing.
-final class GameAssets {
-  final List<GlobalObject?> _addresses = <GlobalObject?>[];
+final class GameAssets implements ObjectTable {
+  /// **Asset instances only.** This used to be `List<GlobalObject?>` - a
+  /// general address space that any global object could be poured into, which
+  /// is what made "address 3" unanswerable without knowing everything else
+  /// registered. A camera view is not an asset and now numbers itself in its
+  /// own [ObjectTable]; this one numbers assets.
+  final List<GameAssetInstance?> _addresses = <GameAssetInstance?>[];
 
   /// Registers [object] and returns its new address. Called once, by
   /// [GameAssets.declare] - never call this directly on an object you didn't
@@ -105,7 +105,7 @@ final class GameAssets {
   /// same order, so both hand out the same address for the same asset, and
   /// an [unregister] on one side (which only nulls a slot) cannot shift any
   /// address the other side already assigned.
-  int _register(GlobalObject object) {
+  int _register(GameAssetInstance object) {
     final address = _addresses.length;
     _addresses.add(object);
     return address;
@@ -129,16 +129,21 @@ final class GameAssets {
   /// Resolves [address] to the live object, `null` if nothing is currently
   /// registered there (including a freed one - see [unregister]) or if it's
   /// not a [T].
+  @override
   T? tryResolve<T extends GlobalObject>(int address) {
     if (address < 0 || address >= _addresses.length) return null;
     final object = _addresses[address];
-    return object is T ? object : null;
+    // The cast is explicit because the list is now narrowed to
+    // `GameAssetInstance?`: promoting it to the type *variable* `T` gives an
+    // intersection type the analyzer will not return as `T?` on its own.
+    return object is T ? object as T : null;
   }
 
   /// [tryResolve], but throws instead of returning `null` - what a
   /// `DataPointer<T>` read uses, since a row holding a stale or
   /// never-registered address is a real bug worth failing loudly on, the
   /// same call [Entity.get] makes for a missing component.
+  @override
   T resolve<T extends GlobalObject>(int address) {
     final object = tryResolve<T>(address);
     if (object == null) {
@@ -182,6 +187,56 @@ final class GameAssets {
     if (existing != null) return existing as T;
     final instance = key.createInstance();
     instance._bindDeclaration(key, _register(instance));
+    _instances[key] = instance;
+    return instance;
+  }
+
+  /// Declares [key] at an address **chosen elsewhere** - the main isolate's
+  /// half of a decode request.
+  ///
+  /// Assets are declared by scenes and prefabs, which live on the game
+  /// isolate, so that is the copy that assigns addresses. Main used to arrive
+  /// at the same numbers by running the same `describeAssets` passes in the
+  /// same order; that was one fact with two homes (RULES.md rule 10), kept in
+  /// agreement by convention and quietly wrong the moment a scene was loaded
+  /// at runtime on one side only.
+  ///
+  /// Now the address travels with the request and main *adopts* it. The list
+  /// is padded rather than appended to, so an address always lands where the
+  /// game isolate said it would, whatever order requests arrive in and however
+  /// many addresses main has never been told about.
+  ///
+  /// Idempotent **by address, not by key**, and that distinction is
+  /// load-bearing rather than an implementation detail. `_instances` is
+  /// identity-keyed (two `GameAsset` objects describing one file are two
+  /// assets - see [AssetDescriptor]), and a key that crosses `Isolate.spawn`
+  /// or a `SendPort` arrives as a *copy*: a fresh object, equal to nothing.
+  /// So every request carries a key this table has never seen by identity,
+  /// including a second request for an asset already adopted. Checking the
+  /// address is what stops that replacing a decoded instance with an empty one
+  /// and re-decoding the payload.
+  ///
+  /// The consequence worth knowing at the call site: on the adopting copy an
+  /// asset is named by **address**, not by key. `tryGet(myKey)` with a
+  /// main-side key object finds nothing here and always will, because that
+  /// object was never the one declared. Use [tryResolve] with the address the
+  /// game isolate reported. Everything on this side already works that way -
+  /// a row holds an address, and `DrawCanvas2D` resolves one at draw time.
+  @internal
+  T adoptAt<T extends GameAssetInstance>(int address, GameAsset<T> key) {
+    if (address < _addresses.length) {
+      final existing = _addresses[address];
+      if (existing != null) return existing as T;
+    }
+    final instance = key.createInstance();
+    while (_addresses.length <= address) {
+      _addresses.add(null);
+    }
+    _addresses[address] = instance;
+    instance._bindDeclaration(key, address);
+    // Keyed by the copy that arrived, so `unloadAddress` - which goes back
+    // through `instance._key` - finds it again. Nothing else on this copy ever
+    // looks an asset up by key.
     _instances[key] = instance;
     return instance;
   }
@@ -282,9 +337,9 @@ final class GameAssets {
   T? tryGet<T extends GameAssetInstance>(GameAsset<T> key) =>
       _instances[key] as T?;
 
-  /// Unloads [key]: frees its address in [GlobalObjectRegistry] (any
+  /// Unloads [key]: frees its address in this table (any
   /// `DataPointer<T>` row still holding it will fail loudly on next read, per
-  /// [GlobalObjectRegistry.resolve] - unloading something still referenced is
+  /// [resolve] - unloading something still referenced is
   /// a caller bug, not something this silently tolerates), releases whatever
   /// native resources the instance holds via
   /// [GameAssetInstance.onUnloaded], and drops the declaration. A no-op if
@@ -312,7 +367,7 @@ final class GameAssets {
     _instances.clear();
   }
 
-  /// Test-only escape hatch, matching [GlobalObjectRegistry.reset] /
+  /// Test-only escape hatch, matching
   /// [ArchetypeRegistry.reset] / `HeapObjectRegistry.reset`: this table is
   /// process-global, so a test suite that declares many throwaway assets
   /// needs a way to start over or every test after the first would see the
@@ -378,7 +433,7 @@ abstract class GameAsset<T extends GameAssetInstance> {
 
 /// A declared asset instance - what `DataPointer<T extends GlobalObject>`
 /// fields actually store a reference to (as an address, see
-/// [GlobalObjectRegistry]'s doc). Subclasses hold whatever the decoded
+/// [GameAssets]'s doc). Subclasses hold whatever the decoded
 /// resource actually is (a `ui.Image`, a compiled shader, ...) behind a
 /// getter that calls [requireLoaded] first.
 ///

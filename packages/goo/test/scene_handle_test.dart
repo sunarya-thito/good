@@ -7,6 +7,13 @@ import 'package:goo/src/game_state.dart';
 import 'package:goo/src/scene.dart';
 import 'package:goo/src/scene_handle.dart';
 import 'package:goo/src/struct.dart';
+import 'package:goo/src/handle.dart';
+
+/// The live run under test. A file-level binding: the bring-up helper
+/// returns the `Game` (the description) while tests also need the run, and
+/// one inline run per isolate means one binding is enough.
+late InlineGameHandle run;
+
 
 // `Scene` is to `SceneStruct` what `Entity` is to `EntityStruct`: the struct is
 // the declaration, the handle is one loaded instance of it. These cover the
@@ -70,9 +77,9 @@ class _LevelGame extends Game {
 
 Future<_LevelGame> _boot() async {
   final game = _LevelGame();
-  await game.start(inline: true, autoTick: false);
+  run = await Game.startInline(game);
   addTearDown(() async {
-    if (game.isRunning) await game.stop();
+    if (run.isRunning) await run.stop();
   });
   return game;
 }
@@ -103,32 +110,32 @@ void main() {
 
   group('resolution', () {
     test('a loaded scene resolves to the struct that was loaded', () async {
-      final game = await _boot();
-      final handle = game.state!.sceneHandle!;
+      await _boot();
+      final handle = run.state.sceneHandle!;
 
       expect(handle.isLoaded, isTrue);
-      expect(handle.get<_Level>(), same(game.state!.scene));
-      expect(handle.tryGet<_Level>(), same(game.state!.scene));
+      expect(handle.get<_Level>(), same(run.state.scene));
+      expect(handle.tryGet<_Level>(), same(run.state.scene));
     });
 
     test('the struct is a declaration and holds no handle of its own', () async {
-      final game = await _boot();
-      final scene = game.state!.scene!;
+      await _boot();
+      final scene = run.state.scene!;
 
       // The identity lives on the state, not the struct: one SceneStruct backs
       // however many Scenes are loaded from it, exactly as one EntityStruct
       // backs many Entities, so "which handle am I" is not a question the
       // struct can answer.
-      expect(game.state!.sceneHandle, isNotNull);
+      expect(run.state.sceneHandle, isNotNull);
       expect(scene, isA<_Level>());
     });
 
     test('a handle to an unloaded scene stops resolving', () async {
-      final game = await _boot();
-      final handle = game.state!.sceneHandle!;
+      await _boot();
+      final handle = run.state.sceneHandle!;
       expect(handle.isLoaded, isTrue);
 
-      await game.stop();
+      await run.stop();
 
       expect(handle.isLoaded, isFalse);
       expect(handle.tryGet<_Level>(), isNull);
@@ -156,16 +163,16 @@ void main() {
     });
 
     test('get<T> reports the wrong type rather than returning null', () async {
-      final game = await _boot();
-      expect(() => game.state!.sceneHandle!.get<_OtherLevel>(), throwsStateError);
-      expect(game.state!.sceneHandle!.tryGet<_OtherLevel>(), isNull);
+      await _boot();
+      expect(() => run.state.sceneHandle!.get<_OtherLevel>(), throwsStateError);
+      expect(run.state.sceneHandle!.tryGet<_OtherLevel>(), isNull);
     });
   });
 
   group('addEntity through the handle', () {
     test('is the only spelling, and stamps the declared defaults', () async {
-      final game = await _boot();
-      final state = game.state!;
+      await _boot();
+      final state = run.state;
       final scene = state.getScene<_Level>();
       final handle = state.sceneHandle!;
 
@@ -185,31 +192,23 @@ void main() {
     });
   });
 
-  group('isActive', () {
-    test('the loaded scene is the active one while it is the only one',
-        () async {
-      final game = await _boot();
-      final handle = game.state!.sceneHandle!;
-      expect(handle.isActive, isTrue);
-      expect(SceneRegistry.active, handle);
-    });
+  // `isActive`/`SceneRegistry.active`/`setActive` were deleted with
+  // `switchScene` - there is no front scene any more. What survives from that
+  // group is the part that was never about front-ness: a stopped game must not
+  // leave a process-global registry answering for itself.
+  group('a stopped game releases its slots', () {
+    test('its handle stops resolving once the game is gone', () async {
+      await _boot();
+      final handle = run.state.sceneHandle!;
+      expect(handle.isLoaded, isTrue);
 
-    test('an unloaded scene is not active, and clears the active slot',
-        () async {
-      final game = await _boot();
-      final handle = game.state!.sceneHandle!;
+      await run.stop();
 
-      await game.stop();
-
-      expect(handle.isActive, isFalse);
-      expect(SceneRegistry.active, isNull,
-          reason: 'a stopped game must not leave SceneRegistry answering for a '
-              'game that no longer exists - the registry is process-global');
-    });
-
-    test('switching to an unloaded scene is refused', () {
-      const stale = Scene.pack(0, 999);
-      expect(() => SceneRegistry.setActive(stale), throwsStateError);
+      expect(handle.isLoaded, isFalse,
+          reason: 'SceneRegistry is process-global, so a stopped game that '
+              'kept its entries would hand them to the next game in this '
+              'process');
+      expect(() => handle.get<SceneStruct>(), throwsStateError);
     });
   });
 }

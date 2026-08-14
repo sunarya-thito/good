@@ -10,6 +10,13 @@ import 'package:goo/src/scene.dart';
 import 'package:goo/src/scene_handle.dart';
 import 'package:goo/src/struct.dart';
 import 'package:goo/src/system.dart';
+import 'package:goo/src/handle.dart';
+
+/// The live run under test. A file-level binding: the bring-up helper
+/// returns the `Game` (the description) while tests also need the run, and
+/// one inline run per isolate means one binding is enough.
+late InlineGameHandle run;
+
 
 // Scoped, boot-collected dispatch.
 //
@@ -75,6 +82,12 @@ class _PingState extends GameState<_PingGame> with _Ping {
     super.describeEvents(descriptor);
     ping = descriptor.hasSignal((listener) => listener.onPing());
   }
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    descriptor.has(_PingSystem());
+    descriptor.has(_DeafSystem());
+  }
 }
 
 class _PingGame extends Game {
@@ -85,7 +98,8 @@ class _PingGame extends Game {
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
   late final _PingScene level;
-  late final _PingSystem pinger;
+  /// Reached through the state - `describeSystems` is a `GameState` pass now.
+  _PingSystem get pinger => run.state.getSystem<_PingSystem>();
 
   @override
   GameState createState() => _PingState();
@@ -95,18 +109,13 @@ class _PingGame extends Game {
     level = descriptor.has(_PingScene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    pinger = descriptor.has(_PingSystem());
-    descriptor.has(_DeafSystem());
-  }
 }
 
 Future<_PingGame> _boot() async {
   final game = _PingGame();
-  await game.start(inline: true, autoTick: false);
+  run = await Game.startInline(game);
   addTearDown(() async {
-    if (game.isRunning) await game.stop();
+    if (run.isRunning) await run.stop();
   });
   return game;
 }
@@ -120,8 +129,8 @@ void main() {
 
   group('collection happens at boot', () {
     test('the listener list is settled before the first dispatch', () async {
-      final game = await _boot();
-      final state = game.state! as _PingState;
+      await _boot();
+      final state = run.state as _PingState;
 
       expect(state.ping.listenerCount, 5,
           reason: 'the state itself, the one _Ping system, the scene, and the '
@@ -130,8 +139,8 @@ void main() {
     });
 
     test('a non-listener is not collected, so it is never visited', () async {
-      final game = await _boot();
-      final state = game.state! as _PingState;
+      await _boot();
+      final state = run.state as _PingState;
       state.ping.call();
 
       expect(state.ping.listenerCount, 5,
@@ -144,7 +153,7 @@ void main() {
   group('an event declared on the GameState reaches the whole composition', () {
     test('down through systems, scenes and prefabs', () async {
       final game = await _boot();
-      final state = game.state! as _PingState;
+      final state = run.state as _PingState;
 
       state.ping.call();
 
@@ -160,7 +169,7 @@ void main() {
 
     test('every listener is hit exactly once per dispatch', () async {
       final game = await _boot();
-      final state = game.state! as _PingState;
+      final state = run.state as _PingState;
 
       state.ping.call();
       state.ping.call();
@@ -188,12 +197,12 @@ void main() {
       expect(game.level.unit.pings, 0, reason: 'not its sibling prefab');
       expect(game.level.pings, 0, reason: 'not upwards to its scene');
       expect(game.pinger.pings, 0, reason: 'and not sideways to systems');
-      expect((game.state! as _PingState).pings, 0);
+      expect((run.state as _PingState).pings, 0);
     });
 
     test('the same listener type is two independent dispatchers', () async {
       final game = await _boot();
-      final state = game.state! as _PingState;
+      final state = run.state as _PingState;
 
       expect(state.ping, isNot(same(game.level.selfish.ping)),
           reason: 'scope is per declaring owner, not per listener type - two '
@@ -204,8 +213,8 @@ void main() {
   group('listensToEvents is the one thing boot cannot bake', () {
     test('a disabled system stays collected and declines', () async {
       final game = await _boot();
-      final state = game.state! as _PingState;
-      await game.disableSystem<_PingSystem>();
+      final state = run.state as _PingState;
+      run.state.disableSystem<_PingSystem>();
 
       state.ping.call();
 
@@ -219,11 +228,11 @@ void main() {
 
     test('re-enabling needs no re-collection', () async {
       final game = await _boot();
-      final state = game.state! as _PingState;
+      final state = run.state as _PingState;
 
-      await game.disableSystem<_PingSystem>();
+      run.state.disableSystem<_PingSystem>();
       state.ping.call();
-      await game.enableSystem<_PingSystem>();
+      run.state.enableSystem<_PingSystem>();
       state.ping.call();
 
       expect(game.pinger.pings, 1);

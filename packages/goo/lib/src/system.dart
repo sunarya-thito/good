@@ -2,7 +2,6 @@ import 'package:meta/meta.dart';
 
 import 'package:goo/src/archetype.dart';
 import 'package:goo/src/event.dart';
-import 'package:goo/src/event/state.dart';
 import 'package:goo/src/game.dart';
 import 'package:goo/src/game_state.dart';
 import 'package:goo/src/input.dart';
@@ -35,7 +34,7 @@ import 'package:goo/src/scene.dart';
 abstract class GameSystem extends GameListenerBase
     with EventBus
     implements Comparable<GameSystem> {
-  Game? _game;
+  GameState? _state;
 
   bool _enabled = true;
 
@@ -55,79 +54,60 @@ abstract class GameSystem extends GameListenerBase
   @override
   int compareTo(GameSystem other) => 0; // no opinion by default
 
-  /// Called once by `Game`'s bootstrap, immediately before
+  /// Called once by the boot pass on the game isolate, immediately before
   /// [describeQuery]. Not part of the user-facing API: a system is bound by
   /// declaring it in `Game.describeSystems`, never by hand.
   @internal
-  void bindGame(Game game) => _game = game;
+  void bindState(GameState state) => _state = state;
 
-  /// The game this system was declared in - **this isolate's copy** of it.
-  Game get game {
-    final game = _game;
-    if (game == null) {
+  /// The simulation this system belongs to - scenes, sibling systems, the
+  /// pool and the tick loop.
+  ///
+  /// **A `GameState`, not a `Game`, and that is the isolate boundary showing
+  /// up in a field type** (RULES.md rule 9). A system only ever exists on the
+  /// copy that simulates, so the object it holds is the one that simulates
+  /// too. Holding a `Game` and asking it for a state would have compiled on
+  /// the presentation isolate and found nothing there.
+  GameState get state {
+    final state = _state;
+    if (state == null) {
       throw StateError(
-        '$runtimeType is not bound to a Game. Declare it in '
+        '$runtimeType is not bound to a GameState. Declare it in '
         'Game.describeSystems - a system constructed by hand has no scene to '
         'query and no tick to run on.',
       );
     }
-    return game;
+    return state;
   }
 
-  /// This copy's simulation half - the live one on the game isolate, the
-  /// declaration mirror on the main-isolate handle (see `Game.state`). Null
-  /// only before `Game.start()`, which a bound system cannot observe.
-  GameState? get state => game.state;
+  /// The game this system was declared in - `state.game`, for the declarations
+  /// that legitimately live there (buffers, state channels, camera views).
+  Game get game => state.game;
 
   // provide a way for GameSystem to compile queries
   void describeQuery(QueryDescriptor descriptor) {}
 
-  /// Declares this system's published state - see [Game.describeState], which
-  /// carries the whole story. One of exactly three hosts that may, and the
-  /// one to reach for when the value being published is derived from a
-  /// *scene*: a system outlives the scene and is where the per-tick work
-  /// already is, whereas a scene is loaded after boot and could never own a
-  /// stable channel index.
-  ///
-  /// ```dart
-  /// class ScoreSystem extends GameSystem with FixedTickable {
-  ///   late final StateChannel<int> score;
-  ///
-  ///   @override
-  ///   void describeState(StateDescriptor descriptor) {
-  ///     score = descriptor.hasInt32();
-  ///   }
-  ///
-  ///   @override
-  ///   void onFixedUpdate() => score.value = score.value + 1;
-  /// }
-  /// ```
-  ///
-  /// Declared last in the shared boot pass, in post-sort declaration order.
-  void describeState(StateDescriptor descriptor) {}
+  // There is no `describeState` or `describeBuffers` here, and both used to
+  // exist. A `StateChannel` and a `BufferHandle` are backed by native memory
+  // that the **main isolate** allocates before the spawn and frees on stop,
+  // and their identity across the boundary is their index in that one
+  // declaration pass. A system is not present for it: `describeSystems` runs
+  // on the game isolate, so a system's declaration would have an index on one
+  // copy and none on the other, which is the same thing as not having one.
+  //
+  // Declare them on the `Game` - which is also the side that *reads* them,
+  // since a channel exists to be shown and a draw buffer exists to be drained
+  // - and write through `game.myChannel` from here. `Renderer2D` is the
+  // reference shape for a library doing this: the `Game` mixin declares the
+  // frame buffers and `GameRenderer2D` fills them.
 
-  /// Declares the auxiliary ring buffers this system needs - see
-  /// [Game.describeBuffers], which this is folded into (the `Game`'s own
-  /// declarations first, then every declared system's, in declaration
-  /// order).
+  /// Declares this system's input actions - see `Game.describeInputs`.
   ///
-  /// A system rather than only the `Game` can declare one so that a system
-  /// shipped by a *library* - `goo2d_render`'s `GameRenderer2D` and its
-  /// draw-command channel is the motivating case - is wired up by the single
-  /// act of declaring it in `describeSystems`. Otherwise every user would
-  /// have to also know the library's capacity requirement and repeat it in
-  /// their own `describeBuffers`, which is a contract nobody can keep in
-  /// sync.
-  ///
-  /// Keep the returned [BufferHandle] in a `late final` field and write
-  /// through `handle.ring`; there is deliberately no `getBuffer(name)` to
-  /// look one up by (RULES.md rule 6). Both isolate twins of this system run
-  /// this same pass, so both end up holding a handle to the same memory.
-  void describeBuffers(BufferDescriptor descriptor) {}
-
-  /// Declares this system's input actions - see `Game.describeInputs`, which
-  /// this is folded into (the `Game`'s own pass first, then every declared
-  /// system's, in declaration order, all sharing one descriptor).
+  /// Unlike the two passes deleted above this one survives, because it
+  /// allocates nothing: the raw input block is a fixed size derived from
+  /// `InputKey.count`, identical whatever a game declares, and an *action* is
+  /// resolved against that block by the copy that ticks - which is this one.
+  /// Main writes the block and never reads an action.
   ///
   /// ```dart
   /// late final Input<Vector2> movement;
@@ -152,20 +132,16 @@ abstract class GameSystem extends GameListenerBase
   /// A sibling system declared in the same `describeSystems`. Reaching one
   /// directly is the escape hatch for cross-system state; note it says
   /// nothing about ordering, which is declaration order and nothing else.
-  T getSystem<T extends GameSystem>() => game.getSystem<T>();
+  ///
+  /// Goes through the [GameState], which is where the declared systems live.
+  /// There is no `Game.getSystem` to shortcut through any more - a system is a
+  /// game-isolate object, and the presentation copy has none.
+  T getSystem<T extends GameSystem>() => state.getSystem<T>();
 
   /// The running scene, as [T] - sugar for `state.getScene<T>()`. Throws if
   /// no scene is loaded (`GameState.scene` is nullable by design) or if it is
-  /// some other type; read `state?.scene` directly when absence is expected.
-  T getScene<T extends SceneStruct>() {
-    final state = game.state;
-    if (state == null) {
-      throw StateError(
-        '$runtimeType has no GameState yet - Game.start() has not run.',
-      );
-    }
-    return state.getScene<T>();
-  }
+  /// some other type; read `state.scene` directly when absence is expected.
+  T getScene<T extends SceneStruct>() => state.getScene<T>();
 
   // GameSystem will listen to an event and run a query
 }
@@ -232,19 +208,49 @@ abstract class QueryDescriptor {
 abstract class QueryBuilder {
   /// Every listed component must be present. Repeatable; each call ORs into
   /// the same required mask.
-  QueryBuilder withAll(Type a,
-      [Type? b, Type? c, Type? d, Type? e, Type? f, Type? g, Type? h, Type? i, Type? j]);
+  QueryBuilder withAll(
+    Type a, [
+    Type? b,
+    Type? c,
+    Type? d,
+    Type? e,
+    Type? f,
+    Type? g,
+    Type? h,
+    Type? i,
+    Type? j,
+  ]);
 
   /// Every listed component must be absent. Repeatable.
-  QueryBuilder withNone(Type a,
-      [Type? b, Type? c, Type? d, Type? e, Type? f, Type? g, Type? h, Type? i, Type? j]);
+  QueryBuilder withNone(
+    Type a, [
+    Type? b,
+    Type? c,
+    Type? d,
+    Type? e,
+    Type? f,
+    Type? g,
+    Type? h,
+    Type? i,
+    Type? j,
+  ]);
 
   /// At least one of the listed components must be present. Each *call* is
   /// its own group and every group must be satisfied, so
   /// `.withAny(A, B).withAny(C, D)` means "(A or B) and (C or D)", not
   /// "(A or B or C or D)".
-  QueryBuilder withAny(Type a,
-      [Type? b, Type? c, Type? d, Type? e, Type? f, Type? g, Type? h, Type? i, Type? j]);
+  QueryBuilder withAny(
+    Type a, [
+    Type? b,
+    Type? c,
+    Type? d,
+    Type? e,
+    Type? f,
+    Type? g,
+    Type? h,
+    Type? i,
+    Type? j,
+  ]);
 
   /// Declares that a match *may* have these components, without requiring
   /// or forbidding them. Pure documentation - it does not narrow the query.
@@ -252,8 +258,18 @@ abstract class QueryBuilder {
   /// loop body branches on `entity.tryGet<T>()`; `WorldTransformSystem` is
   /// the reference usage, matching every `Transform2D` entity whether
   /// hierarchy-linked or not and testing `tryGet<Child>()` inside.
-  QueryBuilder withOptional(Type a,
-      [Type? b, Type? c, Type? d, Type? e, Type? f, Type? g, Type? h, Type? i, Type? j]);
+  QueryBuilder withOptional(
+    Type a, [
+    Type? b,
+    Type? c,
+    Type? d,
+    Type? e,
+    Type? f,
+    Type? g,
+    Type? h,
+    Type? i,
+    Type? j,
+  ]);
 
   /// Compiles the constraints into a runnable [Query]. Call once - the
   /// builder is a one-shot describe-time object, not something to keep.
@@ -268,8 +284,12 @@ final class _QueryBuilder implements QueryBuilder {
   /// How a compiled query reaches the archetype table - injected rather
   /// than reached statically so the descriptor stays the only thing that
   /// knows about `ArchetypeRegistry`.
-  final _ArchetypeQuery Function(int required, int forbidden, List<int> anyGroups)
-      _storageOf;
+  final _ArchetypeQuery Function(
+    int required,
+    int forbidden,
+    List<int> anyGroups,
+  )
+  _storageOf;
 
   int _required = 0;
   int _forbidden = 0;
@@ -294,8 +314,18 @@ final class _QueryBuilder implements QueryBuilder {
   /// ORs every non-null argument's bit together. Ten explicit parameters
   /// rather than a `List<Type>` at each call site: Dart has no varargs, and
   /// this keeps `withAll(A, B)` from allocating a list per call.
-  static int _mask(Type a, Type? b, Type? c, Type? d, Type? e, Type? f, Type? g,
-      Type? h, Type? i, Type? j) {
+  static int _mask(
+    Type a,
+    Type? b,
+    Type? c,
+    Type? d,
+    Type? e,
+    Type? f,
+    Type? g,
+    Type? h,
+    Type? i,
+    Type? j,
+  ) {
     var mask = _bitOf(a);
     if (b != null) mask |= _bitOf(b);
     if (c != null) mask |= _bitOf(c);
@@ -310,30 +340,70 @@ final class _QueryBuilder implements QueryBuilder {
   }
 
   @override
-  QueryBuilder withAll(Type a,
-      [Type? b, Type? c, Type? d, Type? e, Type? f, Type? g, Type? h, Type? i, Type? j]) {
+  QueryBuilder withAll(
+    Type a, [
+    Type? b,
+    Type? c,
+    Type? d,
+    Type? e,
+    Type? f,
+    Type? g,
+    Type? h,
+    Type? i,
+    Type? j,
+  ]) {
     _required |= _mask(a, b, c, d, e, f, g, h, i, j);
     return this;
   }
 
   @override
-  QueryBuilder withNone(Type a,
-      [Type? b, Type? c, Type? d, Type? e, Type? f, Type? g, Type? h, Type? i, Type? j]) {
+  QueryBuilder withNone(
+    Type a, [
+    Type? b,
+    Type? c,
+    Type? d,
+    Type? e,
+    Type? f,
+    Type? g,
+    Type? h,
+    Type? i,
+    Type? j,
+  ]) {
     _forbidden |= _mask(a, b, c, d, e, f, g, h, i, j);
     return this;
   }
 
   @override
-  QueryBuilder withAny(Type a,
-      [Type? b, Type? c, Type? d, Type? e, Type? f, Type? g, Type? h, Type? i, Type? j]) {
+  QueryBuilder withAny(
+    Type a, [
+    Type? b,
+    Type? c,
+    Type? d,
+    Type? e,
+    Type? f,
+    Type? g,
+    Type? h,
+    Type? i,
+    Type? j,
+  ]) {
     if (_anyGroups.isEmpty) _anyGroups = <int>[];
     _anyGroups.add(_mask(a, b, c, d, e, f, g, h, i, j));
     return this;
   }
 
   @override
-  QueryBuilder withOptional(Type a,
-      [Type? b, Type? c, Type? d, Type? e, Type? f, Type? g, Type? h, Type? i, Type? j]) {
+  QueryBuilder withOptional(
+    Type a, [
+    Type? b,
+    Type? c,
+    Type? d,
+    Type? e,
+    Type? f,
+    Type? g,
+    Type? h,
+    Type? i,
+    Type? j,
+  ]) {
     // Computed and discarded: naming a type here still registers its bit
     // (and runs the assert above), which is the only side effect optional
     // components have. Matching is deliberately untouched.
@@ -439,7 +509,7 @@ class _ArchetypeQuery implements Query {
 final class _ArchetypeSingleQuery<T extends Component> extends _ArchetypeQuery
     implements SingleQuery<T> {
   _ArchetypeSingleQuery()
-      : super(ComponentTypeRegistry.bitFor(T), 0, const <int>[]);
+    : super(ComponentTypeRegistry.bitFor(T), 0, const <int>[]);
 
   @override
   T get component => get<T>();

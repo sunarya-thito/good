@@ -4,6 +4,12 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
+/// The live run under test. A file-level binding: the bring-up helper
+/// returns the `Game` (the description) while tests also need the run, and
+/// one inline run per isolate means one binding is enough.
+late InlineGameHandle run;
+
+
 // GameView, lane 3's main-isolate end: tick ping -> drain -> ingest ->
 // repaint, and nothing in paint() but a replay.
 //
@@ -48,7 +54,7 @@ class _Scene extends SceneStruct {
   }
 }
 
-class _ViewState extends GameState<Game> {
+class _ViewState extends GameState2D<_ViewGame> {
   @override
   void onMounted() {
     loadScene(_Scene());
@@ -60,10 +66,21 @@ class _ViewGame extends Game2D {
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
   @override
-  GameState createState() => _ViewState();
+  GameState2D<_ViewGame> createState() => _ViewState();
 
-  // No describeSystems at all: `extends Game2D` is the entire opt-in, and
-  // WorldTransformSystem/GameRenderer2D come with it.
+  // No describeSystems at all: `extends Game2D` + `extends GameState2D` is
+  // the entire opt-in, and WorldTransformSystem/GameRenderer2D come with the
+  // second one. Note it cannot be forgotten: `createState` is narrowed to
+  // GameState2D, so a plain GameState here would not compile.
+}
+
+/// The rendererless game's state - a plain `GameState`, since there is no
+/// `Game2D` to satisfy.
+class _BareViewState extends GameState<_RendererlessGame> {
+  @override
+  void onMounted() {
+    loadScene(_Scene());
+  }
 }
 
 /// A game with no renderer declared - a HUD-only or headless-plus-Flutter
@@ -76,7 +93,7 @@ class _RendererlessGame extends Game {
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
   @override
-  GameState createState() => _ViewState();
+  GameState createState() => _BareViewState();
 }
 
 class _SpyCanvas implements Canvas {
@@ -109,9 +126,9 @@ _SpyCanvas _paintThrough(WidgetTester tester) {
 }
 
 Future<T> _start<T extends Game>(T game) async {
-  await game.start(inline: true, autoTick: false);
+  run = await Game.startInline(game);
   addTearDown(() async {
-    if (game.isRunning) await game.stop();
+    if (run.isRunning) await run.stop();
   });
   return game;
 }
@@ -125,7 +142,7 @@ void main() {
 
   testWidgets('paints nothing until a tick has produced a frame', (tester) async {
     final game = await _start(_ViewGame());
-    final scene = game.state!.getScene<_Scene>();
+    final scene = run.state.getScene<_Scene>();
     final entity = scene.addEntity(scene.sprite);
     scene.sprite.quad
       ..width[entity] = 20
@@ -134,14 +151,14 @@ void main() {
       ..transformOffsetX[entity] = 100
       ..transformOffsetY[entity] = 200;
 
-    await tester.pumpWidget(GameView(game: game));
+    await tester.pumpWidget(GameView(run: run, camera: game.defaultCamera));
     expect(_paintThrough(tester).calls, isEmpty,
         reason: 'no tick has happened, so there is no frame to replay');
   });
 
   testWidgets('a tick drains, ingests and repaints - end to end', (tester) async {
     final game = await _start(_ViewGame());
-    final scene = game.state!.getScene<_Scene>();
+    final scene = run.state.getScene<_Scene>();
     final entity = scene.addEntity(scene.sprite);
     scene.sprite.quad
       ..width[entity] = 20
@@ -150,12 +167,12 @@ void main() {
       ..transformOffsetX[entity] = 100
       ..transformOffsetY[entity] = 200;
 
-    await tester.pumpWidget(GameView(game: game));
+    await tester.pumpWidget(GameView(run: run, camera: game.defaultCamera));
 
     // One tick on the "game isolate": the renderer writes a batch into the
     // ring and the tick listener GameView registered drains it, all
     // synchronously on this isolate.
-    game.state!.advance(_step);
+    run.state.advance(_step);
     await tester.pump();
 
     final spy = _paintThrough(tester);
@@ -166,9 +183,9 @@ void main() {
   });
 
   testWidgets('a game with no renderer declared contributes no painter at all', (tester) async {
-    final game = await _start(_RendererlessGame());
-    await tester.pumpWidget(GameView(game: game));
-    game.state!.advance(_step * 2);
+    await _start(_RendererlessGame());
+    await tester.pumpWidget(GameView.headless(run: run));
+    run.state.advance(_step * 2);
     await tester.pump();
     expect(tester.takeException(), isNull);
     // Stronger than "paints nothing": with rendering moved out of GameView
@@ -180,24 +197,27 @@ void main() {
     expect(find.byType(CustomPaint), findsNothing);
   });
 
-  testWidgets('the tick listener is unregistered on dispose', (tester) async {
+  testWidgets('the frame callback is disarmed on dispose', (tester) async {
     final game = await _start(_ViewGame());
-    await tester.pumpWidget(GameView(game: game));
-    game.state!.advance(_step);
+    await tester.pumpWidget(GameView(run: run, camera: game.defaultCamera));
+    run.state.advance(_step);
     await tester.pump();
 
     await tester.pumpWidget(const SizedBox());
-    // Ticking after the widget is gone must not reach a disposed State (a
-    // ChangeNotifier notified after dispose throws, so this would surface as
-    // an exception rather than as silence).
-    game.state!.advance(_step * 3);
+    // Two things at once. Ticking after the widget is gone must not reach a
+    // disposed ChangeNotifier (notifying one throws, so it would surface as an
+    // exception rather than as silence) - and the self-rescheduling frame
+    // callback must be gone too, which the binding checks for us at the end of
+    // the test: a callback still pending is reported as "an animation is still
+    // running even after the widget tree was disposed".
+    run.state.advance(_step * 3);
     await tester.pump();
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('a Game that has not started is refused with a reason', (tester) async {
-    final game = _ViewGame();
-    await tester.pumpWidget(GameView(game: game));
+    _ViewGame();
+    await tester.pumpWidget(GameView.headless(run: run));
     final error = tester.takeException();
     expect(error, isStateError);
     expect(

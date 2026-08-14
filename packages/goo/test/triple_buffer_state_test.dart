@@ -3,6 +3,7 @@ import 'dart:ffi';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo/src/triple_buffer.dart';
 
+
 // Deterministic, single-isolate coverage of TripleBuffer's state machine:
 // slot rotation, the pre-publish state, and copyFromLatest.
 //

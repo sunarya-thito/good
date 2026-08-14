@@ -11,6 +11,13 @@ import 'package:goo/src/game_state.dart';
 import 'package:goo/src/pool.dart';
 import 'package:goo/src/scene.dart';
 import 'package:goo/src/struct.dart';
+import 'package:goo/src/handle.dart';
+
+/// The live run under test. A file-level binding: the bring-up helper
+/// returns the `Game` (the description) while tests also need the run, and
+/// one inline run per isolate means one binding is enough.
+late InlineGameHandle run;
+
 
 // Fixtures deliberately never touch dart:ui or a real file: the thing under
 // test is the declare/load/unload lifecycle and the address bookkeeping, and
@@ -130,7 +137,7 @@ class _Prop extends EntityStruct {
     super.describeStruct(data);
     // The payoff of running describeAssets before describeStruct: the handle
     // is already addressed, so it can be this archetype's default row value.
-    spriteField = data.hasObject(texture);
+    spriteField = data.hasObject(assets, texture);
   }
 }
 
@@ -654,7 +661,7 @@ void main() {
       final onlyA = _FakeAsset('only-a');
       final onlyB = _FakeAsset('only-b');
 
-      final game = await _boot(
+      await _boot(
         _DiffGame(() => _PropScene([_Prop(onlyA)], sceneKey: shared)),
       );
       expect(shared.decodes, 1);
@@ -662,7 +669,7 @@ void main() {
 
       // Loading no longer *replaces*: both scenes are resident now, and both
       // hold a claim on `shared`.
-      await game.state!.loadScene(
+      await run.state.loadScene(
         _PropScene([_Prop(onlyB)], sceneKey: shared),
       );
 
@@ -691,15 +698,15 @@ void main() {
       final shared = _FakeAsset('shared');
       final onlyA = _FakeAsset('only-a');
       final onlyB = _FakeAsset('only-b');
-      final game = await _boot(
+      await _boot(
         _DiffGame(() => _PropScene([_Prop(onlyA)], sceneKey: shared)),
       );
-      final first = game.state!.sceneHandle!;
-      final second = await game.state!.loadScene(
+      final first = run.state.sceneHandle!;
+      final second = await run.state.loadScene(
         _PropScene([_Prop(onlyB)], sceneKey: shared),
       );
 
-      game.state!.unloadScene(first);
+      run.state.unloadScene(first);
 
       expect(assets.tryGet(onlyA), isNull,
           reason: 'nothing else claimed it, so it goes with its scene');
@@ -712,7 +719,7 @@ void main() {
             'decoded it again',
       );
 
-      game.state!.unloadScene(second);
+      run.state.unloadScene(second);
       expect(assets.tryGet(shared), isNull,
           reason: 'the last claim released is what frees it');
       expect(assets.tryGet(onlyB), isNull,
@@ -723,10 +730,10 @@ void main() {
       final keys = <_FakeAsset>[
         for (var i = 0; i < 4; i++) _FakeAsset('step$i'),
       ];
-      final game = await _boot(_DiffGame(() => GameSceneStub()));
+      await _boot(_DiffGame(() => GameSceneStub()));
 
       final reports = <SceneLoadProgress>[];
-      await game.state!.loadScene(
+      await run.state.loadScene(
         _PropScene(
           [for (var i = 1; i < keys.length; i++) _Prop(keys[i])],
           sceneKey: keys.first,
@@ -759,12 +766,12 @@ void main() {
     test('a transition needing no decodes still reports a single 1.0',
         () async {
       final shared = _FakeAsset('shared');
-      final game = await _boot(
+      await _boot(
         _DiffGame(() => _PropScene([], sceneKey: shared)),
       );
 
       final reports = <SceneLoadProgress>[];
-      await game.state!.loadScene(
+      await run.state.loadScene(
         _PropScene([], sceneKey: shared),
         onProgress: reports.add,
       );
@@ -782,38 +789,51 @@ void main() {
     test('loading one declaration twice gives two scenes sharing its assets',
         () async {
       final key = _FakeAsset('same-scene');
-      final game = await _boot(_DiffGame(() => _PropScene([_Prop(key)])));
-      final struct = game.state!.scene!;
-      final first = game.state!.sceneHandle!;
+      await _boot(_DiffGame(() => _PropScene([_Prop(key)])));
+      final struct = run.state.scene!;
+      final first = run.state.sceneHandle!;
 
       // The same *declaration*, loaded again. It is not a no-op any more -
       // it is a second resident instance with its own pages - but its assets
       // are already decoded, so it costs no decode.
-      final second = await game.state!.loadScene(struct);
+      final second = await run.state.loadScene(struct);
 
       expect(key.decodes, 1);
       expect(second, isNot(first));
-      expect(game.state!.loadedScenes.length, 2);
+      expect(run.state.loadedScenes.length, 2);
 
-      game.state!.unloadScene(second);
+      run.state.unloadScene(second);
       expect(assets.tryGet(key)?.isLoaded, isTrue,
           reason: 'the first load still claims it');
     });
 
-    test('scene is non-null before the future completes', () {
+    test('the world layout exists before the bring-up future completes', () {
       final game = _DiffGame(() => _PropScene([_Prop(_FakeAsset('sync'))]));
-      // Not awaited: the registering half runs before loadScene's first await,
-      // so the world layout exists the instant start() has built the state.
-      final future = game.start(inline: true, autoTick: false);
+      expect(ArchetypeRegistry.count, 0, reason: 'nothing registered yet');
+
+      // Deliberately not awaited. The claim is that `loadScene`'s registering
+      // half runs before its first `await`, so the world *layout* exists the
+      // instant bring-up has been called - only the content is still arriving.
+      // An async function runs synchronously up to its own first await, which
+      // is what makes that observable at all.
+      final starting = Game.startInline(game);
+
+      // Asserted through the archetype registry rather than through the state.
+      // The run is what owns the state now, and the run does not exist until
+      // its future completes - so "before the future completes" and "reachable
+      // through the handle" are mutually exclusive by construction. Registering
+      // an archetype is what the synchronous half *does*, so it is the more
+      // direct evidence anyway.
       expect(
-        game.state!.scene,
-        isNotNull,
-        reason: 'the entity layout exists synchronously; it is the content '
-            'that is still arriving',
+        ArchetypeRegistry.count,
+        greaterThan(0),
+        reason: 'the entity layout is registered synchronously; it is the '
+            'asset content that is still arriving',
       );
+
       addTearDown(() async {
-        await future;
-        if (game.isRunning) await game.stop();
+        final run = await starting;
+        if (run.isRunning) await run.stop();
       });
     });
   });
@@ -867,15 +887,15 @@ class _DiffState extends GameState<_DiffGame> {
 }
 
 Future<T> _boot<T extends Game>(T game) async {
-  await game.start(inline: true, autoTick: false);
+  run = await Game.startInline(game);
   // A booted Game owns its own table, so the fixture's handle points at that
   // one from here on - these tests are asserting about the assets the game
   // actually declared and loaded, not about a table nothing is using.
   assets = game.assets;
   addTearDown(() async {
-    if (game.isRunning) await game.stop();
+    if (run.isRunning) await run.stop();
   });
-  final state = game.state;
+  final state = run.state;
   if (state is _DiffState) await state.loading;
   return game;
 }

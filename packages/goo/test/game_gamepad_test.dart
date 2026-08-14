@@ -9,6 +9,13 @@ import 'package:goo/src/input.dart';
 import 'package:goo/src/input/input_binding.dart';
 import 'package:goo/src/input/input_key.dart';
 import 'package:goo/src/system.dart';
+import 'package:goo/src/handle.dart';
+
+/// The live run under test. A file-level binding: the bring-up helper
+/// returns the `Game` (the description) while tests also need the run, and
+/// one inline run per isolate means one binding is enough.
+late InlineGameHandle run;
+
 
 // GamepadCollector end to end, with no gamepad and no plugin: every test
 // drives `handleEvent` with the same normalized events the plugin's own
@@ -68,7 +75,11 @@ class _PadSystem extends GameSystem with FixedTickable {
   void onFixedUpdate() {}
 }
 
-class _PadGameState extends GameState<_PadGame> {}
+class _PadGameState extends GameState<_PadGame> {  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    descriptor.has(_PadSystem());
+  }
+}
 
 class _PadGame extends Game {
   @override
@@ -80,17 +91,14 @@ class _PadGame extends Game {
   @override
   GameState createState() => _PadGameState();
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    descriptor.has(_PadSystem());
-  }
+
 }
 
 Future<_PadGame> _boot() async {
   final game = _PadGame();
-  await game.start(inline: true, autoTick: false);
+  run = await Game.startInline(game);
   addTearDown(() async {
-    if (game.isRunning) await game.stop();
+    if (run.isRunning) await run.stop();
   });
   return game;
 }
@@ -120,11 +128,11 @@ void main() {
 
     test('slot 0 is any pad', () async {
       final game = await _boot();
-      final system = game.getSystem<_PadSystem>();
+      final system = run.state.getSystem<_PadSystem>();
       final gamepads = game.gamepads!;
 
       gamepads.handleEvent(_event('pad-b', button: pads.GamepadButton.a, value: 1));
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
       expect(system.confirm.value, isTrue,
           reason: 'the single-player case: .padA binds slot 0, and whichever '
               'pad the player picked up drives it with no setup');
@@ -134,13 +142,13 @@ void main() {
 
     test('slot 0 stays held while any pad holds it', () async {
       final game = await _boot();
-      final system = game.getSystem<_PadSystem>();
+      final system = run.state.getSystem<_PadSystem>();
       final gamepads = game.gamepads!;
 
       gamepads.handleEvent(_event('one', button: pads.GamepadButton.a, value: 1));
       gamepads.handleEvent(_event('two', button: pads.GamepadButton.a, value: 1));
       gamepads.handleEvent(_event('one', button: pads.GamepadButton.a, value: 0));
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
 
       expect(system.p1Confirm.value, isFalse);
       expect(system.p2Confirm.value, isTrue);
@@ -149,22 +157,22 @@ void main() {
               'player letting go must not release the button for the other');
 
       gamepads.handleEvent(_event('two', button: pads.GamepadButton.a, value: 0));
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
       expect(system.confirm.value, isFalse,
           reason: 'and it clears once nobody is holding it');
     });
 
     test('releasing a seat clears what it was holding', () async {
       final game = await _boot();
-      final system = game.getSystem<_PadSystem>();
+      final system = run.state.getSystem<_PadSystem>();
       final gamepads = game.gamepads!;
 
       gamepads.handleEvent(_event('yanked', button: pads.GamepadButton.a, value: 1));
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
       expect(system.confirm.value, isTrue);
 
       gamepads.releaseSlot(1);
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
 
       expect(system.p1Confirm.value, isFalse);
       expect(system.confirm.value, isFalse,
@@ -249,14 +257,14 @@ void main() {
 
     test('a press edge lands on exactly one tick, like any key', () async {
       final game = await _boot();
-      final system = game.getSystem<_PadSystem>();
+      final system = run.state.getSystem<_PadSystem>();
 
       game.gamepads!
           .handleEvent(_event('p', button: pads.GamepadButton.a, value: 1));
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
       expect(system.confirm.wasPressedThisFrame, isTrue);
 
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
       expect(system.confirm.wasPressedThisFrame, isFalse);
       expect(system.confirm.value, isTrue,
           reason: 'still held, just no longer an edge - a gamepad button is '
@@ -267,12 +275,12 @@ void main() {
   group('sticks and triggers', () {
     test('a stick past the deadzone drives a Vec2Binding', () async {
       final game = await _boot();
-      final system = game.getSystem<_PadSystem>();
+      final system = run.state.getSystem<_PadSystem>();
       final gamepads = game.gamepads!;
 
       gamepads.handleEvent(
           _event('p', axis: pads.GamepadAxis.leftStickX, value: 1));
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
       expect(system.move.value, Vector2(1, 0),
           reason: 'four thresholded bits are exactly what Vec2Binding '
               'composes, which is the whole reason the sticks are in the '
@@ -280,7 +288,7 @@ void main() {
 
       gamepads.handleEvent(
           _event('p', axis: pads.GamepadAxis.leftStickY, value: 1));
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
       expect(system.move.value, Vector2(1, -1),
           reason: 'the plugin reports +1 as up, and a Vec2Binding puts up at '
               '-y - the same convention a keyboard W gets');
@@ -288,12 +296,12 @@ void main() {
 
     test('inside the deadzone is at rest', () async {
       final game = await _boot();
-      final system = game.getSystem<_PadSystem>();
+      final system = run.state.getSystem<_PadSystem>();
       final gamepads = game.gamepads!;
 
       gamepads.handleEvent(
           _event('p', axis: pads.GamepadAxis.leftStickX, value: 0.4));
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
       expect(system.move.value, Vector2(0, 0),
           reason: 'a stick that has drifted a little is a stick at rest - '
               'without this, a worn controller walks the player into a wall '
@@ -302,12 +310,12 @@ void main() {
 
     test('swinging an axis across releases the direction it left', () async {
       final game = await _boot();
-      final system = game.getSystem<_PadSystem>();
+      final system = run.state.getSystem<_PadSystem>();
       final gamepads = game.gamepads!;
 
       gamepads.handleEvent(
           _event('p', axis: pads.GamepadAxis.leftStickX, value: -1));
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
       expect(system.move.value, Vector2(-1, 0));
 
       // One event, both bits: the plugin reports an axis' new value, not a
@@ -315,19 +323,19 @@ void main() {
       // the stick held left *and* right.
       gamepads.handleEvent(
           _event('p', axis: pads.GamepadAxis.leftStickX, value: 1));
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
       expect(system.move.value, Vector2(1, 0));
       expect(game.inputDevice!.isDown(InputKey.padLeftStickLeft), isFalse);
     });
 
     test('the deadzone is settable', () async {
       final game = await _boot();
-      final system = game.getSystem<_PadSystem>();
+      final system = run.state.getSystem<_PadSystem>();
       game.gamepads!.stickDeadzone = 0.2;
 
       game.gamepads!.handleEvent(
           _event('p', axis: pads.GamepadAxis.leftStickX, value: 0.4));
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
       expect(system.move.value, Vector2(1, 0));
     });
 
@@ -359,13 +367,13 @@ void main() {
       final game = _PadGame();
       expect(game.gamepads, isNull, reason: 'nothing exists before start()');
 
-      await game.start(inline: true, autoTick: false);
+      run = await Game.startInline(game);
       expect(game.gamepads, isNotNull);
       expect(game.gamepads!.isAttached, isFalse,
           reason: 'created, but not listening to the OS - GameView attaches '
               'it when it mounts, so a headless game holds no subscription');
 
-      await game.stop();
+      await run.stop();
       expect(game.gamepads, isNull,
           reason: 'the collector writes through the device, and the device '
               'is gone with the storage it wrote into');

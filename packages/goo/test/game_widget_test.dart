@@ -3,11 +3,19 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:goo/src/scene_handle.dart';
 import 'package:goo/src/archetype.dart';
+import 'package:goo/src/camera_view.dart';
 import 'package:goo/src/game.dart';
 import 'package:goo/src/game_state.dart';
 import 'package:goo/src/scene.dart';
 import 'package:goo/src/system.dart';
 import 'package:goo/src/widget/game_view.dart';
+import 'package:goo/src/handle.dart';
+
+/// The live run under test. A file-level binding: the bring-up helper
+/// returns the `Game` (the description) while tests also need the run, and
+/// one inline run per isolate means one binding is enough.
+late InlineGameHandle run;
+
 
 // The Flutter-facing surface of a Game, which is now one method: buildView.
 //
@@ -21,6 +29,11 @@ class _BareState extends GameState<Game> {
   @override
   void onMounted() {
     loadScene(_BareScene());
+  }
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    descriptor.has(_TickingSystem());
   }
 }
 
@@ -47,12 +60,7 @@ class _ViewGame extends Game {
   GameState createState() => _BareState();
 
   @override
-  void describeSystems(SystemDescriptor descriptor) {
-    descriptor.has(_TickingSystem());
-  }
-
-  @override
-  Widget? buildView(BuildContext context) {
+  Widget? buildView(BuildContext context, GameHandle run, CameraView? camera) {
     seen = context;
     return show ? const Text('game', textDirection: TextDirection.ltr) : null;
   }
@@ -69,9 +77,9 @@ class _SilentGame extends Game {
 }
 
 Future<T> _start<T extends Game>(T game) async {
-  await game.start(inline: true, autoTick: false);
+  run = await Game.startInline(game);
   addTearDown(() async {
-    if (game.isRunning) await game.stop();
+    if (run.isRunning) await run.stop();
   });
   return game;
 }
@@ -85,14 +93,14 @@ void main() {
 
   group('buildView', () {
     testWidgets('what the game returns is what the view shows', (tester) async {
-      final game = await _start(_ViewGame());
-      await tester.pumpWidget(GameView(game: game));
+      await _start(_ViewGame());
+      await tester.pumpWidget(GameView.headless(run: run));
       expect(find.text('game'), findsOneWidget);
     });
 
     testWidgets('a game that draws nothing is not an error', (tester) async {
-      final game = await _start(_SilentGame());
-      await tester.pumpWidget(GameView(game: game));
+      await _start(_SilentGame());
+      await tester.pumpWidget(GameView.headless(run: run));
       expect(tester.takeException(), isNull,
           reason: 'the default buildView returns null, and a game with no '
               'renderer is a real configuration - a HUD-only app, a headless '
@@ -103,11 +111,11 @@ void main() {
     testWidgets('null and a widget are both honoured on rebuild',
         (tester) async {
       final game = await _start(_ViewGame());
-      await tester.pumpWidget(GameView(game: game));
+      await tester.pumpWidget(GameView.headless(run: run));
       expect(find.text('game'), findsOneWidget);
 
       game.show = false;
-      await tester.pumpWidget(GameView(game: game, key: const Key('again')));
+      await tester.pumpWidget(GameView.headless(run: run, key: const Key('again')));
       expect(find.text('game'), findsNothing,
           reason: 'returning null mid-life is how a renderer says "there is '
               'no scene to draw yet" - Game2D does exactly this between '
@@ -117,7 +125,7 @@ void main() {
     testWidgets('the context is the real one from the element tree',
         (tester) async {
       final game = await _start(_ViewGame());
-      await tester.pumpWidget(GameView(game: game));
+      await tester.pumpWidget(GameView.headless(run: run));
       expect(game.seen, isNotNull);
       expect(game.seen!.mounted, isTrue,
           reason: 'a live context, so buildView can read an InheritedWidget - '

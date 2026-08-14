@@ -7,6 +7,7 @@ import 'package:flutter/services.dart'
     show KeyDownEvent, KeyEvent, KeyUpEvent, PhysicalKeyboardKey;
 import 'package:meta/meta.dart';
 
+import 'package:goo/src/camera_view.dart';
 import 'package:goo/src/input/input_key.dart';
 import 'package:goo/src/triple_buffer.dart';
 
@@ -61,7 +62,7 @@ final class InputState {
   /// `Float32List.view` over [_bits]' buffer: two independent plain-Dart
   /// arrays have no aliasing to reason about and nothing that a deep copy
   /// across `Isolate.spawn` could reattach to the wrong storage.
-  final Float32List _floats = Float32List(6);
+  final Float32List _floats = Float32List(7);
 
   /// Whether anything has ever been published - false on a game with no
   /// widget attached, or for the handful of ticks before the first device
@@ -88,7 +89,7 @@ final class InputState {
   static final int _pointerOffset = bitBlockBytes;
 
   /// Bytes in the whole block.
-  static final int byteLength = bitBlockBytes + 24;
+  static final int byteLength = bitBlockBytes + 28;
 
   /// Whether [key] is currently held.
   bool isDown(InputKey key) {
@@ -113,6 +114,22 @@ final class InputState {
   /// (or on a game with no widget at all).
   double get viewWidth => _float(4);
   double get viewHeight => _float(5);
+
+  /// Which `CameraView` the pointer is currently over, as its table address,
+  /// or -1 when it is over none - because no `GameView` is showing one, or
+  /// because the position was driven by [InputDevice.movePointer] without
+  /// naming a view.
+  ///
+  /// Stored **one-based** - 0 means "no view", 1 means view 0 - so that the
+  /// zero-filled block a fresh `calloc` hands back already reads as "over
+  /// nothing" rather than as "over the first declared view". Getting that
+  /// backwards makes a headless game, and every game before its first pointer
+  /// event, silently claim the pointer is over view 0.
+  ///
+  /// A float purely to reuse this block's existing float section: a view
+  /// address is a small integer and is exact in float32 far beyond any
+  /// plausible number of views.
+  int get pointerView => _float(6).toInt() - 1;
 
   /// Copies the newest published snapshot into this state. Called exactly
   /// once per fixed tick - see the class doc on why it copies.
@@ -209,7 +226,7 @@ final class InputDevice {
   /// [InputState.bitBlockBytes], which is rounded up to a whole 64-bit word,
   /// and a `Float32List` needs only 4.
   late final Float32List _mirrorFloats =
-      Float32List.view(_mirror.buffer, InputState.bitBlockBytes, 6);
+      Float32List.view(_mirror.buffer, InputState.bitBlockBytes, 7);
 
   // One cached view per slot, built once. `Pointer.asTypedList` allocates,
   // so doing it per publish would be a heap object per keystroke - the same
@@ -288,7 +305,7 @@ final class InputDevice {
   /// finger is not one. A tap-as-click mapping is a real decision to make
   /// alongside pointer position, and belongs with it.
   @internal
-  void handlePointerEvent(PointerEvent event) {
+  void handlePointerEvent(PointerEvent event, {int viewAddress = -1}) {
     if (event.kind != PointerDeviceKind.mouse) return;
     // A cancel means the gesture was taken away, not that the user let go
     // somewhere we can see - treat every button as released.
@@ -306,6 +323,7 @@ final class InputDevice {
       event.position.dy,
       event.localPosition.dx,
       event.localPosition.dy,
+      viewAddress,
     )) {
       changed = true;
     }
@@ -362,8 +380,15 @@ final class InputDevice {
     required double screenY,
     double? viewX,
     double? viewY,
+    CameraView? view,
   }) {
-    if (_setPointer(screenX, screenY, viewX ?? screenX, viewY ?? screenY)) {
+    if (_setPointer(
+      screenX,
+      screenY,
+      viewX ?? screenX,
+      viewY ?? screenY,
+      view?.address ?? -1,
+    )) {
       _publish();
     }
   }
@@ -377,14 +402,21 @@ final class InputDevice {
     if (_setFloat(4, width) | _setFloat(5, height)) _publish();
   }
 
-  bool _setPointer(double screenX, double screenY, double viewX, double viewY) {
+  bool _setPointer(
+    double screenX,
+    double screenY,
+    double viewX,
+    double viewY,
+    int viewAddress,
+  ) {
     // Bitwise `|`, not `||`: every one of these must run. Short-circuiting
     // would leave later coordinates unwritten as soon as an earlier one
     // happened to be unchanged.
     return _setFloat(0, screenX) |
         _setFloat(1, screenY) |
         _setFloat(2, viewX) |
-        _setFloat(3, viewY);
+        _setFloat(3, viewY) |
+        _setFloat(6, (viewAddress + 1).toDouble());
   }
 
   bool _setFloat(int index, double value) {

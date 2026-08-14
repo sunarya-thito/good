@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:goo/src/command/command.dart';
 import 'package:goo/src/command/param.dart';
 
+
 // The command API's two lower layers - the parameter record and the
 // declaration/dispatch registry - exercised with a loopback sender: no
 // isolates, no ring buffers, no Game. Everything about *what a command is* is

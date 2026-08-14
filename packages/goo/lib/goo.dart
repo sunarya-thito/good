@@ -40,6 +40,7 @@ export 'src/event/state.dart';
 export 'src/event/tick_loop.dart';
 export 'src/game.dart';
 export 'src/game_state.dart';
+export 'src/handle.dart' show GameHandle, InlineGameHandle, RunAttachment;
 export 'src/handoff_buffer.dart';
 export 'src/heap_object.dart';
 // Vector2 is part of the input system's surface (`Input<Vector2>`,
@@ -61,6 +62,7 @@ export 'src/input/input_state.dart';
 export 'src/pool.dart';
 export 'src/ring_buffer.dart';
 export 'src/scene.dart';
+export 'src/camera_view.dart' hide GameCameraDescriptor;
 export 'src/scene_handle.dart';
 export 'src/struct.dart';
 export 'src/system.dart';

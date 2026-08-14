@@ -114,7 +114,17 @@ abstract class EntityStruct extends GameListenerBase
   }
 
   @override
-  R getSystem<R extends GameSystem>() => scene.game.getSystem<R>();
+  R getSystem<R extends GameSystem>() {
+    final state = scene.stateOrNull;
+    if (state == null) {
+      throw StateError(
+        '$runtimeType cannot reach a system: its Game has no GameState. '
+        'Systems live on the game isolate, and a component only ever runs '
+        'there - so this means Game.start() has not run.',
+      );
+    }
+    return state.getSystem<R>();
+  }
 
   /// This struct's layout and row storage. One per `EntityStruct`
   /// subclass, created the single time the struct is registered - see

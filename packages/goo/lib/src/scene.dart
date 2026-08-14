@@ -2,11 +2,13 @@ import 'package:meta/meta.dart';
 
 import 'package:goo/src/archetype.dart';
 import 'package:goo/src/asset.dart';
+import 'package:goo/src/camera_view.dart';
 import 'package:goo/src/data/hierarchy.dart';
 import 'package:goo/src/data_layout.dart';
 import 'package:goo/src/event.dart';
 import 'package:goo/src/event/lifecycle.dart';
 import 'package:goo/src/game.dart';
+import 'package:goo/src/game_state.dart';
 import 'package:goo/src/pool.dart';
 import 'package:goo/src/scene_handle.dart';
 import 'package:goo/src/struct.dart';
@@ -33,10 +35,12 @@ abstract class SceneStruct extends GameListenerBase with EventBus {
 
   @override
   void describeEvents(EventDescriptor descriptor) {
-    mountedEvent =
-        descriptor.has((listener, scene) => listener.onSceneMounted(scene));
-    unmountedEvent =
-        descriptor.has((listener, scene) => listener.onSceneUnmounted(scene));
+    mountedEvent = descriptor.has(
+      (listener, scene) => listener.onSceneMounted(scene),
+    );
+    unmountedEvent = descriptor.has(
+      (listener, scene) => listener.onSceneUnmounted(scene),
+    );
   }
 
   /// Every prefab [describeScene] registered, in declaration order.
@@ -81,6 +85,15 @@ abstract class SceneStruct extends GameListenerBase with EventBus {
   /// meaningful with no game at all.
   GameAssets get assets => _assets ??= GameAssets();
 
+  CameraViewTable? _cameraViews;
+
+  /// The camera-view table this scene's `Camera` components resolve through -
+  /// the `Game`'s, handed over at [initializeScene] exactly as [assets] is,
+  /// and for exactly the same reason: a headless fixture that brings a scene
+  /// up without a `Game` still has to be able to *declare* a camera field,
+  /// even though nothing will ever show it.
+  CameraViewTable get cameraViews => _cameraViews ??= CameraViewTable();
+
   MemoryPool? _pool;
 
   /// The pool this scene's archetypes allocate their pages from - **the
@@ -112,37 +125,50 @@ abstract class SceneStruct extends GameListenerBase with EventBus {
     return pool;
   }
 
-  Game? _game;
+  GameState? _state;
 
-  /// The `Game` this scene was built under, via [GameState.loadScene] - set
-  /// once, during the boot pass, mirroring how `EntityStruct.bindArchetype`
-  /// gets its
-  /// own scene reference at registration time. Lets a prefab's
-  /// `getSystem<T>()` (`Component.getSystem`, struct.dart) reach a system
-  /// through `scene.game.getSystem<T>()` without the prefab needing its own
-  /// direct `Game` reference.
-  Game get game {
-    final g = _game;
-    if (g == null) {
+  /// The simulation this scene was built under, via [GameState.loadScene] or
+  /// `Game.describeScenes` - set once, mirroring how
+  /// `EntityStruct.bindArchetype` gets its own scene reference at registration
+  /// time.
+  ///
+  /// **A `GameState`, not a `Game`** (RULES.md rule 9): a scene only ever
+  /// exists on the copy that simulates, so the object it holds is the one that
+  /// simulates too. It used to hold a `Game` and reach the state through it,
+  /// which is a hop that compiles on the presentation isolate and finds
+  /// nothing there. Lets a prefab's `getSystem<T>()` (`Component.getSystem`,
+  /// struct.dart) reach a system without its own direct reference.
+  GameState get state {
+    final s = _state;
+    if (s == null) {
       throw StateError(
-        '$runtimeType has no Game yet - this scene has not been through '
+        '$runtimeType has no GameState yet - this scene has not been through '
         'GameState.loadScene() yet.',
       );
     }
-    return g;
+    return s;
   }
+
+  /// The game whose declarations this scene reads - buffers, channels, camera
+  /// views, assets. Derived from [state]; there is no separate binding.
+  Game get game => state.game;
 
   /// [game], or `null` when this scene was brought up without one - see
   /// [initializeScene], which is public precisely so a test or headless
   /// harness can. Internal: user code either has a `Game` or is a test that
   /// knows it does not.
   @internal
-  Game? get tryGame => _game;
+  Game? get tryGame => _state?.game;
 
   /// Called once during the boot pass, immediately after
   /// [GameState.loadScene] returns. Not part of the user-facing API.
   @internal
-  void bindGame(Game game) => _game = game;
+  void bindState(GameState state) => _state = state;
+
+  /// [state], or null - for `Component.getSystem`, which wants to report
+  /// "no simulation yet" itself rather than catch a `StateError`.
+  @internal
+  GameState? get stateOrNull => _state;
 
   /// This scene instance has been loaded and is ready to be populated.
   ///
@@ -159,11 +185,37 @@ abstract class SceneStruct extends GameListenerBase with EventBus {
   /// }
   /// ```
   ///
-  /// A plain virtual call rather than a `GameEvent`: a scene's mount only ever
-  /// concerns that scene, so there is nothing to dispatch and nobody else to
-  /// dispatch it to. That is also why this replaced
-  /// `with LifecycleListener` - `onMounted()` with no argument cannot say
-  /// *which* instance came up.
+  /// # Why this is a virtual and not the [mountedEvent] dispatcher
+  ///
+  /// Asked directly ("why have `EventDispatcher` and not use them?"), and the
+  /// answer is that these two are not the same kind of thing. This hook and
+  /// [onUnmounted] **bracket** the dispatch, in opposite orders:
+  ///
+  /// ```text
+  /// mount:    onMounted(scene)          -> mountedEvent.call(scene)
+  /// unmount:  unmountedEvent.call(scene) -> onUnmounted(scene)
+  /// ```
+  ///
+  /// That ordering is a guarantee listeners rely on, and
+  /// `SceneLifecycleListener.onSceneMounted` states it outright: by the time a
+  /// listener hears about a mount, the scene's starting entities already
+  /// exist; by the time it hears about an unmount, nothing has been torn down
+  /// yet, so it can still read the world.
+  ///
+  /// One listener list cannot deliver that. It would have to place the owning
+  /// struct **first** at mount and **last** at unmount, and a list has one
+  /// order. Splitting the dispatch in two to recover it would be this virtual
+  /// again, with a dispatcher wrapped around it.
+  ///
+  /// So the split is phase versus audience, not hook versus event: this is the
+  /// scene's own *bring-up phase*, and [mountedEvent] is who gets told once it
+  /// has happened. A scene that also wants to hear about **other** scenes
+  /// mixes in `SceneLifecycleListener` as well, and then hears its own mount
+  /// through both - which is correct, since it asked for every scene's.
+  ///
+  /// It also replaced `with LifecycleListener`, whose `onMounted()` took no
+  /// argument and so could not say *which* instance came up.
+  // TODO: change to scene lifecycle listener, and remove the virtual. The event is already there.
   void onMounted(Scene scene) {}
 
   /// This scene instance is being unloaded. Its entities and pages are freed
@@ -222,7 +274,11 @@ abstract class SceneStruct extends GameListenerBase with EventBus {
   /// point; this is the framework side of it. `GameState.loadScene` calls
   /// this, but it is public so a test or headless harness can bring a
   /// scene up without a full `Game`.
-  void initializeScene(MemoryPool pool, {GameAssets? assets}) {
+  void initializeScene(
+    MemoryPool pool, {
+    GameAssets? assets,
+    CameraViewTable? cameraViews,
+  }) {
     if (_initialized) {
       throw StateError(
         '$runtimeType is already initialized. Archetype registration is a '
@@ -233,6 +289,7 @@ abstract class SceneStruct extends GameListenerBase with EventBus {
     _initialized = true;
     _pool = pool;
     if (assets != null) _assets = assets;
+    if (cameraViews != null) _cameraViews = cameraViews;
     final descriptor = _AssetDescriptor(this);
     describeAssets(descriptor);
     describeScene(_SceneDescriptor(this, descriptor));
@@ -242,7 +299,7 @@ abstract class SceneStruct extends GameListenerBase with EventBus {
     // `describeScenes` runs *before* `describeSystems` - it has to, because
     // `describeQuery` resolves against registered archetypes. `Game`
     // calls [bindEvents] once every declaration exists.
-    if (_game == null) bindEvents();
+    if (_state == null) bindEvents();
   }
 
   bool _eventsBound = false;
@@ -396,11 +453,7 @@ final class _SceneDescriptor implements SceneDescriptor {
 
   @override
   T has<T extends EntityStruct>(T object) {
-    final storage = ArchetypeRegistry.register(
-      _scene.pool,
-      _scene.assets,
-      object,
-    );
+    final storage = ArchetypeRegistry.register(_scene.pool, object);
     object.bindArchetype(_scene, storage);
     object.describeType(ArchetypeComponentDescriptor(storage));
     // Before describeStruct, not after: `has` returns an already-addressed

@@ -3,6 +3,12 @@ import 'dart:math' as math;
 import 'package:goo2d/goo2d.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+/// The live run under test. A file-level binding: the bring-up helper
+/// returns the `Game` (the description) while tests also need the run, and
+/// one inline run per isolate means one binding is enough.
+late InlineGameHandle run;
+
+
 // A sentinel written directly into a world field between ticks: if
 // WorldTransformSystem actually recomputes an entity, it overwrites the
 // sentinel with the real value, so the sentinel surviving a tick is proof
@@ -39,6 +45,11 @@ class _GameState extends GameState<_Game> {
   void onMounted() {
     loadScene(_Scene());
   }
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    descriptor.has(WorldTransformSystem());
+  }
 }
 
 class _Game extends Game {
@@ -50,18 +61,13 @@ class _Game extends Game {
 
   @override
   GameState createState() => _GameState();
-
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    descriptor.has(WorldTransformSystem());
-  }
 }
 
 Future<_Game> _game() async {
   final game = _Game();
-  await game.start(inline: true, autoTick: false);
+  run = await Game.startInline(game);
   addTearDown(() async {
-    if (game.isRunning) await game.stop();
+    if (run.isRunning) await run.stop();
   });
   return game;
 }
@@ -77,8 +83,8 @@ void main() {
 
   group('hierarchy composition matches hand-computed numbers', () {
     test('a 2-level hierarchy: offset + 2x scale composes exactly like the renderer\'s own math', () async {
-      final game = await _game();
-      final scene = game.state!.getScene<_Scene>();
+      await _game();
+      final scene = run.state.getScene<_Scene>();
 
       final parent = scene.addEntity(scene.node);
       scene.node
@@ -90,7 +96,7 @@ void main() {
       final child = scene.addEntity(scene.node, parent: parent);
       scene.node.transformOffsetX[child] = 10; // no own scale/rotation
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
 
       // Child at parent-local (10, 0) under a 2x scale, no rotation:
       // world = parent.world + (10 * 2, 0 * 2) = (120, 100).
@@ -107,8 +113,8 @@ void main() {
     });
 
     test('a 3-level hierarchy with rotation composes correctly, root to leaf', () async {
-      final game = await _game();
-      final scene = game.state!.getScene<_Scene>();
+      await _game();
+      final scene = run.state.getScene<_Scene>();
 
       final root = scene.addEntity(scene.node);
       scene.node
@@ -122,7 +128,7 @@ void main() {
       final leaf = scene.addEntity(scene.node, parent: middle);
       scene.node.transformOffsetY[leaf] = 5; // local +y
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
 
       // middle: root's world (50,0) rotated 90deg, local offset (10,0)
       // rotates to (0,10) -> world (50, 10).
@@ -137,13 +143,13 @@ void main() {
     });
 
     test('a non-rendering system can read the resolved world transform too', () async {
-      final game = await _game();
-      final scene = game.state!.getScene<_Scene>();
+      await _game();
+      final scene = run.state.getScene<_Scene>();
       final entity = scene.addEntity(scene.node);
       scene.node
         ..transformOffsetX[entity] = 7
         ..transformOffsetY[entity] = 9;
-      game.state!.advance(_step);
+      run.state.advance(_step);
 
       // No GameRenderer2D involved anywhere in this test - WorldTransform2D
       // is genuinely readable by any system, not just the renderer.
@@ -154,17 +160,17 @@ void main() {
 
   group('change-detection caching', () {
     test("an unchanged subtree's cached world fields are untouched after a tick where nothing moved", () async {
-      final game = await _game();
-      final scene = game.state!.getScene<_Scene>();
+      await _game();
+      final scene = run.state.getScene<_Scene>();
       final entity = scene.addEntity(scene.node);
       scene.node.transformOffsetX[entity] = 42;
-      game.state!.advance(_step); // first tick: real compute, worldX becomes 42
+      run.state.advance(_step); // first tick: real compute, worldX becomes 42
 
       expect(scene.node.worldX[entity], 42);
-      game.state!.pool.beginTick();
+      run.state.pool.beginTick();
       scene.node.worldX[entity] = _sentinel; // poke directly - see file doc
-      game.state!.pool.commitTick();
-      game.state!.advance(_step); // nothing changed local-side
+      run.state.pool.commitTick();
+      run.state.advance(_step); // nothing changed local-side
 
       expect(scene.node.worldX[entity], _sentinel,
           reason: 'the system must have skipped this entity entirely - a '
@@ -173,21 +179,21 @@ void main() {
     });
 
     test('moving a leaf does not touch its unrelated sibling\'s cache', () async {
-      final game = await _game();
-      final scene = game.state!.getScene<_Scene>();
+      await _game();
+      final scene = run.state.getScene<_Scene>();
       final parent = scene.addEntity(scene.node);
       final a = scene.addEntity(scene.node, parent: parent);
       final b = scene.addEntity(scene.node, parent: parent);
       scene.node
         ..transformOffsetX[a] = 1
         ..transformOffsetX[b] = 2;
-      game.state!.advance(_step);
+      run.state.advance(_step);
 
-      game.state!.pool.beginTick();
+      run.state.pool.beginTick();
       scene.node.worldX[b] = _sentinel;
       scene.node.transformOffsetX[a] = 100; // only a changes
-      game.state!.pool.commitTick();
-      game.state!.advance(_step);
+      run.state.pool.commitTick();
+      run.state.advance(_step);
 
       expect(scene.node.worldX[a], 100, reason: 'a really did move');
       expect(scene.node.worldX[b], _sentinel,
@@ -195,19 +201,19 @@ void main() {
     });
 
     test('moving a parent invalidates every descendant even though their own local fields did not change', () async {
-      final game = await _game();
-      final scene = game.state!.getScene<_Scene>();
+      await _game();
+      final scene = run.state.getScene<_Scene>();
       final parent = scene.addEntity(scene.node);
       final child = scene.addEntity(scene.node, parent: parent);
       scene.node.transformOffsetX[child] = 5;
-      game.state!.advance(_step);
+      run.state.advance(_step);
       expect(scene.node.worldX[child], 5);
 
-      game.state!.pool.beginTick();
+      run.state.pool.beginTick();
       scene.node.worldX[child] = _sentinel;
       scene.node.transformOffsetX[parent] = 100; // only the parent moves
-      game.state!.pool.commitTick();
-      game.state!.advance(_step);
+      run.state.pool.commitTick();
+      run.state.advance(_step);
 
       expect(scene.node.worldX[child], 105,
           reason: 'the child never touched its own local offset, but its '
@@ -216,8 +222,8 @@ void main() {
     });
 
     test('reparenting is detected as a change even when the local offset is untouched', () async {
-      final game = await _game();
-      final scene = game.state!.getScene<_Scene>();
+      await _game();
+      final scene = run.state.getScene<_Scene>();
       final parentA = scene.addEntity(scene.node);
       final parentB = scene.addEntity(scene.node);
       scene.node
@@ -226,15 +232,15 @@ void main() {
       final child = scene.addEntity(scene.node, parent: parentA);
       // Deliberately zero local offset - if reparenting were only detected
       // via a local-field diff, this case would slip through.
-      game.state!.advance(_step);
+      run.state.advance(_step);
       expect(scene.node.worldX[child], 0);
 
-      game.state!.pool.beginTick();
+      run.state.pool.beginTick();
       scene.node.worldX[child] = _sentinel;
       parentA.get<Parent>().removeChild(parentA, child);
       parentB.get<Parent>().addChild(parentB, child);
-      game.state!.pool.commitTick();
-      game.state!.advance(_step);
+      run.state.pool.commitTick();
+      run.state.advance(_step);
 
       expect(scene.node.worldX[child], 1000,
           reason: 'reparenting alone (no local offset change) must still '

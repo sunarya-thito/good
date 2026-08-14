@@ -5,15 +5,16 @@ import 'package:meta/meta.dart';
 /// address so a component row - which is native memory and cannot hold a
 /// Dart heap pointer (RULES.md rule 1) - can refer to it as a `Uint32`.
 ///
-/// The sibling of `GlobalObjectRegistry` (asset.dart), and deliberately
+/// The sibling of an `ObjectTable` such as `GameAssets` (asset.dart), and
+/// deliberately
 /// *not* the same table, for two reasons:
 ///
 ///  * **No `GlobalObject` requirement.** Entries here are ordinary objects -
 ///    a closure, a `List`, an instance of a class you don't own - that carry
-///    no address of their own. `GlobalObjectRegistry` exists to hand out the
+///    no address of their own. An `ObjectTable` exists to hand out the
 ///    describe-time address a `GlobalObject` then remembers; nothing here
 ///    remembers anything, the address lives only in the row.
-///  * **Real slot reuse.** `GlobalObjectRegistry` only ever appends and
+///  * **Real slot reuse.** `GameAssets` only ever appends and
 ///    nulls out, never reclaims an index - fine for assets, which are few
 ///    and long-lived. Heap-object fields are written dynamically at runtime,
 ///    so an append-only table would grow without bound. This one keeps an
@@ -50,24 +51,9 @@ abstract final class HeapObjectRegistry {
   /// reuses one slot forever instead of growing the table.
   static final List<int> _freeAddresses = <int>[];
 
-  /// The table and its free list, for `Game` to carry across the spawn - see
-  /// `ComponentTypeRegistry.snapshot`. Closures are sendable; verified in
-  /// `tool/spawn_registry_spike.dart`.
-  @internal
-  static List<Object?> snapshot() => List<Object?>.of(_byAddress);
-
-  @internal
-  static List<int> snapshotFree() => List<int>.of(_freeAddresses);
-
-  @internal
-  static void restore(List<Object?> byAddress, List<int> free) {
-    _byAddress
-      ..clear()
-      ..addAll(byAddress);
-    _freeAddresses
-      ..clear()
-      ..addAll(free);
-  }
+  // No `snapshot`/`restore` here any more - see the note in
+  // `ComponentTypeRegistry`. A heap object is registered by a row write, rows
+  // are written only on the game isolate, and only that copy reads one back.
 
   /// Number of slots ever allocated, free ones included. Diagnostics and
   /// tests (a growing count across register/unregister cycles is the exact
@@ -111,7 +97,7 @@ abstract final class HeapObjectRegistry {
 
   /// [tryResolve], but throws instead of returning `null` - what a
   /// non-nullable `hasHeapObject` read uses, matching
-  /// `GlobalObjectRegistry.resolve`: a row holding a stale or
+  /// `GameAssets.resolve`: a row holding a stale or
   /// never-registered address is a real bug worth failing loudly on.
   ///
   /// Written as an explicit `is!` test rather than `tryResolve(...) == null`
@@ -137,7 +123,7 @@ abstract final class HeapObjectRegistry {
     return object;
   }
 
-  /// Test-only escape hatch, matching `GlobalObjectRegistry.reset` /
+  /// Test-only escape hatch, matching `GameAssets`'s own reset /
   /// `ArchetypeRegistry.reset`: this registry is process-global, so a test
   /// suite registering many throwaway objects needs a way to start over.
   @visibleForTesting

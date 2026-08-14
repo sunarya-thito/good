@@ -7,6 +7,12 @@ import 'dart:ui' as ui;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
+/// The live run under test. A file-level binding: the bring-up helper
+/// returns the `Game` (the description) while tests also need the run, and
+/// one inline run per isolate means one binding is enough.
+late InlineGameHandle run;
+
+
 // GameRenderer2D, the game-isolate producer: does Renderable2D actually
 // register itself (the bug Child/Parent had), does the query include child
 // entities (the bug the Without<Child>() stub had), and is the hierarchy
@@ -344,14 +350,22 @@ class _SpriteScene extends SceneStruct {
   }
 }
 
-class _RenderState extends GameState<_RenderGame> {
+class _RenderState extends GameState2D<_RenderGame> {
   @override
   void onMounted() {
     loadScene(_SpriteScene());
   }
 }
 
-class _RenderGame extends Game {
+/// `Game2D` + `GameState2D` rather than a hand-declared `GameRenderer2D`, and
+/// that is now the only way round. The two halves sit on two isolates: the
+/// `Game` declares and allocates the frame buffers and the default camera, the
+/// state declares the systems that fill them. `createState` is narrowed to
+/// `GameState2D`, so they cannot come apart.
+class _RenderGame extends Game2D {
+  /// The view under test - this fixture's spelling of `defaultCamera`.
+  CameraView get view => defaultCamera;
+
   @override
   int get pageSize => 4096;
 
@@ -359,13 +373,7 @@ class _RenderGame extends Game {
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
   @override
-  GameState createState() => _RenderState();
-
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    descriptor.has(WorldTransformSystem());
-    descriptor.has(GameRenderer2D());
-  }
+  GameState2D<_RenderGame> createState() => _RenderState();
 }
 
 const Duration _step = Duration(milliseconds: 10);
@@ -396,8 +404,21 @@ class _Frame {
   final List<_Quad> quads;
 }
 
-List<_Frame> _drainFrames(Game game) {
-  final buffer = game.getSystem<GameRenderer2D>().drawFrames.buffer;
+/// Adds a camera entity **and points it at the game's view**. A camera that
+/// occupies no view is nobody's camera now - which is exactly what lets two
+/// views look at different things.
+Entity _eye(_RenderGame game, _SpriteScene scene, {Entity? parent}) {
+  final eye = scene.addEntity(scene.eye, parent: parent);
+  // No tick management at all: this runs immediately after the row is
+  // created, so its page has never published and the write is allowed - the
+  // same path every other field default here takes. Opening a tick would
+  // publish the page and make the caller's *next* write assert.
+  scene.eye.view[eye] = game.view;
+  return eye;
+}
+
+List<_Frame> _drainFrames(_RenderGame game) {
+  final buffer = run.state.getSystem<GameRenderer2D>().framesFor(game.view).buffer;
   final frames = <_Frame>[];
   // At most one: a handoff buffer holds the newest complete frame, not a
   // backlog. Where this used to loop over a ring drain and could see several,
@@ -440,9 +461,9 @@ List<_Frame> _drainFrames(Game game) {
 
 Future<_RenderGame> _game() async {
   final game = _RenderGame();
-  await game.start(inline: true, autoTick: false);
+  run = await Game.startInline(game);
   addTearDown(() async {
-    if (game.isRunning) await game.stop();
+    if (run.isRunning) await run.stop();
   });
   return game;
 }
@@ -490,8 +511,8 @@ void main() {
 
   group('Renderable2D registration', () {
     test('sets its own signature bit, so withAll(Renderable2D) discriminates', () async {
-      final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      await _game();
+      final scene = run.state.getScene<_SpriteScene>();
       final matcher =
           ArchetypeQueryDescriptor().query().withAll(Renderable2D).build();
       // The regression this exists for: without describeType calling
@@ -504,8 +525,8 @@ void main() {
     });
 
     test('declares sane defaults: visible, unsized, opaque white, centred', () async {
-      final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      await _game();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       final quad = scene.sprite.quad;
       expect(quad.visible[entity], 1);
@@ -538,8 +559,8 @@ void main() {
     });
 
     test('several has() calls give several sprites, in declaration order', () async {
-      final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      await _game();
+      final scene = run.state.getScene<_SpriteScene>();
       expect(scene.twoSprite.sprites, hasLength(2),
           reason: 'sprites is the generic list GameRenderer2D walks - a '
               'consumer that does not know this prefab field names has to be '
@@ -552,8 +573,8 @@ void main() {
     });
 
     test('Transform2D defaults to unit scale, not the field default of zero', () async {
-      final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      await _game();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       // A zero default would collapse every quad to a point - the renderer
       // would produce records that draw nothing at all.
@@ -563,28 +584,30 @@ void main() {
   });
 
   group('record production', () {
-    test('one batch record per presented frame, stamped with the tick it depicts', () async {
+    test('one batch per presented frame, stamped with the tick it depicts',
+        () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       _size(scene.sprite, scene.addEntity(scene.sprite), 10, 10);
 
-      // Three frames, one step each.
-      game.state!.advance(_step);
-      game.state!.advance(_step);
-      game.state!.advance(_step);
+      // One frame, read straight away - the stamp names the tick it depicts.
+      run.state.advance(_step);
+      expect([for (final f in _drainFrames(game)) f.tick], [1]);
+
+      run.state.advance(_step);
       final frames = _drainFrames(game);
-      expect(frames.length, 3, reason: 'one record per frame, not one per sprite');
-      expect([for (final f in frames) f.tick], [1, 2, 3]);
-      expect([for (final f in frames) f.quads.length], [1, 1, 1]);
+      expect(frames.single.tick, 2);
+      expect(frames.single.quads.length, 1,
+          reason: 'one batch per frame, not one per sprite');
     });
 
     test('a frame that ran several catch-up steps still produces one record', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       _size(scene.sprite, scene.addEntity(scene.sprite), 10, 10);
 
       // One frame worth three whole fixed steps - a stall being caught up.
-      expect(game.state!.advance(_step * 3), 3);
+      expect(run.state.advance(_step * 3), 3);
       final frames = _drainFrames(game);
       expect(frames.length, 1,
           reason: 'the renderer is a Tickable now: it presents once per frame '
@@ -596,7 +619,7 @@ void main() {
 
     test('one quad per visible, sized entity - colour carried through', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       _size(scene.sprite, scene.addEntity(scene.sprite), 10, 10, 0xFF203040);
       _size(scene.sprite, scene.addEntity(scene.sprite), 4, 4, 0x80FF0000);
       scene.addEntity(scene.sprite); // unsized - skipped
@@ -605,7 +628,7 @@ void main() {
       scene.sprite.quad.visible[hidden] = 0;
       scene.addEntity(scene.invisible); // no Renderable2D at all
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final frame = _drainFrames(game).single;
       expect(frame.quads.length, 2);
       expect([for (final q in frame.quads) q.color], [0xFF203040, 0x80FF0000]);
@@ -613,7 +636,7 @@ void main() {
 
     test('a tick with nothing to draw still publishes an empty frame', () async {
       final game = await _game();
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final frame = _drainFrames(game).single;
       expect(frame.tick, 1);
       expect(frame.quads, isEmpty,
@@ -621,40 +644,34 @@ void main() {
               'keep replaying the last non-empty frame forever');
     });
 
-    test('only the front scene is drawn - a background scene keeps ticking',
-        () async {
-      final game = await _game();
-      final state = game.state!;
-      final front = state.getScene<_SpriteScene>();
-      final frontHandle = state.sceneHandle!;
-      _size(front.sprite, frontHandle.addEntity(front.sprite), 10, 10);
+    test('every loaded scene is drawn, not just the first', () async {
+      await _game();
+      final state = run.state;
+      final first = state.getScene<_SpriteScene>();
+      _size(first.sprite, state.sceneHandle!.addEntity(first.sprite), 10, 10);
 
-      // A second resident scene, loaded but not switched to. Every loaded
-      // scene ticks - that is the decided semantics - so this one is
-      // simulating; it just must not be painted over the one on screen.
-      final background = await state.loadScene(_SpriteScene());
-      final backStruct = background.get<_SpriteScene>();
-      _size(backStruct.sprite, background.addEntity(backStruct.sprite), 10, 10);
+      final second = await state.loadScene(_SpriteScene());
+      final secondStruct = second.get<_SpriteScene>();
+      _size(secondStruct.sprite, second.addEntity(secondStruct.sprite), 10, 10);
 
       state.advance(_step);
-      final renderer = game.getSystem<GameRenderer2D>();
-      expect(renderer.lastSpriteCount, 1,
-          reason: 'switchScene is informational, and this is the framework '
-              'honouring it: a preloaded level simulates in the background '
-              'without being drawn on top of the active one');
-
-      state.switchScene(background);
-      state.advance(_step);
-      expect(renderer.lastSpriteCount, 1,
-          reason: 'and switching swaps which one is painted, not how many');
+      final renderer = run.state.getSystem<GameRenderer2D>();
+      // This asserted the opposite until `switchScene` was deleted: the
+      // renderer used to filter on the front scene's slot, so the second
+      // scene simulated invisibly. "Which scene do I draw" is a question a
+      // *view* answers now - and a view answers it through its camera, so
+      // there is no single answer for the renderer to apply globally.
+      expect(renderer.lastSpriteCount, 2,
+          reason: 'both resident scenes render; a game that wants one unseen '
+              'unloads it or keeps its sprites invisible');
     });
 
     test('the renderer reports what it wrote', () async {
-      final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      await _game();
+      final scene = run.state.getScene<_SpriteScene>();
       _size(scene.sprite, scene.addEntity(scene.sprite), 10, 10);
-      game.state!.advance(_step);
-      final renderer = game.getSystem<GameRenderer2D>();
+      run.state.advance(_step);
+      final renderer = run.state.getSystem<GameRenderer2D>();
       expect(renderer.lastSpriteCount, 1);
       expect(renderer.lastWriteDropped, isFalse);
     });
@@ -663,12 +680,12 @@ void main() {
   group('world-space quad geometry', () {
     test('an unparented entity: centred on its own offset', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       _place(scene.sprite, entity, x: 100, y: 50);
       _size(scene.sprite, entity, 40, 20);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quad = _drainFrames(game).single.quads.single;
       // 40x20 centred on (100,50), wound top-left -> top-right -> bottom-right
       // -> bottom-left.
@@ -678,13 +695,13 @@ void main() {
 
     test('scale and rotation are baked into the corners, not left to Canvas', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       _place(scene.sprite, entity, x: 10, y: 10, scaleX: 2, scaleY: 3,
           rotation: math.pi / 2);
       _size(scene.sprite, entity, 4, 2);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quad = _drainFrames(game).single.quads.single;
       // half extent (2,1); scale then rotate by +90 degrees maps
       // (lx,ly) -> (-3*ly, 2*lx), then translate by (10,10).
@@ -697,7 +714,7 @@ void main() {
 
     test('a child is drawn - the query must not forbid Child', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final parent = scene.addEntity(scene.sprite);
       _place(scene.sprite, parent, x: 100, y: 100);
       _size(scene.sprite, parent, 10, 10);
@@ -705,7 +722,7 @@ void main() {
       _place(scene.sprite, child, x: 20, y: 0);
       _size(scene.sprite, child, 2, 2, 0xFFAABBCC);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
       // The regression: `With<Renderable2D>() & Without<Child>()` produced
       // one quad here, silently dropping every hierarchy-attached entity.
@@ -717,13 +734,13 @@ void main() {
 
     test('an unparented entity that merely *has* Child uses its own transform', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       _place(scene.sprite, entity, x: 7, y: 9);
       _size(scene.sprite, entity, 2, 2);
       expect(scene.sprite.parent[entity], isNull);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quad = _drainFrames(game).single.quads.single;
       expect(quad.x, [6, 8, 8, 6]);
       expect(quad.y, [8, 8, 10, 10]);
@@ -731,7 +748,7 @@ void main() {
 
     test('a three-level chain composes translate/scale in the right order', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
 
       final grandparent = scene.addEntity(scene.sprite);
       _place(scene.sprite, grandparent, x: 100, y: 200, scaleX: 2, scaleY: 3);
@@ -743,7 +760,7 @@ void main() {
       _place(scene.sprite, child, x: 5, y: 5);
       _size(scene.sprite, child, 4, 6, 0xFF010203);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quad = _drainFrames(game).single.quads
           .firstWhere((q) => q.color == 0xFF010203);
 
@@ -760,14 +777,14 @@ void main() {
 
     test('a rotated parent rotates its child about the parent origin', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final parent = scene.addEntity(scene.sprite);
       _place(scene.sprite, parent, x: 100, y: 100, rotation: math.pi / 2);
       final child = scene.addEntity(scene.sprite, parent: parent);
       _place(scene.sprite, child, x: 10, y: 0);
       _size(scene.sprite, child, 2, 2, 0xFF445566);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quad = _drainFrames(game).single.quads
           .firstWhere((q) => q.color == 0xFF445566);
       // The child sits 10 along the parent's local +x, which +90 degrees has
@@ -780,13 +797,13 @@ void main() {
 
     test('a parent left at its default transform contributes identity', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final parent = scene.addEntity(scene.sprite);
       final child = scene.addEntity(scene.sprite, parent: parent);
       _place(scene.sprite, child, x: 3, y: 4);
       _size(scene.sprite, child, 2, 2);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
       expect(quads.length, 1, reason: 'the parent is unsized');
       expect(quads.single.x, [2, 4, 4, 2]);
@@ -795,7 +812,7 @@ void main() {
 
     test('an ancestor with no Transform2D at all is skipped, not fatal', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       // A bare grouping node: Child/Parent links, no transform of its own.
       // The walk has to step over it rather than abort, or its subtree stops
       // inheriting from everything above it.
@@ -806,7 +823,7 @@ void main() {
       _place(scene.sprite, child, x: 3, y: 4);
       _size(scene.sprite, child, 2, 2, 0xFF778899);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quad = _drainFrames(game).single.quads
           .firstWhere((q) => q.color == 0xFF778899);
       expect(quad.x, [52, 54, 54, 52]);
@@ -817,35 +834,43 @@ void main() {
   group('buffer wiring', () {
     test('declaring the system is all it takes to get the buffer', () async {
       final game = await _game();
-      expect(game.bufferCount, 1,
+      expect(game.bufferCount, 0,
+          reason: 'the renderer declares a handoff buffer, not a ring - frames '
+              'are a value where only the newest matters, not a stream where '
+              'every record does');
+      final renderer = run.state.getSystem<GameRenderer2D>();
+      expect(renderer.framesFor(game.view).index, 0,
           reason: 'declaring the system is the whole of the wiring - the '
               'buffer is its own declaration, not something the user repeats');
-      final renderer = game.getSystem<GameRenderer2D>();
-      expect(renderer.drawFrames.index, 0);
-      expect(renderer.drawFrames.slotBytes, renderer.spriteBatchBytes);
+      expect(renderer.framesFor(game.view).slotBytes, renderer.spriteBatchBytes);
     });
 
-    test('the ring holds several frames, and a drain resumes where it stopped', () async {
+    test('an unread frame is replaced, not queued behind', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       _size(scene.sprite, scene.addEntity(scene.sprite), 10, 10);
 
-      game.state!.advance(_step);
-      game.state!.advance(_step);
-      expect([for (final f in _drainFrames(game)) f.tick], [1, 2]);
-      game.state!.advance(_step);
-      game.state!.advance(_step);
-      expect([for (final f in _drainFrames(game)) f.tick], [3, 4]);
+      run.state.advance(_step);
+      run.state.advance(_step);
+      expect([for (final f in _drainFrames(game)) f.tick], [2],
+          reason: 'two frames produced, and the reader gets the second - the '
+              'first was replaced rather than kept. A ring queued both and '
+              'handed over the older one first, which is the wrong end: an '
+              'old frame is the one thing a renderer never wants');
+
+      run.state.advance(_step);
+      run.state.advance(_step);
+      expect([for (final f in _drainFrames(game)) f.tick], [4]);
     });
   });
 
   group('several sprites per entity', () {
     test('two declared sprites produce two independent records', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       scene.addEntity(scene.twoSprite);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
       expect(quads.length, 2,
           reason: 'the unit of drawing is the sprite, not the entity - one '
@@ -870,8 +895,8 @@ void main() {
     });
 
     test('has() named parameters are the archetype row defaults - no onMounted', () async {
-      final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      await _game();
+      final scene = run.state.getScene<_SpriteScene>();
       // _TwoSprite declares no onMounted at all. Every value below therefore
       // came from the storage layer stamping the declared default into a fresh
       // row, which is the property that lets a prefab be pure declaration.
@@ -898,8 +923,8 @@ void main() {
     });
 
     test('a runtime setter writes all four fields of a group at once', () async {
-      final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      await _game();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.twoSprite);
       // The reason these exist: changing a pivot at runtime should not mean
       // remembering to poke four fields, and there is deliberately no matching
@@ -925,10 +950,10 @@ void main() {
   group('visibility', () {
     test('visible: false produces no record at all, not a transparent one', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       scene.addEntity(scene.halfHidden);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
       expect(quads.length, 1,
           reason: 'the hidden sprite must be dropped before it becomes a '
@@ -940,21 +965,21 @@ void main() {
 
     test('toggling visible off at runtime removes the record next frame', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.halfHidden);
-      game.state!.advance(_step);
+      run.state.advance(_step);
       expect(_drainFrames(game).single.quads.length, 1);
 
       // Between ticks, so the write lands in an open tick rather than in a
       // slot the next beginTick would copy over - see data_layout.dart's
       // assertion. Every other write in this file happens before the first
       // tick, where that is not yet a concern.
-      final pool = game.state!.scene!.pool;
+      final pool = run.state.scene!.pool;
       pool.beginTick();
       scene.halfHidden.shown.visible[entity] = 0;
       pool.commitTick();
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       expect(_drainFrames(game).single.quads, isEmpty,
           reason: 'visibility is per-sprite row state read every tick, so '
               'hiding the last visible sprite empties the frame');
@@ -964,14 +989,14 @@ void main() {
   group('z-ordering', () {
     test('higher zIndex draws later, whatever order the query yields', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       // Created (and therefore encountered) in the *opposite* order to the one
       // they must be drawn in, so a pass that ignored zIndex would fail here.
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFF000005, 5);
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFF000000, 0);
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFF000002, 2);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
       expect([for (final q in quads) q.color],
           [0xFF000000, 0xFF000002, 0xFF000005],
@@ -982,14 +1007,14 @@ void main() {
 
     test('equal zIndex keeps encounter order - the sort is stable', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFAA0001);
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFAA0002);
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFAA0003);
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFAA0004);
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFAA0005);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
       expect([for (final q in quads) q.color],
           [0xFFAA0001, 0xFFAA0002, 0xFFAA0003, 0xFFAA0004, 0xFFAA0005],
@@ -1001,11 +1026,11 @@ void main() {
 
     test('ordering holds within one entity sprite list too', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       // _Stack declares its z:3 sprite *first* and its z:1 sprite second.
       scene.addEntity(scene.stack);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
       expect([for (final q in quads) q.color], [_Stack.lowColor, _Stack.highColor],
           reason: 'sorting is over (entity, sprite) pairs, not over entities - '
@@ -1015,14 +1040,14 @@ void main() {
 
     test('ordering interleaves sprites of different entities', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       // Encounter order is archetype registration order, and _Sprite is
       // registered before _Stack - so this entity is seen first and has to be
       // sorted *between* the two sprites of the entity seen second.
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFF00FF00, 2);
       scene.addEntity(scene.stack);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
       expect([for (final q in quads) q.color],
           [_Stack.lowColor, 0xFF00FF00, _Stack.highColor],
@@ -1033,11 +1058,11 @@ void main() {
 
     test('negative zIndex sorts behind the default of zero', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFF000000);
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFBBBBBB, -4);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
       expect([for (final q in quads) q.color], [0xFFBBBBBB, 0xFF000000],
           reason: 'zIndex is a signed field, so "put this behind everything '
@@ -1049,12 +1074,12 @@ void main() {
   group('pivot', () {
     test('the default centred pivot puts the transform origin in the middle', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       _place(scene.sprite, entity, x: 100, y: 50);
       _size(scene.sprite, entity, 40, 20);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quad = _drainFrames(game).single.quads.single;
       // pivot = 0.5 * (40,20) + (0,0) = (20,10), so the local extent runs
       // -20..20 by -10..10 - identical to the pre-pivot geometry.
@@ -1064,13 +1089,13 @@ void main() {
 
     test('fraction 0,0 anchors the top-left corner on the transform origin', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.topLeft);
       scene.topLeft
         ..transformOffsetX[entity] = 100
         ..transformOffsetY[entity] = 50;
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quad = _drainFrames(game).single.quads.single;
       // pivot = 0 * (40,20) + (0,0) = (0,0), so the local extent runs 0..40 by
       // 0..20: the same 40x20 sprite at the same position as the test above,
@@ -1084,14 +1109,14 @@ void main() {
 
     test('the pivot is what rotation turns about', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.topLeft);
       scene.topLeft
         ..transformOffsetX[entity] = 0
         ..transformOffsetY[entity] = 0
         ..transformRotation[entity] = math.pi / 2;
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quad = _drainFrames(game).single.quads.single;
       // Local corners (0,0),(40,0),(40,20),(0,20) rotated +90 degrees:
       // (x,y) -> (-y, x). The corner sitting *on* the pivot stays put, which
@@ -1107,7 +1132,7 @@ void main() {
   group('camera', () {
     test('no camera reproduces the pre-camera output exactly', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       _place(scene.sprite, entity, x: 100, y: 50);
       _size(scene.sprite, entity, 40, 20);
@@ -1117,7 +1142,7 @@ void main() {
       // centring term is zero too - see 'view centring' below for what a
       // real window does with the same scene.
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quad = _drainFrames(game).single.quads.single;
       expect(quad.x, [80, 120, 120, 80],
           reason: 'subtracting a (0,0) origin and multiplying by a zoom of 1 '
@@ -1128,19 +1153,19 @@ void main() {
 
     test('a moved camera shifts every quad by the same offset', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final near = scene.addEntity(scene.sprite);
       _place(scene.sprite, near, x: 100, y: 50);
       _size(scene.sprite, near, 40, 20, 0xFF000001);
       final far = scene.addEntity(scene.sprite);
       _size(scene.sprite, far, 2, 2, 0xFF000002);
 
-      final camera = scene.addEntity(scene.eye);
+      final camera = _eye(game, scene);
       scene.eye
         ..transformOffsetX[camera] = 30
         ..transformOffsetY[camera] = 40;
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
       expect(quads.length, 2, reason: 'the camera itself draws nothing');
       // Both quads move by exactly -(30,40): the camera position is where
@@ -1156,15 +1181,15 @@ void main() {
 
     test('zoom scales position and extent together about the view origin', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       _place(scene.sprite, entity, x: 100, y: 50);
       _size(scene.sprite, entity, 40, 20);
 
-      final camera = scene.addEntity(scene.eye);
+      final camera = _eye(game, scene);
       scene.eye.zoom[camera] = 2;
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quad = _drainFrames(game).single.quads.single;
       // (world - origin) * zoom, with the origin still at (0,0): the centre
       // moves to (200,100) and the half-extents double to (40,20). Scaling
@@ -1176,7 +1201,7 @@ void main() {
 
     test('a camera parented into the hierarchy is followed through its world transform', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final anchor = scene.addEntity(scene.sprite);
       _place(scene.sprite, anchor, x: 200, y: 0);
       _size(scene.sprite, anchor, 2, 2);
@@ -1184,10 +1209,10 @@ void main() {
       // The renderer reads the camera WorldTransform2D, not its local
       // Transform2D, so a camera bolted onto a moving entity needs no special
       // case anywhere in this system.
-      final camera = scene.addEntity(scene.eye, parent: anchor);
+      final camera = _eye(game, scene, parent: anchor);
       scene.eye.transformOffsetX[camera] = 10;
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quad = _drainFrames(game).single.quads.single;
       expect(quad.x, [-11, -9, -9, -11],
           reason: 'the camera resolved world x is 200 + 10, so the anchor at '
@@ -1197,30 +1222,34 @@ void main() {
 
     test('two cameras still trip ActiveCameraResolver assert', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       scene.addEntity(scene.sprite);
-      scene.addEntity(scene.eye);
-      scene.addEntity(scene.eye);
+      _eye(game, scene);
+      _eye(game, scene);
 
       // Unchanged behaviour, now reached through the renderer: a camera
       // defines the single view origin, so a second one is a development-time
       // mistake that stops a debug run rather than a silent arbitrary pick.
-      expect(() => game.state!.advance(_step), throwsA(isA<AssertionError>()));
+      expect(() => run.state.advance(_step), throwsA(isA<AssertionError>()));
     });
   });
 
   group('view centring', () {
     test('the world origin sits in the middle of a laid-out view', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       _place(scene.sprite, entity, x: 0, y: 0);
       _size(scene.sprite, entity, 40, 20);
       // What a GameView reports from its LayoutBuilder, arriving on the same
       // wire as the rest of the input block.
       game.inputDevice!.setViewSize(800, 600);
+      // The projection centres on the *view's* viewport now, not the game's
+      // one global view size - that is what lets two GameViews of different
+      // sizes coexist. A test has no widget to lay it out, so it says so.
+      game.view.setViewport(800, 600);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quad = _drainFrames(game).single.quads.single;
       expect(quad.x, [380, 420, 420, 380],
           reason: 'a camera position is the centre of what you can see - '
@@ -1232,17 +1261,21 @@ void main() {
 
     test('a camera puts what it is over in the middle', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       _place(scene.sprite, entity, x: 100, y: 50);
       _size(scene.sprite, entity, 40, 20);
-      final camera = scene.addEntity(scene.eye);
+      final camera = _eye(game, scene);
       scene.eye
         ..transformOffsetX[camera] = 100
         ..transformOffsetY[camera] = 50;
       game.inputDevice!.setViewSize(800, 600);
+      // The projection centres on the *view's* viewport now, not the game's
+      // one global view size - that is what lets two GameViews of different
+      // sizes coexist. A test has no widget to lay it out, so it says so.
+      game.view.setViewport(800, 600);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quad = _drainFrames(game).single.quads.single;
       expect(quad.x, [380, 420, 420, 380],
           reason: 'the camera is exactly on the sprite, so the sprite is '
@@ -1253,17 +1286,21 @@ void main() {
 
     test('zoom scales about the middle, not the corner', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       _place(scene.sprite, entity, x: 0, y: 0);
       _size(scene.sprite, entity, 40, 20);
-      final camera = scene.addEntity(scene.eye);
+      final camera = _eye(game, scene);
       scene.pool.beginTick();
       scene.eye.zoom[camera] = 2;
       scene.pool.commitTick();
       game.inputDevice!.setViewSize(800, 600);
+      // The projection centres on the *view's* viewport now, not the game's
+      // one global view size - that is what lets two GameViews of different
+      // sizes coexist. A test has no widget to lay it out, so it says so.
+      game.view.setViewport(800, 600);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quad = _drainFrames(game).single.quads.single;
       expect(quad.x, [360, 440, 440, 360],
           reason: 'twice the size, still centred - zooming must not drag the '
@@ -1274,12 +1311,12 @@ void main() {
 
     test('a game nobody laid out draws plain world coordinates', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       _place(scene.sprite, entity, x: 0, y: 0);
       _size(scene.sprite, entity, 40, 20);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quad = _drainFrames(game).single.quads.single;
       expect(quad.x, [-20, 20, 20, -20],
           reason: 'a headless game has no view to find the middle of, and '
@@ -1293,11 +1330,11 @@ void main() {
   group('texture', () {
     test('a textured sprite carries its address and the full-texture UVs', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final prefab = scene.texturedPair;
       scene.addEntity(prefab);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
       final textured =
           quads.firstWhere((q) => q.color == _Textured.texturedColor);
@@ -1317,10 +1354,10 @@ void main() {
 
     test('an untextured sprite carries the sentinel and its flat colour', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       scene.addEntity(scene.texturedPair);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
       final plain = quads.firstWhere((q) => q.color == _Textured.untexturedColor);
 
@@ -1335,10 +1372,10 @@ void main() {
 
     test('one entity mixes textured and untextured sprites in one frame', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       scene.addEntity(scene.texturedPair);
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
       expect(quads.length, 2);
       // zIndex 0 then 1, so the textured one is written first.
@@ -1351,7 +1388,7 @@ void main() {
 
     test('the producer writes the address and never reads the image', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       scene.addEntity(scene.texturedPair);
 
       // The trap is armed: this prefab's texture throws from `image`.
@@ -1364,27 +1401,27 @@ void main() {
       // anything - would blow up here instead of writing a record, which is
       // exactly what it would do on the real game isolate where the image
       // genuinely does not exist.
-      expect(() => game.state!.advance(_step), returnsNormally);
+      expect(() => run.state.advance(_step), returnsNormally);
       final quads = _drainFrames(game).single.quads;
       expect(quads.first.texture, scene.texturedPair.tile.address);
     });
 
     test('a texture swapped at runtime changes the address next frame', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.texturedPair);
-      game.state!.advance(_step);
+      run.state.advance(_step);
       expect(_drainFrames(game).single.quads.first.texture,
           scene.texturedPair.tile.address);
 
       // Between ticks, so the write lands in an open tick rather than in a slot
       // the next beginTick would copy over.
-      final pool = game.state!.scene!.pool;
+      final pool = run.state.scene!.pool;
       pool.beginTick();
       scene.texturedPair.textured.texture[entity] = null;
       pool.commitTick();
 
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
       expect(quads.first.texture, DrawSpriteData2D.noTexture,
           reason: 'the texture is ordinary per-sprite row state read every '
@@ -1397,16 +1434,18 @@ void main() {
     test('the sprite batch is sized from the real stride, not a stale constant',
         () async {
       final game = await _game();
-      final renderer = game.getSystem<GameRenderer2D>();
+      final renderer = run.state.getSystem<GameRenderer2D>();
       expect(
         renderer.spriteBatchBytes,
         DrawData2D.batchHeaderBytes +
-            renderer.maxSpritesPerTick * DrawSpriteData2D.strideBytes,
-        reason: 'the scratch buffer and the ring are both derived from the '
-            'stride, so widening the record for UVs must widen them too - a '
-            'hard-coded 36 here would have started silently truncating frames',
+            game.maxSpritesPerTick * DrawSpriteData2D.strideBytes,
+        reason: 'the scratch buffer and the handoff slot are both derived from '
+            'the stride, so widening the record for UVs must widen them too - '
+            'a hard-coded 36 here would have started silently truncating '
+            'frames. The budget lives on the Game because the Game is what '
+            'allocates from it; the system reads the same number back',
       );
-      expect(renderer.drawFrames.slotBytes, renderer.spriteBatchBytes);
+      expect(game.framesFor(game.view).slotBytes, renderer.spriteBatchBytes);
     });
   });
 
@@ -1418,10 +1457,10 @@ void main() {
     const cuts = [0.0, 4.0, 36.0, 40.0];
     const uvCuts = [0.0, 0.25, 0.75, 1.0];
 
-    _Frame drawPanel(Game game) {
-      final scene = game.state!.getScene<_SpriteScene>();
+    _Frame drawPanel(_RenderGame game) {
+      final scene = run.state.getScene<_SpriteScene>();
       scene.addEntity(scene.panel);
-      game.state!.advance(_step);
+      run.state.advance(_step);
       return _drainFrames(game).single;
     }
 
@@ -1476,7 +1515,7 @@ void main() {
     test('every cell carries the panel texture, so they stay one batch run',
         () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final quads = drawPanel(game).quads;
       final address = scene.panel.skin.address;
       for (final q in quads) {
@@ -1490,16 +1529,16 @@ void main() {
     test('growing the sprite keeps corner sizes and stretches only the middle',
         () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.panel);
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final small = _drainFrames(game).single.quads;
 
       // Same entity, twice the width. Nothing else changes.
-      game.state!.pool.beginTick();
+      run.state.pool.beginTick();
       scene.panel.frame.width[entity] = 80;
-      game.state!.pool.commitTick();
-      game.state!.advance(_step);
+      run.state.pool.commitTick();
+      run.state.advance(_step);
       final large = _drainFrames(game).single.quads;
 
       double widthOf(_Quad q) => q.x[1] - q.x[0];
@@ -1518,9 +1557,9 @@ void main() {
     test('insets larger than the draw size collapse instead of inverting',
         () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       scene.addEntity(scene.unsizedPanel);
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
 
       // 4+4 of inset on a 6-unit width, scaled proportionally to 3+3, so the
@@ -1546,9 +1585,9 @@ void main() {
 
     test('a collapsed destination does not re-slice the source', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       scene.addEntity(scene.unsizedPanel);
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
 
       expect(quads[0].u, [0.0, 0.25, 0.25, 0.0],
@@ -1560,9 +1599,9 @@ void main() {
 
     test('a bordered sprite with no texture is a plain quad', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       scene.addEntity(scene.borderedUntextured);
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
 
       expect(quads, hasLength(1),
@@ -1575,10 +1614,10 @@ void main() {
 
     test('the grid rotates with the entity instead of shearing apart', () async {
       final game = await _game();
-      final scene = game.state!.getScene<_SpriteScene>();
+      final scene = run.state.getScene<_SpriteScene>();
       final entity = scene.addEntity(scene.panel);
       scene.panel.transformRotation[entity] = math.pi / 2;
-      game.state!.advance(_step);
+      run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
 
       // A quarter turn sends local (x, y) to world (-y, x). Checking the far
@@ -1599,11 +1638,11 @@ void main() {
 
     test('a nine-sliced sprite spends nine of the record budget, not one',
         () async {
-      final game = await _game();
-      final renderer = game.getSystem<GameRenderer2D>();
-      final scene = game.state!.getScene<_SpriteScene>();
+      await _game();
+      final renderer = run.state.getSystem<GameRenderer2D>();
+      final scene = run.state.getScene<_SpriteScene>();
       scene.addEntity(scene.panel);
-      game.state!.advance(_step);
+      run.state.advance(_step);
       expect(renderer.lastRecordCount, 9,
           reason: 'the budget is counted in records, not sprites - counting '
               'sprites would let nine times maxSpritesPerTick through and '

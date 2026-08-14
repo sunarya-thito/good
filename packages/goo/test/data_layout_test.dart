@@ -10,6 +10,7 @@ import 'package:goo/src/scene.dart';
 import 'package:goo/src/struct.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+
 class _Texture extends GameAssetInstance {}
 
 class _NoBytes extends GameAssetSource {
@@ -297,7 +298,7 @@ void main() {
       final pool = MemoryPool(pageSize: 64);
       addTearDown(pool.dispose);
       final storage =
-          ArchetypeRegistry.register(pool, assets, _AdHoc((_) {}));
+          ArchetypeRegistry.register(pool, _AdHoc((_) {}));
       expect(() => storage.declareField(3), throwsArgumentError);
       expect(() => storage.declareField(0), throwsArgumentError);
       expect(() => storage.declareField(128), throwsArgumentError);
@@ -779,13 +780,13 @@ void main() {
       }
     });
 
-    test('hasObjectArray round-trips through GlobalObjectRegistry, by address', () {
+    test('hasObjectArray round-trips through its declared table, by address', () {
       final placeholder = _loaded();
       final grass = _loaded();
       final stone = _loaded();
 
       late DataArrayPointer<_Texture> textures;
-      final h = _Harness((data) => textures = data.hasObjectArray<_Texture>(3, placeholder));
+      final h = _Harness((data) => textures = data.hasObjectArray<_Texture>(assets, 3, placeholder));
       addTearDown(h.dispose);
 
       final e = h.spawn();
@@ -806,7 +807,7 @@ void main() {
       final grass = _loaded();
 
       late DataArrayPointer<_Texture?> textures;
-      final h = _Harness((data) => textures = data.optObjectArray<_Texture>(2));
+      final h = _Harness((data) => textures = data.optObjectArray<_Texture>(assets, 2));
       addTearDown(h.dispose);
 
       final e = h.spawn();
@@ -942,12 +943,12 @@ void main() {
   });
 
   group('object reference (hasObject/optObject) fields', () {
-    test('hasObject round-trips through GlobalObjectRegistry, by address', () {
+    test('hasObject round-trips through its declared table, by address', () {
       final placeholder = _loaded();
       final grass = _loaded();
 
       late final DataPointer<_Texture> texture;
-      final h = _Harness((data) => texture = data.hasObject<_Texture>(placeholder));
+      final h = _Harness((data) => texture = data.hasObject<_Texture>(assets, placeholder));
       addTearDown(h.dispose);
 
       final e = h.spawn();
@@ -963,7 +964,7 @@ void main() {
       final grass = _loaded();
 
       late final DataPointer<_Texture?> texture;
-      final h = _Harness((data) => texture = data.optObject<_Texture>());
+      final h = _Harness((data) => texture = data.optObject<_Texture>(assets));
       addTearDown(h.dispose);
 
       final e = h.spawn();
@@ -984,12 +985,43 @@ void main() {
       final grass = _loaded();
 
       late final DataPointer<_Texture> texture;
-      final h = _Harness((data) => texture = data.hasObject<_Texture>(grass));
+      final h = _Harness((data) => texture = data.hasObject<_Texture>(assets, grass));
       addTearDown(h.dispose);
       final e = h.spawn();
 
       assets.unregisterAddress(grass.address);
       expect(() => texture[e], throwsStateError);
+    });
+
+    test('an address means nothing outside the table that issued it', () {
+      // The whole point of `ObjectTable`. Two independent tables, each
+      // numbering from zero, so both of these get address 0 - and a field
+      // declared against one resolves to *its* object, never the other's.
+      // Under the single shared registry this design replaced, these two
+      // could not have coexisted at the same address at all, and every new
+      // population had to be poured into the one asset table to be readable.
+      final left = GameAssets();
+      final right = GameAssets();
+      final mine = left.declare(_TextureAsset());
+      final theirs = right.declare(_TextureAsset());
+      expect(mine.address, theirs.address,
+          reason: 'independent tables collide freely, by design');
+
+      late final DataPointer<_Texture> texture;
+      final h = _Harness((data) => texture = data.hasObject<_Texture>(left, mine));
+      addTearDown(h.dispose);
+
+      final e = h.spawn();
+      expect(texture[e], same(mine));
+      expect(texture[e], isNot(same(theirs)));
+
+      // And a table that never issued the address says so rather than
+      // handing back whatever happens to sit there.
+      right.unregisterAddress(theirs.address);
+      expect(() => right.resolve<_Texture>(theirs.address), throwsStateError);
+      expect(texture[e], same(mine),
+          reason: 'the other table being emptied is none of this field\'s '
+              'business - separate populations, separate numbering');
     });
   });
 }

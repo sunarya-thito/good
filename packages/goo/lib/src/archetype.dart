@@ -3,7 +3,6 @@ import 'dart:ffi';
 import 'package:ffi/ffi.dart';
 import 'package:meta/meta.dart';
 
-import 'package:goo/src/asset.dart';
 import 'package:goo/src/pool.dart';
 import 'package:goo/src/struct.dart';
 
@@ -34,25 +33,16 @@ abstract final class ComponentTypeRegistry {
 
   static final Map<Type, int> _indices = <Type, int>{};
 
-  /// A copy of the assignments, for `Game` to carry across the spawn.
-  ///
-  /// Static state is **per isolate** - it is not part of any object graph, so
-  /// `Isolate.spawn`'s deep copy does not bring it. The declaring copy hands
-  /// the table over explicitly and the spawned copy [restore]s it, which is
-  /// what makes "describe once, on main" possible at all. `Type` objects are
-  /// sendable; verified in `tool/spawn_registry_spike.dart`.
-  @internal
-  static Map<Type, int> snapshot() => Map<Type, int>.of(_indices);
-
-  /// Adopts a [snapshot] taken on the declaring copy. Replaces rather than
-  /// merges: this copy declared nothing, so anything already here would be a
-  /// second, disagreeing assignment.
-  @internal
-  static void restore(Map<Type, int> snapshot) {
-    _indices
-      ..clear()
-      ..addAll(snapshot);
-  }
+  // This used to carry a `snapshot`/`restore` pair, and so did
+  // `ArchetypeRegistry`, `HeapObjectRegistry` and `SceneRegistry`. Static
+  // state is **per isolate** - it belongs to no object graph, so
+  // `Isolate.spawn`'s deep copy does not bring it - and while the main isolate
+  // ran the declaration passes it had to hand each table over explicitly for
+  // the spawned copy to adopt.
+  //
+  // Nothing carries them now: the passes that fill these tables run on the
+  // game isolate, which is also the only copy that reads them. Main's stay
+  // empty for the life of the game. See `Game._bootGame`.
 
   /// Number of distinct component types seen so far.
   static int get assignedCount => _indices.length;
@@ -115,17 +105,25 @@ abstract final class ArchetypeRegistry {
   /// `Entity` reserves 16 bits for the archetype id - see `Entity.pack`.
   static const int maxArchetypes = 0x10000;
 
+  /// Pages one archetype can hold, from `Entity`'s 16-bit page index.
+  ///
+  /// A limit on **churn**, not on volume. A 64 MiB page at a 128-byte stride
+  /// holds around half a million rows, so this is tens of billions of
+  /// entities - unreachable. But page indices are deliberately never recycled
+  /// (a live `Entity` keeps addressing the right page, see [_pages]), and
+  /// every scene load takes a fresh page per archetype it uses. So a game that
+  /// streams rooms for long enough reaches it by loading and unloading, and
+  /// the failure without a guard is silent: the index wraps and an `Entity`
+  /// starts addressing somebody else's page.
+  static const int maxPagesPerArchetype = 0x10000;
+
   static final List<ArchetypeStorage> _storages = <ArchetypeStorage>[];
 
   static int get count => _storages.length;
 
   /// Creates and registers storage for one archetype. Called exactly once
   /// per `EntityStruct` subclass, from `SceneDescriptor.has`.
-  static ArchetypeStorage register(
-    MemoryPool pool,
-    GameAssets assets,
-    EntityStruct prefab,
-  ) {
+  static ArchetypeStorage register(MemoryPool pool, EntityStruct prefab) {
     if (_storages.length >= maxArchetypes) {
       throw StateError(
         'ArchetypeRegistry is full: $maxArchetypes archetypes have been '
@@ -134,31 +132,33 @@ abstract final class ArchetypeRegistry {
         'recycled on scene unload.',
       );
     }
-    final storage = ArchetypeStorage._(_storages.length, pool, assets, prefab);
+    final storage = ArchetypeStorage._(_storages.length, pool, prefab);
     _storages.add(storage);
     return storage;
   }
 
   /// Resolves an archetype id - the hot path behind `Entity.get<T>()`. A
   /// plain list index, no map, no allocation.
-  static ArchetypeStorage byId(int archetypeId) => _storages[archetypeId];
-
-  /// The registered storages in id order, for `Game` to carry across the
-  /// spawn - see [ComponentTypeRegistry.snapshot] for why this is needed.
-  ///
-  /// The `ArchetypeStorage`s themselves are sendable (plain fields plus a
-  /// `Pointer`, which crosses at the same address), so this carries the real
-  /// objects rather than a description of them: the spawned copy ends up
-  /// pointing at the same default rows and the same pages.
-  @internal
-  static List<ArchetypeStorage> snapshot() =>
-      List<ArchetypeStorage>.of(_storages);
-
-  @internal
-  static void restore(List<ArchetypeStorage> snapshot) {
-    _storages
-      ..clear()
-      ..addAll(snapshot);
+  static ArchetypeStorage byId(int archetypeId) {
+    if (archetypeId < 0 || archetypeId >= _storages.length) {
+      throw StateError(
+        _storages.isEmpty
+            // Overwhelmingly the interesting case, and worth naming outright:
+            // this is what a main-isolate component read looks like from here.
+            // Main declares and allocates; it registers no archetypes, holds
+            // no pages and resolves no `Entity`. Data reaches it through a
+            // `StateChannel` or a draw buffer, never by reading a row.
+            ? 'no archetypes are registered on this isolate, so Entity '
+                '$archetypeId cannot be resolved. Reading component data is a '
+                'game-isolate act: the main copy is presentation-only, and its '
+                'registries stay empty by design. Publish the value through a '
+                'StateChannel (Game.describeState) and read that instead.'
+            : 'no archetype with id $archetypeId - ${_storages.length} are '
+                'registered. An `Entity` from a different process, or one '
+                'built by hand, does not resolve here.',
+      );
+    }
+    return _storages[archetypeId];
   }
 
   /// Test-only: see [ComponentTypeRegistry.reset]. Frees each storage's
@@ -189,7 +189,7 @@ abstract final class ArchetypeRegistry {
 /// set, so a query touches one contiguous page instead of N - is a real
 /// optimization and is not attempted here.
 class ArchetypeStorage {
-  ArchetypeStorage._(this.archetypeId, this.pool, this.assets, this.prefab);
+  ArchetypeStorage._(this.archetypeId, this.pool, this.prefab);
 
   /// Index into [ArchetypeRegistry]; packed into the top 16 bits of every
   /// `Entity` this storage hands out.
@@ -203,12 +203,12 @@ class ArchetypeStorage {
   // (RULES.md rule 10). `SceneStruct.addEntityIn` checks `prefab.scene`, which
   // is the one home for it.
 
-  /// The asset table an object-valued field in this archetype resolves
-  /// through. Held here rather than reached through the prefab's scene because
-  /// a row read is the hot path and `prefab.scene.game.assets` would be three
-  /// dereferences and a
-  /// throw-if-unbound getter; this is one field.
-  final GameAssets assets;
+  // There is no `assets` field either. It existed for exactly one reason -
+  // an object-valued field read had no other way to reach a table - and that
+  // reason is gone: `hasObject`/`optObject` now take their `ObjectTable` at
+  // the declare site and each field holds its own. Keeping it would have made
+  // assets the one privileged population, which is the thing `ObjectTable`
+  // exists to stop.
 
   /// The single shared struct instance that describes this archetype -
   /// what `Entity.get<T>()` returns. It holds no per-entity state; its
@@ -290,7 +290,21 @@ class ArchetypeStorage {
   /// message order - so appending here reproduces the writer's list index
   /// for index, which is exactly what `Entity.pageIndex` addresses.
   @internal
-  void adoptPage(MemoryPage page) => _pages.add(page);
+  void adoptPage(MemoryPage page) {
+    // The same bound as the allocating side, for the same reason: this list
+    // is what `Entity.pageIndex` addresses, and a reader that silently wrapped
+    // would resolve handles to the wrong page while the writer was still
+    // correct - a divergence between the two copies, which is worse than
+    // either failing alone.
+    if (_pages.length >= ArchetypeRegistry.maxPagesPerArchetype) {
+      throw StateError(
+        'Archetype ${prefab.runtimeType} cannot adopt another page: the '
+        "${ArchetypeRegistry.maxPagesPerArchetype} an Entity's 16-bit page "
+        'index can address are all taken.',
+      );
+    }
+    _pages.add(page);
+  }
 
   /// Frees every page belonging to the scene at [sceneSlot] and tombstones
   /// its slot. Called by `GameState.unloadScene`.
@@ -420,10 +434,15 @@ class ArchetypeStorage {
     }
     var current = _currentPageBySlot[sceneSlot] ?? -1;
     if (current < 0 || _pages[current] == null || _pages[current]!.isFull) {
-      if (_pages.length >= 0x10000) {
+      if (_pages.length >= ArchetypeRegistry.maxPagesPerArchetype) {
         throw StateError(
-          'Archetype ${prefab.runtimeType} has exhausted the 65536 pages an '
-          "Entity's 16-bit page index can address.",
+          'Archetype ${prefab.runtimeType} has exhausted the '
+          "${ArchetypeRegistry.maxPagesPerArchetype} pages an Entity's "
+          '16-bit page index can address. This is a limit on scene '
+          'load/unload churn rather than on entity count: page indices are '
+          'never recycled, so every load takes a fresh one. If a game '
+          'legitimately gets here, the fix is recycling indices behind a '
+          'generation counter, not a bigger page.',
         );
       }
       _pages.add(

@@ -6,6 +6,12 @@ import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
+/// The live run under test. A file-level binding: the bring-up helper
+/// returns the `Game` (the description) while tests also need the run, and
+/// one inline run per isolate means one binding is enough.
+late InlineGameHandle run;
+
+
 // The seam: GameRenderer2D writes bytes, DrawCanvas2D reads them, and nothing
 // in between re-derives the layout. render_2d_test.dart checks the producer
 // against hand-decoded bytes and draw_canvas_2d_test.dart checks the consumer
@@ -81,14 +87,20 @@ class _Scene extends SceneStruct {
   }
 }
 
-class _GameState extends GameState<_Game> {
+class _GameState extends GameState2D<_Game> {
   @override
   void onMounted() {
     loadScene(_Scene());
   }
 }
 
-class _Game extends Game {
+/// `with Renderer2D`: the frame buffers are declared and allocated by the
+/// `Game` half now, so a hand-declared `GameRenderer2D` in a game without it
+/// would have nowhere to write.
+class _Game extends Game2D {
+  /// The view under test - this fixture's spelling of `defaultCamera`.
+  CameraView get view => defaultCamera;
+
   @override
   int get pageSize => 4096;
 
@@ -96,19 +108,13 @@ class _Game extends Game {
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
   @override
-  GameState createState() => _GameState();
-
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    descriptor.has(WorldTransformSystem());
-    descriptor.has(GameRenderer2D());
-  }
+  GameState2D<_Game> createState() => _GameState();
 }
 
 /// Exactly the two steps `GameView` performs on a tick notification.
 DrawCanvas2D _present(_Game game) {
   final canvas = DrawCanvas2D(assets: assets);
-  final frames = game.getSystem<GameRenderer2D>().drawFrames.buffer;
+  final frames = run.state.getSystem<GameRenderer2D>().framesFor(game.view).buffer;
   final slot = frames.beginRead();
   expect(slot, isNotNull, reason: 'the renderer published a frame this tick');
   expect(
@@ -123,9 +129,9 @@ DrawCanvas2D _present(_Game game) {
 
 Future<_Game> _boot() async {
   final game = _Game();
-  await game.start(inline: true, autoTick: false);
+  run = await Game.startInline(game);
   addTearDown(() async {
-    if (game.isRunning) await game.stop();
+    if (run.isRunning) await run.stop();
   });
   // A booted Game owns its own table - point the fixture's handle at it, so
   // the load below names the declaration the game actually made.
@@ -159,7 +165,7 @@ void main() {
   test('a hierarchy simulated on one end comes out as geometry on the other',
       () async {
     final game = await _boot();
-    final scene = game.state!.getScene<_Scene>();
+    final scene = run.state.getScene<_Scene>();
 
     final parent = scene.addEntity(scene.sprite);
     scene.sprite
@@ -175,7 +181,7 @@ void main() {
       ..height[child] = 4
       ..color[child] = 0xFF00FF00;
 
-    game.state!.advance(const Duration(milliseconds: 10));
+    run.state.advance(const Duration(milliseconds: 10));
 
     final canvas = _present(game);
     addTearDown(canvas.dispose);
@@ -202,10 +208,10 @@ void main() {
   test('a texture address survives the crossing and drives the run split',
       () async {
     final game = await _boot();
-    final scene = game.state!.getScene<_Scene>();
+    final scene = run.state.getScene<_Scene>();
     scene.addEntity(scene.billboard);
 
-    game.state!.advance(const Duration(milliseconds: 10));
+    run.state.advance(const Duration(milliseconds: 10));
     final canvas = _present(game);
     addTearDown(canvas.dispose);
 
@@ -227,9 +233,9 @@ void main() {
   test('the address the producer wrote resolves to a shader on replay',
       () async {
     final game = await _boot();
-    final scene = game.state!.getScene<_Scene>();
+    final scene = run.state.getScene<_Scene>();
     scene.addEntity(scene.billboard);
-    game.state!.advance(const Duration(milliseconds: 10));
+    run.state.advance(const Duration(milliseconds: 10));
     final canvas = _present(game);
     addTearDown(canvas.dispose);
 

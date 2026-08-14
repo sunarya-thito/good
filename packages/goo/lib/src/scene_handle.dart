@@ -48,19 +48,6 @@ extension type const Scene(int value) {
   /// has been unloaded, including when its slot has since been reused.
   bool get isLoaded => SceneRegistry.tryResolve(this) != null;
 
-  /// Whether this is the scene [SceneRegistry.active] names - what
-  /// `GameState.switchScene` sets.
-  ///
-  /// Switching is *informational*: it does not gate simulation (every loaded
-  /// scene ticks) and nothing is enforced. This is the readable half of it,
-  /// and the reason it lives here rather than each consumer keeping its own
-  /// copy of which scene is front - `GameRenderer2D` and `MousePickingSystem`
-  /// ask this, and a user's own system is free to ask it or ignore it.
-  bool get isActive {
-    final active = SceneRegistry.active;
-    return active != null && active.value == value;
-  }
-
   /// The [SceneStruct] this handle names, as [T].
   ///
   /// One list index and a generation compare - the same shape and the same
@@ -110,7 +97,7 @@ extension type const Scene(int value) {
 /// Static for the same reason `ArchetypeRegistry` is: a [Scene] is a bare int
 /// carrying no references, so resolving one cannot start from an object. The
 /// engine already keeps `ArchetypeRegistry`, `ComponentTypeRegistry`,
-/// `GameAssets` and `GlobalObjectRegistry` this way, and [reset] follows the
+/// and `HeapObjectRegistry` this way, and [reset] follows the
 /// same test-teardown convention they do.
 abstract final class SceneRegistry {
   /// Loaded scenes by slot. A null is a slot whose scene has been unloaded and
@@ -121,14 +108,9 @@ abstract final class SceneRegistry {
   /// load of the same slot never compares equal to the current one.
   static final List<int> _generations = <int>[];
 
-  static Scene? _active;
-
   /// How many slots have ever been used - the length of the table, including
   /// tombstoned slots. Not a count of live scenes.
   static int get slotCount => _loaded.length;
-
-  /// The scene `GameState.switchScene` last named, or null if none has been.
-  static Scene? get active => _active;
 
   /// Records [scene] in the first free slot and returns its handle.
   ///
@@ -162,31 +144,11 @@ abstract final class SceneRegistry {
     // a handle from its slot's *neighbouring* loads, and a scene handle does
     // not outlive 4 billion loads of one slot.
     _generations[slot] = (_generations[slot] + 1) & 0xFFFFFFFF;
-    if (_active != null && _active!.value == scene.value) _active = null;
   }
 
-  /// The loaded table and its generations, for `Game` to carry across the
-  /// spawn - see `ComponentTypeRegistry.snapshot`.
-  @internal
-  static List<SceneStruct?> snapshot() => List<SceneStruct?>.of(_loaded);
-
-  @internal
-  static List<int> snapshotGenerations() => List<int>.of(_generations);
-
-  @internal
-  static void restore(
-    List<SceneStruct?> loaded,
-    List<int> generations,
-    Scene? active,
-  ) {
-    _loaded
-      ..clear()
-      ..addAll(loaded);
-    _generations
-      ..clear()
-      ..addAll(generations);
-    _active = active;
-  }
+  // No `snapshot`/`restore` here any more - see the note in
+  // `ComponentTypeRegistry`. A scene is loaded on the game isolate and
+  // resolved there; main holds no `Scene` at all.
 
   /// The scene [handle] names, or null if it has been unloaded.
   ///
@@ -199,20 +161,9 @@ abstract final class SceneRegistry {
     return _loaded[slot];
   }
 
-  static void setActive(Scene? scene) {
-    if (scene != null && tryResolve(scene) == null) {
-      throw StateError(
-        'cannot switch to scene #${scene.slot}: it is not loaded. Await '
-        'loadScene() and switch to the handle it returns.',
-      );
-    }
-    _active = scene;
-  }
-
   @visibleForTesting
   static void reset() {
     _loaded.clear();
     _generations.clear();
-    _active = null;
   }
 }

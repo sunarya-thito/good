@@ -9,6 +9,13 @@ import 'package:goo/src/scene.dart';
 import 'package:goo/src/scene_handle.dart';
 import 'package:goo/src/struct.dart';
 import 'package:goo/src/system.dart';
+import 'package:goo/src/handle.dart';
+
+/// The live run under test. A file-level binding: the bring-up helper
+/// returns the `Game` (the description) while tests also need the run, and
+/// one inline run per isolate means one binding is enough.
+late InlineGameHandle run;
+
 
 // Several scenes resident at once, each individually unloadable. The property
 // that makes it work is that two loaded instances of one `SceneStruct` never
@@ -75,7 +82,11 @@ class _Census extends GameSystem with FixedTickable {
   }
 }
 
-class _MultiState extends GameState<_MultiGame> {}
+class _MultiState extends GameState<_MultiGame> {  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    descriptor.has(_Census());
+  }
+}
 
 class _MultiGame extends Game {
   @override
@@ -94,17 +105,14 @@ class _MultiGame extends Game {
     level = descriptor.has(_Level());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    descriptor.has(_Census());
-  }
+
 }
 
 Future<_MultiGame> _boot() async {
   final game = _MultiGame();
-  await game.start(inline: true, autoTick: false);
+  run = await Game.startInline(game);
   addTearDown(() async {
-    if (game.isRunning) await game.stop();
+    if (run.isRunning) await run.stop();
   });
   return game;
 }
@@ -121,7 +129,7 @@ void main() {
   test('two instances of one declaration are both resident and both tick',
       () async {
     final game = await _boot();
-    final state = game.state!;
+    final state = run.state;
 
     final a = await state.loadScene(game.level);
     final b = await state.loadScene(game.level);
@@ -132,14 +140,14 @@ void main() {
         reason: 'one declaration, mounted once per loaded instance');
 
     state.advance(_step);
-    expect(game.getSystem<_Census>().seen, 2,
-        reason: 'every loaded scene ticks - that is the decided semantics, and '
-            'it is why switchScene is informational rather than a gate');
+    expect(run.state.getSystem<_Census>().seen, 2,
+        reason: 'every loaded scene is live - all tick, all receive input, '
+            'all render. There is no front scene to be excluded from');
   });
 
   test('their entities live in different pages', () async {
     final game = await _boot();
-    final state = game.state!;
+    final state = run.state;
 
     final a = await state.loadScene(game.level);
     final b = await state.loadScene(game.level);
@@ -155,7 +163,7 @@ void main() {
 
   test('unloading one leaves the other intact', () async {
     final game = await _boot();
-    final state = game.state!;
+    final state = run.state;
 
     final a = await state.loadScene(game.level);
     final b = await state.loadScene(game.level);
@@ -163,7 +171,7 @@ void main() {
     survivor.get<_Marked>().mark[survivor] = 41;
 
     state.advance(_step);
-    expect(game.getSystem<_Census>().seen, 3,
+    expect(run.state.getSystem<_Census>().seen, 3,
         reason: 'one entity per mount, plus the one added to b');
 
     state.unloadScene(a);
@@ -174,7 +182,7 @@ void main() {
     expect(state.loadedScenes, [b]);
 
     state.advance(_step);
-    expect(game.getSystem<_Census>().seen, 2,
+    expect(run.state.getSystem<_Census>().seen, 2,
         reason: "the unloaded scene's rows are gone from every query");
     expect(survivor.get<_Marked>().mark[survivor], 41,
         reason: 'and the survivor is untouched - its pages were never shared');
@@ -183,7 +191,7 @@ void main() {
   test('an Entity from an unloaded scene reports the unload, not garbage',
       () async {
     final game = await _boot();
-    final state = game.state!;
+    final state = run.state;
 
     final a = await state.loadScene(game.level);
     final doomed = a.addEntity(game.level.unit);
@@ -200,7 +208,7 @@ void main() {
   test('unloadAllScene takes down every instance of one declaration',
       () async {
     final game = await _boot();
-    final state = game.state!;
+    final state = run.state;
 
     await state.loadScene(game.level);
     await state.loadScene(game.level);
@@ -212,43 +220,42 @@ void main() {
     expect(state.loadedScenes, isEmpty);
     expect(game.level.unmounts, 3);
     state.advance(_step);
-    expect(game.getSystem<_Census>().seen, 0);
+    expect(run.state.getSystem<_Census>().seen, 0);
   });
 
-  test('switchScene records the front scene without gating simulation',
+  test('`scene` means the first loaded one, and is derived not stored',
       () async {
     final game = await _boot();
-    final state = game.state!;
+    final state = run.state;
 
     final a = await state.loadScene(game.level);
     final b = await state.loadScene(game.level);
 
-    expect(a.isActive, isTrue,
-        reason: 'the first load becomes active so a one-scene game need not '
-            'call switchScene at all');
-    expect(b.isActive, isFalse, reason: 'a later load does not steal the front');
+    expect(state.sceneHandle, a,
+        reason: 'the single-scene convenience keeps working, and a later load '
+            'does not displace it');
 
-    state.switchScene(b);
-    expect(a.isActive, isFalse);
-    expect(b.isActive, isTrue);
+    // The point of deriving it rather than storing a "current" handle: there
+    // is nothing to update on unload, so nothing can be left stale.
+    state.unloadScene(a);
     expect(state.sceneHandle, b);
 
     state.advance(_step);
-    expect(game.getSystem<_Census>().seen, 2,
-        reason: 'switching is informational - the background scene keeps '
-            'ticking, which is the decided semantics');
+    expect(run.state.getSystem<_Census>().seen, 1,
+        reason: 'and b was ticking all along - it was never in a background '
+            'state to be promoted out of');
   });
 
-  test('unloading the front scene clears the front', () async {
+  test('unloading everything leaves no scene', () async {
     final game = await _boot();
-    final state = game.state!;
+    final state = run.state;
 
     final a = await state.loadScene(game.level);
     state.unloadScene(a);
 
-    expect(SceneRegistry.active, isNull);
     expect(state.sceneHandle, isNull);
     expect(state.scene, isNull);
+    expect(state.loadedScenes, isEmpty);
   });
 
   test('the pages survive the unload until the reader has let go', () async {
@@ -258,7 +265,7 @@ void main() {
     // the memory is doing. The spawned half - where the free is deferred
     // across a round trip - is covered in game_isolate_test.dart.
     final game = await _boot();
-    final state = game.state!;
+    final state = run.state;
 
     final a = await state.loadScene(game.level);
     final doomed = a.addEntity(game.level.unit);
@@ -274,7 +281,7 @@ void main() {
 
   test('a page freed by one unload is not handed to the next load', () async {
     final game = await _boot();
-    final state = game.state!;
+    final state = run.state;
 
     final a = await state.loadScene(game.level);
     final inA = a.addEntity(game.level.unit);

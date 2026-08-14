@@ -12,8 +12,15 @@ import 'package:goo/src/scene.dart';
 import 'package:goo/src/struct.dart';
 import 'package:goo/src/system.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:goo/src/handle.dart';
 
-// Everything here runs through Game.start(inline: true, autoTick: false) - one
+/// The live run under test. A file-level binding: the bring-up helper
+/// returns the `Game` (the description) while tests also need the run, and
+/// one inline run per isolate means one binding is enough.
+late InlineGameHandle run;
+
+
+// Everything here runs through Game.startInline(...) - one
 // isolate, one copy of the Game, no timer, no wall clock. GameState.advance
 // (Duration) is the whole scheduler, so driving it by hand is not a
 // reduced-fidelity stand-in for the real loop; it *is* the real loop, minus
@@ -93,12 +100,19 @@ class _BothPhases extends GameSystem with FixedTickable, Tickable {
   void onTick(Duration delta) => log.add('present');
 }
 
-class _PhaseGame extends _TestGame {
+/// Replaces the base fixture's system set entirely - so the *state* is what
+/// varies, and the `Game` only has to say which one to build.
+class _PhaseState extends _TestState {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     descriptor.has(_PresentSystem());
     descriptor.has(_BothPhases());
   }
+}
+
+class _PhaseGame extends _TestGame {
+  @override
+  GameState createState() => _PhaseState();
 }
 
 class _SystemA extends GameSystem with FixedTickable {
@@ -146,7 +160,10 @@ class _Indifferent2 extends GameSystem with FixedTickable {
   void onFixedUpdate() => log.add('2');
 }
 
-class _OrderingGame extends _TestGame {
+/// Extends the base fixture's set rather than replacing it - the `super` call
+/// is what makes declaration order (and therefore execution order) the thing
+/// under test.
+class _OrderingState extends _TestState {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     // Declaration order: A, InertSystem, B, CensusSystem, Indifferent1,
@@ -156,6 +173,11 @@ class _OrderingGame extends _TestGame {
     descriptor.has(_Indifferent2());
     descriptor.has(_SortsFirst());
   }
+}
+
+class _OrderingGame extends _TestGame {
+  @override
+  GameState createState() => _OrderingState();
 }
 
 /// Counts what the query sees *this* tick, to prove a command-spawned
@@ -221,6 +243,13 @@ class _TestState extends GameState<_TestGame> {
   }
 
   Entity _onSpawnUnit() => sceneHandle!.addEntity(level.unit);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    descriptor.has(_SystemA());
+    descriptor.has(_InertSystem());
+    descriptor.has(_SystemB());
+    descriptor.has(_CensusSystem());
+  }
 }
 
 class _TestGame extends Game {
@@ -240,13 +269,7 @@ class _TestGame extends Game {
     spawnUnit = descriptor.has(_SpawnUnit());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    descriptor.has(_SystemA());
-    descriptor.has(_InertSystem());
-    descriptor.has(_SystemB());
-    descriptor.has(_CensusSystem());
-  }
+
 }
 
 typedef _Nudge = ({Entity entity, double amount});
@@ -319,7 +342,7 @@ class _BadCommandGame extends _TestGame {
   GameState createState() => _BadCommandState();
 }
 
-class _DuplicateSystemGame extends _TestGame {
+class _DuplicateSystemState extends _TestState {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     descriptor.has(_SystemA());
@@ -327,16 +350,21 @@ class _DuplicateSystemGame extends _TestGame {
   }
 }
 
+class _DuplicateSystemGame extends _TestGame {
+  @override
+  GameState createState() => _DuplicateSystemState();
+}
+
 Future<T> _game<T extends Game>(T game) async {
-  await game.start(inline: true, autoTick: false);
+  run = await Game.startInline(game);
   addTearDown(() async {
-    if (game.isRunning) await game.stop();
+    if (run.isRunning) await run.stop();
   });
   return game;
 }
 
 /// The simulation half. Every scheduler call lives here now, not on `Game`.
-GameState _state(Game game) => game.state!;
+GameState _state(Game game) => run.state;
 
 const Duration _step = Duration(milliseconds: 10);
 
@@ -401,9 +429,9 @@ void main() {
 
   group('presentation phase (Tickable)', () {
     test('runs once per frame, not once per simulation step', () async {
-      final game = await _game(_PhaseGame());
+      await _game(_PhaseGame());
       // One advance worth three whole fixed steps.
-      expect(game.state!.advance(_step * 3), 3);
+      expect(run.state.advance(_step * 3), 3);
       expect(log.where((e) => e == 'sim').length, 3,
           reason: 'simulation runs per step');
       expect(log.where((e) => e == 'present').length, 1,
@@ -413,8 +441,8 @@ void main() {
     });
 
     test('runs even on a frame that afforded no simulation step', () async {
-      final game = await _game(_PhaseGame());
-      expect(game.state!.advance(const Duration(milliseconds: 4)), 0,
+      await _game(_PhaseGame());
+      expect(run.state.advance(const Duration(milliseconds: 4)), 0,
           reason: 'less than one fixed step');
       expect(log, contains('present'),
           reason: 'a frame where the simulation did not advance is still a '
@@ -423,30 +451,30 @@ void main() {
     });
 
     test('presentation runs after simulation within one frame', () async {
-      final game = await _game(_PhaseGame());
-      game.state!.advance(_step);
+      await _game(_PhaseGame());
+      run.state.advance(_step);
       // Not just "both ran" - the ordering is the entire contract. A
       // Tickable reads what the tick published, so it must come after.
       expect(log.indexOf('sim'), lessThan(log.indexOf('present')));
     });
 
     test('the delta is the frame\'s elapsed time, not the fixed step', () async {
-      final game = await _game(_PhaseGame());
+      await _game(_PhaseGame());
       const frame = Duration(milliseconds: 35); // 3 steps + 5ms remainder
-      game.state!.advance(frame);
-      expect(game.getSystem<_PresentSystem>().deltas, [frame],
+      run.state.advance(frame);
+      expect(run.state.getSystem<_PresentSystem>().deltas, [frame],
           reason: 'onTick receives real elapsed wall clock, unlike '
               'onFixedUpdate which always represents exactly fixedTimeStep');
     });
 
     test('a Tickable-only system never receives a fixed tick, and vice versa',
         () async {
-      final game = await _game(_PhaseGame());
-      game.state!.advance(_step);
+      await _game(_PhaseGame());
+      run.state.advance(_step);
       // _PresentSystem is Tickable and not FixedTickable: it logs 'P' once
       // (presentation) and never participates in the simulation pass.
       expect(log.where((e) => e == 'P').length, 1);
-      expect(game.getSystem<_PresentSystem>().deltas, hasLength(1));
+      expect(run.state.getSystem<_PresentSystem>().deltas, hasLength(1));
     });
   });
 
@@ -462,7 +490,7 @@ void main() {
       final game = await _game(_TestGame());
       _state(game).advance(_step);
       expect(log, ['A', 'B']);
-      expect(game.getSystem<_InertSystem>(), isA<_InertSystem>());
+      expect(run.state.getSystem<_InertSystem>(), isA<_InertSystem>());
     });
 
     test('disableSystem stops a system ticking; enableSystem resumes it',
@@ -471,13 +499,13 @@ void main() {
       _state(game).advance(_step);
       expect(log, ['A', 'B']);
 
-      await game.disableSystem<_SystemA>();
-      expect(game.isSystemEnabled<_SystemA>(), isFalse);
+      run.state.disableSystem<_SystemA>();
+      expect(run.state.isSystemEnabled<_SystemA>(), isFalse);
       log.clear();
       _state(game).advance(_step);
       expect(log, ['B'], reason: 'A is paused but B keeps running');
 
-      await game.enableSystem<_SystemA>();
+      run.state.enableSystem<_SystemA>();
       log.clear();
       _state(game).advance(_step);
       expect(log, ['A', 'B']);
@@ -485,36 +513,36 @@ void main() {
 
     test('disableSystems/enableSystems take a set of types', () async {
       final game = await _game(_TestGame());
-      await game.disableSystems([_SystemA, _SystemB]);
+      run.state.disableSystems([_SystemA, _SystemB]);
       _state(game).advance(_step);
       expect(log, isEmpty);
-      await game.enableSystems([_SystemA, _SystemB]);
+      run.state.enableSystems([_SystemA, _SystemB]);
       _state(game).advance(_step);
       expect(log, ['A', 'B']);
     });
 
     test('an undeclared system cannot be toggled or fetched', () async {
-      final game = await _game(_TestGame());
-      expect(() => game.getSystem<_CensusSystem>(), returnsNormally);
-      expect(() => game.disableSystem<_UndeclaredSystem>(), throwsArgumentError);
-      expect(() => game.getSystem<_UndeclaredSystem>(), throwsArgumentError);
-      expect(game.tryGetSystem<_UndeclaredSystem>(), isNull,
+      await _game(_TestGame());
+      expect(() => run.state.getSystem<_CensusSystem>(), returnsNormally);
+      expect(() => run.state.disableSystem<_UndeclaredSystem>(), throwsArgumentError);
+      expect(() => run.state.getSystem<_UndeclaredSystem>(), throwsArgumentError);
+      expect(run.state.tryGetSystem<_UndeclaredSystem>(), isNull,
           reason: 'tryGetSystem is the "I work either way" form');
-      expect(game.tryGetSystem<_CensusSystem>(), isNotNull);
+      expect(run.state.tryGetSystem<_CensusSystem>(), isNotNull);
     });
 
     test('declaring the same system twice is an error, not a silent duplicate',
         () {
-      expect(_DuplicateSystemGame().start(inline: true, autoTick: false),
+      expect(Game.startInline(_DuplicateSystemGame()),
           throwsStateError);
     });
 
     test('a system reaches its siblings and its scene', () async {
       final game = await _game(_TestGame());
-      final census = game.getSystem<_CensusSystem>();
-      expect(census.getSystem<_SystemA>(), same(game.getSystem<_SystemA>()));
+      final census = run.state.getSystem<_CensusSystem>();
+      expect(census.getSystem<_SystemA>(), same(run.state.getSystem<_SystemA>()));
       expect(census.getScene<_TestScene>(), same(_state(game).scene));
-      expect(census.state, same(game.state));
+      expect(census.state, same(run.state));
     });
   });
 
@@ -574,7 +602,7 @@ void main() {
       expect(log, ['sim', 'P', 'present']);
 
       log.clear();
-      await game.disableSystem<_BothPhases>();
+      run.state.disableSystem<_BothPhases>();
 
       expect(state.fixedTickEvent.listenerCount, 1,
           reason: 'membership is baked - disabling does not re-collect');
@@ -613,7 +641,7 @@ void main() {
     test('a command lands before systems run, on the very tick it arrives',
         () async {
       final game = await _game(_TestGame());
-      final census = game.getSystem<_CensusSystem>();
+      final census = run.state.getSystem<_CensusSystem>();
 
       _state(game).advance(_step); // tick 1: nothing exists
       game.spawnUnit();
@@ -640,7 +668,7 @@ void main() {
       _state(game).advance(_step);
       final results = await pending;
 
-      expect(game.getSystem<_CensusSystem>().seen, [50]);
+      expect(run.state.getSystem<_CensusSystem>().seen, [50]);
       expect(keys[0][results], Entity.pack(id, 0, 0));
       expect(keys[49][results], isNot(keys[0][results]),
           reason: 'each call in the batch gets its own record, so each result '
@@ -671,7 +699,7 @@ void main() {
     });
 
     test('a command declared on the GameState is refused at boot', () {
-      expect(_BadCommandGame().start(inline: true, autoTick: false),
+      expect(Game.startInline(_BadCommandGame()),
           throwsStateError);
     });
 
@@ -736,23 +764,22 @@ void main() {
   });
 
   group('handle vs simulation', () {
-    test('a Game that never started has no state at all', () {
-      expect(_TestGame().state, isNull);
-    });
+    // 'a Game that never started has no state at all' lived here. A Game
+    // has no `state` at any point now - started or not - so the property
+    // is carried by the type rather than by a test.
 
     test('the inline copy is the one that simulates', () async {
       final game = await _game(_TestGame());
-      expect(game.state, isNotNull);
-      expect(game.state!.isSimulating, isTrue,
+      expect(run.state.isSimulating, isTrue,
           reason: 'inline means one copy doing both jobs');
-      expect(game.state!.scene, isA<_TestScene>());
-      expect(game.state!.game, same(game),
+      expect(run.state.scene, isA<_TestScene>());
+      expect(run.state.game, same(game),
           reason: 'the back-reference is typed and points at this copy');
     });
 
     test('starting twice is an error', () async {
       final game = await _game(_TestGame());
-      expect(game.start(inline: true), throwsStateError);
+      expect(Game.startInline(game), throwsStateError);
     });
 
     test('advance/runFixedStep refuse to run on a state that is not simulating',
@@ -766,22 +793,32 @@ void main() {
 
     test('a GameState with no scene is legitimate, and still ticks', () async {
       final game = await _game(_ScenelessGame());
-      expect(game.state!.scene, isNull,
+      expect(run.state.scene, isNull,
           reason: 'a game that never calls loadScene has no world - '
               'world loaded at all');
-      expect(game.state!.pool.pageCount, 0,
+      expect(run.state.pool.pageCount, 0,
           reason: 'the pool belongs to the Game now, not the scene, so a game '
               'with no world has an empty pool rather than no pool - which is '
               'why the tick loop no longer asks whether there is storage');
       expect(_state(game).advance(_step * 2), 2,
           reason: 'systems still run without a world to run over');
       expect(log, ['A', 'A']);
-      expect(() => game.state!.getScene<_TestScene>(), throwsStateError);
+      expect(() => run.state.getScene<_TestScene>(), throwsStateError);
     });
 
-    test('loadScene is explicitly unimplemented, not silently broken', () async {
-      final game = await _game(_TestGame());
-      expect(() => game.loadScene(_TestScene()), throwsUnimplementedError);
+    // DELETED: 'loadScene is explicitly unimplemented, not silently broken'.
+    // `Game.loadScene` was a stub that only ever threw, kept while scene
+    // transitions were being designed. It is gone rather than implemented:
+    // loading registers archetypes, spawns entities and claims assets, all of
+    // which are simulation acts the presentation copy has no world to perform.
+    // `GameState.loadScene` is the only spelling, and a main-triggered
+    // transition goes through a command whose handler runs over there.
+    test('loadScene is a GameState method, and refuses a mirror copy', () async {
+      await _game(_TestGame());
+      // Inline, so this copy does simulate and the call is legal - the point
+      // is that the method is reached through the state at all.
+      expect(run.state.isSimulating, isTrue);
+      expect(run.state.loadScene(_TestScene()), isA<Future<Scene>>());
     });
   });
 }
@@ -789,7 +826,11 @@ void main() {
 class _UndeclaredSystem extends GameSystem {}
 
 /// The "no world yet" configuration: a GameState that declares no scene.
-class _ScenelessState extends GameState<_ScenelessGame> {}
+class _ScenelessState extends GameState<_ScenelessGame> {  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    descriptor.has(_SystemA());
+  }
+}
 
 class _ScenelessGame extends Game {
   @override
@@ -801,8 +842,5 @@ class _ScenelessGame extends Game {
   @override
   GameState createState() => _ScenelessState();
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    descriptor.has(_SystemA());
-  }
+
 }

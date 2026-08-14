@@ -42,7 +42,62 @@ import 'package:goo2d/src/render/render_2d.dart';
 ///
 /// A future `goo3d` supplies its own `Game3D` overriding the same
 /// [buildView], and `GameView` never learns that either exists.
-abstract class Game2D extends Game with Renderer2D {}
+abstract class Game2D extends Game with Renderer2D {
+  /// Narrowed to [GameState2D], and that narrowing is the whole opt-in.
+  ///
+  /// 2D rendering is two halves on two isolates: this object declares and
+  /// drains the frame buffers, and [GameRenderer2D] fills them from the game
+  /// isolate. A system can only be declared where systems live, so the second
+  /// half has to be named by the state - and returning a plain `GameState`
+  /// here is a **compile error** rather than a game that silently paints
+  /// nothing. That black screen is the exact trap this narrowing replaced:
+  /// `Renderer2D` used to declare the systems itself, back when
+  /// `describeSystems` was a `Game` pass.
+  @override
+  GameState2D createState();
+}
+
+/// The simulation half of [Game2D] - declares the two systems 2D rendering
+/// cannot work without.
+///
+/// ```dart
+/// class MyGame extends Game2D {
+///   @override
+///   MyState createState() => MyState();
+/// }
+///
+/// class MyState extends GameState2D<MyGame> {
+///   @override
+///   void onMounted() => loadScene(Level());
+/// }
+/// ```
+///
+/// A game with its own state hierarchy mixes in [Renderer2DState] instead;
+/// this class is that mixin applied to the plain base, which is what almost
+/// every game wants.
+abstract class GameState2D<G extends Game2D> extends GameState<G>
+    with Renderer2DState<G> {}
+
+/// Declares [WorldTransformSystem] and the renderer, for a state whose base
+/// class is already something else.
+mixin Renderer2DState<G extends Game2D> on GameState<G> {
+  /// A game that declares its own systems overrides this and calls
+  /// `super.describeSystems(descriptor)`.
+  @override
+  @mustCallSuper
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(WorldTransformSystem());
+    descriptor.has(createRenderer());
+  }
+
+  /// The renderer to declare. Override to return a `GameRenderer2D` subclass
+  /// without having to take over [describeSystems] to do it.
+  ///
+  /// Note the *budget* is not here: `maxSpritesPerTick` sizes native memory,
+  /// so it lives on [Renderer2D], on the copy that allocates it.
+  GameRenderer2D createRenderer() => GameRenderer2D();
+}
 
 /// The painting half of [Game2D], as a mixin, for a game whose base class is
 /// already something else.
@@ -56,53 +111,92 @@ abstract class Game2D extends Game with Renderer2D {}
 /// itself does nothing but [DrawCanvas2D.replay]: no query, no hierarchy
 /// walk, no allocation. All of that already happened on the game isolate.
 mixin Renderer2D on Game {
-  /// Declares the two systems 2D rendering cannot work without:
-  /// [WorldTransformSystem], which resolves where everything is, and
-  /// [createRenderer]'s system, which turns that into a frame.
+  /// The view a 2D game draws into when it declares none of its own -
+  /// `GameView(camera: game.defaultCamera)` is the zero-configuration path.
   ///
-  /// Declaring them here rather than leaving them to the game is the answer
-  /// to a trap this design had: `extends Game2D` and
-  /// `descriptor.has(GameRenderer2D())` were two separate opt-ins for one
-  /// feature, and forgetting the second produced a black screen with nothing
-  /// to see in a stack trace. (The example app in this repo had exactly that
-  /// bug.) One opt-in now: the superclass paints, and it brings what it needs
-  /// to paint with it.
+  /// Declared for the same reason [describeSystems] declares the renderer:
+  /// `extends Game2D` is meant to be the whole opt-in, and a game that had to
+  /// remember a second declaration before anything appeared would hit exactly
+  /// the black screen that arrangement exists to prevent.
   ///
-  /// A game that declares its own systems overrides this and calls
-  /// `super.describeSystems(descriptor)` - the `@mustCallSuper` on `Game`'s
-  /// own declaration is what makes forgetting that an analyzer error rather
-  /// than another black screen.
+  /// A game wanting several views declares them itself and calls
+  /// `super.describeCameras(descriptor)`, so this one keeps address 0.
+  late final CameraView defaultCamera;
+
   @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(WorldTransformSystem());
-    descriptor.has(createRenderer());
+  void describeCameras(CameraDescriptor descriptor) {
+    super.describeCameras(descriptor);
+    defaultCamera = descriptor.has();
   }
 
-  /// The renderer to declare. Override to return a `GameRenderer2D` subclass
-  /// - raising `maxSpritesPerTick`, say - without having to take over
-  /// [describeSystems] to do it.
-  GameRenderer2D createRenderer() => GameRenderer2D();
+  /// Sprites past this many in a single tick are dropped. A hard bound rather
+  /// than a growing buffer on purpose: the byte scratch and the handoff slots
+  /// are both sized from it, and silently growing them mid-tick is an
+  /// allocation on the hot path. Override it if a scene genuinely draws more.
+  ///
+  /// Note this counts *sprites*, not entities - an entity declaring three
+  /// sprites spends three of them.
+  ///
+  /// It lives here, on the `Game`, rather than on [GameRenderer2D], because it
+  /// is a **sizing** knob and sizing happens on this side: [describeBuffers]
+  /// runs on main before the spawn and reserves the memory. Raising it is
+  /// therefore an override on your `Game2D` subclass, not a reason to subclass
+  /// the renderer.
+  int get maxSpritesPerTick => 4096;
 
-  // `late` so the initializer may read `this.assets` - a plain field
-  // initializer cannot.
-  late final DrawCanvas2D _canvas = DrawCanvas2D(assets: assets);
-  final _FrameSignal _frames = _FrameSignal();
+  /// Bytes one tick's sprite batch occupies, including its tick stamp.
+  int get spriteBatchBytes =>
+      DrawData2D.batchHeaderBytes +
+      maxSpritesPerTick * DrawSpriteData2D.strideBytes;
 
-  HandoffBuffer? _frameBuffer;
+  /// One handoff buffer per declared [CameraView], indexed by its address.
+  ///
+  /// Declared on the `Game` and not on the system that fills it, because
+  /// **allocation is a main-isolate act**: the memory is `calloc`'d in
+  /// `Game._bootMain` before `Isolate.spawn` and freed by this copy on stop,
+  /// while the system that writes into it exists only on the game isolate. It
+  /// is also this object that drains it every frame ([_onFrame]), so the
+  /// handle is held by its reader.
+  ///
+  /// Declared here rather than on `CameraView` itself so the kernel never
+  /// learns what a frame is: `goo` declares that a view exists, and whatever
+  /// draws it sizes its own storage. A future `goo3d` allocates something
+  /// else entirely against the same views.
+  late final List<HandoffHandle> _viewFrames;
 
-  /// Whether the persistent frame callback has been installed. Separate from
-  /// [_listening] because Flutter has no `removePersistentFrameCallback` - the
-  /// callback is installed once and disarmed, never taken off.
-  bool _registered = false;
+  /// The frame buffer [view] is drawn into. `GameRenderer2D` writes it on the
+  /// game isolate; `_ViewSurface` reads it here.
+  HandoffHandle framesFor(CameraView view) => _viewFrames[view.address];
 
-  /// Whether that callback should do anything. False after [stop], so a game
-  /// that is torn down while its widget is still mounted stops touching
-  /// storage that has been freed.
-  bool _listening = false;
+  @override
+  void describeBuffers(BufferDescriptor descriptor) {
+    super.describeBuffers(descriptor);
+    // `describeCameras` runs before `describeBuffers` in `Game._bootMain`, so
+    // the views are known by the time this asks how many buffers it needs.
+    _viewFrames = <HandoffHandle>[
+      for (var i = 0; i < cameraViews.length; i++)
+        descriptor.hasHandoff(slotBytes: spriteBatchBytes),
+    ];
+  }
 
-  /// Samples the newest published frame and pulses the repaint signal - once
-  /// per **Flutter frame**, on the main isolate.
+  /// The key this renderer's per-run state is filed under on the
+  /// [GameHandle]. Private, so nothing else can reach or clobber it.
+  static final Object _surfacesKey = Object();
+
+  /// This run's drawing surfaces. Created on first ask, released with the run.
+  ///
+  /// **Per run, not per game**, and that is the whole reason this indirection
+  /// exists. A `Game` is a prefab: one `MyGame` instance can back several live
+  /// runs, and these fields were plain fields on this mixin - so two runs
+  /// would have shared one surface map and one scheduler callback, and
+  /// stopping either would have disarmed the other. Filing them on the run
+  /// makes that unrepresentable.
+  _RunSurfaces _surfacesOf(GameHandle run) =>
+      run.attachment(_surfacesKey, _RunSurfaces.new);
+
+  /// Samples the newest published frame **for every view being shown** and
+  /// pulses that view's repaint signal - once per Flutter frame, on the main
+  /// isolate.
   ///
   /// # Why a frame callback and not the tick ping
   ///
@@ -114,19 +208,162 @@ mixin Renderer2D on Game {
   /// do about it, because it did not get to choose when it was told.
   ///
   /// Sampling here instead reads the freshest frame at exactly the moment
-  /// Flutter can use it. There is no queue to fall behind in: the handoff
-  /// buffer holds the newest complete frame, so "we missed one" simply means
-  /// the missed one was replaced.
-  void _onFrame(Duration _) {
-    if (!_listening) return;
-    // Reached through the declared system's own handle rather than a shared
-    // buffer name: `GameRenderer2D` declares it in describeBuffers, both
-    // isolate copies of that system hold a handle to the same memory, and this
-    // is the main-isolate copy's.
-    final buffer =
-        _frameBuffer ??= tryGetSystem<GameRenderer2D>()?.drawFrames.tryBuffer;
-    // Null when the game declares no GameRenderer2D at all - a valid
-    // headless-plus-HUD setup, just not one that paints.
+  /// Flutter can use it. There is no queue to fall behind in: each view's
+  /// handoff buffer holds that view's newest complete frame, so "we missed
+  /// one" simply means the missed one was replaced.
+  ///
+  /// One callback for all views rather than one each: they are all sampled at
+  /// the same instant of the same Flutter frame, so two views of one scene
+  /// cannot show it at two different ages.
+  void _onFrame(GameHandle run) {
+    final surfaces = _surfacesOf(run);
+    if (!surfaces.listening) return;
+    // Re-armed first, so the loop survives anything below returning early. A
+    // transient callback is one-shot, and scheduling one also requests the
+    // next frame - which is what a game wants: it renders continuously rather
+    // than waiting for something else to dirty the tree.
+    //
+    // Transient, not persistent, and that is the whole reason for the choice:
+    // transient callbacks run in `handleBeginFrame`, *before* build and paint.
+    // A persistent one runs after `WidgetsBinding`'s own drawFrame, so the
+    // pulse below would mark the painter dirty too late and land a frame
+    // behind - reintroducing exactly the lag this move exists to remove.
+    surfaces.callbackId = SchedulerBinding.instance
+        .scheduleFrameCallback((_) => _onFrame(run));
+    // No `getSystem<GameRenderer2D>()` here any more, and that is the point of
+    // moving the buffers onto this object: systems live on the game isolate,
+    // so asking this copy for one would find nothing. What main needs is the
+    // storage, and the storage is declared here.
+    for (final surface in surfaces.byView.values) {
+      surface.sample(this);
+    }
+  }
+
+  /// The `CustomPaint` showing [camera], or null when there is nothing to
+  /// show yet.
+  ///
+  /// Null for a null [camera]: a `Game2D` handed to `GameView.headless` has
+  /// no view to draw into, and contributing nothing is the honest answer
+  /// rather than picking a view on the caller's behalf.
+  ///
+  /// It does **not** ask whether a scene is loaded, and that is a correction
+  /// rather than a relaxation. It used to return null while `state?.scene` was
+  /// null, so that an app with a loading screen behind the view saw it instead
+  /// of an empty canvas. That test cannot be asked from here any more: the
+  /// scenes live on the game isolate, and this copy's `GameState` is a
+  /// declaration mirror that never loads one - so the condition was true
+  /// forever in the spawned configuration and the game would simply never
+  /// paint.
+  ///
+  /// Nothing is lost by dropping it. A surface with no frame ingested replays
+  /// nothing, so a game between scenes still draws an empty canvas rather than
+  /// a stale one. An app that wants a loading screen shows it by not building
+  /// the `GameView` yet, or by stacking it in front - both of which are
+  /// decisions main can actually make, off a `StateChannel` the game publishes.
+  @override
+  Widget? buildView(
+    BuildContext context,
+    GameHandle run,
+    CameraView? camera,
+  ) {
+    if (camera == null) return null;
+
+    final surface = _surfacesOf(run).byView.putIfAbsent(
+      camera.address,
+      () => _ViewSurface(camera, DrawCanvas2D(assets: assets)),
+    );
+
+    return RepaintBoundary(
+      child: CustomPaint(
+        painter: _GameViewPainter(surface.canvas, surface.frames),
+        size: Size.infinite,
+        isComplex: true,
+        willChange: true,
+      ),
+    );
+  }
+
+  /// Starts sampling frames, now that something is on screen to show them.
+  @override
+  void onViewAttached(GameHandle run) {
+    super.onViewAttached(run);
+    final surfaces = _surfacesOf(run);
+    if (surfaces.listening) return;
+    surfaces.listening = true;
+    surfaces.callbackId = SchedulerBinding.instance
+        .scheduleFrameCallback((_) => _onFrame(run));
+  }
+
+  /// Stops sampling: nothing is showing this game any more.
+  @override
+  void onViewDetached(GameHandle run) {
+    super.onViewDetached(run);
+    run.tryAttachment<_RunSurfaces>(_surfacesKey)?.disarm();
+  }
+
+  /// Disarms the frame callback and releases every decoded frame.
+  // There is no `stop()` override here any more. Disarming the callback and
+  // releasing the decoded frames used to happen on the `Game`, which meant
+  // stopping one run tore down every run of that prefab. `_RunSurfaces` is a
+  // `RunAttachment`, so `GameHandle.stop()` releases exactly the one that
+  // stopped.
+}
+
+/// One run's drawing surfaces, filed on its [GameHandle].
+class _RunSurfaces implements RunAttachment {
+  /// One surface per [CameraView] something is showing, keyed by address.
+  ///
+  /// Lazy rather than one per declared view: a game may declare a minimap it
+  /// only shows on some screens, and an unshown view should cost no canvas,
+  /// no vertex arrays and no ingest.
+  final Map<int, _ViewSurface> byView = <int, _ViewSurface>{};
+
+  /// Whether the frame callback should keep rescheduling itself. False once
+  /// the last view is gone or the run has stopped, so a torn-down run stops
+  /// touching storage that has been freed.
+  bool listening = false;
+
+  /// The pending transient frame callback, so it can be cancelled. A
+  /// self-rescheduling callback left armed keeps the scheduler awake, and a
+  /// widget test fails outright on "an animation is still running".
+  int? callbackId;
+
+  void disarm() {
+    listening = false;
+    final pending = callbackId;
+    if (pending == null) return;
+    SchedulerBinding.instance.cancelFrameCallbackWithId(pending);
+    callbackId = null;
+  }
+
+  @override
+  void disposeForRun() {
+    disarm();
+    for (final surface in byView.values) {
+      surface.dispose();
+    }
+    byView.clear();
+  }
+}
+
+/// Everything the main isolate needs to show one [CameraView]: where its
+/// frames arrive, the vertex arrays they are decoded into, and the signal
+/// that says a new one landed.
+///
+/// One per *shown* view. Two `GameView`s on the same view share this one, so
+/// they decode once and paint the same frame - which is what makes "the same
+/// camera at two sizes" cost one ingest rather than two.
+class _ViewSurface {
+  _ViewSurface(this.view, this.canvas);
+
+  final CameraView view;
+  final DrawCanvas2D canvas;
+  final _FrameSignal frames = _FrameSignal();
+
+  HandoffBuffer? _buffer;
+
+  void sample(Renderer2D renderer) {
+    final buffer = _buffer ??= renderer.framesFor(view).tryBuffer;
     if (buffer == null) return;
 
     // Null means nothing new since the last look, which at 60Hz against a
@@ -139,56 +376,19 @@ mixin Renderer2D on Game {
     // rather than read during paint. That is what keeps the window in which
     // the writer could interfere down to this ingest instead of a whole
     // raster - see `HandoffBuffer`.
-    if (!_canvas.ingestFrame(
+    if (!canvas.ingestFrame(
       ByteData.sublistView(slot.asTypedList(buffer.readUsedBytes)),
       buffer.readUsedBytes,
     )) {
       return;
     }
-    _frames.pulse();
+    frames.pulse();
   }
 
-  /// The `CustomPaint` that shows the game, or null when there is nothing to
-  /// show yet.
-  ///
-  /// Null while there is no scene: `GameState.scene` is nullable by design (a
-  /// game between scenes, or brought up before its first load), and the
-  /// honest response is to contribute nothing rather than paint a stale
-  /// frame. `GameView` lays out nothing for a null, so an app that puts a
-  /// loading screen behind the view sees it.
-  @override
-  Widget? buildView(BuildContext context) {
-    if (state?.scene == null) return null;
-
-    // Subscribing here rather than in `start()`: this is the first point at
-    // which the game is known to be both running and actually on screen.
-    // Guarded so a rebuild does not stack listeners.
-    _listening = true;
-    if (!_registered) {
-      _registered = true;
-      SchedulerBinding.instance.addPersistentFrameCallback(_onFrame);
-    }
-
-    return RepaintBoundary(
-      child: CustomPaint(
-        painter: _GameViewPainter(_canvas, _frames),
-        size: Size.infinite,
-        isComplex: true,
-        willChange: true,
-      ),
-    );
-  }
-
-  /// Disarms the frame callback and releases the decoded frame.
-  @override
-  Future<void> stop() async {
-    // Disarmed, not removed: Flutter has no removePersistentFrameCallback. The
-    // callback stays installed for the life of the binding and does nothing.
-    _listening = false;
-    _frameBuffer = null;
-    _canvas.dispose();
-    _frames.dispose();
-    await super.stop();
+  void dispose() {
+    _buffer = null;
+    canvas.dispose();
+    frames.dispose();
   }
 }
 

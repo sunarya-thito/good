@@ -29,28 +29,45 @@ import 'package:ffi/ffi.dart';
 ///
 ///  * **ready** - "this slot is complete, you may read it". Written by the
 ///    writer, read by the reader.
-///  * **free** - "I am not using this slot, you may write it". Written by the
-///    reader, read by the writer.
+///  * **reading** - "I am holding this slot right now". Written by the reader,
+///    read by the writer.
 ///
-/// The writer only ever writes where `free` points, and **never writes the
-/// slot `ready` points at**. That second rule is the one that closes the hole:
-/// without it the writer would publish a slot and then immediately begin
-/// overwriting it, and a reader that started just then would walk into a
-/// half-written frame.
+/// The writer takes any slot that is neither `ready` nor `reading`. That is
+/// the whole rule, and both halves matter: not `reading`, or it would scribble
+/// under the reader; not `ready`, or it would overwrite the frame the reader
+/// is entitled to pick up at any moment.
 ///
-/// When `free` still names the slot it just published, the reader has not
-/// handed anything back yet, so [beginWrite] returns null and the writer skips
-/// that frame. That is not a stall - the simulation keeps running, it simply
-/// stops producing frames nobody could have read. It also paces production to
-/// the consumer: a game ticking at 200Hz against a 60Hz display stops building
-/// and discarding two frames out of every three.
+/// # Why the reader says what it holds, not what it has released
 ///
-/// # Two slots, not three
+/// An earlier version had the reader publish `free` - "you may write here" -
+/// which sounds equivalent and is not. `free` only advances when the reader
+/// reads, so the writer produced exactly one frame per read and then idled.
+/// The frame waiting was therefore the one produced *just after the previous
+/// read*, and by the time the reader came back it was a whole read-interval
+/// stale. That is the opposite of what a renderer wants, and it defeated the
+/// point of moving off the ring.
 ///
-/// With the handoff, two is sufficient and a third is never touched: the
-/// reader holds one and hands back the other, so the writer always has exactly
-/// one target. Three slots are what a *blind* writer needs, to buy grace it
-/// cannot otherwise have. Told where to go, it needs no grace.
+/// Saying what it *holds* instead lets the writer keep going: it always has a
+/// slot that is neither being read nor waiting to be read, so it replaces its
+/// own unread frame with a fresher one and the reader always collects the
+/// newest.
+///
+/// # Three slots, and why two will not do
+///
+/// The reader holds one and the newest complete one is another, so the writer
+/// needs a third to work in. With two, "neither `ready` nor `reading`" can be
+/// the empty set and the writer has nowhere to go - which is exactly the
+/// stalling behaviour above. Three is the minimum that lets the writer run
+/// freely while a reader holds a slot for as long as it likes.
+///
+/// # Claim, then confirm
+///
+/// The reader writes `reading` and then re-reads `ready`. The writer only ever
+/// enters a slot *after* publishing a different one, so if `ready` has not
+/// moved since the claim, the writer cannot be inside the slot just claimed.
+/// Without that second read there is a window: the reader picks up `ready`,
+/// the writer publishes elsewhere and then steps into the slot the reader was
+/// about to claim.
 ///
 /// # Memory ordering
 ///
@@ -63,12 +80,13 @@ import 'package:ffi/ffi.dart';
 /// targets this engine runs on (x64/ARM64). Flagged rather than assumed away -
 /// revisit with a real release-store if a weak-memory target ever matters.
 class HandoffBuffer {
-  /// Two, and see the class doc on why a third would be dead weight.
-  static const int slotCount = 2;
+  /// Three: one being read, one complete and waiting, one to write into. See
+  /// the class doc on why two stalls the writer.
+  static const int slotCount = 3;
 
   // Control block layout, in 32-bit words.
   static const int _readyWord = 0;
-  static const int _freeWord = 1;
+  static const int _readingWord = 1;
   static const int _usedWord = 2; // one per slot, from here
   static const int _controlWords = _usedWord + slotCount;
 
@@ -80,7 +98,7 @@ class HandoffBuffer {
           growable: false,
         ) {
     _control[_readyWord] = -1; // nothing published yet
-    _control[_freeWord] = 0; // slot 0 is the writer's to begin with
+    _control[_readingWord] = -1; // no reader holding anything
   }
 
   /// Rebuilds a view over a buffer the other isolate allocated. The
@@ -113,19 +131,22 @@ class HandoffBuffer {
 
   // --- writer side ------------------------------------------------------
 
-  /// The slot to fill, or **null when there is nowhere safe to write**.
+  /// The slot to fill: any that is neither the newest complete one nor the one
+  /// a reader is holding.
   ///
-  /// Null means the reader has not handed a slot back since the last
-  /// [publish], so the only free slot is the one `ready` points at. Skip the
-  /// frame; do not fall back to writing somewhere else.
+  /// With three slots at most two are excluded, so this always finds one and
+  /// **the writer never waits on a reader**. The null return exists only so a
+  /// mis-sized buffer fails visibly rather than corrupting; it is unreachable
+  /// at [slotCount] 3.
   Pointer<Uint8>? beginWrite() {
-    final free = _control[_freeWord];
-    // `free == ready` is the reader having not moved since the last publish.
-    // Writing there would overwrite the frame the reader is entitled to pick
-    // up at any moment.
-    if (free < 0 || free == _control[_readyWord]) return null;
-    _writeSlot = free;
-    return _slots[free];
+    final ready = _control[_readyWord];
+    final reading = _control[_readingWord];
+    for (var slot = 0; slot < slotCount; slot++) {
+      if (slot == ready || slot == reading) continue;
+      _writeSlot = slot;
+      return _slots[slot];
+    }
+    return null;
   }
 
   /// Marks the slot from the last [beginWrite] complete and readable.
@@ -150,20 +171,29 @@ class HandoffBuffer {
 
   // --- reader side ------------------------------------------------------
 
-  /// Takes the newest complete slot, or **null when nothing new has been
-  /// published** since the last call.
+  /// Takes the newest complete slot and holds it, or **null when nothing new
+  /// has been published** since the last call.
   ///
-  /// Taking a slot also hands the previous one back to the writer, which is
-  /// what lets it carry on. A reader that stops calling this stops the writer
-  /// producing frames - which is correct, since nothing would read them.
+  /// Holding it is what keeps the writer out; the hold lasts until the next
+  /// call, so a reader may take as long as it likes over the bytes. The writer
+  /// carries on regardless, replacing its own unread frames, so the slot
+  /// returned here is always the newest complete one rather than the oldest
+  /// since the last read.
   Pointer<Uint8>? beginRead() {
-    final ready = _control[_readyWord];
-    if (ready < 0 || ready == _readSlot) return null;
+    var ready = _control[_readyWord];
+    if (ready < 0) return null;
+    // Claim, then confirm - see the class doc. The writer only enters a slot
+    // after publishing a different one, so an unchanged `ready` proves it is
+    // not inside the slot just claimed. Bounded in practice: it takes a
+    // publish to invalidate a claim, and the writer publishes at tick rate.
+    while (true) {
+      _control[_readingWord] = ready;
+      final confirmed = _control[_readyWord];
+      if (confirmed == ready) break;
+      ready = confirmed;
+    }
+    if (ready == _readSlot) return null;
     _readSlot = ready;
-    // Everything that is not the slot just taken is now the writer's. With
-    // two slots that is exactly one, and it is the slot this reader was on
-    // until a moment ago.
-    _control[_freeWord] = ready == 0 ? 1 : 0;
     return _slots[ready];
   }
 

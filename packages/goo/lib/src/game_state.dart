@@ -9,21 +9,11 @@ import 'package:goo/src/event/lifecycle.dart';
 import 'package:goo/src/event/tick_loop.dart';
 import 'package:goo/src/command/command.dart';
 import 'package:goo/src/command/param.dart';
-import 'package:goo/src/event/state.dart';
 import 'package:goo/src/game.dart';
 import 'package:goo/src/pool.dart';
 import 'package:goo/src/scene.dart';
 import 'package:goo/src/scene_handle.dart';
 import 'package:goo/src/system.dart';
-
-/// Holds asset decoding shut across `Game.start()`'s spawn.
-///
-/// A **library-private static**, deliberately, and not a field: a `Completer`
-/// is not sendable, and anything reachable from the `Game` is serialized by
-/// `Isolate.spawn`. Statics belong to no object graph and are per-isolate, so
-/// this is invisible to the copy - which is exactly right, since only the copy
-/// doing the spawning has anything to wait for.
-Completer<void>? _bootAssetGate;
 
 /// The game-isolate half of a game: **mutations happen here**.
 ///
@@ -129,7 +119,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   @override
   void collectListeners(ListenerCollector collector) {
     super.collectListeners(collector);
-    final systems = game.declaredSystems;
+    final systems = declaredSystems;
     for (var i = 0; i < systems.length; i++) {
       collector.offer(systems[i]);
     }
@@ -189,24 +179,33 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// Every loaded scene, in load order. The live list - do not retain it.
   ///
   /// Several scenes can be resident at once (a level plus a HUD, a preloaded
-  /// next level, a background sim) and **all of them tick**. Which one is
-  /// *front* is a separate question, answered by [switchScene] /
-  /// `Scene.isActive`.
+  /// next level, a background sim) and **all of them are live** - all tick,
+  /// all receive input, all render. There is no front scene: a game that wants
+  /// one paused or hidden either unloads it or checks a flag of its own,
+  /// because only the game knows what "paused" should mean for it.
   List<Scene> get loadedScenes => _loaded;
 
-  /// The front scene, or null when nothing is loaded.
+  /// The **first** loaded scene, or null when nothing is loaded.
+  ///
+  /// A convenience for the overwhelmingly common single-scene game, not a
+  /// statement that this scene is special. It used to mean "the front one",
+  /// set by a `switchScene` that gated nothing; deleting that left the name
+  /// needing an honest meaning, and "first loaded" is the one that is
+  /// *derived* rather than stored - there is no second source of truth to
+  /// drift, and no setter to call at the wrong time. A game with several
+  /// scenes resident should say which it means and use [loadedScenes].
   ///
   /// **Nullable on purpose.** A `GameState` with no scene is a legitimate,
   /// expected state - a game booted straight to a menu, a headless host that
   /// only runs systems, a state between transitions. Everything that touches
   /// it handles that: a renderer draws nothing and a widget shows whatever it
   /// shows when there is no world yet. It is not an error to be reported.
-  Scene? get sceneHandle => SceneRegistry.active;
+  Scene? get sceneHandle => _loaded.isEmpty ? null : _loaded.first;
 
-  /// The front scene's declaration - `sceneHandle.get<SceneStruct>()`, or null
-  /// when nothing is loaded.
+  /// The first loaded scene's declaration - `sceneHandle.get<SceneStruct>()`,
+  /// or null when nothing is loaded.
   SceneStruct? get scene {
-    final handle = SceneRegistry.active;
+    final handle = sceneHandle;
     return handle == null ? null : SceneRegistry.tryResolve(handle);
   }
 
@@ -230,12 +229,51 @@ abstract class GameState<T extends Game> extends GameListenerBase
 
   // --- declaration hooks ------------------------------------------------
 
-  /// Declares this state's published state - see [Game.describeState], which
-  /// carries the whole story. One of exactly three hosts that may.
+  // There is deliberately no `describeState` here, and it is not an oversight
+  // - it used to exist and was removed. A channel's storage is allocated on
+  // the main isolate before the spawn, and its identity on the wire is its
+  // index in that one declaration pass; a `GameState` is built *on the game
+  // isolate*, after that pass has already run and its memory been claimed, so
+  // a channel declared here would have an index on one copy and none on the
+  // other - which is the same thing as not having one. Declare it on the
+  // [Game] and write to it from here through `game.myChannel`. See
+  // `Game.describeState`.
+
+  /// Declares every `GameSystem` this game runs - once, up front, before the
+  /// fixed-tick loop starts.
   ///
-  /// Declared second in the shared boot pass, after the `Game`'s own and
-  /// before every declared `GameSystem`'s.
-  void describeState(StateDescriptor descriptor) {}
+  /// ```dart
+  /// @override
+  /// void describeSystems(SystemDescriptor descriptor) {
+  ///   descriptor.has(MovementSystem());
+  ///   descriptor.has(CombatSystem());
+  /// }
+  /// ```
+  ///
+  /// Declaration order is execution order, unless a system states an opinion
+  /// (see `GameSystem.compareTo`). Systems are not registered piecemeal at
+  /// runtime - [enableSystem]/[disableSystem] only pause and resume one that
+  /// was declared here.
+  ///
+  /// # Why here and not on `Game`
+  ///
+  /// It was on `Game` until the systems themselves moved to this isolate, and
+  /// the argument for keeping it there was real: a `Game` *mixin* has to be
+  /// able to contribute a system, or `extends Game2D` stops being a single
+  /// opt-in for rendering and forgetting the second half paints nothing. But
+  /// "which object declares it" and "which isolate holds it" were being
+  /// answered by one placement, and only the second is a hard constraint. A
+  /// system is created here, ticks here, and is reachable from nowhere else -
+  /// so this is where the pass belongs.
+  ///
+  /// The mixin case is served by narrowing instead: `Game2D.createState()`
+  /// returns a `GameState2D`, which declares the two systems 2D rendering
+  /// needs. A `Game2D` whose state is a plain `GameState` is a **compile
+  /// error**, which is strictly better than the silent black screen the old
+  /// arrangement was guarding against.
+  ///
+  /// Runs on the simulating copy only, from `Game._bootGame`.
+  void describeSystems(SystemDescriptor descriptor) {}
 
   /// Registers the handlers that run on the **game** isolate, for commands
   /// the [Game] declared.
@@ -340,20 +378,23 @@ abstract class GameState<T extends Game> extends GameListenerBase
     SceneStruct next, {
     void Function(SceneLoadProgress)? onProgress,
   }) async {
-    // Deliberately **not** `_requireSimulating`. Both copies run this: main
-    // runs it before the spawn, which is what registers the archetypes and
-    // declares the assets, and the spawned copy inherits the result. Only the
-    // *spawning* half below is simulation-side.
-    //
+    // Only the simulating copy loads a scene, and that is new: this used to
+    // run on both, because main registered the archetypes before the spawn and
+    // the game isolate inherited them. Both copies registering meant both had
+    // to arrive at the same ids, which is the agreement `Game`'s registry
+    // snapshot existed to preserve. One registrar has no one to agree with.
+    _requireSimulating('loadScene');
+
     // Synchronous, order-critical half - see the doc above.
-    next.bindGame(game);
+    next.bindState(this);
     // Both the pool and the asset table come from the Game: a scene declares
     // into the table its game loads from, or the two would silently be
     // different tables and every load would fail to find its declaration.
     // A scene declared in `Game.describeScenes` is already initialized, which
     // is the entire point of declaring it - loading costs no registration.
     if (!next.isInitialized) {
-      next.initializeScene(pool, assets: game.assets);
+      next.initializeScene(pool,
+          assets: game.assets, cameraViews: game.cameraViews);
     }
     // Idempotent, and a no-op for a scene declared in `describeScenes` (the
     // boot pass already bound it). It matters for one loaded at runtime that
@@ -366,26 +407,16 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // once, each owning its own pages, and each individually unloadable.
     final handle = SceneRegistry.register(next);
     _loaded.add(handle);
-    // The first scene loaded becomes the active one, because a game with
-    // exactly one scene should not have to call switchScene to see it. Every
-    // later load leaves the front scene alone - loading and switching are
-    // separate on purpose.
-    if (SceneRegistry.active == null) SceneRegistry.setActive(handle);
 
-    // The instance's own bring-up, and where it spawns - so only on the copy
-    // that simulates. Main registers and stops; the game isolate runs this for
-    // every scene main loaded, from `mountScene()`, after the spawn. It takes
-    // the handle because a `SceneStruct` is a declaration that may back
-    // several loaded scenes, so "spawn into my scene" is a question only the
-    // handle answers.
-    if (_simulating) {
-      next.onMounted(handle);
-      // After the scene's own mount, never before: a listener told "a scene
-      // loaded" should find its starting entities already there. Fired on the
-      // scene's own dispatcher, so it reaches that scene's composition and no
-      // other scene's.
-      next.mountedEvent.call(handle);
-    }
+    // The instance's own bring-up, and where it spawns. It takes the handle
+    // because a `SceneStruct` is a declaration that may back several loaded
+    // scenes, so "spawn into my scene" is a question only the handle answers.
+    next.onMounted(handle);
+    // After the scene's own mount, never before: a listener told "a scene
+    // loaded" should find its starting entities already there. Fired on the
+    // scene's own dispatcher, so it reaches that scene's composition and no
+    // other scene's.
+    next.mountedEvent.call(handle);
 
     // Everything past this point is the asynchronous half.
     await _reconcileAssets(next, onProgress);
@@ -447,17 +478,17 @@ abstract class GameState<T extends Game> extends GameListenerBase
     }
   }
 
-  /// Makes [scene] the front scene.
-  ///
-  /// **Informational, and deliberately so.** It does not gate simulation -
-  /// every loaded scene ticks, so a background level keeps running - and
-  /// nothing is enforced. It records which scene is front, and consumers ask
-  /// (`Scene.isActive`). The framework's own renderer and mouse picker honour
-  /// it; a user's system is free to.
-  void switchScene(Scene scene) {
-    _requireSimulating('switchScene');
-    SceneRegistry.setActive(scene);
-  }
+  // `switchScene` was deleted here. It named a "front" scene that gated
+  // nothing - every loaded scene already ticked and received input - so all it
+  // really did was tell the renderer and the mouse picker to ignore two of the
+  // three scenes you had loaded. That is a *view* decision wearing a
+  // `GameState` method's clothes, and it does not survive more than one view:
+  // with two `GameView`s open there is no single answer to "which scene is
+  // front". What replaced it is the camera - a view draws the scene its camera
+  // is in - which is a question each view answers for itself.
+  //
+  // A game that wants a scene inert unloads it, or checks a flag of its own;
+  // only the game knows whether "paused" means frozen, hidden, or silent.
 
   /// Loads what the incoming scene added and unloads what the outgoing scene
   /// took with it - see [loadScene]'s doc for the policy this implements.
@@ -470,12 +501,6 @@ abstract class GameState<T extends Game> extends GameListenerBase
     SceneStruct next,
     void Function(SceneLoadProgress)? onProgress,
   ) async {
-    // Nothing decodes until the spawn has happened - see
-    // [releaseAssetLoading]. Null (and so a no-op) everywhere except the one
-    // window inside `Game.start()`.
-    final gate = _bootAssetGate;
-    if (gate != null) await gate.future;
-
     final incoming = next.declaredAssets;
     // One claim per *loaded scene*, taken before any decode. This replaced a
     // pairwise `previous -> next` diff, which could not survive several
@@ -502,6 +527,10 @@ abstract class GameState<T extends Game> extends GameListenerBase
           for (var i = 0; i < incoming.length; i++)
             game.assets.tryGet(incoming[i])!.address,
         ],
+        // The keys travel with their addresses: main has no declaration pass
+        // of its own to resolve an address against, so the request has to
+        // carry the whole identity. See `Game.requestAssetLoad`.
+        incoming,
         onProgress == null
             ? null
             : (address, completed, pending) => onProgress(
@@ -588,26 +617,19 @@ abstract class GameState<T extends Game> extends GameListenerBase
     _pool = MemoryPool(pageSize: game.pageSize, maxPages: game.maxPages);
   }
 
-  /// Holds asset decoding shut, and opens it again once the spawn is done.
-  ///
-  /// A decoded asset owns a native payload - a `dart:ui.Image` for a texture -
-  /// which is **not sendable**, and the user keeps the instance in a field on
-  /// their scene, which is reachable from the `Game` that gets copied. So a
-  /// decode finishing before `Isolate.spawn` serialized the message would fail
-  /// the spawn, and would do it intermittently, which is worse. Closing the
-  /// gate before `mount()` and opening it after the spawn turns that race into
-  /// an ordering guarantee.
-  ///
-  /// Only `Game.start()`'s spawning path uses it; inline never closes it.
-  @internal
-  void closeAssetGate() => _bootAssetGate = Completer<void>();
-
-  @internal
-  void releaseAssetLoading() {
-    final gate = _bootAssetGate;
-    _bootAssetGate = null;
-    if (gate != null && !gate.isCompleted) gate.complete();
-  }
+  // There is deliberately no asset gate here any more.
+  //
+  // A decoded asset owns a native payload - a `dart:ui.Image` for a texture -
+  // which is **not sendable**, and the user keeps the instance in a field on
+  // their scene, which is reachable from the `Game` that gets copied. While
+  // main ran `mount()` before the spawn, a decode that finished before
+  // `Isolate.spawn` serialized the message would fail the spawn, and would do
+  // it intermittently, which is worse; a `Completer` held shut across the
+  // spawn turned that race into an ordering guarantee.
+  //
+  // `mount()` runs on the game isolate now, after the spawn, so no scene is
+  // loaded and no decode is started until the message is long gone. The race
+  // is not managed, it is unreachable.
 
   /// Takes over the simulating role on the spawned copy.
   ///
@@ -617,46 +639,16 @@ abstract class GameState<T extends Game> extends GameListenerBase
   @internal
   void markSimulating() => _simulating = true;
 
-  /// Fires `MountEvent` at the **loaded scene**, which is where its starting
-  /// entities are spawned.
-  ///
-  /// Split from [mount] because the two halves of bring-up now happen on
-  /// different copies. Main runs [mount], whose `onMounted` calls [loadScene],
-  /// which registers archetypes and declares assets - the declarative half.
-  /// `loadScene` sees `simulates: false` there and deliberately leaves the
-  /// scene unmounted. This is the other half, run once on the game isolate
-  /// after the spawn, and it is the first thing in the process that creates an
-  /// entity.
-  @internal
-  void mountScene() {
-    _requireSimulating('mountScene');
-    // Every scene main loaded, in load order. Main ran `loadScene`'s
-    // registering half for each; this is the spawning half it deliberately
-    // left undone.
-    for (var i = 0; i < _loaded.length; i++) {
-      final handle = _loaded[i];
-      final struct = SceneRegistry.tryResolve(handle);
-      struct?.onMounted(handle);
-      struct?.mountedEvent.call(handle);
-    }
-    // Every scene is up and its entities exist, so the game as a whole has
-    // come up. The spawned configuration's half of the pair below in `mount`.
-    gameMountedEvent.call();
-  }
+  // `mountScene()` used to live here: a second entry point that fired the
+  // scene half of bring-up, because main ran `mount()` before the spawn and
+  // `loadScene` deliberately left every scene unmounted there. Both copies had
+  // to run the registering half and exactly one the spawning half, and the
+  // seam between them was this method.
+  //
+  // There is no seam now. `mount()` runs once, on the game isolate, and does
+  // all of it - so `loadScene` mounts what it loads, on the first load and the
+  // fiftieth, through one path.
 
-  /// Fires `MountEvent` at this state - which is where a game calls
-  /// [loadScene] and so where its world actually comes into being.
-  ///
-  /// Called by `Game.start()` on **both** isolate copies (after `ready` in
-  /// the spawned configuration, so any page the load allocates is announced
-  /// by the first tick). Both must run it because both must register the
-  /// same archetypes in the same order; only the simulating copy goes on to
-  /// fire `MountEvent` at the scene itself and spawn entities - see
-  /// [loadScene].
-  ///
-  /// The scene is deliberately not mounted here: at this point there is no
-  /// scene yet. `loadScene` mounts whatever it loads, including every later
-  /// transition, so there is one path rather than a special first one.
   /// The game has come up. Where a game loads its first scene.
   ///
   /// ```dart
@@ -664,16 +656,20 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// void onMounted() => loadScene(game.mainScene);
   /// ```
   ///
+  /// **Runs on the game isolate**, after the spawn, and it is the first thing
+  /// in the process that can create an entity. That is a change worth knowing
+  /// about if you have code from when it ran on main: an `await` or a `.then`
+  /// in here now resolves on the copy that actually simulates, so
+  /// `loadScene(...).then((s) => level = s)` works. It silently did nothing
+  /// before, because the callback fired on a copy that was about to be
+  /// discarded.
+  ///
   /// A plain virtual call, not an event: there is exactly one receiver and
   /// the framework is the only caller, so a dispatch mechanism was ceremony
   /// around a method call. `SceneStruct.onMounted` is the same shape. Something
   /// *else* wanting to hear the game come up is a different question, and
-  /// [GameLifecycleListener] is its answer - note that it fires later and on a
-  /// different copy than this does.
-  ///
-  /// **Runs on main, before the spawn** - so it is the declarative half.
-  /// Anything that creates an entity belongs in `SceneStruct.onMounted`,
-  /// which runs on the game isolate.
+  /// [GameLifecycleListener] is its answer - note that it fires after this
+  /// does, once every scene loaded here is standing.
   void onMounted() {}
 
   /// The game is going down. The pool is disposed immediately afterwards.
@@ -686,43 +682,45 @@ abstract class GameState<T extends Game> extends GameListenerBase
 
   @internal
   void mount() {
+    _requireSimulating('mount');
     onMounted();
-    // Inline only. In the spawned configuration this copy is the declarative
-    // one (`_simulating` is false here and `onMounted` above has just declared
-    // the scenes without spawning into them), and the game isolate dispatches
-    // this from `mountScene` instead - so it fires exactly once either way,
-    // always on the copy the systems actually run on.
-    if (_simulating) gameMountedEvent.call();
+    // After `onMounted`, never before: `onMounted` is where scenes are loaded,
+    // and a listener told "the game came up" should find that world already
+    // standing. Unconditional now - only the simulating copy ever reaches
+    // here, because main stopped mounting its state at all.
+    gameMountedEvent.call();
   }
 
   @internal
   void unmount() {
+    // Unconditional, like [mount], and for the same reason: only the
+    // simulating copy ever loaded anything, so only it has anything to take
+    // down. The `if (_simulating)` guards that used to wrap each step were
+    // there for main's copy, which no longer mounts and no longer unmounts.
+    _requireSimulating('unmount');
     // First, while everything is still standing: scenes loaded, entities
     // readable, pool alive. The mirror of mount's ordering, not a copy of it -
     // bring-up tells you once the world exists, tear-down tells you while it
     // still does.
-    if (_simulating) {
-      gameUnmountedEvent.call();
-    }
+    gameUnmountedEvent.call();
     // Newest first, so a scene loaded on top of another comes down first.
     final doomed = List<Scene>.of(_loaded.reversed);
     for (var i = 0; i < doomed.length; i++) {
       final handle = doomed[i];
-      if (_simulating) {
-        final struct = SceneRegistry.tryResolve(handle);
-        struct?.unmountedEvent.call(handle);
-        struct?.onUnmounted(handle);
-        // Same order as unloadScene: scene first, then its entities, all
-        // while the pool is still alive. `Game` disposes the pool wholesale
-        // on stop, so this is the last moment a row is readable.
-        struct?.unmountEntitiesOf(handle.slot);
-      }
+      final struct = SceneRegistry.tryResolve(handle);
+      struct?.unmountedEvent.call(handle);
+      struct?.onUnmounted(handle);
+      // Same order as unloadScene: scene first, then its entities, all
+      // while the pool is still alive. `Game` disposes the pool wholesale
+      // on stop, so this is the last moment a row is readable.
+      struct?.unmountEntitiesOf(handle.slot);
       _loaded.remove(handle);
       // Releasing the slot at all matters because SceneRegistry is
       // process-global (like ArchetypeRegistry): a stopped game that kept its
-      // entries would leave `Scene.isActive` answering for a game that no
-      // longer exists. The pages go with the pool, which `Game` disposes
-      // wholesale on stop, so there is no per-scene page release here.
+      // entries would leave those slots resolving for a game that no longer
+      // exists, and a second game in the same process would inherit them. The
+      // pages go with the pool, which `Game` disposes wholesale on stop, so
+      // there is no per-scene page release here.
       SceneRegistry.unregister(handle);
     }
     onUnmounted();
@@ -876,17 +874,146 @@ abstract class GameState<T extends Game> extends GameListenerBase
     throw StateError('The running scene is ${scene.runtimeType}, not $S.');
   }
 
-  /// A system declared in `Game.describeSystems` - *this isolate's* twin of
-  /// it, which on the simulating copy is the one that ticks.
-  S getSystem<S extends GameSystem>() => game.getSystem<S>();
+  // --- systems ----------------------------------------------------------
+  //
+  // Declared by `Game.describeSystems` and held here, which is the split the
+  // whole isolate design turns on: *where a pass is written* is an API
+  // question (a `Game` mixin has to be able to contribute a system - that is
+  // what makes `extends Game2D` the whole opt-in for rendering), while *where
+  // its results live* is an isolate question. The pass runs inside
+  // `Game._bootGame`, so every system object exists on this copy and on no
+  // other. A `Game` has no `getSystem` at all any more: on the presentation
+  // isolate it would have compiled, read as though it worked, and found
+  // nothing.
+
+  final List<GameSystem> _systems = <GameSystem>[];
+  final Map<Type, int> _systemIndex = <Type, int>{};
+
+  /// Every declared system, in post-sort execution order. The live list, not
+  /// a copy.
+  @internal
+  List<GameSystem> get declaredSystems => _systems;
+
+  /// Where [type] sits in execution order, or null if it was never declared -
+  /// what `GameSystemDescriptor` checks a duplicate against.
+  @internal
+  int? systemIndexOf(Type type) => _systemIndex[type];
+
+  /// Appends a freshly declared system. Called once per `descriptor.has(...)`.
+  @internal
+  S addDeclaredSystem<S extends GameSystem>(S system) {
+    _systemIndex[system.runtimeType] = _systems.length;
+    _systems.add(system);
+    return system;
+  }
+
+  /// Whether the system at declaration index [i] currently receives events.
+  @internal
+  bool isSystemEnabledAt(int i) => _systems[i].listensToEvents;
+
+  /// Sorts [declaredSystems] by `GameSystem.compareTo`, breaking ties on
+  /// original declaration index rather than relying on `List.sort`'s stability
+  /// (which Dart does not guarantee) - a system that expresses no opinion keeps
+  /// its declared position relative to every other opinion-less system. Runs
+  /// once, right after `Game.describeSystems`.
+  @internal
+  void sortSystems() {
+    final order = List<int>.generate(_systems.length, (i) => i);
+    order.sort((a, b) {
+      final sa = _systems[a];
+      final sb = _systems[b];
+      // Ask both directions: a sort only ever calls compare(a, b) with a
+      // given pair in one order, so a system that expresses its opinion by
+      // overriding compareTo would be silently ignored half the time if
+      // only a.compareTo(b) were consulted - it might land as the "b"
+      // argument instead. sb.compareTo(sa) returning -1 means "b wants to
+      // be before a", i.e. a should sort after b, hence the negation.
+      var cmp = sa.compareTo(sb);
+      if (cmp == 0) cmp = -sb.compareTo(sa);
+      return cmp != 0 ? cmp : a.compareTo(b);
+    });
+    final sorted = <GameSystem>[for (final i in order) _systems[i]];
+    _systems
+      ..clear()
+      ..addAll(sorted);
+    _systemIndex.clear();
+    for (var i = 0; i < _systems.length; i++) {
+      _systemIndex[_systems[i].runtimeType] = i;
+    }
+  }
+
+  /// A system declared in `Game.describeSystems`.
+  S getSystem<S extends GameSystem>() {
+    final index = _systemIndex[S];
+    if (index == null) {
+      throw ArgumentError(
+        '$S is not declared in ${game.runtimeType}.describeSystems - systems '
+        'are declared once, up front, and cannot be added at runtime.',
+      );
+    }
+    return _systems[index] as S;
+  }
+
+  /// [getSystem], but `null` instead of throwing when [S] was never declared -
+  /// for a caller that legitimately works either way.
+  S? tryGetSystem<S extends GameSystem>() {
+    final index = _systemIndex[S];
+    return index == null ? null : _systems[index] as S;
+  }
+
+  /// Whether [S] currently receives events.
+  bool isSystemEnabled<S extends GameSystem>() =>
+      _systems[_requireSystemIndex(S)].listensToEvents;
+
+  /// Resumes a system already declared in `Game.describeSystems` - a runtime
+  /// pause/resume toggle, not registration.
+  ///
+  /// **Synchronous, and no wire index.** This used to be `Game.enableSystem`,
+  /// returning a `Future` because it sent a control message to the isolate
+  /// that held the systems. This *is* that isolate. Main asks for a pause by
+  /// declaring a command that means one and calling this in the handler.
+  void enableSystem<S extends GameSystem>() => setSystemEnabled(S, true);
+
+  /// Pauses a system already declared in `Game.describeSystems` - it stops
+  /// ticking until re-enabled, but is not removed from the declared set.
+  void disableSystem<S extends GameSystem>() => setSystemEnabled(S, false);
+
+  void enableSystems(Iterable<Type> systems) {
+    for (final type in systems) {
+      setSystemEnabled(type, true);
+    }
+  }
+
+  void disableSystems(Iterable<Type> systems) {
+    for (final type in systems) {
+      setSystemEnabled(type, false);
+    }
+  }
+
+  /// The `Type`-taking form, for the plural spellings and for a caller holding
+  /// a `Type` rather than a type argument.
+  void setSystemEnabled(Type type, bool enabled) {
+    _systems[_requireSystemIndex(type)].enabled = enabled;
+  }
+
+  int _requireSystemIndex(Type type) {
+    final index = _systemIndex[type];
+    if (index == null) {
+      throw ArgumentError(
+        '$type is not declared in ${game.runtimeType}.describeSystems.',
+      );
+    }
+    return index;
+  }
 
   void _requireSimulating(String what) {
     if (!_simulating) {
       throw StateError(
         '$what() was called on a GameState that does not own the simulation. '
-        'The copy the main isolate holds after start() exists only to mirror '
-        'declarations and adopt pages - the game isolate\'s copy is the one '
-        'that ticks. See the class doc on Game.',
+        'The copy the main isolate holds after start() exists only so that '
+        'command handlers are registered identically on both sides - the game '
+        'isolate\'s copy is the one that ticks, holds the scenes and holds the '
+        'systems. See the class doc on Game.',
       );
     }
   }

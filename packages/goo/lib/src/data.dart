@@ -102,8 +102,16 @@ abstract class DataDescriptor {
   // the renderer system would have to resolve the address manually
   // int spriteId = gameObject.spriteId.value;
   // Sprite? sprite = assetManager.getLoadedTexture(spriteId);
-  DataPointer<T> hasObject<T extends GlobalObject>(T defaultValue);
-  DataPointer<T?> optObject<T extends GlobalObject>([T? defaultValue]);
+  /// An object-reference field: the row stores [table]'s `Uint32` address,
+  /// never a Dart heap reference (RULES.md rule 1), and a read resolves it
+  /// back through that same table.
+  ///
+  /// [table] is named at the *declare* site because that is the one place the
+  /// field's type is known - so a fourth kind of global object costs nothing
+  /// but its own table, and no shared address space has to exist for the
+  /// read path to find one.
+  DataPointer<T> hasObject<T extends GlobalObject>(ObjectTable table, T defaultValue);
+  DataPointer<T?> optObject<T extends GlobalObject>(ObjectTable table, [T? defaultValue]);
 
   // -----
   // Heap objects are the unconstrained cousin of hasObject/optObject: any
@@ -136,10 +144,12 @@ abstract class DataDescriptor {
   /// reference that is assigned dynamically at runtime.
   DataPointer<T?> optHeapObject<T>();
   DataArrayPointer<T> hasObjectArray<T extends GlobalObject>(
+    ObjectTable table,
     int length,
     T defaultValue,
   );
   DataArrayPointer<T?> optObjectArray<T extends GlobalObject>(
+    ObjectTable table,
     int length, [
     T? defaultValue,
   ]);
@@ -210,6 +220,43 @@ abstract class DataArrayPointer<T> {
   void set(Entity instance, int index, T newValue);
 }
 
+/// A thing with an integer key, and nothing more.
+///
+/// The key implies **nothing on its own** - not that it names an asset, not
+/// that it names a camera view. It is meaningful only against the
+/// [ObjectTable] that issued it, and whoever handles the int decides what it
+/// means.
+///
+/// That is a correction of an earlier design in which every `GlobalObject`
+/// shared one process-wide address space (a `GlobalObjectRegistry`, later
+/// merged into `GameAssets`). One space forces every unrelated population -
+/// assets, camera views, whatever comes next - to be poured into the same
+/// table, which makes "address 3" a question you cannot answer without
+/// knowing what else has been registered.
 abstract interface class GlobalObject {
   int get address;
+}
+
+/// Issues and resolves the addresses for **one population** of
+/// [GlobalObject]s.
+///
+/// One table per population, each numbering from zero. `GameAssets` numbers
+/// assets; a `Game` numbers its camera views. The two may hand out the same
+/// address and it does not matter, because an address is never resolved
+/// except against the table that issued it - which is exactly the property a
+/// single shared registry destroys.
+///
+/// Generic in the *method* rather than the class deliberately: a row field is
+/// declared as some specific subtype (`Texture`), while a table holds a whole
+/// family (`GameAssetInstance`), and Dart's covariance means an
+/// `ObjectTable<GameAssetInstance>` is not an `ObjectTable<Texture>`. Putting
+/// the type parameter on `resolve` lets one table serve every field that
+/// draws from it.
+abstract interface class ObjectTable {
+  /// The object at [address], or a `StateError` naming what went wrong -
+  /// never a neighbouring object, and never null.
+  T resolve<T extends GlobalObject>(int address);
+
+  /// [resolve], but null when nothing is registered at [address].
+  T? tryResolve<T extends GlobalObject>(int address);
 }

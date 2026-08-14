@@ -1,4 +1,5 @@
 import 'dart:ffi';
+import 'package:meta/meta.dart';
 import 'package:goo/src/triple_buffer.dart';
 
 // Shared memory pool across isolates.
@@ -133,7 +134,12 @@ class MemoryPool {
   void beginTick() {
     _tickOpen = true;
     for (final page in _pages) {
-      page?._buffer.beginWrite();
+      if (page == null) continue;
+      // Before the write pass, and before any system can run a query: this is
+      // the one moment no walk is part-way through, so it is where rows
+      // created or freed during last tick's queries become real.
+      page.flushPending();
+      page._buffer.beginWrite();
     }
   }
 
@@ -232,6 +238,30 @@ class MemoryPage {
   int _writeOffset = 0;
   final Set<int> _freeOffsets = {};
 
+  /// Whether a walk has begun since the last tick boundary, and structural
+  /// changes must therefore be held back.
+  ///
+  /// A latch cleared by [flushPending], **not** a scope counter, and that is
+  /// forced rather than chosen: a `for-in` abandoned by `break` never resumes
+  /// the `sync*` body, so a `finally` in [rowOffsets] would not run and a
+  /// decrement would be lost forever. `ActiveCameraResolver` breaks out of a
+  /// query on purpose, so that is a live path, not a hypothetical - it would
+  /// have stranded the page in a permanently-deferring state.
+  ///
+  /// Time-driven works because the tick boundary is the one moment no walk
+  /// can be in progress.
+  bool _deferring = false;
+
+  /// Rows allocated while a walk was in progress. Addressable immediately -
+  /// the caller has a usable `Entity` and can write its fields - but skipped
+  /// by [rowOffsets] until the walk that hid them ends. See the class doc.
+  final Set<int> _pendingOffsets = {};
+
+  /// Rows freed while a walk was in progress. Still yielded by [rowOffsets]
+  /// and still readable, so an unmount handler can read the row it is being
+  /// told about; they join [_freeOffsets] at the flush.
+  final Set<int> _pendingFrees = {};
+
   bool get isFull =>
       _strideBytes != null && _freeOffsets.isEmpty && _writeOffset + _strideBytes! > _capacity;
 
@@ -254,12 +284,57 @@ class MemoryPage {
   /// what the query system walks to find matching entities. Lazy: does not
   /// allocate a list, just steps `highWaterMark ~/ strideBytes` candidates
   /// and skips freed ones.
+  ///
+  /// # A row created during a walk is never seen by that walk
+  ///
+  /// This used to read [_writeOffset] and [_freeOffsets] live, which made
+  /// "was the new entity included?" depend on where its row happened to land:
+  /// a bump-allocated row above the cursor was yielded, a row recycled from
+  /// [free] below the cursor was not. Same call, two behaviours, decided by
+  /// allocation history.
+  ///
+  /// The rule now is the one that does not depend on the answer: a row
+  /// created during a walk is skipped by **every** walk in progress, and
+  /// appears to the next one. "Append it to the end instead" cannot be
+  /// honoured in general - the row may land in a page already stepped past,
+  /// and several walks may be open at once, so "the end" is not a place that
+  /// exists.
+  ///
+  /// The limit is snapshotted for the same reason, and freeing is deferred so
+  /// a row stays readable for the rest of the walk that is being told about
+  /// it. That also removes a real `ConcurrentModificationError`: freeing a row
+  /// used to mutate the very `Set` this loop consults.
+  ///
+  /// The deferral lasts until the next tick boundary rather than until this
+  /// iterator finishes - see [_deferring] for why scope cannot be used here.
+  /// So the rule as a user sees it is: **a structural change made once a
+  /// query has run this tick takes effect next tick**, which is the same
+  /// rule field writes already follow (a value written this tick is not
+  /// visible to a read this tick).
   Iterable<int> get rowOffsets sync* {
     final stride = _strideBytes;
     if (stride == null) return; // nothing ever allocated
-    for (var offset = 0; offset < _writeOffset; offset += stride) {
-      if (!_freeOffsets.contains(offset)) yield offset;
+    _deferring = true;
+    // Snapshotted, not re-read: rows appended during the walk live at or
+    // above this and are not this walk's business.
+    final limit = _writeOffset;
+    for (var offset = 0; offset < limit; offset += stride) {
+      if (_freeOffsets.contains(offset)) continue;
+      if (_pendingOffsets.contains(offset)) continue;
+      yield offset;
     }
+  }
+
+  /// Folds deferred structural changes in and reopens the page to immediate
+  /// ones. Called by [MemoryPool.beginTick] - the one moment no walk can be
+  /// part-way through.
+  @internal
+  void flushPending() {
+    _deferring = false;
+    if (_pendingOffsets.isNotEmpty) _pendingOffsets.clear();
+    if (_pendingFrees.isEmpty) return;
+    _freeOffsets.addAll(_pendingFrees);
+    _pendingFrees.clear();
   }
 
   /// Allocates one row of [size] bytes, returning its **offset** within the
@@ -291,6 +366,11 @@ class MemoryPage {
     if (_freeOffsets.isNotEmpty) {
       final offset = _freeOffsets.first;
       _freeOffsets.remove(offset);
+      // A recycled row sits *below* a walk's snapshotted limit, so unlike a
+      // bump-allocated one it is not hidden by the limit alone. This is the
+      // half of the old inconsistency that made the behaviour depend on
+      // allocation history.
+      if (_deferring) _pendingOffsets.add(offset);
       return offset;
     }
     if (_writeOffset + size > _capacity) {
@@ -298,12 +378,27 @@ class MemoryPage {
     }
     final offset = _writeOffset;
     _writeOffset += size;
+    // Recorded even though the snapshotted limit already hides it: a walk
+    // that starts *later* while an earlier one is still open would otherwise
+    // see it, and the rule is that no walk open at creation time does.
+    if (_deferring) _pendingOffsets.add(offset);
     return offset;
   }
 
   /// Recycles the row at [offset] (as returned by [allocate]) for reuse by
   /// a future [allocate] call on this page.
-  void free(int offset) => _freeOffsets.add(offset);
+  ///
+  /// Deferred while a walk is open, so the row stays live and readable for
+  /// the rest of it - which is what lets an unmount handler read the row it
+  /// is being told about (see `SceneStruct.unmountEntitiesOf`), and what
+  /// keeps this from mutating the `Set` [rowOffsets] is consulting.
+  void free(int offset) {
+    if (_deferring) {
+      _pendingFrees.add(offset);
+      return;
+    }
+    _freeOffsets.add(offset);
+  }
 
   /// Whether this page has ever been published - i.e. whether
   /// [resolveRead] returns a slot, and whether the next

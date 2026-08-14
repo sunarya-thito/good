@@ -178,7 +178,18 @@ class MousePickingSystem extends GameSystem with FixedTickable {
 
   @override
   void onFixedUpdate() {
-    projection.resolve(_cameras, game.viewWidth, game.viewHeight);
+    // The view the pointer is actually over, reported by the `GameView` that
+    // received the event. That is what makes picking correct with several
+    // views on screen - a click has to be projected through the camera whose
+    // pixels it landed on, or it hits whatever a different camera is looking
+    // at.
+    //
+    // Falls back to the first declared view when nothing named one: a
+    // headless harness driving `movePointer` without a view, and every
+    // single-view game, where the fallback and the answer are the same view.
+    final views = game.cameraViews;
+    if (views.length == 0) return;
+    projection.resolve(_cameras, game.pointerView ?? views[0]);
     final position = cursor.value;
     worldSpace.setValues(
       projection.viewToWorldX(position.viewSpace.x),
@@ -209,13 +220,11 @@ class MousePickingSystem extends GameSystem with FixedTickable {
   Entity? _pick(double x, double y) {
     Entity? best;
     var bestZ = 0;
-    // Only the front scene is clickable, for the same reason only it is drawn
-    // - picking has to agree with what the player can actually see, or a
-    // background scene would swallow clicks aimed at the one on screen. See
-    // `GameRenderer2D`, which resolves the same slot the same way.
-    final activeSlot = SceneRegistry.active?.slot ?? -1;
+    // Every loaded scene is clickable, matching `GameRenderer2D`, which now
+    // draws every loaded scene. Picking has to agree with what is drawn or a
+    // click lands on something invisible - so when the renderer stopped
+    // filtering by front scene, this had to stop too, in the same landing.
     for (final entity in _receivers.run()) {
-      if (entity.sceneSlot != activeSlot) continue;
       final world = entity.get<WorldTransform2D>();
       final scaleX = world.worldScaleX[entity];
       final scaleY = world.worldScaleY[entity];

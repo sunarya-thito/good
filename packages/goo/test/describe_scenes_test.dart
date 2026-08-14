@@ -9,6 +9,13 @@ import 'package:goo/src/scene.dart';
 import 'package:goo/src/scene_handle.dart';
 import 'package:goo/src/struct.dart';
 import 'package:goo/src/system.dart';
+import 'package:goo/src/handle.dart';
+
+/// The live run under test. A file-level binding: the bring-up helper
+/// returns the `Game` (the description) while tests also need the run, and
+/// one inline run per isolate means one binding is enough.
+late InlineGameHandle run;
+
 
 // `Game.describeScenes` declares which scenes exist and registers their
 // archetypes at boot, so that loading one later costs no registration. That is
@@ -65,7 +72,11 @@ class _CensusSystem extends GameSystem with FixedTickable {
   }
 }
 
-class _DeclaringState extends GameState<_DeclaringGame> {}
+class _DeclaringState extends GameState<_DeclaringGame> {  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    descriptor.has(_CensusSystem());
+  }
+}
 
 class _DeclaringGame extends Game {
   @override
@@ -86,10 +97,7 @@ class _DeclaringGame extends Game {
     menu = descriptor.has(_Menu());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    descriptor.has(_CensusSystem());
-  }
+
 }
 
 /// Declares the same scene type twice - one instance is one declaration.
@@ -102,9 +110,9 @@ class _DoubleDeclaringGame extends _DeclaringGame {
 }
 
 Future<T> _boot<T extends Game>(T game) async {
-  await game.start(inline: true, autoTick: false);
+  run = await Game.startInline(game);
   addTearDown(() async {
-    if (game.isRunning) await game.stop();
+    if (run.isRunning) await run.stop();
   });
   return game;
 }
@@ -124,16 +132,16 @@ void main() {
         reason: 'declaring registers the archetypes - that is the whole point, '
             'so that loading later costs no registration');
     expect(game.level.unit.archetypeId, isNotNull);
-    expect(game.state!.scene, isNull,
+    expect(run.state.scene, isNull,
         reason: 'declared is not loaded: nothing has been loaded yet');
   });
 
   test('declaring registers archetypes without creating any entities',
       () async {
-    final game = await _boot(_DeclaringGame());
-    game.state!.advance(const Duration(milliseconds: 10));
+    await _boot(_DeclaringGame());
+    run.state.advance(const Duration(milliseconds: 10));
 
-    expect(game.getSystem<_CensusSystem>().seen, 0,
+    expect(run.state.getSystem<_CensusSystem>().seen, 0,
         reason: 'a declared scene contributes an archetype to the registry and '
             'no rows to it');
   });
@@ -142,7 +150,7 @@ void main() {
     final game = await _boot(_DeclaringGame());
     final before = ArchetypeRegistry.count;
 
-    final scene = await game.state!.loadScene(game.level);
+    final scene = await run.state.loadScene(game.level);
 
     expect(ArchetypeRegistry.count, before,
         reason: 'loading a declared scene must not register a second set of '
@@ -155,8 +163,8 @@ void main() {
     final game = await _boot(_DeclaringGame());
     final before = ArchetypeRegistry.count;
 
-    final first = await game.state!.loadScene(game.level);
-    final second = await game.state!.loadScene(game.level);
+    final first = await run.state.loadScene(game.level);
+    final second = await run.state.loadScene(game.level);
 
     expect(ArchetypeRegistry.count, before);
     expect(first.get<_Level>(), same(second.get<_Level>()),
@@ -166,7 +174,7 @@ void main() {
   });
 
   test('declaring the same scene type twice is refused', () {
-    expect(_DoubleDeclaringGame().start(inline: true, autoTick: false),
+    expect(Game.startInline(_DoubleDeclaringGame()),
         throwsStateError);
   });
 
@@ -174,7 +182,7 @@ void main() {
     final game = await _boot(_DeclaringGame());
     final before = ArchetypeRegistry.count;
 
-    final scene = await game.state!.loadScene(_Level());
+    final scene = await run.state.loadScene(_Level());
 
     expect(ArchetypeRegistry.count, greaterThan(before),
         reason: 'nothing declared it, so loading is what registers it - '
@@ -185,7 +193,7 @@ void main() {
   test('a declared scene shares the game\'s pool and asset table', () async {
     final game = await _boot(_DeclaringGame());
 
-    expect(game.level.pool, same(game.state!.pool),
+    expect(game.level.pool, same(run.state.pool),
         reason: 'one pool per Game, handed to every scene it declares');
     expect(game.level.assets, same(game.assets),
         reason: 'and one asset table, or a scene would declare into a table '
@@ -197,10 +205,10 @@ void main() {
     // describeScenes ran after describeSystems the query would be built
     // against an empty registry and match nothing forever.
     final game = await _boot(_DeclaringGame());
-    await game.state!.loadScene(game.level);
-    game.state!.sceneHandle!.addEntity(game.level.unit);
-    game.state!.advance(const Duration(milliseconds: 10));
+    await run.state.loadScene(game.level);
+    run.state.sceneHandle!.addEntity(game.level.unit);
+    run.state.advance(const Duration(milliseconds: 10));
 
-    expect(game.getSystem<_CensusSystem>().seen, 1);
+    expect(run.state.getSystem<_CensusSystem>().seen, 1);
   });
 }

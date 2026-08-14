@@ -345,22 +345,26 @@ final class _Float64Field extends _Field<double> {
 // --- object reference fields --------------------------------------------
 //
 // hasObject<T extends GlobalObject> stores a plain Uint32 address in the
-// row - the same asset.dart-defined resolution path Entity.get<T>() uses
-// for archetype ids - so a component row never holds a Dart heap reference
-// (RULES.md rule 1). Reads resolve through GlobalObjectRegistry; writes
-// just extract .address. See asset.dart's doc on GlobalObjectRegistry for
-// why this can't be an int field with an "asset manager" passed in - no
-// DataPointer has one to pass.
+// row, so a component row never holds a Dart heap reference (RULES.md rule
+// 1). Writes extract `.address`; reads resolve it back through the
+// `ObjectTable` the field was declared against.
+//
+// The table is held *per field*, not looked up from a shared registry. That
+// is what lets two unrelated populations (assets, camera views) number their
+// objects from zero without colliding: an address is only ever resolved
+// against the table that issued it. It also costs nothing extra at read time
+// - one field deref, where this used to reach `_storage.assets`.
 
 final class _GlobalObjectField<T extends GlobalObject> extends _Field<T> {
-  _GlobalObjectField(super.storage, this._byte, this._defaultAddress);
+  _GlobalObjectField(super.storage, this._byte, this._table, this._defaultAddress);
   final int _byte;
+  final ObjectTable _table;
   final int _defaultAddress;
 
   @override
   T operator [](Entity entity) {
     final address = (_read(entity) + _byte).cast<Uint32>().value;
-    return _storage.assets.resolve<T>(address);
+    return _table.resolve<T>(address);
   }
 
   @override
@@ -819,16 +823,18 @@ final class _GlobalObjectArrayField<T extends GlobalObject> extends _ArrayField<
     super.storage,
     super.length,
     this._baseByte,
+    this._table,
     this._defaultAddress,
   );
   final int _baseByte;
+  final ObjectTable _table;
   final int _defaultAddress;
 
   @override
   T get(Entity entity, int index) {
     _checkIndex(index);
     final address = (_read(entity) + _baseByte).cast<Uint32>()[index];
-    return _storage.assets.resolve<T>(address);
+    return _table.resolve<T>(address);
   }
 
   @override
@@ -1203,23 +1209,31 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     return field;
   }
 
-  DataPointer<T> _hasObject<T extends GlobalObject>(T defaultValue) {
+  DataPointer<T> _hasObject<T extends GlobalObject>(
+    ObjectTable table,
+    T defaultValue,
+  ) {
     final byte = _storage.declareField(32) >> 3;
-    final field = _GlobalObjectField<T>(_storage, byte, defaultValue.address);
+    final field = _GlobalObjectField<T>(_storage, byte, table, defaultValue.address);
     _storage.registerField(field);
     return field;
   }
 
-  DataPointer<T?> _optObject<T extends GlobalObject>(T? defaultValue) {
+  DataPointer<T?> _optObject<T extends GlobalObject>(
+    ObjectTable table,
+    T? defaultValue,
+  ) {
     final flagBit = _storage.declareField(1);
     final byte = _storage.declareField(32) >> 3;
-    final value = _GlobalObjectField<T>(_storage, byte, defaultValue?.address ?? 0);
+    final value =
+        _GlobalObjectField<T>(_storage, byte, table, defaultValue?.address ?? 0);
     final field = _OptionalField<T>(_storage, flagBit, value, defaultValue != null);
     _storage.registerField(field);
     return field;
   }
 
   DataArrayPointer<T> _hasObjectArray<T extends GlobalObject>(
+    ObjectTable table,
     int length,
     T defaultValue,
   ) {
@@ -1229,6 +1243,7 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
       _storage,
       length,
       byte,
+      table,
       defaultValue.address,
     );
     _storage.registerField(field);
@@ -1236,6 +1251,7 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
   }
 
   DataArrayPointer<T?> _optObjectArray<T extends GlobalObject>(
+    ObjectTable table,
     int length,
     T? defaultValue,
   ) {
@@ -1246,7 +1262,7 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     for (var i = 0; i < length; i++) {
       flagBits[i] = _storage.declareField(1);
       final byte = _storage.declareField(32) >> 3;
-      values.add(_GlobalObjectField<T>(_storage, byte, defaultAddress));
+      values.add(_GlobalObjectField<T>(_storage, byte, table, defaultAddress));
     }
     final field = _OptionalArrayField<T>(
       _storage,
@@ -1349,21 +1365,27 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
       _optFloatArray(length, 64, defaultValue);
 
   @override
-  DataPointer<T> hasObject<T extends GlobalObject>(T defaultValue) =>
-      _hasObject(defaultValue);
+  DataPointer<T> hasObject<T extends GlobalObject>(
+    ObjectTable table,
+    T defaultValue,
+  ) => _hasObject(table, defaultValue);
   @override
-  DataPointer<T?> optObject<T extends GlobalObject>([T? defaultValue]) =>
-      _optObject(defaultValue);
+  DataPointer<T?> optObject<T extends GlobalObject>(
+    ObjectTable table, [
+    T? defaultValue,
+  ]) => _optObject(table, defaultValue);
   @override
   DataArrayPointer<T> hasObjectArray<T extends GlobalObject>(
+    ObjectTable table,
     int length,
     T defaultValue,
-  ) => _hasObjectArray(length, defaultValue);
+  ) => _hasObjectArray(table, length, defaultValue);
   @override
   DataArrayPointer<T?> optObjectArray<T extends GlobalObject>(
+    ObjectTable table,
     int length, [
     T? defaultValue,
-  ]) => _optObjectArray(length, defaultValue);
+  ]) => _optObjectArray(table, length, defaultValue);
 
   @override
   DataPointer<T> hasHeapObject<T>(T Function() defaultValue) {

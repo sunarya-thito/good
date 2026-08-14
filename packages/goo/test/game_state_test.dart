@@ -12,9 +12,16 @@ import 'package:goo/src/pool.dart';
 import 'package:goo/src/scene.dart';
 import 'package:goo/src/struct.dart';
 import 'package:goo/src/system.dart';
+import 'package:goo/src/handle.dart';
+
+/// The live run under test. A file-level binding: the bring-up helper
+/// returns the `Game` (the description) while tests also need the run, and
+/// one inline run per isolate means one binding is enough.
+late InlineGameHandle run;
+
 
 // Single-copy coverage for describeState/StateChannel, driven through
-// Game.start(inline: true, autoTick: false) exactly as game_test.dart does:
+// Game.startInline(...) exactly as game_test.dart does:
 // one copy doing both jobs, no timer, runFixedStep() by hand. The two-isolate
 // half - where the read and the write genuinely happen on different heaps,
 // and where a write through the non-owning copy is even reachable - lives in
@@ -25,14 +32,15 @@ import 'package:goo/src/system.dart';
 /// unchanged on a spawned isolate copy.
 final List<String> changes = <String>[];
 
-// --- the three declaration sources --------------------------------------
+// --- the two declaration sources ----------------------------------------
 //
-// A state channel is declared by something that lives for the whole run:
-// the Game, its GameState, and the declared systems. A SceneStruct and a
-// Component deliberately cannot - a channel index is fixed at boot and must
-// match across isolate copies, and a scene is loaded (and re-loaded) after
-// boot via GameState.loadScene, so it could never own a stable one. See
-// GameState.describeState.
+// A state channel is declared by the Game or by one of its declared systems,
+// and by nothing else. A GameState, a SceneStruct and a Component all
+// deliberately cannot: a channel's storage is allocated on main before the
+// spawn and its index in that one pass is its identity on the wire, so the
+// declarer has to be something main itself runs. The GameState is built on
+// the game isolate; a scene is loaded (and re-loaded) after boot via
+// GameState.loadScene. See Game.describeState.
 
 /// A plain prefab. It has no state channel of its own - a Component cannot
 /// declare one (see the note above); the system publishes on its behalf.
@@ -63,10 +71,15 @@ class _StateScene extends SceneStruct {
 /// A `GameSystem` - and the only thing in this fixture that runs per tick,
 /// so it is what drives every write.
 class _StateSystem extends GameSystem with FixedTickable {
-  late final StateChannel<int> health;
-  late final StateChannel<int> probeCount;
-  late final StateChannel<double> mana;
-  late final StateChannel<bool> alive;
+  /// Declared by the `Game` and read back through it. A system cannot declare
+  /// a channel: the storage is allocated on main before the spawn and a system
+  /// only exists on the copy that ticks. The system is still the *writer*,
+  /// which is the half that was always game-side.
+  _StateGame get _own => game as _StateGame;
+  StateChannel<int> get health => _own.health;
+  StateChannel<int> get probeCount => _own.probeCount;
+  StateChannel<double> get mana => _own.mana;
+  StateChannel<bool> get alive => _own.alive;
 
   /// Set by a test to make the next tick write something; null means "tick
   /// without writing anything", which is how the "listeners do not fire on a
@@ -77,21 +90,16 @@ class _StateSystem extends GameSystem with FixedTickable {
   int? nextProbeCount;
 
   @override
-  void describeState(StateDescriptor descriptor) {
-    health = descriptor.hasInt32(100);
-    probeCount = descriptor.hasUint16(300);
-    mana = descriptor.hasFloat32(0.5);
-    alive = descriptor.hasBool(true);
-  }
-
-  @override
   void onFixedUpdate() {
     final h = nextHealth;
     if (h != null) health.value = h;
     final g = nextGameCount;
     if (g != null) (game as _StateGame).gameCount.value = g;
     final t = nextStateCount;
-    if (t != null) (state! as _StateGameState).stateCount.value = t;
+    // Declared on the Game and written from the game isolate - the pattern
+    // that replaced `GameState.describeState`, which cannot exist now that
+    // the state is built after main has already allocated the channels.
+    if (t != null) (game as _StateGame).stateCount.value = t;
     final p = nextProbeCount;
     // A prefab cannot own a channel, so a per-prefab value is published
     // through a channel this system owns - the intended pattern now.
@@ -99,22 +107,19 @@ class _StateSystem extends GameSystem with FixedTickable {
   }
 }
 
-/// Source 2: the `GameState`.
 class _StateGameState extends GameState<_StateGame> {
-  late final StateChannel<int> stateCount;
-
   @override
   void onMounted() {
     loadScene(_StateScene());
   }
 
   @override
-  void describeState(StateDescriptor descriptor) {
-    stateCount = descriptor.hasInt64(-5);
+  void describeSystems(SystemDescriptor descriptor) {
+    descriptor.has(_StateSystem());
   }
 }
 
-/// Source 1: the `Game` itself.
+/// Source 1: the `Game` itself, declaring two channels.
 class _StateGame extends Game {
   @override
   int get pageSize => 4096;
@@ -124,6 +129,17 @@ class _StateGame extends Game {
 
   late final StateChannel<int> gameCount;
 
+  /// A second channel on the same source, at a different width, written by the
+  /// system on the game isolate.
+  late final StateChannel<int> stateCount;
+
+  /// Declared here on behalf of `_StateSystem`, which writes them. One source
+  /// declares; the game isolate writes.
+  late final StateChannel<int> health;
+  late final StateChannel<int> probeCount;
+  late final StateChannel<double> mana;
+  late final StateChannel<bool> alive;
+
   /// The live descriptor, captured mid-boot so a test can try to declare
   /// against it *after* boot - see 'declaring after boot is refused'.
   StateDescriptor? capturedDescriptor;
@@ -131,15 +147,17 @@ class _StateGame extends Game {
   @override
   GameState createState() => _StateGameState();
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    descriptor.has(_StateSystem());
-  }
+
 
   @override
   void describeState(StateDescriptor descriptor) {
     capturedDescriptor = descriptor;
     gameCount = descriptor.hasInt32(7);
+    stateCount = descriptor.hasInt64(-5);
+    health = descriptor.hasInt32(100);
+    probeCount = descriptor.hasUint16(300);
+    mana = descriptor.hasFloat32(0.5);
+    alive = descriptor.hasBool(true);
   }
 }
 
@@ -162,14 +180,14 @@ class _OrphanScene extends SceneStruct {
 }
 
 Future<T> _boot<T extends Game>(T game) async {
-  await game.start(inline: true, autoTick: false);
+  run = await Game.startInline(game);
   addTearDown(() async {
-    if (game.isRunning) await game.stop();
+    if (run.isRunning) await run.stop();
   });
   return game;
 }
 
-_StateScene _scene(Game game) => game.state!.getScene<_StateScene>();
+_StateScene _scene(Game game) => run.state.getScene<_StateScene>();
 
 void _watch(String name, StateChannel<Object?> channel) {
   channel.addListener(() => changes.add('$name -> ${channel.value}'));
@@ -185,24 +203,23 @@ void main() {
   });
 
   group('declaration', () {
-    test('all three sources declare into one descriptor, indices unique',
-        () async {
+    test('both sources declare into one descriptor, indices unique', () async {
       final game = await _boot(_StateGame());
-      // Game(1), GameState(1), system(4) - one shared numbering. Six, not
-      // "1 + 1 + 4 restarted at zero three times".
+      // Game(2) then system(4) - one shared numbering. Six, not "2 + 4
+      // restarted at zero twice".
       expect(game.stateChannelCount, 6);
     });
 
     test('a channel from every source is readable before any write', () async {
       final game = await _boot(_StateGame());
       final scene = _scene(game);
-      final system = game.getSystem<_StateSystem>();
+      final system = run.state.getSystem<_StateSystem>();
       // The declared initial value, published the moment storage was
       // allocated - not a null, not zeroed memory, not a throw.
       expect(game.gameCount.value, 7, reason: 'declared on the Game');
-      expect(game.state!.getScene<_StateScene>(), same(scene));
-      expect((game.state! as _StateGameState).stateCount.value, -5,
-          reason: 'declared on the GameState');
+      expect(run.state.getScene<_StateScene>(), same(scene));
+      expect(game.stateCount.value, -5,
+          reason: 'a second channel on the same Game, at a different width');
       expect(system.probeCount.value, 300,
           reason: 'a second channel on the same GameSystem');
       expect(system.health.value, 100, reason: 'declared on a GameSystem');
@@ -212,13 +229,13 @@ void main() {
 
     test('two channels from different sources get distinct storage', () async {
       final game = await _boot(_StateGame());
-      final system = game.getSystem<_StateSystem>();
+      final system = run.state.getSystem<_StateSystem>();
 
       // Same declared width (4 bytes), different sources. If they shared a
       // slot, writing one would be visible through the other.
       system.nextGameCount = 111;
       system.nextProbeCount = 222;
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
 
       expect(game.gameCount.value, 111);
       expect(system.probeCount.value, 222);
@@ -290,12 +307,12 @@ void main() {
 
     test('successive writes rotate slots without losing the value', () async {
       final game = await _boot(_StateGame());
-      final system = game.getSystem<_StateSystem>();
+      final system = run.state.getSystem<_StateSystem>();
       // More than three, so the triple buffer's round-robin wraps and the
       // cached per-slot ByteData views are all exercised.
       for (var i = 1; i <= 7; i++) {
         system.nextGameCount = i * 10;
-        game.state!.runFixedStep();
+        run.state.runFixedStep();
         expect(game.gameCount.value, i * 10, reason: 'write #$i');
       }
     });
@@ -306,8 +323,8 @@ void main() {
         () async {
       final game = await _boot(_StateGame());
       expect(game.gameCount, isA<ValueListenable<int>>());
-      expect(game.getSystem<_StateSystem>().mana, isA<ValueListenable<double>>());
-      expect(game.getSystem<_StateSystem>().alive, isA<ValueListenable<bool>>());
+      expect(run.state.getSystem<_StateSystem>().mana, isA<ValueListenable<double>>());
+      expect(run.state.getSystem<_StateSystem>().alive, isA<ValueListenable<bool>>());
     });
 
     test('a write on the owning copy notifies synchronously', () async {
@@ -322,47 +339,47 @@ void main() {
 
     test('fires once per actual change, not once per write', () async {
       final game = await _boot(_StateGame());
-      final system = game.getSystem<_StateSystem>();
+      final system = run.state.getSystem<_StateSystem>();
       _watch('gameCount', game.gameCount);
 
       system.nextGameCount = 50;
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
       expect(changes, ['gameCount -> 50']);
 
       // Same value again: a write happened, but nothing changed.
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
       expect(changes, ['gameCount -> 50'],
           reason: 'writing an equal value is not a change');
 
       system.nextGameCount = 51;
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
       expect(changes, ['gameCount -> 50', 'gameCount -> 51']);
     });
 
     test('does not fire on a tick where nothing was written', () async {
-      final game = await _boot(_StateGame());
-      final system = game.getSystem<_StateSystem>();
+      await _boot(_StateGame());
+      final system = run.state.getSystem<_StateSystem>();
       _watch('health', system.health);
 
-      game.state!.runFixedStep();
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
+      run.state.runFixedStep();
       expect(changes, isEmpty,
           reason: 'no write at all, and the initial value is not a change');
 
       system.nextHealth = 1;
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
       system.nextHealth = null;
-      game.state!.runFixedStep();
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
+      run.state.runFixedStep();
       expect(changes, ['health -> 1'],
           reason: 'quiet ticks after a change are still quiet');
     });
 
     test('a channel nobody listens to simply never notifies', () async {
-      final game = await _boot(_StateGame());
-      final system = game.getSystem<_StateSystem>();
+      await _boot(_StateGame());
+      final system = run.state.getSystem<_StateSystem>();
       system.nextProbeCount = 5;
-      game.state!.runFixedStep();
+      run.state.runFixedStep();
       expect(system.probeCount.value, 5);
       expect(changes, isEmpty);
     });
@@ -406,8 +423,8 @@ void main() {
 
     test('reading a channel after stop() reports disconnection', () async {
       final game = _StateGame();
-      await game.start(inline: true, autoTick: false);
-      await game.stop();
+      run = await Game.startInline(game);
+      await run.stop();
       expect(() => game.gameCount.value, throwsStateError);
     });
   });

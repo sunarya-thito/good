@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:goo/src/handoff_buffer.dart';
 
+
 // The handoff protocol, driven deterministically from one isolate.
 //
 // Single-isolate on purpose: the thing under test is the *protocol* - who is
@@ -47,40 +48,46 @@ void main() {
     });
   });
 
-  group('the writer never overwrites what the reader may take', () {
-    test('a second write is refused until the reader moves', () {
+  group('the writer never waits, and never touches what is in use', () {
+    test('it keeps producing while nobody reads', () {
       write(1);
+      write(2);
+      write(3);
 
-      expect(buffer.beginWrite(), isNull,
-          reason: 'the only slot the reader has released is the one just '
-              'published. Writing there would overwrite a frame the reader is '
-              'entitled to pick up at any moment - so the frame is skipped '
-              'instead, which costs nothing because nobody could have read it');
+      expect(read(), 3,
+          reason: 'the reader collects the newest, not the oldest since its '
+              'last read. An earlier design had the reader publish "you may '
+              'write here", which only advanced on a read - so the writer '
+              'produced one frame and idled, and what waited was a whole '
+              'read-interval stale by the time anyone came for it');
     });
 
-    test('and is allowed again once the reader takes it', () {
+    test('it never writes the slot being read', () {
       write(1);
-      expect(read(), 1);
+      read(); // reader now holds the slot carrying marker 1
 
-      expect(buffer.beginWrite(), isNotNull,
-          reason: 'taking a slot hands the other one back');
-    });
+      // Several more frames while the reader is still holding.
+      write(2);
+      write(3);
+      write(4);
 
-    test('the slot handed back is never the one being read', () {
-      write(1);
-      read(); // reader now holds the slot holding marker 1
-
-      // Whatever the writer is given, it must not be the reader's slot.
-      final slot = buffer.beginWrite()!;
-      slot.asTypedList(64).fillRange(0, 8, 2);
-
-      expect(read(), isNull,
-          reason: 'nothing new has been published, so the reader stays where '
-              'it is');
       expect(buffer.readUsedBytes, 8);
-      // The reader's slot still holds its own frame, untouched by the write
-      // that just happened.
-      expect(buffer.beginRead(), isNull);
+      // The held slot still carries its own frame, untouched by any of them.
+      final held = buffer.slotAddresses;
+      expect(held, hasLength(3));
+    });
+
+    test('it never writes the slot waiting to be read', () {
+      write(1);
+      // Not read yet - slot for marker 1 is `ready`. Anything the writer is
+      // handed now must be a different slot, or a reader arriving at this
+      // instant would walk into a half-written frame.
+      final target = buffer.beginWrite()!;
+      target.asTypedList(64).fillRange(0, 8, 99);
+
+      expect(read(), 1,
+          reason: 'the published frame survived a concurrent write, because '
+              'the write went somewhere else');
     });
   });
 
@@ -99,11 +106,14 @@ void main() {
       write(1);
       expect(read(), 1);
       write(2);
-      // The writer is now blocked until the reader moves - so "the newest" is
-      // 2, and there is no 3 to have missed. That is the pacing the handoff
-      // buys: production follows consumption instead of racing ahead.
-      expect(buffer.beginWrite(), isNull);
-      expect(read(), 2);
+      write(3);
+      write(4);
+
+      expect(read(), 4,
+          reason: 'four frames produced, one read - and the one read is the '
+              'last, not the second. A ring would have handed over 2 and kept '
+              '3 and 4 waiting, which is the wrong end of a queue nobody wants '
+              'the old end of');
     });
 
     test('reading twice with no new publish reports nothing new', () {
@@ -158,10 +168,14 @@ void main() {
       expect(slot!.asTypedList(64)[0], 9);
       expect(far.readUsedBytes, 16);
 
-      // And the handoff it performed is visible to the original writer.
-      expect(buffer.beginWrite(), isNotNull,
-          reason: 'the far side took a slot, which frees the other one - the '
-              'control words are the shared state, not the Dart objects');
+      // And the claim it made is visible to the original writer: whatever the
+      // writer is handed next, it is not the slot the far side is holding.
+      final next = buffer.beginWrite();
+      expect(next, isNotNull);
+      expect(next!.address, isNot(slot.address),
+          reason: 'the control words are the shared state, not the Dart '
+              'objects - a reader on the other side of the boundary excludes '
+              'its slot from this writer just as a local one would');
     });
   });
 

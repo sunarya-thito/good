@@ -20,6 +20,13 @@ import 'package:goo/src/struct.dart';
 import 'package:goo/src/system.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector2;
+import 'package:goo/src/handle.dart';
+
+/// The live run under test. A `GameHandle`, not an `InlineGameHandle`: every
+/// test in this file spawns a real isolate, so the world is on the other side
+/// and unreachable from here by design.
+late GameHandle run;
+
 
 // The real two-isolate bring-up: `Game.start()` hands the Game subclass
 // itself to Isolate.spawn, the copy on the other side builds its GameState
@@ -104,6 +111,18 @@ class _MoverScene extends SceneStruct {
 class _MoverSystem extends GameSystem with FixedTickable {
   late final Query query;
 
+  /// What this system tells the main isolate.
+  ///
+  /// Main cannot read a component row any more - it registers no archetypes
+  /// and holds no pages - so anything a test over there wants to assert has to
+  /// come through the presentation lane. That is not a testing workaround; it
+  /// is the architecture the split exists to enforce, and asserting through it
+  /// is asserting the real thing.
+  _IsolateGame get _own => game as _IsolateGame;
+  StateChannel<double> get firstX => _own.firstX;
+  StateChannel<int> get population => _own.population;
+  StateChannel<int> get firstMarker => _own.firstMarker;
+
   @override
   void describeQuery(QueryDescriptor descriptor) {
     query = descriptor.query().withAll(_Moving).build();
@@ -121,7 +140,13 @@ class _MoverSystem extends GameSystem with FixedTickable {
       moving.x[entity] = moving.x[entity] + 1;
       count++;
     }
-    if (first != null) first.get<_Moving>().census[first] = count;
+    population.value = count;
+    if (first != null) {
+      final moving = first.get<_Moving>();
+      moving.census[first] = count;
+      firstX.value = moving.x[first];
+      firstMarker.value = moving.marker[first];
+    }
   }
 }
 
@@ -147,6 +172,28 @@ class _SpawnMover extends SupplierCommand<Entity> {
   Entity resultFromBuffer(CommandBuffer call) => Entity(spawned[call]);
 }
 
+/// "Pause the mover" - the prescribed route for a main-triggered system
+/// toggle, replacing the deleted `Game.disableSystem<T>()`.
+///
+/// Main cannot name a system by declaration index any more, because it holds
+/// no declarations to index into. It says what it *means* and the handler,
+/// over where the systems are, resolves that to a type.
+class _PauseMover extends SinkCommand<bool> {
+  late final ParamPointer<int> paused;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    paused = descriptor.hasUint1();
+  }
+
+  @override
+  void bufferFromParams(CommandBuffer call, bool params) =>
+      paused[call] = params ? 1 : 0;
+
+  @override
+  bool paramsFromBuffer(CommandBuffer call) => paused[call] != 0;
+}
+
 class _IsolateState extends GameState<_IsolateGame> {
   final _MoverScene level = _MoverScene();
 
@@ -157,10 +204,25 @@ class _IsolateState extends GameState<_IsolateGame> {
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
-    descriptor.hasSupplier(game.spawnMover, _onSpawnMover);
+    descriptor
+      ..hasSupplier(game.spawnMover, _onSpawnMover)
+      ..hasSink(game.pauseMover, _onPauseMover);
   }
 
   Entity _onSpawnMover() => sceneHandle!.addEntity(level.mover);
+
+  void _onPauseMover(bool paused) {
+    if (paused) {
+      disableSystem<_MoverSystem>();
+    } else {
+      enableSystem<_MoverSystem>();
+    }
+  }
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    descriptor.has(_MoverSystem());
+  }
 }
 
 class _IsolateGame extends Game {
@@ -173,6 +235,21 @@ class _IsolateGame extends Game {
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
   late final _SpawnMover spawnMover;
+  late final _PauseMover pauseMover;
+
+  /// What `_MoverSystem` publishes. Declared here because main is the copy
+  /// that allocates the storage - and main is also the only reader, which is
+  /// what a state channel is for.
+  late final StateChannel<double> firstX;
+  late final StateChannel<int> population;
+  late final StateChannel<int> firstMarker;
+
+  @override
+  void describeState(StateDescriptor descriptor) {
+    firstX = descriptor.hasFloat64();
+    population = descriptor.hasInt32();
+    firstMarker = descriptor.hasInt32();
+  }
 
   @override
   GameState createState() => _IsolateState();
@@ -180,12 +257,10 @@ class _IsolateGame extends Game {
   @override
   void describeCommands(CommandDescriptor descriptor) {
     spawnMover = descriptor.has(_SpawnMover());
+    pauseMover = descriptor.has(_PauseMover());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    descriptor.has(_MoverSystem());
-  }
+
 }
 
 // --- auxiliary buffer fixtures -------------------------------------------
@@ -199,14 +274,10 @@ const int _pingRecordType = 3;
 class _PingSystem extends GameSystem with FixedTickable {
   final Uint8List _payload = Uint8List(8);
 
-  /// Declared on both copies, so the handle holds the same handle object's
-  /// twin and reads through it with no name to agree on.
-  late final BufferHandle pings;
-
-  @override
-  void describeBuffers(BufferDescriptor descriptor) {
-    pings = descriptor.has(capacityBytes: 4096);
-  }
+  /// Declared by the `Game`, on main, before the spawn - which is the only
+  /// copy that can allocate. This system, on the game isolate, reads the
+  /// handle back off it and writes through the same native memory.
+  BufferHandle get pings => (game as _PingGame).pings;
 
   @override
   void onFixedUpdate() {
@@ -220,6 +291,11 @@ class _PingState extends GameState<_PingGame> {
   void onMounted() {
     loadScene(_MoverScene());
   }
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    descriptor.has(_PingSystem());
+  }
 }
 
 class _PingGame extends Game {
@@ -229,13 +305,19 @@ class _PingGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
+  /// Declared here on behalf of `_PingSystem`. Buffers are allocated on this
+  /// copy before the spawn; the system that fills it exists only on the other.
+  late final BufferHandle pings;
+
   @override
   GameState createState() => _PingState();
 
   @override
-  void describeSystems(SystemDescriptor descriptor) {
-    descriptor.has(_PingSystem());
+  void describeBuffers(BufferDescriptor descriptor) {
+    pings = descriptor.has(capacityBytes: 4096);
   }
+
+
 }
 
 // --- state channel fixtures ----------------------------------------------
@@ -243,14 +325,10 @@ class _PingGame extends Game {
 /// Bumps a channel every tick on the game isolate. The main isolate never
 /// sees this object's twin do anything - it only ever reads the channel.
 class _CounterSystem extends GameSystem with FixedTickable {
-  late final StateChannel<int> ticks;
-  late final StateChannel<bool> alive;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    ticks = descriptor.hasInt32();
-    alive = descriptor.hasBool();
-  }
+  /// Declared on the `Game` and written here. The channel is the only thing
+  /// main can see of this system at all - it holds no twin of it.
+  StateChannel<int> get ticks => (game as _ChannelGame).ticks;
+  StateChannel<bool> get alive => (game as _ChannelGame).alive;
 
   @override
   void onFixedUpdate() {
@@ -264,6 +342,11 @@ class _ChannelState extends GameState<_ChannelGame> {
   void onMounted() {
     loadScene(_MoverScene());
   }
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    descriptor.has(_CounterSystem());
+  }
 }
 
 class _ChannelGame extends Game {
@@ -273,13 +356,19 @@ class _ChannelGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
+  late final StateChannel<int> ticks;
+  late final StateChannel<bool> alive;
+
+  @override
+  void describeState(StateDescriptor descriptor) {
+    ticks = descriptor.hasInt32();
+    alive = descriptor.hasBool();
+  }
+
   @override
   GameState createState() => _ChannelState();
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    descriptor.has(_CounterSystem());
-  }
+
 }
 
 // --- input fixtures -------------------------------------------------------
@@ -297,10 +386,16 @@ class _InputProbeSystem extends GameSystem with FixedTickable {
   late final Input<bool> fire;
   late final Input<Vector2> move;
 
-  late final StateChannel<bool> fireHeld;
-  late final StateChannel<int> presses;
-  late final StateChannel<int> releases;
-  late final StateChannel<double> moveX;
+  /// Declared on the `Game`; written here. `describeInputs` below *stays* on
+  /// the system, and the contrast is the point: an action allocates nothing -
+  /// the raw block is a fixed size whatever a game declares, and only this
+  /// copy ever resolves against it - while a channel is native memory main
+  /// reserves before the spawn.
+  _InputProbeGame get _own => game as _InputProbeGame;
+  StateChannel<bool> get fireHeld => _own.fireHeld;
+  StateChannel<int> get presses => _own.presses;
+  StateChannel<int> get releases => _own.releases;
+  StateChannel<double> get moveX => _own.moveX;
 
   @override
   void describeInputs(InputDescriptor input) {
@@ -308,14 +403,6 @@ class _InputProbeSystem extends GameSystem with FixedTickable {
     move = input.has<Vector2>(
       const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
     );
-  }
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    fireHeld = descriptor.hasBool();
-    presses = descriptor.hasInt32();
-    releases = descriptor.hasInt32();
-    moveX = descriptor.hasFloat64();
   }
 
   @override
@@ -332,6 +419,11 @@ class _InputProbeState extends GameState<_InputProbeGame> {
   void onMounted() {
     loadScene(_MoverScene());
   }
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    descriptor.has(_InputProbeSystem());
+  }
 }
 
 class _InputProbeGame extends Game {
@@ -341,13 +433,23 @@ class _InputProbeGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
+  late final StateChannel<bool> fireHeld;
+  late final StateChannel<int> presses;
+  late final StateChannel<int> releases;
+  late final StateChannel<double> moveX;
+
+  @override
+  void describeState(StateDescriptor descriptor) {
+    fireHeld = descriptor.hasBool();
+    presses = descriptor.hasInt32();
+    releases = descriptor.hasInt32();
+    moveX = descriptor.hasFloat64();
+  }
+
   @override
   GameState createState() => _InputProbeState();
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    descriptor.has(_InputProbeSystem());
-  }
+
 }
 
 // --- asset fixtures -------------------------------------------------------
@@ -445,11 +547,17 @@ class _TexturedScene extends SceneStruct {
   }
 }
 
-/// Publishes the game isolate's view of the asset into the row every tick.
+/// Publishes the game isolate's view of the asset - into the row, and out
+/// through a channel main can actually read.
+///
 /// Not in `onMounted`: the whole point is to sample *after* the transition
 /// finished, so "still not loaded" means "never loads", not "not yet".
 class _TexturedSystem extends GameSystem with FixedTickable {
   late final Query query;
+
+  _TexturedGame get _own => game as _TexturedGame;
+  StateChannel<int> get reportedAddress => _own.reportedAddress;
+  StateChannel<int> get reportedLoaded => _own.reportedLoaded;
 
   @override
   void describeQuery(QueryDescriptor descriptor) {
@@ -462,6 +570,12 @@ class _TexturedSystem extends GameSystem with FixedTickable {
       final prefab = entity.get<_Textured>();
       prefab.seenAddress[entity] = prefab.texture.address;
       prefab.seenLoaded[entity] = prefab.texture.isLoaded ? 1 : 0;
+      // The row write above still happens, and is still read back on this
+      // isolate - it is what proves an address survives a round trip through
+      // native storage. The channels are how the answer reaches main, which
+      // cannot resolve a row at all.
+      reportedAddress.value = prefab.seenAddress[entity];
+      reportedLoaded.value = prefab.seenLoaded[entity];
     }
   }
 }
@@ -470,6 +584,11 @@ class _TexturedState extends GameState<_TexturedGame> {
   @override
   void onMounted() {
     loadScene(_TexturedScene());
+  }
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    descriptor.has(_TexturedSystem());
   }
 }
 
@@ -480,13 +599,19 @@ class _TexturedGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
+  late final StateChannel<int> reportedAddress;
+  late final StateChannel<int> reportedLoaded;
+
+  @override
+  void describeState(StateDescriptor descriptor) {
+    reportedAddress = descriptor.hasInt32(-1);
+    reportedLoaded = descriptor.hasInt32(-1);
+  }
+
   @override
   GameState createState() => _TexturedState();
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    descriptor.has(_TexturedSystem());
-  }
+
 }
 
 
@@ -557,10 +682,13 @@ class _LateState extends GameState<_LateGame> {
     // The progress callback runs on *this* isolate, driven by the per-asset
     // messages main sends back as it decodes - so publishing it to a channel
     // is the only way the test can see that lane worked at all.
+    // `loadScene` declares the asset synchronously, before its first await, so
+    // the address exists to publish the moment this returns.
     loadScene(
       game.lateScene,
       onProgress: (report) => game.progress.value = report.progress,
     ).then((scene) => _loadedLate = scene);
+    game.lateAddress.value = game.assets.tryGet(_lateTexture)!.address;
   }
 
   void _unload() {
@@ -581,6 +709,12 @@ class _LateGame extends Game {
   late final _UnloadLate unloadLate;
   late final StateChannel<double> progress;
 
+  /// The address the *game isolate* assigned this scene's texture, published
+  /// so main can name it. Main cannot look the asset up by key: the key it
+  /// holds is a different object from the one that was declared (see
+  /// `GameAssets.adoptAt`), so an address is the only shared name.
+  late final StateChannel<int> lateAddress;
+
   @override
   GameState createState() => _LateState();
 
@@ -592,6 +726,7 @@ class _LateGame extends Game {
   @override
   void describeState(StateDescriptor descriptor) {
     progress = descriptor.hasFloat64(-1);
+    lateAddress = descriptor.hasInt32(-1);
   }
 
   @override
@@ -631,6 +766,11 @@ class _UnloadState extends GameState<_UnloadGame> {
   void _drop() {
     if (loadedScenes.isNotEmpty) unloadScene(loadedScenes.first);
   }
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    descriptor.has(_MoverSystem());
+  }
 }
 
 class _UnloadGame extends Game {
@@ -650,10 +790,7 @@ class _UnloadGame extends Game {
     dropScene = descriptor.has(_DropScene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    descriptor.has(_MoverSystem());
-  }
+
 }
 
 /// Polls [ready] once per reported tick, up to [within] ticks.
@@ -695,37 +832,45 @@ void main() {
     'a Game subclass survives Isolate.spawn and ticks on the other side',
     () async {
       final game = _IsolateGame();
-      await game.start();
+      run = await Game.start(game);
       addTearDown(() async {
-        if (game.isRunning) await game.stop();
+        if (run.isRunning) await run.stop();
       });
 
       // start() completed, so the spawned copy got far enough to build its
       // state and hand back its command ring - the sendability question the
       // whole design rests on, answered.
-      expect(game.state, isNotNull);
-      expect(game.state!.isSimulating, isFalse,
-          reason: 'this copy is the handle: it mirrors declarations and reads '
-              'shared memory, but the tick loop is on the other isolate');
-      final scene = game.state!.getScene<_MoverScene>();
-      final mounted = Entity.pack(scene.mover.archetypeId, 0, 0);
+      expect(run.isRunning, isTrue);
 
+      // The world is *not* here, and asserting that is no longer possible -
+      // which is the point, and a stronger property than what these lines used
+      // to check. There were four assertions here: that this copy's state was
+      // non-null, that it was not simulating, that it had loaded no scenes,
+      // and that `getScene` threw. All of them reached the mirror through
+      // `Game.state`, so all of them are gone with it: `run` is a `GameHandle`,
+      // not an `InlineGameHandle`, and `run.state` does not compile.
+      //
+      // "Unreachable" beats "reachable but empty". The evidence that survives
+      // is further down - a component read on this isolate throws, naming the
+      // presentation-only rule.
+
+      final mover = game;  // the channels live on the Game; main holds no systems
       await _waitTicks(game, 3);
 
-      // Reading the game isolate's published snapshot directly - no copy, no
-      // message carrying the value.
-      expect(scene.mover.marker[mounted], 7,
+      // Everything below reads a `StateChannel` - shared memory the game
+      // isolate published this tick. No copy, no message carrying the value,
+      // and no component row, which this copy could not resolve anyway.
+      expect(mover.firstMarker.value, 7,
           reason: 'the scene mounted an entity on the game isolate and its '
-              'onMounted ran there');
-      final firstRead = scene.mover.x[mounted];
+              'onEntityMounted ran there');
+      final firstRead = mover.firstX.value;
       expect(firstRead, greaterThan(0),
           reason: 'the mover system is running on the other isolate');
 
       await _waitTicks(game, 5);
-      final secondRead = scene.mover.x[mounted];
-      expect(secondRead, greaterThan(firstRead),
+      expect(mover.firstX.value, greaterThan(firstRead),
           reason: 'entity state must keep changing across ticks');
-      expect(scene.mover.census[mounted], 1);
+      expect(mover.population.value, 1);
 
       // --- a command sent from the main isolate lands, and answers --------
       //
@@ -736,65 +881,75 @@ void main() {
       // future below with the entity that was actually created over there.
       final spawned =
           await game.spawnMover().timeout(const Duration(seconds: 20));
-      expect(
-        spawned,
-        Entity.pack(
-          scene.mover.archetypeId,
-          0,
-          scene.mover.archetype.strideBytes,
-        ),
-        reason: 'the created entity crossed back over the reply ring - the '
-            'encode/apply lane this replaces had no way to return anything',
-      );
 
       await _waitTicks(game, 3);
-      expect(scene.mover.census[mounted], 2,
+      expect(mover.population.value, 2,
           reason: 'the ring-buffer spawn command created a second entity on '
               'the game isolate');
-      expect(scene.mover.marker[spawned], 7,
-          reason: 'onMounted runs for a command-spawned entity too');
-      expect(scene.mover.x[spawned], greaterThan(0),
-          reason: 'and the new entity is picked up by the running system');
 
-      // The handle's own state must refuse to simulate: two loops over one
-      // set of pages is exactly the corruption the split exists to prevent.
-      expect(() => game.state!.runFixedStep(), throwsStateError);
+      final second =
+          await game.spawnMover().timeout(const Duration(seconds: 20));
+      expect(second, isNot(spawned),
+          reason: 'a real handle crossed back over the reply ring, twice, '
+              'naming two different rows - the encode/apply lane this '
+              'replaces could not return anything at all');
+      await _waitTicks(game, 3);
+      expect(mover.population.value, 3);
 
-      await game.stop();
+      // And the entity that came back is deliberately **not** readable here.
+      // It is a valid handle on the isolate that made it and meaningless on
+      // this one; the diagnostic says so rather than indexing an empty table.
+      expect(
+        () => spawned.get<_Moving>(),
+        throwsA(isA<StateError>().having((e) => e.message, 'message',
+            contains('presentation-only'))),
+        reason: 'main holds no archetypes, so a component read is not a '
+            'slow path here - it is a category error, and has to report as one',
+      );
+
+      // "The handle's own state refuses to simulate" was asserted here.
+      // It cannot be any more, and does not need to be: this copy has no
+      // state to call `runFixedStep` on. Two tick loops over one set of
+      // pages is now unrepresentable rather than guarded.
+
+      await run.stop();
       expect(game.isRunning, isFalse);
     },
     timeout: const Timeout(Duration(seconds: 60)),
   );
 
   test(
-    'disableSystem from the main isolate stops the game isolate ticking it',
+    'a command from the main isolate stops the game isolate ticking a system',
     () async {
       final game = _IsolateGame();
-      await game.start();
+      run = await Game.start(game);
       addTearDown(() async {
-        if (game.isRunning) await game.stop();
+        if (run.isRunning) await run.stop();
       });
 
-      final scene = game.state!.getScene<_MoverScene>();
-      final mounted = Entity.pack(scene.mover.archetypeId, 0, 0);
-
       await _waitTicks(game, 3);
-      expect(scene.mover.x[mounted], greaterThan(0));
+      expect(game.firstX.value, greaterThan(0));
 
-      await game.disableSystem<_MoverSystem>();
-      // Let the disable message land and a couple of ticks pass with it
-      // applied, then take a baseline.
+      // Main cannot call `disableSystem` any more: it holds no systems and so
+      // no index to name one by. It sends a command that says what it means,
+      // and the handler - on the isolate where the systems actually are -
+      // resolves that to a type. The old `Game.disableSystem<T>()` and its
+      // `_msgDisable` control message are gone with the system list.
+      await game.pauseMover(true).timeout(const Duration(seconds: 20));
+      // Let a couple of ticks pass with it applied, then take a baseline.
       await _waitTicks(game, 3);
-      final frozen = scene.mover.x[mounted];
+      final frozen = game.firstX.value;
       await _waitTicks(game, 5);
-      expect(scene.mover.x[mounted], frozen,
-          reason: 'a disabled system must not be ticking on the game isolate');
+      expect(game.firstX.value, frozen,
+          reason: 'a disabled system must not be ticking on the game isolate - '
+              'and a frozen channel is the honest evidence, since the system '
+              'that publishes it is the one that stopped');
 
-      await game.enableSystem<_MoverSystem>();
+      await game.pauseMover(false).timeout(const Duration(seconds: 20));
       await _waitTicks(game, 5);
-      expect(scene.mover.x[mounted], greaterThan(frozen));
+      expect(game.firstX.value, greaterThan(frozen));
 
-      await game.stop();
+      await run.stop();
     },
     timeout: const Timeout(Duration(seconds: 60)),
   );
@@ -804,9 +959,9 @@ void main() {
     'first tick writes to it',
     () async {
       final game = _PingGame();
-      await game.start();
+      run = await Game.start(game);
       addTearDown(() async {
-        if (game.isRunning) await game.stop();
+        if (run.isRunning) await run.stop();
       });
 
       // The whole ordering claim in Game.describeBuffers, asserted directly:
@@ -814,10 +969,10 @@ void main() {
       // though the buffer is declared by a *system*, whose declaration only
       // exists after describeSystems ran on the far side.
       expect(game.bufferCount, 1);
-      final handle = game.getSystem<_PingSystem>().pings;
+      final handle = game.pings;
       expect(handle.isConnected, isTrue);
       expect(handle.ring.capacityBytes, 4096);
-      expect(game.state!.isSimulating, isFalse, reason: 'this copy is the handle');
+      expect(run.isRunning, isTrue, reason: 'this copy is the handle');
 
       // Paced by the game isolate's own 5ms timer and waited on via tick
       // notifications - no tight cross-isolate loop, per the note at the top
@@ -850,7 +1005,7 @@ void main() {
       expect(more, isNotEmpty);
       expect(more.first, resumeFrom + 1);
 
-      await game.stop();
+      await run.stop();
       expect(handle.isConnected, isFalse,
           reason: 'the game isolate freed the memory; the view must go too');
     },
@@ -861,12 +1016,12 @@ void main() {
     'a state channel written on the game isolate is observed on the main one',
     () async {
       final game = _ChannelGame();
-      await game.start();
+      run = await Game.start(game);
       addTearDown(() async {
-        if (game.isRunning) await game.stop();
+        if (run.isRunning) await run.stop();
       });
 
-      final counter = game.getSystem<_CounterSystem>();
+      final counter = game;
       // Declared on both copies, seeded before `ready`, so it reads as its
       // initial value the instant start() returns - never an unpublished
       // TripleBuffer.
@@ -898,7 +1053,7 @@ void main() {
       expect(() => counter.ticks.value = 999, throwsAssertionError);
       expect(counter.ticks.value, isNot(999));
 
-      await game.stop();
+      await run.stop();
     },
     timeout: const Timeout(Duration(seconds: 60)),
   );
@@ -907,12 +1062,12 @@ void main() {
     'raw input written on the main isolate reaches the game isolate\'s tick',
     () async {
       final game = _InputProbeGame();
-      await game.start();
+      run = await Game.start(game);
       addTearDown(() async {
-        if (game.isRunning) await game.stop();
+        if (run.isRunning) await run.stop();
       });
 
-      final probe = game.getSystem<_InputProbeSystem>();
+      final probe = game;
       // The announcement ordering, asserted directly: start() has returned,
       // so the game isolate has already handed this copy the raw block's
       // address and this copy has built the write end over it. A GameView
@@ -921,11 +1076,13 @@ void main() {
       expect(device, isNotNull,
           reason: 'this copy is the handle - the one Flutter runs on, and '
               'therefore the only one that can ever see a KeyEvent');
-      expect(game.state!.isSimulating, isFalse);
-      expect(probe.fire.value, isFalse,
-          reason: 'this copy\'s twin of the system never resolves: its '
-              'actions read their declared default forever, which is exactly '
-              'what the doc on Input says happens on the non-simulating side');
+      // This copy holds no twin of the system whose actions those are - it
+      // declared no systems at all. It used to hold one, and the assertion
+      // here was that the twin's actions read their declared default forever;
+      // there is nothing left to read them off, which is the stronger version
+      // of the same claim.
+      // (There is nothing here to read them off: `run` is a GameHandle,
+      // so `run.state` does not compile on this side at all.)
 
       await _waitTicks(game, 3);
       expect(probe.fireHeld.value, isFalse);
@@ -961,7 +1118,7 @@ void main() {
           reason: 'the other key is still held - releasing one bit must not '
               'republish the whole block as empty');
 
-      await game.stop();
+      await run.stop();
       expect(game.inputDevice, isNull,
           reason: 'the game isolate freed the memory; the write end must go '
               'with it');
@@ -973,28 +1130,39 @@ void main() {
     'a scene loaded at runtime from the game isolate gets its assets decoded',
     () async {
       final game = _LateGame();
-      await game.start();
+      run = await Game.start(game);
       addTearDown(() async {
-        if (game.isRunning) await game.stop();
+        if (run.isRunning) await run.stop();
       });
 
-      final declared = game.assets.tryGet(_lateTexture);
-      expect(declared, isNotNull,
-          reason: 'describeScenes ran on this copy, so the declaration and its '
-              'address exist here even though nothing has loaded the scene');
-      expect(declared!.isLoaded, isFalse,
-          reason: 'declared is not loaded - the scene has not been loaded by '
-              'anyone yet');
+      expect(game.lateAddress.value, -1,
+          reason: 'nothing has loaded the scene, so no address has been '
+              'assigned to report');
 
       // Main asks; the game isolate loads the scene, which declares the asset
       // over there and then has to ask *back* for the decode it cannot do.
       await game.loadLate().timeout(const Duration(seconds: 20));
+      expect(await _waitUntil(game, () => game.lateAddress.value >= 0), isTrue);
+      final address = game.lateAddress.value;
 
-      expect(await _waitUntil(game, () => declared.isLoaded), isTrue,
+      // By address, never by key. `describeScenes` runs on the game isolate
+      // now, so this copy never declared anything - and the key object it
+      // holds is not the one that was declared anyway, because a key crossing
+      // a port arrives as a copy. The address is the shared name.
+      expect(
+          await _waitUntil(
+              game,
+              () =>
+                  game.assets
+                      .tryResolve<_IsolateTexture>(address)
+                      ?.isLoaded ==
+                  true),
+          isTrue,
           reason: 'the game isolate loaded the scene at runtime, so it had to '
               'ask this copy to decode. Before the round-trip existed, '
               '_reconcileAssets returned at `if (!game.decodesAssets)` and no '
               'decode was ever requested, leaving this false forever');
+      final declared = game.assets.tryResolve<_IsolateTexture>(address)!;
       expect(declared.byteCount, 4,
           reason: 'and the payload really landed, not just the flag');
 
@@ -1008,43 +1176,53 @@ void main() {
       await game.unloadLate().timeout(const Duration(seconds: 20));
 
       expect(
-        await _waitUntil(game, () => game.assets.tryGet(_lateTexture) == null),
+        await _waitUntil(game,
+            () => game.assets.tryResolve<_IsolateTexture>(address) == null),
         isTrue,
         reason: 'the game isolate dropped its declaration, and told this copy '
             'to drop the payload with it. Without that message the image '
             'would stay alive on main with nothing left able to name it',
       );
 
-      await game.stop();
+      await run.stop();
     },
     timeout: const Timeout(Duration(seconds: 60)),
   );
 
   test(
-    'both copies declare an asset to the same address; only one decodes',
+    'the game isolate assigns the asset address; main adopts it and decodes',
     () async {
       final game = _TexturedGame();
-      await game.start();
+      run = await Game.start(game);
       addTearDown(() async {
-        if (game.isRunning) await game.stop();
+        if (run.isRunning) await run.stop();
       });
 
-      final scene = game.state!.getScene<_TexturedScene>();
-      final entity = Entity.pack(scene.textured.archetypeId, 0, 0);
-      final here = scene.textured.texture;
-
-      await _waitTicks(game, 4);
-
+      final reporter = game;
       expect(
-        scene.textured.seenAddress[entity],
-        here.address,
-        reason: 'the two copies ran the same describeAssets pass in the same '
-            'order on two heaps, so the address the game isolate writes into '
-            'a row is exactly the one this copy resolves it by - which is the '
-            'entire reason a row can hold a Uint32 instead of a reference',
+        await _waitUntil(game, () => reporter.reportedAddress.value >= 0),
+        isTrue,
+      );
+
+      // Resolved by address, not by key: main never ran a `describeAssets`
+      // pass, and its own `_isolateTexture` object is not the one that was
+      // declared - a key crossing a port arrives as a copy.
+      final here =
+          game.assets.tryResolve<_IsolateTexture>(reporter.reportedAddress.value);
+      expect(here, isNotNull,
+          reason: 'main adopted the declaration when it was asked to decode - '
+              'it never ran a describeAssets pass of its own');
+      expect(
+        reporter.reportedAddress.value,
+        here!.address,
+        reason: 'one copy assigns the address and the other takes it as given. '
+            'It used to be two copies computing the same number from the same '
+            'declaration order, which is the agreement this landing stopped '
+            'needing - and which nothing re-established when a scene was '
+            'loaded at runtime on one side only',
       );
       expect(
-        scene.textured.seenLoaded[entity],
+        reporter.reportedLoaded.value,
         0,
         reason: 'and the game isolate never decoded it: decoding needs '
             'dart:ui, which is not on that isolate. It holds an addressed, '
@@ -1052,51 +1230,33 @@ void main() {
       );
 
       expect(
-        here.isLoaded,
+        await _waitUntil(game, () => here.isLoaded),
         isTrue,
         reason: 'while this copy - the one with Flutter attached - did load '
-            'it, during loadScene\'s asynchronous half',
+            'it, on the far side of loadScene\'s decode request',
       );
-      expect(here.byteCount, 4, reason: 'and its payload is readable here');
+      expect(here.byteCount, 4,
+          reason: 'and its payload is readable here');
 
-      await game.stop();
+      await run.stop();
     },
     timeout: const Timeout(Duration(seconds: 60)),
   );
 
-  test(
-    'unloading a scene drops the main copy page views before the memory goes',
-    () async {
-      final game = _UnloadGame();
-      await game.start();
-      addTearDown(() async {
-        if (game.isRunning) await game.stop();
-      });
-
-      final scene = game.state!.getScene<_MoverScene>();
-      final mounted = Entity.pack(scene.mover.archetypeId, 0, 0);
-
-      await _waitTicks(game, 3);
-      expect(scene.mover.x[mounted], greaterThan(0),
-          reason: 'main is reading the game isolate page through an adopted '
-              'view - which is exactly what has to be taken away safely');
-
-      // Main cannot unload directly - `unloadScene` is game-isolate-only - so
-      // it asks through a command, which is the prescribed route.
-      await game.dropScene();
-      await _waitTicks(game, 4);
-
-      expect(
-        () => scene.mover.x[mounted],
-        throwsStateError,
-        reason: 'main dropped its view of the freed page, so a stale Entity '
-            'reports the unload instead of reading memory that has been '
-            'handed back to the allocator',
-      );
-
-      await game.stop();
-    },
-    timeout: const Timeout(Duration(seconds: 60)),
-  );
+  // DELETED, not disabled: 'unloading a scene drops the main copy page views
+  // before the memory goes'.
+  //
+  // It asserted the capability this landing removes. Main used to adopt a
+  // read-only view of every page the game isolate allocated, so unloading a
+  // scene had to negotiate - free the memory while a widget was mid-repaint
+  // over it and you get wrong numbers, silently, which is the one failure a
+  // shared-memory design cannot report. That was `_msgPageGone` /
+  // `_msgPagesDropped`, a deferred-free set, and `MemoryPool.adoptPage`.
+  //
+  // Main holds no archetypes now and resolves no `Entity`, so it never had a
+  // view to drop and the whole handshake is gone. The property that replaced
+  // it is asserted in the first test in this file: a component read on main
+  // throws, naming the presentation-only rule. There is nothing left here to
+  // race with.
 
 }

@@ -193,7 +193,7 @@ class SpawnEnemy extends SupplierCommand<Entity> {
 }
 
 /// The simulation half. Everything that mutates the world lives here.
-class MyGameState extends GameState<MyAwesomeGame> {
+class MyGameState extends GameState2D<MyAwesomeGame> {
   /// Held in a field so the command handler below can reach the prefab. This
   /// side owns the scene; the `Game` never needs to name it.
   final MainScene level = MainScene();
@@ -201,6 +201,17 @@ class MyGameState extends GameState<MyAwesomeGame> {
   @override
   void onMounted() {
     loadScene(level);
+  }
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    // super first: GameState2D declares WorldTransformSystem and
+    // GameRenderer2D itself, so this game only declares what is actually its
+    // own. Ordering between them is not positional anyway - GameRenderer2D's
+    // compareTo puts it after WorldTransformSystem wherever either is
+    // declared.
+    super.describeSystems(descriptor);
+    descriptor.has(SpinSystem());
   }
 
   @override
@@ -216,30 +227,21 @@ class MyGameState extends GameState<MyAwesomeGame> {
 }
 
 /// `Game2D` rather than `Game`: that is the opt-in for painting, and it is
-/// what puts a `CustomPaint` fed by the draw buffer under the `GameView`.
-/// Declaring `GameRenderer2D` below is the other half - it is what produces
-/// the frames to paint.
+/// what puts a `CustomPaint` fed by the draw buffer under the `GameView`. Its
+/// simulation half is a [GameState2D], which is what declares the systems that
+/// produce the frames - and `createState` is narrowed to that type, so the two
+/// halves cannot come apart.
 class MyAwesomeGame extends Game2D {
   /// Declared here, handled in [MyGameState]: the declaration site is whoever
   /// has to *hold* the handle, and it is the UI that calls this one.
   late final SpawnEnemy spawnEnemy;
 
   @override
-  GameState createState() => MyGameState();
+  GameState2D<MyAwesomeGame> createState() => MyGameState();
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
     spawnEnemy = descriptor.has(SpawnEnemy());
-  }
-
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    // super first: Game2D declares WorldTransformSystem and GameRenderer2D
-    // itself, so this game only declares what is actually its own. Ordering
-    // between them is not positional anyway - GameRenderer2D's compareTo puts
-    // it after WorldTransformSystem wherever either is declared.
-    super.describeSystems(descriptor);
-    descriptor.has(SpinSystem());
   }
 }
 
@@ -259,6 +261,10 @@ class _MyAppState extends State<MyApp> {
   // resolve without a cast, and it is the same reason `GameState<T>` carries
   // its Game's type.
   late final MyAwesomeGame game;
+
+  /// The running game. `MyAwesomeGame` describes; this is the live instance of
+  /// it, and the only thing that can stop it.
+  GameHandle<MyAwesomeGame>? _run;
   bool _started = false;
 
   @override
@@ -273,13 +279,13 @@ class _MyAppState extends State<MyApp> {
   /// make the spawn message unsendable. Hence the gate rather than firing
   /// start() off and building the view in the same frame.
   Future<void> _boot() async {
-    await game.start();
+    _run = await Game.start(game);
     if (mounted) setState(() => _started = true);
   }
 
   @override
   void dispose() {
-    game.stop();
+    _run?.stop();
     super.dispose();
   }
 
@@ -307,7 +313,7 @@ class _MyAppState extends State<MyApp> {
         backgroundColor: const Color(0xFF101418),
         body: Stack(
           children: [
-            if (_started) GameView(game: game),
+            if (_started) GameView(run: _run!, camera: game.defaultCamera),
             Align(
               alignment: Alignment.bottomRight,
               child: Padding(
