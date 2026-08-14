@@ -4,13 +4,18 @@ library;
 
 export 'src/archetype.dart';
 export 'src/asset.dart';
-// The command API's three public layers: the shapes a command can take, the
-// record its parameters and results live in, and the framework's own spawn
-// command. What is hidden is the plumbing behind them - the registry a `Game`
-// owns, the two descriptor implementations that decide which isolate handles
-// what, and the transport-facing interfaces. A game declares against
-// `CommandDescriptor` and holds commands; nothing outside the kernel has a
-// reason to name the rest, and `@internal` says so.
+// The command API's two public layers: the shapes a command can take, and the
+// record its parameters and results live in. What is hidden is the plumbing
+// behind them - the registry a `Game` owns, the two descriptor implementations
+// that decide which isolate handles what, and the transport-facing interfaces.
+// A game declares against `CommandDescriptor` and holds commands; nothing
+// outside the kernel has a reason to name the rest, and `@internal` says so.
+//
+// The framework ships no commands of its own. `SpawnEntityCommand` used to be
+// the exception and was deleted: it named a prefab by `archetypeId`, which is
+// a game-isolate identifier the Flutter isolate has no way to see. Spawning
+// from main is a command the *game* declares, in terms that mean something on
+// both sides.
 export 'src/command/command.dart'
     show
         CommandBatchCalls,
@@ -23,15 +28,19 @@ export 'src/command/command.dart'
         SupplierCommand;
 export 'src/command/param.dart'
     show CommandBatch, CommandBuffer, CommandResults, ParamDescriptor, ParamPointer;
-export 'src/command/spawn.dart';
 export 'src/data.dart';
 export 'src/data/hierarchy.dart';
-export 'src/event.dart' hide GameListenerMixin;
+// EventBinder is the machinery behind the two declare/collect passes - `Game`
+// and `SceneStruct` drive it; nothing outside the kernel has a reason to name
+// it, and `@internal` says so.
+export 'src/event.dart' hide EventBinder;
 export 'src/event/fixed_loop.dart';
+export 'src/event/lifecycle.dart';
 export 'src/event/state.dart';
 export 'src/event/tick_loop.dart';
 export 'src/game.dart';
 export 'src/game_state.dart';
+export 'src/handoff_buffer.dart';
 export 'src/heap_object.dart';
 // Vector2 is part of the input system's surface (`Input<Vector2>`,
 // `Vec2Binding`), so it comes along - a game should not have to add a second

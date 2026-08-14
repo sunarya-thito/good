@@ -2,19 +2,13 @@
 2. Assume all framework game events as hotpath
 3. Avoid Canvas.save, Canvas.restore, Canvas.rotate, Canvas.drawImage, Canvas.translate
 4. Avoid Zone API
-5. No closures on the hotpath either - rule 1 covers them, but they hide well and
-   deserve calling out. `list.any((c) => c.matches(x))`, `where`, `map`, `forEach`,
-   `fold` and friends all allocate a closure per call (and often an Iterable too).
-   Write the indexed `for` loop. Closures at *declare* time (a one-shot
-   `describe*` pass, `seal()`, boot) are fine - it is per-entity/per-tick that
-   matters.
-6. No name-based lookup for anything the framework hands back. If a
-   `describe*` pass produces a thing, it must return a typed handle the caller
-   stores in a field - never a `String`/`int` key the caller has to quote again
-   later, and never a `Map<String, ...>` the framework searches at use time.
-   The analyzer cannot catch `buffers['playersprite']` vs `buffers['playerSprite']`;
-   it catches `playerSprite` immediately. A direct field read also beats a map
-   lookup at runtime, so this costs nothing.
+5. No closures on the hotpath. Rule 1 covers them, but they hide well.
+   `any`, `where`, `map`, `forEach`, `fold` allocate a closure per call, and
+   usually an Iterable too. Write the indexed `for`. Closures in a `describe*`
+   pass, in `seal()`, or at boot are fine - those run once.
+6. Whatever a `describe*` pass produces comes back as a typed handle the caller
+   keeps in a field. No String or int keys, no `Map<String, ...>` the framework
+   searches at use time.
        // yes
        late final Sprite playerSprite;
        void describeSprites(SpriteDescriptor d) {
@@ -24,28 +18,46 @@
        // no
        void describeSprites(SpriteDescriptor d) { d.has('playerSprite'); }
        void use() { sprites['playerSprite']; }
-   Same rule for buffers, state channels, inputs, coroutines, colliders - every
-   `describe*` hook.
-7. Never `print` to report a framework problem, and never smuggle one through
-   `assert(() { print(...); return true; }())`. `print` is not a reliable error
-   channel (swallowed in release, invisible in a test runner's captured output,
-   unformatted in production logs). Use a plain `assert(false, 'message')` - it
-   is the debug-build failure signal the engine already relies on everywhere
-   else, and it compiles out of release exactly the same way.
-8. Don't add a specialized variant of an existing method to escape a
-   constraint. If `operator[]` reads the published snapshot and you want the
-   uncommitted one, the answer is not `readPending()` alongside it - a second
-   read path means every future reader has to know which one is "the right
-   one here", and the invariant the first one enforces quietly stops being an
-   invariant. Fix the placement instead: a value that must be read after it is
-   written belongs in a later *phase*, not behind a sharper accessor. Unity
-   DOTS resolves exactly this by running `PresentationSystemGroup` after
-   `SimulationSystemGroup` and having both read the same `LocalToWorld`
-   component - one storage, one writer, consumers ordered after. Same here:
-   `WorldTransformSystem` writes during the fixed tick, and anything that
-   consumes world transforms runs after that tick commits.
-9. Isolate affinity is a type, not a convention. A game-isolate event is a
-   `GameEvent` dispatched to a `GameListener`; a Flutter/main-isolate event is a
-   `WidgetEvent` dispatched to a `WidgetListener`. `GameState` is a
-   `GameListener`, `Game` is a `WidgetListener`, so listening to the wrong side
-   is a compile error rather than something that silently never fires.
+   The analyzer catches a misspelled field, not a misspelled string. Applies to
+   buffers, state channels, inputs, coroutines, colliders - every `describe*`.
+7. Never `print` to report a framework problem, including through
+   `assert(() { print(...); return true; }())`. It is swallowed in release and
+   invisible in test output. Use `assert(false, 'message')`.
+8. Don't add a specialized variant of a method to escape a constraint. If
+   `operator[]` reads the published snapshot and you want the uncommitted one,
+   the answer is not `readPending()` beside it - a second read path means every
+   later reader has to know which one is right here, and the first one stops
+   guaranteeing anything. Fix the placement instead: a value that must be read
+   after it is written belongs in a later phase. Unity DOTS does this by
+   running `PresentationSystemGroup` after `SimulationSystemGroup` over the
+   same `LocalToWorld`. Same here - `WorldTransformSystem` writes during the
+   fixed tick, and consumers run after it commits.
+9. Isolate affinity is a type. `GameListener` means "lives on the game
+   isolate": `GameState`, `SceneStruct`, `EntityStruct`, `GameSystem`. `Game`
+   is not one, so `class MyGame extends Game with FixedTickable` fails to
+   compile instead of silently never ticking. There is no second event lane for
+   the main isolate - `Game.buildView` is its whole surface, and traffic the
+   other way goes through `GameCommand` or `StateChannel`.
+10. One fact, one place. If two structures have to agree and only your memory
+   keeps them agreeing, they will drift. The analyzer checks types, not "these
+   stay in step".
+   The tell: you can't change one place without hunting for the others. Adding
+   to a list means adding to a second list. Sorting one means permuting
+   another. Setting a flag means also updating a count, a cache, or a mirror.
+   When the correct edit is "and don't forget to...", fix the structure.
+   Remove the second copy, preferring in this order:
+   - move the fact onto the object it describes - a property of the things in a
+     list belongs on those things, not in a second array beside them;
+   - derive it instead of storing it, when that is cheap enough;
+   - fuse the structures, when they only ever get used together;
+   - last resort, one collection of one small object with named fields.
+   The last one comes to mind first and is the weakest: it makes the coupling
+   safe instead of removing it. Collapsing properly usually turns up dead
+   weight - `_EventDescriptor` held three lists in lockstep, and fusing them
+   showed two were the same decision and the third was never read.
+   Exception: struct-of-arrays for cache locality, which the storage layer is
+   built on. That needs a benchmark and a comment saying so, and it never
+   applies to boot-time structures.
+   Already fixed here: `Game._systemEnabled` beside `_systems`;
+   `_fixedTickableIndices`/`_tickableIndices`; `_EventDescriptor`'s
+   `_dispatchers`/`_accepts`/`_adds`.

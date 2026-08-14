@@ -33,8 +33,8 @@ import 'package:goo/src/event.dart';
 /// state. Same frame of latency, one implementation instead of two.
 ///
 /// The bound is `on GameListener` for the same reason `FixedTickable`'s is:
-/// this runs on the game isolate. Building widgets is `BuildWidgetListener`,
-/// on the Flutter side.
+/// this runs on the game isolate. Painting is `Game.buildView`, on the Flutter
+/// side, and is not an event at all.
 mixin Tickable on GameListener {
   /// Called once per presentation pass, with the wall-clock time elapsed
   /// since the previous one.
@@ -44,3 +44,10 @@ mixin Tickable on GameListener {
   /// bigger delta rather than being made up by running the pass twice.
   void onTick(Duration delta);
 }
+
+// There is no `TickEvent` class. The presentation pass is an
+// `EventDispatcher<Tickable, Duration>` on `GameState`, fired with
+// `tickEvent.call(delta)` - the delta is the argument, so a frame costs no
+// allocation at all. It used to be an immutable event object built once per
+// frame, and before that a single mutable instance re-stamped with a new
+// delta; passing it removes both the object and the aliasing question.

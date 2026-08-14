@@ -3,12 +3,12 @@ import 'dart:math' as math;
 import 'package:goo2d/goo2d.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class _Turret extends EntityStruct<_Turret> with Transform2D {}
+class _Turret extends EntityStruct with Transform2D {}
 
 // A deliberately different archetype (extra field ahead of Transform2D's
 // own fields would shift its row layout) - the reference case for "each
 // helper resolves its own argument's Transform2D, not the receiver's".
-class _Enemy extends EntityStruct<_Enemy> with Transform2D {
+class _Enemy extends EntityStruct with Transform2D {
   late final DataPointer<int> health;
 
   @override
@@ -24,7 +24,7 @@ class _Scene extends SceneStruct {
   /// registers itself and forwards.
   late final Scene handle;
 
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
   _Scene();

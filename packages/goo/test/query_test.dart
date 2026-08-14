@@ -47,11 +47,11 @@ mixin _Health on Component {
   }
 }
 
-class _Player extends EntityStruct<_Player> with _Position, _Health, Child {}
+class _Player extends EntityStruct with _Position, _Health, Child {}
 
-class _Rock extends EntityStruct<_Rock> with _Position {}
+class _Rock extends EntityStruct with _Position {}
 
-class _Trigger extends EntityStruct<_Trigger> with _Health {}
+class _Trigger extends EntityStruct with _Health {}
 
 class _Level extends SceneStruct {
   /// This fixture's loaded handle. Entity creation lives on `Scene` now (one
@@ -59,7 +59,7 @@ class _Level extends SceneStruct {
   /// registers itself and forwards.
   late final Scene handle;
 
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
   _Level();

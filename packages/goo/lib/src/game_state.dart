@@ -3,9 +3,12 @@ import 'dart:async';
 import 'package:meta/meta.dart';
 
 import 'package:goo/src/asset.dart';
+import 'package:goo/src/event.dart';
+import 'package:goo/src/event/fixed_loop.dart';
+import 'package:goo/src/event/lifecycle.dart';
+import 'package:goo/src/event/tick_loop.dart';
 import 'package:goo/src/command/command.dart';
 import 'package:goo/src/command/param.dart';
-import 'package:goo/src/event.dart';
 import 'package:goo/src/event/state.dart';
 import 'package:goo/src/game.dart';
 import 'package:goo/src/pool.dart';
@@ -73,7 +76,73 @@ Completer<void>? _bootAssetGate;
 /// Flutter engine attached to that isolate. It can be `FixedTickable` and
 /// `LifecycleListener`; it cannot be `BuildWidgetListener`. See `GameEvent`'s
 /// doc.
-abstract class GameState<T extends Game> with GameListenerMixin {
+abstract class GameState<T extends Game> extends GameListenerBase
+    with EventBus {
+  /// The simulation tick, dispatched once per fixed step to every declared
+  /// `FixedTickable` system.
+  ///
+  /// Declared here rather than hand-rolled on `Game` because the tick is not
+  /// special: it is an event like any other, and it earns the same
+  /// resolved-at-boot listener list every other event gets. Before this it was
+  /// a bespoke pair of filtered lists - the right idea implemented once, for
+  /// one case, generalising to nothing.
+  late final SignalDispatcher<FixedTickable> fixedTickEvent;
+
+  /// The presentation pass, dispatched once per *frame* - see [runPresentation].
+  late final EventDispatcher<Tickable, Duration> tickEvent;
+
+  /// The game has come up, on the simulating copy, with its scenes mounted.
+  late final SignalDispatcher<GameLifecycleListener> gameMountedEvent;
+
+  /// The game is going down, dispatched before anything is torn down.
+  late final SignalDispatcher<GameLifecycleListener> gameUnmountedEvent;
+
+  // Scene and entity lifecycle are **not** declared here. They belong to the
+  // scene and the prefab respectively (`SceneStruct.mountedEvent`,
+  // `EntityStruct.mountedEvent`), because a dispatcher's audience is its
+  // declaring owner's composition. Declared here they would be one list per
+  // level holding everything in the game, so unloading scene A would call
+  // `onSceneUnmounted(A)` on scene B and every prefab B owns. The game level
+  // is different and stays here: `GameState` genuinely is the only object at
+  // that level, so "everything below" is the right audience.
+
+  @override
+  void describeEvents(EventDescriptor descriptor) {
+    fixedTickEvent = descriptor.hasSignal(
+      (listener) => listener.onFixedUpdate(),
+    );
+    tickEvent = descriptor.has((listener, delta) => listener.onTick(delta));
+    gameMountedEvent = descriptor.hasSignal(
+      (listener) => listener.onGameMounted(),
+    );
+    gameUnmountedEvent = descriptor.hasSignal(
+      (listener) => listener.onGameUnmounted(),
+    );
+  }
+
+  /// Offers every declared system to this state's dispatchers.
+  ///
+  /// The explicit composition walk: the event API does not know a `GameState`
+  /// has systems, so this says so. A system that is a `FixedTickable` lands in
+  /// [fixedTick]; one that is a `Tickable` lands in [tick]; one that is
+  /// neither lands nowhere and is never visited again.
+  @override
+  void collectListeners(ListenerCollector collector) {
+    super.collectListeners(collector);
+    final systems = game.declaredSystems;
+    for (var i = 0; i < systems.length; i++) {
+      collector.offer(systems[i]);
+    }
+    // And down the composition: each declared scene offers itself and its own
+    // prefabs, so an event declared here reaches every entity struct in every
+    // scene. This is what `fireEvent` used to do by walking at *dispatch*
+    // time, once per event - doing it here means it is walked once, ever.
+    final scenes = game.declaredScenes;
+    for (var i = 0; i < scenes.length; i++) {
+      scenes[i].collectListeners(collector);
+    }
+  }
+
   Game? _game;
   bool _simulating = false;
 
@@ -88,8 +157,6 @@ abstract class GameState<T extends Game> with GameListenerMixin {
   final Map<GameAsset, int> _assetClaims = <GameAsset, int>{};
   int _accumulatedMicros = 0;
   Timer? _timer;
-
-
 
   /// The `Game` this state belongs to - **this isolate's copy** of it. Set
   /// once, by `Game.start()`, before any declaration pass runs.
@@ -288,6 +355,11 @@ abstract class GameState<T extends Game> with GameListenerMixin {
     if (!next.isInitialized) {
       next.initializeScene(pool, assets: game.assets);
     }
+    // Idempotent, and a no-op for a scene declared in `describeScenes` (the
+    // boot pass already bound it). It matters for one loaded at runtime that
+    // nothing declared: its prefabs' dispatchers have to exist before the
+    // first `addEntity` fires one.
+    next.bindEvents();
 
     // A slot, a generation, and a page group. **Loading no longer replaces
     // anything**: several instances of one `SceneStruct` can be resident at
@@ -306,7 +378,14 @@ abstract class GameState<T extends Game> with GameListenerMixin {
     // the handle because a `SceneStruct` is a declaration that may back
     // several loaded scenes, so "spawn into my scene" is a question only the
     // handle answers.
-    if (_simulating) next.onMounted(handle);
+    if (_simulating) {
+      next.onMounted(handle);
+      // After the scene's own mount, never before: a listener told "a scene
+      // loaded" should find its starting entities already there. Fired on the
+      // scene's own dispatcher, so it reaches that scene's composition and no
+      // other scene's.
+      next.mountedEvent.call(handle);
+    }
 
     // Everything past this point is the asynchronous half.
     await _reconcileAssets(next, onProgress);
@@ -333,7 +412,14 @@ abstract class GameState<T extends Game> with GameListenerMixin {
     final struct = SceneRegistry.tryResolve(scene);
     if (struct == null) return;
 
+    // Before anything is released, so a listener can still read the scene's
+    // entities - after this method they are gone for good. On the struct's own
+    // dispatcher: only this scene and its prefabs are told.
+    struct.unmountedEvent.call(scene);
     struct.onUnmounted(scene);
+    // Innermost last: the scene has said its piece, now each entity in it
+    // gets its own teardown while its row is still readable.
+    struct.unmountEntitiesOf(scene.slot);
     _releaseAssetsOf(struct);
 
     // Unregister first, then release the pages. That order is deliberate and
@@ -373,7 +459,6 @@ abstract class GameState<T extends Game> with GameListenerMixin {
     SceneRegistry.setActive(scene);
   }
 
-
   /// Loads what the incoming scene added and unloads what the outgoing scene
   /// took with it - see [loadScene]'s doc for the policy this implements.
   ///
@@ -402,7 +487,36 @@ abstract class GameState<T extends Game> with GameListenerMixin {
       _assetClaims.update(incoming[i], (n) => n + 1, ifAbsent: () => 1);
     }
 
-    if (!game.decodesAssets) return;
+    if (!game.decodesAssets) {
+      // This copy declared the assets - that is what gave them their addresses
+      // - but it cannot decode one, because decoding needs Flutter. So it asks
+      // the copy that can and waits.
+      //
+      // This used to be a bare `return`, and that was a real bug rather than a
+      // simplification: it was invisible only because main ran `loadScene`
+      // itself during boot. A `loadScene` at *runtime* took its asset claims
+      // here and then decoded nothing, anywhere, leaving every payload read
+      // from that scene to fail.
+      await game.requestAssetLoad(
+        <int>[
+          for (var i = 0; i < incoming.length; i++)
+            game.assets.tryGet(incoming[i])!.address,
+        ],
+        onProgress == null
+            ? null
+            : (address, completed, pending) => onProgress(
+                SceneLoadProgress(
+                  game.assets
+                          .tryResolve<GameAssetInstance>(address)
+                          ?.debugLabel ??
+                      'asset $address',
+                  completed / pending,
+                ),
+              ),
+      );
+      onProgress?.call(SceneLoadProgress('${next.runtimeType}', 1));
+      return;
+    }
 
     // Counted up front so the denominator is the number of decodes this load
     // will actually perform - a scene whose assets are all already resident
@@ -433,6 +547,10 @@ abstract class GameState<T extends Game> with GameListenerMixin {
   /// reason claims are counted rather than diffed.
   void _releaseAssetsOf(SceneStruct struct) {
     final declared = struct.declaredAssets;
+    // Addresses freed on this copy, to be freed on the other one too. Captured
+    // before `unload`, which is what releases the address - reading it
+    // afterwards would throw.
+    final freed = <int>[];
     for (var i = 0; i < declared.length; i++) {
       final key = declared[i];
       final remaining = (_assetClaims[key] ?? 0) - 1;
@@ -441,13 +559,19 @@ abstract class GameState<T extends Game> with GameListenerMixin {
         continue;
       }
       _assetClaims.remove(key);
+      final address = game.assets.tryGet(key)?.address;
       // Unloading runs on both copies - it is the undoing of a declaration,
       // and the two copies have to agree on what is declared for an address
       // to mean the same thing on both sides.
       game.assets.unload(key);
+      if (address != null) freed.add(address);
     }
+    // The other copy holds the decoded payload, so dropping the declaration
+    // here is only half of it. The mirror of `requestAssetLoad`: without this,
+    // a scene unloaded on the game isolate leaves its images alive on main
+    // with nothing left that could name them.
+    if (!game.decodesAssets) game.requestAssetUnload(freed);
   }
-
 
   // --- bring-up ---------------------------------------------------------
 
@@ -511,8 +635,13 @@ abstract class GameState<T extends Game> with GameListenerMixin {
     // left undone.
     for (var i = 0; i < _loaded.length; i++) {
       final handle = _loaded[i];
-      SceneRegistry.tryResolve(handle)?.onMounted(handle);
+      final struct = SceneRegistry.tryResolve(handle);
+      struct?.onMounted(handle);
+      struct?.mountedEvent.call(handle);
     }
+    // Every scene is up and its entities exist, so the game as a whole has
+    // come up. The spawned configuration's half of the pair below in `mount`.
+    gameMountedEvent.call();
   }
 
   /// Fires `MountEvent` at this state - which is where a game calls
@@ -528,16 +657,66 @@ abstract class GameState<T extends Game> with GameListenerMixin {
   /// The scene is deliberately not mounted here: at this point there is no
   /// scene yet. `loadScene` mounts whatever it loads, including every later
   /// transition, so there is one path rather than a special first one.
+  /// The game has come up. Where a game loads its first scene.
+  ///
+  /// ```dart
+  /// @override
+  /// void onMounted() => loadScene(game.mainScene);
+  /// ```
+  ///
+  /// A plain virtual call, not an event: there is exactly one receiver and
+  /// the framework is the only caller, so a dispatch mechanism was ceremony
+  /// around a method call. `SceneStruct.onMounted` is the same shape. Something
+  /// *else* wanting to hear the game come up is a different question, and
+  /// [GameLifecycleListener] is its answer - note that it fires later and on a
+  /// different copy than this does.
+  ///
+  /// **Runs on main, before the spawn** - so it is the declarative half.
+  /// Anything that creates an entity belongs in `SceneStruct.onMounted`,
+  /// which runs on the game isolate.
+  void onMounted() {}
+
+  /// The game is going down. The pool is disposed immediately afterwards.
+  ///
+  /// Runs *after* [GameUnmountedEvent] has been dispatched and after every
+  /// loaded scene has come down, so the world is already gone by here. A
+  /// listener that needs to read something out of it wants
+  /// [GameLifecycleListener.onGameUnmounted].
+  void onUnmounted() {}
+
   @internal
-  void mount() => fireEvent(MountEvent());
+  void mount() {
+    onMounted();
+    // Inline only. In the spawned configuration this copy is the declarative
+    // one (`_simulating` is false here and `onMounted` above has just declared
+    // the scenes without spawning into them), and the game isolate dispatches
+    // this from `mountScene` instead - so it fires exactly once either way,
+    // always on the copy the systems actually run on.
+    if (_simulating) gameMountedEvent.call();
+  }
 
   @internal
   void unmount() {
+    // First, while everything is still standing: scenes loaded, entities
+    // readable, pool alive. The mirror of mount's ordering, not a copy of it -
+    // bring-up tells you once the world exists, tear-down tells you while it
+    // still does.
+    if (_simulating) {
+      gameUnmountedEvent.call();
+    }
     // Newest first, so a scene loaded on top of another comes down first.
     final doomed = List<Scene>.of(_loaded.reversed);
     for (var i = 0; i < doomed.length; i++) {
       final handle = doomed[i];
-      if (_simulating) SceneRegistry.tryResolve(handle)?.onUnmounted(handle);
+      if (_simulating) {
+        final struct = SceneRegistry.tryResolve(handle);
+        struct?.unmountedEvent.call(handle);
+        struct?.onUnmounted(handle);
+        // Same order as unloadScene: scene first, then its entities, all
+        // while the pool is still alive. `Game` disposes the pool wholesale
+        // on stop, so this is the last moment a row is readable.
+        struct?.unmountEntitiesOf(handle.slot);
+      }
       _loaded.remove(handle);
       // Releasing the slot at all matters because SceneRegistry is
       // process-global (like ArchetypeRegistry): a stopped game that kept its
@@ -546,7 +725,7 @@ abstract class GameState<T extends Game> with GameListenerMixin {
       // wholesale on stop, so there is no per-scene page release here.
       SceneRegistry.unregister(handle);
     }
-    fireEvent(UnmountEvent());
+    onUnmounted();
   }
 
   /// Starts the wall-clock-paced tick loop. Called by `Game.start()` unless
@@ -642,15 +821,9 @@ abstract class GameState<T extends Game> with GameListenerMixin {
     // for exactly that reason - it has no query, and letting it be
     // disabled or reordered would only create ways to break the engine.
     game.pumpCommands();
-    // The simulating systems only, filtered once at boot (see
-    // `Game._bakeTickPhases`) - a direct call, no event object, no runtime
-    // type test. Enablement stays a runtime read because it is runtime state.
-    final systems = game.fixedTickables;
-    final indices = game.fixedTickableIndices;
-    for (var i = 0; i < systems.length; i++) {
-      if (!game.isSystemEnabledAt(indices[i])) continue;
-      systems[i].onFixedUpdate();
-    }
+    // One dispatch over a list resolved at boot. `const` because the event
+    // carries nothing, so the hottest event in the engine allocates nothing.
+    fixedTickEvent.call();
     pool.commitTick();
     game.completeTick();
   }
@@ -672,15 +845,8 @@ abstract class GameState<T extends Game> with GameListenerMixin {
   /// per step.
   void runPresentation(Duration delta) {
     _requireSimulating('runPresentation');
-    final game = this.game;
-    // The presenting systems only - same baked-at-boot shape as the fixed
-    // step above.
-    final systems = game.tickables;
-    final indices = game.tickableIndices;
-    for (var i = 0; i < systems.length; i++) {
-      if (!game.isSystemEnabledAt(indices[i])) continue;
-      systems[i].onTick(delta);
-    }
+    // The delta travels as an argument, so a frame allocates nothing.
+    tickEvent.call(delta);
   }
 
   // --- commands ---------------------------------------------------------

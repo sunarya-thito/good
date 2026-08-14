@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:goo/src/archetype.dart';
 import 'package:goo/src/data.dart';
-import 'package:goo/src/event/state.dart';
 import 'package:goo/src/game.dart';
 import 'package:goo/src/game_state.dart';
 import 'package:goo/src/scene.dart';
@@ -30,7 +29,7 @@ mixin _Marked on Component {
   }
 }
 
-class _Unit extends EntityStruct<_Unit> with _Marked {}
+class _Unit extends EntityStruct with _Marked {}
 
 class _Level extends SceneStruct {
   /// This fixture's loaded handle. Entity creation lives on `Scene` now (one
@@ -38,7 +37,7 @@ class _Level extends SceneStruct {
   /// registers itself and forwards.
   late final Scene handle;
 
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
   _Level();
@@ -51,7 +50,7 @@ class _Level extends SceneStruct {
   }
 }
 
-class _LevelState extends GameState<_LevelGame> with LifecycleListener {
+class _LevelState extends GameState<_LevelGame> {
   @override
   void onMounted() {
     loadScene(_Level());
@@ -180,7 +179,7 @@ void main() {
       // row belong to" is a question only the receiver can answer, and the
       // handle answers it by being the receiver.
       expect(first.get<_Marked>().mark[first], 3,
-          reason: 'onCreated and the declared defaults run through the handle');
+          reason: 'onMounted and the declared defaults run through the handle');
       expect(second, isNot(first));
       expect(second.archetypeId, first.archetypeId);
     });

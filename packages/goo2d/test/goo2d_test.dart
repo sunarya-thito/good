@@ -6,11 +6,11 @@ import 'package:flutter_test/flutter_test.dart';
 // test VM would need a flag to run). Player and Enemy have byte-identical
 // layouts on purpose - they must still get separate archetypes and separate
 // storage.
-class Player extends EntityStruct<Player> with Transform2D, Child {}
+class Player extends EntityStruct with Transform2D, Child {}
 
-class Enemy extends EntityStruct<Enemy> with Transform2D, Child {}
+class Enemy extends EntityStruct with Transform2D, Child {}
 
-class Rock extends EntityStruct<Rock> with Transform2D {}
+class Rock extends EntityStruct with Transform2D {}
 
 class MainScene extends SceneStruct {
   /// This fixture's loaded handle. Entity creation lives on `Scene` now (one
@@ -18,7 +18,7 @@ class MainScene extends SceneStruct {
   /// registers itself and forwards.
   late final Scene handle;
 
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
   MainScene();

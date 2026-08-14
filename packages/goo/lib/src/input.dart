@@ -465,15 +465,16 @@ final class InputRegistry implements InputDescriptor {
   /// snapshot. Called once per fixed tick, before commands and before any
   /// system runs.
   ///
-  /// Hot path, and allocation-free end to end: one pointer read for the
+  /// Hot path, and allocation-free end to end: a 40-byte copy of the
   /// snapshot, then per action a couple of virtual calls that do bit tests
   /// and (for a vector) write two doubles into storage the action already
   /// owns. No closures, no iterators, no per-tick objects (RULES.md rules 1,
   /// 2, 5).
   void resolve() {
     final buffer = _buffer;
-    // Re-pointed once, not per action: every action in this tick reads the
-    // same slot, so two systems cannot disagree about what was held.
+    // Copied once, not per action: every action in this tick reads the same
+    // bytes, so two systems cannot disagree about what was held - and the
+    // writer cannot change them underneath the tick. See `InputState`.
     _state.attach(buffer?.latestView());
     for (var i = 0; i < _actions.length; i++) {
       _actions[i].resolve(_state);

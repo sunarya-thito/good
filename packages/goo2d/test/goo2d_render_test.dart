@@ -1,3 +1,4 @@
+import 'dart:ffi' hide Size;
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui';
@@ -17,7 +18,7 @@ final Uint8List _png2x1 = base64Decode(
   '/Zh51wAAAAAASUVORK5CYII=',
 );
 
-class _Sprite extends EntityStruct<_Sprite>
+class _Sprite extends EntityStruct
     with Transform2D, WorldTransform2D, Child, Parent, Renderable2D {
   late final Sprite quad;
 
@@ -30,7 +31,7 @@ class _Sprite extends EntityStruct<_Sprite>
 /// Two sprites off one texture and one off none, at three depths - the shape
 /// that makes the record's texture field, the run split and the z order all
 /// observable in a single crossing.
-class _Billboard extends EntityStruct<_Billboard>
+class _Billboard extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   static final TextureAsset tileAsset =
       TextureAsset(MemoryImageSource(_png2x1, name: 'tile.png'));
@@ -65,7 +66,7 @@ class _Scene extends SceneStruct {
   @override
   void onMounted(Scene scene) => handle = scene;
 
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
   _Scene();
@@ -80,7 +81,7 @@ class _Scene extends SceneStruct {
   }
 }
 
-class _GameState extends GameState<_Game> with LifecycleListener {
+class _GameState extends GameState<_Game> {
   @override
   void onMounted() {
     loadScene(_Scene());
@@ -107,9 +108,16 @@ class _Game extends Game {
 /// Exactly the two steps `GameView` performs on a tick notification.
 DrawCanvas2D _present(_Game game) {
   final canvas = DrawCanvas2D(assets: assets);
-  final drained = <RingBufferRecord>[];
-  game.getSystem<GameRenderer2D>().drawBuffer.ring.drainInto(drained);
-  expect(canvas.ingest(drained), isTrue);
+  final frames = game.getSystem<GameRenderer2D>().drawFrames.buffer;
+  final slot = frames.beginRead();
+  expect(slot, isNotNull, reason: 'the renderer published a frame this tick');
+  expect(
+    canvas.ingestFrame(
+      ByteData.sublistView(slot!.asTypedList(frames.readUsedBytes)),
+      frames.readUsedBytes,
+    ),
+    isTrue,
+  );
   return canvas;
 }
 

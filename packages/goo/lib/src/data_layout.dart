@@ -37,7 +37,7 @@ import 'package:goo/src/struct.dart';
 ///    the same tick produce +1, not +2.
 ///  * a value written earlier in the same tick is **not** visible to a
 ///    later read in that tick. In particular, values assigned in
-///    `Component.onCreated` are invisible to systems running in the spawn
+///    `Component.onMounted` are invisible to systems running in the spawn
 ///    tick, and a read-modify-write in such a system will overwrite them.
 ///    Initialize by writing, never by reading-then-writing, on the tick an
 ///    entity is created.
@@ -104,7 +104,7 @@ Pointer<Uint8> _writeRow(ArchetypeStorage storage, Entity entity) {
   return page.resolveWrite(entity.rowOffset);
 }
 
-abstract base class _Field<T> implements DataPointer<T>, ArchetypeField {
+abstract base class _Field<T> extends DataPointer<T> implements ArchetypeField {
   _Field(this._storage);
 
   final ArchetypeStorage _storage;
@@ -1395,19 +1395,13 @@ final class ArchetypeComponentDescriptor implements ComponentDescriptor {
   final ArchetypeStorage _storage;
 
   @override
-  ComponentType<T> has<T extends Component>() {
-    _storage.componentSignature |= ComponentTypeRegistry.bitFor(T);
-    return _ComponentType<T>();
+  void has<T extends Component>({Type? type}) {
+    // Two spellings, one bit. A component *mixin* knows its own type
+    // statically and says `has<Renderable2D>()`; an `EntityStruct` cannot,
+    // because it no longer carries a type parameter naming itself, so it says
+    // `has(type: runtimeType)`. `type` wins when both are available - passing
+    // it is the deliberate act, while `T` merely falls back to its bound.
+    _storage.componentSignature |= ComponentTypeRegistry.bitFor(type ?? T);
   }
 }
 
-/// Archetype-wide enable/disable toggle.
-///
-/// Per-entity component toggling would need a bit in every row and a query
-/// that consults it - deliberately out of scope; the query system that
-/// would honour such a bit does not exist yet. This is the archetype-level
-/// switch the current `ComponentType` interface actually describes.
-final class _ComponentType<T extends Component> implements ComponentType<T> {
-  @override
-  bool isEnabled = true;
-}

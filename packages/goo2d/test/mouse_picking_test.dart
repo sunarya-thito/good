@@ -16,7 +16,7 @@ final List<String> events = <String>[];
 
 /// A round button. One circle collider, one sprite, so it participates in
 /// the z-order tie-break.
-class _Button extends EntityStruct<_Button>
+class _Button extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D, Collider2D, MouseReceiver {
   late final Sprite sprite;
   late final CircleBody hitArea;
@@ -45,7 +45,7 @@ class _Button extends EntityStruct<_Button>
 
 /// A panel drawn above the buttons - same shape family, higher z, and it
 /// records the world position it was clicked at.
-class _Panel extends EntityStruct<_Panel>
+class _Panel extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D, Collider2D, MouseReceiver {
   late final Sprite sprite;
   late final BoxBody hitArea;
@@ -75,7 +75,7 @@ class _Panel extends EntityStruct<_Panel>
 }
 
 /// A receiver with no `Renderable2D` at all - an invisible click zone.
-class _Zone extends EntityStruct<_Zone>
+class _Zone extends EntityStruct
     with Transform2D, WorldTransform2D, Collider2D, MouseReceiver {
   late final BoxBody hitArea;
 
@@ -91,13 +91,13 @@ class _Zone extends EntityStruct<_Zone>
 }
 
 /// A receiver that declares no collider - the "silently never picked" case.
-class _Naked extends EntityStruct<_Naked>
+class _Naked extends EntityStruct
     with Transform2D, WorldTransform2D, MouseReceiver {
   @override
   void onMouseEnter(MouseEvent event) => events.add('naked enter');
 }
 
-class _Eye extends EntityStruct<_Eye> with Transform2D, WorldTransform2D, Camera {}
+class _Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
 
 class _Scene extends SceneStruct {
   @override
@@ -108,7 +108,7 @@ class _Scene extends SceneStruct {
   /// registers itself and forwards.
   late Scene handle;
 
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
   _Scene();
@@ -129,7 +129,7 @@ class _Scene extends SceneStruct {
   }
 }
 
-class _GameState extends GameState<_Game> with LifecycleListener {
+class _GameState extends GameState<_Game> {
   @override
   void onMounted() {
     loadScene(_Scene());

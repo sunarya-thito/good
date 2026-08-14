@@ -23,7 +23,7 @@ class MouseEvent {
   /// Which entity this event is about. Components are shared per archetype
   /// rather than instantiated per entity, so `this` inside a handler is the
   /// whole archetype's component - this is the only thing that says which
-  /// entity was clicked, the same reason `onCreated` takes one.
+  /// entity was clicked, the same reason `onMounted` takes one.
   late Entity entity;
 
   /// Where the pointer is, in the spaces the kernel can answer for (screen

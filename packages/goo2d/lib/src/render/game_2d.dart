@@ -1,3 +1,8 @@
+// `Size` clashes with dart:ui's - only the pointer types are wanted here.
+import 'dart:ffi' hide Size;
+import 'dart:typed_data';
+
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:goo/goo.dart';
 
@@ -84,38 +89,62 @@ mixin Renderer2D on Game {
   late final DrawCanvas2D _canvas = DrawCanvas2D(assets: assets);
   final _FrameSignal _frames = _FrameSignal();
 
-  /// Reused across ticks - `RingBuffer.drainInto` appends, and allocating a
-  /// fresh list 60 times a second for what is usually one record is exactly
-  /// what its `drainInto`/`drain` split exists to avoid.
-  final List<RingBufferRecord> _drained = <RingBufferRecord>[];
+  HandoffBuffer? _frameBuffer;
 
-  RingBuffer? _ring;
+  /// Whether the persistent frame callback has been installed. Separate from
+  /// [_listening] because Flutter has no `removePersistentFrameCallback` - the
+  /// callback is installed once and disarmed, never taken off.
+  bool _registered = false;
+
+  /// Whether that callback should do anything. False after [stop], so a game
+  /// that is torn down while its widget is still mounted stops touching
+  /// storage that has been freed.
   bool _listening = false;
 
-  /// Drains the draw ring and pulses the repaint signal - once per tick the
-  /// game isolate reports, on the main isolate.
+  /// Samples the newest published frame and pulses the repaint signal - once
+  /// per **Flutter frame**, on the main isolate.
   ///
-  /// Drains unconditionally, repaints conditionally. The drain has to happen
-  /// every tick even when nothing will be painted: the ring is bounded, and
-  /// a consumer that only drains when it feels like painting is a producer
-  /// that starts dropping frames.
-  void _onTick(int tick) {
+  /// # Why a frame callback and not the tick ping
+  ///
+  /// This used to hang off `Game.addTickListener`, so a repaint was scheduled
+  /// whenever the game isolate's message happened to land. `notifyListeners`
+  /// only marks the painter dirty, though - the actual paint waits for the
+  /// next vsync. A message arriving just after Flutter began a frame therefore
+  /// waited most of a frame interval, and there was nothing the renderer could
+  /// do about it, because it did not get to choose when it was told.
+  ///
+  /// Sampling here instead reads the freshest frame at exactly the moment
+  /// Flutter can use it. There is no queue to fall behind in: the handoff
+  /// buffer holds the newest complete frame, so "we missed one" simply means
+  /// the missed one was replaced.
+  void _onFrame(Duration _) {
+    if (!_listening) return;
     // Reached through the declared system's own handle rather than a shared
-    // buffer name: `GameRenderer2D` declares the ring in its describeBuffers,
-    // both isolate copies of that system hold a handle to the same memory,
-    // and this is the main-isolate copy's.
-    final ring = _ring ??= tryGetSystem<GameRenderer2D>()?.drawBuffer.tryRing;
+    // buffer name: `GameRenderer2D` declares it in describeBuffers, both
+    // isolate copies of that system hold a handle to the same memory, and this
+    // is the main-isolate copy's.
+    final buffer =
+        _frameBuffer ??= tryGetSystem<GameRenderer2D>()?.drawFrames.tryBuffer;
     // Null when the game declares no GameRenderer2D at all - a valid
     // headless-plus-HUD setup, just not one that paints.
-    if (ring == null) return;
+    if (buffer == null) return;
 
-    _drained.clear();
-    ring.drainInto(_drained);
-    if (_drained.isEmpty) return;
-    // ingest() reports "the newest frame in that drain is newer than the one
-    // already held", so a duplicate or an unrecognised record type ends here
-    // rather than in a wasted paint.
-    if (!_canvas.ingest(_drained)) return;
+    // Null means nothing new since the last look, which at 60Hz against a
+    // slower tick is the ordinary case. Taking a slot is also what hands the
+    // previous one back, so the writer only ever resumes because this ran.
+    final slot = buffer.beginRead();
+    if (slot == null) return;
+
+    // Decoded into the canvas's own vertex arrays here, in the frame callback,
+    // rather than read during paint. That is what keeps the window in which
+    // the writer could interfere down to this ingest instead of a whole
+    // raster - see `HandoffBuffer`.
+    if (!_canvas.ingestFrame(
+      ByteData.sublistView(slot.asTypedList(buffer.readUsedBytes)),
+      buffer.readUsedBytes,
+    )) {
+      return;
+    }
     _frames.pulse();
   }
 
@@ -134,9 +163,10 @@ mixin Renderer2D on Game {
     // Subscribing here rather than in `start()`: this is the first point at
     // which the game is known to be both running and actually on screen.
     // Guarded so a rebuild does not stack listeners.
-    if (!_listening) {
-      _listening = true;
-      addTickListener(_onTick);
+    _listening = true;
+    if (!_registered) {
+      _registered = true;
+      SchedulerBinding.instance.addPersistentFrameCallback(_onFrame);
     }
 
     return RepaintBoundary(
@@ -149,13 +179,13 @@ mixin Renderer2D on Game {
     );
   }
 
-  /// Releases the tick subscription and the decoded frame.
+  /// Disarms the frame callback and releases the decoded frame.
   @override
   Future<void> stop() async {
-    if (_listening) {
-      _listening = false;
-      removeTickListener(_onTick);
-    }
+    // Disarmed, not removed: Flutter has no removePersistentFrameCallback. The
+    // callback stays installed for the life of the binding and does nothing.
+    _listening = false;
+    _frameBuffer = null;
     _canvas.dispose();
     _frames.dispose();
     await super.stop();

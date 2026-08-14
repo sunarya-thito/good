@@ -15,7 +15,7 @@ import 'package:goo2d/goo2d.dart';
 // waits on. The isolate handoff itself is covered in goo's
 // game_isolate_test.dart.
 
-class _Sprite extends EntityStruct<_Sprite> with Transform2D, WorldTransform2D, Renderable2D {
+class _Sprite extends EntityStruct with Transform2D, WorldTransform2D, Renderable2D {
   /// Declared unsized, so each test states the extent it cares about - this
   /// file is about the widget-side plumbing, not about geometry.
   late final Sprite quad;
@@ -35,7 +35,7 @@ class _Scene extends SceneStruct {
   /// registers itself and forwards.
   late Scene handle;
 
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
   _Scene();
@@ -48,7 +48,7 @@ class _Scene extends SceneStruct {
   }
 }
 
-class _ViewState extends GameState<Game> with LifecycleListener {
+class _ViewState extends GameState<Game> {
   @override
   void onMounted() {
     loadScene(_Scene());

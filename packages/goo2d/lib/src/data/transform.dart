@@ -3,7 +3,6 @@ import 'package:goo/goo.dart';
 
 
 mixin Transform2D on Component {
-  late final ComponentType<Transform2D> componentTransform;
 
   late final DataPointer<double> transformOffsetX;
   late final DataPointer<double> transformOffsetY;
@@ -16,7 +15,7 @@ mixin Transform2D on Component {
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
-    componentTransform = component.has<Transform2D>();
+    component.has<Transform2D>();
   }
 
   @override

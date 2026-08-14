@@ -5,7 +5,6 @@ import 'package:meta/meta.dart';
 
 import 'package:goo/src/asset.dart';
 import 'package:goo/src/pool.dart';
-import 'package:goo/src/scene.dart';
 import 'package:goo/src/struct.dart';
 
 /// Assigns every distinct `Component` type (a concrete `EntityStruct`
@@ -124,9 +123,8 @@ abstract final class ArchetypeRegistry {
   /// per `EntityStruct` subclass, from `SceneDescriptor.has`.
   static ArchetypeStorage register(
     MemoryPool pool,
-    SceneStruct owner,
     GameAssets assets,
-    Component prefab,
+    EntityStruct prefab,
   ) {
     if (_storages.length >= maxArchetypes) {
       throw StateError(
@@ -136,8 +134,7 @@ abstract final class ArchetypeRegistry {
         'recycled on scene unload.',
       );
     }
-    final storage =
-        ArchetypeStorage._(_storages.length, pool, owner, assets, prefab);
+    final storage = ArchetypeStorage._(_storages.length, pool, assets, prefab);
     _storages.add(storage);
     return storage;
   }
@@ -192,13 +189,7 @@ abstract final class ArchetypeRegistry {
 /// set, so a query touches one contiguous page instead of N - is a real
 /// optimization and is not attempted here.
 class ArchetypeStorage {
-  ArchetypeStorage._(
-    this.archetypeId,
-    this.pool,
-    this.owner,
-    this.assets,
-    this.prefab,
-  );
+  ArchetypeStorage._(this.archetypeId, this.pool, this.assets, this.prefab);
 
   /// Index into [ArchetypeRegistry]; packed into the top 16 bits of every
   /// `Entity` this storage hands out.
@@ -206,19 +197,16 @@ class ArchetypeStorage {
 
   final MemoryPool pool;
 
-  /// The `SceneStruct` whose `describeScene` registered this archetype.
-  ///
-  /// Explicit, because the thing it replaced was not: this used to be
-  /// inferred from [pool] identity - a scene owned its own pool, so "same
-  /// pool" meant "same scene". The pool belongs to the `Game` now and is
-  /// shared by every scene, so that inference is gone and the owner has to be
-  /// recorded rather than derived. See [SceneStruct.addToSceneById], which is
-  /// the check that depended on it.
-  final SceneStruct owner;
+  // There is no `owner` field recording the registering `SceneStruct`. There
+  // was one, read in exactly one place - the spawn-by-archetype-id path, now
+  // deleted - and it was the same fact as `prefab.scene` stored a second time
+  // (RULES.md rule 10). `SceneStruct.addEntityIn` checks `prefab.scene`, which
+  // is the one home for it.
 
   /// The asset table an object-valued field in this archetype resolves
-  /// through. Held here rather than reached through [owner] because a row read
-  /// is the hot path and `owner.game.assets` would be three dereferences and a
+  /// through. Held here rather than reached through the prefab's scene because
+  /// a row read is the hot path and `prefab.scene.game.assets` would be three
+  /// dereferences and a
   /// throw-if-unbound getter; this is one field.
   final GameAssets assets;
 
@@ -226,7 +214,7 @@ class ArchetypeStorage {
   /// what `Entity.get<T>()` returns. It holds no per-entity state; its
   /// `DataPointer` fields are (field-offset, storage) pairs that take the
   /// `Entity` as an argument.
-  final Component prefab;
+  final EntityStruct prefab;
 
   /// OR of [ComponentTypeRegistry.bitFor] over every type declared through
   /// `ComponentDescriptor.has<T>()` during this archetype's `describeType`
@@ -239,6 +227,7 @@ class ArchetypeStorage {
   bool _sealed = false;
 
   final List<ArchetypeField> _fields = <ArchetypeField>[];
+
   /// Every page this archetype has ever been given, by index - and
   /// **nullable**, because unloading a scene frees its pages and nulls their
   /// slots rather than removing them. `Entity.pageIndex` is an index into this

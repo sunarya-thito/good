@@ -32,10 +32,25 @@ import 'package:goo/src/scene.dart';
 /// is exactly one object that builds widgets and it is `Game.buildView`, which
 /// says so with a method instead of a dispatch mechanism built for several
 /// contributors to a problem that has one. See `GameEvent`'s doc.
-abstract class GameSystem
-    with GameListenerMixin
+abstract class GameSystem extends GameListenerBase
+    with EventBus
     implements Comparable<GameSystem> {
   Game? _game;
+
+  bool _enabled = true;
+
+  /// Whether this system currently receives events.
+  ///
+  /// This is what `Game.enableSystem`/`disableSystem` actually toggle, and it
+  /// is why a pre-collected dispatcher list is still correct: a disabled
+  /// system stays in every dispatcher it was collected into and simply
+  /// declines. Baking membership and reading enablement is the split - one is
+  /// fixed by type at declaration, the other is genuinely runtime state.
+  @override
+  bool get listensToEvents => _enabled;
+
+  @internal
+  set enabled(bool value) => _enabled = value;
 
   @override
   int compareTo(GameSystem other) => 0; // no opinion by default

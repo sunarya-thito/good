@@ -760,6 +760,39 @@ void main() {
               'only true because resolution runs at the top of runFixedStep');
     });
 
+    test('a write landing mid-tick cannot change what the tick resolved',
+        () async {
+      final game = await _boot(_InputGame());
+      final device = game.inputDevice!;
+
+      device.setViewSize(800, 600);
+      game.state!.runFixedStep();
+      expect(game.viewWidth, 800);
+
+      // `Game.viewWidth` reads `InputState` *live*, so this is the path any
+      // system takes when it asks the view size mid-tick - CameraProjection
+      // and MousePickingSystem both do. Meanwhile the Flutter isolate keeps
+      // publishing: InputDevice publishes on every change, and three of them
+      // walk TripleBuffer's slots all the way back around to the one this
+      // tick attached to.
+      device
+        ..setViewSize(801, 600)
+        ..setViewSize(802, 600)
+        ..setViewSize(803, 600);
+
+      expect(game.viewWidth, 800,
+          reason: 'the tick copied its 40 bytes at the top of runFixedStep, so '
+              'what it resolved stays put for the whole tick. Holding the slot '
+              'pointer instead, the third publish rewrites the very slot being '
+              'read and this reports 803 - a value from a tick that has not '
+              'started yet');
+
+      game.state!.runFixedStep();
+      expect(game.viewWidth, 803,
+          reason: 'and the next tick picks up everything that landed in '
+              'between - the copy is per tick, not a subscription');
+    });
+
     test('a game whose device nobody writes to reads defaults forever',
         () async {
       final game = await _boot(_InputGame());

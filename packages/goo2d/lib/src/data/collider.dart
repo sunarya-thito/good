@@ -196,7 +196,7 @@ final class PolygonBody extends ColliderBody {
 
   /// How many of `pointsX`/`pointsY`'s declared capacity are actually used
   /// for a given entity, `0..pointsX.length`. Defaults to `0` (an empty
-  /// polygon) - `onCreated` (or `hasPolygonCollider`'s named defaults) is
+  /// polygon) - `onMounted` (or `hasPolygonCollider`'s named defaults) is
   /// where a prefab actually populates the points and sets this.
   final DataPointer<int> pointCount;
 
@@ -245,7 +245,7 @@ final class PolygonBody extends ColliderBody {
 /// returned body exposes, doubling as that archetype's default row state -
 /// the standing `MultiComponent` convention (see `Renderable2D.Sprite`'s
 /// `SpriteDescriptor.has` for the same shape) - so the common case needs no
-/// separate `onCreated` write.
+/// separate `onMounted` write.
 class ColliderDescriptor {
   ColliderDescriptor._(this._data, this._bodies);
 

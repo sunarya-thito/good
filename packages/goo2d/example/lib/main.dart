@@ -18,13 +18,13 @@ const int _wingmanColor = 0xFFFFEE58;
 /// independently sized, coloured and depth-sorted rectangles. The visor's
 /// higher `zIndex` is what keeps it on top of the body whatever order the
 /// query happens to yield.
-class Player extends EntityStruct<Player> with Transform2D, WorldTransform2D, Child, Parent, Renderable2D {
+class Player extends EntityStruct with Transform2D, WorldTransform2D, Child, Parent, Renderable2D {
   late final Sprite body;
   late final Sprite visor;
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
-    // Every field is a declared archetype default, so there is no onCreated
+    // Every field is a declared archetype default, so there is no onMounted
     // here at all - these values are stamped into the row when the entity is
     // created, by the storage layer, not by a write on the creation tick.
     body = descriptor.has(width: 64, height: 64, color: _playerColor);
@@ -41,7 +41,8 @@ class Player extends EntityStruct<Player> with Transform2D, WorldTransform2D, Ch
   }
 }
 
-class Enemy extends EntityStruct<Enemy> with Transform2D, WorldTransform2D, Child, Renderable2D {
+class Enemy extends EntityStruct
+    with Transform2D, WorldTransform2D, Child, Renderable2D, EntityLifecycleListener {
   late final Sprite body;
 
   /// Plain Dart state on the prefab, which lives on the game isolate and is
@@ -55,8 +56,8 @@ class Enemy extends EntityStruct<Enemy> with Transform2D, WorldTransform2D, Chil
   }
 
   @override
-  void onCreated(Entity entity) {
-    super.onCreated(entity);
+  void onEntityMounted(Entity entity) {
+    super.onEntityMounted(entity);
     // Writing (never reading-then-writing) on the creation tick: a read here
     // would see the previous tick's published snapshot, not what was just
     // stamped. See data_layout.dart's note on _readRow. Only the position
@@ -73,7 +74,8 @@ class Enemy extends EntityStruct<Enemy> with Transform2D, WorldTransform2D, Chil
 
 /// Parented to the player, so its own transform is only an offset *from* the
 /// player - the renderer composes the two.
-class Wingman extends EntityStruct<Wingman> with Transform2D, WorldTransform2D, Child, Renderable2D {
+class Wingman extends EntityStruct
+    with Transform2D, WorldTransform2D, Child, Renderable2D, EntityLifecycleListener {
   late final Sprite body;
 
   @override
@@ -82,15 +84,15 @@ class Wingman extends EntityStruct<Wingman> with Transform2D, WorldTransform2D, 
   }
 
   @override
-  void onCreated(Entity entity) {
-    super.onCreated(entity);
+  void onEntityMounted(Entity entity) {
+    super.onEntityMounted(entity);
     transformOffsetX[entity] = 70;
   }
 }
 
 /// The view. A camera entity is an ordinary entity - `GameRenderer2D` finds it
 /// by query, so nothing here has to hand it to the renderer.
-class Eye extends EntityStruct<Eye> with Transform2D, WorldTransform2D, Camera {}
+class Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
 
 class MainScene extends SceneStruct {
   late final Player playerPrefab;
@@ -163,15 +165,54 @@ class SpinSystem extends GameSystem with FixedTickable {
 
 /// The simulation half. Everything that mutates the world lives on this side
 /// of the split; `MyAwesomeGame` below only *declares*.
-class MyGameState extends GameState<MyAwesomeGame> with LifecycleListener {
-  /// Built once per isolate, on each copy of the Game - never assigned to a
-  /// field in a constructor, because the Game instance *is* the Isolate.spawn
-  /// message and a scene drags a MemoryPool full of pointers with it. See the
-  /// class doc on Game.
+/// "Add an enemy, and tell me which one" - how the UI asks the simulation for
+/// something.
+///
+/// Note what does *not* cross: the prefab, and its archetype id. The Flutter
+/// isolate names the **intent**; [MyGameState] is what decides that an enemy
+/// means `MainScene.enemyPrefab`, because it runs where the scene and its
+/// memory actually are. An engine-supplied `spawnEntity(archetypeId)` used to
+/// live here and was removed for exactly that reason - it made the UI name an
+/// identifier belonging to the other isolate.
+class SpawnEnemy extends SupplierCommand<Entity> {
+  late final ParamPointer<int> spawned;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    // Signed: `Entity.pack` shifts the archetype id up into the sign bit, and
+    // only getInt64/setInt64 round-trip every bit pattern.
+    spawned = descriptor.hasInt64();
+  }
+
+  @override
+  void bufferFromResult(CommandBuffer call, Entity result) =>
+      spawned[call] = result.value;
+
+  @override
+  Entity resultFromBuffer(CommandBuffer call) => Entity(spawned[call]);
+}
+
+/// The simulation half. Everything that mutates the world lives here.
+class MyGameState extends GameState<MyAwesomeGame> {
+  /// Held in a field so the command handler below can reach the prefab. This
+  /// side owns the scene; the `Game` never needs to name it.
+  final MainScene level = MainScene();
+
   @override
   void onMounted() {
-    loadScene(MainScene());
+    loadScene(level);
   }
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    // `hasSupplier` only *handles* - the declaration itself belongs to the
+    // Game, because that is the side holding the handle the UI calls through.
+    descriptor.hasSupplier(game.spawnEnemy, _onSpawnEnemy);
+  }
+
+  /// Runs on the game isolate, inside the tick window and before any system,
+  /// so the enemy is visible to the whole simulation on the tick it arrives.
+  Entity _onSpawnEnemy() => sceneHandle!.addEntity(level.enemyPrefab);
 }
 
 /// `Game2D` rather than `Game`: that is the opt-in for painting, and it is
@@ -179,8 +220,17 @@ class MyGameState extends GameState<MyAwesomeGame> with LifecycleListener {
 /// Declaring `GameRenderer2D` below is the other half - it is what produces
 /// the frames to paint.
 class MyAwesomeGame extends Game2D {
+  /// Declared here, handled in [MyGameState]: the declaration site is whoever
+  /// has to *hold* the handle, and it is the UI that calls this one.
+  late final SpawnEnemy spawnEnemy;
+
   @override
   GameState createState() => MyGameState();
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    spawnEnemy = descriptor.has(SpawnEnemy());
+  }
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
@@ -205,7 +255,10 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  late final Game game;
+  // Typed as the subclass, not as `Game`: that is what makes `game.spawnEnemy`
+  // resolve without a cast, and it is the same reason `GameState<T>` carries
+  // its Game's type.
+  late final MyAwesomeGame game;
   bool _started = false;
 
   @override
@@ -230,21 +283,19 @@ class _MyAppState extends State<MyApp> {
     super.dispose();
   }
 
-  // Spawning entities from the UI (e.g. a HUD button) goes through a command,
-  // which writes into the shared RingBuffer rather than sending one SendPort
-  // message per press - see the project root plan's "Cross-isolate
-  // architecture" section, lane 2. The prefab is named by archetype id
-  // because a prefab instance is a Dart object owned by the game isolate's
-  // scene and cannot cross; the id is the same integer on both sides.
+  // Spawning from the UI goes through a command, which writes into the shared
+  // RingBuffer rather than sending one SendPort message per press - see the
+  // project root plan's "Cross-isolate architecture" section, lane 2.
+  //
+  // The whole call is `game.spawnEnemy()`. Nothing here reaches into the game
+  // isolate's scene, names a prefab, or knows an archetype id exists: the UI
+  // states what it wants and the handler on the other side decides what that
+  // means. That is the boundary the command lane is for.
   Future<void> _onSpawnPressed() async {
-    // The main-isolate copy runs the same declaration passes, so its
-    // GameState mirrors the scene and can name a prefab's archetype id - the
-    // integer that means the same thing on both isolates.
-    final scene = game.state!.getScene<MainScene>();
-    // Awaitable, and worth awaiting: the entity comes back over the reply
-    // ring once the game isolate has actually created it, so a HUD that wants
-    // to track what it spawned gets a handle rather than having to guess.
-    final spawned = await game.spawnEntity(scene.enemyPrefab.archetypeId);
+    // Awaitable, and worth awaiting: the entity comes back over the reply ring
+    // once the game isolate has actually created it, so a HUD that wants to
+    // track what it spawned gets a handle rather than having to guess.
+    final spawned = await game.spawnEnemy();
     debugPrint('spawned enemy ${spawned.value}');
   }
 

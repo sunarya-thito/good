@@ -3,7 +3,8 @@ import 'dart:ffi';
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show ChangeNotifier, VoidCallback, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show ChangeNotifier, VoidCallback, kIsWeb;
 import 'package:flutter/widgets.dart' show BuildContext, Widget;
 import 'package:meta/meta.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector2;
@@ -12,11 +13,10 @@ import 'package:goo/src/archetype.dart';
 import 'package:goo/src/asset.dart';
 import 'package:goo/src/command/command.dart';
 import 'package:goo/src/command/param.dart';
-import 'package:goo/src/command/spawn.dart';
 import 'package:goo/src/command/transport.dart';
-import 'package:goo/src/event/fixed_loop.dart';
+import 'package:goo/src/event.dart';
 import 'package:goo/src/event/state.dart';
-import 'package:goo/src/event/tick_loop.dart';
+import 'package:goo/src/handoff_buffer.dart';
 import 'package:goo/src/heap_object.dart';
 import 'package:goo/src/scene_handle.dart';
 import 'package:goo/src/game_state.dart';
@@ -25,7 +25,6 @@ import 'package:goo/src/input/gamepad.dart';
 import 'package:goo/src/input/input_state.dart';
 import 'package:goo/src/ring_buffer.dart';
 import 'package:goo/src/scene.dart';
-import 'package:goo/src/struct.dart';
 import 'package:goo/src/system.dart';
 import 'package:goo/src/triple_buffer.dart';
 
@@ -50,6 +49,16 @@ const String _msgStop = 'stop';
 const String _msgDispose = 'dispose';
 const String _msgEnable = 'enable';
 const String _msgDisable = 'disable';
+// Asset decoding: the game isolate declares assets but cannot decode them (a
+// decode needs Flutter), so it asks. Assets are named by their **address** -
+// the index `GameAssets` assigns at declare time, which both copies agree on
+// because both run the same declarations in the same order. That is already
+// the integer a component row stores to point at an asset, so no second
+// identity is invented for the wire.
+const String _msgLoadAssets = 'loadassets';
+const String _msgAssetLoaded = 'assetloaded';
+const String _msgAssetsDone = 'assetsdone';
+const String _msgUnloadAssets = 'unloadassets';
 
 /// The main-isolate half of a game: **declarations live here**.
 ///
@@ -294,8 +303,27 @@ abstract class Game {
   /// whether anything will read a command and refuses to send one nothing
   /// handles - no boot-time handshake required.
   ///
-  /// [spawnEntity] is declared by the framework before this pass runs, so it
-  /// always has index 0 on both copies.
+  /// # Spawning from the Flutter isolate
+  ///
+  /// There is no framework spawn command; the first command declared here is
+  /// index 0. A HUD button that adds an enemy is the canonical case this lane
+  /// exists for, and it is written as a command that says what it *means*:
+  ///
+  /// ```dart
+  /// final class SpawnEnemy extends GameCommand<Vector2, Entity> { ... }
+  ///
+  /// // ...and handled in GameState.describeCommands, where the scene is:
+  /// descriptor.hasHandler(game.spawnEnemy, (at) {
+  ///   final enemy = sceneHandle!.addEntity(level.enemy);
+  ///   level.enemy.x[enemy] = at.x;
+  ///   return enemy;
+  /// });
+  /// ```
+  ///
+  /// A built-in `spawnEntity(archetypeId)` used to sit here and was deleted: an
+  /// archetype id is a game-isolate identifier, so handing one to the Flutter
+  /// isolate made it name something it cannot see. Naming the *intent* leaves
+  /// the prefab lookup on the side that owns the memory.
   void describeCommands(CommandDescriptor descriptor) {}
 
   /// Declares this game's **auxiliary ring buffers** - shared-memory SPSC
@@ -362,7 +390,7 @@ abstract class Game {
   /// and no string-keyed lookup: the descriptor hands back a typed
   /// [StateChannel] you keep in a `late final` field, exactly like
   /// `describeStruct`'s `DataPointer`s, `describeQuery`'s `Query`,
-  /// `describeType`'s `ComponentType` and `describeBuffers`' `BufferHandle`.
+  /// and `describeBuffers`' `BufferHandle`.
   ///
   /// # The three hosts, and why it is a plain override
   ///
@@ -441,27 +469,9 @@ abstract class Game {
 
   final List<GameSystem> _systems = <GameSystem>[];
   final Map<Type, int> _systemIndex = <Type, int>{};
-  final List<bool> _systemEnabled = <bool>[];
 
-  // The tick phases, resolved once at boot instead of re-derived every tick.
-  //
-  // Dispatch used to go `system.fireEvent(event)` -> `event.tryDispatch` ->
-  // `listener is T` -> `dispatchListener` -> `onFixedUpdate`: four dispatches
-  // and a runtime type test, per system, per tick, on the hottest loop in the
-  // engine (RULES.md rules 1 and 2). The indirection existed so a listener
-  // could override `fireEvent` and forward to sub-listeners, and so
-  // `listensToEvents` could veto - and **nothing in the engine ever did
-  // either**. Which phase a system is in is fixed by its type at declaration,
-  // so it is filtered once here and the loops call the method directly.
-  //
-  // The parallel index lists are what keeps `enableSystem`/`disableSystem`
-  // working: enablement *is* runtime state, so it stays a bool-array read
-  // rather than being baked in.
-  final List<FixedTickable> _fixedTickables = <FixedTickable>[];
-  final List<int> _fixedTickableIndices = <int>[];
-  final List<Tickable> _tickables = <Tickable>[];
-  final List<int> _tickableIndices = <int>[];
-  final List<void Function(int tick)> _tickListeners = <void Function(int tick)>[];
+  final List<void Function(int tick)> _tickListeners =
+      <void Function(int tick)>[];
 
   // Every SceneStruct declared through [describeScenes], in declaration order.
   // Holding them is what keeps their archetypes registered for the life of the
@@ -476,6 +486,12 @@ abstract class Game {
   // which, because both copies run the same passes in the same order, is the
   // buffer's identity on the wire.
   final List<BufferHandle> _bufferHandles = <BufferHandle>[];
+
+  // Handoff buffers, same story as the rings above and a separate index space.
+  // Kept apart rather than in one list because they are different primitives
+  // for different shapes of traffic - a queue where every record matters
+  // versus a value where only the newest does.
+  final List<HandoffHandle> _handoffHandles = <HandoffHandle>[];
 
   // Every channel declared through a `describeState` pass this
   // boot, in declaration order across all five declaring sources (see
@@ -549,17 +565,6 @@ abstract class Game {
   /// must be taken before any decode begins.
   final GameAssets assets = GameAssets();
 
-  /// The framework's own command: "spawn one entity of this prefab".
-  ///
-  /// ```dart
-  /// final enemy = await game.spawnEntity(scene.enemyPrefab.archetypeId);
-  /// ```
-  ///
-  /// Declared before [describeCommands] runs, so it holds index 0 on both
-  /// copies, and handled on the game isolate - which is where the scene it
-  /// spawns into lives. See [SpawnEntityCommand].
-  late final SpawnEntityCommand spawnEntity;
-
   // One flag used to answer four questions - who allocates, who frees, who
   // may write a state channel, and who ticks. They coincided only because the
   // game isolate did all four. Now that boot runs on main *before* the spawn,
@@ -592,6 +597,14 @@ abstract class Game {
   // Scene slots whose pages are unregistered but not yet freed, waiting on the
   // reading copy to confirm it has dropped its views. See releaseScenePages.
   final Set<int> _pendingPageFrees = <int>{};
+
+  // Asset loads this copy has asked main to perform and is still waiting on,
+  // by request id. Populated only after the spawn, which is what makes the
+  // `Completer` inside each one safe to hold here: `_stopping` below is the
+  // same shape for the same reason (a Completer reachable from this object at
+  // spawn time would make the message unsendable).
+  int _assetRequestId = 0;
+  final Map<int, _AssetLoadRequest> _assetRequests = <int, _AssetLoadRequest>{};
 
   // Main-isolate handle copy only.
   ReceivePort? _fromGame;
@@ -845,7 +858,6 @@ abstract class Game {
 
     describeSystems(_SystemDescriptor(this));
     _sortSystems();
-    _bakeTickPhases();
     final queries = ArchetypeQueryDescriptor();
     final buffers = _BufferDescriptor(this);
     final inputs = _inputs;
@@ -892,6 +904,12 @@ abstract class Game {
         final handle = _bufferHandles[i];
         handle._ring = RingBuffer(handle.capacityBytes);
       }
+      // Nothing to announce afterwards: the `Pointer`s inside cross the spawn
+      // at the same addresses, so the copy inherits a working view.
+      for (var i = 0; i < _handoffHandles.length; i++) {
+        final handle = _handoffHandles[i];
+        handle._buffer = HandoffBuffer(handle.slotBytes);
+      }
       // Same point in the sequence, same reasoning, plus one extra step: a
       // TripleBuffer reports nothing published until its first publish()
       // (latestView() is null, hasPublished false), and a StateChannel must
@@ -921,10 +939,13 @@ abstract class Game {
     // shared declaration order is what a record's header carries and what
     // routes it back to the right command on the other side.
     //
-    // The framework's own goes first, so `spawnEntity` is index 0 whatever a
-    // game declares. Its handler is registered here rather than left to the
-    // user because "spawn into the running scene" has exactly one possible
-    // implementation and it needs the state this class is holding.
+    // The framework declares none of its own, so index 0 is the game's first
+    // command. There used to be a built-in `SpawnEntityCommand` here, and it
+    // was deleted rather than moved: it took an `archetypeId`, which is a
+    // game-isolate identifier main has no business naming. A game that wants
+    // main-triggered spawning declares a command that says what it *means*
+    // ("spawn an enemy at x,y") and resolves it to a prefab in its own
+    // handler, where the scene actually lives.
     final transport = CommandTransport();
     final commands = CommandRegistry(
       transport,
@@ -935,8 +956,6 @@ abstract class Game {
     _commands = commands;
     _commandTransport = transport;
 
-    spawnEntity = commands.declare(SpawnEntityCommand());
-    commands.declareHandler(spawnEntity, _spawnEntityById, HandlerSide.game);
     // The Game declares (and may handle on the Flutter isolate); the
     // GameState may only handle, on the game isolate. Order matters only in
     // that declaration has to precede handling, which this guarantees.
@@ -947,6 +966,18 @@ abstract class Game {
     // game isolate allocated both in _runOnIsolate before calling this; the
     // handle copy has none yet and attaches again when `ready` lands.
     _attachCommandRings();
+
+    // --- events: declare, then collect ---------------------------------
+    //
+    // Two passes, and the order is the whole design. `describeEvents` creates
+    // every dispatcher; `collectListeners` then walks the composition once and
+    // fills them. After this, dispatching an event is an indexed loop over a
+    // list that is already correct - the walk that used to happen per event,
+    // at runtime, testing every candidate, has happened exactly once.
+    //
+    // Runs after the scenes and systems are declared, because those are what
+    // there is to collect.
+    _bindEvents();
 
     // The declaration window is closed. Anything holding on to the
     // descriptor past this point is trying to declare a channel at runtime,
@@ -969,29 +1000,28 @@ abstract class Game {
   /// input, identical - because `compareTo` is required to be a pure
   /// function of type - output), so `_systemIndex` and the cross-isolate
   /// `enableSystem`/`disableSystem` wire index still agree between them.
-  /// Splits the declared systems into the two tick phases, once.
+  /// Binds events for the `GameState`, every declared system, and every
+  /// declared scene with its prefabs.
   ///
-  /// After [_sortSystems], so both lists are already in execution order and
-  /// the loops can walk them straight through. See [_fixedTickables].
-  void _bakeTickPhases() {
-    _fixedTickables.clear();
-    _fixedTickableIndices.clear();
-    _tickables.clear();
-    _tickableIndices.clear();
+  /// Runs after **all** the declaration passes, and that ordering is
+  /// load-bearing: a prefab's `collectListeners` may offer a system into its
+  /// own dispatcher (`collector.offer(getSystem<T>())`), which needs the
+  /// systems to exist. `describeScenes` necessarily runs before
+  /// `describeSystems` - `describeQuery` resolves against registered
+  /// archetypes - so a scene cannot bind its own events at registration time
+  /// and waits for this instead. `SceneStruct.bindEvents` is idempotent, so
+  /// calling it here is safe whichever path already ran.
+  ///
+  /// Binding is per owner, and that is what scopes an event: a dispatcher only
+  /// ever sees what its own owner offered.
+  void _bindEvents() {
+    final state = _state;
+    if (state is EventBus) EventBinder.bind(state as EventBus);
     for (var i = 0; i < _systems.length; i++) {
-      final system = _systems[i];
-      // Cast rather than relying on promotion: `GameSystem` and these mixins
-      // are unrelated types, so the promoted form is an intersection the
-      // analyzer will not pass to `List<FixedTickable>.add`. Boot-time, once
-      // per declared system, so the check costs nothing that matters.
-      if (system is FixedTickable) {
-        _fixedTickables.add(system as FixedTickable);
-        _fixedTickableIndices.add(i);
-      }
-      if (system is Tickable) {
-        _tickables.add(system as Tickable);
-        _tickableIndices.add(i);
-      }
+      EventBinder.bind(_systems[i]);
+    }
+    for (var i = 0; i < _declaredScenes.length; i++) {
+      _declaredScenes[i].bindEvents();
     }
   }
 
@@ -1011,41 +1041,13 @@ abstract class Game {
       return cmp != 0 ? cmp : a.compareTo(b);
     });
     final sortedSystems = [for (final i in order) _systems[i]];
-    final sortedEnabled = [for (final i in order) _systemEnabled[i]];
     _systems
       ..clear()
       ..addAll(sortedSystems);
-    _systemEnabled
-      ..clear()
-      ..addAll(sortedEnabled);
     _systemIndex.clear();
     for (var i = 0; i < _systems.length; i++) {
       _systemIndex[_systems[i].runtimeType] = i;
     }
-  }
-
-  /// [spawnEntity]'s handler, and the only one this class registers itself.
-  ///
-  /// Runs on the game isolate, inside the tick window and before any system,
-  /// so the entity it returns is visible to every system on the tick the
-  /// command lands.
-  ///
-  /// Throws rather than reporting a miss when there is no scene, unlike the
-  /// encode/apply lane this replaces: back then a spawn was fire-and-forget
-  /// and the only honest thing to do was assert and drop it. Now the caller
-  /// is awaiting an `Entity`, and there is no entity to give - asking a game
-  /// with no world loaded to spawn into it is a programming error, and the
-  /// nullability of `GameState.scene` is right there to check first.
-  Entity _spawnEntityById(int archetypeId) {
-    final scene = _state?.sceneHandle;
-    if (scene == null) {
-      throw StateError(
-        'a spawn command arrived while $runtimeType has no scene loaded - '
-        'GameState.scene is null, so there is nothing to spawn into and no '
-        'Entity to hand back.',
-      );
-    }
-    return scene.addEntityById(archetypeId);
   }
 
   /// Copies the static registries onto this object so they cross the spawn.
@@ -1131,25 +1133,14 @@ abstract class Game {
   @internal
   List<GameSystem> get declaredSystems => _systems;
 
-  /// The declared systems that simulate, in execution order, with their
-  /// declaration indices alongside for the enablement check. See
-  /// [_fixedTickables].
+  /// Every scene declared in [describeScenes], in declaration order - what
+  /// `GameState.collectListeners` walks to reach the prefabs beneath them.
   @internal
-  List<FixedTickable> get fixedTickables => _fixedTickables;
-
-  @internal
-  List<int> get fixedTickableIndices => _fixedTickableIndices;
-
-  /// The declared systems that present, same shape.
-  @internal
-  List<Tickable> get tickables => _tickables;
-
-  @internal
-  List<int> get tickableIndices => _tickableIndices;
+  List<SceneStruct> get declaredScenes => _declaredScenes;
 
   /// Whether the system at declaration index [i] currently receives events.
   @internal
-  bool isSystemEnabledAt(int i) => _systemEnabled[i];
+  bool isSystemEnabledAt(int i) => _systems[i].listensToEvents;
 
   /// Takes in whatever the other copy has sent since the last call and runs
   /// what is due - see `CommandTransport.pump`.
@@ -1339,7 +1330,8 @@ abstract class Game {
   /// Whether [T] currently receives events. On the handle copy this reflects
   /// every [enableSystem]/[disableSystem] this copy has issued, which is the
   /// same sequence the game isolate applies.
-  bool isSystemEnabled<T extends GameSystem>() => _systemEnabled[_requireSystemIndex(T)];
+  bool isSystemEnabled<T extends GameSystem>() =>
+      _systems[_requireSystemIndex(T)].listensToEvents;
 
   /// Resumes a system already declared in [describeSystems] - a runtime
   /// pause/resume toggle, not registration.
@@ -1375,7 +1367,7 @@ abstract class Game {
   /// effect on" was never determinate anyway.
   Future<void> _setSystem(Type type, bool enabled) async {
     final index = _requireSystemIndex(type);
-    _systemEnabled[index] = enabled;
+    _systems[index].enabled = enabled;
     if (_simulates) return;
     final toGame = _toGame;
     if (toGame == null) {
@@ -1390,7 +1382,9 @@ abstract class Game {
   int _requireSystemIndex(Type type) {
     final index = _systemIndex[type];
     if (index == null) {
-      throw ArgumentError('$type is not declared in $runtimeType.describeSystems.');
+      throw ArgumentError(
+        '$type is not declared in $runtimeType.describeSystems.',
+      );
     }
     return index;
   }
@@ -1535,6 +1529,11 @@ abstract class Game {
       if (_owns) handle._ring?.dispose();
       handle._ring = null;
     }
+    for (var i = 0; i < _handoffHandles.length; i++) {
+      final handle = _handoffHandles[i];
+      if (_owns) handle._buffer?.dispose();
+      handle._buffer = null;
+    }
     // Same ownership rule for the state channels' triple buffers: the
     // simulating copy allocated them and frees them, the handle only drops
     // its views. The declared set (the channel objects themselves, and the
@@ -1637,9 +1636,29 @@ abstract class Game {
         final slot = parts[1] as int;
         if (_pendingPageFrees.remove(slot)) _freeScenePages(slot);
       case _msgEnable:
-        _systemEnabled[parts[1] as int] = true;
+        _systems[parts[1] as int].enabled = true;
       case _msgDisable:
-        _systemEnabled[parts[1] as int] = false;
+        _systems[parts[1] as int].enabled = false;
+      case _msgAssetLoaded:
+        final request = _assetRequests[parts[1] as int];
+        request?.onLoaded?.call(
+          parts[2] as int,
+          parts[3] as int,
+          parts[4] as int,
+        );
+      case _msgAssetsDone:
+        final request = _assetRequests.remove(parts[1] as int);
+        final failure = parts[2] as String?;
+        if (request == null || request.done.isCompleted) break;
+        if (failure == null) {
+          request.done.complete();
+        } else {
+          // Surfaced at the `await loadScene(...)` that asked for it, which is
+          // where the local decode path throws too.
+          request.done.completeError(StateError(
+            'asset decoding failed on the Flutter isolate - $failure',
+          ));
+        }
     }
   }
 
@@ -1675,6 +1694,16 @@ abstract class Game {
         _adoptPage(parts);
       case _msgPageGone:
         _dropScenePages(parts[1] as int);
+      case _msgLoadAssets:
+        // Unawaited by design: this is a port callback, and the decode is
+        // asynchronous. Its completion is reported back over the port rather
+        // than by this future, and every failure is caught inside.
+        unawaited(_handleAssetLoadRequest(parts));
+      case _msgUnloadAssets:
+        final addresses = (parts[1] as List).cast<int>();
+        for (var i = 0; i < addresses.length; i++) {
+          assets.unloadAddress(addresses[i]);
+        }
       case _msgStopped:
         _toGame?.send(const <Object>[_msgDispose]);
         _toGame = null;
@@ -1743,6 +1772,109 @@ abstract class Game {
       ArchetypeRegistry.byId(i).releaseScene(sceneSlot, pool);
     }
   }
+
+  // --- asset decoding across the boundary --------------------------------
+  //
+  // The game isolate declares assets - that is what assigns their addresses,
+  // and it has to happen there because prefabs and scenes live there - but it
+  // cannot *decode* one, because decoding needs Flutter. So it asks.
+  //
+  // Before this existed, `GameState._reconcileAssets` took its claims and
+  // returned at `if (!game.decodesAssets) return;`, and nothing told main to
+  // decode anything. That was invisible only because main ran `loadScene`
+  // itself at boot; a `loadScene` at *runtime*, on the game isolate, declared
+  // assets that were never loaded and whose payload reads then failed.
+
+  /// Asks main to decode every asset in [addresses], completing when it has.
+  ///
+  /// [onLoaded] fires once per asset that actually needed decoding, carrying
+  /// the running `completed`/`pending` counts so the caller can report
+  /// progress with the same denominator the local path uses - the number of
+  /// decodes actually performed, not the number of assets asked about.
+  ///
+  /// Returns immediately when there is no main to ask, which is the inline
+  /// case: there, `decodesAssets` is true and the caller decodes in place
+  /// rather than calling this at all.
+  @internal
+  Future<void> requestAssetLoad(
+    List<int> addresses,
+    void Function(int address, int completed, int pending)? onLoaded,
+  ) {
+    final toMain = _toMain;
+    if (toMain == null || addresses.isEmpty) return Future<void>.value();
+    final id = ++_assetRequestId;
+    final request = _AssetLoadRequest(onLoaded);
+    _assetRequests[id] = request;
+    toMain.send(<Object>[_msgLoadAssets, id, addresses]);
+    return request.done.future;
+  }
+
+  /// Tells main to drop the payloads for [addresses]. Fire-and-forget: the
+  /// declaration is already gone on this copy, and nothing here waits on the
+  /// memory the way a page free does.
+  @internal
+  void requestAssetUnload(List<int> addresses) {
+    if (addresses.isEmpty) return;
+    _toMain?.send(<Object>[_msgUnloadAssets, addresses]);
+  }
+
+  /// Main's half: decode what was asked for, reporting each one back.
+  ///
+  /// Sequential rather than concurrent, deliberately - it mirrors the local
+  /// path exactly, and a loading screen wants a progress sequence rather than
+  /// everything landing at once. `GameAssets.load` already collapses
+  /// overlapping requests for one key.
+  Future<void> _handleAssetLoadRequest(List parts) async {
+    final id = parts[1] as int;
+    final addresses = (parts[2] as List).cast<int>();
+
+    // Counted up front so the denominator is the number of decodes actually
+    // performed - a scene whose assets are all resident reports one 1.0 and
+    // does no work, same as the local path.
+    var pending = 0;
+    for (var i = 0; i < addresses.length; i++) {
+      final instance = assets.tryResolve<GameAssetInstance>(addresses[i]);
+      if (instance != null && !instance.isLoaded) pending++;
+    }
+
+    var completed = 0;
+    String? failure;
+    for (var i = 0; i < addresses.length; i++) {
+      final address = addresses[i];
+      final instance = assets.tryResolve<GameAssetInstance>(address);
+      if (instance == null || instance.isLoaded) continue;
+      try {
+        await assets.loadAddress(address);
+      } catch (error) {
+        // Recorded and carried back rather than thrown here: this runs inside
+        // a port callback, where throwing would take out the message loop and
+        // strand the asker forever. The awaiting `loadScene` is the right
+        // place for it to surface.
+        failure ??= '${instance.debugLabel}: $error';
+      }
+      completed++;
+      _toGame?.send(<Object?>[
+        _msgAssetLoaded,
+        id,
+        address,
+        completed,
+        pending,
+      ]);
+    }
+    _toGame?.send(<Object?>[_msgAssetsDone, id, failure]);
+  }
+}
+
+/// One in-flight [Game.requestAssetLoad], game-isolate side.
+///
+/// One object rather than parallel maps keyed by request id (RULES.md rule
+/// 10): the completer, the progress callback and the first failure all belong
+/// to the same request and are only ever used together.
+final class _AssetLoadRequest {
+  _AssetLoadRequest(this.onLoaded);
+
+  final void Function(int address, int completed, int pending)? onLoaded;
+  final Completer<void> done = Completer<void>();
 }
 
 /// The spawned isolate's entry point. Top-level (a closure would not be
@@ -1776,6 +1908,16 @@ abstract class BufferDescriptor {
   /// Declares a buffer of [capacityBytes] and returns the handle to keep in
   /// a field.
   BufferHandle has({required int capacityBytes});
+
+  /// Declares a **handoff** buffer of [slotBytes] per slot - shared memory for
+  /// a value where only the newest copy matters, rather than a queue where
+  /// every record does.
+  ///
+  /// Use [has] for a stream (commands, events, anything where dropping the
+  /// third of five is a bug). Use this for a value that is completely replaced
+  /// each time it is produced - a rendered frame being the case it exists for.
+  /// See [HandoffBuffer] for why a ring is the wrong shape there.
+  HandoffHandle hasHandoff({required int slotBytes});
 }
 
 /// A declared auxiliary ring buffer: the thing [BufferDescriptor.has] hands
@@ -1836,6 +1978,51 @@ final class BufferHandle {
   RingBuffer? get tryRing => _ring;
 }
 
+/// A declared [HandoffBuffer] - what [BufferDescriptor.hasHandoff] hands back
+/// and the declarer keeps in a `late final` field.
+///
+/// Same discipline as [BufferHandle] (RULES.md rule 6): no name, no registry,
+/// and both copies produce the same handles in the same order because both run
+/// the same `describeBuffers` passes.
+final class HandoffHandle {
+  HandoffHandle._(this.index, this.slotBytes);
+
+  /// Position in the declaration order of handoff buffers specifically - a
+  /// separate sequence from [BufferHandle.index], since they are separate
+  /// lists.
+  final int index;
+
+  /// Bytes per slot, as declared. Known on both copies before any memory
+  /// exists.
+  final int slotBytes;
+
+  HandoffBuffer? _buffer;
+
+  /// Whether this copy has a live view yet. False between declaration and the
+  /// end of `Game.start()`, and again after `Game.stop()`.
+  bool get isConnected => _buffer != null;
+
+  /// This copy's view of the buffer. Both copies address the same native
+  /// memory: the owning copy allocates it before the spawn and the `Pointer`s
+  /// inside cross at the same addresses, so there is nothing to announce.
+  HandoffBuffer get buffer {
+    final buffer = _buffer;
+    if (buffer == null) {
+      throw StateError(
+        'Handoff buffer #$index ($slotBytes bytes per slot) is declared but '
+        'not connected on this copy of the Game. Call start() (and await it) '
+        'first; after stop() the memory is freed and the view is dropped, '
+        'which looks the same from here.',
+      );
+    }
+    return buffer;
+  }
+
+  /// [buffer], but `null` instead of throwing - for a caller happy to sit out
+  /// until bring-up completes.
+  HandoffBuffer? get tryBuffer => _buffer;
+}
+
 /// Records declaration order, which *is* execution order - see the class doc
 /// on [Game]. Systems are keyed by `runtimeType` rather than by the type
 /// argument so `descriptor.has(Transform2DSystem())` and
@@ -1886,7 +2073,6 @@ final class _SystemDescriptor implements SystemDescriptor {
     }
     _game._systemIndex[type] = _game._systems.length;
     _game._systems.add(system);
-    _game._systemEnabled.add(true);
     return system;
   }
 }
@@ -1908,6 +2094,16 @@ final class _BufferDescriptor implements BufferDescriptor {
     }
     final handle = BufferHandle._(_game._bufferHandles.length, capacityBytes);
     _game._bufferHandles.add(handle);
+    return handle;
+  }
+
+  @override
+  HandoffHandle hasHandoff({required int slotBytes}) {
+    if (slotBytes <= 0) {
+      throw ArgumentError.value(slotBytes, 'slotBytes', 'must be positive');
+    }
+    final handle = HandoffHandle._(_game._handoffHandles.length, slotBytes);
+    _game._handoffHandles.add(handle);
     return handle;
   }
 }
@@ -1980,7 +2176,9 @@ enum _ChannelFormat {
 /// requires one declared type usable from Flutter on the main isolate, and a
 /// write from there is a programmer error rather than something a caller
 /// should be handed two types to reason about.
-abstract class _StateChannelBase<T> with ChangeNotifier implements StateChannel<T>, _ChannelSlot {
+abstract class _StateChannelBase<T>
+    with ChangeNotifier
+    implements StateChannel<T>, _ChannelSlot {
   _StateChannelBase({
     required this.index,
     required this.format,
@@ -1989,8 +2187,8 @@ abstract class _StateChannelBase<T> with ChangeNotifier implements StateChannel<
     // A named parameter cannot start with an underscore, so `this._game` is
     // not spellable and the lint's suggestion does not compile.
     // ignore: prefer_initializing_formals
-  })  : _game = game,
-        _lastSeen = initialValue;
+  }) : _game = game,
+       _lastSeen = initialValue;
 
   /// Position in the shared declaration order - this channel's identity on
   /// the wire, and what diagnostics name it by.
@@ -2223,15 +2421,15 @@ final class _IntStateChannel extends _StateChannelBase<int> {
 
   @override
   int readFrom(ByteData view) => switch (format) {
-        _ChannelFormat.uint8 => view.getUint8(0),
-        _ChannelFormat.int8 => view.getInt8(0),
-        _ChannelFormat.uint16 => view.getUint16(0, Endian.little),
-        _ChannelFormat.int16 => view.getInt16(0, Endian.little),
-        _ChannelFormat.uint32 => view.getUint32(0, Endian.little),
-        _ChannelFormat.int32 => view.getInt32(0, Endian.little),
-        _ChannelFormat.uint64 => view.getUint64(0, Endian.little),
-        _ => view.getInt64(0, Endian.little),
-      };
+    _ChannelFormat.uint8 => view.getUint8(0),
+    _ChannelFormat.int8 => view.getInt8(0),
+    _ChannelFormat.uint16 => view.getUint16(0, Endian.little),
+    _ChannelFormat.int16 => view.getInt16(0, Endian.little),
+    _ChannelFormat.uint32 => view.getUint32(0, Endian.little),
+    _ChannelFormat.int32 => view.getInt32(0, Endian.little),
+    _ChannelFormat.uint64 => view.getUint64(0, Endian.little),
+    _ => view.getInt64(0, Endian.little),
+  };
 
   @override
   void writeTo(ByteData view, int value) {
@@ -2340,28 +2538,36 @@ final class _StateDescriptor implements StateDescriptor {
   }
 
   @override
-  StateChannel<int> hasUint8([int initial = 0]) => _int(_ChannelFormat.uint8, initial);
+  StateChannel<int> hasUint8([int initial = 0]) =>
+      _int(_ChannelFormat.uint8, initial);
 
   @override
-  StateChannel<int> hasInt8([int initial = 0]) => _int(_ChannelFormat.int8, initial);
+  StateChannel<int> hasInt8([int initial = 0]) =>
+      _int(_ChannelFormat.int8, initial);
 
   @override
-  StateChannel<int> hasUint16([int initial = 0]) => _int(_ChannelFormat.uint16, initial);
+  StateChannel<int> hasUint16([int initial = 0]) =>
+      _int(_ChannelFormat.uint16, initial);
 
   @override
-  StateChannel<int> hasInt16([int initial = 0]) => _int(_ChannelFormat.int16, initial);
+  StateChannel<int> hasInt16([int initial = 0]) =>
+      _int(_ChannelFormat.int16, initial);
 
   @override
-  StateChannel<int> hasUint32([int initial = 0]) => _int(_ChannelFormat.uint32, initial);
+  StateChannel<int> hasUint32([int initial = 0]) =>
+      _int(_ChannelFormat.uint32, initial);
 
   @override
-  StateChannel<int> hasInt32([int initial = 0]) => _int(_ChannelFormat.int32, initial);
+  StateChannel<int> hasInt32([int initial = 0]) =>
+      _int(_ChannelFormat.int32, initial);
 
   @override
-  StateChannel<int> hasUint64([int initial = 0]) => _int(_ChannelFormat.uint64, initial);
+  StateChannel<int> hasUint64([int initial = 0]) =>
+      _int(_ChannelFormat.uint64, initial);
 
   @override
-  StateChannel<int> hasInt64([int initial = 0]) => _int(_ChannelFormat.int64, initial);
+  StateChannel<int> hasInt64([int initial = 0]) =>
+      _int(_ChannelFormat.int64, initial);
 
   @override
   StateChannel<double> hasFloat32([double initial = 0]) =>
@@ -2383,4 +2589,3 @@ final class _StateDescriptor implements StateDescriptor {
     return channel;
   }
 }
-

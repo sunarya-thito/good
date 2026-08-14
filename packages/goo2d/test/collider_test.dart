@@ -1,7 +1,7 @@
 import 'package:goo2d/goo2d.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class _Player extends EntityStruct<_Player> with Transform2D, Collider2D, CollisionListener {
+class _Player extends EntityStruct with Transform2D, Collider2D, CollisionListener {
   late final BoxBody box;
   late final CircleBody hurtbox;
   late final CircleBody pickupRange;
@@ -21,7 +21,7 @@ class _Player extends EntityStruct<_Player> with Transform2D, Collider2D, Collis
   void onTriggerEnter2D(Collision2DEvent event) => firedEvents.add('triggerEnter');
 }
 
-class _Wall extends EntityStruct<_Wall> with Transform2D, Collider2D {
+class _Wall extends EntityStruct with Transform2D, Collider2D {
   late final BoxBody box;
 
   @override
@@ -30,7 +30,8 @@ class _Wall extends EntityStruct<_Wall> with Transform2D, Collider2D {
   }
 }
 
-class _Polygon extends EntityStruct<_Polygon> with Transform2D, Collider2D {
+class _Polygon extends EntityStruct
+    with Transform2D, Collider2D, EntityLifecycleListener {
   late final PolygonBody triangle;
 
   @override
@@ -39,8 +40,8 @@ class _Polygon extends EntityStruct<_Polygon> with Transform2D, Collider2D {
   }
 
   @override
-  void onCreated(Entity entity) {
-    super.onCreated(entity);
+  void onEntityMounted(Entity entity) {
+    super.onEntityMounted(entity);
     triangle.pointsX.set(entity, 0, 0);
     triangle.pointsY.set(entity, 0, 0);
     triangle.pointsX.set(entity, 1, 10);
@@ -53,7 +54,7 @@ class _Polygon extends EntityStruct<_Polygon> with Transform2D, Collider2D {
 
 /// A capsule taller than it is wide, plus one deliberately squashed flatter
 /// than its own radius - the degenerate case that has to read as a circle.
-class _Capsule extends EntityStruct<_Capsule> with Transform2D, Collider2D {
+class _Capsule extends EntityStruct with Transform2D, Collider2D {
   late final CapsuleBody pill;
   late final CapsuleBody squashed;
 
@@ -67,7 +68,8 @@ class _Capsule extends EntityStruct<_Capsule> with Transform2D, Collider2D {
 /// A concave outline - an arrowhead with a notch cut out of its base. A
 /// convex-only containment test passes every other polygon case and fails
 /// this one, which is why it is here.
-class _Concave extends EntityStruct<_Concave> with Transform2D, Collider2D {
+class _Concave extends EntityStruct
+    with Transform2D, Collider2D, EntityLifecycleListener {
   late final PolygonBody arrow;
 
   @override
@@ -76,8 +78,8 @@ class _Concave extends EntityStruct<_Concave> with Transform2D, Collider2D {
   }
 
   @override
-  void onCreated(Entity entity) {
-    super.onCreated(entity);
+  void onEntityMounted(Entity entity) {
+    super.onEntityMounted(entity);
     // (0,0) tip, out to both base corners, with (0,20) notched back in
     // between them - so the point (0, 25) is inside the bounding box and
     // inside the convex hull, but outside the shape itself.
@@ -97,7 +99,7 @@ class _Scene extends SceneStruct {
   /// registers itself and forwards.
   late final Scene handle;
 
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
   _Scene();
@@ -139,7 +141,7 @@ void main() {
       expect(scene.player.bodies, containsAll([scene.player.box, scene.player.hurtbox, scene.player.pickupRange]));
     });
 
-    test('named params on has*Collider double as the declared default, no onCreated needed', () {
+    test('named params on has*Collider double as the declared default, no onMounted needed', () {
       final scene = _scene();
       scene.pool.beginTick();
       final player = scene.addEntity(scene.player);
@@ -211,7 +213,7 @@ void main() {
       scene.pool.beginTick();
       final triangle = scene.addEntity(scene.polygon);
       scene.pool.commitTick();
-      // maxPoints defaults to 8 but this entity's onCreated only set 3 -
+      // maxPoints defaults to 8 but this entity's onMounted only set 3 -
       // pointCount is what a consumer should trust, not the array's own
       // fixed capacity.
       expect(scene.polygon.triangle.pointCount[triangle], lessThan(scene.polygon.triangle.pointsX.length));

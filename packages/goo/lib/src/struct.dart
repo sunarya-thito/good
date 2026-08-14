@@ -2,6 +2,8 @@ import 'package:meta/meta.dart';
 import 'package:goo/src/archetype.dart';
 import 'package:goo/src/asset.dart';
 import 'package:goo/src/data.dart';
+import 'package:goo/src/event.dart';
+import 'package:goo/src/event/lifecycle.dart';
 import 'package:goo/src/scene.dart';
 import 'package:goo/src/system.dart';
 
@@ -25,7 +27,6 @@ abstract interface class Component {
   void describeAssets(AssetDescriptor descriptor);
 
   void describeStruct(DataDescriptor data);
-  void onCreated(Entity entity);
 
   /// The scene the entity this component instance describes was registered
   /// with - reachable from any mixin `on Component`/`on MultiComponent`, not
@@ -57,7 +58,46 @@ abstract interface class MultiComponent implements Component {}
 // game object is just a structure of data, it doesn't hold the actual data
 // it describes the data structure of the game object, and let the framework
 // allocate memory for the game object and its components, and manage the data of the game object
-abstract class EntityStruct<T extends EntityStruct<T>> implements MultiComponent {
+//
+// It is also a [GameListener] and an [EventBus], which is the bottom of the
+// composition walk: a `GameState` offers its scenes, a `SceneStruct` offers the
+// prefabs it registered, and here it stops - a prefab composes nothing further.
+// That is what lets an event declared on the state reach every entity struct in
+// the game, and one declared *here* reach this prefab and nothing else, which
+// is the scoping that makes a per-struct `onMounted(Entity)` possible.
+
+// NOTE: No longer carries <T>
+// <T> was used to describe the type of the prefab, but it is no longer needed
+// because .has on the describeType now accepts direct Type as parameter.
+abstract class EntityStruct extends GameListenerBase
+    with EventBus
+    implements MultiComponent {
+  /// An entity of **this** struct was created.
+  ///
+  /// Declared here, so the collect pass fills it from this prefab's own
+  /// composition and nothing wider - the narrowest scope in the engine, and
+  /// the reason a listener never has to ask "is this event about my
+  /// archetype". One level up it would be a single list told about every
+  /// entity in the game.
+  ///
+  /// The struct's own [onMounted] is still the direct, unmissable hook; this
+  /// is for anything *else* that wants to know.
+  late final EventDispatcher<EntityLifecycleListener, Entity> mountedEvent;
+
+  /// An entity of this struct is going away, because the scene holding it is
+  /// being unloaded. Its row is still readable during dispatch.
+  late final EventDispatcher<EntityLifecycleListener, Entity> unmountedEvent;
+
+  @override
+  void describeEvents(EventDescriptor descriptor) {
+    mountedEvent = descriptor.has(
+      (listener, entity) => listener.onEntityMounted(entity),
+    );
+    unmountedEvent = descriptor.has(
+      (listener, entity) => listener.onEntityUnmounted(entity),
+    );
+  }
+
   late SceneStruct _associatedScene; // <- scene holds memory pool
   late ArchetypeStorage _archetype;
   bool _bound = false;
@@ -105,7 +145,7 @@ abstract class EntityStruct<T extends EntityStruct<T>> implements MultiComponent
     _bound = true;
   }
 
-  EntityStruct<T> _requireBound() {
+  EntityStruct _requireBound() {
     if (!_bound) {
       throw StateError(
         '$runtimeType has not been registered with a scene. Declare it in '
@@ -116,12 +156,10 @@ abstract class EntityStruct<T extends EntityStruct<T>> implements MultiComponent
     return this;
   }
 
-  // helps stores bits of component type id and toggles for enabled/disabled state of the component
-  late final ComponentType<T> mainComponentType;
   @override
   @mustCallSuper
   void describeType(ComponentDescriptor component) {
-    mainComponentType = component.has<T>();
+    component.has(type: runtimeType);
   }
 
   /// No-op base of the `describeAssets` chain - a prefab with no assets
@@ -135,20 +173,23 @@ abstract class EntityStruct<T extends EntityStruct<T>> implements MultiComponent
   @override
   @mustCallSuper
   void describeStruct(DataDescriptor data) {}
-
-  // called when the game object is created, can be used to initialize the data of the game object
-  @override
-  @mustCallSuper
-  void onCreated(Entity entity) {}
 }
 
-abstract class ComponentType<T extends Component> {
-  bool get isEnabled;
-  set isEnabled(bool value);
-}
-
+/// Declares which component *types* an archetype carries - one `has<T>()` per
+/// type, each ORing that type's bit into the archetype's signature, which is
+/// the whole of what a query matches on.
+///
+/// Returns nothing. It used to hand back a `ComponentType<T>` carrying an
+/// `isEnabled` toggle, and that was deleted: nothing ever read it, and the
+/// toggle it implemented was **archetype-wide**, which is not a coherent
+/// thing to want. An archetype *is* its component set - switching a component
+/// off across the whole archetype just describes a different archetype, and
+/// switching it off for one entity needs a bit in every row plus a query that
+/// consults it, which is a different feature entirely. Enable/disable that
+/// does exist works at the level where it means something: whole systems, via
+/// `Game.enableSystem`.
 abstract class ComponentDescriptor {
-  ComponentType<T> has<T extends Component>();
+  void has<T extends Component>({Type? type});
 }
 
 /// A handle to one row of component data, packed into a single 64-bit int:
@@ -177,7 +218,7 @@ abstract class ComponentDescriptor {
 /// There is no reserved null/invalid value - `Entity(0)` is the legitimate
 /// first row of archetype 0's first page. Callers needing "no entity" want
 /// a nullable `Entity?`.
-extension type const Entity(int value) {
+extension type const Entity(int value) implements int {
   static const int _archetypeShift = 48;
   static const int _pageShift = 32;
   static const int _idMask = 0xFFFF;
@@ -206,7 +247,7 @@ extension type const Entity(int value) {
   /// [tryGet] when absence is expected.
   T get<T extends Component>() {
     final prefab = ArchetypeRegistry.byId(archetypeId).prefab;
-    if (prefab is T) return prefab;
+    if (prefab is T) return prefab as T;
     throw StateError(
       'Entity of archetype ${prefab.runtimeType} (id $archetypeId) does not '
       'have component $T. Use tryGet<$T>() if that is expected.',
@@ -229,6 +270,6 @@ extension type const Entity(int value) {
   /// the `OptWith<Child>()` half of a query.
   T? tryGet<T extends Component>() {
     final prefab = ArchetypeRegistry.byId(archetypeId).prefab;
-    return prefab is T ? prefab : null;
+    return prefab is T ? prefab as T : null;
   }
 }

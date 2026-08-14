@@ -98,16 +98,10 @@ extension type const Scene(int value) {
   /// resident at once "which scene does this row belong to" is a question the
   /// receiver has to answer, and a handle answers it by being the receiver.
   ///
-  /// Allocation-free apart from what `onCreated` itself does.
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  /// Allocation-free apart from what `onMounted` itself does.
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       get<SceneStruct>().addEntityIn(slot, prefab, parent: parent);
 
-  /// [addEntity] addressed by `archetypeId` - the form a command crossing an
-  /// isolate boundary can carry, since a prefab is a Dart object and an id is
-  /// an int. See `SceneStruct.addToSceneByIdIn`.
-  @internal
-  Entity addEntityById(int archetypeId) =>
-      get<SceneStruct>().addToSceneByIdIn(slot, archetypeId);
 }
 
 /// The process-global table of loaded scenes - what a [Scene] handle resolves

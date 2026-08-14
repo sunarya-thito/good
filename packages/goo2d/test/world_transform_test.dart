@@ -10,7 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 // answer by coincidence.
 const double _sentinel = -999999.0;
 
-class _Node extends EntityStruct<_Node> with Transform2D, WorldTransform2D, Child, Parent {}
+class _Node extends EntityStruct with Transform2D, WorldTransform2D, Child, Parent {}
 
 class _Scene extends SceneStruct {
   @override
@@ -21,7 +21,7 @@ class _Scene extends SceneStruct {
   /// registers itself and forwards.
   late Scene handle;
 
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
   _Scene();
@@ -34,7 +34,7 @@ class _Scene extends SceneStruct {
   }
 }
 
-class _GameState extends GameState<_Game> with LifecycleListener {
+class _GameState extends GameState<_Game> {
   @override
   void onMounted() {
     loadScene(_Scene());

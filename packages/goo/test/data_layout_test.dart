@@ -41,7 +41,7 @@ _Texture _loaded() => assets.declare(_TextureAsset());
 
 /// One struct type reused for every ad-hoc layout below, so this file's
 /// many cases cost `ComponentTypeRegistry` exactly one of its 64 bits.
-class _AdHoc extends EntityStruct<_AdHoc> {
+class _AdHoc extends EntityStruct {
   _AdHoc(this._build);
 
   final void Function(DataDescriptor data) _build;
@@ -59,7 +59,7 @@ class _AdHocScene extends SceneStruct {
   /// registers itself and forwards.
   late final Scene handle;
 
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
   _AdHocScene(this._prefab);
@@ -297,12 +297,7 @@ void main() {
       final pool = MemoryPool(pageSize: 64);
       addTearDown(pool.dispose);
       final storage =
-          ArchetypeRegistry.register(
-        pool,
-        _AdHocScene(_AdHoc((_) {})),
-        assets,
-        _AdHoc((_) {}),
-      );
+          ArchetypeRegistry.register(pool, assets, _AdHoc((_) {}));
       expect(() => storage.declareField(3), throwsArgumentError);
       expect(() => storage.declareField(0), throwsArgumentError);
       expect(() => storage.declareField(128), throwsArgumentError);

@@ -23,11 +23,11 @@ mixin _Name on Component {
   }
 }
 
-class _Node extends EntityStruct<_Node> with _Name, Child, Parent {}
+class _Node extends EntityStruct with _Name, Child, Parent {}
 
-class _Leaf extends EntityStruct<_Leaf> with _Name, Child {}
+class _Leaf extends EntityStruct with _Name, Child {}
 
-class _NoChild extends EntityStruct<_NoChild> with _Name {}
+class _NoChild extends EntityStruct with _Name {}
 
 class _Level extends SceneStruct {
   /// This fixture's loaded handle. Entity creation lives on `Scene` now (one
@@ -35,7 +35,7 @@ class _Level extends SceneStruct {
   /// registers itself and forwards.
   late final Scene handle;
 
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
   _Level();

@@ -138,7 +138,7 @@ class WorldTransformSystem extends GameSystem with FixedTickable {
   /// lines above**: this storage layer's reads always see the *last
   /// published* snapshot, never a write made earlier in the same tick (see
   /// `data_layout.dart`'s `_readRow` doc - the same reason a read-modify-
-  /// write in `onCreated` is unsafe). A parent resolved earlier in this same
+  /// write in `onMounted` is unsafe). A parent resolved earlier in this same
   /// top-down pass, this same tick, has a fresh value in the write slot that
   /// a same-tick read cannot see yet - reading it back would silently
   /// return last tick's stale value instead. Carrying the just-computed

@@ -1,38 +1,5 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 
-import 'package:goo/src/event.dart';
-
-/// Mount/unmount notifications, on the **game isolate**.
-///
-/// `on GameListener` rather than `implements`, for the same reason
-/// `FixedTickable` is: mounting is a simulation-side lifecycle event, and the
-/// bound is what makes putting it on a main-isolate object a compile error
-/// rather than a listener that silently never fires. `GameState`, `SceneStruct`
-/// and `GameSystem` can all mix it in; `Game` cannot.
-mixin LifecycleListener on GameListener {
-  void onMounted() {}
-  void onUnmounted() {}
-}
-
-// May dispatched during GameView's initState, may also dispatched during addEntity
-// unlike FixedTickEvent (where it is dispatched by GameSystem), MountEvent and UnmountEvent are specialized in a way they are called internally by the framework.
-class MountEvent<T extends LifecycleListener> extends GameEvent<T> {
-  MountEvent();
-
-  @override
-  void dispatchListener(T listener) {
-    listener.onMounted();
-  }
-}
-
-class UnmountEvent<T extends LifecycleListener> extends GameEvent<T> {
-  UnmountEvent();
-
-  @override
-  void dispatchListener(T listener) {
-    listener.onUnmounted();
-  }
-}
 
 // --- published cross-isolate state ---------------------------------------
 

@@ -36,7 +36,7 @@ final List<String> changes = <String>[];
 
 /// A plain prefab. It has no state channel of its own - a Component cannot
 /// declare one (see the note above); the system publishes on its behalf.
-class _Probe extends EntityStruct<_Probe> {
+class _Probe extends EntityStruct {
   late final DataPointer<int> hits;
 
   @override
@@ -100,7 +100,7 @@ class _StateSystem extends GameSystem with FixedTickable {
 }
 
 /// Source 2: the `GameState`.
-class _StateGameState extends GameState<_StateGame> with LifecycleListener {
+class _StateGameState extends GameState<_StateGame> {
   late final StateChannel<int> stateCount;
 
   @override
@@ -415,7 +415,7 @@ void main() {
 
 /// One channel of every declared width, all on the `Game` so a test can write
 /// them without going through a system.
-class _WidthState extends GameState<_WidthGame> with LifecycleListener {
+class _WidthState extends GameState<_WidthGame> {
   @override
   void onMounted() {
     loadScene(GameSceneStub());

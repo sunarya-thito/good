@@ -1,3 +1,4 @@
+import 'dart:ffi' hide Size;
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -16,7 +17,7 @@ import 'package:goo2d/goo2d.dart';
 // is not a reduced-fidelity stand-in: the bytes checked here are the exact
 // bytes that cross to the main isolate in the spawned configuration.
 
-class _Sprite extends EntityStruct<_Sprite>
+class _Sprite extends EntityStruct
     with Transform2D, WorldTransform2D, Child, Parent, Renderable2D {
   /// One sprite, declared with nothing but the defaults, so every geometry
   /// test below states the size it wants per entity and inherits the default
@@ -30,17 +31,17 @@ class _Sprite extends EntityStruct<_Sprite>
 }
 
 /// Same fields minus Renderable2D - the negative case for the signature bit.
-class _Invisible extends EntityStruct<_Invisible> with Transform2D, Child {}
+class _Invisible extends EntityStruct with Transform2D, Child {}
 
 /// A bare grouping node: hierarchy links, no transform, nothing to draw.
-class _Group extends EntityStruct<_Group> with Child, Parent {}
+class _Group extends EntityStruct with Child, Parent {}
 
 /// Two sprites on one entity - a body and a hat - with every field supplied
-/// through `has()`'s named parameters and **no `onCreated` anywhere**. Both
+/// through `has()`'s named parameters and **no `onMounted` anywhere**. Both
 /// halves of that matter: that one entity can carry several independently
 /// addressed sprites at all, and that declaring them is the whole of the
 /// configuration.
-class _TwoSprite extends EntityStruct<_TwoSprite>
+class _TwoSprite extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   late final Sprite body;
   late final Sprite hat;
@@ -66,7 +67,7 @@ class _TwoSprite extends EntityStruct<_TwoSprite>
 /// One visible sprite and one declared `visible: false`, on the same entity -
 /// so "hidden" can be measured as a missing record rather than as a quad that
 /// happens to be transparent.
-class _HalfHidden extends EntityStruct<_HalfHidden>
+class _HalfHidden extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   late final Sprite shown;
   late final Sprite hidden;
@@ -80,7 +81,7 @@ class _HalfHidden extends EntityStruct<_HalfHidden>
 
 /// Two sprites declared *out* of depth order - the high one first - so a pass
 /// that merely preserved declaration order would fail the ordering tests.
-class _Stack extends EntityStruct<_Stack>
+class _Stack extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   static const int highColor = 0xFFAA0000;
   static const int lowColor = 0xFF0000AA;
@@ -96,7 +97,7 @@ class _Stack extends EntityStruct<_Stack>
 }
 
 /// A sprite pivoted on its own top-left corner instead of its centre.
-class _TopLeft extends EntityStruct<_TopLeft>
+class _TopLeft extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   late final Sprite quad;
 
@@ -113,7 +114,7 @@ class _TopLeft extends EntityStruct<_TopLeft>
 
 /// A camera. An ordinary entity - the renderer finds it by query. `Child` so
 /// one of the tests below can parent it to something that moves.
-class _Eye extends EntityStruct<_Eye>
+class _Eye extends EntityStruct
     with Transform2D, WorldTransform2D, Child, Camera {}
 
 /// A 2x1 PNG, the same fixture `texture_test.dart` uses. Never decoded here:
@@ -161,7 +162,7 @@ class _TrapTextureAsset extends GameAsset<_TrapTexture> {
 /// One sprite with a texture and one without, on the same entity - so "carries
 /// the address" and "carries the sentinel" are measured against each other in
 /// a single frame rather than in two unrelated scenes.
-class _Textured extends EntityStruct<_Textured>
+class _Textured extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   /// Static and shared, the intended style: a `GameAsset` is identity-compared,
   /// so one key is one instance, one address and (on a loading isolate) one
@@ -179,7 +180,7 @@ class _Textured extends EntityStruct<_Textured>
   void describeAssets(AssetDescriptor descriptor) {
     super.describeAssets(descriptor);
     // Runs before describeStruct, which is what lets the handle below be a
-    // declared row default rather than something an onCreated has to write.
+    // declared row default rather than something an onMounted has to write.
     tile = descriptor.has(tileAsset);
   }
 
@@ -223,7 +224,7 @@ class _PanelTextureAsset extends GameAsset<_PanelTexture> {
 ///
 /// Every number is chosen to stay exact in binary so the expectations below
 /// are equalities rather than tolerances.
-class _Panel extends EntityStruct<_Panel>
+class _Panel extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   static final _PanelTextureAsset asset = _PanelTextureAsset();
   static const double inset = 4;
@@ -255,7 +256,7 @@ class _Panel extends EntityStruct<_Panel>
 
 /// The same panel drawn smaller than its own insets can fit: 4+4 of border on
 /// a 6-unit axis. Exists to pin the collapse behaviour.
-class _UnsizedPanel extends EntityStruct<_UnsizedPanel>
+class _UnsizedPanel extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   late final Texture skin;
   late final Sprite frame;
@@ -280,7 +281,7 @@ class _UnsizedPanel extends EntityStruct<_UnsizedPanel>
 
 /// Insets declared, no texture. Slicing subdivides image space, so with no
 /// image there is nothing to subdivide.
-class _BorderedUntextured extends EntityStruct<_BorderedUntextured>
+class _BorderedUntextured extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   late final Sprite frame;
 
@@ -304,7 +305,7 @@ class _SpriteScene extends SceneStruct {
   @override
   void onMounted(Scene scene) => handle = scene;
 
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
   _SpriteScene();
@@ -343,7 +344,7 @@ class _SpriteScene extends SceneStruct {
   }
 }
 
-class _RenderState extends GameState<_RenderGame> with LifecycleListener {
+class _RenderState extends GameState<_RenderGame> {
   @override
   void onMounted() {
     loadScene(_SpriteScene());
@@ -396,14 +397,19 @@ class _Frame {
 }
 
 List<_Frame> _drainFrames(Game game) {
-  final ring = game.getSystem<GameRenderer2D>().drawBuffer.ring;
+  final buffer = game.getSystem<GameRenderer2D>().drawFrames.buffer;
   final frames = <_Frame>[];
-  for (final record in ring.drain()) {
-    expect(record.recordType, DrawSpriteData2D.spriteRecordType);
-    final batch = ByteData.sublistView(record.payload);
+  // At most one: a handoff buffer holds the newest complete frame, not a
+  // backlog. Where this used to loop over a ring drain and could see several,
+  // it now sees the latest and nothing older - which is the whole point.
+  final slot = buffer.beginRead();
+  if (slot != null) {
+    final used = buffer.readUsedBytes;
+    final payload = slot.asTypedList(used);
+    final batch = ByteData.sublistView(payload);
     final quads = <_Quad>[];
     var offset = DrawData2D.batchHeaderBytes;
-    final count = const DrawSpriteData2D().itemCount(record.payload.length);
+    final count = const DrawSpriteData2D().itemCount(used);
     for (var i = 0; i < count; i++) {
       quads.add(_Quad(
         [
@@ -815,8 +821,8 @@ void main() {
           reason: 'declaring the system is the whole of the wiring - the '
               'buffer is its own declaration, not something the user repeats');
       final renderer = game.getSystem<GameRenderer2D>();
-      expect(renderer.drawBuffer.index, 0);
-      expect(renderer.drawBuffer.ring.capacityBytes, renderer.drawBufferBytes);
+      expect(renderer.drawFrames.index, 0);
+      expect(renderer.drawFrames.slotBytes, renderer.spriteBatchBytes);
     });
 
     test('the ring holds several frames, and a drain resumes where it stopped', () async {
@@ -863,10 +869,10 @@ void main() {
               'fraction and offset are summed, not chosen between');
     });
 
-    test('has() named parameters are the archetype row defaults - no onCreated', () async {
+    test('has() named parameters are the archetype row defaults - no onMounted', () async {
       final game = await _game();
       final scene = game.state!.getScene<_SpriteScene>();
-      // _TwoSprite declares no onCreated at all. Every value below therefore
+      // _TwoSprite declares no onMounted at all. Every value below therefore
       // came from the storage layer stamping the declared default into a fresh
       // row, which is the property that lets a prefab be pure declaration.
       final entity = scene.addEntity(scene.twoSprite);
@@ -1400,7 +1406,7 @@ void main() {
             'stride, so widening the record for UVs must widen them too - a '
             'hard-coded 36 here would have started silently truncating frames',
       );
-      expect(renderer.drawBuffer.ring.capacityBytes, renderer.drawBufferBytes);
+      expect(renderer.drawFrames.slotBytes, renderer.spriteBatchBytes);
     });
   });
 

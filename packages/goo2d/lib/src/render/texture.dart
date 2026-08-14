@@ -97,7 +97,7 @@ class Texture extends GameAssetInstance {
 /// decodes (see [GameAssets]):
 ///
 /// ```dart
-/// class Player extends EntityStruct<Player> {
+/// class Player extends EntityStruct {
 ///   static final playerTexture = TextureAsset.bundle('assets/player.png');
 ///
 ///   late final Texture texture;

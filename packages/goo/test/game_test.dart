@@ -1,11 +1,11 @@
 import 'package:goo/src/scene_handle.dart';
-import 'package:goo/src/event/state.dart';
 import 'package:goo/src/event/tick_loop.dart';
 import 'package:goo/src/archetype.dart';
 import 'package:goo/src/command/command.dart';
 import 'package:goo/src/command/param.dart';
 import 'package:goo/src/data.dart';
 import 'package:goo/src/event/fixed_loop.dart';
+import 'package:goo/src/event/lifecycle.dart';
 import 'package:goo/src/game.dart';
 import 'package:goo/src/game_state.dart';
 import 'package:goo/src/scene.dart';
@@ -25,8 +25,8 @@ final List<String> log = <String>[];
 mixin _Counter on Component {
   late final DataPointer<double> x;
 
-  /// Written by [_Unit.onCreated] only - never a declared default - so
-  /// reading 7 back proves the prefab's onCreated actually ran, not just
+  /// Written by [_Unit.onMounted] only - never a declared default - so
+  /// reading 7 back proves the prefab's onMounted actually ran, not just
   /// that a row was allocated.
   late final DataPointer<int> marker;
 
@@ -44,10 +44,10 @@ mixin _Counter on Component {
   }
 }
 
-class _Unit extends EntityStruct<_Unit> with _Counter {
+class _Unit extends EntityStruct with _Counter, EntityLifecycleListener {
   @override
-  void onCreated(Entity entity) {
-    super.onCreated(entity);
+  void onEntityMounted(Entity entity) {
+    super.onEntityMounted(entity);
     marker[entity] = 7;
   }
 }
@@ -58,7 +58,7 @@ class _TestScene extends SceneStruct {
   /// registers itself and forwards.
   late final Scene handle;
 
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
   _TestScene();
@@ -179,11 +179,48 @@ class _CensusSystem extends GameSystem with FixedTickable {
   }
 }
 
-class _TestState extends GameState<_TestGame> with LifecycleListener {
+/// "Spawn a unit" - the shape that replaced the framework's built-in
+/// `spawnEntity(archetypeId)`.
+///
+/// The Flutter isolate says what it *wants*; the handler, which runs on the
+/// game isolate, is the only thing that knows which prefab that means. An
+/// `archetypeId` crossing the boundary would have made main name an identifier
+/// it has no way to see, which is why the built-in was deleted rather than
+/// kept.
+class _SpawnUnit extends SupplierCommand<Entity> {
+  late final ParamPointer<int> spawned;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    // Signed, and it has to be: `Entity.pack` shifts the archetype id up 48
+    // bits, straight into the sign position of Dart's 64-bit int.
+    spawned = descriptor.hasInt64();
+  }
+
+  @override
+  void bufferFromResult(CommandBuffer call, Entity result) =>
+      spawned[call] = result.value;
+
+  @override
+  Entity resultFromBuffer(CommandBuffer call) => Entity(spawned[call]);
+}
+
+class _TestState extends GameState<_TestGame> {
+  /// Held rather than looked up: the handler needs the prefab, and this is the
+  /// side that has it.
+  final _TestScene level = _TestScene();
+
   @override
   void onMounted() {
-    loadScene(_TestScene());
+    loadScene(level);
   }
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    descriptor.hasSupplier(game.spawnUnit, _onSpawnUnit);
+  }
+
+  Entity _onSpawnUnit() => sceneHandle!.addEntity(level.unit);
 }
 
 class _TestGame extends Game {
@@ -193,8 +230,15 @@ class _TestGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
+  late final _SpawnUnit spawnUnit;
+
   @override
   GameState createState() => _TestState();
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    spawnUnit = descriptor.has(_SpawnUnit());
+  }
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
@@ -245,7 +289,7 @@ class _CommandGame extends _TestGame {
   }
 }
 
-class _CommandState extends GameState<_CommandGame> with LifecycleListener {
+class _CommandState extends GameState<_CommandGame> {
   @override
   void onMounted() {
     loadScene(_TestScene());
@@ -508,14 +552,48 @@ void main() {
     });
   });
 
+  group('tick phases', () {
+    test('each dispatcher resolves its listeners at boot, by type', () async {
+      final game = await _game(_PhaseGame());
+      final state = _state(game);
+
+      // The point of the whole event design: by the time anything is
+      // dispatched, the receiver list is already settled. It was resolved by
+      // one composition walk at boot instead of by testing every candidate on
+      // every dispatch, which is what the old fireEvent walk did.
+      expect(state.fixedTickEvent.listenerCount, 1,
+          reason: 'only _BothPhases simulates');
+      expect(state.tickEvent.listenerCount, 2,
+          reason: '_PresentSystem and _BothPhases both present');
+    });
+
+    test('a disabled system stays collected and declines', () async {
+      final game = await _game(_PhaseGame());
+      final state = _state(game);
+      state.advance(_step);
+      expect(log, ['sim', 'P', 'present']);
+
+      log.clear();
+      await game.disableSystem<_BothPhases>();
+
+      expect(state.fixedTickEvent.listenerCount, 1,
+          reason: 'membership is baked - disabling does not re-collect');
+      state.advance(_step);
+      expect(log, ['P'],
+          reason: 'it declines through listensToEvents instead, which is the '
+              'one thing a pre-resolved list cannot bake because it is '
+              'genuinely runtime state');
+    });
+  });
+
   group('command dispatch and processing', () {
-    test('a spawn command round-trips to a real entity with onCreated run',
+    test('a spawn command round-trips to a real entity with onMounted run',
         () async {
       final game = await _game(_TestGame());
       final scene = _state(game).getScene<_TestScene>();
       final archetypeId = scene.unit.archetypeId;
 
-      final pending = game.spawnEntity(archetypeId);
+      final pending = game.spawnUnit();
       // Nothing happens until the tick that runs the inbox - not even inline,
       // where the batch never leaves this isolate. A game-handled command
       // waits for the tick window whichever way the game was booted.
@@ -529,17 +607,16 @@ void main() {
               'encode/apply lane could only leave it in a field on the '
               'isolate that made it');
       expect(scene.unit.marker[await pending], 7,
-          reason: 'onCreated must run for a command-spawned entity too');
+          reason: 'onMounted must run for a command-spawned entity too');
     });
 
     test('a command lands before systems run, on the very tick it arrives',
         () async {
       final game = await _game(_TestGame());
-      final scene = _state(game).getScene<_TestScene>();
       final census = game.getSystem<_CensusSystem>();
 
       _state(game).advance(_step); // tick 1: nothing exists
-      game.spawnEntity(scene.unit.archetypeId);
+      game.spawnUnit();
       _state(game).advance(_step); // tick 2: command applies, then systems run
       _state(game).advance(_step); // tick 3
 
@@ -557,7 +634,7 @@ void main() {
       // round trip is what costs, not the bytes.
       final batch = game.createCommandBatch();
       final keys = <CommandKey<Entity>>[
-        for (var i = 0; i < 50; i++) batch.execute(game.spawnEntity, id),
+        for (var i = 0; i < 50; i++) batch.supply(game.spawnUnit),
       ];
       final pending = batch.send();
       _state(game).advance(_step);
@@ -602,24 +679,23 @@ void main() {
       expect(_TestGame().createCommandBatch, throwsStateError);
     });
 
-    test('addToSceneById refuses an archetype from another scene', () async {
+    test('a scene refuses a prefab another scene registered', () async {
       final game = await _game(_TestGame());
       final scene = _state(game).getScene<_TestScene>();
       // Deliberately brought up on the *same* pool the loaded scene uses.
-      // That is the case the old check could not see: ownership used to be
-      // inferred from pool identity, which was only ever true because a scene
-      // owned its own pool. Now that the pool belongs to the Game and every
-      // scene shares it, two scenes are pool-identical and only
-      // ArchetypeStorage.owner tells them apart - so this assertion fails
-      // against the old implementation and passes against the new one.
+      // That is the case a pool-identity check could not see: ownership used
+      // to be inferred from pool identity, which was only ever true because a
+      // scene owned its own pool. The pool belongs to the Game now and every
+      // scene shares it, so two scenes are pool-identical and only the
+      // prefab's own recorded scene tells them apart.
       final other = _TestScene()..initializeScene(_state(game).pool);
-  other.handle = SceneRegistry.register(other);
+      other.handle = SceneRegistry.register(other);
       expect(identical(other.pool, scene.pool), isTrue,
           reason: 'same pool, different scene - the whole point of the case');
-      expect(() => _state(game).sceneHandle!.addEntityById(other.unit.archetypeId),
-          throwsStateError);
-      expect(() => _state(game).sceneHandle!.addEntityById(999),
-          throwsArgumentError);
+      expect(() => _state(game).sceneHandle!.addEntity(other.unit),
+          throwsStateError,
+          reason: 'the prefab belongs to `other`, so spawning it into the '
+              'loaded scene would put its rows in the wrong page group');
     });
   });
 
@@ -713,7 +789,7 @@ void main() {
 class _UndeclaredSystem extends GameSystem {}
 
 /// The "no world yet" configuration: a GameState that declares no scene.
-class _ScenelessState extends GameState<_ScenelessGame> with LifecycleListener {}
+class _ScenelessState extends GameState<_ScenelessGame> {}
 
 class _ScenelessGame extends Game {
   @override

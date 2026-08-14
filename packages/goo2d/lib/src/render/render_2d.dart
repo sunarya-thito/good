@@ -1,3 +1,4 @@
+import 'dart:ffi';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -242,7 +243,7 @@ class Sprite {
 /// exposes, and each one doubles as that archetype's declared row default -
 /// the standing `MultiComponent` convention (`ColliderDescriptor`'s
 /// `has*Collider` methods are the same shape) - so the common case needs no
-/// `onCreated` write at all.
+/// `onMounted` write at all.
 class SpriteDescriptor {
   SpriteDescriptor._(this._data, this._sprites);
 
@@ -321,7 +322,6 @@ mixin Renderable2D on MultiComponent {
 
   /// A handle to this component's type, so a prefab can enable/disable the
   /// whole of its rendering without touching individual sprites.
-  late final ComponentType<Renderable2D> componentRenderable;
 
   /// Implemented by the concrete prefab - declares this entity type's sprites
   /// via the [SpriteDescriptor] passed in.
@@ -337,7 +337,7 @@ mixin Renderable2D on MultiComponent {
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
-    componentRenderable = component.has<Renderable2D>();
+    component.has<Renderable2D>();
   }
 
   @override
@@ -628,7 +628,7 @@ class GameRenderer2D extends GameSystem with Tickable {
   /// reaches it through `game.getSystem<GameRenderer2D>().drawBuffer` - a
   /// typed path the analyzer checks, where the old `getBuffer('...')` was a
   /// string two packages had to agree on.
-  late final BufferHandle drawBuffer;
+  late final HandoffHandle drawFrames;
 
   /// Sprites past this many in a single tick are dropped. A hard bound rather
   /// than a growing buffer on purpose: the byte scratch and the ring are both
@@ -643,13 +643,14 @@ class GameRenderer2D extends GameSystem with Tickable {
   int get spriteBatchBytes =>
       DrawData2D.batchHeaderBytes + maxSpritesPerTick * DrawSpriteData2D.strideBytes;
 
-  /// Ring capacity. Four full batches: enough that a main isolate that misses
-  /// a couple of ticks (a slow frame, a widget rebuild) still finds its frame
-  /// waiting, without pretending an unbounded queue of stale frames is useful.
-  /// Overflow drops the *newest* frame, which is the wrong end - see
-  /// [onTick] - so this exists to make overflow rare rather than to
-  /// make it survivable.
-  int get drawBufferBytes => 4 * (RingBuffer.headerBytes + spriteBatchBytes);
+  // There is no ring capacity to configure any more. This used to be a
+  // `RingBuffer` sized to four batches, on the theory that a main isolate
+  // missing a couple of ticks should still find its frame waiting - which had
+  // it exactly backwards. A queue keeps the *oldest* frames, and an old frame
+  // is the one thing a renderer never wants; overflow then dropped the newest,
+  // which is the wrong end. A `HandoffBuffer` holds one complete frame and the
+  // one being built, so "behind" simply means the reader gets the newest
+  // instead of a backlog. See `BufferDescriptor.hasHandoff`.
 
   late final Query _renderables;
   late final Query _cameras;
@@ -712,7 +713,7 @@ class GameRenderer2D extends GameSystem with Tickable {
   @override
   void describeBuffers(BufferDescriptor descriptor) {
     super.describeBuffers(descriptor);
-    drawBuffer = descriptor.has(capacityBytes: drawBufferBytes);
+    drawFrames = descriptor.hasHandoff(slotBytes: spriteBatchBytes);
   }
 
   /// Whether [sprite] on [entity] draws as nine quads rather than one.
@@ -903,12 +904,23 @@ class GameRenderer2D extends GameSystem with Tickable {
 
   @override
   void onTick(Duration delta) {
-    // The handle resolves to a live ring in one field read, so unlike the
-    // scratch buffer there is nothing to cache. The scratch is still built on
-    // first use rather than at bind time: only the simulating copy ever gets
-    // here, and the handle copy would otherwise carry a megabyte of bytes it
-    // never touches.
-    final ring = drawBuffer.ring;
+    // Asked *before* any work is done, and that ordering is the point. Null
+    // means main has not taken the last frame yet, so there is nowhere safe to
+    // write - and rather than build a frame and throw it away, the whole pass
+    // is skipped. The simulation is unaffected; only the drawing stops, and
+    // only while nobody is looking. This is what stops a 200Hz tick building
+    // and discarding two frames out of every three against a 60Hz display.
+    final frames = drawFrames.tryBuffer;
+    if (frames == null) return;
+    final target = frames.beginWrite();
+    if (target == null) {
+      lastWriteDropped = true;
+      return;
+    }
+
+    // The scratch is built on first use rather than at bind time: only the
+    // simulating copy ever gets here, and the handle copy would otherwise
+    // carry a megabyte of bytes it never touches.
     final scratch = _scratch ??= Uint8List(spriteBatchBytes);
     final view = _scratchView ??= ByteData.sublistView(scratch);
 
@@ -1089,15 +1101,16 @@ class GameRenderer2D extends GameSystem with Tickable {
     // back the instance that already exists - and `writeQuad`'s named
     // arguments are statically resolved, so they compile to positional ones
     // and build no argument object.
-    lastWriteDropped = !ring.tryWrite(
-      DrawSpriteData2D.spriteRecordType,
-      Uint8List.sublistView(scratch, 0, offset),
-    );
-    assert(
-      !lastWriteDropped,
-      'the draw ring is full - the main isolate is not draining it. A frame '
-      'was dropped. Raise GameRenderer2D.drawBufferBytes if this is a burst, '
-      'but the usual cause is that nothing is consuming the buffer at all.',
-    );
+    // Into the slot the handoff already handed over, then published. The copy
+    // is the same one `RingBuffer.tryWrite` used to make, so this is not a new
+    // cost - and the `asTypedList` view is one object per *frame*, matching the
+    // `sublistView` it replaces. Writing the geometry straight into the slot
+    // and skipping the scratch entirely is possible and is the obvious next
+    // step; it needs the per-slot views cached, which needs care about the
+    // spawn (a typed-data view of native memory is deep-copied by value), so
+    // it is deliberately not smuggled in here.
+    target.asTypedList(spriteBatchBytes).setRange(0, offset, scratch);
+    frames.publish(offset);
+    lastWriteDropped = false;
   }
 }

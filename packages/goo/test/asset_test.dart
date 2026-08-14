@@ -6,7 +6,6 @@ import 'package:goo/src/scene_handle.dart';
 import 'package:goo/src/archetype.dart';
 import 'package:goo/src/asset.dart';
 import 'package:goo/src/data.dart';
-import 'package:goo/src/event/state.dart';
 import 'package:goo/src/game.dart';
 import 'package:goo/src/game_state.dart';
 import 'package:goo/src/pool.dart';
@@ -110,7 +109,7 @@ class _FakeAsset extends GameAsset<_FakeInstance> {
 /// A prefab that declares [key] and keeps the handle - the shape RULES.md
 /// rule 6 asks for, and what every "did describeAssets run" assertion below
 /// inspects.
-class _Prop extends EntityStruct<_Prop> {
+class _Prop extends EntityStruct {
   _Prop(this.key);
 
   final GameAsset<_FakeInstance> key;
@@ -137,7 +136,7 @@ class _Prop extends EntityStruct<_Prop> {
 
 /// A prefab with no assets at all - proves the chained no-op base still runs
 /// and costs nothing.
-class _Bare extends EntityStruct<_Bare> {}
+class _Bare extends EntityStruct {}
 
 class _PropScene extends SceneStruct {
   /// This fixture's loaded handle. Entity creation lives on `Scene` now (one
@@ -145,7 +144,7 @@ class _PropScene extends SceneStruct {
   /// registers itself and forwards.
   late final Scene handle;
 
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
   // A small pool by default: these tests never spawn much, and the 64 MiB
@@ -828,7 +827,7 @@ class _BareScene extends SceneStruct {
   /// registers itself and forwards.
   late final Scene handle;
 
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
   _BareScene(this._prefab);
@@ -854,7 +853,7 @@ class _DiffGame extends Game {
   GameState createState() => _DiffState();
 }
 
-class _DiffState extends GameState<_DiffGame> with LifecycleListener {
+class _DiffState extends GameState<_DiffGame> {
   /// The boot load's future. `onMounted` cannot be async and `start()` does
   /// not await what a state loads, so a test that wants "the first scene has
   /// finished decoding" has to await this rather than trust that enough

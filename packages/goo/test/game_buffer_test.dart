@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:goo/src/scene_handle.dart';
-import 'package:goo/src/event/state.dart';
 import 'package:goo/src/archetype.dart';
 import 'package:goo/src/event/fixed_loop.dart';
 import 'package:goo/src/game.dart';
@@ -29,7 +28,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 const int _pingRecordType = 3;
 
-class _Empty extends EntityStruct<_Empty> {}
+class _Empty extends EntityStruct {}
 
 class _EmptyScene extends SceneStruct {
   _EmptyScene();
@@ -59,7 +58,7 @@ class _PingSystem extends GameSystem with FixedTickable {
   }
 }
 
-class _BufferState extends GameState<_BufferGame> with LifecycleListener {
+class _BufferState extends GameState<_BufferGame> {
   @override
   void onMounted() {
     loadScene(_EmptyScene());
@@ -110,7 +109,7 @@ class _TinyBufferGame extends _BufferGame {
 }
 
 /// No systems, no buffers - the "declared nothing" baseline.
-class _BareState extends GameState<_BareGame> with LifecycleListener {
+class _BareState extends GameState<_BareGame> {
   @override
   void onMounted() {
     loadScene(_EmptyScene());

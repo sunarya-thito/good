@@ -13,7 +13,6 @@ import 'package:flutter_test/flutter_test.dart';
 // linearization the real consumer relies on, without goo depending on
 // goo2d (the dependency runs the other way).
 mixin _Transform on Component {
-  late final ComponentType<_Transform> componentTransform;
 
   late final DataPointer<double> offsetX;
   late final DataPointer<double> offsetY;
@@ -22,7 +21,7 @@ mixin _Transform on Component {
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
-    componentTransform = component.has<_Transform>();
+    component.has<_Transform>();
   }
 
   @override
@@ -62,13 +61,13 @@ mixin _Flags on Component {
   }
 }
 
-class _Player extends EntityStruct<_Player> with _Transform, _Health, _Flags {}
+class _Player extends EntityStruct with _Transform, _Health, _Flags {}
 
-class _Enemy extends EntityStruct<_Enemy> with _Transform, _Flags {}
+class _Enemy extends EntityStruct with _Transform, _Flags {}
 
-class _Rock extends EntityStruct<_Rock> {}
+class _Rock extends EntityStruct {}
 
-class _ChildOnly extends EntityStruct<_ChildOnly> with Child {}
+class _ChildOnly extends EntityStruct with Child {}
 
 class _Level extends SceneStruct {
   /// This fixture's loaded handle. Entity creation lives on `Scene` now (one
@@ -76,7 +75,7 @@ class _Level extends SceneStruct {
   /// registers itself and forwards.
   late final Scene handle;
 
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
   _Level();
@@ -194,8 +193,7 @@ void main() {
       final pool = MemoryPool(pageSize: 256);
       addTearDown(pool.dispose);
       final owner = _Level();
-      final storage =
-          ArchetypeRegistry.register(pool, owner, GameAssets(), shared);
+      final storage = ArchetypeRegistry.register(pool, GameAssets(), shared);
       shared.bindArchetype(owner, storage);
       expect(
         () => shared.bindArchetype(owner, storage),

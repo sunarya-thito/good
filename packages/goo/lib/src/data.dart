@@ -7,6 +7,11 @@ import 'package:goo/src/struct.dart';
 // default value is stored to the memory pool during object creation
 // NOT accessed through pattern like `hasValue ? value : defaultValue`
 
+abstract class DataBinding<T> {
+  T get value;
+  set value(T newValue);
+}
+
 abstract class DataDescriptor {
   DataPointer<int> hasUint1([int defaultValue = 0]);
   DataPointer<int> hasInt1([int defaultValue = 0]);
@@ -141,8 +146,31 @@ abstract class DataDescriptor {
 }
 
 abstract class DataPointer<T> {
+  const DataPointer();
+
   T operator [](Entity instance);
   void operator []=(Entity instance, T newValue);
+
+  /// Pairs this pointer with one [instance], so the result reads and writes
+  /// that entity's value with no further arguments.
+  ///
+  /// Implementers **extend** `DataPointer` rather than implementing it, purely
+  /// so this default is inherited instead of copied per implementation - one
+  /// home for the behaviour (RULES.md rule 10).
+  DataBinding<T> bind(Entity instance) => _DataBinding(this, instance);
+}
+
+class _DataBinding<T> implements DataBinding<T> {
+  final DataPointer<T> pointer;
+  final Entity instance;
+
+  _DataBinding(this.pointer, this.instance);
+
+  @override
+  T get value => pointer[instance];
+
+  @override
+  set value(T newValue) => pointer[instance] = newValue;
 }
 
 /// A fixed-length array of [length] values stored inline in every entity's

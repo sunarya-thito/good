@@ -28,7 +28,7 @@ import 'package:goo/src/data.dart';
 /// that field is the only thing an asset-typed component field will accept.
 ///
 /// ```dart
-/// class Player extends EntityStruct<Player> with Renderable2D {
+/// class Player extends EntityStruct with Renderable2D {
 ///   static final playerTexture = TextureAsset.bundle('assets/player.png');
 ///
 ///   late final Texture texture;
@@ -243,6 +243,33 @@ final class GameAssets {
     } finally {
       _loading.remove(key);
     }
+  }
+
+  /// [load], but naming the asset by its [GlobalObject.address] instead of by
+  /// its key.
+  ///
+  /// The form that crosses an isolate boundary: a `GameAsset` is a live Dart
+  /// object, while an address is the integer both copies independently
+  /// assigned to the same declaration. The game isolate declares assets and
+  /// cannot decode them, so it sends addresses and main does this - see
+  /// `Game._handleAssetLoadRequest`.
+  ///
+  /// Returns `null` if [address] names nothing declared, rather than throwing:
+  /// the request crossed a boundary, so a stale address is a message-ordering
+  /// question and the caller reports it back to the asker.
+  @internal
+  Future<GameAssetInstance>? loadAddress(int address) {
+    final instance = tryResolve<GameAssetInstance>(address);
+    final key = instance?._key;
+    if (key == null) return null;
+    return load(key);
+  }
+
+  /// [unload], by address. The other half of [loadAddress]; same reasoning.
+  @internal
+  void unloadAddress(int address) {
+    final key = tryResolve<GameAssetInstance>(address)?._key;
+    if (key != null) unload(key);
   }
 
   /// The instance declared for [key], or `null` if nothing has declared it

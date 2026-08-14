@@ -8,7 +8,7 @@ import 'package:goo/src/struct.dart';
 /// per-access allocation beyond what boxing an `Entity?` already costs
 /// (which is nothing extra - `Entity` is a zero-cost extension type over
 /// `int`, so an `Entity?` is exactly as cheap as an `int?`).
-class _EntityField implements DataPointer<Entity?> {
+class _EntityField extends DataPointer<Entity?> {
   const _EntityField(this._raw);
 
   final DataPointer<int?> _raw;

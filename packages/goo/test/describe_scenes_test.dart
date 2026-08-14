@@ -31,7 +31,7 @@ mixin _Marked on Component {
   }
 }
 
-class _Unit extends EntityStruct<_Unit> with _Marked {}
+class _Unit extends EntityStruct with _Marked {}
 
 class _Level extends SceneStruct {
   late final _Unit unit;

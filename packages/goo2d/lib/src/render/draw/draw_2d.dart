@@ -620,6 +620,34 @@ final class DrawCanvas2D {
     return true;
   }
 
+  /// [ingest], for a frame that arrived through a `HandoffBuffer` rather than
+  /// a ring drain: one batch, already known to be the newest complete one.
+  ///
+  /// [byteLength] is what the writer published as used, not the slot's
+  /// capacity - decoding the whole slot would walk whatever the previous,
+  /// busier frame left in the tail.
+  ///
+  /// **One batch of one codec per slot.** The ring form above could carry a
+  /// drain holding several record types; a slot holds exactly what fits, and
+  /// it is sized for sprites. A second codec (particles, lines) wants its own
+  /// handoff buffer rather than a section header in this one - separate
+  /// producers, separate rates, no reason to couple them.
+  bool ingestFrame(ByteData batch, int byteLength) {
+    final tick = DrawData2D.batchTick(batch);
+    // Older or equal means the reader sampled faster than the writer
+    // published, which is the normal case at 60Hz against a slower tick. There
+    // is nothing new to build; repaint what is already held.
+    if (tick <= _frameTick) return false;
+
+    final type = registry[DrawSpriteData2D.spriteRecordType];
+    if (type == null) return false;
+    _batch.reset();
+    type.buildGeometry(batch, type.itemCount(byteLength), _batch);
+    _frameTick = tick;
+    _verticesStale = true;
+    return true;
+  }
+
   /// How many `drawVertices` calls [replay] will make for the held frame -
   /// one per contiguous same-texture run, not one per sprite and not one per
   /// distinct texture.

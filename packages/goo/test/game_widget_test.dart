@@ -3,8 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:goo/src/scene_handle.dart';
 import 'package:goo/src/archetype.dart';
-import 'package:goo/src/event.dart';
-import 'package:goo/src/event/state.dart';
 import 'package:goo/src/game.dart';
 import 'package:goo/src/game_state.dart';
 import 'package:goo/src/scene.dart';
@@ -19,7 +17,7 @@ import 'package:goo/src/widget/game_view.dart';
 // one object builds the view, systems live wholly on the game isolate, and
 // the "which isolate does this run on" question has one answer per type.
 
-class _BareState extends GameState<Game> with LifecycleListener {
+class _BareState extends GameState<Game> {
   @override
   void onMounted() {
     loadScene(_BareScene());
@@ -127,25 +125,4 @@ void main() {
     });
   });
 
-  group('isolate affinity', () {
-    test('a Game is not a listener and a GameSystem is', () {
-      // The compile-time guarantee, asserted where it can be observed at all.
-      // `Game` living on the Flutter isolate is why `class MyGame extends
-      // Game with FixedTickable` does not compile: FixedTickable is
-      // `on GameListener`, and this is the half of that bound that a test can
-      // actually see.
-      expect(_ViewGame(), isNot(isA<GameListener>()));
-
-      expect(_TickingSystem(), isA<GameListener>(),
-          reason: 'a system is wholly a game-isolate thing now - it used to '
-              'straddle both, which is what made a widget-building system '
-              'possible and the isolate question hard');
-      expect(_BareState(), isA<GameListener>());
-      expect(_BareScene(), isA<GameListener>());
-    });
-
-    test('a listener reports itself as listening by default', () {
-      expect(_TickingSystem().listensToEvents, isTrue);
-    });
-  });
 }

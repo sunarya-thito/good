@@ -23,26 +23,51 @@ import 'package:goo/src/triple_buffer.dart';
 ///  * the bit block is a fixed 16 bytes no matter how many actions a game
 ///    declares, so the wire cost of input does not grow with the game.
 ///
-/// # Reading
+/// # Reading, and why it is a copy
 ///
-/// A reader holds one of these for the whole of a fixed tick: `Game`
-/// re-points it at the newest published snapshot once, at the top of
-/// `GameState.runFixedStep`, and every action resolved during that tick reads
-/// through the same slot. That is what makes an input snapshot *coherent* -
-/// two systems in one tick cannot disagree about whether a key was down.
+/// [attach] **copies** the published block into this object once per fixed
+/// tick, at the top of `GameState.runFixedStep`, and every action resolved
+/// during that tick reads the copy. That is what makes an input snapshot
+/// *coherent* - two systems in one tick cannot disagree about whether a key
+/// was down.
 ///
-/// [isDown] is a null check, a shift and a mask against native memory: no
-/// allocation, no map, nothing per-call (RULES.md rules 1, 2, 5).
+/// It used to keep the slot `Pointer` and read shared memory directly, which
+/// was a real hazard rather than an optimisation. `TripleBuffer` rotates its
+/// slots blindly: a reader gets two publishes of grace before the writer comes
+/// back around and overwrites the slot it is holding. The writer here is
+/// `InputDevice` on the Flutter isolate, publishing on **every change** -
+/// including every pointer move, several of which can arrive inside one
+/// Flutter frame. Holding a slot for an entire fixed tick against that is
+/// asking for a torn read: a key spuriously up for one tick, or a pointer X
+/// from one event paired with a Y from the next.
+///
+/// The copy is 40 bytes - 16 of key bits plus six `float32`s - so the window
+/// in which the writer could interfere shrinks from a whole tick to a couple
+/// of dozen loads. It also makes the coherence promise above actually
+/// *guaranteed*, rather than true only while the margin happens to hold.
+///
+/// [isDown] is a bounds-free index, a shift and a mask against a plain
+/// `Uint8List`: no allocation, no map, nothing per call (RULES.md rules 1, 2,
+/// 5). [attach] allocates nothing either - it is an indexed copy, deliberately
+/// not `Pointer.asTypedList`, which builds a view object per call.
 final class InputState {
   @internal
   InputState();
 
-  /// The published slot this state currently reads through, or null when
-  /// nothing has been published yet - a game with no widget attached, or the
-  /// handful of ticks before the first device event on a game that has one.
-  /// Every key reads as up in that case, which is exactly right: nothing is
+  /// This tick's key bits, copied from the published slot by [attach].
+  final Uint8List _bits = Uint8List(bitBlockBytes);
+
+  /// This tick's pointer block, likewise. A separate array rather than a
+  /// `Float32List.view` over [_bits]' buffer: two independent plain-Dart
+  /// arrays have no aliasing to reason about and nothing that a deep copy
+  /// across `Isolate.spawn` could reattach to the wrong storage.
+  final Float32List _floats = Float32List(6);
+
+  /// Whether anything has ever been published - false on a game with no
+  /// widget attached, or for the handful of ticks before the first device
+  /// event. Every key then reads as up, which is exactly right: nothing is
   /// being held, because there is nothing to hold it with.
-  Pointer<Uint8>? _slot;
+  bool _attached = false;
 
   /// Bytes of key bits: one bit per declared key, rounded up to a whole
   /// 64-bit word so what follows stays naturally aligned. 16 bytes today.
@@ -67,17 +92,12 @@ final class InputState {
 
   /// Whether [key] is currently held.
   bool isDown(InputKey key) {
-    final slot = _slot;
-    if (slot == null) return false;
+    if (!_attached) return false;
     final id = key.id;
-    return slot[id >> 3] & (1 << (id & 7)) != 0;
+    return _bits[id >> 3] & (1 << (id & 7)) != 0;
   }
 
-  double _float(int index) {
-    final slot = _slot;
-    if (slot == null) return 0;
-    return (slot + _pointerOffset).cast<Float>()[index];
-  }
+  double _float(int index) => _attached ? _floats[index] : 0;
 
   /// The pointer in window coordinates, origin at the window's top-left.
   double get pointerScreenX => _float(0);
@@ -94,10 +114,28 @@ final class InputState {
   double get viewWidth => _float(4);
   double get viewHeight => _float(5);
 
-  /// Re-points this state at the newest published snapshot. Called exactly
-  /// once per fixed tick - see the class doc on coherence.
+  /// Copies the newest published snapshot into this state. Called exactly
+  /// once per fixed tick - see the class doc on why it copies.
+  ///
+  /// An indexed loop rather than `Pointer.asTypedList` + `setAll`:
+  /// `asTypedList` builds a view object per call, which on a per-tick path is
+  /// a heap allocation per tick (RULES.md rule 1). Forty-odd loads is cheaper
+  /// than the object would be, never mind the collection.
   @internal
-  void attach(Pointer<Uint8>? slot) => _slot = slot;
+  void attach(Pointer<Uint8>? slot) {
+    if (slot == null) {
+      _attached = false;
+      return;
+    }
+    for (var i = 0; i < _bits.length; i++) {
+      _bits[i] = slot[i];
+    }
+    final floats = (slot + _pointerOffset).cast<Float>();
+    for (var i = 0; i < _floats.length; i++) {
+      _floats[i] = floats[i];
+    }
+    _attached = true;
+  }
 }
 
 /// The **write** end of [InputState]: where raw device events become bits.

@@ -4,9 +4,11 @@ import 'dart:typed_data';
 import 'package:goo/src/scene_handle.dart';
 import 'package:goo/src/archetype.dart';
 import 'package:goo/src/command/command.dart';
+import 'package:goo/src/command/param.dart';
 import 'package:goo/src/asset.dart';
 import 'package:goo/src/data.dart';
 import 'package:goo/src/event/fixed_loop.dart';
+import 'package:goo/src/event/lifecycle.dart';
 import 'package:goo/src/event/state.dart';
 import 'package:goo/src/game.dart';
 import 'package:goo/src/game_state.dart';
@@ -48,7 +50,7 @@ mixin _Moving on Component {
   /// message channel: it just reads the count out of shared memory.
   late final DataPointer<int> census;
 
-  /// Set only by [_Mover.onCreated] - proves the prefab's creation hook ran
+  /// Set only by [_Mover.onMounted] - proves the prefab's creation hook ran
   /// on the game isolate, for both mount-time and command-time spawns.
   late final DataPointer<int> marker;
 
@@ -67,10 +69,10 @@ mixin _Moving on Component {
   }
 }
 
-class _Mover extends EntityStruct<_Mover> with _Moving {
+class _Mover extends EntityStruct with _Moving, EntityLifecycleListener {
   @override
-  void onCreated(Entity entity) {
-    super.onCreated(entity);
+  void onEntityMounted(Entity entity) {
+    super.onEntityMounted(entity);
     marker[entity] = 7;
   }
 }
@@ -81,7 +83,7 @@ class _MoverScene extends SceneStruct {
   /// registers itself and forwards.
   late final Scene handle;
 
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
   _MoverScene();
@@ -123,11 +125,42 @@ class _MoverSystem extends GameSystem with FixedTickable {
   }
 }
 
-class _IsolateState extends GameState<_IsolateGame> with LifecycleListener {
+/// "Spawn a mover" - a game-declared command, replacing the framework's
+/// deleted `spawnEntity(archetypeId)`.
+///
+/// Main names the intent; the handler, over on the game isolate, is what turns
+/// that into a prefab. Nothing about an archetype id crosses the boundary.
+class _SpawnMover extends SupplierCommand<Entity> {
+  late final ParamPointer<int> spawned;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    // Signed: `Entity.pack` shifts the archetype id into the sign bit.
+    spawned = descriptor.hasInt64();
+  }
+
+  @override
+  void bufferFromResult(CommandBuffer call, Entity result) =>
+      spawned[call] = result.value;
+
+  @override
+  Entity resultFromBuffer(CommandBuffer call) => Entity(spawned[call]);
+}
+
+class _IsolateState extends GameState<_IsolateGame> {
+  final _MoverScene level = _MoverScene();
+
   @override
   void onMounted() {
-    loadScene(_MoverScene());
+    loadScene(level);
   }
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    descriptor.hasSupplier(game.spawnMover, _onSpawnMover);
+  }
+
+  Entity _onSpawnMover() => sceneHandle!.addEntity(level.mover);
 }
 
 class _IsolateGame extends Game {
@@ -139,8 +172,15 @@ class _IsolateGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
+  late final _SpawnMover spawnMover;
+
   @override
   GameState createState() => _IsolateState();
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    spawnMover = descriptor.has(_SpawnMover());
+  }
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
@@ -175,7 +215,7 @@ class _PingSystem extends GameSystem with FixedTickable {
   }
 }
 
-class _PingState extends GameState<_PingGame> with LifecycleListener {
+class _PingState extends GameState<_PingGame> {
   @override
   void onMounted() {
     loadScene(_MoverScene());
@@ -219,7 +259,7 @@ class _CounterSystem extends GameSystem with FixedTickable {
   }
 }
 
-class _ChannelState extends GameState<_ChannelGame> with LifecycleListener {
+class _ChannelState extends GameState<_ChannelGame> {
   @override
   void onMounted() {
     loadScene(_MoverScene());
@@ -287,7 +327,7 @@ class _InputProbeSystem extends GameSystem with FixedTickable {
   }
 }
 
-class _InputProbeState extends GameState<_InputProbeGame> with LifecycleListener {
+class _InputProbeState extends GameState<_InputProbeGame> {
   @override
   void onMounted() {
     loadScene(_MoverScene());
@@ -355,7 +395,7 @@ class _IsolateTextureAsset extends GameAsset<_IsolateTexture> {
   }
 }
 
-class _Textured extends EntityStruct<_Textured> {
+class _Textured extends EntityStruct {
   late final _IsolateTexture texture;
 
   /// What the *game isolate's* copy thinks this asset's address is.
@@ -387,7 +427,7 @@ class _TexturedScene extends SceneStruct {
   /// registers itself and forwards.
   late final Scene handle;
 
-  Entity addEntity<T extends EntityStruct<T>>(T prefab, {Entity? parent}) =>
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
   _TexturedScene();
@@ -406,7 +446,7 @@ class _TexturedScene extends SceneStruct {
 }
 
 /// Publishes the game isolate's view of the asset into the row every tick.
-/// Not in `onCreated`: the whole point is to sample *after* the transition
+/// Not in `onMounted`: the whole point is to sample *after* the transition
 /// finished, so "still not loaded" means "never loads", not "not yet".
 class _TexturedSystem extends GameSystem with FixedTickable {
   late final Query query;
@@ -426,7 +466,7 @@ class _TexturedSystem extends GameSystem with FixedTickable {
   }
 }
 
-class _TexturedState extends GameState<_TexturedGame> with LifecycleListener {
+class _TexturedState extends GameState<_TexturedGame> {
   @override
   void onMounted() {
     loadScene(_TexturedScene());
@@ -450,6 +490,117 @@ class _TexturedGame extends Game {
 }
 
 
+// --- runtime loadScene, and the asset decode round-trip ------------------
+//
+// A scene *declared* at boot (so both copies hold its declaration and agree
+// on its asset addresses) but *loaded* later, from the game isolate, at
+// runtime. That is the case where the game isolate has to ask main to decode:
+// it owns the declaration and cannot decode, main can decode and is never
+// asked unless told.
+//
+// Before `Game.requestAssetLoad` existed this silently did nothing.
+// `_reconcileAssets` took its claims and hit `if (!game.decodesAssets)
+// return;`, so the scene came up with an addressed, permanently unloaded
+// asset. It looked correct only because main happened to run `loadScene`
+// itself during boot in every test that existed.
+
+final _IsolateTextureAsset _lateTexture = _IsolateTextureAsset();
+
+class _LateProp extends EntityStruct {
+  late final _IsolateTexture texture;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    texture = descriptor.has(_lateTexture);
+  }
+}
+
+class _LateScene extends SceneStruct {
+  late final _LateProp prop;
+
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    prop = descriptor.has(_LateProp());
+  }
+
+  @override
+  void onMounted(Scene scene) {
+    scene.addEntity(prop);
+  }
+}
+
+/// Asks the game isolate to load the declared-but-unloaded scene. A command,
+/// because `loadScene` is game-isolate-only and this is how main asks.
+class _LoadLate extends SignalCommand {}
+
+/// And to unload it again, so the payload main is holding gets dropped.
+class _UnloadLate extends SignalCommand {}
+
+class _LateState extends GameState<_LateGame> {
+  Scene? _loadedLate;
+
+  @override
+  void onMounted() {
+    // Deliberately loads nothing: the scene is declared, not loaded, so the
+    // load under test happens later and on the other isolate.
+  }
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    descriptor
+      ..hasSignal(game.loadLate, _load)
+      ..hasSignal(game.unloadLate, _unload);
+  }
+
+  void _load() {
+    // The progress callback runs on *this* isolate, driven by the per-asset
+    // messages main sends back as it decodes - so publishing it to a channel
+    // is the only way the test can see that lane worked at all.
+    loadScene(
+      game.lateScene,
+      onProgress: (report) => game.progress.value = report.progress,
+    ).then((scene) => _loadedLate = scene);
+  }
+
+  void _unload() {
+    final scene = _loadedLate;
+    if (scene != null) unloadScene(scene);
+  }
+}
+
+class _LateGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 5);
+
+  late final _LateScene lateScene;
+  late final _LoadLate loadLate;
+  late final _UnloadLate unloadLate;
+  late final StateChannel<double> progress;
+
+  @override
+  GameState createState() => _LateState();
+
+  @override
+  void describeScenes(GameSceneDescriptor descriptor) {
+    lateScene = descriptor.has(_LateScene());
+  }
+
+  @override
+  void describeState(StateDescriptor descriptor) {
+    progress = descriptor.hasFloat64(-1);
+  }
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    loadLate = descriptor.has(_LoadLate());
+    unloadLate = descriptor.has(_UnloadLate());
+  }
+}
+
 // --- un-adopt handshake fixtures -----------------------------------------
 //
 // Unloading a scene frees its pages on the game isolate while the main copy
@@ -461,7 +612,7 @@ class _TexturedGame extends Game {
 
 class _DropScene extends SignalCommand {}
 
-class _UnloadState extends GameState<_UnloadGame> with LifecycleListener {
+class _UnloadState extends GameState<_UnloadGame> {
   @override
   void onMounted() {
     loadScene(_MoverScene());
@@ -503,6 +654,20 @@ class _UnloadGame extends Game {
   void describeSystems(SystemDescriptor descriptor) {
     descriptor.has(_MoverSystem());
   }
+}
+
+/// Polls [ready] once per reported tick, up to [within] ticks.
+///
+/// Ticks rather than wall-clock: the thing being waited on is driven by the
+/// game isolate's loop, so counting its ticks is what makes this reliable on a
+/// loaded CI machine rather than a timing guess.
+Future<bool> _waitUntil(Game game, bool Function() ready,
+    {int within = 40}) async {
+  for (var i = 0; i < within; i++) {
+    if (ready()) return true;
+    await _waitTicks(game, 1);
+  }
+  return ready();
 }
 
 /// Waits for [count] more fixed ticks to be reported by the game isolate.
@@ -551,7 +716,7 @@ void main() {
       // message carrying the value.
       expect(scene.mover.marker[mounted], 7,
           reason: 'the scene mounted an entity on the game isolate and its '
-              'onCreated ran there');
+              'onMounted ran there');
       final firstRead = scene.mover.x[mounted];
       expect(firstRead, greaterThan(0),
           reason: 'the mover system is running on the other isolate');
@@ -569,9 +734,8 @@ void main() {
       // and runs the handler, writes the reply into the game->main ring, and
       // this copy picks it up on the next tick notification and completes the
       // future below with the entity that was actually created over there.
-      final spawned = await game
-          .spawnEntity(scene.mover.archetypeId)
-          .timeout(const Duration(seconds: 20));
+      final spawned =
+          await game.spawnMover().timeout(const Duration(seconds: 20));
       expect(
         spawned,
         Entity.pack(
@@ -588,7 +752,7 @@ void main() {
           reason: 'the ring-buffer spawn command created a second entity on '
               'the game isolate');
       expect(scene.mover.marker[spawned], 7,
-          reason: 'onCreated runs for a command-spawned entity too');
+          reason: 'onMounted runs for a command-spawned entity too');
       expect(scene.mover.x[spawned], greaterThan(0),
           reason: 'and the new entity is picked up by the running system');
 
@@ -801,6 +965,57 @@ void main() {
       expect(game.inputDevice, isNull,
           reason: 'the game isolate freed the memory; the write end must go '
               'with it');
+    },
+    timeout: const Timeout(Duration(seconds: 60)),
+  );
+
+  test(
+    'a scene loaded at runtime from the game isolate gets its assets decoded',
+    () async {
+      final game = _LateGame();
+      await game.start();
+      addTearDown(() async {
+        if (game.isRunning) await game.stop();
+      });
+
+      final declared = game.assets.tryGet(_lateTexture);
+      expect(declared, isNotNull,
+          reason: 'describeScenes ran on this copy, so the declaration and its '
+              'address exist here even though nothing has loaded the scene');
+      expect(declared!.isLoaded, isFalse,
+          reason: 'declared is not loaded - the scene has not been loaded by '
+              'anyone yet');
+
+      // Main asks; the game isolate loads the scene, which declares the asset
+      // over there and then has to ask *back* for the decode it cannot do.
+      await game.loadLate().timeout(const Duration(seconds: 20));
+
+      expect(await _waitUntil(game, () => declared.isLoaded), isTrue,
+          reason: 'the game isolate loaded the scene at runtime, so it had to '
+              'ask this copy to decode. Before the round-trip existed, '
+              '_reconcileAssets returned at `if (!game.decodesAssets)` and no '
+              'decode was ever requested, leaving this false forever');
+      expect(declared.byteCount, 4,
+          reason: 'and the payload really landed, not just the flag');
+
+      expect(await _waitUntil(game, () => game.progress.value == 1.0), isTrue,
+          reason: 'progress crossed back the other way too: main sends one '
+              'message per decode, the game isolate turns each into a '
+              'SceneLoadProgress, and the terminal 1.0 still fires - the same '
+              'contract the in-process path has');
+
+      // --- and the unload half ------------------------------------------
+      await game.unloadLate().timeout(const Duration(seconds: 20));
+
+      expect(
+        await _waitUntil(game, () => game.assets.tryGet(_lateTexture) == null),
+        isTrue,
+        reason: 'the game isolate dropped its declaration, and told this copy '
+            'to drop the payload with it. Without that message the image '
+            'would stay alive on main with nothing left able to name it',
+      );
+
+      await game.stop();
     },
     timeout: const Timeout(Duration(seconds: 60)),
   );
