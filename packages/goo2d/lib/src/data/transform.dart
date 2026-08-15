@@ -1,9 +1,8 @@
 import 'dart:math' as math;
+
 import 'package:goo/goo.dart';
 
-
 mixin Transform2D on Component {
-
   late final DataPointer<double> transformOffsetX;
   late final DataPointer<double> transformOffsetY;
 
@@ -83,8 +82,10 @@ mixin Transform2D on Component {
   /// this codebase's standing zero-per-tick-heap-allocation stance (see
   /// `data.dart`'s note on why `DataPointer<Matrix4>` was removed) rather
   /// than betting on Dart record unboxing.
-  double forwardX(Entity entity) => math.cos(entity.get<Transform2D>().transformRotation[entity]);
-  double forwardY(Entity entity) => math.sin(entity.get<Transform2D>().transformRotation[entity]);
+  double forwardX(Entity entity) =>
+      math.cos(entity.get<Transform2D>().transformRotation[entity]);
+  double forwardY(Entity entity) =>
+      math.sin(entity.get<Transform2D>().transformRotation[entity]);
 }
 
 class Transform2DSystem extends GameSystem with FixedTickable {

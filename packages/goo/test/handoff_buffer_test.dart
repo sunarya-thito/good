@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:goo/src/handoff_buffer.dart';
 
-
 // The handoff protocol, driven deterministically from one isolate.
 //
 // Single-isolate on purpose: the thing under test is the *protocol* - who is
@@ -41,10 +40,14 @@ void main() {
     });
 
     test('the writer may start immediately', () {
-      expect(buffer.beginWrite(), isNotNull,
-          reason: 'slot 0 is the writer\'s until the reader says otherwise - '
-              'a game must be able to produce its first frame before anything '
-              'has ever read one');
+      expect(
+        buffer.beginWrite(),
+        isNotNull,
+        reason:
+            'slot 0 is the writer\'s until the reader says otherwise - '
+            'a game must be able to produce its first frame before anything '
+            'has ever read one',
+      );
     });
   });
 
@@ -54,12 +57,16 @@ void main() {
       write(2);
       write(3);
 
-      expect(read(), 3,
-          reason: 'the reader collects the newest, not the oldest since its '
-              'last read. An earlier design had the reader publish "you may '
-              'write here", which only advanced on a read - so the writer '
-              'produced one frame and idled, and what waited was a whole '
-              'read-interval stale by the time anyone came for it');
+      expect(
+        read(),
+        3,
+        reason:
+            'the reader collects the newest, not the oldest since its '
+            'last read. An earlier design had the reader publish "you may '
+            'write here", which only advanced on a read - so the writer '
+            'produced one frame and idled, and what waited was a whole '
+            'read-interval stale by the time anyone came for it',
+      );
     });
 
     test('it never writes the slot being read', () {
@@ -85,9 +92,13 @@ void main() {
       final target = buffer.beginWrite()!;
       target.asTypedList(64).fillRange(0, 8, 99);
 
-      expect(read(), 1,
-          reason: 'the published frame survived a concurrent write, because '
-              'the write went somewhere else');
+      expect(
+        read(),
+        1,
+        reason:
+            'the published frame survived a concurrent write, because '
+            'the write went somewhere else',
+      );
     });
   });
 
@@ -109,19 +120,27 @@ void main() {
       write(3);
       write(4);
 
-      expect(read(), 4,
-          reason: 'four frames produced, one read - and the one read is the '
-              'last, not the second. A ring would have handed over 2 and kept '
-              '3 and 4 waiting, which is the wrong end of a queue nobody wants '
-              'the old end of');
+      expect(
+        read(),
+        4,
+        reason:
+            'four frames produced, one read - and the one read is the '
+            'last, not the second. A ring would have handed over 2 and kept '
+            '3 and 4 waiting, which is the wrong end of a queue nobody wants '
+            'the old end of',
+      );
     });
 
     test('reading twice with no new publish reports nothing new', () {
       write(1);
       expect(read(), 1);
-      expect(read(), isNull,
-          reason: 'a frame callback that fires faster than the game produces '
-              'should repaint what it has, not re-ingest the same bytes');
+      expect(
+        read(),
+        isNull,
+        reason:
+            'a frame callback that fires faster than the game produces '
+            'should repaint what it has, not re-ingest the same bytes',
+      );
     });
   });
 
@@ -130,10 +149,14 @@ void main() {
       write(7, usedBytes: 24);
       read();
 
-      expect(buffer.readUsedBytes, 24,
-          reason: 'a fixed-size read against a variable-size write is a race '
-              'that gets worse as the scene empties - the writer finishes '
-              'sooner while the reader still moves the whole slot');
+      expect(
+        buffer.readUsedBytes,
+        24,
+        reason:
+            'a fixed-size read against a variable-size write is a race '
+            'that gets worse as the scene empties - the writer finishes '
+            'sooner while the reader still moves the whole slot',
+      );
     });
 
     test('is per slot, not global', () {
@@ -145,9 +168,13 @@ void main() {
 
       write(3, usedBytes: 16);
       read();
-      expect(buffer.readUsedBytes, 16,
-          reason: 'slot 0 is back in use and must report its own length, not '
-              'the one it carried two frames ago');
+      expect(
+        buffer.readUsedBytes,
+        16,
+        reason:
+            'slot 0 is back in use and must report its own length, not '
+            'the one it carried two frames ago',
+      );
     });
   });
 
@@ -172,10 +199,14 @@ void main() {
       // writer is handed next, it is not the slot the far side is holding.
       final next = buffer.beginWrite();
       expect(next, isNotNull);
-      expect(next!.address, isNot(slot.address),
-          reason: 'the control words are the shared state, not the Dart '
-              'objects - a reader on the other side of the boundary excludes '
-              'its slot from this writer just as a local one would');
+      expect(
+        next!.address,
+        isNot(slot.address),
+        reason:
+            'the control words are the shared state, not the Dart '
+            'objects - a reader on the other side of the boundary excludes '
+            'its slot from this writer just as a local one would',
+      );
     });
   });
 

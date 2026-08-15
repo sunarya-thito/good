@@ -7,13 +7,11 @@ import 'package:goo/src/game_state.dart';
 import 'package:goo/src/scene.dart';
 import 'package:goo/src/scene_handle.dart';
 import 'package:goo/src/struct.dart';
-import 'package:goo/src/handle.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
-late InlineGameHandle run;
-
+late Game run;
 
 // `Scene` is to `SceneStruct` what `Entity` is to `EntityStruct`: the struct is
 // the declaration, the handle is one loaded instance of it. These cover the
@@ -98,8 +96,11 @@ void main() {
 
       const max = Scene.pack(0xFFFFFFFF, 0xFFFFFFFF);
       expect(max.generation, 0xFFFFFFFF);
-      expect(max.slot, 0xFFFFFFFF,
-          reason: 'the top bit lands in the sign position; unpacking masks');
+      expect(
+        max.slot,
+        0xFFFFFFFF,
+        reason: 'the top bit lands in the sign position; unpacking masks',
+      );
 
       const onlySlot = Scene.pack(0, 0xFFFFFFFF);
       expect(onlySlot.generation, 0);
@@ -111,7 +112,7 @@ void main() {
   group('resolution', () {
     test('a loaded scene resolves to the struct that was loaded', () async {
       await _boot();
-      final handle = run.state.sceneHandle!;
+      final handle = run.state.loadedScenes.single;
 
       expect(handle.isLoaded, isTrue);
       expect(handle.get<_Level>(), same(run.state.scene));
@@ -126,46 +127,59 @@ void main() {
       // however many Scenes are loaded from it, exactly as one EntityStruct
       // backs many Entities, so "which handle am I" is not a question the
       // struct can answer.
-      expect(run.state.sceneHandle, isNotNull);
+      expect(run.state.loadedScenes.singleOrNull, isNotNull);
       expect(scene, isA<_Level>());
     });
 
     test('a handle to an unloaded scene stops resolving', () async {
       await _boot();
-      final handle = run.state.sceneHandle!;
+      final handle = run.state.loadedScenes.single;
       expect(handle.isLoaded, isTrue);
 
       await run.stop();
 
       expect(handle.isLoaded, isFalse);
       expect(handle.tryGet<_Level>(), isNull);
-      expect(() => handle.get<_Level>(), throwsStateError,
-          reason: 'a stale handle is a diagnostic, not a null every caller has '
-              'to remember to check');
+      expect(
+        () => handle.get<_Level>(),
+        throwsStateError,
+        reason:
+            'a stale handle is a diagnostic, not a null every caller has '
+            'to remember to check',
+      );
     });
 
-    test('a reused slot does not answer for the handle that held it before',
-        () {
-      final first = SceneRegistry.register(_Level());
-      final firstScene = first.get<_Level>();
+    test(
+      'a reused slot does not answer for the handle that held it before',
+      () {
+        final first = SceneRegistry.register(_Level());
+        final firstScene = first.get<_Level>();
 
-      SceneRegistry.unregister(first);
-      final second = SceneRegistry.register(_Level());
+        SceneRegistry.unregister(first);
+        final second = SceneRegistry.register(_Level());
 
-      expect(second.slot, first.slot, reason: 'the free slot is reused');
-      expect(second.value, isNot(first.value),
-          reason: 'but the generation makes it a different handle - which is '
+        expect(second.slot, first.slot, reason: 'the free slot is reused');
+        expect(
+          second.value,
+          isNot(first.value),
+          reason:
+              'but the generation makes it a different handle - which is '
               'the whole reason Scene spends 32 bits on one and Entity, with '
-              'no spare bits at all, cannot');
-      expect(first.isLoaded, isFalse);
-      expect(second.isLoaded, isTrue);
-      expect(second.get<_Level>(), isNot(same(firstScene)));
-    });
+              'no spare bits at all, cannot',
+        );
+        expect(first.isLoaded, isFalse);
+        expect(second.isLoaded, isTrue);
+        expect(second.get<_Level>(), isNot(same(firstScene)));
+      },
+    );
 
     test('get<T> reports the wrong type rather than returning null', () async {
       await _boot();
-      expect(() => run.state.sceneHandle!.get<_OtherLevel>(), throwsStateError);
-      expect(run.state.sceneHandle!.tryGet<_OtherLevel>(), isNull);
+      expect(
+        () => run.state.loadedScenes.single.get<_OtherLevel>(),
+        throwsStateError,
+      );
+      expect(run.state.loadedScenes.single.tryGet<_OtherLevel>(), isNull);
     });
   });
 
@@ -174,7 +188,7 @@ void main() {
       await _boot();
       final state = run.state;
       final scene = state.getScene<_Level>();
-      final handle = state.sceneHandle!;
+      final handle = state.loadedScenes.single;
 
       state.pool.beginTick();
       final first = handle.addEntity(scene.unit);
@@ -185,8 +199,11 @@ void main() {
       // SceneStruct backs however many loaded Scenes - "which scene does this
       // row belong to" is a question only the receiver can answer, and the
       // handle answers it by being the receiver.
-      expect(first.get<_Marked>().mark[first], 3,
-          reason: 'onMounted and the declared defaults run through the handle');
+      expect(
+        first.get<_Marked>().mark[first],
+        3,
+        reason: 'onMounted and the declared defaults run through the handle',
+      );
       expect(second, isNot(first));
       expect(second.archetypeId, first.archetypeId);
     });
@@ -199,15 +216,19 @@ void main() {
   group('a stopped game releases its slots', () {
     test('its handle stops resolving once the game is gone', () async {
       await _boot();
-      final handle = run.state.sceneHandle!;
+      final handle = run.state.loadedScenes.single;
       expect(handle.isLoaded, isTrue);
 
       await run.stop();
 
-      expect(handle.isLoaded, isFalse,
-          reason: 'SceneRegistry is process-global, so a stopped game that '
-              'kept its entries would hand them to the next game in this '
-              'process');
+      expect(
+        handle.isLoaded,
+        isFalse,
+        reason:
+            'SceneRegistry is process-global, so a stopped game that '
+            'kept its entries would hand them to the next game in this '
+            'process',
+      );
       expect(() => handle.get<SceneStruct>(), throwsStateError);
     });
   });

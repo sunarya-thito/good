@@ -105,12 +105,21 @@ void main() {
     test('withAll with several types requires all of them, not any', () {
       final level = _level();
       final q = build((b) => b.withAll(_Position, _Health));
-      expect(q.matches(level.player.archetype.componentSignature), isTrue,
-          reason: 'player has both');
-      expect(q.matches(level.rock.archetype.componentSignature), isFalse,
-          reason: 'rock has _Position but not _Health');
-      expect(q.matches(level.trigger.archetype.componentSignature), isFalse,
-          reason: 'trigger has _Health but not _Position');
+      expect(
+        q.matches(level.player.archetype.componentSignature),
+        isTrue,
+        reason: 'player has both',
+      );
+      expect(
+        q.matches(level.rock.archetype.componentSignature),
+        isFalse,
+        reason: 'rock has _Position but not _Health',
+      );
+      expect(
+        q.matches(level.trigger.archetype.componentSignature),
+        isFalse,
+        reason: 'trigger has _Health but not _Position',
+      );
     });
 
     test('withNone matches only archetypes that lack every listed type', () {
@@ -125,93 +134,137 @@ void main() {
       final level = _level();
       final q = build((b) => b.withOptional(Child));
       expect(q.matches(level.player.archetype.componentSignature), isTrue);
-      expect(q.matches(level.rock.archetype.componentSignature), isTrue,
-          reason: '_Rock has no Child at all, withOptional still matches it');
+      expect(
+        q.matches(level.rock.archetype.componentSignature),
+        isTrue,
+        reason: '_Rock has no Child at all, withOptional still matches it',
+      );
     });
 
     test('withAll and withNone combine as AND', () {
       final level = _level();
       final q = build((b) => b.withAll(_Position).withNone(_Health));
-      expect(q.matches(level.player.archetype.componentSignature), isFalse,
-          reason: 'player has _Health');
+      expect(
+        q.matches(level.player.archetype.componentSignature),
+        isFalse,
+        reason: 'player has _Health',
+      );
       expect(q.matches(level.rock.archetype.componentSignature), isTrue);
-      expect(q.matches(level.trigger.archetype.componentSignature), isFalse,
-          reason: 'trigger lacks _Position and also has _Health');
+      expect(
+        q.matches(level.trigger.archetype.componentSignature),
+        isFalse,
+        reason: 'trigger lacks _Position and also has _Health',
+      );
     });
 
-    test('the reference WorldTransformSystem shape: withAll + withOptional', () {
-      final level = _level();
-      final q = build((b) => b.withAll(_Position).withOptional(Child));
-      // Matches every _Position archetype regardless of Child - withOptional
-      // must not silently behave like a second withAll.
-      expect(q.matches(level.player.archetype.componentSignature), isTrue);
-      expect(q.matches(level.rock.archetype.componentSignature), isTrue);
-      expect(q.matches(level.trigger.archetype.componentSignature), isFalse);
-    });
+    test(
+      'the reference WorldTransformSystem shape: withAll + withOptional',
+      () {
+        final level = _level();
+        final q = build((b) => b.withAll(_Position).withOptional(Child));
+        // Matches every _Position archetype regardless of Child - withOptional
+        // must not silently behave like a second withAll.
+        expect(q.matches(level.player.archetype.componentSignature), isTrue);
+        expect(q.matches(level.rock.archetype.componentSignature), isTrue);
+        expect(q.matches(level.trigger.archetype.componentSignature), isFalse);
+      },
+    );
 
     test('withAny matches if at least one of the group is present', () {
       final level = _level();
       final q = build((b) => b.withAny(_Health, Child));
-      expect(q.matches(level.player.archetype.componentSignature), isTrue,
-          reason: 'player has both');
-      expect(q.matches(level.rock.archetype.componentSignature), isFalse,
-          reason: 'rock has neither');
-      expect(q.matches(level.trigger.archetype.componentSignature), isTrue,
-          reason: 'trigger has _Health');
+      expect(
+        q.matches(level.player.archetype.componentSignature),
+        isTrue,
+        reason: 'player has both',
+      );
+      expect(
+        q.matches(level.rock.archetype.componentSignature),
+        isFalse,
+        reason: 'rock has neither',
+      );
+      expect(
+        q.matches(level.trigger.archetype.componentSignature),
+        isTrue,
+        reason: 'trigger has _Health',
+      );
     });
 
-    test('two withAny calls are two groups, both of which must be satisfied', () {
-      final level = _level();
-      // (_Position or Child) and (_Health or Child). Only _Player
-      // (_Position, _Health, Child) satisfies both groups. _Rock has just
-      // _Position - first group yes, second no. _Trigger has just _Health -
-      // second group yes, first no. If the two calls merged into one big
-      // OR instead of ANDing, all three would match.
-      final q = build((b) => b.withAny(_Position, Child).withAny(_Health, Child));
-      expect(q.matches(level.player.archetype.componentSignature), isTrue);
-      expect(q.matches(level.rock.archetype.componentSignature), isFalse,
-          reason: 'rock satisfies the first group but not the second - two '
-              'withAny calls must AND, not merge into one big OR');
-      expect(q.matches(level.trigger.archetype.componentSignature), isFalse,
-          reason: 'trigger satisfies the second group but not the first');
-    });
+    test(
+      'two withAny calls are two groups, both of which must be satisfied',
+      () {
+        final level = _level();
+        // (_Position or Child) and (_Health or Child). Only _Player
+        // (_Position, _Health, Child) satisfies both groups. _Rock has just
+        // _Position - first group yes, second no. _Trigger has just _Health -
+        // second group yes, first no. If the two calls merged into one big
+        // OR instead of ANDing, all three would match.
+        final q = build(
+          (b) => b.withAny(_Position, Child).withAny(_Health, Child),
+        );
+        expect(q.matches(level.player.archetype.componentSignature), isTrue);
+        expect(
+          q.matches(level.rock.archetype.componentSignature),
+          isFalse,
+          reason:
+              'rock satisfies the first group but not the second - two '
+              'withAny calls must AND, not merge into one big OR',
+        );
+        expect(
+          q.matches(level.trigger.archetype.componentSignature),
+          isFalse,
+          reason: 'trigger satisfies the second group but not the first',
+        );
+      },
+    );
 
     test('withAny composes with withNone', () {
       final level = _level();
       final q = build((b) => b.withAny(_Position, _Health).withNone(Child));
-      expect(q.matches(level.player.archetype.componentSignature), isFalse,
-          reason: 'player matches the any-group but has Child');
+      expect(
+        q.matches(level.player.archetype.componentSignature),
+        isFalse,
+        reason: 'player matches the any-group but has Child',
+      );
       expect(q.matches(level.rock.archetype.componentSignature), isTrue);
-      expect(q.matches(level.trigger.archetype.componentSignature), isTrue,
-          reason: 'trigger has _Health (so the any-group passes) and no Child');
+      expect(
+        q.matches(level.trigger.archetype.componentSignature),
+        isTrue,
+        reason: 'trigger has _Health (so the any-group passes) and no Child',
+      );
     });
   });
 
   group('Query.run()', () {
-    test('yields exactly the entities of matching archetypes, across pages', () {
-      final level = _level(pageSize: 64); // small, forces multiple pages
-      final players = <Entity>[];
-      for (var i = 0; i < 20; i++) {
-        players.add(level.addEntity(level.player));
-      }
-      final rocks = <Entity>[];
-      for (var i = 0; i < 20; i++) {
-        rocks.add(level.addEntity(level.rock));
-      }
-      level.addEntity(level.trigger); // must never show up below
+    test(
+      'yields exactly the entities of matching archetypes, across pages',
+      () {
+        final level = _level(pageSize: 64); // small, forces multiple pages
+        final players = <Entity>[];
+        for (var i = 0; i < 20; i++) {
+          players.add(level.addEntity(level.player));
+        }
+        final rocks = <Entity>[];
+        for (var i = 0; i < 20; i++) {
+          rocks.add(level.addEntity(level.rock));
+        }
+        level.addEntity(level.trigger); // must never show up below
 
-      final descriptor = ArchetypeQueryDescriptor();
-      final query = descriptor.query().withAll(_Position).build();
-      final results = query.run().toSet();
+        final descriptor = ArchetypeQueryDescriptor();
+        final query = descriptor.query().withAll(_Position).build();
+        final results = query.run().toSet();
 
-      expect(results, {...players, ...rocks});
-      expect(results.length, 40);
-    });
+        expect(results, {...players, ...rocks});
+        expect(results.length, 40);
+      },
+    );
 
     test('each entity reads back its own data, not a neighbour\'s', () {
       final level = _level(pageSize: 64);
       level.pool.beginTick();
-      final entities = [for (var i = 0; i < 10; i++) level.addEntity(level.player)];
+      final entities = [
+        for (var i = 0; i < 10; i++) level.addEntity(level.player),
+      ];
       for (var i = 0; i < entities.length; i++) {
         level.player.x[entities[i]] = i.toDouble();
       }
@@ -241,13 +294,25 @@ void main() {
       level.pool.commitTick();
 
       final descriptor = ArchetypeQueryDescriptor();
-      final query = descriptor.query().withAll(_Position).withOptional(Child).build();
+      final query = descriptor
+          .query()
+          .withAll(_Position)
+          .withOptional(Child)
+          .build();
       var ran = false;
       query.runQuery(() {
         ran = true;
         expect(query.get<_Position>().x[p], 5);
-        expect(query.tryGet<Child>(), isNotNull, reason: '_Player mixes in Child');
-        expect(query.tryGet<_Health>(), isNotNull, reason: '_Player mixes in _Health too');
+        expect(
+          query.tryGet<Child>(),
+          isNotNull,
+          reason: '_Player mixes in Child',
+        );
+        expect(
+          query.tryGet<_Health>(),
+          isNotNull,
+          reason: '_Player mixes in _Health too',
+        );
       });
       expect(ran, isTrue);
     });
@@ -268,12 +333,15 @@ void main() {
       expect(ran, isTrue);
     });
 
-    test('get<T>() outside runQuery throws instead of returning stale data', () {
-      final descriptor = ArchetypeQueryDescriptor();
-      final query = descriptor.query().withAll(_Position).build();
-      expect(() => query.get<_Position>(), throwsStateError);
-      expect(query.tryGet<_Position>(), isNull);
-    });
+    test(
+      'get<T>() outside runQuery throws instead of returning stale data',
+      () {
+        final descriptor = ArchetypeQueryDescriptor();
+        final query = descriptor.query().withAll(_Position).build();
+        expect(() => query.get<_Position>(), throwsStateError);
+        expect(query.tryGet<_Position>(), isNull);
+      },
+    );
 
     test('SingleQuery<T>.component is get<T>() sugar through the cursor', () {
       final level = _level();
@@ -290,6 +358,91 @@ void main() {
         expect(single.component.x[p], 42);
       });
       expect(ran, isTrue);
+    });
+  });
+
+  group('Query.groups()', () {
+    test('yields exactly what run() does, across archetypes and pages', () {
+      final level = _level(pageSize: 64); // small, forces multiple pages
+      final players = <Entity>[];
+      for (var i = 0; i < 20; i++) {
+        players.add(level.addEntity(level.player));
+      }
+      final rocks = <Entity>[];
+      for (var i = 0; i < 20; i++) {
+        rocks.add(level.addEntity(level.rock));
+      }
+      level.addEntity(level.trigger); // must never show up below
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position).build();
+
+      final grouped = <Entity>{};
+      for (final group in query.groups()) {
+        grouped.addAll(group);
+      }
+
+      // The two walks must agree exactly. `groups()` is a hand-written
+      // iterator over pages and rows where `run()` is two nested `sync*`
+      // generators, and a hand-written walk is exactly the kind of thing that
+      // silently drops the last row of a page or skips a tombstoned one.
+      expect(grouped, query.run().toSet());
+      expect(grouped, {...players, ...rocks});
+      expect(grouped.length, 40);
+    });
+
+    test('a group resolves its component once, and it is the same object', () {
+      final level = _level(pageSize: 64);
+      for (var i = 0; i < 5; i++) {
+        level.addEntity(level.player);
+      }
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position).build();
+      final group = query.groups().first;
+
+      final component = group.get<_Position>();
+      for (final entity in group) {
+        // The whole point: this is not a per-entity lookup that happens to be
+        // fast, it is the *same object* for every row. Resolving it per entity
+        // was ~7% of the engine's CPU in a profile.
+        expect(identical(entity.get<_Position>(), component), isTrue);
+      }
+    });
+
+    test('groups are rebuilt when a new archetype appears', () {
+      final level = _level(pageSize: 64);
+      level.addEntity(level.player);
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position).build();
+      final before = query.groups().length;
+
+      // The list is cached for the life of the query - a system holds one
+      // forever - so it has to notice a scene load bringing new archetypes.
+      final more = _level(pageSize: 64);
+      more.addEntity(more.rock);
+
+      expect(
+        query.groups().length,
+        greaterThan(before),
+        reason:
+            'a cached group list that never rebuilds would leave a '
+            'newly loaded scene invisible to every existing system',
+      );
+    });
+
+    test('an empty match yields no groups rather than an empty one', () {
+      _level(pageSize: 64);
+      final descriptor = ArchetypeQueryDescriptor();
+      // No archetype in this fixture has Child without Position: _Player has
+      // both, _Rock has neither, _Trigger has neither.
+      final query = descriptor
+          .query()
+          .withAll(Child)
+          .withNone(_Position)
+          .build();
+      expect(query.groups(), isEmpty);
     });
   });
 }

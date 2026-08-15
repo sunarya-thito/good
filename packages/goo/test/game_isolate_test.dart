@@ -20,13 +20,14 @@ import 'package:goo/src/struct.dart';
 import 'package:goo/src/system.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector2;
-import 'package:goo/src/handle.dart';
 
 /// The live run under test. A `GameHandle`, not an `InlineGameHandle`: every
 /// test in this file spawns a real isolate, so the world is on the other side
 /// and unreachable from here by design.
-late GameHandle run;
-
+/// The running game under test. `Game.start` hands the instance straight
+/// back now, so there is one binding rather than a game and a handle - see
+/// `Game.start`'s doc on why the two collapsed.
+late Game run;
 
 // The real two-isolate bring-up: `Game.start()` hands the Game subclass
 // itself to Isolate.spawn, the copy on the other side builds its GameState
@@ -103,7 +104,7 @@ class _MoverScene extends SceneStruct {
   }
 
   @override
-  void onMounted(Scene scene) {
+  void onSceneMounted(Scene scene) {
     scene.addEntity(mover);
   }
 }
@@ -209,7 +210,7 @@ class _IsolateState extends GameState<_IsolateGame> {
       ..hasSink(game.pauseMover, _onPauseMover);
   }
 
-  Entity _onSpawnMover() => sceneHandle!.addEntity(level.mover);
+  Entity _onSpawnMover() => loadedScenes.single.addEntity(level.mover);
 
   void _onPauseMover(bool paused) {
     if (paused) {
@@ -259,8 +260,6 @@ class _IsolateGame extends Game {
     spawnMover = descriptor.has(_SpawnMover());
     pauseMover = descriptor.has(_PauseMover());
   }
-
-
 }
 
 // --- auxiliary buffer fixtures -------------------------------------------
@@ -281,7 +280,7 @@ class _PingSystem extends GameSystem with FixedTickable {
 
   @override
   void onFixedUpdate() {
-    ByteData.sublistView(_payload).setInt64(0, game.tick + 1, Endian.little);
+    ByteData.sublistView(_payload).setInt64(0, state.tick + 1, Endian.little);
     pings.ring.tryWrite(_pingRecordType, _payload);
   }
 }
@@ -316,8 +315,6 @@ class _PingGame extends Game {
   void describeBuffers(BufferDescriptor descriptor) {
     pings = descriptor.has(capacityBytes: 4096);
   }
-
-
 }
 
 // --- state channel fixtures ----------------------------------------------
@@ -367,8 +364,6 @@ class _ChannelGame extends Game {
 
   @override
   GameState createState() => _ChannelState();
-
-
 }
 
 // --- input fixtures -------------------------------------------------------
@@ -448,8 +443,6 @@ class _InputProbeGame extends Game {
 
   @override
   GameState createState() => _InputProbeState();
-
-
 }
 
 // --- asset fixtures -------------------------------------------------------
@@ -542,7 +535,7 @@ class _TexturedScene extends SceneStruct {
   }
 
   @override
-  void onMounted(Scene scene) {
+  void onSceneMounted(Scene scene) {
     scene.addEntity(textured);
   }
 }
@@ -610,10 +603,7 @@ class _TexturedGame extends Game {
 
   @override
   GameState createState() => _TexturedState();
-
-
 }
-
 
 // --- runtime loadScene, and the asset decode round-trip ------------------
 //
@@ -650,7 +640,7 @@ class _LateScene extends SceneStruct {
   }
 
   @override
-  void onMounted(Scene scene) {
+  void onSceneMounted(Scene scene) {
     scene.addEntity(prop);
   }
 }
@@ -789,8 +779,6 @@ class _UnloadGame extends Game {
   void describeCommands(CommandDescriptor descriptor) {
     dropScene = descriptor.has(_DropScene());
   }
-
-
 }
 
 /// Polls [ready] once per reported tick, up to [within] ticks.
@@ -798,27 +786,37 @@ class _UnloadGame extends Game {
 /// Ticks rather than wall-clock: the thing being waited on is driven by the
 /// game isolate's loop, so counting its ticks is what makes this reliable on a
 /// loaded CI machine rather than a timing guess.
-Future<bool> _waitUntil(Game game, bool Function() ready,
-    {int within = 40}) async {
+Future<bool> _waitUntil(
+  Game run,
+  bool Function() ready, {
+  int within = 40,
+}) async {
   for (var i = 0; i < within; i++) {
     if (ready()) return true;
-    await _waitTicks(game, 1);
+    await _waitTicks(run, 1);
   }
   return ready();
 }
 
 /// Waits for [count] more fixed ticks to be reported by the game isolate.
-Future<void> _waitTicks(Game game, int count) {
-  final target = game.tick + count;
+///
+/// Through `runHandle.runtime` rather than a public hook: tick listening is
+/// framework plumbing (the state channels' own reconciliation rides it) and
+/// deliberately not API, so a test that wants to *wait for a tick* reaches for
+/// the internal spelling on purpose. A game waiting on the simulation
+/// publishes a value with `describeState` and listens to that instead.
+Future<void> _waitTicks(Game run, int count) {
+  final target = run.tick + count;
   final done = Completer<void>();
   void listener(int tick) {
     if (tick >= target && !done.isCompleted) done.complete();
   }
 
-  game.addTickListener(listener);
+  final runtime = run.runtimeOrNull!;
+  runtime.addTickListener(listener);
   return done.future
       .timeout(const Duration(seconds: 20))
-      .whenComplete(() => game.removeTickListener(listener));
+      .whenComplete(() => runtime.removeTickListener(listener));
 }
 
 void main() {
@@ -854,22 +852,33 @@ void main() {
       // is further down - a component read on this isolate throws, naming the
       // presentation-only rule.
 
-      final mover = game;  // the channels live on the Game; main holds no systems
-      await _waitTicks(game, 3);
+      final mover =
+          game; // the channels live on the Game; main holds no systems
+      await _waitTicks(run, 3);
 
       // Everything below reads a `StateChannel` - shared memory the game
       // isolate published this tick. No copy, no message carrying the value,
       // and no component row, which this copy could not resolve anyway.
-      expect(mover.firstMarker.value, 7,
-          reason: 'the scene mounted an entity on the game isolate and its '
-              'onEntityMounted ran there');
+      expect(
+        mover.firstMarker.value,
+        7,
+        reason:
+            'the scene mounted an entity on the game isolate and its '
+            'onEntityMounted ran there',
+      );
       final firstRead = mover.firstX.value;
-      expect(firstRead, greaterThan(0),
-          reason: 'the mover system is running on the other isolate');
+      expect(
+        firstRead,
+        greaterThan(0),
+        reason: 'the mover system is running on the other isolate',
+      );
 
-      await _waitTicks(game, 5);
-      expect(mover.firstX.value, greaterThan(firstRead),
-          reason: 'entity state must keep changing across ticks');
+      await _waitTicks(run, 5);
+      expect(
+        mover.firstX.value,
+        greaterThan(firstRead),
+        reason: 'entity state must keep changing across ticks',
+      );
       expect(mover.population.value, 1);
 
       // --- a command sent from the main isolate lands, and answers --------
@@ -879,21 +888,31 @@ void main() {
       // and runs the handler, writes the reply into the game->main ring, and
       // this copy picks it up on the next tick notification and completes the
       // future below with the entity that was actually created over there.
-      final spawned =
-          await game.spawnMover().timeout(const Duration(seconds: 20));
+      final spawned = await game.spawnMover().timeout(
+        const Duration(seconds: 20),
+      );
 
-      await _waitTicks(game, 3);
-      expect(mover.population.value, 2,
-          reason: 'the ring-buffer spawn command created a second entity on '
-              'the game isolate');
+      await _waitTicks(run, 3);
+      expect(
+        mover.population.value,
+        2,
+        reason:
+            'the ring-buffer spawn command created a second entity on '
+            'the game isolate',
+      );
 
-      final second =
-          await game.spawnMover().timeout(const Duration(seconds: 20));
-      expect(second, isNot(spawned),
-          reason: 'a real handle crossed back over the reply ring, twice, '
-              'naming two different rows - the encode/apply lane this '
-              'replaces could not return anything at all');
-      await _waitTicks(game, 3);
+      final second = await game.spawnMover().timeout(
+        const Duration(seconds: 20),
+      );
+      expect(
+        second,
+        isNot(spawned),
+        reason:
+            'a real handle crossed back over the reply ring, twice, '
+            'naming two different rows - the encode/apply lane this '
+            'replaces could not return anything at all',
+      );
+      await _waitTicks(run, 3);
       expect(mover.population.value, 3);
 
       // And the entity that came back is deliberately **not** readable here.
@@ -901,9 +920,15 @@ void main() {
       // this one; the diagnostic says so rather than indexing an empty table.
       expect(
         () => spawned.get<_Moving>(),
-        throwsA(isA<StateError>().having((e) => e.message, 'message',
-            contains('presentation-only'))),
-        reason: 'main holds no archetypes, so a component read is not a '
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('presentation-only'),
+          ),
+        ),
+        reason:
+            'main holds no archetypes, so a component read is not a '
             'slow path here - it is a category error, and has to report as one',
       );
 
@@ -913,7 +938,7 @@ void main() {
       // pages is now unrepresentable rather than guarded.
 
       await run.stop();
-      expect(game.isRunning, isFalse);
+      expect(run.isRunning, isFalse);
     },
     timeout: const Timeout(Duration(seconds: 60)),
   );
@@ -927,7 +952,7 @@ void main() {
         if (run.isRunning) await run.stop();
       });
 
-      await _waitTicks(game, 3);
+      await _waitTicks(run, 3);
       expect(game.firstX.value, greaterThan(0));
 
       // Main cannot call `disableSystem` any more: it holds no systems and so
@@ -937,16 +962,20 @@ void main() {
       // `_msgDisable` control message are gone with the system list.
       await game.pauseMover(true).timeout(const Duration(seconds: 20));
       // Let a couple of ticks pass with it applied, then take a baseline.
-      await _waitTicks(game, 3);
+      await _waitTicks(run, 3);
       final frozen = game.firstX.value;
-      await _waitTicks(game, 5);
-      expect(game.firstX.value, frozen,
-          reason: 'a disabled system must not be ticking on the game isolate - '
-              'and a frozen channel is the honest evidence, since the system '
-              'that publishes it is the one that stopped');
+      await _waitTicks(run, 5);
+      expect(
+        game.firstX.value,
+        frozen,
+        reason:
+            'a disabled system must not be ticking on the game isolate - '
+            'and a frozen channel is the honest evidence, since the system '
+            'that publishes it is the one that stopped',
+      );
 
       await game.pauseMover(false).timeout(const Duration(seconds: 20));
-      await _waitTicks(game, 5);
+      await _waitTicks(run, 5);
       expect(game.firstX.value, greaterThan(frozen));
 
       await run.stop();
@@ -977,19 +1006,28 @@ void main() {
       // Paced by the game isolate's own 5ms timer and waited on via tick
       // notifications - no tight cross-isolate loop, per the note at the top
       // of this file.
-      await _waitTicks(game, 4);
+      await _waitTicks(run, 4);
 
       final records = handle.ring.drain();
-      expect(records, isNotEmpty,
-          reason: 'the system on the game isolate wrote through addresses '
-              'this isolate reconstructed - the same shared memory');
+      expect(
+        records,
+        isNotEmpty,
+        reason:
+            'the system on the game isolate wrote through addresses '
+            'this isolate reconstructed - the same shared memory',
+      );
       final ticks = [
         for (final record in records)
           ByteData.sublistView(record.payload).getInt64(0, Endian.little),
       ];
       expect(records.every((r) => r.recordType == _pingRecordType), isTrue);
-      expect(ticks.first, 1, reason: 'the very first tick was captured, so '
-          'the buffer was live before the tick loop started');
+      expect(
+        ticks.first,
+        1,
+        reason:
+            'the very first tick was captured, so '
+            'the buffer was live before the tick loop started',
+      );
       for (var i = 1; i < ticks.length; i++) {
         expect(ticks[i], ticks[i - 1] + 1, reason: 'no gaps, no reordering');
       }
@@ -997,7 +1035,7 @@ void main() {
       // Draining is what keeps the ring from filling; picking up again from
       // where the last drain stopped is the property the render lane leans on.
       final resumeFrom = ticks.last;
-      await _waitTicks(game, 3);
+      await _waitTicks(run, 3);
       final more = [
         for (final record in handle.ring.drain())
           ByteData.sublistView(record.payload).getInt64(0, Endian.little),
@@ -1006,8 +1044,11 @@ void main() {
       expect(more.first, resumeFrom + 1);
 
       await run.stop();
-      expect(handle.isConnected, isFalse,
-          reason: 'the game isolate freed the memory; the view must go too');
+      expect(
+        handle.isConnected,
+        isFalse,
+        reason: 'the game isolate freed the memory; the view must go too',
+      );
     },
     timeout: const Timeout(Duration(seconds: 60)),
   );
@@ -1035,16 +1076,26 @@ void main() {
       counter.ticks.addListener(listener);
       addTearDown(() => counter.ticks.removeListener(listener));
 
-      await _waitTicks(game, 4);
-      expect(counter.ticks.value, greaterThan(0),
-          reason: 'the game isolate has been writing into shared memory this '
-              'whole time');
+      await _waitTicks(run, 4);
+      expect(
+        counter.ticks.value,
+        greaterThan(0),
+        reason:
+            'the game isolate has been writing into shared memory this '
+            'whole time',
+      );
       expect(counter.alive.value, isTrue);
-      expect(seen, isNotEmpty,
-          reason: 'and a ValueListenable listener on this isolate was told');
+      expect(
+        seen,
+        isNotEmpty,
+        reason: 'and a ValueListenable listener on this isolate was told',
+      );
       for (var i = 1; i < seen.length; i++) {
-        expect(seen[i], greaterThan(seen[i - 1]),
-            reason: 'each notification carries a value that actually moved');
+        expect(
+          seen[i],
+          greaterThan(seen[i - 1]),
+          reason: 'each notification carries a value that actually moved',
+        );
       }
 
       // Writing from the copy that does not own the memory is a programmer
@@ -1073,9 +1124,13 @@ void main() {
       // address and this copy has built the write end over it. A GameView
       // built on the very next line has somewhere to put a key event.
       final device = game.inputDevice;
-      expect(device, isNotNull,
-          reason: 'this copy is the handle - the one Flutter runs on, and '
-              'therefore the only one that can ever see a KeyEvent');
+      expect(
+        device,
+        isNotNull,
+        reason:
+            'this copy is the handle - the one Flutter runs on, and '
+            'therefore the only one that can ever see a KeyEvent',
+      );
       // This copy holds no twin of the system whose actions those are - it
       // declared no systems at all. It used to hold one, and the assertion
       // here was that the twin's actions read their declared default forever;
@@ -1084,7 +1139,7 @@ void main() {
       // (There is nothing here to read them off: `run` is a GameHandle,
       // so `run.state` does not compile on this side at all.)
 
-      await _waitTicks(game, 3);
+      await _waitTicks(run, 3);
       expect(probe.fireHeld.value, isFalse);
       expect(probe.presses.value, 0);
 
@@ -1093,35 +1148,55 @@ void main() {
       device!
         ..press(InputKey.spacebar)
         ..press(InputKey.d);
-      await _waitTicks(game, 4);
+      await _waitTicks(run, 4);
 
-      expect(probe.fireHeld.value, isTrue,
-          reason: 'the game isolate resolved a binding against bits this '
-              'isolate wrote - main -> game through the same TripleBuffer '
-              'primitive the state channels use in the other direction');
-      expect(probe.moveX.value, 1,
-          reason: 'and composed four raw bits into a vector on that side, '
-              'because resolution is the reader\'s job: only the reader has '
-              'the bindings');
-      expect(probe.presses.value, 1,
-          reason: 'exactly one press edge, however many ticks the key was '
-              'held for - edge detection is per resolution, and the key has '
-              'now been down for several');
+      expect(
+        probe.fireHeld.value,
+        isTrue,
+        reason:
+            'the game isolate resolved a binding against bits this '
+            'isolate wrote - main -> game through the same TripleBuffer '
+            'primitive the state channels use in the other direction',
+      );
+      expect(
+        probe.moveX.value,
+        1,
+        reason:
+            'and composed four raw bits into a vector on that side, '
+            'because resolution is the reader\'s job: only the reader has '
+            'the bindings',
+      );
+      expect(
+        probe.presses.value,
+        1,
+        reason:
+            'exactly one press edge, however many ticks the key was '
+            'held for - edge detection is per resolution, and the key has '
+            'now been down for several',
+      );
       expect(probe.releases.value, 0);
 
       device.release(InputKey.spacebar);
-      await _waitTicks(game, 4);
+      await _waitTicks(run, 4);
       expect(probe.fireHeld.value, isFalse);
       expect(probe.releases.value, 1);
       expect(probe.presses.value, 1, reason: 'and no phantom second press');
-      expect(probe.moveX.value, 1,
-          reason: 'the other key is still held - releasing one bit must not '
-              'republish the whole block as empty');
+      expect(
+        probe.moveX.value,
+        1,
+        reason:
+            'the other key is still held - releasing one bit must not '
+            'republish the whole block as empty',
+      );
 
       await run.stop();
-      expect(game.inputDevice, isNull,
-          reason: 'the game isolate freed the memory; the write end must go '
-              'with it');
+      expect(
+        game.inputDevice,
+        isNull,
+        reason:
+            'the game isolate freed the memory; the write end must go '
+            'with it',
+      );
     },
     timeout: const Timeout(Duration(seconds: 60)),
   );
@@ -1135,14 +1210,18 @@ void main() {
         if (run.isRunning) await run.stop();
       });
 
-      expect(game.lateAddress.value, -1,
-          reason: 'nothing has loaded the scene, so no address has been '
-              'assigned to report');
+      expect(
+        game.lateAddress.value,
+        -1,
+        reason:
+            'nothing has loaded the scene, so no address has been '
+            'assigned to report',
+      );
 
       // Main asks; the game isolate loads the scene, which declares the asset
       // over there and then has to ask *back* for the decode it cannot do.
       await game.loadLate().timeout(const Duration(seconds: 20));
-      expect(await _waitUntil(game, () => game.lateAddress.value >= 0), isTrue);
+      expect(await _waitUntil(run, () => game.lateAddress.value >= 0), isTrue);
       final address = game.lateAddress.value;
 
       // By address, never by key. `describeScenes` runs on the game isolate
@@ -1150,36 +1229,47 @@ void main() {
       // holds is not the one that was declared anyway, because a key crossing
       // a port arrives as a copy. The address is the shared name.
       expect(
-          await _waitUntil(
-              game,
-              () =>
-                  game.assets
-                      .tryResolve<_IsolateTexture>(address)
-                      ?.isLoaded ==
-                  true),
-          isTrue,
-          reason: 'the game isolate loaded the scene at runtime, so it had to '
-              'ask this copy to decode. Before the round-trip existed, '
-              '_reconcileAssets returned at `if (!game.decodesAssets)` and no '
-              'decode was ever requested, leaving this false forever');
+        await _waitUntil(
+          run,
+          () =>
+              game.assets.tryResolve<_IsolateTexture>(address)?.isLoaded ==
+              true,
+        ),
+        isTrue,
+        reason:
+            'the game isolate loaded the scene at runtime, so it had to '
+            'ask this copy to decode. Before the round-trip existed, '
+            '_reconcileAssets returned at `if (!game.decodesAssets)` and no '
+            'decode was ever requested, leaving this false forever',
+      );
       final declared = game.assets.tryResolve<_IsolateTexture>(address)!;
-      expect(declared.byteCount, 4,
-          reason: 'and the payload really landed, not just the flag');
+      expect(
+        declared.byteCount,
+        4,
+        reason: 'and the payload really landed, not just the flag',
+      );
 
-      expect(await _waitUntil(game, () => game.progress.value == 1.0), isTrue,
-          reason: 'progress crossed back the other way too: main sends one '
-              'message per decode, the game isolate turns each into a '
-              'SceneLoadProgress, and the terminal 1.0 still fires - the same '
-              'contract the in-process path has');
+      expect(
+        await _waitUntil(run, () => game.progress.value == 1.0),
+        isTrue,
+        reason:
+            'progress crossed back the other way too: main sends one '
+            'message per decode, the game isolate turns each into a '
+            'SceneLoadProgress, and the terminal 1.0 still fires - the same '
+            'contract the in-process path has',
+      );
 
       // --- and the unload half ------------------------------------------
       await game.unloadLate().timeout(const Duration(seconds: 20));
 
       expect(
-        await _waitUntil(game,
-            () => game.assets.tryResolve<_IsolateTexture>(address) == null),
+        await _waitUntil(
+          run,
+          () => game.assets.tryResolve<_IsolateTexture>(address) == null,
+        ),
         isTrue,
-        reason: 'the game isolate dropped its declaration, and told this copy '
+        reason:
+            'the game isolate dropped its declaration, and told this copy '
             'to drop the payload with it. Without that message the image '
             'would stay alive on main with nothing left able to name it',
       );
@@ -1200,22 +1290,28 @@ void main() {
 
       final reporter = game;
       expect(
-        await _waitUntil(game, () => reporter.reportedAddress.value >= 0),
+        await _waitUntil(run, () => reporter.reportedAddress.value >= 0),
         isTrue,
       );
 
       // Resolved by address, not by key: main never ran a `describeAssets`
       // pass, and its own `_isolateTexture` object is not the one that was
       // declared - a key crossing a port arrives as a copy.
-      final here =
-          game.assets.tryResolve<_IsolateTexture>(reporter.reportedAddress.value);
-      expect(here, isNotNull,
-          reason: 'main adopted the declaration when it was asked to decode - '
-              'it never ran a describeAssets pass of its own');
+      final here = game.assets.tryResolve<_IsolateTexture>(
+        reporter.reportedAddress.value,
+      );
+      expect(
+        here,
+        isNotNull,
+        reason:
+            'main adopted the declaration when it was asked to decode - '
+            'it never ran a describeAssets pass of its own',
+      );
       expect(
         reporter.reportedAddress.value,
         here!.address,
-        reason: 'one copy assigns the address and the other takes it as given. '
+        reason:
+            'one copy assigns the address and the other takes it as given. '
             'It used to be two copies computing the same number from the same '
             'declaration order, which is the agreement this landing stopped '
             'needing - and which nothing re-established when a scene was '
@@ -1224,19 +1320,20 @@ void main() {
       expect(
         reporter.reportedLoaded.value,
         0,
-        reason: 'and the game isolate never decoded it: decoding needs '
+        reason:
+            'and the game isolate never decoded it: decoding needs '
             'dart:ui, which is not on that isolate. It holds an addressed, '
             'unloaded instance forever, by design',
       );
 
       expect(
-        await _waitUntil(game, () => here.isLoaded),
+        await _waitUntil(run, () => here.isLoaded),
         isTrue,
-        reason: 'while this copy - the one with Flutter attached - did load '
+        reason:
+            'while this copy - the one with Flutter attached - did load '
             'it, on the far side of loadScene\'s decode request',
       );
-      expect(here.byteCount, 4,
-          reason: 'and its payload is readable here');
+      expect(here.byteCount, 4, reason: 'and its payload is readable here');
 
       await run.stop();
     },
@@ -1258,5 +1355,4 @@ void main() {
   // it is asserted in the first test in this file: a component read on main
   // throws, naming the presentation-only rule. There is nothing left here to
   // race with.
-
 }

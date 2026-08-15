@@ -71,7 +71,7 @@ abstract base class _ListenerSet<L extends GameListener> {
 /// A dispatcher belongs to whoever declared it in `describeEvents`, and it
 /// collects from *that owner's* composition and no further. Declared on an
 /// `EntityStruct`, it reaches that struct's listeners only - which is what
-/// makes `onMounted(Entity)` on `MyPlayer` fire for `MyPlayer` entities and
+/// makes `onEntityMounted` on `MyPlayer` fire for `MyPlayer` entities and
 /// nothing else. Declared on a `GameState`, the same event reaches everything
 /// beneath it, because a `GameState` collects from its scenes and a scene
 /// from its prefabs.
@@ -106,12 +106,21 @@ abstract base class _ListenerSet<L extends GameListener> {
 ///
 /// [E] is the payload type. For an event that carries nothing, see
 /// [SignalDispatcher] and [EventDescriptor.hasSignal].
-final class EventDispatcher<L extends GameListener, E>
-    extends _ListenerSet<L> {
+final class EventDispatcher<L extends GameListener, E> extends _ListenerSet<L> {
   @internal
-  EventDispatcher(this._deliver);
+  EventDispatcher(this._deliver, {this.reverse = false});
 
   final void Function(L listener, E payload) _deliver;
+
+  /// Whether to deliver in **reverse** collection order.
+  ///
+  /// For teardown. Bring-up runs outside-in - the owner first, then what
+  /// it composes - so tear-down has to run inside-out or a listener would
+  /// be told the world is going away *after* its owner had already taken
+  /// it apart. One collect pass fills both dispatchers, so the two orders
+  /// are the same list read two ways rather than two lists to keep in
+  /// agreement.
+  final bool reverse;
 
   /// Delivers [payload] to every collected listener that is currently
   /// listening, in collection order.
@@ -121,8 +130,8 @@ final class EventDispatcher<L extends GameListener, E>
   /// captured closure. Named `call`, so `dispatcher(payload)` works too.
   void call(E payload) {
     final listeners = _listeners;
-    for (var i = 0; i < listeners.length; i++) {
-      final listener = listeners[i];
+    for (var n = 0; n < listeners.length; n++) {
+      final listener = listeners[reverse ? listeners.length - 1 - n : n];
       if (!listener.listensToEvents) continue;
       _deliver(listener, payload);
     }
@@ -137,15 +146,18 @@ final class EventDispatcher<L extends GameListener, E>
 /// and the same names, as `SignalCommand` beside `SinkCommand<P>`.
 final class SignalDispatcher<L extends GameListener> extends _ListenerSet<L> {
   @internal
-  SignalDispatcher(this._deliver);
+  SignalDispatcher(this._deliver, {this.reverse = false});
 
   final void Function(L listener) _deliver;
+
+  /// See [EventDispatcher.reverse].
+  final bool reverse;
 
   /// Delivers to every collected listener that is currently listening.
   void call() {
     final listeners = _listeners;
-    for (var i = 0; i < listeners.length; i++) {
-      final listener = listeners[i];
+    for (var n = 0; n < listeners.length; n++) {
+      final listener = listeners[reverse ? listeners.length - 1 - n : n];
       if (!listener.listensToEvents) continue;
       _deliver(listener);
     }
@@ -169,9 +181,12 @@ abstract class EventDescriptor {
   /// ```dart
   /// tick = d.has<Tickable, Duration>((listener, delta) => listener.onTick(delta));
   /// ```
+  /// Pass `reverse: true` for a **teardown** event, so listeners are told
+  /// inside-out - see [EventDispatcher.reverse].
   EventDispatcher<L, E> has<L extends GameListener, E>(
-    void Function(L listener, E payload) deliver,
-  );
+    void Function(L listener, E payload) deliver, {
+    bool reverse,
+  });
 
   /// Declares a dispatcher for an event that carries nothing.
   ///
@@ -179,8 +194,9 @@ abstract class EventDescriptor {
   /// fixedTick = d.hasSignal<FixedTickable>((listener) => listener.onFixedUpdate());
   /// ```
   SignalDispatcher<L> hasSignal<L extends GameListener>(
-    void Function(L listener) deliver,
-  );
+    void Function(L listener) deliver, {
+    bool reverse,
+  });
 }
 
 /// One owner's dispatchers, and the collector that fills them.
@@ -217,18 +233,20 @@ final class EventBinder implements EventDescriptor, ListenerCollector {
 
   @override
   EventDispatcher<L, E> has<L extends GameListener, E>(
-    void Function(L listener, E payload) deliver,
-  ) {
-    final dispatcher = EventDispatcher<L, E>(deliver);
+    void Function(L listener, E payload) deliver, {
+    bool reverse = false,
+  }) {
+    final dispatcher = EventDispatcher<L, E>(deliver, reverse: reverse);
     _accept(dispatcher.add);
     return dispatcher;
   }
 
   @override
   SignalDispatcher<L> hasSignal<L extends GameListener>(
-    void Function(L listener) deliver,
-  ) {
-    final dispatcher = SignalDispatcher<L>(deliver);
+    void Function(L listener) deliver, {
+    bool reverse = false,
+  }) {
+    final dispatcher = SignalDispatcher<L>(deliver, reverse: reverse);
     _accept(dispatcher.add);
     return dispatcher;
   }
@@ -290,7 +308,7 @@ mixin EventBus on GameListener {
   /// Offers this owner's listeners to its own dispatchers.
   ///
   /// The default offers `this`, which is what makes a struct's own
-  /// `onMounted` fire for its own events. An owner that composes others
+  /// `onEntityMounted` fire for its own events. An owner that composes others
   /// overrides it, calls `super`, and offers them too:
   ///
   /// ```dart

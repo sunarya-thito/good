@@ -18,9 +18,10 @@ import 'package:goo/src/command/transport.dart';
 import 'package:goo/src/event.dart';
 import 'package:goo/src/event/state.dart';
 import 'package:goo/src/handoff_buffer.dart';
+import 'package:goo/src/heap_object.dart';
 import 'package:goo/src/scene_handle.dart';
+import 'package:goo/src/widget/frame_meter.dart';
 import 'package:goo/src/game_state.dart';
-import 'package:goo/src/handle.dart';
 import 'package:goo/src/input.dart';
 import 'package:goo/src/input/gamepad.dart';
 import 'package:goo/src/input/input_state.dart';
@@ -314,7 +315,7 @@ abstract class Game {
   ///
   /// // ...and handled in GameState.describeCommands, where the scene is:
   /// descriptor.hasHandler(game.spawnEnemy, (at) {
-  ///   final enemy = sceneHandle!.addEntity(level.enemy);
+  ///   final enemy = loadedScenes.single.addEntity(level.enemy);
   ///   level.enemy.x[enemy] = at.x;
   ///   return enemy;
   /// });
@@ -497,18 +498,26 @@ abstract class Game {
     input.hasDefaultValue<Vector2>(Vector2.zero());
   }
 
-  // --- state ------------------------------------------------------------
+  // --- declarations -------------------------------------------------------
   //
-  // Every field here is null/empty/false at spawn time and gets populated by
-  // _boot on whichever isolate the copy landed on. That is a hard
-  // requirement, not an accident: this whole object is the spawn message.
+  // What a `Game` holds, and the whole of it: the *description*. Every field
+  // below is filled by a declaration pass and then never changes again.
+  //
+  // Nothing here belongs to a **run**. The flags saying who owns the memory
+  // and who simulates, the ports, the tick counter, the `GameState`, the
+  // command registry and its rings all used to live here and now live on
+  // [GameRuntime], built by `Game.start`.
+  //
+  // One instance still backs exactly **one** run - see
+  // [_requireNotYetDescribed] - so this is not about reuse. It is about which
+  // object answers which question: a description is read-only once boot has
+  // run, and a run is the only thing that changes. Keeping them apart is what
+  // lets the *runtime* be the spawn message and swap its isolate roles,
+  // while the description simply arrives on the far side identical.
 
   // No system list here. `describeSystems` is declared on this class and runs
-  // in [_bootGame]; the objects it produces are held by the `GameState`, on
-  // the isolate that ticks them.
-
-  final List<void Function(int tick)> _tickListeners =
-      <void Function(int tick)>[];
+  // in [GameRuntime.bootGame]; the objects it produces are held by the
+  // `GameState`, on the isolate that ticks them.
 
   // Every SceneStruct declared through [describeScenes], in declaration order.
   // Holding them is what keeps their archetypes registered for the life of the
@@ -545,25 +554,6 @@ abstract class Game {
   // does. Empty at spawn time like every other field here.
   final InputRegistry _inputs = InputRegistry();
 
-  GameState? _state;
-  _StateDescriptor? _bootStates;
-
-  // The declared command list, and the thing that carries batches of them
-  // between the copies. Both are built in _boot and live as long as the Game;
-  // null only before start() (and again, for the transport's rings, after
-  // stop()).
-  CommandRegistry? _commands;
-  CommandTransport? _commandTransport;
-
-  // The two command rings. Each is single-producer/single-consumer, so there
-  // is one per direction rather than one shared lane - see CommandTransport.
-  // Both are allocated by, and belong to, the copy that owns the simulation;
-  // the handle copy only ever holds views. Null in the inline configuration,
-  // where nothing crosses a boundary.
-  RingBuffer? _commandsToGame;
-  RingBuffer? _commandsToMain;
-  bool _ownsCommandRings = false;
-
   /// This game's assets - **instance state, not a global static**.
   ///
   /// It lives here for two reasons. Architecturally, an asset's payload lives
@@ -580,64 +570,18 @@ abstract class Game {
   /// must be taken before any decode begins.
   final GameAssets assets = GameAssets();
 
-  // One flag used to answer four questions - who allocates, who frees, who
-  // may write a state channel, and who ticks. They coincided only because the
-  // game isolate did all four. Now that boot runs on main *before* the spawn,
-  // they genuinely differ and are two flags:
+  // There is no `_owns`/`_simulates`/`_booted`/`_tick` here, and no
+  // `GameState`, and that absence is the point of this class.
   //
-  //   _owns      - this copy allocated the shared native memory and frees it.
-  //                Main, in the spawned configuration.
-  //   _simulates - this copy runs the tick loop, and is therefore the single
-  //                writer of component data and state channels. The game
-  //                isolate.
+  // Every one of those is a fact about a **run**, not about a description, and
+  // they now live on [GameRuntime]. The user-facing consequence is that
+  // nothing a run does can be observed through the description: reading a
+  // `Game` tells you what was declared, and the handle tells you what is
+  // happening.
   //
-  // Inline sets both. Neither is public: the user-facing spelling of the
-  // second is `GameState.isSimulating`, and these are here only because
-  // several bring-up steps need them before or without a state.
-  //
-  // A `TripleBuffer` requires one *writer*, not a particular isolate, which is
-  // what makes allocate-here/write-there legal at all. `InputDevice` has
-  // always been the mirror image of this (game isolate allocated, main wrote).
-  bool _simulates = false;
-  bool _owns = false;
-  bool _inline = false;
-  bool _booted = false;
-  int _tick = 0;
-
-  // Game-isolate copy only.
-  SendPort? _toMain;
-  ReceivePort? _control;
-
-  // Asset loads this copy has asked main to perform and is still waiting on,
-  // by request id. Populated only after the spawn, which is what makes the
-  // `Completer` inside each one safe to hold here: `_stopping` below is the
-  // same shape for the same reason (a Completer reachable from this object at
-  // spawn time would make the message unsendable).
-  int _assetRequestId = 0;
-  final Map<int, _AssetLoadRequest> _assetRequests = <int, _AssetLoadRequest>{};
-
-  // Main-isolate handle copy only.
-  ReceivePort? _fromGame;
-  SendPort? _toGame;
-  Completer<void>? _stopping;
-
-  /// Whether [start] has run on this copy.
-  bool get isRunning => _booted;
-
-  /// Fixed ticks completed. On the handle copy this tracks the last tick
-  /// number the game isolate reported, so it lags reality by one message.
-  int get tick => _tick;
-
-  /// This copy's simulation half, for the engine's own use.
-  ///
-  /// **There is deliberately no public `state` getter.** It existed, and it
-  /// was the shape that let a caller reach the simulation from the
-  /// presentation isolate: it compiled everywhere and answered usefully in one
-  /// configuration, which is the worst combination. Reaching the world is
-  /// `InlineGameHandle.state`, and that type is only ever handed to a caller
-  /// who asked for the single-isolate configuration.
-  @internal
-  GameState? get stateOrNull => _state;
+  // [assets] is the exception that stays, and legitimately - it is reached
+  // through `ArchetypeStorage` on the row-read path, and with one run per
+  // instance its lifetime is the instance's lifetime anyway.
 
   /// How many auxiliary buffers this copy has declared - see
   /// [describeBuffers]. Both copies run the same passes, so this agrees
@@ -727,171 +671,285 @@ abstract class Game {
   /// declaration anywhere renumbers everything after it *identically on both
   /// copies*, which is the only property that actually has to hold.
   ///
-  /// Internal because it is a boot-pass detail: every call site is inside
-  /// [_boot] - the two `describeState` call sites are the Game's own and each
-  /// declared GameSystem's, and nothing else declares a channel at all (see
-  /// [describeState]).
-  @internal
-  StateDescriptor get bootStateDescriptor {
-    final states = _bootStates;
-    if (states == null) {
-      throw StateError(
-        '$runtimeType is not in a boot pass - there is no StateDescriptor to '
-        'declare against. describeState() runs exactly once per isolate '
-        'copy, from Game.start(); a state channel cannot be declared at '
-        'runtime (its storage is allocated and announced at bring-up).',
-      );
-    }
-    return states;
-  }
+  // `bootStateDescriptor` used to live here: a getter handing out the live
+  // `StateDescriptor` mid-boot, so that a second declaring source could reach
+  // it without being passed it. It is **deleted**, and what deleted it was
+  // running out of second sources - `GameSystem.describeState` went with the
+  // systems to the game isolate, and a channel's storage is allocated on main
+  // before the spawn, so there is exactly one pass that can declare one and it
+  // receives the descriptor as an argument. The descriptor is now a local in
+  // that pass and cannot outlive it, which is the property the getter's
+  // "not in a boot pass" error was approximating.
 
   // --- bring-up ---------------------------------------------------------
 
-  /// Brings the game up.
-  ///
-  /// With [inline] false (the default off web) this spawns the game isolate,
-  /// waits for it to report its command ring buffer, and leaves this copy as
-  /// the handle described in the class doc. With [inline] true there is only
-  /// ever **one** copy: the [GameState] is constructed on the calling isolate
-  /// and does both jobs, with no spawn and no shared-memory handoff.
-  ///
-  /// [inline] defaults to [kIsWeb], because that is the whole of the
-  /// platform question: web has neither isolates in the shared-memory sense
-  /// nor FFI, so it runs the state inline; native always spawns. It stays a
-  /// parameter rather than becoming an internal detail because a test (and a
-  /// headless host) wants the inline path on native too.
-  ///
-  /// With [autoTick] false nothing ticks until someone calls
-  /// [GameState.advance] (or [GameState.runFixedStep]) by hand - which is
-  /// what makes the scheduler testable deterministically, with no timer and
-  /// no wall clock involved. Note that in the spawned configuration the only
-  /// code that *could* drive it by hand runs on the game isolate, so
-  /// `inline: false, autoTick: false` is a game that never ticks; the knob is
-  /// really for the inline path.
-  ///
-  /// The ordering inside the spawning path is load-bearing, and it is the
-  /// **reverse** of what it once was. [_bootMain] runs *before*
-  /// `Isolate.spawn`, so the object handed over is fully described - every
-  /// system, buffer, channel, camera view and command, plus the native memory
-  /// they point at. The spawned copy re-derives none of it; it adds the half
-  /// that could only ever have been its own ([_bootGame]) and starts ticking.
-  ///
-  /// What may not be reachable from `this` at spawn time is the genuinely
-  /// unsendable: the `ReceivePort` is created after [_bootMain] and stored in
-  /// a field only *after* the spawn. A decoded asset (`dart:ui.Image`) used to
-  /// need a gate here for the same reason; it does not any more, because
-  /// nothing decodes until a scene is loaded and no scene is loaded until
-  /// [_bootGame] runs on the far side. A `Pointer` is fine - see the class doc.
-  ///
-  // TODO(game-handle): this becomes `@internal`, and the user-facing entry
-  // point becomes the statics `Game.start(MyGame())` -> `GameHandle<G>` and
-  // `Game.startInline(MyGame())` -> `InlineGameHandle<G>` (see handle.dart,
-  // which already carries both types and their implementations). A static and
-  // an instance method cannot share a name in Dart, so the two cannot coexist
-  // during the migration - the statics land in the same change that retargets
-  // every `game.start(...)` / `game.stop()` / `game.state!` call site, and
-  // `Game.state` is deleted in the same breath.
-  /// Brings [game] up and hands back the main-isolate handle for it.
+  /// Brings [game] up and hands it straight back, running.
   ///
   /// ```dart
-  /// final run = await Game.start(MyGame());
-  /// final score = run.game.score;   // a StateChannel, for a widget
-  /// await run.stop();
+  /// final game = await Game.start(MyGame());
+  /// game.spawnEnemy();          // a command
+  /// final score = game.score;   // a StateChannel, for a widget
+  /// await game.stop();
   /// ```
   ///
-  /// A static rather than an instance method because a `Game` is a
-  /// *description*, not a running thing: starting one produces something else,
-  /// the way `runApp` does with a widget. What comes back cannot reach the
-  /// simulation - see [GameHandle]. Use [startInline] when you need to.
+  /// **One object, because there is one of everything.** An instance backs
+  /// exactly one run for its whole life, so "the game" and "the run" name the
+  /// same thing and splitting them across two objects the caller has to hold
+  /// bought nothing. This returned the run's handle until that rule was
+  /// settled; the handle is framework-facing now (a renderer receives one in
+  /// [buildView]) and no longer something an app obtains.
+  ///
+  /// Static rather than an instance method so the type flows: `G` binds from
+  /// the argument, which is what makes `await Game.start(MyGame())` a `MyGame`
+  /// with nothing spelled out. It also keeps "start" off the surface of a
+  /// `Game` that has not been started, where every other lifetime member
+  /// throws.
+  ///
+  /// What comes back still cannot reach the simulation: [state], [advance] and
+  /// [runFixedStep] all throw on a run started this way, because the world is
+  /// on another heap. [startInline] is what a test or a headless host uses to
+  /// get one it can drive.
+  ///
+  /// **One instance, one run.** Starting the same `game` twice throws, and so
+  /// does starting it again after [stop]; two games means two instances. The
+  /// reason is that a declaration is one-shot and holds its run's storage
+  /// directly - see [_requireNotYetDescribed], which says it in full at the
+  /// point it refuses.
   ///
   /// On the web this runs the single-isolate implementation, because there are
-  /// no isolates in the shared-memory sense there, but still types the result
-  /// as a `GameHandle` - so a web game gets the same surface as a native one
-  /// rather than depending on the state happening to be reachable.
-  static Future<GameHandle<G>> start<G extends Game>(
-    G game, {
-    bool autoTick = true,
-  }) async {
-    if (kIsWeb) {
-      await game.bootUp(inline: true, autoTick: autoTick);
-      return SingleIsolateGameHandle<G>(game, game._state!);
-    }
-    await game.bootUp(inline: false, autoTick: autoTick);
-    return IsolateGameHandle<G>(game);
+  /// no isolates in the shared-memory sense there - but it returns the same
+  /// type, so a web game gets the same surface as a native one rather than
+  /// depending on the state happening to be reachable.
+  ///
+  /// With [autoTick] false nothing ticks until someone calls [advance] by hand
+  /// - which is what makes the scheduler testable deterministically, with no
+  /// timer and no wall clock involved. Note that in the spawned configuration
+  /// the only code that *could* drive it by hand runs on the game isolate, so
+  /// `autoTick: false` here is a game that never ticks; the knob is really for
+  /// [startInline].
+  static Future<G> start<G extends Game>(G game, {bool autoTick = true}) async {
+    game._requireNotYetDescribed();
+    final runtime = GameRuntime(game);
+    // `drivable: false` even on the web, where this boots inline. The
+    // mechanism is the platform's business; the surface is the caller's, and
+    // this caller asked for a game to run rather than one to drive. See
+    // `GameRuntime.drivable`.
+    await runtime.boot(inline: kIsWeb, drivable: false, autoTick: autoTick);
+    return game;
   }
 
   /// Brings [game] up **on the calling isolate** - one copy doing both jobs -
   /// and hands back a handle that can reach the simulation.
   ///
   /// For tests, headless hosts, replays and tools. `autoTick: false` (the
-  /// default here) leaves the clock entirely to [InlineGameHandle.advance],
-  /// which is what makes the scheduler testable with no timer and no wall
-  /// clock involved.
+  /// default here) leaves the clock entirely to [advance], which is what makes
+  /// the scheduler testable with no timer and no wall clock involved.
   ///
-  /// **At most one inline run per isolate.** Statics are per-isolate, and
+  /// The difference from [start] is not the return type - both hand back the
+  /// game - it is that [state], [advance] and [runFixedStep] *work* on a run
+  /// started here and throw on one started by [start].
+  ///
+  /// **At most one inline run per isolate**, and this bound is separate from
+  /// the one-run-per-instance rule [start] describes - it binds even when the
+  /// two runs are two different `Game` types. Statics are per-isolate, and
   /// `ArchetypeRegistry` is one of them: a second inline run would find the
   /// first run's `ArchetypeStorage` for any prefab type they share, bound to
   /// the first run's `MemoryPool`, and spawn into its memory. Concurrent runs
-  /// are supported by [start], which gives each one its own isolate - and are
-  /// therefore not available on the web.
-  static Future<InlineGameHandle<G>> startInline<G extends Game>(
+  /// need [start], which gives each one its own isolate and so its own
+  /// registries - and are therefore not available on the web.
+  static Future<G> startInline<G extends Game>(
     G game, {
     bool autoTick = false,
   }) async {
-    await game.bootUp(inline: true, autoTick: autoTick);
-    return SingleIsolateGameHandle<G>(game, game._state!);
+    game._requireNotYetDescribed();
+    final runtime = GameRuntime(game);
+    await runtime.boot(inline: true, drivable: true, autoTick: autoTick);
+    return game;
   }
 
-  // Not `@internal` yet, and only because not every call site has moved to the
-  // statics above. See the TODO(game-handle) above.
-  Future<void> bootUp({bool? inline, bool autoTick = true}) async {
-    if (_booted) {
-      throw StateError('$runtimeType is already running.');
-    }
-    if (inline ?? kIsWeb) {
-      _booted = true;
-      _inline = true;
-      // No command rings: there is no boundary to cross, so a batch is run by
-      // the copy that built it (see `CommandTransport`). Allocating 128 KiB of
-      // native memory for two lanes that would carry nothing is the kind of
-      // thing that only shows up on web, where this is the *only* path.
-      //
-      // Both halves, back to back, on the one copy that does both jobs.
-      _bootMain(owns: true, simulates: true);
-      _bootGame();
-      if (autoTick) _state!.startTimer();
-      return;
-    }
+  // --- this instance's run ------------------------------------------------
+  //
+  // The run, reachable from the description. [GameRuntime] is set by
+  // `GameRuntime.boot`, before the spawn, so **both copies have one** and each
+  // has the right one for its own isolate - which is what lets the members
+  // below give a different, correct answer on each side rather than a null.
+  GameRuntime? _runtime;
 
-    // Everything this copy declares, and every byte of shared memory,
-    // **here, before the spawn**. It does not simulate, so it stops here: no
-    // scene is registered and no world exists on this isolate at all.
-    _bootMain(owns: true, simulates: false);
-    _booted = true;
+  /// This game's run, for the framework's own use.
+  @internal
+  GameRuntime? get runtimeOrNull => _runtime;
 
-    final ready = Completer<void>();
-    final fromGame = ReceivePort();
-    // The subscription's closure - not a field - holds `ready`: a ReceivePort
-    // reachable from `this` at spawn time is still unsendable, which is the
-    // one part of the old ordering rule that survives.
-    fromGame.listen((message) => _handleGameMessage(message, ready));
+  GameRuntime _requireRuntime(String member) {
+    final runtime = _runtime;
+    if (runtime != null) return runtime;
+    throw StateError(
+      '$runtimeType.$member was called on a game that has not been started. '
+      '`await Game.start($runtimeType())` starts one, and hands back the same '
+      'instance, running.',
+    );
+  }
 
-    // `this` is fully described by now, pointers and all, and that is fine:
-    // `Pointer` is sendable and arrives at the same address, so the spawned
-    // copy sees the same native memory with no handshake. Verified by
-    // `tool/spawn_pointer_spike.dart`.
-    await Isolate.spawn<List<Object>>(_gameIsolateEntryPoint, <Object>[
-      this,
-      fromGame.sendPort,
-      autoTick,
-    ]);
+  /// Whether this game is running.
+  ///
+  /// Answers on both copies, about that copy: false before [start] and after
+  /// [stop].
+  bool get isRunning => _runtime?.isRunning ?? false;
 
-    _fromGame = fromGame;
-    // `ready` is sent *after* the game isolate has run `_bootGame`, so by the
-    // time this returns the world exists: scenes registered, entities spawned,
-    // queries compiled. Only asset decoding is still in flight, and that is
-    // what `loadScene`'s future is for.
-    await ready.future;
+  /// Fixed ticks completed.
+  ///
+  /// On the main copy this is what the simulating copy last reported, so it
+  /// lags by one port message; on the game isolate it is exact.
+  /// `GameState.tick` is the same number read from the simulation side.
+  int get tick => _requireRuntime('tick').tick;
+
+  /// A batch to build several calls into, sent and answered as one message.
+  ///
+  /// ```dart
+  /// final batch = game.createCommandBatch();
+  /// final hit = batch.execute(game.damage, (amount: 25, crit: true));
+  /// batch.sink(game.log, 'first blood');
+  /// final results = await batch.send();
+  /// print(hit[results]);
+  /// ```
+  ///
+  /// A bare `await game.damage(...)` is a batch of one, so this is not
+  /// something a caller has to reach for - it is what to reach for when the
+  /// round trip is what costs. Fifty calls in one batch is one ring record,
+  /// one wake-up and one reply; fifty sends are fifty of each.
+  CommandBatch createCommandBatch() =>
+      _requireRuntime('createCommandBatch').createCommandBatch();
+
+  /// Brings this game down and releases every shared allocation.
+  ///
+  /// In the spawned configuration this asks the game isolate to unmount and
+  /// waits for it, then frees the memory this copy owns. Calling it twice is a
+  /// no-op; calling it on a game that was never started throws.
+  Future<void> stop() => _requireRuntime('stop').shutDown();
+
+  /// This game has stopped, **on the presentation isolate**.
+  ///
+  /// The mirror of `GameState.onUnmounted`, which is the same moment on the
+  /// *simulation* side, and which side a teardown belongs on follows from what
+  /// it holds: a decoded frame, a `SchedulerBinding` callback or an image cache
+  /// are main-isolate things and are released here; scenes, entities and pool
+  /// pages are game-isolate things and are released there.
+  ///
+  /// Dispatched **before** anything is torn down, so the shared buffers are
+  /// still mapped - a frame callback cancelled here cannot be mid-read of a
+  /// draw buffer that is about to be freed.
+  ///
+  /// `Renderer2D` is the motivating case: it drops its decoded surfaces and
+  /// unhooks its frame callback here, which is what stops a stopped game from
+  /// keeping the scheduler awake forever.
+  void onStopped() {}
+
+  // --- driving the simulation from here -----------------------------------
+  //
+  // Only legal on an inline run, and enforced rather than documented.
+  // `Game.state` existed once and was deleted for being the shape that
+  // "compiles everywhere and works in one place": on a spawned run the world
+  // is on another heap, and this copy's `GameState` is a declaration mirror
+  // that would answer with an empty world rather than fail.
+  //
+  // They are back because `Game.startInline` returns the game rather than a
+  // handle, so a *type* can no longer carry the distinction. The check is on
+  // `GameRuntime.drivable` - which is what the caller asked for - rather than
+  // on null (which would let main's declaration mirror answer) or on `inline`
+  // (which would let the web answer where native throws).
+
+  GameRuntime _requireInline(String member) {
+    final runtime = _requireRuntime(member);
+    if (runtime.drivable) return runtime;
+    throw StateError(
+      '$runtimeType.$member is only available on a game started with '
+      'Game.startInline(), and this one was started with Game.start().\n'
+      '\n'
+      'On a spawned run the world is on another heap: this copy holds a '
+      'GameState that exists only to have run the same declaration passes, '
+      'with no scenes and no entities. It refuses on the web too, where '
+      'Game.start() does run inline and could technically answer - because a '
+      'game that reached the world here would compile and work on the web and '
+      'throw on native, off the same source.\n'
+      '\n'
+      'Use Game.startInline() for a test or a headless host that drives the '
+      'simulation by hand, or reach the world from a handler registered in '
+      'GameState.describeCommands, which runs where it is.',
+    );
+  }
+
+  /// The simulation half - scenes, systems, the pool, the command drain.
+  ///
+  /// **Inline runs only**; see [_requireInline].
+  GameState get state => _requireInline('state').state!;
+
+  /// Advances the clock by [elapsed], running as many fixed steps as it
+  /// affords and then one presentation pass. Returns the number of fixed steps
+  /// taken.
+  ///
+  /// This is the whole scheduler; the timer that `autoTick` installs does
+  /// nothing but call it. Driving it by hand is not a reduced-fidelity
+  /// stand-in for the real loop, it *is* the real loop.
+  ///
+  /// **Inline runs only**; see [_requireInline].
+  int advance(Duration elapsed) =>
+      _requireInline('advance').state!.advance(elapsed);
+
+  /// Runs exactly one fixed step, whatever the clock says. For a test that
+  /// wants a step rather than a duration.
+  ///
+  /// **Inline runs only**; see [_requireInline].
+  void runFixedStep() => _requireInline('runFixedStep').state!.runFixedStep();
+
+  // --- one instance, one run ----------------------------------------------
+  //
+  // A `Game` instance may be started **once**, and that is the design rather
+  // than a limitation waiting to be lifted. Two things say so, and they agree:
+  //
+  //  * The declaration passes are not re-runnable, and that follows from the
+  //    API's own shape rather than from any implementation choice. RULES.md
+  //    rule 6 has every declaration land in a `late final` field
+  //    (`score = descriptor.hasInt32()`), and a `late final` is assignable
+  //    exactly once. A second pass throws `LateInitializationError` from
+  //    inside the user's own `describeState` - and does it *after* appending a
+  //    second set of channels to the declared list, so an unguarded retry
+  //    leaves the instance permanently describing twice the storage it should.
+  //  * A declared handle **is** its run's storage. A `StateChannel` holds the
+  //    `TripleBuffer`, a `BufferHandle` the `RingBuffer`, a `GameCommand` the
+  //    sender that routes it. That is what keeps every one of them a plain
+  //    field read on the tick path, with no per-access indirection to resolve
+  //    which run is asking - and it is only sound while there is one answer.
+  //
+  // Making an instance reusable means separating those: declarations become
+  // pure (an index plus metadata) and every run gets its own storage table,
+  // reached as `game.score[run].value`. That buys back the multiplicity at the
+  // cost of an indirection on the hottest paths in the engine, and a second
+  // instance is the cheaper way to get a second game.
+  //
+  // Restarting a *stopped* instance is refused by the same rule and for the
+  // first reason alone: the storage is long gone, but declaring and binding
+  // are one pass, so there is no way to re-bind without re-running the user's
+  // `describeX`.
+  bool _described = false;
+
+  void _requireNotYetDescribed() {
+    if (!_described) return;
+    throw StateError(
+      '$runtimeType has already been started. A Game instance describes one '
+      'game and backs one run of it, for its whole life - starting it again, '
+      'including after stop(), is not supported.\n'
+      '\n'
+      'Construct a second instance for a second run:\n'
+      '  final run1 = await Game.start(MyGame());\n'
+      '  final run2 = await Game.start(MyGame());\n'
+      '\n'
+      'The reason is that a declaration is one-shot and *is* its storage: '
+      '`score = descriptor.hasInt32()` fills a `late final`, and the '
+      'StateChannel it returns holds the run\'s TripleBuffer directly, which '
+      'is what keeps reading it a plain field access on the tick path. A '
+      'second run would allocate over the first run\'s pointers and both '
+      'would then read the second run\'s memory - wrong answers rather than a '
+      'crash, which is why this refuses up front instead.',
+    );
   }
 
   /// Everything the **main isolate** declares and allocates, before the spawn.
@@ -906,14 +964,12 @@ abstract class Game {
   ///    declaration pass. Both facts point here: allocation cannot happen
   ///    before the declaration, and the game isolate must inherit the numbering
   ///    rather than re-derive it.
-  ///  * `describeSystems` stays here too, and that one is worth stating because
-  ///    an earlier plan had it moving. A `Game` *mixin* declares systems -
-  ///    `Renderer2D.describeSystems` brings `WorldTransformSystem` and
-  ///    `GameRenderer2D` with it, which is what makes `extends Game2D` the
-  ///    whole opt-in - and a mixin on `Game` cannot contribute to a pass that
-  ///    lives on `GameState`. Main also genuinely holds system handles:
-  ///    `Renderer2D` reaches its renderer through `getSystem` every frame to
-  ///    find the buffer to drain.
+  ///  * `describeSystems` is declared here too - a `Game` *mixin* has to be
+  ///    able to contribute one, which is what makes `extends Game2D` the whole
+  ///    opt-in for 2D rendering - but it is **invoked** from [_bootGame], so
+  ///    the system objects only ever come into being on the copy that ticks
+  ///    them. Declaring on one side and running on the other is exactly the
+  ///    split this method's name describes.
   ///
   /// What that leaves on the game isolate is [_bootGame]: the things that
   /// register into **process-global statics** (archetypes, component bits) and
@@ -924,15 +980,12 @@ abstract class Game {
   /// analyzer cannot check, and it has already silently lost a pass to an edit
   /// whose anchor spanned the adjacent line. Re-read the phase you touched, in
   /// full, after touching it.
-  void _bootMain({required bool owns, required bool simulates}) {
-    _owns = owns;
-    _simulates = simulates;
-
-    // One StateDescriptor for the whole pass, built before anything can
-    // declare against it - see [bootStateDescriptor] for why it must be
-    // shared rather than one per source.
-    final states = _StateDescriptor(this);
-    _bootStates = states;
+  void _bootMain(GameRuntime runtime) {
+    // One StateDescriptor for the whole pass, and a local rather than a field:
+    // exactly one pass can declare a channel (its storage is allocated here,
+    // before the spawn), so nothing outside this method has any business
+    // reaching it, and a local cannot outlive the window it is valid in.
+    final states = _StateDescriptor(runtime);
 
     // Constructed here, and *only* constructed: its `onMounted` - the pass
     // that loads scenes and so spawns a world - runs in [_bootGame], on the
@@ -941,27 +994,20 @@ abstract class Game {
     // below can register the same command handlers in the same order on both
     // copies, and it never simulates, never mounts and never holds a scene.
     final state = createState();
-    _state = state;
-    state.bindGame(this, simulating: simulates);
+    runtime.state = state;
+    state.bindRuntime(runtime, simulating: runtime.simulates);
 
-    // --- describeState, call sites 1..2 ----------------------------------
+    // --- describeState, the only call site --------------------------------
     //
-    // Resulting declaration order, which *is* channel-index order and is
-    // therefore observable (an index is what crosses the wire):
-    //
-    //   1. the Game's own
-    //   2. every declared GameSystem, in post-_sortSystems order
-    //
-    // Two sources and no more, and the constraint is sharper than "exists for
-    // the whole run": a channel's storage is allocated here, on main, before
-    // the spawn, so only something this pass runs can own an index. The
-    // `GameState` used to be a third call site and is not any more - its
-    // `onMounted` runs on the other copy, after this allocation. Scenes and
-    // their prefabs were dropped earlier for the neighbouring reason (loaded
-    // after boot, possibly repeatedly). See [describeState].
-    //
-    // Systems come last only because their declarations do not exist until
-    // describeSystems has run.
+    // Declaration order here *is* channel-index order, and an index is what
+    // crosses the wire, so it is observable. There is exactly one source, and
+    // the constraint that makes it one is sharper than "exists for the whole
+    // run": a channel's storage is allocated here, on main, before the spawn,
+    // so only something this pass runs can own an index. The `GameState` and
+    // each `GameSystem` were both call sites once; both went to the game
+    // isolate, which is after this allocation. Scenes and their prefabs were
+    // dropped earlier for the neighbouring reason (loaded after boot, possibly
+    // repeatedly). See [describeState].
     describeState(states);
 
     // Before describeBuffers, deliberately: a 2D renderer declares one frame
@@ -978,8 +1024,15 @@ abstract class Game {
     _inputs.source = '$runtimeType';
     describeInputs(_inputs);
 
-    if (owns) _bootAllocate();
-    _bootFinalize(simulates);
+    // Every user-supplied declaration has now run against this instance, and
+    // none of them may run again - see [_requireNotYetDescribed]. Set before
+    // the allocation phase rather than after the whole boot, so a start that
+    // fails part-way still refuses the retry that would double the
+    // declarations.
+    _described = true;
+
+    if (runtime.owns) _bootAllocate(runtime);
+    _bootFinalize(runtime, states);
   }
 
   /// Everything the **game isolate** declares, after the spawn.
@@ -1001,13 +1054,13 @@ abstract class Game {
   ///
   /// Inline runs this immediately after [_bootMain], on the one copy that does
   /// both jobs.
-  void _bootGame() {
-    final state = _state!;
+  void _bootGame(GameRuntime runtime) {
+    final state = runtime.state!;
 
     // Scenes before systems, and it has to be that way round: a system's
     // `describeQuery` resolves against registered archetypes, and registering
     // them is exactly what declaring a scene does.
-    describeScenes(_GameSceneDescriptor(this));
+    describeScenes(_GameSceneDescriptor(runtime));
 
     // Declared and held by the state, so the system objects only ever exist on
     // this copy.
@@ -1045,7 +1098,7 @@ abstract class Game {
     // there is to collect - and on this copy only, because dispatching an
     // event is a simulation act. Main's `GameState` and system twins keep
     // their dispatchers unbound and never fire one.
-    _bindEvents();
+    _bindEvents(runtime);
 
     // The world itself. `onMounted` is where a game calls `loadScene`, so this
     // is the line that brings a scene into being - all of it, on one copy.
@@ -1058,7 +1111,7 @@ abstract class Game {
   /// Runs after **every** declaration source has spoken, which is the earliest
   /// point at which the sizes are known - and still well before the spawn, so
   /// both copies see live storage from their first tick.
-  void _bootAllocate() {
+  void _bootAllocate(GameRuntime runtime) {
     // Allocated here rather than next to the command ring in [_runOnIsolate]:
     // the declarations only exist once describeSystems has run, and this is
     // the first point at which every declaration source has been seen. It is
@@ -1072,10 +1125,10 @@ abstract class Game {
       // it and 128 KiB of native memory would carry nothing. Allocated here
       // rather than on the game isolate (where they used to live) because
       // this copy boots first now, and the addresses ride the spawn.
-      if (!_inline) {
-        _commandsToGame = RingBuffer(commandBufferBytes);
-        _commandsToMain = RingBuffer(commandBufferBytes);
-        _ownsCommandRings = true;
+      if (!runtime.inline) {
+        runtime.commandsToGame = RingBuffer(commandBufferBytes);
+        runtime.commandsToMain = RingBuffer(commandBufferBytes);
+        runtime.ownsCommandRings = true;
       }
       for (var i = 0; i < _bufferHandles.length; i++) {
         final handle = _bufferHandles[i];
@@ -1111,14 +1164,13 @@ abstract class Game {
       // Inline: this same copy is the one Flutter runs on, so it owns both
       // ends. In the spawned configuration the handle builds its device when
       // the announcement lands (see _msgInput), and this copy never has one.
-      if (decodesAssets) _inputs.createDevice();
+      if (runtime.decodesAssets) _inputs.createDevice();
     }
   }
 
   /// Phase 3: commands, event binding, and closing the declaration window.
-  void _bootFinalize(bool simulates) {
-    final states = _bootStates!;
-    final state = _state!;
+  void _bootFinalize(GameRuntime runtime, _StateDescriptor states) {
+    final state = runtime.state!;
 
     // --- describeCommands, both call sites ------------------------------
     //
@@ -1137,12 +1189,12 @@ abstract class Game {
     final transport = CommandTransport();
     final commands = CommandRegistry(
       transport,
-      simulating: simulates,
-      inline: _inline,
+      simulating: runtime.simulates,
+      inline: runtime.inline,
     );
     transport.registry = commands;
-    _commands = commands;
-    _commandTransport = transport;
+    runtime.commands = commands;
+    runtime.commandTransport = transport;
 
     // The Game declares (and may handle on the Flutter isolate); the
     // GameState may only handle, on the game isolate. Order matters only in
@@ -1153,7 +1205,7 @@ abstract class Game {
     // Attaches whichever rings this copy already has. Inline has none; the
     // game isolate allocated both in _runOnIsolate before calling this; the
     // handle copy has none yet and attaches again when `ready` lands.
-    _attachCommandRings();
+    runtime.attachCommandRings();
 
     // The declaration window is closed. Anything holding on to the
     // descriptor past this point is trying to declare a channel at runtime,
@@ -1163,7 +1215,6 @@ abstract class Game {
     // `_inputs.seal()` is deliberately *not* here: a system may still declare
     // an action, and systems are declared on the game isolate. It closes at
     // the end of [_bootGame] instead.
-    _bootStates = null;
   }
 
   /// Binds events for the `GameState`, every declared system, and every
@@ -1180,8 +1231,8 @@ abstract class Game {
   ///
   /// Binding is per owner, and that is what scopes an event: a dispatcher only
   /// ever sees what its own owner offered.
-  void _bindEvents() {
-    final state = _state;
+  void _bindEvents(GameRuntime runtime) {
+    final state = runtime.state;
     if (state is EventBus) EventBinder.bind(state as EventBus);
     if (state != null) {
       final systems = state.declaredSystems;
@@ -1211,64 +1262,18 @@ abstract class Game {
   // second numbering for the first to disagree with. Main's stay empty, which
   // is the honest description of a copy that holds no world.
 
-  /// Points the transport at whichever of this copy's rings exist.
-  ///
-  /// Each ring has one producer and one consumer, and which end this copy
-  /// holds follows from whether it simulates - the game isolate consumes what
-  /// main sends and produces what main consumes, and the handle copy is the
-  /// mirror image. Called twice on the handle copy (once from [_boot] with
-  /// nothing to attach, once when `ready` lands with the addresses) so that
-  /// there is one place that knows the direction.
-  void _attachCommandRings() {
-    final transport = _commandTransport;
-    if (transport == null) return;
-    transport.inbound = _simulates ? _commandsToGame : _commandsToMain;
-    transport.outbound = _simulates ? _commandsToMain : _commandsToGame;
-  }
-
   // --- what GameState reaches back for ----------------------------------
   //
   // The simulation half lives in another library, so the handful of things
   // its tick loop needs are `@internal` accessors rather than private
-  // fields - the same escape-hatch shape `SceneStruct.bindGame` and
+  // fields - the same escape-hatch shape `SceneStruct.bindState` and
   // `EntityStruct.bindArchetype` already use. Each is a plain field read: no
   // copying, no allocation, safe to call once per system per tick.
-
-  /// Whether this copy runs on the isolate that can decode assets.
-  ///
-  /// **Not the same question as [GameState.isSimulating]**, and that is the
-  /// whole reason it exists. Decoding needs Flutter and `dart:ui`, which live
-  /// on the main isolate; simulating happens wherever the tick loop is. The
-  /// three configurations answer differently:
-  ///
-  ///  * inline (`start(inline: true)`, and every web build): one copy, on the
-  ///    main isolate, doing both jobs - true.
-  ///  * spawned, this is the handle copy: main isolate, does not simulate -
-  ///    true.
-  ///  * spawned, this is the game isolate copy: simulates, has no Flutter
-  ///    engine attached - false.
-  ///
-  /// `GameState.loadScene` reads this to decide whether to actually pull
-  /// bytes. It never gates *declaring* on it: an asset is declared on both
-  /// copies in the same order or its address means two different things on
-  /// the two sides. See `GameAssets`.
-  @internal
-  bool get decodesAssets => _inline || !_simulates;
 
   /// Every scene declared in [describeScenes], in declaration order - what
   /// `GameState.collectListeners` walks to reach the prefabs beneath them.
   @internal
   List<SceneStruct> get declaredScenes => _declaredScenes;
-
-  /// Takes in whatever the other copy has sent since the last call and runs
-  /// what is due - see `CommandTransport.pump`.
-  ///
-  /// Called from `GameState.runFixedStep`, inside the tick window and before
-  /// any system, which is what makes a command-spawned entity visible to
-  /// every system on the tick its command lands. The main isolate pumps on
-  /// its own schedule (each tick notification), where nothing is tick-bound.
-  @internal
-  void pumpCommands() => _commandTransport?.pump();
 
   /// Called by [GameState.runFixedStep] at the top of every fixed step:
   /// re-reads the raw device snapshot and updates every declared action from
@@ -1282,83 +1287,6 @@ abstract class Game {
   /// ran" rather than "this tick".
   @internal
   void resolveInputs() => _inputs.resolve();
-
-  /// Called by [GameState.runFixedStep] once a fixed step is fully committed:
-  /// bumps the tick counter and gets the news out - announcing any newly
-  /// allocated page first, so the handle can resolve entities living in it
-  /// before it is told the tick they appeared on is done.
-  @internal
-  void completeTick() => _tick++;
-
-  /// Announces the finished frame to the main isolate: adopts any new pages,
-  /// then pings the tick listeners.
-  ///
-  /// **Called after the presentation pass, not at the end of the fixed
-  /// tick.** That ordering is load-bearing. The tick ping is what a consumer
-  /// hangs its drain off - `RenderSystem2D` drains the draw ring on it - and
-  /// the draw ring is filled by `GameRenderer2D` during *presentation*,
-  /// which runs after `commitTick`. Firing this inside `runFixedStep` (where
-  /// it used to live, back when the renderer was a `FixedTickable`) would
-  /// signal "a frame is ready" before the frame had been written, so every
-  /// drain would come up one frame stale - and the very first one empty.
-  ///
-  /// Split from [completeTick] rather than merged into it because the tick
-  /// *counter* has to advance before presentation runs: the renderer stamps
-  /// its batch with `game.tick`, and that has to name the tick it depicts.
-  @internal
-  void presentFrame() {
-    final toMain = _toMain;
-    if (toMain == null) {
-      // Inline path: no port to hop, notify directly.
-      _notifyTickListeners(_tick);
-      return;
-    }
-    // A bare int: the cheapest thing a SendPort can carry, and all a
-    // repaint trigger needs.
-    //
-    // It used to be preceded by an announcement of every page allocated since
-    // the last tick, so main could adopt a read-only view and resolve entities
-    // living in it. Main does not read entities any more - it holds no
-    // archetypes to adopt into - so there is nothing to announce. What reaches
-    // it is what a presentation isolate actually needs: state channels, the
-    // draw buffers, and this ping.
-    toMain.send(_tick);
-  }
-
-  void _notifyTickListeners(int tick) {
-    // Before the listeners, not after: a widget repaints off one of these
-    // callbacks, and it must see state already reconciled for this tick
-    // rather than a value one tick behind whatever it is about to draw.
-    _pollStateChannels();
-    for (var i = 0; i < _tickListeners.length; i++) {
-      _tickListeners[i](tick);
-    }
-  }
-
-  /// Notifies the listeners of every declared channel whose value actually
-  /// moved since this copy last looked.
-  ///
-  /// This is the main isolate's half of `StateChannel`'s two-speed
-  /// notification (see that class's doc): the simulating copy notifies
-  /// synchronously inside the write, because the writer is right there; this
-  /// copy cannot know a write happened until the tick message lands, so it
-  /// reconciles here. Driven off the tick-completed path rather than a timer
-  /// of its own, deliberately: "the published snapshot moved" is exactly the
-  /// signal [addTickListener] already carries, and a channel checking on any
-  /// other schedule would report changes at a moment when the rest of the
-  /// world a listener can read is from a different tick. Called from
-  /// [_notifyTickListeners] rather than registered through [addTickListener]
-  /// so it cannot be removed by [removeTickListener] and does not appear in
-  /// the user's listener list - [addTickListener]'s public contract is
-  /// untouched.
-  ///
-  /// Costs one null check per declared channel on a copy that declared none,
-  /// which is the overwhelmingly common case.
-  void _pollStateChannels() {
-    for (var i = 0; i < _stateChannels.length; i++) {
-      _stateChannels[i].pollChanged();
-    }
-  }
 
   // --- commands ---------------------------------------------------------
 
@@ -1380,23 +1308,13 @@ abstract class Game {
   /// Deliberately here rather than on a command: `damage.newBatch()` reads as
   /// "a batch of damage commands", and a batch is nothing of the kind - it is
   /// a mixed sequence, and mixing is most of the point. It comes from the
-  /// thing that owns the channel, which is the game.
+  /// thing that owns the lane - which is the **run**, not the description, so
+  /// this is [createCommandBatch] - which throws on a game that has not been
+  /// started, since there is no registry to batch into yet.
   ///
   /// Every call in one batch has to be handled on the same isolate, since a
   /// batch is one message with one reply; adding a call bound for the other
   /// side throws at the line that adds it.
-  CommandBatch createCommandBatch() => _requireCommands().createCommandBatch();
-
-  CommandRegistry _requireCommands() {
-    final commands = _commands;
-    if (commands == null) {
-      throw StateError(
-        '$runtimeType has not been started, so its commands have not been '
-        'declared yet - describeCommands runs during start().',
-      );
-    }
-    return commands;
-  }
 
   // --- systems ----------------------------------------------------------
   //
@@ -1461,23 +1379,95 @@ abstract class Game {
   /// through `GameView.headless` - a game that declares no cameras. A
   /// renderer contributes nothing for a null rather than picking a view on
   /// the caller's behalf.
-  /// [run] is which live game is being shown. A `Game` is a prefab and can
-  /// back several runs at once, so "the surfaces this view draws into" is a
-  /// property of the run, not of the description - a renderer keeps them in
-  /// `run.attachment`.
-  Widget? buildView(
-    BuildContext context,
-    GameHandle run,
-    CameraView? camera,
-  ) =>
-      null;
+  /// Whatever a renderer keeps per view - decoded frames, a scheduler
+  /// registration - lives in its own fields, because an instance backs one run
+  /// and there is nothing to disambiguate. [onStopped] is where it lets go.
+  Widget? buildView(BuildContext context, CameraView? camera) => null;
 
-  // The mounted-view refcount used to be an `int _mountedViews` field here,
-  // with `attachView`/`detachView`/`hasView` around it. It could not stay: two
-  // runs of one prefab would have shared one count, so the second run's first
-  // view would not have looked like a first view and nothing would have armed
-  // for it. It lives on `GameHandle` now, and the hooks below are handed the
-  // run whose view count changed.
+  // --- how many GameViews are showing this game ---------------------------
+
+  int _mountedViews = 0;
+
+  /// Whether anything is on screen showing this game.
+  ///
+  /// Refcounted rather than a bool because two views on one game is a
+  /// supported shape (two cameras, or one camera at two sizes), and disposing
+  /// the second must not stop the first from painting.
+  bool get hasView => _mountedViews > 0;
+
+  final FrameMeter _frames = FrameMeter();
+
+  /// Frames this game has actually presented - a counter, incremented once per
+  /// real frame by the engine, never derived from a delta.
+  ///
+  /// Counts only while something is on screen showing it: these numbers come
+  /// from Flutter's own frame timings, which exist only where frames do.
+  int get frameCount => _frames.frameCount;
+
+  /// Frames presented per second, counted over a rolling window.
+  ///
+  /// **Not `1 / frameMillis`.** vsync sets the ceiling, so a game using 4ms of
+  /// a 16.67ms budget presents 60 times a second, not 250 - [frameMillis] is
+  /// how much headroom is left, this is whether it is smooth. Zero when
+  /// nothing is showing the game.
+  double get fps => _frames.fps;
+
+  /// Mean build-plus-raster milliseconds per frame. The budget at 60Hz is
+  /// 16.67; this is how much of it is being spent.
+  double get frameMillis => _frames.millis;
+
+  /// The most expensive single frame in the window, in milliseconds - how long
+  /// the slowest one took to *make*.
+  double get worstFrameMillis => _frames.worstMillis;
+
+  /// New pictures the **simulation** published per second.
+  ///
+  /// This is usually the number a player would call the frame rate, and it is
+  /// not [fps]. The renderer samples the newest published frame once per
+  /// Flutter frame, so a display refreshing 160 times a second while the
+  /// simulation publishes 25 shows 25 distinct positions - smooth screen,
+  /// stuttery game. [fps] says the screen is keeping up; this says whether
+  /// there is anything new on it.
+  ///
+  /// When this is the lower of the two, the simulation is the bottleneck and
+  /// `frameMillis` will look healthy while the game feels bad.
+  double get simulationFps => _runtime?.simulationFrames.fps ?? 0;
+
+  /// Simulation frames published since the run started - the counter behind
+  /// [simulationFps], in the same sense [frameCount] is behind [fps].
+  int get simulationFrameCount => _runtime?.simulationFrames.frameCount ?? 0;
+
+  /// The longest the simulation went without publishing a new picture, in
+  /// milliseconds. The [worstFrameIntervalMillis] of the other half.
+  double get worstSimulationIntervalMillis =>
+      _runtime?.simulationFrames.worstIntervalMillis ?? 0;
+
+  /// The longest the picture went without a new frame, in milliseconds - **the
+  /// jank number**.
+  ///
+  /// [fps] is throughput and averages the window; this is pacing and does not.
+  /// A high [fps] alongside a large value here is not a contradiction, it is
+  /// the precise description of a game that stutters: the frames arrived, just
+  /// not evenly. At a steady 60Hz this reads about 16.7.
+  double get worstFrameIntervalMillis => _frames.worstIntervalMillis;
+
+  @internal
+  void attachView() {
+    if (_mountedViews++ > 0) return;
+    // Armed here rather than at boot, and that is what keeps a headless game
+    // safe: `SchedulerBinding.instance` needs a binding, and a game with no
+    // widget may be running in a tool or a plain `dart run` where there is
+    // none. A view existing is proof there is one.
+    _frames.arm();
+    onViewAttached();
+  }
+
+  @internal
+  void detachView() {
+    if (--_mountedViews > 0) return;
+    _frames.disarm();
+    onViewDetached();
+  }
 
   /// The first [GameView] showing this game has been mounted.
   ///
@@ -1486,33 +1476,340 @@ abstract class Game {
   /// frame callback there means a side effect fires on every rebuild and
   /// never fires at all for a game whose view is built once and then only
   /// repainted - the registration would be both duplicated and mistimed.
-  void onViewAttached(GameHandle run) {}
+  void onViewAttached() {}
 
   /// The last [GameView] showing this game has been disposed.
   ///
-  /// Anything armed in [onViewAttached] must be disarmed here rather than
-  /// left to [stop]: the widget can go while the game runs on, and a
+  /// Anything armed in [onViewAttached] must be disarmed here rather than left
+  /// to [onStopped]: the widget can go while the game runs on, and a
   /// self-rescheduling frame callback left behind keeps the scheduler awake
   /// forever - which a widget test reports as "an animation is still running
-  /// even after the widget tree was disposed".
-  void onViewDetached(GameHandle run) {}
+  /// even after the widget tree was disposed". [onStopped] is the other end,
+  /// for a game that stops while its view is still up.
+  void onViewDetached() {}
 
   // --- tick notification ------------------------------------------------
+  //
+  // `addTickListener`/`removeTickListener` used to live here and are gone with
+  // the rest of the run's state. A tick listener belongs to one run - two runs
+  // of one `Game` would have shared a list and fired each other's callbacks -
+  // and the only engine consumer moved to a `SchedulerBinding` frame callback
+  // anyway, because a repaint scheduled when a port message happens to land
+  // waits most of a frame for the next vsync. `GameRuntime.addTickListener` is
+  // the internal spelling that survives, for the state channels' own polling.
+}
+
+/// One **run** of a [Game]: everything that is true of a game while it is
+/// going, and nothing that is true of its description.
+///
+/// Built by `Game.start`, one per run. A `Game` instance backs exactly one of
+/// these for its whole life - see `Game._requireNotYetDescribed` for why - so
+/// this is not a multiplicity mechanism. It is a **separation** one.
+///
+/// Everything here used to be a field on `Game`, and the cost of that was not
+/// hypothetical: with the roles, the ports, the ring buffers and the
+/// `GameState` all hanging off the description, "what does this object mean on
+/// the other isolate" had no single answer, and `_runOnIsolate` mutated the
+/// same object main was still holding. Splitting them makes each side's job
+/// nameable - the description is read-only after boot, the runtime is the only
+/// thing that changes and the only thing with two isolate-specific halves.
+///
+/// # This, not the `Game`, is the spawn message
+///
+/// `Isolate.spawn` carries one of these, and the `Game` rides along inside it
+/// as [game]. That direction matters: the runtime is the thing with two
+/// isolate-specific halves to swap over ([runOnIsolate] takes ownership of the
+/// simulation and gives up ownership of the memory), while the description is
+/// identical on both sides and simply arrives.
+///
+/// The same rule as ever applies to what may be reachable from here at spawn
+/// time: a `Pointer` is sendable and arrives at the same address, a
+/// `ReceivePort` or a `Completer` is not sendable at all. [fromGame] and
+/// [stopping] are therefore assigned only *after* the spawn - see [boot].
+@internal
+final class GameRuntime {
+  GameRuntime(this.game);
+
+  /// The description this run is running.
+  final Game game;
+
+  // One flag used to answer four questions - who allocates, who frees, who
+  // may write a state channel, and who ticks. They coincided only because the
+  // game isolate did all four. Now that boot runs on main *before* the spawn,
+  // they genuinely differ and are two flags:
+  //
+  //   owns      - this copy allocated the shared native memory and frees it.
+  //               Main, in the spawned configuration.
+  //   simulates - this copy runs the tick loop, and is therefore the single
+  //               writer of component data and state channels. The game
+  //               isolate.
+  //
+  // Inline sets both. The user-facing spelling of the second is
+  // `GameState.isSimulating`; these are here because several bring-up steps
+  // need them before or without a state.
+  //
+  // A `TripleBuffer` requires one *writer*, not a particular isolate, which is
+  // what makes allocate-here/write-there legal at all. `InputDevice` has
+  // always been the mirror image of this (game isolate allocated, main wrote).
+  bool simulates = false;
+  bool owns = false;
+  bool inline = false;
+  bool booted = false;
+
+  /// Whether `Game.state`/`advance`/`runFixedStep` are available.
+  ///
+  /// **Not the same question as [inline]**, and conflating them was a real
+  /// bug for exactly one configuration. `Game.start` runs inline on the web,
+  /// because there are no isolates in the shared-memory sense there - so a
+  /// guard that asked [inline] let `game.state` work on the web and throw on
+  /// native, off identical source. That is the "compiles everywhere, works in
+  /// one place" shape the whole split exists to prevent, just inverted.
+  ///
+  /// This asks what the *caller* asked for instead: only `Game.startInline`
+  /// sets it. The web still runs inline; it just does not hand out the world
+  /// to code that did not ask to drive it.
+  bool drivable = false;
+
+  /// Fixed ticks completed. On the handle copy this tracks the last tick
+  /// number the game isolate reported, so it lags reality by one message.
+  int tick = 0;
+
+  /// This run's simulation half - non-null on the copy that boots it, which is
+  /// both copies (main builds a declaration mirror; see [Game._bootMain]).
+  GameState? state;
+
+  // The declared command list, and the thing that carries batches of them
+  // between the copies. Both are built in boot and live as long as the run;
+  // null only before it starts (and again, for the transport's rings, after it
+  // stops).
+  CommandRegistry? commands;
+  CommandTransport? commandTransport;
+
+  // The two command rings. Each is single-producer/single-consumer, so there
+  // is one per direction rather than one shared lane - see CommandTransport.
+  // Both are allocated by, and belong to, the copy that owns the simulation;
+  // the handle copy only ever holds views. Null in the inline configuration,
+  // where nothing crosses a boundary.
+  RingBuffer? commandsToGame;
+  RingBuffer? commandsToMain;
+  bool ownsCommandRings = false;
+
+  // Game-isolate copy only.
+  SendPort? _toMain;
+  ReceivePort? _control;
+
+  // Asset loads this copy has asked main to perform and is still waiting on,
+  // by request id. Populated only after the spawn, which is what makes the
+  // `Completer` inside each one safe to hold here: [_stopping] is the same
+  // shape for the same reason (a Completer reachable from this object at spawn
+  // time would make the message unsendable).
+  int _assetRequestId = 0;
+  final Map<int, _AssetLoadRequest> _assetRequests = <int, _AssetLoadRequest>{};
+
+  // Main-isolate handle copy only.
+  ReceivePort? _fromGame;
+  SendPort? _toGame;
+  Completer<void>? _stopping;
+
+  final List<void Function(int tick)> _tickListeners =
+      <void Function(int tick)>[];
+
+  /// Whether this run has booted and not yet stopped.
+  bool get isRunning => booted;
+
+  /// Whether this copy runs on the isolate that can decode assets.
+  ///
+  /// **Not the same question as [GameState.isSimulating]**, and that is the
+  /// whole reason it exists. Decoding needs Flutter and `dart:ui`, which live
+  /// on the main isolate; simulating happens wherever the tick loop is. The
+  /// three configurations answer differently:
+  ///
+  ///  * inline (`Game.startInline`, and every web build): one copy, on the
+  ///    main isolate, doing both jobs - true.
+  ///  * spawned, this is the handle copy: main isolate, does not simulate -
+  ///    true.
+  ///  * spawned, this is the game isolate copy: simulates, has no Flutter
+  ///    engine attached - false.
+  ///
+  /// `GameState.loadScene` reads this to decide whether to actually pull
+  /// bytes. It never gates *declaring* on it: an asset is declared on both
+  /// copies in the same order or its address means two different things on
+  /// the two sides. See `GameAssets`.
+  bool get decodesAssets => inline || !simulates;
+
+  // --- bring-up -----------------------------------------------------------
+
+  /// Brings this run up.
+  ///
+  /// With [inline] false this spawns the game isolate, waits for it to report
+  /// ready, and leaves this copy as the handle side. With [inline] true there
+  /// is only ever **one** copy: the [GameState] is constructed on the calling
+  /// isolate and does both jobs, with no spawn and no shared-memory handoff.
+  ///
+  /// The ordering inside the spawning path is load-bearing, and it is the
+  /// **reverse** of what it once was. [Game._bootMain] runs *before*
+  /// `Isolate.spawn`, so what is handed over is fully described - every
+  /// system, buffer, channel, camera view and command, plus the native memory
+  /// they point at. The spawned copy re-derives none of it; it adds the half
+  /// that could only ever have been its own ([Game._bootGame]) and starts
+  /// ticking.
+  ///
+  /// What may not be reachable from this object at spawn time is the genuinely
+  /// unsendable: [_fromGame] is created after `_bootMain` and stored in a
+  /// field only *after* the spawn. A decoded asset (`dart:ui.Image`) used to
+  /// need a gate for the same reason; it does not any more, because nothing
+  /// decodes until a scene is loaded and no scene is loaded until `_bootGame`
+  /// runs on the far side. A `Pointer` is fine - see [Game]'s class doc.
+  Future<void> boot({
+    required bool inline,
+    required bool drivable,
+    required bool autoTick,
+  }) async {
+    if (booted) {
+      throw StateError('this ${game.runtimeType} run is already going.');
+    }
+    // Before the spawn, deliberately, so the game-isolate copy inherits the
+    // back-reference and resolves it to *its own* copy of this runtime. That
+    // is what lets `game.tick` and `game.isRunning` answer correctly on both
+    // sides instead of being main-only. The cycle (runtime -> game -> runtime)
+    // is fine: `Isolate.spawn`'s deep copy handles cycles.
+    game._runtime = this;
+    this.drivable = drivable;
+    if (inline) {
+      booted = true;
+      this.inline = true;
+      owns = true;
+      simulates = true;
+      // No command rings: there is no boundary to cross, so a batch is run by
+      // the copy that built it (see `CommandTransport`). Allocating 128 KiB of
+      // native memory for two lanes that would carry nothing is the kind of
+      // thing that only shows up on web, where this is the *only* path.
+      //
+      // Both halves, back to back, on the one copy that does both jobs.
+      game._bootMain(this);
+      game._bootGame(this);
+      if (autoTick) state!.startTimer();
+      return;
+    }
+
+    // Everything this copy declares, and every byte of shared memory,
+    // **here, before the spawn**. It does not simulate, so it stops here: no
+    // scene is registered and no world exists on this isolate at all.
+    owns = true;
+    simulates = false;
+    game._bootMain(this);
+    booted = true;
+
+    final ready = Completer<void>();
+    final fromGame = ReceivePort();
+    // The subscription's closure - not a field - holds `ready`: a ReceivePort
+    // reachable from `this` at spawn time is still unsendable, which is the
+    // one part of the old ordering rule that survives.
+    fromGame.listen((message) => _handleGameMessage(message, ready));
+
+    // `this` is fully described by now, pointers and all, and that is fine:
+    // `Pointer` is sendable and arrives at the same address, so the spawned
+    // copy sees the same native memory with no handshake. Verified by
+    // `tool/spawn_pointer_spike.dart`.
+    await Isolate.spawn<List<Object>>(_gameIsolateEntryPoint, <Object>[
+      this,
+      fromGame.sendPort,
+      autoTick,
+    ]);
+
+    _fromGame = fromGame;
+    // `ready` is sent *after* the game isolate has run `_bootGame`, so by the
+    // time this returns the world exists: scenes registered, entities spawned,
+    // queries compiled. Only asset decoding is still in flight, and that is
+    // what `loadScene`'s future is for.
+    await ready.future;
+  }
+
+  /// Points the transport at whichever of this copy's rings exist.
+  ///
+  /// Each ring has one producer and one consumer, and which end this copy
+  /// holds follows from whether it simulates - the game isolate consumes what
+  /// main sends and produces what main consumes, and the handle copy is the
+  /// mirror image. Called twice on the handle copy (once from boot with
+  /// nothing to attach, once when `ready` lands with the addresses) so that
+  /// there is one place that knows the direction.
+  void attachCommandRings() {
+    final transport = commandTransport;
+    if (transport == null) return;
+    transport.inbound = simulates ? commandsToGame : commandsToMain;
+    transport.outbound = simulates ? commandsToMain : commandsToGame;
+  }
+
+  // --- what GameState reaches back for ------------------------------------
+
+  /// A batch to build several calls into, sent and answered as one message.
+  /// See `Game.createCommandBatch`.
+  CommandBatch createCommandBatch() {
+    final registry = commands;
+    if (registry == null) {
+      throw StateError(
+        '${game.runtimeType} has not been started, so its commands have not '
+        'been declared yet - describeCommands runs during Game.start().',
+      );
+    }
+    return registry.createCommandBatch();
+  }
+
+  /// Takes in whatever the other copy has sent since the last call and runs
+  /// what is due - see `CommandTransport.pump`.
+  ///
+  /// Called from `GameState.runFixedStep`, inside the tick window and before
+  /// any system, which is what makes a command-spawned entity visible to
+  /// every system on the tick its command lands. The main isolate pumps on
+  /// its own schedule (each tick notification), where nothing is tick-bound.
+  void pumpCommands() => commandTransport?.pump();
+
+  /// Called by [GameState.runFixedStep] once a fixed step is fully committed.
+  void completeTick() => tick++;
+
+  /// Announces the finished frame to the main isolate.
+  ///
+  /// **Called after the presentation pass, not at the end of the fixed
+  /// tick.** That ordering is load-bearing. The tick ping is what a consumer
+  /// hangs its drain off - `RenderSystem2D` drains the draw ring on it - and
+  /// the draw ring is filled by `GameRenderer2D` during *presentation*,
+  /// which runs after `commitTick`. Firing this inside `runFixedStep` (where
+  /// it used to live, back when the renderer was a `FixedTickable`) would
+  /// signal "a frame is ready" before the frame had been written, so every
+  /// drain would come up one frame stale - and the very first one empty.
+  ///
+  /// Split from [completeTick] rather than merged into it because the tick
+  /// *counter* has to advance before presentation runs: the renderer stamps
+  /// its batch with the tick, and that has to name the tick it depicts.
+  void presentFrame() {
+    final toMain = _toMain;
+    if (toMain == null) {
+      // Inline path: no port to hop, notify directly.
+      _notifyTickListeners(tick);
+      return;
+    }
+    // A bare int: the cheapest thing a SendPort can carry, and all a
+    // repaint trigger needs.
+    //
+    // It used to be preceded by an announcement of every page allocated since
+    // the last tick, so main could adopt a read-only view and resolve entities
+    // living in it. Main does not read entities any more - it holds no
+    // archetypes to adopt into - so there is nothing to announce. What reaches
+    // it is what a presentation isolate actually needs: state channels, the
+    // draw buffers, and this ping.
+    toMain.send(tick);
+  }
 
   /// Registers [listener] to be called on the **main** isolate once per
-  /// completed fixed tick, with the tick number.
+  /// completed fixed tick.
   ///
-  /// This is the hook a renderer hangs a repaint off - the "frame is ready,
-  /// the published snapshot moved" signal, so nothing has to poll. Kept as a
-  /// plain callback list rather than a `Stream` on purpose: a broadcast
-  /// stream allocates per event and schedules a microtask per listener, 60
-  /// times a second, for a notification whose entire payload is one int.
-  ///
-  /// Register only *after* [start], on the copy that is not simulating. Not
-  /// for sendability - a closure crosses `Isolate.spawn` perfectly well - but
-  /// because a listener registered beforehand would be *copied*, leaving the
-  /// game isolate holding a duplicate that fires on a heap the caller cannot
-  /// see. Tick notification is a main-isolate concern; see [presentFrame].
+  /// Internal, and deliberately no longer public anywhere: the one engine
+  /// consumer moved to a `SchedulerBinding` frame callback, because a repaint
+  /// scheduled when a port message happens to land waits most of a frame for
+  /// the next vsync. What survives is this, for tests and for anything that
+  /// genuinely needs the "the published snapshot moved" edge. A game that
+  /// wants a visible tick count publishes one with `describeState`, through
+  /// the lane that already exists for "a number main should see".
   void addTickListener(void Function(int tick) listener) {
     _tickListeners.add(listener);
   }
@@ -1521,7 +1818,72 @@ abstract class Game {
     _tickListeners.remove(listener);
   }
 
-  // --- shutdown ---------------------------------------------------------
+  /// Counts published simulation frames, on the main isolate.
+  ///
+  /// Fed from [_notifyTickListeners], which is the one place both
+  /// configurations converge: the spawned copy gets here from the tick ping,
+  /// the inline one straight from [presentFrame]. Timestamped from this
+  /// runtime's own monotonic clock rather than the engine's, because these are
+  /// not engine frames and have no `FrameTiming` to borrow one from.
+  final FrameMeter simulationFrames = FrameMeter();
+  final Stopwatch _clock = Stopwatch()..start();
+
+  void _notifyTickListeners(int tick) {
+    simulationFrames.record(_clock.elapsedMicroseconds);
+    // Before the listeners, not after: a widget repaints off one of these
+    // callbacks, and it must see state already reconciled for this tick
+    // rather than a value one tick behind whatever it is about to draw.
+    _pollStateChannels();
+    for (var i = 0; i < _tickListeners.length; i++) {
+      _tickListeners[i](tick);
+    }
+  }
+
+  /// Notifies the listeners of every declared channel whose value actually
+  /// moved since this copy last looked.
+  ///
+  /// This is the main isolate's half of `StateChannel`'s two-speed
+  /// notification (see that class's doc): the simulating copy notifies
+  /// synchronously inside the write, because the writer is right there; this
+  /// copy cannot know a write happened until the tick message lands, so it
+  /// reconciles here. Driven off the tick-completed path rather than a timer
+  /// of its own, deliberately: "the published snapshot moved" is exactly the
+  /// signal the tick ping already carries, and a channel checking on any other
+  /// schedule would report changes at a moment when the rest of the world a
+  /// listener can read is from a different tick.
+  ///
+  /// Costs one null check per declared channel on a copy that declared none,
+  /// which is the overwhelmingly common case.
+  void _pollStateChannels() {
+    final channels = game._stateChannels;
+    for (var i = 0; i < channels.length; i++) {
+      channels[i].pollChanged();
+    }
+  }
+
+  /// Frees a scene's pages, immediately.
+  ///
+  /// This used to be half of an un-adopt handshake: the pages were kept alive
+  /// across a `_msgPageGone`/`_msgPagesDropped` round trip so that main, which
+  /// held adopted read-only views of them, could let go before the writer
+  /// freed. Use-after-free is the one failure mode a shared-memory design
+  /// cannot report - it just returns wrong numbers - so the deferral was worth
+  /// its complexity while there was a second reader.
+  ///
+  /// There is not one any more. Pages are allocated, read and freed entirely
+  /// on this isolate; main never adopts one, because it holds no archetypes to
+  /// adopt into and never resolves an `Entity`. So the handshake, the deferred
+  /// free set, and both messages are gone, and unloading is once again the
+  /// straight line it reads as.
+  void releaseScenePages(int sceneSlot) {
+    final pool = state?.pool;
+    if (pool == null) return;
+    for (var i = 0; i < ArchetypeRegistry.count; i++) {
+      ArchetypeRegistry.byId(i).releaseScene(sceneSlot, pool);
+    }
+  }
+
+  // --- shutdown -----------------------------------------------------------
 
   /// Stops the simulation and releases the shared memory.
   ///
@@ -1532,20 +1894,24 @@ abstract class Game {
   /// handle would be resolving entities out of pages that had just been
   /// `free`d.
   ///
-  /// Internal because the user-facing spelling is `GameHandle.stop()`: a
-  /// running game is stopped through the thing that started it, not through
-  /// its description. Renamed off `stop` so that name is free for the static
-  /// factories' counterpart on the handle.
-  // Not `@internal` yet - same reason as [bootUp].
+  /// The user-facing spelling is `Game.stop()`.
   Future<void> shutDown() async {
-    if (!_booted) return;
-    if (_inline) {
+    if (!booted) return;
+    // First, before anything is torn down. This is the presentation isolate's
+    // teardown hook, and the shared buffers are still mapped here - a renderer
+    // cancelling a frame callback must do it while the draw buffer it reads is
+    // still alive. `GameState.onUnmounted` is the same moment on the other
+    // side, and `unmount()` below is what fires it.
+    game.onStopped();
+    if (inline) {
       _stopInline();
       return;
     }
     final toGame = _toGame;
     if (toGame == null) {
-      throw StateError('$runtimeType is not connected to a game isolate.');
+      throw StateError(
+        'this ${game.runtimeType} run is not connected to a game isolate.',
+      );
     }
     final stopping = Completer<void>();
     _stopping = stopping;
@@ -1557,16 +1923,62 @@ abstract class Game {
     _disposeBuffers();
     _fromGame?.close();
     _fromGame = null;
-    _booted = false;
+    booted = false;
+    _resetGlobalRegistries();
   }
 
   void _stopInline() {
-    final state = _state!;
+    final state = this.state!;
     state.stopTimer();
     state.unmount();
     _disposeBuffers();
     state.pool.dispose();
-    _booted = false;
+    booted = false;
+    _resetGlobalRegistries();
+  }
+
+  /// Empties the process-global registries a run filled in, so the next
+  /// `Game.start` in this process starts from nothing.
+  ///
+  /// # Why a run has to clean these up
+  ///
+  /// `ArchetypeRegistry`, `ComponentTypeRegistry`, `SceneRegistry` and
+  /// `HeapObjectRegistry` are static, and they are static for a reason that
+  /// still holds: an `Entity` and a `Scene` are bare ints carrying no
+  /// references, so resolving one cannot start from an object. But static also
+  /// means they outlive the run that filled them, and until this existed
+  /// nothing ever emptied them outside a test's `tearDown`.
+  ///
+  /// The failure that follows is not subtle once you see it and impossible to
+  /// read before: start game A, stop it, start game B, stop it, start game A
+  /// again - and A's second run re-registers an archetype that is *already
+  /// there* from its first, so it gets back the **first run's prefab**, whose
+  /// asset handles belong to a `GameAssets` that was torn down two runs ago.
+  /// It surfaces as "declared (address 0) but was never loaded on this
+  /// isolate", pointing at the asset layer, which is not where the problem is.
+  ///
+  /// Safe because a run owns the isolate it simulates on: statics do not cross
+  /// an `Isolate.spawn`, and one instance runs once (`_requireNotYetDescribed`).
+  /// So there is never a second live run on this isolate whose registry
+  /// entries this could pull out from under.
+  void _resetGlobalRegistries() {
+    // The run's own asset table, before the registries that name into it.
+    // `reset` calls `onUnloaded` on every instance, which is what releases the
+    // decoded `ui.Image`s - nothing else ever did, so each stopped run left
+    // its textures alive on main and the next run decoded its own on top.
+    // ignore: invalid_use_of_visible_for_testing_member
+    game.assets.reset();
+    // `@visibleForTesting` because a test's tearDown was the only caller there
+    // has ever been. Ending a run is the other legitimate one, and it is the
+    // one that makes a second run in the same process work at all.
+    // ignore: invalid_use_of_visible_for_testing_member
+    SceneRegistry.reset();
+    // ignore: invalid_use_of_visible_for_testing_member
+    ArchetypeRegistry.reset();
+    // ignore: invalid_use_of_visible_for_testing_member
+    ComponentTypeRegistry.reset();
+    // ignore: invalid_use_of_visible_for_testing_member
+    HeapObjectRegistry.reset();
   }
 
   /// Releases the two command rings, on the copy that allocated them, and
@@ -1576,14 +1988,14 @@ abstract class Game {
   /// the memory, the handle copy only drops its views. Nothing to free at all
   /// in the inline configuration, which never allocated a ring.
   void _disposeCommandRings() {
-    _commandTransport?.shutdown();
-    if (_ownsCommandRings) {
-      _commandsToGame?.dispose();
-      _commandsToMain?.dispose();
-      _ownsCommandRings = false;
+    commandTransport?.shutdown();
+    if (ownsCommandRings) {
+      commandsToGame?.dispose();
+      commandsToMain?.dispose();
+      ownsCommandRings = false;
     }
-    _commandsToGame = null;
-    _commandsToMain = null;
+    commandsToGame = null;
+    commandsToMain = null;
   }
 
   /// Releases every auxiliary buffer this copy *allocated*. The handle copy
@@ -1591,35 +2003,38 @@ abstract class Game {
   /// same ownership rule as the command rings and the pool's pages.
   void _disposeBuffers() {
     _disposeCommandRings();
-    for (var i = 0; i < _bufferHandles.length; i++) {
-      final handle = _bufferHandles[i];
-      if (_owns) handle._ring?.dispose();
+    final buffers = game._bufferHandles;
+    for (var i = 0; i < buffers.length; i++) {
+      final handle = buffers[i];
+      if (owns) handle._ring?.dispose();
       handle._ring = null;
     }
-    for (var i = 0; i < _handoffHandles.length; i++) {
-      final handle = _handoffHandles[i];
-      if (_owns) handle._buffer?.dispose();
+    final handoffs = game._handoffHandles;
+    for (var i = 0; i < handoffs.length; i++) {
+      final handle = handoffs[i];
+      if (owns) handle._buffer?.dispose();
       handle._buffer = null;
     }
-    cameraViews.release(owns: _owns);
+    game.cameraViews.release(owns: owns);
     // Same ownership rule for the state channels' triple buffers: the
     // simulating copy allocated them and frees them, the handle only drops
     // its views. The declared set (the channel objects themselves, and the
     // handles users hold in their `late final` fields) survives; only the
     // storage goes, so a read after stop() reports "not connected" rather
     // than reading freed memory.
-    for (var i = 0; i < _stateChannels.length; i++) {
-      _stateChannels[i].release(owned: _owns);
+    final channels = game._stateChannels;
+    for (var i = 0; i < channels.length; i++) {
+      channels[i].release(owned: owns);
     }
     // Same ownership rule again for the raw input block, and the same
     // survival rule: the declared actions (and the handles users hold) stay,
     // so a read after stop() reports its default rather than reading freed
     // memory. The write end goes with the storage - there is nowhere to put
     // a keystroke once the game is down.
-    _inputs.release(owned: _owns);
+    game._inputs.release(owned: owns);
   }
 
-  // --- game isolate side ------------------------------------------------
+  // --- game isolate side --------------------------------------------------
 
   /// Runs on the freshly-spawned copy. Everything from here on happens on
   /// the game isolate.
@@ -1632,40 +2047,41 @@ abstract class Game {
   /// is not something two runs achieved, it is something one run made
   /// impossible to lose.
   ///
-  /// What it *does* describe is [_bootGame]: the scenes, and therefore the
-  /// archetypes and component bits, which live in **statics** rather than on
-  /// this object and so could never have crossed. Main used to run that pass
+  /// What it *does* describe is [Game._bootGame]: the scenes, and therefore
+  /// the archetypes and component bits, which live in **statics** rather than
+  /// on any object and so could never have crossed. Main used to run that pass
   /// too and hand the registries over in a snapshot; it does not any more, and
   /// deleting that snapshot is what this whole arrangement bought.
   ///
   /// The other thing this copy does is take over the two roles main was
   /// holding open for it: it becomes the simulator, and it stops being the
   /// owner.
-  void _runOnIsolate(SendPort toMain, bool autoTick) {
+  void runOnIsolate(SendPort toMain, bool autoTick) {
     _toMain = toMain;
 
     // The role swap, and the only reason these are two flags. Main allocated
     // every shared buffer and will free them; this copy runs the tick loop and
     // is therefore the single writer of component data and state channels.
     // The deep copy handed us main's values, which were right for main.
-    _owns = false;
-    _ownsCommandRings = false;
-    _simulates = true;
-    _state!.markSimulating();
-    _commands!.markSimulating();
+    owns = false;
+    ownsCommandRings = false;
+    simulates = true;
+    state!.markSimulating();
+    commands!.markSimulating();
     // Rebuild every cached view over native memory. `Pointer` crosses at
     // the same address, but a `ByteData` built from one and kept in a field is
     // deep-copied *by value* - the copy would write into detached Dart heap
     // memory that main never sees. Verified in tool/spawn_inherit_spike.dart.
-    for (var i = 0; i < _stateChannels.length; i++) {
-      _stateChannels[i].reattach();
+    final channels = game._stateChannels;
+    for (var i = 0; i < channels.length; i++) {
+      channels[i].reattach();
     }
     // Main built an InputDevice against the shared input block and the copy
     // came with us. This copy only ever *reads* input, and two live write ends
     // on one TripleBuffer is exactly what that primitive forbids - so drop it.
-    _inputs.releaseDevice();
+    game._inputs.releaseDevice();
     // Point the transport at the right ends now that the roles are settled.
-    _attachCommandRings();
+    attachCommandRings();
 
     final control = ReceivePort();
     _control = control;
@@ -1685,19 +2101,19 @@ abstract class Game {
     // state. (It used to come after, because a page allocated during spawning
     // had to be announced to main; main does not adopt pages any more, so that
     // constraint is gone with them.)
-    _bootGame();
+    game._bootGame(this);
 
     // Nothing but the control port: the buffers, state channels, input block
     // and both command rings all arrived with the copy, already addressed.
     // The three announcement messages that used to carry them are gone.
     toMain.send(<Object>[_msgReady, control.sendPort]);
 
-    if (autoTick) _state!.startTimer();
+    if (autoTick) state!.startTimer();
   }
 
   void _handleControlMessage(dynamic message) {
     final parts = message as List;
-    final state = _state;
+    final state = this.state;
     switch (parts[0] as String) {
       case _msgStop:
         state?.stopTimer();
@@ -1709,7 +2125,7 @@ abstract class Game {
         _control?.close();
         _control = null;
         _toMain = null;
-        _booted = false;
+        booted = false;
       case _msgAssetLoaded:
         final request = _assetRequests[parts[1] as int];
         request?.onLoaded?.call(
@@ -1726,19 +2142,21 @@ abstract class Game {
         } else {
           // Surfaced at the `await loadScene(...)` that asked for it, which is
           // where the local decode path throws too.
-          request.done.completeError(StateError(
-            'asset decoding failed on the Flutter isolate - $failure',
-          ));
+          request.done.completeError(
+            StateError(
+              'asset decoding failed on the Flutter isolate - $failure',
+            ),
+          );
         }
     }
   }
 
-  // --- main isolate side ------------------------------------------------
+  // --- main isolate side --------------------------------------------------
 
   void _handleGameMessage(dynamic message, Completer<void> ready) {
     // A bare int is the per-tick ping; anything else is a control message.
     if (message is int) {
-      _tick = message;
+      tick = message;
       // Before the listeners, for the same reason the state channels are
       // reconciled before them: this is the one moment per frame when this
       // copy looks at what the game isolate has said, and a widget rebuilding
@@ -1746,7 +2164,7 @@ abstract class Game {
       // frame rather than the one before it. This is also where a
       // Flutter-isolate handler actually runs, and where a reply to a command
       // this copy sent completes its future.
-      _commandTransport?.pump();
+      commandTransport?.pump();
       _notifyTickListeners(message);
       return;
     }
@@ -1769,7 +2187,7 @@ abstract class Game {
       case _msgUnloadAssets:
         final addresses = (parts[1] as List).cast<int>();
         for (var i = 0; i < addresses.length; i++) {
-          assets.unloadAddress(addresses[i]);
+          game.assets.unloadAddress(addresses[i]);
         }
       case _msgStopped:
         _toGame?.send(const <Object>[_msgDispose]);
@@ -1779,40 +2197,17 @@ abstract class Game {
     }
   }
 
-  /// Frees a scene's pages, immediately.
-  ///
-  /// This used to be half of an un-adopt handshake: the pages were kept alive
-  /// across a `_msgPageGone`/`_msgPagesDropped` round trip so that main, which
-  /// held adopted read-only views of them, could let go before the writer
-  /// freed. Use-after-free is the one failure mode a shared-memory design
-  /// cannot report - it just returns wrong numbers - so the deferral was worth
-  /// its complexity while there was a second reader.
-  ///
-  /// There is not one any more. Pages are allocated, read and freed entirely
-  /// on this isolate; main never adopts one, because it holds no archetypes to
-  /// adopt into and never resolves an `Entity`. So the handshake, the deferred
-  /// free set, and both messages are gone, and unloading is once again the
-  /// straight line it reads as.
-  @internal
-  void releaseScenePages(int sceneSlot) {
-    final pool = _state?.pool;
-    if (pool == null) return;
-    for (var i = 0; i < ArchetypeRegistry.count; i++) {
-      ArchetypeRegistry.byId(i).releaseScene(sceneSlot, pool);
-    }
-  }
-
-  // --- asset decoding across the boundary --------------------------------
+  // --- asset decoding across the boundary ---------------------------------
   //
   // The game isolate declares assets - that is what assigns their addresses,
   // and it has to happen there because prefabs and scenes live there - but it
   // cannot *decode* one, because decoding needs Flutter. So it asks.
   //
   // Before this existed, `GameState._reconcileAssets` took its claims and
-  // returned at `if (!game.decodesAssets) return;`, and nothing told main to
-  // decode anything. That was invisible only because main ran `loadScene`
-  // itself at boot; a `loadScene` at *runtime*, on the game isolate, declared
-  // assets that were never loaded and whose payload reads then failed.
+  // returned at `if (!decodesAssets) return;`, and nothing told main to decode
+  // anything. That was invisible only because main ran `loadScene` itself at
+  // boot; a `loadScene` at *runtime*, on the game isolate, declared assets that
+  // were never loaded and whose payload reads then failed.
 
   /// Asks main to decode every asset in [addresses], completing when it has.
   ///
@@ -1830,9 +2225,8 @@ abstract class Game {
   /// decodes actually performed, not the number of assets asked about.
   ///
   /// Returns immediately when there is no main to ask, which is the inline
-  /// case: there, `decodesAssets` is true and the caller decodes in place
+  /// case: there, [decodesAssets] is true and the caller decodes in place
   /// rather than calling this at all.
-  @internal
   Future<void> requestAssetLoad(
     List<int> addresses,
     List<GameAsset> keys,
@@ -1850,7 +2244,6 @@ abstract class Game {
   /// Tells main to drop the payloads for [addresses]. Fire-and-forget: the
   /// declaration is already gone on this copy, and nothing here waits on the
   /// memory the way a page free does.
-  @internal
   void requestAssetUnload(List<int> addresses) {
     if (addresses.isEmpty) return;
     _toMain?.send(<Object>[_msgUnloadAssets, addresses]);
@@ -1866,6 +2259,7 @@ abstract class Game {
     final id = parts[1] as int;
     final addresses = (parts[2] as List).cast<int>();
     final keys = (parts[3] as List).cast<GameAsset>();
+    final assets = game.assets;
 
     // Adopt first, decode second. This copy never ran a `describeAssets` pass
     // - scenes and prefabs live on the other isolate - so until this line
@@ -1912,7 +2306,7 @@ abstract class Game {
   }
 }
 
-/// One in-flight [Game.requestAssetLoad], game-isolate side.
+/// One in-flight [GameRuntime.requestAssetLoad], game-isolate side.
 ///
 /// One object rather than parallel maps keyed by request id (RULES.md rule
 /// 10): the completer, the progress callback and the first failure all belong
@@ -1926,10 +2320,12 @@ final class _AssetLoadRequest {
 
 /// The spawned isolate's entry point. Top-level (a closure would not be
 /// sendable) and deliberately trivial - all it does is hand control to the
-/// copied `Game`.
+/// copied `GameRuntime`, which is what the spawn message actually is: the
+/// `Game` rides inside it, because a description has no isolate-specific half
+/// to hand over and a run has two.
 void _gameIsolateEntryPoint(List<Object> message) {
-  final game = message[0] as Game;
-  game._runOnIsolate(message[1] as SendPort, message[2] as bool);
+  final runtime = message[0] as GameRuntime;
+  runtime.runOnIsolate(message[1] as SendPort, message[2] as bool);
 }
 
 /// Declares the scenes a game can load - see [Game.describeScenes].
@@ -2077,9 +2473,10 @@ final class HandoffHandle {
 /// the type argument twice.
 /// Registers a declared scene's archetypes and assets, once, at boot.
 final class _GameSceneDescriptor implements GameSceneDescriptor {
-  _GameSceneDescriptor(this._game);
+  _GameSceneDescriptor(this._runtime);
 
-  final Game _game;
+  final GameRuntime _runtime;
+  Game get _game => _runtime.game;
 
   @override
   T has<T extends SceneStruct>(T scene) {
@@ -2094,10 +2491,14 @@ final class _GameSceneDescriptor implements GameSceneDescriptor {
         'world.',
       );
     }
-    scene.bindState(_game._state!);
+    final state = _runtime.state!;
+    scene.bindState(state);
     if (!scene.isInitialized) {
-      scene.initializeScene(_game._state!.pool,
-          assets: _game.assets, cameraViews: _game.cameraViews);
+      scene.initializeScene(
+        state.pool,
+        assets: _game.assets,
+        cameraViews: _game.cameraViews,
+      );
     }
     _game._declaredScenes.add(scene);
     return scene;
@@ -2230,11 +2631,11 @@ abstract class _StateChannelBase<T>
     required this.index,
     required this.format,
     required this.initialValue,
-    required Game game,
-    // A named parameter cannot start with an underscore, so `this._game` is
+    required GameRuntime runtime,
+    // A named parameter cannot start with an underscore, so `this._runtime` is
     // not spellable and the lint's suggestion does not compile.
     // ignore: prefer_initializing_formals
-  }) : _game = game,
+  }) : _runtime = runtime,
        _lastSeen = initialValue;
 
   /// Position in the shared declaration order - this channel's identity on
@@ -2243,14 +2644,14 @@ abstract class _StateChannelBase<T>
   final _ChannelFormat format;
   final T initialValue;
 
-  /// The copy this channel was declared on - held rather than two booleans
-  /// because the two questions it answers used to be the same question and no
-  /// longer are.
-  final Game _game;
+  /// The **run** this channel's storage belongs to - held rather than two
+  /// booleans because the two questions it answers used to be the same
+  /// question and no longer are.
+  final GameRuntime _runtime;
 
   /// Whether this copy allocated the storage, and so must free it. Main, in
   /// the spawned configuration.
-  bool get owned => _game._owns;
+  bool get owned => _runtime.owns;
 
   /// Whether this copy may *write*. The simulating one - which after the boot
   /// inversion is a different copy from the one that owns the memory.
@@ -2258,7 +2659,7 @@ abstract class _StateChannelBase<T>
   /// A `TripleBuffer` requires one writer, not a particular isolate, so
   /// allocate-here/write-there is legal; `InputDevice` has always been the
   /// mirror image of it.
-  bool get _mayWrite => _game._simulates;
+  bool get _mayWrite => _runtime.simulates;
 
   TripleBuffer? _buffer;
 
@@ -2463,7 +2864,7 @@ final class _IntStateChannel extends _StateChannelBase<int> {
     required super.index,
     required super.format,
     required super.initialValue,
-    required super.game,
+    required super.runtime,
   });
 
   @override
@@ -2506,7 +2907,7 @@ final class _DoubleStateChannel extends _StateChannelBase<double> {
     required super.index,
     required super.format,
     required super.initialValue,
-    required super.game,
+    required super.runtime,
   });
 
   @override
@@ -2531,7 +2932,7 @@ final class _BoolStateChannel extends _StateChannelBase<bool> {
   _BoolStateChannel({
     required super.index,
     required super.initialValue,
-    required super.game,
+    required super.runtime,
   }) : super(format: _ChannelFormat.boolean);
 
   @override
@@ -2542,9 +2943,10 @@ final class _BoolStateChannel extends _StateChannelBase<bool> {
 }
 
 final class _StateDescriptor implements StateDescriptor {
-  _StateDescriptor(this._game);
+  _StateDescriptor(this._runtime);
 
-  final Game _game;
+  final GameRuntime _runtime;
+  Game get _game => _runtime.game;
   bool _sealed = false;
 
   void _seal() => _sealed = true;
@@ -2566,7 +2968,7 @@ final class _StateDescriptor implements StateDescriptor {
       index: _game._stateChannels.length,
       format: format,
       initialValue: initial,
-      game: _game,
+      runtime: _runtime,
     );
     _game._stateChannels.add(channel);
     return channel;
@@ -2578,7 +2980,7 @@ final class _StateDescriptor implements StateDescriptor {
       index: _game._stateChannels.length,
       format: format,
       initialValue: initial,
-      game: _game,
+      runtime: _runtime,
     );
     _game._stateChannels.add(channel);
     return channel;
@@ -2630,7 +3032,7 @@ final class _StateDescriptor implements StateDescriptor {
     final channel = _BoolStateChannel(
       index: _game._stateChannels.length,
       initialValue: initial,
-      game: _game,
+      runtime: _runtime,
     );
     _game._stateChannels.add(channel);
     return channel;

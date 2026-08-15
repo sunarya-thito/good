@@ -89,7 +89,11 @@ abstract class GameCommandBase {
   }
 
   @internal
-  void bind(int index, CommandParamDescriptor descriptor, CommandSender sender) {
+  void bind(
+    int index,
+    CommandParamDescriptor descriptor,
+    CommandSender sender,
+  ) {
     _index = index;
     describeParams(descriptor);
     descriptor.seal();
@@ -99,7 +103,11 @@ abstract class GameCommandBase {
   }
 
   @internal
-  void bindHandler(HandlerSide side, Function handler, {required bool install}) {
+  void bindHandler(
+    HandlerSide side,
+    Function handler, {
+    required bool install,
+  }) {
     _handlerSide = side;
     if (install) _handler = handler;
   }
@@ -245,9 +253,9 @@ abstract class GameCommand<P, R> extends GameCommandBase {
   @override
   @internal
   void invoke(CommandBuffer call) => bufferFromResult(
-        call,
-        (handler as R Function(P))(paramsFromBuffer(call)),
-      );
+    call,
+    (handler as R Function(P))(paramsFromBuffer(call)),
+  );
 }
 
 /// A call that takes nothing and returns something: `R Function()`.

@@ -1,3 +1,4 @@
+import 'package:meta/meta.dart';
 import 'package:goo/src/struct.dart';
 
 // note: we used to support DataPointer<Matrix4>, and etc
@@ -110,8 +111,14 @@ abstract class DataDescriptor {
   /// field's type is known - so a fourth kind of global object costs nothing
   /// but its own table, and no shared address space has to exist for the
   /// read path to find one.
-  DataPointer<T> hasObject<T extends GlobalObject>(ObjectTable table, T defaultValue);
-  DataPointer<T?> optObject<T extends GlobalObject>(ObjectTable table, [T? defaultValue]);
+  DataPointer<T> hasObject<T extends GlobalObject>(
+    ObjectTable table,
+    T defaultValue,
+  );
+  DataPointer<T?> optObject<T extends GlobalObject>(
+    ObjectTable table, [
+    T? defaultValue,
+  ]);
 
   // -----
   // Heap objects are the unconstrained cousin of hasObject/optObject: any
@@ -160,6 +167,41 @@ abstract class DataPointer<T> {
 
   T operator [](Entity instance);
   void operator []=(Entity instance, T newValue);
+
+  /// [operator []], but reading the slot this tick is **writing** instead of
+  /// the last published one - so it sees writes made earlier in this same
+  /// tick, which an ordinary read deliberately cannot.
+  ///
+  /// # This is for structural mutation, and nothing else
+  ///
+  /// A *system* reading uncommitted state is the thing RULES.md rule 8 exists
+  /// to forbid, and this does not change that. What it is for is the narrow
+  /// case of a mutation that has to read back the structure **it is itself
+  /// editing**, within one tick: `Parent.addChild` reads `lastChild` to append
+  /// to the chain, and two `addChild` calls in one tick both read the same
+  /// published value, both conclude the parent has no children yet, and the
+  /// second silently overwrites the first. That is not a race or a subtle
+  /// ordering question - it drops entities out of the hierarchy outright, and
+  /// every existing test missed it because a page that has never published
+  /// falls through to the write slot anyway, making the first tick work by
+  /// accident.
+  ///
+  /// Outside a tick window there is no write slot to speak of - the one the
+  /// buffer would hand back holds whatever was there before `beginWrite`
+  /// copied - so implementations fall back to the published read, which
+  /// outside a tick is the only correct answer anyway.
+  ///
+  /// Only implemented where a structural mutation actually needs it (the
+  /// optional-entity fields the hierarchy links are made of). Anywhere else it
+  /// throws rather than quietly returning the published value, because a
+  /// silently-published answer here is exactly the bug this exists to fix.
+  @internal
+  T readPending(Entity instance) => throw UnsupportedError(
+    '$runtimeType does not implement readPending. It is implemented only for '
+    'the field kinds a structural mutation reads back within its own tick - '
+    'see DataPointer.readPending. If a new structural field needs it, add it '
+    'to that field class rather than falling back to a published read.',
+  );
 
   /// Pairs this pointer with one [instance], so the result reads and writes
   /// that entity's value with no further arguments.

@@ -1,5 +1,5 @@
-
 import 'package:goo/goo.dart';
+
 /// One collider shape, plus the fields every shape shares (offset, enable,
 /// trigger flag, layer mask). Not instantiated directly - a concrete
 /// subtype ([CircleBody]/[BoxBody]/[CapsuleBody]/[PolygonBody]) is what
@@ -196,7 +196,7 @@ final class PolygonBody extends ColliderBody {
 
   /// How many of `pointsX`/`pointsY`'s declared capacity are actually used
   /// for a given entity, `0..pointsX.length`. Defaults to `0` (an empty
-  /// polygon) - `onMounted` (or `hasPolygonCollider`'s named defaults) is
+  /// polygon) - `onEntityMounted` (or `hasPolygonCollider`'s named defaults) is
   /// where a prefab actually populates the points and sets this.
   final DataPointer<int> pointCount;
 
@@ -245,7 +245,7 @@ final class PolygonBody extends ColliderBody {
 /// returned body exposes, doubling as that archetype's default row state -
 /// the standing `MultiComponent` convention (see `Renderable2D.Sprite`'s
 /// `SpriteDescriptor.has` for the same shape) - so the common case needs no
-/// separate `onMounted` write.
+/// separate `onEntityMounted` write.
 class ColliderDescriptor {
   ColliderDescriptor._(this._data, this._bodies);
 
@@ -386,7 +386,12 @@ mixin Collider2D on MultiComponent {
 /// concrete type of the body it declared (see `describeCollider`'s own
 /// `late final BoxBody boxCollider` style fields).
 class Collision2DEvent {
-  const Collision2DEvent(this.source, this.sourceEntity, this.target, this.targetEntity);
+  const Collision2DEvent(
+    this.source,
+    this.sourceEntity,
+    this.target,
+    this.targetEntity,
+  );
 
   final ColliderBody source;
   final Entity sourceEntity;

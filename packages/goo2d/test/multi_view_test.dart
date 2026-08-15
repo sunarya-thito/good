@@ -5,7 +5,7 @@ import 'package:goo2d/goo2d.dart';
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
-late InlineGameHandle run;
+late Game run;
 
 
 // Two views, two cameras, two scenes - the thing the whole camera-view design
@@ -28,7 +28,7 @@ class _Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
 
 class _Level extends SceneStruct {
   @override
-  void onMounted(Scene scene) => handle = scene;
+  void onSceneMounted(Scene scene) => handle = scene;
 
   late Scene handle;
 
@@ -47,7 +47,7 @@ class _Level extends SceneStruct {
 /// confused for each other.
 class _Overlay extends SceneStruct {
   @override
-  void onMounted(Scene scene) => handle = scene;
+  void onSceneMounted(Scene scene) => handle = scene;
 
   late Scene handle;
 
@@ -198,8 +198,8 @@ void main() {
       Row(
         textDirection: TextDirection.ltr,
         children: <Widget>[
-          Expanded(child: GameView(run: run, camera: game.defaultCamera)),
-          Expanded(child: GameView(run: run, camera: game.minimap)),
+          Expanded(child: GameView(camera: game.defaultCamera)),
+          Expanded(child: GameView(camera: game.minimap)),
         ],
       ),
     );
@@ -223,8 +223,8 @@ void main() {
       Row(
         textDirection: TextDirection.ltr,
         children: <Widget>[
-          SizedBox(width: 200, height: 100, child: GameView(run: run, camera: game.defaultCamera)),
-          SizedBox(width: 600, height: 400, child: GameView(run: run, camera: game.minimap)),
+          SizedBox(width: 200, height: 100, child: GameView(camera: game.defaultCamera)),
+          SizedBox(width: 600, height: 400, child: GameView(camera: game.minimap)),
         ],
       ),
     );
@@ -320,8 +320,8 @@ void main() {
       Row(
         textDirection: TextDirection.ltr,
         children: <Widget>[
-          Expanded(child: GameView(run: run, camera: game.defaultCamera)),
-          Expanded(child: GameView(run: run, camera: game.defaultCamera)),
+          Expanded(child: GameView(camera: game.defaultCamera)),
+          Expanded(child: GameView(camera: game.defaultCamera)),
         ],
       ),
     );

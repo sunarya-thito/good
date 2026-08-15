@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+
 import 'package:goo/goo.dart';
 
 import 'package:goo2d/src/data/transform.dart';
@@ -109,25 +110,52 @@ class WorldTransformSystem extends GameSystem with FixedTickable {
 
   @override
   void onFixedUpdate() {
-    for (final entity in _roots.run()) {
-      final child = entity.tryGet<Child>();
-      if (child != null && child.parent[entity] != null) {
-        continue; // not a root - reached via its real root's recursion below
+    // Grouped rather than `run()`, and **all four components resolved per
+    // group rather than per entity**. A component belongs to an archetype, so
+    // `entity.tryGet<Child>()` returned the same object for every row in the
+    // group - and `tryGet` is a registry lookup plus an `is T` against a type
+    // *variable*, which is a runtime subtype test rather than a compare. Four
+    // of those per entity, on the system that owns two thirds of the fixed
+    // step at 20k entities, was the single largest thing in it that produced
+    // no answer.
+    //
+    // The recursion below still resolves per entity, and has to: a child may
+    // be a different archetype entirely. That is the right split - a flat
+    // scene, which is the overwhelmingly common one, now pays nothing for the
+    // hierarchy case it is not using.
+    for (final group in _roots.groups()) {
+      // Guaranteed by the query's `withAll`, so `get` rather than `tryGet`.
+      final local = group.get<Transform2D>();
+      final world = group.get<WorldTransform2D>();
+      final childLink = group.tryGet<Child>();
+      final parentComp = group.tryGet<Parent>();
+      if (parentComp == null) {
+        _resolveChildless(group, local, world, childLink);
+        continue;
       }
-      // Roots have no parent to compose with - the parentWorld* arguments
-      // are unused whenever hasParent is false, so their value here does
-      // not matter.
-      _resolve(
-        entity,
-        parentChanged: false,
-        hasParent: false,
-        parentWorldX: 0,
-        parentWorldY: 0,
-        parentWorldRotation: 0,
-        parentWorldScaleX: 1,
-        parentWorldScaleY: 1,
-        depth: 0,
-      );
+      for (final entity in group) {
+        if (childLink != null && childLink.parent[entity] != null) {
+          continue; // not a root - reached via its real root's recursion below
+        }
+        // Roots have no parent to compose with - the parentWorld* arguments
+        // are unused whenever hasParent is false, so their value here does
+        // not matter.
+        _resolve(
+          entity,
+          local,
+          world,
+          childLink,
+          parentComp,
+          parentChanged: false,
+          hasParent: false,
+          parentWorldX: 0,
+          parentWorldY: 0,
+          parentWorldRotation: 0,
+          parentWorldScaleX: 1,
+          parentWorldScaleY: 1,
+          depth: 0,
+        );
+      }
     }
   }
 
@@ -138,7 +166,7 @@ class WorldTransformSystem extends GameSystem with FixedTickable {
   /// lines above**: this storage layer's reads always see the *last
   /// published* snapshot, never a write made earlier in the same tick (see
   /// `data_layout.dart`'s `_readRow` doc - the same reason a read-modify-
-  /// write in `onMounted` is unsafe). A parent resolved earlier in this same
+  /// write in `onEntityMounted` is unsafe). A parent resolved earlier in this
   /// top-down pass, this same tick, has a fresh value in the write slot that
   /// a same-tick read cannot see yet - reading it back would silently
   /// return last tick's stale value instead. Carrying the just-computed
@@ -147,8 +175,91 @@ class WorldTransformSystem extends GameSystem with FixedTickable {
   /// of flat fields, since this walks top-down rather than root-ward) sidesteps
   /// the whole problem: nothing this method just wrote is ever read back
   /// within the same call tree.
+  /// The whole pass for an archetype that has no [Parent] - so no entity in it
+  /// can ever have a child, and its roots are the entire subtree they belong
+  /// to. A flat field of sprites is exactly this, and so is every particle,
+  /// projectile and pickup in most games.
+  ///
+  /// # Why it may skip the change-detection cache
+  ///
+  /// [_resolve]'s twelve cache accesses per entity - six to decide `changed`,
+  /// six to update it - buy one thing: not re-walking a subtree whose
+  /// ancestors did not move. These entities have no subtree, and with no
+  /// parent to compose with, `world` *is* `local`. Recomputing that is five
+  /// reads and five writes, which is cheaper than deciding whether to. So the
+  /// cache is not consulted and the composition is done unconditionally.
+  ///
+  /// # Except for one write, which is not optional
+  ///
+  /// An archetype with [Child] but no [Parent] - a leaf that can be parented,
+  /// which is the common shape - has *both* kinds of row: unparented ones this
+  /// method handles, and parented ones [_resolve] reaches through their real
+  /// root's recursion. A row can move between the two at runtime, and
+  /// [_resolve] trusts its cache. Leaving the cache untouched here would leave
+  /// a stale-but-self-consistent entry behind: parent a row, unparent it (this
+  /// method overwrites `world` with the *local* transform and says nothing),
+  /// then re-parent it to the same parent without touching its offsets, and
+  /// [_resolve] would compare equal on every field, conclude nothing changed,
+  /// and read back a `world` that was never composed. Clearing [_cachedParent]
+  /// makes that impossible - a row leaving this method always looks reparented
+  /// to [_resolve], because it is. One flag-bit write, only for archetypes
+  /// that can be parented at all.
+  void _resolveChildless(
+    Iterable<Entity> group,
+    Transform2D local,
+    WorldTransform2D world,
+    Child? childLink,
+  ) {
+    // Two loops rather than one with the null check inside: `childLink` is
+    // fixed for the whole group, and an archetype that never mixes in `Child`
+    // needs neither the root test nor the cache invalidation.
+    if (childLink == null) {
+      for (final entity in group) {
+        _composeRoot(entity, local, world);
+      }
+      return;
+    }
+    for (final entity in group) {
+      if (childLink.parent[entity] != null) {
+        continue; // not a root - reached via its real root's recursion
+      }
+      _composeRoot(entity, local, world);
+      world._cachedParent[entity] = null;
+    }
+  }
+
+  /// `world = local`, which is the whole of a root's world transform.
+  @pragma('vm:prefer-inline')
+  void _composeRoot(Entity entity, Transform2D local, WorldTransform2D world) {
+    world.worldX[entity] = local.transformOffsetX[entity];
+    world.worldY[entity] = local.transformOffsetY[entity];
+    world.worldRotation[entity] = local.transformRotation[entity];
+    world.worldScaleX[entity] = local.transformScaleX[entity];
+    world.worldScaleY[entity] = local.transformScaleY[entity];
+  }
+
+  /// [local], [world], [childLink] and [parentComp] are [entity]'s archetype's
+  /// components, resolved by the caller. Passed in rather than looked up here
+  /// because the caller usually already knows them for a whole group of rows
+  /// at once - see [onFixedUpdate]. Each may be null: the recursion walks
+  /// *every* child in the hierarchy, and a child need not have any of them.
+  ///
+  ///  * No [Transform2D]: a bare grouping node - Child/Parent links and
+  ///    nothing else. It contributes identity and the walk steps over it,
+  ///    rather than aborting and stranding its whole subtree at the origin.
+  ///  * No [WorldTransform2D]: nothing to cache into, but its descendants may
+  ///    still opt in, so the composed transform is threaded straight through
+  ///    to them.
+  ///
+  /// The query only guarantees these for the *roots* it yields; from there on
+  /// the parent/child links decide who gets visited, and they know nothing
+  /// about component makeup.
   void _resolve(
-    Entity entity, {
+    Entity entity,
+    Transform2D? local,
+    WorldTransform2D? world,
+    Child? childLink,
+    Parent? parentComp, {
     required bool parentChanged,
     required bool hasParent,
     required double parentWorldX,
@@ -168,22 +279,6 @@ class WorldTransformSystem extends GameSystem with FixedTickable {
       return;
     }
 
-    // Both are `tryGet`, because the recursion below walks *every* child in
-    // the hierarchy, and a child need not have either component.
-    //
-    //  * No `Transform2D`: a bare grouping node - Child/Parent links and
-    //    nothing else. It contributes identity and the walk steps over it,
-    //    rather than aborting and stranding its whole subtree at the origin.
-    //  * No `WorldTransform2D`: nothing to cache into, but its descendants
-    //    may still opt in, so the composed transform is threaded straight
-    //    through to them.
-    //
-    // The query only guarantees these for the *roots* it yields; from there
-    // on the parent/child links decide who gets visited, and they know
-    // nothing about component makeup.
-    final local = entity.tryGet<Transform2D>();
-    final world = entity.tryGet<WorldTransform2D>();
-    final childLink = entity.tryGet<Child>();
     final parent = childLink?.parent[entity];
 
     final offsetX = local == null ? 0.0 : local.transformOffsetX[entity];
@@ -196,7 +291,8 @@ class WorldTransformSystem extends GameSystem with FixedTickable {
     // entity is recomposed every tick, which costs the arithmetic below and
     // nothing else. `parentChanged` still has to propagate through it, so
     // its descendants that *do* cache invalidate correctly.
-    final changed = world == null ||
+    final changed =
+        world == null ||
         parentChanged ||
         world._cachedParent[entity] != parent?.value ||
         world._cachedOffsetX[entity] != offsetX ||
@@ -211,7 +307,11 @@ class WorldTransformSystem extends GameSystem with FixedTickable {
     // changed - safe here specifically *because* nothing wrote to this
     // entity's world fields this tick in that branch, so the last-published
     // value already is this tick's correct value).
-    double thisWorldX, thisWorldY, thisWorldRotation, thisWorldScaleX, thisWorldScaleY;
+    double thisWorldX,
+        thisWorldY,
+        thisWorldRotation,
+        thisWorldScaleX,
+        thisWorldScaleY;
 
     if (changed) {
       if (!hasParent) {
@@ -262,12 +362,21 @@ class WorldTransformSystem extends GameSystem with FixedTickable {
       thisWorldScaleY = world.worldScaleY[entity];
     }
 
-    final parentComp = entity.tryGet<Parent>();
+    // No `Parent` on this archetype means no entity in it has children, so
+    // there is nothing below to walk - and for a flat scene that is every
+    // entity, which is why this is the one early return worth having here.
     if (parentComp == null) return;
     var next = parentComp.firstChild[entity];
     while (next != null) {
+      // Per child, because a child may be any archetype at all - this is the
+      // lookup [onFixedUpdate] hoisted out of the *root* pass and the reason
+      // it could not simply be hoisted out of this one too.
       _resolve(
         next,
+        next.tryGet<Transform2D>(),
+        next.tryGet<WorldTransform2D>(),
+        next.tryGet<Child>(),
+        next.tryGet<Parent>(),
         parentChanged: changed,
         hasParent: true,
         parentWorldX: thisWorldX,

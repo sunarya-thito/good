@@ -3,7 +3,6 @@ import 'dart:ffi';
 import 'package:goo/src/pool.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-
 void main() {
   group('MemoryPool / MemoryPage', () {
     test('allocate -> write -> commitTick -> read round-trips bytes', () {
@@ -13,7 +12,16 @@ void main() {
       final page = pool.allocatePage();
       pool.beginTick();
       final offset = page.allocate(8);
-      page.resolveWrite(offset).asTypedList(8).setAll(0, [1, 2, 3, 4, 5, 6, 7, 8]);
+      page.resolveWrite(offset).asTypedList(8).setAll(0, [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+      ]);
       pool.commitTick();
 
       final read = page.resolveRead(offset);
@@ -122,16 +130,23 @@ void main() {
         if (offset == first) spawned = page.allocate(8);
       }
 
-      expect(seen, [first],
-          reason: 'the new row sits above the cursor, so the walk must not '
-              'reach it even though the loop had not finished');
-      expect(page.rowOffsets, [first],
-          reason: 'and a second walk in the same tick agrees with the first - '
-              'two queries in one tick must not disagree about what exists');
+      expect(
+        seen,
+        [first],
+        reason:
+            'the new row sits above the cursor, so the walk must not '
+            'reach it even though the loop had not finished',
+      );
+      expect(
+        page.rowOffsets,
+        [first],
+        reason:
+            'and a second walk in the same tick agrees with the first - '
+            'two queries in one tick must not disagree about what exists',
+      );
 
       pool.beginTick();
-      expect(page.rowOffsets, [first, spawned],
-          reason: 'deferred, not lost');
+      expect(page.rowOffsets, [first, spawned], reason: 'deferred, not lost');
     });
 
     test('recycled from a freed row: same answer, though it lands behind', () {
@@ -149,11 +164,15 @@ void main() {
       }
 
       expect(recycled, a, reason: 'the freed row is what got reused');
-      expect(seen, [b, c],
-          reason: 'the recycled row is *behind* the cursor, so nothing about '
-              'iteration order hides it - only the deferral does. This is the '
-              'case the old code got wrong in the other direction, which is '
-              'why both allocation paths are tested');
+      expect(
+        seen,
+        [b, c],
+        reason:
+            'the recycled row is *behind* the cursor, so nothing about '
+            'iteration order hides it - only the deferral does. This is the '
+            'case the old code got wrong in the other direction, which is '
+            'why both allocation paths are tested',
+      );
 
       pool.beginTick();
       expect(page.rowOffsets, [a, b, c]);
@@ -183,9 +202,13 @@ void main() {
         if (offset == a) page.free(a);
       }
 
-      expect(seen, [a, b],
-          reason: 'an unmount handler is told about a row and then reads it - '
-              'freeing must not pull it out from under the walk announcing it');
+      expect(
+        seen,
+        [a, b],
+        reason:
+            'an unmount handler is told about a row and then reads it - '
+            'freeing must not pull it out from under the walk announcing it',
+      );
       expect(page.resolveRead(a)!.asTypedList(8), [9, 9, 9, 9, 9, 9, 9, 9]);
 
       pool.beginTick();
@@ -226,6 +249,44 @@ void main() {
       pool.beginTick();
       expect(page.rowOffsets, hasLength(1));
       expect(page.rowOffsets, isNot(contains(a)));
+    });
+  });
+
+  group('the resolved-row cache', () {
+    test('the epoch moves on beginTick, commitTick and freePage', () {
+      final pool = MemoryPool(pageSize: 4096, maxPages: 4);
+      addTearDown(pool.dispose);
+      final page = pool.allocatePage();
+      page.allocate(64);
+
+      final atStart = pool.epoch;
+      pool.beginTick();
+      final afterBegin = pool.epoch;
+      pool.commitTick();
+      final afterCommit = pool.epoch;
+
+      expect(
+        afterBegin,
+        greaterThan(atStart),
+        reason: 'beginTick rotates the write slot',
+      );
+      expect(
+        afterCommit,
+        greaterThan(afterBegin),
+        reason:
+            'commitTick publishes, which moves every *read* base - '
+            'presentation runs after this and reads through the cache, so '
+            'missing it would hand the renderer last tickrows',
+      );
+
+      pool.freePage(page);
+      expect(
+        pool.epoch,
+        greaterThan(afterCommit),
+        reason:
+            'a cached base into a freed page is a use-after-free, and '
+            'shared memory cannot report one - it just returns wrong bytes',
+      );
     });
   });
 }

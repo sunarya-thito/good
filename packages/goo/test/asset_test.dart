@@ -11,13 +11,11 @@ import 'package:goo/src/game_state.dart';
 import 'package:goo/src/pool.dart';
 import 'package:goo/src/scene.dart';
 import 'package:goo/src/struct.dart';
-import 'package:goo/src/handle.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
-late InlineGameHandle run;
-
+late Game run;
 
 // Fixtures deliberately never touch dart:ui or a real file: the thing under
 // test is the declare/load/unload lifecycle and the address bookkeeping, and
@@ -210,43 +208,42 @@ void main() {
     test('runs once for the scene and once for every registered prefab', () {
       final a = _Prop(_FakeAsset('a'));
       final b = _Prop(_FakeAsset('b'));
-      final scene = _bringUp(
-        _PropScene([a, b], sceneKey: _FakeAsset('music')),
-      );
+      final scene = _bringUp(_PropScene([a, b], sceneKey: _FakeAsset('music')));
 
       expect(
         scene.describeAssetsCalls,
         1,
-        reason: 'a scene declares its own prefab-less assets (music, UI '
+        reason:
+            'a scene declares its own prefab-less assets (music, UI '
             'chrome) exactly once, from initializeScene',
       );
       expect(
         a.describeAssetsCalls,
         1,
-        reason: 'every prefab the scene registers gets the pass too - and '
+        reason:
+            'every prefab the scene registers gets the pass too - and '
             'exactly once, or the same key would be declared twice',
       );
       expect(b.describeAssetsCalls, 1);
       expect(
         scene.declaredAssets.length,
         3,
-        reason: "a scene's footprint is the union of its own assets and every "
+        reason:
+            "a scene's footprint is the union of its own assets and every "
             'registered prefab\'s',
       );
     });
 
     test('the scene\'s own assets are declared before any prefab\'s', () {
       final scene = _bringUp(
-        _PropScene(
-          [_Prop(_FakeAsset('prop'))],
-          sceneKey: _FakeAsset('music'),
-        ),
+        _PropScene([_Prop(_FakeAsset('prop'))], sceneKey: _FakeAsset('music')),
       );
 
       expect(
         scene.music!.address < scene.prefabs.first.texture.address,
         isTrue,
-        reason: 'addresses are handed out in declaration order, and the order '
+        reason:
+            'addresses are handed out in declaration order, and the order '
             'inside one scene has to be fixed and reproducible - it is what '
             'both isolate copies independently replay to agree',
       );
@@ -261,7 +258,8 @@ void main() {
       expect(
         host.declaredAssets,
         isEmpty,
-        reason: 'no declaration means no address consumed - the pass costs a '
+        reason:
+            'no declaration means no address consumed - the pass costs a '
             'prefab with no assets nothing at all',
       );
     });
@@ -274,13 +272,15 @@ void main() {
       expect(
         handle,
         isA<GameAssetInstance>(),
-        reason: 'only a GameAssetInstance is assignable to an asset-typed '
+        reason:
+            'only a GameAssetInstance is assignable to an asset-typed '
             'component field - that is what makes `field[e] = handle` compile',
       );
       expect(
         key,
         isNot(isA<GameAssetInstance>()),
-        reason: 'and the raw undeclared key is deliberately a different type, '
+        reason:
+            'and the raw undeclared key is deliberately a different type, '
             'so `field[e] = key` cannot compile - the whole reason every '
             'asset is routed through describeAssets',
       );
@@ -295,7 +295,8 @@ void main() {
       expect(
         prop.spriteField[entity],
         same(prop.texture),
-        reason: 'the row stores the declared address and resolves it through '
+        reason:
+            'the row stores the declared address and resolves it through '
             'GlobalObjectRegistry - no heap reference in the row, and no '
             'asset manager threaded through the read',
       );
@@ -312,7 +313,8 @@ void main() {
       expect(
         identical(a.texture, b.texture),
         isTrue,
-        reason: 'two prefabs using one texture must be one decode and one '
+        reason:
+            'two prefabs using one texture must be one decode and one '
             'address, not two - which only holds if has() is idempotent per '
             'key',
       );
@@ -320,13 +322,15 @@ void main() {
       expect(
         shared.created.length,
         1,
-        reason: 'and the second declaration must not even construct a second '
+        reason:
+            'and the second declaration must not even construct a second '
             'instance, or the first would silently be the orphan',
       );
       expect(
         scene.declaredAssets.length,
         1,
-        reason: "the scene's footprint counts the asset once, so the "
+        reason:
+            "the scene's footprint counts the asset once, so the "
             'transition diff cannot double-count it either',
       );
     });
@@ -334,15 +338,14 @@ void main() {
     test('a scene and a prefab declaring one key share it too', () {
       final shared = _FakeAsset('shared');
       final prop = _Prop(shared);
-      final scene = _bringUp(
-        _PropScene([prop], sceneKey: shared),
-      );
+      final scene = _bringUp(_PropScene([prop], sceneKey: shared));
 
       expect(identical(scene.music, prop.texture), isTrue);
       expect(
         scene.declaredAssets.length,
         1,
-        reason: 'the scene and its prefabs declare into one descriptor, so '
+        reason:
+            'the scene and its prefabs declare into one descriptor, so '
             'this is the same declaration, not two that happen to match',
       );
     });
@@ -355,7 +358,8 @@ void main() {
       expect(
         identical(a.texture, b.texture),
         isFalse,
-        reason: 'keys are identity-compared - construct one shared static '
+        reason:
+            'keys are identity-compared - construct one shared static '
             'final key when you mean one asset; two keys naming the same file '
             'are deliberately two assets',
       );
@@ -370,10 +374,10 @@ void main() {
       // by running the pass twice from a clean registry, as the existing
       // cross-isolate-agreement tests do.
       List<int> run() {
-        final scene = _PropScene(
-          [_Prop(_FakeAsset('a')), _Prop(_FakeAsset('b'))],
-          sceneKey: _FakeAsset('music'),
-        );
+        final scene = _PropScene([
+          _Prop(_FakeAsset('a')),
+          _Prop(_FakeAsset('b')),
+        ], sceneKey: _FakeAsset('music'));
         scene.initializeScene(_pool(), assets: assets);
         final addresses = <int>[
           scene.music!.address,
@@ -393,7 +397,8 @@ void main() {
       expect(
         second,
         first,
-        reason: 'address assignment is first-declaration order and nothing '
+        reason:
+            'address assignment is first-declaration order and nothing '
             'else, so the copy that cannot decode still writes the exact '
             'address the copy that can will resolve',
       );
@@ -410,7 +415,8 @@ void main() {
       expect(
         second.address,
         isNot(firstAddress),
-        reason: 'GlobalObjectRegistry only ever appends and nulls; recycling '
+        reason:
+            'GlobalObjectRegistry only ever appends and nulls; recycling '
             'an address would let a stale row silently resolve to whatever '
             'was declared next',
       );
@@ -425,7 +431,8 @@ void main() {
       expect(
         instance.address,
         isNonNegative,
-        reason: 'the game isolate writes this address into rows without ever '
+        reason:
+            'the game isolate writes this address into rows without ever '
             'decoding anything - that is the whole point of the split',
       );
       expect(instance.isLoaded, isFalse);
@@ -438,7 +445,8 @@ void main() {
             allOf(contains('unloaded'), contains('never loaded')),
           ),
         ),
-        reason: 'reading a payload that was never decoded must name the asset '
+        reason:
+            'reading a payload that was never decoded must name the asset '
             'and say it was never loaded - not null-deref three frames deeper',
       );
     });
@@ -456,7 +464,8 @@ void main() {
       expect(
         () => _FakeInstance().address,
         throwsStateError,
-        reason: 'an instance that never went through a describeAssets pass '
+        reason:
+            'an instance that never went through a describeAssets pass '
             'has nothing for a DataPointer row to point at, and address 0 is '
             'a legitimate other asset',
       );
@@ -489,7 +498,8 @@ void main() {
       expect(
         key.decodes,
         1,
-        reason: 'the second caller joins the in-flight decode; two decodes '
+        reason:
+            'the second caller joins the in-flight decode; two decodes '
             'would leave one payload orphaned and, for a real texture, leak '
             'a ui.Image',
       );
@@ -506,7 +516,8 @@ void main() {
             allOf(contains('never-declared'), contains('describeAssets')),
           ),
         ),
-        reason: 'lazily declaring here would assign an address on this copy '
+        reason:
+            'lazily declaring here would assign an address on this copy '
             'alone, and every address after it would then disagree with the '
             'other copy - a silent corruption, so it fails loudly instead',
       );
@@ -520,7 +531,8 @@ void main() {
       expect(
         assets.tryGet(key),
         same(declared),
-        reason: 'declared-but-unloaded is the normal steady state on the game '
+        reason:
+            'declared-but-unloaded is the normal steady state on the game '
             'isolate, not an absence',
       );
 
@@ -530,27 +542,33 @@ void main() {
   });
 
   group('assets.unload', () {
-    test('frees the address, releases the payload, drops the declaration',
-        () async {
-      final key = _FakeAsset('doomed');
-      final instance = assets.declare(key);
-      await assets.load(key);
-      final address = instance.address;
+    test(
+      'frees the address, releases the payload, drops the declaration',
+      () async {
+        final key = _FakeAsset('doomed');
+        final instance = assets.declare(key);
+        await assets.load(key);
+        final address = instance.address;
 
-      assets.unload(key);
+        assets.unload(key);
 
-      expect(assets.tryGet(key), isNull);
-      expect(instance.disposed, isTrue,
-          reason: 'onUnloaded is where a real instance releases its ui.Image');
-      expect(instance.isLoaded, isFalse);
-      expect(assets.tryResolve<_FakeInstance>(address), isNull);
-      expect(
-        () => assets.resolve<_FakeInstance>(address),
-        throwsStateError,
-        reason: 'a row still holding the freed address fails loudly on next '
-            'read - unloading something still referenced is a caller bug',
-      );
-    });
+        expect(assets.tryGet(key), isNull);
+        expect(
+          instance.disposed,
+          isTrue,
+          reason: 'onUnloaded is where a real instance releases its ui.Image',
+        );
+        expect(instance.isLoaded, isFalse);
+        expect(assets.tryResolve<_FakeInstance>(address), isNull);
+        expect(
+          () => assets.resolve<_FakeInstance>(address),
+          throwsStateError,
+          reason:
+              'a row still holding the freed address fails loudly on next '
+              'read - unloading something still referenced is a caller bug',
+        );
+      },
+    );
 
     test('unloading something never declared is a no-op', () {
       expect(() => assets.unload(_FakeAsset('absent')), returnsNormally);
@@ -589,7 +607,8 @@ void main() {
       expect(
         assets.tryGet(key),
         isNull,
-        reason: 'a leftover declaration would make every later test in the '
+        reason:
+            'a leftover declaration would make every later test in the '
             'process see this one\'s state - the exact order-dependence this '
             'hook exists to remove',
       );
@@ -598,7 +617,8 @@ void main() {
       expect(
         key.decodes,
         2,
-        reason: 'and the re-declared instance really is unloaded, rather than '
+        reason:
+            'and the re-declared instance really is unloaded, rather than '
             'a cached one that reset only pretended to drop',
       );
       expect(
@@ -620,19 +640,18 @@ void main() {
   });
 
   group('GlobalObjectRegistry', () {
-    test('tryResolve is null for a never-registered or out-of-range address',
-        () {
-      expect(assets.tryResolve<_FakeInstance>(0), isNull);
-      expect(assets.tryResolve<_FakeInstance>(-1), isNull);
-      expect(assets.tryResolve<_FakeInstance>(999), isNull);
-    });
+    test(
+      'tryResolve is null for a never-registered or out-of-range address',
+      () {
+        expect(assets.tryResolve<_FakeInstance>(0), isNull);
+        expect(assets.tryResolve<_FakeInstance>(-1), isNull);
+        expect(assets.tryResolve<_FakeInstance>(999), isNull);
+      },
+    );
 
     test('tryResolve is null for the wrong type at a valid address', () {
       final instance = assets.declare(_FakeAsset('typed'));
-      expect(
-        assets.tryResolve<_Unrelated>(instance.address),
-        isNull,
-      );
+      expect(assets.tryResolve<_Unrelated>(instance.address), isNull);
     });
   });
 
@@ -641,16 +660,15 @@ void main() {
       final music = _FakeAsset('music');
       final prop = _FakeAsset('prop');
       final unused = _FakeAsset('unused');
-      await _boot(
-        _DiffGame(() => _PropScene([_Prop(prop)], sceneKey: music)),
-      );
+      await _boot(_DiffGame(() => _PropScene([_Prop(prop)], sceneKey: music)));
 
       expect(music.decodes, 1, reason: "the scene's own prefab-less asset");
       expect(prop.decodes, 1, reason: 'and every registered prefab\'s');
       expect(
         unused.decodes,
         0,
-        reason: 'a key nothing declared is not part of the scene, so nothing '
+        reason:
+            'a key nothing declared is not part of the scene, so nothing '
             'about a scene load should touch it',
       );
       expect(assets.tryGet(unused), isNull);
@@ -669,14 +687,13 @@ void main() {
 
       // Loading no longer *replaces*: both scenes are resident now, and both
       // hold a claim on `shared`.
-      await run.state.loadScene(
-        _PropScene([_Prop(onlyB)], sceneKey: shared),
-      );
+      await run.state.loadScene(_PropScene([_Prop(onlyB)], sceneKey: shared));
 
       expect(
         shared.decodes,
         1,
-        reason: 'the second scene raises the claim count rather than decoding '
+        reason:
+            'the second scene raises the claim count rather than decoding '
             'again - asserted against the decode counter, because a reload '
             'producing an identical payload would satisfy any assertion about '
             'final state',
@@ -686,44 +703,54 @@ void main() {
       expect(
         assets.tryGet(onlyA)?.isLoaded,
         isTrue,
-        reason: 'loading no longer unloads anything - the first scene is still '
+        reason:
+            'loading no longer unloads anything - the first scene is still '
             'resident and still claims its own asset. Freeing is what '
             'unloadScene is for, and that is the whole reason a claim count '
             'replaced the pairwise previous->next diff',
       );
     });
 
-    test('a shared asset outlives the first unload and dies with the last',
-        () async {
+    test('a shared asset outlives the first unload and dies with the last', () async {
       final shared = _FakeAsset('shared');
       final onlyA = _FakeAsset('only-a');
       final onlyB = _FakeAsset('only-b');
       await _boot(
         _DiffGame(() => _PropScene([_Prop(onlyA)], sceneKey: shared)),
       );
-      final first = run.state.sceneHandle!;
+      final first = run.state.loadedScenes.single;
       final second = await run.state.loadScene(
         _PropScene([_Prop(onlyB)], sceneKey: shared),
       );
 
       run.state.unloadScene(first);
 
-      expect(assets.tryGet(onlyA), isNull,
-          reason: 'nothing else claimed it, so it goes with its scene');
+      expect(
+        assets.tryGet(onlyA),
+        isNull,
+        reason: 'nothing else claimed it, so it goes with its scene',
+      );
       expect(
         assets.tryGet(shared)?.isLoaded,
         isTrue,
-        reason: 'the second scene still claims it - this is exactly what the '
+        reason:
+            'the second scene still claims it - this is exactly what the '
             'old pairwise previous->next diff could not express, because with '
             'A and C sharing an atlas and B not, A->B freed it and B->C '
             'decoded it again',
       );
 
       run.state.unloadScene(second);
-      expect(assets.tryGet(shared), isNull,
-          reason: 'the last claim released is what frees it');
-      expect(assets.tryGet(onlyB), isNull,
-          reason: 'and the asset only the second scene claimed goes with it');
+      expect(
+        assets.tryGet(shared),
+        isNull,
+        reason: 'the last claim released is what frees it',
+      );
+      expect(
+        assets.tryGet(onlyB),
+        isNull,
+        reason: 'and the asset only the second scene claimed goes with it',
+      );
     });
 
     test('onProgress is monotonic and ends at exactly 1.0', () async {
@@ -734,10 +761,9 @@ void main() {
 
       final reports = <SceneLoadProgress>[];
       await run.state.loadScene(
-        _PropScene(
-          [for (var i = 1; i < keys.length; i++) _Prop(keys[i])],
-          sceneKey: keys.first,
-        ),
+        _PropScene([
+          for (var i = 1; i < keys.length; i++) _Prop(keys[i]),
+        ], sceneKey: keys.first),
         onProgress: reports.add,
       );
 
@@ -746,14 +772,16 @@ void main() {
         expect(
           reports[i].progress,
           greaterThanOrEqualTo(reports[i - 1].progress),
-          reason: 'a loading bar that goes backwards is a bug in the reporter, '
+          reason:
+              'a loading bar that goes backwards is a bug in the reporter, '
               'not something every consumer should have to clamp',
         );
       }
       expect(
         reports.last.progress,
         1.0,
-        reason: 'the terminal report is exactly 1.0, so "hide the loading '
+        reason:
+            'the terminal report is exactly 1.0, so "hide the loading '
             'screen" can key off equality rather than a threshold',
       );
       expect(
@@ -763,49 +791,55 @@ void main() {
       );
     });
 
-    test('a transition needing no decodes still reports a single 1.0',
-        () async {
-      final shared = _FakeAsset('shared');
-      await _boot(
-        _DiffGame(() => _PropScene([], sceneKey: shared)),
-      );
+    test(
+      'a transition needing no decodes still reports a single 1.0',
+      () async {
+        final shared = _FakeAsset('shared');
+        await _boot(_DiffGame(() => _PropScene([], sceneKey: shared)));
 
-      final reports = <SceneLoadProgress>[];
-      await run.state.loadScene(
-        _PropScene([], sceneKey: shared),
-        onProgress: reports.add,
-      );
+        final reports = <SceneLoadProgress>[];
+        await run.state.loadScene(
+          _PropScene([], sceneKey: shared),
+          onProgress: reports.add,
+        );
 
-      expect(shared.decodes, 1);
-      expect(
-        reports.map((r) => r.progress).toList(),
-        <double>[1.0],
-        reason: 'no decodes means nothing to report fractions of - but the '
-            'caller still has to be told it is done, without having to '
-            'special-case the empty case itself',
-      );
-    });
+        expect(shared.decodes, 1);
+        expect(
+          reports.map((r) => r.progress).toList(),
+          <double>[1.0],
+          reason:
+              'no decodes means nothing to report fractions of - but the '
+              'caller still has to be told it is done, without having to '
+              'special-case the empty case itself',
+        );
+      },
+    );
 
-    test('loading one declaration twice gives two scenes sharing its assets',
-        () async {
-      final key = _FakeAsset('same-scene');
-      await _boot(_DiffGame(() => _PropScene([_Prop(key)])));
-      final struct = run.state.scene!;
-      final first = run.state.sceneHandle!;
+    test(
+      'loading one declaration twice gives two scenes sharing its assets',
+      () async {
+        final key = _FakeAsset('same-scene');
+        await _boot(_DiffGame(() => _PropScene([_Prop(key)])));
+        final struct = run.state.scene!;
+        final first = run.state.loadedScenes.single;
 
-      // The same *declaration*, loaded again. It is not a no-op any more -
-      // it is a second resident instance with its own pages - but its assets
-      // are already decoded, so it costs no decode.
-      final second = await run.state.loadScene(struct);
+        // The same *declaration*, loaded again. It is not a no-op any more -
+        // it is a second resident instance with its own pages - but its assets
+        // are already decoded, so it costs no decode.
+        final second = await run.state.loadScene(struct);
 
-      expect(key.decodes, 1);
-      expect(second, isNot(first));
-      expect(run.state.loadedScenes.length, 2);
+        expect(key.decodes, 1);
+        expect(second, isNot(first));
+        expect(run.state.loadedScenes.length, 2);
 
-      run.state.unloadScene(second);
-      expect(assets.tryGet(key)?.isLoaded, isTrue,
-          reason: 'the first load still claims it');
-    });
+        run.state.unloadScene(second);
+        expect(
+          assets.tryGet(key)?.isLoaded,
+          isTrue,
+          reason: 'the first load still claims it',
+        );
+      },
+    );
 
     test('the world layout exists before the bring-up future completes', () {
       final game = _DiffGame(() => _PropScene([_Prop(_FakeAsset('sync'))]));
@@ -827,7 +861,8 @@ void main() {
       expect(
         ArchetypeRegistry.count,
         greaterThan(0),
-        reason: 'the entity layout is registered synchronously; it is the '
+        reason:
+            'the entity layout is registered synchronously; it is the '
             'asset content that is still arriving',
       );
 

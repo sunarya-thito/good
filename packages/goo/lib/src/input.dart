@@ -484,7 +484,13 @@ final class InputRegistry implements InputDescriptor {
 
 /// The one [Input] implementation - what `describeInputs` hands back.
 final class _InputAction<T> implements Input<T>, _ActionSlot {
-  _InputAction(this.index, this.source, this._binding, this._default, this._hasDefault);
+  _InputAction(
+    this.index,
+    this.source,
+    this._binding,
+    this._default,
+    this._hasDefault,
+  );
 
   /// Position in the shared declaration order, and what diagnostics name this
   /// action by together with [source]. There is no user-supplied name to use
@@ -599,7 +605,8 @@ final class _InputAction<T> implements Input<T>, _ActionSlot {
   InputEventStream<T> get released => _released;
 
   @override
-  set released(InputEventStream<T> stream) => _assertOwnStream(stream, _released);
+  set released(InputEventStream<T> stream) =>
+      _assertOwnStream(stream, _released);
 
   /// The whole body of both stream setters: they exist so `+=` compiles (see
   /// [Input.pressed]) and the only value they can legitimately receive is the

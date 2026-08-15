@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:goo/src/command/command.dart';
 import 'package:goo/src/command/param.dart';
 
-
 // The command API's two lower layers - the parameter record and the
 // declaration/dispatch registry - exercised with a loopback sender: no
 // isolates, no ring buffers, no Game. Everything about *what a command is* is
@@ -175,10 +174,14 @@ void main() {
 
       expect(damage.index, 0);
       expect(ping.index, 1);
-      expect(r.length, 2,
-          reason: 'the index is the identity on the wire, and it comes from '
-              'the order both isolate copies run this pass in - no '
-              'hand-picked record type to collide, no name to misspell');
+      expect(
+        r.length,
+        2,
+        reason:
+            'the index is the identity on the wire, and it comes from '
+            'the order both isolate copies run this pass in - no '
+            'hand-picked record type to collide, no name to misspell',
+      );
     });
 
     test('declaring the same command twice is refused', () {
@@ -198,10 +201,14 @@ void main() {
       final damage = r.declare(_Damage());
       final descriptor = GameCommandDescriptor(r);
 
-      expect(() => descriptor.has(_Ping()), throwsStateError,
-          reason: 'a command declared on the GameState would have an index on '
-              'the game isolate and none on the Flutter one, which is the '
-              'same as not having one');
+      expect(
+        () => descriptor.has(_Ping()),
+        throwsStateError,
+        reason:
+            'a command declared on the GameState would have an index on '
+            'the game isolate and none on the Flutter one, which is the '
+            'same as not having one',
+      );
       descriptor.hasHandler(damage, (p) => 0);
       expect(damage.hasHandler, isTrue);
     });
@@ -213,7 +220,8 @@ void main() {
       expect(
         () => GameCommandDescriptor(r).hasHandler(damage, (p) => 0),
         throwsStateError,
-        reason: 'a command runs on one isolate - two handlers would be two '
+        reason:
+            'a command runs on one isolate - two handlers would be two '
             'answers to "where does this go"',
       );
     });
@@ -232,10 +240,8 @@ void main() {
       // `p` is a _Blow and the return is an int, both inferred - there is no
       // buffer in this signature and no pointer in this body, which is what
       // makes a handler testable as the plain function it is.
-      GameCommandDescriptor(r).hasHandler(
-        damage,
-        (p) => p.amount * (p.crit ? 2 : 1),
-      );
+      GameCommandDescriptor(r)
+          .hasHandler(damage, (p) => p.amount * (p.crit ? 2 : 1));
       expect(damage.hasHandler, isTrue);
     });
   });
@@ -247,9 +253,13 @@ void main() {
       GameCommandDescriptor(r.registry)
           .hasHandler(damage, (p) => p.amount * (p.crit ? 2 : 1));
 
-      expect(await damage((amount: 30, crit: true)), 60,
-          reason: 'this is the line that gets written a hundred times, and '
-              'the two methods on the command are what keep it this short');
+      expect(
+        await damage((amount: 30, crit: true)),
+        60,
+        reason:
+            'this is the line that gets written a hundred times, and '
+            'the two methods on the command are what keep it this short',
+      );
     });
 
     test('a signal is a class body away from nothing', () async {
@@ -260,9 +270,13 @@ void main() {
 
       await ping();
       await ping();
-      expect(pinged, 2,
-          reason: 'no params, no result, no describeParams body - the shape '
-              'that needs nothing should cost nothing to declare');
+      expect(
+        pinged,
+        2,
+        reason:
+            'no params, no result, no describeParams body - the shape '
+            'that needs nothing should cost nothing to declare',
+      );
     });
 
     test('a supplier asks and gets an answer', () async {
@@ -282,9 +296,13 @@ void main() {
       GameCommandDescriptor(r.registry).hasSink(log, lines.add);
 
       await log('level loaded');
-      expect(lines, ['level loaded'],
-          reason: 'awaitable even with no result: "has the other side run '
-              'this" is a different question from "what did it produce"');
+      expect(
+        lines,
+        ['level loaded'],
+        reason:
+            'awaitable even with no result: "has the other side run '
+            'this" is a different question from "what did it produce"',
+      );
     });
 
     test('reading a result the handler never wrote throws', () async {
@@ -296,10 +314,14 @@ void main() {
       final hit = batch.execute(damage, (amount: 1, crit: false));
       final results = await batch.send();
 
-      expect(hit[results], 5,
-          reason: 'bufferFromResult decides what a single returned value '
-              'means on the wire - here it wrote both dealt and overkill, so '
-              'the handler never had to know there were two fields');
+      expect(
+        hit[results],
+        5,
+        reason:
+            'bufferFromResult decides what a single returned value '
+            'means on the wire - here it wrote both dealt and overkill, so '
+            'the handler never had to know there were two fields',
+      );
     });
 
     test('reading a parameter nobody wrote throws', () {
@@ -308,28 +330,42 @@ void main() {
       GameCommandDescriptor(r.registry).hasHandler(wide, (p) => p);
 
       final call = wide.execute(7);
-      expect(() => wide.i32[call], throwsStateError,
-          reason: 'execute only wrote u8, and zero is a real i32 - a '
-              'parameter the caller left out has to be an error rather than a '
-              'plausible number the handler acts on');
+      expect(
+        () => wide.i32[call],
+        throwsStateError,
+        reason:
+            'execute only wrote u8, and zero is a real i32 - a '
+            'parameter the caller left out has to be an error rather than a '
+            'plausible number the handler acts on',
+      );
     });
 
-    test('sending a command with no handler anywhere throws at the sender',
-        () async {
-      final r = _registry();
-      final unhandled = r.registry.declare(_Unhandled());
+    test(
+      'sending a command with no handler anywhere throws at the sender',
+      () async {
+        final r = _registry();
+        final unhandled = r.registry.declare(_Unhandled());
 
-      expect(unhandled.call, throwsStateError,
-          reason: 'both copies run both declaration passes, so the sending '
+        expect(
+          unhandled.call,
+          throwsStateError,
+          reason:
+              'both copies run both declaration passes, so the sending '
               'side already knows nothing will read this - it does not have '
-              'to send it to find out');
-      expect(r.sender.batchesSent, 0);
-    });
+              'to send it to find out',
+        );
+        expect(r.sender.batchesSent, 0);
+      },
+    );
 
     test('an undeclared command cannot be called at all', () {
-      expect(_Ping().call, throwsStateError,
-          reason: 'no index, no layout, nowhere to send to - the message '
-              'should say so rather than throwing on a null somewhere inside');
+      expect(
+        _Ping().call,
+        throwsStateError,
+        reason:
+            'no index, no layout, nowhere to send to - the message '
+            'should say so rather than throwing on a null somewhere inside',
+      );
     });
   });
 
@@ -349,16 +385,24 @@ void main() {
       final third = batch.execute(damage, (amount: 3, crit: false));
       final results = await batch.send();
 
-      expect(order, [1, 2, 3],
-          reason: 'a batch is a sequence, not a set - a game that spawns a '
-              'unit and then orders it around depends on that');
+      expect(
+        order,
+        [1, 2, 3],
+        reason:
+            'a batch is a sequence, not a set - a game that spawns a '
+            'unit and then orders it around depends on that',
+      );
       expect(first[results], 10);
       expect(second[results], 20);
       expect(third[results], 30);
-      expect(r.sender.batchesSent, 1,
-          reason: 'one message, one wake-up, one reply - the round trip costs '
-              'more than the bytes, which is the whole reason batching '
-              'exists');
+      expect(
+        r.sender.batchesSent,
+        1,
+        reason:
+            'one message, one wake-up, one reply - the round trip costs '
+            'more than the bytes, which is the whole reason batching '
+            'exists',
+      );
       expect(r.sender.callsDispatched, 3);
     });
 
@@ -376,16 +420,23 @@ void main() {
       batch.sink(log, 'hit');
       final results = await batch.send();
 
-      expect(hit[results], 7,
-          reason: 'the key carries R, so reading a result names neither the '
-              'command again nor a buffer');
-      expect(lines, ['hit'],
-          reason: 'each record names its own command, so a batch is a mixed '
-              'sequence rather than a run of one kind');
+      expect(
+        hit[results],
+        7,
+        reason:
+            'the key carries R, so reading a result names neither the '
+            'command again nor a buffer',
+      );
+      expect(
+        lines,
+        ['hit'],
+        reason:
+            'each record names its own command, so a batch is a mixed '
+            'sequence rather than a run of one kind',
+      );
     });
 
-    test('a batch grows past its initial guess without losing calls',
-        () async {
+    test('a batch grows past its initial guess without losing calls', () async {
       final r = _registry();
       final wide = r.registry.declare(_Wide());
       GameCommandDescriptor(r.registry).hasHandler(wide, (p) => p + 1);
@@ -398,9 +449,13 @@ void main() {
       final results = await batch.send();
 
       for (var i = 0; i < keys.length; i++) {
-        expect(keys[i][results], i + 1,
-            reason: 'growth copies what is already there, so an underestimate '
-                'costs one copy rather than a dropped call');
+        expect(
+          keys[i][results],
+          i + 1,
+          reason:
+              'growth copies what is already there, so an underestimate '
+              'costs one copy rather than a dropped call',
+        );
       }
     });
 
@@ -415,16 +470,24 @@ void main() {
       second.execute(wide, 2);
 
       final theirs = await second.send();
-      expect(() => key[theirs], throwsStateError,
-          reason: 'a key is a place in one batch, and the results token is '
-              'what says which - crossing them would silently read whatever '
-              'happened to be at that offset');
+      expect(
+        () => key[theirs],
+        throwsStateError,
+        reason:
+            'a key is a place in one batch, and the results token is '
+            'what says which - crossing them would silently read whatever '
+            'happened to be at that offset',
+      );
     });
 
     test('a batch with nowhere to send says so', () {
-      expect(() => CommandBatch(0).send(), throwsStateError,
-          reason: 'a bare CommandBatch is a buffer, not a channel - build one '
-              'with command.newBatch(), which takes the transport with it');
+      expect(
+        () => CommandBatch(0).send(),
+        throwsStateError,
+        reason:
+            'a bare CommandBatch is a buffer, not a channel - build one '
+            'with command.newBatch(), which takes the transport with it',
+      );
     });
   });
 
@@ -480,11 +543,14 @@ void main() {
       final log = r.registry.declare(_Log());
       GameCommandDescriptor(r.registry).hasSink(log, (p) {});
 
-      expect(() => log.execute('a message far longer than thirty-two bytes'),
-          throwsArgumentError,
-          reason: 'a command record has a fixed stride, exactly like an '
-              'archetype row, so capacity is part of the declaration - '
-              'silently truncating a message is worse than saying so');
+      expect(
+        () => log.execute('a message far longer than thirty-two bytes'),
+        throwsArgumentError,
+        reason:
+            'a command record has a fixed stride, exactly like an '
+            'archetype row, so capacity is part of the declaration - '
+            'silently truncating a message is worse than saying so',
+      );
     });
 
     test('two calls of one command do not share bytes', () {
@@ -497,9 +563,13 @@ void main() {
       final b = damage.execute((amount: 22, crit: true), batch);
       expect(damage.amount[a], 11);
       expect(damage.amount[b], 22);
-      expect(() => damage.resultFromBuffer(a), throwsStateError,
-          reason: "and neither do their written-masks - b's writes must not "
-              "make a's results look present");
+      expect(
+        () => damage.resultFromBuffer(a),
+        throwsStateError,
+        reason:
+            "and neither do their written-masks - b's writes must not "
+            "make a's results look present",
+      );
     });
   });
 }

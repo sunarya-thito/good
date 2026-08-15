@@ -9,7 +9,7 @@ import 'package:goo2d/goo2d.dart';
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
-late InlineGameHandle run;
+late Game run;
 
 
 // The seam: GameRenderer2D writes bytes, DrawCanvas2D reads them, and nothing
@@ -70,7 +70,7 @@ class _Scene extends SceneStruct {
   late Scene handle;
 
   @override
-  void onMounted(Scene scene) => handle = scene;
+  void onSceneMounted(Scene scene) => handle = scene;
 
   Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);

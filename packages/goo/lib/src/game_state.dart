@@ -8,6 +8,7 @@ import 'package:goo/src/event/fixed_loop.dart';
 import 'package:goo/src/event/lifecycle.dart';
 import 'package:goo/src/event/tick_loop.dart';
 import 'package:goo/src/command/command.dart';
+import 'package:goo/src/coroutine/coroutine.dart';
 import 'package:goo/src/command/param.dart';
 import 'package:goo/src/game.dart';
 import 'package:goo/src/pool.dart';
@@ -67,7 +68,7 @@ import 'package:goo/src/system.dart';
 /// `LifecycleListener`; it cannot be `BuildWidgetListener`. See `GameEvent`'s
 /// doc.
 abstract class GameState<T extends Game> extends GameListenerBase
-    with EventBus {
+    with EventBus, Coroutines {
   /// The simulation tick, dispatched once per fixed step to every declared
   /// `FixedTickable` system.
   ///
@@ -133,7 +134,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
     }
   }
 
-  Game? _game;
+  GameRuntime? _runtime;
   bool _simulating = false;
 
   // Every loaded scene, in load order. Handles rather than structs, because a
@@ -148,18 +149,157 @@ abstract class GameState<T extends Game> extends GameListenerBase
   int _accumulatedMicros = 0;
   Timer? _timer;
 
+  // --- where the frame went ------------------------------------------------
+  //
+  // Two numbers, because the two halves fail for different reasons and the
+  // fix is different. Simulation cost is systems and the pool; presentation
+  // cost is whatever the renderer does walking the world and writing a batch.
+  // A game at 10 published frames a second is spending 100ms *somewhere*, and
+  // without this split the only honest answer is "in the tick".
+  //
+  // Always on rather than behind a flag: this is two `Stopwatch` reads per
+  // `advance`, not per entity, so it does not scale with the thing being
+  // measured. A flag would be a second way for the numbers to be missing
+  // exactly when someone reaches for them.
+  final Stopwatch _profile = Stopwatch();
+
+  /// Free-running, never reset - used to measure the *gap* between advances,
+  /// which is the number that separates "this work is slow" from "this loop is
+  /// not being called".
+  final Stopwatch _wall = Stopwatch()..start();
+  int _lastAdvanceAt = 0;
+  int _simulationMicros = 0;
+  int _systemMicros = 0;
+  int _presentationMicros = 0;
+
+  /// Rolling minima over the last [_bestWindow] advances.
+  ///
+  /// **Every number here is wall clock, not CPU time**, and the game isolate
+  /// shares a machine with Flutter's UI and raster threads. Preemption only
+  /// ever *adds* to a measurement, so the minimum over a window is the closest
+  /// thing to "how much work is this" that a stopwatch can give - while the
+  /// latest value is "how long did it take, on this contended machine, this
+  /// frame". Both are worth having and they answer different questions.
+  ///
+  /// This is not theoretical: raising the display scale from 100% to 150% on a
+  /// desktop was observed to nearly double the *reported* system time at a
+  /// fixed entity count, because more raster work meant less CPU for the
+  /// simulation. Nothing about the simulation had changed.
+  static const int _bestWindow = 180;
+  final List<int> _simRing = List<int>.filled(_bestWindow, 0);
+  final List<int> _sysRing = List<int>.filled(_bestWindow, 0);
+  final List<int> _presRing = List<int>.filled(_bestWindow, 0);
+  int _ringNext = 0;
+  int _ringCount = 0;
+
+  static int _minOf(List<int> ring, int count) {
+    if (count == 0) return 0;
+    var best = ring[0];
+    for (var i = 1; i < count; i++) {
+      if (ring[i] < best) best = ring[i];
+    }
+    return best;
+  }
+
+  /// The cheapest fixed-step half seen recently - work, with contention
+  /// squeezed out as far as a wall clock allows. See [_bestWindow].
+  int get bestSimulationMicros => _minOf(_simRing, _ringCount);
+
+  /// The cheapest time inside `FixedTickable` systems seen recently.
+  int get bestSystemMicros => _minOf(_sysRing, _ringCount);
+
+  /// The cheapest presentation pass seen recently.
+  int get bestPresentationMicros => _minOf(_presRing, _ringCount);
+  int _advanceMicros = 0;
+  int _intervalMicros = 0;
+
+  /// Microseconds the last [advance] spent in fixed steps - commands,
+  /// coroutines, every `FixedTickable` system, and the pool's tick window.
+  ///
+  /// Covers however many steps that frame afforded, so a frame that caught up
+  /// three steps reports all three. Divide by [lastStepCount] for per-step.
+  int get lastSimulationMicros => _simulationMicros;
+
+  /// Microseconds the last [advance] spent inside `FixedTickable` systems -
+  /// the game's own simulation code, summed over every step that frame.
+  ///
+  /// `lastSimulationMicros - lastSystemMicros` is what the **engine** spent in
+  /// the fixed step: the pool's `beginTick` snapshot copy, the command drain
+  /// and the coroutine step. That difference being large is an engine problem;
+  /// this number being large is the game's own systems, and the two are fixed
+  /// in completely different places.
+  int get lastSystemMicros => _systemMicros;
+
+  /// Microseconds the last [advance] spent in presentation - every `Tickable`,
+  /// which in a 2D game means `GameRenderer2D` walking the renderables and
+  /// writing the draw batch.
+  ///
+  /// **This is the one people do not expect.** The renderer runs on the
+  /// simulating isolate, inside `advance`, so its cost shows up as a low
+  /// simulation frame rate rather than as a high Flutter frame time. A game
+  /// whose `frameMillis` looks healthy and whose `simulationFps` is on the
+  /// floor is usually spending it here.
+  int get lastPresentationMicros => _presentationMicros;
+
+  /// Microseconds the whole of the last [advance] took, end to end.
+  ///
+  /// Wider than [lastSimulationMicros] + [lastPresentationMicros] on purpose:
+  /// it also covers `presentFrame`, which announces the finished frame to the
+  /// other isolate. If the two halves add up to far less than this, the cost is
+  /// in the announcement rather than in the work.
+  int get lastAdvanceMicros => _advanceMicros;
+
+  /// Microseconds between the start of the previous [advance] and this one.
+  ///
+  /// **The number that says whether the loop is slow or merely starved.**
+  /// [lastAdvanceMicros] is how long the work took; this is how often it got to
+  /// run. A game publishing 10 frames a second whose advance takes 15ms is not
+  /// slow - something is stopping it being called, and no amount of optimising
+  /// the tick will move it. The two being equal means the loop is saturated,
+  /// which is the honest "this work is too expensive" reading.
+  int get lastAdvanceIntervalMicros => _intervalMicros;
+
+  /// Fixed steps the last [advance] ran - 0 when the accumulator had not filled,
+  /// up to `Game.maxFixedStepsPerAdvance` when catching up.
+  int get lastStepCount => _lastSteps;
+  int _lastSteps = 0;
+
+  @override
+  @protected
+  GameState get simulationState => this;
+
+  /// Every coroutine this game is running - see [CoroutineScheduler].
+  ///
+  /// One per state rather than one per owner, and stepped from
+  /// [runFixedStep] so a coroutine resumes inside the tick window. Reached
+  /// through the [Coroutines] mixin from a prefab or a system; a `GameSystem`
+  /// can also use `state.coroutines` directly.
+  final CoroutineScheduler coroutines = CoroutineScheduler();
+
   /// The `Game` this state belongs to - **this isolate's copy** of it. Set
   /// once, by `Game.start()`, before any declaration pass runs.
-  T get game {
-    final game = _game;
-    if (game == null) {
+  ///
+  /// The *description*, and only that: the run this state belongs to is
+  /// [runtime]. Two runs of one `Game` share this object and share nothing
+  /// else.
+  T get game => runtime.game as T;
+
+  /// The run this state is the simulation half of.
+  ///
+  /// Internal because everything a game legitimately reaches through it has a
+  /// spelling of its own here - [tick], [createCommandBatch], [isSimulating].
+  /// It is the back-reference those are implemented in terms of.
+  @internal
+  GameRuntime get runtime {
+    final runtime = _runtime;
+    if (runtime == null) {
       throw StateError(
-        '$runtimeType is not bound to a Game. A GameState is created by '
-        'Game.createState() during start(); one constructed by hand has no '
-        'declarations to read and no tick to run on.',
+        '$runtimeType is not bound to a run. A GameState is created by '
+        'Game.createState() during Game.start(); one constructed by hand has '
+        'no declarations to read and no tick to run on.',
       );
     }
-    return game as T;
+    return runtime;
   }
 
   /// Whether this copy owns the simulation.
@@ -185,28 +325,24 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// because only the game knows what "paused" should mean for it.
   List<Scene> get loadedScenes => _loaded;
 
-  /// The **first** loaded scene, or null when nothing is loaded.
+  /// The declaration of **the** loaded scene, when there is exactly one.
   ///
-  /// A convenience for the overwhelmingly common single-scene game, not a
-  /// statement that this scene is special. It used to mean "the front one",
-  /// set by a `switchScene` that gated nothing; deleting that left the name
-  /// needing an honest meaning, and "first loaded" is the one that is
-  /// *derived* rather than stored - there is no second source of truth to
-  /// drift, and no setter to call at the wrong time. A game with several
-  /// scenes resident should say which it means and use [loadedScenes].
-  ///
-  /// **Nullable on purpose.** A `GameState` with no scene is a legitimate,
-  /// expected state - a game booted straight to a menu, a headless host that
-  /// only runs systems, a state between transitions. Everything that touches
-  /// it handles that: a renderer draws nothing and a widget shows whatever it
-  /// shows when there is no world yet. It is not an error to be reported.
-  Scene? get sceneHandle => _loaded.isEmpty ? null : _loaded.first;
-
-  /// The first loaded scene's declaration - `sceneHandle.get<SceneStruct>()`,
-  /// or null when nothing is loaded.
+  /// Throws when several are resident, and that is the point: this used to
+  /// answer with the *first* one, which is a guess dressed as an accessor. A
+  /// game with more than one scene loaded has to say which it means, through
+  /// [loadedScenes] or the handle `loadScene` returned it. Null still means
+  /// none loaded, which is a legitimate state - a game booted to a menu, a
+  /// headless host that only runs systems, a state between transitions.
   SceneStruct? get scene {
-    final handle = sceneHandle;
-    return handle == null ? null : SceneRegistry.tryResolve(handle);
+    if (_loaded.isEmpty) return null;
+    if (_loaded.length > 1) {
+      throw StateError(
+        'GameState.scene is only meaningful with one scene loaded, and '
+        '${_loaded.length} are. Name the one you mean: keep the handle '
+        '`loadScene` returned, or index `loadedScenes`.',
+      );
+    }
+    return SceneRegistry.tryResolve(_loaded.first);
   }
 
   /// This game's page storage - **one pool, owned here**, not one per scene.
@@ -225,7 +361,19 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// Fixed ticks completed. One counter, kept on the `Game` because the
   /// handle copy needs to track it too (it learns each tick from a message);
   /// this is the simulation-side spelling of the same number.
-  int get tick => game.tick;
+  int get tick => runtime.tick;
+
+  /// Simulated seconds since the game came up: [tick] times `fixedTimeStep`.
+  ///
+  /// Derived, never accumulated (rule 10). A separate `_elapsed` field added
+  /// to on every step would drift from the tick count by a float epsilon per
+  /// tick, and an animation keyed in seconds would then land on a different
+  /// frame in a long session than in a short one. Multiplying is exact.
+  ///
+  /// Wall clock has nothing to do with it: a game stepped by hand from a test
+  /// and one running on a timer report the same time for the same tick, which
+  /// is what makes an animation reproducible.
+  double get time => tick * game.fixedTimeStep.inMicroseconds / 1000000.0;
 
   // --- declaration hooks ------------------------------------------------
 
@@ -393,8 +541,11 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // A scene declared in `Game.describeScenes` is already initialized, which
     // is the entire point of declaring it - loading costs no registration.
     if (!next.isInitialized) {
-      next.initializeScene(pool,
-          assets: game.assets, cameraViews: game.cameraViews);
+      next.initializeScene(
+        pool,
+        assets: game.assets,
+        cameraViews: game.cameraViews,
+      );
     }
     // Idempotent, and a no-op for a scene declared in `describeScenes` (the
     // boot pass already bound it). It matters for one loaded at runtime that
@@ -408,14 +559,12 @@ abstract class GameState<T extends Game> extends GameListenerBase
     final handle = SceneRegistry.register(next);
     _loaded.add(handle);
 
-    // The instance's own bring-up, and where it spawns. It takes the handle
-    // because a `SceneStruct` is a declaration that may back several loaded
-    // scenes, so "spawn into my scene" is a question only the handle answers.
-    next.onMounted(handle);
-    // After the scene's own mount, never before: a listener told "a scene
-    // loaded" should find its starting entities already there. Fired on the
-    // scene's own dispatcher, so it reaches that scene's composition and no
-    // other scene's.
+    // One dispatch, not a virtual followed by a dispatch. The scene is
+    // offered into its own dispatcher first (see `collectListeners`), so
+    // its `onSceneMounted` still runs before any of its prefabs' - which
+    // is what makes "a listener hearing a mount finds the starting
+    // entities already spawned" true. Fired on the scene's own dispatcher,
+    // so it reaches that scene's composition and no other scene's.
     next.mountedEvent.call(handle);
 
     // Everything past this point is the asynchronous half.
@@ -446,8 +595,10 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // Before anything is released, so a listener can still read the scene's
     // entities - after this method they are gone for good. On the struct's own
     // dispatcher: only this scene and its prefabs are told.
+    // Dispatched in reverse collection order, so the scene itself is told
+    // last and can still read what its prefabs have already been warned
+    // about - see `SceneStruct.describeEvents`.
     struct.unmountedEvent.call(scene);
-    struct.onUnmounted(scene);
     // Innermost last: the scene has said its piece, now each entity in it
     // gets its own teardown while its row is still readable.
     struct.unmountEntitiesOf(scene.slot);
@@ -461,7 +612,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
     final slot = scene.slot;
     _loaded.remove(scene);
     SceneRegistry.unregister(scene);
-    game.releaseScenePages(slot);
+    runtime.releaseScenePages(slot);
   }
 
   /// Unloads **every** loaded instance of [struct].
@@ -512,7 +663,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
       _assetClaims.update(incoming[i], (n) => n + 1, ifAbsent: () => 1);
     }
 
-    if (!game.decodesAssets) {
+    if (!runtime.decodesAssets) {
       // This copy declared the assets - that is what gave them their addresses
       // - but it cannot decode one, because decoding needs Flutter. So it asks
       // the copy that can and waits.
@@ -522,7 +673,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
       // itself during boot. A `loadScene` at *runtime* took its asset claims
       // here and then decoded nothing, anywhere, leaving every payload read
       // from that scene to fail.
-      await game.requestAssetLoad(
+      await runtime.requestAssetLoad(
         <int>[
           for (var i = 0; i < incoming.length; i++)
             game.assets.tryGet(incoming[i])!.address,
@@ -599,7 +750,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // here is only half of it. The mirror of `requestAssetLoad`: without this,
     // a scene unloaded on the game isolate leaves its images alive on main
     // with nothing left that could name them.
-    if (!game.decodesAssets) game.requestAssetUnload(freed);
+    if (!runtime.decodesAssets) runtime.requestAssetUnload(freed);
   }
 
   // --- bring-up ---------------------------------------------------------
@@ -608,9 +759,10 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// the user-facing API: a state is bound by being returned from
   /// `Game.createState()`, never by hand.
   @internal
-  void bindGame(Game game, {required bool simulating}) {
-    _game = game;
+  void bindRuntime(GameRuntime runtime, {required bool simulating}) {
+    _runtime = runtime;
     _simulating = simulating;
+    final game = runtime.game;
     // Before every declaration pass, because registering an archetype binds it
     // to the pool its pages will come from (see `_SceneDescriptor.has`), and
     // that happens during those passes.
@@ -635,7 +787,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   ///
   /// Main booted with `simulates: false` and this object was deep-copied with
   /// that value; the game isolate flips it once, at the top of
-  /// `Game._runOnIsolate`, before anything ticks.
+  /// `GameRuntime.runOnIsolate`, before anything ticks.
   @internal
   void markSimulating() => _simulating = true;
 
@@ -666,7 +818,10 @@ abstract class GameState<T extends Game> extends GameListenerBase
   ///
   /// A plain virtual call, not an event: there is exactly one receiver and
   /// the framework is the only caller, so a dispatch mechanism was ceremony
-  /// around a method call. `SceneStruct.onMounted` is the same shape. Something
+  /// around a method call. The scene and entity levels went the other way -
+  /// their virtuals became `SceneLifecycleListener`/`EntityLifecycleListener`,
+  /// because there the owner is genuinely one listener among several. Here it
+  /// is not: nothing else can be a `GameState`. Something
   /// *else* wanting to hear the game come up is a different question, and
   /// [GameLifecycleListener] is its answer - note that it fires after this
   /// does, once every scene loaded here is standing.
@@ -709,7 +864,6 @@ abstract class GameState<T extends Game> extends GameListenerBase
       final handle = doomed[i];
       final struct = SceneRegistry.tryResolve(handle);
       struct?.unmountedEvent.call(handle);
-      struct?.onUnmounted(handle);
       // Same order as unloadScene: scene first, then its entities, all
       // while the pool is still alive. `Game` disposes the pool wholesale
       // on stop, so this is the last moment a row is readable.
@@ -723,6 +877,10 @@ abstract class GameState<T extends Game> extends GameListenerBase
       // there is no per-scene page release here.
       SceneRegistry.unregister(handle);
     }
+    // Before the scenes go: a coroutine holds closures over entities whose
+    // rows are about to be freed, and one left running would resume against
+    // released pages on a game that has been restarted in the same isolate.
+    coroutines.stopAll();
     onUnmounted();
   }
 
@@ -768,6 +926,15 @@ abstract class GameState<T extends Game> extends GameListenerBase
     final step = game.fixedTimeStep.inMicroseconds;
     _accumulatedMicros += elapsed.inMicroseconds;
 
+    final startedAt = _wall.elapsedMicroseconds;
+    _intervalMicros = startedAt - _lastAdvanceAt;
+    _lastAdvanceAt = startedAt;
+
+    _profile
+      ..reset()
+      ..start();
+
+    _systemMicros = 0;
     var steps = 0;
     final cap = game.maxFixedStepsPerAdvance;
     while (_accumulatedMicros >= step && steps < cap) {
@@ -775,6 +942,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
       runFixedStep();
       steps++;
     }
+    _simulationMicros = _profile.elapsedMicroseconds;
     if (_accumulatedMicros >= step) {
       _accumulatedMicros = _accumulatedMicros % step;
     }
@@ -790,10 +958,20 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // advance is still a frame - an interpolating renderer or a camera
     // smoothing toward a target has work to do on it.
     runPresentation(elapsed);
+    _presentationMicros = _profile.elapsedMicroseconds - _simulationMicros;
+    _lastSteps = steps;
     // Only now is the frame actually complete: the simulation advanced and
     // the presentation pass wrote whatever it produces. See
     // `Game.presentFrame` for why the announcement cannot happen earlier.
-    game.presentFrame();
+    runtime.presentFrame();
+    _advanceMicros = _profile.elapsedMicroseconds;
+
+    // Recorded after everything, so a frame contributes one sample of each.
+    _simRing[_ringNext] = _simulationMicros;
+    _sysRing[_ringNext] = _systemMicros;
+    _presRing[_ringNext] = _presentationMicros;
+    _ringNext = (_ringNext + 1) % _bestWindow;
+    if (_ringCount < _bestWindow) _ringCount++;
     return steps;
   }
 
@@ -818,12 +996,30 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // system on the very tick the command lands. Not a declared `GameSystem`
     // for exactly that reason - it has no query, and letting it be
     // disabled or reordered would only create ways to break the engine.
-    game.pumpCommands();
+    runtime.pumpCommands();
+    // Coroutines next, on the same argument as commands and before any system
+    // for the same reason: what a coroutine does when it resumes is write
+    // component data, and every system on this tick should see it.
+    //
+    // **Inside the tick window is the whole point.** A coroutine is a `sync*`
+    // generator precisely so it can be resumed from here - an `async*` one
+    // would resume on a microtask, after `commitTick`, and every write it made
+    // would be discarded by the next `beginTick`. See `Coroutine`'s doc.
+    coroutines.step(game.fixedTimeStep.inMicroseconds / 1000000.0);
     // One dispatch over a list resolved at boot. `const` because the event
     // carries nothing, so the hottest event in the engine allocates nothing.
+    //
+    // Timed separately from the step around it, because "the fixed step is
+    // slow" has two completely different causes with different fixes: the
+    // *systems* a game wrote, or the pool's own tick window. Subtracting this
+    // from `lastSimulationMicros` leaves `beginTick`'s snapshot copy, the
+    // command drain and the coroutine step - engine cost the game cannot see
+    // and cannot fix, so it had better be small.
+    final systemsAt = _profile.elapsedMicroseconds;
     fixedTickEvent.call();
+    _systemMicros += _profile.elapsedMicroseconds - systemsAt;
     pool.commitTick();
-    game.completeTick();
+    runtime.completeTick();
   }
 
   /// Runs the presentation pass: fires `TickEvent` at every enabled
@@ -855,7 +1051,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// The same object either way: there is one command channel per game, and
   /// this spelling exists so a system or a scene reaching through its state
   /// does not have to say `game.` to find it.
-  CommandBatch createCommandBatch() => game.createCommandBatch();
+  CommandBatch createCommandBatch() => runtime.createCommandBatch();
 
   // --- reaching the rest of the engine ----------------------------------
 

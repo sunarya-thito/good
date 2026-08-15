@@ -10,13 +10,11 @@ import 'package:goo/src/scene.dart';
 import 'package:goo/src/struct.dart';
 import 'package:goo/src/system.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:goo/src/handle.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
-late InlineGameHandle run;
-
+late Game run;
 
 // Game.describeBuffers - the generic "auxiliary RingBuffer, allocated on the
 // simulating copy, announced to the handle" hook that goo2d_render's draw
@@ -58,7 +56,7 @@ class _PingSystem extends GameSystem with FixedTickable {
 
   @override
   void onFixedUpdate() {
-    ByteData.sublistView(_payload).setInt64(0, game.tick + 1, Endian.little);
+    ByteData.sublistView(_payload).setInt64(0, state.tick + 1, Endian.little);
     pings.ring.tryWrite(_pingRecordType, _payload);
   }
 }
@@ -91,7 +89,6 @@ class _BufferGame extends Game {
 
   @override
   GameState createState() => _BufferState();
-
 
   @override
   void describeBuffers(BufferDescriptor descriptor) {
@@ -176,15 +173,17 @@ void main() {
       expect(run.state.getSystem<_PingSystem>().pings.index, 1);
     });
 
-    test('a declared buffer is a real RingBuffer at the declared capacity',
-        () async {
-      final game = await _start(_BufferGame());
-      final pings = run.state.getSystem<_PingSystem>().pings;
-      expect(game.gameBuffer.capacityBytes, 1024);
-      expect(game.gameBuffer.ring.capacityBytes, 1024);
-      expect(pings.ring.capacityBytes, 4096);
-      expect(game.gameBuffer.ring, isNot(same(pings.ring)));
-    });
+    test(
+      'a declared buffer is a real RingBuffer at the declared capacity',
+      () async {
+        final game = await _start(_BufferGame());
+        final pings = run.state.getSystem<_PingSystem>().pings;
+        expect(game.gameBuffer.capacityBytes, 1024);
+        expect(game.gameBuffer.ring.capacityBytes, 1024);
+        expect(pings.ring.capacityBytes, 4096);
+        expect(game.gameBuffer.ring, isNot(same(pings.ring)));
+      },
+    );
 
     test('declaring nothing costs nothing', () async {
       final game = await _start(_BareGame());
@@ -194,16 +193,19 @@ void main() {
     test('two declarations are two buffers, not a collision', () async {
       final game = await _start(_TwoBufferGame());
       expect(game.bufferCount, 3);
-      expect(game.second.index, 2,
-          reason: 'indices follow declaration order: the base class declares '
-              'two before this subclass adds its own');
+      expect(
+        game.second.index,
+        2,
+        reason:
+            'indices follow declaration order: the base class declares '
+            'two before this subclass adds its own',
+      );
       expect(game.gameBuffer.ring, isNot(same(game.second.ring)));
       expect(game.second.ring.capacityBytes, 2048);
     });
 
     test('a capacity with no room for a payload is rejected', () {
-      expect(Game.startInline(_TinyBufferGame()),
-          throwsArgumentError);
+      expect(Game.startInline(_TinyBufferGame()), throwsArgumentError);
     });
   });
 
@@ -217,37 +219,48 @@ void main() {
       expect(() => game.gameBuffer, throwsA(isA<Error>()));
     });
 
-    test('a system holds its own handle, over the same memory the game sees',
-        () async {
-      final game = await _start(_BufferGame());
-      final system = run.state.getSystem<_PingSystem>();
-      expect(system.pings.isConnected, isTrue);
-      expect(system.pings.ring.bufferAddress,
-          isNot(game.gameBuffer.ring.bufferAddress));
-    });
+    test(
+      'a system holds its own handle, over the same memory the game sees',
+      () async {
+        final game = await _start(_BufferGame());
+        final system = run.state.getSystem<_PingSystem>();
+        expect(system.pings.isConnected, isTrue);
+        expect(
+          system.pings.ring.bufferAddress,
+          isNot(game.gameBuffer.ring.bufferAddress),
+        );
+      },
+    );
   });
 
   group('traffic', () {
-    test('a system writing every tick is drained in order by the consumer',
-        () async {
-      await _start(_BufferGame());
-      final ring = run.state.getSystem<_PingSystem>().pings.ring;
+    test(
+      'a system writing every tick is drained in order by the consumer',
+      () async {
+        await _start(_BufferGame());
+        final ring = run.state.getSystem<_PingSystem>().pings.ring;
 
-      expect(_drainTicks(ring), isEmpty, reason: 'nothing has ticked yet');
+        expect(_drainTicks(ring), isEmpty, reason: 'nothing has ticked yet');
 
-      run.state.advance(_step * 3);
-      expect(_drainTicks(ring), [1, 2, 3]);
+        run.state.advance(_step * 3);
+        expect(_drainTicks(ring), [1, 2, 3]);
 
-      run.state.advance(_step * 2);
-      expect(_drainTicks(ring), [4, 5],
-          reason: 'a drain consumes - the next one only sees what came after');
-    });
+        run.state.advance(_step * 2);
+        expect(_drainTicks(ring), [
+          4,
+          5,
+        ], reason: 'a drain consumes - the next one only sees what came after');
+      },
+    );
 
     test('the buffer survives a tick in which nothing else happens', () async {
       final game = await _start(_BufferGame());
       run.state.advance(_step * 2);
-      expect(game.gameBuffer.ring.drain(), isEmpty,
-          reason: 'the game-declared buffer has no producer in this fixture');
+      expect(
+        game.gameBuffer.ring.drain(),
+        isEmpty,
+        reason: 'the game-declared buffer has no producer in this fixture',
+      );
     });
 
     test('records accumulate across ticks until someone drains', () async {
@@ -259,7 +272,10 @@ void main() {
       for (var i = 0; i < 100; i++) {
         run.state.advance(_step);
       }
-      expect(_drainTicks(run.state.getSystem<_PingSystem>().pings.ring).length, 100);
+      expect(
+        _drainTicks(run.state.getSystem<_PingSystem>().pings.ring).length,
+        100,
+      );
     });
   });
 
@@ -269,8 +285,11 @@ void main() {
       final pings = run.state.getSystem<_PingSystem>().pings;
       run.state.advance(_step);
       await run.stop();
-      expect(pings.isConnected, isFalse,
-          reason: 'the native memory is freed; a view over it must not linger');
+      expect(
+        pings.isConnected,
+        isFalse,
+        reason: 'the native memory is freed; a view over it must not linger',
+      );
       // The declaration outlives the allocation, which is what makes the
       // "declared but not connected" message reachable rather than an
       // indistinguishable "no such buffer".

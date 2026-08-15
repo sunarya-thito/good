@@ -9,13 +9,11 @@ import 'package:goo/src/scene.dart';
 import 'package:goo/src/scene_handle.dart';
 import 'package:goo/src/struct.dart';
 import 'package:goo/src/system.dart';
-import 'package:goo/src/handle.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
-late InlineGameHandle run;
-
+late Game run;
 
 // Several scenes resident at once, each individually unloadable. The property
 // that makes it work is that two loaded instances of one `SceneStruct` never
@@ -54,13 +52,13 @@ class _Level extends SceneStruct {
   }
 
   @override
-  void onMounted(Scene scene) {
+  void onSceneMounted(Scene scene) {
     mounts++;
     scene.addEntity(unit);
   }
 
   @override
-  void onUnmounted(Scene scene) => unmounts++;
+  void onSceneUnmounted(Scene scene) => unmounts++;
 }
 
 class _Census extends GameSystem with FixedTickable {
@@ -82,7 +80,8 @@ class _Census extends GameSystem with FixedTickable {
   }
 }
 
-class _MultiState extends GameState<_MultiGame> {  @override
+class _MultiState extends GameState<_MultiGame> {
+  @override
   void describeSystems(SystemDescriptor descriptor) {
     descriptor.has(_Census());
   }
@@ -104,8 +103,6 @@ class _MultiGame extends Game {
   void describeScenes(GameSceneDescriptor descriptor) {
     level = descriptor.has(_Level());
   }
-
-
 }
 
 Future<_MultiGame> _boot() async {
@@ -126,24 +123,33 @@ void main() {
     ComponentTypeRegistry.reset();
   });
 
-  test('two instances of one declaration are both resident and both tick',
-      () async {
-    final game = await _boot();
-    final state = run.state;
+  test(
+    'two instances of one declaration are both resident and both tick',
+    () async {
+      final game = await _boot();
+      final state = run.state;
 
-    final a = await state.loadScene(game.level);
-    final b = await state.loadScene(game.level);
+      final a = await state.loadScene(game.level);
+      final b = await state.loadScene(game.level);
 
-    expect(a, isNot(b));
-    expect(state.loadedScenes, [a, b]);
-    expect(game.level.mounts, 2,
-        reason: 'one declaration, mounted once per loaded instance');
+      expect(a, isNot(b));
+      expect(state.loadedScenes, [a, b]);
+      expect(
+        game.level.mounts,
+        2,
+        reason: 'one declaration, mounted once per loaded instance',
+      );
 
-    state.advance(_step);
-    expect(run.state.getSystem<_Census>().seen, 2,
-        reason: 'every loaded scene is live - all tick, all receive input, '
-            'all render. There is no front scene to be excluded from');
-  });
+      state.advance(_step);
+      expect(
+        run.state.getSystem<_Census>().seen,
+        2,
+        reason:
+            'every loaded scene is live - all tick, all receive input, '
+            'all render. There is no front scene to be excluded from',
+      );
+    },
+  );
 
   test('their entities live in different pages', () async {
     final game = await _boot();
@@ -155,10 +161,14 @@ void main() {
     final inB = b.addEntity(game.level.unit);
 
     expect(inA.archetypeId, inB.archetypeId, reason: 'same prefab');
-    expect(inA.pageIndex, isNot(inB.pageIndex),
-        reason: 'and that is the whole mechanism: rows of one archetype from '
-            'two loaded scenes never share a page, so unloading one is a page '
-            'free rather than a row-by-row reclamation');
+    expect(
+      inA.pageIndex,
+      isNot(inB.pageIndex),
+      reason:
+          'and that is the whole mechanism: rows of one archetype from '
+          'two loaded scenes never share a page, so unloading one is a page '
+          'free rather than a row-by-row reclamation',
+    );
   });
 
   test('unloading one leaves the other intact', () async {
@@ -171,8 +181,11 @@ void main() {
     survivor.get<_Marked>().mark[survivor] = 41;
 
     state.advance(_step);
-    expect(run.state.getSystem<_Census>().seen, 3,
-        reason: 'one entity per mount, plus the one added to b');
+    expect(
+      run.state.getSystem<_Census>().seen,
+      3,
+      reason: 'one entity per mount, plus the one added to b',
+    );
 
     state.unloadScene(a);
 
@@ -182,31 +195,38 @@ void main() {
     expect(state.loadedScenes, [b]);
 
     state.advance(_step);
-    expect(run.state.getSystem<_Census>().seen, 2,
-        reason: "the unloaded scene's rows are gone from every query");
-    expect(survivor.get<_Marked>().mark[survivor], 41,
-        reason: 'and the survivor is untouched - its pages were never shared');
+    expect(
+      run.state.getSystem<_Census>().seen,
+      2,
+      reason: "the unloaded scene's rows are gone from every query",
+    );
+    expect(
+      survivor.get<_Marked>().mark[survivor],
+      41,
+      reason: 'and the survivor is untouched - its pages were never shared',
+    );
   });
 
-  test('an Entity from an unloaded scene reports the unload, not garbage',
-      () async {
-    final game = await _boot();
-    final state = run.state;
+  test(
+    'an Entity from an unloaded scene reports the unload, not garbage',
+    () async {
+      final game = await _boot();
+      final state = run.state;
 
-    final a = await state.loadScene(game.level);
-    final doomed = a.addEntity(game.level.unit);
-    state.advance(_step);
+      final a = await state.loadScene(game.level);
+      final doomed = a.addEntity(game.level.unit);
+      state.advance(_step);
 
-    state.unloadScene(a);
+      state.unloadScene(a);
 
-    // Page granularity, not per handle: `Entity` spends all 64 of its bits
-    // and has none for a generation counter, so the detection is that the
-    // page it names has been freed and its slot tombstoned.
-    expect(() => doomed.get<_Marked>().mark[doomed], throwsStateError);
-  });
+      // Page granularity, not per handle: `Entity` spends all 64 of its bits
+      // and has none for a generation counter, so the detection is that the
+      // page it names has been freed and its slot tombstoned.
+      expect(() => doomed.get<_Marked>().mark[doomed], throwsStateError);
+    },
+  );
 
-  test('unloadAllScene takes down every instance of one declaration',
-      () async {
+  test('unloadAllScene takes down every instance of one declaration', () async {
     final game = await _boot();
     final state = run.state;
 
@@ -223,28 +243,38 @@ void main() {
     expect(run.state.getSystem<_Census>().seen, 0);
   });
 
-  test('`scene` means the first loaded one, and is derived not stored',
-      () async {
-    final game = await _boot();
-    final state = run.state;
+  test(
+    'with several scenes loaded, `scene` refuses rather than guessing',
+    () async {
+      final game = await _boot();
+      final state = run.state;
 
-    final a = await state.loadScene(game.level);
-    final b = await state.loadScene(game.level);
+      final a = await state.loadScene(game.level);
+      final b = await state.loadScene(game.level);
 
-    expect(state.sceneHandle, a,
-        reason: 'the single-scene convenience keeps working, and a later load '
-            'does not displace it');
+      // This used to answer with the *first* loaded scene - a guess dressed as
+      // an accessor, and specified by this test rather than accidental. A state
+      // holding two scenes has no basis for choosing between them, so it says
+      // so; the caller names the one it means.
+      expect(() => state.scene, throwsStateError);
+      expect(state.loadedScenes, <Scene>[a, b]);
 
-    // The point of deriving it rather than storing a "current" handle: there
-    // is nothing to update on unload, so nothing can be left stale.
-    state.unloadScene(a);
-    expect(state.sceneHandle, b);
+      // Derived rather than stored, so nothing has to be updated on unload and
+      // nothing can be left stale: with one left, it answers again.
+      state.unloadScene(a);
+      expect(state.loadedScenes.singleOrNull, b);
+      expect(state.scene, isNotNull);
 
-    state.advance(_step);
-    expect(run.state.getSystem<_Census>().seen, 1,
-        reason: 'and b was ticking all along - it was never in a background '
-            'state to be promoted out of');
-  });
+      state.advance(_step);
+      expect(
+        run.state.getSystem<_Census>().seen,
+        1,
+        reason:
+            'and b was ticking all along - it was never in a background '
+            'state to be promoted out of',
+      );
+    },
+  );
 
   test('unloading everything leaves no scene', () async {
     final game = await _boot();
@@ -253,7 +283,7 @@ void main() {
     final a = await state.loadScene(game.level);
     state.unloadScene(a);
 
-    expect(state.sceneHandle, isNull);
+    expect(state.loadedScenes.singleOrNull, isNull);
     expect(state.scene, isNull);
     expect(state.loadedScenes, isEmpty);
   });
@@ -275,8 +305,11 @@ void main() {
 
     expect(a.isLoaded, isFalse, reason: 'unreachable through the handle');
     expect(state.loadedScenes, isEmpty);
-    expect(() => doomed.get<_Marked>().mark[doomed], throwsStateError,
-        reason: 'and unreachable through any Entity into it');
+    expect(
+      () => doomed.get<_Marked>().mark[doomed],
+      throwsStateError,
+      reason: 'and unreachable through any Entity into it',
+    );
   });
 
   test('a page freed by one unload is not handed to the next load', () async {
@@ -290,10 +323,14 @@ void main() {
     final b = await state.loadScene(game.level);
     final inB = b.addEntity(game.level.unit);
 
-    expect(inB.pageIndex, isNot(inA.pageIndex),
-        reason: 'page slots are tombstoned and never reused, so the stale '
-            'handle above keeps reporting the unload rather than resolving '
-            'into whatever the next scene put there');
+    expect(
+      inB.pageIndex,
+      isNot(inA.pageIndex),
+      reason:
+          'page slots are tombstoned and never reused, so the stale '
+          'handle above keeps reporting the unload rather than resolving '
+          'into whatever the next scene put there',
+    );
     expect(() => inA.get<_Marked>().mark[inA], throwsStateError);
   });
 }

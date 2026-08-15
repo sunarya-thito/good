@@ -6,8 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
-late InlineGameHandle run;
-
+late Game run;
 
 // A sentinel written directly into a world field between ticks: if
 // WorldTransformSystem actually recomputes an entity, it overwrites the
@@ -16,11 +15,18 @@ late InlineGameHandle run;
 // answer by coincidence.
 const double _sentinel = -999999.0;
 
-class _Node extends EntityStruct with Transform2D, WorldTransform2D, Child, Parent {}
+class _Node extends EntityStruct
+    with Transform2D, WorldTransform2D, Child, Parent {}
+
+/// A prefab that can *be* parented but can never *have* children - no
+/// `Parent` mixin. The shape almost every sprite in a real game has, and the
+/// one `WorldTransformSystem._resolveChildless` takes its fast path for, so
+/// nothing here is exercised by [_Node] at all.
+class _Leaf extends EntityStruct with Transform2D, WorldTransform2D, Child {}
 
 class _Scene extends SceneStruct {
   @override
-  void onMounted(Scene scene) => handle = scene;
+  void onSceneMounted(Scene scene) => handle = scene;
 
   /// This fixture's loaded handle. Entity creation lives on `Scene` now (one
   /// `SceneStruct` can back several loaded scenes), so a headless fixture
@@ -33,10 +39,12 @@ class _Scene extends SceneStruct {
   _Scene();
 
   late final _Node node;
+  late final _Leaf leaf;
 
   @override
   void describeScene(SceneDescriptor descriptor) {
     node = descriptor.has(_Node());
+    leaf = descriptor.has(_Leaf());
   }
 }
 
@@ -112,50 +120,56 @@ void main() {
       expect(scene.node.worldY[parent], 100);
     });
 
-    test('a 3-level hierarchy with rotation composes correctly, root to leaf', () async {
-      await _game();
-      final scene = run.state.getScene<_Scene>();
+    test(
+      'a 3-level hierarchy with rotation composes correctly, root to leaf',
+      () async {
+        await _game();
+        final scene = run.state.getScene<_Scene>();
 
-      final root = scene.addEntity(scene.node);
-      scene.node
-        ..transformOffsetX[root] = 50
-        ..transformOffsetY[root] = 0
-        ..transformRotation[root] = math.pi / 2; // 90 degrees
+        final root = scene.addEntity(scene.node);
+        scene.node
+          ..transformOffsetX[root] = 50
+          ..transformOffsetY[root] = 0
+          ..transformRotation[root] = math.pi / 2; // 90 degrees
 
-      final middle = scene.addEntity(scene.node, parent: root);
-      scene.node.transformOffsetX[middle] = 10; // local +x
+        final middle = scene.addEntity(scene.node, parent: root);
+        scene.node.transformOffsetX[middle] = 10; // local +x
 
-      final leaf = scene.addEntity(scene.node, parent: middle);
-      scene.node.transformOffsetY[leaf] = 5; // local +y
+        final leaf = scene.addEntity(scene.node, parent: middle);
+        scene.node.transformOffsetY[leaf] = 5; // local +y
 
-      run.state.advance(_step);
+        run.state.advance(_step);
 
-      // middle: root's world (50,0) rotated 90deg, local offset (10,0)
-      // rotates to (0,10) -> world (50, 10).
-      expect(scene.node.worldX[middle], closeTo(50, 1e-9));
-      expect(scene.node.worldY[middle], closeTo(10, 1e-9));
-      expect(scene.node.worldRotation[middle], closeTo(math.pi / 2, 1e-9));
+        // middle: root's world (50,0) rotated 90deg, local offset (10,0)
+        // rotates to (0,10) -> world (50, 10).
+        expect(scene.node.worldX[middle], closeTo(50, 1e-9));
+        expect(scene.node.worldY[middle], closeTo(10, 1e-9));
+        expect(scene.node.worldRotation[middle], closeTo(math.pi / 2, 1e-9));
 
-      // leaf: middle's world (50,10) at world rotation 90deg, local offset
-      // (0,5) rotates to (-5,0) -> world (45, 10).
-      expect(scene.node.worldX[leaf], closeTo(45, 1e-9));
-      expect(scene.node.worldY[leaf], closeTo(10, 1e-9));
-    });
+        // leaf: middle's world (50,10) at world rotation 90deg, local offset
+        // (0,5) rotates to (-5,0) -> world (45, 10).
+        expect(scene.node.worldX[leaf], closeTo(45, 1e-9));
+        expect(scene.node.worldY[leaf], closeTo(10, 1e-9));
+      },
+    );
 
-    test('a non-rendering system can read the resolved world transform too', () async {
-      await _game();
-      final scene = run.state.getScene<_Scene>();
-      final entity = scene.addEntity(scene.node);
-      scene.node
-        ..transformOffsetX[entity] = 7
-        ..transformOffsetY[entity] = 9;
-      run.state.advance(_step);
+    test(
+      'a non-rendering system can read the resolved world transform too',
+      () async {
+        await _game();
+        final scene = run.state.getScene<_Scene>();
+        final entity = scene.addEntity(scene.node);
+        scene.node
+          ..transformOffsetX[entity] = 7
+          ..transformOffsetY[entity] = 9;
+        run.state.advance(_step);
 
-      // No GameRenderer2D involved anywhere in this test - WorldTransform2D
-      // is genuinely readable by any system, not just the renderer.
-      expect(scene.node.worldX[entity], 7);
-      expect(scene.node.worldY[entity], 9);
-    });
+        // No GameRenderer2D involved anywhere in this test - WorldTransform2D
+        // is genuinely readable by any system, not just the renderer.
+        expect(scene.node.worldX[entity], 7);
+        expect(scene.node.worldY[entity], 9);
+      },
+    );
   });
 
   group('change-detection caching', () {
@@ -172,33 +186,43 @@ void main() {
       run.state.pool.commitTick();
       run.state.advance(_step); // nothing changed local-side
 
-      expect(scene.node.worldX[entity], _sentinel,
-          reason: 'the system must have skipped this entity entirely - a '
-              'real recompute would have overwritten the sentinel with 42 '
-              'again, not merely happened to leave it alone');
+      expect(
+        scene.node.worldX[entity],
+        _sentinel,
+        reason:
+            'the system must have skipped this entity entirely - a '
+            'real recompute would have overwritten the sentinel with 42 '
+            'again, not merely happened to leave it alone',
+      );
     });
 
-    test('moving a leaf does not touch its unrelated sibling\'s cache', () async {
-      await _game();
-      final scene = run.state.getScene<_Scene>();
-      final parent = scene.addEntity(scene.node);
-      final a = scene.addEntity(scene.node, parent: parent);
-      final b = scene.addEntity(scene.node, parent: parent);
-      scene.node
-        ..transformOffsetX[a] = 1
-        ..transformOffsetX[b] = 2;
-      run.state.advance(_step);
+    test(
+      'moving a leaf does not touch its unrelated sibling\'s cache',
+      () async {
+        await _game();
+        final scene = run.state.getScene<_Scene>();
+        final parent = scene.addEntity(scene.node);
+        final a = scene.addEntity(scene.node, parent: parent);
+        final b = scene.addEntity(scene.node, parent: parent);
+        scene.node
+          ..transformOffsetX[a] = 1
+          ..transformOffsetX[b] = 2;
+        run.state.advance(_step);
 
-      run.state.pool.beginTick();
-      scene.node.worldX[b] = _sentinel;
-      scene.node.transformOffsetX[a] = 100; // only a changes
-      run.state.pool.commitTick();
-      run.state.advance(_step);
+        run.state.pool.beginTick();
+        scene.node.worldX[b] = _sentinel;
+        scene.node.transformOffsetX[a] = 100; // only a changes
+        run.state.pool.commitTick();
+        run.state.advance(_step);
 
-      expect(scene.node.worldX[a], 100, reason: 'a really did move');
-      expect(scene.node.worldX[b], _sentinel,
-          reason: "b's cache must survive - a's change has no bearing on it");
-    });
+        expect(scene.node.worldX[a], 100, reason: 'a really did move');
+        expect(
+          scene.node.worldX[b],
+          _sentinel,
+          reason: "b's cache must survive - a's change has no bearing on it",
+        );
+      },
+    );
 
     test('moving a parent invalidates every descendant even though their own local fields did not change', () async {
       await _game();
@@ -215,10 +239,14 @@ void main() {
       run.state.pool.commitTick();
       run.state.advance(_step);
 
-      expect(scene.node.worldX[child], 105,
-          reason: 'the child never touched its own local offset, but its '
-              'world position must still follow its parent - the sentinel '
-              'must have been overwritten, not preserved');
+      expect(
+        scene.node.worldX[child],
+        105,
+        reason:
+            'the child never touched its own local offset, but its '
+            'world position must still follow its parent - the sentinel '
+            'must have been overwritten, not preserved',
+      );
     });
 
     test('reparenting is detected as a change even when the local offset is untouched', () async {
@@ -242,9 +270,106 @@ void main() {
       run.state.pool.commitTick();
       run.state.advance(_step);
 
-      expect(scene.node.worldX[child], 1000,
-          reason: 'reparenting alone (no local offset change) must still '
-              'trigger a recompute - the sentinel must not survive');
+      expect(
+        scene.node.worldX[child],
+        1000,
+        reason:
+            'reparenting alone (no local offset change) must still '
+            'trigger a recompute - the sentinel must not survive',
+      );
+    });
+  });
+
+  // An archetype with no `Parent` mixin skips the change-detection cache
+  // entirely and recomposes `world = local` every tick - see
+  // `WorldTransformSystem._resolveChildless`. These cover what that fast path
+  // must still get right; `_Node` cannot reach it, because it has `Parent`.
+  group('childless archetypes', () {
+    test(
+      'an unparented leaf resolves world from its own local transform',
+      () async {
+        await _game();
+        final scene = run.state.getScene<_Scene>();
+
+        final entity = scene.addEntity(scene.leaf);
+        scene.leaf
+          ..transformOffsetX[entity] = 12
+          ..transformOffsetY[entity] = -4
+          ..transformRotation[entity] = 1.5
+          ..transformScaleX[entity] = 3
+          ..transformScaleY[entity] = 0.5;
+
+        run.state.advance(_step);
+
+        expect(scene.leaf.worldX[entity], 12);
+        expect(scene.leaf.worldY[entity], -4);
+        expect(scene.leaf.worldRotation[entity], 1.5);
+        expect(scene.leaf.worldScaleX[entity], 3);
+        expect(scene.leaf.worldScaleY[entity], 0.5);
+      },
+    );
+
+    test(
+      'a leaf parented under a node still composes with its ancestor',
+      () async {
+        await _game();
+        final scene = run.state.getScene<_Scene>();
+
+        final parent = scene.addEntity(scene.node);
+        scene.node
+          ..transformOffsetX[parent] = 100
+          ..transformScaleX[parent] = 2
+          ..transformScaleY[parent] = 2;
+
+        final child = scene.addEntity(scene.leaf, parent: parent);
+        scene.leaf.transformOffsetX[child] = 10;
+
+        run.state.advance(_step);
+
+        // Parented rows of a childless archetype are reached through their
+        // root's recursion, not the fast path - so they compose normally.
+        expect(scene.leaf.worldX[child], 120);
+        expect(scene.leaf.worldScaleX[child], 2);
+      },
+    );
+
+    test('parent, unparent, then re-parent to the same parent with untouched '
+        'offsets still recomposes', () async {
+      await _game();
+      final scene = run.state.getScene<_Scene>();
+
+      final parent = scene.addEntity(scene.node);
+      scene.node.transformOffsetX[parent] = 500;
+      final child = scene.addEntity(scene.leaf, parent: parent);
+      scene.leaf.transformOffsetX[child] = 10;
+
+      run.state.advance(_step);
+      expect(scene.leaf.worldX[child], 510);
+
+      // Unparent. The fast path now owns this row and writes world = local,
+      // without consulting or updating the composed cache.
+      run.state.pool.beginTick();
+      parent.get<Parent>().removeChild(parent, child);
+      run.state.pool.commitTick();
+      run.state.advance(_step);
+      expect(scene.leaf.worldX[child], 10, reason: 'unparented: world = local');
+
+      // Re-parent to the *same* parent, with every local field identical to
+      // what the cache last recorded. Every field-by-field comparison in
+      // `_resolve` compares equal, so only the cleared `_cachedParent` stands
+      // between this and reading back the uncomposed 10 the fast path wrote.
+      run.state.pool.beginTick();
+      parent.get<Parent>().addChild(parent, child);
+      run.state.pool.commitTick();
+      run.state.advance(_step);
+
+      expect(
+        scene.leaf.worldX[child],
+        510,
+        reason:
+            'the fast path must invalidate the cache on its way past, '
+            'or this reads back a world transform that was never composed',
+      );
     });
   });
 }

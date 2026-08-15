@@ -160,26 +160,48 @@ final class GamepadCollector {
   void _applyAxis(int slot, pads.GamepadAxis axis, double value) {
     switch (axis) {
       case pads.GamepadAxis.leftStickX:
-        _applyStick(slot, value, GamepadButton.leftStickLeft,
-            GamepadButton.leftStickRight);
+        _applyStick(
+          slot,
+          value,
+          GamepadButton.leftStickLeft,
+          GamepadButton.leftStickRight,
+        );
       case pads.GamepadAxis.leftStickY:
         // The plugin reports +1 as up, and so does this vocabulary. (The
         // *world* has +y downward, but that is a `Vec2Binding` question -
         // which of the two bits it maps to which axis sign - not this one.)
-        _applyStick(slot, value, GamepadButton.leftStickDown,
-            GamepadButton.leftStickUp);
+        _applyStick(
+          slot,
+          value,
+          GamepadButton.leftStickDown,
+          GamepadButton.leftStickUp,
+        );
       case pads.GamepadAxis.rightStickX:
-        _applyStick(slot, value, GamepadButton.rightStickLeft,
-            GamepadButton.rightStickRight);
+        _applyStick(
+          slot,
+          value,
+          GamepadButton.rightStickLeft,
+          GamepadButton.rightStickRight,
+        );
       case pads.GamepadAxis.rightStickY:
-        _applyStick(slot, value, GamepadButton.rightStickDown,
-            GamepadButton.rightStickUp);
+        _applyStick(
+          slot,
+          value,
+          GamepadButton.rightStickDown,
+          GamepadButton.rightStickUp,
+        );
       case pads.GamepadAxis.leftTrigger:
         _device.setGamepadButton(
-            slot, GamepadButton.leftTrigger, value >= triggerThreshold);
+          slot,
+          GamepadButton.leftTrigger,
+          value >= triggerThreshold,
+        );
       case pads.GamepadAxis.rightTrigger:
         _device.setGamepadButton(
-            slot, GamepadButton.rightTrigger, value >= triggerThreshold);
+          slot,
+          GamepadButton.rightTrigger,
+          value >= triggerThreshold,
+        );
     }
   }
 

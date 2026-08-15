@@ -18,9 +18,44 @@ const int _wingmanColor = 0xFFFFEE58;
 /// independently sized, coloured and depth-sorted rectangles. The visor's
 /// higher `zIndex` is what keeps it on top of the body whatever order the
 /// query happens to yield.
-class Player extends EntityStruct with Transform2D, WorldTransform2D, Child, Parent, Renderable2D {
+/// The player's breathing pulse, as a declared timeline.
+///
+/// A `TimelineStruct` is a declaration shared by every entity of the archetype,
+/// exactly like the prefab itself - there is no animation *object* per player.
+/// Sampling it is `animate()` plus a lookup, both allocation-free, which is why
+/// a system can do it per entity per tick without thinking about it.
+class Breath extends TimelineStruct {
+  late final Track<double> scale;
+
+  late final TimelineAnimation pulse;
+
+  @override
+  void describeTrack(TimelineDescriptor descriptor) {
+    scale = descriptor.has<double>(1.0);
+  }
+
+  @override
+  void describeAnimation(TimelineAnimationDescriptor descriptor) {
+    // Half a second up. `WrapMode.pingPong` at sample time plays it back down
+    // again, so the shape is authored once rather than twice and cannot go
+    // asymmetric when someone edits one half.
+    pulse = descriptor.has()..track(scale).key(1.0).key(1.12, 0.5);
+  }
+}
+
+class Player extends EntityStruct
+    with Transform2D, WorldTransform2D, Child, Parent, Renderable2D {
   late final Sprite body;
   late final Sprite visor;
+
+  /// Declared with no `with Animations` in sight: every `EntityStruct` has
+  /// `describeAnimation`, defaulting to declaring nothing.
+  late final Breath breath;
+
+  @override
+  void describeAnimation(AnimationTypeDescriptor descriptor) {
+    breath = descriptor.has(Breath());
+  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -36,13 +71,22 @@ class Player extends EntityStruct with Transform2D, WorldTransform2D, Child, Par
       // Sitting the visor above the body's centre: half a body-height up is
       // not expressible as a fraction of the *visor's* own bounds, which is
       // why the pivot carries an absolute offset alongside its fraction.
-      pivot: const RelativeOffset2D(fractionX: 0.5, fractionY: 0.5, offsetY: 18),
+      pivot: const RelativeOffset2D(
+        fractionX: 0.5,
+        fractionY: 0.5,
+        offsetY: 18,
+      ),
     );
   }
 }
 
 class Enemy extends EntityStruct
-    with Transform2D, WorldTransform2D, Child, Renderable2D, EntityLifecycleListener {
+    with
+        Transform2D,
+        WorldTransform2D,
+        Child,
+        Renderable2D,
+        EntityLifecycleListener {
   late final Sprite body;
 
   /// Plain Dart state on the prefab, which lives on the game isolate and is
@@ -75,7 +119,12 @@ class Enemy extends EntityStruct
 /// Parented to the player, so its own transform is only an offset *from* the
 /// player - the renderer composes the two.
 class Wingman extends EntityStruct
-    with Transform2D, WorldTransform2D, Child, Renderable2D, EntityLifecycleListener {
+    with
+        Transform2D,
+        WorldTransform2D,
+        Child,
+        Renderable2D,
+        EntityLifecycleListener {
   late final Sprite body;
 
   @override
@@ -113,7 +162,7 @@ class MainScene extends SceneStruct {
   /// first `beginTick` has no snapshot to copy over these writes - see the
   /// assertion in `data_layout.dart`'s `_Field._write`.
   @override
-  void onMounted(Scene scene) {
+  void onSceneMounted(Scene scene) {
     final player = scene.addEntity(playerPrefab);
     playerPrefab.transformOffsetX[player] = 0;
     playerPrefab.transformOffsetY[player] = 120;
@@ -158,7 +207,21 @@ class SpinSystem extends GameSystem with FixedTickable {
       final transform = entity.get<Transform2D>();
       // Reads see last tick's published value, so this is exactly one
       // increment per tick no matter what else ran first.
-      transform.transformRotation[entity] = transform.transformRotation[entity] + 0.01;
+      transform.transformRotation[entity] =
+          transform.transformRotation[entity] + 0.01;
+
+      // `tryGet` rather than a type test on the entity: only the player has a
+      // Breath, and asking the row whether it has the component is the
+      // sanctioned lookup (RULES.md rule 11 names it explicitly).
+      final player = entity.tryGet<Player>();
+      if (player == null) continue;
+      // Sampled fresh every tick from the clock - no per-entity animation
+      // state anywhere, and nothing to keep in step.
+      final at = player.breath.pulse.animate(wrapMode: WrapMode.pingPong);
+      final scale = player.breath.scale[at];
+      transform
+        ..transformScaleX[entity] = scale
+        ..transformScaleY[entity] = scale;
     }
   }
 }
@@ -223,7 +286,7 @@ class MyGameState extends GameState2D<MyAwesomeGame> {
 
   /// Runs on the game isolate, inside the tick window and before any system,
   /// so the enemy is visible to the whole simulation on the tick it arrives.
-  Entity _onSpawnEnemy() => sceneHandle!.addEntity(level.enemyPrefab);
+  Entity _onSpawnEnemy() => loadedScenes.single.addEntity(level.enemyPrefab);
 }
 
 /// `Game2D` rather than `Game`: that is the opt-in for painting, and it is
@@ -257,35 +320,35 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  // Typed as the subclass, not as `Game`: that is what makes `game.spawnEnemy`
-  // resolve without a cast, and it is the same reason `GameState<T>` carries
-  // its Game's type.
-  late final MyAwesomeGame game;
-
-  /// The running game. `MyAwesomeGame` describes; this is the live instance of
-  /// it, and the only thing that can stop it.
-  GameHandle<MyAwesomeGame>? _run;
-  bool _started = false;
+  /// The game: the description *and* the run, because an instance backs
+  /// exactly one of them. Typed as the subclass rather than as `Game` so
+  /// `game.spawnEnemy` resolves without a cast, which is also why
+  /// `Game.start` returns the type it was given.
+  ///
+  /// Null until `start()` completes - and that null is the gate on building a
+  /// `GameView`, which throws if handed a game that is not running yet.
+  MyAwesomeGame? game;
 
   @override
   void initState() {
     super.initState();
-    game = MyAwesomeGame();
     _boot();
   }
 
-  /// `GameView` may only be built once `start()` has completed: it registers a
-  /// tick listener, and a closure reachable from the Game at spawn time would
-  /// make the spawn message unsendable. Hence the gate rather than firing
-  /// start() off and building the view in the same frame.
   Future<void> _boot() async {
-    _run = await Game.start(game);
-    if (mounted) setState(() => _started = true);
+    final started = await Game.start(MyAwesomeGame());
+    if (!mounted) {
+      // Disposed while the isolate was spawning. Nothing else will ever stop
+      // this run, so it has to happen here.
+      await started.stop();
+      return;
+    }
+    setState(() => game = started);
   }
 
   @override
   void dispose() {
-    _run?.stop();
+    game?.stop();
     super.dispose();
   }
 
@@ -301,25 +364,28 @@ class _MyAppState extends State<MyApp> {
     // Awaitable, and worth awaiting: the entity comes back over the reply ring
     // once the game isolate has actually created it, so a HUD that wants to
     // track what it spawned gets a handle rather than having to guess.
-    final spawned = await game.spawnEnemy();
+    final spawned = await game!.spawnEnemy();
     debugPrint('spawned enemy ${spawned.value}');
   }
 
   @override
   Widget build(BuildContext context) {
+    // Promoted to a local so the null check below sticks - `game` is a field,
+    // and a field cannot be promoted across the closure boundaries here.
+    final game = this.game;
     return MaterialApp(
       title: 'goo2d example',
       home: Scaffold(
         backgroundColor: const Color(0xFF101418),
         body: Stack(
           children: [
-            if (_started) GameView(run: _run!, camera: game.defaultCamera),
+            if (game != null) GameView(camera: game.defaultCamera),
             Align(
               alignment: Alignment.bottomRight,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: FloatingActionButton(
-                  onPressed: _started ? _onSpawnPressed : null,
+                  onPressed: game == null ? null : _onSpawnPressed,
                   child: const Icon(Icons.add),
                 ),
               ),

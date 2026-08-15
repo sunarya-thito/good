@@ -6,3 +6,11 @@ include: package:lints/recommended.yaml
 analyzer:
   enable-experiment:
     - primary-constructors
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**

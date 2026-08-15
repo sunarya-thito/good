@@ -9,13 +9,11 @@ import 'package:goo/src/input.dart';
 import 'package:goo/src/input/input_binding.dart';
 import 'package:goo/src/input/input_key.dart';
 import 'package:goo/src/system.dart';
-import 'package:goo/src/handle.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
-late InlineGameHandle run;
-
+late Game run;
 
 // GamepadCollector end to end, with no gamepad and no plugin: every test
 // drives `handleEvent` with the same normalized events the plugin's own
@@ -75,7 +73,8 @@ class _PadSystem extends GameSystem with FixedTickable {
   void onFixedUpdate() {}
 }
 
-class _PadGameState extends GameState<_PadGame> {  @override
+class _PadGameState extends GameState<_PadGame> {
+  @override
   void describeSystems(SystemDescriptor descriptor) {
     descriptor.has(_PadSystem());
   }
@@ -90,8 +89,6 @@ class _PadGame extends Game {
 
   @override
   GameState createState() => _PadGameState();
-
-
 }
 
 Future<_PadGame> _boot() async {
@@ -109,16 +106,27 @@ void main() {
       final game = await _boot();
       final gamepads = game.gamepads!;
 
-      gamepads.handleEvent(_event('xbox-7', button: pads.GamepadButton.a, value: 1));
-      expect(gamepads.slotOf('xbox-7'), 1,
-          reason: 'slot 0 is the aggregate, so the first real seat is 1');
+      gamepads.handleEvent(
+        _event('xbox-7', button: pads.GamepadButton.a, value: 1),
+      );
+      expect(
+        gamepads.slotOf('xbox-7'),
+        1,
+        reason: 'slot 0 is the aggregate, so the first real seat is 1',
+      );
 
-      gamepads.handleEvent(_event('ds-2', button: pads.GamepadButton.b, value: 1));
+      gamepads.handleEvent(
+        _event('ds-2', button: pads.GamepadButton.b, value: 1),
+      );
       expect(gamepads.slotOf('ds-2'), 2);
-      expect(gamepads.slotOf('xbox-7'), 1,
-          reason: 'a seat is kept, not reassigned on every event - a saved '
-              'binding names a seat, so a seat that moved would be a '
-              'keybinding that changed itself');
+      expect(
+        gamepads.slotOf('xbox-7'),
+        1,
+        reason:
+            'a seat is kept, not reassigned on every event - a saved '
+            'binding names a seat, so a seat that moved would be a '
+            'keybinding that changed itself',
+      );
     });
 
     test('an unknown pad has no seat until it says something', () async {
@@ -131,11 +139,17 @@ void main() {
       final system = run.state.getSystem<_PadSystem>();
       final gamepads = game.gamepads!;
 
-      gamepads.handleEvent(_event('pad-b', button: pads.GamepadButton.a, value: 1));
+      gamepads.handleEvent(
+        _event('pad-b', button: pads.GamepadButton.a, value: 1),
+      );
       run.state.runFixedStep();
-      expect(system.confirm.value, isTrue,
-          reason: 'the single-player case: .padA binds slot 0, and whichever '
-              'pad the player picked up drives it with no setup');
+      expect(
+        system.confirm.value,
+        isTrue,
+        reason:
+            'the single-player case: .padA binds slot 0, and whichever '
+            'pad the player picked up drives it with no setup',
+      );
       expect(system.p1Confirm.value, isTrue, reason: 'and its own seat too');
       expect(system.p2Confirm.value, isFalse);
     });
@@ -145,21 +159,36 @@ void main() {
       final system = run.state.getSystem<_PadSystem>();
       final gamepads = game.gamepads!;
 
-      gamepads.handleEvent(_event('one', button: pads.GamepadButton.a, value: 1));
-      gamepads.handleEvent(_event('two', button: pads.GamepadButton.a, value: 1));
-      gamepads.handleEvent(_event('one', button: pads.GamepadButton.a, value: 0));
+      gamepads.handleEvent(
+        _event('one', button: pads.GamepadButton.a, value: 1),
+      );
+      gamepads.handleEvent(
+        _event('two', button: pads.GamepadButton.a, value: 1),
+      );
+      gamepads.handleEvent(
+        _event('one', button: pads.GamepadButton.a, value: 0),
+      );
       run.state.runFixedStep();
 
       expect(system.p1Confirm.value, isFalse);
       expect(system.p2Confirm.value, isTrue);
-      expect(system.confirm.value, isTrue,
-          reason: 'slot 0 is an OR, not a copy of whoever wrote last - one '
-              'player letting go must not release the button for the other');
+      expect(
+        system.confirm.value,
+        isTrue,
+        reason:
+            'slot 0 is an OR, not a copy of whoever wrote last - one '
+            'player letting go must not release the button for the other',
+      );
 
-      gamepads.handleEvent(_event('two', button: pads.GamepadButton.a, value: 0));
+      gamepads.handleEvent(
+        _event('two', button: pads.GamepadButton.a, value: 0),
+      );
       run.state.runFixedStep();
-      expect(system.confirm.value, isFalse,
-          reason: 'and it clears once nobody is holding it');
+      expect(
+        system.confirm.value,
+        isFalse,
+        reason: 'and it clears once nobody is holding it',
+      );
     });
 
     test('releasing a seat clears what it was holding', () async {
@@ -167,7 +196,9 @@ void main() {
       final system = run.state.getSystem<_PadSystem>();
       final gamepads = game.gamepads!;
 
-      gamepads.handleEvent(_event('yanked', button: pads.GamepadButton.a, value: 1));
+      gamepads.handleEvent(
+        _event('yanked', button: pads.GamepadButton.a, value: 1),
+      );
       run.state.runFixedStep();
       expect(system.confirm.value, isTrue);
 
@@ -175,12 +206,19 @@ void main() {
       run.state.runFixedStep();
 
       expect(system.p1Confirm.value, isFalse);
-      expect(system.confirm.value, isFalse,
-          reason: 'a pad unplugged mid-press would otherwise hold that button '
-              'down forever - there is no disconnect event to notice it by, '
-              'so releasing the seat has to do it');
-      expect(gamepads.slotOf('yanked'), isNull,
-          reason: 'and the seat is free for whoever plugs in next');
+      expect(
+        system.confirm.value,
+        isFalse,
+        reason:
+            'a pad unplugged mid-press would otherwise hold that button '
+            'down forever - there is no disconnect event to notice it by, '
+            'so releasing the seat has to do it',
+      );
+      expect(
+        gamepads.slotOf('yanked'),
+        isNull,
+        reason: 'and the seat is free for whoever plugs in next',
+      );
     });
 
     test('a pad beyond capacity is inert rather than sharing a seat', () async {
@@ -188,14 +226,17 @@ void main() {
       final gamepads = game.gamepads!;
       for (var i = 1; i < GamepadKey.slotCount; i++) {
         gamepads.handleEvent(
-            _event('pad$i', button: pads.GamepadButton.a, value: 1));
+          _event('pad$i', button: pads.GamepadButton.a, value: 1),
+        );
       }
 
       expect(
-        () => gamepads
-            .handleEvent(_event('extra', button: pads.GamepadButton.a, value: 1)),
+        () => gamepads.handleEvent(
+          _event('extra', button: pads.GamepadButton.a, value: 1),
+        ),
         throwsA(isA<AssertionError>()),
-        reason: 'in a debug build it says so - handing this pad someone '
+        reason:
+            'in a debug build it says so - handing this pad someone '
             'else\'s seat would give two players one controller, which is a '
             'worse failure than a controller that does nothing',
       );
@@ -212,14 +253,18 @@ void main() {
       // plugin's names and this engine's names differ, which is exactly
       // where a name-matching translation would silently drop them.
       gamepads.handleEvent(
-          _event('p', button: pads.GamepadButton.leftBumper, value: 1));
+        _event('p', button: pads.GamepadButton.leftBumper, value: 1),
+      );
       expect(device.isDown(InputKey.padLeftShoulder), isTrue);
 
-      gamepads.handleEvent(_event('p', button: pads.GamepadButton.back, value: 1));
+      gamepads.handleEvent(
+        _event('p', button: pads.GamepadButton.back, value: 1),
+      );
       expect(device.isDown(InputKey.padSelect), isTrue);
 
       gamepads.handleEvent(
-          _event('p', button: pads.GamepadButton.dpadLeft, value: 1));
+        _event('p', button: pads.GamepadButton.dpadLeft, value: 1),
+      );
       expect(device.isDown(InputKey.padLeft), isTrue);
       expect(device.isDown(InputKey.padRight), isFalse);
     });
@@ -237,11 +282,15 @@ void main() {
       for (final key in InputKey.all) {
         if (key is GamepadKey && key.slot == 1 && device.isDown(key)) held++;
       }
-      expect(held, pads.GamepadButton.values.length,
-          reason: 'a button that mapped to nothing would be one the player '
-              'can press and no game can bind - the translation is allowed '
-              'to be partial, but nothing should be falling through it '
-              'today');
+      expect(
+        held,
+        pads.GamepadButton.values.length,
+        reason:
+            'a button that mapped to nothing would be one the player '
+            'can press and no game can bind - the translation is allowed '
+            'to be partial, but nothing should be falling through it '
+            'today',
+      );
     });
 
     test('a button release clears the bit', () async {
@@ -259,16 +308,21 @@ void main() {
       final game = await _boot();
       final system = run.state.getSystem<_PadSystem>();
 
-      game.gamepads!
-          .handleEvent(_event('p', button: pads.GamepadButton.a, value: 1));
+      game.gamepads!.handleEvent(
+        _event('p', button: pads.GamepadButton.a, value: 1),
+      );
       run.state.runFixedStep();
       expect(system.confirm.wasPressedThisFrame, isTrue);
 
       run.state.runFixedStep();
       expect(system.confirm.wasPressedThisFrame, isFalse);
-      expect(system.confirm.value, isTrue,
-          reason: 'still held, just no longer an edge - a gamepad button is '
-              'not a special case anywhere above the collector');
+      expect(
+        system.confirm.value,
+        isTrue,
+        reason:
+            'still held, just no longer an edge - a gamepad button is '
+            'not a special case anywhere above the collector',
+      );
     });
   });
 
@@ -279,19 +333,29 @@ void main() {
       final gamepads = game.gamepads!;
 
       gamepads.handleEvent(
-          _event('p', axis: pads.GamepadAxis.leftStickX, value: 1));
+        _event('p', axis: pads.GamepadAxis.leftStickX, value: 1),
+      );
       run.state.runFixedStep();
-      expect(system.move.value, Vector2(1, 0),
-          reason: 'four thresholded bits are exactly what Vec2Binding '
-              'composes, which is the whole reason the sticks are in the '
-              'button vocabulary at all');
+      expect(
+        system.move.value,
+        Vector2(1, 0),
+        reason:
+            'four thresholded bits are exactly what Vec2Binding '
+            'composes, which is the whole reason the sticks are in the '
+            'button vocabulary at all',
+      );
 
       gamepads.handleEvent(
-          _event('p', axis: pads.GamepadAxis.leftStickY, value: 1));
+        _event('p', axis: pads.GamepadAxis.leftStickY, value: 1),
+      );
       run.state.runFixedStep();
-      expect(system.move.value, Vector2(1, -1),
-          reason: 'the plugin reports +1 as up, and a Vec2Binding puts up at '
-              '-y - the same convention a keyboard W gets');
+      expect(
+        system.move.value,
+        Vector2(1, -1),
+        reason:
+            'the plugin reports +1 as up, and a Vec2Binding puts up at '
+            '-y - the same convention a keyboard W gets',
+      );
     });
 
     test('inside the deadzone is at rest', () async {
@@ -300,12 +364,17 @@ void main() {
       final gamepads = game.gamepads!;
 
       gamepads.handleEvent(
-          _event('p', axis: pads.GamepadAxis.leftStickX, value: 0.4));
+        _event('p', axis: pads.GamepadAxis.leftStickX, value: 0.4),
+      );
       run.state.runFixedStep();
-      expect(system.move.value, Vector2(0, 0),
-          reason: 'a stick that has drifted a little is a stick at rest - '
-              'without this, a worn controller walks the player into a wall '
-              'while nobody is touching it');
+      expect(
+        system.move.value,
+        Vector2(0, 0),
+        reason:
+            'a stick that has drifted a little is a stick at rest - '
+            'without this, a worn controller walks the player into a wall '
+            'while nobody is touching it',
+      );
     });
 
     test('swinging an axis across releases the direction it left', () async {
@@ -314,7 +383,8 @@ void main() {
       final gamepads = game.gamepads!;
 
       gamepads.handleEvent(
-          _event('p', axis: pads.GamepadAxis.leftStickX, value: -1));
+        _event('p', axis: pads.GamepadAxis.leftStickX, value: -1),
+      );
       run.state.runFixedStep();
       expect(system.move.value, Vector2(-1, 0));
 
@@ -322,7 +392,8 @@ void main() {
       // press and a release, so writing only the newly-held side would leave
       // the stick held left *and* right.
       gamepads.handleEvent(
-          _event('p', axis: pads.GamepadAxis.leftStickX, value: 1));
+        _event('p', axis: pads.GamepadAxis.leftStickX, value: 1),
+      );
       run.state.runFixedStep();
       expect(system.move.value, Vector2(1, 0));
       expect(game.inputDevice!.isDown(InputKey.padLeftStickLeft), isFalse);
@@ -334,7 +405,8 @@ void main() {
       game.gamepads!.stickDeadzone = 0.2;
 
       game.gamepads!.handleEvent(
-          _event('p', axis: pads.GamepadAxis.leftStickX, value: 0.4));
+        _event('p', axis: pads.GamepadAxis.leftStickX, value: 0.4),
+      );
       run.state.runFixedStep();
       expect(system.move.value, Vector2(1, 0));
     });
@@ -345,19 +417,26 @@ void main() {
       final gamepads = game.gamepads!;
 
       gamepads.handleEvent(
-          _event('p', axis: pads.GamepadAxis.rightTrigger, value: 0.2));
+        _event('p', axis: pads.GamepadAxis.rightTrigger, value: 0.2),
+      );
       expect(device.isDown(InputKey.padRightTrigger), isFalse);
 
       gamepads.handleEvent(
-          _event('p', axis: pads.GamepadAxis.rightTrigger, value: 0.9));
-      expect(device.isDown(InputKey.padRightTrigger), isTrue,
-          reason: 'a trigger is analog on every modern pad, so a digital '
-              'binding needs a point at which it counts as pulled');
+        _event('p', axis: pads.GamepadAxis.rightTrigger, value: 0.9),
+      );
+      expect(
+        device.isDown(InputKey.padRightTrigger),
+        isTrue,
+        reason:
+            'a trigger is analog on every modern pad, so a digital '
+            'binding needs a point at which it counts as pulled',
+      );
 
       // Some platforms report the trigger as a digital button as well. Both
       // paths write the same bit, so they agree rather than fight.
       gamepads.handleEvent(
-          _event('p', button: pads.GamepadButton.rightTrigger, value: 1));
+        _event('p', button: pads.GamepadButton.rightTrigger, value: 1),
+      );
       expect(device.isDown(InputKey.padRightTrigger), isTrue);
     });
   });
@@ -369,14 +448,22 @@ void main() {
 
       run = await Game.startInline(game);
       expect(game.gamepads, isNotNull);
-      expect(game.gamepads!.isAttached, isFalse,
-          reason: 'created, but not listening to the OS - GameView attaches '
-              'it when it mounts, so a headless game holds no subscription');
+      expect(
+        game.gamepads!.isAttached,
+        isFalse,
+        reason:
+            'created, but not listening to the OS - GameView attaches '
+            'it when it mounts, so a headless game holds no subscription',
+      );
 
       await run.stop();
-      expect(game.gamepads, isNull,
-          reason: 'the collector writes through the device, and the device '
-              'is gone with the storage it wrote into');
+      expect(
+        game.gamepads,
+        isNull,
+        reason:
+            'the collector writes through the device, and the device '
+            'is gone with the storage it wrote into',
+      );
     });
   });
 }

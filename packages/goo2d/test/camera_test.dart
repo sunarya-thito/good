@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
-late InlineGameHandle run;
+late Game run;
 
 
 class _CamEntity extends EntityStruct with Transform2D, WorldTransform2D, Camera {}

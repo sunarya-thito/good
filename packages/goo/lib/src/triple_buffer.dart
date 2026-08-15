@@ -1,4 +1,6 @@
 import 'dart:ffi';
+import 'dart:typed_data';
+
 import 'package:ffi/ffi.dart';
 
 /// A wait-free single-writer / multi-reader triple buffer over a fixed-size
@@ -55,7 +57,11 @@ import 'package:ffi/ffi.dart';
 class TripleBuffer {
   TripleBuffer(this.slotBytes)
     : _latest = calloc<Int32>(),
-      _slots = List.generate(3, (_) => calloc<Uint8>(slotBytes), growable: false) {
+      _slots = List.generate(
+        3,
+        (_) => calloc<Uint8>(slotBytes),
+        growable: false,
+      ) {
     _latest.value = -1; // nothing published yet
   }
 
@@ -74,6 +80,23 @@ class TripleBuffer {
   final Pointer<Int32> _latest;
   final List<Pointer<Uint8>> _slots;
 
+  /// One cached `Uint8List` per slot, built once.
+  ///
+  /// `Pointer.asTypedList` **allocates** - it builds a new view object every
+  /// call. [beginWrite] runs once per page per tick, so building two of them
+  /// there was two heap objects per page per tick on the hottest path in the
+  /// engine, which is exactly what RULES.md rules 1 and 2 forbid. Views over
+  /// native memory stay valid for the life of the pointer, so there is no
+  /// reason to build them more than once.
+  ///
+  /// Not rebuilt after `Isolate.spawn`: this object is only ever *written* by
+  /// the copy that owns it, and a `TripleBuffer` that crossed the spawn is
+  /// reconstructed from addresses (see [TripleBuffer.fromAddresses]), which
+  /// runs this initializer again on the far side.
+  late final List<Uint8List> _views = <Uint8List>[
+    for (final slot in _slots) slot.asTypedList(slotBytes),
+  ];
+
   // Writer-local bookkeeping. Never read by another isolate, so it needs no
   // synchronization of its own - only the single owning isolate touches it.
   int _writeSlot = 0;
@@ -88,12 +111,37 @@ class TripleBuffer {
   /// `transformOffsetX[instance] += 1`) see last tick's values instead of
   /// stale/zeroed memory from 3 cycles ago. Call once per tick, not once
   /// per allocation - the copy is a single bulk memcpy up front.
-  Pointer<Uint8> beginWrite({bool copyFromLatest = true}) {
+  /// [bytes] limits the copy to the first N bytes of the slot, for a caller
+  /// that knows the rest is dead. A `MemoryPage` does: rows are bump-allocated
+  /// and recycled from below its write cursor, so everything live sits under
+  /// it and the remaining capacity holds nothing worth carrying forward.
+  ///
+  /// That matters more than it sounds. A page is sized for the archetype's
+  /// worst case, so a 1 MiB page holding one camera entity was copying a
+  /// megabyte per tick to preserve a hundred bytes - and the cost scaled with
+  /// the *page size a game configured*, not with the entities it actually had.
+  /// Omitting it copies the whole slot, which is the safe default for any
+  /// caller with no cursor to offer.
+  Pointer<Uint8> beginWrite({bool copyFromLatest = true, int? bytes}) {
     final write = _slots[_writeSlot];
+    _writeBase = write;
+    // Refreshed here rather than lazily: this is the one moment per tick when
+    // the published snapshot is known to be settled, and doing it here keeps
+    // `latestView` a plain field read for the rest of the tick.
+    final publishedSlot = _latest.value;
+    _hasReadBase = publishedSlot >= 0;
+    if (_hasReadBase) _readBase = _slots[publishedSlot];
     if (copyFromLatest) {
       final latestSlot = _latest.value;
       if (latestSlot >= 0 && latestSlot != _writeSlot) {
-        write.asTypedList(slotBytes).setAll(0, _slots[latestSlot].asTypedList(slotBytes));
+        final count = bytes == null || bytes > slotBytes ? slotBytes : bytes;
+        if (count > 0) {
+          // `setRange`, not `setAll`: on two typed lists of the same element
+          // type this takes the bulk-move fast path, where `setAll` goes
+          // through the generic `Iterable` protocol element by element. Same
+          // bytes, very different loop.
+          _views[_writeSlot].setRange(0, count, _views[latestSlot]);
+        }
       }
     }
     return write;
@@ -102,14 +150,38 @@ class TripleBuffer {
   /// Cheap accessor for the current write slot's address - no copying, safe
   /// to call as many times as needed (once per field/row access) within a
   /// tick after [beginWrite] has already been called once for that tick.
-  Pointer<Uint8> get writeView => _slots[_writeSlot];
+  /// The slot the current tick is writing into.
+  ///
+  /// Cached for the same reason as [_readBase] and with none of its subtlety:
+  /// [_writeSlot] is plain Dart state that only [beginWrite] and [publish]
+  /// touch, and only the writing copy calls either. There is no shared-memory
+  /// question here at all - this is purely removing a bounds-checked list
+  /// index from a path taken once per field *written*, per entity, per tick.
+  @pragma('vm:prefer-inline')
+  Pointer<Uint8> get writeView => _writeBase;
+  late Pointer<Uint8> _writeBase = _slots[_writeSlot];
 
   /// Publishes the slot returned by the most recent [beginWrite] as the
   /// newest complete snapshot, and advances to the next write slot in the
   /// fixed round-robin order.
   void publish() {
+    // **Dropped, not retargeted.** Retargeting it here looks like a free win -
+    // the slot just published *is* the newest - and it silently breaks the
+    // spawned configuration: this object is deep-copied by `Isolate.spawn`,
+    // and a cache left valid crosses with it. The reading isolate then answers
+    // every read from a base frozen at spawn time and never sees another
+    // publish. Two isolate tests caught it; nothing in the single-isolate
+    // suite would have.
+    //
+    // Clearing keeps the invariant the whole design rests on: only a copy that
+    // called `beginWrite` may trust this, and a reader never calls it.
+    _hasReadBase = false;
     _latest.value = _writeSlot;
     _writeSlot = (_writeSlot + 1) % 3;
+    // Kept in step with the rotation, so a caller reading `writeView` between
+    // publish and the next beginWrite gets the slot that will actually be
+    // written rather than the one just published.
+    _writeBase = _slots[_writeSlot];
   }
 
   /// Whether [publish] has ever been called - i.e. whether [latestView]
@@ -121,7 +193,53 @@ class TripleBuffer {
   /// A snapshot view for reading - `null` if nothing has been published
   /// yet. Safe to call from any isolate holding this `TripleBuffer`,
   /// including the writer's own.
+  /// The published snapshot's base pointer, cached for the duration of a tick.
+  ///
+  /// **Writer-only, and that is what makes it safe.** [_latest] lives in shared
+  /// native memory precisely so a *reader* isolate sees the writer's publishes;
+  /// caching it there would freeze the reader on one snapshot forever. But only
+  /// the writing copy calls [beginWrite], so only the writing copy ever fills
+  /// this - a reader leaves it null and keeps taking the live read below.
+  ///
+  /// On the writer it cannot go stale either: [_latest] changes only in
+  /// [publish], which clears it. Between `beginWrite` and `publish` - the whole
+  /// tick window - the published snapshot is by definition fixed.
+  ///
+  /// A `bool` plus a non-nullable field rather than a nullable one: reading a
+  /// `Pointer<T>?` and branching costs 3.39ns against 1.43ns for a plain field
+  /// (`tool/field_access_bench.dart`). Smaller than the 9x a nullable *return*
+  /// costs, but this is read once per field access and the flag is free.
+  bool _hasReadBase = false;
+  late Pointer<Uint8> _readBase;
+
+  /// The newest published snapshot, falling back to the write slot when
+  /// nothing has been published yet.
+  ///
+  /// **Non-nullable, and that is the whole point.** A `Pointer<T>?` cannot be
+  /// unboxed, so returning one allocates a box - measured at 14.4ns per access
+  /// against 1.65ns for the same chain returning a plain pointer
+  /// (`tool/field_access_bench.dart`). This is called once per field read, per
+  /// entity, per tick, so a 9x factor there is not a micro-optimisation.
+  ///
+  /// The fallback is the pre-publish case, which is real: a scene writes its
+  /// starting rows before anything has been published, and those writes have to
+  /// be readable back. See `_readRow`, which used to spell this as
+  /// `resolveRead(o) ?? resolveWrite(o)` and paid the box every time.
+  @pragma('vm:prefer-inline')
+  Pointer<Uint8> get readView {
+    if (_hasReadBase) return _readBase;
+    final slot = _latest.value;
+    return slot < 0 ? _writeBase : _slots[slot];
+  }
+
+  /// The newest published snapshot, or null if nothing has been published.
+  ///
+  /// Called **once per field access** on the read path, which is why the cache
+  /// above exists: without it this is a load from native memory plus a
+  /// bounds-checked list index, paid per field, per entity, per tick. A system
+  /// touching 20 fields across 10k entities pays it 200,000 times a frame.
   Pointer<Uint8>? latestView() {
+    if (_hasReadBase) return _readBase;
     final slot = _latest.value;
     if (slot < 0) return null;
     return _slots[slot];

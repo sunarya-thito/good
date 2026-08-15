@@ -91,12 +91,12 @@ class HandoffBuffer {
   static const int _controlWords = _usedWord + slotCount;
 
   HandoffBuffer(this.slotBytes)
-      : _control = calloc<Int32>(_controlWords),
-        _slots = List<Pointer<Uint8>>.generate(
-          slotCount,
-          (_) => calloc<Uint8>(slotBytes),
-          growable: false,
-        ) {
+    : _control = calloc<Int32>(_controlWords),
+      _slots = List<Pointer<Uint8>>.generate(
+        slotCount,
+        (_) => calloc<Uint8>(slotBytes),
+        growable: false,
+      ) {
     _control[_readyWord] = -1; // nothing published yet
     _control[_readingWord] = -1; // no reader holding anything
   }
@@ -108,10 +108,11 @@ class HandoffBuffer {
     required this.slotBytes,
     required int controlAddress,
     required List<int> slotAddresses,
-  })  : _control = Pointer<Int32>.fromAddress(controlAddress),
-        _slots = <Pointer<Uint8>>[
-          for (final address in slotAddresses) Pointer<Uint8>.fromAddress(address),
-        ];
+  }) : _control = Pointer<Int32>.fromAddress(controlAddress),
+       _slots = <Pointer<Uint8>>[
+         for (final address in slotAddresses)
+           Pointer<Uint8>.fromAddress(address),
+       ];
 
   /// Capacity of one slot. A frame that would exceed it is the caller's
   /// problem to bound - see `GameRenderer2D.maxSpritesPerTick`.

@@ -12,13 +12,11 @@ import 'package:goo/src/scene.dart';
 import 'package:goo/src/struct.dart';
 import 'package:goo/src/system.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:goo/src/handle.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
-late InlineGameHandle run;
-
+late Game run;
 
 // Everything here runs through Game.startInline(...) - one
 // isolate, one copy of the Game, no timer, no wall clock. GameState.advance
@@ -242,7 +240,7 @@ class _TestState extends GameState<_TestGame> {
     descriptor.hasSupplier(game.spawnUnit, _onSpawnUnit);
   }
 
-  Entity _onSpawnUnit() => sceneHandle!.addEntity(level.unit);
+  Entity _onSpawnUnit() => loadedScenes.single.addEntity(level.unit);
   @override
   void describeSystems(SystemDescriptor descriptor) {
     descriptor.has(_SystemA());
@@ -268,8 +266,6 @@ class _TestGame extends Game {
   void describeCommands(CommandDescriptor descriptor) {
     spawnUnit = descriptor.has(_SpawnUnit());
   }
-
-
 }
 
 typedef _Nudge = ({Entity entity, double amount});
@@ -381,42 +377,53 @@ void main() {
     test('runs one step per whole fixedTimeStep of elapsed time', () async {
       final game = await _game(_TestGame());
       expect(_state(game).advance(_step * 3), 3);
-      expect(game.tick, 3);
+      expect(run.tick, 3);
     });
 
-    test('a partial step accumulates instead of being lost or rounded up', () async {
-      final game = await _game(_TestGame());
-      final state = _state(game);
-      expect(state.advance(const Duration(milliseconds: 6)), 0);
-      expect(state.advance(const Duration(milliseconds: 6)), 1,
-          reason: '6ms + 6ms is one whole 10ms step');
-      expect(state.advance(const Duration(milliseconds: 6)), 0,
-          reason: '2ms carried + 6ms is still short of a step');
-      expect(state.advance(const Duration(milliseconds: 2)), 1);
-      expect(game.tick, 2);
-    });
+    test(
+      'a partial step accumulates instead of being lost or rounded up',
+      () async {
+        final game = await _game(_TestGame());
+        final state = _state(game);
+        expect(state.advance(const Duration(milliseconds: 6)), 0);
+        expect(
+          state.advance(const Duration(milliseconds: 6)),
+          1,
+          reason: '6ms + 6ms is one whole 10ms step',
+        );
+        expect(
+          state.advance(const Duration(milliseconds: 6)),
+          0,
+          reason: '2ms carried + 6ms is still short of a step',
+        );
+        expect(state.advance(const Duration(milliseconds: 2)), 1);
+        expect(run.tick, 2);
+      },
+    );
 
     test('zero elapsed time runs nothing', () async {
       final game = await _game(_TestGame());
       expect(_state(game).advance(Duration.zero), 0);
-      expect(game.tick, 0);
+      expect(run.tick, 0);
     });
 
     test('a long stall is capped at maxFixedStepsPerAdvance', () async {
       final game = await _game(_TestGame());
       // 100 steps' worth of wall clock in one go.
       expect(_state(game).advance(_step * 100), game.maxFixedStepsPerAdvance);
-      expect(game.tick, game.maxFixedStepsPerAdvance);
+      expect(run.tick, game.maxFixedStepsPerAdvance);
     });
 
-    test('the backlog past the cap is dropped, not carried into next frame',
-        () async {
-      final game = await _game(_TestGame());
-      _state(game).advance(_step * 100);
-      // If the remaining ~95 steps had been kept in the accumulator, this
-      // would immediately run another full capped batch - the spiral.
-      expect(_state(game).advance(_step), 1);
-    });
+    test(
+      'the backlog past the cap is dropped, not carried into next frame',
+      () async {
+        final game = await _game(_TestGame());
+        _state(game).advance(_step * 100);
+        // If the remaining ~95 steps had been kept in the accumulator, this
+        // would immediately run another full capped batch - the spiral.
+        expect(_state(game).advance(_step), 1);
+      },
+    );
 
     test('sub-step phase survives the drop', () async {
       final game = await _game(_TestGame());
@@ -432,21 +439,35 @@ void main() {
       await _game(_PhaseGame());
       // One advance worth three whole fixed steps.
       expect(run.state.advance(_step * 3), 3);
-      expect(log.where((e) => e == 'sim').length, 3,
-          reason: 'simulation runs per step');
-      expect(log.where((e) => e == 'present').length, 1,
-          reason: 'presentation runs per frame - three catch-up steps still '
-              'produce one presented frame, which is the whole reason the '
-              'two phases are separate');
+      expect(
+        log.where((e) => e == 'sim').length,
+        3,
+        reason: 'simulation runs per step',
+      );
+      expect(
+        log.where((e) => e == 'present').length,
+        1,
+        reason:
+            'presentation runs per frame - three catch-up steps still '
+            'produce one presented frame, which is the whole reason the '
+            'two phases are separate',
+      );
     });
 
     test('runs even on a frame that afforded no simulation step', () async {
       await _game(_PhaseGame());
-      expect(run.state.advance(const Duration(milliseconds: 4)), 0,
-          reason: 'less than one fixed step');
-      expect(log, contains('present'),
-          reason: 'a frame where the simulation did not advance is still a '
-              'frame - an interpolating renderer has work to do on it');
+      expect(
+        run.state.advance(const Duration(milliseconds: 4)),
+        0,
+        reason: 'less than one fixed step',
+      );
+      expect(
+        log,
+        contains('present'),
+        reason:
+            'a frame where the simulation did not advance is still a '
+            'frame - an interpolating renderer has work to do on it',
+      );
       expect(log, isNot(contains('sim')));
     });
 
@@ -458,24 +479,33 @@ void main() {
       expect(log.indexOf('sim'), lessThan(log.indexOf('present')));
     });
 
-    test('the delta is the frame\'s elapsed time, not the fixed step', () async {
-      await _game(_PhaseGame());
-      const frame = Duration(milliseconds: 35); // 3 steps + 5ms remainder
-      run.state.advance(frame);
-      expect(run.state.getSystem<_PresentSystem>().deltas, [frame],
-          reason: 'onTick receives real elapsed wall clock, unlike '
-              'onFixedUpdate which always represents exactly fixedTimeStep');
-    });
+    test(
+      'the delta is the frame\'s elapsed time, not the fixed step',
+      () async {
+        await _game(_PhaseGame());
+        const frame = Duration(milliseconds: 35); // 3 steps + 5ms remainder
+        run.state.advance(frame);
+        expect(
+          run.state.getSystem<_PresentSystem>().deltas,
+          [frame],
+          reason:
+              'onTick receives real elapsed wall clock, unlike '
+              'onFixedUpdate which always represents exactly fixedTimeStep',
+        );
+      },
+    );
 
-    test('a Tickable-only system never receives a fixed tick, and vice versa',
-        () async {
-      await _game(_PhaseGame());
-      run.state.advance(_step);
-      // _PresentSystem is Tickable and not FixedTickable: it logs 'P' once
-      // (presentation) and never participates in the simulation pass.
-      expect(log.where((e) => e == 'P').length, 1);
-      expect(run.state.getSystem<_PresentSystem>().deltas, hasLength(1));
-    });
+    test(
+      'a Tickable-only system never receives a fixed tick, and vice versa',
+      () async {
+        await _game(_PhaseGame());
+        run.state.advance(_step);
+        // _PresentSystem is Tickable and not FixedTickable: it logs 'P' once
+        // (presentation) and never participates in the simulation pass.
+        expect(log.where((e) => e == 'P').length, 1);
+        expect(run.state.getSystem<_PresentSystem>().deltas, hasLength(1));
+      },
+    );
   });
 
   group('system execution', () {
@@ -485,31 +515,35 @@ void main() {
       expect(log, ['A', 'B', 'A', 'B']);
     });
 
-    test('a declared system that is not FixedTickable is simply skipped',
-        () async {
-      final game = await _game(_TestGame());
-      _state(game).advance(_step);
-      expect(log, ['A', 'B']);
-      expect(run.state.getSystem<_InertSystem>(), isA<_InertSystem>());
-    });
+    test(
+      'a declared system that is not FixedTickable is simply skipped',
+      () async {
+        final game = await _game(_TestGame());
+        _state(game).advance(_step);
+        expect(log, ['A', 'B']);
+        expect(run.state.getSystem<_InertSystem>(), isA<_InertSystem>());
+      },
+    );
 
-    test('disableSystem stops a system ticking; enableSystem resumes it',
-        () async {
-      final game = await _game(_TestGame());
-      _state(game).advance(_step);
-      expect(log, ['A', 'B']);
+    test(
+      'disableSystem stops a system ticking; enableSystem resumes it',
+      () async {
+        final game = await _game(_TestGame());
+        _state(game).advance(_step);
+        expect(log, ['A', 'B']);
 
-      run.state.disableSystem<_SystemA>();
-      expect(run.state.isSystemEnabled<_SystemA>(), isFalse);
-      log.clear();
-      _state(game).advance(_step);
-      expect(log, ['B'], reason: 'A is paused but B keeps running');
+        run.state.disableSystem<_SystemA>();
+        expect(run.state.isSystemEnabled<_SystemA>(), isFalse);
+        log.clear();
+        _state(game).advance(_step);
+        expect(log, ['B'], reason: 'A is paused but B keeps running');
 
-      run.state.enableSystem<_SystemA>();
-      log.clear();
-      _state(game).advance(_step);
-      expect(log, ['A', 'B']);
-    });
+        run.state.enableSystem<_SystemA>();
+        log.clear();
+        _state(game).advance(_step);
+        expect(log, ['A', 'B']);
+      },
+    );
 
     test('disableSystems/enableSystems take a set of types', () async {
       final game = await _game(_TestGame());
@@ -524,60 +558,91 @@ void main() {
     test('an undeclared system cannot be toggled or fetched', () async {
       await _game(_TestGame());
       expect(() => run.state.getSystem<_CensusSystem>(), returnsNormally);
-      expect(() => run.state.disableSystem<_UndeclaredSystem>(), throwsArgumentError);
-      expect(() => run.state.getSystem<_UndeclaredSystem>(), throwsArgumentError);
-      expect(run.state.tryGetSystem<_UndeclaredSystem>(), isNull,
-          reason: 'tryGetSystem is the "I work either way" form');
+      expect(
+        () => run.state.disableSystem<_UndeclaredSystem>(),
+        throwsArgumentError,
+      );
+      expect(
+        () => run.state.getSystem<_UndeclaredSystem>(),
+        throwsArgumentError,
+      );
+      expect(
+        run.state.tryGetSystem<_UndeclaredSystem>(),
+        isNull,
+        reason: 'tryGetSystem is the "I work either way" form',
+      );
       expect(run.state.tryGetSystem<_CensusSystem>(), isNotNull);
     });
 
-    test('declaring the same system twice is an error, not a silent duplicate',
-        () {
-      expect(Game.startInline(_DuplicateSystemGame()),
-          throwsStateError);
-    });
+    test(
+      'declaring the same system twice is an error, not a silent duplicate',
+      () {
+        expect(Game.startInline(_DuplicateSystemGame()), throwsStateError);
+      },
+    );
 
     test('a system reaches its siblings and its scene', () async {
       final game = await _game(_TestGame());
       final census = run.state.getSystem<_CensusSystem>();
-      expect(census.getSystem<_SystemA>(), same(run.state.getSystem<_SystemA>()));
+      expect(
+        census.getSystem<_SystemA>(),
+        same(run.state.getSystem<_SystemA>()),
+      );
       expect(census.getScene<_TestScene>(), same(_state(game).scene));
       expect(census.state, same(run.state));
     });
   });
 
   group('Comparable-driven system ordering', () {
-    test('a system that sorts itself first runs first, despite declaring last',
-        () async {
-      final game = await _game(_OrderingGame());
-      _state(game).advance(_step);
-      expect(log.first, 'C',
-          reason: '_SortsFirst.compareTo returns -1 unconditionally, so it '
+    test(
+      'a system that sorts itself first runs first, despite declaring last',
+      () async {
+        final game = await _game(_OrderingGame());
+        _state(game).advance(_step);
+        expect(
+          log.first,
+          'C',
+          reason:
+              '_SortsFirst.compareTo returns -1 unconditionally, so it '
               'must run before every other system in this game even though '
-              'it was declared after all of them');
-    });
+              'it was declared after all of them',
+        );
+      },
+    );
 
-    test('systems with no opinion keep declaration order (sort stability)',
-        () async {
-      final game = await _game(_OrderingGame());
-      _state(game).advance(_step);
-      final i1 = log.indexOf('1');
-      final i2 = log.indexOf('2');
-      expect(i1, lessThan(i2),
-          reason: 'Indifferent1 was declared before Indifferent2 and neither '
+    test(
+      'systems with no opinion keep declaration order (sort stability)',
+      () async {
+        final game = await _game(_OrderingGame());
+        _state(game).advance(_step);
+        final i1 = log.indexOf('1');
+        final i2 = log.indexOf('2');
+        expect(
+          i1,
+          lessThan(i2),
+          reason:
+              'Indifferent1 was declared before Indifferent2 and neither '
               'overrides compareTo, so a correct stable sort must not '
-              'reorder them relative to each other');
-    });
+              'reorder them relative to each other',
+        );
+      },
+    );
 
-    test('full order matches declaration order with only C moved to the front',
-        () async {
-      final game = await _game(_OrderingGame());
-      _state(game).advance(_step);
-      expect(log, ['C', 'A', 'B', '1', '2'],
-          reason: 'declaration order was A, B, Indifferent1, Indifferent2, '
+    test(
+      'full order matches declaration order with only C moved to the front',
+      () async {
+        final game = await _game(_OrderingGame());
+        _state(game).advance(_step);
+        expect(
+          log,
+          ['C', 'A', 'B', '1', '2'],
+          reason:
+              'declaration order was A, B, Indifferent1, Indifferent2, '
               'SortsFirst (InertSystem/CensusSystem are not FixedTickable '
-              'and do not log) - only C moving to the front should change');
-    });
+              'and do not log) - only C moving to the front should change',
+        );
+      },
+    );
   });
 
   group('tick phases', () {
@@ -589,10 +654,16 @@ void main() {
       // dispatched, the receiver list is already settled. It was resolved by
       // one composition walk at boot instead of by testing every candidate on
       // every dispatch, which is what the old fireEvent walk did.
-      expect(state.fixedTickEvent.listenerCount, 1,
-          reason: 'only _BothPhases simulates');
-      expect(state.tickEvent.listenerCount, 2,
-          reason: '_PresentSystem and _BothPhases both present');
+      expect(
+        state.fixedTickEvent.listenerCount,
+        1,
+        reason: 'only _BothPhases simulates',
+      );
+      expect(
+        state.tickEvent.listenerCount,
+        2,
+        reason: '_PresentSystem and _BothPhases both present',
+      );
     });
 
     test('a disabled system stays collected and declines', () async {
@@ -604,108 +675,141 @@ void main() {
       log.clear();
       run.state.disableSystem<_BothPhases>();
 
-      expect(state.fixedTickEvent.listenerCount, 1,
-          reason: 'membership is baked - disabling does not re-collect');
+      expect(
+        state.fixedTickEvent.listenerCount,
+        1,
+        reason: 'membership is baked - disabling does not re-collect',
+      );
       state.advance(_step);
-      expect(log, ['P'],
-          reason: 'it declines through listensToEvents instead, which is the '
-              'one thing a pre-resolved list cannot bake because it is '
-              'genuinely runtime state');
+      expect(
+        log,
+        ['P'],
+        reason:
+            'it declines through listensToEvents instead, which is the '
+            'one thing a pre-resolved list cannot bake because it is '
+            'genuinely runtime state',
+      );
     });
   });
 
   group('command dispatch and processing', () {
-    test('a spawn command round-trips to a real entity with onMounted run',
-        () async {
-      final game = await _game(_TestGame());
-      final scene = _state(game).getScene<_TestScene>();
-      final archetypeId = scene.unit.archetypeId;
+    test(
+      'a spawn command round-trips to a real entity with onMounted run',
+      () async {
+        final game = await _game(_TestGame());
+        final scene = _state(game).getScene<_TestScene>();
+        final archetypeId = scene.unit.archetypeId;
 
-      final pending = game.spawnUnit();
-      // Nothing happens until the tick that runs the inbox - not even inline,
-      // where the batch never leaves this isolate. A game-handled command
-      // waits for the tick window whichever way the game was booted.
-      expect(scene.unit.archetype.pageCount, 0);
+        final pending = game.spawnUnit();
+        // Nothing happens until the tick that runs the inbox - not even inline,
+        // where the batch never leaves this isolate. A game-handled command
+        // waits for the tick window whichever way the game was booted.
+        expect(scene.unit.archetype.pageCount, 0);
 
-      _state(game).advance(_step);
+        _state(game).advance(_step);
 
-      expect(scene.unit.archetype.pageCount, 1);
-      expect(await pending, Entity.pack(archetypeId, 0, 0),
-          reason: 'the entity travels back as the command\'s result - the old '
+        expect(scene.unit.archetype.pageCount, 1);
+        expect(
+          await pending,
+          Entity.pack(archetypeId, 0, 0),
+          reason:
+              'the entity travels back as the command\'s result - the old '
               'encode/apply lane could only leave it in a field on the '
-              'isolate that made it');
-      expect(scene.unit.marker[await pending], 7,
-          reason: 'onMounted must run for a command-spawned entity too');
-    });
+              'isolate that made it',
+        );
+        expect(
+          scene.unit.marker[await pending],
+          7,
+          reason: 'onMounted must run for a command-spawned entity too',
+        );
+      },
+    );
 
-    test('a command lands before systems run, on the very tick it arrives',
-        () async {
-      final game = await _game(_TestGame());
-      final census = run.state.getSystem<_CensusSystem>();
+    test(
+      'a command lands before systems run, on the very tick it arrives',
+      () async {
+        final game = await _game(_TestGame());
+        final census = run.state.getSystem<_CensusSystem>();
 
-      _state(game).advance(_step); // tick 1: nothing exists
-      game.spawnUnit();
-      _state(game).advance(_step); // tick 2: command applies, then systems run
-      _state(game).advance(_step); // tick 3
+        _state(game).advance(_step); // tick 1: nothing exists
+        game.spawnUnit();
+        _state(game)
+            .advance(_step); // tick 2: command applies, then systems run
+        _state(game).advance(_step); // tick 3
 
-      expect(census.seen, [0, 1, 1],
-          reason: 'the spawn must be visible to the census on tick 2, not 3');
-    });
+        expect(census.seen, [
+          0,
+          1,
+          1,
+        ], reason: 'the spawn must be visible to the census on tick 2, not 3');
+      },
+    );
 
-    test('a burst of commands travels as one batch and lands on one tick',
-        () async {
-      final game = await _game(_TestGame());
-      final scene = _state(game).getScene<_TestScene>();
-      final id = scene.unit.archetypeId;
+    test(
+      'a burst of commands travels as one batch and lands on one tick',
+      () async {
+        final game = await _game(_TestGame());
+        final scene = _state(game).getScene<_TestScene>();
+        final id = scene.unit.archetypeId;
 
-      // One batch, fifty calls: one message, one wake-up, one reply. The
-      // round trip is what costs, not the bytes.
-      final batch = game.createCommandBatch();
-      final keys = <CommandKey<Entity>>[
-        for (var i = 0; i < 50; i++) batch.supply(game.spawnUnit),
-      ];
-      final pending = batch.send();
-      _state(game).advance(_step);
-      final results = await pending;
+        // One batch, fifty calls: one message, one wake-up, one reply. The
+        // round trip is what costs, not the bytes.
+        final batch = run.createCommandBatch();
+        final keys = <CommandKey<Entity>>[
+          for (var i = 0; i < 50; i++) batch.supply(game.spawnUnit),
+        ];
+        final pending = batch.send();
+        _state(game).advance(_step);
+        final results = await pending;
 
-      expect(run.state.getSystem<_CensusSystem>().seen, [50]);
-      expect(keys[0][results], Entity.pack(id, 0, 0));
-      expect(keys[49][results], isNot(keys[0][results]),
-          reason: 'each call in the batch gets its own record, so each result '
-              'is its own entity rather than the last one written');
-    });
+        expect(run.state.getSystem<_CensusSystem>().seen, [50]);
+        expect(keys[0][results], Entity.pack(id, 0, 0));
+        expect(
+          keys[49][results],
+          isNot(keys[0][results]),
+          reason:
+              'each call in the batch gets its own record, so each result '
+              'is its own entity rather than the last one written',
+        );
+      },
+    );
 
-    test('a user-declared command runs its handler on the game isolate',
-        () async {
-      final game = await _game(_CommandGame());
-      final scene = _state(game).getScene<_TestScene>();
-      final entity = _state(game).sceneHandle!.addEntity(scene.unit);
-      _state(game).advance(_step);
-      expect(scene.unit.x[entity], 0.0);
+    test(
+      'a user-declared command runs its handler on the game isolate',
+      () async {
+        final game = await _game(_CommandGame());
+        final scene = _state(game).getScene<_TestScene>();
+        final entity = _state(game).loadedScenes.single.addEntity(scene.unit);
+        _state(game).advance(_step);
+        expect(scene.unit.x[entity], 0.0);
 
-      game.nudge((entity: entity, amount: 12.5));
-      _state(game).advance(_step);
-      expect(scene.unit.x[entity], 12.5);
-    });
+        game.nudge((entity: entity, amount: 12.5));
+        _state(game).advance(_step);
+        expect(scene.unit.x[entity], 12.5);
+      },
+    );
 
     test('a command nothing handles is refused at the sender', () async {
       await _game(_TestGame());
       expect(
         () => _NudgeCommand()((entity: const Entity(0), amount: 1)),
         throwsStateError,
-        reason: 'both copies run both declaration passes, so the sending side '
+        reason:
+            'both copies run both declaration passes, so the sending side '
             'already knows nothing will read this',
       );
     });
 
     test('a command declared on the GameState is refused at boot', () {
-      expect(Game.startInline(_BadCommandGame()),
-          throwsStateError);
+      expect(Game.startInline(_BadCommandGame()), throwsStateError);
     });
 
-    test('reaching the command channel before start throws', () {
-      expect(_TestGame().createCommandBatch, throwsStateError);
-    });
+    // "reaching the command channel before start throws" was asserted here
+    // with `_TestGame().createCommandBatch`. There is no such method on a
+    // `Game` any more: a batch is written into one run's command ring, so it
+    // comes off the `GameHandle`, and a handle only exists once `Game.start`
+    // has returned. The error the test was checking for is now unreachable by
+    // construction rather than diagnosed at runtime.
 
     test('a scene refuses a prefab another scene registered', () async {
       final game = await _game(_TestGame());
@@ -718,12 +822,18 @@ void main() {
       // prefab's own recorded scene tells them apart.
       final other = _TestScene()..initializeScene(_state(game).pool);
       other.handle = SceneRegistry.register(other);
-      expect(identical(other.pool, scene.pool), isTrue,
-          reason: 'same pool, different scene - the whole point of the case');
-      expect(() => _state(game).sceneHandle!.addEntity(other.unit),
-          throwsStateError,
-          reason: 'the prefab belongs to `other`, so spawning it into the '
-              'loaded scene would put its rows in the wrong page group');
+      expect(
+        identical(other.pool, scene.pool),
+        isTrue,
+        reason: 'same pool, different scene - the whole point of the case',
+      );
+      expect(
+        () => _state(game).loadedScenes.single.addEntity(other.unit),
+        throwsStateError,
+        reason:
+            'the prefab belongs to `other`, so spawning it into the '
+            'loaded scene would put its rows in the wrong page group',
+      );
     });
   });
 
@@ -733,29 +843,29 @@ void main() {
       final ticks = <int>[];
       void listener(int tick) => ticks.add(tick);
 
-      game.addTickListener(listener);
+      run.runtimeOrNull!.addTickListener(listener);
       // One frame that afforded three simulation steps. The notification is
       // "a frame is ready to consume", and the frame is written by the
       // presentation pass, which runs once - so one ping, naming the tick it
       // depicts. Pinging per step would tell a renderer three times that a
-      // frame it only wrote once was ready. See Game.presentFrame.
+      // frame it only wrote once was ready. See GameRuntime.presentFrame.
       _state(game).advance(_step * 3);
       expect(ticks, [3]);
 
       _state(game).advance(_step);
       expect(ticks, [3, 4], reason: 'the next frame pings once more');
 
-      game.removeTickListener(listener);
+      run.runtimeOrNull!.removeTickListener(listener);
       _state(game).advance(_step * 2);
       expect(ticks, [3, 4], reason: 'a removed listener stops being called');
-      expect(game.tick, 6, reason: 'but the loop kept ticking');
+      expect(run.tick, 6, reason: 'but the loop kept ticking');
     });
 
     test('the pool has committed by the time a listener runs', () async {
       final game = await _game(_TestGame());
       final scene = _state(game).getScene<_TestScene>();
-      final entity = _state(game).sceneHandle!.addEntity(scene.unit);
-      game.addTickListener((_) {
+      final entity = _state(game).loadedScenes.single.addEntity(scene.unit);
+      run.runtimeOrNull!.addTickListener((_) {
         expect(scene.pool.isTickOpen, isFalse);
         expect(scene.unit.marker[entity], 7);
       });
@@ -770,11 +880,17 @@ void main() {
 
     test('the inline copy is the one that simulates', () async {
       final game = await _game(_TestGame());
-      expect(run.state.isSimulating, isTrue,
-          reason: 'inline means one copy doing both jobs');
+      expect(
+        run.state.isSimulating,
+        isTrue,
+        reason: 'inline means one copy doing both jobs',
+      );
       expect(run.state.scene, isA<_TestScene>());
-      expect(run.state.game, same(game),
-          reason: 'the back-reference is typed and points at this copy');
+      expect(
+        run.state.game,
+        same(game),
+        reason: 'the back-reference is typed and points at this copy',
+      );
     });
 
     test('starting twice is an error', () async {
@@ -782,26 +898,39 @@ void main() {
       expect(Game.startInline(game), throwsStateError);
     });
 
-    test('advance/runFixedStep refuse to run on a state that is not simulating',
-        () {
-      // A GameState that was never marked as owning the simulation is exactly
-      // what the main isolate's handle copy holds after start().
-      final handle = _TestState();
-      expect(() => handle.advance(_step), throwsStateError);
-      expect(handle.runFixedStep, throwsStateError);
-    });
+    test(
+      'advance/runFixedStep refuse to run on a state that is not simulating',
+      () {
+        // A GameState that was never marked as owning the simulation is exactly
+        // what the main isolate's handle copy holds after start().
+        final handle = _TestState();
+        expect(() => handle.advance(_step), throwsStateError);
+        expect(handle.runFixedStep, throwsStateError);
+      },
+    );
 
     test('a GameState with no scene is legitimate, and still ticks', () async {
       final game = await _game(_ScenelessGame());
-      expect(run.state.scene, isNull,
-          reason: 'a game that never calls loadScene has no world - '
-              'world loaded at all');
-      expect(run.state.pool.pageCount, 0,
-          reason: 'the pool belongs to the Game now, not the scene, so a game '
-              'with no world has an empty pool rather than no pool - which is '
-              'why the tick loop no longer asks whether there is storage');
-      expect(_state(game).advance(_step * 2), 2,
-          reason: 'systems still run without a world to run over');
+      expect(
+        run.state.scene,
+        isNull,
+        reason:
+            'a game that never calls loadScene has no world - '
+            'world loaded at all',
+      );
+      expect(
+        run.state.pool.pageCount,
+        0,
+        reason:
+            'the pool belongs to the Game now, not the scene, so a game '
+            'with no world has an empty pool rather than no pool - which is '
+            'why the tick loop no longer asks whether there is storage',
+      );
+      expect(
+        _state(game).advance(_step * 2),
+        2,
+        reason: 'systems still run without a world to run over',
+      );
       expect(log, ['A', 'A']);
       expect(() => run.state.getScene<_TestScene>(), throwsStateError);
     });
@@ -813,12 +942,47 @@ void main() {
     // which are simulation acts the presentation copy has no world to perform.
     // `GameState.loadScene` is the only spelling, and a main-triggered
     // transition goes through a command whose handler runs over there.
-    test('loadScene is a GameState method, and refuses a mirror copy', () async {
+    test(
+      'loadScene is a GameState method, and refuses a mirror copy',
+      () async {
+        await _game(_TestGame());
+        // Inline, so this copy does simulate and the call is legal - the point
+        // is that the method is reached through the state at all.
+        expect(run.state.isSimulating, isTrue);
+        expect(run.state.loadScene(_TestScene()), isA<Future<Scene>>());
+      },
+    );
+  });
+
+  group('where the frame went', () {
+    test('advance splits its cost into simulation and presentation', () async {
       await _game(_TestGame());
-      // Inline, so this copy does simulate and the call is legal - the point
-      // is that the method is reached through the state at all.
-      expect(run.state.isSimulating, isTrue);
-      expect(run.state.loadScene(_TestScene()), isA<Future<Scene>>());
+      run.advance(_step * 3);
+
+      // The split exists because the two halves fail for different reasons and
+      // have different fixes - and because the renderer runs *inside* advance,
+      // on the simulating isolate. Its cost therefore shows up as a low
+      // simulation frame rate rather than as a high Flutter frame time, which
+      // is the one thing nobody expects when they go looking.
+      expect(run.state.lastStepCount, 3);
+      expect(run.state.lastSimulationMicros, greaterThanOrEqualTo(0));
+      expect(run.state.lastPresentationMicros, greaterThanOrEqualTo(0));
+    });
+
+    test('a frame that afforded no steps still ran presentation', () async {
+      await _game(_TestGame());
+      run.advance(const Duration(milliseconds: 1));
+
+      expect(
+        run.state.lastStepCount,
+        0,
+        reason: 'the accumulator had not filled',
+      );
+      // And presentation still happened - a frame in which the simulation did
+      // not advance is still a frame. So a game can be spending its whole
+      // budget in presentation while running zero steps, and only these two
+      // numbers apart can say so.
+      expect(run.state.lastPresentationMicros, greaterThanOrEqualTo(0));
     });
   });
 }
@@ -826,7 +990,8 @@ void main() {
 class _UndeclaredSystem extends GameSystem {}
 
 /// The "no world yet" configuration: a GameState that declares no scene.
-class _ScenelessState extends GameState<_ScenelessGame> {  @override
+class _ScenelessState extends GameState<_ScenelessGame> {
+  @override
   void describeSystems(SystemDescriptor descriptor) {
     descriptor.has(_SystemA());
   }
@@ -841,6 +1006,4 @@ class _ScenelessGame extends Game {
 
   @override
   GameState createState() => _ScenelessState();
-
-
 }

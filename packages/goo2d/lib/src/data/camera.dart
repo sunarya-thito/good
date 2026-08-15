@@ -1,7 +1,7 @@
-
 import 'package:goo/goo.dart';
 
 import 'package:goo2d/src/data/world_transform.dart';
+
 /// Marks an entity as a camera - a view origin and zoom level, nothing
 /// more. Position/rotation are whatever its own `WorldTransform2D` already
 /// resolves to (an entity with `Camera` must also mix in `Transform2D`/

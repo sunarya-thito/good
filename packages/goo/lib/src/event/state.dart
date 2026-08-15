@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 
-
 // --- published cross-isolate state ---------------------------------------
 
 /// A typed, cross-isolate published value: **owned and written by the game

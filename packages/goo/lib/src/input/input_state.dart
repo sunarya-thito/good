@@ -225,8 +225,11 @@ final class InputDevice {
   /// Alignment is satisfied by construction: the block starts at
   /// [InputState.bitBlockBytes], which is rounded up to a whole 64-bit word,
   /// and a `Float32List` needs only 4.
-  late final Float32List _mirrorFloats =
-      Float32List.view(_mirror.buffer, InputState.bitBlockBytes, 7);
+  late final Float32List _mirrorFloats = Float32List.view(
+    _mirror.buffer,
+    InputState.bitBlockBytes,
+    7,
+  );
 
   // One cached view per slot, built once. `Pointer.asTypedList` allocates,
   // so doing it per publish would be a heap object per keystroke - the same

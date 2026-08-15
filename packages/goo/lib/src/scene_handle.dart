@@ -35,7 +35,7 @@ extension type const Scene(int value) {
 
   /// Packs the two fields above. Called by [SceneRegistry.register].
   const Scene.pack(int generation, int slot)
-      : value = (generation << _generationShift) | slot;
+    : value = (generation << _generationShift) | slot;
 
   /// Which load this handle refers to. Bumped every time [slot] is reused, so
   /// two handles to the same slot from different loads are different values.
@@ -85,10 +85,9 @@ extension type const Scene(int value) {
   /// resident at once "which scene does this row belong to" is a question the
   /// receiver has to answer, and a handle answers it by being the receiver.
   ///
-  /// Allocation-free apart from what `onMounted` itself does.
+  /// Allocation-free apart from what the mount dispatch itself does.
   Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       get<SceneStruct>().addEntityIn(slot, prefab, parent: parent);
-
 }
 
 /// The process-global table of loaded scenes - what a [Scene] handle resolves
@@ -116,7 +115,7 @@ abstract final class SceneRegistry {
   ///
   /// **Normally you want `GameState.loadScene`**, which does this plus the
   /// bookkeeping a load needs - asset claims, the loaded list, and the
-  /// scene's own `onMounted`. This is the bare registration underneath it,
+  /// scene's own `onSceneMounted`. This is the bare registration underneath it,
   /// public for the same reason `SceneStruct.initializeScene` is: a test or a
   /// headless harness legitimately brings a scene up without a `Game`, and
   /// needs a handle to spawn through.
@@ -149,6 +148,20 @@ abstract final class SceneRegistry {
   // No `snapshot`/`restore` here any more - see the note in
   // `ComponentTypeRegistry`. A scene is loaded on the game isolate and
   // resolved there; main holds no `Scene` at all.
+
+  /// The live handle for [slot], or null when nothing is loaded there.
+  ///
+  /// Supplies the generation half of a handle to a caller that only has the
+  /// slot - which is every caller that got there from an entity, since a
+  /// `MemoryPage` records `ownerSceneSlot` and nothing more. Reconstructed
+  /// rather than remembered, so it cannot go stale: an unloaded slot answers
+  /// null instead of a handle into whatever loaded next.
+  @internal
+  static Scene? handleAt(int slot) {
+    if (slot < 0 || slot >= _loaded.length) return null;
+    if (_loaded[slot] == null) return null;
+    return Scene.pack(_generations[slot], slot);
+  }
 
   /// The scene [handle] names, or null if it has been unloaded.
   ///

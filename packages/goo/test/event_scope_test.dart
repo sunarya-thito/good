@@ -10,13 +10,11 @@ import 'package:goo/src/scene.dart';
 import 'package:goo/src/scene_handle.dart';
 import 'package:goo/src/struct.dart';
 import 'package:goo/src/system.dart';
-import 'package:goo/src/handle.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
-late InlineGameHandle run;
-
+late Game run;
 
 // Scoped, boot-collected dispatch.
 //
@@ -98,6 +96,7 @@ class _PingGame extends Game {
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
   late final _PingScene level;
+
   /// Reached through the state - `describeSystems` is a `GameState` pass now.
   _PingSystem get pinger => run.state.getSystem<_PingSystem>();
 
@@ -108,7 +107,6 @@ class _PingGame extends Game {
   void describeScenes(GameSceneDescriptor descriptor) {
     level = descriptor.has(_PingScene());
   }
-
 }
 
 Future<_PingGame> _boot() async {
@@ -132,10 +130,14 @@ void main() {
       await _boot();
       final state = run.state as _PingState;
 
-      expect(state.ping.listenerCount, 5,
-          reason: 'the state itself, the one _Ping system, the scene, and the '
-              "scene's two prefabs - resolved during start(), with nothing "
-              'dispatched yet');
+      expect(
+        state.ping.listenerCount,
+        5,
+        reason:
+            'the state itself, the one _Ping system, the scene, and the '
+            "scene's two prefabs - resolved during start(), with nothing "
+            'dispatched yet',
+      );
     });
 
     test('a non-listener is not collected, so it is never visited', () async {
@@ -143,10 +145,14 @@ void main() {
       final state = run.state as _PingState;
       state.ping.call();
 
-      expect(state.ping.listenerCount, 5,
-          reason: '_DeafSystem is not a _Ping. Under the old walk it was still '
-              'reached and still type-tested on every dispatch; now it is not '
-              'in the list at all');
+      expect(
+        state.ping.listenerCount,
+        5,
+        reason:
+            '_DeafSystem is not a _Ping. Under the old walk it was still '
+            'reached and still type-tested on every dispatch; now it is not '
+            'in the list at all',
+      );
     });
   });
 
@@ -160,10 +166,14 @@ void main() {
       expect(state.pings, 1, reason: 'the owner collects itself');
       expect(game.pinger.pings, 1, reason: 'GameState offers its systems');
       expect(game.level.pings, 1, reason: 'and its declared scenes');
-      expect(game.level.unit.pings, 1,
-          reason: 'and each scene offers the prefabs it registered - this is '
-              'the Game -> Scenes -> Entities broadcast, walked once at boot '
-              'instead of once per event');
+      expect(
+        game.level.unit.pings,
+        1,
+        reason:
+            'and each scene offers the prefabs it registered - this is '
+            'the Game -> Scenes -> Entities broadcast, walked once at boot '
+            'instead of once per event',
+      );
       expect(game.level.selfish.pings, 1);
     });
 
@@ -174,39 +184,53 @@ void main() {
       state.ping.call();
       state.ping.call();
 
-      expect(game.level.unit.pings, 2,
-          reason: 'the composition walk can legitimately reach one listener by '
-              'two routes; the dispatcher dedupes on identity so a double '
-              'delivery cannot happen');
+      expect(
+        game.level.unit.pings,
+        2,
+        reason:
+            'the composition walk can legitimately reach one listener by '
+            'two routes; the dispatcher dedupes on identity so a double '
+            'delivery cannot happen',
+      );
     });
   });
 
   group('an event declared lower down stays there', () {
-    test("a prefab's own dispatcher reaches that prefab and nothing else",
-        () async {
-      final game = await _boot();
-      final selfish = game.level.selfish;
+    test(
+      "a prefab's own dispatcher reaches that prefab and nothing else",
+      () async {
+        final game = await _boot();
+        final selfish = game.level.selfish;
 
-      expect(selfish.ping.listenerCount, 1,
-          reason: 'a prefab composes nothing further, so its dispatcher is the '
-              'narrowest scope there is');
+        expect(
+          selfish.ping.listenerCount,
+          1,
+          reason:
+              'a prefab composes nothing further, so its dispatcher is the '
+              'narrowest scope there is',
+        );
 
-      selfish.ping.call();
+        selfish.ping.call();
 
-      expect(selfish.pings, 1);
-      expect(game.level.unit.pings, 0, reason: 'not its sibling prefab');
-      expect(game.level.pings, 0, reason: 'not upwards to its scene');
-      expect(game.pinger.pings, 0, reason: 'and not sideways to systems');
-      expect((run.state as _PingState).pings, 0);
-    });
+        expect(selfish.pings, 1);
+        expect(game.level.unit.pings, 0, reason: 'not its sibling prefab');
+        expect(game.level.pings, 0, reason: 'not upwards to its scene');
+        expect(game.pinger.pings, 0, reason: 'and not sideways to systems');
+        expect((run.state as _PingState).pings, 0);
+      },
+    );
 
     test('the same listener type is two independent dispatchers', () async {
       final game = await _boot();
       final state = run.state as _PingState;
 
-      expect(state.ping, isNot(same(game.level.selfish.ping)),
-          reason: 'scope is per declaring owner, not per listener type - two '
-              'owners declaring EventDispatcher<_Ping> get two lists');
+      expect(
+        state.ping,
+        isNot(same(game.level.selfish.ping)),
+        reason:
+            'scope is per declaring owner, not per listener type - two '
+            'owners declaring EventDispatcher<_Ping> get two lists',
+      );
     });
   });
 
@@ -219,11 +243,18 @@ void main() {
       state.ping.call();
 
       expect(game.pinger.pings, 0, reason: 'disabled means it declines');
-      expect(state.ping.listenerCount, 5,
-          reason: 'but it is still in the list - enablement is runtime state, '
-              'so it is a bool read at dispatch rather than a re-collection');
-      expect(game.level.unit.pings, 1,
-          reason: 'and one listener declining does not stop the loop');
+      expect(
+        state.ping.listenerCount,
+        5,
+        reason:
+            'but it is still in the list - enablement is runtime state, '
+            'so it is a bool read at dispatch rather than a re-collection',
+      );
+      expect(
+        game.level.unit.pings,
+        1,
+        reason: 'and one listener declining does not stop the loop',
+      );
     });
 
     test('re-enabling needs no re-collection', () async {

@@ -12,13 +12,11 @@ import 'package:goo/src/pool.dart';
 import 'package:goo/src/scene.dart';
 import 'package:goo/src/struct.dart';
 import 'package:goo/src/system.dart';
-import 'package:goo/src/handle.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
-late InlineGameHandle run;
-
+late Game run;
 
 // Single-copy coverage for describeState/StateChannel, driven through
 // Game.startInline(...) exactly as game_test.dart does:
@@ -52,7 +50,6 @@ class _Probe extends EntityStruct {
     super.describeStruct(data);
     hits = data.hasUint16();
   }
-
 }
 
 /// A plain scene - like a Component, it cannot declare state channels.
@@ -65,7 +62,6 @@ class _StateScene extends SceneStruct {
   void describeScene(SceneDescriptor descriptor) {
     probe = descriptor.has(_Probe());
   }
-
 }
 
 /// A `GameSystem` - and the only thing in this fixture that runs per tick,
@@ -147,8 +143,6 @@ class _StateGame extends Game {
   @override
   GameState createState() => _StateGameState();
 
-
-
   @override
   void describeState(StateDescriptor descriptor) {
     capturedDescriptor = descriptor;
@@ -218,10 +212,16 @@ void main() {
       // allocated - not a null, not zeroed memory, not a throw.
       expect(game.gameCount.value, 7, reason: 'declared on the Game');
       expect(run.state.getScene<_StateScene>(), same(scene));
-      expect(game.stateCount.value, -5,
-          reason: 'a second channel on the same Game, at a different width');
-      expect(system.probeCount.value, 300,
-          reason: 'a second channel on the same GameSystem');
+      expect(
+        game.stateCount.value,
+        -5,
+        reason: 'a second channel on the same Game, at a different width',
+      );
+      expect(
+        system.probeCount.value,
+        300,
+        reason: 'a second channel on the same GameSystem',
+      );
       expect(system.health.value, 100, reason: 'declared on a GameSystem');
       expect(system.mana.value, closeTo(0.5, 1e-9));
       expect(system.alive.value, isTrue);
@@ -239,8 +239,11 @@ void main() {
 
       expect(game.gameCount.value, 111);
       expect(system.probeCount.value, 222);
-      expect(system.mana.value, closeTo(0.5, 1e-9),
-          reason: 'a third channel nobody wrote to is untouched');
+      expect(
+        system.mana.value,
+        closeTo(0.5, 1e-9),
+        reason: 'a third channel nobody wrote to is untouched',
+      );
     });
 
     test('declaring after boot is refused', () async {
@@ -252,14 +255,19 @@ void main() {
       expect(() => descriptor.hasInt32(), throwsStateError);
       expect(() => descriptor.hasFloat64(), throwsStateError);
       expect(() => descriptor.hasBool(), throwsStateError);
-      expect(game.stateChannelCount, 6,
-          reason: 'and nothing was appended to the declared set');
+      expect(
+        game.stateChannelCount,
+        6,
+        reason: 'and nothing was appended to the declared set',
+      );
     });
 
-    test('bootStateDescriptor is unreachable outside a boot pass', () async {
-      final game = await _boot(_StateGame());
-      expect(() => game.bootStateDescriptor, throwsStateError);
-    });
+    // `Game.bootStateDescriptor` used to be here, with a test that it threw
+    // outside a boot pass. Both are gone: the descriptor is a local in
+    // `_bootMain` now, so there is nothing to reach for and nothing to
+    // diagnose. The `_sealed` check above is what survives, and it is the
+    // stronger of the two - it catches holding on to a descriptor you were
+    // legitimately handed, which is the mistake that could actually happen.
   });
 
   group('width vocabulary', () {
@@ -288,22 +296,28 @@ void main() {
       final game = await _boot(_WidthGame());
       game.f32.value = 0.1;
       game.f64.value = 0.1;
-      expect(game.f32.value, isNot(0.1),
-          reason: 'a 4-byte channel cannot hold a double exactly - which is '
-              'the point of naming the width at the declaration');
+      expect(
+        game.f32.value,
+        isNot(0.1),
+        reason:
+            'a 4-byte channel cannot hold a double exactly - which is '
+            'the point of naming the width at the declaration',
+      );
       expect(game.f32.value, closeTo(0.1, 1e-7));
       expect(game.f64.value, 0.1);
     });
 
-    test('bool is a real bool, and its declared initial value survives',
-        () async {
-      final game = await _boot(_WidthGame());
-      expect(game.flag.value, isTrue, reason: 'declared hasBool(true)');
-      game.flag.value = false;
-      expect(game.flag.value, isFalse);
-      game.flag.value = true;
-      expect(game.flag.value, isTrue);
-    });
+    test(
+      'bool is a real bool, and its declared initial value survives',
+      () async {
+        final game = await _boot(_WidthGame());
+        expect(game.flag.value, isTrue, reason: 'declared hasBool(true)');
+        game.flag.value = false;
+        expect(game.flag.value, isFalse);
+        game.flag.value = true;
+        expect(game.flag.value, isTrue);
+      },
+    );
 
     test('successive writes rotate slots without losing the value', () async {
       final game = await _boot(_StateGame());
@@ -319,22 +333,34 @@ void main() {
   });
 
   group('ValueListenable', () {
-    test('a channel is one, so ValueListenableBuilder takes it directly',
-        () async {
-      final game = await _boot(_StateGame());
-      expect(game.gameCount, isA<ValueListenable<int>>());
-      expect(run.state.getSystem<_StateSystem>().mana, isA<ValueListenable<double>>());
-      expect(run.state.getSystem<_StateSystem>().alive, isA<ValueListenable<bool>>());
-    });
+    test(
+      'a channel is one, so ValueListenableBuilder takes it directly',
+      () async {
+        final game = await _boot(_StateGame());
+        expect(game.gameCount, isA<ValueListenable<int>>());
+        expect(
+          run.state.getSystem<_StateSystem>().mana,
+          isA<ValueListenable<double>>(),
+        );
+        expect(
+          run.state.getSystem<_StateSystem>().alive,
+          isA<ValueListenable<bool>>(),
+        );
+      },
+    );
 
     test('a write on the owning copy notifies synchronously', () async {
       final game = await _boot(_StateGame());
       _watch('gameCount', game.gameCount);
 
       game.gameCount.value = 42;
-      expect(changes, ['gameCount -> 42'],
-          reason: 'the writer is on this isolate, so there is nothing to wait '
-              'for - no tick, no message, no microtask');
+      expect(
+        changes,
+        ['gameCount -> 42'],
+        reason:
+            'the writer is on this isolate, so there is nothing to wait '
+            'for - no tick, no message, no microtask',
+      );
     });
 
     test('fires once per actual change, not once per write', () async {
@@ -348,8 +374,9 @@ void main() {
 
       // Same value again: a write happened, but nothing changed.
       run.state.runFixedStep();
-      expect(changes, ['gameCount -> 50'],
-          reason: 'writing an equal value is not a change');
+      expect(changes, [
+        'gameCount -> 50',
+      ], reason: 'writing an equal value is not a change');
 
       system.nextGameCount = 51;
       run.state.runFixedStep();
@@ -363,16 +390,20 @@ void main() {
 
       run.state.runFixedStep();
       run.state.runFixedStep();
-      expect(changes, isEmpty,
-          reason: 'no write at all, and the initial value is not a change');
+      expect(
+        changes,
+        isEmpty,
+        reason: 'no write at all, and the initial value is not a change',
+      );
 
       system.nextHealth = 1;
       run.state.runFixedStep();
       system.nextHealth = null;
       run.state.runFixedStep();
       run.state.runFixedStep();
-      expect(changes, ['health -> 1'],
-          reason: 'quiet ticks after a change are still quiet');
+      expect(changes, [
+        'health -> 1',
+      ], reason: 'quiet ticks after a change are still quiet');
     });
 
     test('a channel nobody listens to simply never notifies', () async {
@@ -384,17 +415,19 @@ void main() {
       expect(changes, isEmpty);
     });
 
-    test('a listener added late compares against the value at that moment',
-        () async {
-      final game = await _boot(_StateGame());
-      game.gameCount.value = 3;
-      _watch('gameCount', game.gameCount);
-      expect(changes, isEmpty, reason: 'adding a listener is not a change');
-      game.gameCount.value = 3;
-      expect(changes, isEmpty, reason: 'and neither is rewriting the same 3');
-      game.gameCount.value = 4;
-      expect(changes, ['gameCount -> 4']);
-    });
+    test(
+      'a listener added late compares against the value at that moment',
+      () async {
+        final game = await _boot(_StateGame());
+        game.gameCount.value = 3;
+        _watch('gameCount', game.gameCount);
+        expect(changes, isEmpty, reason: 'adding a listener is not a change');
+        game.gameCount.value = 3;
+        expect(changes, isEmpty, reason: 'and neither is rewriting the same 3');
+        game.gameCount.value = 4;
+        expect(changes, ['gameCount -> 4']);
+      },
+    );
 
     test('removeListener stops it', () async {
       final game = await _boot(_StateGame());

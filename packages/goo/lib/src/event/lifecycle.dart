@@ -7,11 +7,14 @@ import 'package:goo/src/struct.dart';
 // Bring-up and tear-down, as events, so that something *other than the owner*
 // can hear about them.
 //
-// Each level already has a plain virtual for its own bring-up -
-// `GameState.onMounted()`, `SceneStruct.onMounted(Scene)`,
-// `Component.onMounted(Entity)` - and those stay exactly as they are. They are
-// the owner answering for itself: one receiver, framework the only caller,
-// nothing to dispatch and nobody to dispatch it to.
+// Only the top level still has a plain virtual for its own bring-up:
+// `GameState.onMounted()`, which is the owner answering for itself - one
+// receiver, framework the only caller, nothing to dispatch and nobody to
+// dispatch it to. The scene and entity levels used to have one too
+// (`SceneStruct.onMounted(Scene)`, `Component.onMounted(Entity)`) and no
+// longer do: those owners mix in the listener below and hear their own
+// bring-up through the dispatcher like anything else. See scene.dart's note
+// on why the ordering the virtuals guaranteed survives that.
 //
 // What was missing, and what these close, is the *other* direction: a
 // `GameSystem` that wants to know the game has come up, or that a scene was
@@ -50,22 +53,24 @@ mixin GameLifecycleListener on GameListener {
 
 /// Hears **any** scene being loaded or unloaded, and is told which one.
 ///
-/// Deliberately distinct from `SceneStruct.onMounted(Scene)`, and the
-/// difference is *whose* mount it reports:
+/// Two different questions land on the same hook, and which one a listener is
+/// asking depends on where it is mixed in:
 ///
-///  * `SceneStruct.onMounted(scene)` - "an instance of **me** mounted". The
-///    scene's own bring-up, where it spawns its starting entities. Narrow by
-///    construction, since only that struct is called.
-///  * [onSceneMounted] - "**a** scene mounted". A broadcast to every listener
-///    the `GameState` collects, which is what lets a system react to scene
+///  * On a `SceneStruct` - "an instance of **me** mounted". Every scene struct
+///    mixes this in, so this is where a scene spawns its starting entities.
+///    It is narrow because the struct's own [SceneStruct.mountedEvent] only
+///    ever collects that struct.
+///  * On a `GameSystem` (or anything the `GameState` collects) - "**a** scene
+///    mounted". The broadcast, which is what lets a system react to scene
 ///    transitions at all.
 ///
-/// A `SceneStruct` may mix this in as well, and will then hear its own mount
-/// through both - which is correct rather than a quirk: it asked to hear every
-/// scene mount, and its own is one of them.
+/// A `SceneStruct` hearing its own mount through both is correct rather than a
+/// quirk: it asked to hear every scene mount, and its own is one of them.
 mixin SceneLifecycleListener on GameListener {
-  /// [scene] has been loaded and its own `onMounted` has run, so its starting
-  /// entities already exist.
+  /// [scene] has been loaded. A listener collected by the `GameState` sees
+  /// this after the scene struct's own [onSceneMounted] has run, so the
+  /// starting entities already exist - that is what the mount dispatcher's
+  /// forward order buys.
   void onSceneMounted(Scene scene) {}
 
   /// [scene] is being unloaded. Dispatched before its pages are released, so
@@ -75,14 +80,15 @@ mixin SceneLifecycleListener on GameListener {
 
 /// Hears **any** entity coming into being or going away.
 ///
-/// The third level of the same pair every other level has: the struct's own
-/// `Component.onMounted(Entity)`/`onUnmounted(Entity)` is the narrow half,
-/// called directly and only for its own entities, and this is the broadcast
-/// half for everything else - a spatial index, a networked replica table, an
-/// editor overlay.
+/// The third level of the same pair every other level has, and the same mixin
+/// serves both halves. Mixed into an `EntityStruct` it is the narrow half -
+/// that struct's [EntityStruct.mountedEvent] collects only itself, so it fires
+/// for its own entities and nothing else. Mixed in anywhere the `GameState`
+/// collects it is the broadcast half, for a spatial index, a networked replica
+/// table, an editor overlay.
 ///
-/// A listener hears **every** entity in the game, so it filters by archetype
-/// itself:
+/// A broadcast listener hears **every** entity in the game, so it filters by
+/// archetype itself:
 ///
 /// ```dart
 /// @override
@@ -99,8 +105,10 @@ mixin SceneLifecycleListener on GameListener {
 /// carried a `listenerCount > 0` guard - that guard is gone with the
 /// allocation it was avoiding.
 mixin EntityLifecycleListener on GameListener {
-  /// [entity] has been created and its struct's own `onMounted` has run, so
-  /// its declared field defaults are already stamped into the row.
+  /// [entity] has been created and its declared field defaults are already
+  /// stamped into the row - by the storage layer at creation, not by a write
+  /// on this tick, so a struct that only needs its defaults needs no override
+  /// here at all.
   void onEntityMounted(Entity entity) {}
 
   /// [entity] is going away, because the scene holding it is being unloaded.

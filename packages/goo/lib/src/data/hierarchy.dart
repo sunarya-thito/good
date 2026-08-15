@@ -20,7 +20,16 @@ class _EntityField extends DataPointer<Entity?> {
   }
 
   @override
-  void operator []=(Entity entity, Entity? newValue) => _raw[entity] = newValue?.value;
+  void operator []=(Entity entity, Entity? newValue) =>
+      _raw[entity] = newValue?.value;
+
+  /// Delegated like everything else here - the pending read belongs to the
+  /// underlying `optInt64`, and this only re-wraps the answer.
+  @override
+  Entity? readPending(Entity entity) {
+    final value = _raw.readPending(entity);
+    return value == null ? null : Entity(value);
+  }
 }
 
 mixin Child on Component {
@@ -98,7 +107,14 @@ mixin Parent on Component {
         'does not mix in Child - cannot be attached to a parent',
       );
     }
-    final oldLast = lastChild[self];
+    // `readPending`, not `lastChild[self]`. An ordinary read sees the last
+    // *published* snapshot, so two `addChild` calls in the same tick both read
+    // the same stale tail, both take the `oldLast == null` branch, and the
+    // second silently overwrites the first - the parent ends up with one child
+    // and the rest are orphaned with no error anywhere. Spawning a character
+    // with three attachments from one command is exactly that shape. See
+    // `DataPointer.readPending`.
+    final oldLast = lastChild.readPending(self);
     childComponent.prevSibling[child] = oldLast;
     childComponent.nextSibling[child] = null;
     if (oldLast == null) {
@@ -116,11 +132,21 @@ mixin Parent on Component {
   /// parent" instead of silently corrupting either list.
   void removeChild(Entity self, Entity child) {
     final childComponent = child.tryGet<Child>();
-    if (childComponent == null || childComponent.parent[child] != self) {
-      throw ArgumentError.value(child, 'child', 'is not currently a child of $self');
+    // `readPending` throughout, for the same reason `addChild` needs it:
+    // unlinking is a read-modify-write over the chain, and two removals in one
+    // tick would both read the *published* neighbours - so the second would
+    // restitch the list as it stood before the first, silently resurrecting a
+    // link. See `DataPointer.readPending`.
+    if (childComponent == null ||
+        childComponent.parent.readPending(child) != self) {
+      throw ArgumentError.value(
+        child,
+        'child',
+        'is not currently a child of $self',
+      );
     }
-    final prev = childComponent.prevSibling[child];
-    final next = childComponent.nextSibling[child];
+    final prev = childComponent.prevSibling.readPending(child);
+    final next = childComponent.nextSibling.readPending(child);
     if (prev == null) {
       firstChild[self] = next;
     } else {

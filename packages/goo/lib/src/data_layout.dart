@@ -1,7 +1,6 @@
 import 'dart:ffi';
 
 import 'package:goo/src/archetype.dart';
-import 'package:goo/src/pool.dart';
 import 'package:goo/src/data.dart';
 import 'package:goo/src/heap_object.dart';
 import 'package:goo/src/struct.dart';
@@ -17,14 +16,17 @@ import 'package:goo/src/struct.dart';
 /// `transform.transformOffsetX[instance] += 1` allocation-free across a
 /// million entities.
 ///
-/// Nothing here caches a raw address. Every access re-resolves the row
-/// through the page, because the page's backing slot rotates every tick
-/// (`MemoryPool.beginTick`/`commitTick`) and a pointer resolved last tick
-/// points at a slot the writer is about to reuse. Reads go through
-/// `MemoryPage.resolveRead` - the latest *published* snapshot - which is
-/// what makes a read from the render/UI isolate coherent, and what makes
-/// `+= 1` mean "last tick's value plus one" rather than reading a
-/// half-written tick.
+/// No *field* caches a row address. A row resolved last tick points at a slot
+/// the writer is about to reuse, because the page's backing slot rotates every
+/// tick (`MemoryPool.beginTick`/`commitTick`), so every access re-resolves
+/// through [ArchetypeStorage.rowRead] - which does keep a (epoch, pageIndex)
+/// cache of its own, invalidated precisely when the bases move. Reads go
+/// through the latest *published* snapshot, which is what makes a read from the
+/// render/UI isolate coherent, and what makes `+= 1` mean "last tick's value
+/// plus one" rather than reading a half-written tick.
+///
+/// Row addresses are plain `int`s throughout this file rather than
+/// `Pointer<Uint8>` - see [_readRow] for the measurement that forced it.
 
 /// Resolves a row for reading - the **last published** snapshot, never the
 /// tick currently being written.
@@ -37,7 +39,7 @@ import 'package:goo/src/struct.dart';
 ///    the same tick produce +1, not +2.
 ///  * a value written earlier in the same tick is **not** visible to a
 ///    later read in that tick. In particular, values assigned in
-///    `Component.onMounted` are invisible to systems running in the spawn
+///    `onEntityMounted` are invisible to systems running in the spawn
 ///    tick, and a read-modify-write in such a system will overwrite them.
 ///    Initialize by writing, never by reading-then-writing, on the tick an
 ///    entity is created.
@@ -53,30 +55,35 @@ import 'package:goo/src/struct.dart';
 /// state that exists. No reader isolate can be running yet - the scene is
 /// not live - and once anything has been published this branch is never
 /// taken again.
-Pointer<Uint8> _readRow(ArchetypeStorage storage, Entity entity) {
-  final page = _requirePage(storage, entity);
-  final offset = entity.rowOffset;
-  return page.resolveRead(offset) ?? page.resolveWrite(offset);
+@pragma('vm:prefer-inline')
+int _readRow(ArchetypeStorage storage, Entity entity) {
+  // Returns an **address**, not a `Pointer`, and that is the whole point.
+  //
+  // Two rounds of the same lesson landed here. First: one non-nullable call
+  // rather than `resolveRead(o) ?? resolveWrite(o)`, because a `Pointer<T>?`
+  // cannot be unboxed and the nullable spelling allocated a box on every field
+  // read - 14.4ns against 1.65ns (`tool/field_access_bench.dart`). Second, and
+  // larger: a **non**-nullable `Pointer` is still a heap object, so returning
+  // one from here allocated on every read too, and so did each `+ _byte` and
+  // `.cast<T>()` the accessor did to it. Handing back an `int` and letting each
+  // accessor do `Pointer<T>.fromAddress(row + offset)` compiles to a plain load
+  // - the compiler never materialises the pointer at all.
+  //
+  // `tool/column_dispatch_bench.dart` isolates it against every neighbouring
+  // suspect: 14.63ns/access through a `Pointer` field, 2.25ns through an `int`
+  // one, with the generic megamorphic `DataPointer` dispatch identical in both.
+  // Generics cost ~0 and megamorphic dispatch ~1.3ns; the boxing was ~12.
+  // End to end that is `WorldTransformSystem` at 249ns/entity/tick before and
+  // 91ns after (`goo2d/tool/world_transform_bench.dart`, 10k entities).
+  return storage.rowRead(entity);
 }
 
-/// The page [entity] lives in, or a diagnostic if the scene that owned it has
-/// been unloaded.
-///
-/// `ArchetypeStorage` tombstones a freed page's slot rather than removing it,
-/// precisely so this can happen: an `Entity` from an unloaded scene has no
-/// spare bits for a generation counter, so the only way to catch a stale
-/// handle is to notice that the page it names is gone. Reporting it beats the
-/// alternative, which is reading whatever the next scene put at that address.
-Never _rowGuard(ArchetypeStorage storage, Entity entity) =>
-    throw StateError(
-      'Entity ${entity.value} names page ${entity.pageIndex} of archetype '
-      '${storage.archetypeId} (${storage.prefab.runtimeType}), and that page '
-      'has been freed - the scene that owned it was unloaded. The handle '
-      'outlived its world; nothing here can be read or written through it.',
-    );
-
-MemoryPage _requirePage(ArchetypeStorage storage, Entity entity) =>
-    storage.pageAt(entity.pageIndex) ?? _rowGuard(storage, entity);
+// `_requirePage` used to live here, walking `pageAt` -> `resolveRow` ->
+// `readView` on **every field access**. A DevTools profile of 10k entities put
+// that chain at ~54% of all samples, so it moved into `ArchetypeStorage` as a
+// cache keyed by (epoch, pageIndex) - see `ArchetypeStorage.rowRead`. Two int
+// compares now stand where six calls did, and nothing above this line changed:
+// `field[entity]` is still `field[entity]`.
 
 /// Resolves this tick's write slot for [entity]'s row.
 ///
@@ -92,16 +99,17 @@ MemoryPage _requirePage(ArchetypeStorage storage, Entity entity) =>
 /// one guarded write path instead of restating the assertion - they are not
 /// `_Field` subclasses (a `DataArrayPointer` is not a `DataPointer`), so
 /// there is no inherited `_write` for them to call.
-Pointer<Uint8> _writeRow(ArchetypeStorage storage, Entity entity) {
-  final page = _requirePage(storage, entity);
+@pragma('vm:prefer-inline')
+int _writeRow(ArchetypeStorage storage, Entity entity) {
+  final row = storage.rowWrite(entity);
   assert(
-    storage.pool.isTickOpen || !page.hasPublished,
+    storage.pool.isTickOpen || !storage.cachedPage.hasPublished,
     'Component data was written outside a tick. MemoryPool.beginTick() '
     'copies the last published snapshot over the write slot, so this '
     'write would be silently discarded when the next tick starts. All '
     'mutation belongs between beginTick() and commitTick().',
   );
-  return page.resolveWrite(entity.rowOffset);
+  return row;
 }
 
 abstract base class _Field<T> extends DataPointer<T> implements ArchetypeField {
@@ -109,9 +117,21 @@ abstract base class _Field<T> extends DataPointer<T> implements ArchetypeField {
 
   final ArchetypeStorage _storage;
 
-  Pointer<Uint8> _write(Entity entity) => _writeRow(_storage, entity);
+  /// This field's value in an already-resolved row.
+  ///
+  /// Only implemented by the field kinds a structural mutation reads back
+  /// inside its own tick; see `DataPointer.readPending`, which is the only
+  /// caller and which explains why the rest deliberately throw rather than
+  /// answer with the published value.
+  T readFrom(int row) => throw UnsupportedError(
+    '$runtimeType does not implement readFrom - see DataPointer.readPending.',
+  );
 
-  Pointer<Uint8> _read(Entity entity) => _readRow(_storage, entity);
+  @pragma('vm:prefer-inline')
+  int _write(Entity entity) => _writeRow(_storage, entity);
+
+  @pragma('vm:prefer-inline')
+  int _read(Entity entity) => _readRow(_storage, entity);
 }
 
 // --- sub-byte fields ---------------------------------------------------
@@ -143,25 +163,34 @@ base class _SubByteUintField extends _Field<int> {
   final int _range;
 
   @override
-  int operator [](Entity entity) => (_read(entity)[_byte] >> _shift) & _valueMask;
+  int operator [](Entity entity) =>
+      (Pointer<Uint8>.fromAddress(_read(entity) + _byte).value >> _shift) &
+      _valueMask;
 
   @override
-  void operator []=(Entity entity, int newValue) => _store(_write(entity), newValue);
+  void operator []=(Entity entity, int newValue) =>
+      _store(_write(entity), newValue);
 
-  void _store(Pointer<Uint8> row, int newValue) {
-    row[_byte] =
-        (row[_byte] & ~_byteMask & 0xFF) | ((newValue & _valueMask) << _shift);
+  void _store(int row, int newValue) {
+    Pointer<Uint8>.fromAddress(row + _byte).value =
+        (Pointer<Uint8>.fromAddress(row + _byte).value & ~_byteMask & 0xFF) |
+        ((newValue & _valueMask) << _shift);
   }
 
   @override
-  void writeDefault(Pointer<Uint8> row) => _store(row, _default);
+  void writeDefault(int row) => _store(row, _default);
 }
 
 /// Two's-complement variant. Note `hasInt1` therefore holds -1 or 0, which
 /// is what a 1-bit two's-complement integer means - it is not a bool with
 /// values 0/1 (`hasUint1` is that).
 final class _SubByteIntField extends _SubByteUintField {
-  _SubByteIntField(super.storage, super.bitOffset, super.bitWidth, super.defaultValue);
+  _SubByteIntField(
+    super.storage,
+    super.bitOffset,
+    super.bitWidth,
+    super.defaultValue,
+  );
 
   @override
   int operator [](Entity entity) {
@@ -182,13 +211,16 @@ final class _Uint8Field extends _Field<int> {
   final int _default;
 
   @override
-  int operator [](Entity entity) => _read(entity)[_byte];
+  int operator [](Entity entity) =>
+      Pointer<Uint8>.fromAddress(_read(entity) + _byte).value;
 
   @override
-  void operator []=(Entity entity, int newValue) => _write(entity)[_byte] = newValue;
+  void operator []=(Entity entity, int newValue) =>
+      Pointer<Uint8>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(Pointer<Uint8> row) => row[_byte] = _default;
+  void writeDefault(int row) =>
+      Pointer<Uint8>.fromAddress(row + _byte).value = _default;
 }
 
 final class _Int8Field extends _Field<int> {
@@ -197,14 +229,16 @@ final class _Int8Field extends _Field<int> {
   final int _default;
 
   @override
-  int operator [](Entity entity) => (_read(entity) + _byte).cast<Int8>().value;
+  int operator [](Entity entity) =>
+      Pointer<Int8>.fromAddress(_read(entity) + _byte).value;
 
   @override
   void operator []=(Entity entity, int newValue) =>
-      (_write(entity) + _byte).cast<Int8>().value = newValue;
+      Pointer<Int8>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(Pointer<Uint8> row) => (row + _byte).cast<Int8>().value = _default;
+  void writeDefault(int row) =>
+      Pointer<Int8>.fromAddress(row + _byte).value = _default;
 }
 
 final class _Uint16Field extends _Field<int> {
@@ -213,14 +247,16 @@ final class _Uint16Field extends _Field<int> {
   final int _default;
 
   @override
-  int operator [](Entity entity) => (_read(entity) + _byte).cast<Uint16>().value;
+  int operator [](Entity entity) =>
+      Pointer<Uint16>.fromAddress(_read(entity) + _byte).value;
 
   @override
   void operator []=(Entity entity, int newValue) =>
-      (_write(entity) + _byte).cast<Uint16>().value = newValue;
+      Pointer<Uint16>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(Pointer<Uint8> row) => (row + _byte).cast<Uint16>().value = _default;
+  void writeDefault(int row) =>
+      Pointer<Uint16>.fromAddress(row + _byte).value = _default;
 }
 
 final class _Int16Field extends _Field<int> {
@@ -229,14 +265,16 @@ final class _Int16Field extends _Field<int> {
   final int _default;
 
   @override
-  int operator [](Entity entity) => (_read(entity) + _byte).cast<Int16>().value;
+  int operator [](Entity entity) =>
+      Pointer<Int16>.fromAddress(_read(entity) + _byte).value;
 
   @override
   void operator []=(Entity entity, int newValue) =>
-      (_write(entity) + _byte).cast<Int16>().value = newValue;
+      Pointer<Int16>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(Pointer<Uint8> row) => (row + _byte).cast<Int16>().value = _default;
+  void writeDefault(int row) =>
+      Pointer<Int16>.fromAddress(row + _byte).value = _default;
 }
 
 final class _Uint32Field extends _Field<int> {
@@ -245,14 +283,16 @@ final class _Uint32Field extends _Field<int> {
   final int _default;
 
   @override
-  int operator [](Entity entity) => (_read(entity) + _byte).cast<Uint32>().value;
+  int operator [](Entity entity) =>
+      Pointer<Uint32>.fromAddress(_read(entity) + _byte).value;
 
   @override
   void operator []=(Entity entity, int newValue) =>
-      (_write(entity) + _byte).cast<Uint32>().value = newValue;
+      Pointer<Uint32>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(Pointer<Uint8> row) => (row + _byte).cast<Uint32>().value = _default;
+  void writeDefault(int row) =>
+      Pointer<Uint32>.fromAddress(row + _byte).value = _default;
 }
 
 final class _Int32Field extends _Field<int> {
@@ -261,14 +301,16 @@ final class _Int32Field extends _Field<int> {
   final int _default;
 
   @override
-  int operator [](Entity entity) => (_read(entity) + _byte).cast<Int32>().value;
+  int operator [](Entity entity) =>
+      Pointer<Int32>.fromAddress(_read(entity) + _byte).value;
 
   @override
   void operator []=(Entity entity, int newValue) =>
-      (_write(entity) + _byte).cast<Int32>().value = newValue;
+      Pointer<Int32>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(Pointer<Uint8> row) => (row + _byte).cast<Int32>().value = _default;
+  void writeDefault(int row) =>
+      Pointer<Int32>.fromAddress(row + _byte).value = _default;
 }
 
 // Uint64/Int64 exist mainly so a field can hold a full packed `Entity`
@@ -283,14 +325,16 @@ final class _Uint64Field extends _Field<int> {
   final int _default;
 
   @override
-  int operator [](Entity entity) => (_read(entity) + _byte).cast<Uint64>().value;
+  int operator [](Entity entity) =>
+      Pointer<Uint64>.fromAddress(_read(entity) + _byte).value;
 
   @override
   void operator []=(Entity entity, int newValue) =>
-      (_write(entity) + _byte).cast<Uint64>().value = newValue;
+      Pointer<Uint64>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(Pointer<Uint8> row) => (row + _byte).cast<Uint64>().value = _default;
+  void writeDefault(int row) =>
+      Pointer<Uint64>.fromAddress(row + _byte).value = _default;
 }
 
 final class _Int64Field extends _Field<int> {
@@ -299,14 +343,22 @@ final class _Int64Field extends _Field<int> {
   final int _default;
 
   @override
-  int operator [](Entity entity) => (_read(entity) + _byte).cast<Int64>().value;
+  int operator [](Entity entity) =>
+      Pointer<Int64>.fromAddress(_read(entity) + _byte).value;
+
+  /// The value in an already-resolved row. Split out so [_OptionalField] can
+  /// read the *pending* row it resolved for the flag without resolving it a
+  /// second time - see `DataPointer.readPending`.
+  @override
+  int readFrom(int row) => Pointer<Int64>.fromAddress(row + _byte).value;
 
   @override
   void operator []=(Entity entity, int newValue) =>
-      (_write(entity) + _byte).cast<Int64>().value = newValue;
+      Pointer<Int64>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(Pointer<Uint8> row) => (row + _byte).cast<Int64>().value = _default;
+  void writeDefault(int row) =>
+      Pointer<Int64>.fromAddress(row + _byte).value = _default;
 }
 
 // dart:ffi names the IEEE-754 types Float/Double, not Float32/Float64.
@@ -316,14 +368,16 @@ final class _Float32Field extends _Field<double> {
   final double _default;
 
   @override
-  double operator [](Entity entity) => (_read(entity) + _byte).cast<Float>().value;
+  double operator [](Entity entity) =>
+      Pointer<Float>.fromAddress(_read(entity) + _byte).value;
 
   @override
   void operator []=(Entity entity, double newValue) =>
-      (_write(entity) + _byte).cast<Float>().value = newValue;
+      Pointer<Float>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(Pointer<Uint8> row) => (row + _byte).cast<Float>().value = _default;
+  void writeDefault(int row) =>
+      Pointer<Float>.fromAddress(row + _byte).value = _default;
 }
 
 final class _Float64Field extends _Field<double> {
@@ -332,14 +386,18 @@ final class _Float64Field extends _Field<double> {
   final double _default;
 
   @override
-  double operator [](Entity entity) => (_read(entity) + _byte).cast<Double>().value;
+  @pragma('vm:prefer-inline')
+  double operator [](Entity entity) =>
+      Pointer<Double>.fromAddress(_read(entity) + _byte).value;
 
   @override
+  @pragma('vm:prefer-inline')
   void operator []=(Entity entity, double newValue) =>
-      (_write(entity) + _byte).cast<Double>().value = newValue;
+      Pointer<Double>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(Pointer<Uint8> row) => (row + _byte).cast<Double>().value = _default;
+  void writeDefault(int row) =>
+      Pointer<Double>.fromAddress(row + _byte).value = _default;
 }
 
 // --- object reference fields --------------------------------------------
@@ -356,24 +414,30 @@ final class _Float64Field extends _Field<double> {
 // - one field deref, where this used to reach `_storage.assets`.
 
 final class _GlobalObjectField<T extends GlobalObject> extends _Field<T> {
-  _GlobalObjectField(super.storage, this._byte, this._table, this._defaultAddress);
+  _GlobalObjectField(
+    super.storage,
+    this._byte,
+    this._table,
+    this._defaultAddress,
+  );
   final int _byte;
   final ObjectTable _table;
   final int _defaultAddress;
 
   @override
   T operator [](Entity entity) {
-    final address = (_read(entity) + _byte).cast<Uint32>().value;
+    final address = Pointer<Uint32>.fromAddress(_read(entity) + _byte).value;
     return _table.resolve<T>(address);
   }
 
   @override
   void operator []=(Entity entity, T newValue) =>
-      (_write(entity) + _byte).cast<Uint32>().value = newValue.address;
+      Pointer<Uint32>.fromAddress(_write(entity) + _byte).value =
+          newValue.address;
 
   @override
-  void writeDefault(Pointer<Uint8> row) =>
-      (row + _byte).cast<Uint32>().value = _defaultAddress;
+  void writeDefault(int row) =>
+      Pointer<Uint32>.fromAddress(row + _byte).value = _defaultAddress;
 }
 
 /// `hasHeapObject`/`optHeapObject`: the same Uint32-address-in-the-row shape
@@ -411,18 +475,21 @@ final class _HeapObjectField<T> extends _Field<T> {
   final T Function()? _defaultFactory;
 
   @override
-  T operator [](Entity entity) =>
-      HeapObjectRegistry.resolve<T>((_read(entity) + _byte).cast<Uint32>().value);
+  T operator [](Entity entity) => HeapObjectRegistry.resolve<T>(
+    Pointer<Uint32>.fromAddress(_read(entity) + _byte).value,
+  );
 
   @override
   void operator []=(Entity entity, T newValue) =>
-      (_write(entity) + _byte).cast<Uint32>().value =
-          HeapObjectRegistry.register(newValue);
+      Pointer<Uint32>.fromAddress(_write(entity) + _byte)
+          .value = HeapObjectRegistry.register(
+        newValue,
+      );
 
   @override
-  void writeDefault(Pointer<Uint8> row) {
+  void writeDefault(int row) {
     final factory = _defaultFactory;
-    (row + _byte).cast<Uint32>().value = factory == null
+    Pointer<Uint32>.fromAddress(row + _byte).value = factory == null
         ? 0
         : HeapObjectRegistry.register(factory());
   }
@@ -441,8 +508,12 @@ final class _HeapObjectField<T> extends _Field<T> {
 /// `null` write to a single byte read-modify-write instead of also zeroing
 /// up to 8 bytes.
 final class _OptionalField<T> extends _Field<T?> {
-  _OptionalField(super.storage, int flagBitOffset, this._value, this._defaultPresent)
-    : _flagByte = flagBitOffset >> 3,
+  _OptionalField(
+    super.storage,
+    int flagBitOffset,
+    this._value,
+    this._defaultPresent,
+  ) : _flagByte = flagBitOffset >> 3,
       _flagMask = 1 << (flagBitOffset & 7);
 
   final int _flagByte;
@@ -452,28 +523,54 @@ final class _OptionalField<T> extends _Field<T?> {
 
   @override
   T? operator [](Entity entity) {
-    if (_read(entity)[_flagByte] & _flagMask == 0) return null;
+    if (Pointer<Uint8>.fromAddress(_read(entity) + _flagByte).value &
+            _flagMask ==
+        0) {
+      return null;
+    }
     return _value[entity];
+  }
+
+  /// Both halves - the presence flag and the value - read from the same
+  /// pending row, because a structural edit made earlier this tick set both,
+  /// and taking one from each slot would report a field that is present
+  /// according to one snapshot and absent according to the other.
+  @override
+  T? readPending(Entity entity) {
+    // Outside a tick there is no meaningful write slot: the one the buffer
+    // would hand back holds whatever sat there before `beginWrite` copied. The
+    // published read is the only correct answer there, and is what every
+    // caller wants anyway.
+    if (!_storage.pool.isTickOpen) return this[entity];
+    final row = _storage.rowWrite(entity);
+    if (Pointer<Uint8>.fromAddress(row + _flagByte).value & _flagMask == 0) {
+      return null;
+    }
+    return _value.readFrom(row);
   }
 
   @override
   void operator []=(Entity entity, T? newValue) {
     final row = _write(entity);
     if (newValue == null) {
-      row[_flagByte] = row[_flagByte] & ~_flagMask & 0xFF;
+      Pointer<Uint8>.fromAddress(row + _flagByte).value =
+          Pointer<Uint8>.fromAddress(row + _flagByte).value & ~_flagMask & 0xFF;
       return;
     }
-    row[_flagByte] = row[_flagByte] | _flagMask;
+    Pointer<Uint8>.fromAddress(row + _flagByte).value =
+        Pointer<Uint8>.fromAddress(row + _flagByte).value | _flagMask;
     _value[entity] = newValue;
   }
 
   @override
-  void writeDefault(Pointer<Uint8> row) {
+  void writeDefault(int row) {
     if (_defaultPresent) {
-      row[_flagByte] = row[_flagByte] | _flagMask;
+      Pointer<Uint8>.fromAddress(row + _flagByte).value =
+          Pointer<Uint8>.fromAddress(row + _flagByte).value | _flagMask;
       _value.writeDefault(row);
     } else {
-      row[_flagByte] = row[_flagByte] & ~_flagMask & 0xFF;
+      Pointer<Uint8>.fromAddress(row + _flagByte).value =
+          Pointer<Uint8>.fromAddress(row + _flagByte).value & ~_flagMask & 0xFF;
     }
   }
 }
@@ -506,7 +603,8 @@ final class _OptionalField<T> extends _Field<T?> {
 // index), so they share the row-resolution helpers `_readRow`/`_writeRow`
 // rather than an inheritance chain.
 
-abstract base class _ArrayField<T> implements DataArrayPointer<T>, ArchetypeField {
+abstract base class _ArrayField<T>
+    implements DataArrayPointer<T>, ArchetypeField {
   _ArrayField(this._storage, this.length);
 
   final ArchetypeStorage _storage;
@@ -514,8 +612,8 @@ abstract base class _ArrayField<T> implements DataArrayPointer<T>, ArchetypeFiel
   @override
   final int length;
 
-  Pointer<Uint8> _read(Entity entity) => _readRow(_storage, entity);
-  Pointer<Uint8> _write(Entity entity) => _writeRow(_storage, entity);
+  int _read(Entity entity) => _readRow(_storage, entity);
+  int _write(Entity entity) => _writeRow(_storage, entity);
 
   /// Bounds check. Without it an out-of-range index is not an error but
   /// silent corruption: the arithmetic would happily address a neighbouring
@@ -559,7 +657,9 @@ base class _SubByteUintArrayField extends _ArrayField<int> {
   int get(Entity entity, int index) {
     _checkIndex(index);
     final bit = _baseBit + index * _bitWidth;
-    return (_read(entity)[bit >> 3] >> (bit & 7)) & _valueMask;
+    return (Pointer<Uint8>.fromAddress(_read(entity) + (bit >> 3)).value >>
+            (bit & 7)) &
+        _valueMask;
   }
 
   @override
@@ -568,17 +668,18 @@ base class _SubByteUintArrayField extends _ArrayField<int> {
     _store(_write(entity), index, newValue);
   }
 
-  void _store(Pointer<Uint8> row, int index, int newValue) {
+  void _store(int row, int index, int newValue) {
     final bit = _baseBit + index * _bitWidth;
     final byte = bit >> 3;
     final shift = bit & 7;
     final byteMask = _valueMask << shift;
-    row[byte] =
-        (row[byte] & ~byteMask & 0xFF) | ((newValue & _valueMask) << shift);
+    Pointer<Uint8>.fromAddress(row + byte).value =
+        (Pointer<Uint8>.fromAddress(row + byte).value & ~byteMask & 0xFF) |
+        ((newValue & _valueMask) << shift);
   }
 
   @override
-  void writeDefault(Pointer<Uint8> row) {
+  void writeDefault(int row) {
     for (var i = 0; i < length; i++) {
       _store(row, i, _default);
     }
@@ -616,19 +717,20 @@ final class _Uint8ArrayField extends _ArrayField<int> {
   @override
   int get(Entity entity, int index) {
     _checkIndex(index);
-    return _read(entity)[_baseByte + index];
+    return Pointer<Uint8>.fromAddress(_read(entity) + _baseByte + index).value;
   }
 
   @override
   void set(Entity entity, int index, int newValue) {
     _checkIndex(index);
-    _write(entity)[_baseByte + index] = newValue;
+    Pointer<Uint8>.fromAddress(_write(entity) + _baseByte + index).value =
+        newValue;
   }
 
   @override
-  void writeDefault(Pointer<Uint8> row) {
+  void writeDefault(int row) {
     for (var i = 0; i < length; i++) {
-      row[_baseByte + i] = _default;
+      Pointer<Uint8>.fromAddress(row + _baseByte + i).value = _default;
     }
   }
 }
@@ -641,18 +743,18 @@ final class _Int8ArrayField extends _ArrayField<int> {
   @override
   int get(Entity entity, int index) {
     _checkIndex(index);
-    return (_read(entity) + _baseByte).cast<Int8>()[index];
+    return Pointer<Int8>.fromAddress(_read(entity) + _baseByte)[index];
   }
 
   @override
   void set(Entity entity, int index, int newValue) {
     _checkIndex(index);
-    (_write(entity) + _baseByte).cast<Int8>()[index] = newValue;
+    Pointer<Int8>.fromAddress(_write(entity) + _baseByte)[index] = newValue;
   }
 
   @override
-  void writeDefault(Pointer<Uint8> row) {
-    final elements = (row + _baseByte).cast<Int8>();
+  void writeDefault(int row) {
+    final elements = Pointer<Int8>.fromAddress(row + _baseByte);
     for (var i = 0; i < length; i++) {
       elements[i] = _default;
     }
@@ -667,18 +769,18 @@ final class _Uint16ArrayField extends _ArrayField<int> {
   @override
   int get(Entity entity, int index) {
     _checkIndex(index);
-    return (_read(entity) + _baseByte).cast<Uint16>()[index];
+    return Pointer<Uint16>.fromAddress(_read(entity) + _baseByte)[index];
   }
 
   @override
   void set(Entity entity, int index, int newValue) {
     _checkIndex(index);
-    (_write(entity) + _baseByte).cast<Uint16>()[index] = newValue;
+    Pointer<Uint16>.fromAddress(_write(entity) + _baseByte)[index] = newValue;
   }
 
   @override
-  void writeDefault(Pointer<Uint8> row) {
-    final elements = (row + _baseByte).cast<Uint16>();
+  void writeDefault(int row) {
+    final elements = Pointer<Uint16>.fromAddress(row + _baseByte);
     for (var i = 0; i < length; i++) {
       elements[i] = _default;
     }
@@ -693,18 +795,18 @@ final class _Int16ArrayField extends _ArrayField<int> {
   @override
   int get(Entity entity, int index) {
     _checkIndex(index);
-    return (_read(entity) + _baseByte).cast<Int16>()[index];
+    return Pointer<Int16>.fromAddress(_read(entity) + _baseByte)[index];
   }
 
   @override
   void set(Entity entity, int index, int newValue) {
     _checkIndex(index);
-    (_write(entity) + _baseByte).cast<Int16>()[index] = newValue;
+    Pointer<Int16>.fromAddress(_write(entity) + _baseByte)[index] = newValue;
   }
 
   @override
-  void writeDefault(Pointer<Uint8> row) {
-    final elements = (row + _baseByte).cast<Int16>();
+  void writeDefault(int row) {
+    final elements = Pointer<Int16>.fromAddress(row + _baseByte);
     for (var i = 0; i < length; i++) {
       elements[i] = _default;
     }
@@ -719,18 +821,18 @@ final class _Uint32ArrayField extends _ArrayField<int> {
   @override
   int get(Entity entity, int index) {
     _checkIndex(index);
-    return (_read(entity) + _baseByte).cast<Uint32>()[index];
+    return Pointer<Uint32>.fromAddress(_read(entity) + _baseByte)[index];
   }
 
   @override
   void set(Entity entity, int index, int newValue) {
     _checkIndex(index);
-    (_write(entity) + _baseByte).cast<Uint32>()[index] = newValue;
+    Pointer<Uint32>.fromAddress(_write(entity) + _baseByte)[index] = newValue;
   }
 
   @override
-  void writeDefault(Pointer<Uint8> row) {
-    final elements = (row + _baseByte).cast<Uint32>();
+  void writeDefault(int row) {
+    final elements = Pointer<Uint32>.fromAddress(row + _baseByte);
     for (var i = 0; i < length; i++) {
       elements[i] = _default;
     }
@@ -745,18 +847,18 @@ final class _Int32ArrayField extends _ArrayField<int> {
   @override
   int get(Entity entity, int index) {
     _checkIndex(index);
-    return (_read(entity) + _baseByte).cast<Int32>()[index];
+    return Pointer<Int32>.fromAddress(_read(entity) + _baseByte)[index];
   }
 
   @override
   void set(Entity entity, int index, int newValue) {
     _checkIndex(index);
-    (_write(entity) + _baseByte).cast<Int32>()[index] = newValue;
+    Pointer<Int32>.fromAddress(_write(entity) + _baseByte)[index] = newValue;
   }
 
   @override
-  void writeDefault(Pointer<Uint8> row) {
-    final elements = (row + _baseByte).cast<Int32>();
+  void writeDefault(int row) {
+    final elements = Pointer<Int32>.fromAddress(row + _baseByte);
     for (var i = 0; i < length; i++) {
       elements[i] = _default;
     }
@@ -764,25 +866,30 @@ final class _Int32ArrayField extends _ArrayField<int> {
 }
 
 final class _Float32ArrayField extends _ArrayField<double> {
-  _Float32ArrayField(super.storage, super.length, this._baseByte, this._default);
+  _Float32ArrayField(
+    super.storage,
+    super.length,
+    this._baseByte,
+    this._default,
+  );
   final int _baseByte;
   final double _default;
 
   @override
   double get(Entity entity, int index) {
     _checkIndex(index);
-    return (_read(entity) + _baseByte).cast<Float>()[index];
+    return Pointer<Float>.fromAddress(_read(entity) + _baseByte)[index];
   }
 
   @override
   void set(Entity entity, int index, double newValue) {
     _checkIndex(index);
-    (_write(entity) + _baseByte).cast<Float>()[index] = newValue;
+    Pointer<Float>.fromAddress(_write(entity) + _baseByte)[index] = newValue;
   }
 
   @override
-  void writeDefault(Pointer<Uint8> row) {
-    final elements = (row + _baseByte).cast<Float>();
+  void writeDefault(int row) {
+    final elements = Pointer<Float>.fromAddress(row + _baseByte);
     for (var i = 0; i < length; i++) {
       elements[i] = _default;
     }
@@ -790,25 +897,30 @@ final class _Float32ArrayField extends _ArrayField<double> {
 }
 
 final class _Float64ArrayField extends _ArrayField<double> {
-  _Float64ArrayField(super.storage, super.length, this._baseByte, this._default);
+  _Float64ArrayField(
+    super.storage,
+    super.length,
+    this._baseByte,
+    this._default,
+  );
   final int _baseByte;
   final double _default;
 
   @override
   double get(Entity entity, int index) {
     _checkIndex(index);
-    return (_read(entity) + _baseByte).cast<Double>()[index];
+    return Pointer<Double>.fromAddress(_read(entity) + _baseByte)[index];
   }
 
   @override
   void set(Entity entity, int index, double newValue) {
     _checkIndex(index);
-    (_write(entity) + _baseByte).cast<Double>()[index] = newValue;
+    Pointer<Double>.fromAddress(_write(entity) + _baseByte)[index] = newValue;
   }
 
   @override
-  void writeDefault(Pointer<Uint8> row) {
-    final elements = (row + _baseByte).cast<Double>();
+  void writeDefault(int row) {
+    final elements = Pointer<Double>.fromAddress(row + _baseByte);
     for (var i = 0; i < length; i++) {
       elements[i] = _default;
     }
@@ -818,7 +930,8 @@ final class _Float64ArrayField extends _ArrayField<double> {
 /// `hasObjectArray` - one `Uint32` [GlobalObject] address per element, the
 /// per-element repeat of [_GlobalObjectField]. 32-bit elements are always
 /// byte-aligned, so there is no sub-byte concern here at all.
-final class _GlobalObjectArrayField<T extends GlobalObject> extends _ArrayField<T> {
+final class _GlobalObjectArrayField<T extends GlobalObject>
+    extends _ArrayField<T> {
   _GlobalObjectArrayField(
     super.storage,
     super.length,
@@ -833,19 +946,22 @@ final class _GlobalObjectArrayField<T extends GlobalObject> extends _ArrayField<
   @override
   T get(Entity entity, int index) {
     _checkIndex(index);
-    final address = (_read(entity) + _baseByte).cast<Uint32>()[index];
+    final address = Pointer<Uint32>.fromAddress(
+      _read(entity) + _baseByte,
+    )[index];
     return _table.resolve<T>(address);
   }
 
   @override
   void set(Entity entity, int index, T newValue) {
     _checkIndex(index);
-    (_write(entity) + _baseByte).cast<Uint32>()[index] = newValue.address;
+    Pointer<Uint32>.fromAddress(_write(entity) + _baseByte)[index] =
+        newValue.address;
   }
 
   @override
-  void writeDefault(Pointer<Uint8> row) {
-    final elements = (row + _baseByte).cast<Uint32>();
+  void writeDefault(int row) {
+    final elements = Pointer<Uint32>.fromAddress(row + _baseByte);
     for (var i = 0; i < length; i++) {
       elements[i] = _defaultAddress;
     }
@@ -890,7 +1006,11 @@ final class _OptionalArrayField<T> extends _ArrayField<T?> {
   T? get(Entity entity, int index) {
     _checkIndex(index);
     final flagBit = _flagBits[index];
-    if (_read(entity)[flagBit >> 3] & (1 << (flagBit & 7)) == 0) return null;
+    if (Pointer<Uint8>.fromAddress(_read(entity) + (flagBit >> 3)).value &
+            (1 << (flagBit & 7)) ==
+        0) {
+      return null;
+    }
     return _values[index][entity];
   }
 
@@ -902,24 +1022,28 @@ final class _OptionalArrayField<T> extends _ArrayField<T?> {
     final mask = 1 << (flagBit & 7);
     final row = _write(entity);
     if (newValue == null) {
-      row[byte] = row[byte] & ~mask & 0xFF;
+      Pointer<Uint8>.fromAddress(row + byte).value =
+          Pointer<Uint8>.fromAddress(row + byte).value & ~mask & 0xFF;
       return;
     }
-    row[byte] = row[byte] | mask;
+    Pointer<Uint8>.fromAddress(row + byte).value =
+        Pointer<Uint8>.fromAddress(row + byte).value | mask;
     _values[index][entity] = newValue;
   }
 
   @override
-  void writeDefault(Pointer<Uint8> row) {
+  void writeDefault(int row) {
     for (var i = 0; i < length; i++) {
       final flagBit = _flagBits[i];
       final byte = flagBit >> 3;
       final mask = 1 << (flagBit & 7);
       if (_defaultPresent) {
-        row[byte] = row[byte] | mask;
+        Pointer<Uint8>.fromAddress(row + byte).value =
+            Pointer<Uint8>.fromAddress(row + byte).value | mask;
         _values[i].writeDefault(row);
       } else {
-        row[byte] = row[byte] & ~mask & 0xFF;
+        Pointer<Uint8>.fromAddress(row + byte).value =
+            Pointer<Uint8>.fromAddress(row + byte).value & ~mask & 0xFF;
       }
     }
   }
@@ -977,7 +1101,12 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     // applies to whatever byte the flag left the cursor in.
     final flagBit = _storage.declareField(1);
     final value = _declareInt(bitWidth, signed, defaultValue ?? 0);
-    final field = _OptionalField<int>(_storage, flagBit, value, defaultValue != null);
+    final field = _OptionalField<int>(
+      _storage,
+      flagBit,
+      value,
+      defaultValue != null,
+    );
     _storage.registerField(field);
     return field;
   }
@@ -985,39 +1114,58 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
   DataPointer<double?> _optFloat(int bitWidth, double? defaultValue) {
     final flagBit = _storage.declareField(1);
     final value = _declareFloat(bitWidth, defaultValue ?? 0.0);
-    final field = _OptionalField<double>(_storage, flagBit, value, defaultValue != null);
+    final field = _OptionalField<double>(
+      _storage,
+      flagBit,
+      value,
+      defaultValue != null,
+    );
     _storage.registerField(field);
     return field;
   }
 
   @override
-  DataPointer<int> hasUint1([int defaultValue = 0]) => _has(1, false, defaultValue);
+  DataPointer<int> hasUint1([int defaultValue = 0]) =>
+      _has(1, false, defaultValue);
   @override
-  DataPointer<int> hasInt1([int defaultValue = 0]) => _has(1, true, defaultValue);
+  DataPointer<int> hasInt1([int defaultValue = 0]) =>
+      _has(1, true, defaultValue);
   @override
-  DataPointer<int> hasUint2([int defaultValue = 0]) => _has(2, false, defaultValue);
+  DataPointer<int> hasUint2([int defaultValue = 0]) =>
+      _has(2, false, defaultValue);
   @override
-  DataPointer<int> hasInt2([int defaultValue = 0]) => _has(2, true, defaultValue);
+  DataPointer<int> hasInt2([int defaultValue = 0]) =>
+      _has(2, true, defaultValue);
   @override
-  DataPointer<int> hasUint4([int defaultValue = 0]) => _has(4, false, defaultValue);
+  DataPointer<int> hasUint4([int defaultValue = 0]) =>
+      _has(4, false, defaultValue);
   @override
-  DataPointer<int> hasInt4([int defaultValue = 0]) => _has(4, true, defaultValue);
+  DataPointer<int> hasInt4([int defaultValue = 0]) =>
+      _has(4, true, defaultValue);
   @override
-  DataPointer<int> hasUint8([int defaultValue = 0]) => _has(8, false, defaultValue);
+  DataPointer<int> hasUint8([int defaultValue = 0]) =>
+      _has(8, false, defaultValue);
   @override
-  DataPointer<int> hasInt8([int defaultValue = 0]) => _has(8, true, defaultValue);
+  DataPointer<int> hasInt8([int defaultValue = 0]) =>
+      _has(8, true, defaultValue);
   @override
-  DataPointer<int> hasUint16([int defaultValue = 0]) => _has(16, false, defaultValue);
+  DataPointer<int> hasUint16([int defaultValue = 0]) =>
+      _has(16, false, defaultValue);
   @override
-  DataPointer<int> hasInt16([int defaultValue = 0]) => _has(16, true, defaultValue);
+  DataPointer<int> hasInt16([int defaultValue = 0]) =>
+      _has(16, true, defaultValue);
   @override
-  DataPointer<int> hasUint32([int defaultValue = 0]) => _has(32, false, defaultValue);
+  DataPointer<int> hasUint32([int defaultValue = 0]) =>
+      _has(32, false, defaultValue);
   @override
-  DataPointer<int> hasInt32([int defaultValue = 0]) => _has(32, true, defaultValue);
+  DataPointer<int> hasInt32([int defaultValue = 0]) =>
+      _has(32, true, defaultValue);
   @override
-  DataPointer<int> hasUint64([int defaultValue = 0]) => _has(64, false, defaultValue);
+  DataPointer<int> hasUint64([int defaultValue = 0]) =>
+      _has(64, false, defaultValue);
   @override
-  DataPointer<int> hasInt64([int defaultValue = 0]) => _has(64, true, defaultValue);
+  DataPointer<int> hasInt64([int defaultValue = 0]) =>
+      _has(64, true, defaultValue);
   @override
   DataPointer<double> hasFloat32([double defaultValue = 0.0]) =>
       _hasFloat(32, defaultValue);
@@ -1026,33 +1174,43 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
       _hasFloat(64, defaultValue);
 
   @override
-  DataPointer<int?> optUint1([int? defaultValue]) => _opt(1, false, defaultValue);
+  DataPointer<int?> optUint1([int? defaultValue]) =>
+      _opt(1, false, defaultValue);
   @override
   DataPointer<int?> optInt1([int? defaultValue]) => _opt(1, true, defaultValue);
   @override
-  DataPointer<int?> optUint2([int? defaultValue]) => _opt(2, false, defaultValue);
+  DataPointer<int?> optUint2([int? defaultValue]) =>
+      _opt(2, false, defaultValue);
   @override
   DataPointer<int?> optInt2([int? defaultValue]) => _opt(2, true, defaultValue);
   @override
-  DataPointer<int?> optUint4([int? defaultValue]) => _opt(4, false, defaultValue);
+  DataPointer<int?> optUint4([int? defaultValue]) =>
+      _opt(4, false, defaultValue);
   @override
   DataPointer<int?> optInt4([int? defaultValue]) => _opt(4, true, defaultValue);
   @override
-  DataPointer<int?> optUint8([int? defaultValue]) => _opt(8, false, defaultValue);
+  DataPointer<int?> optUint8([int? defaultValue]) =>
+      _opt(8, false, defaultValue);
   @override
   DataPointer<int?> optInt8([int? defaultValue]) => _opt(8, true, defaultValue);
   @override
-  DataPointer<int?> optUint16([int? defaultValue]) => _opt(16, false, defaultValue);
+  DataPointer<int?> optUint16([int? defaultValue]) =>
+      _opt(16, false, defaultValue);
   @override
-  DataPointer<int?> optInt16([int? defaultValue]) => _opt(16, true, defaultValue);
+  DataPointer<int?> optInt16([int? defaultValue]) =>
+      _opt(16, true, defaultValue);
   @override
-  DataPointer<int?> optUint32([int? defaultValue]) => _opt(32, false, defaultValue);
+  DataPointer<int?> optUint32([int? defaultValue]) =>
+      _opt(32, false, defaultValue);
   @override
-  DataPointer<int?> optInt32([int? defaultValue]) => _opt(32, true, defaultValue);
+  DataPointer<int?> optInt32([int? defaultValue]) =>
+      _opt(32, true, defaultValue);
   @override
-  DataPointer<int?> optUint64([int? defaultValue]) => _opt(64, false, defaultValue);
+  DataPointer<int?> optUint64([int? defaultValue]) =>
+      _opt(64, false, defaultValue);
   @override
-  DataPointer<int?> optInt64([int? defaultValue]) => _opt(64, true, defaultValue);
+  DataPointer<int?> optInt64([int? defaultValue]) =>
+      _opt(64, true, defaultValue);
   @override
   DataPointer<double?> optFloat32([double? defaultValue]) =>
       _optFloat(32, defaultValue);
@@ -1118,8 +1276,20 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     final baseBit = _declareElements(length, bitWidth);
     if (bitWidth < 8) {
       return signed
-          ? _SubByteIntArrayField(_storage, length, baseBit, bitWidth, defaultValue)
-          : _SubByteUintArrayField(_storage, length, baseBit, bitWidth, defaultValue);
+          ? _SubByteIntArrayField(
+              _storage,
+              length,
+              baseBit,
+              bitWidth,
+              defaultValue,
+            )
+          : _SubByteUintArrayField(
+              _storage,
+              length,
+              baseBit,
+              bitWidth,
+              defaultValue,
+            );
     }
     final byte = baseBit >> 3;
     return switch ((bitWidth, signed)) {
@@ -1214,7 +1384,12 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     T defaultValue,
   ) {
     final byte = _storage.declareField(32) >> 3;
-    final field = _GlobalObjectField<T>(_storage, byte, table, defaultValue.address);
+    final field = _GlobalObjectField<T>(
+      _storage,
+      byte,
+      table,
+      defaultValue.address,
+    );
     _storage.registerField(field);
     return field;
   }
@@ -1225,9 +1400,18 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
   ) {
     final flagBit = _storage.declareField(1);
     final byte = _storage.declareField(32) >> 3;
-    final value =
-        _GlobalObjectField<T>(_storage, byte, table, defaultValue?.address ?? 0);
-    final field = _OptionalField<T>(_storage, flagBit, value, defaultValue != null);
+    final value = _GlobalObjectField<T>(
+      _storage,
+      byte,
+      table,
+      defaultValue?.address ?? 0,
+    );
+    final field = _OptionalField<T>(
+      _storage,
+      flagBit,
+      value,
+      defaultValue != null,
+    );
     _storage.registerField(field);
     return field;
   }
@@ -1358,11 +1542,15 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
   DataArrayPointer<int?> optInt32Array(int length, [int? defaultValue]) =>
       _optIntArray(length, 32, true, defaultValue);
   @override
-  DataArrayPointer<double?> optFloat32Array(int length, [double? defaultValue]) =>
-      _optFloatArray(length, 32, defaultValue);
+  DataArrayPointer<double?> optFloat32Array(
+    int length, [
+    double? defaultValue,
+  ]) => _optFloatArray(length, 32, defaultValue);
   @override
-  DataArrayPointer<double?> optFloat64Array(int length, [double? defaultValue]) =>
-      _optFloatArray(length, 64, defaultValue);
+  DataArrayPointer<double?> optFloat64Array(
+    int length, [
+    double? defaultValue,
+  ]) => _optFloatArray(length, 64, defaultValue);
 
   @override
   DataPointer<T> hasObject<T extends GlobalObject>(
@@ -1426,4 +1614,3 @@ final class ArchetypeComponentDescriptor implements ComponentDescriptor {
     _storage.componentSignature |= ComponentTypeRegistry.bitFor(type ?? T);
   }
 }
-

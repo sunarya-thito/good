@@ -2,8 +2,20 @@
 /// scenes, fixed-tick loop, hierarchy, and the generic asset registry.
 library;
 
+// Timelines and the coroutine runtime they are driven by. Both are reached
+// through members every `EntityStruct`, `SceneStruct`, `GameSystem` and
+// `GameState` already has - `startCoroutine`, `describeAnimation` - so a game
+// never imports either file, but it does have to be able to *spell* what they
+// hand back: a `Track<double>` field, a `TimelineAnimation`, a
+// `CoroutineFuture` to await.
+//
+// `CoroutineScheduler` comes along because `GameState.coroutines` is public and
+// a type you cannot name is a type you cannot hold.
+export 'src/animation/animatable.dart';
+export 'src/animation/struct.dart';
 export 'src/archetype.dart';
 export 'src/asset.dart';
+export 'src/coroutine/coroutine.dart';
 // The command API's two public layers: the shapes a command can take, and the
 // record its parameters and results live in. What is hidden is the plumbing
 // behind them - the registry a `Game` owns, the two descriptor implementations
@@ -27,7 +39,12 @@ export 'src/command/command.dart'
         SinkCommand,
         SupplierCommand;
 export 'src/command/param.dart'
-    show CommandBatch, CommandBuffer, CommandResults, ParamDescriptor, ParamPointer;
+    show
+        CommandBatch,
+        CommandBuffer,
+        CommandResults,
+        ParamDescriptor,
+        ParamPointer;
 export 'src/data.dart';
 export 'src/data/hierarchy.dart';
 // EventBinder is the machinery behind the two declare/collect passes - `Game`
@@ -38,11 +55,23 @@ export 'src/event/fixed_loop.dart';
 export 'src/event/lifecycle.dart';
 export 'src/event/state.dart';
 export 'src/event/tick_loop.dart';
-export 'src/game.dart';
+// `GameRuntime` is hidden rather than exported: it is one run's internals -
+// the isolate roles, the ports, the command registry, and the inline-versus-
+// spawned split itself - and everything a caller legitimately wants from it
+// has a spelling on `Game` (`isRunning`, `tick`, `stop`, `createCommandBatch`,
+// and `state`/`advance` on an inline run). Hiding the *name* still lets code
+// inside this package reach `game.runtimeOrNull` and call through it, which is
+// what the tests' tick-waiting helper does.
+//
+// There is no `GameHandle` in this list because there is no `GameHandle`: it
+// was the main-side half of a design where a `Game` could back several runs,
+// and once one instance meant one run it had nothing left to hold that `Game`
+// itself could not.
+export 'src/game.dart' hide GameRuntime;
 export 'src/game_state.dart';
-export 'src/handle.dart' show GameHandle, InlineGameHandle, RunAttachment;
 export 'src/handoff_buffer.dart';
 export 'src/heap_object.dart';
+
 // Vector2 is part of the input system's surface (`Input<Vector2>`,
 // `Vec2Binding`), so it comes along - a game should not have to add a second
 // dependency to spell the type its own declaration hands back. vector_math_64

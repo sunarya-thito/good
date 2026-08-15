@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:goo/goo.dart';
 import 'package:goo2d/src/data/camera.dart';
 import 'package:goo2d/src/data/world_transform.dart';
+import 'package:goo2d/src/data/transform.dart';
 import 'package:goo2d/src/render/draw/draw_2d.dart';
 // Mutual with this file, and deliberately so: `Renderer2D` and
 // `GameRenderer2D` are the two isolate-halves of one feature. The Game mixin
@@ -56,8 +57,10 @@ class RelativeOffset2D {
   /// The middle of whatever this is resolved against - a sprite's own bounds,
   /// for a pivot. The default pivot, and what makes rotation and scale act
   /// about a sprite's centre.
-  static const RelativeOffset2D center =
-      RelativeOffset2D(fractionX: 0.5, fractionY: 0.5);
+  static const RelativeOffset2D center = RelativeOffset2D(
+    fractionX: 0.5,
+    fractionY: 0.5,
+  );
 
   /// Top-left, with no offset - the default alignment, and the pivot that
   /// puts the transform origin on the sprite's own top-left corner.
@@ -247,7 +250,7 @@ class Sprite {
 /// exposes, and each one doubles as that archetype's declared row default -
 /// the standing `MultiComponent` convention (`ColliderDescriptor`'s
 /// `has*Collider` methods are the same shape) - so the common case needs no
-/// `onMounted` write at all.
+/// `onEntityMounted` write at all.
 class SpriteDescriptor {
   SpriteDescriptor._(this._data, this._assets, this._sprites);
 
@@ -305,14 +308,60 @@ class SpriteDescriptor {
   }
 }
 
+/// The five transform fields the renderer reads, bound to whichever component
+/// an archetype actually keeps them in.
+///
+/// A renderable with `WorldTransform2D` is drawn from its composed world
+/// transform; one without is drawn from its local `Transform2D`. The two are
+/// different components with differently-named fields, and the write pass
+/// walks in z order across every archetype at once - so it cannot ask "which
+/// one is this?" per sprite without paying for the question 20,000 times.
+/// Binding the five `DataPointer`s once per archetype answers it once.
+///
+/// One instance per archetype, cached for the life of the run in
+/// [GameRenderer2D._sourceOf] - not per group per frame, which would be an
+/// allocation on the frame path (RULES.md rule 1).
+class _TransformSource {
+  _TransformSource.world(WorldTransform2D world)
+    : x = world.worldX,
+      y = world.worldY,
+      rotation = world.worldRotation,
+      scaleX = world.worldScaleX,
+      scaleY = world.worldScaleY;
+
+  _TransformSource.local(Transform2D local)
+    : x = local.transformOffsetX,
+      y = local.transformOffsetY,
+      rotation = local.transformRotation,
+      scaleX = local.transformScaleX,
+      scaleY = local.transformScaleY;
+
+  final DataPointer<double> x;
+  final DataPointer<double> y;
+  final DataPointer<double> rotation;
+  final DataPointer<double> scaleX;
+  final DataPointer<double> scaleY;
+}
+
 /// Marks an entity as something the renderer should draw, and carries the
 /// [Sprite]s it draws as.
 ///
-/// An entity mixing this in **must** also mix in `Transform2D` and
-/// `WorldTransform2D` - there is no meaningful place to draw something that
-/// has no position, and requiring it in the query (rather than defaulting to
-/// the origin) turns "I forgot the transform" into an entity that visibly
-/// never appears rather than a pile of quads stacked at 0,0.
+/// An entity mixing this in **must** also mix in `Transform2D` - there is no
+/// meaningful place to draw something that has no position, and requiring it
+/// in the query (rather than defaulting to the origin) turns "I forgot the
+/// transform" into an entity that visibly never appears rather than a pile of
+/// quads stacked at 0,0.
+///
+/// `WorldTransform2D` is **optional**, and that is the point of it being a
+/// separate mixin. A renderable that has it is drawn from its composed world
+/// transform; one that does not is drawn from its local `Transform2D`
+/// directly, which for an entity that is never parented is the same answer -
+/// exactly as `WorldTransform2D`'s own doc promises. Requiring it here used to
+/// make that promise false: every drawable had to carry the mixin, so
+/// `WorldTransformSystem` copied local to world for every sprite in the game
+/// every fixed step, and this pass then read the copy. At 20k flat sprites
+/// that copy was a third of the fixed step, spent to arrive back at the
+/// numbers it started from.
 ///
 /// A `MultiComponent`, because one entity commonly draws as several
 /// rectangles (a body and a hat, a panel and its icon) that move together but
@@ -377,6 +426,7 @@ final class _SpriteDrawQueue {
   _SpriteDrawQueue({int initialCapacity = 64})
     : _entities = List<Entity>.filled(initialCapacity, const Entity(0)),
       _sprites = List<Sprite?>.filled(initialCapacity, null),
+      _sources = List<_TransformSource?>.filled(initialCapacity, null),
       _zIndices = Int32List(initialCapacity),
       _records = Int32List(initialCapacity),
       _order = Int32List(initialCapacity),
@@ -384,6 +434,16 @@ final class _SpriteDrawQueue {
 
   List<Entity> _entities;
   List<Sprite?> _sprites;
+
+  /// Where the queued entity's transform is read from, carried from the fill
+  /// pass rather than re-derived in the write pass.
+  ///
+  /// It is a per-*archetype* answer, so the fill pass knows it once per group;
+  /// the write pass walks in z order across every archetype at once and would
+  /// otherwise have to ask per sprite - a registry lookup plus a subtype test
+  /// against a type variable, for an answer the other pass already had. One
+  /// reference per queued sprite, in an array reused like every other here.
+  List<_TransformSource?> _sources;
   Int32List _zIndices;
 
   /// How many draw records this pair will write: 1 for a plain sprite, 9 for a
@@ -429,10 +489,17 @@ final class _SpriteDrawQueue {
 
   /// Queues one (entity, sprite) pair to be drawn at depth [zIndex],
   /// costing [records] draw records.
-  void add(Entity entity, Sprite sprite, int zIndex, int records) {
+  void add(
+    Entity entity,
+    Sprite sprite,
+    _TransformSource source,
+    int zIndex,
+    int records,
+  ) {
     _ensure(_count + 1);
     _entities[_count] = entity;
     _sprites[_count] = sprite;
+    _sources[_count] = source;
     _zIndices[_count] = zIndex;
     _records[_count] = records;
     _order[_count] = _count;
@@ -445,6 +512,9 @@ final class _SpriteDrawQueue {
 
   /// The sprite of the [i]th pair *in draw order*.
   Sprite spriteAt(int i) => _sprites[_order[i]]!;
+
+  /// Where the [i]th pair *in draw order* reads its transform from.
+  _TransformSource sourceAt(int i) => _sources[_order[i]]!;
 
   /// How many records the [i]th pair *in draw order* writes.
   int recordsAt(int i) => _records[_order[i]];
@@ -514,6 +584,8 @@ final class _SpriteDrawQueue {
     _entities = List<Entity>.filled(next, const Entity(0))
       ..setRange(0, _count, _entities);
     _sprites = List<Sprite?>.filled(next, null)..setRange(0, _count, _sprites);
+    _sources = List<_TransformSource?>.filled(next, null)
+      ..setRange(0, _count, _sources);
     _zIndices = Int32List(next)..setRange(0, _count, _zIndices);
     _records = Int32List(next)..setRange(0, _count, _records);
     _order = Int32List(next)..setRange(0, _count, _order);
@@ -701,6 +773,34 @@ class GameRenderer2D extends GameSystem with Tickable {
   /// under the budget.
   int lastSpriteCount = 0;
 
+  /// Microseconds the last [onTick] spent in each of the three phases of the
+  /// present pass, across every view it rendered.
+  ///
+  /// One number for "presentation" says how expensive drawing is; it does not
+  /// say which of three unrelated things to do about it, and they have nothing
+  /// in common:
+  ///
+  ///  * [lastWalkMicros] - iterating renderables and filling the draw queue.
+  ///    Scales with *entities* and is component-field reads, the same cost
+  ///    every system pays.
+  ///  * [lastSortMicros] - `sortByZ`. Scales with `n log n` in sprites and
+  ///    touches no component data at all.
+  ///  * [lastWriteMicros] - turning queued sprites into geometry in the
+  ///    scratch buffer. Scales with sprites and is dominated by how many bytes
+  ///    a sprite costs in the wire format.
+  ///
+  /// Only the third is affected by changing the vertex format, only the second
+  /// by changing the ordering strategy, and only the first by anything the
+  /// storage layer does. Measured with one `Stopwatch` reused across all three
+  /// (see [_clock]) so the instrumentation itself allocates nothing.
+  int lastWalkMicros = 0;
+  int lastSortMicros = 0;
+  int lastWriteMicros = 0;
+
+  /// Reused by all three phase timings, per view - a `Stopwatch` is a heap
+  /// object and this runs every frame (RULES.md rule 1).
+  final Stopwatch _clock = Stopwatch();
+
   /// How many draw records the last [onTick] wrote - quads, not sprites.
   ///
   /// This is what `maxSpritesPerTick` bounds and what `spriteBatchBytes`
@@ -725,7 +825,11 @@ class GameRenderer2D extends GameSystem with Tickable {
     // Requiring `WorldTransform2D` rather than `Transform2D` is therefore the
     // real entry condition now: an entity is drawable when it has a resolved
     // world position, whether it got one as a root or through a parent chain.
-    _renderables = descriptor.query().withAll(Renderable2D, WorldTransform2D).build();
+    _renderables = descriptor
+        .query()
+        .withAll(Renderable2D, Transform2D)
+        .withOptional(WorldTransform2D)
+        .build();
     // The camera is queried, not configured on this system: "where the view
     // is" is a property of an entity in the scene that the simulation can move
     // like any other, not a field a presentation system owns. Requiring
@@ -900,16 +1004,24 @@ class GameRenderer2D extends GameSystem with Tickable {
         offset = DrawSpriteData2D.writeQuad(
           view,
           offset,
-          tx + ax0 - by0, ty + sy0 + cy0, // (left,  top)
-          tx + ax1 - by0, ty + sy1 + cy0, // (right, top)
-          tx + ax1 - by1, ty + sy1 + cy1, // (right, bottom)
-          tx + ax0 - by1, ty + sy0 + cy1, // (left,  bottom)
+          tx + ax0 - by0,
+          ty + sy0 + cy0, // (left,  top)
+          tx + ax1 - by0,
+          ty + sy1 + cy0, // (right, top)
+          tx + ax1 - by1,
+          ty + sy1 + cy1, // (right, bottom)
+          tx + ax0 - by1,
+          ty + sy0 + cy1, // (left,  bottom)
           color,
           textureAddress: address,
-          u0: u[col], v0: v[row],
-          u1: u[col + 1], v1: v[row],
-          u2: u[col + 1], v2: v[row + 1],
-          u3: u[col], v3: v[row + 1],
+          u0: u[col],
+          v0: v[row],
+          u1: u[col + 1],
+          v1: v[row],
+          u2: u[col + 1],
+          v2: v[row + 1],
+          u3: u[col],
+          v3: v[row + 1],
         );
       }
     }
@@ -939,21 +1051,59 @@ class GameRenderer2D extends GameSystem with Tickable {
     var sprites = 0;
     var records = 0;
     var dropped = false;
+    var walk = 0;
+    var sort = 0;
+    var write = 0;
     final views = game.cameraViews;
     for (var i = 0; i < views.length; i++) {
       _renderView(views[i], framesFor(views[i]));
       sprites += lastSpriteCount;
       records += lastRecordCount;
       dropped = dropped || lastWriteDropped;
+      walk += lastWalkMicros;
+      sort += lastSortMicros;
+      write += lastWriteMicros;
     }
     lastSpriteCount = sprites;
     lastRecordCount = records;
     lastWriteDropped = dropped;
+    lastWalkMicros = walk;
+    lastSortMicros = sort;
+    lastWriteMicros = write;
+  }
+
+  /// One [_TransformSource] per archetype, keyed by that archetype's
+  /// `Transform2D` - a component instance is per-archetype and unique, so it
+  /// is the archetype's identity without reaching for storage internals.
+  ///
+  /// Built on first sight of a group and kept: archetypes are declared at boot
+  /// and their component instances live as long as the run, so this fills once
+  /// and is a map read per group per frame after that - never per sprite, and
+  /// never an allocation on the frame path.
+  final Map<Transform2D, _TransformSource> _sourceCache =
+      <Transform2D, _TransformSource>{};
+
+  _TransformSource _sourceOf(QueryGroup group) {
+    final local = group.get<Transform2D>();
+    final cached = _sourceCache[local];
+    if (cached != null) return cached;
+    // `tryGet`, because `WorldTransform2D` is optional on a renderable - an
+    // entity that is never parented has no composed transform to read and its
+    // local one is already the answer. See [Renderable2D]'s doc.
+    final world = group.tryGet<WorldTransform2D>();
+    final source = world == null
+        ? _TransformSource.local(local)
+        : _TransformSource.world(world);
+    _sourceCache[local] = source;
+    return source;
   }
 
   void _renderView(CameraView cameraView, HandoffHandle handle) {
     lastSpriteCount = 0;
     lastRecordCount = 0;
+    lastWalkMicros = 0;
+    lastSortMicros = 0;
+    lastWriteMicros = 0;
     // Asked *before* any work is done, and that ordering is the point. Null
     // means main has not taken the last frame yet, so there is nowhere safe to
     // write - and rather than build a frame and throw it away, the whole pass
@@ -974,12 +1124,15 @@ class GameRenderer2D extends GameSystem with Tickable {
     final scratch = _scratch ??= Uint8List(spriteBatchBytes);
     final view = _scratchView ??= ByteData.sublistView(scratch);
 
-    // Presentation runs after `commitTick`, which is also after `Game.tick`
-    // was bumped - so the tick whose state this batch depicts is the current
-    // one, not one past it. Deriving the stamp instead of keeping a counter
-    // means a disabled-then-reenabled renderer cannot drift out of step with
-    // the simulation it is depicting.
-    DrawData2D.writeBatchTick(view, game.tick);
+    // Presentation runs after `commitTick`, which is also after the run's tick
+    // counter was bumped - so the tick whose state this batch depicts is the
+    // current one, not one past it. Deriving the stamp instead of keeping a
+    // counter means a disabled-then-reenabled renderer cannot drift out of
+    // step with the simulation it is depicting.
+    //
+    // Off the state, not the `Game`: a tick belongs to a run, and a `Game` can
+    // be backing several.
+    DrawData2D.writeBatchTick(view, state.tick);
 
     // Through `CameraProjection` rather than reading the camera's fields
     // here, so this and `MousePickingSystem` cannot end up applying two
@@ -1009,33 +1162,59 @@ class GameRenderer2D extends GameSystem with Tickable {
     // draw" is a question a *view* answers and there can be several views. A
     // game that wants a preloaded level to simulate unseen keeps its sprites
     // invisible or unloads it.
+    // Grouped, so the component and its sprite list are resolved once per
+    // archetype instead of once per entity - `entity.get<Renderable2D>()`
+    // returned the same object for every row, and at 10k rows that showed up
+    // in a profile.
+    //
+    // The label sits on the **group** loop, not the entity loop: `break outer`
+    // below fires when the record budget is spent, and that has to stop the
+    // whole pass. Left on the inner loop it would only finish this archetype
+    // and start the next, quietly overrunning the budget once per group.
+    _clock
+      ..reset()
+      ..start();
     outer:
-    for (final entity in _renderables.run()) {
-      if (onlyScene >= 0 && entity.sceneSlot != onlyScene) continue;
-      final renderable = entity.get<Renderable2D>();
+    for (final group in _renderables.groups()) {
+      final renderable = group.get<Renderable2D>();
       final sprites = renderable.sprites;
-      // An indexed loop, not `for (final sprite in sprites)`: this runs once
-      // per entity per tick and a fresh iterator is a heap object (RULES.md
-      // rules 1 and 5).
-      for (var i = 0; i < sprites.length; i++) {
-        final sprite = sprites[i];
-        // Invisible sprites are dropped here, before they are ever a record -
-        // not emitted transparent. A transparent quad still costs a record,
-        // six vertices and a share of the batch limit, and would still occlude
-        // nothing while pretending to be drawn.
-        if (sprite.visible[entity] == 0) continue;
-        if (sprite.width[entity] == 0 || sprite.height[entity] == 0) continue;
-        final records = _isNineSliced(entity, sprite) ? 9 : 1;
-        // Checked against this sprite's own cost, not against a fixed 1, so a
-        // nine-sliced sprite is admitted only if all nine of its records fit.
-        // Admitting it partially would write past the scratch.
-        if (queue.recordCount + records > limit) break outer;
-        queue.add(entity, sprite, sprite.zIndex[entity], records);
+      // Resolved once per archetype and carried through the queue, so the
+      // write pass never asks - see `_SpriteDrawQueue._sources`.
+      final source = _sourceOf(group);
+      for (final entity in group) {
+        if (onlyScene >= 0 && entity.sceneSlot != onlyScene) continue;
+        // An indexed loop, not `for (final sprite in sprites)`: this runs once
+        // per entity per tick and a fresh iterator is a heap object (RULES.md
+        // rules 1 and 5).
+        for (var i = 0; i < sprites.length; i++) {
+          final sprite = sprites[i];
+          // Invisible sprites are dropped here, before they are ever a record -
+          // not emitted transparent. A transparent quad still costs a record,
+          // six vertices and a share of the batch limit, and would still occlude
+          // nothing while pretending to be drawn.
+          if (sprite.visible[entity] == 0) continue;
+          if (sprite.width[entity] == 0 || sprite.height[entity] == 0) continue;
+          final records = _isNineSliced(entity, sprite) ? 9 : 1;
+          // Checked against this sprite's own cost, not against a fixed 1, so a
+          // nine-sliced sprite is admitted only if all nine of its records fit.
+          // Admitting it partially would write past the scratch.
+          if (queue.recordCount + records > limit) break outer;
+          queue.add(entity, sprite, source, sprite.zIndex[entity], records);
+        }
       }
     }
+    lastWalkMicros = _clock.elapsedMicroseconds;
+
+    _clock
+      ..reset()
+      ..start();
     queue.sortByZ();
+    lastSortMicros = _clock.elapsedMicroseconds;
 
     // Pass two: geometry, in draw order.
+    _clock
+      ..reset()
+      ..start();
     var offset = DrawData2D.batchHeaderBytes;
     final count = queue.length;
     for (var i = 0; i < count; i++) {
@@ -1048,11 +1227,14 @@ class GameRenderer2D extends GameSystem with Tickable {
       // hierarchy during the tick that just committed, and these are its
       // published results - see this class's `compareTo` doc for why that is
       // both fresh enough and the reason the old private composition is gone.
-      final world = entity.get<WorldTransform2D>();
-      final cos = math.cos(world.worldRotation[entity]);
-      final sin = math.sin(world.worldRotation[entity]);
-      final tx = projection.worldToViewX(world.worldX[entity]);
-      final ty = projection.worldToViewY(world.worldY[entity]);
+      final source = queue.sourceAt(i);
+      // One read, two trig calls. It was two reads of the same field, and a
+      // field read is not free enough to spend one saving a local.
+      final rotation = source.rotation[entity];
+      final cos = math.cos(rotation);
+      final sin = math.sin(rotation);
+      final tx = projection.worldToViewX(source.x[entity]);
+      final ty = projection.worldToViewY(source.y[entity]);
 
       // The pivot is a point inside the sprite's own `width x height` bounds,
       // measured from its top-left: `fraction * size + offset`. The transform
@@ -1061,12 +1243,14 @@ class GameRenderer2D extends GameSystem with Tickable {
       // `-size/2 .. +size/2` - the centred quad this system has always drawn -
       // and fraction 0 gives `0 .. size`, i.e. the origin on the top-left
       // corner.
-      final pivotX = sprite.pivotFractionX[entity] * width + sprite.pivotOffsetX[entity];
-      final pivotY = sprite.pivotFractionY[entity] * height + sprite.pivotOffsetY[entity];
+      final pivotX =
+          sprite.pivotFractionX[entity] * width + sprite.pivotOffsetX[entity];
+      final pivotY =
+          sprite.pivotFractionY[entity] * height + sprite.pivotOffsetY[entity];
       // Zoom folds into the scale for the same reason it folds into `tx`/`ty`
       // above: one multiply here beats a second pass over four corners.
-      final scaleX = world.worldScaleX[entity] * zoom;
-      final scaleY = world.worldScaleY[entity] * zoom;
+      final scaleX = source.scaleX[entity] * zoom;
+      final scaleY = source.scaleY[entity] * zoom;
       final lx0 = -pivotX * scaleX;
       final lx1 = (width - pivotX) * scaleX;
       final ly0 = -pivotY * scaleY;
@@ -1096,24 +1280,33 @@ class GameRenderer2D extends GameSystem with Tickable {
       //
       final texture = sprite.texture[entity];
       final color = sprite.color[entity];
-      final address =
-          texture == null ? DrawSpriteData2D.noTexture : texture.address;
+      final address = texture == null
+          ? DrawSpriteData2D.noTexture
+          : texture.address;
 
       if (queue.recordsAt(i) == 1) {
         offset = DrawSpriteData2D.writeQuad(
           view,
           offset,
-          tx + ax0 - bx0, ty + ay0 + by0, // (left,  top)
-          tx + ax1 - bx0, ty + ay1 + by0, // (right, top)
-          tx + ax1 - bx1, ty + ay1 + by1, // (right, bottom)
-          tx + ax0 - bx1, ty + ay0 + by1, // (left,  bottom)
+          tx + ax0 - bx0,
+          ty + ay0 + by0, // (left,  top)
+          tx + ax1 - bx0,
+          ty + ay1 + by0, // (right, top)
+          tx + ax1 - bx1,
+          ty + ay1 + by1, // (right, bottom)
+          tx + ax0 - bx1,
+          ty + ay0 + by1, // (left,  bottom)
           color,
           textureAddress: address,
           // The whole texture, in the same corner order the positions use.
-          u0: 0, v0: 0, // (left,  top)
-          u1: 1, v1: 0, // (right, top)
-          u2: 1, v2: 1, // (right, bottom)
-          u3: 0, v3: 1, // (left,  bottom)
+          u0: 0,
+          v0: 0, // (left,  top)
+          u1: 1,
+          v1: 0, // (right, top)
+          u2: 1,
+          v2: 1, // (right, bottom)
+          u3: 0,
+          v3: 1, // (left,  bottom)
         );
       } else {
         offset = _writeNineSlice(
@@ -1138,6 +1331,7 @@ class GameRenderer2D extends GameSystem with Tickable {
       }
     }
 
+    lastWriteMicros = _clock.elapsedMicroseconds;
     lastSpriteCount = count;
     lastRecordCount = queue.recordCount;
     // One record for the whole tick - see draw_2d.dart's library doc for why

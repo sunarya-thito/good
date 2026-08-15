@@ -1,5 +1,6 @@
 import 'dart:ffi';
 import 'dart:typed_data';
+
 import 'package:ffi/ffi.dart';
 
 /// A wait-free single-producer/single-consumer ring buffer over a fixed-size
@@ -168,7 +169,11 @@ class RingBuffer {
       // Zero-copy view directly over the pool's backing bytes - only the
       // small RingBufferRecord wrapper is allocated, proportional to the
       // number of records actually written, not to tick frequency.
-      final payload = Uint8List.sublistView(bytes, payloadStart, payloadStart + length);
+      final payload = Uint8List.sublistView(
+        bytes,
+        payloadStart,
+        payloadStart + length,
+      );
       records.add(RingBufferRecord(recordType, payload));
       _readCursor += recordTotal;
     }

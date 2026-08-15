@@ -23,7 +23,7 @@ class MouseEvent {
   /// Which entity this event is about. Components are shared per archetype
   /// rather than instantiated per entity, so `this` inside a handler is the
   /// whole archetype's component - this is the only thing that says which
-  /// entity was clicked, the same reason `onMounted` takes one.
+  /// entity was clicked, the same reason `onEntityMounted` takes one.
   late Entity entity;
 
   /// Where the pointer is, in the spaces the kernel can answer for (screen
@@ -166,8 +166,10 @@ class MousePickingSystem extends GameSystem with FixedTickable {
   @override
   void describeQuery(QueryDescriptor descriptor) {
     super.describeQuery(descriptor);
-    _receivers =
-        descriptor.query().withAll(MouseReceiver, Collider2D, WorldTransform2D).build();
+    _receivers = descriptor
+        .query()
+        .withAll(MouseReceiver, Collider2D, WorldTransform2D)
+        .build();
     _cameras = descriptor.query().withAll(Camera, WorldTransform2D).build();
   }
 

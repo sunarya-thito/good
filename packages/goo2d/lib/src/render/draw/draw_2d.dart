@@ -193,8 +193,10 @@ final class DrawSpriteData2D extends DrawData2D {
 
   /// Reads back the texture address of item [index] - the reader half of
   /// [writeQuad]'s texture field, so a decoder never re-derives the offset.
-  static int textureAddressAt(ByteData batch, int index) =>
-      batch.getInt32(DrawData2D.batchHeaderBytes + index * strideBytes + 36, Endian.little);
+  static int textureAddressAt(ByteData batch, int index) => batch.getInt32(
+    DrawData2D.batchHeaderBytes + index * strideBytes + 36,
+    Endian.little,
+  );
 
   @override
   int get recordType => spriteRecordType;
@@ -336,7 +338,8 @@ final class VertexBatch2D {
 
   /// The filled prefix of the position buffer - `x, y` per vertex. A view,
   /// not a copy; valid until the next [addQuad] that has to grow.
-  Float32List get positions => Float32List.sublistView(_positions, 0, _vertexCount * 2);
+  Float32List get positions =>
+      Float32List.sublistView(_positions, 0, _vertexCount * 2);
 
   /// The filled prefix of the colour buffer - one packed ARGB per vertex.
   ///
@@ -350,7 +353,8 @@ final class VertexBatch2D {
   /// The filled prefix of the texture-coordinate buffer - `u, v` per vertex,
   /// normalised 0..1. Meaningless for vertices in an untextured run, which
   /// carry whatever the producer wrote and never reach a shader.
-  Float32List get texCoords => Float32List.sublistView(_texCoords, 0, _vertexCount * 2);
+  Float32List get texCoords =>
+      Float32List.sublistView(_texCoords, 0, _vertexCount * 2);
 
   void reset() {
     _vertexCount = 0;
@@ -437,9 +441,11 @@ final class VertexBatch2D {
     while (capacity < vertices) {
       capacity *= 2;
     }
-    _positions = Float32List(capacity * 2)..setRange(0, _vertexCount * 2, _positions);
+    _positions = Float32List(capacity * 2)
+      ..setRange(0, _vertexCount * 2, _positions);
     _colors = Int32List(capacity)..setRange(0, _vertexCount, _colors);
-    _texCoords = Float32List(capacity * 2)..setRange(0, _vertexCount * 2, _texCoords);
+    _texCoords = Float32List(capacity * 2)
+      ..setRange(0, _vertexCount * 2, _texCoords);
     final runs = capacity ~/ _verticesPerQuad + 1;
     _runTextures = Int32List(runs)..setRange(0, _runCount, _runTextures);
     _runVertexEnds = Int32List(runs)..setRange(0, _runCount, _runVertexEnds);
@@ -459,15 +465,27 @@ final class VertexBatch2D {
   Vertices buildRun(int run) {
     final start = runVertexStart(run);
     final end = _runVertexEnds[run];
-    final runPositions = Float32List.sublistView(_positions, start * 2, end * 2);
+    final runPositions = Float32List.sublistView(
+      _positions,
+      start * 2,
+      end * 2,
+    );
     final runColors = Int32List.sublistView(_colors, start, end);
     if (_runTextures[run] == DrawSpriteData2D.noTexture) {
-      return Vertices.raw(VertexMode.triangles, runPositions, colors: runColors);
+      return Vertices.raw(
+        VertexMode.triangles,
+        runPositions,
+        colors: runColors,
+      );
     }
     return Vertices.raw(
       VertexMode.triangles,
       runPositions,
-      textureCoordinates: Float32List.sublistView(_texCoords, start * 2, end * 2),
+      textureCoordinates: Float32List.sublistView(
+        _texCoords,
+        start * 2,
+        end * 2,
+      ),
       colors: runColors,
     );
   }
@@ -676,7 +694,13 @@ final class DrawCanvas2D {
         // BlendMode.modulate multiplies source by destination - the sampled
         // texel by the per-vertex colour - so `Sprite.color` acts as a tint and
         // the default opaque white leaves the texture exactly as decoded.
-        canvas.drawVertices(vertices, BlendMode.modulate, _paintFor(address));
+        final paint = _paintFor(address);
+        // Null means the texture is declared but has not finished decoding on
+        // this isolate yet. Skipping the run drops it for exactly the frames
+        // that race the decode - see [_paintFor].
+        if (paint != null) {
+          canvas.drawVertices(vertices, BlendMode.modulate, paint);
+        }
       }
     }
   }
@@ -700,16 +724,30 @@ final class DrawCanvas2D {
 
   /// The cached shader `Paint` for [address], building it on first use.
   ///
-  /// Both failure modes here are loud on purpose. `resolve` throws when the
-  /// address names nothing on this isolate - a stale record, or an asset
-  /// unloaded out from under a frame still in flight - and `Texture.image`
-  /// throws through `requireLoaded` when the instance exists but was never
-  /// decoded here. Either way the alternative is sampling nothing and painting
-  /// silent garbage, which is the bug that takes a day to find.
-  Paint _paintFor(int address) {
+  /// `resolve` still throws when the address names nothing on this isolate: a
+  /// stale record is a real bug, and the alternative is sampling nothing and
+  /// painting silent garbage, which is the kind that takes a day to find.
+  ///
+  /// **Declared-but-not-yet-decoded is different, and returns null instead.**
+  /// It is not a bug at all - it is the ordinary state of the first frames of a
+  /// run. The simulation starts producing batches as soon as its scene mounts,
+  /// while the bytes are decoded over here on main and arrive a few frames
+  /// later, so a batch naming a texture main has not finished with is expected
+  /// and transient. Throwing on it took the whole app down the moment a case
+  /// had entities on its very first frame - which switching cases in the demo
+  /// menu did every time, and which read as "stuck on loading" because the
+  /// exception escaped from a painter rather than from the load.
+  ///
+  /// Skipping the run means those frames draw without that texture and the
+  /// next one draws normally. Nothing is silently wrong: the asset either
+  /// finishes decoding, or its load fails and reports that where the failure
+  /// actually is.
+  Paint? _paintFor(int address) {
     final cached = _texturePaints[address];
     if (cached != null) return cached;
-    final image = assets.resolve<Texture>(address).image;
+    final texture = assets.resolve<Texture>(address);
+    if (!texture.isLoaded) return null;
+    final image = texture.image;
     // scale(1/w, 1/h): maps the image onto the unit square, so the record's
     // normalised UVs address it whatever its pixel size. See the class doc.
     final matrix = Float64List(16);
@@ -717,8 +755,21 @@ final class DrawCanvas2D {
     matrix[5] = 1 / image.height;
     matrix[10] = 1;
     matrix[15] = 1;
+    // `filterQuality` matters more here than it would on `drawImageRect`,
+    // because a sprite is routinely drawn much smaller than its source image.
+    // Omitting it defaults to nearest sampling, and a minified sprite then
+    // *shimmers* as it moves, because which texel gets picked changes with
+    // sub-pixel position. That reads as "the art is low resolution" rather
+    // than as a filtering setting - which is exactly why it is declared per
+    // texture now instead of left to a default nobody can see.
     final paint = Paint()
-      ..shader = ImageShader(image, TileMode.clamp, TileMode.clamp, matrix);
+      ..shader = ImageShader(
+        image,
+        TileMode.clamp,
+        TileMode.clamp,
+        matrix,
+        filterQuality: texture.filterQuality,
+      );
     _texturePaints[address] = paint;
     return paint;
   }

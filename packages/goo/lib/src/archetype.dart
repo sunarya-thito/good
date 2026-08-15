@@ -149,13 +149,13 @@ abstract final class ArchetypeRegistry {
             // no pages and resolves no `Entity`. Data reaches it through a
             // `StateChannel` or a draw buffer, never by reading a row.
             ? 'no archetypes are registered on this isolate, so Entity '
-                '$archetypeId cannot be resolved. Reading component data is a '
-                'game-isolate act: the main copy is presentation-only, and its '
-                'registries stay empty by design. Publish the value through a '
-                'StateChannel (Game.describeState) and read that instead.'
+                  '$archetypeId cannot be resolved. Reading component data is a '
+                  'game-isolate act: the main copy is presentation-only, and its '
+                  'registries stay empty by design. Publish the value through a '
+                  'StateChannel (Game.describeState) and read that instead.'
             : 'no archetype with id $archetypeId - ${_storages.length} are '
-                'registered. An `Entity` from a different process, or one '
-                'built by hand, does not resolve here.',
+                  'registered. An `Entity` from a different process, or one '
+                  'built by hand, does not resolve here.',
       );
     }
     return _storages[archetypeId];
@@ -196,6 +196,84 @@ class ArchetypeStorage {
   final int archetypeId;
 
   final MemoryPool pool;
+
+  // --- the resolved-row cache ---------------------------------------------
+  //
+  // A query walks rows page by page, so consecutive accesses almost always hit
+  // the same page - and every field access was independently redoing
+  // `pageAt` -> `resolveRow` -> `readView` to discover that. The profile put
+  // that chain at ~14% of all CPU even after inlining.
+  //
+  // Keyed by (epoch, pageIndex): the epoch catches the bases moving under us
+  // (see `MemoryPool.epoch`), the page index catches crossing a page boundary.
+  // Two int compares replace the walk, and user code does not change at all -
+  // `field[entity]` is still `field[entity]`.
+  //
+  // The two bases are held as **`int` addresses, not `Pointer<Uint8>`**, and
+  // that is a performance decision rather than a stylistic one. `Pointer` is a
+  // real Dart object, so a field holding one is a boxed reference: every field
+  // access loaded the box, unboxed it, and allocated a *fresh* `Pointer` for
+  // `+ rowOffset` before the accessor allocated two more for its own offset and
+  // cast. `tool/column_dispatch_bench.dart` isolates it - the identical
+  // accessor shape costs 14.63ns/access reading through a `Pointer` field and
+  // 2.25ns reading through an `int` one, with the generic megamorphic
+  // `DataPointer` dispatch left in place. Addresses stay stable because the
+  // memory is native (`calloc`), never GC-relocated, and `epoch` already
+  // catches the bases actually moving.
+  int _cacheEpoch = -1;
+  int _cachePage = -1;
+  late MemoryPage _cachedPage;
+  late int _cacheRead;
+  late int _cacheWrite;
+
+  /// The stale-handle diagnostic. Same failure `data_layout`'s row guard
+  /// reported before the cache existed: an `Entity` has no generation bits, so
+  /// the only way to catch a handle that outlived its scene is to notice the
+  /// page it names has been tombstoned.
+  Never _staleRow(Entity entity) => throw StateError(
+    'Entity ${entity.value} names page ${entity.pageIndex} of archetype '
+    '$archetypeId (${prefab.runtimeType}), and that page has been freed - '
+    'the scene that owned it was unloaded. The handle outlived its world; '
+    'nothing here can be read or written through it.',
+  );
+
+  /// Re-resolves the cached page. Cold path: once per page per epoch.
+  void _refreshRowCache(int pageIndex, Entity entity) {
+    final page = pageAt(pageIndex) ?? _staleRow(entity);
+    _cachedPage = page;
+    _cacheRead = page.resolveRow(0).address;
+    _cacheWrite = page.resolveWrite(0).address;
+    _cachePage = pageIndex;
+    _cacheEpoch = pool.epoch;
+  }
+
+  /// The page the cache currently holds - for the write-path assertion, which
+  /// needs to ask whether anything has been published yet.
+  @internal
+  MemoryPage get cachedPage => _cachedPage;
+
+  @internal
+  @pragma('vm:prefer-inline')
+  /// The **address** of [entity]'s published row, not a `Pointer` - see the
+  /// cache fields above for why.
+  int rowRead(Entity entity) {
+    final index = entity.pageIndex;
+    if (_cacheEpoch != pool.epoch || _cachePage != index) {
+      _refreshRowCache(index, entity);
+    }
+    return _cacheRead + entity.rowOffset;
+  }
+
+  @internal
+  @pragma('vm:prefer-inline')
+  /// The **address** of [entity]'s write-slot row. See [rowRead].
+  int rowWrite(Entity entity) {
+    final index = entity.pageIndex;
+    if (_cacheEpoch != pool.epoch || _cachePage != index) {
+      _refreshRowCache(index, entity);
+    }
+    return _cacheWrite + entity.rowOffset;
+  }
 
   // There is no `owner` field recording the registering `SceneStruct`. There
   // was one, read in exactly one place - the spawn-by-archetype-id path, now
@@ -277,6 +355,7 @@ class ArchetypeStorage {
   /// per-field-access read/write path goes through here every time.
   /// The page at [index], or null if the scene that owned it has been
   /// unloaded - see [_pages].
+  @pragma('vm:prefer-inline')
   MemoryPage? pageAt(int index) => _pages[index];
 
   /// Appends a page this storage did **not** allocate - the mirror half of
@@ -399,7 +478,7 @@ class ArchetypeStorage {
     _sealed = true;
     _defaultRow = calloc<Uint8>(strideBytes);
     for (final field in _fields) {
-      field.writeDefault(_defaultRow);
+      field.writeDefault(_defaultRow.address);
     }
   }
 
@@ -414,13 +493,11 @@ class ArchetypeStorage {
   /// [archetypeId], so packing here rather than at the call site costs
   /// nothing.
   ///
-  /// Grows by asking [pool] for a fresh page only when the current page
-  /// reports `isFull` - `MemoryPool.allocatePage()` never searches, because
-  /// pages are stride-locked and "any page with room" is not a safe answer
-  /// for a specific archetype's row size. Note a page that filled up and
-  /// later had rows freed is not revisited: recycling across an
-  /// archetype's older pages lands with the despawn API, which does not
-  /// exist yet.
+  /// Grows by asking [pool] for a fresh page only when *no* page belonging to
+  /// this scene slot has room. `MemoryPool.allocatePage()` still never searches
+  /// - pages are stride-locked and "any page with room" is not a safe answer
+  /// for a specific archetype's row size - so the search lives here, where the
+  /// stride and the owning slot are both known.
   /// [sceneSlot] is the `Scene.slot` of the loaded scene this row belongs to,
   /// and it decides which *page group* the row lands in - see
   /// [_currentPageBySlot]. Pass -1 for a row outside any scene.
@@ -434,25 +511,60 @@ class ArchetypeStorage {
     }
     var current = _currentPageBySlot[sceneSlot] ?? -1;
     if (current < 0 || _pages[current] == null || _pages[current]!.isFull) {
-      if (_pages.length >= ArchetypeRegistry.maxPagesPerArchetype) {
-        throw StateError(
-          'Archetype ${prefab.runtimeType} has exhausted the '
-          "${ArchetypeRegistry.maxPagesPerArchetype} pages an Entity's "
-          '16-bit page index can address. This is a limit on scene '
-          'load/unload churn rather than on entity count: page indices are '
-          'never recycled, so every load takes a fresh one. If a game '
-          'legitimately gets here, the fix is recycling indices behind a '
-          'generation counter, not a bigger page.',
-        );
+      // Before opening a *new* page, look for an existing one with room.
+      //
+      // This cursor only ever moved forward, and that was a permanent leak:
+      // once a page bump-filled, the next allocation made a fresh page current
+      // and the old one was never allocated from again - so every row later
+      // freed in it was stranded for the life of the process. Population stayed
+      // flat while the walked extent grew without bound, which made every
+      // `beginTick` memcpy (it copies `page.highWaterMark`, see
+      // `MemoryPool.beginTick`) and every query walk get steadily more
+      // expensive. Measured in `goo2d/tool/churn_bench.dart`: 22.5k live
+      // entities against 201k walked rows after 600 ticks, per-tick cost
+      // climbing 4.5ms -> 10.2ms and still rising.
+      //
+      // Only pages belonging to this scene slot qualify - a page is released
+      // when *its* scene unloads (see `releaseScenePages`), so lending one to
+      // another scene's entities would free rows still in use.
+      //
+      // The scan is O(pages) but runs only when the current page is full,
+      // which is exactly the path that was about to do the far more expensive
+      // thing of mapping fresh memory.
+      var reused = -1;
+      for (var i = 0; i < _pages.length; i++) {
+        final candidate = _pages[i];
+        if (candidate != null &&
+            candidate.ownerSceneSlot == sceneSlot &&
+            !candidate.isFull) {
+          reused = i;
+          break;
+        }
       }
-      _pages.add(
-        pool.allocatePage(
-          ownerArchetypeId: archetypeId,
-          ownerSceneSlot: sceneSlot,
-        ),
-      );
-      current = _pages.length - 1;
-      _currentPageBySlot[sceneSlot] = current;
+      if (reused >= 0) {
+        _currentPageBySlot[sceneSlot] = reused;
+        current = reused;
+      } else {
+        if (_pages.length >= ArchetypeRegistry.maxPagesPerArchetype) {
+          throw StateError(
+            'Archetype ${prefab.runtimeType} has exhausted the '
+            "${ArchetypeRegistry.maxPagesPerArchetype} pages an Entity's "
+            '16-bit page index can address. This is a limit on scene '
+            'load/unload churn rather than on entity count: page indices are '
+            'never recycled, so every load takes a fresh one. If a game '
+            'legitimately gets here, the fix is recycling indices behind a '
+            'generation counter, not a bigger page.',
+          );
+        }
+        _pages.add(
+          pool.allocatePage(
+            ownerArchetypeId: archetypeId,
+            ownerSceneSlot: sceneSlot,
+          ),
+        );
+        current = _pages.length - 1;
+        _currentPageBySlot[sceneSlot] = current;
+      }
     }
     final page = _pages[current]!;
     final stride = strideBytes;
@@ -505,5 +617,11 @@ class ArchetypeStorage {
 /// [ArchetypeStorage] can hold the field list without depending on the
 /// `DataDescriptor` implementation (the dependency runs the other way).
 abstract interface class ArchetypeField {
-  void writeDefault(Pointer<Uint8> row);
+  /// Stamps this field's default into the row at **address** [row]. An `int`
+  /// rather than a `Pointer<Uint8>` to match the read/write path - see
+  /// `ArchetypeStorage`'s row-cache fields for why addresses beat pointers
+  /// here. This particular call is cold (once per archetype, in [seal]); it
+  /// takes an address purely so field implementations have one row-addressing
+  /// convention rather than two.
+  void writeDefault(int row);
 }

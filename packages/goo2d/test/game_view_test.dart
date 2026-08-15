@@ -7,7 +7,7 @@ import 'package:goo2d/goo2d.dart';
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
-late InlineGameHandle run;
+late Game run;
 
 
 // GameView, lane 3's main-isolate end: tick ping -> drain -> ingest ->
@@ -34,7 +34,7 @@ class _Sprite extends EntityStruct with Transform2D, WorldTransform2D, Renderabl
 
 class _Scene extends SceneStruct {
   @override
-  void onMounted(Scene scene) => handle = scene;
+  void onSceneMounted(Scene scene) => handle = scene;
 
   /// This fixture's loaded handle. Entity creation lives on `Scene` now (one
   /// `SceneStruct` can back several loaded scenes), so a headless fixture
@@ -151,7 +151,7 @@ void main() {
       ..transformOffsetX[entity] = 100
       ..transformOffsetY[entity] = 200;
 
-    await tester.pumpWidget(GameView(run: run, camera: game.defaultCamera));
+    await tester.pumpWidget(GameView(camera: game.defaultCamera));
     expect(_paintThrough(tester).calls, isEmpty,
         reason: 'no tick has happened, so there is no frame to replay');
   });
@@ -167,7 +167,7 @@ void main() {
       ..transformOffsetX[entity] = 100
       ..transformOffsetY[entity] = 200;
 
-    await tester.pumpWidget(GameView(run: run, camera: game.defaultCamera));
+    await tester.pumpWidget(GameView(camera: game.defaultCamera));
 
     // One tick on the "game isolate": the renderer writes a batch into the
     // ring and the tick listener GameView registered drains it, all
@@ -184,7 +184,7 @@ void main() {
 
   testWidgets('a game with no renderer declared contributes no painter at all', (tester) async {
     await _start(_RendererlessGame());
-    await tester.pumpWidget(GameView.headless(run: run));
+    await tester.pumpWidget(GameView.headless(game: run));
     run.state.advance(_step * 2);
     await tester.pump();
     expect(tester.takeException(), isNull);
@@ -199,7 +199,7 @@ void main() {
 
   testWidgets('the frame callback is disarmed on dispose', (tester) async {
     final game = await _start(_ViewGame());
-    await tester.pumpWidget(GameView(run: run, camera: game.defaultCamera));
+    await tester.pumpWidget(GameView(camera: game.defaultCamera));
     run.state.advance(_step);
     await tester.pump();
 
@@ -215,9 +215,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('stopping while the view is still mounted disarms the renderer',
+      (tester) async {
+    final game = await _start(_ViewGame());
+    final scene = run.state.getScene<_Scene>();
+    scene.addEntity(scene.sprite);
+
+    await tester.pumpWidget(GameView(camera: game.defaultCamera));
+    run.state.advance(_step);
+    await tester.pump();
+    expect(tester.binding.transientCallbackCount, greaterThan(0),
+        reason: 'the renderer samples on a self-rescheduling frame callback, '
+            'so an armed one is what "showing a game" looks like');
+
+    // The case `onViewDetached` cannot cover: the game goes first and the
+    // widget is still up, so no detach ever fires. Without `Game.onStopped`
+    // the callback reschedules itself forever, against draw buffers that
+    // `stop()` has already unmapped - and the widget binding reports it as
+    // "an animation is still running even after the widget tree was
+    // disposed", one test later and nowhere near the cause.
+    await run.stop();
+
+    expect(tester.binding.transientCallbackCount, 0,
+        reason: 'Game.onStopped must have cancelled it - and it has to happen '
+            'on the presentation isolate, because that is where the callback '
+            'and the decoded frames are');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a Game that has not started is refused with a reason', (tester) async {
     _ViewGame();
-    await tester.pumpWidget(GameView.headless(run: run));
+    await tester.pumpWidget(GameView.headless(game: run));
     final error = tester.takeException();
     expect(error, isStateError);
     expect(

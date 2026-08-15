@@ -12,7 +12,6 @@ import 'package:flutter_test/flutter_test.dart';
 // linearization the real consumer relies on, without goo depending on
 // goo2d (the dependency runs the other way).
 mixin _Transform on Component {
-
   late final DataPointer<double> offsetX;
   late final DataPointer<double> offsetY;
   late final DataPointer<double> rotation;
@@ -111,8 +110,11 @@ void main() {
       const max = Entity.pack(0xFFFF, 0xFFFF, 0xFFFFFFFF);
       expect(max.archetypeId, 0xFFFF);
       expect(max.pageIndex, 0xFFFF);
-      expect(max.rowOffset, 0xFFFFFFFF,
-          reason: 'the top bit lands in the sign position; unpacking masks');
+      expect(
+        max.rowOffset,
+        0xFFFFFFFF,
+        reason: 'the top bit lands in the sign position; unpacking masks',
+      );
 
       const mixed = Entity.pack(0x8001, 0x0203, 0x04050607);
       expect(mixed.archetypeId, 0x8001);
@@ -135,8 +137,14 @@ void main() {
       final transformBit = ComponentTypeRegistry.bitFor(_Transform);
 
       // Both structs mix in _Transform, so both signatures carry that bit...
-      expect(level.player.archetype.componentSignature & transformBit, transformBit);
-      expect(level.enemy.archetype.componentSignature & transformBit, transformBit);
+      expect(
+        level.player.archetype.componentSignature & transformBit,
+        transformBit,
+      );
+      expect(
+        level.enemy.archetype.componentSignature & transformBit,
+        transformBit,
+      );
       // ...but only the player carries _Health.
       final healthBit = ComponentTypeRegistry.bitFor(_Health);
       expect(level.player.archetype.componentSignature & healthBit, healthBit);
@@ -165,7 +173,8 @@ void main() {
       while (ComponentTypeRegistry.assignedCount < 64) {
         // Each generic instantiation is a distinct Type.
         ComponentTypeRegistry.bitFor(
-          _distinctTypes[ComponentTypeRegistry.assignedCount % _distinctTypes.length],
+          _distinctTypes[ComponentTypeRegistry.assignedCount %
+              _distinctTypes.length],
         );
         if (ComponentTypeRegistry.assignedCount == types.length) break;
       }
@@ -178,14 +187,23 @@ void main() {
       expect(() => ComponentTypeRegistry.bitFor(_Player), throwsStateError);
     });
 
-    test('distinct structs get distinct archetypes even with identical fields', () {
-      // _Enemy and this second struct have byte-identical layouts. Phase 1
-      // deliberately does not deduplicate them.
-      final level = _level();
-      expect(level.player.archetypeId, isNot(level.enemy.archetypeId));
-      expect(ArchetypeRegistry.byId(level.enemy.archetypeId), same(level.enemy.archetype));
-      expect(ArchetypeRegistry.byId(level.player.archetypeId).prefab, same(level.player));
-    });
+    test(
+      'distinct structs get distinct archetypes even with identical fields',
+      () {
+        // _Enemy and this second struct have byte-identical layouts. Phase 1
+        // deliberately does not deduplicate them.
+        final level = _level();
+        expect(level.player.archetypeId, isNot(level.enemy.archetypeId));
+        expect(
+          ArchetypeRegistry.byId(level.enemy.archetypeId),
+          same(level.enemy.archetype),
+        );
+        expect(
+          ArchetypeRegistry.byId(level.player.archetypeId).prefab,
+          same(level.player),
+        );
+      },
+    );
 
     test('a prefab cannot be registered twice', () {
       final shared = _Rock();
@@ -194,17 +212,17 @@ void main() {
       final owner = _Level();
       final storage = ArchetypeRegistry.register(pool, shared);
       shared.bindArchetype(owner, storage);
-      expect(
-        () => shared.bindArchetype(owner, storage),
-        throwsStateError,
-      );
+      expect(() => shared.bindArchetype(owner, storage), throwsStateError);
     });
 
     test('an unregistered prefab explains itself instead of crashing', () {
       expect(() => _Rock().archetype, throwsStateError);
       final level = _level();
-      expect(() => level.initializeScene(level.pool), throwsStateError,
-          reason: 'archetype registration is a one-time pass');
+      expect(
+        () => level.initializeScene(level.pool),
+        throwsStateError,
+        reason: 'archetype registration is a one-time pass',
+      );
     });
   });
 
@@ -221,17 +239,20 @@ void main() {
       expect(entity.tryGet<_Transform>(), same(level.player));
     });
 
-    test('tryGet is null and get throws for components the archetype lacks', () {
-      final level = _level();
-      level.pool.beginTick();
-      final enemy = level.addEntity(level.enemy);
-      level.pool.commitTick();
+    test(
+      'tryGet is null and get throws for components the archetype lacks',
+      () {
+        final level = _level();
+        level.pool.beginTick();
+        final enemy = level.addEntity(level.enemy);
+        level.pool.commitTick();
 
-      expect(enemy.tryGet<_Health>(), isNull);
-      expect(enemy.tryGet<_Player>(), isNull);
-      expect(() => enemy.get<_Health>(), throwsStateError);
-      expect(enemy.get<_Transform>(), same(level.enemy));
-    });
+        expect(enemy.tryGet<_Health>(), isNull);
+        expect(enemy.tryGet<_Player>(), isNull);
+        expect(() => enemy.get<_Health>(), throwsStateError);
+        expect(enemy.get<_Transform>(), same(level.enemy));
+      },
+    );
   });
 
   group('end to end', () {
@@ -266,7 +287,10 @@ void main() {
       expect([p.team[a], p.visible[a]], [1, 0]);
 
       final tb = b.get<_Transform>();
-      expect([tb.offsetX[b], tb.offsetY[b], tb.rotation[b]], [-10.0, -20.0, -30.0]);
+      expect(
+        [tb.offsetX[b], tb.offsetY[b], tb.rotation[b]],
+        [-10.0, -20.0, -30.0],
+      );
       expect(b.get<_Health>().hitPoints[b], 999);
       expect([p.team[b], p.visible[b]], [3, 1]);
     });
@@ -419,13 +443,42 @@ void main() {
 /// Generic instantiations, each a distinct `Type`, used to fill
 /// `ComponentTypeRegistry` to its ceiling.
 const List<Type> _distinctTypes = <Type>[
-  List<int>, List<double>, List<String>, List<bool>, List<Object>,
-  List<num>, List<Symbol>, List<Type>, List<Duration>, List<Uri>,
-  Map<int, int>, Map<int, double>, Map<int, String>, Map<int, bool>,
-  Map<String, int>, Map<String, double>, Map<String, String>,
-  Set<int>, Set<double>, Set<String>, Set<bool>, Set<Object>,
-  Iterable<int>, Iterable<double>, Iterable<String>, Iterable<bool>,
-  Future<int>, Future<double>, Future<String>, Future<bool>,
-  Stream<int>, Stream<double>, Stream<String>, Stream<bool>,
-  List<List<int>>, List<Map<int, int>>, List<Set<int>>, Map<int, List<int>>,
+  List<int>,
+  List<double>,
+  List<String>,
+  List<bool>,
+  List<Object>,
+  List<num>,
+  List<Symbol>,
+  List<Type>,
+  List<Duration>,
+  List<Uri>,
+  Map<int, int>,
+  Map<int, double>,
+  Map<int, String>,
+  Map<int, bool>,
+  Map<String, int>,
+  Map<String, double>,
+  Map<String, String>,
+  Set<int>,
+  Set<double>,
+  Set<String>,
+  Set<bool>,
+  Set<Object>,
+  Iterable<int>,
+  Iterable<double>,
+  Iterable<String>,
+  Iterable<bool>,
+  Future<int>,
+  Future<double>,
+  Future<String>,
+  Future<bool>,
+  Stream<int>,
+  Stream<double>,
+  Stream<String>,
+  Stream<bool>,
+  List<List<int>>,
+  List<Map<int, int>>,
+  List<Set<int>>,
+  Map<int, List<int>>,
 ];

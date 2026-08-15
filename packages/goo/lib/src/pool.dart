@@ -1,6 +1,39 @@
 import 'dart:ffi';
+
 import 'package:meta/meta.dart';
 import 'package:goo/src/triple_buffer.dart';
+
+// --- on porting this to the web -----------------------------------------
+//
+// Web is not a target today, but the seam is worth stating while it is still
+// true, because the cost of keeping it open is zero and the cost of finding it
+// closed later is not.
+//
+// **No native function is ever called.** There are no FFI bindings, no
+// structs, no `DynamicLibrary`, no native library to build. Every use of
+// `dart:ffi` in this package is one of four things:
+//
+//   * `calloc<Uint8|Int32|Uint64|Float>(n)` - 8 sites, all "give me N zeroed
+//     bytes": archetype.dart, camera_view.dart, handoff_buffer.dart (x2),
+//     ring_buffer.dart (x2), triple_buffer.dart (x2).
+//   * `calloc.free(p)` - 9 sites, the matching release.
+//   * `.address` / `Pointer.fromAddress` - naming a block with an int, which
+//     is the only form in which an allocation crosses `Isolate.spawn`.
+//   * `.asTypedList(n)` / `.cast<T>()` - a view over those bytes.
+//
+// That is exactly what a `Uint8List` already does. A web port replaces the
+// allocator with one big growable buffer and makes an "address" an offset into
+// it; every read and write in this engine is already expressed as a byte
+// offset from a block base, so the arithmetic above the seam does not change.
+//
+// What would need care is `data_layout.dart` (32 of the ~69 raw `Pointer<>`
+// mentions), because that is the hot read/write path and an extra indirection
+// there is the one place it would be measurable. The rest is spelling.
+//
+// The other half is already handled: `Game.start` runs the **inline**
+// configuration on the web (one copy doing both jobs, no `Isolate.spawn`), and
+// that path is what 39 of the 48 test bring-ups exercise. See
+// `GameRuntime.drivable` for why it is still not allowed to hand out the world.
 
 // Shared memory pool across isolates.
 //
@@ -30,7 +63,10 @@ import 'package:goo/src/triple_buffer.dart';
 // call - one page stores rows for exactly one archetype/component-set, so
 // a page never needs to track per-row metadata beyond "used or free".
 class MemoryPool {
-  MemoryPool({this.pageSize = _defaultPageSize, this.maxPages = _defaultPoolSize});
+  MemoryPool({
+    this.pageSize = _defaultPageSize,
+    this.maxPages = _defaultPoolSize,
+  });
 
   // 64 megabyte default page size.
   static const int _defaultPageSize = 64 * 1024 * 1024;
@@ -51,6 +87,25 @@ class MemoryPool {
   final List<MemoryPage?> _pages = [];
 
   int get pageCount => _pages.length;
+
+  /// Bumped whenever any page's read or write base could have moved.
+  ///
+  /// `ArchetypeStorage` caches a resolved row base per page and uses this to
+  /// know when to drop it. Three moments invalidate:
+  ///
+  ///  * [beginTick] - the write slot rotates onto a new buffer.
+  ///  * [commitTick] - `publish` moves the *published* slot, so every read
+  ///    base changes. Presentation runs after this and reads through the cache,
+  ///    so missing it would hand the renderer last tick's rows.
+  ///  * [freePage] - a cached base would dangle into freed memory, which is
+  ///    the one failure a shared-memory design cannot report.
+  ///
+  /// An int compare per field access, against a page lookup plus a triple
+  /// buffer indirection.
+  int _epoch = 0;
+
+  @internal
+  int get epoch => _epoch;
 
   bool _tickOpen = false;
 
@@ -88,7 +143,9 @@ class MemoryPool {
     int ownerSceneSlot = -1,
   }) {
     if (_pages.length >= maxPages) {
-      throw StateError('MemoryPool exhausted: all $maxPages pages are allocated');
+      throw StateError(
+        'MemoryPool exhausted: all $maxPages pages are allocated',
+      );
     }
     final page = MemoryPage._(pageSize, ownerArchetypeId, ownerSceneSlot);
     _pages.add(page);
@@ -132,6 +189,7 @@ class MemoryPool {
   /// Starts a fixed tick's write pass across every page - see the class
   /// doc above. Call once, before any system runs.
   void beginTick() {
+    _epoch++;
     _tickOpen = true;
     for (final page in _pages) {
       if (page == null) continue;
@@ -139,7 +197,16 @@ class MemoryPool {
       // the one moment no walk is part-way through, so it is where rows
       // created or freed during last tick's queries become real.
       page.flushPending();
-      page._buffer.beginWrite();
+      // Only the bytes this page has actually handed out. Rows are bump
+      // allocated and recycled from below the write cursor, so everything live
+      // sits under [MemoryPage.highWaterMark] and the rest is capacity the
+      // game reserved and never used.
+      //
+      // Copying the whole slot made the per-tick cost scale with `pageSize`
+      // rather than with the number of entities - so a 1 MiB page holding one
+      // camera entity copied a megabyte per tick to preserve a hundred bytes,
+      // and making pages bigger to reduce page churn made every tick slower.
+      page._buffer.beginWrite(bytes: page.highWaterMark);
     }
   }
 
@@ -149,6 +216,9 @@ class MemoryPool {
     for (final page in _pages) {
       page?._buffer.publish();
     }
+    // After every publish, not before: the read base each page resolves to has
+    // just moved, and presentation reads through the cache.
+    _epoch++;
     _tickOpen = false;
   }
 
@@ -161,6 +231,7 @@ class MemoryPool {
   /// removing it, because `Entity.pageIndex` is an index into *that* list and
   /// shifting it would silently repoint every handle after the hole.
   void freePage(MemoryPage page) {
+    _epoch++;
     final index = _pages.indexOf(page);
     if (index < 0) return;
     // Tombstoned, not removed - see [_pages]. `dispose` is a no-op on an
@@ -263,7 +334,9 @@ class MemoryPage {
   final Set<int> _pendingFrees = {};
 
   bool get isFull =>
-      _strideBytes != null && _freeOffsets.isEmpty && _writeOffset + _strideBytes! > _capacity;
+      _strideBytes != null &&
+      _freeOffsets.isEmpty &&
+      _writeOffset + _strideBytes! > _capacity;
 
   /// The row stride locked in by this page's first [allocate] call, or
   /// `null` if nothing has been allocated yet. The query system (see
@@ -318,11 +391,52 @@ class MemoryPage {
     // Snapshotted, not re-read: rows appended during the walk live at or
     // above this and are not this walk's business.
     final limit = _writeOffset;
+    // `isNotEmpty` before `contains`: a page with nothing freed and nothing
+    // deferred - every page in a game that only ever spawns - has no holes to
+    // step over, and two hash lookups per row to establish that showed up at
+    // ~1% of total CPU in the profile. `isEmpty` is a length check; `contains`
+    // hashes.
+    //
+    // Checked **per row, not hoisted out of the loop**. `_pendingOffsets` can
+    // grow *during* this walk - that is the entire reason it exists, since a
+    // row recycled mid-iteration sits below `limit` and would otherwise appear
+    // halfway through. Hoisting reads correct and silently reintroduces the
+    // inconsistency this page defers changes to avoid.
     for (var offset = 0; offset < limit; offset += stride) {
-      if (_freeOffsets.contains(offset)) continue;
-      if (_pendingOffsets.contains(offset)) continue;
+      if (_freeOffsets.isNotEmpty && _freeOffsets.contains(offset)) continue;
+      if (_pendingOffsets.isNotEmpty && _pendingOffsets.contains(offset)) {
+        continue;
+      }
       yield offset;
     }
+  }
+
+  /// Opens a walk over this page and returns the row limit.
+  ///
+  /// The half of [rowOffsets] a hand-written iterator needs: it defers
+  /// structural changes for the duration (see [_deferring]) and snapshots the
+  /// high-water mark, so rows appended during the walk are not this walk's
+  /// business. Paired with [isWalkable].
+  @internal
+  int beginWalk() {
+    _deferring = true;
+    return _writeOffset;
+  }
+
+  /// Whether a walk in progress should yield the row at [offset].
+  ///
+  /// `isEmpty` before `contains`: a page with no holes - every page in a game
+  /// that only ever spawns - answers with a length check instead of two hash
+  /// lookups. Checked per row rather than hoisted, because [_pendingOffsets]
+  /// **can grow during the walk**; that is the entire reason it exists.
+  @internal
+  @pragma('vm:prefer-inline')
+  bool isWalkable(int offset) {
+    if (_freeOffsets.isNotEmpty && _freeOffsets.contains(offset)) return false;
+    if (_pendingOffsets.isNotEmpty && _pendingOffsets.contains(offset)) {
+      return false;
+    }
+    return true;
   }
 
   /// Folds deferred structural changes in and reopens the page to immediate
@@ -374,7 +488,9 @@ class MemoryPage {
       return offset;
     }
     if (_writeOffset + size > _capacity) {
-      throw StateError('MemoryPage is full ($_capacity bytes, stride $_strideBytes)');
+      throw StateError(
+        'MemoryPage is full ($_capacity bytes, stride $_strideBytes)',
+      );
     }
     final offset = _writeOffset;
     _writeOffset += size;
@@ -408,6 +524,7 @@ class MemoryPage {
   /// This tick's write-slot address for the row at [offset] - cheap, call
   /// as many times as needed per tick (once per field access). Only valid
   /// after [MemoryPool.beginTick] has run for the current tick.
+  @pragma('vm:prefer-inline')
   Pointer<Uint8> resolveWrite(int offset) => _buffer.writeView + offset;
 
   /// The latest **published** snapshot's address for the row at [offset] -
@@ -415,6 +532,16 @@ class MemoryPage {
   /// isolate holding this page, including read-only ones (the main/UI
   /// isolate per the project root plan's "Cross-isolate architecture"
   /// section, lane 1).
+  /// The row at [offset], readable - the published snapshot, or the write slot
+  /// when nothing has been published yet.
+  ///
+  /// Non-nullable on purpose; see [TripleBuffer.readView] for the measurement.
+  /// This is the hot path - one call per field read per entity per tick - and
+  /// [resolveRead] below stays nullable for the callers that genuinely want to
+  /// distinguish "nothing published" from "here it is".
+  @pragma('vm:prefer-inline')
+  Pointer<Uint8> resolveRow(int offset) => _buffer.readView + offset;
+
   Pointer<Uint8>? resolveRead(int offset) {
     final latest = _buffer.latestView();
     return latest == null ? null : latest + offset;

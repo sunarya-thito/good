@@ -194,8 +194,11 @@ final class CommandTransport implements CommandSender {
       if (pending == null) {
         // Only reachable if the other copy echoed an id this one never sent,
         // which means the wire is out of step with the code on it.
-        assert(false, 'a command reply names batch #$id, which this copy is '
-            'not waiting for');
+        assert(
+          false,
+          'a command reply names batch #$id, which this copy is '
+          'not waiting for',
+        );
         continue;
       }
       pending.batch.adoptReply(bytes);
@@ -270,11 +273,11 @@ final class CommandTransport implements CommandSender {
     _pending.clear();
     for (var i = 0; i < abandoned.length; i++) {
       abandoned[i].completer.completeError(
-            StateError(
-              'the game stopped before command batch #${abandoned[i].batch.id} '
-              'was answered.',
-            ),
-          );
+        StateError(
+          'the game stopped before command batch #${abandoned[i].batch.id} '
+          'was answered.',
+        ),
+      );
     }
   }
 }

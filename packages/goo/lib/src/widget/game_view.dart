@@ -3,7 +3,6 @@ import 'package:flutter/widgets.dart';
 
 import 'package:goo/src/camera_view.dart';
 import 'package:goo/src/game.dart';
-import 'package:goo/src/handle.dart';
 
 /// Displays a running [Game] - and knows nothing whatsoever about how it is
 /// drawn.
@@ -39,35 +38,39 @@ class GameView extends StatefulWidget {
   /// Shows [camera] - one of the views the game declared in
   /// [Game.describeCameras].
   ///
-  /// Takes the **run**, not the game, and that is forced rather than chosen: a
-  /// `Game` is a prefab and can back several live runs at once, so a
-  /// [CameraView] alone no longer says which one to show. It still says which
-  /// *view*, so the two cannot be paired wrongly - a camera declared by some
-  /// other game does not resolve against this run.
-  const GameView({
-    super.key,
-    required this.run,
-    required CameraView this.camera,
-  });
+  /// The camera is the whole of it: a [CameraView] is issued by one game's
+  /// table and knows which (`CameraView.game`), and that game is running
+  /// exactly one run, so naming the view names everything this widget needs.
+  ///
+  /// It briefly took a run alongside the camera, back when a `Game` could
+  /// have backed several at once and a view alone did not say which to show.
+  /// One instance, one run settled that - and passing both was never just
+  /// verbose, it was a pair that could disagree.
+  const GameView({super.key, required CameraView this.camera}) : _game = null;
 
   /// Shows a game that declares no cameras: routes keyboard, gamepad and
   /// pointer input, and paints nothing.
   ///
   /// A headless-plus-HUD game is a first-class shape here and has no camera to
-  /// name, so it says so rather than passing a null camera and hoping. Neither
-  /// constructor can express a mismatch: this one takes no camera, the other
-  /// takes no game.
-  const GameView.headless({super.key, required this.run}) : camera = null;
+  /// name, so it says so rather than passing a null camera and hoping. This is
+  /// the one case that has to name the game directly, because there is no
+  /// camera to have named it. Neither constructor can express a mismatch: this
+  /// one takes no camera, the other takes no game.
+  const GameView.headless({super.key, required Game game})
+    : camera = null,
+      // A named parameter cannot start with an underscore, so `this._game`
+      // is not spellable and the lint's suggestion does not compile.
+      // ignore: prefer_initializing_formals
+      _game = game;
 
   /// The view being shown, or null for [GameView.headless].
   final CameraView? camera;
 
-  /// The live game being shown - what `Game.start()` handed back. Must already
-  /// be running; see [createState].
-  final GameHandle run;
+  final Game? _game;
 
-  /// The description behind [run], for the declarations this widget reads.
-  Game get game => run.game;
+  /// The game being shown: whoever declared [camera], or the one handed to
+  /// [GameView.headless]. Must already be running; see [createState].
+  Game get game => _game ?? camera!.game;
 
   @override
   State<GameView> createState() => _GameViewState();
@@ -80,7 +83,7 @@ class _GameViewState extends State<GameView> {
     _requireRunning();
     // Before the keyboard, so a renderer that arms a frame callback here is
     // running by the time the first build asks it for a widget.
-    widget.run.attachView();
+    widget.game.attachView();
     HardwareKeyboard.instance.addHandler(_onKeyEvent);
     // Gamepads for the same reason, and with the same lifetime: a game
     // nobody is looking at has no business holding an OS subscription open.
@@ -96,7 +99,7 @@ class _GameViewState extends State<GameView> {
     // own work (clearing held bits, cancelling the subscription) does not
     // need to have finished before the widget goes.
     widget.game.gamepads?.detach();
-    widget.run.detachView();
+    widget.game.detachView();
     super.dispose();
   }
 
@@ -108,8 +111,8 @@ class _GameViewState extends State<GameView> {
     // Attach before detaching, so swapping between two views of the *same*
     // game never dips the count to zero and tears down what is about to be
     // rebuilt.
-    widget.run.attachView();
-    oldWidget.run.detachView();
+    widget.game.attachView();
+    oldWidget.game.detachView();
   }
 
   /// Forwards every key event to the game's [InputDevice], and reports it
@@ -158,13 +161,13 @@ class _GameViewState extends State<GameView> {
   void _requireRunning() {
     if (widget.game.isRunning) return;
     throw StateError(
-      'GameView was given a ${widget.game.runtimeType} that has not started '
-      'yet. Await game.start() before building a GameView: a system\'s '
+      'GameView was given a ${widget.game.runtimeType} run that has not '
+      'started yet. Await Game.start() before building a GameView: a system\'s '
       'main-isolate twin only exists once the boot pass has run, so there is '
       'nothing to build a widget from until then. It is also what keeps a '
       'closure over this State - and so over the whole widget tree - out of '
-      'the object Game hands to Isolate.spawn, which would make the spawn '
-      'message unsendable. See the class doc on Game.',
+      'the object Game.start hands to Isolate.spawn, which would make the '
+      'spawn message unsendable. See the class doc on Game.',
     );
   }
 
@@ -182,45 +185,43 @@ class _GameViewState extends State<GameView> {
   /// does not currently define.
   @override
   Widget build(BuildContext context) => LayoutBuilder(
-        builder: (context, constraints) {
-          // The pointer surface size, for a game with **no camera view** to
-          // hold one. With a camera it is written by [_onPointerEvent]
-          // instead, from the view the event arrived on - and it has to be
-          // exactly one of the two, not both: every `GameView` on screen runs
-          // this builder on every rebuild, so a layout-time write would let
-          // whichever laid out last overwrite whichever the pointer is
-          // actually in. That is a real bug, and it is what made the first
-          // attempt at per-view `viewSize` report the wrong number.
-          if (widget.camera == null) {
-            widget.game.inputDevice?.setViewSize(
-              constraints.maxWidth,
-              constraints.maxHeight,
-            );
-          }
-          // The size of the view being shown, which is what its camera
-          // projection centres on. Per view rather than per game: two
-          // GameViews of different sizes cannot share one number, which is
-          // the whole reason this is not just `Game.viewWidth`.
-          widget.camera?.setViewport(
-            constraints.maxWidth,
-            constraints.maxHeight,
-          );
-          return Listener(
-            behavior: HitTestBehavior.translucent,
-            // `hover` as well: a mouse that moves with no button held still
-            // moves the cursor, and a game that only tracked drags would
-            // have a pointer that froze whenever nothing was pressed.
-            onPointerHover: _onPointerEvent,
-            onPointerDown: _onPointerEvent,
-            // Move as well as down/up: Flutter reports a *second* button
-            // pressed during a drag as a move with a wider button mask, not
-            // as another down event, so a down/up-only wiring would miss it.
-            onPointerMove: _onPointerEvent,
-            onPointerUp: _onPointerEvent,
-            onPointerCancel: _onPointerEvent,
-            child: widget.game.buildView(context, widget.run, widget.camera) ??
-                const SizedBox.shrink(),
-          );
-        },
+    builder: (context, constraints) {
+      // The pointer surface size, for a game with **no camera view** to
+      // hold one. With a camera it is written by [_onPointerEvent]
+      // instead, from the view the event arrived on - and it has to be
+      // exactly one of the two, not both: every `GameView` on screen runs
+      // this builder on every rebuild, so a layout-time write would let
+      // whichever laid out last overwrite whichever the pointer is
+      // actually in. That is a real bug, and it is what made the first
+      // attempt at per-view `viewSize` report the wrong number.
+      if (widget.camera == null) {
+        widget.game.inputDevice?.setViewSize(
+          constraints.maxWidth,
+          constraints.maxHeight,
+        );
+      }
+      // The size of the view being shown, which is what its camera
+      // projection centres on. Per view rather than per game: two
+      // GameViews of different sizes cannot share one number, which is
+      // the whole reason this is not just `Game.viewWidth`.
+      widget.camera?.setViewport(constraints.maxWidth, constraints.maxHeight);
+      return Listener(
+        behavior: HitTestBehavior.translucent,
+        // `hover` as well: a mouse that moves with no button held still
+        // moves the cursor, and a game that only tracked drags would
+        // have a pointer that froze whenever nothing was pressed.
+        onPointerHover: _onPointerEvent,
+        onPointerDown: _onPointerEvent,
+        // Move as well as down/up: Flutter reports a *second* button
+        // pressed during a drag as a move with a wider button mask, not
+        // as another down event, so a down/up-only wiring would miss it.
+        onPointerMove: _onPointerEvent,
+        onPointerUp: _onPointerEvent,
+        onPointerCancel: _onPointerEvent,
+        child:
+            widget.game.buildView(context, widget.camera) ??
+            const SizedBox.shrink(),
       );
+    },
+  );
 }

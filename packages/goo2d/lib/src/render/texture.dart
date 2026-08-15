@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/painting.dart' show FilterQuality;
 import 'package:flutter/services.dart' show AssetBundle, rootBundle;
 import 'package:goo/goo.dart';
 
@@ -24,7 +25,28 @@ class Texture extends GameAssetInstance {
   /// [sourceWidth]/[sourceHeight] are the *declared* pixel dimensions - see
   /// their doc. Both default to zero, meaning "not declared", which is the
   /// right answer for every texture nothing nine-slices.
-  Texture({this.sourceWidth = 0, this.sourceHeight = 0});
+  Texture({
+    this.sourceWidth = 0,
+    this.sourceHeight = 0,
+    this.filterQuality = FilterQuality.medium,
+  });
+
+  /// How this texture is sampled when the sprite drawing it is not the same
+  /// size as the image.
+  ///
+  /// **Per texture, not per game**, because a game legitimately mixes the two:
+  /// crisp pixel-art sprites next to a smooth background, and a single global
+  /// setting would make one of them wrong.
+  ///
+  /// `medium` by default - mipmapped, so minifying a 64px image into a 12px
+  /// sprite averages the texels it is skipping instead of picking one. Nearest
+  /// sampling there does not look "retro", it looks broken: the pixels chosen
+  /// change as the sprite moves, so the whole thing shimmers.
+  ///
+  /// Use [FilterQuality.none] for deliberate pixel art, where picking one texel
+  /// is the entire point - and pair it with an integer sprite size, or it will
+  /// shimmer for the same reason.
+  final FilterQuality filterQuality;
 
   ui.Image? _image;
 
@@ -110,7 +132,12 @@ class Texture extends GameAssetInstance {
 /// }
 /// ```
 class TextureAsset extends GameAsset<Texture> {
-  TextureAsset(this.source, {this.pixelWidth = 0, this.pixelHeight = 0});
+  TextureAsset(
+    this.source, {
+    this.pixelWidth = 0,
+    this.pixelHeight = 0,
+    this.filterQuality = FilterQuality.medium,
+  });
 
   /// The common case: an image packed into the Flutter asset bundle, named
   /// by the same path the pubspec declares it under.
@@ -119,6 +146,7 @@ class TextureAsset extends GameAsset<Texture> {
     AssetBundle? bundle,
     this.pixelWidth = 0,
     this.pixelHeight = 0,
+    this.filterQuality = FilterQuality.medium,
   }) : source = AssetBundleSource(path, bundle: bundle);
 
   @override
@@ -137,14 +165,20 @@ class TextureAsset extends GameAsset<Texture> {
   final int pixelWidth;
   final int pixelHeight;
 
+  /// How the decoded image is sampled - see [Texture.filterQuality].
+  final FilterQuality filterQuality;
+
   /// Synchronous and empty of I/O - this runs on both isolate copies during
   /// `describeAssets`, so it must not touch `dart:ui`. All it does is give
   /// [GameAssets] something to assign an address to, and hand that instance
   /// the declared pixel size, which is plain integer data and safe on any
   /// isolate.
   @override
-  Texture createInstance() =>
-      Texture(sourceWidth: pixelWidth, sourceHeight: pixelHeight);
+  Texture createInstance() => Texture(
+    sourceWidth: pixelWidth,
+    sourceHeight: pixelHeight,
+    filterQuality: filterQuality,
+  );
 
   /// Reads the bytes and decodes the image's first frame.
   ///
@@ -170,7 +204,8 @@ class TextureAsset extends GameAsset<Texture> {
       // bug that reads as "the art is off by a pixel" rather than as a typo.
       assert(
         pixelWidth == 0 && pixelHeight == 0 ||
-            pixelWidth == frame.image.width && pixelHeight == frame.image.height,
+            pixelWidth == frame.image.width &&
+                pixelHeight == frame.image.height,
         'TextureAsset declared ${pixelWidth}x$pixelHeight for '
         '${source.description}, but it decoded to '
         '${frame.image.width}x${frame.image.height}. The declared size is what '

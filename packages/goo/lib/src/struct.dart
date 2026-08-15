@@ -1,5 +1,8 @@
 import 'package:meta/meta.dart';
+import 'package:goo/src/animation/animatable.dart';
 import 'package:goo/src/archetype.dart';
+import 'package:goo/src/coroutine/coroutine.dart';
+import 'package:goo/src/game_state.dart';
 import 'package:goo/src/asset.dart';
 import 'package:goo/src/data.dart';
 import 'package:goo/src/event.dart';
@@ -64,13 +67,13 @@ abstract interface class MultiComponent implements Component {}
 // prefabs it registered, and here it stops - a prefab composes nothing further.
 // That is what lets an event declared on the state reach every entity struct in
 // the game, and one declared *here* reach this prefab and nothing else, which
-// is the scoping that makes a per-struct `onMounted(Entity)` possible.
+// is the scoping that makes a per-struct mount hook possible at all.
 
 // NOTE: No longer carries <T>
 // <T> was used to describe the type of the prefab, but it is no longer needed
 // because .has on the describeType now accepts direct Type as parameter.
 abstract class EntityStruct extends GameListenerBase
-    with EventBus
+    with EventBus, Coroutines, Animations
     implements MultiComponent {
   /// An entity of **this** struct was created.
   ///
@@ -80,8 +83,11 @@ abstract class EntityStruct extends GameListenerBase
   /// archetype". One level up it would be a single list told about every
   /// entity in the game.
   ///
-  /// The struct's own [onMounted] is still the direct, unmissable hook; this
-  /// is for anything *else* that wants to know.
+  /// A struct hears its own entities by mixing in `EntityLifecycleListener`,
+  /// which this dispatcher then collects - there is no separate virtual. The
+  /// same mixin on a `GameSystem` hears every entity in the game instead; the
+  /// scope is decided by which dispatcher collects the listener, not by which
+  /// method it overrides.
   late final EventDispatcher<EntityLifecycleListener, Entity> mountedEvent;
 
   /// An entity of this struct is going away, because the scene holding it is
@@ -105,6 +111,10 @@ abstract class EntityStruct extends GameListenerBase
   /// The scene this prefab was registered with, via
   /// `SceneDescriptor.has(...)` in `SceneStruct.describeScene`.
   SceneStruct get scene => _requireBound()._associatedScene;
+
+  @override
+  @protected
+  GameState get simulationState => scene.state;
 
   @override
   R getScene<R extends SceneStruct>() {

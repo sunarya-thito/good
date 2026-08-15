@@ -179,20 +179,36 @@ mixin Renderer2D on Game {
     ];
   }
 
-  /// The key this renderer's per-run state is filed under on the
-  /// [GameHandle]. Private, so nothing else can reach or clobber it.
-  static final Object _surfacesKey = Object();
-
-  /// This run's drawing surfaces. Created on first ask, released with the run.
+  /// One surface per [CameraView] something is showing, keyed by address.
   ///
-  /// **Per run, not per game**, and that is the whole reason this indirection
-  /// exists. A `Game` is a prefab: one `MyGame` instance can back several live
-  /// runs, and these fields were plain fields on this mixin - so two runs
-  /// would have shared one surface map and one scheduler callback, and
-  /// stopping either would have disarmed the other. Filing them on the run
-  /// makes that unrepresentable.
-  _RunSurfaces _surfacesOf(GameHandle run) =>
-      run.attachment(_surfacesKey, _RunSurfaces.new);
+  /// Lazy rather than one per declared view: a game may declare a minimap it
+  /// only shows on some screens, and an unshown view should cost no canvas, no
+  /// vertex arrays and no ingest.
+  ///
+  /// Plain fields, because an instance backs one run. They spent a while filed
+  /// on the run through a keyed attachment map, back when a `Game` could have
+  /// backed several at once; `Game.onStopped` is what replaced that, and it is
+  /// the hook that keeps a stopped game from leaving frames and a scheduler
+  /// callback behind.
+  final Map<int, _ViewSurface> _surfaces = <int, _ViewSurface>{};
+
+  /// Whether the frame callback should keep rescheduling itself. False once
+  /// the last view is gone or the game has stopped, so a torn-down game stops
+  /// touching storage that has been freed.
+  bool _listening = false;
+
+  /// The pending transient frame callback, so it can be cancelled. A
+  /// self-rescheduling callback left armed keeps the scheduler awake, and a
+  /// widget test fails outright on "an animation is still running".
+  int? _callbackId;
+
+  void _disarm() {
+    _listening = false;
+    final pending = _callbackId;
+    if (pending == null) return;
+    SchedulerBinding.instance.cancelFrameCallbackWithId(pending);
+    _callbackId = null;
+  }
 
   /// Samples the newest published frame **for every view being shown** and
   /// pulses that view's repaint signal - once per Flutter frame, on the main
@@ -215,9 +231,8 @@ mixin Renderer2D on Game {
   /// One callback for all views rather than one each: they are all sampled at
   /// the same instant of the same Flutter frame, so two views of one scene
   /// cannot show it at two different ages.
-  void _onFrame(GameHandle run) {
-    final surfaces = _surfacesOf(run);
-    if (!surfaces.listening) return;
+  void _onFrame() {
+    if (!_listening) return;
     // Re-armed first, so the loop survives anything below returning early. A
     // transient callback is one-shot, and scheduling one also requests the
     // next frame - which is what a game wants: it renders continuously rather
@@ -228,13 +243,14 @@ mixin Renderer2D on Game {
     // A persistent one runs after `WidgetsBinding`'s own drawFrame, so the
     // pulse below would mark the painter dirty too late and land a frame
     // behind - reintroducing exactly the lag this move exists to remove.
-    surfaces.callbackId = SchedulerBinding.instance
-        .scheduleFrameCallback((_) => _onFrame(run));
+    _callbackId = SchedulerBinding.instance.scheduleFrameCallback(
+      (_) => _onFrame(),
+    );
     // No `getSystem<GameRenderer2D>()` here any more, and that is the point of
     // moving the buffers onto this object: systems live on the game isolate,
     // so asking this copy for one would find nothing. What main needs is the
     // storage, and the storage is declared here.
-    for (final surface in surfaces.byView.values) {
+    for (final surface in _surfaces.values) {
       surface.sample(this);
     }
   }
@@ -261,88 +277,75 @@ mixin Renderer2D on Game {
   /// the `GameView` yet, or by stacking it in front - both of which are
   /// decisions main can actually make, off a `StateChannel` the game publishes.
   @override
-  Widget? buildView(
-    BuildContext context,
-    GameHandle run,
-    CameraView? camera,
-  ) {
+  Widget? buildView(BuildContext context, CameraView? camera) {
     if (camera == null) return null;
 
-    final surface = _surfacesOf(run).byView.putIfAbsent(
+    final surface = _surfaces.putIfAbsent(
       camera.address,
       () => _ViewSurface(camera, DrawCanvas2D(assets: assets)),
     );
 
+    // `ClipRect`, because a `CustomPaint` does **not** clip its painter to its
+    // own box. The batch is in world space around the camera, so anything the
+    // camera does not frame is still handed to the canvas - and without this it
+    // paints straight over whatever the app put beside the view. A view showing
+    // what its camera sees, and only inside its own bounds, is the only
+    // defensible default; a game that wants to spill past its box can stack
+    // something in front of it, which is a decision main can actually make.
     return RepaintBoundary(
-      child: CustomPaint(
-        painter: _GameViewPainter(surface.canvas, surface.frames),
-        size: Size.infinite,
-        isComplex: true,
-        willChange: true,
+      child: ClipRect(
+        child: CustomPaint(
+          painter: _GameViewPainter(surface.canvas, surface.frames),
+          size: Size.infinite,
+          isComplex: true,
+          willChange: true,
+        ),
       ),
     );
   }
 
   /// Starts sampling frames, now that something is on screen to show them.
   @override
-  void onViewAttached(GameHandle run) {
-    super.onViewAttached(run);
-    final surfaces = _surfacesOf(run);
-    if (surfaces.listening) return;
-    surfaces.listening = true;
-    surfaces.callbackId = SchedulerBinding.instance
-        .scheduleFrameCallback((_) => _onFrame(run));
+  void onViewAttached() {
+    super.onViewAttached();
+    if (_listening) return;
+    _listening = true;
+    _callbackId = SchedulerBinding.instance.scheduleFrameCallback(
+      (_) => _onFrame(),
+    );
   }
 
   /// Stops sampling: nothing is showing this game any more.
+  ///
+  /// Only disarms - the decoded frames stay, because the view can come back
+  /// (a route pushed over the game, a tab switched away and back) and
+  /// re-decoding every surface for that is waste. [onStopped] is what actually
+  /// releases them.
   @override
-  void onViewDetached(GameHandle run) {
-    super.onViewDetached(run);
-    run.tryAttachment<_RunSurfaces>(_surfacesKey)?.disarm();
+  void onViewDetached() {
+    super.onViewDetached();
+    _disarm();
   }
 
   /// Disarms the frame callback and releases every decoded frame.
-  // There is no `stop()` override here any more. Disarming the callback and
-  // releasing the decoded frames used to happen on the `Game`, which meant
-  // stopping one run tore down every run of that prefab. `_RunSurfaces` is a
-  // `RunAttachment`, so `GameHandle.stop()` releases exactly the one that
-  // stopped.
-}
-
-/// One run's drawing surfaces, filed on its [GameHandle].
-class _RunSurfaces implements RunAttachment {
-  /// One surface per [CameraView] something is showing, keyed by address.
   ///
-  /// Lazy rather than one per declared view: a game may declare a minimap it
-  /// only shows on some screens, and an unshown view should cost no canvas,
-  /// no vertex arrays and no ingest.
-  final Map<int, _ViewSurface> byView = <int, _ViewSurface>{};
-
-  /// Whether the frame callback should keep rescheduling itself. False once
-  /// the last view is gone or the run has stopped, so a torn-down run stops
-  /// touching storage that has been freed.
-  bool listening = false;
-
-  /// The pending transient frame callback, so it can be cancelled. A
-  /// self-rescheduling callback left armed keeps the scheduler awake, and a
-  /// widget test fails outright on "an animation is still running".
-  int? callbackId;
-
-  void disarm() {
-    listening = false;
-    final pending = callbackId;
-    if (pending == null) return;
-    SchedulerBinding.instance.cancelFrameCallbackWithId(pending);
-    callbackId = null;
-  }
-
+  /// The two ends of the teardown are deliberately different: [onViewDetached]
+  /// fires when nothing is *looking* at a game that is still running, and this
+  /// fires when the game itself is going away. Only the second can throw the
+  /// frames out, and only the second is guaranteed to happen - a game stopped
+  /// while its view is still mounted never sees a detach.
+  ///
+  /// Before the shared buffers are unmapped, which is what makes cancelling
+  /// the callback here rather than after `stop()` load-bearing: a sampling
+  /// callback that outlived the draw buffers would read freed memory.
   @override
-  void disposeForRun() {
-    disarm();
-    for (final surface in byView.values) {
+  void onStopped() {
+    super.onStopped();
+    _disarm();
+    for (final surface in _surfaces.values) {
       surface.dispose();
     }
-    byView.clear();
+    _surfaces.clear();
   }
 }
 
@@ -401,7 +404,8 @@ class _FrameSignal extends ChangeNotifier {
 }
 
 class _GameViewPainter extends CustomPainter {
-  const _GameViewPainter(this.canvas, Listenable repaint) : super(repaint: repaint);
+  const _GameViewPainter(this.canvas, Listenable repaint)
+    : super(repaint: repaint);
 
   final DrawCanvas2D canvas;
 

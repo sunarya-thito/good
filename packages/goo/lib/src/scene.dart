@@ -1,5 +1,8 @@
 import 'package:meta/meta.dart';
 
+import 'package:goo/src/coroutine/coroutine.dart';
+import 'package:goo/src/animation/animatable.dart';
+import 'package:goo/src/animation/struct.dart';
 import 'package:goo/src/archetype.dart';
 import 'package:goo/src/asset.dart';
 import 'package:goo/src/camera_view.dart';
@@ -13,7 +16,8 @@ import 'package:goo/src/pool.dart';
 import 'package:goo/src/scene_handle.dart';
 import 'package:goo/src/struct.dart';
 
-abstract class SceneStruct extends GameListenerBase with EventBus {
+abstract class SceneStruct extends GameListenerBase
+    with EventBus, SceneLifecycleListener, Coroutines {
   /// An instance of **this** scene was loaded.
   ///
   /// Declared here rather than on `GameState`, and that placement is the whole
@@ -38,8 +42,16 @@ abstract class SceneStruct extends GameListenerBase with EventBus {
     mountedEvent = descriptor.has(
       (listener, scene) => listener.onSceneMounted(scene),
     );
+    // `reverse: true` is what lets the owning struct stop being a
+    // separate virtual. One collect pass offers this scene *first* and
+    // its prefabs after, so at mount the scene's own onSceneMounted runs
+    // before anything it composes - a listener still finds the starting
+    // entities already spawned. Reading the same list backwards at
+    // unmount puts the scene *last*, so it can still read the world when
+    // everything below it has been told. Two orders, one list.
     unmountedEvent = descriptor.has(
       (listener, scene) => listener.onSceneUnmounted(scene),
+      reverse: true,
     );
   }
 
@@ -153,6 +165,10 @@ abstract class SceneStruct extends GameListenerBase with EventBus {
   /// views, assets. Derived from [state]; there is no separate binding.
   Game get game => state.game;
 
+  @override
+  @protected
+  GameState get simulationState => state;
+
   /// [game], or `null` when this scene was brought up without one - see
   /// [initializeScene], which is public precisely so a test or headless
   /// harness can. Internal: user code either has a `Game` or is a test that
@@ -170,58 +186,20 @@ abstract class SceneStruct extends GameListenerBase with EventBus {
   @internal
   GameState? get stateOrNull => _state;
 
-  /// This scene instance has been loaded and is ready to be populated.
-  ///
-  /// **Takes the [Scene] that is mounting**, and it has to: one `SceneStruct`
-  /// is a declaration backing however many loaded instances, so "spawn into
-  /// my scene" is not a question this object can answer on its own. The
-  /// handle is the answer, and it is also what [Scene.addEntity] is called on:
-  ///
-  /// ```dart
-  /// @override
-  /// void onMounted(Scene scene) {
-  ///   final player = scene.addEntity(playerPrefab);
-  ///   scene.addEntity(wingmanPrefab, parent: player);
-  /// }
-  /// ```
-  ///
-  /// # Why this is a virtual and not the [mountedEvent] dispatcher
-  ///
-  /// Asked directly ("why have `EventDispatcher` and not use them?"), and the
-  /// answer is that these two are not the same kind of thing. This hook and
-  /// [onUnmounted] **bracket** the dispatch, in opposite orders:
-  ///
-  /// ```text
-  /// mount:    onMounted(scene)          -> mountedEvent.call(scene)
-  /// unmount:  unmountedEvent.call(scene) -> onUnmounted(scene)
-  /// ```
-  ///
-  /// That ordering is a guarantee listeners rely on, and
-  /// `SceneLifecycleListener.onSceneMounted` states it outright: by the time a
-  /// listener hears about a mount, the scene's starting entities already
-  /// exist; by the time it hears about an unmount, nothing has been torn down
-  /// yet, so it can still read the world.
-  ///
-  /// One listener list cannot deliver that. It would have to place the owning
-  /// struct **first** at mount and **last** at unmount, and a list has one
-  /// order. Splitting the dispatch in two to recover it would be this virtual
-  /// again, with a dispatcher wrapped around it.
-  ///
-  /// So the split is phase versus audience, not hook versus event: this is the
-  /// scene's own *bring-up phase*, and [mountedEvent] is who gets told once it
-  /// has happened. A scene that also wants to hear about **other** scenes
-  /// mixes in `SceneLifecycleListener` as well, and then hears its own mount
-  /// through both - which is correct, since it asked for every scene's.
-  ///
-  /// It also replaced `with LifecycleListener`, whose `onMounted()` took no
-  /// argument and so could not say *which* instance came up.
-  // TODO: change to scene lifecycle listener, and remove the virtual. The event is already there.
-  void onMounted(Scene scene) {}
-
-  /// This scene instance is being unloaded. Its entities and pages are freed
-  /// immediately afterwards, so anything that has to be read out of the world
-  /// has to be read here.
-  void onUnmounted(Scene scene) {}
+  // `onMounted(Scene)`/`onUnmounted(Scene)` used to live here as plain
+  // virtuals beside the dispatchers, and are now the dispatchers: a
+  // `SceneStruct` mixes in `SceneLifecycleListener`, so it hears its own
+  // mount through [mountedEvent] like anything else.
+  //
+  // I argued at length that this was impossible, and was wrong. The claim
+  // was that the virtuals *bracket* the dispatch in opposite orders -
+  // owner first at mount, owner last at unmount - and that "one listener
+  // list cannot deliver that". There are **two** lists, one per
+  // dispatcher, filled by one collect pass; the orders differ because
+  // [unmountedEvent] reads its list backwards. The guarantee survives and
+  // the special case does not.
+  //
+  // Override `onSceneMounted(Scene)` / `onSceneUnmounted(Scene)`.
 
   bool _initialized = false;
 
@@ -330,7 +308,7 @@ abstract class SceneStruct extends GameListenerBase with EventBus {
   ///
   /// Usually reached through the handle rather than here: `Scene.addEntity`
   /// is the spelling a caller holding a [Scene] uses, and it lands on this.
-  /// The two are the same method; a scene's own code (inside `onMounted`, say)
+  /// The two are the same method; a scene's own code (inside `onSceneMounted`)
   /// already has `this` and does not need to resolve a handle to reach it.
   ///
   /// [parent]'s bound is `T extends EntityStruct` rather than
@@ -340,7 +318,7 @@ abstract class SceneStruct extends GameListenerBase with EventBus {
   /// `prefab is Child` at runtime instead - the same trade `Parent.addChild`
   /// already makes for its own `child` parameter, for the same reason.
   ///
-  /// Allocation-free apart from what `onMounted` itself does: `Entity` is
+  /// Allocation-free apart from what the mount dispatch does: `Entity` is
   /// an extension type over `int`, and the row's defaults are memcpy'd
   /// from a prototype built at registration time.
   @internal
@@ -461,6 +439,10 @@ final class _SceneDescriptor implements SceneDescriptor {
     // as this archetype's default row value.
     object.describeAssets(_assets);
     object.describeStruct(ArchetypeDataDescriptor(storage));
+    // Timelines last, because keying a clip is pure declaration and depends on
+    // nothing above it. Unconditional and with no `is Animations` test: every
+    // `EntityStruct` has `Animations`, and its default declares nothing.
+    object.describeAnimation(_AnimationTypeDescriptor(_scene));
     // Recorded for the event passes: `Game._bindEvents` gives each prefab its
     // own `describeEvents`, and `SceneStruct.collectListeners` walks this list
     // so an event declared above reaches every struct the scene can spawn.
@@ -504,5 +486,118 @@ final class _AssetDescriptor implements AssetDescriptor {
     }
     declared.add(key);
     return instance;
+  }
+}
+
+/// Runs each declared timeline's own two passes and binds it to the clock.
+final class _AnimationTypeDescriptor implements AnimationTypeDescriptor {
+  _AnimationTypeDescriptor(this._scene);
+
+  /// The **scene**, not its `GameState`: a scene can legitimately be brought
+  /// up without one (see `SceneStruct.initializeScene`), and a timeline that
+  /// grabbed the clock here would make declaring one impossible headlessly.
+  final SceneStruct _scene;
+
+  @override
+  T has<T extends TimelineStruct>(T struct) {
+    struct.initializeTimeline(_scene);
+    return struct;
+  }
+}
+
+/// Destroying an entity, which is a property of the **entity** and not a
+/// choice of scene.
+///
+/// This lived on `Scene` as `removeEntity` for exactly one revision, and it
+/// was a lie: the implementation derives archetype, page and row from the
+/// handle and never consulted the receiver at all. Passing a scene in read
+/// as "remove it from *this* scene" while actually meaning "remove it from
+/// wherever it is" - so a caller who fetched a scene from somewhere general
+/// and passed it got the right answer for the wrong reason, and would keep
+/// getting it right until the day the entity was somewhere else.
+///
+/// An entity belongs to exactly one scene and carries which one in its own
+/// handle (see `Entity.sceneSlot`). There is nothing for a caller to name.
+extension EntityLifetime on Entity {
+  /// The loaded scene this entity lives in.
+  ///
+  /// An entity belongs to exactly one scene and carries which one: its row
+  /// sits on a `MemoryPage` tagged with `ownerSceneSlot`, so this is read off
+  /// the entity itself rather than fetched from anything more general. That is
+  /// the difference between `entity.scene.addEntity(...)` - spawn where *this*
+  /// one lives - and reaching for a scene from the state and assuming it is
+  /// the right one.
+  ///
+  /// Throws when that scene has been **unloaded**, rather than answering with
+  /// a handle into whatever loaded into its slot afterwards - the same
+  /// discipline `Scene.get` applies to a stale handle.
+  ///
+  /// It cannot tell you the entity itself is still alive, and does not
+  /// pretend to: a destroyed entity's row is freed but its *page* remains, so
+  /// the slot still resolves. `Entity` carries no generation (there are no
+  /// spare bits - see its own doc), so nothing can distinguish a freed row
+  /// from the next spawn that reuses it. Hold entity handles for a tick, not
+  /// across ticks.
+  Scene get scene {
+    final handle = SceneRegistry.handleAt(sceneSlot);
+    if (handle == null) {
+      throw StateError(
+        'Entity $this is not on a page belonging to a loaded scene - its '
+        'scene was unloaded. Note this check cannot speak for the entity '
+        'itself: a destroyed row is freed while its page stays, and an Entity '
+        'carries no generation to tell a freed row from the next spawn that '
+        'reuses it. Do not hold entity handles across ticks.',
+      );
+    }
+    return handle;
+  }
+
+  /// Destroys one entity: its subtree, then its links, then its row.
+  ///
+  /// # What it does, in the order it has to happen
+  ///
+  ///  1. **Children first, recursively.** A destroyed parent leaving live
+  ///     children behind would leave them pointing at a row that is about to
+  ///     be handed to somebody else. Destroying a subtree is one call.
+  ///  2. **Unlink from its own parent**, so the parent's chain never names a
+  ///     freed row.
+  ///  3. **The unmount event**, while the row is still readable - the same
+  ///     guarantee scene unload gives, so one listener serves both paths.
+  ///  4. **Free the row.** `MemoryPage.free` defers while a query walk is
+  ///     open, so destroying an entity from inside a system's own loop is safe
+  ///     and the row stays readable for the rest of that walk.
+  ///
+  /// # The handle is not safe to keep
+  ///
+  /// `Entity` packs archetype, page and row offset and has **no generation
+  /// counter** - there are no spare bits (see `Entity`'s own doc). A freed row
+  /// is recycled by the next `addEntity` of the same archetype, and the new
+  /// entity gets a handle numerically equal to the old one. So a handle held
+  /// across the destruction of what it named does not dangle detectably: it
+  /// silently starts naming something else. Hold handles for the duration of a
+  /// tick, not across ticks, unless you know the entity outlives the reference.
+  void destroy() {
+    final storage = ArchetypeRegistry.byId(archetypeId);
+    final page = storage.pageAt(pageIndex);
+    if (page == null) return; // its scene was already unloaded
+
+    final parentComponent = tryGet<Parent>();
+    if (parentComponent != null) {
+      // The next sibling is read *before* the child is destroyed, because
+      // destroying it clears the link this walk would need next.
+      var child = parentComponent.firstChild.readPending(this);
+      while (child != null) {
+        final after = child.get<Child>().nextSibling.readPending(child);
+        child.destroy();
+        child = after;
+      }
+    }
+
+    final childComponent = tryGet<Child>();
+    final parent = childComponent?.parent.readPending(this);
+    if (parent != null) parent.get<Parent>().removeChild(parent, this);
+
+    storage.prefab.unmountedEvent.call(this);
+    page.free(rowOffset);
   }
 }

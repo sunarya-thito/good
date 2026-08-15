@@ -10,13 +10,11 @@ import 'package:goo/src/scene.dart';
 import 'package:goo/src/scene_handle.dart';
 import 'package:goo/src/struct.dart';
 import 'package:goo/src/system.dart';
-import 'package:goo/src/handle.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
-late InlineGameHandle run;
-
+late Game run;
 
 // Lifecycle at all three levels, and the scoping that decides who hears what.
 //
@@ -79,7 +77,7 @@ class _Level extends SceneStruct {
   }
 
   @override
-  void onMounted(Scene scene) {
+  void onSceneMounted(Scene scene) {
     spawned = scene.addEntity(unit);
     log.add('level.onMounted');
   }
@@ -107,7 +105,13 @@ class _SceneAware extends EntityStruct with SceneLifecycleListener {
   final List<Scene> heard = <Scene>[];
 
   @override
-  void onSceneMounted(Scene scene) => heard.add(scene);
+  void onSceneMounted(Scene scene) {
+    heard.add(scene);
+    log.add('prefab.mounted');
+  }
+
+  @override
+  void onSceneUnmounted(Scene scene) => log.add('prefab.unmounted');
 }
 
 /// A prefab that hears the *game* coming up: the bottom of the composition
@@ -122,6 +126,12 @@ class _Nosy extends EntityStruct with GameLifecycleListener {
 class _NosyScene extends SceneStruct {
   late final _Nosy nosy;
   late final _SceneAware aware;
+
+  @override
+  void onSceneMounted(Scene scene) => log.add('scene.mounted');
+
+  @override
+  void onSceneUnmounted(Scene scene) => log.add('scene.unmounted');
 
   @override
   void describeScene(SceneDescriptor descriptor) {
@@ -220,6 +230,7 @@ class _LifecycleGame extends Game {
   late final _Observer observer;
   late final _NosyScene nosyScene;
   late final _TrackedScene trackedScene;
+
   /// Reached through the state, because that is where systems live. They were
   /// `late final` fields on this class, assigned during `describeSystems` -
   /// which is a `GameState` pass now, so a field here would be written on a
@@ -237,7 +248,6 @@ class _LifecycleGame extends Game {
     nosyScene = descriptor.has(_NosyScene());
     trackedScene = descriptor.has(_TrackedScene());
   }
-
 }
 
 Future<_LifecycleGame> _boot() async {
@@ -263,10 +273,14 @@ void main() {
         'declarable and dead', () async {
       final game = await _boot();
 
-      expect(game.watcher.log, contains('game+'),
-          reason: 'a GameSystem mixing in the old LifecycleListener compiled '
-              'fine and never fired, because the dispatch walk only ever '
-              'reached the GameState');
+      expect(
+        game.watcher.log,
+        contains('game+'),
+        reason:
+            'a GameSystem mixing in the old LifecycleListener compiled '
+            'fine and never fired, because the dispatch walk only ever '
+            'reached the GameState',
+      );
       expect(game.watcher.log.where((e) => e == 'game+').length, 1);
     });
 
@@ -281,9 +295,13 @@ void main() {
     test('reaches prefabs too, not just systems', () async {
       final game = await _boot();
 
-      expect(game.nosyScene.nosy.mounts, 1,
-          reason: 'GameState -> scenes -> prefabs: the whole composition, '
-              'collected once at boot');
+      expect(
+        game.nosyScene.nosy.mounts,
+        1,
+        reason:
+            'GameState -> scenes -> prefabs: the whole composition, '
+            'collected once at boot',
+      );
     });
 
     test('unmount fires while the world is still standing', () async {
@@ -299,31 +317,42 @@ void main() {
       final game = await _boot();
 
       expect(game.observer.heard, hasLength(1));
-      expect(game.observer.heard.single.get<_Observer>(), same(game.observer),
-          reason: 'the handle, not the struct - one struct backs many loaded '
-              'scenes, so only the handle identifies the instance');
+      expect(
+        game.observer.heard.single.get<_Observer>(),
+        same(game.observer),
+        reason:
+            'the handle, not the struct - one struct backs many loaded '
+            'scenes, so only the handle identifies the instance',
+      );
     });
 
     test('and never hears another scene', () async {
       final game = await _boot();
 
       // Both _Level and _Observer are loaded during boot.
-      expect(game.observer.heard.map((s) => s.get<SceneStruct>()),
-          everyElement(same(game.observer)),
-          reason: 'the dispatcher belongs to _Observer, so its list was '
-              'filled from _Observer\'s composition. Declared on GameState '
-              'this would be one list holding every scene, and loading _Level '
-              'would call onSceneMounted(_Level) on _Observer, which would '
-              'then have to compare handles to find out it was not about it');
+      expect(
+        game.observer.heard.map((s) => s.get<SceneStruct>()),
+        everyElement(same(game.observer)),
+        reason:
+            'the dispatcher belongs to _Observer, so its list was '
+            'filled from _Observer\'s composition. Declared on GameState '
+            'this would be one list holding every scene, and loading _Level '
+            'would call onSceneMounted(_Level) on _Observer, which would '
+            'then have to compare handles to find out it was not about it',
+      );
     });
 
     test('a prefab hears its own scene mount', () async {
       final game = await _boot();
       final scene = await run.state.loadScene(game.nosyScene);
 
-      expect(game.nosyScene.aware.heard, [scene],
-          reason: 'a scene collects its prefabs, so this is in range - and it '
-              'heard only its own scene, not _Level or _Observer');
+      expect(
+        game.nosyScene.aware.heard,
+        [scene],
+        reason:
+            'a scene collects its prefabs, so this is in range - and it '
+            'heard only its own scene, not _Level or _Observer',
+      );
     });
 
     test('unload is announced while the entities are still readable', () async {
@@ -340,86 +369,130 @@ void main() {
       final game = await _boot();
       await run.state.loadScene(game.observer);
 
-      expect(game.observer.heard, hasLength(2),
-          reason: 'two instances of one declaration are two mounts, and the '
-              'struct is told about each - the handle is what tells them '
-              'apart, which is the one case a struct legitimately hears about '
-              'a sibling instance');
+      expect(
+        game.observer.heard,
+        hasLength(2),
+        reason:
+            'two instances of one declaration are two mounts, and the '
+            'struct is told about each - the handle is what tells them '
+            'apart, which is the one case a struct legitimately hears about '
+            'a sibling instance',
+      );
       expect(game.observer.heard.first, isNot(game.observer.heard.last));
     });
   });
 
   group('entity lifecycle, declared on the EntityStruct', () {
-    test("the struct's own onMounted fires, for its own entities only",
-        () async {
-      final game = await _boot();
-      final scene = await run.state.loadScene(game.trackedScene);
-      final entity = scene.addEntity(game.trackedScene.tracked);
+    test(
+      "the struct's own onMounted fires, for its own entities only",
+      () async {
+        final game = await _boot();
+        final scene = await run.state.loadScene(game.trackedScene);
+        final entity = scene.addEntity(game.trackedScene.tracked);
 
-      expect(game.trackedScene.tracked.mine, [entity],
-          reason: 'the narrow half, unchanged apart from its name - it was '
+        expect(
+          game.trackedScene.tracked.mine,
+          [entity],
+          reason:
+              'the narrow half, unchanged apart from its name - it was '
               'onCreated, which made the entity level read as a different '
-              'kind of thing from the two levels above it');
-      expect(game.trackedScene.tracked.mine, isNot(contains(game.level.spawned)),
-          reason: 'and not another struct\'s entities, even though _Level '
-              'spawned one during boot');
-    });
+              'kind of thing from the two levels above it',
+        );
+        expect(
+          game.trackedScene.tracked.mine,
+          isNot(contains(game.level.spawned)),
+          reason:
+              'and not another struct\'s entities, even though _Level '
+              'spawned one during boot',
+        );
+      },
+    );
 
-    test('a system offered in by a struct hears that struct\'s entities',
-        () async {
-      final game = await _boot();
-      final scene = await run.state.loadScene(game.trackedScene);
-      final indexed = scene.addEntity(game.trackedScene.indexed);
+    test(
+      'a system offered in by a struct hears that struct\'s entities',
+      () async {
+        final game = await _boot();
+        final scene = await run.state.loadScene(game.trackedScene);
+        final indexed = scene.addEntity(game.trackedScene.indexed);
 
-      expect(game.census.mounted, [indexed],
-          reason: '_Indexed offers _Census into its own dispatcher, which is '
-              'how a system is let into a scope it is not part of');
-    });
+        expect(
+          game.census.mounted,
+          [indexed],
+          reason:
+              '_Indexed offers _Census into its own dispatcher, which is '
+              'how a system is let into a scope it is not part of',
+        );
+      },
+    );
 
     test('and hears nothing from a struct that did not offer it', () async {
       final game = await _boot();
       final scene = await run.state.loadScene(game.trackedScene);
       scene.addEntity(game.trackedScene.tracked);
 
-      expect(game.census.mounted, isEmpty,
-          reason: '_Tracked never offered _Census in, so its entities are '
-              'invisible to it - no filtering by archetype required, because '
-              'the event never arrives');
+      expect(
+        game.census.mounted,
+        isEmpty,
+        reason:
+            '_Tracked never offered _Census in, so its entities are '
+            'invisible to it - no filtering by archetype required, because '
+            'the event never arrives',
+      );
       expect(game.census.mounted, isNot(contains(game.level.spawned)));
     });
 
-    test('the event fires after the struct hook, on a finished entity',
-        () async {
-      final game = await _boot();
-      final scene = await run.state.loadScene(game.trackedScene);
-      final indexed = scene.addEntity(game.trackedScene.indexed);
+    test(
+      'the event fires after the struct hook, on a finished entity',
+      () async {
+        final game = await _boot();
+        final scene = await run.state.loadScene(game.trackedScene);
+        final indexed = scene.addEntity(game.trackedScene.indexed);
 
-      expect(game.trackedScene.indexed.mark[indexed], 7,
-          reason: 'a listener sees declared defaults already stamped, because '
-              'the dispatch is the last thing addEntity does');
-    });
+        expect(
+          game.trackedScene.indexed.mark[indexed],
+          7,
+          reason:
+              'a listener sees declared defaults already stamped, because '
+              'the dispatch is the last thing addEntity does',
+        );
+      },
+    );
 
-    test('unload tears entities down while their rows are still readable',
-        () async {
-      final game = await _boot();
-      final scene = await run.state.loadScene(game.trackedScene);
-      final tracked = scene.addEntity(game.trackedScene.tracked);
-      final indexed = scene.addEntity(game.trackedScene.indexed);
-      game.trackedScene.indexed.mark[indexed] = 42;
+    test(
+      'unload tears entities down while their rows are still readable',
+      () async {
+        final game = await _boot();
+        final scene = await run.state.loadScene(game.trackedScene);
+        final tracked = scene.addEntity(game.trackedScene.tracked);
+        final indexed = scene.addEntity(game.trackedScene.indexed);
+        game.trackedScene.indexed.mark[indexed] = 42;
 
-      run.state.unloadScene(scene);
+        run.state.unloadScene(scene);
 
-      expect(game.trackedScene.tracked.gone, [tracked],
-          reason: 'the struct is told its own entity is going');
-      expect(game.census.unmounted, [indexed],
-          reason: 'and so is the system _Indexed offered in - and only for '
-              '_Indexed entities');
-      expect(game.census.marksAtUnmount, [42],
-          reason: 'read from inside the listener - the pages are released '
-              'immediately afterwards, so this is the only moment it works');
-      expect(() => game.trackedScene.tracked.mark[tracked], throwsStateError,
-          reason: 'and gone directly after');
-    });
+        expect(game.trackedScene.tracked.gone, [
+          tracked,
+        ], reason: 'the struct is told its own entity is going');
+        expect(
+          game.census.unmounted,
+          [indexed],
+          reason:
+              'and so is the system _Indexed offered in - and only for '
+              '_Indexed entities',
+        );
+        expect(
+          game.census.marksAtUnmount,
+          [42],
+          reason:
+              'read from inside the listener - the pages are released '
+              'immediately afterwards, so this is the only moment it works',
+        );
+        expect(
+          () => game.trackedScene.tracked.mark[tracked],
+          throwsStateError,
+          reason: 'and gone directly after',
+        );
+      },
+    );
   });
 
   group('membership', () {
@@ -427,30 +500,87 @@ void main() {
       final game = await _boot();
       final state = run.state;
 
-      expect(state.gameMountedEvent.listenerCount, 2,
-          reason: '_Watcher (a system) and _Nosy (a prefab). _Bystander '
-              'listens to nothing, and the scene/entity listeners are not '
-              'game-level');
-      expect(game.observer.mountedEvent.listenerCount, 1,
-          reason: 'the observer scene collects only itself - it has no prefabs');
-      expect(game.nosyScene.aware.mountedEvent.listenerCount, 0,
-          reason: 'a prefab composes nothing, and _SceneAware is not an '
-              'EntityLifecycleListener, so its own entity dispatcher is empty');
-      expect(game.trackedScene.indexed.mountedEvent.listenerCount, 1,
-          reason: 'just the _Census it offered in - _Indexed is not itself an '
-              'EntityLifecycleListener');
+      expect(
+        state.gameMountedEvent.listenerCount,
+        2,
+        reason:
+            '_Watcher (a system) and _Nosy (a prefab). _Bystander '
+            'listens to nothing, and the scene/entity listeners are not '
+            'game-level',
+      );
+      expect(
+        game.observer.mountedEvent.listenerCount,
+        1,
+        reason: 'the observer scene collects only itself - it has no prefabs',
+      );
+      expect(
+        game.nosyScene.aware.mountedEvent.listenerCount,
+        0,
+        reason:
+            'a prefab composes nothing, and _SceneAware is not an '
+            'EntityLifecycleListener, so its own entity dispatcher is empty',
+      );
+      expect(
+        game.trackedScene.indexed.mountedEvent.listenerCount,
+        1,
+        reason:
+            'just the _Census it offered in - _Indexed is not itself an '
+            'EntityLifecycleListener',
+      );
     });
 
-    test('a disabled system declines a lifecycle event like any other',
-        () async {
-      final game = await _boot();
-      run.state.disableSystem<_Census>();
-      final scene = await run.state.loadScene(game.trackedScene);
-      scene.addEntity(game.trackedScene.indexed);
+    test(
+      'a disabled system declines a lifecycle event like any other',
+      () async {
+        final game = await _boot();
+        run.state.disableSystem<_Census>();
+        final scene = await run.state.loadScene(game.trackedScene);
+        scene.addEntity(game.trackedScene.indexed);
 
-      expect(game.census.mounted, isEmpty,
-          reason: 'listensToEvents is checked per dispatch, and a lifecycle '
-              'event is not special-cased out of it');
+        expect(
+          game.census.mounted,
+          isEmpty,
+          reason:
+              'listensToEvents is checked per dispatch, and a lifecycle '
+              'event is not special-cased out of it',
+        );
+      },
+    );
+  });
+
+  group('bring-up and tear-down run in opposite orders', () {
+    // This is the guarantee that used to be carried by a pair of virtuals
+    // (`SceneStruct.onMounted`/`onUnmounted`) bracketing the dispatch. Those
+    // are gone; what replaced them is one collect pass read forwards at mount
+    // and backwards at unmount (`reverse: true` on `unmountedEvent`).
+    //
+    // Nothing covered it before, and it is not self-evident: deleting the
+    // `reverse` flag leaves every other test in this file and in
+    // multi_scene_test passing.
+    test('the scene is told first at mount and last at unmount', () async {
+      final game = await _boot();
+      log.clear();
+
+      final scene = await run.state.loadScene(game.nosyScene);
+      expect(
+        log,
+        ['scene.mounted', 'prefab.mounted'],
+        reason:
+            'outside-in: the scene has spawned its starting entities by '
+            'the time anything it composes is told, which is exactly what '
+            "SceneLifecycleListener.onSceneMounted's doc promises",
+      );
+
+      log.clear();
+      run.state.unloadScene(scene);
+      expect(
+        log,
+        ['prefab.unmounted', 'scene.unmounted'],
+        reason:
+            'inside-out: the scene is told last, so it can still read a '
+            'world its prefabs have already been warned about. Reversed '
+            'from the mount order, off the same collected list',
+      );
     });
   });
 }

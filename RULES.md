@@ -61,3 +61,39 @@
    Already fixed here: `Game._systemEnabled` beside `_systems`;
    `_fixedTickableIndices`/`_tickableIndices`; `_EventDescriptor`'s
    `_dispatchers`/`_accepts`/`_adds`.
+11. Never dispatch on `is` to work out what the receiver is. A chain like
+    `if (self is GameState) ... else if (self is GameSystem) ...` is the type
+    system reimplemented by hand, badly: it compiles for a host it does not
+    handle and fails at runtime, it is invisible to "find implementations", and
+    every new host is an edit to a method in another file.
+    The tell: you are asking "what am I?" rather than "what can I do?".
+    The fix is to make the mixin state its requirement and let the hosts meet
+    it. `Coroutines` needs a `GameState`; `EntityStruct`, `SceneStruct`,
+    `GameSystem` and `GameState` can all supply one and share no supertype that
+    does. So the mixin declares an **abstract member** and each host implements
+    it - an unimplemented mixin member becomes a requirement on the applying
+    class, which is exactly the constraint, checked by the compiler.
+        // no
+        final Object self = this;
+        if (self is GameState) return self.coroutines;
+        if (self is GameSystem) return self.state.coroutines;
+        throw StateError('...');
+        // yes
+        mixin Coroutines {
+          @protected
+          GameState get simulationState;          // hosts must supply it
+          CoroutineScheduler get _scheduler => simulationState.coroutines;
+        }
+    Note `on` does **not** work here and a separate marker interface does not
+    either: an `on` bound is checked against the applying class's *superclass*,
+    and none of the four has one that supplies a `GameState` - so the hosts
+    could not have mixed it in themselves, and every user would have had to
+    write `with Coroutines` by hand. With the abstract member the hosts mix it
+    in once and it is simply there.
+    A pleasant side effect: applying a mixin with a private member twice is a
+    compile error, so a user who *also* writes `with Coroutines` is told, rather
+    than silently getting a second `_scheduler`.
+    Legitimate `is`: narrowing a value whose type genuinely varies at runtime
+    (`yielded is num`, `listener is EventBus`), and `tryGet<T>`-style lookups
+    that return null. The rule is about *dispatching on the receiver's own
+    type*.

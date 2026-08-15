@@ -10,7 +10,6 @@ import 'package:goo/src/scene.dart';
 import 'package:goo/src/struct.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-
 class _Texture extends GameAssetInstance {}
 
 class _NoBytes extends GameAssetSource {
@@ -105,32 +104,35 @@ void main() {
   });
 
   group('bit packing', () {
-    test('four 2-bit fields share a single byte without corrupting each other', () {
-      late DataPointer<int> a, b, c, d;
-      final h = _Harness((data) {
-        a = data.hasUint2();
-        b = data.hasUint2();
-        c = data.hasUint2();
-        d = data.hasUint2();
-      });
-      addTearDown(h.dispose);
+    test(
+      'four 2-bit fields share a single byte without corrupting each other',
+      () {
+        late DataPointer<int> a, b, c, d;
+        final h = _Harness((data) {
+          a = data.hasUint2();
+          b = data.hasUint2();
+          c = data.hasUint2();
+          d = data.hasUint2();
+        });
+        addTearDown(h.dispose);
 
-      expect(h.bitLength, 8);
-      expect(h.strideBytes, 1, reason: '4 x 2 bits must fit in one byte');
+        expect(h.bitLength, 8);
+        expect(h.strideBytes, 1, reason: '4 x 2 bits must fit in one byte');
 
-      final e = h.spawn();
-      a[e] = 3;
-      b[e] = 1;
-      c[e] = 2;
-      d[e] = 0;
-      expect([a[e], b[e], c[e], d[e]], [3, 1, 2, 0]);
+        final e = h.spawn();
+        a[e] = 3;
+        b[e] = 1;
+        c[e] = 2;
+        d[e] = 0;
+        expect([a[e], b[e], c[e], d[e]], [3, 1, 2, 0]);
 
-      // Rewriting one field must leave its byte-mates alone.
-      c[e] = 3;
-      expect([a[e], b[e], c[e], d[e]], [3, 1, 3, 0]);
-      a[e] = 0;
-      expect([a[e], b[e], c[e], d[e]], [0, 1, 3, 0]);
-    });
+        // Rewriting one field must leave its byte-mates alone.
+        c[e] = 3;
+        expect([a[e], b[e], c[e], d[e]], [3, 1, 3, 0]);
+        a[e] = 0;
+        expect([a[e], b[e], c[e], d[e]], [0, 1, 3, 0]);
+      },
+    );
 
     test('1-bit + 4-bit + 1-bit pack into one byte', () {
       late DataPointer<int> flag, nibble, flag2;
@@ -154,53 +156,59 @@ void main() {
       expect([flag[e], nibble[e], flag2[e]], [1, 0, 1]);
     });
 
-    test('a sub-byte field that would straddle a byte jumps to the next one', () {
-      late DataPointer<int> nibble;
-      final h = _Harness((data) {
-        for (var i = 0; i < 6; i++) {
-          data.hasUint1(); // cursor -> bit 6
-        }
-        nibble = data.hasUint4(); // 6 + 4 > 8, so it must start at bit 8
-      });
-      addTearDown(h.dispose);
+    test(
+      'a sub-byte field that would straddle a byte jumps to the next one',
+      () {
+        late DataPointer<int> nibble;
+        final h = _Harness((data) {
+          for (var i = 0; i < 6; i++) {
+            data.hasUint1(); // cursor -> bit 6
+          }
+          nibble = data.hasUint4(); // 6 + 4 > 8, so it must start at bit 8
+        });
+        addTearDown(h.dispose);
 
-      expect(h.bitLength, 12, reason: '6 flag bits, 2 wasted, then 4 bits');
-      expect(h.strideBytes, 2);
+        expect(h.bitLength, 12, reason: '6 flag bits, 2 wasted, then 4 bits');
+        expect(h.strideBytes, 2);
 
-      final e = h.spawn();
-      nibble[e] = 0xF;
-      expect(nibble[e], 0xF);
-    });
+        final e = h.spawn();
+        nibble[e] = 0xF;
+        expect(nibble[e], 0xF);
+      },
+    );
 
-    test('a wide field after a sub-byte field is byte-aligned and round-trips', () {
-      late DataPointer<int> tag;
-      late DataPointer<double> value;
-      late DataPointer<int> wide;
-      final h = _Harness((data) {
-        tag = data.hasUint2();
-        value = data.hasFloat64(); // must start at byte 1, not bit 2
-        wide = data.hasUint32();
-      });
-      addTearDown(h.dispose);
+    test(
+      'a wide field after a sub-byte field is byte-aligned and round-trips',
+      () {
+        late DataPointer<int> tag;
+        late DataPointer<double> value;
+        late DataPointer<int> wide;
+        final h = _Harness((data) {
+          tag = data.hasUint2();
+          value = data.hasFloat64(); // must start at byte 1, not bit 2
+          wide = data.hasUint32();
+        });
+        addTearDown(h.dispose);
 
-      // 2 bits + 6 padding + 64 + 32 = 104 bits = 13 bytes.
-      expect(h.bitLength, 104);
-      expect(h.strideBytes, 13);
+        // 2 bits + 6 padding + 64 + 32 = 104 bits = 13 bytes.
+        expect(h.bitLength, 104);
+        expect(h.strideBytes, 13);
 
-      final e = h.spawn();
-      tag[e] = 3;
-      value[e] = 1234.5678;
-      wide[e] = 0xDEADBEEF;
-      expect(tag[e], 3);
-      expect(value[e], 1234.5678);
-      expect(wide[e], 0xDEADBEEF);
+        final e = h.spawn();
+        tag[e] = 3;
+        value[e] = 1234.5678;
+        wide[e] = 0xDEADBEEF;
+        expect(tag[e], 3);
+        expect(value[e], 1234.5678);
+        expect(wide[e], 0xDEADBEEF);
 
-      // The wide writes must not have clobbered the leading bits...
-      tag[e] = 1;
-      expect(value[e], 1234.5678);
-      expect(wide[e], 0xDEADBEEF);
-      expect(tag[e], 1);
-    });
+        // The wide writes must not have clobbered the leading bits...
+        tag[e] = 1;
+        expect(value[e], 1234.5678);
+        expect(wide[e], 0xDEADBEEF);
+        expect(tag[e], 1);
+      },
+    );
 
     test('wide fields survive rows that are not naturally aligned', () {
       // Stride 13 means consecutive rows start at byte 0, 13, 26, ... so
@@ -297,8 +305,7 @@ void main() {
       // do.
       final pool = MemoryPool(pageSize: 64);
       addTearDown(pool.dispose);
-      final storage =
-          ArchetypeRegistry.register(pool, _AdHoc((_) {}));
+      final storage = ArchetypeRegistry.register(pool, _AdHoc((_) {}));
       expect(() => storage.declareField(3), throwsArgumentError);
       expect(() => storage.declareField(0), throwsArgumentError);
       expect(() => storage.declareField(128), throwsArgumentError);
@@ -346,35 +353,38 @@ void main() {
       expect(maybe[e], 0, reason: '0 is a value, not absence');
     });
 
-    test('the has-bit costs a bit, not a byte, and packs with its neighbours', () {
-      late DataPointer<int?> a, b;
-      late DataPointer<int> tag;
-      final h = _Harness((data) {
-        a = data.optUint2();
-        b = data.optUint2();
-        tag = data.hasUint1();
-      });
-      addTearDown(h.dispose);
+    test(
+      'the has-bit costs a bit, not a byte, and packs with its neighbours',
+      () {
+        late DataPointer<int?> a, b;
+        late DataPointer<int> tag;
+        final h = _Harness((data) {
+          a = data.optUint2();
+          b = data.optUint2();
+          tag = data.hasUint1();
+        });
+        addTearDown(h.dispose);
 
-      // (1 + 2) * 2 + 1 = 7 bits, all inside one byte.
-      expect(h.bitLength, 7);
-      expect(h.strideBytes, 1);
+        // (1 + 2) * 2 + 1 = 7 bits, all inside one byte.
+        expect(h.bitLength, 7);
+        expect(h.strideBytes, 1);
 
-      final e = h.spawn();
-      a[e] = 3;
-      b[e] = null;
-      tag[e] = 1;
-      expect([a[e], b[e], tag[e]], [3, null, 1]);
+        final e = h.spawn();
+        a[e] = 3;
+        b[e] = null;
+        tag[e] = 1;
+        expect([a[e], b[e], tag[e]], [3, null, 1]);
 
-      b[e] = 2;
-      expect([a[e], b[e], tag[e]], [3, 2, 1]);
+        b[e] = 2;
+        expect([a[e], b[e], tag[e]], [3, 2, 1]);
 
-      a[e] = null;
-      expect([a[e], b[e], tag[e]], [null, 2, 1]);
+        a[e] = null;
+        expect([a[e], b[e], tag[e]], [null, 2, 1]);
 
-      tag[e] = 0;
-      expect([a[e], b[e], tag[e]], [null, 2, 0]);
-    });
+        tag[e] = 0;
+        expect([a[e], b[e], tag[e]], [null, 2, 0]);
+      },
+    );
 
     test('nulling one optional field does not disturb another', () {
       late DataPointer<double?> x, y;
@@ -514,12 +524,15 @@ void main() {
       // The point of the whole packing exercise: one element's store must
       // not reach into its neighbours' bytes.
       values.set(e, 2, 65535);
-      expect([
-        values.get(e, 0),
-        values.get(e, 1),
-        values.get(e, 2),
-        values.get(e, 3),
-      ], [1000, 1001, 65535, 1003]);
+      expect(
+        [
+          values.get(e, 0),
+          values.get(e, 1),
+          values.get(e, 2),
+          values.get(e, 3),
+        ],
+        [1000, 1001, 65535, 1003],
+      );
     });
 
     test('a sub-byte array packs tight and elements stay independent', () {
@@ -567,67 +580,79 @@ void main() {
       }
     });
 
-    test('a sub-byte array declared at a misaligned cursor still round-trips', () {
-      // The case that breaks naive `baseBit + i * bitWidth` addressing. After
-      // one 1-bit field the cursor sits at bit 1, where element 0 fits
-      // (1 + 4 <= 8) but element 1 would straddle the byte and get pushed to
-      // bit 8 - a gap the arithmetic cannot see, which would make elements
-      // 1..3 alias their neighbours and overrun the array. The declaration
-      // pads to a multiple of the element width first, so the elements are
-      // evenly spaced from bit 4 on.
-      late DataPointer<int> flag;
-      late DataArrayPointer<int> nibbles;
-      late DataPointer<int> trailer;
-      final h = _Harness((data) {
-        flag = data.hasUint1();
-        nibbles = data.hasUint4Array(4);
-        trailer = data.hasUint4();
-      });
-      addTearDown(h.dispose);
+    test(
+      'a sub-byte array declared at a misaligned cursor still round-trips',
+      () {
+        // The case that breaks naive `baseBit + i * bitWidth` addressing. After
+        // one 1-bit field the cursor sits at bit 1, where element 0 fits
+        // (1 + 4 <= 8) but element 1 would straddle the byte and get pushed to
+        // bit 8 - a gap the arithmetic cannot see, which would make elements
+        // 1..3 alias their neighbours and overrun the array. The declaration
+        // pads to a multiple of the element width first, so the elements are
+        // evenly spaced from bit 4 on.
+        late DataPointer<int> flag;
+        late DataArrayPointer<int> nibbles;
+        late DataPointer<int> trailer;
+        final h = _Harness((data) {
+          flag = data.hasUint1();
+          nibbles = data.hasUint4Array(4);
+          trailer = data.hasUint4();
+        });
+        addTearDown(h.dispose);
 
-      // 1 flag bit + 3 padding bits + 4 x 4 element bits + 4 trailer bits.
-      expect(h.bitLength, 24);
-      expect(h.strideBytes, 3);
+        // 1 flag bit + 3 padding bits + 4 x 4 element bits + 4 trailer bits.
+        expect(h.bitLength, 24);
+        expect(h.strideBytes, 3);
 
-      final e = h.spawn();
-      flag[e] = 1;
-      trailer[e] = 0xC;
-      for (var i = 0; i < 4; i++) {
-        nibbles.set(e, i, 0xA + i);
-      }
-      for (var i = 0; i < 4; i++) {
-        expect(nibbles.get(e, i), 0xA + i, reason: 'element $i');
-      }
-      expect(flag[e], 1, reason: 'the array must not have run backwards');
-      expect(trailer[e], 0xC, reason: 'the array must not have overrun');
+        final e = h.spawn();
+        flag[e] = 1;
+        trailer[e] = 0xC;
+        for (var i = 0; i < 4; i++) {
+          nibbles.set(e, i, 0xA + i);
+        }
+        for (var i = 0; i < 4; i++) {
+          expect(nibbles.get(e, i), 0xA + i, reason: 'element $i');
+        }
+        expect(flag[e], 1, reason: 'the array must not have run backwards');
+        expect(trailer[e], 0xC, reason: 'the array must not have overrun');
 
-      // And one element's write still leaves the others alone at this base.
-      nibbles.set(e, 1, 0x3);
-      expect([
-        nibbles.get(e, 0),
-        nibbles.get(e, 1),
-        nibbles.get(e, 2),
-        nibbles.get(e, 3),
-      ], [0xA, 0x3, 0xC, 0xD]);
-    });
+        // And one element's write still leaves the others alone at this base.
+        nibbles.set(e, 1, 0x3);
+        expect(
+          [
+            nibbles.get(e, 0),
+            nibbles.get(e, 1),
+            nibbles.get(e, 2),
+            nibbles.get(e, 3),
+          ],
+          [0xA, 0x3, 0xC, 0xD],
+        );
+      },
+    );
 
-    test('signed array elements sign-extend, sub-byte and byte-aligned alike', () {
-      late DataArrayPointer<int> nibbles, bytes;
-      final h = _Harness((data) {
-        nibbles = data.hasInt4Array(3);
-        bytes = data.hasInt16Array(2);
-      });
-      addTearDown(h.dispose);
+    test(
+      'signed array elements sign-extend, sub-byte and byte-aligned alike',
+      () {
+        late DataArrayPointer<int> nibbles, bytes;
+        final h = _Harness((data) {
+          nibbles = data.hasInt4Array(3);
+          bytes = data.hasInt16Array(2);
+        });
+        addTearDown(h.dispose);
 
-      final e = h.spawn();
-      nibbles.set(e, 0, -8);
-      nibbles.set(e, 1, 7);
-      nibbles.set(e, 2, -1);
-      bytes.set(e, 0, -32768);
-      bytes.set(e, 1, 32767);
-      expect([nibbles.get(e, 0), nibbles.get(e, 1), nibbles.get(e, 2)], [-8, 7, -1]);
-      expect([bytes.get(e, 0), bytes.get(e, 1)], [-32768, 32767]);
-    });
+        final e = h.spawn();
+        nibbles.set(e, 0, -8);
+        nibbles.set(e, 1, 7);
+        nibbles.set(e, 2, -1);
+        bytes.set(e, 0, -32768);
+        bytes.set(e, 1, 32767);
+        expect(
+          [nibbles.get(e, 0), nibbles.get(e, 1), nibbles.get(e, 2)],
+          [-8, 7, -1],
+        );
+        expect([bytes.get(e, 0), bytes.get(e, 1)], [-32768, 32767]);
+      },
+    );
 
     test('float arrays round-trip both widths', () {
       late DataArrayPointer<double> f32, f64;
@@ -650,21 +675,28 @@ void main() {
       expect([f64.get(e, 0), f64.get(e, 1)], [-1.0e300, 1234.5678]);
     });
 
-    test('an index outside 0..length-1 throws instead of corrupting a neighbour', () {
-      // Silently addressing element -1 or element `length` would reach into
-      // an adjacent field or - past the end of the row - the next entity's
-      // row entirely, since rows are packed back to back in a page.
-      late DataArrayPointer<int> values;
-      final h = _Harness((data) => values = data.hasUint8Array(3));
-      addTearDown(h.dispose);
+    test(
+      'an index outside 0..length-1 throws instead of corrupting a neighbour',
+      () {
+        // Silently addressing element -1 or element `length` would reach into
+        // an adjacent field or - past the end of the row - the next entity's
+        // row entirely, since rows are packed back to back in a page.
+        late DataArrayPointer<int> values;
+        final h = _Harness((data) => values = data.hasUint8Array(3));
+        addTearDown(h.dispose);
 
-      final e = h.spawn();
-      expect(() => values.get(e, -1), throwsRangeError);
-      expect(() => values.get(e, 3), throwsRangeError);
-      expect(() => values.set(e, -1, 1), throwsRangeError);
-      expect(() => values.set(e, 3, 1), throwsRangeError);
-      expect(values.get(e, 2), isNotNull, reason: 'the last valid index is fine');
-    });
+        final e = h.spawn();
+        expect(() => values.get(e, -1), throwsRangeError);
+        expect(() => values.get(e, 3), throwsRangeError);
+        expect(() => values.set(e, -1, 1), throwsRangeError);
+        expect(() => values.set(e, 3, 1), throwsRangeError);
+        expect(
+          values.get(e, 2),
+          isNotNull,
+          reason: 'the last valid index is fine',
+        );
+      },
+    );
 
     test('a zero-length array is rejected at declare time', () {
       // Every index into it would be out of range, so it can only ever be a
@@ -688,56 +720,55 @@ void main() {
       addTearDown(h.dispose);
 
       final e = h.spawn();
-      expect([
-        maybe.get(e, 0),
-        maybe.get(e, 1),
-        maybe.get(e, 2),
-        maybe.get(e, 3),
-      ], [null, null, null, null], reason: 'no default was declared');
+      expect(
+        [maybe.get(e, 0), maybe.get(e, 1), maybe.get(e, 2), maybe.get(e, 3)],
+        [null, null, null, null],
+        reason: 'no default was declared',
+      );
 
       maybe.set(e, 0, -12345);
       maybe.set(e, 2, 0);
-      expect([
-        maybe.get(e, 0),
-        maybe.get(e, 1),
-        maybe.get(e, 2),
-        maybe.get(e, 3),
-      ], [-12345, null, 0, null], reason: '0 is a value, not absence');
+      expect(
+        [maybe.get(e, 0), maybe.get(e, 1), maybe.get(e, 2), maybe.get(e, 3)],
+        [-12345, null, 0, null],
+        reason: '0 is a value, not absence',
+      );
 
       // Clearing one element's flag must not clear anyone else's.
       maybe.set(e, 0, null);
-      expect([
-        maybe.get(e, 0),
-        maybe.get(e, 1),
-        maybe.get(e, 2),
-        maybe.get(e, 3),
-      ], [null, null, 0, null]);
+      expect(
+        [maybe.get(e, 0), maybe.get(e, 1), maybe.get(e, 2), maybe.get(e, 3)],
+        [null, null, 0, null],
+      );
 
       maybe.set(e, 3, 7);
       expect([maybe.get(e, 2), maybe.get(e, 3)], [0, 7]);
     });
 
-    test('nullable sub-byte elements stay independent despite interleaved flags', () {
-      // 1 flag bit + 2 value bits per element does not tile a byte evenly,
-      // so this is the case where the per-element declaration order matters
-      // most - each element's flag and value are found through their own
-      // recorded offsets, not a uniform stride.
-      late DataArrayPointer<int?> maybe;
-      final h = _Harness((data) => maybe = data.optUint2Array(5));
-      addTearDown(h.dispose);
+    test(
+      'nullable sub-byte elements stay independent despite interleaved flags',
+      () {
+        // 1 flag bit + 2 value bits per element does not tile a byte evenly,
+        // so this is the case where the per-element declaration order matters
+        // most - each element's flag and value are found through their own
+        // recorded offsets, not a uniform stride.
+        late DataArrayPointer<int?> maybe;
+        final h = _Harness((data) => maybe = data.optUint2Array(5));
+        addTearDown(h.dispose);
 
-      final e = h.spawn();
-      for (var i = 0; i < 5; i++) {
-        maybe.set(e, i, i % 4);
-      }
-      for (var i = 0; i < 5; i++) {
-        expect(maybe.get(e, i), i % 4, reason: 'element $i');
-      }
-      maybe.set(e, 2, null);
-      for (var i = 0; i < 5; i++) {
-        expect(maybe.get(e, i), i == 2 ? null : i % 4, reason: 'element $i');
-      }
-    });
+        final e = h.spawn();
+        for (var i = 0; i < 5; i++) {
+          maybe.set(e, i, i % 4);
+        }
+        for (var i = 0; i < 5; i++) {
+          expect(maybe.get(e, i), i % 4, reason: 'element $i');
+        }
+        maybe.set(e, 2, null);
+        for (var i = 0; i < 5; i++) {
+          expect(maybe.get(e, i), i == 2 ? null : i % 4, reason: 'element $i');
+        }
+      },
+    );
 
     test('declared defaults are stamped into every element of a fresh row', () {
       late DataArrayPointer<int> plain;
@@ -780,71 +811,99 @@ void main() {
       }
     });
 
-    test('hasObjectArray round-trips through its declared table, by address', () {
-      final placeholder = _loaded();
-      final grass = _loaded();
-      final stone = _loaded();
+    test(
+      'hasObjectArray round-trips through its declared table, by address',
+      () {
+        final placeholder = _loaded();
+        final grass = _loaded();
+        final stone = _loaded();
 
-      late DataArrayPointer<_Texture> textures;
-      final h = _Harness((data) => textures = data.hasObjectArray<_Texture>(assets, 3, placeholder));
-      addTearDown(h.dispose);
+        late DataArrayPointer<_Texture> textures;
+        final h = _Harness(
+          (data) =>
+              textures = data.hasObjectArray<_Texture>(assets, 3, placeholder),
+        );
+        addTearDown(h.dispose);
 
-      final e = h.spawn();
-      for (var i = 0; i < 3; i++) {
-        expect(textures.get(e, i), same(placeholder), reason: 'declared default, element $i');
-      }
+        final e = h.spawn();
+        for (var i = 0; i < 3; i++) {
+          expect(
+            textures.get(e, i),
+            same(placeholder),
+            reason: 'declared default, element $i',
+          );
+        }
 
-      h.pool.beginTick();
-      textures.set(e, 0, grass);
-      textures.set(e, 2, stone);
-      h.pool.commitTick();
-      expect(textures.get(e, 0), same(grass));
-      expect(textures.get(e, 1), same(placeholder), reason: 'untouched element');
-      expect(textures.get(e, 2), same(stone));
-    });
+        h.pool.beginTick();
+        textures.set(e, 0, grass);
+        textures.set(e, 2, stone);
+        h.pool.commitTick();
+        expect(textures.get(e, 0), same(grass));
+        expect(
+          textures.get(e, 1),
+          same(placeholder),
+          reason: 'untouched element',
+        );
+        expect(textures.get(e, 2), same(stone));
+      },
+    );
 
-    test('optObjectArray defaults to null per element and round-trips null', () {
-      final grass = _loaded();
+    test(
+      'optObjectArray defaults to null per element and round-trips null',
+      () {
+        final grass = _loaded();
 
-      late DataArrayPointer<_Texture?> textures;
-      final h = _Harness((data) => textures = data.optObjectArray<_Texture>(assets, 2));
-      addTearDown(h.dispose);
+        late DataArrayPointer<_Texture?> textures;
+        final h = _Harness(
+          (data) => textures = data.optObjectArray<_Texture>(assets, 2),
+        );
+        addTearDown(h.dispose);
 
-      final e = h.spawn();
-      expect([textures.get(e, 0), textures.get(e, 1)], [null, null]);
+        final e = h.spawn();
+        expect([textures.get(e, 0), textures.get(e, 1)], [null, null]);
 
-      h.pool.beginTick();
-      textures.set(e, 1, grass);
-      h.pool.commitTick();
-      expect(textures.get(e, 0), isNull);
-      expect(textures.get(e, 1), same(grass));
+        h.pool.beginTick();
+        textures.set(e, 1, grass);
+        h.pool.commitTick();
+        expect(textures.get(e, 0), isNull);
+        expect(textures.get(e, 1), same(grass));
 
-      h.pool.beginTick();
-      textures.set(e, 1, null);
-      h.pool.commitTick();
-      expect(textures.get(e, 1), isNull);
-    });
+        h.pool.beginTick();
+        textures.set(e, 1, null);
+        h.pool.commitTick();
+        expect(textures.get(e, 1), isNull);
+      },
+    );
   });
 
   group('heap object (hasHeapObject/optHeapObject) fields', () {
-    test('hasHeapObject round-trips a plain closure - no GlobalObject needed', () {
-      // A closure is the sharpest example of what hasObject cannot store:
-      // it has no `address` of its own and never will.
-      void defaultCallback() {}
-      void replacement() {}
+    test(
+      'hasHeapObject round-trips a plain closure - no GlobalObject needed',
+      () {
+        // A closure is the sharpest example of what hasObject cannot store:
+        // it has no `address` of its own and never will.
+        void defaultCallback() {}
+        void replacement() {}
 
-      late DataPointer<void Function()> callback;
-      final h = _Harness(
-        (data) => callback = data.hasHeapObject<void Function()>(() => defaultCallback),
-      );
-      addTearDown(h.dispose);
+        late DataPointer<void Function()> callback;
+        final h = _Harness(
+          (data) => callback = data.hasHeapObject<void Function()>(
+            () => defaultCallback,
+          ),
+        );
+        addTearDown(h.dispose);
 
-      final e = h.spawn();
-      expect(callback[e], same(defaultCallback), reason: 'the factory default');
+        final e = h.spawn();
+        expect(
+          callback[e],
+          same(defaultCallback),
+          reason: 'the factory default',
+        );
 
-      callback[e] = replacement;
-      expect(callback[e], same(replacement));
-    });
+        callback[e] = replacement;
+        expect(callback[e], same(replacement));
+      },
+    );
 
     test('the declared default is one shared instance, not one per entity', () {
       // writeDefault runs once, to build the prototype row, and allocateRow
@@ -869,62 +928,81 @@ void main() {
       final second = h.spawn();
       expect(factoryCalls, 1, reason: 'the factory runs once, at seal');
       expect(list[first], same(shared));
-      expect(list[second], same(list[first]), reason: 'one shared default instance');
-    });
-
-    test('optHeapObject is null until written, and round-trips back to null', () {
-      final value = <String>['a'];
-
-      late DataPointer<List<String>?> maybe;
-      final h = _Harness((data) => maybe = data.optHeapObject<List<String>>());
-      addTearDown(h.dispose);
-
-      final e = h.spawn();
-      expect(maybe[e], isNull, reason: 'no default is possible or needed');
-
-      maybe[e] = value;
-      expect(maybe[e], same(value));
-
-      maybe[e] = null;
-      expect(maybe[e], isNull);
-    });
-
-    test('reading a stale/unregistered heap address fails loudly, not silently', () {
-      void callback() {}
-      late DataPointer<void Function()> field;
-      final h = _Harness(
-        (data) => field = data.hasHeapObject<void Function()>(() => callback),
-      );
-      addTearDown(h.dispose);
-      final e = h.spawn();
-
-      HeapObjectRegistry.reset();
-      expect(() => field[e], throwsStateError);
-    });
-
-    test('HeapObjectRegistry reuses a freed address instead of growing forever', () {
-      // The concrete difference from GlobalObjectRegistry, which only ever
-      // appends and nulls out. Heap-object fields are written at arbitrary
-      // runtime moments, so an append-only table would grow without bound.
-      final first = Object();
-      final second = Object();
-
-      final addressA = HeapObjectRegistry.register(first);
-      expect(HeapObjectRegistry.resolve<Object>(addressA), same(first));
-      expect(HeapObjectRegistry.slotCount, 1);
-
-      HeapObjectRegistry.unregister(addressA);
       expect(
-        HeapObjectRegistry.tryResolve<Object>(addressA),
-        isNull,
-        reason: 'a freed address resolves to nothing, it does not linger',
+        list[second],
+        same(list[first]),
+        reason: 'one shared default instance',
       );
-
-      final addressB = HeapObjectRegistry.register(second);
-      expect(addressB, addressA, reason: 'the freed slot was reused');
-      expect(HeapObjectRegistry.slotCount, 1, reason: 'the table did not grow');
-      expect(HeapObjectRegistry.resolve<Object>(addressB), same(second));
     });
+
+    test(
+      'optHeapObject is null until written, and round-trips back to null',
+      () {
+        final value = <String>['a'];
+
+        late DataPointer<List<String>?> maybe;
+        final h = _Harness(
+          (data) => maybe = data.optHeapObject<List<String>>(),
+        );
+        addTearDown(h.dispose);
+
+        final e = h.spawn();
+        expect(maybe[e], isNull, reason: 'no default is possible or needed');
+
+        maybe[e] = value;
+        expect(maybe[e], same(value));
+
+        maybe[e] = null;
+        expect(maybe[e], isNull);
+      },
+    );
+
+    test(
+      'reading a stale/unregistered heap address fails loudly, not silently',
+      () {
+        void callback() {}
+        late DataPointer<void Function()> field;
+        final h = _Harness(
+          (data) => field = data.hasHeapObject<void Function()>(() => callback),
+        );
+        addTearDown(h.dispose);
+        final e = h.spawn();
+
+        HeapObjectRegistry.reset();
+        expect(() => field[e], throwsStateError);
+      },
+    );
+
+    test(
+      'HeapObjectRegistry reuses a freed address instead of growing forever',
+      () {
+        // The concrete difference from GlobalObjectRegistry, which only ever
+        // appends and nulls out. Heap-object fields are written at arbitrary
+        // runtime moments, so an append-only table would grow without bound.
+        final first = Object();
+        final second = Object();
+
+        final addressA = HeapObjectRegistry.register(first);
+        expect(HeapObjectRegistry.resolve<Object>(addressA), same(first));
+        expect(HeapObjectRegistry.slotCount, 1);
+
+        HeapObjectRegistry.unregister(addressA);
+        expect(
+          HeapObjectRegistry.tryResolve<Object>(addressA),
+          isNull,
+          reason: 'a freed address resolves to nothing, it does not linger',
+        );
+
+        final addressB = HeapObjectRegistry.register(second);
+        expect(addressB, addressA, reason: 'the freed slot was reused');
+        expect(
+          HeapObjectRegistry.slotCount,
+          1,
+          reason: 'the table did not grow',
+        );
+        expect(HeapObjectRegistry.resolve<Object>(addressB), same(second));
+      },
+    );
 
     test('unregistering twice does not hand one slot to two objects', () {
       // A duplicate free-list entry would be the nastiest possible bug here:
@@ -948,7 +1026,9 @@ void main() {
       final grass = _loaded();
 
       late final DataPointer<_Texture> texture;
-      final h = _Harness((data) => texture = data.hasObject<_Texture>(assets, placeholder));
+      final h = _Harness(
+        (data) => texture = data.hasObject<_Texture>(assets, placeholder),
+      );
       addTearDown(h.dispose);
 
       final e = h.spawn();
@@ -985,7 +1065,9 @@ void main() {
       final grass = _loaded();
 
       late final DataPointer<_Texture> texture;
-      final h = _Harness((data) => texture = data.hasObject<_Texture>(assets, grass));
+      final h = _Harness(
+        (data) => texture = data.hasObject<_Texture>(assets, grass),
+      );
       addTearDown(h.dispose);
       final e = h.spawn();
 
@@ -1004,11 +1086,16 @@ void main() {
       final right = GameAssets();
       final mine = left.declare(_TextureAsset());
       final theirs = right.declare(_TextureAsset());
-      expect(mine.address, theirs.address,
-          reason: 'independent tables collide freely, by design');
+      expect(
+        mine.address,
+        theirs.address,
+        reason: 'independent tables collide freely, by design',
+      );
 
       late final DataPointer<_Texture> texture;
-      final h = _Harness((data) => texture = data.hasObject<_Texture>(left, mine));
+      final h = _Harness(
+        (data) => texture = data.hasObject<_Texture>(left, mine),
+      );
       addTearDown(h.dispose);
 
       final e = h.spawn();
@@ -1019,9 +1106,13 @@ void main() {
       // handing back whatever happens to sit there.
       right.unregisterAddress(theirs.address);
       expect(() => right.resolve<_Texture>(theirs.address), throwsStateError);
-      expect(texture[e], same(mine),
-          reason: 'the other table being emptied is none of this field\'s '
-              'business - separate populations, separate numbering');
+      expect(
+        texture[e],
+        same(mine),
+        reason:
+            'the other table being emptied is none of this field\'s '
+            'business - separate populations, separate numbering',
+      );
     });
   });
 }

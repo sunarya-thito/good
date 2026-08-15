@@ -64,7 +64,10 @@ sealed class InputKey {
   /// [fromJson] switches on.
   String get kind;
 
-  Map<String, Object?> toJson() => <String, Object?>{'kind': kind, 'name': name};
+  Map<String, Object?> toJson() => <String, Object?>{
+    'kind': kind,
+    'name': name,
+  };
 
   /// Rebuilds a key from [toJson]'s output.
   ///
@@ -99,7 +102,10 @@ sealed class InputKey {
   /// *hands back* is being looked up by string. This is parsing a file the
   /// user wrote, where a string is all there is, and it runs when a save is
   /// loaded - never per tick and never per action.
-  static InputKey _byName(Map<String, InputKey> table, Map<String, Object?> json) {
+  static InputKey _byName(
+    Map<String, InputKey> table,
+    Map<String, Object?> json,
+  ) {
     final name = json['name'];
     final key = table[name];
     if (key == null) {
@@ -146,16 +152,56 @@ sealed class InputKey {
 
   // --- keyboard: digits ---------------------------------------------------
 
-  static const InputKey digit0 = KeyboardKey._(26, 'digit0', PhysicalKeyboardKey.digit0);
-  static const InputKey digit1 = KeyboardKey._(27, 'digit1', PhysicalKeyboardKey.digit1);
-  static const InputKey digit2 = KeyboardKey._(28, 'digit2', PhysicalKeyboardKey.digit2);
-  static const InputKey digit3 = KeyboardKey._(29, 'digit3', PhysicalKeyboardKey.digit3);
-  static const InputKey digit4 = KeyboardKey._(30, 'digit4', PhysicalKeyboardKey.digit4);
-  static const InputKey digit5 = KeyboardKey._(31, 'digit5', PhysicalKeyboardKey.digit5);
-  static const InputKey digit6 = KeyboardKey._(32, 'digit6', PhysicalKeyboardKey.digit6);
-  static const InputKey digit7 = KeyboardKey._(33, 'digit7', PhysicalKeyboardKey.digit7);
-  static const InputKey digit8 = KeyboardKey._(34, 'digit8', PhysicalKeyboardKey.digit8);
-  static const InputKey digit9 = KeyboardKey._(35, 'digit9', PhysicalKeyboardKey.digit9);
+  static const InputKey digit0 = KeyboardKey._(
+    26,
+    'digit0',
+    PhysicalKeyboardKey.digit0,
+  );
+  static const InputKey digit1 = KeyboardKey._(
+    27,
+    'digit1',
+    PhysicalKeyboardKey.digit1,
+  );
+  static const InputKey digit2 = KeyboardKey._(
+    28,
+    'digit2',
+    PhysicalKeyboardKey.digit2,
+  );
+  static const InputKey digit3 = KeyboardKey._(
+    29,
+    'digit3',
+    PhysicalKeyboardKey.digit3,
+  );
+  static const InputKey digit4 = KeyboardKey._(
+    30,
+    'digit4',
+    PhysicalKeyboardKey.digit4,
+  );
+  static const InputKey digit5 = KeyboardKey._(
+    31,
+    'digit5',
+    PhysicalKeyboardKey.digit5,
+  );
+  static const InputKey digit6 = KeyboardKey._(
+    32,
+    'digit6',
+    PhysicalKeyboardKey.digit6,
+  );
+  static const InputKey digit7 = KeyboardKey._(
+    33,
+    'digit7',
+    PhysicalKeyboardKey.digit7,
+  );
+  static const InputKey digit8 = KeyboardKey._(
+    34,
+    'digit8',
+    PhysicalKeyboardKey.digit8,
+  );
+  static const InputKey digit9 = KeyboardKey._(
+    35,
+    'digit9',
+    PhysicalKeyboardKey.digit9,
+  );
 
   // --- keyboard: function row --------------------------------------------
 
@@ -174,33 +220,81 @@ sealed class InputKey {
 
   // --- keyboard: arrows ---------------------------------------------------
 
-  static const InputKey arrowUp =
-      KeyboardKey._(48, 'arrowUp', PhysicalKeyboardKey.arrowUp);
-  static const InputKey arrowDown =
-      KeyboardKey._(49, 'arrowDown', PhysicalKeyboardKey.arrowDown);
-  static const InputKey arrowLeft =
-      KeyboardKey._(50, 'arrowLeft', PhysicalKeyboardKey.arrowLeft);
-  static const InputKey arrowRight =
-      KeyboardKey._(51, 'arrowRight', PhysicalKeyboardKey.arrowRight);
+  static const InputKey arrowUp = KeyboardKey._(
+    48,
+    'arrowUp',
+    PhysicalKeyboardKey.arrowUp,
+  );
+  static const InputKey arrowDown = KeyboardKey._(
+    49,
+    'arrowDown',
+    PhysicalKeyboardKey.arrowDown,
+  );
+  static const InputKey arrowLeft = KeyboardKey._(
+    50,
+    'arrowLeft',
+    PhysicalKeyboardKey.arrowLeft,
+  );
+  static const InputKey arrowRight = KeyboardKey._(
+    51,
+    'arrowRight',
+    PhysicalKeyboardKey.arrowRight,
+  );
 
   // --- keyboard: whitespace and editing -----------------------------------
 
-  static const InputKey spacebar =
-      KeyboardKey._(52, 'spacebar', PhysicalKeyboardKey.space);
-  static const InputKey enter = KeyboardKey._(53, 'enter', PhysicalKeyboardKey.enter);
-  static const InputKey escape = KeyboardKey._(54, 'escape', PhysicalKeyboardKey.escape);
+  static const InputKey spacebar = KeyboardKey._(
+    52,
+    'spacebar',
+    PhysicalKeyboardKey.space,
+  );
+  static const InputKey enter = KeyboardKey._(
+    53,
+    'enter',
+    PhysicalKeyboardKey.enter,
+  );
+  static const InputKey escape = KeyboardKey._(
+    54,
+    'escape',
+    PhysicalKeyboardKey.escape,
+  );
   static const InputKey tab = KeyboardKey._(55, 'tab', PhysicalKeyboardKey.tab);
-  static const InputKey backspace =
-      KeyboardKey._(56, 'backspace', PhysicalKeyboardKey.backspace);
-  static const InputKey delete = KeyboardKey._(57, 'delete', PhysicalKeyboardKey.delete);
-  static const InputKey insert = KeyboardKey._(58, 'insert', PhysicalKeyboardKey.insert);
-  static const InputKey home = KeyboardKey._(59, 'home', PhysicalKeyboardKey.home);
+  static const InputKey backspace = KeyboardKey._(
+    56,
+    'backspace',
+    PhysicalKeyboardKey.backspace,
+  );
+  static const InputKey delete = KeyboardKey._(
+    57,
+    'delete',
+    PhysicalKeyboardKey.delete,
+  );
+  static const InputKey insert = KeyboardKey._(
+    58,
+    'insert',
+    PhysicalKeyboardKey.insert,
+  );
+  static const InputKey home = KeyboardKey._(
+    59,
+    'home',
+    PhysicalKeyboardKey.home,
+  );
   static const InputKey end = KeyboardKey._(60, 'end', PhysicalKeyboardKey.end);
-  static const InputKey pageUp = KeyboardKey._(61, 'pageUp', PhysicalKeyboardKey.pageUp);
-  static const InputKey pageDown =
-      KeyboardKey._(62, 'pageDown', PhysicalKeyboardKey.pageDown);
-  static const InputKey capsLock =
-      KeyboardKey._(63, 'capsLock', PhysicalKeyboardKey.capsLock);
+  static const InputKey pageUp = KeyboardKey._(
+    61,
+    'pageUp',
+    PhysicalKeyboardKey.pageUp,
+  );
+  static const InputKey pageDown = KeyboardKey._(
+    62,
+    'pageDown',
+    PhysicalKeyboardKey.pageDown,
+  );
+  static const InputKey capsLock = KeyboardKey._(
+    63,
+    'capsLock',
+    PhysicalKeyboardKey.capsLock,
+  );
 
   // --- keyboard: modifiers ------------------------------------------------
   //
@@ -208,76 +302,187 @@ sealed class InputKey {
   // that wants either binds two actions, or one action per hand; collapsing
   // them here would make the distinction unrecoverable.
 
-  static const InputKey shiftLeft =
-      KeyboardKey._(64, 'shiftLeft', PhysicalKeyboardKey.shiftLeft);
-  static const InputKey shiftRight =
-      KeyboardKey._(65, 'shiftRight', PhysicalKeyboardKey.shiftRight);
-  static const InputKey controlLeft =
-      KeyboardKey._(66, 'controlLeft', PhysicalKeyboardKey.controlLeft);
-  static const InputKey controlRight =
-      KeyboardKey._(67, 'controlRight', PhysicalKeyboardKey.controlRight);
-  static const InputKey altLeft =
-      KeyboardKey._(68, 'altLeft', PhysicalKeyboardKey.altLeft);
-  static const InputKey altRight =
-      KeyboardKey._(69, 'altRight', PhysicalKeyboardKey.altRight);
-  static const InputKey metaLeft =
-      KeyboardKey._(70, 'metaLeft', PhysicalKeyboardKey.metaLeft);
-  static const InputKey metaRight =
-      KeyboardKey._(71, 'metaRight', PhysicalKeyboardKey.metaRight);
+  static const InputKey shiftLeft = KeyboardKey._(
+    64,
+    'shiftLeft',
+    PhysicalKeyboardKey.shiftLeft,
+  );
+  static const InputKey shiftRight = KeyboardKey._(
+    65,
+    'shiftRight',
+    PhysicalKeyboardKey.shiftRight,
+  );
+  static const InputKey controlLeft = KeyboardKey._(
+    66,
+    'controlLeft',
+    PhysicalKeyboardKey.controlLeft,
+  );
+  static const InputKey controlRight = KeyboardKey._(
+    67,
+    'controlRight',
+    PhysicalKeyboardKey.controlRight,
+  );
+  static const InputKey altLeft = KeyboardKey._(
+    68,
+    'altLeft',
+    PhysicalKeyboardKey.altLeft,
+  );
+  static const InputKey altRight = KeyboardKey._(
+    69,
+    'altRight',
+    PhysicalKeyboardKey.altRight,
+  );
+  static const InputKey metaLeft = KeyboardKey._(
+    70,
+    'metaLeft',
+    PhysicalKeyboardKey.metaLeft,
+  );
+  static const InputKey metaRight = KeyboardKey._(
+    71,
+    'metaRight',
+    PhysicalKeyboardKey.metaRight,
+  );
 
   // --- keyboard: punctuation ----------------------------------------------
 
-  static const InputKey minus = KeyboardKey._(72, 'minus', PhysicalKeyboardKey.minus);
-  static const InputKey equal = KeyboardKey._(73, 'equal', PhysicalKeyboardKey.equal);
-  static const InputKey bracketLeft =
-      KeyboardKey._(74, 'bracketLeft', PhysicalKeyboardKey.bracketLeft);
-  static const InputKey bracketRight =
-      KeyboardKey._(75, 'bracketRight', PhysicalKeyboardKey.bracketRight);
-  static const InputKey backslash =
-      KeyboardKey._(76, 'backslash', PhysicalKeyboardKey.backslash);
-  static const InputKey semicolon =
-      KeyboardKey._(77, 'semicolon', PhysicalKeyboardKey.semicolon);
-  static const InputKey quote = KeyboardKey._(78, 'quote', PhysicalKeyboardKey.quote);
-  static const InputKey comma = KeyboardKey._(79, 'comma', PhysicalKeyboardKey.comma);
-  static const InputKey period = KeyboardKey._(80, 'period', PhysicalKeyboardKey.period);
-  static const InputKey slash = KeyboardKey._(81, 'slash', PhysicalKeyboardKey.slash);
-  static const InputKey backquote =
-      KeyboardKey._(82, 'backquote', PhysicalKeyboardKey.backquote);
+  static const InputKey minus = KeyboardKey._(
+    72,
+    'minus',
+    PhysicalKeyboardKey.minus,
+  );
+  static const InputKey equal = KeyboardKey._(
+    73,
+    'equal',
+    PhysicalKeyboardKey.equal,
+  );
+  static const InputKey bracketLeft = KeyboardKey._(
+    74,
+    'bracketLeft',
+    PhysicalKeyboardKey.bracketLeft,
+  );
+  static const InputKey bracketRight = KeyboardKey._(
+    75,
+    'bracketRight',
+    PhysicalKeyboardKey.bracketRight,
+  );
+  static const InputKey backslash = KeyboardKey._(
+    76,
+    'backslash',
+    PhysicalKeyboardKey.backslash,
+  );
+  static const InputKey semicolon = KeyboardKey._(
+    77,
+    'semicolon',
+    PhysicalKeyboardKey.semicolon,
+  );
+  static const InputKey quote = KeyboardKey._(
+    78,
+    'quote',
+    PhysicalKeyboardKey.quote,
+  );
+  static const InputKey comma = KeyboardKey._(
+    79,
+    'comma',
+    PhysicalKeyboardKey.comma,
+  );
+  static const InputKey period = KeyboardKey._(
+    80,
+    'period',
+    PhysicalKeyboardKey.period,
+  );
+  static const InputKey slash = KeyboardKey._(
+    81,
+    'slash',
+    PhysicalKeyboardKey.slash,
+  );
+  static const InputKey backquote = KeyboardKey._(
+    82,
+    'backquote',
+    PhysicalKeyboardKey.backquote,
+  );
 
   // --- keyboard: numpad ---------------------------------------------------
 
-  static const InputKey numpad0 =
-      KeyboardKey._(83, 'numpad0', PhysicalKeyboardKey.numpad0);
-  static const InputKey numpad1 =
-      KeyboardKey._(84, 'numpad1', PhysicalKeyboardKey.numpad1);
-  static const InputKey numpad2 =
-      KeyboardKey._(85, 'numpad2', PhysicalKeyboardKey.numpad2);
-  static const InputKey numpad3 =
-      KeyboardKey._(86, 'numpad3', PhysicalKeyboardKey.numpad3);
-  static const InputKey numpad4 =
-      KeyboardKey._(87, 'numpad4', PhysicalKeyboardKey.numpad4);
-  static const InputKey numpad5 =
-      KeyboardKey._(88, 'numpad5', PhysicalKeyboardKey.numpad5);
-  static const InputKey numpad6 =
-      KeyboardKey._(89, 'numpad6', PhysicalKeyboardKey.numpad6);
-  static const InputKey numpad7 =
-      KeyboardKey._(90, 'numpad7', PhysicalKeyboardKey.numpad7);
-  static const InputKey numpad8 =
-      KeyboardKey._(91, 'numpad8', PhysicalKeyboardKey.numpad8);
-  static const InputKey numpad9 =
-      KeyboardKey._(92, 'numpad9', PhysicalKeyboardKey.numpad9);
-  static const InputKey numpadAdd =
-      KeyboardKey._(93, 'numpadAdd', PhysicalKeyboardKey.numpadAdd);
-  static const InputKey numpadSubtract =
-      KeyboardKey._(94, 'numpadSubtract', PhysicalKeyboardKey.numpadSubtract);
-  static const InputKey numpadMultiply =
-      KeyboardKey._(95, 'numpadMultiply', PhysicalKeyboardKey.numpadMultiply);
-  static const InputKey numpadDivide =
-      KeyboardKey._(96, 'numpadDivide', PhysicalKeyboardKey.numpadDivide);
-  static const InputKey numpadDecimal =
-      KeyboardKey._(97, 'numpadDecimal', PhysicalKeyboardKey.numpadDecimal);
-  static const InputKey numpadEnter =
-      KeyboardKey._(98, 'numpadEnter', PhysicalKeyboardKey.numpadEnter);
+  static const InputKey numpad0 = KeyboardKey._(
+    83,
+    'numpad0',
+    PhysicalKeyboardKey.numpad0,
+  );
+  static const InputKey numpad1 = KeyboardKey._(
+    84,
+    'numpad1',
+    PhysicalKeyboardKey.numpad1,
+  );
+  static const InputKey numpad2 = KeyboardKey._(
+    85,
+    'numpad2',
+    PhysicalKeyboardKey.numpad2,
+  );
+  static const InputKey numpad3 = KeyboardKey._(
+    86,
+    'numpad3',
+    PhysicalKeyboardKey.numpad3,
+  );
+  static const InputKey numpad4 = KeyboardKey._(
+    87,
+    'numpad4',
+    PhysicalKeyboardKey.numpad4,
+  );
+  static const InputKey numpad5 = KeyboardKey._(
+    88,
+    'numpad5',
+    PhysicalKeyboardKey.numpad5,
+  );
+  static const InputKey numpad6 = KeyboardKey._(
+    89,
+    'numpad6',
+    PhysicalKeyboardKey.numpad6,
+  );
+  static const InputKey numpad7 = KeyboardKey._(
+    90,
+    'numpad7',
+    PhysicalKeyboardKey.numpad7,
+  );
+  static const InputKey numpad8 = KeyboardKey._(
+    91,
+    'numpad8',
+    PhysicalKeyboardKey.numpad8,
+  );
+  static const InputKey numpad9 = KeyboardKey._(
+    92,
+    'numpad9',
+    PhysicalKeyboardKey.numpad9,
+  );
+  static const InputKey numpadAdd = KeyboardKey._(
+    93,
+    'numpadAdd',
+    PhysicalKeyboardKey.numpadAdd,
+  );
+  static const InputKey numpadSubtract = KeyboardKey._(
+    94,
+    'numpadSubtract',
+    PhysicalKeyboardKey.numpadSubtract,
+  );
+  static const InputKey numpadMultiply = KeyboardKey._(
+    95,
+    'numpadMultiply',
+    PhysicalKeyboardKey.numpadMultiply,
+  );
+  static const InputKey numpadDivide = KeyboardKey._(
+    96,
+    'numpadDivide',
+    PhysicalKeyboardKey.numpadDivide,
+  );
+  static const InputKey numpadDecimal = KeyboardKey._(
+    97,
+    'numpadDecimal',
+    PhysicalKeyboardKey.numpadDecimal,
+  );
+  static const InputKey numpadEnter = KeyboardKey._(
+    98,
+    'numpadEnter',
+    PhysicalKeyboardKey.numpadEnter,
+  );
 
   // --- mouse buttons ------------------------------------------------------
   //
@@ -285,16 +490,31 @@ sealed class InputKey {
   // deliberately absent: a position is not a held/not-held bit, so it does
   // not belong in this block at all.
 
-  static const InputKey leftMouseButton =
-      MouseButtonKey._(99, 'leftMouseButton', kPrimaryMouseButton);
-  static const InputKey rightMouseButton =
-      MouseButtonKey._(100, 'rightMouseButton', kSecondaryMouseButton);
-  static const InputKey middleMouseButton =
-      MouseButtonKey._(101, 'middleMouseButton', kMiddleMouseButton);
-  static const InputKey backMouseButton =
-      MouseButtonKey._(102, 'backMouseButton', kBackMouseButton);
-  static const InputKey forwardMouseButton =
-      MouseButtonKey._(103, 'forwardMouseButton', kForwardMouseButton);
+  static const InputKey leftMouseButton = MouseButtonKey._(
+    99,
+    'leftMouseButton',
+    kPrimaryMouseButton,
+  );
+  static const InputKey rightMouseButton = MouseButtonKey._(
+    100,
+    'rightMouseButton',
+    kSecondaryMouseButton,
+  );
+  static const InputKey middleMouseButton = MouseButtonKey._(
+    101,
+    'middleMouseButton',
+    kMiddleMouseButton,
+  );
+  static const InputKey backMouseButton = MouseButtonKey._(
+    102,
+    'backMouseButton',
+    kBackMouseButton,
+  );
+  static const InputKey forwardMouseButton = MouseButtonKey._(
+    103,
+    'forwardMouseButton',
+    kForwardMouseButton,
+  );
 
   // --- gamepad ------------------------------------------------------------
   //
@@ -304,58 +524,142 @@ sealed class InputKey {
   // same button on slot 1. See [GamepadKey] for what a slot is and how the
   // ids are laid out.
 
-  static const GamepadKey padUp =
-      GamepadKey._(GamepadButton.padUp, 0, 104, 'padUp');
-  static const GamepadKey padDown =
-      GamepadKey._(GamepadButton.padDown, 0, 105, 'padDown');
-  static const GamepadKey padLeft =
-      GamepadKey._(GamepadButton.padLeft, 0, 106, 'padLeft');
-  static const GamepadKey padRight =
-      GamepadKey._(GamepadButton.padRight, 0, 107, 'padRight');
-  static const GamepadKey padA =
-      GamepadKey._(GamepadButton.a, 0, 108, 'padA');
-  static const GamepadKey padB =
-      GamepadKey._(GamepadButton.b, 0, 109, 'padB');
-  static const GamepadKey padX =
-      GamepadKey._(GamepadButton.x, 0, 110, 'padX');
-  static const GamepadKey padY =
-      GamepadKey._(GamepadButton.y, 0, 111, 'padY');
-  static const GamepadKey padLeftShoulder =
-      GamepadKey._(GamepadButton.leftShoulder, 0, 112, 'padLeftShoulder');
-  static const GamepadKey padRightShoulder =
-      GamepadKey._(GamepadButton.rightShoulder, 0, 113, 'padRightShoulder');
-  static const GamepadKey padLeftTrigger =
-      GamepadKey._(GamepadButton.leftTrigger, 0, 114, 'padLeftTrigger');
-  static const GamepadKey padRightTrigger =
-      GamepadKey._(GamepadButton.rightTrigger, 0, 115, 'padRightTrigger');
-  static const GamepadKey padLeftStick =
-      GamepadKey._(GamepadButton.leftStick, 0, 116, 'padLeftStick');
-  static const GamepadKey padRightStick =
-      GamepadKey._(GamepadButton.rightStick, 0, 117, 'padRightStick');
-  static const GamepadKey padStart =
-      GamepadKey._(GamepadButton.start, 0, 118, 'padStart');
-  static const GamepadKey padSelect =
-      GamepadKey._(GamepadButton.select, 0, 119, 'padSelect');
-  static const GamepadKey padLeftStickUp =
-      GamepadKey._(GamepadButton.leftStickUp, 0, 120, 'padLeftStickUp');
-  static const GamepadKey padLeftStickDown =
-      GamepadKey._(GamepadButton.leftStickDown, 0, 121, 'padLeftStickDown');
-  static const GamepadKey padLeftStickLeft =
-      GamepadKey._(GamepadButton.leftStickLeft, 0, 122, 'padLeftStickLeft');
-  static const GamepadKey padLeftStickRight =
-      GamepadKey._(GamepadButton.leftStickRight, 0, 123, 'padLeftStickRight');
-  static const GamepadKey padRightStickUp =
-      GamepadKey._(GamepadButton.rightStickUp, 0, 124, 'padRightStickUp');
-  static const GamepadKey padRightStickDown =
-      GamepadKey._(GamepadButton.rightStickDown, 0, 125, 'padRightStickDown');
-  static const GamepadKey padRightStickLeft =
-      GamepadKey._(GamepadButton.rightStickLeft, 0, 126, 'padRightStickLeft');
-  static const GamepadKey padRightStickRight =
-      GamepadKey._(GamepadButton.rightStickRight, 0, 127, 'padRightStickRight');
-  static const GamepadKey padHome =
-      GamepadKey._(GamepadButton.home, 0, 128, 'padHome');
-  static const GamepadKey padTouchpad =
-      GamepadKey._(GamepadButton.touchpad, 0, 129, 'padTouchpad');
+  static const GamepadKey padUp = GamepadKey._(
+    GamepadButton.padUp,
+    0,
+    104,
+    'padUp',
+  );
+  static const GamepadKey padDown = GamepadKey._(
+    GamepadButton.padDown,
+    0,
+    105,
+    'padDown',
+  );
+  static const GamepadKey padLeft = GamepadKey._(
+    GamepadButton.padLeft,
+    0,
+    106,
+    'padLeft',
+  );
+  static const GamepadKey padRight = GamepadKey._(
+    GamepadButton.padRight,
+    0,
+    107,
+    'padRight',
+  );
+  static const GamepadKey padA = GamepadKey._(GamepadButton.a, 0, 108, 'padA');
+  static const GamepadKey padB = GamepadKey._(GamepadButton.b, 0, 109, 'padB');
+  static const GamepadKey padX = GamepadKey._(GamepadButton.x, 0, 110, 'padX');
+  static const GamepadKey padY = GamepadKey._(GamepadButton.y, 0, 111, 'padY');
+  static const GamepadKey padLeftShoulder = GamepadKey._(
+    GamepadButton.leftShoulder,
+    0,
+    112,
+    'padLeftShoulder',
+  );
+  static const GamepadKey padRightShoulder = GamepadKey._(
+    GamepadButton.rightShoulder,
+    0,
+    113,
+    'padRightShoulder',
+  );
+  static const GamepadKey padLeftTrigger = GamepadKey._(
+    GamepadButton.leftTrigger,
+    0,
+    114,
+    'padLeftTrigger',
+  );
+  static const GamepadKey padRightTrigger = GamepadKey._(
+    GamepadButton.rightTrigger,
+    0,
+    115,
+    'padRightTrigger',
+  );
+  static const GamepadKey padLeftStick = GamepadKey._(
+    GamepadButton.leftStick,
+    0,
+    116,
+    'padLeftStick',
+  );
+  static const GamepadKey padRightStick = GamepadKey._(
+    GamepadButton.rightStick,
+    0,
+    117,
+    'padRightStick',
+  );
+  static const GamepadKey padStart = GamepadKey._(
+    GamepadButton.start,
+    0,
+    118,
+    'padStart',
+  );
+  static const GamepadKey padSelect = GamepadKey._(
+    GamepadButton.select,
+    0,
+    119,
+    'padSelect',
+  );
+  static const GamepadKey padLeftStickUp = GamepadKey._(
+    GamepadButton.leftStickUp,
+    0,
+    120,
+    'padLeftStickUp',
+  );
+  static const GamepadKey padLeftStickDown = GamepadKey._(
+    GamepadButton.leftStickDown,
+    0,
+    121,
+    'padLeftStickDown',
+  );
+  static const GamepadKey padLeftStickLeft = GamepadKey._(
+    GamepadButton.leftStickLeft,
+    0,
+    122,
+    'padLeftStickLeft',
+  );
+  static const GamepadKey padLeftStickRight = GamepadKey._(
+    GamepadButton.leftStickRight,
+    0,
+    123,
+    'padLeftStickRight',
+  );
+  static const GamepadKey padRightStickUp = GamepadKey._(
+    GamepadButton.rightStickUp,
+    0,
+    124,
+    'padRightStickUp',
+  );
+  static const GamepadKey padRightStickDown = GamepadKey._(
+    GamepadButton.rightStickDown,
+    0,
+    125,
+    'padRightStickDown',
+  );
+  static const GamepadKey padRightStickLeft = GamepadKey._(
+    GamepadButton.rightStickLeft,
+    0,
+    126,
+    'padRightStickLeft',
+  );
+  static const GamepadKey padRightStickRight = GamepadKey._(
+    GamepadButton.rightStickRight,
+    0,
+    127,
+    'padRightStickRight',
+  );
+  static const GamepadKey padHome = GamepadKey._(
+    GamepadButton.home,
+    0,
+    128,
+    'padHome',
+  );
+  static const GamepadKey padTouchpad = GamepadKey._(
+    GamepadButton.touchpad,
+    0,
+    129,
+    'padTouchpad',
+  );
 
   /// Every key, indexed by [id] - `all[n].id == n` for every n, which
   /// `game_input_test.dart` checks directly because the ids above are written
@@ -524,29 +828,58 @@ final class GamepadButton {
   static const GamepadButton b = GamepadButton._(5, 'padB');
   static const GamepadButton x = GamepadButton._(6, 'padX');
   static const GamepadButton y = GamepadButton._(7, 'padY');
-  static const GamepadButton leftShoulder = GamepadButton._(8, 'padLeftShoulder');
-  static const GamepadButton rightShoulder =
-      GamepadButton._(9, 'padRightShoulder');
-  static const GamepadButton leftTrigger = GamepadButton._(10, 'padLeftTrigger');
-  static const GamepadButton rightTrigger = GamepadButton._(11, 'padRightTrigger');
+  static const GamepadButton leftShoulder = GamepadButton._(
+    8,
+    'padLeftShoulder',
+  );
+  static const GamepadButton rightShoulder = GamepadButton._(
+    9,
+    'padRightShoulder',
+  );
+  static const GamepadButton leftTrigger = GamepadButton._(
+    10,
+    'padLeftTrigger',
+  );
+  static const GamepadButton rightTrigger = GamepadButton._(
+    11,
+    'padRightTrigger',
+  );
   static const GamepadButton leftStick = GamepadButton._(12, 'padLeftStick');
   static const GamepadButton rightStick = GamepadButton._(13, 'padRightStick');
   static const GamepadButton start = GamepadButton._(14, 'padStart');
   static const GamepadButton select = GamepadButton._(15, 'padSelect');
-  static const GamepadButton leftStickUp = GamepadButton._(16, 'padLeftStickUp');
-  static const GamepadButton leftStickDown =
-      GamepadButton._(17, 'padLeftStickDown');
-  static const GamepadButton leftStickLeft =
-      GamepadButton._(18, 'padLeftStickLeft');
-  static const GamepadButton leftStickRight =
-      GamepadButton._(19, 'padLeftStickRight');
-  static const GamepadButton rightStickUp = GamepadButton._(20, 'padRightStickUp');
-  static const GamepadButton rightStickDown =
-      GamepadButton._(21, 'padRightStickDown');
-  static const GamepadButton rightStickLeft =
-      GamepadButton._(22, 'padRightStickLeft');
-  static const GamepadButton rightStickRight =
-      GamepadButton._(23, 'padRightStickRight');
+  static const GamepadButton leftStickUp = GamepadButton._(
+    16,
+    'padLeftStickUp',
+  );
+  static const GamepadButton leftStickDown = GamepadButton._(
+    17,
+    'padLeftStickDown',
+  );
+  static const GamepadButton leftStickLeft = GamepadButton._(
+    18,
+    'padLeftStickLeft',
+  );
+  static const GamepadButton leftStickRight = GamepadButton._(
+    19,
+    'padLeftStickRight',
+  );
+  static const GamepadButton rightStickUp = GamepadButton._(
+    20,
+    'padRightStickUp',
+  );
+  static const GamepadButton rightStickDown = GamepadButton._(
+    21,
+    'padRightStickDown',
+  );
+  static const GamepadButton rightStickLeft = GamepadButton._(
+    22,
+    'padRightStickLeft',
+  );
+  static const GamepadButton rightStickRight = GamepadButton._(
+    23,
+    'padRightStickRight',
+  );
 
   /// The guide/home button. Many platforms reserve it for the OS and never
   /// deliver it; it is here because the ones that do deliver it should not
@@ -669,10 +1002,10 @@ final class GamepadKey extends InputKey {
   /// the button.
   @override
   Map<String, Object?> toJson() => <String, Object?>{
-        'kind': kind,
-        'name': _names[button.index],
-        if (slot != 0) 'slot': slot,
-      };
+    'kind': kind,
+    'name': _names[button.index],
+    if (slot != 0) 'slot': slot,
+  };
 
   static GamepadKey fromJson(Map<String, Object?> json) {
     final key = InputKey._byName(_byName, json) as GamepadKey;

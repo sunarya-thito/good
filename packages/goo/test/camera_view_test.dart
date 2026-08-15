@@ -2,13 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:goo/goo.dart';
 import 'package:goo/src/camera_view.dart' show GameCameraDescriptor;
-import 'package:goo/src/handle.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
-late InlineGameHandle run;
-
+late Game run;
 
 // Camera views: the declare pass, their addressing, and the viewport channel.
 //
@@ -87,22 +85,32 @@ void main() {
 
       expect(game.cameraViews.resolve<CameraView>(1), same(game.minimap));
       expect(game.cameraViews.tryResolve<CameraView>(2), isNull);
-      expect(() => game.cameraViews.resolve<CameraView>(2), throwsStateError,
-          reason: 'an address this table never issued is a real bug - it is '
-              'either stale or came from a different table');
+      expect(
+        () => game.cameraViews.resolve<CameraView>(2),
+        throwsStateError,
+        reason:
+            'an address this table never issued is a real bug - it is '
+            'either stale or came from a different table',
+      );
     });
 
-    test('addresses may collide with another table, and that is fine', () async {
-      final game = await _start(_TwoCameraGame());
+    test(
+      'addresses may collide with another table, and that is fine',
+      () async {
+        final game = await _start(_TwoCameraGame());
 
-      // The point of `ObjectTable`: two populations number themselves from
-      // zero independently, so address 0 exists in both and means something
-      // different in each. A single shared registry could not express this.
-      final firstAsset = game.assets;
-      expect(game.main.address, 0);
-      expect(firstAsset.tryResolve<CameraView>(0), isNull,
-          reason: 'the asset table has never heard of a camera view');
-    });
+        // The point of `ObjectTable`: two populations number themselves from
+        // zero independently, so address 0 exists in both and means something
+        // different in each. A single shared registry could not express this.
+        final firstAsset = game.assets;
+        expect(game.main.address, 0);
+        expect(
+          firstAsset.tryResolve<CameraView>(0),
+          isNull,
+          reason: 'the asset table has never heard of a camera view',
+        );
+      },
+    );
   });
 
   group('the viewport crosses through shared memory', () {
@@ -149,12 +157,20 @@ void main() {
 
       await run.stop();
 
-      expect(game.main.viewportWidth, 0,
-          reason: 'the memory is freed on stop, and a read after that must '
-              'report nothing rather than touch it');
-      expect(() => game.main.setViewport(100, 100), returnsNormally,
-          reason: 'and a late layout pass from a widget still being torn down '
-              'is a no-op, not a crash');
+      expect(
+        game.main.viewportWidth,
+        0,
+        reason:
+            'the memory is freed on stop, and a read after that must '
+            'report nothing rather than touch it',
+      );
+      expect(
+        () => game.main.setViewport(100, 100),
+        returnsNormally,
+        reason:
+            'and a late layout pass from a widget still being torn down '
+            'is a no-op, not a crash',
+      );
     });
   });
 

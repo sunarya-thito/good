@@ -1,6 +1,8 @@
 import 'package:meta/meta.dart';
 
+import 'package:goo/src/coroutine/coroutine.dart';
 import 'package:goo/src/archetype.dart';
+import 'package:goo/src/pool.dart';
 import 'package:goo/src/event.dart';
 import 'package:goo/src/game.dart';
 import 'package:goo/src/game_state.dart';
@@ -32,7 +34,7 @@ import 'package:goo/src/scene.dart';
 /// says so with a method instead of a dispatch mechanism built for several
 /// contributors to a problem that has one. See `GameEvent`'s doc.
 abstract class GameSystem extends GameListenerBase
-    with EventBus
+    with EventBus, Coroutines
     implements Comparable<GameSystem> {
   GameState? _state;
 
@@ -82,7 +84,42 @@ abstract class GameSystem extends GameListenerBase
 
   /// The game this system was declared in - `state.game`, for the declarations
   /// that legitimately live there (buffers, state channels, camera views).
+  ///
+  /// Typed as the base class, so a system that wants *its* game has to say so:
+  /// prefer [getGame], which says it once and diagnoses the mismatch, over
+  /// `game as MyGame` at every call site.
   Game get game => state.game;
+
+  /// This system's game, as [T].
+  ///
+  /// The typed counterpart to [game], and the same shape `Entity.get<T>` and
+  /// `Scene.get<T>` already use. A cast at the call site is the caller
+  /// asserting something the API could have carried, and when it is wrong a
+  /// bare `as` reports a `TypeError` naming two classes and no reason - this
+  /// names the game that is actually running and where to look.
+  T getGame<T extends Game>() {
+    final game = state.game;
+    if (game is T) return game;
+    throw StateError(
+      '$runtimeType asked for its game as $T, but this run is a '
+      '${game.runtimeType}. A system reaches its own game to read what that '
+      'game declared, so the two are fixed together at describe time - if '
+      'they disagree, the system is declared in a different game than the one '
+      'it was written for.',
+    );
+  }
+
+  /// This system's state, as [T]. See [getGame] - same argument, other half.
+  T getState<T extends GameState>() {
+    final state = this.state;
+    if (state is T) return state;
+    throw StateError(
+      '$runtimeType asked for its state as $T, but this run has a '
+      '${state.runtimeType}. `Game.createState` decides which one a run gets, '
+      'so this system is declared in a game whose state is not the one it was '
+      'written against.',
+    );
+  }
 
   // provide a way for GameSystem to compile queries
   void describeQuery(QueryDescriptor descriptor) {}
@@ -138,6 +175,10 @@ abstract class GameSystem extends GameListenerBase
   /// game-isolate object, and the presentation copy has none.
   T getSystem<T extends GameSystem>() => state.getSystem<T>();
 
+  @override
+  @internal
+  GameState get simulationState => state;
+
   /// The running scene, as [T] - sugar for `state.getScene<T>()`. Throws if
   /// no scene is loaded (`GameState.scene` is nullable by design) or if it is
   /// some other type; read `state.scene` directly when absence is expected.
@@ -156,6 +197,32 @@ abstract class Query {
   /// public because it is the whole of a query's matching semantics, and
   /// testing it directly beats inferring it from iteration results.
   bool matches(int signature);
+
+  /// The matching archetypes, one [QueryGroup] each.
+  ///
+  /// **The iteration to prefer**, and the reason is correctness before speed.
+  /// A component instance belongs to an *archetype*, not to an entity -
+  /// `entity.get<Mote>()` returns the same object for every entity of that
+  /// archetype - so resolving it inside the row loop is work repeated for
+  /// every row. Hoisting it out is only *correct* per archetype, though, since
+  /// one query can match several; a group is that scope made explicit.
+  ///
+  /// ```dart
+  /// for (final group in enemies.groups()) {
+  ///   final enemy = group.get<Enemy>();          // once per archetype
+  ///   final transform = group.get<Transform2D>();
+  ///   for (final entity in group) {
+  ///     transform.transformOffsetX[entity] += 1;
+  ///   }
+  /// }
+  /// ```
+  ///
+  /// The returned list is rebuilt only when the set of archetypes changes -
+  /// i.e. when a scene loads - so a tick iterating it allocates one list
+  /// iterator, not one per entity. [run] walks the same rows through two
+  /// nested `sync*` generators instead, which a profile put at ~7% of the
+  /// engine's CPU.
+  Iterable<QueryGroup> groups();
 
   // TODO: is closure the best way to run a query?
   void runQuery(void Function() runner);
@@ -481,6 +548,30 @@ class _ArchetypeQuery implements Query {
     _cursor = null;
   }
 
+  /// Rebuilt only when the archetype set changes - i.e. when a scene loads.
+  ///
+  /// A `Query` outlives every tick, so the groups do too: iterating this costs
+  /// one list iterator per tick rather than the per-archetype allocation a
+  /// freshly-built list would.
+  final List<QueryGroup> _groups = <QueryGroup>[];
+  int _groupsBuiltFor = -1;
+
+  @override
+  Iterable<QueryGroup> groups() {
+    final count = ArchetypeRegistry.count;
+    if (_groupsBuiltFor != count) {
+      _groups.clear();
+      for (var archetypeId = 0; archetypeId < count; archetypeId++) {
+        final storage = ArchetypeRegistry.byId(archetypeId);
+        if (matches(storage.componentSignature)) {
+          _groups.add(QueryGroup(storage));
+        }
+      }
+      _groupsBuiltFor = count;
+    }
+    return _groups;
+  }
+
   @override
   Iterable<Entity> run() sync* {
     final archetypeCount = ArchetypeRegistry.count;
@@ -523,4 +614,104 @@ final class ArchetypeQueryDescriptor implements QueryDescriptor {
 
   @override
   QueryBuilder query() => _QueryBuilder(_ArchetypeQuery.new);
+}
+
+/// One matching archetype inside a [Query], and the rows it holds.
+///
+/// Exists so a component can be resolved **once per archetype** instead of once
+/// per entity. `entity.get<Mote>()` is not a per-entity lookup pretending to be
+/// cheap - it genuinely returns the same object every time, because a component
+/// describes an archetype's layout and every row shares it. A profile put the
+/// repeated resolution (`Entity.get`, `Entity.tryGet`, `ArchetypeRegistry.byId`)
+/// at ~7% of the engine's CPU.
+///
+/// Hoisting it by hand is only correct when a query matches exactly one
+/// archetype, which is not something a caller can see from the query. This
+/// makes the scope explicit: inside a group there is exactly one archetype, so
+/// [get] is both hoistable and obviously correct.
+final class QueryGroup extends Iterable<Entity> {
+  @internal
+  QueryGroup(this.storage);
+
+  /// The archetype this group iterates.
+  final ArchetypeStorage storage;
+
+  /// This archetype's instance of [T] - the prefab, viewed as one of the
+  /// components it mixes in.
+  ///
+  /// Resolve it before the row loop and use it for every row.
+  T get<T extends Component>() {
+    // Widened to `Object` first: `prefab` is an `EntityStruct` and `T` is a
+    // `Component`, and Dart will not promote between two class types neither
+    // of which is a subtype of the other.
+    final Object prefab = storage.prefab;
+    if (prefab is T) return prefab;
+    throw StateError(
+      '${prefab.runtimeType} is not a $T. The query matched this archetype, '
+      'so it satisfies the query\'s constraints - but $T is not among them. '
+      'Add it to the query (withAll) or use tryGet.',
+    );
+  }
+
+  /// [get], or null when this archetype does not have [T].
+  T? tryGet<T extends Component>() {
+    final Object prefab = storage.prefab;
+    return prefab is T ? prefab : null;
+  }
+
+  /// A hand-written walk over this archetype's live rows.
+  ///
+  /// Not a `sync*` generator: those cost a `_SyncStarIterator` state machine
+  /// per `moveNext`, which a profile put at ~5% of total CPU when the query
+  /// ran through two of them nested (`run()` yielding through `rowOffsets`).
+  @override
+  Iterator<Entity> get iterator => _GroupIterator(storage);
+}
+
+final class _GroupIterator implements Iterator<Entity> {
+  _GroupIterator(this._storage) : _archetypeId = _storage.archetypeId;
+
+  final ArchetypeStorage _storage;
+  final int _archetypeId;
+
+  int _pageIndex = -1;
+  MemoryPage? _page;
+  int _stride = 0;
+  int _limit = 0;
+  int _offset = 0;
+  Entity _current = Entity(0);
+
+  @override
+  Entity get current => _current;
+
+  @override
+  bool moveNext() {
+    while (true) {
+      final page = _page;
+      if (page != null) {
+        while (_offset < _limit) {
+          final offset = _offset;
+          _offset += _stride;
+          if (page.isWalkable(offset)) {
+            _current = Entity.pack(_archetypeId, _pageIndex, offset);
+            return true;
+          }
+        }
+        _page = null;
+      }
+      // On to the next page. Tombstoned slots (a scene unloaded) and pages
+      // nothing ever allocated into are stepped over rather than ending the
+      // walk - `Entity.pageIndex` indexes this list, so it is never compacted.
+      _pageIndex++;
+      if (_pageIndex >= _storage.pageCount) return false;
+      final next = _storage.pageAt(_pageIndex);
+      if (next == null) continue;
+      final stride = next.strideBytes;
+      if (stride == null || stride <= 0) continue;
+      _page = next;
+      _stride = stride;
+      _limit = next.beginWalk();
+      _offset = 0;
+    }
+  }
 }

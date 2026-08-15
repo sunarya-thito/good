@@ -6,7 +6,7 @@ import 'package:goo2d/goo2d.dart';
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
-late InlineGameHandle run;
+late Game run;
 
 
 // MousePickingSystem end to end: a synthetic pointer written through the
@@ -107,7 +107,7 @@ class _Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
 
 class _Scene extends SceneStruct {
   @override
-  void onMounted(Scene scene) => handle = scene;
+  void onSceneMounted(Scene scene) => handle = scene;
 
   /// This fixture's loaded handle. Entity creation lives on `Scene` now (one
   /// `SceneStruct` can back several loaded scenes), so a headless fixture

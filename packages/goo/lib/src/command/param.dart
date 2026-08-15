@@ -94,11 +94,11 @@ final class CommandBuffer {
 final class CommandBatch {
   @internal
   CommandBatch(this.id, {CommandSender? sender, int initialBytes = 256})
-      // ignore: prefer_initializing_formals
-      : _sender = sender,
-        // ignore: prefer_initializing_formals - _bytes is reassigned on
-        // growth, so it cannot be a final initializing formal.
-        _bytes = Uint8List(initialBytes) {
+    // ignore: prefer_initializing_formals
+    : _sender = sender,
+      // ignore: prefer_initializing_formals - _bytes is reassigned on
+      // growth, so it cannot be a final initializing formal.
+      _bytes = Uint8List(initialBytes) {
     _data = ByteData.sublistView(_bytes);
   }
 
@@ -580,7 +580,12 @@ final class _FloatPointer extends _Pointer<double> {
 }
 
 final class _StringPointer extends _Pointer<String> {
-  const _StringPointer(super.index, this.lengthByte, this.maxBytes, this.encoding);
+  const _StringPointer(
+    super.index,
+    this.lengthByte,
+    this.maxBytes,
+    this.encoding,
+  );
 
   final int lengthByte;
   final int maxBytes;
