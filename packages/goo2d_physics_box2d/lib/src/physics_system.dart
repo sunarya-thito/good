@@ -103,9 +103,23 @@ class Box2DPhysicsSystem extends GameSystem
   ///         8   1969.4us     2.90x
   /// ```
   ///
+  /// End to end through the ECS, on the physics demo in profile mode - the
+  /// number that actually matters, since the bench above is the solver alone:
+  ///
+  /// ```
+  ///   awake bodies    solve 1 thread    solve 8 threads    sim fps
+  ///           4000           3.77 ms            1.17 ms    60.4 -> 62.5
+  ///          20000          30.73 ms            8.86 ms     3.8 -> 8.1
+  /// ```
+  ///
   /// **It only helps a scene that is awake.** A settled pile sleeps and costs
   /// almost nothing on one thread already, so threading buys nothing there;
-  /// what it buys is headroom for the moments when everything is moving.
+  /// what it buys is headroom for the moments when everything is moving. At
+  /// 8000 *settled* bodies the solve is 0.02 ms either way.
+  ///
+  /// It does not make 20 000 awake bodies a 60 Hz scene: that frame is still
+  /// ~13 ms of physics plus ~5 ms of other systems per step. What it does is
+  /// move Box2D out of first place.
   ///
   /// Box2D's own guidance is that only performance cores help - efficiency
   /// cores and hyper-threading "provide little benefit and may even harm
