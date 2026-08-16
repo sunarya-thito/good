@@ -10,6 +10,7 @@ class _Player extends EntityStruct with Transform2D, Collider2D, CollisionListen
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
     box = descriptor.hasBoxCollider(halfWidth: 16, halfHeight: 24);
     hurtbox = descriptor.hasCircleCollider(radius: 20);
     pickupRange = descriptor.hasCircleCollider(radius: 48, isTrigger: true);
@@ -26,6 +27,7 @@ class _Wall extends EntityStruct with Transform2D, Collider2D {
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
     box = descriptor.hasBoxCollider(halfWidth: 100, halfHeight: 10);
   }
 }
@@ -36,6 +38,7 @@ class _Polygon extends EntityStruct
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
     triangle = descriptor.hasPolygonCollider(maxPoints: 8);
   }
 
@@ -60,6 +63,7 @@ class _Capsule extends EntityStruct with Transform2D, Collider2D {
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
     pill = descriptor.hasCapsuleCollider(radius: 10, halfHeight: 30);
     squashed = descriptor.hasCapsuleCollider(radius: 10, halfHeight: 4);
   }
@@ -74,6 +78,7 @@ class _Concave extends EntityStruct
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
     arrow = descriptor.hasPolygonCollider(maxPoints: 8);
   }
 
@@ -112,6 +117,7 @@ class _Scene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     player = descriptor.has(_Player());
     wall = descriptor.has(_Wall());
     polygon = descriptor.has(_Polygon());
@@ -229,7 +235,8 @@ void main() {
 
       // Calling the un-overridden ones directly must not throw - they're
       // real no-op bodies, not abstract methods forcing an override.
-      final event = Collision2DEvent(scene.player.box, player, scene.player.box, player);
+      final event = Collision2DEvent()
+        ..set(scene.player.box, player, scene.player.box, player);
       expect(() => scene.player.onCollisionExit2D(event), returnsNormally);
       expect(() => scene.player.onCollisionStay2D(event), returnsNormally);
       expect(() => scene.player.onTriggerExit2D(event), returnsNormally);
@@ -248,11 +255,20 @@ void main() {
       final b = scene.addEntity(scene.player);
       scene.pool.commitTick();
 
-      final event = Collision2DEvent(scene.player.box, a, scene.player.hurtbox, b);
+      // One instance, repointed per dispatch - a physics step can produce
+      // hundreds of contacts and allocating per contact is the hot-path cost
+      // RULES.md rule 1 forbids.
+      final event = Collision2DEvent()
+        ..set(scene.player.box, a, scene.player.hurtbox, b);
       expect(event.sourceEntity, a);
       expect(event.targetEntity, b);
       expect(event.source, isA<BoxBody>());
       expect(event.target, isA<CircleBody>());
+
+      // Reused, not replaced: the same object answers for the next collision.
+      event.set(scene.player.hurtbox, b, scene.player.box, a);
+      expect(event.sourceEntity, b);
+      expect(event.source, isA<CircleBody>());
     });
   });
 

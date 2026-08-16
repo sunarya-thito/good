@@ -12,6 +12,7 @@ import 'package:goo2d/src/render/draw/draw_2d.dart';
 // declares and drains the frame buffers; this system fills them.
 import 'package:goo2d/src/render/game_2d.dart';
 import 'package:goo2d/src/render/texture.dart';
+import 'package:meta/meta.dart';
 
 /// A position expressed as a fraction of some size *plus* an absolute offset,
 /// evaluated as `fraction * size + offset`.
@@ -384,7 +385,8 @@ mixin Renderable2D on MultiComponent {
 
   /// Implemented by the concrete prefab - declares this entity type's sprites
   /// via the [SpriteDescriptor] passed in.
-  void describeSprites(SpriteDescriptor descriptor);
+  @mustCallSuper
+  void describeSprites(SpriteDescriptor descriptor) {}
 
   // Registering the type here is not optional bookkeeping - it is what sets
   // this component's bit in the archetype signature, and therefore the only
@@ -422,6 +424,31 @@ mixin Renderable2D on MultiComponent {
 /// move a single `int` per swap rather than an entity, a sprite reference and
 /// a key. It is also why there is no `_Candidate` class: one object per drawn
 /// sprite per tick is precisely the allocation this exists to avoid.
+///
+/// # Why the finished geometry lives here
+///
+/// [_corners] and [_colorAddress] hold each plain sprite's *already-transformed*
+/// quad, computed by the fill pass rather than by the write pass. That split is
+/// the whole point of this class now, and it was measured into existence.
+///
+/// The fill pass visits rows in page order; the write pass visits the same rows
+/// in z-sorted order, which for any scene that layers by distance is close to a
+/// random permutation. On a phone, 20,000 rows of ~250 bytes is ~5 MB - past
+/// the last-level cache - so the write pass spent its time stalled on memory.
+/// A device ablation that skipped the sort entirely (`debugSkipZSort`) cut the
+/// write pass from 8.96 ms to 5.18 ms, **42%**, with identical work and only
+/// the order changed. The same ablation for the two trig calls moved it 0.07 ms,
+/// i.e. nothing: the arithmetic was executing inside the memory stalls for free.
+///
+/// So the rows are now read once, sequentially, by the pass that was already
+/// walking them, and what the permutation shuffles is 40 dense bytes per sprite
+/// instead of a 250-byte row scattered across pages - ~800 KB at 20,000
+/// sprites rather than ~5 MB, which is the difference between fitting in that
+/// cache and not.
+///
+/// Note this deliberately *moves* cost rather than removing it: the fill pass
+/// gets slower and the write pass much faster. `present` is the number that
+/// went down; `walk` on its own will read higher than before.
 final class _SpriteDrawQueue {
   _SpriteDrawQueue({int initialCapacity = 64})
     : _entities = List<Entity>.filled(initialCapacity, const Entity(0)),
@@ -430,7 +457,17 @@ final class _SpriteDrawQueue {
       _zIndices = Int32List(initialCapacity),
       _records = Int32List(initialCapacity),
       _order = Int32List(initialCapacity),
-      _merge = Int32List(initialCapacity);
+      _merge = Int32List(initialCapacity),
+      _corners = Float32List(initialCapacity * _cornerStride),
+      _colorAddress = Int32List(initialCapacity * _colorStride);
+
+  /// Floats per queued sprite in [_corners]: four `(x, y)` corners in winding
+  /// order, already transformed into view space.
+  static const int _cornerStride = 8;
+
+  /// Ints per queued sprite in [_colorAddress]: packed ARGB, then the texture
+  /// address. Kept adjacent so the write pass reads both in one access.
+  static const int _colorStride = 2;
 
   List<Entity> _entities;
   List<Sprite?> _sprites;
@@ -463,10 +500,47 @@ final class _SpriteDrawQueue {
   /// is the identity permutation, i.e. encounter order.
   Int32List _order;
 
-  /// The merge sort's second buffer. Swapped with [_order] rather than copied
-  /// back - both are owned scratch of identical length, so the swap is two
-  /// field writes.
+  /// The sort's second buffer. Swapped with [_order] rather than copied back -
+  /// both are owned scratch of identical length, so the swap is two field
+  /// writes. Used by both sorts.
   Int32List _merge;
+
+  /// Four already-transformed `(x, y)` corners per queued sprite, in winding
+  /// order - see the class doc for why the geometry is computed by the fill
+  /// pass and parked here.
+  ///
+  /// `Float32List`, not `Float64List`, and that is exact rather than lossy:
+  /// the wire format's corners are `float32`, so the old code computed in
+  /// double and narrowed once at `setFloat32`. Narrowing here instead puts the
+  /// single rounding step in a different place and produces the identical bits,
+  /// because reading a `float32` back out widens exactly. It also halves what
+  /// the permutation has to drag through the cache, which is the entire point.
+  ///
+  /// **Only written for sprites that draw as one quad.** A nine-sliced sprite
+  /// has nine records with their own per-cell UVs and cannot be reduced to four
+  /// corners, so its slots here are left holding whatever a previous tick put
+  /// there. Nothing reads them: the write pass branches on [recordsAt] first.
+  Float32List _corners;
+
+  /// Packed ARGB then texture address per queued sprite. See [_corners] for
+  /// which sprites these are filled for.
+  Int32List _colorAddress;
+
+  /// The bucket array for the counting sort - one slot per distinct `zIndex`
+  /// value in `[_zMin, _zMax]`. Grown to the high-water mark like every other
+  /// buffer here and never shrunk, so a steady-state tick allocates nothing.
+  Int32List _counts = Int32List(0);
+
+  /// The smallest and largest `zIndex` queued this tick, tracked in [add]
+  /// because that is the one place every key is already in a register. What
+  /// [sortByZ] needs them for is the *range*, which is what decides whether a
+  /// counting sort is affordable.
+  ///
+  /// Only meaningful while `_count > 0`; [add] seeds both from the first key
+  /// rather than starting from the int extremes, so a scene whose z values are
+  /// all equal reports a range of 1 rather than the whole int64 line.
+  int _zMin = 0;
+  int _zMax = 0;
 
   int _count = 0;
 
@@ -488,8 +562,13 @@ final class _SpriteDrawQueue {
   }
 
   /// Queues one (entity, sprite) pair to be drawn at depth [zIndex],
-  /// costing [records] draw records.
-  void add(
+  /// costing [records] draw records, and returns its **slot** - the index the
+  /// parallel arrays store it at, which is also its encounter position.
+  ///
+  /// The slot is what [setQuad] takes. It is deliberately not the draw
+  /// position: nothing knows that until [sortByZ] has run, and the fill pass
+  /// has to be able to write a sprite's geometry the moment it computes it.
+  int add(
     Entity entity,
     Sprite sprite,
     _TransformSource source,
@@ -497,14 +576,89 @@ final class _SpriteDrawQueue {
     int records,
   ) {
     _ensure(_count + 1);
+    // Seeded from the first key rather than from the int extremes, so an empty
+    // range is 1 and not the whole number line - see [_zMin].
+    if (_count == 0) {
+      _zMin = zIndex;
+      _zMax = zIndex;
+    } else if (zIndex < _zMin) {
+      _zMin = zIndex;
+    } else if (zIndex > _zMax) {
+      _zMax = zIndex;
+    }
     _entities[_count] = entity;
     _sprites[_count] = sprite;
     _sources[_count] = source;
     _zIndices[_count] = zIndex;
     _records[_count] = records;
     _order[_count] = _count;
-    _count++;
     _recordTotal += records;
+    return _count++;
+  }
+
+  /// Stores one plain sprite's finished, view-space quad against [slot].
+  ///
+  /// Corners are in winding order - `(x0,y0)` and `(x2,y2)` opposite - matching
+  /// what `DrawSpriteData2D.writeQuad` expects, because [writeQuadAt] hands
+  /// them straight to it.
+  void setQuad(
+    int slot,
+    double x0,
+    double y0,
+    double x1,
+    double y1,
+    double x2,
+    double y2,
+    double x3,
+    double y3,
+    int color,
+    int textureAddress,
+  ) {
+    final c = slot * _cornerStride;
+    final corners = _corners;
+    corners[c] = x0;
+    corners[c + 1] = y0;
+    corners[c + 2] = x1;
+    corners[c + 3] = y1;
+    corners[c + 4] = x2;
+    corners[c + 5] = y2;
+    corners[c + 6] = x3;
+    corners[c + 7] = y3;
+    final k = slot * _colorStride;
+    _colorAddress[k] = color;
+    _colorAddress[k + 1] = textureAddress;
+  }
+
+  /// Writes the [i]th pair *in draw order* as one quad record, returning the
+  /// next write offset. Only valid where `recordsAt(i) == 1`.
+  ///
+  /// This is the whole of the write pass for a plain sprite, and it touches no
+  /// component row: one `_order` read, then eight contiguous floats and two
+  /// contiguous ints out of the dense arrays the fill pass packed. See the
+  /// class doc for the measurement that made this the shape it is.
+  ///
+  /// The UVs are left to `writeQuad`'s defaults, which spell exactly the
+  /// whole-texture case `(0,0) (1,0) (1,1) (0,1)` this path passed explicitly
+  /// before.
+  int writeQuadAt(ByteData view, int offset, int i) {
+    final slot = _order[i];
+    final c = slot * _cornerStride;
+    final k = slot * _colorStride;
+    final q = _corners;
+    return DrawSpriteData2D.writeQuad(
+      view,
+      offset,
+      q[c],
+      q[c + 1],
+      q[c + 2],
+      q[c + 3],
+      q[c + 4],
+      q[c + 5],
+      q[c + 6],
+      q[c + 7],
+      _colorAddress[k],
+      textureAddress: _colorAddress[k + 1],
+    );
   }
 
   /// The entity of the [i]th pair *in draw order*.
@@ -519,30 +673,122 @@ final class _SpriteDrawQueue {
   /// How many records the [i]th pair *in draw order* writes.
   int recordsAt(int i) => _records[_order[i]];
 
+  /// The widest `zIndex` span a counting sort is allowed to bucket.
+  ///
+  /// The counting sort costs `O(n + range)` and the merge sort `O(n log n)`,
+  /// so the crossover is roughly `range < n * (log2(n) - 1)` - at 20,000
+  /// sprites, a range of about 270,000. This cap is far below that and is set
+  /// by *memory* instead: 65,536 buckets is a 256 KiB `Int32List` held for the
+  /// life of the run, which is already generous scratch for a renderer. Beyond
+  /// it the merge sort is used, so a game that spreads `zIndex` across the
+  /// whole `int32` range is never worse off than it was.
+  static const int _maxCountingRange = 1 << 16;
+
   /// Sorts the queued pairs by `zIndex` ascending, keeping equal-`zIndex`
   /// pairs in the order they were added.
   ///
-  /// A hand-written bottom-up merge sort rather than `List.sort`, for two
-  /// reasons that both come straight from RULES.md rule 1:
+  /// # Two sorts, picked on the key range
   ///
-  ///  * **It sorts a prefix.** `List.sort` sorts a whole list, and the only
+  /// `zIndex` is a **small integer**, not an arbitrary comparable, and that
+  /// changes what the best available algorithm is. A comparison sort cannot
+  /// beat `O(n log n)`; a counting sort over a bounded integer key is `O(n +
+  /// range)` and does not compare anything at all. Scenes layer sprites into
+  /// tens or a few thousand distinct depths - the Galaxy case spans about 380 -
+  /// so `range` is normally far below `n` and the sort becomes linear.
+  ///
+  /// The merge sort below is kept, not replaced, and is used whenever the range
+  /// exceeds [_maxCountingRange]. A game is free to use `zIndex` as a sparse
+  /// sort key (timestamps, hashes, ids) and bucketing that would allocate
+  /// megabytes to sort a handful of sprites. Picking on the measured range
+  /// rather than on a declared mode means neither case has to be configured.
+  ///
+  /// # Both are stable, by construction rather than by luck
+  ///
+  /// Equal-`zIndex` sprites must keep encounter order - archetype registration
+  /// order, then page order, then row order, then declaration order within a
+  /// prefab - because that is the ordering this system had before `zIndex`
+  /// existed and scenes depend on it. The merge takes from the *left* run on a
+  /// tie (`<=`), and the left run is always the earlier-encountered one. The
+  /// counting sort walks the input in encounter order and appends within each
+  /// bucket, which is the same guarantee arrived at differently.
+  ///
+  /// # Why neither is `List.sort`
+  ///
+  /// Both reasons come straight from RULES.md rule 1:
+  ///
+  ///  * **They sort a prefix.** `List.sort` sorts a whole list, and the only
   ///    ways to hand it exactly `_count` elements are a `sublistView`
   ///    (an allocation every tick) or a growable list whose `clear()` is free
   ///    to shrink its backing store (an allocation every tick, at the SDK's
   ///    discretion). Sorting `[0, _count)` of a fixed array has neither
   ///    problem.
-  ///  * **It needs no comparator object.** There is no closure here at all -
-  ///    not a fresh lambda per tick, not even a long-lived function reference
-  ///    - because the comparison is inlined into the merge.
-  ///
-  /// Stability is structural, not incidental: `<=` takes from the left run
-  /// whenever the keys tie, and the left run is always the
-  /// earlier-encountered one. That is what preserves query order among
-  /// equal-`zIndex` sprites, which is the ordering this system had before
-  /// `zIndex` existed at all.
+  ///  * **They need no comparator object.** There is no closure here at all -
+  ///    not a fresh lambda per tick, not even a long-lived function reference.
   void sortByZ() {
     final n = _count;
     if (n < 2) return;
+    // `_zMin`/`_zMax` are plain Dart ints, which are 64-bit, so this subtraction
+    // cannot overflow even for two `int32` extremes - the reason the range is
+    // computed here rather than tracked incrementally as an int32.
+    final range = _zMax - _zMin + 1;
+    if (range <= _maxCountingRange) {
+      _countingSortByZ(n, range);
+      return;
+    }
+    _mergeSortByZ(n);
+  }
+
+  /// Stable counting sort over `[_zMin, _zMax]`. See [sortByZ].
+  void _countingSortByZ(int n, int range) {
+    final counts = _ensureCounts(range);
+    // Only the live prefix is cleared. The buffer is grown to a high-water
+    // mark and a previous, wider frame's tail is never read this tick.
+    for (var k = 0; k < range; k++) {
+      counts[k] = 0;
+    }
+    final keys = _zIndices;
+    final src = _order;
+    final min = _zMin;
+    for (var i = 0; i < n; i++) {
+      counts[keys[src[i]] - min]++;
+    }
+    // Exclusive prefix sum: each bucket becomes the index its first member
+    // lands at, and is then bumped as members are placed.
+    var running = 0;
+    for (var k = 0; k < range; k++) {
+      final c = counts[k];
+      counts[k] = running;
+      running += c;
+    }
+    // Walking `src` forward and appending within each bucket is what makes
+    // this stable - see [sortByZ]. Reading through `src` rather than assuming
+    // the identity permutation costs one load and keeps this correct whatever
+    // state a previous tick's buffer swap left `_order` in.
+    final dst = _merge;
+    for (var i = 0; i < n; i++) {
+      final slot = src[i];
+      dst[counts[keys[slot] - min]++] = slot;
+    }
+    _merge = _order;
+    _order = dst;
+  }
+
+  /// Grows [_counts] to hold [range] buckets, doubling like every other buffer
+  /// here so a steady-state tick allocates nothing.
+  Int32List _ensureCounts(int range) {
+    if (range <= _counts.length) return _counts;
+    var next = _counts.isEmpty ? 64 : _counts.length;
+    while (next < range) {
+      next *= 2;
+    }
+    // Nothing to preserve: the bucket contents are scratch within a single
+    // _countingSortByZ call.
+    return _counts = Int32List(next);
+  }
+
+  /// Bottom-up stable merge sort - the fallback for a `zIndex` range too wide
+  /// to bucket. See [sortByZ].
+  void _mergeSortByZ(int n) {
     final keys = _zIndices;
     var src = _order;
     var dst = _merge;
@@ -589,6 +835,10 @@ final class _SpriteDrawQueue {
     _zIndices = Int32List(next)..setRange(0, _count, _zIndices);
     _records = Int32List(next)..setRange(0, _count, _records);
     _order = Int32List(next)..setRange(0, _count, _order);
+    _corners = Float32List(next * _cornerStride)
+      ..setRange(0, _count * _cornerStride, _corners);
+    _colorAddress = Int32List(next * _colorStride)
+      ..setRange(0, _count * _colorStride, _colorAddress);
     // Nothing to preserve here - the merge buffer is scratch within a single
     // sortByZ call.
     _merge = Int32List(next);
@@ -682,7 +932,8 @@ final class _SpriteDrawQueue {
 /// them. Every sprite emits one quad whether or not the border is non-empty;
 /// generating a nine-slice's nine quads (each with its own sub-rectangle of
 /// the UV square this writes whole) is the follow-up task.
-class GameRenderer2D extends GameSystem with Tickable {
+class GameRenderer2D extends GameSystem
+    with Tickable, GameSystemLifecycleListener {
   /// Runs in the presentation phase, after the fixed tick commits, and after
   /// `WorldTransformSystem` within it.
   ///
@@ -702,6 +953,12 @@ class GameRenderer2D extends GameSystem with Tickable {
   /// *by* tick N both depict the world as of the end of tick N-1.
   @override
   int compareTo(GameSystem other) => other is WorldTransformSystem ? 1 : 0;
+
+  @override
+  void onMounted() {
+    super.onMounted();
+    EnumLocalAsset.registerParser<Texture>((path) => TextureAsset.bundle(path));
+  }
 
   /// The [Renderer2D] half of this game - where the frame buffers live.
   ///
@@ -810,6 +1067,29 @@ class GameRenderer2D extends GameSystem with Tickable {
 
   /// True if the last [onTick] could not fit its batch in the ring.
   bool lastWriteDropped = false;
+
+  /// **Diagnostic only. Setting this draws the scene in the wrong order.**
+  ///
+  /// Skips [_SpriteDrawQueue.sortByZ], so sprites are written in encounter
+  /// order - archetype, then page, then row - instead of by depth. Anything
+  /// that overlaps will layer wrongly, and this is not a rendering mode.
+  ///
+  /// It exists because "is the write pass slow because it walks rows in a
+  /// near-random permutation?" is a question only answerable on the machine
+  /// that has the problem. `tool/write_pass_bench.dart` can attribute the
+  /// write pass on a desktop, where the whole pass costs ~72 ns/sprite; the
+  /// device reports ~368. The gap is real, so the attribution has to be redone
+  /// where the gap is, and this is the one-line ablation that does it: turn it
+  /// on, read [lastWriteMicros], and the difference is what the permutation
+  /// costs in cache misses.
+  ///
+  /// One bool read per view per frame, so leaving it here costs a shipped
+  /// build nothing measurable. The matching trig ablation deliberately needs
+  /// no flag at all: writing zero into every entity's rotation makes the
+  /// unrotated fast path in the write loop skip both `math.cos`/`math.sin`
+  /// calls, which is the same experiment with no diagnostic code in the hot
+  /// loop.
+  bool debugSkipZSort = false;
 
   @override
   void describeQuery(QueryDescriptor descriptor) {
@@ -1193,13 +1473,103 @@ class GameRenderer2D extends GameSystem with Tickable {
           // six vertices and a share of the batch limit, and would still occlude
           // nothing while pretending to be drawn.
           if (sprite.visible[entity] == 0) continue;
-          if (sprite.width[entity] == 0 || sprite.height[entity] == 0) continue;
+          // Read into locals rather than compared in place: the geometry below
+          // needs both, and this row is only cheap to touch while the walk is
+          // still on it.
+          final width = sprite.width[entity];
+          final height = sprite.height[entity];
+          if (width == 0 || height == 0) continue;
           final records = _isNineSliced(entity, sprite) ? 9 : 1;
           // Checked against this sprite's own cost, not against a fixed 1, so a
           // nine-sliced sprite is admitted only if all nine of its records fit.
           // Admitting it partially would write past the scratch.
           if (queue.recordCount + records > limit) break outer;
-          queue.add(entity, sprite, source, sprite.zIndex[entity], records);
+          final slot = queue.add(
+            entity,
+            sprite,
+            source,
+            sprite.zIndex[entity],
+            records,
+          );
+          // A nine-sliced sprite cannot be reduced to four corners, so it keeps
+          // reading its row in the write pass. That is the rare path and it is
+          // left alone deliberately; what follows is for the plain quad, which
+          // is almost everything almost always.
+          if (records != 1) continue;
+
+          // The geometry, computed here rather than in the write pass, and
+          // this placement is the entire optimisation - see
+          // `_SpriteDrawQueue`'s class doc. Every read below lands on the row
+          // this loop is already standing on, in page order. The write pass
+          // reads the answer out of a dense array instead of coming back for
+          // the row in z order, which on a phone was a cache miss per sprite.
+          final rotation = source.rotation[entity];
+          // The unrotated fast path. `math.cos(0.0)` is exactly 1.0 and
+          // `math.sin(0.0)` exactly 0.0, so this is a shortcut and not an
+          // approximation - the geometry is bit-identical either way.
+          //
+          // On the device this currently measures as free, because the trig ran
+          // inside the memory stalls this restructure exists to remove. It is
+          // kept because removing those stalls is exactly what makes arithmetic
+          // start to matter again.
+          final double cos;
+          final double sin;
+          if (rotation == 0) {
+            cos = 1.0;
+            sin = 0.0;
+          } else {
+            cos = math.cos(rotation);
+            sin = math.sin(rotation);
+          }
+          final tx = projection.worldToViewX(source.x[entity]);
+          final ty = projection.worldToViewY(source.y[entity]);
+          // The pivot is a point inside the sprite's own `width x height`
+          // bounds, measured from its top-left: `fraction * size + offset`. The
+          // transform origin sits on it, so the sprite's local extents run from
+          // `-pivot` to `size - pivot`. The default (fraction 0.5, offset 0)
+          // gives exactly `-size/2 .. +size/2`.
+          final pivotX =
+              sprite.pivotFractionX[entity] * width +
+              sprite.pivotOffsetX[entity];
+          final pivotY =
+              sprite.pivotFractionY[entity] * height +
+              sprite.pivotOffsetY[entity];
+          // Zoom folds into the scale for the same reason it folds into
+          // `tx`/`ty`: one multiply here beats a second pass over four corners.
+          final scaleX = source.scaleX[entity] * zoom;
+          final scaleY = source.scaleY[entity] * zoom;
+          final lx0 = -pivotX * scaleX;
+          final lx1 = (width - pivotX) * scaleX;
+          final ly0 = -pivotY * scaleY;
+          final ly1 = (height - pivotY) * scaleY;
+          // Rotating the four local corners and translating. Eight products
+          // for four corners, because each corner reuses one of two x-terms and
+          // one of two y-terms.
+          final ax0 = lx0 * cos;
+          final ax1 = lx1 * cos;
+          final ay0 = lx0 * sin;
+          final ay1 = lx1 * sin;
+          final bx0 = ly0 * sin;
+          final bx1 = ly1 * sin;
+          final by0 = ly0 * cos;
+          final by1 = ly1 * cos;
+          // The texture reaches the record as an *address*, never an image.
+          // This isolate has no Flutter engine and every `Texture` on it is
+          // declared-but-never-decoded, by design.
+          final texture = sprite.texture[entity];
+          queue.setQuad(
+            slot,
+            tx + ax0 - bx0,
+            ty + ay0 + by0, // (left,  top)
+            tx + ax1 - bx0,
+            ty + ay1 + by0, // (right, top)
+            tx + ax1 - bx1,
+            ty + ay1 + by1, // (right, bottom)
+            tx + ax0 - bx1,
+            ty + ay0 + by1, // (left,  bottom)
+            sprite.color[entity],
+            texture == null ? DrawSpriteData2D.noTexture : texture.address,
+          );
         }
       }
     }
@@ -1208,127 +1578,80 @@ class GameRenderer2D extends GameSystem with Tickable {
     _clock
       ..reset()
       ..start();
-    queue.sortByZ();
+    // Timed either way, so an ablated run reports `sort` near zero and the
+    // change lands visibly in `write` rather than vanishing from both.
+    if (!debugSkipZSort) queue.sortByZ();
     lastSortMicros = _clock.elapsedMicroseconds;
 
-    // Pass two: geometry, in draw order.
+    // Pass two: emit the records, in draw order.
+    //
+    // For a plain sprite this no longer computes anything and no longer reads a
+    // component row - the fill pass did both while it was already standing on
+    // the row, and left the finished quad in a dense array. All that happens
+    // here is a permutation over 40 bytes per sprite. See `_SpriteDrawQueue`'s
+    // class doc for the device measurement that forced the split.
     _clock
       ..reset()
       ..start();
     var offset = DrawData2D.batchHeaderBytes;
     final count = queue.length;
     for (var i = 0; i < count; i++) {
+      if (queue.recordsAt(i) == 1) {
+        offset = queue.writeQuadAt(view, offset, i);
+        continue;
+      }
+
+      // The nine-slice path, deliberately left reading rows in z order. It is
+      // rare - a sliced sprite is a UI frame, not a particle - and it cannot
+      // use the precomputed corners, because nine cells each need their own
+      // sub-rectangle of the UV square. Paying a cache miss per sliced sprite
+      // is the right trade against carrying a second, wider precompute layout
+      // for a case that is a handful of sprites per frame.
       final entity = queue.entityAt(i);
       final sprite = queue.spriteAt(i);
+      final source = queue.sourceAt(i);
       final width = sprite.width[entity];
       final height = sprite.height[entity];
-
-      // Read, don't recompose. `WorldTransformSystem` already walked the
-      // hierarchy during the tick that just committed, and these are its
-      // published results - see this class's `compareTo` doc for why that is
-      // both fresh enough and the reason the old private composition is gone.
-      final source = queue.sourceAt(i);
-      // One read, two trig calls. It was two reads of the same field, and a
-      // field read is not free enough to spend one saving a local.
       final rotation = source.rotation[entity];
-      final cos = math.cos(rotation);
-      final sin = math.sin(rotation);
+      final double cos;
+      final double sin;
+      if (rotation == 0) {
+        cos = 1.0;
+        sin = 0.0;
+      } else {
+        cos = math.cos(rotation);
+        sin = math.sin(rotation);
+      }
       final tx = projection.worldToViewX(source.x[entity]);
       final ty = projection.worldToViewY(source.y[entity]);
-
-      // The pivot is a point inside the sprite's own `width x height` bounds,
-      // measured from its top-left: `fraction * size + offset`. The transform
-      // origin sits on it, so the sprite's local extents run from `-pivot` to
-      // `size - pivot`. The default (fraction 0.5, offset 0) gives exactly
-      // `-size/2 .. +size/2` - the centred quad this system has always drawn -
-      // and fraction 0 gives `0 .. size`, i.e. the origin on the top-left
-      // corner.
       final pivotX =
           sprite.pivotFractionX[entity] * width + sprite.pivotOffsetX[entity];
       final pivotY =
           sprite.pivotFractionY[entity] * height + sprite.pivotOffsetY[entity];
-      // Zoom folds into the scale for the same reason it folds into `tx`/`ty`
-      // above: one multiply here beats a second pass over four corners.
       final scaleX = source.scaleX[entity] * zoom;
       final scaleY = source.scaleY[entity] * zoom;
-      final lx0 = -pivotX * scaleX;
-      final lx1 = (width - pivotX) * scaleX;
-      final ly0 = -pivotY * scaleY;
-      final ly1 = (height - pivotY) * scaleY;
-
-      // Rotating the four local corners and translating, written out rather
-      // than routed through a helper so the loop stays free of per-sprite
-      // calls returning pairs (which would be a record, i.e. an allocation).
-      // Eight products for four corners, because each corner reuses one of
-      // two x-terms and one of two y-terms.
-      final ax0 = lx0 * cos;
-      final ax1 = lx1 * cos;
-      final ay0 = lx0 * sin;
-      final ay1 = lx1 * sin;
-      final bx0 = ly0 * sin;
-      final bx1 = ly1 * sin;
-      final by0 = ly0 * cos;
-      final by1 = ly1 * cos;
-
-      // The texture reaches the record as an *address*, never as an image.
-      // Reading the field resolves the row's `Uint32` back to the declared
-      // `Texture` instance through the asset table - which exists on
-      // this isolate and is allocation-free - and all that is taken from it is
-      // `.address`. `.image` is never touched here and could not be: this
-      // isolate has no Flutter engine and every `Texture` on it is
-      // declared-but-never-decoded, by design (see `Texture`'s class doc).
-      //
-      final texture = sprite.texture[entity];
-      final color = sprite.color[entity];
-      final address = texture == null
-          ? DrawSpriteData2D.noTexture
-          : texture.address;
-
-      if (queue.recordsAt(i) == 1) {
-        offset = DrawSpriteData2D.writeQuad(
-          view,
-          offset,
-          tx + ax0 - bx0,
-          ty + ay0 + by0, // (left,  top)
-          tx + ax1 - bx0,
-          ty + ay1 + by0, // (right, top)
-          tx + ax1 - bx1,
-          ty + ay1 + by1, // (right, bottom)
-          tx + ax0 - bx1,
-          ty + ay0 + by1, // (left,  bottom)
-          color,
-          textureAddress: address,
-          // The whole texture, in the same corner order the positions use.
-          u0: 0,
-          v0: 0, // (left,  top)
-          u1: 1,
-          v1: 0, // (right, top)
-          u2: 1,
-          v2: 1, // (right, bottom)
-          u3: 0,
-          v3: 1, // (left,  bottom)
-        );
-      } else {
-        offset = _writeNineSlice(
-          view,
-          offset,
-          entity,
-          sprite,
-          texture!,
-          width,
-          height,
-          pivotX,
-          pivotY,
-          scaleX,
-          scaleY,
-          cos,
-          sin,
-          tx,
-          ty,
-          color,
-          address,
-        );
-      }
+      // One read. `_isNineSliced` already established this is non-null, and
+      // resolving the field twice would be two row reads for one answer.
+      final texture = sprite.texture[entity]!;
+      offset = _writeNineSlice(
+        view,
+        offset,
+        entity,
+        sprite,
+        texture,
+        width,
+        height,
+        pivotX,
+        pivotY,
+        scaleX,
+        scaleY,
+        cos,
+        sin,
+        tx,
+        ty,
+        sprite.color[entity],
+        texture.address,
+      );
     }
 
     lastWriteMicros = _clock.elapsedMicroseconds;

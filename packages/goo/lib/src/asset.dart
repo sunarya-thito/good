@@ -3,7 +3,50 @@ import 'dart:typed_data';
 import 'package:meta/meta.dart';
 import 'package:goo/src/data.dart';
 
-/// Assigns every declared asset instance a stable integer
+typedef EnumLocalAssetParser<T extends GameAssetInstance> =
+    GameAsset<T> Function(String name);
+
+mixin EnumLocalAsset<T extends GameAssetInstance> on Enum
+    implements GameAsset<T> {
+  static final Map<Enum, GameAsset> _instances = {};
+  static final Map<Type, EnumLocalAssetParser> _parsers = {};
+  static void registerParser<T extends GameAssetInstance>(
+    EnumLocalAssetParser<T> parser,
+  ) {
+    _parsers[T] = parser;
+  }
+
+  String get assetPath;
+
+  @override
+  T createInstance() {
+    return _getGlobalAsset().createInstance() as T;
+  }
+
+  GameAsset _getGlobalAsset() {
+    return _instances.putIfAbsent(this, () {
+      final parser = _parsers[T];
+      if (parser == null) {
+        throw StateError(
+          'No parser registered for $T. Call EnumLocalAsset.registerParser<$T>(...) before using this enum.',
+        );
+      }
+      return parser(assetPath);
+    });
+  }
+
+  @override
+  Future<void> loadInto(GameAssetInstance instance) {
+    return _getGlobalAsset().loadInto(instance);
+  }
+
+  @override
+  GameAssetSource get source => _getGlobalAsset().source;
+
+  @override
+  String get debugLabel => _getGlobalAsset().debugLabel;
+}
+
 /// [GlobalObject.address] the moment it's declared - the exact pattern
 /// [ArchetypeRegistry] uses for archetype ids, and for the same reason:
 /// `DataPointer<T extends GlobalObject>` (see `hasObject`/`optObject` in

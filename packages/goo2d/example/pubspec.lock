@@ -158,6 +158,20 @@ packages:
       relative: true
     source: path
     version: "0.0.1"
+  goo2d_ffi_box2d:
+    dependency: transitive
+    description:
+      path: "../../goo2d_ffi_box2d"
+      relative: true
+    source: path
+    version: "0.0.1"
+  goo2d_physics_box2d:
+    dependency: "direct main"
+    description:
+      path: "../../goo2d_physics_box2d"
+      relative: true
+    source: path
+    version: "0.0.1"
   leak_tracker:
     dependency: transitive
     description:

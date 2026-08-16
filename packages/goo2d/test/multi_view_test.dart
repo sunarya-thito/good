@@ -20,6 +20,7 @@ class _Sprite extends EntityStruct with Transform2D, WorldTransform2D, Renderabl
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     quad = descriptor.has(width: 10, height: 10);
   }
 }
@@ -37,6 +38,7 @@ class _Level extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     sprite = descriptor.has(_Sprite());
     eye = descriptor.has(_Eye());
   }
@@ -56,6 +58,7 @@ class _Overlay extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     sprite = descriptor.has(_Sprite());
     eye = descriptor.has(_Eye());
   }

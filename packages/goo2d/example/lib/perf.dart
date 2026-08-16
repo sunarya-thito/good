@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'package:goo2d_example/demo/demo.dart';
+import 'package:goo2d_example/demo/joints.dart';
 import 'package:goo2d_example/demo/particles.dart';
+import 'package:goo2d_example/demo/physics.dart';
 import 'package:goo2d_example/demo/scene_graph.dart';
 import 'package:goo2d_example/harness/demo_app.dart';
 
@@ -45,5 +47,12 @@ import 'package:goo2d_example/harness/demo_app.dart';
 ///  * **`steps/adv`** divides the first two. Read `DemoGame.stepsPerAdvance`
 ///    before comparing any timing to any other.
 void main() => runApp(
-  DemoApp(demos: <Demo Function()>[ParticlesDemo.new, SceneGraphDemo.new]),
+  DemoApp(
+    demos: <Demo Function()>[
+      ParticlesDemo.new,
+      SceneGraphDemo.new,
+      PhysicsDemo.new,
+      JointsDemo.new,
+    ],
+  ),
 );

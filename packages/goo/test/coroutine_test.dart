@@ -35,6 +35,7 @@ class _Scene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     mover = descriptor.has(_Mover());
   }
 }

@@ -30,6 +30,7 @@ class MainScene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     playerPrefab = descriptor.has(Player());
     enemyPrefab = descriptor.has(Enemy());
     rockPrefab = descriptor.has(Rock());

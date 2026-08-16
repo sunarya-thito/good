@@ -10,6 +10,11 @@ import 'package:goo/src/input.dart';
 import 'package:goo/src/struct.dart';
 import 'package:goo/src/scene.dart';
 
+mixin GameSystemLifecycleListener on GameListener {
+  void onMounted() {}
+  void onUnmounted() {}
+}
+
 /// Systems run in declaration order by default. A subclass wanting to run
 /// relative to specific other systems overrides [compareTo] and type-checks
 /// [other] (`if (other is PhysicsSystem) return -1;` to sort before it, `1`
@@ -52,6 +57,20 @@ abstract class GameSystem extends GameListenerBase
 
   @internal
   set enabled(bool value) => _enabled = value;
+
+  late final SignalDispatcher<GameSystemLifecycleListener> mountEvent;
+  late final SignalDispatcher<GameSystemLifecycleListener> unmountEvent;
+
+  @override
+  void describeEvents(EventDescriptor descriptor) {
+    super.describeEvents(descriptor);
+    // TODO: actually dispatch the events
+    mountEvent = descriptor.hasSignal((dispatcher) => dispatcher.onMounted());
+    unmountEvent = descriptor.hasSignal(
+      (dispatcher) => dispatcher.onUnmounted(),
+      reverse: true,
+    );
+  }
 
   @override
   int compareTo(GameSystem other) => 0; // no opinion by default

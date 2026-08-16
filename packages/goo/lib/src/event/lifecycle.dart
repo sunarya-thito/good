@@ -119,6 +119,75 @@ mixin EntityLifecycleListener on GameListener {
   void onEntityUnmounted(Entity entity) {}
 }
 
+// --- world observation ----------------------------------------------------
+//
+// A DIFFERENT QUESTION FROM THE LIFECYCLE EVENTS ABOVE, and that is why these
+// are separate events with separate names rather than a wider scope on the
+// existing ones.
+//
+// *Mounted*/*unmounted* mean "I am coming up" / "I am going away". They are
+// delivered to the thing itself and its own composition - a `SceneStruct`
+// hears its own scene, an `EntityStruct` hears its own entities - so a
+// listener never has to ask whether an event was about it. That locality is
+// the point, and widening it would destroy the property: one list per level
+// holding everything in the game means unloading scene A tells scene B, which
+// then has to filter.
+//
+// *Spawned*/*despawned* and *loaded*/*unloaded* mean "something happened in
+// the world". They are for an observer that legitimately wants to watch
+// everything - a physics backend creating a body per entity, a spatial index,
+// a replication table, an editor overlay. Such a listener expects to filter
+// by archetype, because seeing everything is what it asked for.
+//
+// So the two are not the same event at different volumes; they answer
+// different questions, and a listener picks by which question it is asking.
+
+/// Hears **every** entity spawning and despawning, anywhere in the game.
+///
+/// The broad counterpart to [EntityLifecycleListener]. Mixed into a
+/// [GameListener] - typically a `GameSystem` - and collected by `GameState`'s
+/// composition walk, so it hears the whole world:
+///
+/// ```dart
+/// class SpatialIndexSystem extends GameSystem with EntitySpawnListener {
+///   @override
+///   void onEntitySpawned(Entity entity) {
+///     if (entity.tryGet<Collider2D>() != null) index.insert(entity);
+///   }
+/// }
+/// ```
+///
+/// Filtering by archetype is expected here, not a smell: a listener at this
+/// scope asked to see everything. Use [EntityLifecycleListener] instead when
+/// a struct only cares about its own entities - that one needs no filter.
+mixin EntitySpawnListener on GameListener {
+  /// [entity] has been created, with its field defaults already stamped into
+  /// the row. Fired from the same call site as
+  /// [EntityLifecycleListener.onEntityMounted], so the two cannot disagree
+  /// about when a spawn happened.
+  void onEntitySpawned(Entity entity) {}
+
+  /// [entity] is going away. Its row is still readable here and never again
+  /// afterwards.
+  void onEntityDespawned(Entity entity) {}
+}
+
+/// Hears **every** scene loading and unloading, anywhere in the game.
+///
+/// The broad counterpart to `SceneLifecycleListener`. Same split as
+/// [EntitySpawnListener]: a scene hears its *own* bring-up through the
+/// lifecycle listener, while anything that wants to watch the whole world
+/// - a loading screen, an asset budget, a save system - uses this.
+mixin SceneLoadListener on GameListener {
+  /// [scene] has been loaded and its starting entities have already spawned,
+  /// matching the ordering guarantee `SceneLifecycleListener` gives.
+  void onSceneLoaded(Scene scene) {}
+
+  /// [scene] is being unloaded. Its entities are still readable here; they
+  /// are despawned immediately after.
+  void onSceneUnloaded(Scene scene) {}
+}
+
 // There are no event classes here. Every one of these is an
 // `EventDispatcher<L, E>` (or a `SignalDispatcher<L>`) declared on `GameState`
 // with a one-line delivery closure, so the payload travels as an argument and

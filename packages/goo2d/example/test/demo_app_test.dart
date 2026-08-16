@@ -3,6 +3,7 @@ import 'package:goo2d/goo2d.dart';
 
 import 'package:goo2d_example/demo/demo.dart';
 import 'package:goo2d_example/demo/particles.dart';
+import 'package:goo2d_example/demo/physics.dart';
 import 'package:goo2d_example/demo/scene_graph.dart';
 import 'package:goo2d_example/harness/demo_app.dart';
 
@@ -34,7 +35,13 @@ void main() {
 
   testWidgets('switching cases and back keeps the view alive', (tester) async {
     await tester.pumpWidget(
-      DemoApp(demos: <Demo Function()>[ParticlesDemo.new, SceneGraphDemo.new]),
+      DemoApp(
+        demos: <Demo Function()>[
+          ParticlesDemo.new,
+          SceneGraphDemo.new,
+          PhysicsDemo.new,
+        ],
+      ),
     );
     await settle(tester);
     expect(

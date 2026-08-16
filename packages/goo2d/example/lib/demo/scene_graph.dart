@@ -53,6 +53,7 @@ class Critter extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     body = descriptor.has(width: 22, height: 22, texture: texture);
   }
 
@@ -114,6 +115,7 @@ class Limb extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     body = descriptor.has(width: 11, height: 11, texture: texture);
   }
 

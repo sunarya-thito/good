@@ -1,0 +1,46 @@
+# Generates lib/src/box2d.g.dart from the shim header.
+#
+# Regenerate with:
+#   cd packages/goo2d_ffi_box2d && dart run ffigen --config ffigen.yaml
+#
+# Requires libclang (LLVM). Installed at C:\Program Files\LLVM here, which
+# is ffigen's default search location, so no llvm-path key is needed. The
+# generated file is checked in, so nobody cloning the repo needs LLVM unless
+# they change the shim.
+#
+# Note this parses ONLY goo_box2d.h, never box2d.h. That is the whole design:
+# Box2D's own API passes structs by value and would generate Dart `Struct`
+# classes that allocate per call. The shim exposes nothing but integers,
+# floats and pointers to them, so the generated bindings are allocation-free.
+
+name: Box2DBindings
+description: |
+  Generated bindings to the goo2d Box2D shim (src/goo_box2d.h).
+
+  Do not edit by hand - regenerate with ffigen. See ffigen.yaml.
+output: 'lib/src/box2d.g.dart'
+headers:
+  entry-points:
+    - 'src/goo_box2d.h'
+  include-directives:
+    # Without this, ffigen would also emit bindings for anything reachable
+    # through stdint.h and the platform headers.
+    - '**goo_box2d.h'
+
+functions:
+  include:
+    - 'goo.*'
+
+preamble: |
+  // GENERATED FILE - DO NOT EDIT.
+  //
+  // Regenerate with:
+  //   dart run ffigen --config ffigen.yaml
+  //
+  // ignore_for_file: always_specify_types, camel_case_types
+  // ignore_for_file: non_constant_identifier_names, public_member_api_docs
+  // coverage:ignore-file
+
+comments:
+  style: any
+  length: full

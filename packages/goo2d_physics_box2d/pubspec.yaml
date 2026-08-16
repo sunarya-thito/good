@@ -1,22 +1,28 @@
 name: goo2d_physics_box2d
 description: >
-  ECS-facing Box2D physics for goo2d: RigidBody2D/Collider2D components and
-  Box2DPhysicsSystem, built on goo2d_ffi_box2d. Phase 2 of the project root
-  plan; this package is currently a placeholder.
+  ECS-facing Box2D physics for goo2d: the RigidBody2D component and
+  Box2DPhysicsSystem, built on goo2d_ffi_box2d. Steps the Box2D world inside
+  the game isolate, in lockstep with goo's fixed-tick scheduler.
 version: 0.0.1
 publish_to: none
 
 environment:
-  sdk: ^3.12.1
+  sdk: ^3.13.0
+  flutter: ">=3.47.0"
 
 dependencies:
-  goo:
-    path: ../goo
+  # Direct, because the scratch buffers handed to the shim are calloc'd
+  # Pointers - not merely re-exported from goo2d_ffi_box2d.
+  ffi: ^2.2.0
+  flutter:
+    sdk: flutter
   goo2d:
     path: ../goo2d
   goo2d_ffi_box2d:
     path: ../goo2d_ffi_box2d
+  meta: ^1.15.0
 
 dev_dependencies:
-  lints: ^5.0.0
-  test: ^1.25.0
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter

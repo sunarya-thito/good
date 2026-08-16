@@ -164,6 +164,7 @@ class _TextureScene extends SceneStruct {
 
   @override
   void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
     for (final key in keys) {
       textures.add(descriptor.has(key));
     }

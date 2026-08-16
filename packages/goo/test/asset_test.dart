@@ -164,6 +164,7 @@ class _PropScene extends SceneStruct {
 
   @override
   void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
     describeAssetsCalls++;
     final key = sceneKey;
     if (key != null) music = descriptor.has(key);
@@ -171,6 +172,7 @@ class _PropScene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     for (final prefab in prefabs) {
       descriptor.has(prefab);
     }

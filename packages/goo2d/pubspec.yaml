@@ -16,6 +16,7 @@ dependencies:
     sdk: flutter
   goo:
     path: ../goo
+  meta: ^1.15.0
   vector_math: ^2.2.0
 
 dev_dependencies:

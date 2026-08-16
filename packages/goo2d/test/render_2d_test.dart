@@ -31,6 +31,7 @@ class _Sprite extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     quad = descriptor.has();
   }
 }
@@ -43,6 +44,7 @@ class _Flat extends EntityStruct with Transform2D, Renderable2D {
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     quad = descriptor.has(width: 10, height: 10, color: 0xFF223344);
   }
 }
@@ -65,6 +67,7 @@ class _TwoSprite extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     body = descriptor.has(width: 10, height: 10, color: 0xFF111111);
     hat = descriptor.has(
       width: 4,
@@ -91,6 +94,7 @@ class _HalfHidden extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     shown = descriptor.has(width: 4, height: 4, color: 0xFF00FF00);
     hidden = descriptor.has(
       width: 4,
@@ -113,6 +117,7 @@ class _Stack extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     high = descriptor.has(width: 2, height: 2, color: highColor, zIndex: 3);
     low = descriptor.has(width: 2, height: 2, color: lowColor, zIndex: 1);
   }
@@ -125,6 +130,7 @@ class _TopLeft extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     quad = descriptor.has(
       width: 40,
       height: 20,
@@ -208,6 +214,7 @@ class _Textured extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     textured = descriptor.has(
       texture: tile,
       width: 4,
@@ -268,6 +275,7 @@ class _Panel extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     frame = descriptor.has(
       texture: skin,
       width: drawSize,
@@ -296,6 +304,7 @@ class _UnsizedPanel extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     frame = descriptor.has(
       texture: skin,
       width: 6,
@@ -314,6 +323,7 @@ class _BorderedUntextured extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     frame = descriptor.has(
       width: 40,
       height: 40,
@@ -357,6 +367,7 @@ class _SpriteScene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     sprite = descriptor.has(_Sprite());
     invisible = descriptor.has(_Invisible());
     group = descriptor.has(_Group());
@@ -1273,6 +1284,198 @@ void main() {
             'zIndex is a signed field, so "put this behind everything '
             'that has not been given a z" needs no rebasing of the rest of '
             'the scene',
+      );
+    });
+
+    // The queue picks between a counting sort and a merge sort on the *range*
+    // of the queued zIndex values (see `_SpriteDrawQueue.sortByZ`). Every test
+    // above happens to exercise the counting path, because a handful of small
+    // z values is a narrow range. These three drive the other one, and assert
+    // that which sort ran is unobservable - which is the whole contract.
+    test('a zIndex range too wide to bucket still sorts correctly', () async {
+      final game = await _game();
+      final scene = run.state.getScene<_SpriteScene>();
+      // Spread far wider than the 65,536-bucket cap, so the merge sort runs.
+      _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFF000003, 900000);
+      _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFF000001, -900000);
+      _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFF000002, 0);
+
+      run.state.advance(_step);
+      final quads = _drainFrames(game).single.quads;
+      expect(
+        [for (final q in quads) q.color],
+        [0xFF000001, 0xFF000002, 0xFF000003],
+        reason:
+            'a game is free to use zIndex as a sparse key, and bucketing '
+            'that range would allocate megabytes to sort three sprites - so '
+            'the merge sort has to still be there, and still be right',
+      );
+    });
+
+    test('the merge-sort fallback is stable too', () async {
+      final game = await _game();
+      final scene = run.state.getScene<_SpriteScene>();
+      // One far-away sprite widens the range past the bucketing cap; the rest
+      // tie on zIndex 0 and must keep encounter order regardless.
+      _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFAA0001);
+      _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFAA0002);
+      _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFAA0003);
+      _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFAA0004);
+      _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFFFFFFF, 500000);
+
+      run.state.advance(_step);
+      final quads = _drainFrames(game).single.quads;
+      expect(
+        [for (final q in quads) q.color],
+        [0xFFAA0001, 0xFFAA0002, 0xFFAA0003, 0xFFAA0004, 0xFFFFFFFF],
+        reason:
+            'stability is a promise of the queue, not of one of its two '
+            'sorts - a scene that widens its z range must not silently '
+            'reshuffle the sprites that tie',
+      );
+    });
+
+    // One scene, two z scales. `_sortScale` 1 keeps the range inside the
+    // bucketing cap and 100000 pushes it far outside, so the two tests below
+    // are the same scene sorted by the two different algorithms - and they
+    // assert against the *same* hand-derived expected order. That is the
+    // direct statement that which sort ran is unobservable; if the two can
+    // disagree, the range threshold is a rendering bug waiting for a scene to
+    // spread its layers out.
+    //
+    // Ties and their required outcome, written out rather than computed, so
+    // the expectation cannot drift with the implementation:
+    //   z 0 -> #4;  z 1 -> #7;  z 2 -> #1, #3;  z 5 -> #5;  z 7 -> #0;
+    //   z 9 -> #2, #6
+    const zIndices = <int>[7, 2, 9, 2, 0, 5, 9, 1];
+    const drawOrder = <int>[4, 7, 1, 3, 5, 0, 2, 6];
+
+    Future<List<int>> sortedColors(int scale) async {
+      final game = await _game();
+      final scene = run.state.getScene<_SpriteScene>();
+      for (var i = 0; i < zIndices.length; i++) {
+        _size(
+          scene.sprite,
+          scene.addEntity(scene.sprite),
+          2,
+          2,
+          0xFF000000 | i,
+          zIndices[i] * scale,
+        );
+      }
+      run.state.advance(_step);
+      return [for (final q in _drainFrames(game).single.quads) q.color];
+    }
+
+    final expected = [for (final i in drawOrder) 0xFF000000 | i];
+
+    test('counting sort: ties and gaps, narrow range', () async {
+      expect(await sortedColors(1), expected);
+    });
+
+    test('merge sort: the identical scene, range too wide to bucket', () async {
+      expect(
+        await sortedColors(100000),
+        expected,
+        reason:
+            'same scene, same ties, same required order - only the key '
+            'spacing differs, and that is the one thing that picks the sort',
+      );
+    });
+
+    test('precomputed corners are bit-identical to computing in the write '
+        'pass', () async {
+      // The fill pass now computes each plain quad's corners in `double` and
+      // parks them in a `Float32List`, where the old code computed in `double`
+      // and narrowed at `setFloat32`. That is the same single rounding step in
+      // a different place, so the bytes must be *exactly* equal - not close.
+      //
+      // Several geometry tests here use `closeTo`, which would not notice a
+      // narrowing that had quietly become two roundings, so this one asserts
+      // exact equality against the value computed the old way. The inputs are
+      // chosen to land nowhere near a representable float32: an irrational
+      // rotation, a non-dyadic pivot fraction and an odd scale.
+      final game = await _game();
+      final scene = run.state.getScene<_SpriteScene>();
+      final entity = scene.addEntity(scene.sprite);
+      const rotation = 0.7853981633974483; // pi/4
+      const width = 37.0;
+      const height = 13.0;
+      _size(scene.sprite, entity, width, height);
+      _place(
+        scene.sprite,
+        entity,
+        x: 11.3,
+        y: -7.9,
+        scaleX: 1.7,
+        scaleY: 0.3,
+        rotation: rotation,
+      );
+      scene.sprite.quad.setPivot(
+        entity,
+        const RelativeOffset2D(fractionX: 0.31, fractionY: 0.67),
+      );
+
+      run.state.advance(_step);
+      final quad = _drainFrames(game).single.quads.single;
+
+      // The old write pass's arithmetic, verbatim, in double.
+      final cos = math.cos(rotation);
+      final sin = math.sin(rotation);
+      final pivotX = 0.31 * width;
+      final pivotY = 0.67 * height;
+      final lx0 = -pivotX * 1.7;
+      final lx1 = (width - pivotX) * 1.7;
+      final ly0 = -pivotY * 0.3;
+      final ly1 = (height - pivotY) * 0.3;
+      // The view centres on the world origin for a headless game (view size is
+      // zero), so `tx`/`ty` are just the world position.
+      const tx = 11.3;
+      const ty = -7.9;
+      final expectedX = <double>[
+        tx + lx0 * cos - ly0 * sin,
+        tx + lx1 * cos - ly0 * sin,
+        tx + lx1 * cos - ly1 * sin,
+        tx + lx0 * cos - ly1 * sin,
+      ];
+      final expectedY = <double>[
+        ty + lx0 * sin + ly0 * cos,
+        ty + lx1 * sin + ly0 * cos,
+        ty + lx1 * sin + ly1 * cos,
+        ty + lx0 * sin + ly1 * cos,
+      ];
+      // Narrowed exactly once, which is the whole claim.
+      final narrow = Float32List(4);
+      expect(
+        quad.x,
+        (narrow..setAll(0, expectedX)).toList(),
+        reason: 'one rounding, not two - the corner must survive the trip '
+            'through the queue unchanged',
+      );
+      expect(quad.y, (narrow..setAll(0, expectedY)).toList());
+    });
+
+    test('debugSkipZSort leaves the queue in encounter order', () async {
+      final game = await _game();
+      final scene = run.state.getScene<_SpriteScene>();
+      run.state.getSystem<GameRenderer2D>().debugSkipZSort = true;
+      // Encounter order is the reverse of draw order, so a pass that still
+      // sorted would come back the other way round and this could not pass by
+      // accident.
+      _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFF000001, 9);
+      _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFF000002, 5);
+      _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFF000003, 1);
+
+      run.state.advance(_step);
+      final quads = _drainFrames(game).single.quads;
+      expect(
+        [for (final q in quads) q.color],
+        [0xFF000001, 0xFF000002, 0xFF000003],
+        reason:
+            'the flag is a diagnostic that deliberately draws in the wrong '
+            'order, so what it must be pinned to is that it really does skip '
+            'the sort - a flag that quietly did nothing would report the '
+            'sort as free and send the next optimisation somewhere useless',
       );
     });
   });

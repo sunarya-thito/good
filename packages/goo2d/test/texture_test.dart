@@ -50,6 +50,7 @@ class _TextureScene extends SceneStruct {
 
   @override
   void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
     texture = descriptor.has(key);
   }
 }

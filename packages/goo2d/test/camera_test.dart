@@ -24,6 +24,7 @@ class _Scene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     cam = descriptor.has(_CamEntity());
   }
 }

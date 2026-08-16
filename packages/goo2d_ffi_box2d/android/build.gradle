@@ -1,0 +1,54 @@
+// Android builds the same ../src/CMakeLists.txt through the NDK. There is
+// no Kotlin/Java source in this plugin at all - it is pure FFI, so the
+// Gradle module exists only to drive CMake and get the .so into the APK's
+// jniLibs.
+
+group = "com.goo2d.goo2d_ffi_box2d"
+version = "0.0.1"
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle:8.7.3")
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: "com.android.library"
+
+android {
+    namespace = "com.goo2d.goo2d_ffi_box2d"
+    compileSdk = 35
+
+    defaultConfig {
+        // Box2D v3 needs a 64-bit-clean C17 toolchain; 21 is Flutter's own
+        // floor and is comfortably new enough.
+        minSdk = 21
+
+        externalNativeBuild {
+            cmake {
+                // Release-mode C for a physics solver even in a debug app:
+                // an unoptimised Box2D is roughly an order of magnitude
+                // slower and would make every debug run look like a
+                // performance problem in goo2d rather than in the flags.
+                arguments "-DCMAKE_BUILD_TYPE=Release"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = "../src/CMakeLists.txt"
+            version = "3.22.1"
+        }
+    }
+}

@@ -152,7 +152,7 @@ class _DemoAppState extends State<DemoApp> {
                       GameView(camera: demo.game.defaultCamera)
                     else
                       const Center(child: CircularProgressIndicator()),
-                    if (demo != null) _Readout(game: demo.game),
+                    if (demo != null) _Readout(demo: demo),
                     if (demo != null)
                       _Controls(
                         demo: demo,
@@ -386,12 +386,13 @@ class _ControlsState extends State<_Controls> {
 /// The stats overlay. Identical for every case, because every case's `Game`
 /// extends [DemoGame] and therefore publishes the same channels.
 class _Readout extends StatelessWidget {
-  const _Readout({required this.game});
+  const _Readout({required this.demo});
 
-  final DemoGame game;
+  final Demo demo;
 
   @override
   Widget build(BuildContext context) {
+    final game = demo.game;
     return Align(
       alignment: Alignment.topLeft,
       child: Padding(
@@ -420,6 +421,14 @@ class _Readout extends StatelessWidget {
               ),
               _Line(label: 'step', channel: game.stepMicros, ms: true),
               _Line(label: 'systems', channel: game.systemMicros, ms: true),
+              // The case's own breakdown, if it declared one. Directly under
+              // `systems`, because that is the number these are splitting.
+              for (final stat in demo.stats)
+                _Line(
+                  label: '  ${stat.label}',
+                  channel: stat.channel,
+                  ms: stat.ms,
+                ),
               // Compare the two: a large gap is contention, not workload.
               _Line(label: 'sys min', channel: game.bestSystemMicros, ms: true),
               // Directly under the two it divides, because it is what makes

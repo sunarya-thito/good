@@ -235,6 +235,7 @@ abstract class SceneStruct extends GameListenerBase
   ///
   /// Runs on both isolate copies (it assigns addresses); only the decode is
   /// main-isolate-only. See [GameAssets].
+  @mustCallSuper
   void describeAssets(AssetDescriptor descriptor) {}
 
   /// Drives the one-time declaration passes: this scene's own
@@ -366,6 +367,16 @@ abstract class SceneStruct extends GameListenerBase
     // travels as an argument, so a dispatch with no listeners is an empty loop
     // that allocates nothing.
     prefab.mountedEvent.call(entity);
+    // The world-observation half, from the same call site so the narrow and
+    // broad views can never disagree about when a spawn happened. The prefab's
+    // own listeners run first: something watching the whole world sees an
+    // entity whose struct has already initialised it.
+    // `stateOrNull`, not `state`: a scene brought up through the public
+    // `initializeScene` rather than `GameState.loadScene` has no simulation
+    // behind it - the headless-fixture case that accessor exists for. Such a
+    // scene has no observers either, because nothing declared any, so
+    // skipping the dispatch is not a lost event.
+    stateOrNull?.entitySpawnedEvent.call(entity);
     return entity;
   }
 
@@ -376,9 +387,11 @@ abstract class SceneStruct extends GameListenerBase
   /// mirrors `Query.run` - archetypes, then pages, then row offsets - filtered
   /// to the pages this scene owns, which is exactly the set being freed.
   ///
-  /// Transition-time work, O(entities in the scene), and the only place an
-  /// entity can currently go away: rows are not recycled and there is no
-  /// per-entity destroy.
+  /// Transition-time work, O(entities in the scene). **Not** the only way an
+  /// entity goes away - `EntityLifetime.destroy` takes one at a time - and
+  /// this comment claiming otherwise is why the broad `entityDespawnedEvent`
+  /// went in here and not there for a while, leaking a native handle per
+  /// destroyed entity. Both paths fire both events now.
   @internal
   void unmountEntitiesOf(int sceneSlot) {
     for (var id = 0; id < ArchetypeRegistry.count; id++) {
@@ -387,8 +400,16 @@ abstract class SceneStruct extends GameListenerBase
       for (var pageIndex = 0; pageIndex < storage.pageCount; pageIndex++) {
         final page = storage.pageAt(pageIndex);
         if (page == null || page.ownerSceneSlot != sceneSlot) continue;
+        // Hoisted out of the row loop: same reasoning as `addEntityIn`'s use
+        // of `stateOrNull`, and resolving it once per page beats once per row.
+        final observers = stateOrNull;
         for (final offset in page.rowOffsets) {
-          prefab.unmountedEvent.call(Entity.pack(id, pageIndex, offset));
+          final entity = Entity.pack(id, pageIndex, offset);
+          // Broad first on the way out, mirroring the way narrow goes first
+          // on the way in: an observer is told while the struct that owns the
+          // entity has not yet torn anything down.
+          observers?.entityDespawnedEvent.call(entity);
+          prefab.unmountedEvent.call(entity);
         }
       }
     }
@@ -597,6 +618,28 @@ extension EntityLifetime on Entity {
     final parent = childComponent?.parent.readPending(this);
     if (parent != null) parent.get<Parent>().removeChild(parent, this);
 
+    // Broad first, then narrow - the same order `unmountEntitiesOf` uses, so
+    // an entity that goes away one at a time is indistinguishable from one
+    // that goes away because its scene did.
+    //
+    // **This was missing, and it leaked.** A system observing the world
+    // through `EntitySpawnListener` heard every spawn and only *some* of the
+    // despawns: scene unload told it, `destroy()` did not. Anything that
+    // allocates a resource per entity - a Box2D body, a native handle, a slot
+    // in a side table - therefore leaked one per destroyed entity, silently,
+    // with no Dart-visible symptom. It surfaced as a physics demo whose
+    // solver cost climbed without bound while its entity count held steady:
+    // Box2D reported 57 882 awake bodies for a scene of 4000.
+    //
+    // Resolved through the registry rather than the `scene` getter, which
+    // *throws* for an unloaded scene - reachable here, since unloading frees
+    // pages while a destroy may still be in flight, and a teardown is no
+    // place to start throwing. `stateOrNull` for the same reason
+    // `addEntityIn` uses it: a scene brought up through the public
+    // `initializeScene` has no bound state, and has no observers to miss.
+    final handle = SceneRegistry.handleAt(sceneSlot);
+    final owner = handle == null ? null : SceneRegistry.tryResolve(handle);
+    owner?.stateOrNull?.entityDespawnedEvent.call(this);
     storage.prefab.unmountedEvent.call(this);
     page.free(rowOffset);
   }

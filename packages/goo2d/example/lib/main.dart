@@ -59,6 +59,7 @@ class Player extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     // Every field is a declared archetype default, so there is no onMounted
     // here at all - these values are stamped into the row when the entity is
     // created, by the storage layer, not by a write on the creation tick.
@@ -96,6 +97,7 @@ class Enemy extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     body = descriptor.has(width: 36, height: 36, color: _enemyColor);
   }
 
@@ -129,6 +131,7 @@ class Wingman extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     body = descriptor.has(width: 28, height: 28, color: _wingmanColor);
   }
 

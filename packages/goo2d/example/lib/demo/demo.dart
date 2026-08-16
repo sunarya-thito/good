@@ -1,3 +1,5 @@
+import 'package:goo2d/goo2d.dart';
+
 import 'package:goo2d_example/demo/demo_game.dart';
 
 /// What a demo case is, from the harness's point of view.
@@ -39,6 +41,24 @@ abstract class Demo {
 
   /// Sliders, in the order they should appear.
   List<DemoSlider> get sliders => const <DemoSlider>[];
+
+  /// Extra readout lines, appended under the standard ones.
+  ///
+  /// Declared as data for the same reason the controls are: a case says *"show
+  /// this channel and call it solve"*, and the harness owns every widget. The
+  /// alternative - putting case-specific channels on `DemoGame` - would make
+  /// every case carry every other case's instrumentation.
+  List<DemoStat> get stats => const <DemoStat>[];
+}
+
+/// One extra line in the overlay: a channel the case publishes and a name for
+/// it. [ms] formats the value as milliseconds rather than a bare count.
+class DemoStat {
+  const DemoStat(this.label, this.channel, {this.ms = false});
+
+  final String label;
+  final StateChannel<int> channel;
+  final bool ms;
 }
 
 /// A button the harness renders for the case that declared it.

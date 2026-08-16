@@ -1,19 +1,42 @@
 name: goo2d_ffi_box2d
 description: >
-  Raw ffigen bindings to Box2D v3's C API, plus prebuilt per-platform
-  binaries. Kept separate from goo2d_physics_box2d's ECS-facing API so
-  bindings can be regenerated independently. Phase 2 of the project root
-  plan; this package is currently a placeholder.
+  Vendored Box2D v3.1.1 plus a primitives-only C shim and generated ffigen
+  bindings. Built from source per platform rather than shipped as prebuilt
+  binaries. Not meant to be used directly by game code - see
+  goo2d_physics_box2d for the ECS-facing API.
 version: 0.0.1
 publish_to: none
 
 environment:
-  sdk: ^3.12.1
+  sdk: ^3.13.0
+  flutter: ">=3.47.0"
 
 dependencies:
   ffi: ^2.2.0
+  flutter:
+    sdk: flutter
 
 dev_dependencies:
   ffigen: ^18.0.0
-  lints: ^5.0.0
-  test: ^1.25.0
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    # ffiPlugin: true on every platform - this package contributes no
+    # Dart-side plugin class and no platform channel, only a native library
+    # that Flutter's build must compile and bundle. Windows, Linux and
+    # Android reach src/CMakeLists.txt through their own thin wrapper;
+    # macOS and iOS go through the podspecs.
+    platforms:
+      android:
+        ffiPlugin: true
+      ios:
+        ffiPlugin: true
+      linux:
+        ffiPlugin: true
+      macos:
+        ffiPlugin: true
+      windows:
+        ffiPlugin: true

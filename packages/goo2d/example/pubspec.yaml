@@ -12,6 +12,11 @@ dependencies:
     sdk: flutter
   goo2d:
     path: ../
+  # The physics backend is opt-in, so the example adds it explicitly -
+  # exactly as a real game would. Pulling it in also means `flutter test`
+  # here needs the native library built; see goo2d_ffi_box2d's README.
+  goo2d_physics_box2d:
+    path: ../../goo2d_physics_box2d
 
 dev_dependencies:
   flutter_test:

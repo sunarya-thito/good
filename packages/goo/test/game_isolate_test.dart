@@ -100,6 +100,7 @@ class _MoverScene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     mover = descriptor.has(_Mover());
   }
 
@@ -531,6 +532,7 @@ class _TexturedScene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     textured = descriptor.has(_Textured());
   }
 
@@ -636,6 +638,7 @@ class _LateScene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     prop = descriptor.has(_LateProp());
   }
 

@@ -29,11 +29,13 @@ class _Button extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     sprite = descriptor.has(width: 40, height: 40);
   }
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
     hitArea = descriptor.hasCircleCollider(radius: 20);
   }
 
@@ -61,11 +63,13 @@ class _Panel extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     sprite = descriptor.has(width: 200, height: 100, zIndex: 10);
   }
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
     hitArea = descriptor.hasBoxCollider(halfWidth: 100, halfHeight: 50);
   }
 
@@ -87,6 +91,7 @@ class _Zone extends EntityStruct
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
     hitArea = descriptor.hasBoxCollider(halfWidth: 50, halfHeight: 50);
   }
 
@@ -127,6 +132,7 @@ class _Scene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     button = descriptor.has(_Button());
     panel = descriptor.has(_Panel());
     zone = descriptor.has(_Zone());

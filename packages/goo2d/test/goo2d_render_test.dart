@@ -30,6 +30,7 @@ class _Sprite extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     quad = descriptor.has();
   }
 }
@@ -55,6 +56,7 @@ class _Billboard extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     // Declared out of depth order, so the run order below is the *sort's*
     // output rather than the declaration's.
     front = descriptor.has(texture: tile, width: 2, height: 2, zIndex: 2);
@@ -82,6 +84,7 @@ class _Scene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     sprite = descriptor.has(_Sprite());
     billboard = descriptor.has(_Billboard());
   }

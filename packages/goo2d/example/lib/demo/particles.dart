@@ -6,6 +6,37 @@ import 'package:goo2d_example/demo/demo.dart';
 import 'package:goo2d_example/demo/demo_game.dart';
 import 'package:goo2d_example/demo/textures.dart';
 
+/// Turns the two write-pass ablations on and off, together.
+///
+/// **A measuring instrument, not a feature.** Each flag deliberately makes the
+/// case render *wrongly* - that is what isolates the cost. See
+/// [ParticlesState.ablations].
+///
+/// One command carrying a bitmask rather than two commands carrying a bool
+/// each: the two flags are read together, set together from one overlay, and a
+/// single round trip cannot leave the simulation holding a half-applied pair.
+class SetAblations extends SinkCommand<int> {
+  /// Bit 0 - skip the z sort, so the write pass walks rows in encounter order.
+  static const int skipSort = 1;
+
+  /// Bit 1 - hold every mote's rotation at zero, which makes the renderer's
+  /// unrotated fast path skip both trig calls.
+  static const int noRotation = 2;
+
+  late final ParamPointer<int> flags;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    flags = descriptor.hasUint2();
+  }
+
+  @override
+  void bufferFromParams(CommandBuffer call, int params) => flags[call] = params;
+
+  @override
+  int paramsFromBuffer(CommandBuffer call) => flags[call];
+}
+
 /// Packs HSV to the ARGB integer `Sprite.color` stores.
 ///
 /// A plain function over ints rather than anything from `dart:ui`: a component
@@ -91,6 +122,7 @@ class Mote extends EntityStruct
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
     body = descriptor.has(width: 14, height: 14, texture: texture);
   }
 
@@ -193,6 +225,13 @@ class SwirlSystem extends GameSystem with FixedTickable {
     // case's assumption - one scene - and throws if that stops being true,
     // rather than quietly picking the first.
     final scene = state.loadedScenes.single;
+    // Read once per tick, not per entity - see `SetAblations`. With this on,
+    // every mote's rotation is held at zero, which is what makes the
+    // renderer's unrotated fast path skip its two trig calls. The field is
+    // still written every tick, so the ablation costs the simulation the same
+    // work and only changes what the *renderer* has to do with it.
+    final demo = getState<ParticlesState>();
+    final flatten = demo.noRotation;
     var alive = 0;
     final dt = state.game.fixedTimeStep.inMicroseconds / 1000000.0;
     _time += dt;
@@ -236,14 +275,13 @@ class SwirlSystem extends GameSystem with FixedTickable {
           ..transformOffsetY[entity] = math.sin(a) * r
           // The sprite itself counter-rotates, so a still frame of the middle
           // is not a ring of identical discs.
-          ..transformRotation[entity] = -a * 2;
+          ..transformRotation[entity] = flatten ? 0 : -a * 2;
       }
     }
 
     // Top up to the target. Capped per tick so dragging the slider to the far
     // end is a fill you can watch rather than one frame that stalls: the whole
     // point of the slider is to see the cost move.
-    final demo = getState<ParticlesState>();
     final shortfall = demo.targetPopulation - alive;
     if (shortfall > 0) {
       final batch = shortfall < _maxSpawnPerTick ? shortfall : _maxSpawnPerTick;
@@ -263,6 +301,13 @@ class SwirlSystem extends GameSystem with FixedTickable {
 class ParticlesState extends DemoState<ParticlesGame> {
   final Galaxy galaxy = Galaxy();
 
+  /// The [SetAblations] bitmask currently in force. Zero - both off - is the
+  /// only setting that renders this case correctly.
+  int ablations = 0;
+
+  bool get skipSort => ablations & SetAblations.skipSort != 0;
+  bool get noRotation => ablations & SetAblations.noRotation != 0;
+
   @override
   void onMounted() => loadScene(galaxy);
 
@@ -271,9 +316,33 @@ class ParticlesState extends DemoState<ParticlesGame> {
     super.describeSystems(descriptor);
     descriptor.has(SwirlSystem());
   }
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    // The base declares `setPopulation`'s handler; dropping this super call
+    // would silently leave the population slider with nothing to talk to.
+    super.describeCommands(descriptor);
+    descriptor.hasSink(game.setAblations, _onSetAblations);
+  }
+
+  void _onSetAblations(int value) {
+    ablations = value;
+    // Reached through the system rather than kept as a second copy of the
+    // flag: the renderer is the thing that acts on it, so it is the thing that
+    // holds it.
+    getSystem<GameRenderer2D>().debugSkipZSort = skipSort;
+  }
 }
 
 class ParticlesGame extends DemoGame {
+  late final SetAblations setAblations;
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    setAblations = descriptor.has(SetAblations());
+  }
+
   @override
   ParticlesState createState() => ParticlesState();
 }
@@ -306,6 +375,47 @@ class ParticlesDemo extends Demo {
       min: 0,
       max: 20000,
       initial: 3000,
+    ),
+  ];
+
+  /// The current [SetAblations] mask, kept here because a toggle only reports
+  /// its own new value and the command carries both bits at once.
+  int _ablations = 0;
+
+  Future<void> _setAblation(int bit, bool on) {
+    _ablations = on ? _ablations | bit : _ablations & ~bit;
+    return _game.setAblations(_ablations);
+  }
+
+  /// **Both of these make the case render wrongly, on purpose.**
+  ///
+  /// They exist to attribute the write pass *on the device*, which is the only
+  /// machine where its cost is what it is: a desktop AOT model puts the whole
+  /// pass at ~72 ns/sprite and the device reports ~368, so the desktop cannot
+  /// answer where the difference lives. Turn one on, read `write` off the
+  /// overlay, and the drop is that component's share.
+  ///
+  ///  * **skip z sort** - the write pass stops walking rows in a near-random
+  ///    permutation. What it costs is cache misses; overlapping sprites layer
+  ///    wrongly while it is on.
+  ///  * **no rotation** - every mote's rotation is held at zero, so the
+  ///    renderer's unrotated fast path skips both `math.cos`/`math.sin` calls.
+  ///    The galaxy stops spinning while it is on.
+  ///
+  /// Enabled only at rest is not a constraint here: both can be flipped with a
+  /// full population live, which is the whole point - the comparison wants the
+  /// same 20,000 entities either side of the switch.
+  @override
+  List<DemoToggle> get toggles => <DemoToggle>[
+    DemoToggle(
+      'ablate: skip z sort',
+      false,
+      (on) => _setAblation(SetAblations.skipSort, on),
+    ),
+    DemoToggle(
+      'ablate: no rotation',
+      false,
+      (on) => _setAblation(SetAblations.noRotation, on),
     ),
   ];
 }

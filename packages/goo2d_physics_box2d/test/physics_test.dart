@@ -1,0 +1,731 @@
+// Landing 2/3 verification: proves that a goo2d prefab mixing in
+// RigidBody2D actually simulates through the real Box2D, and that the
+// transform-authority rules hold.
+//
+// Requires the native library:
+//   cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1
+//
+// **Positive y is DOWN**, matching goo2d's own projection into Flutter's
+// canvas - so a floor sits at a LARGER y than the bodies falling onto it,
+// and free fall increases y. Box2D's own examples are written y-up; this
+// engine is not, and `Box2DPhysicsSystem.gravityY` defaults accordingly.
+
+import 'dart:typed_data';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:goo2d/goo2d.dart';
+import 'package:goo2d_physics_box2d/goo2d_physics_box2d.dart';
+
+/// The live run under test. Follows goo2d's own test convention (see
+/// world_transform_test.dart): the helper returns the `Game` while tests
+/// also need the run, and one inline run per isolate makes one binding
+/// enough.
+late Game run;
+
+/// The physics system under test, captured at declare time so tests can
+/// dispose the Box2D world.
+late Box2DPhysicsSystem physics;
+
+/// A dynamic crate: a box collider on a simulated body.
+class _Crate extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
+  late final BoxBody box;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    box = descriptor.hasBoxCollider(halfWidth: 0.5, halfHeight: 0.5);
+  }
+}
+
+/// A static floor.
+class _Floor extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
+  late final BoxBody box;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    box = descriptor.hasBoxCollider(halfWidth: 50, halfHeight: 1);
+  }
+
+  @override
+  void describeRigidBody(RigidBody2DDescriptor descriptor) {
+    descriptor.has(type: BodyType2D.staticBody);
+  }
+}
+
+/// A bouncy ball, covering the circle shape and restitution.
+class _Ball extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
+  late final CircleBody circle;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    circle = descriptor.hasCircleCollider(radius: 0.5, restitution: 0.8);
+  }
+}
+
+/// A body that never rotates.
+class _Pinned extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
+  late final CircleBody circle;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    circle = descriptor.hasCircleCollider(radius: 0.5);
+  }
+
+  @override
+  void describeRigidBody(RigidBody2DDescriptor descriptor) {
+    descriptor.has(fixedRotation: true);
+  }
+}
+
+class _Scene extends SceneStruct {
+  late Scene handle;
+
+  late final _Crate crate;
+  late final _Floor floor;
+  late final _Ball ball;
+  late final _Pinned pinned;
+
+  @override
+  void onSceneMounted(Scene scene) => handle = scene;
+
+  Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
+      handle.addEntity(prefab, parent: parent);
+
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    crate = descriptor.has(_Crate());
+    floor = descriptor.has(_Floor());
+    ball = descriptor.has(_Ball());
+    pinned = descriptor.has(_Pinned());
+  }
+}
+
+/// A pending teleport: (entity, x, y). Applied by [_TeleportSystem] on the
+/// next tick, then cleared.
+(Entity, double, double)? _teleport;
+
+/// Stands in for ordinary gameplay code. Component mutation is only legal
+/// inside a tick window, so a test that wants to move something mid-run has
+/// to do it from a system like any real game would.
+class _TeleportSystem extends GameSystem with FixedTickable {
+  @override
+  void onFixedUpdate() {
+    final pending = _teleport;
+    if (pending == null) return;
+    _teleport = null;
+
+    final (entity, x, y) = pending;
+    entity.get<Transform2D>()
+      ..transformOffsetX[entity] = x
+      ..transformOffsetY[entity] = y;
+  }
+
+  // No compareTo: Box2DPhysicsSystem already claims to run first, and a
+  // second system claiming to run before it would make the comparator
+  // inconsistent - which Game._sortSystems does not detect as a cycle, it
+  // just produces whichever order the sort lands on.
+}
+
+class _GameState extends GameState<_Game> {
+  @override
+  void onMounted() {
+    loadScene(_Scene());
+  }
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    descriptor.has(_TeleportSystem());
+    physics = descriptor.has(Box2DPhysicsSystem());
+  }
+}
+
+class _Game extends Game {
+  // 4 KiB rather than the 64 MiB default: these fixtures hold a few hundred
+  // entities at most, and the default would allocate three 64 MiB pages per
+  // test.
+  @override
+  int get pageSize => 4096;
+
+  /// A 60 Hz step, so the free-fall arithmetic below is the familiar one.
+  @override
+  Duration get fixedTimeStep => const Duration(microseconds: 16667);
+
+  @override
+  GameState createState() => _GameState();
+}
+
+const Duration _step = Duration(microseconds: 16667);
+
+Future<_Scene> _boot() async {
+  final game = _Game();
+  run = await Game.startInline(game);
+  addTearDown(() async {
+    // Stop FIRST, then dispose. Stopping unloads the scenes, which unmounts
+    // every entity and destroys its Box2D body - so disposing first would
+    // leave that teardown destroying bodies inside a world that had already
+    // been freed.
+    if (run.isRunning) await run.stop();
+    physics.dispose();
+  });
+  return run.state.getScene<_Scene>();
+}
+
+void _advance(int steps) {
+  for (var i = 0; i < steps; i++) {
+    run.state.advance(_step);
+  }
+}
+
+void main() {
+  setUp(() => _teleport = null);
+
+  tearDown(() {
+    SceneRegistry.reset();
+    ArchetypeRegistry.reset();
+    ComponentTypeRegistry.reset();
+  });
+
+  group('bodies', () {
+    test('a spawned entity gets a Box2D body on the next fixed step', () async {
+      final scene = await _boot();
+      final crate = scene.addEntity(scene.crate);
+
+      // **Not on the spawn itself, deliberately.** Creating the body during
+      // `onEntitySpawned` would read the entity's transform and collider in
+      // the same tick the prefab wrote them, and `_readRow` serves the last
+      // *published* snapshot - so a recycled row hands back its previous
+      // occupant's size. See `Box2DPhysicsSystem.onEntitySpawned`.
+      expect(
+        scene.crate.bodyHandle[crate],
+        0,
+        reason: 'the body is queued on spawn, not created',
+      );
+
+      _advance(1);
+
+      expect(
+        scene.crate.bodyHandle[crate],
+        isNot(0),
+        reason: 'the first fixed step should have created it',
+      );
+    });
+
+    test('a dynamic body falls under gravity', () async {
+      final scene = await _boot();
+      final crate = scene.addEntity(scene.crate);
+
+      _advance(60);
+
+      expect(
+        scene.crate.transformOffsetY[crate],
+        closeTo(5.0, 0.2),
+        reason: 'one second of free fall is about 1/2 g t^2, downward = +y',
+      );
+    });
+
+    test('a static body does not move', () async {
+      final scene = await _boot();
+      final floor = scene.addEntity(scene.floor);
+      scene.floor.transformOffsetY[floor] = 10;
+
+      _advance(60);
+
+      expect(scene.floor.transformOffsetY[floor], closeTo(10, 1e-4));
+    });
+
+    test('a falling body rests on a static floor', () async {
+      final scene = await _boot();
+
+      final floor = scene.addEntity(scene.floor);
+      scene.floor.transformOffsetY[floor] = 10;
+
+      final crate = scene.addEntity(scene.crate);
+
+      _advance(300);
+
+      // Floor surface at +9, less the crate's 0.5 half-height. A crate that
+      // fell straight past means the shapes were never created.
+      expect(
+        scene.crate.transformOffsetY[crate],
+        closeTo(8.5, 0.1),
+        reason: 'the crate should rest on the floor, not fall through it',
+      );
+    });
+
+    test('velocity is mirrored back into the component', () async {
+      final scene = await _boot();
+      final crate = scene.addEntity(scene.crate);
+
+      _advance(30);
+
+      expect(
+        scene.crate.linearVelocityY[crate],
+        greaterThan(1),
+        reason: 'a falling body should report a downward (+y) velocity',
+      );
+    });
+
+    test('a bouncy ball rebounds off the floor', () async {
+      final scene = await _boot();
+
+      final floor = scene.addEntity(scene.floor);
+      scene.floor.transformOffsetY[floor] = 10;
+
+      final ball = scene.addEntity(scene.ball);
+
+      var landed = false;
+      var highestAfterBounce = 100.0;
+      for (var i = 0; i < 400; i++) {
+        run.state.advance(_step);
+        final y = scene.ball.transformOffsetY[ball];
+        if (!landed && y > 8.4) landed = true;
+        if (landed && y < highestAfterBounce) highestAfterBounce = y;
+      }
+
+      expect(landed, isTrue, reason: 'the ball should reach the floor');
+      expect(
+        highestAfterBounce,
+        lessThan(8.0),
+        reason: 'restitution 0.8 should send it back up appreciably',
+      );
+    });
+  });
+
+  group('transform authority', () {
+    test('gameplay can teleport a dynamic body', () async {
+      final scene = await _boot();
+      final crate = scene.addEntity(scene.crate);
+
+      _advance(30);
+      expect(scene.crate.transformOffsetY[crate], greaterThan(0.5));
+
+      // The write goes through a system rather than straight from the test
+      // body: component mutation is only legal inside a tick window
+      // (`_writeRow` asserts it), because a write between ticks is one the
+      // next beginTick would discard. Real gameplay code is always inside a
+      // system, so this is what a teleport actually looks like.
+      _teleport = (crate, 100.0, 100.0);
+
+      // TWO ticks, and the reason is the engine's core read rule rather than
+      // anything about physics: `_readRow` serves the last *published*
+      // snapshot, so a value written during tick N is not visible to any
+      // reader until N+1 - including a system that runs later in the very
+      // same tick. Ordering `_TeleportSystem` before the physics system
+      // therefore does not and cannot help.
+      //
+      // So a gameplay transform write reaches Box2D one tick after it is
+      // made. That is the same one-tick pipeline everything else in this
+      // engine runs on, and it is a documented property of the integration,
+      // not a bug to tune away.
+      _advance(2);
+
+      expect(
+        scene.crate.transformOffsetX[crate],
+        closeTo(100, 0.1),
+        reason: 'x is untouched by gravity, so it should land exactly on the '
+            'teleport target',
+      );
+      expect(
+        scene.crate.transformOffsetY[crate],
+        closeTo(100, 0.5),
+        reason: 'the body should have moved to the teleport target rather '
+            'than staying where the solver had it - the tolerance allows for '
+            'the momentum it still carried into the step after arriving',
+      );
+    });
+
+    test('an untouched spinning body tracks its angular velocity', () async {
+      // The guard against b2MakeRot's approximation drift. If the system
+      // pushed every dynamic body back every tick, the rotation would
+      // converge towards a multiple of pi/4 instead of tracking - about 27
+      // degrees away. See goo2d_ffi_box2d's README.
+      final scene = await _boot();
+      final crate = scene.addEntity(scene.crate);
+
+      // One step first: a body is created on the fixed step after its spawn,
+      // so a force or velocity applied before that has no body to reach and
+      // is silently dropped. See `Box2DPhysicsSystem.onEntitySpawned`.
+      _advance(1);
+
+      scene.crate.setAngularVelocity(crate, 1.0); // rad/s
+      _advance(60);
+
+      expect(
+        scene.crate.transformRotation[crate],
+        closeTo(1.0, 0.02),
+        reason: 'one radian after one second; drift towards pi/4 (0.785) '
+            'would mean pulled angles are being pushed back in',
+      );
+    });
+
+    test('fixedRotation refuses angular velocity', () async {
+      final scene = await _boot();
+      final pinned = scene.addEntity(scene.pinned);
+
+      scene.pinned.setAngularVelocity(pinned, 5.0);
+      _advance(60);
+
+      expect(
+        scene.pinned.transformRotation[pinned],
+        closeTo(0, 1e-6),
+        reason: 'fixedRotation should refuse the spin entirely',
+      );
+    });
+  });
+
+  group('forces', () {
+    test('an impulse changes motion on the same tick', () async {
+      final scene = await _boot();
+      final crate = scene.addEntity(scene.crate);
+      _advance(1);
+
+      // Straight through to Box2D, so it lands on this tick's step rather
+      // than being pipelined through the component snapshot.
+      scene.crate.applyImpulse(crate, 50, 0);
+      _advance(1);
+
+      expect(
+        scene.crate.transformOffsetX[crate],
+        greaterThan(0.05),
+        reason: 'an impulse should have moved the crate sideways at once',
+      );
+    });
+
+    test('a force accumulates while it is applied', () async {
+      final scene = await _boot();
+      final crate = scene.addEntity(scene.crate);
+      _advance(1);
+
+      for (var i = 0; i < 30; i++) {
+        scene.crate.applyForce(crate, 200, 0);
+        _advance(1);
+      }
+      final pushed = scene.crate.transformOffsetX[crate];
+
+      // Stop pushing; drag is zero, so it coasts rather than stopping - but
+      // it must not keep accelerating.
+      final speedWhilePushed = scene.crate.linearVelocityX[crate];
+      for (var i = 0; i < 30; i++) {
+        _advance(1);
+      }
+
+      expect(pushed, greaterThan(0.5), reason: 'the force should have moved it');
+      expect(
+        scene.crate.linearVelocityX[crate],
+        closeTo(speedWhilePushed, 0.5),
+        reason: 'with the force removed it should coast, not keep speeding up',
+      );
+    });
+
+    test('torque spins a body', () async {
+      final scene = await _boot();
+      final crate = scene.addEntity(scene.crate);
+      _advance(1);
+
+      for (var i = 0; i < 30; i++) {
+        scene.crate.applyTorque(crate, 20);
+        _advance(1);
+      }
+
+      expect(scene.crate.angularVelocity[crate].abs(), greaterThan(0.1));
+    });
+
+    test('setVelocity takes effect immediately', () async {
+      final scene = await _boot();
+      final crate = scene.addEntity(scene.crate);
+      _advance(1);
+
+      scene.crate.setVelocity(crate, 10, 0);
+      _advance(1);
+
+      expect(scene.crate.transformOffsetX[crate], greaterThan(0.1));
+    });
+
+    test('a force on a body with no handle is a no-op, not a crash', () async {
+      // Reachable from a prefab's own onEntityMounted, which runs before the
+      // physics system has created the body.
+      final scene = await _boot();
+      final crate = scene.addEntity(scene.crate);
+      scene.crate.bodyHandle[crate] = 0;
+      expect(() => scene.crate.applyForce(crate, 10, 0), returnsNormally);
+      expect(() => scene.crate.applyImpulse(crate, 10, 0), returnsNormally);
+      expect(() => scene.crate.applyTorque(crate, 10), returnsNormally);
+    });
+
+    test('a body can be taken out of simulation and put back', () async {
+      final scene = await _boot();
+      final crate = scene.addEntity(scene.crate);
+      _advance(2);
+
+      scene.crate.setSimulated(crate, false);
+      final parked = scene.crate.transformOffsetY[crate];
+      _advance(60);
+      expect(
+        scene.crate.transformOffsetY[crate],
+        closeTo(parked, 1e-3),
+        reason: 'a disabled body should not fall',
+      );
+
+      scene.crate.setSimulated(crate, true);
+      _advance(60);
+      expect(
+        scene.crate.transformOffsetY[crate],
+        greaterThan(parked + 0.5),
+        reason: 're-enabling should let gravity take it again',
+      );
+    });
+  });
+
+  group('bulk transfer', () {
+    test('many bodies simulate without their slots crossing', () async {
+      // Also grows the scratch buffers past their initial capacity of 64.
+      final scene = await _boot();
+
+      final crates = <Entity>[];
+      for (var i = 0; i < 100; i++) {
+        final crate = scene.addEntity(scene.crate);
+        scene.crate.transformOffsetX[crate] = i * 2.0;
+        crates.add(crate);
+      }
+
+      _advance(60);
+
+      for (var i = 0; i < crates.length; i++) {
+        expect(
+          scene.crate.transformOffsetY[crates[i]],
+          closeTo(5.0, 0.2),
+          reason: 'crate $i should have fallen like every other',
+        );
+        expect(
+          scene.crate.transformOffsetX[crates[i]],
+          closeTo(i * 2.0, 1e-3),
+          reason: 'crate $i drifted sideways, which would mean scratch slots '
+              'and component rows got out of step',
+        );
+      }
+    });
+
+    test('bodies of several archetypes simulate in one pass', () async {
+      // Slots are filled in query-group order, so this covers the
+      // archetype-change branch in the write-back loop.
+      final scene = await _boot();
+
+      // Spread out, or they spawn on top of each other and the solver spends
+      // the test pushing them apart instead of letting them fall.
+      final crate = scene.addEntity(scene.crate);
+      final ball = scene.addEntity(scene.ball);
+      scene.ball.transformOffsetX[ball] = 10;
+      final pinned = scene.addEntity(scene.pinned);
+      scene.pinned.transformOffsetX[pinned] = 20;
+
+      _advance(60);
+
+      for (final (name, y) in [
+        ('crate', scene.crate.transformOffsetY[crate]),
+        ('ball', scene.ball.transformOffsetY[ball]),
+        ('pinned', scene.pinned.transformOffsetY[pinned]),
+      ]) {
+        expect(y, closeTo(5.0, 0.2), reason: '$name should have fallen');
+      }
+    });
+  });
+
+  group('body lifetime', () {
+    test('destroying an entity destroys its Box2D body', () async {
+      // **The leak.** `Entity.destroy` used to fire only the prefab's narrow
+      // `unmountedEvent`; the broad `entityDespawnedEvent` this system listens
+      // to went in on the scene-unload path alone. So a game that recycles
+      // entities - and every game does - left one Box2D body behind per
+      // destroy, forever, with no Dart-visible symptom at all.
+      //
+      // It presented as a solver whose cost climbed without bound while the
+      // entity count held steady. Box2D reported **57 882 awake bodies** for a
+      // demo scene of 4000 before this was found, which is why the assertion
+      // below is on Box2D's own count and not on anything Dart tracks: the
+      // Dart side was right the whole time.
+      final scene = await _boot();
+
+      final counters = Int32List(5);
+      final before = physics.counters(counters)[0];
+
+      final crates = <Entity>[
+        for (var i = 0; i < 20; i++) scene.addEntity(scene.crate),
+      ];
+      _advance(1);
+      expect(
+        physics.counters(counters)[0],
+        before + 20,
+        reason: 'each spawned entity should have created exactly one body',
+      );
+
+      for (final crate in crates) {
+        crate.destroy();
+      }
+      _advance(1);
+
+      expect(
+        physics.counters(counters)[0],
+        before,
+        reason: 'every destroyed entity must take its Box2D body with it',
+      );
+    });
+
+    test('a destroyed body stops being simulated', () async {
+      // The count returning to baseline could in principle be satisfied by a
+      // handle table that forgets while the body keeps stepping. This checks
+      // the world is actually lighter: nothing awake once the pile is gone.
+      final scene = await _boot();
+      scene.addEntity(scene.floor);
+      scene.floor.transformOffsetY[scene.addEntity(scene.floor)] = 5;
+
+      final crates = <Entity>[
+        for (var i = 0; i < 10; i++) scene.addEntity(scene.crate),
+      ];
+      _advance(2);
+      expect(physics.awakeBodyCount, greaterThan(0));
+
+      for (final crate in crates) {
+        crate.destroy();
+      }
+      _advance(2);
+
+      expect(
+        physics.awakeBodyCount,
+        0,
+        reason: 'with every dynamic body destroyed nothing should be awake',
+      );
+    });
+  });
+
+  group('joints', () {
+    /// A static anchor above the origin, plus a crate hanging below it. Both
+    /// advanced one step first, because a body exists on the fixed step after
+    /// its entity spawns and a joint needs both bodies to be real.
+    Future<(_Scene, Entity, Entity)> pair() async {
+      final scene = await _boot();
+      final anchor = scene.addEntity(scene.floor);
+      final crate = scene.addEntity(scene.crate);
+      // The anchor above (negative y is up), the crate at the origin.
+      scene.floor.transformOffsetY[anchor] = -10;
+      _advance(1);
+      return (scene, anchor, crate);
+    }
+
+    test('a distance joint stops a body falling past its length', () async {
+      // The mechanism, not the call. A joint that was created and then did
+      // nothing would leave the crate in free fall, and after two seconds
+      // that is unmistakable: ~20 m down against a 10 m tether.
+      final (scene, anchor, crate) = await pair();
+
+      final joint = physics.createDistanceJoint(anchor, crate, length: 10);
+      expect(joint, isNot(0), reason: 'both bodies exist by now');
+
+      _advance(120);
+
+      final y = scene.crate.transformOffsetY[crate];
+      expect(
+        y,
+        closeTo(0, 0.5),
+        reason: 'the anchor is at -10 and the tether is 10 long, so the crate '
+            'hangs at about 0; free fall would have it near +20',
+      );
+    });
+
+    test('a revolute joint holds a body at its pivot', () async {
+      // A hinge pins the two anchor points together, so the crate cannot
+      // translate away from the anchor even though it may swing about it.
+      final (scene, anchor, crate) = await pair();
+
+      final joint = physics.createRevoluteJoint(
+        anchor,
+        crate,
+        // The anchor's local (0, 10) is the crate's origin in world space.
+        anchorAX: 0,
+        anchorAY: 10,
+      );
+      expect(joint, isNot(0));
+
+      _advance(120);
+
+      expect(
+        scene.crate.transformOffsetY[crate],
+        closeTo(0, 0.5),
+        reason: 'pinned to the anchor point, not falling',
+      );
+    });
+
+    test('a joint reports the force it is carrying', () async {
+      // What a breakable joint is built from. A crate of about 1 kg on a
+      // tether under gravity 10 pulls with roughly 10 N - the assertion is
+      // deliberately loose, because the point is that it is a real, non-zero
+      // reading and not that it matches a hand-computed number.
+      final (_, anchor, crate) = await pair();
+      final joint = physics.createDistanceJoint(anchor, crate, length: 10);
+      // **After stepping, and it has to be.** A constraint force is the
+      // impulse the solver applied over the last step, so a joint read before
+      // it has ever been solved reports exactly zero - which is what the
+      // first version of this test did, and it read as the feature being
+      // broken rather than the test being wrong.
+      _advance(120);
+
+      physics.jointReaction(joint);
+      final magnitude = physics.jointForceX.abs() + physics.jointForceY.abs();
+      expect(
+        magnitude,
+        greaterThan(0.1),
+        reason: 'a loaded tether should report a non-zero constraint force',
+      );
+    });
+
+    test('destroying a body invalidates its joints', () async {
+      // Box2D destroys a joint with either of its bodies, so a Dart handle
+      // goes stale on its own. Every joint call has to survive that rather
+      // than reach into freed memory - which is a process kill, not an
+      // exception.
+      final (_, anchor, crate) = await pair();
+      final joint = physics.createDistanceJoint(anchor, crate, length: 10);
+      expect(physics.jointIsValid(joint), isTrue);
+
+      crate.destroy();
+      _advance(1);
+
+      expect(
+        physics.jointIsValid(joint),
+        isFalse,
+        reason: 'the joint went with the body',
+      );
+      // All of these must be no-ops on the stale handle.
+      physics
+        ..setJointMotor(joint, speed: 1, maxEffort: 1)
+        ..jointReaction(joint)
+        ..destroyJoint(joint);
+    });
+
+    test('joining an entity spawned this tick makes no joint', () async {
+      // The trap this API's doc calls out: a body is created on the fixed
+      // step *after* its entity spawns, so joining immediately after
+      // `addEntity` finds nothing. It reports that by returning 0 rather than
+      // by appearing to work.
+      final scene = await _boot();
+      final anchor = scene.addEntity(scene.floor);
+      _advance(1);
+      final fresh = scene.addEntity(scene.crate);
+
+      expect(
+        physics.createDistanceJoint(anchor, fresh, length: 5),
+        0,
+        reason: 'the fresh entity has no body until the next fixed step',
+      );
+
+      _advance(1);
+      expect(
+        physics.createDistanceJoint(anchor, fresh, length: 5),
+        isNot(0),
+        reason: 'and one step later it does',
+      );
+    });
+  });
+}

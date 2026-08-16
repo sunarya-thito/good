@@ -14,6 +14,7 @@ import 'package:goo/src/game.dart';
 import 'package:goo/src/pool.dart';
 import 'package:goo/src/scene.dart';
 import 'package:goo/src/scene_handle.dart';
+import 'package:goo/src/struct.dart';
 import 'package:goo/src/system.dart';
 
 /// The game-isolate half of a game: **mutations happen here**.
@@ -88,7 +89,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// The game is going down, dispatched before anything is torn down.
   late final SignalDispatcher<GameLifecycleListener> gameUnmountedEvent;
 
-  // Scene and entity lifecycle are **not** declared here. They belong to the
+  // Scene and entity *lifecycle* are **not** declared here. They belong to the
   // scene and the prefab respectively (`SceneStruct.mountedEvent`,
   // `EntityStruct.mountedEvent`), because a dispatcher's audience is its
   // declaring owner's composition. Declared here they would be one list per
@@ -96,6 +97,23 @@ abstract class GameState<T extends Game> extends GameListenerBase
   // `onSceneUnmounted(A)` on scene B and every prefab B owns. The game level
   // is different and stays here: `GameState` genuinely is the only object at
   // that level, so "everything below" is the right audience.
+  //
+  // The four *observation* events below are the deliberate other half of that.
+  // They are not the lifecycle events at a wider scope - they are a different
+  // question, with different names, for a listener that wants to watch the
+  // whole world and expects to filter. See `event/lifecycle.dart`'s note.
+
+  /// Any entity, anywhere, has spawned.
+  late final EventDispatcher<EntitySpawnListener, Entity> entitySpawnedEvent;
+
+  /// Any entity, anywhere, is about to go away. Its row is still readable.
+  late final EventDispatcher<EntitySpawnListener, Entity> entityDespawnedEvent;
+
+  /// Any scene has finished loading, its starting entities already spawned.
+  late final EventDispatcher<SceneLoadListener, Scene> sceneLoadedEvent;
+
+  /// Any scene is about to unload. Its entities are still readable.
+  late final EventDispatcher<SceneLoadListener, Scene> sceneUnloadedEvent;
 
   @override
   void describeEvents(EventDescriptor descriptor) {
@@ -108,6 +126,21 @@ abstract class GameState<T extends Game> extends GameListenerBase
     );
     gameUnmountedEvent = descriptor.hasSignal(
       (listener) => listener.onGameUnmounted(),
+    );
+    entitySpawnedEvent = descriptor.has(
+      (listener, entity) => listener.onEntitySpawned(entity),
+    );
+    entityDespawnedEvent = descriptor.has(
+      (listener, entity) => listener.onEntityDespawned(entity),
+    );
+    sceneLoadedEvent = descriptor.has(
+      (listener, scene) => listener.onSceneLoaded(scene),
+    );
+    // Reverse, matching SceneStruct.unmountedEvent: a listener told late can
+    // still read what earlier ones have been warned about.
+    sceneUnloadedEvent = descriptor.has(
+      (listener, scene) => listener.onSceneUnloaded(scene),
+      reverse: true,
     );
   }
 
@@ -566,6 +599,9 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // entities already spawned" true. Fired on the scene's own dispatcher,
     // so it reaches that scene's composition and no other scene's.
     next.mountedEvent.call(handle);
+    // And the world-observation half: same call site as the scene's own
+    // mount, so the two can never disagree about when a load happened.
+    sceneLoadedEvent.call(handle);
 
     // Everything past this point is the asynchronous half.
     await _reconcileAssets(next, onProgress);
@@ -598,6 +634,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // Dispatched in reverse collection order, so the scene itself is told
     // last and can still read what its prefabs have already been warned
     // about - see `SceneStruct.describeEvents`.
+    sceneUnloadedEvent.call(scene);
     struct.unmountedEvent.call(scene);
     // Innermost last: the scene has said its piece, now each entity in it
     // gets its own teardown while its row is still readable.
@@ -863,6 +900,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
     for (var i = 0; i < doomed.length; i++) {
       final handle = doomed[i];
       final struct = SceneRegistry.tryResolve(handle);
+      sceneUnloadedEvent.call(handle);
       struct?.unmountedEvent.call(handle);
       // Same order as unloadScene: scene first, then its entities, all
       // while the pool is still alive. `Game` disposes the pool wholesale

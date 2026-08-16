@@ -1,4 +1,5 @@
 import 'package:goo/goo.dart';
+import 'package:meta/meta.dart';
 
 /// One collider shape, plus the fields every shape shares (offset, enable,
 /// trigger flag, layer mask). Not instantiated directly - a concrete
@@ -22,11 +23,40 @@ sealed class ColliderBody {
     required this.isTrigger,
     required this.layer,
     required this.excludeLayers,
+    required this.density,
+    required this.friction,
+    required this.restitution,
   });
 
   /// Local offset from the entity's `WorldTransform2D` origin.
   final DataPointer<double> offsetX;
   final DataPointer<double> offsetY;
+
+  // --- surface material ---------------------------------------------------
+  //
+  // On the base rather than per shape because every shape has all three, and
+  // a physics backend needs all three for any of them. They live here rather
+  // than on a `RigidBody2D` because they are properties of a *shape*, not of
+  // a body: a compound collider can legitimately have a low-friction ramp
+  // and a high-friction pad on one entity.
+  //
+  // These are read by `goo2d_physics_box2d`, but they are declared here
+  // because a collider without a material is not fully described - a debug
+  // overlay or a custom backend wants them just as much, and putting them in
+  // the physics package would mean two ways to describe one collider.
+
+  /// Mass per unit area. A body's mass is the sum over its shapes, so a
+  /// zero-density shape contributes none - which is how a dynamic body ends
+  /// up with a collider that participates in collision but not in mass.
+  final DataPointer<double> density;
+
+  /// Coulomb friction coefficient, `0` (frictionless) upward. Combined
+  /// between two touching shapes by the physics backend, not by either
+  /// shape alone.
+  final DataPointer<double> friction;
+
+  /// Bounciness, `0` (inelastic) to `1` (no energy lost).
+  final DataPointer<double> restitution;
 
   /// `0`/`1`. A disabled body still exists (its fields are still declared,
   /// still readable/writable) but should be skipped by anything that walks
@@ -78,6 +108,9 @@ final class CircleBody extends ColliderBody {
     required super.isTrigger,
     required super.layer,
     required super.excludeLayers,
+    required super.density,
+    required super.friction,
+    required super.restitution,
     required this.radius,
   });
 
@@ -101,6 +134,9 @@ final class BoxBody extends ColliderBody {
     required super.isTrigger,
     required super.layer,
     required super.excludeLayers,
+    required super.density,
+    required super.friction,
+    required super.restitution,
     required this.halfWidth,
     required this.halfHeight,
   });
@@ -135,6 +171,9 @@ final class CapsuleBody extends ColliderBody {
     required super.isTrigger,
     required super.layer,
     required super.excludeLayers,
+    required super.density,
+    required super.friction,
+    required super.restitution,
     required this.radius,
     required this.halfHeight,
   });
@@ -186,6 +225,9 @@ final class PolygonBody extends ColliderBody {
     required super.isTrigger,
     required super.layer,
     required super.excludeLayers,
+    required super.density,
+    required super.friction,
+    required super.restitution,
     required this.pointsX,
     required this.pointsY,
     required this.pointCount,
@@ -260,6 +302,9 @@ class ColliderDescriptor {
     bool isTrigger = false,
     int layer = 0,
     int excludeLayers = 0,
+    double density = 1,
+    double friction = 0.6,
+    double restitution = 0,
   }) {
     final body = CircleBody(
       offsetX: _data.hasFloat64(offsetX),
@@ -268,6 +313,9 @@ class ColliderDescriptor {
       isTrigger: _data.hasUint1(isTrigger ? 1 : 0),
       layer: _data.hasInt32(layer),
       excludeLayers: _data.hasInt32(excludeLayers),
+      density: _data.hasFloat64(density),
+      friction: _data.hasFloat64(friction),
+      restitution: _data.hasFloat64(restitution),
       radius: _data.hasFloat64(radius),
     );
     _bodies.add(body);
@@ -283,6 +331,9 @@ class ColliderDescriptor {
     bool isTrigger = false,
     int layer = 0,
     int excludeLayers = 0,
+    double density = 1,
+    double friction = 0.6,
+    double restitution = 0,
   }) {
     final body = BoxBody(
       offsetX: _data.hasFloat64(offsetX),
@@ -291,6 +342,9 @@ class ColliderDescriptor {
       isTrigger: _data.hasUint1(isTrigger ? 1 : 0),
       layer: _data.hasInt32(layer),
       excludeLayers: _data.hasInt32(excludeLayers),
+      density: _data.hasFloat64(density),
+      friction: _data.hasFloat64(friction),
+      restitution: _data.hasFloat64(restitution),
       halfWidth: _data.hasFloat64(halfWidth),
       halfHeight: _data.hasFloat64(halfHeight),
     );
@@ -307,6 +361,9 @@ class ColliderDescriptor {
     bool isTrigger = false,
     int layer = 0,
     int excludeLayers = 0,
+    double density = 1,
+    double friction = 0.6,
+    double restitution = 0,
   }) {
     final body = CapsuleBody(
       offsetX: _data.hasFloat64(offsetX),
@@ -315,6 +372,9 @@ class ColliderDescriptor {
       isTrigger: _data.hasUint1(isTrigger ? 1 : 0),
       layer: _data.hasInt32(layer),
       excludeLayers: _data.hasInt32(excludeLayers),
+      density: _data.hasFloat64(density),
+      friction: _data.hasFloat64(friction),
+      restitution: _data.hasFloat64(restitution),
       radius: _data.hasFloat64(radius),
       halfHeight: _data.hasFloat64(halfHeight),
     );
@@ -334,6 +394,9 @@ class ColliderDescriptor {
     bool isTrigger = false,
     int layer = 0,
     int excludeLayers = 0,
+    double density = 1,
+    double friction = 0.6,
+    double restitution = 0,
   }) {
     final body = PolygonBody(
       offsetX: _data.hasFloat64(offsetX),
@@ -342,6 +405,9 @@ class ColliderDescriptor {
       isTrigger: _data.hasUint1(isTrigger ? 1 : 0),
       layer: _data.hasInt32(layer),
       excludeLayers: _data.hasInt32(excludeLayers),
+      density: _data.hasFloat64(density),
+      friction: _data.hasFloat64(friction),
+      restitution: _data.hasFloat64(restitution),
       pointsX: _data.hasFloat64Array(maxPoints),
       pointsY: _data.hasFloat64Array(maxPoints),
       pointCount: _data.hasInt32(0),
@@ -363,7 +429,8 @@ mixin Collider2D on MultiComponent {
 
   /// Implemented by the concrete prefab - declares this entity type's
   /// colliders via the [ColliderDescriptor] passed in.
-  void describeCollider(ColliderDescriptor descriptor);
+  @mustCallSuper
+  void describeCollider(ColliderDescriptor descriptor) {}
 
   @override
   void describeType(ComponentDescriptor component) {
@@ -385,18 +452,48 @@ mixin Collider2D on MultiComponent {
 /// fields, or skip the cast entirely when the listener already knows the
 /// concrete type of the body it declared (see `describeCollider`'s own
 /// `late final BoxBody boxCollider` style fields).
+/// **A single instance is reused for every dispatch.** A physics step can
+/// produce hundreds of contacts, and every framework event is hot path
+/// (RULES.md rules 1 and 2), so allocating one of these per contact is
+/// exactly the cost the rule forbids. `MousePickingSystem` already
+/// established the shape with its own reused `MouseEvent`.
+///
+/// The consequence for a listener: **do not keep this object.** Its fields
+/// are overwritten before the next call. Read what you need during the
+/// callback and store that instead - the `Entity` values are plain packed
+/// ints and are safe to keep; the event wrapper around them is not.
 class Collision2DEvent {
-  const Collision2DEvent(
-    this.source,
-    this.sourceEntity,
-    this.target,
-    this.targetEntity,
-  );
+  /// Constructed by a physics backend, once, and reused for every dispatch.
+  /// Game code never builds one.
+  ///
+  /// Not `@internal`: that annotation is package-scoped, and a backend
+  /// (`goo2d_physics_box2d`) is a separate package that legitimately needs
+  /// both this and [set]. The same "internal in spirit, not in annotation"
+  /// call `RigidBody2D.bodyHandle` makes.
+  Collision2DEvent();
 
-  final ColliderBody source;
-  final Entity sourceEntity;
-  final ColliderBody target;
-  final Entity targetEntity;
+  /// The collider this event is being reported *to*.
+  late ColliderBody source;
+  late Entity sourceEntity;
+
+  /// The other side.
+  late ColliderBody target;
+  late Entity targetEntity;
+
+  /// Repoints this instance at one collision. Called by the physics backend
+  /// immediately before each dispatch; see [Collision2DEvent] on why this is
+  /// not `@internal`.
+  void set(
+    ColliderBody source,
+    Entity sourceEntity,
+    ColliderBody target,
+    Entity targetEntity,
+  ) {
+    this.source = source;
+    this.sourceEntity = sourceEntity;
+    this.target = target;
+    this.targetEntity = targetEntity;
+  }
 }
 
 /// No-op-default reaction surface for collision/trigger events - the same

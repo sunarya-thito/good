@@ -45,6 +45,7 @@ class _Scene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     particle = descriptor.has(_Particle());
   }
 }

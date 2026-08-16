@@ -76,6 +76,7 @@ class _Scene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     enemy = descriptor.has(_Enemy());
   }
 }

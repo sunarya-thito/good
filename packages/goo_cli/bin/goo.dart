@@ -3,9 +3,11 @@
 //
 // Placeholder - command dispatch and the asset/codegen/packaging pipeline
 // itself land in Phase 4.
-void main(List<String> arguments) {
+import 'package:goo_cli/src/runner.dart';
+
+void main() {
   // ignore: avoid_print
-  print(
-    'goo CLI is not implemented yet - see the project root plan, Phase 4.',
-  );
+  print('goo CLI is not implemented yet - see the project root plan, Phase 4.');
+
+  runCommand(GooCommand());
 }
