@@ -138,7 +138,7 @@ class _GameState extends GameState<_Game> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     descriptor.has(_TeleportSystem());
-    physics = descriptor.has(Box2DPhysicsSystem());
+    physics = descriptor.has(Box2DPhysicsSystem(workerCount: _workers));
   }
 }
 
@@ -159,7 +159,13 @@ class _Game extends Game {
 
 const Duration _step = Duration(microseconds: 16667);
 
-Future<_Scene> _boot() async {
+/// Worker threads the fixture's physics system is built with. A file-level
+/// binding because the system is constructed inside `describeSystems`, which
+/// the Game calls and which takes no arguments.
+int _workers = 1;
+
+Future<_Scene> _boot({int workers = 1}) async {
+  _workers = workers;
   final game = _Game();
   run = await Game.startInline(game);
   addTearDown(() async {
@@ -598,6 +604,29 @@ void main() {
         reason: 'with every dynamic body destroyed nothing should be awake',
       );
     });
+  });
+
+  group('threading', () {
+    test('a threaded system simulates the same as a serial one', () async {
+      // End to end through the ECS, not just the shim: the pool is created
+      // lazily on first body creation, which is on the game isolate, and this
+      // is the only test that exercises that path.
+      //
+      // A timeout because the failure mode of a task system is a hang. If the
+      // pool dispatched Box2D's solver tasks wrongly they would wait at a
+      // barrier forever, and an unbounded test would take the suite with it.
+      final scene = await _boot(workers: 4);
+      final crate = scene.addEntity(scene.crate);
+
+      _advance(60);
+
+      expect(
+        scene.crate.transformOffsetY[crate],
+        closeTo(5.0, 0.2),
+        reason: 'one second of free fall is the same physics on any number '
+            'of threads',
+      );
+    }, timeout: const Timeout(Duration(seconds: 30)));
   });
 
   group('joints', () {

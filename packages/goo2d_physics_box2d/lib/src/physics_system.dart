@@ -63,6 +63,7 @@ class Box2DPhysicsSystem extends GameSystem
     this.gravityX = 0,
     this.gravityY = 10,
     this.subStepCount = 4,
+    this.workerCount = 1,
   });
 
   /// World gravity, in metres per second squared.
@@ -86,6 +87,33 @@ class Box2DPhysicsSystem extends GameSystem
   /// Box2D's solver iteration count per step. 4 is upstream's recommended
   /// default; raising it trades time for stiffer stacks.
   final int subStepCount;
+
+  /// Threads the solver may spread a step across. **1 by default**, which
+  /// creates no threads at all and is exactly the behaviour every test here
+  /// measures - raising it is opt-in.
+  ///
+  /// Measured on this project's AOT bench, a dense 5000-body stack
+  /// (`tool/physics_bench.dart`, desktop, 8 physical cores):
+  ///
+  /// ```
+  ///   workers      step   speedup
+  ///         1   5347.9us     1.00x
+  ///         2   3943.3us     1.45x
+  ///         4   2461.6us     2.32x
+  ///         8   1969.4us     2.90x
+  /// ```
+  ///
+  /// **It only helps a scene that is awake.** A settled pile sleeps and costs
+  /// almost nothing on one thread already, so threading buys nothing there;
+  /// what it buys is headroom for the moments when everything is moving.
+  ///
+  /// Box2D's own guidance is that only performance cores help - efficiency
+  /// cores and hyper-threading "provide little benefit and may even harm
+  /// performance" - so more workers than physical cores usually costs time
+  /// rather than saving it. There is no auto-detection here on purpose: the
+  /// right number depends on what else the game is doing with those cores,
+  /// which this system cannot know.
+  final int workerCount;
 
   /// Whether to dispatch `onCollisionStay2D`/`onTriggerStay2D`.
   ///
@@ -274,7 +302,15 @@ class Box2DPhysicsSystem extends GameSystem
   /// The Box2D world, created on first use.
   int get world {
     if (_world == 0) {
-      _world = box2d.gooWorldCreate(gravityX, gravityY);
+      // The threads, if any, are created here rather than in the constructor
+      // - and that matters as much as the world does. `Game` runs every
+      // declare pass on the main isolate and deep-copies the graph to the
+      // game isolate, so a pool built at construction time would be built by
+      // the copy that never simulates, and the copy that does would inherit a
+      // handle to threads it does not own.
+      _world = workerCount > 1
+          ? box2d.gooWorldCreateThreaded(gravityX, gravityY, workerCount)
+          : box2d.gooWorldCreate(gravityX, gravityY);
     }
     return _world;
   }

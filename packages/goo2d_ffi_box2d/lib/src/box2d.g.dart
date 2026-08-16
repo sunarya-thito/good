@@ -62,6 +62,54 @@ class Box2DBindings {
   late final _gooWorldCreate =
       _gooWorldCreatePtr.asFunction<int Function(double, double)>();
 
+  /// A world that steps across [workerCount] threads.
+  ///
+  /// Box2D does not create threads; this hands it a pool that does, through
+  /// `enqueueTask`/`finishTask`. A [workerCount] of 1 or less is exactly
+  /// [gooWorldCreate] - no pool, no threads, no behavioural difference.
+  ///
+  /// **The pool belongs to the world and is destroyed with it**, so a caller
+  /// has one lifetime to think about rather than two. That is why this is a
+  /// separate constructor instead of a setter: a world cannot change its
+  /// worker count, and a pool cannot outlive its world.
+  ///
+  /// Box2D warns that only performance cores help - efficiency cores and
+  /// hyper-threading "provide little benefit and may even harm performance"
+  /// - so more workers than physical cores is usually slower, not faster.
+  int gooWorldCreateThreaded(
+    double gravityX,
+    double gravityY,
+    int workerCount,
+  ) {
+    return _gooWorldCreateThreaded(
+      gravityX,
+      gravityY,
+      workerCount,
+    );
+  }
+
+  late final _gooWorldCreateThreadedPtr = _lookup<
+          ffi
+          .NativeFunction<ffi.Int64 Function(ffi.Float, ffi.Float, ffi.Int32)>>(
+      'gooWorldCreateThreaded');
+  late final _gooWorldCreateThreaded = _gooWorldCreateThreadedPtr
+      .asFunction<int Function(double, double, int)>();
+
+  /// How many workers [world] was created with; 1 for a single-threaded one.
+  int gooWorldWorkerCount(
+    int world,
+  ) {
+    return _gooWorldWorkerCount(
+      world,
+    );
+  }
+
+  late final _gooWorldWorkerCountPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.Int64)>>(
+          'gooWorldWorkerCount');
+  late final _gooWorldWorkerCount =
+      _gooWorldWorkerCountPtr.asFunction<int Function(int)>();
+
   void gooWorldDestroy(
     int world,
   ) {

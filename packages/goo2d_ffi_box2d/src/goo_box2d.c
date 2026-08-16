@@ -9,6 +9,7 @@
 // be kept in step by hand (RULES.md rule 10).
 
 #include "goo_box2d.h"
+#include "goo_threads.h"
 
 #include "box2d/box2d.h"
 #include "box2d/collision.h"
@@ -61,12 +62,70 @@ int32_t gooB2Version( void )
 
 // --- world ------------------------------------------------------------------
 
+// Thread pools, by world index.
+//
+// **The one piece of state in this file, and it is here on purpose.** The
+// header above says the shim remembers nothing, because anything remembered
+// would be a second copy of something Dart already owns. A thread pool is not
+// that: it is native state with no Dart counterpart, and it has to be owned
+// somewhere so `gooWorldDestroy` can shut the threads down. A `b2WorldId`
+// carries a dense `index1`, so a flat array is the whole lookup.
+//
+// 128 is Box2D's own `B2_MAX_WORLDS` (`src/constants.h`), which is why the
+// bound is what it is rather than a number picked here.
+#define GOO_MAX_WORLDS 128
+static GooThreadPool* gooWorldPools[GOO_MAX_WORLDS];
+
 int64_t gooWorldCreate( float gravityX, float gravityY )
+{
+	return gooWorldCreateThreaded( gravityX, gravityY, 1 );
+}
+
+int64_t gooWorldCreateThreaded( float gravityX, float gravityY, int32_t workerCount )
 {
 	b2WorldDef def = b2DefaultWorldDef();
 	def.gravity = ( b2Vec2 ){ gravityX, gravityY };
+
+	// Null below a count of 2 - `gooThreadPoolCreate` says so - and then the
+	// world def is left exactly as Box2D's default, which is the promise
+	// gooWorldCreate makes.
+	GooThreadPool* pool = gooThreadPoolCreate( workerCount );
+	if ( pool != NULL )
+	{
+		def.workerCount = workerCount;
+		def.enqueueTask = gooThreadPoolEnqueue;
+		def.finishTask = gooThreadPoolFinish;
+		def.userTaskContext = pool;
+	}
+
 	b2WorldId world = b2CreateWorld( &def );
+	if ( pool != NULL )
+	{
+		if ( world.index1 > 0 && world.index1 < GOO_MAX_WORLDS )
+		{
+			gooWorldPools[world.index1] = pool;
+		}
+		else
+		{
+			// Box2D refused the world, so nothing will ever destroy it.
+			gooThreadPoolDestroy( pool );
+		}
+	}
 	return (int64_t)b2StoreWorldId( world );
+}
+
+int32_t gooWorldWorkerCount( int64_t world )
+{
+	if ( world == 0 )
+	{
+		return 1;
+	}
+	const uint16_t index = unpackWorld( world ).index1;
+	if ( index == 0 || index >= GOO_MAX_WORLDS )
+	{
+		return 1;
+	}
+	return gooThreadPoolWorkerCount( gooWorldPools[index] );
 }
 
 void gooWorldDestroy( int64_t world )
@@ -75,7 +134,17 @@ void gooWorldDestroy( int64_t world )
 	{
 		return;
 	}
-	b2DestroyWorld( unpackWorld( world ) );
+	const b2WorldId id = unpackWorld( world );
+	b2DestroyWorld( id );
+
+	// After the world, never before: destroying the pool first would leave
+	// Box2D holding enqueue/finish pointers into freed threads if anything in
+	// teardown stepped, and joining threads that are mid-task is a hang.
+	if ( id.index1 > 0 && id.index1 < GOO_MAX_WORLDS )
+	{
+		gooThreadPoolDestroy( gooWorldPools[id.index1] );
+		gooWorldPools[id.index1] = NULL;
+	}
 }
 
 void gooWorldStep( int64_t world, float timeStep, int32_t subStepCount )

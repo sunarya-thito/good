@@ -48,6 +48,26 @@ void main() {
   }
 
   stdout.writeln('');
+  stdout.writeln('  --- workers, 5000 bodies -------------------');
+  stdout.writeln('  workers      step   per body    speedup');
+  stdout.writeln('  ------------------------------------------');
+  final serial = _run(5000, workers: 1, report: false);
+  for (final workers in <int>[1, 2, 4, 6, 8]) {
+    final best = _run(5000, workers: workers, report: false);
+    stdout.writeln(
+      '  ${workers.toString().padLeft(7)}'
+      '  ${best.toStringAsFixed(1).padLeft(8)}us'
+      '  ${(best * 1000 / 5000).toStringAsFixed(0).padLeft(7)}ns'
+      '  ${(serial / best).toStringAsFixed(2).padLeft(9)}x',
+    );
+  }
+  stdout.writeln('');
+  stdout.writeln('Box2D warns that only performance cores help - efficiency');
+  stdout.writeln('cores and hyper-threading "provide little benefit and may');
+  stdout.writeln('even harm performance" - so expect this to stop improving');
+  stdout.writeln('at the physical core count and then get worse.');
+
+  stdout.writeln('');
   stdout.writeln('`per body` is one full world step divided by body count.');
   stdout.writeln('`settled` is how many bodies came to rest on the floor - if');
   stdout.writeln('that is not the body count, the pile was still collapsing');
@@ -66,12 +86,15 @@ String _version() {
   return '${packed >> 16}.${(packed >> 8) & 0xFF}.${packed & 0xFF}';
 }
 
-void _run(int count) {
+/// Returns the best step time in microseconds.
+double _run(int count, {int workers = 1, bool report = true}) {
   var best = double.infinity;
   var settled = 0;
 
   for (var round = 0; round < rounds; round++) {
-    final world = box2d.gooWorldCreate(0, -10);
+    final world = workers > 1
+        ? box2d.gooWorldCreateThreaded(0, -10, workers)
+        : box2d.gooWorldCreate(0, -10);
 
     // A floor wide enough to hold the whole pile.
     final floor = box2d.gooBodyCreate(world, bodyTypeStatic, 0, -20, 0);
@@ -126,18 +149,22 @@ void _run(int count) {
     box2d.gooWorldDestroy(world);
   }
 
-  final perBody = best * 1000 / count;
-  stdout.writeln(
-    '  ${count.toString().padLeft(6)}'
-    '  ${best.toStringAsFixed(1).padLeft(8)}us'
-    '  ${perBody.toStringAsFixed(0).padLeft(7)}ns'
-    '  ${settled.toString().padLeft(8)}',
-  );
+  if (report) {
+    final perBody = best * 1000 / count;
+    stdout.writeln(
+      '  ${count.toString().padLeft(6)}'
+      '  ${best.toStringAsFixed(1).padLeft(8)}us'
+      '  ${perBody.toStringAsFixed(0).padLeft(7)}ns'
+      '  ${settled.toString().padLeft(8)}',
+    );
+  }
 
   if (settled != count) {
     stdout.writeln(
-      '    WARNING: only $settled of $count bodies are above the floor - '
-      'this row is timing a world that is falling apart, not a stack.',
+      '    WARNING: only $settled of $count bodies are above the floor with '
+      '$workers worker(s) - this row is timing a world that is falling '
+      'apart, not a stack.',
     );
   }
+  return best;
 }

@@ -27,6 +27,7 @@ endif()
 add_library(goo2d_box2d SHARED
   ${BOX2D_SOURCES}
   "${CMAKE_CURRENT_LIST_DIR}/goo_box2d.c"
+  "${CMAKE_CURRENT_LIST_DIR}/goo_threads.c"
 )
 
 # Box2D's own sources include "box2d/..." headers, and its internal headers
@@ -74,6 +75,15 @@ endif()
 if(ANDROID)
   # Box2D's solver uses pthreads primitives available in the NDK's libc.
   target_link_libraries(goo2d_box2d PRIVATE log)
+endif()
+
+# goo_threads.c needs a thread library everywhere except Windows, which has
+# its own in kernel32. Android and Apple carry pthreads in libc, so this is
+# really for Linux - but asking CMake keeps it correct on all of them.
+if(NOT WIN32)
+  set(THREADS_PREFER_PTHREAD_FLAG ON)
+  find_package(Threads REQUIRED)
+  target_link_libraries(goo2d_box2d PRIVATE Threads::Threads)
 endif()
 
 set_target_properties(goo2d_box2d PROPERTIES

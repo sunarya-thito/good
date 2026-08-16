@@ -75,6 +75,25 @@ extern "C"
 	/// handle, or 0 on failure.
 	GOO_API int64_t gooWorldCreate( float gravityX, float gravityY );
 
+	/// A world that steps across [workerCount] threads.
+	///
+	/// Box2D does not create threads; this hands it a pool that does, through
+	/// `enqueueTask`/`finishTask`. A [workerCount] of 1 or less is exactly
+	/// [gooWorldCreate] - no pool, no threads, no behavioural difference.
+	///
+	/// **The pool belongs to the world and is destroyed with it**, so a caller
+	/// has one lifetime to think about rather than two. That is why this is a
+	/// separate constructor instead of a setter: a world cannot change its
+	/// worker count, and a pool cannot outlive its world.
+	///
+	/// Box2D warns that only performance cores help - efficiency cores and
+	/// hyper-threading "provide little benefit and may even harm performance"
+	/// - so more workers than physical cores is usually slower, not faster.
+	GOO_API int64_t gooWorldCreateThreaded( float gravityX, float gravityY, int32_t workerCount );
+
+	/// How many workers [world] was created with; 1 for a single-threaded one.
+	GOO_API int32_t gooWorldWorkerCount( int64_t world );
+
 	GOO_API void gooWorldDestroy( int64_t world );
 
 	/// Advances the world by `timeStep` seconds. `subStepCount` is Box2D's

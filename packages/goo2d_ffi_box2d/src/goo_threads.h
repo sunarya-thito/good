@@ -1,19 +1,8 @@
-// ############################################################################
-// # WORK IN PROGRESS - NOT WIRED IN, NOT COMPILED, NOT VERIFIED.             #
-// #                                                                          #
-// # Nothing includes this and it is deliberately absent from CMakeLists.txt, #
-// # so the shipped shim is exactly the single-threaded one every test        #
-// # measures. Do not wire it up until it has been run.                       #
-// #                                                                          #
-// # Known incomplete: the tail path in gooThreadPoolEnqueue releases the     #
-// # task slot before its slices have finished. Rework the slot lifetime      #
-// # before trusting any of this.                                            #
-// #                                                                          #
-// # The value here is the CONTRACT below, which was read out of Box2D's      #
-// # solver rather than guessed - it invalidates the obvious implementation.  #
-// ############################################################################
-//
 // A minimal task system for Box2D v3, and the constraints it has to satisfy.
+//
+// **Opt in, and off by default.** `gooWorldCreate` still makes a
+// single-threaded world - byte for byte the behaviour every existing test
+// measures - and threading is reached only through `gooWorldCreateThreaded`.
 //
 // Box2D does not create threads. It calls `enqueueTask`/`finishTask` and
 // expects a `workerIndex` in [0, workerCount) to identify who is running.

@@ -477,6 +477,114 @@ void main() {
 
   });
 
+  group('threading', () {
+    // **Every test here carries a timeout**, because the failure mode of a
+    // task system is a hang, not a wrong answer. Box2D's solver tasks
+    // synchronise at barriers, so a pool that dispatches them wrongly waits
+    // forever - and an unbounded test would take the whole suite with it
+    // rather than reporting.
+    const timeout = Timeout(Duration(seconds: 20));
+
+    /// Drops a grid of boxes onto a floor and returns where they ended up.
+    List<double> settle(int workers, int count) {
+      final world = workers > 1
+          ? box2d.gooWorldCreateThreaded(0, -gravity, workers)
+          : box2d.gooWorldCreate(0, -gravity);
+
+      final floor = box2d.gooBodyCreate(world, bodyTypeStatic, 0, -20, 0);
+      box2d.gooShapeAddBox(floor, 0, 0, 200, 1, 0, 1, 0.6, 0, 1, allLayers, 0);
+
+      final handles = calloc<Int64>(count);
+      for (var i = 0; i < count; i++) {
+        final x = (i % 40) * 1.5 - 30.0;
+        final y = -18 + (i ~/ 40) * 1.5;
+        handles[i] = box2d.gooBodyCreate(world, bodyTypeDynamic, x, y, 0);
+        box2d.gooShapeAddBox(
+          handles[i], 0, 0, 0.5, 0.5, 0, 1, 0.4, 0, 1, allLayers, 0,
+        );
+      }
+
+      for (var i = 0; i < 150; i++) {
+        box2d.gooWorldStep(world, dt, subSteps);
+      }
+
+      final out = calloc<Float>(count * 3);
+      box2d.gooBodiesPullTransforms(handles, out, count);
+      final result = <double>[for (var i = 0; i < count * 3; i++) out[i]];
+      calloc
+        ..free(out)
+        ..free(handles);
+      box2d.gooWorldDestroy(world);
+      return result;
+    }
+
+    test('a threaded world reports its worker count', () {
+      final world = box2d.gooWorldCreateThreaded(0, -gravity, 4);
+      expect(box2d.gooWorldWorkerCount(world), 4);
+      box2d.gooWorldDestroy(world);
+
+      // One worker means no pool at all, which is exactly gooWorldCreate.
+      final serial = box2d.gooWorldCreateThreaded(0, -gravity, 1);
+      expect(box2d.gooWorldWorkerCount(serial), 1);
+      box2d.gooWorldDestroy(serial);
+    }, timeout: timeout);
+
+    test('a threaded world steps at all', () {
+      // The deadlock canary. If the pool dispatches solver tasks wrongly this
+      // never returns, and the timeout above turns that into a failure.
+      final world = box2d.gooWorldCreateThreaded(0, -gravity, 4);
+      final ball = box2d.gooBodyCreate(world, bodyTypeDynamic, 0, 0, 0);
+      box2d.gooShapeAddCircle(ball, 0, 0, 0.5, 1, 0.6, 0, 1, allLayers, 0);
+
+      for (var i = 0; i < 60; i++) {
+        box2d.gooWorldStep(world, dt, subSteps);
+      }
+
+      final out = calloc<Float>(3);
+      box2d.gooBodyGetTransform(ball, out);
+      final y = out[1];
+      calloc.free(out);
+      box2d.gooWorldDestroy(world);
+
+      expect(
+        y,
+        closeTo(-0.5 * gravity, 0.2),
+        reason: 'one second of free fall, threaded, is the same physics',
+      );
+    }, timeout: timeout);
+
+    test('threaded and serial worlds settle a pile the same way', () {
+      // Not bit-identical - Box2D's constraint graph is coloured differently
+      // with more workers, so contact ordering differs and the arithmetic is
+      // not associative. What must hold is that the pile ends up in the same
+      // place, which is the thing a game cares about and the thing a broken
+      // pool would destroy.
+      const count = 400;
+      final serial = settle(1, count);
+      final threaded = settle(4, count);
+
+      var worst = 0.0;
+      for (var i = 0; i < count; i++) {
+        final dx = (serial[i * 3] - threaded[i * 3]).abs();
+        final dy = (serial[i * 3 + 1] - threaded[i * 3 + 1]).abs();
+        if (dx > worst) worst = dx;
+        if (dy > worst) worst = dy;
+      }
+
+      expect(
+        worst,
+        lessThan(1.0),
+        reason: 'every body should be within a body-width of where the '
+            'single-threaded world put it',
+      );
+      // And the pile is genuinely resting on the floor rather than both runs
+      // agreeing on having fallen through it.
+      for (var i = 0; i < count; i++) {
+        expect(threaded[i * 3 + 1], greaterThan(-21));
+      }
+    }, timeout: timeout);
+  });
+
   group('diagnostics', () {
     test('a body that comes to rest stops being awake', () {
       // The diagnostic that separates "this scene is heavy" from "this scene

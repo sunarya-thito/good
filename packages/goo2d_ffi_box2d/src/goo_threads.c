@@ -1,7 +1,5 @@
 #include "goo_threads.h"
 
-#include "box2d/types.h"
-
 #include <stdlib.h>
 #include <string.h>
 
@@ -10,41 +8,38 @@
 #include <windows.h>
 #else
 #include <pthread.h>
+#include <sched.h>
 #endif
 
-// Tasks that may be in flight at once. Box2D's worst case is one solver task
-// per worker plus the tree/sensor/bullet tasks that overlap a step, so this is
-// generous; a full table falls back to running the task on the calling thread,
-// which is correct for every callback except the solver's (see the header).
-#define GOO_MAX_TASKS 64
+// Tasks that may be in flight at once. Box2D's worst case in one step is a
+// solver task per worker plus the tree/sensor/bullet tasks that overlap them.
+#define GOO_MAX_TASKS 128
 
 typedef void b2TaskFn( int startIndex, int endIndex, uint32_t workerIndex, void* taskContext );
 
-typedef struct GooSlice
-{
-	b2TaskFn* fn;
-	void* context;
-	int32_t start;
-	int32_t end;
-	struct GooTask* owner;
-} GooSlice;
-
 typedef struct GooTask
 {
-	// Slices still to finish. The task is done at zero.
+	// Slices not yet finished. The task is complete at zero. Only ever
+	// decremented by workers and only ever read by the thread in finish.
 	volatile long remaining;
+	// Owned by the dispatching thread alone - Box2D enqueues from one thread.
 	int32_t inUse;
 } GooTask;
 
 typedef struct GooWorker
 {
-	GooThreadPool* pool;
 	int32_t index;
-	// One slot: a worker is only ever handed a slice while it is idle, which
-	// the dispatcher guarantees by only choosing idle workers.
-	GooSlice slice;
-	volatile long hasWork;
+	b2TaskFn* fn;
+	void* context;
+	int32_t start;
+	int32_t end;
+	GooTask* owner;
+
+	// 0 = idle. Claimed with a compare-and-swap by the dispatcher, cleared by
+	// the worker once its slice has finished *and* been counted.
+	volatile long busy;
 	volatile long running;
+
 #if defined( _WIN32 )
 	HANDLE thread;
 	HANDLE wake;
@@ -52,26 +47,28 @@ typedef struct GooWorker
 	pthread_t thread;
 	pthread_mutex_t mutex;
 	pthread_cond_t cond;
+	volatile long signalled;
 #endif
 } GooWorker;
 
 struct GooThreadPool
 {
 	int32_t workerCount;
-	GooWorker* workers; // workerCount - 1 of them, indices 1..workerCount-1
+	GooWorker* workers;
 	GooTask tasks[GOO_MAX_TASKS];
+	// Scratch for the dispatcher's idle-worker pass, so enqueue allocates
+	// nothing on a path Box2D takes many times per step.
+	GooWorker** idle;
 };
 
 // --- portable primitives -----------------------------------------------------
 
-static void gooSignal( GooWorker* worker )
+static long gooCas( volatile long* value, long expected, long desired )
 {
 #if defined( _WIN32 )
-	SetEvent( worker->wake );
+	return InterlockedCompareExchange( value, desired, expected );
 #else
-	pthread_mutex_lock( &worker->mutex );
-	pthread_cond_signal( &worker->cond );
-	pthread_mutex_unlock( &worker->mutex );
+	return __sync_val_compare_and_swap( value, expected, desired );
 #endif
 }
 
@@ -84,10 +81,45 @@ static long gooDecrement( volatile long* value )
 #endif
 }
 
+static void gooStore( volatile long* value, long desired )
+{
+#if defined( _WIN32 )
+	InterlockedExchange( value, desired );
+#else
+	__sync_lock_test_and_set( value, desired );
+#endif
+}
+
+static void gooWake( GooWorker* worker )
+{
+#if defined( _WIN32 )
+	SetEvent( worker->wake );
+#else
+	pthread_mutex_lock( &worker->mutex );
+	worker->signalled = 1;
+	pthread_cond_signal( &worker->cond );
+	pthread_mutex_unlock( &worker->mutex );
+#endif
+}
+
+static void gooSleepUntilWoken( GooWorker* worker )
+{
+#if defined( _WIN32 )
+	WaitForSingleObject( worker->wake, INFINITE );
+#else
+	pthread_mutex_lock( &worker->mutex );
+	while ( worker->signalled == 0 )
+	{
+		pthread_cond_wait( &worker->cond, &worker->mutex );
+	}
+	worker->signalled = 0;
+	pthread_mutex_unlock( &worker->mutex );
+#endif
+}
+
 static void gooYield( void )
 {
 #if defined( _WIN32 )
-	YieldProcessor();
 	SwitchToThread();
 #else
 	sched_yield();
@@ -95,12 +127,6 @@ static void gooYield( void )
 }
 
 // --- the worker loop ---------------------------------------------------------
-
-static void gooRunSlice( GooSlice* slice, int32_t workerIndex )
-{
-	slice->fn( slice->start, slice->end, (uint32_t)workerIndex, slice->context );
-	gooDecrement( &slice->owner->remaining );
-}
 
 #if defined( _WIN32 )
 static DWORD WINAPI gooWorkerMain( LPVOID argument )
@@ -111,27 +137,23 @@ static void* gooWorkerMain( void* argument )
 	GooWorker* worker = (GooWorker*)argument;
 	for ( ;; )
 	{
-#if defined( _WIN32 )
-		WaitForSingleObject( worker->wake, INFINITE );
-#else
-		pthread_mutex_lock( &worker->mutex );
-		while ( worker->hasWork == 0 && worker->running != 0 )
-		{
-			pthread_cond_wait( &worker->cond, &worker->mutex );
-		}
-		pthread_mutex_unlock( &worker->mutex );
-#endif
+		gooSleepUntilWoken( worker );
 		if ( worker->running == 0 )
 		{
 			break;
 		}
-		if ( worker->hasWork != 0 )
+		if ( worker->busy == 0 )
 		{
-			gooRunSlice( &worker->slice, worker->index );
-			// Cleared last: the dispatcher treats a zero here as "idle", so
-			// it must not see that until the work is genuinely finished.
-			worker->hasWork = 0;
+			continue;
 		}
+
+		worker->fn( worker->start, worker->end, (uint32_t)worker->index, worker->context );
+
+		// Count the slice done BEFORE releasing the worker. A dispatcher that
+		// saw `busy == 0` first could hand this worker a new slice and, in
+		// doing so, reuse a task slot whose count had not yet reached zero.
+		gooDecrement( &worker->owner->remaining );
+		gooStore( &worker->busy, 0 );
 	}
 #if defined( _WIN32 )
 	return 0;
@@ -155,27 +177,32 @@ GooThreadPool* gooThreadPoolCreate( int32_t workerCount )
 		return NULL;
 	}
 	pool->workerCount = workerCount;
-	pool->workers = (GooWorker*)calloc( (size_t)( workerCount - 1 ), sizeof( GooWorker ) );
-	if ( pool->workers == NULL )
+	// **A thread per worker, not workerCount - 1.** The calling thread never
+	// executes a slice (see the header's property 4), so it is not one of the
+	// workers - it only dispatches and waits.
+	pool->workers = (GooWorker*)calloc( (size_t)workerCount, sizeof( GooWorker ) );
+	pool->idle = (GooWorker**)calloc( (size_t)workerCount, sizeof( GooWorker* ) );
+	if ( pool->workers == NULL || pool->idle == NULL )
 	{
+		free( pool->workers );
+		free( pool->idle );
 		free( pool );
 		return NULL;
 	}
 
-	for ( int32_t i = 0; i < workerCount - 1; ++i )
+	for ( int32_t i = 0; i < workerCount; ++i )
 	{
 		GooWorker* worker = pool->workers + i;
-		worker->pool = pool;
-		// Index 0 is the thread calling b2World_Step, so threads start at 1.
-		worker->index = i + 1;
+		worker->index = i;
 		worker->running = 1;
-		worker->hasWork = 0;
+		worker->busy = 0;
 #if defined( _WIN32 )
 		worker->wake = CreateEvent( NULL, FALSE, FALSE, NULL );
 		worker->thread = CreateThread( NULL, 0, gooWorkerMain, worker, 0, NULL );
 #else
 		pthread_mutex_init( &worker->mutex, NULL );
 		pthread_cond_init( &worker->cond, NULL );
+		worker->signalled = 0;
 		pthread_create( &worker->thread, NULL, gooWorkerMain, worker );
 #endif
 	}
@@ -188,13 +215,12 @@ void gooThreadPoolDestroy( GooThreadPool* pool )
 	{
 		return;
 	}
-	for ( int32_t i = 0; i < pool->workerCount - 1; ++i )
+	for ( int32_t i = 0; i < pool->workerCount; ++i )
 	{
-		GooWorker* worker = pool->workers + i;
-		worker->running = 0;
-		gooSignal( worker );
+		gooStore( &pool->workers[i].running, 0 );
+		gooWake( pool->workers + i );
 	}
-	for ( int32_t i = 0; i < pool->workerCount - 1; ++i )
+	for ( int32_t i = 0; i < pool->workerCount; ++i )
 	{
 		GooWorker* worker = pool->workers + i;
 #if defined( _WIN32 )
@@ -208,6 +234,7 @@ void gooThreadPoolDestroy( GooThreadPool* pool )
 #endif
 	}
 	free( pool->workers );
+	free( pool->idle );
 	free( pool );
 }
 
@@ -244,28 +271,46 @@ void* gooThreadPoolEnqueue( void* taskFn, int32_t itemCount, int32_t minRange, v
 		return NULL;
 	}
 
-	// How many workers this task can use, honouring Box2D's minRange hint so
-	// a tiny parallel-for does not pay for a wake-up per item.
-	int32_t slices = pool->workerCount;
+	// How many slices the work is worth, honouring Box2D's minRange hint so a
+	// tiny parallel-for does not pay a wake-up per item.
+	int32_t wanted = pool->workerCount;
 	if ( minRange > 0 )
 	{
-		int32_t cap = itemCount / minRange;
-		if ( cap < 1 )
+		const int32_t cap = itemCount / minRange;
+		if ( wanted > cap )
 		{
-			cap = 1;
-		}
-		if ( slices > cap )
-		{
-			slices = cap;
+			wanted = cap;
 		}
 	}
-	if ( slices > itemCount )
+	if ( wanted > itemCount )
 	{
-		slices = itemCount;
+		wanted = itemCount;
+	}
+	if ( wanted < 1 )
+	{
+		wanted = 1;
 	}
 
-	if ( slices <= 1 )
+	// Claim idle workers up front, so the split is over threads that are
+	// certainly available. Only this thread dispatches, so a worker counted
+	// idle here cannot be taken by anyone else; one that finishes meanwhile
+	// simply is not used this time.
+	int32_t claimed = 0;
+	for ( int32_t i = 0; i < pool->workerCount && claimed < wanted; ++i )
 	{
+		GooWorker* worker = pool->workers + i;
+		if ( gooCas( &worker->busy, 0, 1 ) == 0 )
+		{
+			pool->idle[claimed++] = worker;
+		}
+	}
+
+	if ( claimed == 0 )
+	{
+		// Every thread is occupied. Running inline is correct for a
+		// parallel-for and is the one case that is NOT correct for a solver
+		// task - which is why the pool holds a thread per worker, so the
+		// solver's simultaneous enqueues always find one.
 		fn( 0, itemCount, 0, taskContext );
 		return NULL;
 	}
@@ -273,74 +318,36 @@ void* gooThreadPoolEnqueue( void* taskFn, int32_t itemCount, int32_t minRange, v
 	GooTask* task = gooClaimTask( pool );
 	if ( task == NULL )
 	{
-		fn( 0, itemCount, 0, taskContext );
-		return NULL;
-	}
-
-	// **Dispatch is non-blocking, and that is the whole design.**
-	//
-	// The obvious shape - hand out slices to workers and run the last one on
-	// the calling thread - deadlocks, and `solver.c:1691` is why:
-	//
-	//     for ( int i = 0; i < workerCount; ++i )
-	//         workerContext[i].userTask = enqueueTaskFcn( b2SolverTask, 1, 1, ... );
-	//     ... only afterwards ...
-	//     for ( int i = 0; i < workerCount; ++i ) finishTaskFcn( ... );
-	//
-	// Every solver task is enqueued *before* any is waited on, and they meet
-	// at barriers inside the solver. Running one inline during its enqueue
-	// blocks the caller at a barrier waiting for peers that have not been
-	// dispatched yet. So enqueue must return immediately, always.
-	//
-	// Note also `workerIndex` is carried in Box2D's own `workerContext`, not
-	// taken from the argument this pool passes - the comment above that loop
-	// says so ("Must use worker index because thread 0 can be assigned
-	// multiple tasks"). The index handed to `fn` therefore only has to be in
-	// range, not meaningful.
-	const int32_t per = itemCount / slices;
-	int32_t start = 0;
-	int32_t handed = 0;
-
-	for ( int32_t i = 0; i < pool->workerCount && handed < slices; ++i )
-	{
-		GooWorker* worker = pool->workers + i;
-		if ( worker->hasWork != 0 )
+		for ( int32_t i = 0; i < claimed; ++i )
 		{
-			continue;
+			gooStore( &pool->idle[i]->busy, 0 );
 		}
-		const int32_t end = ( handed == slices - 1 ) ? itemCount : start + per;
-		worker->slice.fn = fn;
-		worker->slice.context = taskContext;
-		worker->slice.start = start;
-		worker->slice.end = end;
-		worker->slice.owner = task;
-#if defined( _WIN32 )
-		InterlockedIncrement( &task->remaining );
-#else
-		__sync_add_and_fetch( &task->remaining, 1 );
-#endif
-		worker->hasWork = 1;
-		gooSignal( worker );
-		start = end;
-		handed++;
-	}
-
-	if ( handed == 0 )
-	{
-		// Nothing was free. Correct for a parallel-for, and the one case that
-		// is NOT correct for a solver task - which is why the pool is sized
-		// with a thread per worker so this cannot happen during a step.
-		task->inUse = 0;
 		fn( 0, itemCount, 0, taskContext );
 		return NULL;
 	}
-	if ( start < itemCount )
+
+	// **Set the count before waking anyone.** A worker that finished while
+	// the rest were still being handed out could otherwise drive `remaining`
+	// to zero early and let finish return over live slices.
+	task->remaining = claimed;
+
+	const int32_t per = itemCount / claimed;
+	int32_t start = 0;
+	for ( int32_t i = 0; i < claimed; ++i )
 	{
-		// Ran out of idle workers part way. Give the tail to the last one we
-		// used rather than to the caller, for the reason above.
-		task->inUse = 0;
-		fn( start, itemCount, 0, taskContext );
+		GooWorker* worker = pool->idle[i];
+		// The last slice takes the remainder, so nothing is left over and no
+		// slice has to run on the calling thread.
+		const int32_t end = ( i == claimed - 1 ) ? itemCount : start + per;
+		worker->fn = fn;
+		worker->context = taskContext;
+		worker->start = start;
+		worker->end = end;
+		worker->owner = task;
+		gooWake( worker );
+		start = end;
 	}
+
 	return task;
 }
 
@@ -352,8 +359,8 @@ void gooThreadPoolFinish( void* userTask, void* userContext )
 	{
 		return;
 	}
-	// Spin rather than block: these waits are microseconds inside a step, and
-	// a condition variable per finish costs more than it saves.
+	// Spun rather than blocked: these waits are microseconds inside a step,
+	// and a condition variable per finish costs more than it saves.
 	while ( task->remaining > 0 )
 	{
 		gooYield();
