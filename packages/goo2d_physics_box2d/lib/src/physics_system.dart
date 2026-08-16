@@ -253,6 +253,15 @@ class Box2DPhysicsSystem extends GameSystem
   /// population.
   int get touchingPairCount => _touchingCount;
 
+  /// Threads the **live world** is actually using, asked of Box2D rather than
+  /// read back off [workerCount].
+  ///
+  /// Those two can disagree, and the difference is invisible in a step time.
+  /// [workerCount] is what this object was constructed with; this is what the
+  /// world got. 0 means no world exists yet.
+  int get activeWorkerCount =>
+      _world == 0 ? 0 : box2d.gooWorldWorkerCount(_world);
+
   /// Bodies Box2D is still integrating, as opposed to asleep.
   ///
   /// **The number that says whether a heavy scene is heavy or merely

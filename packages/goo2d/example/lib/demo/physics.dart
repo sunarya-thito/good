@@ -129,17 +129,6 @@ const int _ballColor = 0xFF4FC3F7;
 const int _ballHitColor = 0xFFFF7043;
 const int _floorColor = 0xFF37474F;
 
-/// Threads the case's solver may spread a step across.
-///
-/// A mutable top-level rather than a slider, because `workerCount` is fixed
-/// when the Box2D world is created and a world cannot change it afterwards -
-/// a control that appeared to change it live would be lying. `bench_physics`
-/// sets this before starting the game; the interactive app leaves it at 1.
-///
-/// 1 is deliberate as the default: it creates no threads at all, so the case
-/// measures the same thing it always has unless someone asks otherwise.
-int physicsWorkerCount = 1;
-
 /// How long a crate stays lit after a collision, in seconds. Without this the
 /// flash lasts one tick and is invisible at 60 Hz - the point of the case is
 /// to make the *event path* visible, not just plausible.
@@ -658,6 +647,7 @@ class SandboxSystem extends GameSystem with FixedTickable {
       ..syncMicros.value = physics.lastSyncMicros
       ..contactMicros.value = physics.lastContactMicros
       ..escapedBodies.value = escapes
+      ..solverThreads.value = physics.activeWorkerCount
       ..physicsBodies.value = _counters[0]
       ..awakeBodies.value = physics.awakeBodyCount
       ..touchingPairs.value = physics.touchingPairCount
@@ -737,14 +727,39 @@ class PhysicsState extends DemoState<PhysicsGame> {
     // Gravity in metres per second squared. Box2D's own default is -10 rather
     // than -9.81; it is a game engine, not a geodesy package.
     // Positive is down; see Box2DPhysicsSystem.gravityY.
+    // **Read off the Game, not a top-level.** `describeSystems` runs on the
+    // game isolate, and top-level state does not cross `Isolate.spawn` - a
+    // top-level `physicsWorkerCount` set on main read back as its default of
+    // 1 here, so the world was built single-threaded no matter what the
+    // caller asked for, and the bench dutifully reported that threading
+    // changed nothing. A field on the `Game` travels with the copied object
+    // graph and arrives.
     descriptor.has(
-      Box2DPhysicsSystem(gravityY: 18, workerCount: physicsWorkerCount),
+      Box2DPhysicsSystem(gravityY: 18, workerCount: game.solverWorkerCount),
     );
     descriptor.has(SandboxSystem());
   }
 }
 
 class PhysicsGame extends DemoGame {
+  /// Threads the solver may spread a step across, set **before**
+  /// `Game.start`.
+  ///
+  /// A plain field on the `Game` because that object is deep-copied to the
+  /// game isolate, so a value set here arrives where the world is actually
+  /// built. A top-level would not: `describeSystems` runs on the game
+  /// isolate, where top-level state is back at its default.
+  ///
+  /// Not a slider, because `workerCount` is fixed when the Box2D world is
+  /// created and a world cannot change it afterwards - a control that
+  /// appeared to change it live would be lying. 1 creates no threads at all,
+  /// so the interactive app measures what it always did.
+  ///
+  /// Whether it took effect is [solverThreads], which asks Box2D rather than
+  /// echoing this back.
+  int solverWorkerCount = 1;
+
+
   /// `Box2DPhysicsSystem`'s four phases, in microseconds, from the last fixed
   /// step.
   ///
@@ -772,6 +787,15 @@ class PhysicsGame extends DemoGame {
   /// and they did: `Entity.destroy` did not fire the world-observation
   /// despawn event, so the physics system never released a destroyed entity's
   /// body and this number climbed without bound while `entities` held steady.
+  /// Threads the **live** Box2D world is using, asked of Box2D on the game
+  /// isolate rather than read off the value this side asked for.
+  ///
+  /// Those are different questions, and the difference is invisible in a step
+  /// time: `physicsWorkerCount` is a top-level, and **top-level state does not
+  /// cross `Isolate.spawn`** - so if the physics system is constructed on the
+  /// game isolate it reads the default, whatever main was told.
+  late final StateChannel<int> solverThreads;
+
   late final StateChannel<int> physicsBodies;
 
   /// Bodies that have ever left the box and been recycled, cumulatively. A
@@ -790,6 +814,7 @@ class PhysicsGame extends DemoGame {
     solveMicros = descriptor.hasInt32();
     syncMicros = descriptor.hasInt32();
     contactMicros = descriptor.hasInt32();
+    solverThreads = descriptor.hasInt32();
     physicsBodies = descriptor.hasInt32();
     escapedBodies = descriptor.hasInt32();
     awakeBodies = descriptor.hasInt32();
@@ -849,6 +874,7 @@ class PhysicsDemo extends Demo {
     DemoStat('solve', _game.solveMicros, ms: true),
     DemoStat('sync', _game.syncMicros, ms: true),
     DemoStat('contact', _game.contactMicros, ms: true),
+    DemoStat('threads', _game.solverThreads),
     DemoStat('b2 bodies', _game.physicsBodies),
     DemoStat('escaped', _game.escapedBodies),
     DemoStat('awake', _game.awakeBodies),

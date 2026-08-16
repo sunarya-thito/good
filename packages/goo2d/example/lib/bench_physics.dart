@@ -70,12 +70,6 @@ void main() {
     );
     exit(2);
   }
-  // Set before the game is built, because `workerCount` is fixed when the
-  // Box2D world is created:
-  //
-  //   flutter run -t lib/bench_physics.dart --profile -d windows \
-  //     --dart-define=workers=8
-  physicsWorkerCount = _workers;
   runApp(const _BenchApp());
 }
 
@@ -109,7 +103,13 @@ class _BenchAppState extends State<_BenchApp> {
   }
 
   Future<void> _run() async {
-    final game = PhysicsGame();
+    final game = PhysicsGame()
+      // **Before `Game.start`, and on the Game rather than a top-level.**
+      // `Game.start` deep-copies this object to the game isolate, so a field
+      // set here arrives; a top-level does not, and the first version of this
+      // used one - the world was built with 1 worker however many were asked
+      // for, and the bench reported that threading did nothing.
+      ..solverWorkerCount = _workers;
     await Game.start(game);
     if (!mounted) {
       await game.stop();
@@ -171,8 +171,13 @@ class _BenchAppState extends State<_BenchApp> {
     final out = StringBuffer()
       ..writeln('')
       ..writeln('=== physics frame breakdown (profile, minimum of samples) ===')
-      ..writeln('solver threads: $_workers'
-          '${_workers == 1 ? "  (no thread pool created)" : ""}')
+      // **Asked for, and actually got.** The first is a compile-time const
+      // read on the main isolate and proves nothing about the world; the
+      // second is what Box2D reports for the live world on the game isolate.
+      // They can differ, because top-level state does not cross
+      // Isolate.spawn.
+      ..writeln('solver threads: asked $_workers, world reports '
+          '${rows.isEmpty ? "?" : rows.last.threads}')
       ..writeln('')
       ..writeln(
         '  target  actual  advance     step  systems  present |'
@@ -277,6 +282,9 @@ class _Row {
   /// Bodies recycled after leaving the box, cumulatively.
   int escaped = 0;
 
+  /// Threads the live Box2D world reports, not the number asked for.
+  int threads = 0;
+
   int b2Bodies = 0;
   int awake = 0;
   int touching = 0;
@@ -316,6 +324,7 @@ class _Row {
     simFps = game.simulationFps;
     entities = game.spawnedCount.value;
     escaped = game.escapedBodies.value;
+    threads = game.solverThreads.value;
     b2Bodies = game.physicsBodies.value;
     awake = game.awakeBodies.value;
     touching = game.touchingPairs.value;
