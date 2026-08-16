@@ -70,8 +70,18 @@ void main() {
     );
     exit(2);
   }
+  // Set before the game is built, because `workerCount` is fixed when the
+  // Box2D world is created:
+  //
+  //   flutter run -t lib/bench_physics.dart --profile -d windows \
+  //     --dart-define=workers=8
+  physicsWorkerCount = _workers;
   runApp(const _BenchApp());
 }
+
+/// Solver threads, from `--dart-define=workers=N`. 1 - no threads at all - is
+/// the default, so an unqualified run measures what it always did.
+const int _workers = int.fromEnvironment('workers', defaultValue: 1);
 
 class _BenchApp extends StatefulWidget {
   const _BenchApp();
@@ -161,6 +171,8 @@ class _BenchAppState extends State<_BenchApp> {
     final out = StringBuffer()
       ..writeln('')
       ..writeln('=== physics frame breakdown (profile, minimum of samples) ===')
+      ..writeln('solver threads: $_workers'
+          '${_workers == 1 ? "  (no thread pool created)" : ""}')
       ..writeln('')
       ..writeln(
         '  target  actual  advance     step  systems  present |'

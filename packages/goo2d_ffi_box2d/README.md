@@ -78,6 +78,41 @@ Both are measured, both are pinned by tests in `test/shim_test.dart`:
    per body type — Dart owns static and kinematic bodies, Box2D owns dynamic
    ones.
 
+## Threading
+
+Box2D creates no threads of its own — it calls `enqueueTask`/`finishTask` and
+expects a worker index back. `src/goo_threads.c` is the pool that backs those,
+reached through `gooWorldCreateThreaded(gx, gy, workerCount)`.
+`gooWorldCreate` is unchanged and creates no threads, so threading is entirely
+opt-in.
+
+Measured on a dense 5000-body stack (`goo2d_physics_box2d/tool/physics_bench.dart`,
+AOT, 8 physical cores):
+
+| workers | step | speedup |
+|---|---|---|
+| 1 | 5347.9 µs | 1.00× |
+| 2 | 3943.3 µs | 1.45× |
+| 4 | 2461.6 µs | 2.32× |
+| 8 | 1969.4 µs | 2.90× |
+
+**The contract that invalidates the obvious implementation.** `solver.c`
+enqueues *all* `workerCount` solver tasks and only afterwards finishes them,
+and those tasks synchronise at barriers inside the solver. So `enqueueTask`
+must return **without running any work inline** — the usual parallel-for
+shape, where the caller runs the last slice itself, blocks at a barrier
+waiting for peers that have not been dispatched yet. That is a deadlock, not
+a slowdown. Consequently the pool holds a thread *per* worker rather than
+`workerCount - 1`, and hands work only to threads it has already claimed as
+idle.
+
+`workerIndex` is carried in Box2D's own `workerContext`, not taken from the
+argument the pool passes, so the index only has to be in range.
+
+Box2D's own guidance: only performance cores help, and "efficiency cores and
+hyper-threading provide little benefit and may even harm performance". More
+workers than physical cores usually costs time.
+
 ## Diagnostics
 
 `gooWorldAwakeBodyCount` and `gooWorldCounters` exist because a step time on

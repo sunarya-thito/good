@@ -129,6 +129,17 @@ const int _ballColor = 0xFF4FC3F7;
 const int _ballHitColor = 0xFFFF7043;
 const int _floorColor = 0xFF37474F;
 
+/// Threads the case's solver may spread a step across.
+///
+/// A mutable top-level rather than a slider, because `workerCount` is fixed
+/// when the Box2D world is created and a world cannot change it afterwards -
+/// a control that appeared to change it live would be lying. `bench_physics`
+/// sets this before starting the game; the interactive app leaves it at 1.
+///
+/// 1 is deliberate as the default: it creates no threads at all, so the case
+/// measures the same thing it always has unless someone asks otherwise.
+int physicsWorkerCount = 1;
+
 /// How long a crate stays lit after a collision, in seconds. Without this the
 /// flash lasts one tick and is invisible at 60 Hz - the point of the case is
 /// to make the *event path* visible, not just plausible.
@@ -726,7 +737,9 @@ class PhysicsState extends DemoState<PhysicsGame> {
     // Gravity in metres per second squared. Box2D's own default is -10 rather
     // than -9.81; it is a game engine, not a geodesy package.
     // Positive is down; see Box2DPhysicsSystem.gravityY.
-    descriptor.has(Box2DPhysicsSystem(gravityY: 18));
+    descriptor.has(
+      Box2DPhysicsSystem(gravityY: 18, workerCount: physicsWorkerCount),
+    );
     descriptor.has(SandboxSystem());
   }
 }
