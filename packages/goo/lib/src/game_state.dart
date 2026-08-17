@@ -881,6 +881,10 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // standing. Unconditional now - only the simulating copy ever reaches
     // here, because main stopped mounting its state at all.
     gameMountedEvent.call();
+    // Then each system's own lifecycle signal, in declaration order.
+    for (var i = 0; i < _systems.length; i++) {
+      _systems[i].mountEvent.call();
+    }
   }
 
   @internal
@@ -920,6 +924,25 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // released pages on a game that has been restarted in the same isolate.
     coroutines.stopAll();
     onUnmounted();
+
+    // **Last, and in reverse declaration order.**
+    //
+    // `GameSystem.unmountEvent` was declared from the start and *never fired
+    // by anything* - a teardown hook that existed in name only, like
+    // `EntityLifecycleListener`'s broadcast half did. So a system holding a
+    // native resource had nowhere to release it, and
+    // `Box2DPhysicsSystem.dispose` had to document "call this yourself after
+    // stopping" - which nothing ever did. The Box2D world and, once the demo
+    // started threading, its worker threads were leaked by every run.
+    //
+    // After the scenes, because releasing a world while entities still hold
+    // bodies in it is a use-after-free, and that one is a native crash with
+    // no Dart exception at all. Reverse order, mirroring how a scene loaded
+    // on top of another comes down first: a system declared later may depend
+    // on an earlier one and should let go before it does.
+    for (var i = _systems.length - 1; i >= 0; i--) {
+      _systems[i].unmountEvent.call();
+    }
   }
 
   /// Starts the wall-clock-paced tick loop. Called by `Game.start()` unless

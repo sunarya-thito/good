@@ -58,7 +58,7 @@ import 'rigid_body.dart';
 /// putting physics first is what makes gameplay's write the winner - picked
 /// up by the next tick's push.
 class Box2DPhysicsSystem extends GameSystem
-    with FixedTickable, EntitySpawnListener {
+    with FixedTickable, EntitySpawnListener, GameSystemLifecycleListener {
   Box2DPhysicsSystem({
     this.gravityX = 0,
     this.gravityY = 10,
@@ -1345,18 +1345,24 @@ class Box2DPhysicsSystem extends GameSystem
     _slots = grown;
   }
 
-  /// Releases the Box2D world and the scratch buffers.
+  /// Releases the Box2D world, its worker threads and the scratch buffers,
+  /// when the game stops.
   ///
-  /// Not called automatically: `GameSystem` has no teardown hook, and adding
-  /// one for this alone would put a lifecycle on every system in the engine
-  /// to serve one. A game that stops and restarts a simulation in one process
-  /// should call this; a game that runs until the process exits need not.
+  /// **Called automatically now.** `GameSystem.unmountEvent` had been declared
+  /// since the beginning and fired by nothing, so this used to say "call it
+  /// yourself after stopping" - and nothing ever did, which leaked a Box2D
+  /// world per run and, once threading was on, its worker threads with it.
+  /// `GameState.unmount` fires the signal after the scenes are down, which is
+  /// the only safe moment: releasing the world while entities still hold
+  /// bodies in it is a use-after-free, and that one is a native crash with no
+  /// Dart exception.
   ///
-  /// **Call it after stopping the game, not before.** Stopping unloads the
-  /// scenes, which unmounts every entity and destroys its body - so disposing
-  /// first leaves that teardown reaching into a freed world.
-  /// [onEntityDespawned] guards against it, but the ordering is still the one
-  /// to write.
+  /// Still public and still idempotent, so a test or a harness that wants to
+  /// reclaim the world early can, and calling it twice is harmless.
+  @override
+  void onUnmounted() => dispose();
+
+  /// See [onUnmounted] - this is what it calls.
   void dispose() {
     if (_world != 0) {
       box2d.gooWorldDestroy(_world);

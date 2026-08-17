@@ -606,6 +606,48 @@ void main() {
     });
   });
 
+  group('teardown', () {
+    test('stopping the game releases the Box2D world', () async {
+      // **`GameSystem.unmountEvent` was declared from the start and fired by
+      // nothing.** So `dispose` documented "call it yourself after stopping",
+      // nothing ever did, and every run leaked a Box2D world - plus, once the
+      // demo threaded by default, its worker threads. That is the reported
+      // "window closed but the process is still alive" made worse.
+      //
+      // Asserted on the world handle rather than on a call count, because a
+      // hook that fires and disposes nothing would pass the latter.
+      final scene = await _boot();
+      scene.addEntity(scene.crate);
+      _advance(2);
+
+      expect(physics.activeWorkerCount, greaterThan(0),
+          reason: 'a world should exist while the game is running');
+
+      await run.stop();
+
+      expect(
+        physics.activeWorkerCount,
+        0,
+        reason: 'stopping should have released the world, so there is no '
+            'longer one to report a worker count for',
+      );
+    });
+
+    test('a threaded world releases its threads too', () async {
+      // Same path, with a pool attached - the case that leaks OS threads
+      // rather than just memory. A timeout because joining threads that are
+      // mid-task hangs, and that is what a wrong teardown order does.
+      final scene = await _boot(workers: 4);
+      scene.addEntity(scene.crate);
+      _advance(2);
+      expect(physics.activeWorkerCount, 4);
+
+      await run.stop();
+
+      expect(physics.activeWorkerCount, 0);
+    }, timeout: const Timeout(Duration(seconds: 30)));
+  });
+
   group('threading', () {
     test('a threaded system simulates the same as a serial one', () async {
       // End to end through the ECS, not just the shim: the pool is created
