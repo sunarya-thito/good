@@ -343,30 +343,24 @@ extern "C"
 	/// The target is world space, not body-local, because that is the whole
 	/// point: it is where you want the body to go, not a point on it.
 	///
-	/// # KNOWN GAP - this does not reach its target, and why is still open
+	/// # It grabs the body, then aims - and that ordering is the whole trick
 	///
-	/// Measured at this level, with no ECS involved, a 0.5 m ball dragged
-	/// towards (6, 4) over 400 steps:
+	/// `b2CreateMouseJoint` anchors **whichever point of the body is currently
+	/// at `def.target`**: `mouse_joint.c` derives `anchorB` from
+	/// `localOriginAnchorB` and sets `deltaCenter = center - targetA`. Handing
+	/// it a distant target therefore means "hold the point 6 m from your
+	/// centre at a spot 6 m away", which is already true - separation solves
+	/// to zero and the joint does nothing at all.
 	///
-	///     hertz  gravity      lands at
-	///         5        0    (0.00,  0.00)   <- does not move at all
-	///        15        0    (0.00,  0.00)
-	///         5      -10    (2.47, -2.31)
-	///         5       -1   (10.54, -1.61)   <- overshoots x, still falls
+	/// That is not hypothetical; it is what this shipped as. With no gravity
+	/// the body never moved, and with gravity it drifted to wherever the fall
+	/// happened to leave it, which looked like a weak spring and survived a
+	/// stiffness sweep unchanged.
 	///
-	/// Ruled out: the ECS layer (these numbers are the raw shim), stiffness
-	/// (hertz 5 -> 15 -> 60 moves it by centimetres), force saturation
-	/// (`maxForce * h` is three orders above the gravity impulse), and sleep
-	/// (waking the body explicitly changed nothing).
-	///
-	/// **With no gravity it does not move the body at all**, which says the
-	/// position bias is resolving to roughly zero - as though the constraint
-	/// believes the body is already where it should be. The next place to look
-	/// is `deltaCenter` in `b2PrepareMouseJoint`.
-	///
-	/// Distance, revolute, prismatic, weld, wheel and motor joints are all
-	/// verified to constrain correctly; this one is exposed but should be
-	/// treated as unfinished.
+	/// So this creates the joint at the body's own position - grabbing its
+	/// centre, as Box2D's samples grab under the cursor - and then sets the
+	/// real target immediately. Measured after the fix, a ball dragged to
+	/// (6, 4) under gravity lands at (6.00, 4.00).
 	GOO_API int64_t gooJointCreateMouse( int64_t bodyA, int64_t bodyB, float targetX, float targetY,
 										 float hertz, float dampingRatio, float maxForce,
 										 int32_t collideConnected );

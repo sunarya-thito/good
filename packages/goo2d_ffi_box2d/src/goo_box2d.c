@@ -764,10 +764,25 @@ int64_t gooJointCreateMouse( int64_t bodyA, int64_t bodyB, float targetX, float 
 		return 0;
 	}
 	b2BodyId a = unpackBody( bodyA );
+	b2BodyId b = unpackBody( bodyB );
 	b2MouseJointDef def = b2DefaultMouseJointDef();
 	def.bodyIdA = a;
-	def.bodyIdB = unpackBody( bodyB );
-	def.target = ( b2Vec2 ){ targetX, targetY };
+	def.bodyIdB = b;
+
+	// **Created at the body, then aimed at the target - not created at the
+	// target.** `b2CreateMouseJoint` anchors whichever point of the body is
+	// currently at `def.target` (`mouse_joint.c` computes `anchorB` from
+	// `localOriginAnchorB`, and `deltaCenter = center - targetA`), so handing
+	// it a distant target means "hold the point 6 m away from your centre at
+	// a spot 6 m away" - which is already true. Separation solves to zero and
+	// the joint does nothing at all, which is exactly what was measured: with
+	// no gravity the body never moved.
+	//
+	// Box2D's own samples create the joint under the cursor and then drag it,
+	// which is the usage this shape is built for. Grabbing the body's centre
+	// and setting the real target immediately gives the "pull this body to
+	// here" behaviour a caller of this function is asking for.
+	def.target = b2Body_GetPosition( b );
 	if ( hertz > 0.0f )
 	{
 		def.hertz = hertz;
@@ -788,8 +803,12 @@ int64_t gooJointCreateMouse( int64_t bodyA, int64_t bodyB, float targetX, float 
 	//
 	// **This is correct but is NOT the fix for the open bug below** - waking
 	// changed the measured result by nothing at all. See goo_box2d.h.
-	b2Body_SetAwake( unpackBody( bodyB ), true );
-	return (int64_t)b2StoreJointId( b2CreateMouseJoint( b2Body_GetWorld( a ), &def ) );
+	b2Body_SetAwake( b, true );
+
+	b2JointId joint = b2CreateMouseJoint( b2Body_GetWorld( a ), &def );
+	// Now the real target, which is what makes it pull.
+	b2MouseJoint_SetTarget( joint, ( b2Vec2 ){ targetX, targetY } );
+	return (int64_t)b2StoreJointId( joint );
 }
 
 void gooJointSetMouseTarget( int64_t joint, float x, float y )

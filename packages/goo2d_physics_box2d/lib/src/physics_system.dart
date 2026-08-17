@@ -1115,13 +1115,11 @@ class Box2DPhysicsSystem extends GameSystem
   /// Zero for [hertz], [dampingRatio] or [maxForce] keeps Box2D's default
   /// rather than meaning zero - a zero-force drag would simply do nothing.
   ///
-  /// **Unfinished, and measured to be so.** This does not actually reach its
-  /// target: with no gravity it does not move the body at all, and with
-  /// gravity it lands well short (or, at low gravity, well past). Stiffness,
-  /// force limits, sleep and the ECS layer are all ruled out - the numbers
-  /// and what is left to check are in `gooJointCreateMouse`'s doc in the
-  /// shim header. Every other joint here is verified to constrain correctly;
-  /// treat this one as exposed but not yet working.
+  /// The joint **grabs the body where it is** and then aims at the target, so
+  /// it pulls rather than pinning a point that is already in place. That
+  /// ordering is not cosmetic - creating it at the target instead anchors
+  /// whichever part of the body is already there, and the joint then does
+  /// nothing at all. The shim header has the measurements.
   Joint createMouseJoint(
     Entity a,
     Entity b, {

@@ -885,18 +885,11 @@ void main() {
 
       _advance(240);
 
-      // **Asserted on direction and distance travelled, not on settling to
-      // the exact target.** A soft constraint under gravity approaches its
-      // target asymptotically and can still be a metre or two out after four
-      // seconds; demanding `closeTo(6, 1.0)` was asserting a precision the
-      // solver never promised, and it failed at 8.0 against a working joint.
-      // What a mouse joint must do is pull the body decisively there - which
-      // an absent or force-starved joint would not.
-      expect(
-        scene.crate.transformOffsetX[crate],
-        greaterThan(3),
-        reason: 'dragged from x=0 well towards a target at x=6',
-      );
+      // The whole point of the type: it arrives. It did not before - the
+      // shim created the joint AT the target, which anchors whichever point
+      // of the body is already there, so separation solved to zero and the
+      // joint did nothing.
+      expect(scene.crate.transformOffsetX[crate], closeTo(6, 0.5));
       // **The y axis is deliberately not asserted, and that is a known gap.**
       // With a target 4 m above the body it settles about 3 m *below* its
       // start instead - a sag far larger than gravity over this spring should
@@ -911,7 +904,7 @@ void main() {
       _advance(240);
       expect(
         scene.crate.transformOffsetX[crate],
-        lessThan(-3),
+        closeTo(-6, 0.5),
         reason: 'retargeting should haul it back the other way',
       );
     });
