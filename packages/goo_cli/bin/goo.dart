@@ -11,6 +11,6 @@ import 'package:goo_cli/src/runner.dart';
 // `args`, not a bare `main()`. `Platform.executableArguments` - what this
 // reached for before - is the Dart VM's own arguments, never the script's, so
 // every command line was silently parsed as empty.
-void main(List<String> args) {
-  exitCode = runCommand(GooCommand(), args);
+Future<void> main(List<String> args) async {
+  exitCode = await runCommand(GooCommand(), args);
 }

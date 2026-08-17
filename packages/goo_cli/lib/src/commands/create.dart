@@ -3,7 +3,7 @@
 import 'dart:io';
 
 import 'package:goo_cli/src/command.dart';
-import 'package:goo_cli/src/commands/generate.dart';
+import 'package:goo_cli/src/generate/run.dart';
 import 'package:goo_cli/src/generate/scaffold.dart';
 import 'package:goo_cli/src/parsers.dart';
 import 'package:goo_cli/src/verbosable.dart';

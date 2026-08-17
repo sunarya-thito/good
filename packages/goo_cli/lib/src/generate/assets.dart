@@ -272,3 +272,23 @@ String identifierFor(String path) {
   if (_reserved.contains(identifier)) identifier = '$identifier\$';
   return identifier;
 }
+
+/// The `flutter: assets:` entries a project declares, verbatim.
+///
+/// Exposed on its own because two very different things need it: the scan
+/// above turns them into generated code, and `goo assets compact` checks that
+/// the directories it just wrote into are actually among them.
+List<String> declaredAssetEntries(Directory projectDir) {
+  final pubspec = File('${projectDir.path}/pubspec.yaml');
+  if (!pubspec.existsSync()) return const <String>[];
+  final doc = loadYaml(pubspec.readAsStringSync());
+  if (doc is! YamlMap) return const <String>[];
+  final flutter = doc['flutter'];
+  if (flutter is! YamlMap) return const <String>[];
+  final assets = flutter['assets'];
+  if (assets is! YamlList) return const <String>[];
+  return <String>[
+    for (final e in assets)
+      if (e is String) e,
+  ];
+}

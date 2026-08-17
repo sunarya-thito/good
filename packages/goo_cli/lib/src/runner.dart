@@ -9,11 +9,15 @@ import 'package:goo_cli/src/command.dart';
 /// `Platform.executableArguments` - which this used to fall back to - is the
 /// Dart VM's own arguments (`--enable-asserts` and friends), never the
 /// script's, so the fallback silently parsed the wrong list.
-int runCommand(Command command, List<String> args, {StringSink? out}) {
+Future<int> runCommand(
+  Command command,
+  List<String> args, {
+  StringSink? out,
+}) async {
   final sink = out ?? stdout;
   final runner = CommandRunner(command, out: sink);
   try {
-    runner.run(args);
+    await runner.run(args);
     return 0;
   } on UsageException catch (error) {
     // stderr, and usage after the message: a user who piped stdout somewhere
@@ -49,7 +53,7 @@ class CommandRunner {
   /// letting it out onto the terminal.
   StringSink get out => _out;
 
-  void run(List<String> args) {
+  Future<void> run(List<String> args) async {
     final leaf = _dispatch(_root, args);
 
     // Help wins, and is checked **before** parsing. Someone typing `--help` is
@@ -79,7 +83,7 @@ class CommandRunner {
     // unselected command still fails loudly, because there genuinely is none.
     _root.bindTree();
     leaf.markSelected();
-    leaf.command.execute();
+    await leaf.command.execute();
   }
 
   /// The usage block for the command at [path], or the root's when [path] does

@@ -194,17 +194,17 @@ class _Root extends _Spy {
 
 void main() {
   group('named arguments', () {
-    test('--arg=value, --arg value and bare --arg are all accepted', () {
+    test('--arg=value, --arg value and bare --arg are all accepted', () async {
       final a = _tree();
-      a.runner.run(['args', '--name=inline']);
+      await a.runner.run(['args', '--name=inline']);
       expect(a.root.args.name.value, 'inline');
 
       final b = _tree();
-      b.runner.run(['args', '--name', 'separate']);
+      await b.runner.run(['args', '--name', 'separate']);
       expect(b.root.args.name.value, 'separate');
 
       final c = _tree();
-      c.runner.run(['args', '--name']);
+      await c.runner.run(['args', '--name']);
       expect(
         c.root.args.name.value,
         '',
@@ -215,34 +215,34 @@ void main() {
       );
     });
 
-    test('an absent argument falls back to its declared default', () {
+    test('an absent argument falls back to its declared default', () async {
       final t = _tree();
-      t.runner.run(['args']);
+      await t.runner.run(['args']);
       expect(t.root.args.name.value, 'anon');
       expect(t.root.args.count.value, 1);
       expect(t.root.args.colour.value, _Colour.red);
     });
 
-    test('an absent optional argument is null, not a default', () {
+    test('an absent optional argument is null, not a default', () async {
       final t = _tree();
-      t.runner.run(['args']);
+      await t.runner.run(['args']);
       expect(t.root.args.nickname.value, isNull);
       expect(t.root.args.nickname.optional, isTrue);
     });
 
-    test('a flag is false when absent and true when present', () {
+    test('a flag is false when absent and true when present', () async {
       final absent = _tree();
-      absent.runner.run(['args']);
+      await absent.runner.run(['args']);
       expect(absent.root.args.loud.value, isFalse);
 
       final present = _tree();
-      present.runner.run(['args', '--loud']);
+      await present.runner.run(['args', '--loud']);
       expect(present.root.args.loud.value, isTrue);
     });
 
-    test('a flag refuses a value rather than silently taking one', () {
+    test('a flag refuses a value rather than silently taking one', () async {
       final t = _tree();
-      expect(
+      await expectLater(
         () => t.runner.run(['args', '--loud=yes']),
         throwsA(
           isA<UsageException>().having(
@@ -254,57 +254,63 @@ void main() {
       );
     });
 
-    test('a flag does not swallow the token after it', () {
+    test('a flag does not swallow the token after it', () async {
       // The trap: `--loud red` must leave `red` to the positional machinery,
       // not consume it as the flag's value.
       final t = _tree();
-      expect(
+      await expectLater(
         () => t.runner.run(['args', '--loud', 'red']),
         throwsA(isA<UsageException>()),
         reason: '_Args declares no consumers, so `red` is genuinely unexpected',
       );
     });
 
-    test('an option accepts a choice by name and rejects anything else', () {
-      final good = _tree();
-      good.runner.run(['args', '--colour=green']);
-      expect(good.root.args.colour.value, _Colour.green);
+    test(
+      'an option accepts a choice by name and rejects anything else',
+      () async {
+        final good = _tree();
+        await good.runner.run(['args', '--colour=green']);
+        expect(good.root.args.colour.value, _Colour.green);
 
-      final bad = _tree();
-      expect(
-        () => bad.runner.run(['args', '--colour=puce']),
-        throwsA(
-          isA<UsageException>().having(
-            (e) => e.message,
-            'message',
-            allOf(contains('puce'), contains('red, green, blue')),
+        final bad = _tree();
+        await expectLater(
+          () => bad.runner.run(['args', '--colour=puce']),
+          throwsA(
+            isA<UsageException>().having(
+              (e) => e.message,
+              'message',
+              allOf(contains('puce'), contains('red, green, blue')),
+            ),
           ),
-        ),
-        reason: 'naming the valid choices is the whole value of the message',
-      );
-    });
+          reason: 'naming the valid choices is the whole value of the message',
+        );
+      },
+    );
 
-    test("a parser's own ArgumentError becomes the user-facing message", () {
-      final t = _tree();
-      expect(
-        () => t.runner.run(['args', '--count=lots']),
-        throwsA(
-          isA<UsageException>().having(
-            (e) => e.message,
-            'message',
-            contains('not a whole number'),
+    test(
+      "a parser's own ArgumentError becomes the user-facing message",
+      () async {
+        final t = _tree();
+        await expectLater(
+          () => t.runner.run(['args', '--count=lots']),
+          throwsA(
+            isA<UsageException>().having(
+              (e) => e.message,
+              'message',
+              contains('not a whole number'),
+            ),
           ),
-        ),
-        reason:
-            'the parser is the only thing that knows what was wrong with the '
-            'value, which is why parsers throw ArgumentError rather than '
-            'returning null',
-      );
-    });
+          reason:
+              'the parser is the only thing that knows what was wrong with the '
+              'value, which is why parsers throw ArgumentError rather than '
+              'returning null',
+        );
+      },
+    );
 
-    test('an unknown option is refused by name', () {
+    test('an unknown option is refused by name', () async {
       final t = _tree();
-      expect(
+      await expectLater(
         () => t.runner.run(['args', '--nope']),
         throwsA(
           isA<UsageException>().having(
@@ -316,9 +322,9 @@ void main() {
       );
     });
 
-    test('a single-valued argument given twice is refused', () {
+    test('a single-valued argument given twice is refused', () async {
       final t = _tree();
-      expect(
+      await expectLater(
         () => t.runner.run(['args', '--name=a', '--name=b']),
         throwsA(
           isA<UsageException>().having(
@@ -335,32 +341,38 @@ void main() {
   });
 
   group('repeatable arguments', () {
-    test('collects every occurrence, in order', () {
+    test('collects every occurrence, in order', () async {
       final t = _tree();
-      t.runner.run(['multi', '--define=a', '--define', 'b', '--define=c']);
+      await t.runner.run([
+        'multi',
+        '--define=a',
+        '--define',
+        'b',
+        '--define=c',
+      ]);
       final define = t.root.multi.define;
       expect(define.length, 3);
       expect([define[0], define[1], define[2]], ['a', 'b', 'c']);
     });
 
-    test('an absent optional multi is empty rather than a default', () {
+    test('an absent optional multi is empty rather than a default', () async {
       final t = _tree();
-      t.runner.run(['multi']);
+      await t.runner.run(['multi']);
       expect(t.root.multi.define.length, 0);
     });
   });
 
   group('positionals', () {
-    test('consumers fill in declaration order', () {
+    test('consumers fill in declaration order', () async {
       final t = _tree();
-      t.runner.run(['positionals', 'alpha', 'beta']);
+      await t.runner.run(['positionals', 'alpha', 'beta']);
       expect(t.root.positionals.first.value, 'alpha');
       expect(t.root.positionals.second.value, 'beta');
     });
 
-    test('the remainder collects what the consumers did not take', () {
+    test('the remainder collects what the consumers did not take', () async {
       final t = _tree();
-      t.runner.run(['positionals', 'alpha', 'beta', 'gamma', 'delta']);
+      await t.runner.run(['positionals', 'alpha', 'beta', 'gamma', 'delta']);
       expect(
         t.root.positionals.rest.value,
         'gamma delta',
@@ -370,72 +382,81 @@ void main() {
       );
     });
 
-    test('where the remainder is declared does not change what it takes', () {
-      // `rest` is declared *between* the two consumers in `_Positionals`. If
-      // declaration order mattered it would have eaten `beta`.
-      final t = _tree();
-      t.runner.run(['positionals', 'alpha', 'beta', 'gamma']);
-      expect(t.root.positionals.first.value, 'alpha');
-      expect(t.root.positionals.second.value, 'beta');
-      expect(t.root.positionals.rest.value, 'gamma');
-    });
+    test(
+      'where the remainder is declared does not change what it takes',
+      () async {
+        // `rest` is declared *between* the two consumers in `_Positionals`. If
+        // declaration order mattered it would have eaten `beta`.
+        final t = _tree();
+        await t.runner.run(['positionals', 'alpha', 'beta', 'gamma']);
+        expect(t.root.positionals.first.value, 'alpha');
+        expect(t.root.positionals.second.value, 'beta');
+        expect(t.root.positionals.rest.value, 'gamma');
+      },
+    );
 
-    test('an absent optional consumer is null', () {
+    test('an absent optional consumer is null', () async {
       final t = _tree();
-      t.runner.run(['positionals', 'alpha']);
+      await t.runner.run(['positionals', 'alpha']);
       expect(t.root.positionals.second.value, isNull);
       expect(t.root.positionals.rest.value, isNull);
     });
 
-    test('a consumer with a default uses it when nothing is supplied', () {
-      final t = _tree();
-      t.runner.run(['positionals']);
-      expect(t.root.positionals.first.value, 'one');
-    });
+    test(
+      'a consumer with a default uses it when nothing is supplied',
+      () async {
+        final t = _tree();
+        await t.runner.run(['positionals']);
+        expect(t.root.positionals.first.value, 'one');
+      },
+    );
 
-    test('an unexpected positional is refused when nothing can take it', () {
-      final t = _tree();
-      expect(
-        () => t.runner.run(['req', 'a', 'b']),
-        throwsA(
-          isA<UsageException>().having(
-            (e) => e.message,
-            'message',
-            contains('Unexpected argument "b"'),
+    test(
+      'an unexpected positional is refused when nothing can take it',
+      () async {
+        final t = _tree();
+        await expectLater(
+          () => t.runner.run(['req', 'a', 'b']),
+          throwsA(
+            isA<UsageException>().having(
+              (e) => e.message,
+              'message',
+              contains('Unexpected argument "b"'),
+            ),
           ),
-        ),
-        reason:
-            '_Required declares one consumer and no remainder, so the second '
-            'token has nowhere to go - dropping it would lose a user\'s input',
-      );
-    });
+          reason:
+              '_Required declares one consumer and no remainder, so the second '
+              'token has nowhere to go - dropping it would lose a user\'s input',
+        );
+      },
+    );
 
-    test('-- ends option parsing, so a dashed value survives', () {
+    test('-- ends option parsing, so a dashed value survives', () async {
       final t = _tree();
-      t.runner.run(['positionals', '--', '--not-an-option']);
+      await t.runner.run(['positionals', '--', '--not-an-option']);
       expect(t.root.positionals.first.value, '--not-an-option');
     });
   });
 
   group('dispatch', () {
-    test('the selected command is the one that executes', () {
+    test('the selected command is the one that executes', () async {
       final t = _tree();
-      t.runner.run(['middle', 'leaf']);
+      await t.runner.run(['middle', 'leaf']);
       expect(t.root.middle.leaf.runs, 1);
       expect(t.root.middle.runs, 0);
       expect(t.root.runs, 0);
     });
 
-    test('a command with no subcommand named executes itself', () {
+    test('a command with no subcommand named executes itself', () async {
       final t = _tree();
-      t.runner.run(['middle']);
+      await t.runner.run(['middle']);
       expect(t.root.middle.runs, 1);
       expect(t.root.middle.leaf.runs, 0);
     });
 
-    test('selected is a total question, false for a sibling', () {
+    test('selected is a total question, false for a sibling', () async {
       final t = _tree();
-      t.runner.run(['middle', 'leaf']);
+      await t.runner.run(['middle', 'leaf']);
       expect(t.root.middle.leaf.selected, isTrue);
       expect(
         t.root.middle.selected,
@@ -448,55 +469,61 @@ void main() {
       expect(t.root.args.selected, isFalse, reason: 'an untouched sibling');
     });
 
-    test('each command parses the options it declared, wherever they sit', () {
-      final t = _tree();
-      t.runner.run([
-        '--root-flag',
-        'middle',
-        '--middle-flag',
-        'leaf',
-        '--verbose',
-      ]);
-      expect(t.root.rootFlag.value, isTrue);
-      expect(t.root.middle.middleFlag.value, isTrue);
-      expect(t.root.middle.leaf.verbose.value, isTrue);
-      expect(t.root.middle.leaf.runs, 1);
-    });
+    test(
+      'each command parses the options it declared, wherever they sit',
+      () async {
+        final t = _tree();
+        await t.runner.run([
+          '--root-flag',
+          'middle',
+          '--middle-flag',
+          'leaf',
+          '--verbose',
+        ]);
+        expect(t.root.rootFlag.value, isTrue);
+        expect(t.root.middle.middleFlag.value, isTrue);
+        expect(t.root.middle.leaf.verbose.value, isTrue);
+        expect(t.root.middle.leaf.runs, 1);
+      },
+    );
 
-    test('an option value is not mistaken for a subcommand name', () {
+    test('an option value is not mistaken for a subcommand name', () async {
       // The sharp case: `leaf` is a real subcommand of `middle`, and here it
       // is also the value of `--which`. Telling those apart needs the
       // declaration, not the token's shape.
       final t = _tree();
-      t.runner.run(['middle', 'leaf', '--which', 'leaf']);
+      await t.runner.run(['middle', 'leaf', '--which', 'leaf']);
       expect(t.root.middle.leaf.which.value, 'leaf');
       expect(t.root.middle.leaf.runs, 1);
     });
 
-    test('findAncestor reaches a parent command, and stops at the root', () {
-      final t = _tree();
-      t.runner.run(['middle', 'leaf']);
-      expect(t.root.middle.leaf.findAncestor<_Middle>(), same(t.root.middle));
-      expect(t.root.middle.leaf.findAncestor<_Root>(), same(t.root));
-      expect(
-        () => t.root.middle.leaf.findAncestor<_Args>(),
-        throwsStateError,
-        reason: '_Args is a sibling branch, deliberately not reachable',
-      );
-    });
+    test(
+      'findAncestor reaches a parent command, and stops at the root',
+      () async {
+        final t = _tree();
+        await t.runner.run(['middle', 'leaf']);
+        expect(t.root.middle.leaf.findAncestor<_Middle>(), same(t.root.middle));
+        expect(t.root.middle.leaf.findAncestor<_Root>(), same(t.root));
+        expect(
+          () => t.root.middle.leaf.findAncestor<_Args>(),
+          throwsStateError,
+          reason: '_Args is a sibling branch, deliberately not reachable',
+        );
+      },
+    );
 
-    test('parent is the declaring command, and the root has none', () {
+    test('parent is the declaring command, and the root has none', () async {
       final t = _tree();
-      t.runner.run(['middle', 'leaf']);
+      await t.runner.run(['middle', 'leaf']);
       expect(t.root.middle.leaf.parent, same(t.root.middle));
       expect(() => t.root.parent, throwsStateError);
     });
   });
 
   group('help', () {
-    test('--help prints usage instead of executing', () {
+    test('--help prints usage instead of executing', () async {
       final t = _tree();
-      t.runner.run(['middle', 'leaf', '--help']);
+      await t.runner.run(['middle', 'leaf', '--help']);
       expect(
         t.root.middle.leaf.runs,
         0,
@@ -504,9 +531,9 @@ void main() {
       );
     });
 
-    test('--help answers even when a required argument is missing', () {
+    test('--help answers even when a required argument is missing', () async {
       final t = _tree();
-      expect(
+      await expectLater(
         () => t.runner.run(['req', '--help']),
         returnsNormally,
         reason:
@@ -515,9 +542,9 @@ void main() {
       );
     });
 
-    test('--help prints the *selected* command usage, not the root', () {
+    test('--help prints the *selected* command usage, not the root', () async {
       final t = _tree();
-      t.runner.run(['middle', 'leaf', '--help']);
+      await t.runner.run(['middle', 'leaf', '--help']);
       expect(t.help.toString(), contains('goo middle leaf'));
       expect(
         t.help.toString(),
@@ -527,26 +554,32 @@ void main() {
       expect(t.help.toString(), isNot(contains('--root-flag')));
     });
 
-    test('--help before the subcommand still describes the subcommand', () {
-      final t = _tree();
-      t.runner.run(['--help', 'middle', 'leaf']);
-      expect(
-        t.help.toString(),
-        contains('goo middle leaf'),
-        reason:
-            'the whole path is checked, so where --help sits on the line does '
-            'not change which command it is asking about',
-      );
-    });
+    test(
+      '--help before the subcommand still describes the subcommand',
+      () async {
+        final t = _tree();
+        await t.runner.run(['--help', 'middle', 'leaf']);
+        expect(
+          t.help.toString(),
+          contains('goo middle leaf'),
+          reason:
+              'the whole path is checked, so where --help sits on the line does '
+              'not change which command it is asking about',
+        );
+      },
+    );
 
-    test('usage spells required, optional and defaulted positionals apart', () {
-      final t = _tree();
-      final usage = t.runner.usageFor(['goo', 'positionals']);
-      expect(usage, contains('[first=one]'), reason: 'defaulted');
-      expect(usage, contains('[second]'), reason: 'optional, no default');
-    });
+    test(
+      'usage spells required, optional and defaulted positionals apart',
+      () async {
+        final t = _tree();
+        final usage = t.runner.usageFor(['goo', 'positionals']);
+        expect(usage, contains('[first=one]'), reason: 'defaulted');
+        expect(usage, contains('[second]'), reason: 'optional, no default');
+      },
+    );
 
-    test('usage lists subcommands and options, --help included', () {
+    test('usage lists subcommands and options, --help included', () async {
       final t = _tree();
       final usage = t.runner.usageFor(['goo']);
       expect(usage, contains('middle'));
@@ -560,7 +593,7 @@ void main() {
       );
     });
 
-    test('an option shows its choices and its default', () {
+    test('an option shows its choices and its default', () async {
       final t = _tree();
       final usage = t.runner.usageFor(['goo', 'args']);
       expect(usage, contains('--colour=<red|green|blue>'));
@@ -569,7 +602,7 @@ void main() {
   });
 
   group('declaration errors', () {
-    test('a duplicate option name is refused at declare time', () {
+    test('a duplicate option name is refused at declare time', () async {
       expect(
         () => CommandRunner(_DuplicateOption()),
         throwsStateError,
@@ -579,7 +612,7 @@ void main() {
       );
     });
 
-    test('a second remainder is refused at declare time', () {
+    test('a second remainder is refused at declare time', () async {
       expect(
         () => CommandRunner(_TwoRemainders()),
         throwsA(
@@ -592,42 +625,48 @@ void main() {
       );
     });
 
-    test('a duplicate subcommand name is refused at declare time', () {
+    test('a duplicate subcommand name is refused at declare time', () async {
       expect(() => CommandRunner(_DuplicateSub()), throwsStateError);
     });
   });
 
   group('reading outside a run', () {
-    test('a value read before running says so, rather than defaulting', () {
-      final root = _Root();
-      CommandRunner(root); // declared, never run
-      expect(
-        () => root.rootFlag.value,
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            contains('before this command ran'),
+    test(
+      'a value read before running says so, rather than defaulting',
+      () async {
+        final root = _Root();
+        CommandRunner(root); // declared, never run
+        expect(
+          () => root.rootFlag.value,
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              contains('before this command ran'),
+            ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   });
 
   group('printf', () {
-    test('substitutes %s in order', () {
+    test('substitutes %s in order', () async {
       expect(formatMessage('%s -> %s', ['a', 'b']), 'a -> b');
     });
 
-    test('leaves a %s with no argument visible rather than dropping it', () {
-      expect(
-        formatMessage('%s and %s', ['only']),
-        'only and %s',
-        reason: 'a silently dropped placeholder hides the bug that caused it',
-      );
-    });
+    test(
+      'leaves a %s with no argument visible rather than dropping it',
+      () async {
+        expect(
+          formatMessage('%s and %s', ['only']),
+          'only and %s',
+          reason: 'a silently dropped placeholder hides the bug that caused it',
+        );
+      },
+    );
 
-    test('a format with no placeholders is passed through', () {
+    test('a format with no placeholders is passed through', () async {
       expect(formatMessage('plain', ['unused']), 'plain');
     });
   });

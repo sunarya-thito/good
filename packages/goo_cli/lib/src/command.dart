@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:meta/meta.dart';
 
 /// One command, declared the way everything in this engine is declared: a
@@ -100,7 +102,9 @@ abstract class Command {
   /// What this command does. The base implementation prints help, which is
   /// what a command with subcommands and nothing of its own to do wants -
   /// `super.execute()` from a subclass reaches it.
-  void execute() => _bound.printUsage();
+  FutureOr<void> execute() {
+    _bound.printUsage();
+  }
 }
 
 /// One run's parsed values, keyed by the declaration that produced them.
