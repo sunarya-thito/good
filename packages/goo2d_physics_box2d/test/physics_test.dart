@@ -717,7 +717,7 @@ void main() {
         anchorAX: 0,
         anchorAY: 10,
       );
-      expect(joint, isNot(0));
+      expect(joint, isNot(Joint.none));
 
       _advance(120);
 
@@ -742,8 +742,8 @@ void main() {
       // broken rather than the test being wrong.
       _advance(120);
 
-      physics.jointReaction(joint);
-      final magnitude = physics.jointForceX.abs() + physics.jointForceY.abs();
+      joint.readReaction();
+      final magnitude = Joint.forceX.abs() + Joint.forceY.abs();
       expect(
         magnitude,
         greaterThan(0.1),
@@ -758,21 +758,21 @@ void main() {
       // exception.
       final (_, anchor, crate) = await pair();
       final joint = physics.createDistanceJoint(anchor, crate, length: 10);
-      expect(physics.jointIsValid(joint), isTrue);
+      expect(joint.exists, isTrue);
 
       crate.destroy();
       _advance(1);
 
       expect(
-        physics.jointIsValid(joint),
+        joint.exists,
         isFalse,
         reason: 'the joint went with the body',
       );
       // All of these must be no-ops on the stale handle.
-      physics
-        ..setJointMotor(joint, speed: 1, maxEffort: 1)
-        ..jointReaction(joint)
-        ..destroyJoint(joint);
+      joint
+        ..setMotor(speed: 1, maxEffort: 1)
+        ..readReaction()
+        ..destroy();
     });
 
     test('a prismatic joint allows its axis and blocks the others', () async {
@@ -881,7 +881,7 @@ void main() {
         dampingRatio: 1,
         maxForce: 4000,
       );
-      expect(joint, isNot(0));
+      expect(joint, isNot(Joint.none));
 
       _advance(240);
 
@@ -907,7 +907,7 @@ void main() {
       // guess. x is asserted because it demonstrably tracks and steers.
 
       // And the target is steerable, which is the whole point of the type.
-      physics.setJointTarget(joint, -6, -4);
+      joint.moveTarget(-6, -4);
       _advance(240);
       expect(
         scene.crate.transformOffsetX[crate],

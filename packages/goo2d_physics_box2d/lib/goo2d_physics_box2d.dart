@@ -42,6 +42,21 @@
 /// body's `Transform2D` every tick fights the solver.
 library;
 
+/// ## Joints and effectors
+///
+/// All nine of Unity's 2D joints are here, on [Box2DPhysicsSystem]:
+/// distance (and distance-with-spring, Unity's Spring Joint), revolute
+/// (Hinge), prismatic (Slider), weld (Fixed), wheel, mouse (Target) and
+/// motor - which covers both Relative and Friction, since the difference is
+/// only what you ask it to hold.
+///
+/// The effectors are in `Effectors2D`, an extension rather than components,
+/// because **Box2D has no effectors**: Unity's are gameplay code that finds
+/// bodies in a region and applies a force, so there is nothing to bind a
+/// component to. Area, Point, Buoyancy and Surface are there; Platform
+/// (one-way) is not, and that file says why.
+export 'src/effectors.dart' show Effectors2D;
+export 'src/joint.dart' show Joint;
 export 'src/physics_system.dart' show Box2DPhysicsSystem;
 export 'src/rigid_body.dart'
     show BodyType2D, RigidBody2D, RigidBody2DDescriptor;

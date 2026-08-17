@@ -6,6 +6,7 @@ import 'package:goo2d/goo2d.dart';
 import 'package:goo2d_ffi_box2d/goo2d_ffi_box2d.dart';
 import 'package:meta/meta.dart';
 
+import 'joint.dart';
 import 'rigid_body.dart';
 
 /// Steps a Box2D world in lockstep with `goo`'s fixed tick, creating one
@@ -858,7 +859,7 @@ class Box2DPhysicsSystem extends GameSystem
   //
   // The returned handle is a plain packed int, so it crosses nothing and
   // needs no table. **Box2D destroys a joint when either of its bodies is
-  // destroyed**, so a handle can go stale on its own; [jointIsValid] asks,
+  // destroyed**, so a handle can go stale on its own; `Joint.exists` asks,
   // and every call here is a no-op on a stale one rather than a crash.
 
   /// Ties two bodies together at a fixed distance, optionally sprung.
@@ -874,7 +875,7 @@ class Box2DPhysicsSystem extends GameSystem
   ///
   /// Returns 0 if either entity has no body **yet** - see [createRevoluteJoint]
   /// for why that is easy to hit.
-  int createDistanceJoint(
+  Joint createDistanceJoint(
     Entity a,
     Entity b, {
     double anchorAX = 0,
@@ -892,9 +893,9 @@ class Box2DPhysicsSystem extends GameSystem
   }) {
     final handleA = _bodyHandleOf(a);
     final handleB = _bodyHandleOf(b);
-    if (handleA == 0 || handleB == 0) return 0;
+    if (handleA == 0 || handleB == 0) return Joint.none;
 
-    return box2d.gooJointCreateDistance(
+    return Joint(box2d.gooJointCreateDistance(
       handleA,
       handleB,
       anchorAX,
@@ -909,7 +910,7 @@ class Box2DPhysicsSystem extends GameSystem
       minLength,
       maxLength,
       collideConnected ? 1 : 0,
-    );
+    ));
   }
 
   /// Pins two bodies to a shared pivot, optionally limited and motorised.
@@ -940,7 +941,7 @@ class Box2DPhysicsSystem extends GameSystem
   /// It returns 0 rather than asserting because "not yet" is a legitimate
   /// state a caller can poll out of, but the asymmetry is worth knowing:
   /// nothing else in this class fails quietly.
-  int createRevoluteJoint(
+  Joint createRevoluteJoint(
     Entity a,
     Entity b, {
     double anchorAX = 0,
@@ -958,9 +959,9 @@ class Box2DPhysicsSystem extends GameSystem
   }) {
     final handleA = _bodyHandleOf(a);
     final handleB = _bodyHandleOf(b);
-    if (handleA == 0 || handleB == 0) return 0;
+    if (handleA == 0 || handleB == 0) return Joint.none;
 
-    return box2d.gooJointCreateRevolute(
+    return Joint(box2d.gooJointCreateRevolute(
       handleA,
       handleB,
       anchorAX,
@@ -975,7 +976,7 @@ class Box2DPhysicsSystem extends GameSystem
       motorSpeed,
       maxMotorTorque,
       collideConnected ? 1 : 0,
-    );
+    ));
   }
 
   /// Constrains two bodies to slide along one axis - Unity's Slider Joint 2D.
@@ -984,7 +985,7 @@ class Box2DPhysicsSystem extends GameSystem
   /// **body A's local frame** and is normalised for you; a zero axis falls
   /// back to horizontal rather than tripping an assert that is absent from a
   /// release build.
-  int createPrismaticJoint(
+  Joint createPrismaticJoint(
     Entity a,
     Entity b, {
     double anchorAX = 0,
@@ -1004,12 +1005,12 @@ class Box2DPhysicsSystem extends GameSystem
   }) {
     final ha = _bodyHandleOf(a);
     final hb = _bodyHandleOf(b);
-    if (ha == 0 || hb == 0) return 0;
-    return box2d.gooJointCreatePrismatic(
+    if (ha == 0 || hb == 0) return Joint.none;
+    return Joint(box2d.gooJointCreatePrismatic(
       ha, hb, anchorAX, anchorAY, anchorBX, anchorBY, axisX, axisY,
       referenceAngle, enableLimit ? 1 : 0, lowerTranslation, upperTranslation,
       enableMotor ? 1 : 0, motorSpeed, maxMotorForce, collideConnected ? 1 : 0,
-    );
+    ));
   }
 
   /// Holds two bodies rigidly together - Unity's Fixed Joint 2D.
@@ -1017,7 +1018,7 @@ class Box2DPhysicsSystem extends GameSystem
   /// A hertz of 0 on an axis welds it rigidly; above 0 gives that axis spring
   /// under load, which is what makes a weld look like it is straining rather
   /// than simply holding or breaking.
-  int createWeldJoint(
+  Joint createWeldJoint(
     Entity a,
     Entity b, {
     double anchorAX = 0,
@@ -1033,12 +1034,12 @@ class Box2DPhysicsSystem extends GameSystem
   }) {
     final ha = _bodyHandleOf(a);
     final hb = _bodyHandleOf(b);
-    if (ha == 0 || hb == 0) return 0;
-    return box2d.gooJointCreateWeld(
+    if (ha == 0 || hb == 0) return Joint.none;
+    return Joint(box2d.gooJointCreateWeld(
       ha, hb, anchorAX, anchorAY, anchorBX, anchorBY, referenceAngle,
       linearHertz, linearDampingRatio, angularHertz, angularDampingRatio,
       collideConnected ? 1 : 0,
-    );
+    ));
   }
 
   /// A suspension axis plus a free spin - Unity's Wheel Joint 2D, and what a
@@ -1046,7 +1047,7 @@ class Box2DPhysicsSystem extends GameSystem
   ///
   /// The axis defaults to **(0, 1), which is down**, because that is the way
   /// a suspension spring compresses in goo2d's y-down world.
-  int createWheelJoint(
+  Joint createWheelJoint(
     Entity a,
     Entity b, {
     double anchorAX = 0,
@@ -1068,13 +1069,13 @@ class Box2DPhysicsSystem extends GameSystem
   }) {
     final ha = _bodyHandleOf(a);
     final hb = _bodyHandleOf(b);
-    if (ha == 0 || hb == 0) return 0;
-    return box2d.gooJointCreateWheel(
+    if (ha == 0 || hb == 0) return Joint.none;
+    return Joint(box2d.gooJointCreateWheel(
       ha, hb, anchorAX, anchorAY, anchorBX, anchorBY, axisX, axisY,
       enableSpring ? 1 : 0, hertz, dampingRatio, enableLimit ? 1 : 0,
       lowerTranslation, upperTranslation, enableMotor ? 1 : 0, motorSpeed,
       maxMotorTorque, collideConnected ? 1 : 0,
-    );
+    ));
   }
 
   /// Drives body [b] towards a position and angle relative to body [a] -
@@ -1084,7 +1085,7 @@ class Box2DPhysicsSystem extends GameSystem
   /// zero and it drives towards *no relative motion*, which with a capped
   /// [maxForce]/[maxTorque] is exactly friction. Two Unity components, one
   /// Box2D joint, and the difference is only what you ask it to hold.
-  int createMotorJoint(
+  Joint createMotorJoint(
     Entity a,
     Entity b, {
     double offsetX = 0,
@@ -1097,23 +1098,23 @@ class Box2DPhysicsSystem extends GameSystem
   }) {
     final ha = _bodyHandleOf(a);
     final hb = _bodyHandleOf(b);
-    if (ha == 0 || hb == 0) return 0;
-    return box2d.gooJointCreateMotor(
+    if (ha == 0 || hb == 0) return Joint.none;
+    return Joint(box2d.gooJointCreateMotor(
       ha, hb, offsetX, offsetY, angularOffset, maxForce, maxTorque,
       correctionFactor, collideConnected ? 1 : 0,
-    );
+    ));
   }
 
   /// Drags body [b] towards a **world-space** target - Unity's Target Joint
   /// 2D. Mouse dragging, tractor beams, anything that pulls rather than pins.
   ///
   /// [a] is a reference body Box2D needs but does not move; a static one is
-  /// the usual choice. Move the target with [setJointTarget], which is the
+  /// the usual choice. Move the target with `Joint.moveTarget`, which is the
   /// one joint parameter meant to change every frame.
   ///
   /// Zero for [hertz], [dampingRatio] or [maxForce] keeps Box2D's default
   /// rather than meaning zero - a zero-force drag would simply do nothing.
-  int createMouseJoint(
+  Joint createMouseJoint(
     Entity a,
     Entity b, {
     double targetX = 0,
@@ -1125,55 +1126,12 @@ class Box2DPhysicsSystem extends GameSystem
   }) {
     final ha = _bodyHandleOf(a);
     final hb = _bodyHandleOf(b);
-    if (ha == 0 || hb == 0) return 0;
-    return box2d.gooJointCreateMouse(
+    if (ha == 0 || hb == 0) return Joint.none;
+    return Joint(box2d.gooJointCreateMouse(
       ha, hb, targetX, targetY, hertz, dampingRatio, maxForce,
       collideConnected ? 1 : 0,
-    );
+    ));
   }
-
-  /// Moves a mouse joint's world-space target. A no-op on any other joint
-  /// type, so a caller cannot silently steer the wrong thing.
-  void setJointTarget(int joint, double x, double y) =>
-      box2d.gooJointSetMouseTarget(joint, x, y);
-
-  /// Removes a joint. Safe on a handle whose bodies have already gone.
-  void destroyJoint(int joint) => box2d.gooJointDestroy(joint);
-
-  /// Whether [joint] still names a live joint - false once either of its
-  /// bodies has been destroyed, which takes the joint with it.
-  bool jointIsValid(int joint) => box2d.gooJointIsValid(joint) != 0;
-
-  /// Drives a joint under power. [speed] is rad/s for a revolute joint and
-  /// m/s for a distance one; [maxEffort] is the torque or force the motor may
-  /// spend reaching it, and a motor with zero of it does nothing.
-  void setJointMotor(
-    int joint, {
-    bool enable = true,
-    double speed = 0,
-    double maxEffort = 0,
-  }) => box2d.gooJointSetMotor(joint, enable ? 1 : 0, speed, maxEffort);
-
-  /// How hard [joint] is currently pulling, in newtons, written into
-  /// [jointForceX]/[jointForceY]. Returns the torque in newton-metres.
-  ///
-  /// This is what a **breakable** joint is made of - Box2D has no breaking of
-  /// its own, so a game compares this against a threshold each tick and calls
-  /// [destroyJoint] when it is exceeded.
-  double jointReaction(int joint) {
-    _jointForce ??= calloc<Float>(2);
-    final out = _jointForce!;
-    final torque = box2d.gooJointGetReaction(joint, out);
-    jointForceX = out[0];
-    jointForceY = out[1];
-    return torque;
-  }
-
-  /// The force from the last [jointReaction], in newtons.
-  double jointForceX = 0;
-  double jointForceY = 0;
-
-  Pointer<Float>? _jointForce;
 
   /// The body behind an entity, or 0 if it has none yet.
   int _bodyHandleOf(Entity entity) {
@@ -1557,11 +1515,6 @@ class Box2DPhysicsSystem extends GameSystem
     if (counters != null) {
       calloc.free(counters);
       _countersOut = null;
-    }
-    final jointForce = _jointForce;
-    if (jointForce != null) {
-      calloc.free(jointForce);
-      _jointForce = null;
     }
     _touchingCount = 0;
     _shapeOwners = <_ShapeOwner?>[];

@@ -320,7 +320,7 @@ class JointSystem extends GameSystem with FixedTickable {
   int compareTo(GameSystem other) => other is Box2DPhysicsSystem ? 1 : 0;
 
   /// Every joint in the loaded chain, so it can be checked for breaking.
-  final List<int> _breakable = <int>[];
+  final List<Joint> _breakable = <Joint>[];
 
   bool _built = false;
 
@@ -442,16 +442,16 @@ class JointSystem extends GameSystem with FixedTickable {
   ///
   /// This is a statement about the scene, not a workaround: hooks are stronger
   /// than the rope hanging off them.
-  Iterable<int> _breakableOf(List<int> joints) => joints.skip(1);
+  Iterable<Joint> _breakableOf(List<Joint> joints) => joints.skip(1);
 
   /// Joints chain [i] to its anchor and to itself, returning every joint made.
   ///
   /// Anchors are in **body-local** space: the bottom of the upper body to the
   /// top of the lower one, which is what makes a chain read as a chain rather
   /// than a row of bodies all sharing one point.
-  List<int> _stitch(JointScene scene, Box2DPhysicsSystem physics, int i) {
+  List<Joint> _stitch(JointScene scene, Box2DPhysicsSystem physics, int i) {
     final chain = scene.chains[i];
-    final joints = <int>[
+    final joints = <Joint>[
       physics.createDistanceJoint(
         scene.anchors[i],
         chain.first,
@@ -499,17 +499,17 @@ class JointSystem extends GameSystem with FixedTickable {
     var worst = 0.0;
     for (var i = 0; i < _breakable.length; i++) {
       final joint = _breakable[i];
-      if (joint == 0 || !physics.jointIsValid(joint)) continue;
+      if (!joint.exists) continue;
 
-      physics.jointReaction(joint);
-      final fx = physics.jointForceX;
-      final fy = physics.jointForceY;
+      joint.readReaction();
+      final fx = Joint.forceX;
+      final fy = Joint.forceY;
       final force = fx.abs() + fy.abs();
       if (force > worst) worst = force;
 
       if (force > _breakForce) {
-        physics.destroyJoint(joint);
-        _breakable[i] = 0;
+        joint.destroy();
+        _breakable[i] = Joint.none;
         demo.broken++;
       }
     }
@@ -520,7 +520,7 @@ class JointSystem extends GameSystem with FixedTickable {
     // conclude no force was ever measured. Which is what the first version of
     // both did.
     if (worst > demo.peakForce) demo.peakForce = worst;
-    demo.intact = _breakable.where((joint) => joint != 0).length;
+    demo.intact = _breakable.where((joint) => joint != Joint.none).length;
   }
 }
 
