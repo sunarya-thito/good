@@ -75,7 +75,13 @@ void main() {
 
 /// Solver threads, from `--dart-define=workers=N`. 1 - no threads at all - is
 /// the default, so an unqualified run measures what it always did.
-const int _workers = int.fromEnvironment('workers', defaultValue: 1);
+/// **0 means "leave the case's own default alone"**, which is what an
+/// unqualified run should measure: what a person actually gets when they open
+/// the demo. Pass `workers=1` to force the single-threaded baseline.
+///
+/// It defaulted to 1, which quietly made every run measure a configuration
+/// the demo does not ship.
+const int _workers = int.fromEnvironment('workers', defaultValue: 0);
 
 class _BenchApp extends StatefulWidget {
   const _BenchApp();
@@ -103,13 +109,18 @@ class _BenchAppState extends State<_BenchApp> {
   }
 
   Future<void> _run() async {
-    final game = PhysicsGame()
-      // **Before `Game.start`, and on the Game rather than a top-level.**
-      // `Game.start` deep-copies this object to the game isolate, so a field
-      // set here arrives; a top-level does not, and the first version of this
-      // used one - the world was built with 1 worker however many were asked
-      // for, and the bench reported that threading did nothing.
-      ..solverWorkerCount = _workers;
+    final game = PhysicsGame();
+    // **Before `Game.start`, and on the Game rather than a top-level.**
+    // `Game.start` deep-copies this object to the game isolate, so a field set
+    // here arrives; a top-level does not, and the first version of this used
+    // one - the world was built with 1 worker however many were asked for, and
+    // the bench reported that threading did nothing.
+    //
+    // Left untouched at 0, so an unqualified run measures the case as it
+    // ships rather than a configuration only the bench ever produces.
+    if (_workers > 0) {
+      game.solverWorkerCount = _workers;
+    }
     await Game.start(game);
     if (!mounted) {
       await game.stop();
@@ -176,8 +187,9 @@ class _BenchAppState extends State<_BenchApp> {
       // second is what Box2D reports for the live world on the game isolate.
       // They can differ, because top-level state does not cross
       // Isolate.spawn.
-      ..writeln('solver threads: asked $_workers, world reports '
-          '${rows.isEmpty ? "?" : rows.last.threads}')
+      ..writeln('solver threads: '
+          '${_workers > 0 ? "asked $_workers" : "case default"}'
+          ', world reports ${rows.isEmpty ? "?" : rows.last.threads}')
       ..writeln('')
       ..writeln(
         '  target  actual  advance     step  systems  present |'

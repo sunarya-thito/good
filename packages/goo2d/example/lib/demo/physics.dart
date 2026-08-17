@@ -1,3 +1,4 @@
+import 'dart:io' as io;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -128,6 +129,27 @@ const int _crateHitColor = 0xFFFFCA28;
 const int _ballColor = 0xFF4FC3F7;
 const int _ballHitColor = 0xFFFF7043;
 const int _floorColor = 0xFF37474F;
+
+/// Solver threads to use when nothing says otherwise.
+///
+/// **This case shipped at 1 and should not have.** Threading is opt-in in the
+/// engine for a good reason - a library should not spawn threads a game did
+/// not ask for - but this is a *demo*, its whole job is to show what the
+/// engine can do, and defaulting it to one thread meant the multithreading
+/// existed only in a bench nobody runs. The reported symptom was the case
+/// "suffering at 6k+", which is exactly where a single-threaded solve stops
+/// fitting in a frame.
+///
+/// Half the logical processors, capped at 8. Box2D's guidance is that only
+/// performance cores help and that hyper-threading "may even harm
+/// performance", so halving is a rough stand-in for the physical core count -
+/// rough because Dart cannot see the difference, and over-subscribing costs
+/// more than it saves.
+int defaultSolverWorkers() {
+  final half = io.Platform.numberOfProcessors ~/ 2;
+  if (half < 1) return 1;
+  return half > 8 ? 8 : half;
+}
 
 /// How long a crate stays lit after a collision, in seconds. Without this the
 /// flash lasts one tick and is invisible at 60 Hz - the point of the case is
@@ -757,7 +779,7 @@ class PhysicsGame extends DemoGame {
   ///
   /// Whether it took effect is [solverThreads], which asks Box2D rather than
   /// echoing this back.
-  int solverWorkerCount = 1;
+  int solverWorkerCount = defaultSolverWorkers();
 
 
   /// `Box2DPhysicsSystem`'s four phases, in microseconds, from the last fixed
