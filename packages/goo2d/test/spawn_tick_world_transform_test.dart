@@ -127,22 +127,18 @@ void main() {
     expect(leaf.worldY[a], 300);
   });
 
-  test('a RECYCLED row is at the world origin for exactly one tick', () async {
-    // **This asserts the bug, deliberately.** It is not the behaviour anyone
-    // wants - one frame of a sprite at the world origin is a visible pop -
-    // but it is what the engine does today, and pinning it means a fix has a
-    // test that already fails in the right place rather than a rumour to
-    // chase. Change the first expectation to (111, 222) when fixing it.
+  test('a RECYCLED row composes correctly on the tick it is spawned',
+      () async {
+    // **This asserted the bug until it was fixed**, which is why it exists:
+    // it failed in exactly the right place the moment the behaviour changed.
     //
-    // The options, none of them free:
-    //
-    //  * make a row that has never published read its own write slot, as
-    //    pages already do - principled, fixes all four instances of this
-    //    found so far, but needs a per-row check on the hottest read path in
-    //    the engine (2.25 ns today);
-    //  * compose world transforms in a presentation pass instead of a fixed
-    //    step, so they are computed after the tick's writes are published;
-    //  * hide a renderable until its world transform has been composed once.
+    // The fix is that `WorldTransformSystem` is *told* which entities are new,
+    // through `EntitySpawnListener`, and composes those from the pending
+    // transform. Being told is the only thing that works - a row that is new
+    // cannot be detected through a published read, because any flag you might
+    // check is as stale as the data itself. The per-entity hot path is
+    // untouched; the extra pass costs nothing in a tick where nothing
+    // spawned.
     final run = await Game.startInline(_Game());
     addTearDown(() async {
       if (run.isRunning) await run.stop();
@@ -167,20 +163,16 @@ void main() {
 
     expect(
       leaf.worldX[b],
-      0,
-      reason: 'CURRENT BEHAVIOUR, not desired: the world transform composed '
-          'from the row as it was before this tick wrote to it',
+      111,
+      reason: 'a recycled row must compose from what the spawner just wrote, '
+          'not from what the row held before - that was the one frame of a '
+          'sprite at the world origin',
     );
-    expect(leaf.worldY[b], 0);
+    expect(leaf.worldY[b], 222);
 
     run.state.advance(_step);
 
-    expect(
-      leaf.worldX[b],
-      111,
-      reason: 'and it is right one tick later, so the error is exactly one '
-          'frame long',
-    );
+    expect(leaf.worldX[b], 111, reason: 'and it stays right afterwards');
     expect(leaf.worldY[b], 222);
   });
 }

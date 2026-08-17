@@ -89,12 +89,50 @@ mixin WorldTransform2D on Component {
 /// the wrong default: a system with no opinion about ordering should not be
 /// silently forced to run after this one just because this one has an
 /// opinion about everyone.
-class WorldTransformSystem extends GameSystem with FixedTickable {
+class WorldTransformSystem extends GameSystem
+    with FixedTickable, EntitySpawnListener {
   /// Guards against a cycle in the parent chain, matching
   /// `GameRenderer2D.maxHierarchyDepth`'s reasoning.
   static const int maxHierarchyDepth = 64;
 
   late final Query _roots;
+
+  /// Entities spawned since the last step.
+  ///
+  /// # Why this list exists at all
+  ///
+  /// A spawner writes an entity's transform during the tick it creates it.
+  /// Every read in the pass below serves the last **published** snapshot, so
+  /// on that tick it cannot see those writes - it composes from whatever the
+  /// row held before. On a page that has never published that is harmless,
+  /// because `MemoryPage.resolveRow` falls through to the write slot; on a
+  /// **recycled row** it is the previous occupant's transform, or zero.
+  ///
+  /// The visible result was one frame of a sprite at the world origin, seen
+  /// while dragging the population slider in the hierarchy demo - where
+  /// entities are spawned and destroyed constantly, so rows are always
+  /// recycled. It is invisible in a scene that only ever grows.
+  ///
+  /// **A row that is new cannot be detected through a published read** - any
+  /// flag you might check has the same staleness as the data. So the system
+  /// has to be *told*, out of band, which is what `EntitySpawnListener` is
+  /// for. This is the same shape that fixed body creation in the Box2D
+  /// backend, for the same underlying reason.
+  final List<Entity> _spawned = <Entity>[];
+
+  @override
+  void onEntitySpawned(Entity entity) {
+    // Cheap filter: only entities this system would compose at all. The
+    // listener hears every spawn in the game.
+    if (entity.tryGet<WorldTransform2D>() != null) _spawned.add(entity);
+  }
+
+  @override
+  void onEntityDespawned(Entity entity) {
+    // Spawned and destroyed within one tick - composing it afterwards would
+    // write through a freed row.
+    if (_spawned.isNotEmpty) _spawned.remove(entity);
+  }
 
   @override
   void describeQuery(QueryDescriptor descriptor) {
@@ -157,6 +195,59 @@ class WorldTransformSystem extends GameSystem with FixedTickable {
         );
       }
     }
+
+    _composeSpawned();
+  }
+
+  /// Recomposes entities spawned this tick from their **pending** transform.
+  ///
+  /// Runs after the main pass and overwrites what it produced for these few
+  /// entities - the pass composed them from a stale row and could not have
+  /// known better. Doing it here rather than branching inside the pass keeps
+  /// the per-entity hot path exactly as it was: this costs nothing at all in
+  /// a tick where nothing spawned.
+  ///
+  /// [DataPointer.readPending] is the write slot - the value the spawner just
+  /// wrote. It is normally forbidden for a system to read uncommitted state,
+  /// and this is the narrow exception that rule names: initialising something
+  /// from a write made earlier in its own tick.
+  void _composeSpawned() {
+    if (_spawned.isEmpty) return;
+    for (var i = 0; i < _spawned.length; i++) {
+      final entity = _spawned[i];
+      final local = entity.tryGet<Transform2D>();
+      final world = entity.tryGet<WorldTransform2D>();
+      if (local == null || world == null) continue;
+
+      // **Roots only, and skipping the rest is the point.**
+      //
+      // The first version of this composed every spawned entity as if it were
+      // a root - `world = local` - which is right for a root and badly wrong
+      // for a child: a child's local transform is parent-relative, so writing
+      // it straight into the world one drops the entire parent chain and puts
+      // the child near the origin instead of near its parent. That turned a
+      // one-frame flash on unparented entities into a visible misplacement of
+      // every spawned child, and `draw_canvas_2d_test` caught it immediately
+      // by getting local coordinates where composed ones belong.
+      //
+      // The parent link is written in the same tick as the spawn, so it is as
+      // unreadable as the transform was - hence `readPending` here too. A
+      // spawned child is left for the next tick's normal pass, exactly as
+      // before this fix existed. That is not a regression for children; it is
+      // the status quo, with roots now correct.
+      final childLink = entity.tryGet<Child>();
+      if (childLink != null && childLink.parent.readPending(entity) != null) {
+        continue;
+      }
+
+      world
+        ..worldX[entity] = local.transformOffsetX.readPending(entity)
+        ..worldY[entity] = local.transformOffsetY.readPending(entity)
+        ..worldScaleX[entity] = local.transformScaleX.readPending(entity)
+        ..worldScaleY[entity] = local.transformScaleY.readPending(entity)
+        ..worldRotation[entity] = local.transformRotation.readPending(entity);
+    }
+    _spawned.clear();
   }
 
   /// Resolves [entity] and recurses into its children.

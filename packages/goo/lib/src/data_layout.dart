@@ -395,6 +395,18 @@ final class _Float64Field extends _Field<double> {
   void operator []=(Entity entity, double newValue) =>
       Pointer<Double>.fromAddress(_write(entity) + _byte).value = newValue;
 
+  /// This tick's write slot, for the narrow case of composing state that was
+  /// written earlier in the *same* tick - see [DataPointer.readPending].
+  ///
+  /// Implemented here because a freshly spawned entity's transform is exactly
+  /// that: the spawner writes it during the tick, and anything deriving from
+  /// it in the same tick would otherwise read the last published snapshot,
+  /// which on a recycled row is the previous occupant's value. That produced
+  /// one frame of a sprite at the world origin.
+  @override
+  double readPending(Entity entity) =>
+      Pointer<Double>.fromAddress(_write(entity) + _byte).value;
+
   @override
   void writeDefault(int row) =>
       Pointer<Double>.fromAddress(row + _byte).value = _default;

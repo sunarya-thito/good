@@ -192,10 +192,17 @@ abstract class DataPointer<T> {
   /// outside a tick is the only correct answer anyway.
   ///
   /// Only implemented where a structural mutation actually needs it (the
-  /// optional-entity fields the hierarchy links are made of). Anywhere else it
-  /// throws rather than quietly returning the published value, because a
-  /// silently-published answer here is exactly the bug this exists to fix.
-  @internal
+  /// optional-entity fields the hierarchy links are made of, and `float64`
+  /// for composing a just-spawned transform). Anywhere else it throws rather
+  /// than quietly returning the published value, because a silently-published
+  /// answer here is exactly the bug this exists to fix.
+  ///
+  /// **Not `@internal`, and that is not an invitation.** It was, until
+  /// `WorldTransformSystem` needed it - and that lives in `goo2d`, a
+  /// different package, which is the whole scope of that annotation. The same
+  /// thing happened to `Collision2DEvent`. Treat this as internal in spirit:
+  /// if you are reaching for it from ordinary game code, you want the
+  /// published read.
   T readPending(Entity instance) => throw UnsupportedError(
     '$runtimeType does not implement readPending. It is implemented only for '
     'the field kinds a structural mutation reads back within its own tick - '
