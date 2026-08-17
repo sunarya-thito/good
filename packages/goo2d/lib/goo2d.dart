@@ -23,4 +23,5 @@ export 'src/data/world_transform.dart';
 export 'src/render/draw/draw_2d.dart';
 export 'src/render/render_2d.dart';
 export 'src/render/game_2d.dart';
+export 'src/audio/audio_clip.dart';
 export 'src/render/texture.dart';

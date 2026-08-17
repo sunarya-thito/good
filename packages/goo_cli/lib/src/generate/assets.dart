@@ -38,10 +38,9 @@ class DiscoveredAsset {
 enum AssetKind {
   texture(<String>['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp']),
 
-  /// Recognised so an audio file is not silently swept into the texture enum,
-  /// where it would generate an `AssetKey<Texture>` that fails at decode. No
-  /// enum is emitted for it yet - goo has no audio payload type - and
-  /// [AssetScan.unsupported] reports it instead.
+  /// Keyed and packed exactly like a texture, into its own `Audios` enum.
+  /// Nothing plays it yet - see `AudioClip` for why the pipeline runs ahead of
+  /// the backend - but it ships, and a readiness check catches it missing.
   audio(<String>['.wav', '.mp3', '.ogg', '.flac']),
 
   other(<String>[]);
@@ -67,11 +66,16 @@ enum AssetKind {
 class AssetScan {
   const AssetScan({
     required this.textures,
+    required this.audio,
     required this.unsupported,
     required this.declaredEntries,
   });
 
   final List<DiscoveredAsset> textures;
+
+  /// Audio the project ships. Keyed and packed like a texture; nothing plays
+  /// it yet - see `AudioClip`.
+  final List<DiscoveredAsset> audio;
 
   /// Files that ship but produce no generated code, with why. Reported rather
   /// than dropped: a texture the generator quietly ignored is a missing enum
@@ -81,7 +85,7 @@ class AssetScan {
   /// The `flutter: assets:` entries the pubspec declared, verbatim.
   final List<String> declaredEntries;
 
-  bool get isEmpty => textures.isEmpty;
+  bool get isEmpty => textures.isEmpty && audio.isEmpty;
 }
 
 /// Reads a project's shipped assets from its pubspec.
@@ -135,38 +139,47 @@ AssetScan scanAssets(Directory projectDir) {
   files.sort(); // Stable output: codegen that reorders itself churns diffs.
 
   final textures = <DiscoveredAsset>[];
+  final audio = <DiscoveredAsset>[];
   final unsupported = <String, String>{};
-  final byIdentifier = <String, String>{};
+  // Collisions are checked **per enum**, not across all of them: `Textures`
+  // and `Audios` are separate types, so a `click.png` and a `click.ogg` are
+  // `Textures.click` and `Audios.click` and do not collide at all.
+  final byIdentifier = <AssetKind, Map<String, String>>{
+    AssetKind.texture: <String, String>{},
+    AssetKind.audio: <String, String>{},
+  };
 
   for (final path in files) {
     final kind = AssetKind.of(path);
-    if (kind != AssetKind.texture) {
-      unsupported[path] = switch (kind) {
-        AssetKind.audio =>
-          'audio is not generated yet - goo has no audio payload type',
-        _ => 'unrecognised extension',
-      };
+    final seen = byIdentifier[kind];
+    if (seen == null) {
+      unsupported[path] = 'unrecognised extension';
       continue;
     }
     final identifier = identifierFor(path);
-    final clash = byIdentifier[identifier];
+    final clash = seen[identifier];
     if (clash != null) {
       // Loudly, at generate time. Two assets collapsing onto one enum value
       // would silently make one of them unreachable.
       throw ArgumentError(
-        '"$path" and "$clash" both generate the identifier "$identifier". '
-        'Rename one - the identifier comes from the path with separators '
-        'removed, so "ui/button.png" and "ui_button.png" collide.',
+        '"$path" and "$clash" both generate the identifier "$identifier" in '
+        'the ${kind.name} enum. Rename one - the identifier comes from the '
+        'path with separators removed, so "ui/button.png" and "ui_button.png" '
+        'collide.',
       );
     }
-    byIdentifier[identifier] = path;
-    textures.add(
-      DiscoveredAsset(identifier: identifier, path: path, kind: kind),
+    seen[identifier] = path;
+    final asset = DiscoveredAsset(
+      identifier: identifier,
+      path: path,
+      kind: kind,
     );
+    (kind == AssetKind.texture ? textures : audio).add(asset);
   }
 
   return AssetScan(
     textures: textures,
+    audio: audio,
     unsupported: unsupported,
     declaredEntries: entries,
   );

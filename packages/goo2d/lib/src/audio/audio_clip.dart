@@ -1,0 +1,100 @@
+import 'dart:typed_data';
+
+import 'package:goo/goo.dart';
+
+/// An audio file's bytes, loaded and addressed like any other asset.
+///
+/// # What this is not
+///
+/// It is **not** playback. goo2d has no audio backend, no mixer and no voice
+/// management, and this does not pretend otherwise: the bytes are read and
+/// held, and nothing decodes or plays them. What it *is* is the other half of
+/// the asset pipeline - a clip can be declared in `describeAssets`, addressed,
+/// pointed at from a component row, packed, encrypted and shipped exactly like
+/// a texture, and a readiness check can tell you it is missing before the
+/// game starts.
+///
+/// That split is deliberate rather than a shortcut. The pipeline is uniform
+/// over asset *kinds* - `Asset<T>` does not care what `T` is - so audio can
+/// travel the whole of it before anything can play a sound. When a backend
+/// lands it consumes [bytes]; nothing above this line changes.
+class AudioClip {
+  AudioClip(this.bytes, this.format);
+
+  /// The file's bytes, in [format]. Whatever `goo assets compact` produced -
+  /// Ogg Vorbis by default.
+  final Uint8List bytes;
+
+  /// The container the bytes are in, from the source path's extension.
+  ///
+  /// Carried rather than re-sniffed, because the loader already knows it and a
+  /// backend would otherwise have to guess from a header.
+  final AudioContainer format;
+
+  /// How many bytes the clip occupies. The one thing that can be answered
+  /// without a decoder, and enough for a budget report.
+  int get byteLength => bytes.length;
+}
+
+/// The audio containers the pipeline recognises.
+enum AudioContainer {
+  ogg('.ogg'),
+  wav('.wav'),
+  mp3('.mp3'),
+  flac('.flac');
+
+  const AudioContainer(this.extension);
+
+  final String extension;
+
+  /// The container [path]'s extension names, or [AudioContainer.ogg] when it
+  /// names none - which is what a packed asset resolved through a manifest
+  /// looks like.
+  static AudioContainer of(String path) {
+    final dot = path.lastIndexOf('.');
+    if (dot == -1) return AudioContainer.ogg;
+    final extension = path.substring(dot).toLowerCase();
+    for (final container in values) {
+      if (container.extension == extension) return container;
+    }
+    return AudioContainer.ogg;
+  }
+}
+
+/// The handle a component field points at.
+typedef AudioAsset = Asset<AudioClip>;
+
+/// An audio clip's identity: where its bytes come from, and nothing else.
+typedef AudioKey = AssetKey<AudioClip>;
+
+/// What decoding discovered about a clip, replicated to every isolate copy.
+///
+/// Byte length only, for now. Duration and sample rate need a decoder, and
+/// inventing them from a header would be a guess reported as a fact - when a
+/// backend lands it can publish them here, which is what [AssetInfo] is for.
+class AudioInfo extends AssetInfo {
+  const AudioInfo(this.byteLength, this.format);
+
+  final int byteLength;
+  final AudioContainer format;
+}
+
+/// Reads an audio file's bytes.
+///
+/// Does no decoding, which is why it is the one loader with nothing
+/// platform-specific in it: it hands back what the source gave it. That also
+/// means it works on the game isolate in principle - though nothing asks it
+/// to, because loading still happens on the copy that can do I/O.
+class AudioLoader extends AssetLoader<AudioClip> {
+  const AudioLoader();
+
+  @override
+  Future<AudioClip> load(AssetKey<AudioClip> key) async => AudioClip(
+    await key.source.load(),
+    AudioContainer.of(key.source.description),
+  );
+
+  @override
+  AssetInfo describe(AudioClip value) =>
+      AudioInfo(value.byteLength, value.format);
+}

@@ -19,37 +19,58 @@ String header(String command) =>
 /// already the identity `descriptor.has` wants, with no lookup and nothing to
 /// keep in sync. It also gives the set a `.values`, which is what lets the
 /// readiness check below walk every asset the game ships.
-String emitTextures(AssetScan scan, {required String command}) {
+String emitTextures(AssetScan scan, {required String command}) => _emitEnum(
+  assets: scan.textures,
+  enumName: 'Textures',
+  payload: 'Texture',
+  command: command,
+  emptyNote: 'image',
+);
+
+/// `goo.generated/audios.dart` - one enum value per shipped audio file.
+///
+/// Identical in shape to the texture enum, and that is the point: the asset
+/// pipeline is uniform over asset *kinds*, so a second kind costs a payload
+/// type, a loader, and one more call to the same emitter.
+String emitAudios(AssetScan scan, {required String command}) => _emitEnum(
+  assets: scan.audio,
+  enumName: 'Audios',
+  payload: 'AudioClip',
+  command: command,
+  emptyNote: 'audio',
+);
+
+String _emitEnum({
+  required List<DiscoveredAsset> assets,
+  required String enumName,
+  required String payload,
+  required String command,
+  required String emptyNote,
+}) {
   final buffer = StringBuffer(header(command))
     ..writeln()
     ..writeln("import 'package:goo2d/goo2d.dart';")
     ..writeln();
 
-  if (scan.textures.isEmpty) {
+  if (assets.isEmpty) {
     buffer
-      ..writeln('// No image assets are declared in pubspec.yaml under')
+      ..writeln('// No $emptyNote assets are declared in pubspec.yaml under')
       ..writeln('// `flutter: assets:`, so this enum is empty. It exists so')
-      ..writeln('// that code importing it keeps compiling.')
-      ..writeln('enum Textures with LocalEnumAssetKey<Texture> {')
-      ..writeln('  ;')
-      ..writeln()
-      ..writeln('  const Textures(this.path);')
-      ..writeln()
-      ..writeln('  @override')
-      ..writeln('  final String path;')
-      ..writeln('}');
-    return buffer.toString();
+      ..writeln('// that code importing it keeps compiling.');
   }
 
-  buffer.writeln('enum Textures with LocalEnumAssetKey<Texture> {');
-  for (var i = 0; i < scan.textures.length; i++) {
-    final asset = scan.textures[i];
-    final terminator = i == scan.textures.length - 1 ? ';' : ',';
+  buffer.writeln('enum $enumName with LocalEnumAssetKey<$payload> {');
+  for (var i = 0; i < assets.length; i++) {
+    final asset = assets[i];
+    final terminator = i == assets.length - 1 ? ';' : ',';
     buffer.writeln("  ${asset.identifier}('${asset.path}')$terminator");
   }
+  // An enum with no values still needs the semicolon that separates the value
+  // list from the members.
+  if (assets.isEmpty) buffer.writeln('  ;');
   buffer
     ..writeln()
-    ..writeln('  const Textures(this.path);')
+    ..writeln('  const $enumName(this.path);')
     ..writeln()
     ..writeln('  @override')
     ..writeln('  final String path;')
@@ -68,6 +89,7 @@ String emitReadiness({required String command}) =>
 ${header(command)}
 import 'package:goo/goo.dart';
 
+import 'audios.dart';
 import 'textures.dart';
 
 /// Every asset that is declared but will not be there at run time.
@@ -84,7 +106,10 @@ import 'textures.dart';
 /// wolf everywhere it is most useful.
 Future<List<AssetKey<Object?>>> findMissingAssets() async {
   final missing = <AssetKey<Object?>>[];
-  for (final key in <AssetKey<Object?>>[...Textures.values]) {
+  for (final key in <AssetKey<Object?>>[
+    ...Textures.values,
+    ...Audios.values,
+  ]) {
     final availability = await key.source.check();
     if (availability == AssetAvailability.missing ||
         availability == AssetAvailability.unknown) {

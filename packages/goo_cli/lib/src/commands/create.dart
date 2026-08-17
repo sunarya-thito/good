@@ -3,6 +3,7 @@
 import 'dart:io';
 
 import 'package:goo_cli/src/command.dart';
+import 'package:goo_cli/src/commands/generate.dart';
 import 'package:goo_cli/src/generate/scaffold.dart';
 import 'package:goo_cli/src/parsers.dart';
 import 'package:goo_cli/src/verbosable.dart';
@@ -148,11 +149,28 @@ class CreateCommand extends Command with Verbose {
       info.printf('Wrote %s\n', [entry.key]);
     }
 
+    // Generate straight away rather than telling them to. A fresh project's
+    // lib/goo.generated/ is otherwise missing, so `main.dart` does not compile
+    // until a second command has been run - which makes "it does not build" a
+    // new project's first experience.
+    //
+    // Driven directly rather than by re-entering the runner: `generate` is a
+    // command, but it is also just this work, and spawning a second parse of a
+    // synthetic command line to reach it would be indirection for its own
+    // sake.
+    info.println('');
+    final generated = runGenerate(
+      projectDir: root,
+      command: '${session.path.first} generate',
+      out: info,
+      verbose: debug,
+    );
     info
+      ..printf('Generated %s file(s) in lib/goo.generated/.\n', [generated])
       ..println('')
       ..printf('Created %s. Next:\n', [projectName])
       ..printf('  cd %s\n', [projectName])
       ..println('  flutter pub get')
-      ..println('  goo generate');
+      ..println('  flutter run');
   }
 }

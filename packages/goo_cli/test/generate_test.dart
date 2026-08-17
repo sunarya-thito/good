@@ -123,26 +123,37 @@ flutter:
       expect(scan.textures.map((t) => t.path), ['assets/only.png']);
     });
 
-    test('reports non-image files rather than dropping them silently', () {
+    test('sorts each file into the enum its kind belongs to', () {
       final dir = _project(_pubspecWithAssets, [
         'assets/a.png',
         'assets/theme.mp3',
         'assets/notes.txt',
       ]);
       final scan = scanAssets(dir);
-      expect(scan.textures, hasLength(1));
+      expect(scan.textures.map((t) => t.identifier), ['a']);
       expect(
-        scan.unsupported.keys,
-        containsAll(['assets/theme.mp3', 'assets/notes.txt']),
-      );
-      expect(
-        scan.unsupported['assets/theme.mp3'],
-        contains('audio'),
+        scan.audio.map((t) => t.identifier),
+        ['theme'],
         reason:
-            'audio is recognised and deferred, not merely unrecognised - '
-            'sweeping it into the texture enum would generate an '
-            'AssetKey<Texture> that fails at decode',
+            'audio gets its own enum rather than being swept into the texture '
+            'one, where it would generate an AssetKey<Texture> that fails at '
+            'decode',
       );
+      expect(scan.unsupported.keys, [
+        'assets/notes.txt',
+      ], reason: 'and only genuinely unrecognised files are reported as such');
+    });
+
+    test('one name in two kinds is two assets, not a collision', () {
+      // `Textures.click` and `Audios.click` are different types in different
+      // enums; refusing them would be inventing a clash that does not exist.
+      final dir = _project(_pubspecWithAssets, [
+        'assets/click.png',
+        'assets/click.ogg',
+      ]);
+      final scan = scanAssets(dir);
+      expect(scan.textures.single.identifier, 'click');
+      expect(scan.audio.single.identifier, 'click');
     });
 
     test('output is sorted, so regenerating does not churn the diff', () {

@@ -1,5 +1,5 @@
 import 'package:goo_cli/src/command.dart';
-import 'package:goo_cli/src/commands/compile.dart';
+import 'package:goo_cli/src/commands/build.dart';
 import 'package:goo_cli/src/commands/create.dart';
 import 'package:goo_cli/src/commands/generate.dart';
 
@@ -12,7 +12,7 @@ import 'package:goo_cli/src/commands/generate.dart';
 class GooCommand extends Command {
   late final CreateCommand create;
   late final GenerateCommand generate;
-  late final CompileCommand compile;
+  late final BuildCommand build;
 
   @override
   void describeCommand(CommandDescriptor descriptor) {
@@ -29,10 +29,10 @@ class GooCommand extends Command {
       'Write lib/goo.generated/ from the assets the pubspec declares.',
       GenerateCommand(),
     );
-    compile = descriptor.describeSubCommand(
-      'compile',
+    build = descriptor.describeSubCommand(
+      'build',
       'Build and package a game for a target platform.',
-      CompileCommand(),
+      BuildCommand(),
     );
   }
 }
