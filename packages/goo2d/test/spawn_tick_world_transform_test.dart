@@ -29,9 +29,29 @@ import 'package:flutter_test/flutter_test.dart';
 
 class _Leaf extends EntityStruct with Transform2D, WorldTransform2D, Child {}
 
+/// Both ends of a hierarchy in one archetype, so a whole chain shares a page -
+/// which is what puts a spawned child on a page that has **already published**,
+/// the only case where the bug below is visible at all.
+class _Node extends EntityStruct
+    with Transform2D, WorldTransform2D, Child, Parent {}
+
+/// One queued spawn. [parent] names an entity that already exists; [afterIndex]
+/// names one spawned earlier in this same tick, by its index in
+/// `_Spawner.nodes` - that is the hub -> body -> limb shape the swarm demo
+/// creates all at once.
+class _NodeRequest {
+  _NodeRequest(this.x, this.y, {this.parent, this.afterIndex});
+
+  final double x;
+  final double y;
+  final Entity? parent;
+  final int? afterIndex;
+}
+
 class _Scene extends SceneStruct {
   late Scene handle;
   late final _Leaf leaf;
+  late final _Node node;
 
   @override
   void onSceneMounted(Scene scene) => handle = scene;
@@ -40,6 +60,7 @@ class _Scene extends SceneStruct {
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
     leaf = descriptor.has(_Leaf());
+    node = descriptor.has(_Node());
   }
 }
 
@@ -49,6 +70,12 @@ class _Spawner extends GameSystem with FixedTickable {
   double? spawnX;
   double? spawnY;
   Entity? toDestroy;
+
+  /// Drained in order, all within one tick.
+  final List<_NodeRequest> nodeRequests = <_NodeRequest>[];
+
+  /// Every `_Node` spawned so far, in spawn order.
+  final List<Entity> nodes = <Entity>[];
 
   /// Sorted before WorldTransformSystem so the spawn happens first in the
   /// tick - the ordering a gameplay system spawning something would have.
@@ -63,10 +90,27 @@ class _Spawner extends GameSystem with FixedTickable {
       toDestroy = null;
       kill.destroy();
     }
+    final scene = state.getScene<_Scene>();
+
+    if (nodeRequests.isNotEmpty) {
+      for (final request in nodeRequests) {
+        final parent =
+            request.parent ??
+            (request.afterIndex == null ? null : nodes[request.afterIndex!]);
+        final entity = parent == null
+            ? scene.handle.addEntity(scene.node)
+            : scene.handle.addEntity(scene.node, parent: parent);
+        scene.node
+          ..transformOffsetX[entity] = request.x
+          ..transformOffsetY[entity] = request.y;
+        nodes.add(entity);
+      }
+      nodeRequests.clear();
+    }
+
     final x = spawnX;
     if (x == null) return;
     spawnX = null;
-    final scene = state.getScene<_Scene>();
     final entity = scene.handle.addEntity(scene.leaf);
     scene.leaf
       ..transformOffsetX[entity] = x
@@ -174,5 +218,84 @@ void main() {
 
     expect(leaf.worldX[b], 111, reason: 'and it stays right afterwards');
     expect(leaf.worldY[b], 222);
+  });
+
+  test('a spawned CHILD composes against its parent on the spawn tick',
+      () async {
+    // **The swarm demo's yellow ball.** A child is not merely composed from a
+    // stale row like the cases above - it is not visited *at all* on its spawn
+    // tick. The main pass descends through `Parent.firstChild`, an ordinary
+    // published read, and the splice that added this entity to its parent's
+    // child list happened this tick. So the pass walks straight past it and
+    // its world row publishes holding the defaults: (0, 0), the world origin.
+    //
+    // The page must have published for this to bite, which is what the first
+    // advance below is for - on a fresh page `resolveRow` falls through to the
+    // write slot and everything is accidentally right. That is exactly why the
+    // bug appeared at no repeatable point while dragging the population
+    // slider: it needs a *new row on an already-published page*, and a
+    // recycled row instead shows the previous occupant's position, which is
+    // somewhere plausible in the swarm and invisible.
+    final run = await Game.startInline(_Game());
+    addTearDown(() async {
+      if (run.isRunning) await run.stop();
+    });
+    final node = run.state.getScene<_Scene>().node;
+
+    spawner.nodeRequests.add(_NodeRequest(100, 0));
+    run.state.advance(_step);
+    final parent = spawner.nodes[0];
+    expect(node.worldX[parent], 100, reason: 'the parent is an ordinary root');
+
+    spawner.nodeRequests.add(_NodeRequest(10, 20, parent: parent));
+    run.state.advance(_step);
+    final child = spawner.nodes[1];
+
+    expect(
+      node.worldX[child],
+      110,
+      reason: 'a child spawned this tick must be composed against its '
+          'parent - 0 here is the sprite at the world origin for one frame',
+    );
+    expect(node.worldY[child], 20);
+
+    run.state.advance(_step);
+
+    expect(node.worldX[child], 110, reason: 'and it stays right afterwards');
+    expect(node.worldY[child], 20);
+  });
+
+  test('a whole CHAIN spawned in one tick composes on that tick', () async {
+    // hub -> body -> limb, created by a single `spawnCritter()` call, which is
+    // literally what the swarm demo does. The grandchild's parent does not
+    // exist in any published snapshot either, so it can only be composed
+    // against a transform written moments earlier in this same pass - which
+    // works because `_spawned` is in spawn order and a parent necessarily
+    // precedes the children that name it.
+    final run = await Game.startInline(_Game());
+    addTearDown(() async {
+      if (run.isRunning) await run.stop();
+    });
+    final node = run.state.getScene<_Scene>().node;
+
+    spawner.nodeRequests.add(_NodeRequest(100, 0));
+    run.state.advance(_step);
+    final root = spawner.nodes[0];
+
+    spawner.nodeRequests
+      ..add(_NodeRequest(10, 20, parent: root))
+      ..add(_NodeRequest(1, 2, afterIndex: 1));
+    run.state.advance(_step);
+    final child = spawner.nodes[1];
+    final grandChild = spawner.nodes[2];
+
+    expect(node.worldX[child], 110);
+    expect(node.worldY[child], 20);
+    expect(
+      node.worldX[grandChild],
+      111,
+      reason: 'composed against a parent that was itself spawned this tick',
+    );
+    expect(node.worldY[grandChild], 22);
   });
 }

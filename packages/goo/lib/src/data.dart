@@ -1,4 +1,3 @@
-import 'package:meta/meta.dart';
 import 'package:goo/src/struct.dart';
 
 // note: we used to support DataPointer<Matrix4>, and etc

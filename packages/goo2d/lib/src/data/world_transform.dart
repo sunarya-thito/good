@@ -202,52 +202,142 @@ class WorldTransformSystem extends GameSystem
   /// Recomposes entities spawned this tick from their **pending** transform.
   ///
   /// Runs after the main pass and overwrites what it produced for these few
-  /// entities - the pass composed them from a stale row and could not have
-  /// known better. Doing it here rather than branching inside the pass keeps
-  /// the per-entity hot path exactly as it was: this costs nothing at all in
-  /// a tick where nothing spawned.
+  /// entities - the pass composed them from a stale row, or never reached them
+  /// at all, and could not have known better either way. Doing it here rather
+  /// than branching inside the pass keeps the per-entity hot path exactly as it
+  /// was: this costs nothing at all in a tick where nothing spawned.
   ///
   /// [DataPointer.readPending] is the write slot - the value the spawner just
   /// wrote. It is normally forbidden for a system to read uncommitted state,
   /// and this is the narrow exception that rule names: initialising something
   /// from a write made earlier in its own tick.
+  ///
+  /// # Why a spawned *child* needs this just as much as a root
+  ///
+  /// A first version of this composed roots only, on the reasoning that a
+  /// child would be picked up by the main pass. It is not: the pass descends
+  /// through `Parent.firstChild`, an ordinary published read, and the splice
+  /// that put this entity into its parent's child list happened *this* tick.
+  /// So a spawned child is not visited at all on its spawn tick, and its world
+  /// row publishes holding whatever it held before - the defaults `(0, 0)` for
+  /// a row never used, which is the sprite at the world origin.
+  ///
+  /// That is what the "one yellow ball at the centre" report in the swarm demo
+  /// actually was, and why it looked so erratic: a *recycled* row holds the
+  /// previous occupant's position, which is somewhere plausible in the swarm
+  /// and invisible, and a row on a page that has never published reads through
+  /// to the write slot and is simply correct. Only the third case - a new row
+  /// on a page that *has* published - shows anything, and that case only comes
+  /// up while the population is growing onto fresh rows. Hence: never at the
+  /// start, never once it settles, and at no repeatable point in between.
   void _composeSpawned() {
     if (_spawned.isEmpty) return;
+    // Spawn order, and that is load-bearing: a parent necessarily exists
+    // before a child can name it, so a spawned parent always precedes its
+    // spawned children here and has its own world transform written by the
+    // time [_pendingWorldOf] reads it back below.
     for (var i = 0; i < _spawned.length; i++) {
       final entity = _spawned[i];
-      final local = entity.tryGet<Transform2D>();
       final world = entity.tryGet<WorldTransform2D>();
-      if (local == null || world == null) continue;
-
-      // **Roots only, and skipping the rest is the point.**
-      //
-      // The first version of this composed every spawned entity as if it were
-      // a root - `world = local` - which is right for a root and badly wrong
-      // for a child: a child's local transform is parent-relative, so writing
-      // it straight into the world one drops the entire parent chain and puts
-      // the child near the origin instead of near its parent. That turned a
-      // one-frame flash on unparented entities into a visible misplacement of
-      // every spawned child, and `draw_canvas_2d_test` caught it immediately
-      // by getting local coordinates where composed ones belong.
-      //
-      // The parent link is written in the same tick as the spawn, so it is as
-      // unreadable as the transform was - hence `readPending` here too. A
-      // spawned child is left for the next tick's normal pass, exactly as
-      // before this fix existed. That is not a regression for children; it is
-      // the status quo, with roots now correct.
-      final childLink = entity.tryGet<Child>();
-      if (childLink != null && childLink.parent.readPending(entity) != null) {
-        continue;
-      }
-
+      if (world == null) continue;
+      _pendingWorldOf(entity, 0);
       world
-        ..worldX[entity] = local.transformOffsetX.readPending(entity)
-        ..worldY[entity] = local.transformOffsetY.readPending(entity)
-        ..worldScaleX[entity] = local.transformScaleX.readPending(entity)
-        ..worldScaleY[entity] = local.transformScaleY.readPending(entity)
-        ..worldRotation[entity] = local.transformRotation.readPending(entity);
+        ..worldX[entity] = _pendingX
+        ..worldY[entity] = _pendingY
+        ..worldScaleX[entity] = _pendingScaleX
+        ..worldScaleY[entity] = _pendingScaleY
+        ..worldRotation[entity] = _pendingRotation;
     }
     _spawned.clear();
+  }
+
+  // [_pendingWorldOf]'s result. Instance scratch rather than a returned record
+  // for the reason `GameRenderer2D` uses the same technique - five doubles out
+  // of a method called per spawned entity is five allocations a tick otherwise
+  // (rule 1). Not read anywhere outside that method and its caller.
+  double _pendingX = 0;
+  double _pendingY = 0;
+  double _pendingRotation = 0;
+  double _pendingScaleX = 1;
+  double _pendingScaleY = 1;
+
+  /// Composes [entity]'s world transform from **pending** reads, into the
+  /// `_pending*` fields.
+  ///
+  /// Every read here is `readPending`, and it is safe for rows this tick never
+  /// touched as well as rows it did: `MemoryPool.beginTick` starts each page's
+  /// write slot as a copy of the last published one, so the write slot always
+  /// holds the latest value, whether or not this tick wrote it. Which means
+  /// this reads an ancestor's world transform correctly in all three cases
+  /// that matter - composed by the main pass earlier this tick, skipped by it
+  /// as unchanged, or written by an earlier iteration of [_composeSpawned].
+  void _pendingWorldOf(Entity entity, int depth) {
+    final local = entity.tryGet<Transform2D>();
+    // A bare grouping node contributes identity, exactly as in [_resolve].
+    final offsetX = local == null
+        ? 0.0
+        : local.transformOffsetX.readPending(entity);
+    final offsetY = local == null
+        ? 0.0
+        : local.transformOffsetY.readPending(entity);
+    final rotation = local == null
+        ? 0.0
+        : local.transformRotation.readPending(entity);
+    final scaleX = local == null
+        ? 1.0
+        : local.transformScaleX.readPending(entity);
+    final scaleY = local == null
+        ? 1.0
+        : local.transformScaleY.readPending(entity);
+
+    final childLink = entity.tryGet<Child>();
+    final parent = childLink?.parent.readPending(entity);
+    if (parent == null || depth >= maxHierarchyDepth) {
+      assert(
+        parent == null,
+        'the parent chain above $entity is deeper than $maxHierarchyDepth, '
+        'or contains a cycle. Composing it as a root rather than recursing '
+        'forever - same policy as _resolve.',
+      );
+      _pendingX = offsetX;
+      _pendingY = offsetY;
+      _pendingRotation = rotation;
+      _pendingScaleX = scaleX;
+      _pendingScaleY = scaleY;
+      return;
+    }
+
+    final double parentX, parentY, parentRotation, parentScaleX, parentScaleY;
+    final parentWorld = parent.tryGet<WorldTransform2D>();
+    if (parentWorld != null) {
+      parentX = parentWorld.worldX.readPending(parent);
+      parentY = parentWorld.worldY.readPending(parent);
+      parentRotation = parentWorld.worldRotation.readPending(parent);
+      parentScaleX = parentWorld.worldScaleX.readPending(parent);
+      parentScaleY = parentWorld.worldScaleY.readPending(parent);
+    } else {
+      // An ancestor that opted out of `WorldTransform2D` has nowhere to have
+      // stored one, so it gets recomposed here on the way past.
+      _pendingWorldOf(parent, depth + 1);
+      parentX = _pendingX;
+      parentY = _pendingY;
+      parentRotation = _pendingRotation;
+      parentScaleX = _pendingScaleX;
+      parentScaleY = _pendingScaleY;
+    }
+
+    // The same single-parent-step composition as [_resolve]'s `hasParent`
+    // branch, and it has to stay the same - two spellings of one affine
+    // composition is rule 10's failure mode.
+    final cos = math.cos(parentRotation);
+    final sin = math.sin(parentRotation);
+    final scaledX = offsetX * parentScaleX;
+    final scaledY = offsetY * parentScaleY;
+    _pendingX = parentX + scaledX * cos - scaledY * sin;
+    _pendingY = parentY + scaledX * sin + scaledY * cos;
+    _pendingRotation = parentRotation + rotation;
+    _pendingScaleX = parentScaleX * scaleX;
+    _pendingScaleY = parentScaleY * scaleY;
   }
 
   /// Resolves [entity] and recurses into its children.
