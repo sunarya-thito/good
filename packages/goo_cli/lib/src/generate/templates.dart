@@ -89,6 +89,7 @@ String emitReadiness({required String command}) =>
 ${header(command)}
 import 'package:goo/goo.dart';
 
+import 'asset_key.dart';
 import 'audios.dart';
 import 'textures.dart';
 
@@ -124,6 +125,15 @@ Future<List<AssetKey<Object?>>> findMissingAssets() async {
 /// Throws rather than returning a flag: a game that starts with assets missing
 /// will fail anyway, later, somewhere less explicable.
 Future<void> ensureGameReady() async {
+  // The pack first: everything below asks whether assets are *there*, and in a
+  // release build that answer comes from the manifest rather than the bundle.
+  // An empty mapping means a development build - assets are loose, and
+  // installing nothing is what makes BundleSource resolve straight through
+  // rootBundle.
+  if (assetMapping.isNotEmpty) {
+    AssetPack.install(AssetPack(mapping: assetMapping, key: assetKeyMaterial));
+  }
+
   final missing = await findMissingAssets();
   if (missing.isEmpty) return;
   throw StateError(

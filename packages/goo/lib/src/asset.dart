@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/services.dart' show AssetBundle, rootBundle;
 import 'package:meta/meta.dart';
+import 'package:goo/src/asset_pack.dart';
 import 'package:goo/src/data.dart';
 
 // ---------------------------------------------------------------------------
@@ -767,6 +768,14 @@ class BundleSource extends AssetSource {
 
   @override
   Future<Uint8List> load() async {
+    // The pack first, the bundle second, and the *same* path either way -
+    // which is the whole reason this stayed a logical name. A release build
+    // installs a pack at startup and this resolves through the manifest; a
+    // development build installs nothing and the path is a bundle entry.
+    // Nothing above here changes between the two, including the key.
+    final pack = AssetPack.installed;
+    if (pack != null && pack.contains(path)) return pack.read(path);
+
     final data = await (bundle ?? rootBundle).load(path);
     // A view, not a copy: `ByteData.buffer` may be larger than the asset when
     // the bundle packs several together, so the offset and length matter.
@@ -775,10 +784,18 @@ class BundleSource extends AssetSource {
 
   @override
   Future<AssetAvailability> check() async {
-    // Loose-bundle builds have no manifest to consult and no way to stat a
-    // bundle entry, so the only honest answer short of reading the asset is
-    // that this could not be checked. A packed build replaces this path with a
-    // manifest lookup plus one stat per chunk.
+    final pack = AssetPack.installed;
+    // A packed build can at least say whether the pack has ever heard of this
+    // path, which catches the real failure - a build declaring an asset the
+    // pack was never given. See `AssetPack.check` for why it cannot do better
+    // than `unverifiable` for one it has, and `AssetPack.verifyChunks` for the
+    // deep pass that can.
+    if (pack != null) return pack.check(path);
+
+    // A loose build has no manifest to consult and no way to stat a bundle
+    // entry - `AssetBundle` exposes only `load`, and loading is reading. So
+    // the only honest answer short of reading the asset is that this could not
+    // be checked.
     return AssetAvailability.unverifiable;
   }
 

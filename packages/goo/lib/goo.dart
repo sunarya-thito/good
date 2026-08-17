@@ -15,6 +15,7 @@ export 'src/animation/animatable.dart';
 export 'src/animation/struct.dart';
 export 'src/archetype.dart';
 export 'src/asset.dart';
+export 'src/asset_pack.dart';
 export 'src/coroutine/coroutine.dart';
 // The command API's two public layers: the shapes a command can take, and the
 // record its parameters and results live in. What is hidden is the plumbing

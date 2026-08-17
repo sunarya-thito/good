@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:meta/meta.dart';
 
 import 'package:goo/src/asset.dart';
+import 'package:goo/src/asset_pack.dart';
 import 'package:goo/src/event.dart';
 import 'package:goo/src/event/fixed_loop.dart';
 import 'package:goo/src/event/lifecycle.dart';
@@ -754,6 +755,15 @@ abstract class GameState<T extends Game> extends GameListenerBase
         SceneLoadProgress(asset.debugLabel, completed / pending),
       );
     }
+    // A scene load is a burst of reads that all want the same few chunks, and
+    // the moment it ends those chunks are dead weight: what the game needs
+    // from here on is the decoded `ui.Image`, not the compressed bytes it came
+    // from. This is the one place that knows the burst is over, which is why
+    // the pack does not try to guess it with a timer.
+    //
+    // A no-op in a development build, where no pack is installed.
+    AssetPack.installed?.releaseChunks();
+
     // The terminal report, always sent, so a caller can hang "hide the
     // loading screen" off `progress == 1.0` without also having to handle
     // "this scene needed no decodes at all".
