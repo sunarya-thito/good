@@ -59,28 +59,60 @@ class _DemoAppState extends State<DemoApp> {
     super.dispose();
   }
 
+  /// What went wrong during the last switch, or null. Shown instead of the
+  /// spinner, because a spinner that never resolves tells you nothing.
+  Object? _failure;
+
+  /// Swaps the running case.
+  ///
+  /// # Why the try/finally is the whole point
+  ///
+  /// This used to have neither. `_switching` was set true at the top and
+  /// cleared only on the success path, so **anything that threw in between -
+  /// `stop`, `create`, `Game.start` - left it true forever**. `_demo` stayed
+  /// null, so the view showed a `CircularProgressIndicator`; `_switching`
+  /// stayed true, so every later click hit the guard at the top and returned.
+  /// A permanent spinner and a dead menu, from one exception nobody saw.
+  ///
+  /// That is the "sometimes stuck on loading" this fixes. Intermittent
+  /// because the *throw* is intermittent - the wedge is guaranteed once it
+  /// happens.
   Future<void> _select(int index) async {
     if (_switching) return;
-    setState(() => _switching = true);
-    final previous = _demo;
-    if (previous != null) {
-      if (_recorder.isRecording) _stopRecording(previous.game);
-      _demo = null;
-      setState(() {});
-      await previous.game.stop();
-    }
-    final demo = widget.demos[index]();
-    final game = demo.create();
-    await Game.start(game);
-    if (!mounted) {
-      await game.stop();
-      return;
-    }
     setState(() {
-      _selected = index;
-      _demo = demo;
-      _switching = false;
+      _switching = true;
+      _failure = null;
     });
+    try {
+      final previous = _demo;
+      if (previous != null) {
+        if (_recorder.isRecording) _stopRecording(previous.game);
+        _demo = null;
+        setState(() {});
+        await previous.game.stop();
+      }
+      final demo = widget.demos[index]();
+      final game = demo.create();
+      await Game.start(game);
+      if (!mounted) {
+        await game.stop();
+        return;
+      }
+      setState(() {
+        _selected = index;
+        _demo = demo;
+      });
+    } catch (error, stack) {
+      // Reported, not swallowed. An intermittent failure you can read is a
+      // bug; one that only ever shows as a spinner is a ghost story.
+      debugPrintStack(stackTrace: stack, label: 'switching to case $index');
+      if (mounted) setState(() => _failure = error);
+    } finally {
+      // **Unconditionally.** This is the line whose absence caused the bug:
+      // the flag has to be cleared on every path out, including the throwing
+      // one, or the menu never works again.
+      if (mounted) setState(() => _switching = false);
+    }
   }
 
   void _onSample() {
@@ -143,6 +175,12 @@ class _DemoAppState extends State<DemoApp> {
                 demos: widget.demos,
                 selected: _selected,
                 enabled: !_switching,
+                // Nothing is running - either the first case has not come
+                // up yet or one failed - so the selected tile must stay
+                // tappable. Otherwise a failed switch leaves `_selected`
+                // pointing at a case that is NOT running, and the one tile
+                // that would restart it is the one the menu greys out.
+                canReselect: demo == null,
                 onSelect: _select,
               ),
               Expanded(
@@ -150,6 +188,22 @@ class _DemoAppState extends State<DemoApp> {
                   children: <Widget>[
                     if (demo != null)
                       GameView(camera: demo.game.defaultCamera)
+                    else if (_failure != null)
+                      // Anything but a spinner. The failure mode this
+                      // replaces was indistinguishable from "still loading".
+                      Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: SelectableText(
+                            'This case failed to start:\n\n$_failure',
+                            style: const TextStyle(
+                              color: Color(0xFFFF8A80),
+                              fontFamily: 'monospace',
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      )
                     else
                       const Center(child: CircularProgressIndicator()),
                     if (demo != null) _Readout(demo: demo),
@@ -178,12 +232,18 @@ class _CaseMenu extends StatelessWidget {
     required this.demos,
     required this.selected,
     required this.enabled,
+    required this.canReselect,
     required this.onSelect,
   });
 
   final List<Demo Function()> demos;
   final int selected;
   final bool enabled;
+
+  /// Whether the already-selected tile may be tapped again - true when no
+  /// case is actually running, so a failed one can be retried.
+  final bool canReselect;
+
   final void Function(int index) onSelect;
 
   @override
@@ -210,6 +270,7 @@ class _CaseMenu extends StatelessWidget {
               demo: demos[i](),
               active: i == selected,
               enabled: enabled,
+              reselectable: canReselect,
               onTap: () => onSelect(i),
             ),
         ],
@@ -223,12 +284,14 @@ class _CaseTile extends StatelessWidget {
     required this.demo,
     required this.active,
     required this.enabled,
+    required this.reselectable,
     required this.onTap,
   });
 
   final Demo demo;
   final bool active;
   final bool enabled;
+  final bool reselectable;
   final VoidCallback onTap;
 
   @override
@@ -236,7 +299,7 @@ class _CaseTile extends StatelessWidget {
     return Material(
       color: active ? const Color(0xFF1B2430) : Colors.transparent,
       child: InkWell(
-        onTap: enabled && !active ? onTap : null,
+        onTap: enabled && (!active || reselectable) ? onTap : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Column(
