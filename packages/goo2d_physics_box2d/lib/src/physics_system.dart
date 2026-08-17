@@ -495,8 +495,8 @@ class Box2DPhysicsSystem extends GameSystem
         body.linearDamping[entity],
         body.angularDamping[entity],
       )
-      ..gooBodySetFixedRotation(handle, body.fixedRotation[entity])
-      ..gooBodySetBullet(handle, body.isBullet[entity]);
+      ..gooBodySetFixedRotation(handle, body.fixedRotation[entity] ? 1 : 0)
+      ..gooBodySetBullet(handle, body.isBullet[entity] ? 1 : 0);
 
     // Seed the sync cache from what was just pushed in, so a body does not
     // read as "gameplay moved me" on its very first tick.
@@ -550,14 +550,14 @@ class Box2DPhysicsSystem extends GameSystem
     final density = shape.density[entity];
     final friction = shape.friction[entity];
     final restitution = shape.restitution[entity];
-    final isSensor = shape.isTrigger[entity];
+    final isSensor = shape.isTrigger[entity] ? 1 : 0;
 
     // goo2d stores `layer` as a bit index and `excludeLayers` as a mask of
     // layers to ignore; Box2D wants a category bit and a mask of categories
     // to accept. A disabled body is expressed as a zero mask, since Box2D v3
     // has no per-shape enable flag.
     final category = 1 << shape.layer[entity];
-    final mask = shape.enable[entity] == 0 ? 0 : ~shape.excludeLayers[entity];
+    final mask = shape.enable[entity] ? ~shape.excludeLayers[entity] : 0;
 
     final offsetX = shape.offsetX[entity];
     final offsetY = shape.offsetY[entity];

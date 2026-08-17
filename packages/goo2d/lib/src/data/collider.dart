@@ -11,10 +11,10 @@ import 'package:meta/meta.dart';
 /// narrow-phase dispatch in Phase 2 physics) is exhaustiveness-checked by
 /// the compiler.
 ///
-/// `enable`/`isTrigger` are `DataPointer<int>` (0/1), not `DataPointer<bool>`
-/// - this engine has no boolean field kind (see `Renderable2D.renderVisible`
-/// for the same convention already in use), so booleans are represented as
-/// a `uint1` throughout.
+/// `enable`/`isTrigger` are `DataPointer<bool>`, stored as a `uint1` - see
+/// `DataDescriptor.hasBool`. They were `DataPointer<int>` written 1/0 until
+/// the engine grew a `bool` view over that same bit; the storage is
+/// unchanged, only the spelling at the call site.
 sealed class ColliderBody {
   ColliderBody({
     required this.offsetX,
@@ -62,11 +62,11 @@ sealed class ColliderBody {
   /// still readable/writable) but should be skipped by anything that walks
   /// colliders looking for hits - the same "exists but inert" shape
   /// `Renderable2D.renderVisible` already uses for sprites.
-  final DataPointer<int> enable;
+  final DataPointer<bool> enable;
 
   /// `0`/`1`. No physical response when set - only enter/exit/stay events,
   /// same body shape either way.
-  final DataPointer<int> isTrigger;
+  final DataPointer<bool> isTrigger;
 
   /// Bit index into a layer mask - which layer this body belongs to.
   final DataPointer<int> layer;
@@ -309,8 +309,8 @@ class ColliderDescriptor {
     final body = CircleBody(
       offsetX: _data.hasFloat64(offsetX),
       offsetY: _data.hasFloat64(offsetY),
-      enable: _data.hasUint1(enable ? 1 : 0),
-      isTrigger: _data.hasUint1(isTrigger ? 1 : 0),
+      enable: _data.hasBool(enable),
+      isTrigger: _data.hasBool(isTrigger),
       layer: _data.hasInt32(layer),
       excludeLayers: _data.hasInt32(excludeLayers),
       density: _data.hasFloat64(density),
@@ -338,8 +338,8 @@ class ColliderDescriptor {
     final body = BoxBody(
       offsetX: _data.hasFloat64(offsetX),
       offsetY: _data.hasFloat64(offsetY),
-      enable: _data.hasUint1(enable ? 1 : 0),
-      isTrigger: _data.hasUint1(isTrigger ? 1 : 0),
+      enable: _data.hasBool(enable),
+      isTrigger: _data.hasBool(isTrigger),
       layer: _data.hasInt32(layer),
       excludeLayers: _data.hasInt32(excludeLayers),
       density: _data.hasFloat64(density),
@@ -368,8 +368,8 @@ class ColliderDescriptor {
     final body = CapsuleBody(
       offsetX: _data.hasFloat64(offsetX),
       offsetY: _data.hasFloat64(offsetY),
-      enable: _data.hasUint1(enable ? 1 : 0),
-      isTrigger: _data.hasUint1(isTrigger ? 1 : 0),
+      enable: _data.hasBool(enable),
+      isTrigger: _data.hasBool(isTrigger),
       layer: _data.hasInt32(layer),
       excludeLayers: _data.hasInt32(excludeLayers),
       density: _data.hasFloat64(density),
@@ -401,8 +401,8 @@ class ColliderDescriptor {
     final body = PolygonBody(
       offsetX: _data.hasFloat64(offsetX),
       offsetY: _data.hasFloat64(offsetY),
-      enable: _data.hasUint1(enable ? 1 : 0),
-      isTrigger: _data.hasUint1(isTrigger ? 1 : 0),
+      enable: _data.hasBool(enable),
+      isTrigger: _data.hasBool(isTrigger),
       layer: _data.hasInt32(layer),
       excludeLayers: _data.hasInt32(excludeLayers),
       density: _data.hasFloat64(density),

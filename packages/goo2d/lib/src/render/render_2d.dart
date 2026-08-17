@@ -400,7 +400,7 @@ class Sprite {
   /// transparent one. `DataPointer<int>` and not `DataPointer<bool>` because
   /// this engine has no boolean field kind; a `uint1` is the standing
   /// convention (see `ColliderBody.enable`).
-  final DataPointer<int> visible;
+  final DataPointer<bool> visible;
 
   /// Where the transform origin sits *within this sprite's own bounds*,
   /// resolved against `(width, height)` as `fraction * size + offset`.
@@ -516,7 +516,7 @@ class SpriteDescriptor {
       width: _data.hasFloat64(width),
       height: _data.hasFloat64(height),
       zIndex: _data.hasInt32(zIndex),
-      visible: _data.hasUint1(visible ? 1 : 0),
+      visible: _data.hasBool(visible),
       pivotFractionX: _data.hasFloat64(pivot.fractionX),
       pivotFractionY: _data.hasFloat64(pivot.fractionY),
       pivotOffsetX: _data.hasFloat64(pivot.offsetX),
@@ -1743,7 +1743,7 @@ class GameRenderer2D extends GameSystem
           // not emitted transparent. A transparent quad still costs a record,
           // six vertices and a share of the batch limit, and would still occlude
           // nothing while pretending to be drawn.
-          if (sprite.visible[entity] == 0) continue;
+          if (!sprite.visible[entity]) continue;
           // Read into locals rather than compared in place: the geometry below
           // needs both, and this row is only cheap to touch while the walk is
           // still on it.

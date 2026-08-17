@@ -148,8 +148,8 @@ mixin RigidBody2D on Component {
 
   /// `0`/`1`. This engine has no boolean field kind - see `ColliderBody`'s
   /// own note on the `uint1` convention.
-  late final DataPointer<int> fixedRotation;
-  late final DataPointer<int> isBullet;
+  late final DataPointer<bool> fixedRotation;
+  late final DataPointer<bool> isBullet;
 
   // --- sync cache -----------------------------------------------------------
   //
@@ -204,8 +204,8 @@ mixin RigidBody2D on Component {
     linearDamping = data.hasFloat64(descriptor._linearDamping);
     angularDamping = data.hasFloat64(descriptor._angularDamping);
 
-    fixedRotation = data.hasUint1(descriptor._fixedRotation ? 1 : 0);
-    isBullet = data.hasUint1(descriptor._isBullet ? 1 : 0);
+    fixedRotation = data.hasBool(descriptor._fixedRotation);
+    isBullet = data.hasBool(descriptor._isBullet);
 
     // NaN so the very first comparison always reports "changed" - NaN never
     // equals anything, including itself. The same trick, for the same

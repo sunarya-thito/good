@@ -325,7 +325,7 @@ void main() {
       expect(run.state.getSystem<MousePickingSystem>().hovered, button);
 
       scene.pool.beginTick();
-      scene.button.hitArea.enable[button] = 0;
+      scene.button.hitArea.enable[button] = false;
       scene.pool.commitTick();
       _step(game);
 
@@ -410,7 +410,7 @@ void main() {
       // Hide the panel's only sprite: it now draws nothing, so it has no
       // visible depth to win with.
       scene.pool.beginTick();
-      scene.panel.sprite.visible[panel] = 0;
+      scene.panel.sprite.visible[panel] = false;
       scene.pool.commitTick();
       _step(game);
 

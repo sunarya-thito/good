@@ -156,10 +156,10 @@ void main() {
       expect(scene.player.box.halfWidth[player], 16);
       expect(scene.player.box.halfHeight[player], 24);
       expect(scene.player.hurtbox.radius[player], 20);
-      expect(scene.player.hurtbox.isTrigger[player], 0);
+      expect(scene.player.hurtbox.isTrigger[player], false);
       expect(scene.player.pickupRange.radius[player], 48);
-      expect(scene.player.pickupRange.isTrigger[player], 1);
-      expect(scene.player.box.enable[player], 1, reason: 'enable defaults to true (1)');
+      expect(scene.player.pickupRange.isTrigger[player], true);
+      expect(scene.player.box.enable[player], true, reason: 'enable defaults to true (1)');
     });
 
     test('each declared body has independent, non-aliasing storage', () {
@@ -169,13 +169,13 @@ void main() {
       scene.pool.commitTick();
 
       scene.pool.beginTick();
-      scene.player.box.enable[player] = 0;
+      scene.player.box.enable[player] = false;
       scene.pool.commitTick();
 
       // Disabling box must not disturb hurtbox/pickupRange's own enable bit.
-      expect(scene.player.box.enable[player], 0);
-      expect(scene.player.hurtbox.enable[player], 1);
-      expect(scene.player.pickupRange.enable[player], 1);
+      expect(scene.player.box.enable[player], false);
+      expect(scene.player.hurtbox.enable[player], true);
+      expect(scene.player.pickupRange.enable[player], true);
     });
 
     test('different prefabs are genuinely different archetypes with independent layouts', () {
@@ -422,7 +422,7 @@ void main() {
       scene.pool.commitTick();
 
       scene.pool.beginTick();
-      scene.player.hurtbox.enable[player] = 0;
+      scene.player.hurtbox.enable[player] = false;
       scene.pool.commitTick();
 
       expect(scene.player.hurtbox.containsLocalPoint(player, 0, 0), isTrue,

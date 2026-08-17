@@ -588,7 +588,7 @@ void main() {
         final scene = run.state.getScene<_SpriteScene>();
         final entity = scene.addEntity(scene.sprite);
         final quad = scene.sprite.quad;
-        expect(quad.visible[entity], 1);
+        expect(quad.visible[entity], true);
         expect(quad.width[entity], 0);
         expect(quad.height[entity], 0);
         expect(quad.color[entity], 0xFFFFFFFF);
@@ -728,7 +728,7 @@ void main() {
         scene.addEntity(scene.sprite); // unsized - skipped
         final hidden = scene.addEntity(scene.sprite);
         _size(scene.sprite, hidden, 10, 10);
-        scene.sprite.quad.visible[hidden] = 0;
+        scene.sprite.quad.visible[hidden] = false;
         scene.addEntity(scene.invisible); // no Renderable2D at all
 
         run.state.advance(_step);
@@ -1081,7 +1081,7 @@ void main() {
       expect(hat.height[entity], 2);
       expect(hat.color[entity], 0xFF222222);
       expect(hat.zIndex[entity], 5);
-      expect(hat.visible[entity], 1);
+      expect(hat.visible[entity], true);
       expect(hat.pivotFractionX[entity], 0.5);
       expect(
         hat.pivotOffsetY[entity],
@@ -1178,7 +1178,7 @@ void main() {
         // tick, where that is not yet a concern.
         final pool = run.state.scene!.pool;
         pool.beginTick();
-        scene.halfHidden.shown.visible[entity] = 0;
+        scene.halfHidden.shown.visible[entity] = false;
         pool.commitTick();
 
         run.state.advance(_step);

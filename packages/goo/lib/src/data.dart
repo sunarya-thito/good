@@ -13,6 +13,19 @@ abstract class DataBinding<T> {
 }
 
 abstract class DataDescriptor {
+  /// A boolean flag - one bit on the row, same storage as [hasUint1].
+  ///
+  /// This engine stored booleans as `uint1` written `1`/`0` for a long time,
+  /// on the reasoning that there was no boolean field *kind*. There still
+  /// isn't, and there does not need to be: a `bool` field is a `uint1` with a
+  /// type on it, exactly as `Child.parent` is an `optInt64` with `Entity` on
+  /// it. The storage, the width and the cost are identical; only the spelling
+  /// at the call site changes, from `enable[e] = 1` to `enable[e] = true`.
+  ///
+  /// Prefer this over `hasUint1` for anything that is genuinely a flag. Keep
+  /// `hasUint1` for a one-bit *number* - a two-state enum, a packed counter.
+  DataPointer<bool> hasBool([bool defaultValue = false]);
+
   DataPointer<int> hasUint1([int defaultValue = 0]);
   DataPointer<int> hasInt1([int defaultValue = 0]);
   DataPointer<int> hasUint2([int defaultValue = 0]);

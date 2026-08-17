@@ -134,6 +134,34 @@ abstract base class _Field<T> extends DataPointer<T> implements ArchetypeField {
   int _read(Entity entity) => _readRow(_storage, entity);
 }
 
+/// A `bool` view over a one-bit field.
+///
+/// Delegation rather than a new `_Field` subclass, and that is deliberate: the
+/// bit-packing, the default handling and the row resolution are already right
+/// in the `uint1` field this wraps, and a parallel implementation would be a
+/// second copy of them to keep in step (RULES.md rule 10). `_EntityField` in
+/// `data/hierarchy.dart` wraps `optInt64` the same way for the same reason.
+///
+/// The wrapper is not free at the call site the way a raw field is - it adds
+/// one virtual call and a compare per access - but it is only ever used for
+/// flags, which are read once per entity per tick at most, never in the
+/// per-field inner loops the `int` accessors were tuned for.
+class _BoolField extends DataPointer<bool> {
+  const _BoolField(this._raw);
+
+  final DataPointer<int> _raw;
+
+  @override
+  bool operator [](Entity entity) => _raw[entity] != 0;
+
+  @override
+  void operator []=(Entity entity, bool newValue) =>
+      _raw[entity] = newValue ? 1 : 0;
+
+  @override
+  bool readPending(Entity entity) => _raw.readPending(entity) != 0;
+}
+
 // --- sub-byte fields ---------------------------------------------------
 //
 // 1/2/4-bit fields never span a byte (see ArchetypeStorage.declareField),
@@ -1129,6 +1157,10 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     _storage.registerField(field);
     return field;
   }
+
+  @override
+  DataPointer<bool> hasBool([bool defaultValue = false]) =>
+      _BoolField(_has(1, false, defaultValue ? 1 : 0));
 
   @override
   DataPointer<int> hasUint1([int defaultValue = 0]) =>

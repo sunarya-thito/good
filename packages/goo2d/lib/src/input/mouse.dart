@@ -251,7 +251,7 @@ class MousePickingSystem extends GameSystem with FixedTickable {
       // tick is a heap object (RULES.md rules 1 and 5).
       for (var i = 0; i < bodies.length; i++) {
         final body = bodies[i];
-        if (body.enable[entity] == 0) continue;
+        if (!body.enable[entity]) continue;
         if (body.containsLocalPoint(entity, localX, localY)) {
           hit = true;
           break;
@@ -284,7 +284,7 @@ class MousePickingSystem extends GameSystem with FixedTickable {
     var z = 0;
     for (var i = 0; i < sprites.length; i++) {
       final sprite = sprites[i];
-      if (sprite.visible[entity] == 0) continue;
+      if (!sprite.visible[entity]) continue;
       final own = sprite.zIndex[entity];
       if (own > z) z = own;
     }
