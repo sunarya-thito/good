@@ -9,15 +9,26 @@ import 'package:goo2d/goo2d.dart';
 /// bundled PNG takes, so a sprite here samples an actual texture and the
 /// numbers mean what they would with art. Generated rather than shipped purely
 /// so the example has no binary asset in the repo; swap in
-/// `TextureAsset.bundle('assets/whatever.png')` and nothing else changes.
+/// `TextureKey(BundleSource('assets/whatever.png'))` and nothing else changes.
 ///
 /// `dart:ui` is the one piece of Flutter a `demo/` file is allowed to touch,
 /// and only here: producing an image is not widget boilerplate, and hiding it
 /// in the harness would separate a texture from the case that samples it.
-class _Disc extends GameAssetSource {
+class _Disc extends AssetSource {
   const _Disc(this.size);
 
   final int size;
+
+  @override
+  Future<AssetAvailability> check() async => AssetAvailability.present;
+
+  // Value equality, which half of an asset's identity is made of: two `_Disc`s
+  // of one size are one texture, one address and one decode.
+  @override
+  bool operator ==(Object other) => other is _Disc && other.size == size;
+
+  @override
+  int get hashCode => Object.hash(_Disc, size);
 
   @override
   Future<Uint8List> load() async {
@@ -54,6 +65,10 @@ class _Disc extends GameAssetSource {
 ///
 /// **One key, shared by every sprite that wants it** - so a whole field is one
 /// texture and the renderer emits a single `drawVertices` run for all of them.
-/// Two keys naming the same image would be two addresses, two decodes and two
-/// runs, which is the thing to avoid and the reason this is a top-level final.
-final discTexture = TextureAsset(const _Disc(64));
+///
+/// Sharing the constant is style rather than necessity now: identity is
+/// `(payload type, source)`, so a second `TextureKey(_Disc(64))` written
+/// somewhere else is the *same* asset - one address, one decode, one run. It
+/// used to be a requirement, because keys were identity-compared and two of
+/// them naming one image were two of everything.
+const discTexture = TextureKey(_Disc(64));

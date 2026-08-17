@@ -155,7 +155,7 @@ class _GameViewState extends State<GameView> {
       // views of different sizes on screen.
       device.setViewSize(camera.viewportWidth, camera.viewportHeight);
     }
-    device.handlePointerEvent(event, viewAddress: camera?.address ?? -1);
+    device.handlePointerEvent(event, viewAddress: camera?.pack() ?? -1);
   }
 
   void _requireRunning() {

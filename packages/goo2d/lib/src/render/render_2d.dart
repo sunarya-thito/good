@@ -128,6 +128,7 @@ class NineSliceBorder {
 class Sprite {
   Sprite({
     required this.texture,
+    required this.filter,
     required this.color,
     required this.width,
     required this.height,
@@ -155,10 +156,23 @@ class Sprite {
   /// of what the pipeline draws today, and a null here is one branch rather
   /// than an asset every game is forced to declare.
   ///
-  /// Stored as the asset's registry address (`optObject`), which is the same
+  /// Stored as the asset's address (`optPacked`), which is the same
   /// integer on both isolates - see `Texture`'s own doc on why the game
   /// isolate holds an addressed-but-never-decoded copy.
-  final DataPointer<Texture?> texture;
+  final DataPointer<TextureAsset?> texture;
+
+  /// How this sprite samples [texture] - a [TextureFilter] index.
+  ///
+  /// Per sprite, not per texture, and not per game. It used to be declared on
+  /// the texture key, which made sampling part of an asset's *identity*: a
+  /// build step that repacked an image would have been rewriting it, and one
+  /// image could not be drawn crisply in one place and smoothly in another.
+  /// This is strictly wider - a game can still give every sprite sharing an
+  /// image the same filter.
+  ///
+  /// Two bits, because there are three [TextureFilter] values and a row pays
+  /// for every one of them per entity.
+  final DataPointer<int> filter;
 
   /// Packed ARGB, the same encoding `Color.value` and `Vertices.raw`'s colour
   /// list use. A plain `uint32` rather than a `Color` object for the obvious
@@ -261,7 +275,7 @@ class SpriteDescriptor {
   /// `Renderable2D.describeStruct` rather than assumed, because an object
   /// field's address only means anything against the table that issued it -
   /// there is no shared registry to fall back on.
-  final ObjectTable _assets;
+  final IntRepresentation<TextureAsset> _assets;
   final List<Sprite> _sprites;
 
   /// Declares one sprite and returns the handle to keep in a field
@@ -274,7 +288,8 @@ class SpriteDescriptor {
   /// the declare-time `describeStruct` pass, so the value objects never touch
   /// a hot path.
   Sprite has({
-    Texture? texture,
+    TextureAsset? texture,
+    TextureFilter filter = TextureFilter.mipmap,
     int color = 0xFFFFFFFF,
     double width = 0,
     double height = 0,
@@ -285,7 +300,8 @@ class SpriteDescriptor {
     NineSliceBorder nineSliceBorder = NineSliceBorder.none,
   }) {
     final sprite = Sprite(
-      texture: _data.optObject<Texture>(_assets, texture),
+      texture: _data.optPacked(_assets, texture),
+      filter: _data.hasUint2(filter.index),
       color: _data.hasUint32(color),
       width: _data.hasFloat64(width),
       height: _data.hasFloat64(height),
@@ -405,7 +421,11 @@ mixin Renderable2D on MultiComponent {
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
     describeSprites(
-      SpriteDescriptor._(data, getScene<SceneStruct>().assets, sprites),
+      SpriteDescriptor._(
+        data,
+        getScene<SceneStruct>().assets.of<Texture>(),
+        sprites,
+      ),
     );
   }
 }
@@ -466,8 +486,9 @@ final class _SpriteDrawQueue {
   static const int _cornerStride = 8;
 
   /// Ints per queued sprite in [_colorAddress]: packed ARGB, then the texture
-  /// address. Kept adjacent so the write pass reads both in one access.
-  static const int _colorStride = 2;
+  /// address, then the texture filter. Kept adjacent so the write pass reads
+  /// all three in one access.
+  static const int _colorStride = 3;
 
   List<Entity> _entities;
   List<Sprite?> _sprites;
@@ -613,6 +634,7 @@ final class _SpriteDrawQueue {
     double y3,
     int color,
     int textureAddress,
+    int filter,
   ) {
     final c = slot * _cornerStride;
     final corners = _corners;
@@ -627,6 +649,7 @@ final class _SpriteDrawQueue {
     final k = slot * _colorStride;
     _colorAddress[k] = color;
     _colorAddress[k + 1] = textureAddress;
+    _colorAddress[k + 2] = filter;
   }
 
   /// Writes the [i]th pair *in draw order* as one quad record, returning the
@@ -658,6 +681,7 @@ final class _SpriteDrawQueue {
       q[c + 7],
       _colorAddress[k],
       textureAddress: _colorAddress[k + 1],
+      filter: _colorAddress[k + 2],
     );
   }
 
@@ -954,12 +978,6 @@ class GameRenderer2D extends GameSystem
   @override
   int compareTo(GameSystem other) => other is WorldTransformSystem ? 1 : 0;
 
-  @override
-  void onMounted() {
-    super.onMounted();
-    EnumLocalAsset.registerParser<Texture>((path) => TextureAsset.bundle(path));
-  }
-
   /// The [Renderer2D] half of this game - where the frame buffers live.
   ///
   /// A `GameSystem` runs wholly on the game isolate and declares no shared
@@ -1200,7 +1218,7 @@ class GameRenderer2D extends GameSystem
     int offset,
     Entity entity,
     Sprite sprite,
-    Texture texture,
+    TextureAsset texture,
     double width,
     double height,
     double pivotX,
@@ -1213,6 +1231,7 @@ class GameRenderer2D extends GameSystem
     double ty,
     int color,
     int address,
+    int filter,
   ) {
     var left = sprite.borderLeft[entity];
     var right = sprite.borderRight[entity];
@@ -1252,8 +1271,9 @@ class GameRenderer2D extends GameSystem
     // `Texture.sourceWidth`). Note these use the sprite's original insets, not
     // the fitted ones above: squeezing the destination must not re-slice the
     // source.
-    final sw = texture.sourceWidth.toDouble();
-    final sh = texture.sourceHeight.toDouble();
+    final info = texture.info as TextureInfo;
+    final sw = info.width.toDouble();
+    final sh = info.height.toDouble();
     final u = _u;
     final v = _v;
     u[0] = 0;
@@ -1294,6 +1314,7 @@ class GameRenderer2D extends GameSystem
           ty + sy0 + cy1, // (left,  bottom)
           color,
           textureAddress: address,
+          filter: filter,
           u0: u[col],
           v0: v[row],
           u1: u[col + 1],
@@ -1316,7 +1337,7 @@ class GameRenderer2D extends GameSystem
       return false;
     }
     final texture = sprite.texture[entity];
-    return texture != null && texture.hasSourceSize;
+    return texture != null && texture.info is TextureInfo;
   }
 
   @override
@@ -1568,7 +1589,8 @@ class GameRenderer2D extends GameSystem
             tx + ax0 - bx1,
             ty + ay0 + by1, // (left,  bottom)
             sprite.color[entity],
-            texture == null ? DrawSpriteData2D.noTexture : texture.address,
+            texture == null ? DrawSpriteData2D.noTexture : texture.pack(),
+            sprite.filter[entity],
           );
         }
       }
@@ -1650,7 +1672,8 @@ class GameRenderer2D extends GameSystem
         tx,
         ty,
         sprite.color[entity],
-        texture.address,
+        texture.pack(),
+        sprite.filter[entity],
       );
     }
 

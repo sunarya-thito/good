@@ -23,29 +23,36 @@ late Game run;
 // are not reloaded" - a reload that happened to produce the same payload
 // would pass an assertion about final state and fail this one.
 
-/// The mutable half of an asset fixture, kept in a separate object because
-/// `GameAsset`/`GameAssetSource` are `@immutable` - correctly, since a key is
-/// a map key and a description of where bytes live, not a place to keep
-/// state. A `final` field holding a mutable counter satisfies that and still
-/// lets the tests below assert on decode counts.
+/// The mutable half of an asset fixture, kept out of the key because
+/// `AssetKey`/`AssetSource` are `@immutable` - correctly, since a key is an
+/// identity and a description of where bytes live, not a place to keep state.
+///
+/// Keyed by source **name**, not held per key object, and that is forced by
+/// the design under test: an asset's identity is `(payload type, source)`, so
+/// two separately-constructed `_FakeAsset('x')` *are* one asset. A counter
+/// living on the key instance would then be split across two objects for one
+/// asset, and every decode assertion would read whichever half the test
+/// happened to keep.
 class _Counts {
+  static final Map<String, _Counts> _byName = <String, _Counts>{};
+
+  static _Counts of(String name) =>
+      _byName.putIfAbsent(name, () => _Counts());
+
+  static void resetAll() => _byName.clear();
+
   int reads = 0;
   int decodes = 0;
-
-  /// Instances handed out by `createInstance` - one per declaration. A second
-  /// entry means a key was declared twice, which is exactly the bug
-  /// `AssetDescriptor.has`'s idempotence exists to prevent.
-  final List<_FakeInstance> created = <_FakeInstance>[];
 }
 
 /// Bytes from nowhere, with a read counter.
-class _FakeSource extends GameAssetSource {
-  _FakeSource(this.name, this.byteCount, this.counts);
+class _FakeSource extends AssetSource {
+  const _FakeSource(this.name, this.byteCount);
 
   final String name;
   final int byteCount;
-  final _Counts counts;
 
+  _Counts get counts => _Counts.of(name);
   int get reads => counts.reads;
 
   @override
@@ -55,60 +62,75 @@ class _FakeSource extends GameAssetSource {
   }
 
   @override
+  Future<AssetAvailability> check() async => AssetAvailability.present;
+
+  @override
   String get description => name;
+
+  // Value equality, which `AssetSource`'s doc requires and which the whole
+  // identity scheme rests on.
+  @override
+  bool operator ==(Object other) =>
+      other is _FakeSource &&
+      other.name == name &&
+      other.byteCount == byteCount;
+
+  @override
+  int get hashCode => Object.hash(_FakeSource, name, byteCount);
 }
 
-class _FakeInstance extends GameAssetInstance {
-  int? _byteCount;
+/// The decoded payload. A plain class - it is not the addressed thing any
+/// more, so it has no address, no loaded flag and no base class. `Asset<T>`
+/// carries all of that now, once, for every payload type there will ever be.
+class _FakePayload {
+  _FakePayload(this.byteCount);
+
+  final int byteCount;
   bool disposed = false;
-
-  /// The payload. Guarded exactly the way a real instance's is - see
-  /// `Texture.image` in goo2d.
-  int get byteCount {
-    requireLoaded();
-    return _byteCount!;
-  }
-
-  @override
-  void onUnloaded() {
-    super.onUnloaded();
-    _byteCount = null;
-    disposed = true;
-  }
 }
 
-class _FakeAsset extends GameAsset<_FakeInstance> {
-  _FakeAsset(String name, {int byteCount = 4})
-    : this._(name, byteCount, _Counts());
-
-  _FakeAsset._(String name, int byteCount, this.counts)
-    : source = _FakeSource(name, byteCount, counts);
-
-  @override
-  final _FakeSource source;
-
-  /// Read counts, decode counts and every instance this key produced. The
-  /// assertion "nothing shared was reloaded" is about [_Counts.decodes], not
-  /// about the resulting payload - a reload that happened to produce the same
-  /// payload has to fail these tests.
-  final _Counts counts;
-
-  int get decodes => counts.decodes;
-  List<_FakeInstance> get created => counts.created;
+/// The one loader for [_FakePayload], registered per test.
+///
+/// Everything that used to be a per-key override lives here: there is one of
+/// these for the payload type, not one per asset, which is what leaves the key
+/// as pure data.
+class _FakeLoader extends AssetLoader<_FakePayload> {
+  const _FakeLoader();
 
   @override
-  _FakeInstance createInstance() {
-    final instance = _FakeInstance();
-    counts.created.add(instance);
-    return instance;
-  }
-
-  @override
-  Future<void> loadInto(_FakeInstance instance) async {
-    counts.decodes++;
+  Future<_FakePayload> load(AssetKey<_FakePayload> key) async {
+    final source = key.source as _FakeSource;
+    source.counts.decodes++;
     final bytes = await source.load();
-    instance._byteCount = bytes.length;
+    return _FakePayload(bytes.length);
   }
+
+  @override
+  void unload(_FakePayload value) => value.disposed = true;
+
+  @override
+  AssetInfo describe(_FakePayload value) => _FakeInfo(value.byteCount);
+}
+
+/// What decoding discovered, replicated to copies that cannot decode.
+class _FakeInfo extends AssetInfo {
+  const _FakeInfo(this.byteCount);
+
+  final int byteCount;
+}
+
+/// A key, with the counters the tests assert on reachable from it.
+class _FakeAsset extends AssetKey<_FakePayload> {
+  _FakeAsset(String name, {int byteCount = 4})
+    : super(_FakeSource(name, byteCount));
+
+  @override
+  _FakeSource get source => super.source as _FakeSource;
+
+  /// Decode counts. The assertion "nothing shared was reloaded" is about this,
+  /// not about the resulting payload - a reload that happened to produce the
+  /// same payload has to fail these tests.
+  int get decodes => source.counts.decodes;
 }
 
 /// A prefab that declares [key] and keeps the handle - the shape RULES.md
@@ -117,11 +139,11 @@ class _FakeAsset extends GameAsset<_FakeInstance> {
 class _Prop extends EntityStruct {
   _Prop(this.key);
 
-  final GameAsset<_FakeInstance> key;
+  final _FakeAsset key;
 
   int describeAssetsCalls = 0;
-  late final _FakeInstance texture;
-  late final DataPointer<_FakeInstance> spriteField;
+  late final Asset<_FakePayload> texture;
+  late final DataPointer<Asset<_FakePayload>> spriteField;
 
   @override
   void describeAssets(AssetDescriptor descriptor) {
@@ -135,7 +157,7 @@ class _Prop extends EntityStruct {
     super.describeStruct(data);
     // The payoff of running describeAssets before describeStruct: the handle
     // is already addressed, so it can be this archetype's default row value.
-    spriteField = data.hasObject(assets, texture);
+    spriteField = data.hasPacked(assets.of<_FakePayload>(), texture);
   }
 }
 
@@ -157,10 +179,10 @@ class _PropScene extends SceneStruct {
   _PropScene(this.prefabs, {this.sceneKey});
 
   final List<_Prop> prefabs;
-  final GameAsset<_FakeInstance>? sceneKey;
+  final _FakeAsset? sceneKey;
 
   int describeAssetsCalls = 0;
-  _FakeInstance? music;
+  Asset<_FakePayload>? music;
 
   @override
   void describeAssets(AssetDescriptor descriptor) {
@@ -185,7 +207,7 @@ MemoryPool _pool() => MemoryPool(pageSize: 4096);
 /// owns one (see `Game.assets`), and a fixture with no `Game` supplies its
 /// own, which is what these tests are. Replaced per test rather than reset,
 /// so there is no shared state between them to forget to clear.
-late GameAssets assets;
+late Assets assets;
 
 /// Brings a scene up with no `Game` at all - `initializeScene` is public for
 /// exactly this, and nothing in the asset pass needs a boot.
@@ -197,7 +219,11 @@ _PropScene _bringUp(_PropScene scene) {
 }
 
 void main() {
-  setUp(() => assets = GameAssets());
+  setUp(() {
+    assets = Assets();
+    _Counts.resetAll();
+    AssetLoaders.register<_FakePayload>(const _FakeLoader());
+  });
 
   tearDown(() {
     assets.reset();
@@ -242,7 +268,7 @@ void main() {
       );
 
       expect(
-        scene.music!.address < scene.prefabs.first.texture.address,
+        scene.music!.pack() < scene.prefabs.first.texture.pack(),
         isTrue,
         reason:
             'addresses are handed out in declaration order, and the order '
@@ -266,21 +292,21 @@ void main() {
       );
     });
 
-    test('the returned handle is an instance, and the key is not', () {
+    test('the returned handle is addressable, and the key is not', () {
       final key = _FakeAsset('typed');
       final scene = _bringUp(_PropScene([_Prop(key)]));
       final handle = scene.prefabs.first.texture;
 
       expect(
         handle,
-        isA<GameAssetInstance>(),
+        isA<IntRepresentable>(),
         reason:
-            'only a GameAssetInstance is assignable to an asset-typed '
-            'component field - that is what makes `field[e] = handle` compile',
+            'only an IntRepresentable is assignable to a packed component '
+            'field - that is what makes `field[e] = handle` compile',
       );
       expect(
         key,
-        isNot(isA<GameAssetInstance>()),
+        isNot(isA<IntRepresentable>()),
         reason:
             'and the raw undeclared key is deliberately a different type, '
             'so `field[e] = key` cannot compile - the whole reason every '
@@ -320,13 +346,13 @@ void main() {
             'address, not two - which only holds if has() is idempotent per '
             'key',
       );
-      expect(a.texture.address, b.texture.address);
+      expect(a.texture.pack(), b.texture.pack());
       expect(
-        shared.created.length,
-        1,
+        assets.tryGetAt(a.texture.pack()),
+        same(a.texture),
         reason:
-            'and the second declaration must not even construct a second '
-            'instance, or the first would silently be the orphan',
+            'and the second declaration must not have built a second handle '
+            'over the address, or the first would silently be the orphan',
       );
       expect(
         scene.declaredAssets.length,
@@ -352,20 +378,42 @@ void main() {
       );
     });
 
-    test('two separate keys for the same bytes are two assets', () {
+    test('two separately-constructed keys for one file are one asset', () {
       final a = _Prop(_FakeAsset('same-bytes'));
       final b = _Prop(_FakeAsset('same-bytes'));
-      _bringUp(_PropScene([a, b]));
+      final scene = _bringUp(_PropScene([a, b]));
 
+      // This assertion is inverted from what it used to be, deliberately.
+      // Keys were identity-compared, so two keys naming one file were two
+      // assets, two addresses and two decodes - which was survivable only
+      // because every key was a shared `static final`. It stopped being
+      // survivable once a key became plain enough to write inline at a call
+      // site (`AssetKey<T>(BundleSource('x'))`), where two call sites naming
+      // one file is the normal case rather than a mistake.
       expect(
         identical(a.texture, b.texture),
-        isFalse,
+        isTrue,
         reason:
-            'keys are identity-compared - construct one shared static '
-            'final key when you mean one asset; two keys naming the same file '
-            'are deliberately two assets',
+            'identity is (payload type, source), so two keys naming one file '
+            'are one asset - one address and one decode',
       );
-      expect(a.texture.address, isNot(b.texture.address));
+      expect(a.texture.pack(), b.texture.pack());
+      expect(
+        scene.declaredAssets.length,
+        1,
+        reason: 'and the scene footprint counts it once, not twice',
+      );
+    });
+
+    test('one source decoded as two payload types is two assets', () {
+      // The other half of the identity rule: the *type* is part of it, so a
+      // file read two ways is two assets rather than a collision.
+      final asTexture = assets.declare(_FakeAsset('dual'));
+      final asOther = assets.declare(
+        const AssetKey<_Unrelated>(_FakeSource('dual', 4)),
+      );
+
+      expect(asTexture.pack(), isNot(asOther.pack()));
     });
   });
 
@@ -382,8 +430,8 @@ void main() {
         ], sceneKey: _FakeAsset('music'));
         scene.initializeScene(_pool(), assets: assets);
         final addresses = <int>[
-          scene.music!.address,
-          for (final prefab in scene.prefabs) prefab.texture.address,
+          scene.music!.pack(),
+          for (final prefab in scene.prefabs) prefab.texture.pack(),
         ];
         scene.pool.dispose();
         return addresses;
@@ -409,13 +457,13 @@ void main() {
     test('an unloaded key re-declares to a fresh address, not the old one', () {
       final key = _FakeAsset('recycled');
       final first = assets.declare(key);
-      final firstAddress = first.address;
+      final firstAddress = first.pack();
       assets.unload(key);
       final second = assets.declare(key);
 
       expect(identical(first, second), isFalse);
       expect(
-        second.address,
+        second.pack(),
         isNot(firstAddress),
         reason:
             'GlobalObjectRegistry only ever appends and nulls; recycling '
@@ -431,7 +479,7 @@ void main() {
       final instance = assets.declare(key);
 
       expect(
-        instance.address,
+        instance.pack(),
         isNonNegative,
         reason:
             'the game isolate writes this address into rows without ever '
@@ -439,7 +487,7 @@ void main() {
       );
       expect(instance.isLoaded, isFalse);
       expect(
-        () => instance.byteCount,
+        () => instance.value,
         throwsA(
           isA<StateError>().having(
             (e) => e.message,
@@ -451,6 +499,11 @@ void main() {
             'reading a payload that was never decoded must name the asset '
             'and say it was never loaded - not null-deref three frames deeper',
       );
+      expect(
+        instance.info,
+        isNull,
+        reason: 'and nothing has been discovered about it yet either',
+      );
     });
 
     test('the payload reads normally once loaded', () async {
@@ -459,15 +512,28 @@ void main() {
       await assets.load(key);
 
       expect(instance.isLoaded, isTrue);
-      expect(instance.byteCount, 17);
+      expect(instance.value.byteCount, 17);
+      expect(
+        (instance.info as _FakeInfo).byteCount,
+        17,
+        reason:
+            'what the loader discovered is published alongside the payload, '
+            'so a copy that cannot decode can still be told it',
+      );
     });
 
-    test('address on a hand-built instance throws rather than defaulting', () {
+    test('an address nothing issued throws rather than defaulting', () {
+      // This replaces a test that asserted `_FakeInstance().address` threw.
+      // A hand-built handle is no longer constructible at all - `Asset` has a
+      // private constructor and only `Assets` calls it - so that hazard is
+      // gone by construction rather than guarded at runtime. What remains
+      // worth pinning is the other half of it: an int that never named an
+      // asset must not quietly unpack to asset 0.
       expect(
-        () => _FakeInstance().address,
+        () => assets.of<_FakePayload>().unpack(0),
         throwsStateError,
         reason:
-            'an instance that never went through a describeAssets pass '
+            'an int that never went through a describeAssets pass '
             'has nothing for a DataPointer row to point at, and address 0 is '
             'a legitimate other asset',
       );
@@ -491,7 +557,7 @@ void main() {
       final key = _FakeAsset('concurrent');
       assets.declare(key);
 
-      final results = await Future.wait(<Future<_FakeInstance>>[
+      final results = await Future.wait(<Future<Asset<_FakePayload>>>[
         assets.load(key),
         assets.load(key),
       ]);
@@ -550,20 +616,26 @@ void main() {
         final key = _FakeAsset('doomed');
         final instance = assets.declare(key);
         await assets.load(key);
-        final address = instance.address;
+        final address = instance.pack();
+        // Captured before the unload, which is what drops the handle's
+        // reference to it - the payload object outlives the handle's link to
+        // it precisely so a disposal can be observed.
+        final payload = instance.value;
 
         assets.unload(key);
 
         expect(assets.tryGet(key), isNull);
         expect(
-          instance.disposed,
+          payload.disposed,
           isTrue,
-          reason: 'onUnloaded is where a real instance releases its ui.Image',
+          reason:
+              'AssetLoader.unload is where a real loader releases its '
+              'ui.Image',
         );
         expect(instance.isLoaded, isFalse);
-        expect(assets.tryResolve<_FakeInstance>(address), isNull);
+        expect(assets.of<_FakePayload>().tryUnpack(address), isNull);
         expect(
-          () => assets.resolve<_FakeInstance>(address),
+          () => assets.of<_FakePayload>().unpack(address),
           throwsStateError,
           reason:
               'a row still holding the freed address fails loudly on next '
@@ -580,19 +652,20 @@ void main() {
       final keys = <_FakeAsset>[
         for (var i = 0; i < 5; i++) _FakeAsset('bulk$i'),
       ];
-      final instances = <_FakeInstance>[
+      final instances = <Asset<_FakePayload>>[
         for (final key in keys) assets.declare(key),
       ];
       for (final key in keys) {
         await assets.load(key);
       }
+      final payloads = <_FakePayload>[for (final a in instances) a.value];
 
       assets.unloadAll();
 
       for (var i = 0; i < keys.length; i++) {
         expect(assets.tryGet(keys[i]), isNull);
-        expect(assets.tryResolve(instances[i].address), isNull);
-        expect(instances[i].disposed, isTrue);
+        expect(assets.tryGetAt(instances[i].pack()), isNull);
+        expect(payloads[i].disposed, isTrue);
       }
     });
   });
@@ -600,7 +673,7 @@ void main() {
   group('assets.reset', () {
     test('genuinely clears, so declaring again is a fresh decode', () async {
       final key = _FakeAsset('sticky');
-      assets.declare(key);
+      final first = assets.declare(key);
       await assets.load(key);
       expect(key.decodes, 1);
 
@@ -614,19 +687,19 @@ void main() {
             'process see this one\'s state - the exact order-dependence this '
             'hook exists to remove',
       );
-      assets.declare(key);
+      final second = assets.declare(key);
       await assets.load(key);
       expect(
         key.decodes,
         2,
         reason:
-            'and the re-declared instance really is unloaded, rather than '
+            'and the re-declared handle really is unloaded, rather than '
             'a cached one that reset only pretended to drop',
       );
       expect(
-        key.created.length,
-        2,
-        reason: 'reset drops the instance too, not just the loaded flag',
+        identical(first, second),
+        isFalse,
+        reason: 'reset drops the handle too, not just the loaded flag',
       );
     });
 
@@ -634,26 +707,27 @@ void main() {
       final key = _FakeAsset('native');
       final instance = assets.declare(key);
       await assets.load(key);
+      final payload = instance.value;
 
       assets.reset();
 
-      expect(instance.disposed, isTrue);
+      expect(payload.disposed, isTrue);
     });
   });
 
-  group('GlobalObjectRegistry', () {
+  group('address unpacking', () {
     test(
-      'tryResolve is null for a never-registered or out-of-range address',
+      'tryUnpack is null for a never-declared or out-of-range address',
       () {
-        expect(assets.tryResolve<_FakeInstance>(0), isNull);
-        expect(assets.tryResolve<_FakeInstance>(-1), isNull);
-        expect(assets.tryResolve<_FakeInstance>(999), isNull);
+        expect(assets.of<_FakePayload>().tryUnpack(0), isNull);
+        expect(assets.of<_FakePayload>().tryUnpack(-1), isNull);
+        expect(assets.of<_FakePayload>().tryUnpack(999), isNull);
       },
     );
 
-    test('tryResolve is null for the wrong type at a valid address', () {
+    test('tryUnpack is null for the wrong type at a valid address', () {
       final instance = assets.declare(_FakeAsset('typed'));
-      expect(assets.tryResolve<_Unrelated>(instance.address), isNull);
+      expect(assets.of<_Unrelated>().tryUnpack(instance.pack()), isNull);
     });
   });
 
@@ -876,7 +950,7 @@ void main() {
   });
 }
 
-class _Unrelated extends GameAssetInstance {}
+class _Unrelated {}
 
 class _BareScene extends SceneStruct {
   /// This fixture's loaded handle. Entity creation lives on `Scene` now (one

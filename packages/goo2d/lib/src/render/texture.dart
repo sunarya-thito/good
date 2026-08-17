@@ -1,269 +1,139 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flutter/painting.dart' show FilterQuality;
-import 'package:flutter/services.dart' show AssetBundle, rootBundle;
 import 'package:goo/goo.dart';
 
-/// A decoded image, ready to draw - the concrete [GameAssetInstance] a
-/// `DataPointer<Texture>` component field points at.
+/// A decoded image, ready to draw.
 ///
-/// Named `Texture`, not `GameTexture`: the `Game` prefix belongs to the
-/// generic base types a user implements against ([GameAsset],
-/// [GameAssetInstance], [GameAssetSource]), and concrete instance types drop
-/// it.
+/// **A payload, not a handle.** This is the `T` in `Asset<T>`, so it carries no
+/// address, no loaded flag and no base class - `Asset` carries all of that,
+/// once, for every payload type there will ever be. What is left here is the
+/// thing the old class could never quite be: a plain wrapper whose only job is
+/// keeping `dart:ui` out of the engine's signatures.
 ///
-/// # It is normal for this to hold no image
-///
-/// A `Texture` is *declared* (and therefore addressed - see [GameAssets]) on
-/// both isolate copies, but only decoded on the one with Flutter attached.
-/// The game isolate's copy holds the address and nothing else, forever, and
-/// that is exactly what it needs: it writes the address into component rows
-/// and never draws. Reading [image] there throws by name rather than
-/// null-dereferencing.
-class Texture extends GameAssetInstance {
-  /// [sourceWidth]/[sourceHeight] are the *declared* pixel dimensions - see
-  /// their doc. Both default to zero, meaning "not declared", which is the
-  /// right answer for every texture nothing nine-slices.
-  Texture({
-    this.sourceWidth = 0,
-    this.sourceHeight = 0,
-    this.filterQuality = FilterQuality.medium,
-  });
+/// Named `Texture`, not `GameTexture`: concrete payload types drop the prefix.
+/// Name the *handle* in a field - see [TextureAsset].
+class Texture {
+  Texture(this._image);
 
-  /// How this texture is sampled when the sprite drawing it is not the same
-  /// size as the image.
-  ///
-  /// **Per texture, not per game**, because a game legitimately mixes the two:
-  /// crisp pixel-art sprites next to a smooth background, and a single global
-  /// setting would make one of them wrong.
-  ///
-  /// `medium` by default - mipmapped, so minifying a 64px image into a 12px
-  /// sprite averages the texels it is skipping instead of picking one. Nearest
-  /// sampling there does not look "retro", it looks broken: the pixels chosen
-  /// change as the sprite moves, so the whole thing shimmers.
-  ///
-  /// Use [FilterQuality.none] for deliberate pixel art, where picking one texel
-  /// is the entire point - and pair it with an integer sprite size, or it will
-  /// shimmer for the same reason.
-  final FilterQuality filterQuality;
+  final ui.Image _image;
 
-  ui.Image? _image;
-
-  /// The image's pixel dimensions **as declared**, readable on every isolate
-  /// without decoding anything - `0` when the declaration did not state them.
+  /// Pixel dimensions of the decoded image.
   ///
-  /// # Why this exists alongside [width]/[height]
-  ///
-  /// [width] and [height] report the *decoded* image's size, so they go
-  /// through [image] and therefore through `requireLoaded()`. That makes them
-  /// permanently unreadable on the game isolate (see the class doc), and the
-  /// game isolate is exactly where `GameRenderer2D` runs.
-  ///
-  /// Nine-slicing needs a pixel size *there*: the border insets are in source
-  /// pixels, so splitting the UV square at them means dividing by the image's
-  /// width and height, and that division happens in the producer. There is no
-  /// way to satisfy that from a decoded image - the producer has none, and
-  /// giving it one would mean decoding on an isolate with no Flutter engine.
-  ///
-  /// So the size is *declared* instead of discovered. Both isolate copies run
-  /// the same `describeAssets` pass over the same [TextureAsset], so both end
-  /// up holding the same two integers, from declaration, with no decode and no
-  /// cross-isolate message. [TextureAsset.loadInto] then checks the
-  /// declaration against the real decode on the isolate that can, so a wrong
-  /// number is a loud load-time failure rather than a subtly mis-sliced panel.
-  ///
-  /// Zero means undeclared, and a nine-sliced sprite whose texture is
-  /// undeclared falls back to a single quad - see `GameRenderer2D`.
-  final int sourceWidth;
-  final int sourceHeight;
+  /// These used to be *declared* on the key (`TextureAsset.pixelWidth`) and
+  /// checked against the decode with an `assert`, because the game isolate
+  /// nine-slices with them and could not decode to find out. They are
+  /// discovered here now and published to that isolate via [TextureInfo], so
+  /// there is no declaration left to be wrong.
+  int get width => _image.width;
+  int get height => _image.height;
 
-  /// Whether both [sourceWidth] and [sourceHeight] were declared, i.e. whether
-  /// this texture can be nine-sliced. One named question rather than the same
-  /// two comparisons at each call site.
-  bool get hasSourceSize => sourceWidth > 0 && sourceHeight > 0;
+  /// The decoded image. Only reachable through `Asset.value`, which already
+  /// refused on a copy that never loaded - so there is no per-payload
+  /// `requireLoaded` guard to write any more.
+  ui.Image get image => _image;
 
-  /// The decoded image.
-  ///
-  /// Throws on a copy that never loaded this asset - see the class doc; that
-  /// includes the game isolate always, and the main isolate before
-  /// `GameState.loadScene` (or an explicit `GameAssets.load`) has finished
-  /// with it.
-  ui.Image get image {
-    requireLoaded();
-    return _image!;
-  }
-
-  /// Pixel width of [image], with the same loaded requirement.
-  int get width => image.width;
-
-  /// Pixel height of [image], with the same loaded requirement.
-  int get height => image.height;
-
-  @override
-  void onUnloaded() {
-    super.onUnloaded();
-    // A `ui.Image` holds engine-side memory that the Dart GC does not
-    // account for, so dropping the reference is not enough - unloading a
-    // texture has to actually give the pixels back.
-    _image?.dispose();
-    _image = null;
-  }
+  /// Releases the engine-side pixels. Called by [TextureLoader.unload]; a
+  /// `ui.Image` holds memory the Dart GC does not account for, so dropping the
+  /// reference is not enough.
+  void dispose() => _image.dispose();
 }
 
-/// The [GameAsset] key for a [Texture]: names where the encoded bytes live
-/// and knows how to turn them into a `ui.Image`.
+/// The handle a component field points at. `Asset<Texture>`, spelled so that
+/// `DataPointer<TextureAsset>` reads as intended.
+typedef TextureAsset = Asset<Texture>;
+
+/// A texture's identity: where its bytes come from, and nothing else.
 ///
-/// Declare one per texture, once, and share it - a key is identity-compared,
-/// so two keys naming one file are two textures, two addresses and two
-/// decodes (see [GameAssets]):
+/// Nothing about the image's shape or how a sprite samples it lives here -
+/// the pixel size is discovered at load ([TextureInfo]) and the filter is a
+/// property of the sprite. Both used to be on this key, and a build pipeline
+/// that repacked or recompressed an asset would have been rewriting its
+/// identity.
 ///
 /// ```dart
-/// class Player extends EntityStruct {
-///   static final playerTexture = TextureAsset.bundle('assets/player.png');
-///
-///   late final Texture texture;
-///
-///   @override
-///   void describeAssets(AssetDescriptor descriptor) {
-///     super.describeAssets(descriptor);
-///     texture = descriptor.has(playerTexture);
-///   }
-/// }
+/// static const playerTexture = TextureKey(BundleSource('player.png'));
 /// ```
-class TextureAsset extends GameAsset<Texture> {
-  TextureAsset(
-    this.source, {
-    this.pixelWidth = 0,
-    this.pixelHeight = 0,
-    this.filterQuality = FilterQuality.medium,
-  });
+typedef TextureKey = AssetKey<Texture>;
 
-  /// The common case: an image packed into the Flutter asset bundle, named
-  /// by the same path the pubspec declares it under.
-  TextureAsset.bundle(
-    String path, {
-    AssetBundle? bundle,
-    this.pixelWidth = 0,
-    this.pixelHeight = 0,
-    this.filterQuality = FilterQuality.medium,
-  }) : source = AssetBundleSource(path, bundle: bundle);
+/// How a sprite samples the texture it draws.
+///
+/// **A property of the sprite, not of the texture.** It used to be declared on
+/// the texture key, which made it part of an asset's identity - so a build
+/// pipeline that repacked an image would have been rewriting it, and one
+/// texture could not be drawn crisply in one place and smoothly in another.
+/// Per sprite is strictly wider: a game can still give every sprite sharing an
+/// image the same filter, and can now also mix them.
+///
+/// goo2d's own enum rather than `dart:ui`'s `FilterQuality`, so the engine's
+/// signatures and its component rows stay clear of third-party types - the row
+/// stores this index, and only `DrawCanvas2D` ever translates it.
+enum TextureFilter {
+  /// Pick one texel. What deliberate pixel art wants, and what it *needs* -
+  /// pair it with an integer sprite size or it shimmers as the sprite moves.
+  nearest,
 
-  @override
-  final GameAssetSource source;
+  /// Blend the neighbouring texels. Fine when the sprite is drawn at roughly
+  /// its source size.
+  linear,
 
-  /// The image's pixel dimensions, stated here at declare time so the game
-  /// isolate can know them without decoding - see [Texture.sourceWidth] for
-  /// why that is the only arrangement that works.
-  ///
-  /// Optional, and only nine-slicing needs it: a sprite that draws the whole
-  /// texture addresses it with normalised `0..1` UVs and never cares how many
-  /// pixels that is. Leave both at zero unless a sprite slices this texture.
-  ///
-  /// Stating them wrong is caught, not tolerated - [loadInto] asserts the
-  /// declaration against the decoded image.
-  final int pixelWidth;
-  final int pixelHeight;
+  /// Mipmapped, and the default. Minifying a 64px image into a 12px sprite
+  /// averages the texels it is skipping instead of picking one; nearest
+  /// sampling there does not look retro, it shimmers, because the chosen
+  /// texels change as the sprite moves.
+  mipmap;
 
-  /// How the decoded image is sampled - see [Texture.filterQuality].
-  final FilterQuality filterQuality;
+  /// The `dart:ui` value this maps to. Called once per draw run, never per
+  /// quad.
+  ui.FilterQuality get quality => switch (this) {
+    TextureFilter.nearest => ui.FilterQuality.none,
+    TextureFilter.linear => ui.FilterQuality.low,
+    TextureFilter.mipmap => ui.FilterQuality.medium,
+  };
+}
 
-  /// Synchronous and empty of I/O - this runs on both isolate copies during
-  /// `describeAssets`, so it must not touch `dart:ui`. All it does is give
-  /// [GameAssets] something to assign an address to, and hand that instance
-  /// the declared pixel size, which is plain integer data and safe on any
-  /// isolate.
-  @override
-  Texture createInstance() => Texture(
-    sourceWidth: pixelWidth,
-    sourceHeight: pixelHeight,
-    filterQuality: filterQuality,
-  );
+/// What decoding a texture discovered, replicated to every isolate copy -
+/// including the ones that can never hold the `ui.Image` itself.
+///
+/// This is how the game isolate learns an image's pixel size without decoding
+/// anything. Plain data, so it survives the port hop.
+class TextureInfo extends AssetInfo {
+  const TextureInfo(this.width, this.height);
 
-  /// Reads the bytes and decodes the image's first frame.
-  ///
-  /// Main isolate only, and called only by `GameAssets.load` - a codec is
-  /// engine-side state that does not exist on the game isolate.
-  ///
-  /// Only the first frame: a `Texture` is one image. An animated GIF or APNG
-  /// decoded through here yields its first frame and nothing else, which is
+  final int width;
+  final int height;
+}
+
+/// Turns a texture's bytes into a [Texture].
+///
+/// One of these for the payload type, registered once, rather than one per
+/// asset - which is what leaves [TextureKey] as pure identity and lets a key
+/// be written inline with no subclass.
+///
+/// Runs only on the isolate that can decode; a codec is engine-side state that
+/// does not exist on the game isolate.
+class TextureLoader extends AssetLoader<Texture> {
+  const TextureLoader();
+
+  /// Decodes the first frame only. A `Texture` is one image; an animated GIF
+  /// or APNG through here yields its first frame and nothing else, which is
   /// honest rather than silently half-supported - animation is sprite-sheet
-  /// work in this engine, not a codec feature.
+  /// work in this engine (see `SpriteFrame`), not a codec feature.
   @override
-  Future<void> loadInto(Texture instance) async {
-    final bytes = await source.load();
+  Future<Texture> load(AssetKey<Texture> key) async {
+    final bytes = await key.source.load();
     final codec = await ui.instantiateImageCodec(bytes);
     try {
-      final frame = await codec.getNextFrame();
-      instance._image = frame.image;
-      // The declared size is what the *game* isolate slices against, and it is
-      // never checked there because there is nothing there to check it with.
-      // This is the one isolate that holds both numbers, so it is the only
-      // place the declaration can be caught being wrong - and a wrong one
-      // silently mis-slices every panel drawn from this texture, which is a
-      // bug that reads as "the art is off by a pixel" rather than as a typo.
-      assert(
-        pixelWidth == 0 && pixelHeight == 0 ||
-            pixelWidth == frame.image.width &&
-                pixelHeight == frame.image.height,
-        'TextureAsset declared ${pixelWidth}x$pixelHeight for '
-        '${source.description}, but it decoded to '
-        '${frame.image.width}x${frame.image.height}. The declared size is what '
-        'the game isolate splits nine-slice UVs with, so it has to be the '
-        'truth about the image.',
-      );
+      return Texture((await codec.getNextFrame()).image);
     } finally {
       // The codec is scaffolding; the decoded `ui.Image` it produced is what
-      // the instance keeps and what `Texture.onUnloaded` later disposes.
+      // the payload keeps and what [unload] later disposes.
       codec.dispose();
     }
   }
 
   @override
-  String get debugLabel => 'Texture(${source.description})';
-}
-
-/// Bytes from the Flutter asset bundle - the ordinary way a shipped game
-/// names its content.
-///
-/// [bundle] is injectable purely so a test (or a game that ships a second
-/// bundle) can supply its own; it defaults to `rootBundle`, which is what a
-/// normal app wants and which only exists on the main isolate - the same
-/// reason `GameAsset.loadInto` runs only there.
-class AssetBundleSource extends GameAssetSource {
-  const AssetBundleSource(this.path, {this.bundle});
-
-  /// The pubspec-declared asset path, e.g. `assets/player.png`.
-  final String path;
-
-  /// The bundle to read from, or `null` for `rootBundle`.
-  final AssetBundle? bundle;
+  void unload(Texture value) => value.dispose();
 
   @override
-  Future<Uint8List> load() async {
-    final data = await (bundle ?? rootBundle).load(path);
-    // A view, not a copy: `ByteData.buffer` may be larger than the asset when
-    // the bundle packs several together, so the offset and length matter.
-    return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-  }
-
-  @override
-  String get description => path;
-}
-
-/// Bytes already in memory - a procedurally generated image, a texture that
-/// arrived over the network, a fixture in a test. Carries no I/O of its own.
-class MemoryImageSource extends GameAssetSource {
-  const MemoryImageSource(this.bytes, {this.name = 'in-memory'});
-
-  final Uint8List bytes;
-
-  /// What diagnostics call this source, since there is no path to name it by.
-  final String name;
-
-  @override
-  Future<Uint8List> load() async => bytes;
-
-  @override
-  String get description => name;
+  AssetInfo describe(Texture value) => TextureInfo(value.width, value.height);
 }

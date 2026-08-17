@@ -568,7 +568,7 @@ abstract class Game {
   /// Both copies end up with their own table at identical addresses; only
   /// main's ever holds bytes. See `GameState.closeAssetGate` for why the copy
   /// must be taken before any decode begins.
-  final GameAssets assets = GameAssets();
+  final Assets assets = Assets();
 
   // There is no `_owns`/`_simulates`/`_booted`/`_tick` here, and no
   // `GameState`, and that absence is the point of this class.
@@ -2127,6 +2127,9 @@ final class GameRuntime {
         _toMain = null;
         booted = false;
       case _msgAssetLoaded:
+        // Record the shape before reporting progress, so a progress callback
+        // that reaches for it already sees it.
+        game.assets.adoptInfo(parts[2] as int, parts[5] as AssetInfo?);
         final request = _assetRequests[parts[1] as int];
         request?.onLoaded?.call(
           parts[2] as int,
@@ -2229,7 +2232,7 @@ final class GameRuntime {
   /// rather than calling this at all.
   Future<void> requestAssetLoad(
     List<int> addresses,
-    List<GameAsset> keys,
+    List<AssetKey<Object?>> keys,
     void Function(int address, int completed, int pending)? onLoaded,
   ) {
     final toMain = _toMain;
@@ -2253,12 +2256,12 @@ final class GameRuntime {
   ///
   /// Sequential rather than concurrent, deliberately - it mirrors the local
   /// path exactly, and a loading screen wants a progress sequence rather than
-  /// everything landing at once. `GameAssets.load` already collapses
-  /// overlapping requests for one key.
+  /// everything landing at once. `Assets.load` already collapses overlapping
+  /// requests for one key.
   Future<void> _handleAssetLoadRequest(List parts) async {
     final id = parts[1] as int;
     final addresses = (parts[2] as List).cast<int>();
-    final keys = (parts[3] as List).cast<GameAsset>();
+    final keys = (parts[3] as List).cast<AssetKey<Object?>>();
     final assets = game.assets;
 
     // Adopt first, decode second. This copy never ran a `describeAssets` pass
@@ -2274,16 +2277,16 @@ final class GameRuntime {
     // does no work, same as the local path.
     var pending = 0;
     for (var i = 0; i < addresses.length; i++) {
-      final instance = assets.tryResolve<GameAssetInstance>(addresses[i]);
-      if (instance != null && !instance.isLoaded) pending++;
+      final asset = assets.tryGetAt(addresses[i]);
+      if (asset != null && !asset.isLoaded) pending++;
     }
 
     var completed = 0;
     String? failure;
     for (var i = 0; i < addresses.length; i++) {
       final address = addresses[i];
-      final instance = assets.tryResolve<GameAssetInstance>(address);
-      if (instance == null || instance.isLoaded) continue;
+      final asset = assets.tryGetAt(address);
+      if (asset == null || asset.isLoaded) continue;
       try {
         await assets.loadAddress(address);
       } catch (error) {
@@ -2291,7 +2294,7 @@ final class GameRuntime {
         // a port callback, where throwing would take out the message loop and
         // strand the asker forever. The awaiting `loadScene` is the right
         // place for it to surface.
-        failure ??= '${instance.debugLabel}: $error';
+        failure ??= '${asset.debugLabel}: $error';
       }
       completed++;
       _toGame?.send(<Object?>[
@@ -2300,6 +2303,12 @@ final class GameRuntime {
         address,
         completed,
         pending,
+        // The decoded payload cannot cross - that is the whole reason this
+        // request exists - but what decoding *discovered* can, and the asking
+        // copy generally needs it. An image's true pixel size is the reference
+        // case: the game isolate nine-slices with it and has no other way to
+        // learn it. See `AssetLoader.describe`.
+        asset.info,
       ]);
     }
     _toGame?.send(<Object?>[_msgAssetsDone, id, failure]);

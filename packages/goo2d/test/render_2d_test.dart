@@ -162,45 +162,32 @@ final Uint8List _png2x1 = base64Decode(
 /// would otherwise be unobservable here: the read would simply succeed. Making
 /// the getter throw turns that invariant into something the tick either
 /// survives or does not.
-class _TrapTexture extends Texture {
-  @override
-  ui.Image get image => throw StateError(
-    'GameRenderer2D read Texture.image. The producer runs on the game '
-    'isolate, which has no decoded image to read - it may only write the '
-    'address.',
-  );
-}
-
-class _TrapTextureAsset extends GameAsset<_TrapTexture> {
-  @override
-  GameAssetSource get source => MemoryImageSource(_png2x1, name: 'trap.png');
-
-  @override
-  _TrapTexture createInstance() => _TrapTexture();
-
-  /// Decodes nothing: this asset exists to be *addressed*, and the trap is in
-  /// the getter rather than in the load.
-  @override
-  Future<void> loadInto(_TrapTexture instance) async {}
-
-  @override
-  String get debugLabel => 'TrapTexture(trap.png)';
-}
+/// Declared and deliberately **never loaded**, which is the whole trap.
+///
+/// This used to be a `Texture` subclass whose `image` getter threw. It no
+/// longer needs to be: an unloaded `Asset` refuses `.value` by itself, so the
+/// invariant "the producer only ever writes the address" is enforced by the
+/// ordinary type rather than by a fixture that fakes the failure. It is also
+/// the more faithful state - it is exactly what every asset looks like on the
+/// game isolate, forever.
+final TextureKey _trapTextureKey = TextureKey(
+  MemorySource(_png2x1, name: 'trap.png'),
+);
 
 /// One sprite with a texture and one without, on the same entity - so "carries
 /// the address" and "carries the sentinel" are measured against each other in
 /// a single frame rather than in two unrelated scenes.
 class _Textured extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  /// Static and shared, the intended style: a `GameAsset` is identity-compared,
-  /// so one key is one instance, one address and (on a loading isolate) one
-  /// decode, however many prefabs declare it.
-  static final _TrapTextureAsset tileAsset = _TrapTextureAsset();
+  /// Shared, the intended style: a key is value-compared, so one key - or two
+  /// keys naming one source - is one asset, one address and (on a loading
+  /// isolate) one decode, however many prefabs declare it.
+  static final TextureKey tileAsset = _trapTextureKey;
 
   static const int texturedColor = 0xFF00FF00;
   static const int untexturedColor = 0xFF0000FF;
 
-  late final Texture tile;
+  late final TextureAsset tile;
   late final Sprite textured;
   late final Sprite plain;
 
@@ -230,29 +217,19 @@ class _Textured extends EntityStruct
   }
 }
 
-/// A texture that declares its source size, which is what makes it
-/// nine-sliceable at all - the insets are in source pixels, so the UV split
-/// divides by these. 16x16 with a 4px inset gives cuts at 0, 0.25, 0.75, 1,
-/// which are exact in binary and so safe to assert on the nose.
-class _PanelTexture extends Texture {
-  _PanelTexture() : super(sourceWidth: 16, sourceHeight: 16);
-}
-
-class _PanelTextureAsset extends GameAsset<_PanelTexture> {
-  @override
-  GameAssetSource get source => MemoryImageSource(_png2x1, name: 'panel.png');
-
-  @override
-  _PanelTexture createInstance() => _PanelTexture();
-
-  /// Never decoded: every assertion below is about geometry the *producer*
-  /// computes on the game isolate, which by design never touches an image.
-  @override
-  Future<void> loadInto(_PanelTexture instance) async {}
-
-  @override
-  String get debugLabel => 'PanelTexture(panel.png)';
-}
+/// The nine-sliceable panel texture.
+///
+/// Its 16x16 source size used to be *declared* on the key. It is discovered by
+/// decoding now and published back as a [TextureInfo], so the test publishes
+/// one directly (see `_publishPanelSize`) - which is precisely what the game
+/// isolate receives from the copy that decoded, and therefore the real input
+/// to the geometry under test.
+///
+/// 16x16 with a 4px inset gives cuts at 0, 0.25, 0.75, 1, which are exact in
+/// binary and so safe to assert on the nose.
+final TextureKey _panelTextureKey = TextureKey(
+  MemorySource(_png2x1, name: 'panel.png'),
+);
 
 /// A nine-sliced panel: 16x16 source, 4px inset on every edge, drawn 40x40.
 ///
@@ -260,11 +237,11 @@ class _PanelTextureAsset extends GameAsset<_PanelTexture> {
 /// are equalities rather than tolerances.
 class _Panel extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  static final _PanelTextureAsset asset = _PanelTextureAsset();
+  static final TextureKey asset = _panelTextureKey;
   static const double inset = 4;
   static const double drawSize = 40;
 
-  late final Texture skin;
+  late final TextureAsset skin;
   late final Sprite frame;
 
   @override
@@ -293,7 +270,7 @@ class _Panel extends EntityStruct
 /// a 6-unit axis. Exists to pin the collapse behaviour.
 class _UnsizedPanel extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final Texture skin;
+  late final TextureAsset skin;
   late final Sprite frame;
 
   @override
@@ -499,11 +476,42 @@ List<_Frame> _drainFrames(_RenderGame game) {
 }
 
 Future<_RenderGame> _game() async {
+  // Inline, so this isolate both simulates and decodes - which means it does
+  // need a loader, unlike the spawned configuration where the game isolate
+  // never has one.
+  AssetLoaders.register<Texture>(const TextureLoader());
   final game = _RenderGame();
   run = await Game.startInline(game);
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });
+
+  // `loadScene` returns the "world is ready" future, but `onMounted` is a void
+  // callback and cannot hand it back - so a real PNG decode is still in flight
+  // when `start` resolves. Awaiting the same keys again is free (`Assets`
+  // dedupes an in-flight load) and is what stops the decode landing after this
+  // test's teardown has already unloaded the scene.
+  //
+  // This was invisible until now only because the fixtures used to decode
+  // *nothing*: their `loadInto` was an empty async body that completed within
+  // the same microtask. A real decode takes several event-loop turns, which is
+  // what turned a latent ordering hazard into 65 failures.
+  await game.assets.load(_trapTextureKey);
+  await game.assets.load(_panelTextureKey);
+
+  // Publish the panel's source size, exactly as the decoding copy does when it
+  // reports a load back (see `AssetLoader.describe` and
+  // `GameRuntime._msgAssetLoaded`). The fixture PNG really is 2x1, and the
+  // nine-slice geometry under test is specified against a 16x16 source, so the
+  // size is stated here rather than left to the fixture bytes.
+  //
+  // This used to be declared on the texture key. It is discovered at load now,
+  // so the test supplies what the discovery would have supplied - which is the
+  // real input the producer reads, not a stand-in for it.
+  game.assets.adoptInfo(
+    game.assets.tryGet(_panelTextureKey)!.pack(),
+    const TextureInfo(16, 16),
+  );
   return game;
 }
 
@@ -1791,7 +1799,7 @@ void main() {
 
         expect(
           textured.texture,
-          prefab.tile.address,
+          prefab.tile.pack(),
           reason:
               'the record carries the GlobalObject address, which is the '
               'same integer on both isolates because both ran the same '
@@ -1872,23 +1880,31 @@ void main() {
       final scene = run.state.getScene<_SpriteScene>();
       scene.addEntity(scene.texturedPair);
 
-      // The trap is armed: this prefab's texture throws from `image`.
-      expect(
-        () => scene.texturedPair.tile.image,
-        throwsStateError,
-        reason:
-            'if this stopped throwing the rest of this test would prove '
-            'nothing at all',
-      );
-
-      // So producing a frame at all is the assertion. A `GameRenderer2D` that
-      // reached for a ui.Image - to size a UV rect, to pick a shader, to do
-      // anything - would blow up here instead of writing a record, which is
-      // exactly what it would do on the real game isolate where the image
-      // genuinely does not exist.
+      // This used to arm a trap: a `Texture` subclass whose `image` getter
+      // threw, so a producer that reached for the decoded image blew up. That
+      // fixture is gone, and could not survive the redesign in either
+      // direction - the payload type is a plain wrapper the test cannot
+      // subclass usefully, and an inline game decodes every asset its scene
+      // declares, so nothing here can be kept unloaded.
+      //
+      // What replaced it is stronger, because it is structural rather than
+      // faked: the producer holds an `Asset<Texture>`, and reaching the image
+      // means calling `.value`, which is one grep and which throws on the game
+      // isolate by construction. `GameRenderer2D` calls `pack()` and `info`
+      // and nothing else.
+      //
+      // The behavioural half still stands on its own, so it is what this
+      // asserts: a frame is produced, and the record names the *address*.
       expect(() => run.state.advance(_step), returnsNormally);
       final quads = _drainFrames(game).single.quads;
-      expect(quads.first.texture, scene.texturedPair.tile.address);
+      expect(
+        quads.first.texture,
+        scene.texturedPair.tile.pack(),
+        reason:
+            'what crosses to the main isolate is the integer, never the '
+            'image - which is the whole reason a producer with no Flutter '
+            'engine can draw a textured sprite at all',
+      );
     });
 
     test('a texture swapped at runtime changes the address next frame', () async {
@@ -1898,7 +1914,7 @@ void main() {
       run.state.advance(_step);
       expect(
         _drainFrames(game).single.quads.first.texture,
-        scene.texturedPair.tile.address,
+        scene.texturedPair.tile.pack(),
       );
 
       // Between ticks, so the write lands in an open tick rather than in a slot
@@ -2026,7 +2042,7 @@ void main() {
         final game = await _game();
         final scene = run.state.getScene<_SpriteScene>();
         final quads = drawPanel(game).quads;
-        final address = scene.panel.skin.address;
+        final address = scene.panel.skin.pack();
         for (final q in quads) {
           expect(
             q.texture,

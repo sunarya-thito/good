@@ -83,12 +83,20 @@ class _Q {
     this.corners,
     this.color, {
     this.texture = DrawSpriteData2D.noTexture,
+    /// `nearest` by default across this suite: it asserts *exact texel*
+    /// colours against a 2x1 fixture, so any blending turns every colour
+    /// expectation into a range. The subject here is UV mapping, not
+    /// sampling - so it says which sampling it needs rather than depending on
+    /// whatever the default happens to be. (This used to be declared on the
+    /// texture key; it is a sprite property now.)
+    this.filter = TextureFilter.nearest,
     this.uvs = _fullUvs,
   });
 
   final List<double> corners;
   final int color;
   final int texture;
+  final TextureFilter filter;
   final List<double> uvs;
 }
 
@@ -116,6 +124,7 @@ Uint8List _spriteBatch(int tick, List<_Q> quads) {
       c[7],
       quad.color,
       textureAddress: quad.texture,
+      filter: quad.filter.index,
       u0: uv[0],
       v0: uv[1],
       u1: uv[2],
@@ -159,8 +168,8 @@ class _TextureScene extends SceneStruct {
 
   _TextureScene(this.keys) : super();
 
-  final List<GameAsset<Texture>> keys;
-  final List<Texture> textures = <Texture>[];
+  final List<TextureKey> keys;
+  final List<TextureAsset> textures = <TextureAsset>[];
 
   @override
   void describeAssets(AssetDescriptor descriptor) {
@@ -173,18 +182,10 @@ class _TextureScene extends SceneStruct {
 
 /// [count] declared *and decoded* textures - real `ui.Image`s, so the shader
 /// this suite builds is the shader a real frame would build.
-Future<List<Texture>> _textures(int count) async {
-  final keys = <GameAsset<Texture>>[
+Future<List<TextureAsset>> _textures(int count) async {
+  final keys = <TextureKey>[
     for (var i = 0; i < count; i++)
-      // `none` deliberately: this suite asserts *exact texel* colours, and the
-      // fixture is a 2x1 image, so any filtering blends the two pixels into
-      // each other and every colour expectation below becomes a range. The
-      // subject here is UV mapping, not sampling - so it says which sampling
-      // it needs rather than depending on whatever the default happens to be.
-      TextureAsset(
-        MemoryImageSource(_png2x1, name: 'tex$i'),
-        filterQuality: FilterQuality.none,
-      ),
+      TextureKey(MemorySource(_png2x1, name: 'tex$i')),
   ];
   final scene = _TextureScene(keys)
     ..initializeScene(MemoryPool(pageSize: 4096), assets: assets);
@@ -198,10 +199,13 @@ Future<List<Texture>> _textures(int count) async {
 
 /// The table under test. Instance state on the `Game` now, so a fixture with
 /// no `Game` owns its own.
-late GameAssets assets;
+late Assets assets;
 
 void main() {
-  setUp(() => assets = GameAssets());
+  setUp(() {
+    assets = Assets();
+    AssetLoaders.register<Texture>(const TextureLoader());
+  });
 
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -444,7 +448,7 @@ void main() {
         canvas.ingest([
           _record(1, [
             for (var i = 0; i < 20; i++)
-              _Q(_unitQuad, 0xFFFFFFFF, texture: tex.address),
+              _Q(_unitQuad, 0xFFFFFFFF, texture: tex.pack()),
           ]),
         ]);
         expect(canvas.runCount, 1);
@@ -476,15 +480,15 @@ void main() {
       final canvas = DrawCanvas2D(assets: assets);
       canvas.ingest([
         _record(1, [
-          _Q(_unitQuad, 0xFFFFFFFF, texture: textures[0].address),
-          _Q(_unitQuad, 0xFFFFFFFF, texture: textures[0].address),
-          _Q(_otherQuad, 0xFFFFFFFF, texture: textures[1].address),
+          _Q(_unitQuad, 0xFFFFFFFF, texture: textures[0].pack()),
+          _Q(_unitQuad, 0xFFFFFFFF, texture: textures[0].pack()),
+          _Q(_otherQuad, 0xFFFFFFFF, texture: textures[1].pack()),
         ]),
       ]);
       expect(canvas.runCount, 2);
       expect(
         [for (var r = 0; r < canvas.runCount; r++) canvas.runTextureAt(r)],
-        [textures[0].address, textures[1].address],
+        [textures[0].pack(), textures[1].pack()],
       );
 
       final spy = _SpyCanvas();
@@ -508,7 +512,7 @@ void main() {
         final canvas = DrawCanvas2D(assets: assets);
         canvas.ingest([
           _record(1, [
-            _Q(_unitQuad, 0xFFFFFFFF, texture: tex.address),
+            _Q(_unitQuad, 0xFFFFFFFF, texture: tex.pack()),
             const _Q(_otherQuad, 0xFF00FF00),
           ]),
         ]);
@@ -533,8 +537,8 @@ void main() {
 
     test('z order survives batching: A-B-A is three calls in that order', () async {
       final textures = await _textures(2);
-      final a = textures[0].address;
-      final b = textures[1].address;
+      final a = textures[0].pack();
+      final b = textures[1].pack();
       final canvas = DrawCanvas2D(assets: assets);
       // The producer already z-sorted these, so this *is* back-to-front order.
       canvas.ingest([
@@ -581,7 +585,7 @@ void main() {
               _Q(
                 _unitQuad,
                 0xFFFFFFFF,
-                texture: textures[i.isEven ? 0 : 1].address,
+                texture: textures[i.isEven ? 0 : 1].pack(),
               ),
           ]),
         ]);
@@ -605,13 +609,13 @@ void main() {
         final canvas = DrawCanvas2D(assets: assets);
 
         canvas.ingest([
-          _record(1, [_Q(_unitQuad, 0xFFFFFFFF, texture: tex.address)]),
+          _record(1, [_Q(_unitQuad, 0xFFFFFFFF, texture: tex.pack())]),
         ]);
         final first = _SpyCanvas();
         canvas.replay(first);
 
         canvas.ingest([
-          _record(2, [_Q(_otherQuad, 0xFFFFFFFF, texture: tex.address)]),
+          _record(2, [_Q(_otherQuad, 0xFFFFFFFF, texture: tex.pack())]),
         ]);
         final second = _SpyCanvas();
         canvas.replay(second);
@@ -643,7 +647,7 @@ void main() {
         canvas.ingest([
           _record(1, [
             for (final t in textures)
-              _Q(_unitQuad, 0xFFFFFFFF, texture: t.address),
+              _Q(_unitQuad, 0xFFFFFFFF, texture: t.pack()),
             const _Q(_unitQuad, 0xFF0000FF),
           ]),
         ]);
@@ -666,14 +670,14 @@ void main() {
       () async {
         final tex = (await _textures(1)).single;
         expect(
-          assets.resolve<Texture>(tex.address),
+          assets.of<Texture>().unpack(tex.pack()),
           same(tex),
           reason:
               'this is the exact lookup replay makes: the record carries '
               'the integer, the registry turns it back into the image, and the '
               'game isolate never has to hold a ui.Image at all',
         );
-        expect(tex.image.width, 2);
+        expect(tex.value.image.width, 2);
       },
     );
 
@@ -698,17 +702,15 @@ void main() {
       // Declared, so the address resolves - but never loaded, which is the
       // permanent state of every Texture on the game isolate and the state of
       // a main-isolate one before loadScene finishes.
-      final key = TextureAsset(
-        MemoryImageSource(_png2x1, name: 'undecoded.png'),
-      );
-      final scene = _TextureScene(<GameAsset<Texture>>[key])
+      final key = TextureKey(MemorySource(_png2x1, name: 'undecoded.png'));
+      final scene = _TextureScene(<TextureKey>[key])
         ..initializeScene(MemoryPool(pageSize: 4096), assets: assets);
       scene.handle = SceneRegistry.register(scene);
       addTearDown(scene.pool.dispose);
       final canvas = DrawCanvas2D(assets: assets);
       canvas.ingest([
         _record(1, [
-          _Q(_unitQuad, 0xFFFFFFFF, texture: scene.textures.single.address),
+          _Q(_unitQuad, 0xFFFFFFFF, texture: scene.textures.single.pack()),
         ]),
       ]);
       // This used to throw, on the argument that a loud failure beats silent
@@ -735,7 +737,7 @@ void main() {
     test('the sentinel is never a real address, so 0 stays drawable', () async {
       final tex = (await _textures(1)).single;
       expect(
-        tex.address,
+        tex.pack(),
         0,
         reason:
             'GlobalObjectRegistry appends from zero, so the first asset '
@@ -743,11 +745,11 @@ void main() {
             'sentinel has to be -1 and the field has to be signed',
       );
       expect(DrawSpriteData2D.noTexture, -1);
-      expect(DrawSpriteData2D.noTexture, isNot(tex.address));
+      expect(DrawSpriteData2D.noTexture, isNot(tex.pack()));
 
       final canvas = DrawCanvas2D(assets: assets);
       canvas.ingest([
-        _record(1, [_Q(_unitQuad, 0xFFFFFFFF, texture: tex.address)]),
+        _record(1, [_Q(_unitQuad, 0xFFFFFFFF, texture: tex.pack())]),
       ]);
       final spy = _SpyCanvas();
       canvas.replay(spy);
@@ -772,7 +774,7 @@ void main() {
       // notice.
       canvas.ingest([
         _record(1, [
-          _Q(const [0, 0, 8, 0, 8, 4, 0, 4], 0xFFFFFFFF, texture: tex.address),
+          _Q(const [0, 0, 8, 0, 8, 4, 0, 4], 0xFFFFFFFF, texture: tex.pack()),
         ]),
       ]);
 
@@ -815,7 +817,7 @@ void main() {
             _Q(
               const [0, 0, 8, 0, 8, 4, 0, 4],
               0xFFFFFFFF,
-              texture: tex.address,
+              texture: tex.pack(),
               uvs: const [0, 0, 0.5, 0, 0.5, 1, 0, 1],
             ),
           ]),
@@ -850,7 +852,7 @@ void main() {
       // Half-brightness white: modulate multiplies, so red 255 becomes 128.
       canvas.ingest([
         _record(1, [
-          _Q(const [0, 0, 8, 0, 8, 4, 0, 4], 0xFF808080, texture: tex.address),
+          _Q(const [0, 0, 8, 0, 8, 4, 0, 4], 0xFF808080, texture: tex.pack()),
         ]),
       ]);
       final recorder = PictureRecorder();
@@ -879,7 +881,7 @@ void main() {
       final tex = (await _textures(1)).single;
       final canvas = DrawCanvas2D(assets: assets);
       canvas.ingest([
-        _record(1, [_Q(_unitQuad, 0xFFFFFFFF, texture: tex.address)]),
+        _record(1, [_Q(_unitQuad, 0xFFFFFFFF, texture: tex.pack())]),
       ]);
       final spy = _SpyCanvas();
       canvas.replay(spy);
@@ -1063,39 +1065,74 @@ void main() {
   });
 
   group('texture filtering is declared, not assumed', () {
-    test('a texture carries its own sampling choice', () {
-      final crisp = TextureAsset(
-        MemoryImageSource(_png2x1, name: 'crisp'),
-        filterQuality: FilterQuality.none,
-      );
-      final smooth = TextureAsset(MemoryImageSource(_png2x1, name: 'smooth'));
+    // These used to assert the filter off the *texture* key, which is where it
+    // lived. It moved to the sprite: how a sprite samples an image is not a
+    // property of the image, and putting it on the key made it part of an
+    // asset's identity. So the same guarantees are now asserted where they
+    // actually take effect - the draw record and the run it produces.
 
-      expect(crisp.createInstance().filterQuality, FilterQuality.none);
+    test('the record carries the sprite\'s sampling choice', () {
+      final batch = ByteData.sublistView(
+        _spriteBatch(1, [
+          _Q(_unitQuad, 0xFFFFFFFF, texture: 7, filter: TextureFilter.nearest),
+        ]),
+      );
       expect(
-        smooth.createInstance().filterQuality,
-        FilterQuality.medium,
+        DrawSpriteData2D.filterAt(batch, 0),
+        TextureFilter.nearest.index,
         reason:
-            'medium by default: a sprite is routinely drawn smaller '
-            'than its source, and nearest sampling there does not look '
-            'retro, it shimmers - which reads as low-resolution art rather '
-            'than as a filtering setting',
+            'the producer runs on the game isolate and the paint is built on '
+            'main, so the choice has to cross in the record - there is '
+            'nowhere else left for it to live',
       );
     });
 
-    test('per texture, so one game can mix pixel art and smooth art', () {
-      // The reason this is not a single `Renderer2D.filterQuality`: a game
-      // with crisp pixel sprites over a soft background needs both, and one
-      // global setting makes one of them wrong.
-      final a = TextureAsset(
-        MemoryImageSource(_png2x1, name: 'a'),
-        filterQuality: FilterQuality.none,
-      ).createInstance();
-      final b = TextureAsset(
-        MemoryImageSource(_png2x1, name: 'b'),
-        filterQuality: FilterQuality.high,
-      ).createInstance();
+    test(
+      'per sprite, so one image can be drawn crisp in one place and smooth in '
+      'another',
+      () {
+        // The reason this is neither a single `Renderer2D.filterQuality` nor a
+        // property of the texture: a game with crisp pixel sprites over a soft
+        // background needs both, and the two may well be the same atlas.
+        final canvas = DrawCanvas2D(assets: assets);
+        addTearDown(canvas.dispose);
+        canvas.ingest([
+          _record(2, [
+            _Q(_unitQuad, 0xFFFFFFFF, texture: 3, filter: TextureFilter.nearest),
+            _Q(_unitQuad, 0xFFFFFFFF, texture: 3, filter: TextureFilter.mipmap),
+          ]),
+        ]);
 
-      expect(a.filterQuality, isNot(b.filterQuality));
+        expect(
+          canvas.runCount,
+          2,
+          reason:
+              'the filter lives on the Paint, and a run is one drawVertices '
+              'under one Paint - so two quads sharing a texture but not a '
+              'filter genuinely cannot share a run',
+        );
+        expect(canvas.runFilterAt(0), TextureFilter.nearest.index);
+        expect(canvas.runFilterAt(1), TextureFilter.mipmap.index);
+      },
+    );
+
+    test('adjacent quads agreeing on both still share one run', () {
+      final canvas = DrawCanvas2D(assets: assets);
+      addTearDown(canvas.dispose);
+      canvas.ingest([
+        _record(2, [
+          _Q(_unitQuad, 0xFFFFFFFF, texture: 3, filter: TextureFilter.nearest),
+          _Q(_unitQuad, 0xFFFFFFFF, texture: 3, filter: TextureFilter.nearest),
+        ]),
+      ]);
+
+      expect(
+        canvas.runCount,
+        1,
+        reason:
+            'splitting on the filter must not split runs that agree on it - '
+            'that would double the draw calls of every ordinary scene',
+      );
     });
   });
 }

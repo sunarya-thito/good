@@ -23,7 +23,7 @@ class Critter extends EntityStruct
         Renderable2D,
         EntityLifecycleListener {
   late final Sprite body;
-  late final Texture texture;
+  late final TextureAsset texture;
 
   late final DataPointer<double> angle;
   late final DataPointer<double> radius;
@@ -103,7 +103,7 @@ class Limb extends EntityStruct
         Renderable2D,
         EntityLifecycleListener {
   late final Sprite body;
-  late final Texture texture;
+  late final TextureAsset texture;
 
   int _spawned = 0;
 

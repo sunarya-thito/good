@@ -40,10 +40,10 @@ class _Sprite extends EntityStruct
 /// observable in a single crossing.
 class _Billboard extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  static final TextureAsset tileAsset =
-      TextureAsset(MemoryImageSource(_png2x1, name: 'tile.png'));
+  static final TextureKey tileAsset =
+      TextureKey(MemorySource(_png2x1, name: 'tile.png'));
 
-  late final Texture tile;
+  late final TextureAsset tile;
   late final Sprite front;
   late final Sprite middle;
   late final Sprite back;
@@ -132,6 +132,8 @@ DrawCanvas2D _present(_Game game) {
 
 Future<_Game> _boot() async {
   final game = _Game();
+  // Inline: this isolate both simulates and decodes, so it needs a loader.
+  AssetLoaders.register<Texture>(const TextureLoader());
   run = await Game.startInline(game);
   addTearDown(() async {
     if (run.isRunning) await run.stop();
@@ -141,7 +143,7 @@ Future<_Game> _boot() async {
   assets = game.assets;
   // `loadScene` returns the "world is ready" future, but `onMounted` is a void
   // callback and cannot hand it back - so a real PNG decode is still in flight
-  // when `start` resolves. Awaiting the same key again is free (GameAssets
+  // when `start` resolves. Awaiting the same key again is free (Assets
   // dedupes an in-flight load) and is what makes "is it decoded yet" a fact
   // rather than a race.
   await assets.load(_Billboard.tileAsset);
@@ -150,10 +152,10 @@ Future<_Game> _boot() async {
 
 /// The table under test. Instance state on the `Game` now, so a fixture with
 /// no `Game` owns its own.
-late GameAssets assets;
+late Assets assets;
 
 void main() {
-  setUp(() => assets = GameAssets());
+  setUp(() => assets = Assets());
 
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -218,7 +220,7 @@ void main() {
     final canvas = _present(game);
     addTearDown(canvas.dispose);
 
-    final address = scene.billboard.tile.address;
+    final address = scene.billboard.tile.pack();
     expect(canvas.vertexCount, 18, reason: 'three sprites, six vertices each');
     expect(
       [for (var r = 0; r < canvas.runCount; r++) canvas.runTextureAt(r)],

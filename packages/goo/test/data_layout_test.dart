@@ -10,34 +10,48 @@ import 'package:goo/src/scene.dart';
 import 'package:goo/src/struct.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class _Texture extends GameAssetInstance {}
+/// The payload type. Plain - it is not the addressed thing any more, so it
+/// carries no address, no loaded flag and no base class.
+class _Texture {}
 
-class _NoBytes extends GameAssetSource {
+class _NoBytes extends AssetSource {
+  const _NoBytes(this.name);
+
+  final String name;
+
   @override
   Future<Uint8List> load() async => Uint8List(0);
+
+  @override
+  Future<AssetAvailability> check() async => AssetAvailability.present;
+
+  @override
+  String get description => name;
+
+  @override
+  bool operator ==(Object other) => other is _NoBytes && other.name == name;
+
+  @override
+  int get hashCode => Object.hash(_NoBytes, name);
 }
 
-class _TextureAsset extends GameAsset<_Texture> {
-  @override
-  final GameAssetSource source = _NoBytes();
+/// The table these ad-hoc fixtures declare into. Instance state - a `Game`
+/// owns one; a fixture with no `Game` owns its own.
+final Assets assets = Assets();
 
-  @override
-  _Texture createInstance() => _Texture();
+var _nextAsset = 0;
 
-  @override
-  Future<void> loadInto(_Texture instance) async {}
-}
-
-/// Declares a fresh asset and returns its addressed instance - the same call
-/// `AssetDescriptor.has` makes. These tests are about `hasObject`/
-/// `optObject`'s field mechanics, and a field only ever stores the *address*,
-/// so declaring (which is what assigns one) is all they need; decoding a
+/// Declares a fresh asset and returns its handle - the same call
+/// `AssetDescriptor.has` makes. These tests are about `hasPacked`/
+/// `optPacked`'s field mechanics, and a field only ever stores the packed
+/// int, so declaring (which is what assigns one) is all they need; decoding a
 /// payload would be beside the point.
-/// The table these ad-hoc fixtures declare into. Instance state now - a
-/// `Game` owns one; a fixture with no `Game` owns its own.
-final GameAssets assets = GameAssets();
-
-_Texture _loaded() => assets.declare(_TextureAsset());
+///
+/// Each call uses a distinct source name, because an asset's identity is
+/// `(payload type, source)` - two fixtures sharing a name would be one asset
+/// and these tests need distinct addresses.
+Asset<_Texture> _loaded() =>
+    assets.declare(AssetKey<_Texture>(_NoBytes('fixture-${_nextAsset++}')));
 
 /// One struct type reused for every ad-hoc layout below, so this file's
 /// many cases cost `ComponentTypeRegistry` exactly one of its 64 bits.
@@ -812,16 +826,16 @@ void main() {
     });
 
     test(
-      'hasObjectArray round-trips through its declared table, by address',
+      'hasPackedArray round-trips through its declared table, by address',
       () {
         final placeholder = _loaded();
         final grass = _loaded();
         final stone = _loaded();
 
-        late DataArrayPointer<_Texture> textures;
+        late DataArrayPointer<Asset<_Texture>> textures;
         final h = _Harness(
           (data) =>
-              textures = data.hasObjectArray<_Texture>(assets, 3, placeholder),
+              textures = data.hasPackedArray(assets.of<_Texture>(), 3, placeholder),
         );
         addTearDown(h.dispose);
 
@@ -849,13 +863,13 @@ void main() {
     );
 
     test(
-      'optObjectArray defaults to null per element and round-trips null',
+      'optPackedArray defaults to null per element and round-trips null',
       () {
         final grass = _loaded();
 
-        late DataArrayPointer<_Texture?> textures;
+        late DataArrayPointer<Asset<_Texture>?> textures;
         final h = _Harness(
-          (data) => textures = data.optObjectArray<_Texture>(assets, 2),
+          (data) => textures = data.optPackedArray(assets.of<_Texture>(), 2),
         );
         addTearDown(h.dispose);
 
@@ -878,10 +892,10 @@ void main() {
 
   group('heap object (hasHeapObject/optHeapObject) fields', () {
     test(
-      'hasHeapObject round-trips a plain closure - no GlobalObject needed',
+      'hasHeapObject round-trips a plain closure - no IntRepresentable needed',
       () {
-        // A closure is the sharpest example of what hasObject cannot store:
-        // it has no `address` of its own and never will.
+        // A closure is the sharpest example of what hasPacked cannot store:
+        // it has no `pack()` of its own and never will.
         void defaultCallback() {}
         void replacement() {}
 
@@ -909,7 +923,7 @@ void main() {
       // writeDefault runs once, to build the prototype row, and allocateRow
       // memcpys that row into every spawn - copying the 4-byte address, not
       // the object. So a factory default is shared, exactly as
-      // hasObject<T extends GlobalObject>(T defaultValue) already is. This
+      // hasPacked<T extends IntRepresentable>(T defaultValue) already is. This
       // test exists to pin that semantic down rather than leave a future
       // reader guessing which way it went.
       var factoryCalls = 0;
@@ -976,7 +990,7 @@ void main() {
     test(
       'HeapObjectRegistry reuses a freed address instead of growing forever',
       () {
-        // The concrete difference from GlobalObjectRegistry, which only ever
+        // The concrete difference from the asset table, which only ever
         // appends and nulls out. Heap-object fields are written at arbitrary
         // runtime moments, so an append-only table would grow without bound.
         final first = Object();
@@ -1020,14 +1034,14 @@ void main() {
     });
   });
 
-  group('object reference (hasObject/optObject) fields', () {
-    test('hasObject round-trips through its declared table, by address', () {
+  group('packed value (hasPacked/optPacked) fields', () {
+    test('hasPacked round-trips through its declared table, by address', () {
       final placeholder = _loaded();
       final grass = _loaded();
 
-      late final DataPointer<_Texture> texture;
+      late final DataPointer<Asset<_Texture>> texture;
       final h = _Harness(
-        (data) => texture = data.hasObject<_Texture>(assets, placeholder),
+        (data) => texture = data.hasPacked(assets.of<_Texture>(), placeholder),
       );
       addTearDown(h.dispose);
 
@@ -1040,11 +1054,11 @@ void main() {
       expect(texture[e], same(grass));
     });
 
-    test('optObject defaults to null when no default is given, and round-trips null', () {
+    test('optPacked defaults to null when no default is given, and round-trips null', () {
       final grass = _loaded();
 
-      late final DataPointer<_Texture?> texture;
-      final h = _Harness((data) => texture = data.optObject<_Texture>(assets));
+      late final DataPointer<Asset<_Texture>?> texture;
+      final h = _Harness((data) => texture = data.optPacked(assets.of<_Texture>()));
       addTearDown(h.dispose);
 
       final e = h.spawn();
@@ -1064,37 +1078,43 @@ void main() {
     test('reading a stale/unregistered address fails loudly, not silently', () {
       final grass = _loaded();
 
-      late final DataPointer<_Texture> texture;
+      late final DataPointer<Asset<_Texture>> texture;
       final h = _Harness(
-        (data) => texture = data.hasObject<_Texture>(assets, grass),
+        (data) => texture = data.hasPacked(assets.of<_Texture>(), grass),
       );
       addTearDown(h.dispose);
       final e = h.spawn();
 
-      assets.unregisterAddress(grass.address);
+      assets.unregisterAddress(grass.pack());
       expect(() => texture[e], throwsStateError);
     });
 
     test('an address means nothing outside the table that issued it', () {
-      // The whole point of `ObjectTable`. Two independent tables, each
+      // The whole point of `IntRepresentation`. Two independent tables, each
       // numbering from zero, so both of these get address 0 - and a field
-      // declared against one resolves to *its* object, never the other's.
+      // declared against one unpacks to *its* object, never the other's.
       // Under the single shared registry this design replaced, these two
       // could not have coexisted at the same address at all, and every new
       // population had to be poured into the one asset table to be readable.
-      final left = GameAssets();
-      final right = GameAssets();
-      final mine = left.declare(_TextureAsset());
-      final theirs = right.declare(_TextureAsset());
+      //
+      // Note both use the *same* key here, which is the sharper version of the
+      // test: identity is `(payload type, source)`, so these two tables are
+      // being asked about an asset that is, by identity, the same one - and
+      // they still number it independently.
+      final left = Assets();
+      final right = Assets();
+      const key = AssetKey<_Texture>(_NoBytes('shared-fixture'));
+      final mine = left.declare(key);
+      final theirs = right.declare(key);
       expect(
-        mine.address,
-        theirs.address,
+        mine.pack(),
+        theirs.pack(),
         reason: 'independent tables collide freely, by design',
       );
 
-      late final DataPointer<_Texture> texture;
+      late final DataPointer<Asset<_Texture>> texture;
       final h = _Harness(
-        (data) => texture = data.hasObject<_Texture>(left, mine),
+        (data) => texture = data.hasPacked(left.of<_Texture>(), mine),
       );
       addTearDown(h.dispose);
 
@@ -1104,8 +1124,11 @@ void main() {
 
       // And a table that never issued the address says so rather than
       // handing back whatever happens to sit there.
-      right.unregisterAddress(theirs.address);
-      expect(() => right.resolve<_Texture>(theirs.address), throwsStateError);
+      right.unregisterAddress(theirs.pack());
+      expect(
+        () => right.of<_Texture>().unpack(theirs.pack()),
+        throwsStateError,
+      );
       expect(
         texture[e],
         same(mine),

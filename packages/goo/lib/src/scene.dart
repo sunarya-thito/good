@@ -86,7 +86,7 @@ abstract class SceneStruct extends GameListenerBase
     }
   }
 
-  GameAssets? _assets;
+  Assets? _assets;
 
   /// The asset table this scene's declarations register into - the `Game`'s,
   /// handed over at [initializeScene] exactly as [pool] is.
@@ -95,7 +95,7 @@ abstract class SceneStruct extends GameListenerBase
   /// which is why this is not simply `game.assets`: `initializeScene` is
   /// public precisely so a test can use it, and asset *declaration* is
   /// meaningful with no game at all.
-  GameAssets get assets => _assets ??= GameAssets();
+  Assets get assets => _assets ??= Assets();
 
   CameraViewTable? _cameraViews;
 
@@ -203,22 +203,28 @@ abstract class SceneStruct extends GameListenerBase
 
   bool _initialized = false;
 
-  /// Every asset key declared while this scene was initialized, in
-  /// declaration order: this scene's own [describeAssets] first, then each
-  /// registered prefab's, in `describeScene` order. Deduplicated - two
-  /// prefabs sharing a texture contribute one entry, because they share one
-  /// instance and one address.
+  /// Every asset declared while this scene was initialized, in declaration
+  /// order: this scene's own [describeAssets] first, then each registered
+  /// prefab's, in `describeScene` order. Deduplicated - two prefabs sharing a
+  /// texture contribute one entry, because they share one handle and one
+  /// address.
+  ///
+  /// Handles rather than keys, because everything downstream wants one: a
+  /// scene transition needs each asset's address to send across the isolate
+  /// boundary and its loaded state to decide whether to bother, and both hang
+  /// off the handle. The key is still reachable as `asset.key` for the one
+  /// place that has to send it.
   ///
   /// This list *is* the scene's asset footprint, and what
   /// `GameState.loadScene` diffs one scene against the next to decide what to
   /// keep, load and unload.
-  final List<GameAsset> _declaredAssets = <GameAsset>[];
+  final List<Asset<Object?>> _declaredAssets = <Asset<Object?>>[];
 
   /// [_declaredAssets] - the live list, walked by index at scene-transition
   /// time. Internal because it is transition plumbing; user code holds the
-  /// typed instance handles `describeAssets` gave it, never this.
+  /// typed handles `describeAssets` gave it, never this.
   @internal
-  List<GameAsset> get declaredAssets => _declaredAssets;
+  List<Asset<Object?>> get declaredAssets => _declaredAssets;
 
   /// Declares every `EntityStruct` prefab this scene can spawn. Runs
   /// exactly once, before the first entity exists - see [initializeScene].
@@ -234,7 +240,7 @@ abstract class SceneStruct extends GameListenerBase
   /// diffs against the next scene's.
   ///
   /// Runs on both isolate copies (it assigns addresses); only the decode is
-  /// main-isolate-only. See [GameAssets].
+  /// main-isolate-only. See [Assets].
   @mustCallSuper
   void describeAssets(AssetDescriptor descriptor) {}
 
@@ -255,7 +261,7 @@ abstract class SceneStruct extends GameListenerBase
   /// scene up without a full `Game`.
   void initializeScene(
     MemoryPool pool, {
-    GameAssets? assets,
+    Assets? assets,
     CameraViewTable? cameraViews,
   }) {
     if (_initialized) {
@@ -492,21 +498,26 @@ final class _AssetDescriptor implements AssetDescriptor {
   final SceneStruct _scene;
 
   @override
-  T has<T extends GameAssetInstance>(GameAsset<T> key) {
-    // Process-global, not scene-local: two scenes that both use the UI atlas
-    // share one instance and one address, which is what makes a transition
-    // between them free of a decode round trip.
-    final instance = _scene.assets.declare(key);
+  Asset<T> has<T>(AssetKey<T> key) {
+    // Game-wide, not scene-local: two scenes that both use the UI atlas share
+    // one handle and one address, which is what makes a transition between
+    // them free of a decode round trip.
+    final asset = _scene.assets.declare(key);
     final declared = _scene._declaredAssets;
     // Linear scan rather than a Set: this runs once per declaration at scene
     // bring-up over a list of at most a few dozen, and keeping only the list
     // means the order is exactly declaration order with no second structure
     // to keep in sync.
+    //
+    // Compared by *handle* identity, not by key. `declare` already collapsed
+    // equal-but-distinct keys - two call sites writing
+    // `AssetKey<Texture>(BundleSource('x'))` - onto one handle, so comparing
+    // keys here would file one asset twice and count its scene claim twice.
     for (var i = 0; i < declared.length; i++) {
-      if (identical(declared[i], key)) return instance;
+      if (identical(declared[i], asset)) return asset;
     }
-    declared.add(key);
-    return instance;
+    declared.add(asset);
+    return asset;
   }
 }
 

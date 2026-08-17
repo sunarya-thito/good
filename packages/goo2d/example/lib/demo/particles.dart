@@ -76,7 +76,7 @@ int _hsv(double hue, double saturation, double value) {
 class Mote extends EntityStruct
     with Transform2D, Renderable2D, EntityLifecycleListener {
   late final Sprite body;
-  late final Texture texture;
+  late final TextureAsset texture;
 
   /// Polar coordinates, kept per entity because the movement is a function of
   /// them and of time - so a tick reads four fields and writes three, and no

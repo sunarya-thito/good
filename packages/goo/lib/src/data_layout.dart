@@ -412,44 +412,48 @@ final class _Float64Field extends _Field<double> {
       Pointer<Double>.fromAddress(row + _byte).value = _default;
 }
 
-// --- object reference fields --------------------------------------------
+// --- packed value fields -------------------------------------------------
 //
-// hasObject<T extends GlobalObject> stores a plain Uint32 address in the
-// row, so a component row never holds a Dart heap reference (RULES.md rule
-// 1). Writes extract `.address`; reads resolve it back through the
-// `ObjectTable` the field was declared against.
+// hasPacked<T extends IntRepresentable> stores a plain integer in the row, so
+// a component row never holds a Dart heap reference (RULES.md rule 1). Writes
+// call `pack()`; reads `unpack()` it back through the `IntRepresentation` the
+// field was declared against.
 //
-// The table is held *per field*, not looked up from a shared registry. That
-// is what lets two unrelated populations (assets, camera views) number their
-// objects from zero without colliding: an address is only ever resolved
-// against the table that issued it. It also costs nothing extra at read time
-// - one field deref, where this used to reach `_storage.assets`.
+// The representation is held *per field*, not looked up from a shared
+// registry. That is what lets two unrelated populations (assets, sprite
+// frames) number their values from zero without colliding: an int is only
+// ever unpacked by the representation the field named. It also costs nothing
+// extra at read time - one field deref, where this used to reach
+// `_storage.assets`.
+//
+// The bits themselves are delegated to an ordinary integer field rather than
+// hardcoding `Pointer<Uint32>`, which is what lets a representation pick its
+// own width: every rung of the 1..64 ladder, sub-byte included, comes for
+// free because `_declareInt` already built them.
 
-final class _GlobalObjectField<T extends GlobalObject> extends _Field<T> {
-  _GlobalObjectField(
-    super.storage,
-    this._byte,
-    this._table,
-    this._defaultAddress,
-  );
-  final int _byte;
-  final ObjectTable _table;
-  final int _defaultAddress;
+final class _PackedField<T extends IntRepresentable> extends _Field<T>
+    implements PackedPointer<T> {
+  _PackedField(super.storage, this._bits, this._repr);
+
+  /// The integer field holding the packed bits. Declared and owned here, and
+  /// deliberately **not** registered with the storage itself - this field's
+  /// own [writeDefault] drives it, so registering both would stamp the
+  /// default twice.
+  final _Field<int> _bits;
+  final IntRepresentation<T> _repr;
 
   @override
-  T operator [](Entity entity) {
-    final address = Pointer<Uint32>.fromAddress(_read(entity) + _byte).value;
-    return _table.resolve<T>(address);
-  }
+  T operator [](Entity entity) => _repr.unpack(_bits[entity]);
 
   @override
   void operator []=(Entity entity, T newValue) =>
-      Pointer<Uint32>.fromAddress(_write(entity) + _byte).value =
-          newValue.address;
+      _bits[entity] = newValue.pack();
 
   @override
-  void writeDefault(int row) =>
-      Pointer<Uint32>.fromAddress(row + _byte).value = _defaultAddress;
+  int packedAt(Entity entity) => _bits[entity];
+
+  @override
+  void writeDefault(int row) => _bits.writeDefault(row);
 }
 
 /// `hasHeapObject`/`optHeapObject`: the same Uint32-address-in-the-row shape
@@ -939,45 +943,35 @@ final class _Float64ArrayField extends _ArrayField<double> {
   }
 }
 
-/// `hasObjectArray` - one `Uint32` [GlobalObject] address per element, the
-/// per-element repeat of [_GlobalObjectField]. 32-bit elements are always
-/// byte-aligned, so there is no sub-byte concern here at all.
-final class _GlobalObjectArrayField<T extends GlobalObject>
+/// `hasPackedArray` - the per-element repeat of [_PackedField], holding one
+/// integer element field and packing/unpacking around it.
+///
+/// Delegating to an integer *array* field rather than to `Pointer<Uint32>`
+/// arithmetic is what carries the variable width through: element stride,
+/// sub-byte packing and bounds checking are all already solved there, and a
+/// representation narrower than 32 bits pays for itself `length` times over
+/// here.
+final class _PackedArrayField<T extends IntRepresentable>
     extends _ArrayField<T> {
-  _GlobalObjectArrayField(
-    super.storage,
-    super.length,
-    this._baseByte,
-    this._table,
-    this._defaultAddress,
-  );
-  final int _baseByte;
-  final ObjectTable _table;
-  final int _defaultAddress;
+  _PackedArrayField(super.storage, super.length, this._bits, this._repr);
+
+  final _ArrayField<int> _bits;
+  final IntRepresentation<T> _repr;
 
   @override
   T get(Entity entity, int index) {
     _checkIndex(index);
-    final address = Pointer<Uint32>.fromAddress(
-      _read(entity) + _baseByte,
-    )[index];
-    return _table.resolve<T>(address);
+    return _repr.unpack(_bits.get(entity, index));
   }
 
   @override
   void set(Entity entity, int index, T newValue) {
     _checkIndex(index);
-    Pointer<Uint32>.fromAddress(_write(entity) + _baseByte)[index] =
-        newValue.address;
+    _bits.set(entity, index, newValue.pack());
   }
 
   @override
-  void writeDefault(int row) {
-    final elements = Pointer<Uint32>.fromAddress(row + _baseByte);
-    for (var i = 0; i < length; i++) {
-      elements[i] = _defaultAddress;
-    }
-  }
+  void writeDefault(int row) => _bits.writeDefault(row);
 }
 
 /// Nullable element array: [_OptionalField]'s one-bit has-flag repeated per
@@ -1391,33 +1385,46 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     return field;
   }
 
-  DataPointer<T> _hasObject<T extends GlobalObject>(
-    ObjectTable table,
+  /// Rejects a width the row cannot hold, before it becomes silent
+  /// truncation. A representation's width is a declare-time constant, so this
+  /// fires once per field at bring-up and never on a hot path.
+  int _checkBitWidth(IntRepresentation<Object?> repr) {
+    final bitWidth = repr.bitWidth;
+    if (bitWidth < 1 || bitWidth > 64) {
+      throw ArgumentError.value(
+        bitWidth,
+        'bitWidth',
+        '${repr.runtimeType} declares a width outside 1..64. A packed field is '
+            'one integer in the row, so anything wider has no representation '
+            'there - use separate fields instead.',
+      );
+    }
+    return bitWidth;
+  }
+
+  PackedPointer<T> _hasPacked<T extends IntRepresentable>(
+    IntRepresentation<T> repr,
     T defaultValue,
   ) {
-    final byte = _storage.declareField(32) >> 3;
-    final field = _GlobalObjectField<T>(
-      _storage,
-      byte,
-      table,
-      defaultValue.address,
-    );
+    final bits = _declareInt(_checkBitWidth(repr), false, defaultValue.pack());
+    final field = _PackedField<T>(_storage, bits, repr);
     _storage.registerField(field);
     return field;
   }
 
-  DataPointer<T?> _optObject<T extends GlobalObject>(
-    ObjectTable table,
+  DataPointer<T?> _optPacked<T extends IntRepresentable>(
+    IntRepresentation<T> repr,
     T? defaultValue,
   ) {
+    // Flag first, then the value - the value's own alignment rule then
+    // applies to whatever byte the flag left the cursor in.
     final flagBit = _storage.declareField(1);
-    final byte = _storage.declareField(32) >> 3;
-    final value = _GlobalObjectField<T>(
-      _storage,
-      byte,
-      table,
-      defaultValue?.address ?? 0,
+    final bits = _declareInt(
+      _checkBitWidth(repr),
+      false,
+      defaultValue?.pack() ?? 0,
     );
+    final value = _PackedField<T>(_storage, bits, repr);
     final field = _OptionalField<T>(
       _storage,
       flagBit,
@@ -1428,37 +1435,42 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     return field;
   }
 
-  DataArrayPointer<T> _hasObjectArray<T extends GlobalObject>(
-    ObjectTable table,
+  DataArrayPointer<T> _hasPackedArray<T extends IntRepresentable>(
+    IntRepresentation<T> repr,
     int length,
     T defaultValue,
   ) {
     _checkArrayLength(length);
-    final byte = _declareElements(length, 32) >> 3;
-    final field = _GlobalObjectArrayField<T>(
-      _storage,
+    final bits = _declareIntArray(
       length,
-      byte,
-      table,
-      defaultValue.address,
+      _checkBitWidth(repr),
+      false,
+      defaultValue.pack(),
     );
+    final field = _PackedArrayField<T>(_storage, length, bits, repr);
     _storage.registerField(field);
     return field;
   }
 
-  DataArrayPointer<T?> _optObjectArray<T extends GlobalObject>(
-    ObjectTable table,
+  DataArrayPointer<T?> _optPackedArray<T extends IntRepresentable>(
+    IntRepresentation<T> repr,
     int length,
     T? defaultValue,
   ) {
     _checkArrayLength(length);
-    final defaultAddress = defaultValue?.address ?? 0;
+    final bitWidth = _checkBitWidth(repr);
+    final defaultBits = defaultValue?.pack() ?? 0;
     final flagBits = List<int>.filled(length, 0);
     final values = <_Field<T>>[];
     for (var i = 0; i < length; i++) {
       flagBits[i] = _storage.declareField(1);
-      final byte = _storage.declareField(32) >> 3;
-      values.add(_GlobalObjectField<T>(_storage, byte, table, defaultAddress));
+      values.add(
+        _PackedField<T>(
+          _storage,
+          _declareInt(bitWidth, false, defaultBits),
+          repr,
+        ),
+      );
     }
     final field = _OptionalArrayField<T>(
       _storage,
@@ -1565,27 +1577,27 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
   ]) => _optFloatArray(length, 64, defaultValue);
 
   @override
-  DataPointer<T> hasObject<T extends GlobalObject>(
-    ObjectTable table,
+  PackedPointer<T> hasPacked<T extends IntRepresentable>(
+    IntRepresentation<T> repr,
     T defaultValue,
-  ) => _hasObject(table, defaultValue);
+  ) => _hasPacked(repr, defaultValue);
   @override
-  DataPointer<T?> optObject<T extends GlobalObject>(
-    ObjectTable table, [
+  DataPointer<T?> optPacked<T extends IntRepresentable>(
+    IntRepresentation<T> repr, [
     T? defaultValue,
-  ]) => _optObject(table, defaultValue);
+  ]) => _optPacked(repr, defaultValue);
   @override
-  DataArrayPointer<T> hasObjectArray<T extends GlobalObject>(
-    ObjectTable table,
+  DataArrayPointer<T> hasPackedArray<T extends IntRepresentable>(
+    IntRepresentation<T> repr,
     int length,
     T defaultValue,
-  ) => _hasObjectArray(table, length, defaultValue);
+  ) => _hasPackedArray(repr, length, defaultValue);
   @override
-  DataArrayPointer<T?> optObjectArray<T extends GlobalObject>(
-    ObjectTable table,
+  DataArrayPointer<T?> optPackedArray<T extends IntRepresentable>(
+    IntRepresentation<T> repr,
     int length, [
     T? defaultValue,
-  ]) => _optObjectArray(table, length, defaultValue);
+  ]) => _optPackedArray(repr, length, defaultValue);
 
   @override
   DataPointer<T> hasHeapObject<T>(T Function() defaultValue) {

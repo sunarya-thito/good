@@ -43,7 +43,7 @@ mixin Camera on Component {
     zoom = data.hasFloat64(1);
     // The declaring game's own view table - not a shared registry. An address
     // read out of this field means nothing except against this table.
-    view = data.optObject<CameraView>(getScene<SceneStruct>().cameraViews);
+    view = data.optPacked(getScene<SceneStruct>().cameraViews);
   }
 }
 
@@ -70,7 +70,7 @@ class ActiveCameraResolver {
     Entity? first;
     Entity? second;
     for (final entity in cameras.run()) {
-      if (entity.get<Camera>().view[entity]?.address != view.address) continue;
+      if (entity.get<Camera>().view[entity]?.pack() != view.pack()) continue;
       if (first == null) {
         first = entity;
       } else {

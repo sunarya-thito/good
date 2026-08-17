@@ -44,9 +44,9 @@ class _TextureScene extends SceneStruct {
 
   _TextureScene(this.key) : super();
 
-  final GameAsset<Texture> key;
+  final TextureKey key;
 
-  late final Texture texture;
+  late final TextureAsset texture;
 
   @override
   void describeAssets(AssetDescriptor descriptor) {
@@ -55,7 +55,7 @@ class _TextureScene extends SceneStruct {
   }
 }
 
-_TextureScene _declare(GameAsset<Texture> key) {
+_TextureScene _declare(TextureKey key) {
   final scene = _TextureScene(key)..initializeScene(MemoryPool(pageSize: 4096), assets: assets);
   scene.handle = SceneRegistry.register(scene);
   addTearDown(scene.pool.dispose);
@@ -64,10 +64,13 @@ _TextureScene _declare(GameAsset<Texture> key) {
 
 /// The table under test. Instance state on the `Game` now, so a fixture with
 /// no `Game` owns its own.
-late GameAssets assets;
+late Assets assets;
 
 void main() {
-  setUp(() => assets = GameAssets());
+  setUp(() {
+    assets = Assets();
+    AssetLoaders.register<Texture>(const TextureLoader());
+  });
 
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -81,11 +84,11 @@ void main() {
 
   group('Texture', () {
     test('declares to an address before anything is decoded', () {
-      final key = TextureAsset(MemoryImageSource(_png2x1, name: 'tile'));
+      final key = TextureKey(MemorySource(_png2x1, name: 'tile'));
       final scene = _declare(key);
 
       expect(
-        scene.texture.address,
+        scene.texture.pack(),
         isNonNegative,
         reason: 'the address is what a component row stores, and it exists '
             'from declaration - which is the only reason the game isolate, '
@@ -95,11 +98,11 @@ void main() {
     });
 
     test('reading .image before it is loaded names the asset and throws', () {
-      final key = TextureAsset(MemoryImageSource(_png2x1, name: 'tile.png'));
+      final key = TextureKey(MemorySource(_png2x1, name: 'tile.png'));
       final scene = _declare(key);
 
       expect(
-        () => scene.texture.image,
+        () => scene.texture.value.image,
         throwsA(
           isA<StateError>().having(
             (e) => e.message,
@@ -110,30 +113,30 @@ void main() {
         reason: 'this is the game isolate\'s permanent state, so it has to '
             'fail by name rather than null-dereference somewhere in a paint',
       );
-      expect(() => scene.texture.width, throwsStateError);
-      expect(() => scene.texture.height, throwsStateError);
+      expect(() => scene.texture.value.width, throwsStateError);
+      expect(() => scene.texture.value.height, throwsStateError);
     });
 
     test('load decodes real PNG bytes into a ui.Image', () async {
-      final key = TextureAsset(MemoryImageSource(_png2x1, name: 'tile'));
+      final key = TextureKey(MemorySource(_png2x1, name: 'tile'));
       final scene = _declare(key);
 
       await assets.load(key);
 
       expect(scene.texture.isLoaded, isTrue);
-      expect(scene.texture.width, 2);
+      expect(scene.texture.value.width, 2);
       expect(
-        scene.texture.height,
+        scene.texture.value.height,
         1,
         reason: 'the dimensions come out of the codec, so a 2x1 source that '
             'reads back 2x1 is proof an actual decode ran',
       );
-      expect(scene.texture.image.width, 2);
+      expect(scene.texture.value.image.width, 2);
     });
 
     test('the same instance the declaration returned is the loaded one',
         () async {
-      final key = TextureAsset(MemoryImageSource(_png2x1));
+      final key = TextureKey(MemorySource(_png2x1));
       final scene = _declare(key);
 
       final loaded = await assets.load(key);
@@ -147,13 +150,13 @@ void main() {
       );
     });
 
-    test('the address round-trips through GlobalObjectRegistry', () async {
-      final key = TextureAsset(MemoryImageSource(_png2x1));
+    test('the address round-trips through the asset table', () async {
+      final key = TextureKey(MemorySource(_png2x1));
       final scene = _declare(key);
       await assets.load(key);
 
       expect(
-        assets.resolve<Texture>(scene.texture.address),
+        assets.of<Texture>().unpack(scene.texture.pack()),
         same(scene.texture),
         reason: 'this is the exact lookup a DataPointer<Texture> read makes - '
             'the row holds the Uint32, the registry turns it back into the '
@@ -162,54 +165,62 @@ void main() {
     });
 
     test('unloading disposes the image and frees the address', () async {
-      final key = TextureAsset(MemoryImageSource(_png2x1));
+      final key = TextureKey(MemorySource(_png2x1));
       final scene = _declare(key);
       await assets.load(key);
       final texture = scene.texture;
-      final address = texture.address;
+      final payload = texture.value;
+      final address = texture.pack();
 
       assets.unload(key);
 
       expect(texture.isLoaded, isFalse);
       expect(
-        () => texture.image,
+        () => texture.value.image,
         throwsStateError,
         reason: 'a ui.Image holds engine memory the Dart GC does not account '
             'for, so unloading really disposes it - reading afterwards must '
             'not hand back a disposed image',
       );
-      expect(assets.tryResolve<Texture>(address), isNull);
+      expect(assets.tryGetAt(address), isNull);
+      expect(
+        payload,
+        isNotNull,
+        reason:
+            'the payload object outlives the handle link that was dropped, '
+            'which is what let the disposal above be observed at all',
+      );
     });
 
-    test('a Texture is a GameAssetInstance and its key is not', () {
-      final key = TextureAsset(MemoryImageSource(_png2x1));
+    test('the declared handle is addressable and its key is not', () {
+      final key = TextureKey(MemorySource(_png2x1));
       final scene = _declare(key);
 
-      expect(scene.texture, isA<GameAssetInstance>());
+      expect(scene.texture, isA<IntRepresentable>());
       expect(
         key,
-        isNot(isA<GameAssetInstance>()),
+        isNot(isA<IntRepresentable>()),
         reason: 'the type split is what makes `textureField[e] = someKey` a '
             'compile error and `textureField[e] = declaredHandle` legal',
       );
     });
   });
 
-  group('AssetBundleSource', () {
+  group('BundleSource', () {
     test('reads the declared path out of the bundle and decodes it', () async {
       final bundle = _FakeBundle();
-      final key = TextureAsset.bundle('assets/tile.png', bundle: bundle);
+      final key = TextureKey(BundleSource('assets/tile.png', bundle: bundle));
       final scene = _declare(key);
 
       await assets.load(key);
 
       expect(bundle.loads, 1);
-      expect(scene.texture.width, 2);
-      expect(scene.texture.height, 1);
+      expect(scene.texture.value.width, 2);
+      expect(scene.texture.value.height, 1);
     });
 
     test('names itself by path, so diagnostics point at the right file', () {
-      final key = TextureAsset.bundle('assets/tile.png');
+      final key = TextureKey(const BundleSource('assets/tile.png'));
       expect(key.source.description, 'assets/tile.png');
       expect(
         key.debugLabel,
@@ -220,8 +231,9 @@ void main() {
     });
 
     test('a missing path fails loudly rather than decoding garbage', () {
-      final key = TextureAsset.bundle('assets/absent.png',
-          bundle: _FakeBundle());
+      final key = TextureKey(
+        BundleSource('assets/absent.png', bundle: _FakeBundle()),
+      );
       _declare(key);
       expect(assets.load(key), throwsFlutterError);
     });
@@ -230,7 +242,7 @@ void main() {
   group('sharing across scenes', () {
     test('one key declared by two scenes is one instance and one decode',
         () async {
-      final key = TextureAsset(MemoryImageSource(_png2x1));
+      final key = TextureKey(MemorySource(_png2x1));
       final first = _declare(key);
       final second = _declare(key);
 
@@ -238,9 +250,9 @@ void main() {
       await assets.load(key);
 
       expect(identical(first.texture, second.texture), isTrue);
-      expect(first.texture.address, second.texture.address);
+      expect(first.texture.pack(), second.texture.pack());
       expect(
-        second.texture.image.width,
+        second.texture.value.image.width,
         2,
         reason: 'the second scene sees the already-decoded image, which is '
             'what makes a transition between two scenes sharing a UI atlas '

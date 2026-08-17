@@ -166,7 +166,7 @@ mixin Renderer2D on Game {
 
   /// The frame buffer [view] is drawn into. `GameRenderer2D` writes it on the
   /// game isolate; `_ViewSurface` reads it here.
-  HandoffHandle framesFor(CameraView view) => _viewFrames[view.address];
+  HandoffHandle framesFor(CameraView view) => _viewFrames[view.pack()];
 
   @override
   void describeBuffers(BufferDescriptor descriptor) {
@@ -281,7 +281,7 @@ mixin Renderer2D on Game {
     if (camera == null) return null;
 
     final surface = _surfaces.putIfAbsent(
-      camera.address,
+      camera.pack(),
       () => _ViewSurface(camera, DrawCanvas2D(assets: assets)),
     );
 

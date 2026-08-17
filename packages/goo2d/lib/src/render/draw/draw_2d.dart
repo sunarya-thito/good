@@ -83,7 +83,7 @@ abstract class DrawData2D {
 }
 
 /// A world-space quad: four already-transformed corners, one ARGB colour, the
-/// texture it samples, and one UV pair per corner. 72 bytes.
+/// texture it samples, one UV pair per corner, and how it samples. 76 bytes.
 ///
 /// # Layout
 ///
@@ -92,6 +92,7 @@ abstract class DrawData2D {
 /// 32 .. 35   uint32  ARGB                          tint (or fill, untextured)
 /// 36 .. 39   int32   texture address               [noTexture] when untextured
 /// 40 .. 71   4 corners x (float32 u, float32 v)   normalised 0..1
+/// 72 .. 75   int32   texture filter                [TextureFilter] index
 /// ```
 ///
 /// The colour keeps byte 32 and the corners keep bytes 0..31 on purpose: the
@@ -130,8 +131,8 @@ final class DrawSpriteData2D extends DrawData2D {
   static const int noTexture = -1;
 
   /// 4 corners x (float32 x, float32 y) + uint32 ARGB + int32 texture address
-  /// + 4 corners x (float32 u, float32 v).
-  static const int strideBytes = 72;
+  /// + 4 corners x (float32 u, float32 v) + int32 texture filter.
+  static const int strideBytes = 76;
 
   /// Packs one quad at [offset] and returns the offset of the next item.
   ///
@@ -160,6 +161,11 @@ final class DrawSpriteData2D extends DrawData2D {
     double y3,
     int argb, {
     int textureAddress = noTexture,
+    /// A [TextureFilter] index. An `int` rather than the enum because this is
+    /// the wire format: the producer already holds the index (it read one out
+    /// of a row) and only [DrawCanvas2D] ever turns it back into a
+    /// `FilterQuality`, once per run.
+    int filter = 0,
     double u0 = 0,
     double v0 = 0,
     double u1 = 1,
@@ -187,7 +193,8 @@ final class DrawSpriteData2D extends DrawData2D {
       ..setFloat32(offset + 56, u2, Endian.little)
       ..setFloat32(offset + 60, v2, Endian.little)
       ..setFloat32(offset + 64, u3, Endian.little)
-      ..setFloat32(offset + 68, v3, Endian.little);
+      ..setFloat32(offset + 68, v3, Endian.little)
+      ..setInt32(offset + 72, filter, Endian.little);
     return offset + strideBytes;
   }
 
@@ -195,6 +202,13 @@ final class DrawSpriteData2D extends DrawData2D {
   /// [writeQuad]'s texture field, so a decoder never re-derives the offset.
   static int textureAddressAt(ByteData batch, int index) => batch.getInt32(
     DrawData2D.batchHeaderBytes + index * strideBytes + 36,
+    Endian.little,
+  );
+
+  /// Reads back the [TextureFilter] index of item [index]. Same reasoning as
+  /// [textureAddressAt].
+  static int filterAt(ByteData batch, int index) => batch.getInt32(
+    DrawData2D.batchHeaderBytes + index * strideBytes + 72,
     Endian.little,
   );
 
@@ -227,6 +241,7 @@ final class DrawSpriteData2D extends DrawData2D {
         v2: batch.getFloat32(offset + 60, Endian.little),
         u3: batch.getFloat32(offset + 64, Endian.little),
         v3: batch.getFloat32(offset + 68, Endian.little),
+        filter: batch.getInt32(offset + 72, Endian.little),
       );
       offset += strideBytes;
     }
@@ -300,6 +315,7 @@ final class VertexBatch2D {
       _colors = Int32List(initialQuadCapacity * _verticesPerQuad),
       _texCoords = Float32List(initialQuadCapacity * _verticesPerQuad * 2),
       _runTextures = Int32List(initialQuadCapacity),
+      _runFilters = Int32List(initialQuadCapacity),
       _runVertexEnds = Int32List(initialQuadCapacity);
 
   /// Two triangles, no index buffer. An indexed `Vertices` would save a third
@@ -318,6 +334,11 @@ final class VertexBatch2D {
   /// other buffer here is: one object per run per frame is a per-frame heap
   /// allocation proportional to the scene.
   Int32List _runTextures;
+
+  /// Filter per run. A run is one `drawVertices` call under one `Paint`, and
+  /// the filter lives on the paint - so two adjacent quads sharing a texture
+  /// but sampling it differently genuinely cannot share a run.
+  Int32List _runFilters;
   Int32List _runVertexEnds;
   int _runCount = 0;
 
@@ -329,6 +350,9 @@ final class VertexBatch2D {
 
   /// The texture address run [run] samples, or [DrawSpriteData2D.noTexture].
   int runTextureAt(int run) => _runTextures[run];
+
+  /// The [TextureFilter] index run [run] samples with.
+  int runFilterAt(int run) => _runFilters[run];
 
   /// First vertex of run [run].
   int runVertexStart(int run) => run == 0 ? 0 : _runVertexEnds[run - 1];
@@ -379,6 +403,7 @@ final class VertexBatch2D {
     double y3,
     int argb, {
     int textureAddress = DrawSpriteData2D.noTexture,
+    int filter = 0,
     double u0 = 0,
     double v0 = 0,
     double u1 = 1,
@@ -426,8 +451,11 @@ final class VertexBatch2D {
       colors[c++] = argb;
     }
     _vertexCount += _verticesPerQuad;
-    if (_runCount == 0 || _runTextures[_runCount - 1] != textureAddress) {
+    if (_runCount == 0 ||
+        _runTextures[_runCount - 1] != textureAddress ||
+        _runFilters[_runCount - 1] != filter) {
       _runTextures[_runCount] = textureAddress;
+      _runFilters[_runCount] = filter;
       _runCount++;
     }
     _runVertexEnds[_runCount - 1] = _vertexCount;
@@ -448,6 +476,7 @@ final class VertexBatch2D {
       ..setRange(0, _vertexCount * 2, _texCoords);
     final runs = capacity ~/ _verticesPerQuad + 1;
     _runTextures = Int32List(runs)..setRange(0, _runCount, _runTextures);
+    _runFilters = Int32List(runs)..setRange(0, _runCount, _runFilters);
     _runVertexEnds = Int32List(runs)..setRange(0, _runCount, _runVertexEnds);
   }
 
@@ -540,7 +569,18 @@ final class VertexBatch2D {
 /// buys and the alternating-texture case that pays for it.
 final class DrawCanvas2D {
   DrawCanvas2D({required this.assets, DrawRegistry2D? registry})
-    : registry = registry ?? DrawRegistry2D.standard;
+    : registry = registry ?? DrawRegistry2D.standard {
+    // Registered here rather than from a `GameSystem.onMounted`, which is
+    // where it used to live and which was the wrong isolate *and* an
+    // undispatched hook: systems run on the game isolate, which never decodes
+    // anything and therefore never needs a loader, while the copy that does
+    // decode was never told. A canvas is constructed only on the isolate with
+    // Flutter attached, and always before anything it draws is decoded, so it
+    // is the one place that is both necessary and sufficient.
+    //
+    // Idempotent - `register` replaces, and the loader is `const`.
+    AssetLoaders.register<Texture>(const TextureLoader());
+  }
 
   final DrawRegistry2D registry;
 
@@ -552,7 +592,7 @@ final class DrawCanvas2D {
   /// address at draw time. It is passed in rather than reached statically
   /// because the table is instance state on the `Game` now, which is also what
   /// lets it cross `Isolate.spawn` with the rest of the object graph.
-  final GameAssets assets;
+  final Assets assets;
 
   final VertexBatch2D _batch = VertexBatch2D();
 
@@ -674,6 +714,9 @@ final class DrawCanvas2D {
   /// The texture address run [run] samples, or [DrawSpriteData2D.noTexture].
   int runTextureAt(int run) => _batch.runTextureAt(run);
 
+  /// The [TextureFilter] index run [run] samples with.
+  int runFilterAt(int run) => _batch.runFilterAt(run);
+
   /// Replays the held frame: one `drawVertices` per texture run, in run order,
   /// which is z order - see the class doc.
   void replay(Canvas canvas) {
@@ -694,7 +737,7 @@ final class DrawCanvas2D {
         // BlendMode.modulate multiplies source by destination - the sampled
         // texel by the per-vertex colour - so `Sprite.color` acts as a tint and
         // the default opaque white leaves the texture exactly as decoded.
-        final paint = _paintFor(address);
+        final paint = _paintFor(address, _batch.runFilterAt(run));
         // Null means the texture is declared but has not finished decoding on
         // this isolate yet. Skipping the run drops it for exactly the frames
         // that race the decode - see [_paintFor].
@@ -742,12 +785,19 @@ final class DrawCanvas2D {
   /// next one draws normally. Nothing is silently wrong: the asset either
   /// finishes decoding, or its load fails and reports that where the failure
   /// actually is.
-  Paint? _paintFor(int address) {
-    final cached = _texturePaints[address];
+  Paint? _paintFor(int address, int filter) {
+    // Keyed by texture *and* filter: the filter lives on the `Paint`, so one
+    // texture drawn crisply in one sprite and smoothly in another needs two.
+    // Packed into one int rather than a record key because this is a map
+    // lookup on the paint path - once per run, not per quad, but a record key
+    // would allocate there for nothing. Three bits is room for every
+    // `TextureFilter` there will be; an asset address never approaches 2^28.
+    final key = (address << 3) | filter;
+    final cached = _texturePaints[key];
     if (cached != null) return cached;
-    final texture = assets.resolve<Texture>(address);
-    if (!texture.isLoaded) return null;
-    final image = texture.image;
+    final asset = assets.of<Texture>().unpack(address);
+    if (!asset.isLoaded) return null;
+    final image = asset.value.image;
     // scale(1/w, 1/h): maps the image onto the unit square, so the record's
     // normalised UVs address it whatever its pixel size. See the class doc.
     final matrix = Float64List(16);
@@ -768,9 +818,9 @@ final class DrawCanvas2D {
         TileMode.clamp,
         TileMode.clamp,
         matrix,
-        filterQuality: texture.filterQuality,
+        filterQuality: TextureFilter.values[filter].quality,
       );
-    _texturePaints[address] = paint;
+    _texturePaints[key] = paint;
     return paint;
   }
 

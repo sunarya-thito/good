@@ -153,7 +153,7 @@ class Wheel extends EntityStruct
   late final Sprite body;
   late final Sprite spoke;
   late final CircleBody circle;
-  late final Texture disc;
+  late final TextureAsset disc;
 
   @override
   void describeAssets(AssetDescriptor descriptor) {

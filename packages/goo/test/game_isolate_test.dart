@@ -456,43 +456,55 @@ class _InputProbeGame extends Game {
 // reads those two integers out of shared memory and compares them against its
 // own copy.
 
-/// Top-level, so each isolate lazily initializes its *own* instance of the
-/// key - which is the realistic shape (a `static final` on the prefab) and
-/// keeps the key well away from the spawn message.
-final _IsolateTextureAsset _isolateTexture = _IsolateTextureAsset();
+/// Top-level, so each isolate initializes its *own* instance of the key -
+/// which is the realistic shape and keeps the key well away from the spawn
+/// message.
+///
+/// Two copies of a `const` key are one asset now, by value, which is exactly
+/// the property this file's cross-isolate agreement rests on: the copy that
+/// arrives in a load request equals the one the game isolate declared.
+const AssetKey<_IsolateTexture> _isolateTexture = AssetKey<_IsolateTexture>(
+  _NullSource('isolate-fixture'),
+);
 
-class _NullSource extends GameAssetSource {
+class _NullSource extends AssetSource {
+  const _NullSource(this.name);
+
+  final String name;
+
   @override
   Future<Uint8List> load() async => Uint8List(4);
 
   @override
-  String get description => 'isolate-fixture';
+  Future<AssetAvailability> check() async => AssetAvailability.present;
+
+  @override
+  String get description => name;
+
+  @override
+  bool operator ==(Object other) => other is _NullSource && other.name == name;
+
+  @override
+  int get hashCode => Object.hash(_NullSource, name);
 }
 
-class _IsolateTexture extends GameAssetInstance {
-  int? _byteCount;
+/// The decoded payload. Plain - `Asset<T>` is the addressed thing now.
+class _IsolateTexture {
+  _IsolateTexture(this.byteCount);
 
-  int get byteCount {
-    requireLoaded();
-    return _byteCount!;
-  }
+  final int byteCount;
 }
 
-class _IsolateTextureAsset extends GameAsset<_IsolateTexture> {
-  @override
-  final GameAssetSource source = _NullSource();
+class _IsolateTextureLoader extends AssetLoader<_IsolateTexture> {
+  const _IsolateTextureLoader();
 
   @override
-  _IsolateTexture createInstance() => _IsolateTexture();
-
-  @override
-  Future<void> loadInto(_IsolateTexture instance) async {
-    instance._byteCount = (await source.load()).length;
-  }
+  Future<_IsolateTexture> load(AssetKey<_IsolateTexture> key) async =>
+      _IsolateTexture((await key.source.load()).length);
 }
 
 class _Textured extends EntityStruct {
-  late final _IsolateTexture texture;
+  late final Asset<_IsolateTexture> texture;
 
   /// What the *game isolate's* copy thinks this asset's address is.
   late final DataPointer<int> seenAddress;
@@ -563,7 +575,7 @@ class _TexturedSystem extends GameSystem with FixedTickable {
   void onFixedUpdate() {
     for (final entity in query.run()) {
       final prefab = entity.get<_Textured>();
-      prefab.seenAddress[entity] = prefab.texture.address;
+      prefab.seenAddress[entity] = prefab.texture.pack();
       prefab.seenLoaded[entity] = prefab.texture.isLoaded ? 1 : 0;
       // The row write above still happens, and is still read back on this
       // isolate - it is what proves an address survives a round trip through
@@ -621,10 +633,12 @@ class _TexturedGame extends Game {
 // asset. It looked correct only because main happened to run `loadScene`
 // itself during boot in every test that existed.
 
-final _IsolateTextureAsset _lateTexture = _IsolateTextureAsset();
+const AssetKey<_IsolateTexture> _lateTexture = AssetKey<_IsolateTexture>(
+  _NullSource('late-fixture'),
+);
 
 class _LateProp extends EntityStruct {
-  late final _IsolateTexture texture;
+  late final Asset<_IsolateTexture> texture;
 
   @override
   void describeAssets(AssetDescriptor descriptor) {
@@ -681,7 +695,7 @@ class _LateState extends GameState<_LateGame> {
       game.lateScene,
       onProgress: (report) => game.progress.value = report.progress,
     ).then((scene) => _loadedLate = scene);
-    game.lateAddress.value = game.assets.tryGet(_lateTexture)!.address;
+    game.lateAddress.value = game.assets.tryGet(_lateTexture)!.pack();
   }
 
   void _unload() {
@@ -705,7 +719,7 @@ class _LateGame extends Game {
   /// The address the *game isolate* assigned this scene's texture, published
   /// so main can name it. Main cannot look the asset up by key: the key it
   /// holds is a different object from the one that was declared (see
-  /// `GameAssets.adoptAt`), so an address is the only shared name.
+  /// `Assets.adoptAt`), so an address is the only shared name.
   late final StateChannel<int> lateAddress;
 
   @override
@@ -823,10 +837,20 @@ Future<void> _waitTicks(Game run, int count) {
 }
 
 void main() {
+  // Registered on *this* isolate only, and that is the point rather than an
+  // omission: this is the copy with Flutter attached, so it is the only one
+  // that decodes. The spawned game isolate declares the same assets, hands
+  // out the same addresses and writes them into rows without ever needing a
+  // loader - which is what the tests below assert directly.
+  setUp(() => AssetLoaders.register<_IsolateTexture>(
+    const _IsolateTextureLoader(),
+  ));
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();
     ComponentTypeRegistry.reset();
+    AssetLoaders.reset();
   });
 
   test(
@@ -1235,7 +1259,7 @@ void main() {
         await _waitUntil(
           run,
           () =>
-              game.assets.tryResolve<_IsolateTexture>(address)?.isLoaded ==
+              game.assets.of<_IsolateTexture>().tryUnpack(address)?.isLoaded ==
               true,
         ),
         isTrue,
@@ -1245,9 +1269,9 @@ void main() {
             '_reconcileAssets returned at `if (!game.decodesAssets)` and no '
             'decode was ever requested, leaving this false forever',
       );
-      final declared = game.assets.tryResolve<_IsolateTexture>(address)!;
+      final declared = game.assets.of<_IsolateTexture>().tryUnpack(address)!;
       expect(
-        declared.byteCount,
+        declared.value.byteCount,
         4,
         reason: 'and the payload really landed, not just the flag',
       );
@@ -1268,7 +1292,7 @@ void main() {
       expect(
         await _waitUntil(
           run,
-          () => game.assets.tryResolve<_IsolateTexture>(address) == null,
+          () => game.assets.of<_IsolateTexture>().tryUnpack(address) == null,
         ),
         isTrue,
         reason:
@@ -1300,7 +1324,7 @@ void main() {
       // Resolved by address, not by key: main never ran a `describeAssets`
       // pass, and its own `_isolateTexture` object is not the one that was
       // declared - a key crossing a port arrives as a copy.
-      final here = game.assets.tryResolve<_IsolateTexture>(
+      final here = game.assets.of<_IsolateTexture>().tryUnpack(
         reporter.reportedAddress.value,
       );
       expect(
@@ -1312,7 +1336,7 @@ void main() {
       );
       expect(
         reporter.reportedAddress.value,
-        here!.address,
+        here!.pack(),
         reason:
             'one copy assigns the address and the other takes it as given. '
             'It used to be two copies computing the same number from the same '
@@ -1336,7 +1360,11 @@ void main() {
             'while this copy - the one with Flutter attached - did load '
             'it, on the far side of loadScene\'s decode request',
       );
-      expect(here.byteCount, 4, reason: 'and its payload is readable here');
+      expect(
+        here.value.byteCount,
+        4,
+        reason: 'and its payload is readable here',
+      );
 
       await run.stop();
     },

@@ -390,7 +390,7 @@ final class InputDevice {
       screenY,
       viewX ?? screenX,
       viewY ?? screenY,
-      view?.address ?? -1,
+      view?.pack() ?? -1,
     )) {
       _publish();
     }

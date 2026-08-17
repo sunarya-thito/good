@@ -102,39 +102,46 @@ abstract class DataDescriptor {
   // the renderer system would have to resolve the address manually
   // int spriteId = gameObject.spriteId.value;
   // Sprite? sprite = assetManager.getLoadedTexture(spriteId);
-  /// An object-reference field: the row stores [table]'s `Uint32` address,
-  /// never a Dart heap reference (RULES.md rule 1), and a read resolves it
-  /// back through that same table.
+  /// A packed-value field: the row stores the `int` [repr] packs [T] into,
+  /// never a Dart heap reference (RULES.md rule 1), and a read unpacks it
+  /// back through that same representation.
   ///
-  /// [table] is named at the *declare* site because that is the one place the
-  /// field's type is known - so a fourth kind of global object costs nothing
-  /// but its own table, and no shared address space has to exist for the
-  /// read path to find one.
-  DataPointer<T> hasObject<T extends GlobalObject>(
-    ObjectTable table,
+  /// [repr] is named at the *declare* site because that is the one place the
+  /// field's type is known - so a fourth kind of packed value costs nothing
+  /// but its own representation, and no shared address space has to exist for
+  /// the read path to find one. Pairing the two in the signature is also what
+  /// makes a mismatched field/representation a compile error rather than a
+  /// read-time `StateError`.
+  ///
+  /// The field is [IntRepresentation.bitWidth] bits wide, so a representation
+  /// that only ever hands out a few hundred values costs a row a byte or two
+  /// rather than a fixed four.
+  PackedPointer<T> hasPacked<T extends IntRepresentable>(
+    IntRepresentation<T> repr,
     T defaultValue,
   );
-  DataPointer<T?> optObject<T extends GlobalObject>(
-    ObjectTable table, [
+  DataPointer<T?> optPacked<T extends IntRepresentable>(
+    IntRepresentation<T> repr, [
     T? defaultValue,
   ]);
 
   // -----
-  // Heap objects are the unconstrained cousin of hasObject/optObject: any
+  // Heap objects are the unconstrained cousin of hasPacked/optPacked: any
   // Dart object at all, including a closure, a `List`, or an instance of a
-  // class you don't own - no `GlobalObject` implementation required.
+  // class you don't own - no `IntRepresentable` implementation required.
   //
   // The difference that matters is *when* and *where* the value is
-  // meaningful. A `GlobalObject`'s address is assigned once at describe/load
-  // time and is agreed on by every isolate that re-ran the same registration
-  // (that's what makes an asset reference survive being read from the render
-  // isolate). A heap object's address is assigned the moment you write it,
-  // on whichever isolate wrote it, and means nothing anywhere else - the
-  // row's 32-bit payload is an index into *that* isolate's
-  // `HeapObjectRegistry` and nothing more. So:
+  // meaningful. A packed value is either self-describing (the int *is* the
+  // value, see `IntRepresentation`) or was assigned its int at describe/load
+  // time by a table both isolates built identically - which is what makes an
+  // asset reference survive being read from the render isolate. A heap
+  // object's address is assigned the moment you write it, on whichever
+  // isolate wrote it, and means nothing anywhere else - the row's 32-bit
+  // payload is an index into *that* isolate's `HeapObjectRegistry` and
+  // nothing more. So:
   //
-  //  * Use `hasObject`/`optObject` for anything a second isolate has to
-  //    resolve (assets, shared immutable descriptors).
+  //  * Use `hasPacked`/`optPacked` for anything a second isolate has to
+  //    unpack (assets, sprite frames, shared immutable descriptors).
   //  * Use `hasHeapObject`/`optHeapObject` for isolate-local, dynamically
   //    assigned references (a callback, a cached decoder, a native handle
   //    wrapper) that only the isolate that set them will ever read.
@@ -149,13 +156,13 @@ abstract class DataDescriptor {
   /// `null`, which is already the only sensible "nothing here yet" for a
   /// reference that is assigned dynamically at runtime.
   DataPointer<T?> optHeapObject<T>();
-  DataArrayPointer<T> hasObjectArray<T extends GlobalObject>(
-    ObjectTable table,
+  DataArrayPointer<T> hasPackedArray<T extends IntRepresentable>(
+    IntRepresentation<T> repr,
     int length,
     T defaultValue,
   );
-  DataArrayPointer<T?> optObjectArray<T extends GlobalObject>(
-    ObjectTable table,
+  DataArrayPointer<T?> optPackedArray<T extends IntRepresentable>(
+    IntRepresentation<T> repr,
     int length, [
     T? defaultValue,
   ]);
@@ -218,6 +225,25 @@ abstract class DataPointer<T> {
   DataBinding<T> bind(Entity instance) => _DataBinding(this, instance);
 }
 
+/// A [DataPointer] over an [IntRepresentable], which can additionally hand
+/// back the raw packed int without unpacking it.
+///
+/// That escape hatch is what keeps a self-describing representation off the
+/// allocator on a hot path. `frame[entity]` has to return a `SpriteFrame`, so
+/// it constructs one - fine at a write site, 20k allocations a frame in a
+/// renderer's loop, which is exactly what RULES.md rule 1 and the removal of
+/// `DataPointer<Matrix4>` (see the note at the top of this file) exist to
+/// prevent. A renderer reads [packedAt] and does the shifts itself.
+abstract class PackedPointer<T extends IntRepresentable>
+    extends DataPointer<T> {
+  const PackedPointer();
+
+  /// The stored int, exactly as [IntRepresentable.pack] produced it, with no
+  /// unpacking and no allocation. Reads the last *published* snapshot, like
+  /// [DataPointer.operator []].
+  int packedAt(Entity instance);
+}
+
 class _DataBinding<T> implements DataBinding<T> {
   final DataPointer<T> pointer;
   final Entity instance;
@@ -268,43 +294,62 @@ abstract class DataArrayPointer<T> {
   void set(Entity instance, int index, T newValue);
 }
 
-/// A thing with an integer key, and nothing more.
+/// A thing that can be reduced to the integer a component row stores, and
+/// nothing more.
 ///
-/// The key implies **nothing on its own** - not that it names an asset, not
-/// that it names a camera view. It is meaningful only against the
-/// [ObjectTable] that issued it, and whoever handles the int decides what it
-/// means.
+/// The int implies **nothing on its own** - not that it names an asset, not
+/// that it names a camera view, not that it names anything at all. It is
+/// meaningful only against the [IntRepresentation] that produced the pairing,
+/// and that representation decides what it means.
 ///
-/// That is a correction of an earlier design in which every `GlobalObject`
-/// shared one process-wide address space (a `GlobalObjectRegistry`, later
-/// merged into `GameAssets`). One space forces every unrelated population -
-/// assets, camera views, whatever comes next - to be poured into the same
-/// table, which makes "address 3" a question you cannot answer without
-/// knowing what else has been registered.
-abstract interface class GlobalObject {
-  int get address;
+/// This was called `GlobalObject` with an `address` getter, and both halves of
+/// that name were wrong. Not *global*: an int is scoped to one
+/// representation, which was itself a correction of an earlier design where
+/// every such object shared one process-wide address space and "address 3"
+/// was unanswerable without knowing everything else registered. And not an
+/// *address*: a [SpriteFrame]-style value is packed into its int outright,
+/// with nothing stored anywhere and nothing to look up - which is exactly why
+/// the other half of the pair says `unpack` rather than `resolve`.
+abstract interface class IntRepresentable {
+  /// This value as the [IntRepresentation.bitWidth]-bit integer a row holds.
+  int pack();
 }
 
-/// Issues and resolves the addresses for **one population** of
-/// [GlobalObject]s.
+/// The other direction: turns the int in a row back into a [T].
 ///
-/// One table per population, each numbering from zero. `GameAssets` numbers
-/// assets; a `Game` numbers its camera views. The two may hand out the same
-/// address and it does not matter, because an address is never resolved
-/// except against the table that issued it - which is exactly the property a
-/// single shared registry destroys.
+/// May **look the value up** - `Assets` keeps a list and the int is an index
+/// into it - or may simply **decode it**, when the int carries the whole value
+/// and there is no storage at all. A field neither knows nor cares which, and
+/// that is the point of not calling this a table: an implementation is free to
+/// be `const` and stateless.
 ///
-/// Generic in the *method* rather than the class deliberately: a row field is
-/// declared as some specific subtype (`Texture`), while a table holds a whole
-/// family (`GameAssetInstance`), and Dart's covariance means an
-/// `ObjectTable<GameAssetInstance>` is not an `ObjectTable<Texture>`. Putting
-/// the type parameter on `resolve` lets one table serve every field that
-/// draws from it.
-abstract interface class ObjectTable {
-  /// The object at [address], or a `StateError` naming what went wrong -
-  /// never a neighbouring object, and never null.
-  T resolve<T extends GlobalObject>(int address);
+/// One representation per population. Two of them may hand out the same int
+/// and it does not matter, because an int is never unpacked except by the
+/// representation the field was declared against.
+///
+/// Generic in the *class* rather than the method, so that a field and its
+/// representation are type-checked against each other at the declare site
+/// rather than blowing up at read time. A representation whose population is
+/// heterogeneous (an asset table holding `Asset<Texture>` and
+/// `Asset<AudioClip>`) vends a typed view per payload type instead of being
+/// one representation for all of them - see `Assets.of`.
+abstract interface class IntRepresentation<T extends IntRepresentable> {
+  /// How many bits a column of [T] needs, `1..64`.
+  ///
+  /// A declare-time constant of the representation, never of an individual
+  /// value: the layout is computed once and every entity in the archetype
+  /// shares it, so a per-instance width could not be honoured.
+  ///
+  /// **Keep this a literal** in a `const`-constructible class. `goo_cli`'s
+  /// codegen hoists layout to build time by reading these through
+  /// `package:analyzer`, which can evaluate a constant and cannot evaluate a
+  /// computation.
+  int get bitWidth;
 
-  /// [resolve], but null when nothing is registered at [address].
-  T? tryResolve<T extends GlobalObject>(int address);
+  /// The value [bits] stands for, or a `StateError` naming what went wrong -
+  /// never a neighbouring value, and never null.
+  T unpack(int bits);
+
+  /// [unpack], but null when [bits] stands for nothing.
+  T? tryUnpack(int bits);
 }

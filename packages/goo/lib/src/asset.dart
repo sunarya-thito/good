@@ -1,78 +1,329 @@
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart' show AssetBundle, rootBundle;
 import 'package:meta/meta.dart';
 import 'package:goo/src/data.dart';
 
-typedef EnumLocalAssetParser<T extends GameAssetInstance> =
-    GameAsset<T> Function(String name);
+// ---------------------------------------------------------------------------
+// The three-way split
+//
+// An asset is three separable things, and keeping them apart is what lets one
+// of them exist on an isolate that can never produce the others:
+//
+//   AssetKey   identity   every copy, always, plain sendable data
+//   AssetInfo  shape      every copy, after load, plain sendable data
+//   T          value      the decoding copy only, unsendable
+//
+// `Asset<T>` is the handle that binds the three together and carries the
+// integer a component row stores.
+// ---------------------------------------------------------------------------
 
-mixin EnumLocalAsset<T extends GameAssetInstance> on Enum
-    implements GameAsset<T> {
-  static final Map<Enum, GameAsset> _instances = {};
-  static final Map<Type, EnumLocalAssetParser> _parsers = {};
-  static void registerParser<T extends GameAssetInstance>(
-    EnumLocalAssetParser<T> parser,
-  ) {
-    _parsers[T] = parser;
-  }
+/// Where an asset's bytes come from - a bundle path, a packed chunk, an
+/// in-memory blob in a test. Deliberately knows nothing about what the bytes
+/// mean; decoding is [AssetLoader]'s job, and decryption or decompression
+/// happen *here*, below [load], so a loader never learns the game shipped
+/// encrypted.
+///
+/// **Value equality is required, not optional.** A source is half of an
+/// asset's identity (see [Assets.declare]), so two separately-constructed
+/// `BundleSource('a.png')` must be equal or the same file becomes two assets,
+/// two addresses and two decodes. It also has to survive `Isolate.spawn`,
+/// which copies: an identity-compared source arrives on the other side equal
+/// to nothing, which is precisely the bug the old `GameAsset` worked around
+/// with an address-keyed adopt path.
+@immutable
+abstract class AssetSource {
+  const AssetSource();
 
-  String get assetPath;
+  /// The plaintext bytes. Reads, decrypts and decompresses as needed.
+  Future<Uint8List> load();
 
-  @override
-  T createInstance() {
-    return _getGlobalAsset().createInstance() as T;
-  }
+  /// Pre-flight: is this asset actually going to be there?
+  ///
+  /// Never reads asset bytes and never decodes - this is what a startup
+  /// readiness check calls over every declared asset, and it has to stay
+  /// cheap enough to run over all of them. See [AssetAvailability] for what
+  /// each answer does and does not promise.
+  Future<AssetAvailability> check();
 
-  GameAsset _getGlobalAsset() {
-    return _instances.putIfAbsent(this, () {
-      final parser = _parsers[T];
-      if (parser == null) {
-        throw StateError(
-          'No parser registered for $T. Call EnumLocalAsset.registerParser<$T>(...) before using this enum.',
-        );
-      }
-      return parser(assetPath);
-    });
-  }
-
-  @override
-  Future<void> loadInto(GameAssetInstance instance) {
-    return _getGlobalAsset().loadInto(instance);
-  }
-
-  @override
-  GameAssetSource get source => _getGlobalAsset().source;
-
-  @override
-  String get debugLabel => _getGlobalAsset().debugLabel;
+  /// Diagnostics only - what [AssetKey.debugLabel] embeds. Override with
+  /// something that identifies the individual source (a path), since the type
+  /// name alone is the same for every instance.
+  String get description => '$runtimeType';
 }
 
-/// [GlobalObject.address] the moment it's declared - the exact pattern
-/// [ArchetypeRegistry] uses for archetype ids, and for the same reason:
-/// `DataPointer<T extends GlobalObject>` (see `hasObject`/`optObject` in
-/// data.dart) stores a plain `Uint32` in the row, never a heap reference
-/// (RULES.md rule 1 - a component row is native memory, it cannot hold a
-/// Dart object pointer).
-///
-/// The address is meaningful **only against this table**. `GameAssets` is one
-/// [ObjectTable] among however many a game has; a field declared against it
-/// resolves through it and through nothing else, which is what lets an
-/// unrelated population number itself from zero without colliding.
+/// What a [AssetSource.check] found, and what it did not.
+enum AssetAvailability {
+  /// Nothing in the manifest names this. The build never knew about it -
+  /// typically stale codegen naming an asset the packer never saw.
+  unknown,
 
-/// The declare-time pass that names every asset a prefab or a scene needs -
-/// the third `describe*` hook alongside `describeType`/`describeStruct`, and
-/// RULES.md rule 6 applied to assets.
+  /// The manifest has it, but its backing file is absent or the wrong size.
+  /// A failed or partial install, or something deleted after the fact.
+  missing,
+
+  /// Manifest entry and backing bytes both present at the expected size.
+  ///
+  /// **Not a promise the bytes are intact.** Verifying that means reading and
+  /// hashing everything, which is exactly what this check exists not to do.
+  /// Corruption *within* a chunk surfaces at load: authenticated encryption
+  /// fails its tag rather than yielding garbage, and an unencrypted build
+  /// fails in the decoder.
+  present,
+
+  /// Cannot be answered without I/O this check refuses to perform - a network
+  /// source. Neither a pass nor a failure; a readiness report should say so
+  /// rather than counting it either way.
+  unverifiable,
+}
+
+/// One loadable asset's **identity**: which asset this is, and nothing else.
+///
+/// Identity is `(T, source)` - the payload type and where the bytes come from.
+/// Nothing about the *shape* or *value* of the decoded asset belongs here. An
+/// image's pixel size is discovered by decoding it ([AssetInfo]); how a sprite
+/// samples it is a property of the sprite. Both used to live on the key, and
+/// both were wrong: a build pipeline that repacks or recompresses an asset
+/// would have been rewriting its identity.
+///
+/// Plain, immutable, sendable data with a phantom type parameter - it makes
+/// nothing and fills nothing. That is what lets a key cross `Isolate.spawn`
+/// while the decoded payload, which owns a `ui.Image` or a native handle,
+/// stays on the copy that made it.
+///
+/// Instantiable as-is; subclass only to override [loader]:
+///
+/// ```dart
+/// const AssetKey<Texture>(BundleSource('player.png'))
+/// ```
+@immutable
+class AssetKey<T> {
+  const AssetKey(this.source);
+
+  final AssetSource source;
+
+  /// The payload type this key names, as a runtime value.
+  ///
+  /// Half of an asset's identity, and it has to come from the *instance*
+  /// rather than from a call site's type argument. A declared set is held as
+  /// `List<AssetKey<Object?>>` - one list, many payload types - so a
+  /// `_identityOf<T>(key)` keyed on the static `T` would compute
+  /// `(Object?, source)` there and `(Texture, source)` at the declare site,
+  /// and the same asset would fail to match itself. Dart reifies type
+  /// arguments, so `T` read here is the real one either way.
+  Type get payloadType => T;
+
+  /// Builds this key's handle at [address].
+  ///
+  /// Lives here rather than in [Assets] for the same reason [payloadType]
+  /// does. `Assets.adoptAt` receives its key as `AssetKey<Object?>` - the
+  /// request that crossed the isolate boundary carries a heterogeneous list -
+  /// so constructing `Asset<T>` there would bind `T` to `Object?` and produce
+  /// a handle that `Assets.of<Texture>()` then refuses to unpack, because
+  /// `Asset<Object?>` is not an `Asset<Texture>`. Constructed here, `T` is the
+  /// instance's reified argument and the handle comes out correctly typed
+  /// whatever the call site's static view of the key.
+  @internal
+  Asset<T> newAsset(int address) => Asset<T>._(this, address);
+
+  /// What turns this key's bytes into a [T].
+  ///
+  /// Defaults to the loader registered for [T], which is what makes the bare
+  /// `AssetKey<Texture>(...)` above work with no subclass. Override on a key
+  /// subclass in the one case the registry cannot express: two asset kinds
+  /// that decode to the same payload type.
+  ///
+  /// Consulted **only on the isolate that decodes**. Declaring and adopting
+  /// build an `Asset<T>` directly, so a game isolate never touches the
+  /// registry and cannot fail on an unregistered one.
+  AssetLoader<T> get loader => AssetLoaders.of<T>();
+
+  /// Diagnostics only - what an "asset was never loaded" or "asset was never
+  /// declared" message names this asset by.
+  String get debugLabel => '$T(${source.description})';
+}
+
+/// Turns an [AssetKey]'s bytes into a [T], and releases it again.
+///
+/// One per payload type, registered once with [AssetLoaders]. Everything that
+/// used to be per-key lives here instead, which is what leaves [AssetKey] as
+/// pure identity and lets a key be constructed without subclassing anything.
+///
+/// Every member runs **only on the isolate that can decode** (the
+/// main/Flutter one), via [Assets.load]. A `dart:ui` call here is correct and
+/// expected; the game isolate never reaches this class.
+abstract class AssetLoader<T> {
+  const AssetLoader();
+
+  /// Reads [key]'s source and produces the decoded payload.
+  ///
+  /// Called at most once per asset - [Assets] records the result and collapses
+  /// overlapping requests for one key into a single call.
+  Future<T> load(AssetKey<T> key);
+
+  /// Releases what [load] produced - a `ui.Image`, a native handle, a large
+  /// `Uint8List`. Called only on the copy that actually loaded.
+  ///
+  /// The base implementation does nothing, which is right for a payload the
+  /// Dart GC can reclaim on its own.
+  void unload(T value) {}
+
+  /// A sendable summary of [value], replicated to every copy - **including
+  /// the ones that can never hold [value] itself**.
+  ///
+  /// This is how a fact discovered by decoding reaches an isolate that cannot
+  /// decode. An image's true pixel size is the reference case: it used to be
+  /// *declared* on the key and checked against the decode with an `assert`,
+  /// because the game isolate needed it and had no way to find out. Now it is
+  /// discovered on the copy that can and shipped to the copy that can't, so
+  /// there is no declaration left to be wrong.
+  ///
+  /// Null when nothing about the decoded asset is needed off-isolate.
+  AssetInfo? describe(T value) => null;
+}
+
+/// A plain-data summary of a decoded asset - see [AssetLoader.describe].
+///
+/// Must be sendable: it crosses the isolate boundary in the load-completion
+/// message. Keep it to numbers, strings and typed data.
+@immutable
+abstract class AssetInfo {
+  const AssetInfo();
+}
+
+/// The registry [AssetKey.loader] falls back to: one [AssetLoader] per payload
+/// type.
+///
+/// Register from library bring-up on the decoding isolate. Nothing on the
+/// declare path consults it - `declare` and `adoptAt` build an `Asset<T>`
+/// without a loader - so a game isolate that never registers anything is a
+/// supported configuration rather than a latent crash.
+final class AssetLoaders {
+  AssetLoaders._();
+
+  static final Map<Type, Object> _loaders = <Type, Object>{};
+
+  /// Registers [loader] as the decoder for payload type [T], replacing any
+  /// previous registration.
+  static void register<T>(AssetLoader<T> loader) => _loaders[T] = loader;
+
+  /// The loader for [T], or a `StateError` naming what is missing.
+  static AssetLoader<T> of<T>() {
+    final loader = _loaders[T];
+    if (loader == null) {
+      throw StateError(
+        'No AssetLoader<$T> is registered on this isolate, so an asset of that '
+        'type cannot be decoded here. Call AssetLoaders.register<$T>(...) '
+        'during bring-up on the isolate that decodes. If this fired on a game '
+        'isolate, something reached a decode path that should never run there '
+        '- declaring and adopting do not need a loader.',
+      );
+    }
+    return loader as AssetLoader<T>;
+  }
+
+  /// Test-only: drops every registration, so one suite's throwaway loaders
+  /// cannot answer for the next one's assets.
+  @visibleForTesting
+  static void reset() => _loaders.clear();
+}
+
+/// A declared asset: its identity, its address, and - on the copy that loaded
+/// it - its payload.
+///
+/// **Concrete, generic, and never subclassed**, and that is the property the
+/// whole design turns on. Because [Assets] can name this type outright it can
+/// construct one itself, synchronously, at declare time, with no factory and
+/// no bytes. That is what lets [AssetLoader] have a single `load` method
+/// instead of the `createInstance`/`loadInto` pair this replaces: nothing has
+/// to manufacture an empty payload-typed instance, because the payload type is
+/// no longer the addressed thing.
+///
+/// Name the handle, not the payload, in a field:
+///
+/// ```dart
+/// typedef TextureAsset = Asset<Texture>;
+///
+/// late final TextureAsset texture;                // Asset<Texture>
+/// late final DataPointer<TextureAsset> sprite;
+/// ```
+///
+/// # It is normal for this to hold no payload
+///
+/// An asset is *declared* - and therefore addressed - on both isolate copies,
+/// but only *decoded* on the one with Flutter attached. The game isolate's
+/// copy holds the address and the key, forever, and that is exactly what it
+/// needs: it writes the address into component rows and never draws. Reading
+/// [value] there throws by name rather than null-dereferencing.
+final class Asset<T> implements IntRepresentable {
+  Asset._(this.key, this._address);
+
+  /// What this asset is. Readable on every copy, loaded or not.
+  final AssetKey<T> key;
+
+  final int _address;
+
+  T? _value;
+  AssetInfo? _info;
+
+  /// Its address in the [Assets] that declared it. Meaningful only there.
+  @override
+  int pack() => _address;
+
+  /// Whether this copy has actually decoded the payload.
+  ///
+  /// False on the game isolate for every asset, always. [pack] is usable
+  /// either way, which is the whole point.
+  bool get isLoaded => _value != null;
+
+  /// The decoded payload.
+  ///
+  /// Throws on a copy that never loaded this asset - which includes the game
+  /// isolate always, and the decoding isolate before the asset's scene has
+  /// finished loading.
+  T get value {
+    final value = _value;
+    if (value == null) {
+      throw StateError(
+        '${key.debugLabel} is declared (address $_address) but was never '
+        'loaded on this isolate, so its payload cannot be read. Asset bytes '
+        'are decoded only on the isolate that can decode them (the '
+        'main/Flutter one); the game isolate holds the address and the key and '
+        'nothing else, by design. If this is the decoding isolate, the asset '
+        'was never passed to Assets.load - declare it on a prefab or scene '
+        'that GameState.loadScene brings up, which loads a scene\'s declared '
+        'set for you.',
+      );
+    }
+    return value;
+  }
+
+  /// What decoding this asset discovered about it, replicated to every copy -
+  /// see [AssetLoader.describe]. Null before the load completes, and null for
+  /// a loader that publishes nothing.
+  AssetInfo? get info => _info;
+
+  /// How diagnostics name this asset.
+  String get debugLabel => key.debugLabel;
+
+  @override
+  String toString() => 'Asset($debugLabel @$_address)';
+}
+
+/// Declares [key] and returns the handle to keep in a field - the third
+/// `describe*` hook alongside `describeType`/`describeStruct`, and RULES.md
+/// rule 6 applied to assets.
 ///
 /// There is no asset name and nothing to look up at use time: [has] returns
-/// the instance handle, the declarer keeps it in a `late final` field, and
-/// that field is the only thing an asset-typed component field will accept.
+/// the handle, the declarer keeps it in a `late final` field, and that field
+/// is the only thing an asset-typed component field will accept.
 ///
 /// ```dart
 /// class Player extends EntityStruct with Renderable2D {
-///   static final playerTexture = TextureAsset.bundle('assets/player.png');
+///   static const playerTexture = AssetKey<Texture>(BundleSource('player.png'));
 ///
-///   late final Texture texture;
-///   late final DataPointer<Texture> sprite;
+///   late final TextureAsset texture;
+///   late final DataPointer<TextureAsset> sprite;
 ///
 ///   @override
 ///   void describeAssets(AssetDescriptor descriptor) {
@@ -83,211 +334,142 @@ mixin EnumLocalAsset<T extends GameAssetInstance> on Enum
 ///   @override
 ///   void describeStruct(DataDescriptor data) {
 ///     super.describeStruct(data);
-///     sprite = data.hasObject(assets, texture);   // usable as a row default
+///     sprite = data.hasPacked(assets.of<Texture>(), texture);
 ///   }
 /// }
 /// ```
 ///
-/// The two types are deliberately distinct: `playerTexture` is a
-/// `GameAsset<Texture>` (a *key* - where bytes come from and how to decode
-/// them) and `texture` is a `Texture` (a `GameAssetInstance` - the addressed
-/// thing a row can point at). So `sprite[e] = playerTexture` does not
-/// compile and `sprite[e] = texture` does, which is the whole point of
-/// routing every asset through this pass.
+/// The two types are deliberately distinct: `playerTexture` is an
+/// `AssetKey<Texture>` (identity - which asset) and `texture` is an
+/// `Asset<Texture>` (the addressed handle a row can point at). So
+/// `sprite[e] = playerTexture` does not compile and `sprite[e] = texture`
+/// does, which is the whole point of routing every asset through this pass.
 abstract class AssetDescriptor {
-  /// Declares [key] and returns the instance handle to keep in a field.
+  /// Declares [key] and returns its handle.
   ///
-  /// Idempotent per key: calling it twice with the same [GameAsset] - from
-  /// two prefabs sharing one texture, or from a second scene that needs the
-  /// same UI atlas - returns the *identical* instance, so a shared asset is
-  /// one decode and one address, never two.
-  T has<T extends GameAssetInstance>(GameAsset<T> key);
+  /// Idempotent per identity: calling it twice with equal keys - from two
+  /// prefabs sharing one texture, or a second scene needing the same UI atlas
+  /// - returns the *identical* handle, so a shared asset is one decode and one
+  /// address, never two.
+  Asset<T> has<T>(AssetKey<T> key);
 }
 
-/// One game's asset table: which [GameAsset] keys have been declared, the
-/// [GameAssetInstance] each one produced, and whether that instance's payload
-/// has actually been decoded yet.
+/// One game's assets: which keys have been declared, the [Asset] handle each
+/// one produced, and whether that handle's payload has been decoded yet.
 ///
 /// Per-`Game` instance state (`Game.assets`), not a static - it rides the
 /// `Isolate.spawn` deep copy, so both copies address the same asset by the
-/// same integer without any snapshot/restore. A `DataPointer<Texture>` read
-/// reaches it because the *field* was declared against it (see
-/// `DataDescriptor.hasObject`), not because it is globally reachable.
+/// same integer without any snapshot/restore.
 ///
 /// # Declaring and loading are two separate steps
 ///
 /// **Declaring** ([AssetDescriptor.has], which routes here through [declare])
-/// creates the instance and assigns its address **in this table**. It is
-/// synchronous, allocation-cheap, and runs on **both** isolate copies, in the
-/// same order, because that order *is* the address assignment - exactly the
-/// argument that makes archetype ids agree (see `GameState.loadScene`).
+/// creates the handle and assigns its address **in this table**. It is
+/// synchronous, allocation-cheap, needs no loader, and runs on **both** isolate
+/// copies in the same order, because that order *is* the address assignment.
 ///
-/// **Loading** ([load]) reads the key's [GameAssetSource] and decodes it into
-/// the already-addressed instance. Decoding generally needs Flutter and
-/// `dart:ui`, so it happens on the main isolate only. The game isolate ends
-/// up holding a declared, addressed, *unloaded* instance - which is exactly
-/// right: it never reads a payload, it only ever writes the address into a
-/// component row, and the main isolate resolves that address into the
-/// decoded thing when it draws.
-///
-/// Reading a payload on a copy that never loaded it fails loudly and by name
-/// (see [GameAssetInstance.requireLoaded]) rather than null-dereferencing.
-final class GameAssets implements ObjectTable {
-  /// **Asset instances only.** This used to be `List<GlobalObject?>` - a
-  /// general address space that any global object could be poured into, which
-  /// is what made "address 3" unanswerable without knowing everything else
-  /// registered. A camera view is not an asset and now numbers itself in its
-  /// own [ObjectTable]; this one numbers assets.
-  final List<GameAssetInstance?> _addresses = <GameAssetInstance?>[];
+/// **Loading** ([load]) reads the key's [AssetSource] and hands the bytes to
+/// the key's [AssetLoader]. Decoding generally needs Flutter and `dart:ui`, so
+/// it happens on the main isolate only. The game isolate ends up holding a
+/// declared, addressed, *unloaded* handle - which is exactly right: it never
+/// reads a payload, it only ever writes the address into a component row, and
+/// the main isolate unpacks that address into the decoded thing when it draws.
+final class Assets {
+  /// Address -> handle. Append-only and never recycled, which is what keeps
+  /// the two isolate copies in agreement: both run the same `describeAssets`
+  /// passes in the same order, so both hand out the same address for the same
+  /// asset, and an [unload] on one side (which only nulls a slot) cannot shift
+  /// any address the other side already assigned.
+  final List<Asset<Object?>?> _addresses = <Asset<Object?>?>[];
 
-  /// Registers [object] and returns its new address. Called once, by
-  /// [GameAssets.declare] - never call this directly on an object you didn't
-  /// just declare; a [GameAssetInstance] refuses a second binding.
+  /// Identity -> handle, for every currently declared asset.
   ///
-  /// Append-only and never recycled, which is what keeps the two isolate
-  /// copies in agreement: both run the same `describeAssets` passes in the
-  /// same order, so both hand out the same address for the same asset, and
-  /// an [unregister] on one side (which only nulls a slot) cannot shift any
-  /// address the other side already assigned.
-  int _register(GameAssetInstance object) {
-    final address = _addresses.length;
-    _addresses.add(object);
-    return address;
-  }
+  /// Keyed on `(T, source)` rather than on the key *object*, and that is
+  /// load-bearing in two directions. It makes two separately-constructed keys
+  /// naming one file into one asset, which is what a bare
+  /// `AssetKey<Texture>(BundleSource('x'))` written at two call sites needs.
+  /// And it survives `Isolate.spawn`, which copies a key into an object equal
+  /// to nothing - the reason the old design had to make its adopt path
+  /// idempotent by address instead of by key. An enum key works here too, and
+  /// has to: Dart forbids an enum from overriding `==`.
+  final Map<Object, Asset<Object?>> _byIdentity = <Object, Asset<Object?>>{};
 
-  /// Frees [address] and drops the strong reference this registry held -
-  /// called by [GameAssets.unload]. The slot becomes `null`, not removed, so
-  /// every other address stays stable; [resolve] on a freed address fails
-  /// loudly instead of resolving to whatever was registered next.
-  /// Frees an address without going through a key - the "this asset was
-  /// unloaded out from under a row that still names it" case, which
-  /// [resolve] then reports loudly instead of silently resolving.
-  @visibleForTesting
-  void unregisterAddress(int address) => _unregister(address);
-
-  void _unregister(int address) {
-    if (address < 0 || address >= _addresses.length) return;
-    _addresses[address] = null;
-  }
-
-  /// Resolves [address] to the live object, `null` if nothing is currently
-  /// registered there (including a freed one - see [unregister]) or if it's
-  /// not a [T].
-  @override
-  T? tryResolve<T extends GlobalObject>(int address) {
-    if (address < 0 || address >= _addresses.length) return null;
-    final object = _addresses[address];
-    // The cast is explicit because the list is now narrowed to
-    // `GameAssetInstance?`: promoting it to the type *variable* `T` gives an
-    // intersection type the analyzer will not return as `T?` on its own.
-    return object is T ? object as T : null;
-  }
-
-  /// [tryResolve], but throws instead of returning `null` - what a
-  /// `DataPointer<T>` read uses, since a row holding a stale or
-  /// never-registered address is a real bug worth failing loudly on, the
-  /// same call [Entity.get] makes for a missing component.
-  @override
-  T resolve<T extends GlobalObject>(int address) {
-    final object = tryResolve<T>(address);
-    if (object == null) {
-      throw StateError(
-        'No $T registered at asset address $address - either it was never '
-        'declared, was unloaded, or the row holds a stale/corrupt value.',
-      );
-    }
-    return object;
-  }
-
-  /// Test-only escape hatch, matching [ArchetypeRegistry.reset]/
-  /// [ComponentTypeRegistry.reset]: this registry is process-global, so a
-  /// test suite that declares many throwaway assets needs a way to start
-  /// over. Pair it with [GameAssets.reset], which owns the other half of an
-  /// asset's identity (the key -> instance table).
-  /// Key -> instance, for every currently declared asset. Identity-keyed:
-  /// two separate [GameAsset] instances describing the same underlying file
-  /// are two assets, not one (construct a single shared `static final` key if
-  /// that is not what you want - which is the intended style, see
-  /// [AssetDescriptor]).
-  final Map<GameAsset, GameAssetInstance> _instances =
-      <GameAsset, GameAssetInstance>{};
-
-  /// In-flight decodes, so two overlapping [load] calls for one key await the
-  /// same decode instead of running it twice and leaking whichever payload
+  /// In-flight decodes, so two overlapping [load] calls for one asset await
+  /// the same decode instead of running it twice and leaking whichever payload
   /// loses the race.
-  final Map<GameAsset, Future<GameAssetInstance>> _loading =
-      <GameAsset, Future<GameAssetInstance>>{};
+  final Map<Object, Future<void>> _loading = <Object, Future<void>>{};
 
-  /// Declares [key] and returns its instance, creating and addressing it on
-  /// first call and returning the identical instance on every later one.
+  /// Typed views, one per payload type, cached so a repeated declaration does
+  /// not allocate a fresh view per field.
+  final Map<Type, Object> _views = <Type, Object>{};
+
+  /// Non-generic on purpose - see [AssetKey.payloadType].
+  static Object _identityOf(AssetKey<Object?> key) =>
+      (key.payloadType, key.source);
+
+  /// The [IntRepresentation] a `DataPointer<Asset<T>>` field binds to.
+  ///
+  /// This table is not itself a representation, and cannot be: it holds
+  /// `Asset<Texture>` and `Asset<AudioClip>` in one list, while a field is
+  /// declared for one of them, and Dart's covariance runs the wrong way to
+  /// make one object serve both. So it vends a typed view per payload type -
+  /// which is more honest anyway, since the *view* is the codec and this is
+  /// the store.
+  IntRepresentation<Asset<T>> of<T>() =>
+      _views.putIfAbsent(T, () => _AssetsView<T>(this))
+          as IntRepresentation<Asset<T>>;
+
+  Asset<Object?>? _at(int address) {
+    if (address < 0 || address >= _addresses.length) return null;
+    return _addresses[address];
+  }
+
+  /// Declares [key] and returns its handle, creating and addressing it on
+  /// first call and returning the identical handle on every later one.
   ///
   /// Internal because [AssetDescriptor.has] is the user-facing spelling: an
   /// asset declared outside a `describeAssets` pass would be declared on
   /// whichever copy happened to run that code, and a declaration that runs on
   /// one copy and not the other is precisely what breaks address agreement.
   @internal
-  T declare<T extends GameAssetInstance>(GameAsset<T> key) {
-    final existing = _instances[key];
-    if (existing != null) return existing as T;
-    final instance = key.createInstance();
-    instance._bindDeclaration(key, _register(instance));
-    _instances[key] = instance;
-    return instance;
+  Asset<T> declare<T>(AssetKey<T> key) {
+    final identity = _identityOf(key);
+    final existing = _byIdentity[identity];
+    if (existing != null) return existing as Asset<T>;
+    final asset = key.newAsset(_addresses.length);
+    _addresses.add(asset);
+    _byIdentity[identity] = asset;
+    return asset;
   }
 
-  /// Declares [key] at an address **chosen elsewhere** - the main isolate's
-  /// half of a decode request.
+  /// Declares [key] at an address **chosen elsewhere** - the decoding
+  /// isolate's half of a load request.
   ///
   /// Assets are declared by scenes and prefabs, which live on the game
-  /// isolate, so that is the copy that assigns addresses. Main used to arrive
-  /// at the same numbers by running the same `describeAssets` passes in the
-  /// same order; that was one fact with two homes (RULES.md rule 10), kept in
-  /// agreement by convention and quietly wrong the moment a scene was loaded
-  /// at runtime on one side only.
+  /// isolate, so that is the copy that assigns addresses. The address travels
+  /// with the request and this copy *adopts* it. The list is padded rather
+  /// than appended to, so an address always lands where the game isolate said
+  /// it would, whatever order requests arrive in and however many addresses
+  /// this copy has never been told about.
   ///
-  /// Now the address travels with the request and main *adopts* it. The list
-  /// is padded rather than appended to, so an address always lands where the
-  /// game isolate said it would, whatever order requests arrive in and however
-  /// many addresses main has never been told about.
-  ///
-  /// Idempotent **by address, not by key**, and that distinction is
-  /// load-bearing rather than an implementation detail. `_instances` is
-  /// identity-keyed (two `GameAsset` objects describing one file are two
-  /// assets - see [AssetDescriptor]), and a key that crosses `Isolate.spawn`
-  /// or a `SendPort` arrives as a *copy*: a fresh object, equal to nothing.
-  /// So every request carries a key this table has never seen by identity,
-  /// including a second request for an asset already adopted. Checking the
-  /// address is what stops that replacing a decoded instance with an empty one
-  /// and re-decoding the payload.
-  ///
-  /// The consequence worth knowing at the call site: on the adopting copy an
-  /// asset is named by **address**, not by key. `tryGet(myKey)` with a
-  /// main-side key object finds nothing here and always will, because that
-  /// object was never the one declared. Use [tryResolve] with the address the
-  /// game isolate reported. Everything on this side already works that way -
-  /// a row holds an address, and `DrawCanvas2D` resolves one at draw time.
+  /// Idempotent, so an asset a previous request already brought over keeps its
+  /// payload instead of being replaced by an empty handle and re-decoded.
   @internal
-  T adoptAt<T extends GameAssetInstance>(int address, GameAsset<T> key) {
-    if (address < _addresses.length) {
-      final existing = _addresses[address];
-      if (existing != null) return existing as T;
-    }
-    final instance = key.createInstance();
+  Asset<T> adoptAt<T>(int address, AssetKey<T> key) {
+    final existing = _at(address);
+    if (existing != null) return existing as Asset<T>;
+    final asset = key.newAsset(address);
     while (_addresses.length <= address) {
       _addresses.add(null);
     }
-    _addresses[address] = instance;
-    instance._bindDeclaration(key, address);
-    // Keyed by the copy that arrived, so `unloadAddress` - which goes back
-    // through `instance._key` - finds it again. Nothing else on this copy ever
-    // looks an asset up by key.
-    _instances[key] = instance;
-    return instance;
+    _addresses[address] = asset;
+    _byIdentity[_identityOf(key)] = asset;
+    return asset;
   }
 
-  /// Reads [key]'s source and decodes it into the instance declared for it,
-  /// completing with that instance. A no-op returning the same instance if it
-  /// is already loaded.
+  /// Reads [key]'s source, decodes it through the key's loader, and completes
+  /// with the loaded handle. A no-op returning the same handle if it is
+  /// already loaded.
   ///
   /// Throws if [key] was never declared. That is deliberate rather than a
   /// convenience lazy-declare: declaring here would assign an address on this
@@ -296,288 +478,342 @@ final class GameAssets implements ObjectTable {
   /// run.
   ///
   /// Call this only on the isolate that can decode - `GameState.loadScene`
-  /// already does exactly that for a scene's declared set, which is the
-  /// normal way an asset gets loaded.
-  /// Every declared key, in the order their addresses were assigned - what
-  /// `Game` carries across the spawn instead of the instances themselves.
-  ///
-  /// **Keys, not instances, and that is the whole point.** A decoded
-  /// [GameAssetInstance] holds a native payload (a `dart:ui.Image` for a
-  /// texture), which is not sendable and would fail the spawn outright -
-  /// verified in `tool/spawn_registry_spike.dart`. A key is plain data. The
-  /// spawned copy calls [declare] on each in order, which runs
-  /// `createInstance()` - synchronous, payload-free, and the call whose
-  /// ordering assigns addresses - so both copies end up with an instance at
-  /// the same address and only the decoding copy ever holds bytes.
-  ///
-  Future<T> load<T extends GameAssetInstance>(GameAsset<T> key) {
-    final instance = _instances[key];
-    if (instance == null) {
+  /// already does exactly that for a scene's declared set.
+  Future<Asset<T>> load<T>(AssetKey<T> key) {
+    final identity = _identityOf(key);
+    final asset = _byIdentity[identity] as Asset<T>?;
+    if (asset == null) {
       throw StateError(
         '${key.debugLabel} has not been declared, so there is nothing to load '
         'into. Declare it from a describeAssets pass '
         '(`descriptor.has(theKey)`) on a prefab or a SceneStruct: declaring is '
-        'what assigns the asset its process-global address, and it has to '
-        'happen on both isolate copies in the same order for that address to '
-        'mean the same thing on both sides.',
+        'what assigns the asset its address, and it has to happen on both '
+        'isolate copies in the same order for that address to mean the same '
+        'thing on both sides.',
       );
     }
-    final typed = instance as T;
-    if (typed._loaded) return Future<T>.value(typed);
-    final inFlight = _loading[key];
-    if (inFlight != null) return inFlight.then((instance) => instance as T);
-    final future = _decode(key, typed);
-    _loading[key] = future;
-    return future.then((instance) => instance as T);
+    if (asset.isLoaded) return Future<Asset<T>>.value(asset);
+    final inFlight = _loading[identity];
+    if (inFlight != null) return inFlight.then((_) => asset);
+    final future = _decode(key, asset, identity);
+    _loading[identity] = future;
+    return future.then((_) => asset);
   }
 
-  Future<GameAssetInstance> _decode<T extends GameAssetInstance>(
-    GameAsset<T> key,
-    T instance,
+  Future<void> _decode<T>(
+    AssetKey<T> key,
+    Asset<T> asset,
+    Object identity,
   ) async {
     try {
-      await key.loadInto(instance);
-      instance._loaded = true;
-      return instance;
+      final loader = key.loader;
+      final value = await loader.load(key);
+      asset._value = value;
+      asset._info = loader.describe(value);
     } finally {
-      _loading.remove(key);
+      _loading.remove(identity);
     }
   }
 
-  /// [load], but naming the asset by its [GlobalObject.address] instead of by
-  /// its key.
-  ///
-  /// The form that crosses an isolate boundary: a `GameAsset` is a live Dart
-  /// object, while an address is the integer both copies independently
-  /// assigned to the same declaration. The game isolate declares assets and
-  /// cannot decode them, so it sends addresses and main does this - see
-  /// `Game._handleAssetLoadRequest`.
+  /// [load], but naming the asset by its address instead of by its key - the
+  /// form that crosses an isolate boundary.
   ///
   /// Returns `null` if [address] names nothing declared, rather than throwing:
   /// the request crossed a boundary, so a stale address is a message-ordering
   /// question and the caller reports it back to the asker.
   @internal
-  Future<GameAssetInstance>? loadAddress(int address) {
-    final instance = tryResolve<GameAssetInstance>(address);
-    final key = instance?._key;
-    if (key == null) return null;
-    return load(key);
+  Future<void>? loadAddress(int address) {
+    final asset = _at(address);
+    if (asset == null) return null;
+    return load(asset.key);
+  }
+
+  /// Records what the *decoding* copy discovered about the asset at [address].
+  ///
+  /// The receiving half of [AssetLoader.describe]: this copy declared the
+  /// asset and can never decode it, so the one fact it cannot derive - the
+  /// decoded asset's shape - arrives in the load-completion message and lands
+  /// here. A no-op for an address this copy does not know, which is the same
+  /// message-ordering tolerance [loadAddress] has and for the same reason.
+  ///
+  /// [info] being null is meaningful and is *not* skipped: a loader that
+  /// publishes nothing leaves [Asset.info] null, and re-loading an asset whose
+  /// loader stopped publishing should clear the stale value rather than keep
+  /// it.
+  ///
+  /// Also [visibleForTesting]: a test for something that *reads* published
+  /// shape - a nine-slicer, say - needs to supply it without standing up a
+  /// second isolate and a real decode, and this is the same call the real
+  /// arrangement makes.
+  @internal
+  @visibleForTesting
+  void adoptInfo(int address, AssetInfo? info) {
+    _at(address)?._info = info;
   }
 
   /// [unload], by address. The other half of [loadAddress]; same reasoning.
   @internal
   void unloadAddress(int address) {
-    final key = tryResolve<GameAssetInstance>(address)?._key;
-    if (key != null) unload(key);
+    final asset = _at(address);
+    if (asset != null) unload(asset.key);
   }
 
-  /// The instance declared for [key], or `null` if nothing has declared it
-  /// (or it has since been [unload]ed) - a non-throwing peek.
+  /// The handle declared for [key], or `null` if nothing has declared it (or
+  /// it has since been [unload]ed) - a non-throwing peek.
   ///
-  /// Declared, not necessarily *loaded*: the returned instance may still be
+  /// Declared, not necessarily *loaded*: the returned handle may still be
   /// waiting on its bytes, which is the normal steady state on the game
-  /// isolate. [GameAssetInstance.isLoaded] is the separate question, kept
-  /// separate because the address is usable long before the payload is.
-  T? tryGet<T extends GameAssetInstance>(GameAsset<T> key) =>
-      _instances[key] as T?;
+  /// isolate. [Asset.isLoaded] is the separate question, kept separate because
+  /// the address is usable long before the payload is.
+  Asset<T>? tryGet<T>(AssetKey<T> key) =>
+      _byIdentity[_identityOf(key)] as Asset<T>?;
 
-  /// Unloads [key]: frees its address in this table (any
-  /// `DataPointer<T>` row still holding it will fail loudly on next read, per
-  /// [resolve] - unloading something still referenced is
-  /// a caller bug, not something this silently tolerates), releases whatever
-  /// native resources the instance holds via
-  /// [GameAssetInstance.onUnloaded], and drops the declaration. A no-op if
-  /// [key] isn't currently declared.
+  /// The handle at [address], or null - what a cross-isolate message resolves
+  /// against, since it carries an address rather than a key.
+  Asset<Object?>? tryGetAt(int address) => _at(address);
+
+  /// Unloads [key]: frees its address (any `DataPointer` row still holding it
+  /// will fail loudly on next read - unloading something still referenced is a
+  /// caller bug, not something this silently tolerates), releases whatever the
+  /// decode produced, and drops the declaration. A no-op if [key] isn't
+  /// currently declared.
   ///
-  /// Runs on **both** isolate copies, like declaring - see
-  /// `GameState.loadScene`. Only the decode is main-isolate-only; dropping a
-  /// declaration on one copy but not the other would leave the two disagreeing
-  /// about what is declared, and re-declaring later would then hand out two
-  /// different addresses for one asset.
-  void unload(GameAsset key) {
-    final instance = _instances.remove(key);
-    if (instance == null) return;
-    _unregister(instance.address);
-    instance.onUnloaded();
+  /// Runs on **both** isolate copies, like declaring. Only the decode is
+  /// main-isolate-only; dropping a declaration on one copy but not the other
+  /// would leave the two disagreeing about what is declared, and re-declaring
+  /// later would then hand out two different addresses for one asset.
+  void unload<T>(AssetKey<T> key) {
+    final identity = _identityOf(key);
+    final asset = _byIdentity.remove(identity) as Asset<T>?;
+    if (asset == null) return;
+    _release(asset);
   }
 
-  /// Unloads everything currently declared - app shutdown, or a test
-  /// starting over.
+  /// Unloads everything currently declared - app shutdown, or a test starting
+  /// over.
   void unloadAll() {
-    for (final instance in _instances.values) {
-      _unregister(instance.address);
-      instance.onUnloaded();
+    for (final asset in _byIdentity.values) {
+      _release(asset);
     }
-    _instances.clear();
+    _byIdentity.clear();
   }
 
-  /// Test-only escape hatch, matching
-  /// [ArchetypeRegistry.reset] / `HeapObjectRegistry.reset`: this table is
-  /// process-global, so a test suite that declares many throwaway assets
-  /// needs a way to start over or every test after the first would see the
-  /// previous one's declarations and its decode counters.
-  ///
-  /// Drops every declaration and calls [GameAssetInstance.onUnloaded] on each
-  /// (so a `ui.Image` or other native handle is released rather than leaked),
+  void _release<T>(Asset<T> asset) {
+    final address = asset.pack();
+    if (address >= 0 && address < _addresses.length) {
+      _addresses[address] = null;
+    }
+    final value = asset._value;
+    if (value != null) {
+      // Only the copy that loaded has a payload, and only it has a reason to
+      // hold a loader. The game isolate takes the early exit and never
+      // consults the registry - which is what lets it not have one.
+      asset.key.loader.unload(value);
+      asset._value = null;
+    }
+    asset._info = null;
+  }
+
+  /// Frees an address without going through a key - the "this asset was
+  /// unloaded out from under a row that still names it" case, which [of]'s
+  /// view then reports loudly instead of silently unpacking to whatever was
+  /// registered next.
+  @visibleForTesting
+  void unregisterAddress(int address) {
+    if (address < 0 || address >= _addresses.length) return;
+    final asset = _addresses[address];
+    _addresses[address] = null;
+    if (asset != null) _byIdentity.remove(_identityOf(asset.key));
+  }
+
+  /// Test-only escape hatch: drops every declaration, releases every payload,
   /// and forgets any in-flight decode, addresses included.
   @visibleForTesting
   void reset() {
-    for (final instance in _instances.values) {
-      instance.onUnloaded();
+    for (final asset in _byIdentity.values) {
+      final value = asset._value;
+      if (value != null) {
+        asset.key.loader.unload(value);
+        asset._value = null;
+      }
+      asset._info = null;
     }
-    _instances.clear();
+    _byIdentity.clear();
     _loading.clear();
     _addresses.clear();
+    _views.clear();
   }
 }
 
-/// One loadable asset **key**: where its bytes come from ([source]), what
-/// empty instance it produces ([createInstance]), and how to turn those bytes
-/// into that instance's payload ([loadInto]).
-///
-/// Immutable and identity-compared, so the intended style is one shared
-/// `static final` key per asset - two separately-constructed keys naming the
-/// same file are two assets, two addresses and two decodes.
-///
-/// Not generic over its source's byte format: [loadInto] receives raw bytes
-/// via `source.load()` and decodes them itself, so a concrete subclass (e.g.
-/// `TextureAsset` in `goo2d`) owns the decode step, not this base class.
-///
-/// The two-method split ([createInstance] synchronous, [loadInto]
-/// asynchronous) is what lets an asset be *addressed* on an isolate that
-/// cannot decode it - see [GameAssets] for why that matters.
-@immutable
-abstract class GameAsset<T extends GameAssetInstance> {
-  const GameAsset();
+/// One payload type's view of an [Assets] - see [Assets.of].
+final class _AssetsView<T> implements IntRepresentation<Asset<T>> {
+  const _AssetsView(this._assets);
 
-  GameAssetSource get source;
+  final Assets _assets;
 
-  /// Builds the empty, not-yet-decoded instance.
-  ///
-  /// Synchronous and side-effect-free: this runs during the `describeAssets`
-  /// pass on **both** isolate copies, and it is the call whose ordering
-  /// assigns every asset its address. It must not touch `dart:ui`, the asset
-  /// bundle, or anything else that only exists on the main isolate - that all
-  /// belongs in [loadInto].
-  T createInstance();
-
-  /// Reads [source] and fills [instance]'s payload.
-  ///
-  /// Runs only on the isolate that can decode (the main/Flutter one), only
-  /// via [GameAssets.load], and exactly once per instance - [GameAssets]
-  /// marks the instance loaded when this completes, and will not call it
-  /// again for an instance that is already loaded.
-  Future<void> loadInto(T instance);
-
-  /// Diagnostics only - what an "asset was never loaded" or "asset was never
-  /// declared" message names this asset by. Override when the type name alone
-  /// is not enough to tell two keys apart (a path usually is).
-  String get debugLabel => '$runtimeType(${source.description})';
-}
-
-/// A declared asset instance - what `DataPointer<T extends GlobalObject>`
-/// fields actually store a reference to (as an address, see
-/// [GameAssets]'s doc). Subclasses hold whatever the decoded
-/// resource actually is (a `ui.Image`, a compiled shader, ...) behind a
-/// getter that calls [requireLoaded] first.
-///
-/// An instance exists, and has a usable [address], from the moment it is
-/// declared - well before, and possibly forever without, its payload
-/// arriving. That is not a degenerate state to guard against; it is the
-/// normal steady state on the game isolate, which writes asset addresses into
-/// component rows and never decodes anything.
-abstract class GameAssetInstance implements GlobalObject {
-  GameAsset? _key;
-  int? _address;
-  bool _loaded = false;
+  /// Four bytes. An asset address indexes a table a game fills at declare
+  /// time; unlike a camera view there is no small ceiling worth betting a
+  /// game's content budget on.
+  @override
+  int get bitWidth => 32;
 
   @override
-  int get address {
-    final address = _address;
-    if (address == null) {
+  Asset<T>? tryUnpack(int bits) {
+    final asset = _assets._at(bits);
+    return asset is Asset<T> ? asset : null;
+  }
+
+  @override
+  Asset<T> unpack(int bits) {
+    final asset = tryUnpack(bits);
+    if (asset == null) {
       throw StateError(
-        '$runtimeType has not been declared yet - an address is only assigned '
-        'by a describeAssets pass (`descriptor.has(theKey)`). A '
-        'GameAssetInstance constructed by hand has nothing for a DataPointer '
-        'row to point at.',
+        'No Asset<$T> at asset address $bits - either it was never declared, '
+        'was unloaded, or the row holds a stale or corrupt value.',
       );
     }
-    return address;
-  }
-
-  /// Whether this copy has actually decoded the payload.
-  ///
-  /// False on the game isolate for every asset, always - see [GameAssets].
-  /// [address] is usable either way.
-  bool get isLoaded => _loaded;
-
-  /// How diagnostics name this asset - the declaring key's
-  /// [GameAsset.debugLabel] once declared.
-  String get debugLabel => _key?.debugLabel ?? '$runtimeType (undeclared)';
-
-  /// Called exactly once, by [GameAssets.declare], immediately after
-  /// [GameAsset.createInstance] produces this instance.
-  void _bindDeclaration(GameAsset key, int address) {
-    if (_address != null) {
-      throw StateError(
-        '$runtimeType is already declared at address $_address. One key '
-        'declares one instance; GameAssets.declare returns the existing one '
-        'rather than binding a second time, so reaching here means an '
-        'instance was passed to two declarations.',
-      );
-    }
-    _key = key;
-    _address = address;
-  }
-
-  /// What a subclass's payload getter calls before returning its field, so a
-  /// read on a copy that never decoded this asset fails by name instead of
-  /// null-dereferencing three frames deeper.
-  ///
-  /// ```dart
-  /// ui.Image get image {
-  ///   requireLoaded();
-  ///   return _image!;
-  /// }
-  /// ```
-  @protected
-  void requireLoaded() {
-    if (_loaded) return;
-    throw StateError(
-      '$debugLabel is declared (address $_address) but was never loaded on '
-      'this isolate, so its payload cannot be read. Asset bytes are decoded '
-      'only on the isolate that can decode them (the main/Flutter one); the '
-      'game isolate holds the address and nothing else, by design. If this is '
-      'the main isolate, the asset was never passed to GameAssets.load - '
-      'declare it on a prefab or scene that GameState.loadScene brings up, '
-      'which loads a scene\'s declared set for you.',
-    );
-  }
-
-  /// Releases whatever the decode produced - a `ui.Image`, a native handle,
-  /// a large `Uint8List`. Called by [GameAssets.unload]/[GameAssets.unloadAll]
-  /// /[GameAssets.reset] after the address has been freed.
-  ///
-  /// The base implementation just marks the instance unloaded, so a later
-  /// payload read reports "never loaded" rather than handing back a disposed
-  /// resource.
-  @mustCallSuper
-  void onUnloaded() {
-    _loaded = false;
+    return asset;
   }
 }
 
-/// Where an asset's bytes come from - a bundle path, a file, a network
-/// fetch, an in-memory blob in a test. Deliberately knows nothing about what
-/// the bytes mean; decoding is [GameAsset.loadInto]'s job.
-@immutable
-abstract class GameAssetSource {
-  const GameAssetSource();
+// --- enum keys -------------------------------------------------------------
 
-  Future<Uint8List> load();
+/// Lets an `enum` be an [AssetKey] outright.
+///
+/// The enum value *is* the key - there is no delegate, no lazily-parsed real
+/// key behind it, and no per-type parser registry to register into. That is a
+/// straight consequence of [AssetKey] being pure data: there is nothing left
+/// for a delegate to do.
+///
+/// Supply [AssetKey.source] yourself, or mix in [LocalEnumAssetKey] for the
+/// bundle case.
+mixin EnumAssetKey<T> implements AssetKey<T> {
+  @override
+  Type get payloadType => T;
 
-  /// Diagnostics only - what [GameAsset.debugLabel] embeds. Override with
-  /// something that identifies the individual source (a path), since the type
-  /// name alone is the same for every instance.
-  String get description => '$runtimeType';
+  @override
+  Asset<T> newAsset(int address) => Asset<T>._(this, address);
+
+  @override
+  AssetLoader<T> get loader => AssetLoaders.of<T>();
+
+  @override
+  String get debugLabel => '$T($this)';
+}
+
+/// An [EnumAssetKey] whose bytes come from the asset bundle under [path] -
+/// what `goo_cli`'s codegen emits.
+///
+/// ```dart
+/// enum Textures with LocalEnumAssetKey<Texture> {
+///   planePlayerBlue('plane_player_blue');
+///
+///   const Textures(this.path);
+///   @override
+///   final String path;
+/// }
+/// ```
+mixin LocalEnumAssetKey<T> implements EnumAssetKey<T> {
+  /// The logical asset path - what the pubspec declares in a loose build and
+  /// what the manifest translates in a packed one.
+  String get path;
+
+  @override
+  AssetSource get source => BundleSource(path);
+
+  @override
+  Type get payloadType => T;
+
+  @override
+  Asset<T> newAsset(int address) => Asset<T>._(this, address);
+
+  @override
+  AssetLoader<T> get loader => AssetLoaders.of<T>();
+
+  @override
+  String get debugLabel => '$T($this)';
+}
+
+// --- sources ---------------------------------------------------------------
+
+/// Bytes named by a **logical** asset path - the ordinary way a shipped game
+/// names its content.
+///
+/// The path is not necessarily a file. In a loose development build it is the
+/// pubspec-declared bundle path and resolves straight through [AssetBundle].
+/// In a packed build the same path names a byte range inside an encrypted
+/// chunk, and resolution goes through the manifest a build installs at
+/// startup. Both cases are one `BundleSource('player.png')` in game code,
+/// which is exactly why the *path* is identity and the chunk assignment - build
+/// output that changes every pack - is not.
+class BundleSource extends AssetSource {
+  const BundleSource(this.path, {this.bundle});
+
+  /// The logical asset path, e.g. `assets/player.png`.
+  final String path;
+
+  /// The bundle to read from, or `null` for `rootBundle`. Injectable purely so
+  /// a test (or a game shipping a second bundle) can supply its own.
+  final AssetBundle? bundle;
+
+  @override
+  Future<Uint8List> load() async {
+    final data = await (bundle ?? rootBundle).load(path);
+    // A view, not a copy: `ByteData.buffer` may be larger than the asset when
+    // the bundle packs several together, so the offset and length matter.
+    return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+  }
+
+  @override
+  Future<AssetAvailability> check() async {
+    // Loose-bundle builds have no manifest to consult and no way to stat a
+    // bundle entry, so the only honest answer short of reading the asset is
+    // that this could not be checked. A packed build replaces this path with a
+    // manifest lookup plus one stat per chunk.
+    return AssetAvailability.unverifiable;
+  }
+
+  @override
+  String get description => path;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BundleSource && other.path == path && other.bundle == bundle;
+
+  @override
+  int get hashCode => Object.hash(BundleSource, path, bundle);
+}
+
+/// Bytes already in memory - a procedurally generated asset, something that
+/// arrived over the network, a fixture in a test. Carries no I/O of its own.
+class MemorySource extends AssetSource {
+  const MemorySource(this.bytes, {this.name = 'in-memory'});
+
+  final Uint8List bytes;
+
+  /// What identifies this source, and what diagnostics call it.
+  ///
+  /// **Identity is the name, not the bytes**, deliberately: an asset's
+  /// identity is consulted on every declare, and content-hashing a buffer
+  /// there would be a real cost for no benefit. Two `MemorySource`s with the
+  /// same name are the same asset even if their bytes differ - give them
+  /// distinct names.
+  final String name;
+
+  @override
+  Future<Uint8List> load() async => bytes;
+
+  @override
+  Future<AssetAvailability> check() async => AssetAvailability.present;
+
+  @override
+  String get description => name;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is MemorySource && other.name == name;
+
+  @override
+  int get hashCode => Object.hash(MemorySource, name);
 }

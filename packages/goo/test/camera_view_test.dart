@@ -61,8 +61,8 @@ void main() {
       final game = await _start(_TwoCameraGame());
 
       expect(game.cameraViews.length, 2);
-      expect(game.main.address, 0);
-      expect(game.minimap.address, 1);
+      expect(game.main.pack(), 0);
+      expect(game.minimap.pack(), 1);
       expect(game.cameraViews[0], same(game.main));
     });
 
@@ -83,10 +83,10 @@ void main() {
     test('the table resolves its own addresses and refuses others', () async {
       final game = await _start(_TwoCameraGame());
 
-      expect(game.cameraViews.resolve<CameraView>(1), same(game.minimap));
-      expect(game.cameraViews.tryResolve<CameraView>(2), isNull);
+      expect(game.cameraViews.unpack(1), same(game.minimap));
+      expect(game.cameraViews.tryUnpack(2), isNull);
       expect(
-        () => game.cameraViews.resolve<CameraView>(2),
+        () => game.cameraViews.unpack(2),
         throwsStateError,
         reason:
             'an address this table never issued is a real bug - it is '
@@ -99,16 +99,21 @@ void main() {
       () async {
         final game = await _start(_TwoCameraGame());
 
-        // The point of `ObjectTable`: two populations number themselves from
-        // zero independently, so address 0 exists in both and means something
-        // different in each. A single shared registry could not express this.
-        final firstAsset = game.assets;
-        expect(game.main.address, 0);
+        // The point of `IntRepresentation`: two populations number themselves
+        // from zero independently, so 0 is a meaningful int in both and means
+        // something different in each. A single shared registry could not
+        // express this.
+        expect(game.main.pack(), 0);
         expect(
-          firstAsset.tryResolve<CameraView>(0),
+          game.assets.tryGetAt(0),
           isNull,
           reason: 'the asset table has never heard of a camera view',
         );
+        // And the two cannot even be confused statically any more: a
+        // `CameraViewTable` is an `IntRepresentation<CameraView>` and an asset
+        // view is an `IntRepresentation<Asset<T>>`, so declaring a camera
+        // field against the asset table stopped compiling.
+        expect(game.cameraViews.unpack(0), same(game.main));
       },
     );
   });

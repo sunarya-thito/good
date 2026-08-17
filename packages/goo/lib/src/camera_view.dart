@@ -39,12 +39,12 @@ import 'package:goo/src/game.dart';
 /// # It is a [GlobalObject], so a row can name it
 ///
 /// A camera entity records which view it belongs to, and a row holds a `num`
-/// or a [GlobalObject] and nothing else. Being an addressed object makes that
-/// field *typed* - `DataPointer<CameraView>` refuses a stray int, which an
-/// extension type over `int` would have accepted.
+/// or an [IntRepresentable] and nothing else. Being one makes that field
+/// *typed* - `DataPointer<CameraView>` refuses a stray int, which an extension
+/// type over `int` would have accepted.
 ///
 /// Its address is issued by the game's own [CameraViewTable] and means
-/// nothing anywhere else; see [ObjectTable].
+/// nothing anywhere else; see [IntRepresentation].
 ///
 /// # Nothing here is settable
 ///
@@ -53,7 +53,7 @@ import 'package:goo/src/game.dart';
 /// address collides with a declared view, and no way to repoint one at
 /// another game. That last part is why `GameView` needs no `game` parameter:
 /// with only one reference there is nothing for a second to disagree with.
-final class CameraView implements GlobalObject {
+final class CameraView implements IntRepresentable {
   CameraView._(this._index, this._game);
 
   final int _index;
@@ -62,7 +62,7 @@ final class CameraView implements GlobalObject {
   /// Its index in the declaring game's [CameraViewTable]. Meaningful only
   /// against that table.
   @override
-  int get address => _index;
+  int pack() => _index;
 
   /// The game that declared this view.
   ///
@@ -157,12 +157,12 @@ abstract class CameraDescriptor {
 
 /// A game's camera views, numbered from zero.
 ///
-/// Its own [ObjectTable], not a tenant in the asset table: a camera view is
-/// not an asset, and pouring unrelated populations into one address space is
-/// what makes an address unanswerable on its own. This table and `GameAssets`
+/// Its own [IntRepresentation], not a tenant in the asset table: a camera view
+/// is not an asset, and pouring unrelated populations into one address space
+/// is what makes an address unanswerable on its own. This table and `Assets`
 /// may issue the same address without conflict, because an address is only
-/// ever resolved against the table that issued it.
-final class CameraViewTable implements ObjectTable {
+/// ever unpacked by the representation the field was declared against.
+final class CameraViewTable implements IntRepresentation<CameraView> {
   final List<CameraView> _views = <CameraView>[];
 
   /// How many views the game declared.
@@ -171,19 +171,28 @@ final class CameraViewTable implements ObjectTable {
   /// The view at [address] - declaration order.
   CameraView operator [](int address) => _views[address];
 
+  /// Eight bits, not thirty-two. A game declares its views in
+  /// `describeCameras` and they are counted on the fingers of one hand - a
+  /// split-screen four-player game has four - so a `DataPointer<CameraView>`
+  /// costs a row one byte instead of four. [declare] enforces the ceiling
+  /// rather than letting the 257th view silently alias the first.
   @override
-  T? tryResolve<T extends GlobalObject>(int address) {
-    if (address < 0 || address >= _views.length) return null;
-    final view = _views[address];
-    return view is T ? view as T : null;
+  int get bitWidth => 8;
+
+  static const int _maxViews = 1 << 8;
+
+  @override
+  CameraView? tryUnpack(int bits) {
+    if (bits < 0 || bits >= _views.length) return null;
+    return _views[bits];
   }
 
   @override
-  T resolve<T extends GlobalObject>(int address) {
-    final view = tryResolve<T>(address);
+  CameraView unpack(int bits) {
+    final view = tryUnpack(bits);
     if (view == null) {
       throw StateError(
-        'No $T at camera view address $address - this game declared '
+        'No camera view at address $bits - this game declared '
         '${_views.length} view(s) in describeCameras. A row holding an '
         'address this table never issued is either stale or came from a '
         'different table; addresses are only meaningful against the table '
@@ -193,23 +202,29 @@ final class CameraViewTable implements ObjectTable {
     return view;
   }
 
-  @internal
-  CameraView declare(Game game) {
+  CameraView _add(Game? game) {
+    if (_views.length >= _maxViews) {
+      throw StateError(
+        'A game may declare at most $_maxViews camera views; this one '
+        'declared ${_views.length + 1}. The limit is the width of the row '
+        'field a Camera stores its view in (see bitWidth) - raise that if a '
+        'game genuinely needs more.',
+      );
+    }
     final view = CameraView._(_views.length, game);
     _views.add(view);
     return view;
   }
+
+  @internal
+  CameraView declare(Game game) => _add(game);
 
   /// A view belonging to no game, for a headless fixture that brings a scene
   /// up without one - public for exactly the reason `SceneRegistry.register`
   /// and `SceneStruct.initializeScene` are. It can be stored in a `Camera`'s
   /// `view` field and resolved through this table; it cannot be shown.
   @visibleForTesting
-  CameraView declareDetached() {
-    final view = CameraView._(_views.length, null);
-    _views.add(view);
-    return view;
-  }
+  CameraView declareDetached() => _add(null);
 
   @internal
   void allocate() {

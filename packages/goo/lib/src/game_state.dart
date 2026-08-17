@@ -178,7 +178,12 @@ abstract class GameState<T extends Game> extends GameListenerBase
 
   // How many loaded scenes declared each asset. An asset is freed when the
   // last of them is unloaded, never before - see [_releaseAssetsOf].
-  final Map<GameAsset, int> _assetClaims = <GameAsset, int>{};
+  //
+  // Keyed by the declared *handle*, which is canonical per asset, so the
+  // default identity hashing is exactly right here. Keying by key would not
+  // be: two equal-but-distinct keys name one asset, and would take two claims
+  // for it.
+  final Map<Asset<Object?>, int> _assetClaims = <Asset<Object?>, int>{};
   int _accumulatedMicros = 0;
   Timer? _timer;
 
@@ -711,22 +716,19 @@ abstract class GameState<T extends Game> extends GameListenerBase
       // here and then decoded nothing, anywhere, leaving every payload read
       // from that scene to fail.
       await runtime.requestAssetLoad(
-        <int>[
-          for (var i = 0; i < incoming.length; i++)
-            game.assets.tryGet(incoming[i])!.address,
+        <int>[for (var i = 0; i < incoming.length; i++) incoming[i].pack()],
+        // The keys travel with their addresses: the decoding copy has no
+        // declaration pass of its own to resolve an address against, so the
+        // request has to carry the whole identity. See
+        // `GameRuntime.requestAssetLoad`.
+        <AssetKey<Object?>>[
+          for (var i = 0; i < incoming.length; i++) incoming[i].key,
         ],
-        // The keys travel with their addresses: main has no declaration pass
-        // of its own to resolve an address against, so the request has to
-        // carry the whole identity. See `Game.requestAssetLoad`.
-        incoming,
         onProgress == null
             ? null
             : (address, completed, pending) => onProgress(
                 SceneLoadProgress(
-                  game.assets
-                          .tryResolve<GameAssetInstance>(address)
-                          ?.debugLabel ??
-                      'asset $address',
+                  game.assets.tryGetAt(address)?.debugLabel ?? 'asset $address',
                   completed / pending,
                 ),
               ),
@@ -740,15 +742,17 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // reports one 1.0 and does no work.
     var pending = 0;
     for (var i = 0; i < incoming.length; i++) {
-      if (game.assets.tryGet(incoming[i])?.isLoaded != true) pending++;
+      if (!incoming[i].isLoaded) pending++;
     }
     var completed = 0;
     for (var i = 0; i < incoming.length; i++) {
-      final key = incoming[i];
-      if (game.assets.tryGet(key)?.isLoaded == true) continue;
-      await game.assets.load(key);
+      final asset = incoming[i];
+      if (asset.isLoaded) continue;
+      await game.assets.load(asset.key);
       completed++;
-      onProgress?.call(SceneLoadProgress(key.debugLabel, completed / pending));
+      onProgress?.call(
+        SceneLoadProgress(asset.debugLabel, completed / pending),
+      );
     }
     // The terminal report, always sent, so a caller can hang "hide the
     // loading screen" off `progress == 1.0` without also having to handle
@@ -769,19 +773,19 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // afterwards would throw.
     final freed = <int>[];
     for (var i = 0; i < declared.length; i++) {
-      final key = declared[i];
-      final remaining = (_assetClaims[key] ?? 0) - 1;
+      final asset = declared[i];
+      final remaining = (_assetClaims[asset] ?? 0) - 1;
       if (remaining > 0) {
-        _assetClaims[key] = remaining;
+        _assetClaims[asset] = remaining;
         continue;
       }
-      _assetClaims.remove(key);
-      final address = game.assets.tryGet(key)?.address;
+      _assetClaims.remove(asset);
+      final address = asset.pack();
       // Unloading runs on both copies - it is the undoing of a declaration,
       // and the two copies have to agree on what is declared for an address
       // to mean the same thing on both sides.
-      game.assets.unload(key);
-      if (address != null) freed.add(address);
+      game.assets.unload(asset.key);
+      freed.add(address);
     }
     // The other copy holds the decoded payload, so dropping the declaration
     // here is only half of it. The mirror of `requestAssetLoad`: without this,
