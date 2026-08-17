@@ -330,7 +330,7 @@ double _fullWrite(
     final color = sprite.color[entity];
     final address = texture == null
         ? DrawSpriteData2D.noTexture
-        : texture.address;
+        : texture.pack();
     offset = DrawSpriteData2D.writeQuad(
       view,
       offset,

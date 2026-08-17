@@ -1,13 +1,16 @@
-// Entry point for the `goo` CLI: `goo codegen`, `goo assets pack`,
-// `goo build <target>`, `goo run` - see the project root plan, Phase 4.
+// Entry point for the `goo` CLI - see the project root plan, Phase 4.
 //
-// Placeholder - command dispatch and the asset/codegen/packaging pipeline
-// itself land in Phase 4.
+// The command *framework* is implemented; the pipelines it drives (codegen,
+// asset packing, platform packaging) are not. `goo` and `goo compile --help`
+// work and describe what will exist.
+import 'dart:io';
+
+import 'package:goo_cli/src/commands/goo.dart';
 import 'package:goo_cli/src/runner.dart';
 
-void main() {
-  // ignore: avoid_print
-  print('goo CLI is not implemented yet - see the project root plan, Phase 4.');
-
-  runCommand(GooCommand());
+// `args`, not a bare `main()`. `Platform.executableArguments` - what this
+// reached for before - is the Dart VM's own arguments, never the script's, so
+// every command line was silently parsed as empty.
+void main(List<String> args) {
+  exitCode = runCommand(GooCommand(), args);
 }

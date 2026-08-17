@@ -24,15 +24,13 @@ class CompileCommand extends Command {
     );
   }
 
-  @override
-  void execute() {
-    if (windows.selected) {
-      // "windows" subcommand is selected
-      windows.execute();
-      return;
-    }
-    super.execute(); // shows help
-  }
+  // No `execute` override. Dispatch is the runner's job: it executes the
+  // *selected* command, so `goo compile windows` calls
+  // `WindowsCompileCommand.execute` directly and never passes through here.
+  // This used to check `windows.selected` and delegate by hand, which was
+  // written against an unimplemented framework and became dead the moment one
+  // existed. Reaching here means `goo compile` with no subcommand, and the
+  // inherited `execute` prints the command list - which is the answer.
 }
 
 // TODO: subclass for each platform
