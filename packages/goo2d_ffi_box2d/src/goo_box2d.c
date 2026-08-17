@@ -781,6 +781,14 @@ int64_t gooJointCreateMouse( int64_t bodyA, int64_t bodyB, float targetX, float 
 		def.maxForce = maxForce;
 	}
 	def.collideConnected = collideConnected != 0;
+
+	// Wake the dragged body: a joint cannot move a sleeping one, and neither
+	// creating this nor moving its target wakes anything. Box2D's own samples
+	// wake on drag for the same reason.
+	//
+	// **This is correct but is NOT the fix for the open bug below** - waking
+	// changed the measured result by nothing at all. See goo_box2d.h.
+	b2Body_SetAwake( unpackBody( bodyB ), true );
 	return (int64_t)b2StoreJointId( b2CreateMouseJoint( b2Body_GetWorld( a ), &def ) );
 }
 
@@ -794,6 +802,8 @@ void gooJointSetMouseTarget( int64_t joint, float x, float y )
 	if ( b2Joint_IsValid( id ) && b2Joint_GetType( id ) == b2_mouseJoint )
 	{
 		b2MouseJoint_SetTarget( id, ( b2Vec2 ){ x, y } );
+		// Same reason as creation - and the same caveat.
+		b2Body_SetAwake( b2Joint_GetBodyB( id ), true );
 	}
 }
 
