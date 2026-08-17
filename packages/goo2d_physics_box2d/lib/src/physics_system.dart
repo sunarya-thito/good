@@ -978,6 +978,165 @@ class Box2DPhysicsSystem extends GameSystem
     );
   }
 
+  /// Constrains two bodies to slide along one axis - Unity's Slider Joint 2D.
+  ///
+  /// Lifts, sliding doors, pistons. ([axisX], [axisY]) is the free axis in
+  /// **body A's local frame** and is normalised for you; a zero axis falls
+  /// back to horizontal rather than tripping an assert that is absent from a
+  /// release build.
+  int createPrismaticJoint(
+    Entity a,
+    Entity b, {
+    double anchorAX = 0,
+    double anchorAY = 0,
+    double anchorBX = 0,
+    double anchorBY = 0,
+    double axisX = 1,
+    double axisY = 0,
+    double referenceAngle = 0,
+    bool enableLimit = false,
+    double lowerTranslation = 0,
+    double upperTranslation = 0,
+    bool enableMotor = false,
+    double motorSpeed = 0,
+    double maxMotorForce = 0,
+    bool collideConnected = false,
+  }) {
+    final ha = _bodyHandleOf(a);
+    final hb = _bodyHandleOf(b);
+    if (ha == 0 || hb == 0) return 0;
+    return box2d.gooJointCreatePrismatic(
+      ha, hb, anchorAX, anchorAY, anchorBX, anchorBY, axisX, axisY,
+      referenceAngle, enableLimit ? 1 : 0, lowerTranslation, upperTranslation,
+      enableMotor ? 1 : 0, motorSpeed, maxMotorForce, collideConnected ? 1 : 0,
+    );
+  }
+
+  /// Holds two bodies rigidly together - Unity's Fixed Joint 2D.
+  ///
+  /// A hertz of 0 on an axis welds it rigidly; above 0 gives that axis spring
+  /// under load, which is what makes a weld look like it is straining rather
+  /// than simply holding or breaking.
+  int createWeldJoint(
+    Entity a,
+    Entity b, {
+    double anchorAX = 0,
+    double anchorAY = 0,
+    double anchorBX = 0,
+    double anchorBY = 0,
+    double referenceAngle = 0,
+    double linearHertz = 0,
+    double linearDampingRatio = 0,
+    double angularHertz = 0,
+    double angularDampingRatio = 0,
+    bool collideConnected = false,
+  }) {
+    final ha = _bodyHandleOf(a);
+    final hb = _bodyHandleOf(b);
+    if (ha == 0 || hb == 0) return 0;
+    return box2d.gooJointCreateWeld(
+      ha, hb, anchorAX, anchorAY, anchorBX, anchorBY, referenceAngle,
+      linearHertz, linearDampingRatio, angularHertz, angularDampingRatio,
+      collideConnected ? 1 : 0,
+    );
+  }
+
+  /// A suspension axis plus a free spin - Unity's Wheel Joint 2D, and what a
+  /// driven vehicle wheel is made of.
+  ///
+  /// The axis defaults to **(0, 1), which is down**, because that is the way
+  /// a suspension spring compresses in goo2d's y-down world.
+  int createWheelJoint(
+    Entity a,
+    Entity b, {
+    double anchorAX = 0,
+    double anchorAY = 0,
+    double anchorBX = 0,
+    double anchorBY = 0,
+    double axisX = 0,
+    double axisY = 1,
+    bool enableSpring = true,
+    double hertz = 4,
+    double dampingRatio = 0.7,
+    bool enableLimit = false,
+    double lowerTranslation = 0,
+    double upperTranslation = 0,
+    bool enableMotor = false,
+    double motorSpeed = 0,
+    double maxMotorTorque = 0,
+    bool collideConnected = false,
+  }) {
+    final ha = _bodyHandleOf(a);
+    final hb = _bodyHandleOf(b);
+    if (ha == 0 || hb == 0) return 0;
+    return box2d.gooJointCreateWheel(
+      ha, hb, anchorAX, anchorAY, anchorBX, anchorBY, axisX, axisY,
+      enableSpring ? 1 : 0, hertz, dampingRatio, enableLimit ? 1 : 0,
+      lowerTranslation, upperTranslation, enableMotor ? 1 : 0, motorSpeed,
+      maxMotorTorque, collideConnected ? 1 : 0,
+    );
+  }
+
+  /// Drives body [b] towards a position and angle relative to body [a] -
+  /// Unity's **Relative Joint 2D**.
+  ///
+  /// The same joint is Unity's **Friction Joint 2D**: leave the offsets at
+  /// zero and it drives towards *no relative motion*, which with a capped
+  /// [maxForce]/[maxTorque] is exactly friction. Two Unity components, one
+  /// Box2D joint, and the difference is only what you ask it to hold.
+  int createMotorJoint(
+    Entity a,
+    Entity b, {
+    double offsetX = 0,
+    double offsetY = 0,
+    double angularOffset = 0,
+    double maxForce = 0,
+    double maxTorque = 0,
+    double correctionFactor = 0,
+    bool collideConnected = false,
+  }) {
+    final ha = _bodyHandleOf(a);
+    final hb = _bodyHandleOf(b);
+    if (ha == 0 || hb == 0) return 0;
+    return box2d.gooJointCreateMotor(
+      ha, hb, offsetX, offsetY, angularOffset, maxForce, maxTorque,
+      correctionFactor, collideConnected ? 1 : 0,
+    );
+  }
+
+  /// Drags body [b] towards a **world-space** target - Unity's Target Joint
+  /// 2D. Mouse dragging, tractor beams, anything that pulls rather than pins.
+  ///
+  /// [a] is a reference body Box2D needs but does not move; a static one is
+  /// the usual choice. Move the target with [setJointTarget], which is the
+  /// one joint parameter meant to change every frame.
+  ///
+  /// Zero for [hertz], [dampingRatio] or [maxForce] keeps Box2D's default
+  /// rather than meaning zero - a zero-force drag would simply do nothing.
+  int createMouseJoint(
+    Entity a,
+    Entity b, {
+    double targetX = 0,
+    double targetY = 0,
+    double hertz = 0,
+    double dampingRatio = 0,
+    double maxForce = 0,
+    bool collideConnected = false,
+  }) {
+    final ha = _bodyHandleOf(a);
+    final hb = _bodyHandleOf(b);
+    if (ha == 0 || hb == 0) return 0;
+    return box2d.gooJointCreateMouse(
+      ha, hb, targetX, targetY, hertz, dampingRatio, maxForce,
+      collideConnected ? 1 : 0,
+    );
+  }
+
+  /// Moves a mouse joint's world-space target. A no-op on any other joint
+  /// type, so a caller cannot silently steer the wrong thing.
+  void setJointTarget(int joint, double x, double y) =>
+      box2d.gooJointSetMouseTarget(joint, x, y);
+
   /// Removes a joint. Safe on a handle whose bodies have already gone.
   void destroyJoint(int joint) => box2d.gooJointDestroy(joint);
 

@@ -645,6 +645,158 @@ int64_t gooJointCreateRevolute( int64_t bodyA, int64_t bodyB, float ax, float ay
 	return (int64_t)b2StoreJointId( b2CreateRevoluteJoint( b2Body_GetWorld( a ), &def ) );
 }
 
+int64_t gooJointCreatePrismatic( int64_t bodyA, int64_t bodyB, float ax, float ay, float bx, float by,
+								 float axisX, float axisY, float referenceAngle, int32_t enableLimit,
+								 float lower, float upper, int32_t enableMotor, float motorSpeed,
+								 float maxMotorForce, int32_t collideConnected )
+{
+	if ( !jointBodiesValid( bodyA, bodyB ) )
+	{
+		return 0;
+	}
+	b2BodyId a = unpackBody( bodyA );
+	b2PrismaticJointDef def = b2DefaultPrismaticJointDef();
+	def.bodyIdA = a;
+	def.bodyIdB = unpackBody( bodyB );
+	def.localAnchorA = ( b2Vec2 ){ ax, ay };
+	def.localAnchorB = ( b2Vec2 ){ bx, by };
+	// A zero axis is degenerate and Box2D only catches it with an assert,
+	// which is absent from a release build - so it falls back to horizontal
+	// rather than producing a joint that behaves differently once shipped.
+	def.localAxisA = ( axisX == 0.0f && axisY == 0.0f ) ? ( b2Vec2 ){ 1.0f, 0.0f }
+													   : b2Normalize( ( b2Vec2 ){ axisX, axisY } );
+	def.referenceAngle = referenceAngle;
+	def.enableLimit = enableLimit != 0;
+	def.lowerTranslation = lower;
+	def.upperTranslation = upper;
+	def.enableMotor = enableMotor != 0;
+	def.motorSpeed = motorSpeed;
+	def.maxMotorForce = maxMotorForce;
+	def.collideConnected = collideConnected != 0;
+	return (int64_t)b2StoreJointId( b2CreatePrismaticJoint( b2Body_GetWorld( a ), &def ) );
+}
+
+int64_t gooJointCreateWeld( int64_t bodyA, int64_t bodyB, float ax, float ay, float bx, float by,
+							float referenceAngle, float linearHertz, float linearDampingRatio,
+							float angularHertz, float angularDampingRatio, int32_t collideConnected )
+{
+	if ( !jointBodiesValid( bodyA, bodyB ) )
+	{
+		return 0;
+	}
+	b2BodyId a = unpackBody( bodyA );
+	b2WeldJointDef def = b2DefaultWeldJointDef();
+	def.bodyIdA = a;
+	def.bodyIdB = unpackBody( bodyB );
+	def.localAnchorA = ( b2Vec2 ){ ax, ay };
+	def.localAnchorB = ( b2Vec2 ){ bx, by };
+	def.referenceAngle = referenceAngle;
+	def.linearHertz = linearHertz;
+	def.linearDampingRatio = linearDampingRatio;
+	def.angularHertz = angularHertz;
+	def.angularDampingRatio = angularDampingRatio;
+	def.collideConnected = collideConnected != 0;
+	return (int64_t)b2StoreJointId( b2CreateWeldJoint( b2Body_GetWorld( a ), &def ) );
+}
+
+int64_t gooJointCreateWheel( int64_t bodyA, int64_t bodyB, float ax, float ay, float bx, float by,
+							 float axisX, float axisY, int32_t enableSpring, float hertz,
+							 float dampingRatio, int32_t enableLimit, float lower, float upper,
+							 int32_t enableMotor, float motorSpeed, float maxMotorTorque,
+							 int32_t collideConnected )
+{
+	if ( !jointBodiesValid( bodyA, bodyB ) )
+	{
+		return 0;
+	}
+	b2BodyId a = unpackBody( bodyA );
+	b2WheelJointDef def = b2DefaultWheelJointDef();
+	def.bodyIdA = a;
+	def.bodyIdB = unpackBody( bodyB );
+	def.localAnchorA = ( b2Vec2 ){ ax, ay };
+	def.localAnchorB = ( b2Vec2 ){ bx, by };
+	// Vertical by default: a wheel's suspension travels up and down, and +y
+	// is DOWN in goo2d, so this axis points the way the spring compresses.
+	def.localAxisA = ( axisX == 0.0f && axisY == 0.0f ) ? ( b2Vec2 ){ 0.0f, 1.0f }
+													   : b2Normalize( ( b2Vec2 ){ axisX, axisY } );
+	def.enableSpring = enableSpring != 0;
+	def.hertz = hertz;
+	def.dampingRatio = dampingRatio;
+	def.enableLimit = enableLimit != 0;
+	def.lowerTranslation = lower;
+	def.upperTranslation = upper;
+	def.enableMotor = enableMotor != 0;
+	def.motorSpeed = motorSpeed;
+	def.maxMotorTorque = maxMotorTorque;
+	def.collideConnected = collideConnected != 0;
+	return (int64_t)b2StoreJointId( b2CreateWheelJoint( b2Body_GetWorld( a ), &def ) );
+}
+
+int64_t gooJointCreateMotor( int64_t bodyA, int64_t bodyB, float offsetX, float offsetY,
+							 float angularOffset, float maxForce, float maxTorque,
+							 float correctionFactor, int32_t collideConnected )
+{
+	if ( !jointBodiesValid( bodyA, bodyB ) )
+	{
+		return 0;
+	}
+	b2BodyId a = unpackBody( bodyA );
+	b2MotorJointDef def = b2DefaultMotorJointDef();
+	def.bodyIdA = a;
+	def.bodyIdB = unpackBody( bodyB );
+	def.linearOffset = ( b2Vec2 ){ offsetX, offsetY };
+	def.angularOffset = angularOffset;
+	def.maxForce = maxForce;
+	def.maxTorque = maxTorque;
+	if ( correctionFactor > 0.0f )
+	{
+		def.correctionFactor = correctionFactor;
+	}
+	def.collideConnected = collideConnected != 0;
+	return (int64_t)b2StoreJointId( b2CreateMotorJoint( b2Body_GetWorld( a ), &def ) );
+}
+
+int64_t gooJointCreateMouse( int64_t bodyA, int64_t bodyB, float targetX, float targetY, float hertz,
+							 float dampingRatio, float maxForce, int32_t collideConnected )
+{
+	if ( !jointBodiesValid( bodyA, bodyB ) )
+	{
+		return 0;
+	}
+	b2BodyId a = unpackBody( bodyA );
+	b2MouseJointDef def = b2DefaultMouseJointDef();
+	def.bodyIdA = a;
+	def.bodyIdB = unpackBody( bodyB );
+	def.target = ( b2Vec2 ){ targetX, targetY };
+	if ( hertz > 0.0f )
+	{
+		def.hertz = hertz;
+	}
+	if ( dampingRatio > 0.0f )
+	{
+		def.dampingRatio = dampingRatio;
+	}
+	if ( maxForce > 0.0f )
+	{
+		def.maxForce = maxForce;
+	}
+	def.collideConnected = collideConnected != 0;
+	return (int64_t)b2StoreJointId( b2CreateMouseJoint( b2Body_GetWorld( a ), &def ) );
+}
+
+void gooJointSetMouseTarget( int64_t joint, float x, float y )
+{
+	if ( joint == 0 )
+	{
+		return;
+	}
+	b2JointId id = unpackJoint( joint );
+	if ( b2Joint_IsValid( id ) && b2Joint_GetType( id ) == b2_mouseJoint )
+	{
+		b2MouseJoint_SetTarget( id, ( b2Vec2 ){ x, y } );
+	}
+}
+
 void gooJointDestroy( int64_t joint )
 {
 	if ( joint == 0 )

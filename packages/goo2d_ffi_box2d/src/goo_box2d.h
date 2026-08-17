@@ -299,6 +299,57 @@ extern "C"
 											float lowerAngle, float upperAngle, int32_t enableMotor,
 											float motorSpeed, float maxMotorTorque, int32_t collideConnected );
 
+	/// Creates a prismatic joint - two bodies sharing one axis of translation,
+	/// with optional limits and an optional motor. Unity calls this a Slider
+	/// Joint 2D. Lifts, sliding doors, pistons.
+	///
+	/// `(axisX, axisY)` is the free axis in **body A's local frame**.
+	GOO_API int64_t gooJointCreatePrismatic( int64_t bodyA, int64_t bodyB, float ax, float ay, float bx,
+											 float by, float axisX, float axisY, float referenceAngle,
+											 int32_t enableLimit, float lower, float upper,
+											 int32_t enableMotor, float motorSpeed, float maxMotorForce,
+											 int32_t collideConnected );
+
+	/// Creates a weld joint - two bodies held rigidly together, optionally with
+	/// spring give. Unity calls this a Fixed Joint 2D. Breakable structures,
+	/// stuck-together debris.
+	///
+	/// A hertz of 0 on either axis is a rigid weld; above 0 it is a soft one.
+	GOO_API int64_t gooJointCreateWeld( int64_t bodyA, int64_t bodyB, float ax, float ay, float bx,
+										float by, float referenceAngle, float linearHertz,
+										float linearDampingRatio, float angularHertz,
+										float angularDampingRatio, int32_t collideConnected );
+
+	/// Creates a wheel joint - a suspension axis plus a spin. Unity calls this
+	/// a Wheel Joint 2D, and it is what a driven vehicle wheel is.
+	GOO_API int64_t gooJointCreateWheel( int64_t bodyA, int64_t bodyB, float ax, float ay, float bx,
+										 float by, float axisX, float axisY, int32_t enableSpring,
+										 float hertz, float dampingRatio, int32_t enableLimit,
+										 float lower, float upper, int32_t enableMotor,
+										 float motorSpeed, float maxMotorTorque,
+										 int32_t collideConnected );
+
+	/// Creates a motor joint - drives body B to a position and angle relative
+	/// to body A. Unity splits this into Relative Joint 2D (drive to an offset)
+	/// and Friction Joint 2D (drive to *no* motion, which is what a zero
+	/// target with a force cap is).
+	GOO_API int64_t gooJointCreateMotor( int64_t bodyA, int64_t bodyB, float offsetX, float offsetY,
+										 float angularOffset, float maxForce, float maxTorque,
+										 float correctionFactor, int32_t collideConnected );
+
+	/// Creates a mouse joint - drags body B towards a world-space target.
+	/// Unity calls this a Target Joint 2D. Mouse dragging, tractor beams.
+	///
+	/// The target is world space, not body-local, because that is the whole
+	/// point: it is where you want the body to go, not a point on it.
+	GOO_API int64_t gooJointCreateMouse( int64_t bodyA, int64_t bodyB, float targetX, float targetY,
+										 float hertz, float dampingRatio, float maxForce,
+										 int32_t collideConnected );
+
+	/// Moves a mouse joint's world-space target. The one joint parameter that
+	/// is expected to change every frame, so it gets its own entry point.
+	GOO_API void gooJointSetMouseTarget( int64_t joint, float x, float y );
+
 	GOO_API void gooJointDestroy( int64_t joint );
 
 	/// Whether [joint] still names a live joint. Zero once either of its

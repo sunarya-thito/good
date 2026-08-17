@@ -1022,6 +1022,318 @@ class Box2DBindings {
       int Function(int, int, double, double, double, double, double, int,
           double, double, int, double, double, int)>();
 
+  /// Creates a prismatic joint - two bodies sharing one axis of translation,
+  /// with optional limits and an optional motor. Unity calls this a Slider
+  /// Joint 2D. Lifts, sliding doors, pistons.
+  ///
+  /// `(axisX, axisY)` is the free axis in **body A's local frame**.
+  int gooJointCreatePrismatic(
+    int bodyA,
+    int bodyB,
+    double ax,
+    double ay,
+    double bx,
+    double by,
+    double axisX,
+    double axisY,
+    double referenceAngle,
+    int enableLimit,
+    double lower,
+    double upper,
+    int enableMotor,
+    double motorSpeed,
+    double maxMotorForce,
+    int collideConnected,
+  ) {
+    return _gooJointCreatePrismatic(
+      bodyA,
+      bodyB,
+      ax,
+      ay,
+      bx,
+      by,
+      axisX,
+      axisY,
+      referenceAngle,
+      enableLimit,
+      lower,
+      upper,
+      enableMotor,
+      motorSpeed,
+      maxMotorForce,
+      collideConnected,
+    );
+  }
+
+  late final _gooJointCreatePrismaticPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int64 Function(
+              ffi.Int64,
+              ffi.Int64,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Int32,
+              ffi.Float,
+              ffi.Float,
+              ffi.Int32,
+              ffi.Float,
+              ffi.Float,
+              ffi.Int32)>>('gooJointCreatePrismatic');
+  late final _gooJointCreatePrismatic = _gooJointCreatePrismaticPtr.asFunction<
+      int Function(int, int, double, double, double, double, double, double,
+          double, int, double, double, int, double, double, int)>();
+
+  /// Creates a weld joint - two bodies held rigidly together, optionally with
+  /// spring give. Unity calls this a Fixed Joint 2D. Breakable structures,
+  /// stuck-together debris.
+  ///
+  /// A hertz of 0 on either axis is a rigid weld; above 0 it is a soft one.
+  int gooJointCreateWeld(
+    int bodyA,
+    int bodyB,
+    double ax,
+    double ay,
+    double bx,
+    double by,
+    double referenceAngle,
+    double linearHertz,
+    double linearDampingRatio,
+    double angularHertz,
+    double angularDampingRatio,
+    int collideConnected,
+  ) {
+    return _gooJointCreateWeld(
+      bodyA,
+      bodyB,
+      ax,
+      ay,
+      bx,
+      by,
+      referenceAngle,
+      linearHertz,
+      linearDampingRatio,
+      angularHertz,
+      angularDampingRatio,
+      collideConnected,
+    );
+  }
+
+  late final _gooJointCreateWeldPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int64 Function(
+              ffi.Int64,
+              ffi.Int64,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Int32)>>('gooJointCreateWeld');
+  late final _gooJointCreateWeld = _gooJointCreateWeldPtr.asFunction<
+      int Function(int, int, double, double, double, double, double, double,
+          double, double, double, int)>();
+
+  /// Creates a wheel joint - a suspension axis plus a spin. Unity calls this
+  /// a Wheel Joint 2D, and it is what a driven vehicle wheel is.
+  int gooJointCreateWheel(
+    int bodyA,
+    int bodyB,
+    double ax,
+    double ay,
+    double bx,
+    double by,
+    double axisX,
+    double axisY,
+    int enableSpring,
+    double hertz,
+    double dampingRatio,
+    int enableLimit,
+    double lower,
+    double upper,
+    int enableMotor,
+    double motorSpeed,
+    double maxMotorTorque,
+    int collideConnected,
+  ) {
+    return _gooJointCreateWheel(
+      bodyA,
+      bodyB,
+      ax,
+      ay,
+      bx,
+      by,
+      axisX,
+      axisY,
+      enableSpring,
+      hertz,
+      dampingRatio,
+      enableLimit,
+      lower,
+      upper,
+      enableMotor,
+      motorSpeed,
+      maxMotorTorque,
+      collideConnected,
+    );
+  }
+
+  late final _gooJointCreateWheelPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int64 Function(
+              ffi.Int64,
+              ffi.Int64,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Int32,
+              ffi.Float,
+              ffi.Float,
+              ffi.Int32,
+              ffi.Float,
+              ffi.Float,
+              ffi.Int32,
+              ffi.Float,
+              ffi.Float,
+              ffi.Int32)>>('gooJointCreateWheel');
+  late final _gooJointCreateWheel = _gooJointCreateWheelPtr.asFunction<
+      int Function(
+          int,
+          int,
+          double,
+          double,
+          double,
+          double,
+          double,
+          double,
+          int,
+          double,
+          double,
+          int,
+          double,
+          double,
+          int,
+          double,
+          double,
+          int)>();
+
+  /// Creates a motor joint - drives body B to a position and angle relative
+  /// to body A. Unity splits this into Relative Joint 2D (drive to an offset)
+  /// and Friction Joint 2D (drive to *no* motion, which is what a zero
+  /// target with a force cap is).
+  int gooJointCreateMotor(
+    int bodyA,
+    int bodyB,
+    double offsetX,
+    double offsetY,
+    double angularOffset,
+    double maxForce,
+    double maxTorque,
+    double correctionFactor,
+    int collideConnected,
+  ) {
+    return _gooJointCreateMotor(
+      bodyA,
+      bodyB,
+      offsetX,
+      offsetY,
+      angularOffset,
+      maxForce,
+      maxTorque,
+      correctionFactor,
+      collideConnected,
+    );
+  }
+
+  late final _gooJointCreateMotorPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int64 Function(
+              ffi.Int64,
+              ffi.Int64,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Int32)>>('gooJointCreateMotor');
+  late final _gooJointCreateMotor = _gooJointCreateMotorPtr.asFunction<
+      int Function(
+          int, int, double, double, double, double, double, double, int)>();
+
+  /// Creates a mouse joint - drags body B towards a world-space target.
+  /// Unity calls this a Target Joint 2D. Mouse dragging, tractor beams.
+  ///
+  /// The target is world space, not body-local, because that is the whole
+  /// point: it is where you want the body to go, not a point on it.
+  int gooJointCreateMouse(
+    int bodyA,
+    int bodyB,
+    double targetX,
+    double targetY,
+    double hertz,
+    double dampingRatio,
+    double maxForce,
+    int collideConnected,
+  ) {
+    return _gooJointCreateMouse(
+      bodyA,
+      bodyB,
+      targetX,
+      targetY,
+      hertz,
+      dampingRatio,
+      maxForce,
+      collideConnected,
+    );
+  }
+
+  late final _gooJointCreateMousePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int64 Function(
+              ffi.Int64,
+              ffi.Int64,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Float,
+              ffi.Int32)>>('gooJointCreateMouse');
+  late final _gooJointCreateMouse = _gooJointCreateMousePtr.asFunction<
+      int Function(int, int, double, double, double, double, double, int)>();
+
+  /// Moves a mouse joint's world-space target. The one joint parameter that
+  /// is expected to change every frame, so it gets its own entry point.
+  void gooJointSetMouseTarget(
+    int joint,
+    double x,
+    double y,
+  ) {
+    return _gooJointSetMouseTarget(
+      joint,
+      x,
+      y,
+    );
+  }
+
+  late final _gooJointSetMouseTargetPtr = _lookup<
+          ffi
+          .NativeFunction<ffi.Void Function(ffi.Int64, ffi.Float, ffi.Float)>>(
+      'gooJointSetMouseTarget');
+  late final _gooJointSetMouseTarget = _gooJointSetMouseTargetPtr
+      .asFunction<void Function(int, double, double)>();
+
   void gooJointDestroy(
     int joint,
   ) {
