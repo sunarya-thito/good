@@ -77,7 +77,7 @@ class _TwoSprite extends EntityStruct
       // be said with a fraction of the hat's own 2-unit height alone.
       pivot: const RelativeOffset2D(fractionX: 0.5, fractionY: 0.5, offsetY: 6),
       alignment: const RelativeOffset2D(fractionX: 1, offsetX: 3),
-      nineSliceBorder: const NineSliceBorder.all(2),
+      nineSliceBorder: const NineSliceBorder.all(2, sourceSize: 16),
       visible: true,
     );
   }
@@ -260,7 +260,7 @@ class _Panel extends EntityStruct
       // coordinates, unshifted - the arithmetic under test is the slicing,
       // not the pivot, which has its own tests.
       pivot: RelativeOffset2D.zero,
-      nineSliceBorder: const NineSliceBorder.all(inset),
+      nineSliceBorder: NineSliceBorder.all(inset, sourceSize: 16),
     );
   }
 }
@@ -286,7 +286,7 @@ class _UnsizedPanel extends EntityStruct
       width: 6,
       height: 40,
       pivot: RelativeOffset2D.zero,
-      nineSliceBorder: const NineSliceBorder.all(4),
+      nineSliceBorder: const NineSliceBorder.all(4, sourceSize: 16),
     );
   }
 }
@@ -304,7 +304,7 @@ class _BorderedUntextured extends EntityStruct
       width: 40,
       height: 40,
       pivot: RelativeOffset2D.zero,
-      nineSliceBorder: const NineSliceBorder.all(4),
+      nineSliceBorder: const NineSliceBorder.all(4, sourceSize: 16),
     );
   }
 }
@@ -498,19 +498,18 @@ Future<_RenderGame> _game() async {
   await game.assets.load(_trapTextureKey);
   await game.assets.load(_panelTextureKey);
 
-  // Publish the panel's source size, exactly as the decoding copy does when it
-  // reports a load back (see `AssetLoader.describe` and
-  // `GameRuntime._msgAssetLoaded`). The fixture PNG really is 2x1, and the
-  // nine-slice geometry under test is specified against a 16x16 source, so the
-  // size is stated here rather than left to the fixture bytes.
+  // Deliberately **no** `TextureInfo` published here.
   //
-  // This used to be declared on the texture key. It is discovered at load now,
-  // so the test supplies what the discovery would have supplied - which is the
-  // real input the producer reads, not a stand-in for it.
-  game.assets.publishInfoForTesting(
-    game.assets.tryGet(_panelTextureKey)!.pack(),
-    const TextureInfo(16, 16),
-  );
+  // It used to be required: nine-slice UV cuts were source pixels, so slicing
+  // divided by the image's width and the producer could not slice until the
+  // decoding copy had reported that size back. The cuts are fractions now, so
+  // every nine-slice test below runs with the producer knowing nothing about
+  // the image but its address - which is the permanent state of the isolate
+  // that actually runs the renderer. Publishing a size here would hide that.
+  //
+  // The fixture PNG is 2x1; the geometry under test is specified against a
+  // 16x16 source, and that number now lives only in the `NineSliceBorder` the
+  // prefab declares. Nothing at draw time consults it.
   return game;
 }
 
@@ -1093,12 +1092,25 @@ void main() {
       );
       expect(hat.alignFractionX[entity], 1);
       expect(hat.alignOffsetX[entity], 3);
-      expect(hat.borderLeft[entity], 2);
+      // A border unpacks into *two* sets of four: the relative source cut and
+      // the absolute destination corner. `all(2, sourceSize: 16)` means "cut
+      // 2px in on a 16px source" - so 2/16 of the image, and 2 sprite units of
+      // corner.
       expect(
-        hat.borderBottom[entity],
-        2,
-        reason: 'NineSliceBorder.all(2) unpacks into all four insets',
+        hat.borderLeft[entity],
+        closeTo(0.125, 1e-6),
+        reason: 'the source cut is a fraction of the frame - 2 of 16 pixels',
       );
+      expect(hat.borderBottom[entity], closeTo(0.125, 1e-6));
+      expect(
+        hat.insetLeft[entity],
+        2,
+        reason:
+            'while the destination corner stays in sprite units, absolute - a '
+            'fractional corner would scale with the sprite, which is a stretch '
+            'and not a nine-slice',
+      );
+      expect(hat.insetBottom[entity], 2);
       // And the sibling sprite is untouched by any of it.
       expect(scene.twoSprite.body.zIndex[entity], 0);
       expect(scene.twoSprite.body.width[entity], 10);
@@ -2181,6 +2193,74 @@ void main() {
             'four corners, four edges and a centre - the whole reason '
             'the border insets exist. A plain sprite is one quad, so this '
             'is the clearest single signal that slicing engaged at all.',
+      );
+    });
+
+    test('slices on the first frame, with nothing decoded', () async {
+      // The property the relative cut bought. `_game()` publishes no
+      // `TextureInfo` at all (see its comment), so the producer here knows
+      // nothing about the image beyond its address - exactly the game
+      // isolate's permanent state.
+      //
+      // This used to be impossible: the cuts were source pixels, so the
+      // producer had to wait for the decoding copy to report the image's size
+      // back, and until it arrived a nine-sliced sprite silently fell back to
+      // a single quad.
+      final game = await _game();
+      final quads = drawPanel(game).quads;
+      expect(quads, hasLength(9));
+      expect(
+        quads.expand((q) => q.u).toList()..sort(),
+        containsAll(uvCuts),
+        reason:
+            'and the cuts land where they would have with a declared size, '
+            'because 4/16 is stated once at declare time instead',
+      );
+    });
+
+    test('the corners do not scale with the sprite', () async {
+      // Nine-slice's defining property, and the reason the destination inset
+      // is absolute while the source cut is relative. A fractional corner
+      // would scale here, which is a plain stretch.
+      final game = await _game();
+      final scene = run.state.getScene<_SpriteScene>();
+      final entity = scene.addEntity(scene.panel);
+
+      double topLeftWidth() {
+        run.state.advance(_step);
+        final quads = _drainFrames(game).single.quads;
+        // The top-left corner cell: smallest x and smallest y.
+        final corner = quads.reduce((a, b) {
+          final ax = a.x.reduce((p, q) => p < q ? p : q);
+          final bx = b.x.reduce((p, q) => p < q ? p : q);
+          final ay = a.y.reduce((p, q) => p < q ? p : q);
+          final by = b.y.reduce((p, q) => p < q ? p : q);
+          if (ay != by) return ay < by ? a : b;
+          return ax < bx ? a : b;
+        });
+        final xs = corner.x;
+        return xs.reduce((p, q) => p > q ? p : q) -
+            xs.reduce((p, q) => p < q ? p : q);
+      }
+
+      final atDefault = topLeftWidth();
+      expect(atDefault, closeTo(_Panel.inset, 1e-6));
+
+      // Between ticks, so the write lands in an open tick rather than in a slot
+      // the next beginTick would copy over - see data_layout.dart's `_writeRow`.
+      final pool = run.state.scene!.pool;
+      pool.beginTick();
+      scene.panel.frame.width[entity] = _Panel.drawSize * 3;
+      scene.panel.frame.height[entity] = _Panel.drawSize * 3;
+      pool.commitTick();
+
+      expect(
+        topLeftWidth(),
+        closeTo(atDefault, 1e-6),
+        reason:
+            'tripling the panel must leave the corner exactly as it was - that '
+            'is what stops a dialog frame\'s rounded corners smearing as it '
+            'grows, and it is the whole point of slicing rather than scaling',
       );
     });
 

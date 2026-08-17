@@ -270,33 +270,114 @@ final class SpriteFrames implements IntRepresentation<SpriteFrame> {
 /// All-zero (the default, [none]) means there is nothing to slice and the
 /// sprite is a single quad - which is why [isEmpty] exists as a named
 /// question rather than as four inline comparisons at each call site.
+/// # The source cut is relative; the destination inset is not
+///
+/// A nine-slice is two separate statements about the same four edges, and they
+/// were one set of numbers here for a long time:
+///
+///  * **where to cut the source** - a position *inside* the image, so it is
+///    naturally a fraction of it. [left] and friends.
+///  * **how big the corner is on screen** - the whole definition of a
+///    nine-slice is that this stays fixed while the middle stretches, so it
+///    cannot be a fraction of the sprite: scale the sprite and a fractional
+///    corner scales with it, which is a plain stretch and not a nine-slice at
+///    all. [insetLeft] and friends, in the sprite's own units.
+///
+/// The old single set did double duty and silently assumed one sprite unit
+/// equalled one source pixel. That assumption is now [pixels]'s
+/// `unitsPerPixel`, stated rather than implied, and defaulting to the `1` the
+/// old code hardcoded.
+///
+/// Making the cut relative is what frees nine-slicing from needing the image's
+/// pixel size: the game isolate, which never decodes, can now slice with
+/// nothing loaded and no `TextureInfo` at all. Fractions are of the sprite's
+/// [SpriteFrame] when it has one, so a panel packed into an atlas slices inside
+/// its own region - see `GameRenderer2D`'s nine-slice pass.
+@immutable
 class NineSliceBorder {
+  /// The general form: source cuts as fractions, destination corners in sprite
+  /// units. Prefer [pixels], which derives both from the numbers an artist
+  /// actually has.
   const NineSliceBorder({
     this.left = 0,
     this.top = 0,
     this.right = 0,
     this.bottom = 0,
+    this.insetLeft = 0,
+    this.insetTop = 0,
+    this.insetRight = 0,
+    this.insetBottom = 0,
   });
 
-  /// The common case for a symmetric frame: the same inset on all four edges.
-  const NineSliceBorder.all(double inset)
-    : left = inset,
-      top = inset,
-      right = inset,
-      bottom = inset;
+  /// Pixel insets on a source of a stated size - the ordinary way to author
+  /// one, and the only place a pixel dimension appears.
+  ///
+  /// Divides once, here, at declare time: [left] and friends become fractions
+  /// of the source, and the destination corners become `pixels *
+  /// unitsPerPixel`. Nothing at draw time needs the source size, which is the
+  /// whole point.
+  ///
+  /// [unitsPerPixel] converts source pixels to the sprite's own units. `1`
+  /// reproduces exactly what the previous single-number form did implicitly.
+  const NineSliceBorder.pixels({
+    double left = 0,
+    double top = 0,
+    double right = 0,
+    double bottom = 0,
+    required int sourceWidth,
+    required int sourceHeight,
+    double unitsPerPixel = 1,
+  }) : left = left / sourceWidth,
+       top = top / sourceHeight,
+       right = right / sourceWidth,
+       bottom = bottom / sourceHeight,
+       insetLeft = left * unitsPerPixel,
+       insetTop = top * unitsPerPixel,
+       insetRight = right * unitsPerPixel,
+       insetBottom = bottom * unitsPerPixel;
 
+  /// The common case for a symmetric frame: the same pixel inset on all four
+  /// edges of a square source.
+  const NineSliceBorder.all(
+    double inset, {
+    required int sourceSize,
+    double unitsPerPixel = 1,
+  }) : left = inset / sourceSize,
+       top = inset / sourceSize,
+       right = inset / sourceSize,
+       bottom = inset / sourceSize,
+       insetLeft = inset * unitsPerPixel,
+       insetTop = inset * unitsPerPixel,
+       insetRight = inset * unitsPerPixel,
+       insetBottom = inset * unitsPerPixel;
+
+  /// Where to cut the source, as a fraction `0..1` of the sprite's frame.
   final double left;
   final double top;
   final double right;
   final double bottom;
 
+  /// How wide the corner is drawn, in the sprite's own units. Fixed under
+  /// resize - that is what a nine-slice *is*.
+  final double insetLeft;
+  final double insetTop;
+  final double insetRight;
+  final double insetBottom;
+
   /// No slicing - a plain single quad.
   static const NineSliceBorder none = NineSliceBorder();
 
-  /// True when every inset is zero, i.e. this sprite is a plain quad. The
-  /// renderer branches on the *stored* fields rather than on an instance of
-  /// this class; see [Sprite.borderLeft].
-  bool get isEmpty => left == 0 && top == 0 && right == 0 && bottom == 0;
+  /// True when there is nothing to slice, i.e. this sprite is a plain quad.
+  ///
+  /// Tests the **destination** insets, because those are what decide whether
+  /// there are nine rectangles to draw: a source cut with no corner to put it
+  /// in produces nothing. The renderer branches on the *stored* fields rather
+  /// than on an instance of this class; see [Sprite.insetLeft].
+  bool get isEmpty =>
+      insetLeft == 0 &&
+      insetTop == 0 &&
+      insetRight == 0 &&
+      insetBottom == 0;
 }
 
 /// One drawable rectangle belonging to an entity - what a single
@@ -343,6 +424,10 @@ class Sprite {
     required this.borderTop,
     required this.borderRight,
     required this.borderBottom,
+    required this.insetLeft,
+    required this.insetTop,
+    required this.insetRight,
+    required this.insetBottom,
   });
 
   /// The image this sprite samples, or `null` for "no texture - draw the flat
@@ -427,13 +512,29 @@ class Sprite {
   final DataPointer<double> alignOffsetX;
   final DataPointer<double> alignOffsetY;
 
-  /// Nine-slice insets, all zero by default - which means "plain single
-  /// quad", the only thing generated today. Quad generation for a non-empty
-  /// border is a follow-up; see [GameRenderer2D]'s note.
+  /// Where the nine-slice cuts the **source**, as a fraction `0..1` of this
+  /// sprite's [frame]. All zero by default.
+  ///
+  /// `float32`, not `float64` like the geometry fields: this is a `0..1`
+  /// fraction with precision to spare there, and it is four more columns on
+  /// every sprite row. See [NineSliceBorder] for why the cut is relative and
+  /// the inset below is not.
   final DataPointer<double> borderLeft;
   final DataPointer<double> borderTop;
   final DataPointer<double> borderRight;
   final DataPointer<double> borderBottom;
+
+  /// How wide the nine-slice corners are drawn, in this sprite's own units.
+  /// All zero by default, which means "plain single quad".
+  ///
+  /// Absolute rather than relative on purpose: a fraction of the sprite would
+  /// scale the corners with it, which is a stretch and not a nine-slice.
+  /// [GameRenderer2D] branches on these to decide whether there are nine
+  /// rectangles to draw at all.
+  final DataPointer<double> insetLeft;
+  final DataPointer<double> insetTop;
+  final DataPointer<double> insetRight;
+  final DataPointer<double> insetBottom;
 
   /// Writes all four pivot fields at once. The declared default (from
   /// [SpriteDescriptor.has]) already covers the common case; this is for
@@ -525,10 +626,14 @@ class SpriteDescriptor {
       alignFractionY: _data.hasFloat64(alignment.fractionY),
       alignOffsetX: _data.hasFloat64(alignment.offsetX),
       alignOffsetY: _data.hasFloat64(alignment.offsetY),
-      borderLeft: _data.hasFloat64(nineSliceBorder.left),
-      borderTop: _data.hasFloat64(nineSliceBorder.top),
-      borderRight: _data.hasFloat64(nineSliceBorder.right),
-      borderBottom: _data.hasFloat64(nineSliceBorder.bottom),
+      borderLeft: _data.hasFloat32(nineSliceBorder.left),
+      borderTop: _data.hasFloat32(nineSliceBorder.top),
+      borderRight: _data.hasFloat32(nineSliceBorder.right),
+      borderBottom: _data.hasFloat32(nineSliceBorder.bottom),
+      insetLeft: _data.hasFloat64(nineSliceBorder.insetLeft),
+      insetTop: _data.hasFloat64(nineSliceBorder.insetTop),
+      insetRight: _data.hasFloat64(nineSliceBorder.insetRight),
+      insetBottom: _data.hasFloat64(nineSliceBorder.insetBottom),
     );
     _sprites.add(sprite);
     return sprite;
@@ -1468,10 +1573,12 @@ class GameRenderer2D extends GameSystem
     int address,
     int filter,
   ) {
-    var left = sprite.borderLeft[entity];
-    var right = sprite.borderRight[entity];
-    var top = sprite.borderTop[entity];
-    var bottom = sprite.borderBottom[entity];
+    // Destination corners, in the sprite's own units. Absolute, so they are
+    // unchanged by how large the sprite is drawn - see [NineSliceBorder].
+    var left = sprite.insetLeft[entity];
+    var right = sprite.insetRight[entity];
+    var top = sprite.insetTop[entity];
+    var bottom = sprite.insetBottom[entity];
 
     // Destination-side fit, per axis and independently - see the doc above.
     final horizontal = left + right;
@@ -1501,18 +1608,20 @@ class GameRenderer2D extends GameSystem
     ly[2] = (height - bottom - pivotY) * scaleY;
     ly[3] = (height - pivotY) * scaleY;
 
-    // The matching cuts in texture space, from the *declared* source size -
-    // the one number the game isolate can know without decoding (see
-    // `Texture.sourceWidth`). Note these use the sprite's original insets, not
-    // the fitted ones above: squeezing the destination must not re-slice the
-    // source.
-    final info = texture.info as TextureInfo;
+    // The matching cuts in texture space. **No pixel dimension anywhere**, and
+    // therefore no decoded image and no `TextureInfo`: the cuts are fractions,
+    // so this arithmetic is available on the isolate that cannot decode, which
+    // is the isolate that runs. Nine-slicing used to need a *declared* source
+    // size for exactly this line, and getting it wrong mis-sliced every panel.
+    //
+    // Note these use the border's own fractions, not the fitted destination
+    // insets above: squeezing the destination must not re-slice the source.
+    //
     // Cuts are placed **within the sprite's frame**, not across the whole
     // texture. A nine-sliced panel taken from an atlas has to slice inside its
     // own region; slicing the sheet would put three of its nine quads on a
-    // neighbour's pixels. So the inset fractions are measured against the
-    // frame's extent and then offset onto its origin, which collapses to the
-    // plain `0..1` case exactly when the frame is full.
+    // neighbour's pixels. Collapses to the plain `0..1` case exactly when the
+    // frame is full.
     final f = sprite.frame.packedAt(entity);
     final fu0 = SpriteFrame.unpackLane(f, SpriteFrame.laneU0);
     final fv0 = SpriteFrame.unpackLane(f, SpriteFrame.laneV0);
@@ -1520,19 +1629,15 @@ class GameRenderer2D extends GameSystem
     final fv1 = SpriteFrame.unpackLane(f, SpriteFrame.laneV1);
     final fw = fu1 - fu0;
     final fh = fv1 - fv0;
-    // Insets are source pixels, so they divide by the *frame's* pixel extent,
-    // not the whole image's.
-    final sw = info.width * fw;
-    final sh = info.height * fh;
     final u = _u;
     final v = _v;
     u[0] = fu0;
-    u[1] = fu0 + fw * (sprite.borderLeft[entity] / sw);
-    u[2] = fu1 - fw * (sprite.borderRight[entity] / sw);
+    u[1] = fu0 + fw * sprite.borderLeft[entity];
+    u[2] = fu1 - fw * sprite.borderRight[entity];
     u[3] = fu1;
     v[0] = fv0;
-    v[1] = fv0 + fh * (sprite.borderTop[entity] / sh);
-    v[2] = fv1 - fh * (sprite.borderBottom[entity] / sh);
+    v[1] = fv0 + fh * sprite.borderTop[entity];
+    v[2] = fv1 - fh * sprite.borderBottom[entity];
     v[3] = fv1;
 
     for (var row = 0; row < 3; row++) {
@@ -1580,14 +1685,21 @@ class GameRenderer2D extends GameSystem
   }
 
   bool _isNineSliced(Entity entity, Sprite sprite) {
-    if (sprite.borderLeft[entity] == 0 &&
-        sprite.borderTop[entity] == 0 &&
-        sprite.borderRight[entity] == 0 &&
-        sprite.borderBottom[entity] == 0) {
+    // The *destination* insets decide this: they are what create nine
+    // rectangles instead of one. A source cut with no corner to put it in
+    // produces nothing - see [NineSliceBorder.isEmpty].
+    if (sprite.insetLeft[entity] == 0 &&
+        sprite.insetTop[entity] == 0 &&
+        sprite.insetRight[entity] == 0 &&
+        sprite.insetBottom[entity] == 0) {
       return false;
     }
-    final texture = sprite.texture[entity];
-    return texture != null && texture.info is TextureInfo;
+    // A texture is still required - slicing subdivides image space, so with no
+    // image there is nothing to subdivide. But its *size* is not: the cuts are
+    // fractions now, so this no longer waits on a decode, and a nine-sliced
+    // sprite slices correctly on the very first frame instead of falling back
+    // to a single quad until its `TextureInfo` arrived.
+    return sprite.texture[entity] != null;
   }
 
   @override
