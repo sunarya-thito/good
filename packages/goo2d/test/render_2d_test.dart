@@ -2,7 +2,6 @@ import 'dart:ffi' hide Size;
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
@@ -508,7 +507,7 @@ Future<_RenderGame> _game() async {
   // This used to be declared on the texture key. It is discovered at load now,
   // so the test supplies what the discovery would have supplied - which is the
   // real input the producer reads, not a stand-in for it.
-  game.assets.adoptInfo(
+  game.assets.publishInfoForTesting(
     game.assets.tryGet(_panelTextureKey)!.pack(),
     const TextureInfo(16, 16),
   );
@@ -1956,6 +1955,205 @@ void main() {
             'allocates from it; the system reads the same number back',
       );
       expect(game.framesFor(game.view).slotBytes, renderer.spriteBatchBytes);
+    });
+  });
+
+  group('SpriteFrame', () {
+    // Pure value-type tests: no harness, because a frame is deliberately
+    // computable with nothing loaded and no isolate.
+
+    test('a grid cell is exact and needs no source size', () {
+      const cell = SpriteFrame.grid(columns: 8, rows: 4, index: 5);
+      expect([cell.u, cell.v, cell.width, cell.height], [5 / 8, 0, 1 / 8, 1 / 4]);
+
+      const wrapped = SpriteFrame.grid(columns: 8, rows: 4, index: 11);
+      expect(
+        [wrapped.u, wrapped.v],
+        [3 / 8, 1 / 4],
+        reason:
+            'row-major, so index 11 on an 8-wide sheet is column 3 of row 1 - '
+            'and none of this consulted a pixel dimension, which is the whole '
+            'argument for normalised frames',
+      );
+    });
+
+    test('a pixel rect divides at declare time', () {
+      const region = SpriteFrame.pixels(
+        x: 512,
+        y: 256,
+        width: 128,
+        height: 64,
+        sheetWidth: 1024,
+        sheetHeight: 512,
+      );
+      expect([region.u, region.v, region.width, region.height], [
+        0.5,
+        0.5,
+        0.125,
+        0.125,
+      ]);
+    });
+
+    test('packing round-trips every lane, sign bit included', () {
+      // height > 0.5 puts bits in position 63, so `pack()` returns a negative
+      // int. Unpacking has to use `>>>`; a signed shift would smear the sign
+      // across the top lane and read height back as garbage. This is the same
+      // hazard `Entity.pack` carries.
+      // The top lane holds v1 = v + height = 0.95, which is above 0.5 and so
+      // sets bit 63.
+      const tall = SpriteFrame(u: 0.25, v: 0.05, width: 0.125, height: 0.9);
+      expect(
+        tall.pack(),
+        isNegative,
+        reason:
+            'if this is not negative the test is no longer exercising the sign '
+            'bit and proves nothing',
+      );
+
+      const q = 2 / 65535;
+      final back = SpriteFrame.unpack(tall.pack());
+      expect(back.u, closeTo(0.25, q));
+      expect(back.v, closeTo(0.05, q));
+      expect(back.width, closeTo(0.125, q));
+      expect(
+        back.height,
+        closeTo(0.9, q),
+        reason: 'derived from the top lane, which the sign bit would destroy',
+      );
+    });
+
+    test('unpackLane hands back edges, and agrees with unpack', () {
+      const frame = SpriteFrame.grid(columns: 3, rows: 3, index: 7);
+      final bits = frame.pack();
+      final object = SpriteFrame.unpack(bits);
+      expect(
+        [
+          for (var lane = 0; lane < 4; lane++)
+            SpriteFrame.unpackLane(bits, lane),
+        ],
+        [
+          object.u,
+          object.v,
+          object.u + object.width,
+          object.v + object.height,
+        ],
+        reason:
+            'the lanes are edges, not origin-and-extent - and the renderer '
+            'reads them off the raw int to avoid building one of these per '
+            'sprite per frame, so the two paths have to agree',
+      );
+    });
+
+    test('the full frame is the identity, and round-trips exactly', () {
+      expect(SpriteFrame.full.isFull, isTrue);
+      final back = SpriteFrame.unpack(SpriteFrame.full.pack());
+      expect([back.u, back.v, back.width, back.height], [0, 0, 1, 1],
+          reason: '0 and 1 are both exact at either end of the quantisation, '
+              'so an unframed sprite must be bit-for-bit unchanged rather than '
+              'off by a rounding step');
+      expect(back.isFull, isTrue);
+    });
+
+    test('the representation is stateless, so it needs no declare pass', () {
+      const a = SpriteFrames();
+      const b = SpriteFrames();
+      expect(a.bitWidth, 64);
+      expect(
+        a.unpack(const SpriteFrame.grid(columns: 2, rows: 2, index: 3).pack()).u,
+        b.unpack(const SpriteFrame.grid(columns: 2, rows: 2, index: 3).pack()).u,
+        reason:
+            'the int *is* the frame - two independently constructed '
+            'representations must agree, because neither holds anything',
+      );
+    });
+  });
+
+  group('sprite frames on a drawn sprite', () {
+    test('an unframed sprite still samples the whole texture', () async {
+      final game = await _game();
+      final scene = run.state.getScene<_SpriteScene>();
+      scene.addEntity(scene.texturedPair);
+
+      run.state.advance(_step);
+      final quads = _drainFrames(game).single.quads;
+      final textured = quads.firstWhere((q) => q.texture != -1);
+      expect(textured.u, [0, 1, 1, 0]);
+      expect(textured.v, [0, 0, 1, 1]);
+    });
+
+    test('a framed sprite samples exactly its cell', () async {
+      final game = await _game();
+      final scene = run.state.getScene<_SpriteScene>();
+      final entity = scene.addEntity(scene.texturedPair);
+      // Cell (1,1) of a 2x2 sheet: the bottom-right quarter, whose bounds are
+      // all exact in binary and so safe to assert on the nose.
+      scene.texturedPair.textured.setFrame(
+        entity,
+        const SpriteFrame.grid(columns: 2, rows: 2, index: 3),
+      );
+
+      run.state.advance(_step);
+      final quads = _drainFrames(game).single.quads;
+      final textured = quads.firstWhere((q) => q.texture != -1);
+      // Tolerance, not equality: lanes are u16, so 0.5 stores as 32768/65535.
+      // The error is 1/65535 of the texture - a 16th of a pixel on a 4096px
+      // sheet - and pretending it is zero would be the assertion lying.
+      const q = 2 / 65535;
+      expect(
+        textured.u,
+        [closeTo(0.5, q), closeTo(1, q), closeTo(1, q), closeTo(0.5, q)],
+        reason:
+            'the producer offsets the quad UVs onto the frame, so a sheet cell '
+            'needs no separate texture and no atlas metadata',
+      );
+      expect(textured.v, [
+        closeTo(0.5, q),
+        closeTo(0.5, q),
+        closeTo(1, q),
+        closeTo(1, q),
+      ]);
+      expect(
+        quads.firstWhere((q) => q.texture == -1).u,
+        [0, 1, 1, 0],
+        reason: 'and the untextured sprite beside it is untouched',
+      );
+    });
+
+    test('a nine-sliced sprite cuts inside its frame, never outside', () async {
+      final game = await _game();
+      final scene = run.state.getScene<_SpriteScene>();
+      final entity = scene.addEntity(scene.panel);
+      // The right half of the sheet. The panel's insets are 4px against a
+      // 16x16 declared source, so within a half-width frame they cut at
+      // 4/8 = 0.5 of the frame - which is the case that would be silently
+      // wrong if the cuts were measured across the whole texture.
+      scene.panel.frame.setFrame(
+        entity,
+        const SpriteFrame(u: 0.5, v: 0, width: 0.5, height: 1),
+      );
+
+      run.state.advance(_step);
+      final quads = _drainFrames(game).single.quads;
+
+      for (final q in quads) {
+        for (final u in q.u) {
+          expect(
+            u,
+            inInclusiveRange(0.5, 1.0),
+            reason:
+                'every one of the nine quads has to stay inside the frame - '
+                'a cut measured across the sheet would put three of them on '
+                "a neighbouring region's pixels",
+          );
+        }
+      }
+      expect(
+        quads.map((q) => q.u.reduce((a, b) => a < b ? a : b)).reduce(
+          (a, b) => a < b ? a : b,
+        ),
+        closeTo(0.5, 1e-4),
+        reason: "the left column starts at the frame's own left edge",
+      );
     });
   });
 

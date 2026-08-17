@@ -541,15 +541,24 @@ final class Assets {
   /// loader stopped publishing should clear the stale value rather than keep
   /// it.
   ///
-  /// Also [visibleForTesting]: a test for something that *reads* published
-  /// shape - a nine-slicer, say - needs to supply it without standing up a
-  /// second isolate and a real decode, and this is the same call the real
-  /// arrangement makes.
   @internal
-  @visibleForTesting
   void adoptInfo(int address, AssetInfo? info) {
     _at(address)?._info = info;
   }
+
+  /// [adoptInfo], for a test in another package.
+  ///
+  /// A test for something that *reads* published shape - a nine-slicer, say -
+  /// needs to supply it without standing up a second isolate and a real decode,
+  /// and this is the same call the real arrangement makes.
+  ///
+  /// A separate member rather than a second annotation on [adoptInfo], because
+  /// `@visibleForTesting` there would forbid the one production call site that
+  /// exists (`GameRuntime`'s load-completion handler) - the two audiences need
+  /// two names.
+  @visibleForTesting
+  void publishInfoForTesting(int address, AssetInfo? info) =>
+      adoptInfo(address, info);
 
   /// [unload], by address. The other half of [loadAddress]; same reasoning.
   @internal

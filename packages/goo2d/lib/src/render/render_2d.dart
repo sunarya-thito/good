@@ -68,6 +68,202 @@ class RelativeOffset2D {
   static const RelativeOffset2D zero = RelativeOffset2D();
 }
 
+/// Which part of its texture a sprite samples - the whole thing by default,
+/// or one cell of a sprite sheet, or one region of a packed atlas.
+///
+/// # Normalised, not pixels
+///
+/// The four numbers are fractions of the texture, `0..1`, and that is what lets
+/// a frame be computed on the isolate that draws. A *uniform grid* needs no
+/// pixel size at all: cell 5 of an 8x4 sheet is `(5/8, 0, 1/8, 1/4)` whether
+/// the image is 512px or 2048px. So `GameRenderer2D`, which runs where nothing
+/// is decoded and no `ui.Image` exists, can frame a sprite with no
+/// cross-isolate metadata and nothing loaded.
+///
+/// Authoring in pixels still works - see [SpriteFrame.pixels] - the division
+/// just happens once, at declare time, where the sheet's dimensions are a
+/// constant the author is looking at anyway.
+///
+/// # It packs into the row, it is never stored in it
+///
+/// A component row holds the 64-bit integer [pack] produces, four `u16`s of
+/// it, and a `SpriteFrame` object exists only at the authoring boundary. The
+/// renderer reads the raw integer through [PackedPointer.packedAt] and does the
+/// shifts itself, so drawing 20,000 framed sprites allocates nothing - see
+/// `data.dart`'s note on why `DataPointer<Matrix4>` was removed.
+///
+/// `u16` quantisation is 1/65535 of the texture: 1/16th of a pixel on a 4096px
+/// sheet, and finer on anything smaller. Every atlas packer already pads
+/// regions to survive bilinear sampling, so that is well inside a margin that
+/// exists regardless.
+@immutable
+class SpriteFrame implements IntRepresentable {
+  const SpriteFrame({
+    required this.u,
+    required this.v,
+    required this.width,
+    required this.height,
+  });
+
+  /// Cell [index] of a uniform [columns] x [rows] sheet, row-major.
+  ///
+  /// Exact whatever the image's pixel size, which is the whole argument for
+  /// normalised frames - there is no source dimension in this constructor
+  /// because none is needed.
+  const SpriteFrame.grid({
+    required int columns,
+    required int rows,
+    required int index,
+  }) : u = (index % columns) / columns,
+       v = (index ~/ columns) / rows,
+       width = 1 / columns,
+       height = 1 / rows;
+
+  /// A pixel rectangle on a sheet of a stated size - for a packed atlas, or
+  /// any region a grid cannot describe.
+  ///
+  /// The division happens here, at declare time. [sheetWidth]/[sheetHeight]
+  /// are the *source image's* dimensions, which the author knows; nothing at
+  /// draw time has to.
+  const SpriteFrame.pixels({
+    required int x,
+    required int y,
+    required int width,
+    required int height,
+    required int sheetWidth,
+    required int sheetHeight,
+  }) : u = x / sheetWidth,
+       v = y / sheetHeight,
+       width = width / sheetWidth,
+       height = height / sheetHeight;
+
+  /// Top-left corner of the region, as a fraction of the texture.
+  final double u;
+  final double v;
+
+  /// Extent of the region, as a fraction of the texture.
+  final double width;
+  final double height;
+
+  /// The whole texture - the default, and what an untextured sprite carries
+  /// harmlessly.
+  static const SpriteFrame full = SpriteFrame(
+    u: 0,
+    v: 0,
+    width: 1,
+    height: 1,
+  );
+
+  /// True when this frame is the whole texture, i.e. there is nothing to
+  /// offset. Named rather than four inline comparisons, matching
+  /// [NineSliceBorder.isEmpty].
+  bool get isFull => u == 0 && v == 0 && width == 1 && height == 1;
+
+  static const int _scale = 0xFFFF;
+
+  /// Lane index of the frame's left edge in a packed frame.
+  static const int laneU0 = 0;
+
+  /// Lane index of the frame's top edge.
+  static const int laneV0 = 1;
+
+  /// Lane index of the frame's right edge.
+  static const int laneU1 = 2;
+
+  /// Lane index of the frame's bottom edge.
+  static const int laneV1 = 3;
+
+  static int _quantise(double fraction) {
+    final scaled = (fraction * _scale).round();
+    return scaled < 0
+        ? 0
+        : scaled > _scale
+        ? _scale
+        : scaled;
+  }
+
+  /// Four `u16` lanes, holding the frame's **edges** - `u0, v0, u1, v1` - not
+  /// its origin and extent.
+  ///
+  /// Edges rather than `(u, v, width, height)` because quantising the two
+  /// independently lets their sum drift past the region: at `u = 0.5` and
+  /// `width = 0.5` both round *up*, and `u + width` comes back as
+  /// `1.0000152...` - a right edge outside the texture. Storing the edge
+  /// quantises the number that is actually used, so `1` stays exactly `1` and a
+  /// full frame round-trips bit for bit.
+  ///
+  /// The top lane occupies bits 48..63, so this returns a **negative** `int`
+  /// whenever `v1 > 0.5` - Dart's `int` is signed. Harmless as long as nothing
+  /// sign-extends on the way back, which is why [unpackLane] shifts with `>>>`.
+  /// `Entity.pack` carries the same hazard for the same reason; see
+  /// `data.dart`'s note on 64-bit fields.
+  @override
+  int pack() =>
+      _quantise(u) |
+      (_quantise(v) << 16) |
+      (_quantise(u + width) << 32) |
+      (_quantise(v + height) << 48);
+
+  /// Edge [lane] of a packed frame - see [laneU0], [laneV0], [laneU1], [laneV1]
+  /// - as its `0..1` fraction.
+  ///
+  /// Static and lane-at-a-time so the renderer can read what it needs off the
+  /// raw integer without materialising a `SpriteFrame`. Unsigned shift, always:
+  /// see [pack].
+  static double unpackLane(int bits, int lane) =>
+      ((bits >>> (lane << 4)) & _scale) / _scale;
+
+  /// Rebuilds a frame from [pack]'s output. Authoring and diagnostics only -
+  /// the draw path uses [unpackLane].
+  factory SpriteFrame.unpack(int bits) {
+    final u = unpackLane(bits, laneU0);
+    final v = unpackLane(bits, laneV0);
+    return SpriteFrame(
+      u: u,
+      v: v,
+      width: unpackLane(bits, laneU1) - u,
+      height: unpackLane(bits, laneV1) - v,
+    );
+  }
+
+  @override
+  String toString() =>
+      'SpriteFrame(u: $u, v: $v, width: $width, height: $height)';
+}
+
+/// [SpriteFrame]'s [IntRepresentation] - and a *stateless* one.
+///
+/// There is no table here and nothing to look up: the integer in the row **is**
+/// the frame, so unpacking is arithmetic. That is why this is `const`, why it
+/// needs no declare pass, why nothing has to be kept in sync across isolates,
+/// and why a frame can be computed at run time - a scrolling UV, an animation
+/// stepping `index`, anything - with no declaration at all.
+///
+/// The alternative shape, for the record: a table of declared regions with the
+/// integer as an index into it. That buys exact float precision and a 2-byte
+/// field instead of 8, at the cost of a declare step and losing runtime-computed
+/// frames. Because the encoding sits entirely behind this class, swapping to it
+/// later touches this file and `bitWidth` - not `Sprite`, not the renderer, not
+/// any authoring code.
+final class SpriteFrames implements IntRepresentation<SpriteFrame> {
+  const SpriteFrames();
+
+  /// Four `u16` lanes. See [SpriteFrame.pack] for why 64 rather than 32: at
+  /// `u8` per lane the quantisation step is 16px on a 4096px sheet, which is
+  /// useless for a packed atlas.
+  @override
+  int get bitWidth => 64;
+
+  @override
+  SpriteFrame unpack(int bits) => SpriteFrame.unpack(bits);
+
+  /// Never null: every 64-bit pattern is a valid frame. Present because
+  /// [IntRepresentation] requires it, and returning null would claim a failure
+  /// mode this encoding does not have.
+  @override
+  SpriteFrame? tryUnpack(int bits) => SpriteFrame.unpack(bits);
+}
+
 /// The four insets of a nine-slice: how far in from each edge the stretchable
 /// middle region starts.
 ///
@@ -129,6 +325,7 @@ class Sprite {
   Sprite({
     required this.texture,
     required this.filter,
+    required this.frame,
     required this.color,
     required this.width,
     required this.height,
@@ -173,6 +370,13 @@ class Sprite {
   /// Two bits, because there are three [TextureFilter] values and a row pays
   /// for every one of them per entity.
   final DataPointer<int> filter;
+
+  /// Which part of [texture] this sprite samples - see [SpriteFrame].
+  ///
+  /// A [PackedPointer], so the renderer can read the packed integer without
+  /// building a `SpriteFrame` per sprite per frame. Write it with [setFrame],
+  /// which takes the value object.
+  final PackedPointer<SpriteFrame> frame;
 
   /// Packed ARGB, the same encoding `Color.value` and `Vertices.raw`'s colour
   /// list use. A plain `uint32` rather than a `Color` object for the obvious
@@ -249,6 +453,10 @@ class Sprite {
     alignOffsetY[entity] = alignment.offsetY;
   }
 
+  /// Writes the sampled region. The value object never reaches a row - see
+  /// [SpriteFrame].
+  void setFrame(Entity entity, SpriteFrame value) => frame[entity] = value;
+
   /// Writes all four border insets at once. See [setPivot].
   void setNineSliceBorder(Entity entity, NineSliceBorder border) {
     borderLeft[entity] = border.left;
@@ -290,6 +498,7 @@ class SpriteDescriptor {
   Sprite has({
     TextureAsset? texture,
     TextureFilter filter = TextureFilter.mipmap,
+    SpriteFrame frame = SpriteFrame.full,
     int color = 0xFFFFFFFF,
     double width = 0,
     double height = 0,
@@ -302,6 +511,7 @@ class SpriteDescriptor {
     final sprite = Sprite(
       texture: _data.optPacked(_assets, texture),
       filter: _data.hasUint2(filter.index),
+      frame: _data.hasPacked(const SpriteFrames(), frame),
       color: _data.hasUint32(color),
       width: _data.hasFloat64(width),
       height: _data.hasFloat64(height),
@@ -479,7 +689,8 @@ final class _SpriteDrawQueue {
       _order = Int32List(initialCapacity),
       _merge = Int32List(initialCapacity),
       _corners = Float32List(initialCapacity * _cornerStride),
-      _colorAddress = Int32List(initialCapacity * _colorStride);
+      _colorAddress = Int32List(initialCapacity * _colorStride),
+      _frames = Int64List(initialCapacity);
 
   /// Floats per queued sprite in [_corners]: four `(x, y)` corners in winding
   /// order, already transformed into view space.
@@ -546,6 +757,12 @@ final class _SpriteDrawQueue {
   /// Packed ARGB then texture address per queued sprite. See [_corners] for
   /// which sprites these are filled for.
   Int32List _colorAddress;
+
+  /// Packed [SpriteFrame] per queued sprite. Its own `Int64List` rather than
+  /// two lanes of [_colorAddress], because a frame is 64 bits and splitting it
+  /// across two `int32` slots would cost a shift-and-or per sprite in both the
+  /// fill and the write pass to no purpose.
+  Int64List _frames;
 
   /// The bucket array for the counting sort - one slot per distinct `zIndex`
   /// value in `[_zMin, _zMax]`. Grown to the high-water mark like every other
@@ -635,6 +852,7 @@ final class _SpriteDrawQueue {
     int color,
     int textureAddress,
     int filter,
+    int frame,
   ) {
     final c = slot * _cornerStride;
     final corners = _corners;
@@ -650,24 +868,32 @@ final class _SpriteDrawQueue {
     _colorAddress[k] = color;
     _colorAddress[k + 1] = textureAddress;
     _colorAddress[k + 2] = filter;
+    _frames[slot] = frame;
   }
 
   /// Writes the [i]th pair *in draw order* as one quad record, returning the
   /// next write offset. Only valid where `recordsAt(i) == 1`.
   ///
   /// This is the whole of the write pass for a plain sprite, and it touches no
-  /// component row: one `_order` read, then eight contiguous floats and two
+  /// component row: one `_order` read, then eight contiguous floats and a few
   /// contiguous ints out of the dense arrays the fill pass packed. See the
   /// class doc for the measurement that made this the shape it is.
   ///
-  /// The UVs are left to `writeQuad`'s defaults, which spell exactly the
-  /// whole-texture case `(0,0) (1,0) (1,1) (0,1)` this path passed explicitly
-  /// before.
+  /// The UVs come from the queued [SpriteFrame], unpacked lane by lane off the
+  /// raw integer rather than through a `SpriteFrame` object - one per sprite
+  /// per frame would be exactly the hot-path allocation RULES.md rule 1
+  /// forbids. A full frame yields `(0,0) (1,0) (1,1) (0,1)`, which is what this
+  /// path used to pass as a constant.
   int writeQuadAt(ByteData view, int offset, int i) {
     final slot = _order[i];
     final c = slot * _cornerStride;
     final k = slot * _colorStride;
     final q = _corners;
+    final f = _frames[slot];
+    final u0 = SpriteFrame.unpackLane(f, SpriteFrame.laneU0);
+    final v0 = SpriteFrame.unpackLane(f, SpriteFrame.laneV0);
+    final u1 = SpriteFrame.unpackLane(f, SpriteFrame.laneU1);
+    final v1 = SpriteFrame.unpackLane(f, SpriteFrame.laneV1);
     return DrawSpriteData2D.writeQuad(
       view,
       offset,
@@ -682,6 +908,14 @@ final class _SpriteDrawQueue {
       _colorAddress[k],
       textureAddress: _colorAddress[k + 1],
       filter: _colorAddress[k + 2],
+      u0: u0,
+      v0: v0,
+      u1: u1,
+      v1: v0,
+      u2: u1,
+      v2: v1,
+      u3: u0,
+      v3: v1,
     );
   }
 
@@ -863,6 +1097,7 @@ final class _SpriteDrawQueue {
       ..setRange(0, _count * _cornerStride, _corners);
     _colorAddress = Int32List(next * _colorStride)
       ..setRange(0, _count * _colorStride, _colorAddress);
+    _frames = Int64List(next)..setRange(0, _count, _frames);
     // Nothing to preserve here - the merge buffer is scratch within a single
     // sortByZ call.
     _merge = Int32List(next);
@@ -1272,18 +1507,33 @@ class GameRenderer2D extends GameSystem
     // the fitted ones above: squeezing the destination must not re-slice the
     // source.
     final info = texture.info as TextureInfo;
-    final sw = info.width.toDouble();
-    final sh = info.height.toDouble();
+    // Cuts are placed **within the sprite's frame**, not across the whole
+    // texture. A nine-sliced panel taken from an atlas has to slice inside its
+    // own region; slicing the sheet would put three of its nine quads on a
+    // neighbour's pixels. So the inset fractions are measured against the
+    // frame's extent and then offset onto its origin, which collapses to the
+    // plain `0..1` case exactly when the frame is full.
+    final f = sprite.frame.packedAt(entity);
+    final fu0 = SpriteFrame.unpackLane(f, SpriteFrame.laneU0);
+    final fv0 = SpriteFrame.unpackLane(f, SpriteFrame.laneV0);
+    final fu1 = SpriteFrame.unpackLane(f, SpriteFrame.laneU1);
+    final fv1 = SpriteFrame.unpackLane(f, SpriteFrame.laneV1);
+    final fw = fu1 - fu0;
+    final fh = fv1 - fv0;
+    // Insets are source pixels, so they divide by the *frame's* pixel extent,
+    // not the whole image's.
+    final sw = info.width * fw;
+    final sh = info.height * fh;
     final u = _u;
     final v = _v;
-    u[0] = 0;
-    u[1] = sprite.borderLeft[entity] / sw;
-    u[2] = 1 - sprite.borderRight[entity] / sw;
-    u[3] = 1;
-    v[0] = 0;
-    v[1] = sprite.borderTop[entity] / sh;
-    v[2] = 1 - sprite.borderBottom[entity] / sh;
-    v[3] = 1;
+    u[0] = fu0;
+    u[1] = fu0 + fw * (sprite.borderLeft[entity] / sw);
+    u[2] = fu1 - fw * (sprite.borderRight[entity] / sw);
+    u[3] = fu1;
+    v[0] = fv0;
+    v[1] = fv0 + fh * (sprite.borderTop[entity] / sh);
+    v[2] = fv1 - fh * (sprite.borderBottom[entity] / sh);
+    v[3] = fv1;
 
     for (var row = 0; row < 3; row++) {
       final y0 = ly[row];
@@ -1591,6 +1841,7 @@ class GameRenderer2D extends GameSystem
             sprite.color[entity],
             texture == null ? DrawSpriteData2D.noTexture : texture.pack(),
             sprite.filter[entity],
+            sprite.frame.packedAt(entity),
           );
         }
       }
