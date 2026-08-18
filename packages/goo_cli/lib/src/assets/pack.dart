@@ -204,9 +204,7 @@ Future<Uint8List> sealChunk({
 }) async {
   final compressed = compression == AssetCompressionLevel.none
       ? body
-      : Uint8List.fromList(
-          GZipEncoder().encode(body, level: _gzipLevel(compression))!,
-        );
+      : _gzip(body, compression);
 
   final nonce = hashing.sha256
       .convert(compressed)
@@ -280,6 +278,33 @@ int _gzipLevel(AssetCompressionLevel level) => switch (level) {
   AssetCompressionLevel.normal => 6,
   AssetCompressionLevel.best => 9,
 };
+
+/// Gzip, with the header's modification time zeroed.
+///
+/// # Why zero it
+///
+/// `GZipEncoder` writes the current clock into bytes 4-7 of its header, so two
+/// runs over identical input produce chunks that differ - and because the
+/// nonce is a hash of the compressed bytes, *every* byte after the header
+/// differs too. A build tool whose output changes when nothing changed defeats
+/// any check that asks whether a rebuild produced anything new, and it makes
+/// the chunks impossible to pin in a test.
+///
+/// Not a format change. The field is advisory, every decoder ignores it, and
+/// zero is what it means to have no timestamp - so the reader in `goo` needs
+/// no matching change and [chunkVersion] stays where it is.
+Uint8List _gzip(Uint8List body, AssetCompressionLevel compression) {
+  final out = Uint8List.fromList(
+    GZipEncoder().encode(body, level: _gzipLevel(compression))!,
+  );
+  // Guarded rather than assumed: if a future `archive` stops emitting a gzip
+  // header here, silently zeroing four bytes of a payload would corrupt every
+  // chunk, and doing nothing is the safe half of that choice.
+  if (out.length >= 8 && out[0] == 0x1F && out[1] == 0x8B) {
+    out.fillRange(4, 8, 0);
+  }
+  return out;
+}
 
 /// Packs [plan] out of [assetDir] into [outputDir].
 ///
@@ -375,9 +400,7 @@ Future<PackResult> packAssets({
 Uint8List _sealUnencrypted(Uint8List body, AssetCompressionLevel compression) {
   final compressed = compression == AssetCompressionLevel.none
       ? body
-      : Uint8List.fromList(
-          GZipEncoder().encode(body, level: _gzipLevel(compression))!,
-        );
+      : _gzip(body, compression);
   return (BytesBuilder()
         ..add(chunkMagic)
         ..add(<int>[

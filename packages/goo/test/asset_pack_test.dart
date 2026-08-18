@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show FlutterError;
@@ -12,12 +13,15 @@ import 'package:goo/src/asset_pack.dart';
 // straight to the bundle, and is a chunk opened once rather than once per
 // asset.
 //
-// The chunk bytes here are built by hand rather than by running the packer,
+// Most chunk bytes here are built by hand rather than by running the packer,
 // because goo cannot depend on goo_cli - the build tool carries an analyzer and
-// an ffmpeg downloader, neither of which belongs in a shipped game. That makes
-// the format the thing under test on this side, and `goo_cli`'s own suite
-// tests the producing half against the same layout. The version byte exists so
-// the two can be checked against each other rather than trusted.
+// an ffmpeg downloader, neither of which belongs in a shipped game.
+//
+// Which would leave this suite proving only that goo agrees with itself. The
+// one test that does not is `reads a chunk goo_cli actually produced`: it opens
+// a chunk checked in at fixtures/asset_chunk/, sealed by the real packer, that
+// goo_cli's suite checks it still produces byte for byte. That fixture is the
+// only thing holding the two implementations of the format together.
 
 /// Builds a chunk the way `goo assets pack` does, minus compression and
 /// encryption - flags 0, so the reader takes the plain path.
@@ -292,6 +296,38 @@ void main() {
   });
 
   group('the chunk format', () {
+    test('reads a chunk goo_cli actually produced', () async {
+      // The one test here that is not goo agreeing with itself.
+      //
+      // Everything else in this file is built by `plainChunk` above - goo's
+      // own idea of the layout, uncompressed and unencrypted. goo_cli could
+      // seal chunks in a shape this reader cannot open and both suites would
+      // stay green, because neither has ever seen the other's bytes. The
+      // failure would land in a release build, on the first asset load.
+      //
+      // So this opens a chunk goo_cli sealed, compressed *and* encrypted,
+      // checked in at fixtures/asset_chunk/ and belonging to neither package.
+      // See the README there before regenerating it.
+      final golden = File('../../fixtures/asset_chunk/chunk_v1_aes_gzip.dat');
+      expect(
+        golden.existsSync(),
+        isTrue,
+        reason:
+            'the golden chunk is checked in, not generated - see '
+            'fixtures/asset_chunk/README.md',
+      );
+      final members = readChunkBody(
+        await openChunk(
+          sealed: Uint8List.fromList(golden.readAsBytesSync()),
+          // Documented in the fixture's README. Not a secret, and not an
+          // example to copy - a real one comes from asset_key.dart.
+          key: List<int>.generate(32, (i) => i * 7 % 256),
+        ),
+      );
+      expect(utf8.decode(members['assets/a.webp']!), 'texture bytes');
+      expect(utf8.decode(members['assets/b.ogg']!), 'audio bytes');
+    });
+
     test('a foreign file is refused by magic rather than decoded', () async {
       await expectLater(
         () => openChunk(
