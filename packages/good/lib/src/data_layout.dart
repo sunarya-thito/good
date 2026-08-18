@@ -915,10 +915,14 @@ final class _Float32ArrayField extends _ArrayField<double> {
     super.storage,
     super.length,
     this._baseByte,
-    this._default,
+    this._defaults,
   );
   final int _baseByte;
-  final double _default;
+
+  /// One entry per element, so `hasFloat32ArrayOf` can start each element at
+  /// its own value; the broadcast form fills this with `length` copies of
+  /// the one default. Built once at declare time and read once at seal.
+  final List<double> _defaults;
 
   @override
   double get(Entity entity, int index) {
@@ -936,7 +940,7 @@ final class _Float32ArrayField extends _ArrayField<double> {
   void writeDefault(int row) {
     final elements = Pointer<Float>.fromAddress(row + _baseByte);
     for (var i = 0; i < length; i++) {
-      elements[i] = _default;
+      elements[i] = _defaults[i];
     }
   }
 }
@@ -946,10 +950,12 @@ final class _Float64ArrayField extends _ArrayField<double> {
     super.storage,
     super.length,
     this._baseByte,
-    this._default,
+    this._defaults,
   );
   final int _baseByte;
-  final double _default;
+
+  /// Per element, exactly as in [_Float32ArrayField].
+  final List<double> _defaults;
 
   @override
   double get(Entity entity, int index) {
@@ -967,7 +973,7 @@ final class _Float64ArrayField extends _ArrayField<double> {
   void writeDefault(int row) {
     final elements = Pointer<Double>.fromAddress(row + _baseByte);
     for (var i = 0; i < length; i++) {
-      elements[i] = _default;
+      elements[i] = _defaults[i];
     }
   }
 }
@@ -1360,10 +1366,45 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     double defaultValue,
   ) {
     _checkArrayLength(length);
+    return _declareFloatArray(
+      length,
+      bitWidth,
+      List<double>.filled(length, defaultValue),
+    );
+  }
+
+  /// The per-element form. [defaultValues] covers the first elements and the
+  /// rest start at `0.0` - the slots a caller reserved beyond the values it
+  /// declared.
+  DataArrayPointer<double> _hasFloatArrayOf(
+    int length,
+    int bitWidth,
+    List<double> defaultValues,
+  ) {
+    _checkArrayLength(length);
+    if (defaultValues.length > length) {
+      throw ArgumentError.value(
+        defaultValues.length,
+        'defaultValues',
+        'is more defaults than the array holds ($length)',
+      );
+    }
+    final defaults = List<double>.filled(length, 0.0);
+    defaults.setRange(0, defaultValues.length, defaultValues);
+    return _declareFloatArray(length, bitWidth, defaults);
+  }
+
+  /// Reserves the elements and registers the field. [defaults] holds one
+  /// entry per element already, so both spellings of the default meet here.
+  DataArrayPointer<double> _declareFloatArray(
+    int length,
+    int bitWidth,
+    List<double> defaults,
+  ) {
     final byte = _declareElements(length, bitWidth) >> 3;
     final field = bitWidth == 32
-        ? _Float32ArrayField(_storage, length, byte, defaultValue)
-        : _Float64ArrayField(_storage, length, byte, defaultValue);
+        ? _Float32ArrayField(_storage, length, byte, defaults)
+        : _Float64ArrayField(_storage, length, byte, defaults);
     _storage.registerField(field);
     return field;
   }
@@ -1562,6 +1603,16 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     int length, [
     double defaultValue = 0.0,
   ]) => _hasFloatArray(length, 64, defaultValue);
+  @override
+  DataArrayPointer<double> hasFloat32ArrayOf(
+    int length,
+    List<double> defaultValues,
+  ) => _hasFloatArrayOf(length, 32, defaultValues);
+  @override
+  DataArrayPointer<double> hasFloat64ArrayOf(
+    int length,
+    List<double> defaultValues,
+  ) => _hasFloatArrayOf(length, 64, defaultValues);
   @override
   DataArrayPointer<int?> optUint1Array(int length, [int? defaultValue]) =>
       _optIntArray(length, 1, false, defaultValue);

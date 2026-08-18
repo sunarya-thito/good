@@ -88,6 +88,27 @@ abstract class DataDescriptor {
     int length, [
     double defaultValue = 0.0,
   ]);
+
+  /// A float array whose elements start at *different* values: element `i`
+  /// of a fresh row holds `defaultValues[i]`, and any slot past the end of
+  /// [defaultValues] holds `0.0`.
+  ///
+  /// [length] is the storage capacity, as it is for [hasFloat64Array], so an
+  /// array can reserve slots beyond the values it starts with and have them
+  /// written per entity later. More defaults than the array can hold is an
+  /// error.
+  ///
+  /// `goo2d`'s `hasPolygonCollider(points: ...)` is the reference use: a
+  /// prefab whose outline is fixed states it where it declares the field
+  /// rather than writing every vertex from `onEntityMounted`.
+  DataArrayPointer<double> hasFloat32ArrayOf(
+    int length,
+    List<double> defaultValues,
+  );
+  DataArrayPointer<double> hasFloat64ArrayOf(
+    int length,
+    List<double> defaultValues,
+  );
   DataArrayPointer<int?> optUint1Array(int length, [int? defaultValue]);
   DataArrayPointer<int?> optInt1Array(int length, [int? defaultValue]);
   DataArrayPointer<int?> optUint2Array(int length, [int? defaultValue]);

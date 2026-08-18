@@ -69,41 +69,45 @@ an entity's geometry whether or not it is ever simulated. Four shapes:
 circle = descriptor.hasCircleCollider(radius: 0.5);
 box    = descriptor.hasBoxCollider(halfWidth: 0.5, halfHeight: 0.5);
 pill   = descriptor.hasCapsuleCollider(radius: 0.25, halfHeight: 0.5);
-poly   = descriptor.hasPolygonCollider(maxPoints: 4);   // capacity, not points
+poly   = descriptor.hasPolygonCollider(points: [(-0.5, 0.5), (0.5, 0.5), (0, -0.5)]);
 ```
 
-A polygon declares its **capacity** at declare time and its actual points per
-entity, because the outline is per-entity data like any other. Populate it at
-mount:
+A polygon states its outline where it declares the field, and every entity of
+the prefab starts with those vertices:
 
 ```dart
-class Wedge extends EntityStruct
-    with Transform2D, Collider2D, EntityLifecycleListener {
+class Wedge extends EntityStruct with Transform2D, Collider2D {
   late final PolygonBody outline;
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
     super.describeCollider(descriptor);
-    outline = descriptor.hasPolygonCollider(maxPoints: 3);
-  }
-
-  @override
-  void onEntityMounted(Entity entity) {
-    super.onEntityMounted(entity);
-    outline.pointsX.set(entity, 0, -0.5);
-    outline.pointsY.set(entity, 0,  0.5);
-    outline.pointsX.set(entity, 1,  0.5);
-    outline.pointsY.set(entity, 1,  0.5);
-    outline.pointsX.set(entity, 2,  0.0);
-    outline.pointsY.set(entity, 2, -0.5);
-    outline.pointCount[entity] = 3;      // (1)!
+    outline = descriptor.hasPolygonCollider(
+      points: const [(-0.5, 0.5), (0.5, 0.5), (0.0, -0.5)],
+      maxPoints: 4,      // (1)!
+    );
   }
 }
 ```
 
-1. Defaults to `0`. A polygon of fewer than three points encloses no area and
-   contains nothing — which is exactly what a prefab that forgot this line
-   leaves behind.
+1. The storage capacity, fixed per archetype. It defaults to `points.length`,
+   and 8 is the ceiling — Box2D's own `b2_maxPolygonVertices`. Reserve more
+   than the outline fills when an entity should be able to *grow* its polygon
+   at run time.
+
+The outline is per-entity data like anything else, so an entity can still
+rewrite it — `pointCount` is what the solver and `containsLocalPoint` read,
+never the array's capacity:
+
+```dart
+wedge.outline.pointsX.set(entity, 3, 0.5);
+wedge.outline.pointsY.set(entity, 3, -0.25);
+wedge.outline.pointCount[entity] = 4;   // (1)!
+```
+
+1. A polygon of fewer than three points encloses no area and contains nothing.
+   Declaring one is an error; shrinking to one at run time simply picks up
+   nothing.
 
 `Collider2D` is a multi-component, so one entity can declare several shapes —
 a body plus a separate trigger volume, for instance.

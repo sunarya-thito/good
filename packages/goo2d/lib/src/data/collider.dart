@@ -237,9 +237,10 @@ final class PolygonBody extends ColliderBody {
   final DataArrayPointer<double> pointsY;
 
   /// How many of `pointsX`/`pointsY`'s declared capacity are actually used
-  /// for a given entity, `0..pointsX.length`. Defaults to `0` (an empty
-  /// polygon) - `onEntityMounted` (or `hasPolygonCollider`'s named defaults) is
-  /// where a prefab actually populates the points and sets this.
+  /// for a given entity, `0..pointsX.length`. Defaults to the number of
+  /// points `hasPolygonCollider` was declared with, or to `0` (an empty
+  /// polygon) for a prefab that declared none and populates its outline from
+  /// `onEntityMounted` instead.
   final DataPointer<int> pointCount;
 
   /// Even-odd (crossing-number) containment, which handles convex and
@@ -382,12 +383,29 @@ class ColliderDescriptor {
     return body;
   }
 
-  /// [maxPoints] defaults to 8, matching Box2D's own hard cap on a single
-  /// convex polygon (`b2_maxPolygonVertices`) - not an arbitrary number.
-  /// Fixed per archetype at declare time; `pointCount` (per entity, at most
-  /// [maxPoints]) is how many of those slots a given entity actually uses.
+  /// [points] is the outline in local space, `(x, y)` per vertex, and it
+  /// doubles as the archetype's default row state: every entity of this
+  /// prefab starts with those vertices and `pointCount` set to
+  /// `points.length`. Writing `pointsX`/`pointsY` per entity still gives an
+  /// entity its own shape.
+  ///
+  /// [maxPoints] is the storage capacity, fixed per archetype at declare
+  /// time, and defaults to `points.length` - or to 8 for a prefab that
+  /// declares no outline. Reserving more than [points] fills leaves slots an
+  /// entity can grow into, `pointCount` saying how many it currently uses.
+  ///
+  /// The default of 8 is Box2D's hard cap on a single convex polygon
+  /// (`b2_maxPolygonVertices`). A larger capacity is allowed: containment
+  /// here is even-odd crossing, which handles any outline, so a polygon used
+  /// for picking is not bound by what a solver can simulate. A physics
+  /// backend that cannot take the shape says so itself.
+  ///
+  /// An outline of one or two points is rejected: it encloses no area, so
+  /// [PolygonBody.containsLocalPoint] and any solver alike read it as nothing
+  /// at all.
   PolygonBody hasPolygonCollider({
-    int maxPoints = 8,
+    List<(double, double)>? points,
+    int? maxPoints,
     double offsetX = 0,
     double offsetY = 0,
     bool enable = true,
@@ -398,6 +416,22 @@ class ColliderDescriptor {
     double friction = 0.6,
     double restitution = 0,
   }) {
+    final outline = points ?? const <(double, double)>[];
+    if (points != null && outline.length < 3) {
+      throw ArgumentError.value(
+        points,
+        'points',
+        'a polygon needs at least three points',
+      );
+    }
+    final capacity = maxPoints ?? (points == null ? 8 : outline.length);
+    if (capacity < outline.length) {
+      throw ArgumentError.value(
+        capacity,
+        'maxPoints',
+        'must hold every declared point (${outline.length})',
+      );
+    }
     final body = PolygonBody(
       offsetX: _data.hasFloat64(offsetX),
       offsetY: _data.hasFloat64(offsetY),
@@ -408,9 +442,15 @@ class ColliderDescriptor {
       density: _data.hasFloat64(density),
       friction: _data.hasFloat64(friction),
       restitution: _data.hasFloat64(restitution),
-      pointsX: _data.hasFloat64Array(maxPoints),
-      pointsY: _data.hasFloat64Array(maxPoints),
-      pointCount: _data.hasInt32(0),
+      pointsX: _data.hasFloat64ArrayOf(
+        capacity,
+        List<double>.generate(outline.length, (i) => outline[i].$1),
+      ),
+      pointsY: _data.hasFloat64ArrayOf(
+        capacity,
+        List<double>.generate(outline.length, (i) => outline[i].$2),
+      ),
+      pointCount: _data.hasInt32(outline.length),
     );
     _bodies.add(body);
     return body;

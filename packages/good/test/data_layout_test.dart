@@ -828,6 +828,48 @@ void main() {
       }
     });
 
+    test('per-element defaults start each element at its own value', () {
+      late DataArrayPointer<double> outline;
+      late DataArrayPointer<double> narrow;
+      final h = _Harness((data) {
+        // Four slots for three values - the tail is room a caller reserved
+        // for elements it writes per entity later.
+        outline = data.hasFloat64ArrayOf(4, const [1.5, -2.5, 3.25]);
+        narrow = data.hasFloat32ArrayOf(2, const [0.5, 0.25]);
+      });
+      addTearDown(h.dispose);
+
+      final e = h.spawn();
+      expect(
+        [outline.get(e, 0), outline.get(e, 1), outline.get(e, 2)],
+        [1.5, -2.5, 3.25],
+      );
+      expect(outline.get(e, 3), 0.0, reason: 'the reserved slot');
+      expect([narrow.get(e, 0), narrow.get(e, 1)], [0.5, 0.25]);
+
+      // Same recycling question as the broadcast defaults above: the row
+      // carries no memory of its last tenant.
+      outline.set(e, 0, 99);
+      h.prefab.archetype.pageAt(e.pageIndex)!.free(e.rowOffset);
+
+      final second = h.spawn();
+      expect(second.rowOffset, e.rowOffset, reason: 'the row was recycled');
+      expect(outline.get(second, 0), 1.5);
+    });
+
+    test('more defaults than the array holds is rejected at declare time', () {
+      late Object? error;
+      final h = _Harness((data) {
+        try {
+          data.hasFloat64ArrayOf(2, const [1.0, 2.0, 3.0]);
+        } catch (e) {
+          error = e;
+        }
+      });
+      addTearDown(h.dispose);
+      expect(error, isA<ArgumentError>());
+    });
+
     test(
       'hasPackedArray round-trips through its declared table, by address',
       () {

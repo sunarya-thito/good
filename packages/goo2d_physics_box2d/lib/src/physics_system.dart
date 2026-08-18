@@ -749,6 +749,11 @@ class Box2DPhysicsSystem extends GameSystem
     }
   }
 
+  /// Box2D's `b2_maxPolygonVertices`. Not re-exported by the shim, so it is
+  /// repeated here; a mismatch shows up as the throw below firing on a shape
+  /// the solver would have taken.
+  static const int _maxPolygonVertices = 8;
+
   int _createPolygonShape(
     Entity entity,
     int handle,
@@ -766,6 +771,18 @@ class Box2DPhysicsSystem extends GameSystem
       // encloses no area, including the default empty polygon a prefab that
       // forgot to populate its points leaves behind.
       return 0;
+    }
+    if (count > _maxPolygonVertices) {
+      // goo2d accepts a longer outline than this, because containment there
+      // is even-odd crossing and handles any shape. Box2D's own cap is 8, so
+      // this is the layer that has to refuse it, and it names the entity
+      // because a truncated shape would otherwise just collide oddly.
+      throw StateError(
+        'Box2D takes at most $_maxPolygonVertices vertices in one polygon, '
+        'and entity $entity declares $count. Split the outline across several '
+        'colliders, or keep the long one for picking and give the body a '
+        'simpler shape.',
+      );
     }
 
     // Reuses the transform scratch, which is always at least 3 floats per

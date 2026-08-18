@@ -32,26 +32,18 @@ class _Wall extends EntityStruct with Transform2D, Collider2D {
   }
 }
 
-class _Polygon extends EntityStruct
-    with Transform2D, Collider2D, EntityLifecycleListener {
+/// Three points in eight slots, so the cases below can tell the outline
+/// apart from the capacity it is stored in.
+class _Polygon extends EntityStruct with Transform2D, Collider2D {
   late final PolygonBody triangle;
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
     super.describeCollider(descriptor);
-    triangle = descriptor.hasPolygonCollider(maxPoints: 8);
-  }
-
-  @override
-  void onEntityMounted(Entity entity) {
-    super.onEntityMounted(entity);
-    triangle.pointsX.set(entity, 0, 0);
-    triangle.pointsY.set(entity, 0, 0);
-    triangle.pointsX.set(entity, 1, 10);
-    triangle.pointsY.set(entity, 1, 0);
-    triangle.pointsX.set(entity, 2, 5);
-    triangle.pointsY.set(entity, 2, 10);
-    triangle.pointCount[entity] = 3;
+    triangle = descriptor.hasPolygonCollider(
+      points: const [(0, 0), (10, 0), (5, 10)],
+      maxPoints: 8,
+    );
   }
 }
 
@@ -72,29 +64,18 @@ class _Capsule extends EntityStruct with Transform2D, Collider2D {
 /// A concave outline - an arrowhead with a notch cut out of its base. A
 /// convex-only containment test passes every other polygon case and fails
 /// this one, which is why it is here.
-class _Concave extends EntityStruct
-    with Transform2D, Collider2D, EntityLifecycleListener {
+class _Concave extends EntityStruct with Transform2D, Collider2D {
   late final PolygonBody arrow;
 
   @override
   void describeCollider(ColliderDescriptor descriptor) {
     super.describeCollider(descriptor);
-    arrow = descriptor.hasPolygonCollider(maxPoints: 8);
-  }
-
-  @override
-  void onEntityMounted(Entity entity) {
-    super.onEntityMounted(entity);
     // (0,0) tip, out to both base corners, with (0,20) notched back in
     // between them - so the point (0, 25) is inside the bounding box and
     // inside the convex hull, but outside the shape itself.
-    const xs = <double>[0, 20, 0, -20];
-    const ys = <double>[0, 40, 20, 40];
-    for (var i = 0; i < xs.length; i++) {
-      arrow.pointsX.set(entity, i, xs[i]);
-      arrow.pointsY.set(entity, i, ys[i]);
-    }
-    arrow.pointCount[entity] = 4;
+    arrow = descriptor.hasPolygonCollider(
+      points: const [(0, 0), (20, 40), (0, 20), (-20, 40)],
+    );
   }
 }
 
@@ -124,6 +105,41 @@ class _Scene extends SceneStruct {
     capsule = descriptor.has(_Capsule());
     concave = descriptor.has(_Concave());
   }
+}
+
+/// A prefab whose one collider is whatever [_declare] declares, so a case
+/// can assert on what `hasPolygonCollider` rejects.
+class _AdHoc extends EntityStruct with Transform2D, Collider2D {
+  _AdHoc(this._declare);
+
+  final void Function(ColliderDescriptor descriptor) _declare;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    _declare(descriptor);
+  }
+}
+
+class _AdHocScene extends SceneStruct {
+  _AdHocScene(this._declare);
+
+  final void Function(ColliderDescriptor descriptor) _declare;
+
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
+    descriptor.has(_AdHoc(_declare));
+  }
+}
+
+/// Builds the layout for a prefab declaring [declare], which is where a
+/// rejected declaration throws - `describeCollider` runs from
+/// `initializeScene`.
+void _adHocScene(void Function(ColliderDescriptor descriptor) declare) {
+  final pool = MemoryPool(pageSize: 4096);
+  addTearDown(pool.dispose);
+  _AdHocScene(declare).initializeScene(pool);
 }
 
 _Scene _scene() {
@@ -214,12 +230,60 @@ void main() {
       expect(() => scene.polygon.triangle.pointsX.get(triangle, 8), throwsRangeError);
     });
 
+    test('declared points land on every entity, and a per-entity write wins', () {
+      final scene = _scene();
+      scene.pool.beginTick();
+      final first = scene.addEntity(scene.polygon);
+      final second = scene.addEntity(scene.polygon);
+      scene.pool.commitTick();
+
+      final triangle = scene.polygon.triangle;
+      for (final entity in [first, second]) {
+        expect(triangle.pointCount[entity], 3);
+        expect(triangle.pointsX.get(entity, 2), 5);
+        expect(triangle.pointsY.get(entity, 2), 10);
+      }
+
+      scene.pool.beginTick();
+      triangle.pointsX.set(second, 2, -5);
+      triangle.pointsY.set(second, 2, 20);
+      scene.pool.commitTick();
+
+      expect(triangle.pointsX.get(second, 2), -5);
+      expect(triangle.pointsY.get(second, 2), 20);
+      expect(triangle.pointsX.get(first, 2), 5,
+          reason: 'the declared outline is stamped into each row, not shared '
+              'between them');
+    });
+
+    test('a capacity past the eight vertices Box2D allows is accepted', () {
+      // Containment here is even-odd crossing, which handles any outline, so
+      // a picking polygon is not bound by what a solver can simulate. The
+      // Box2D bridge refuses a shape it cannot take; this layer does not.
+      late final PolygonBody body;
+      _adHocScene((descriptor) {
+        body = descriptor.hasPolygonCollider(
+          points: const [(0, 0), (10, 0), (5, 10)],
+          maxPoints: 12,
+        );
+      });
+      expect(body.pointsX.length, 12);
+    });
+
+    test('an outline of fewer than three points is rejected at declare time', () {
+      expect(
+        () => _adHocScene((descriptor) =>
+            descriptor.hasPolygonCollider(points: const [(0, 0), (10, 0)])),
+        throwsArgumentError,
+      );
+    });
+
     test('an entity can use fewer points than the declared capacity', () {
       final scene = _scene();
       scene.pool.beginTick();
       final triangle = scene.addEntity(scene.polygon);
       scene.pool.commitTick();
-      // maxPoints defaults to 8 but this entity's onMounted only set 3 -
+      // Eight slots were reserved and the declared outline fills three -
       // pointCount is what a consumer should trust, not the array's own
       // fixed capacity.
       expect(scene.polygon.triangle.pointCount[triangle], lessThan(scene.polygon.triangle.pointsX.length));
@@ -410,9 +474,9 @@ void main() {
       scene.pool.commitTick();
 
       expect(scene.polygon.triangle.containsLocalPoint(entity, 5, 5), isFalse,
-          reason: 'two points enclose no area, and the default pointCount is '
-              'zero - a prefab that forgot to populate its outline should '
-              'pick up nothing rather than everything');
+          reason: 'two points enclose no area - an entity that shrank its '
+              'outline, like a prefab that declared none at all, should pick '
+              'up nothing rather than everything');
     });
 
     test('a disabled body still answers the geometry question', () {
