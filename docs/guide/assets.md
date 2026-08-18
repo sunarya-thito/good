@@ -8,17 +8,15 @@ path string and never a `Future` you have to remember to await.
 
 ## The path from a file to a sprite
 
-```
-assets_src/sprites/player.png     you edit and commit this
-        │  good assets compact     (ffmpeg → one canonical format per kind)
-        ▼
-assets/sprites/player.webp        generated; what ships
-        │  good generate           (scans `flutter: assets:`)
-        ▼
-Textures.spritesPlayer            a generated enum value that IS an AssetKey
-        │  descriptor.has(...)
-        ▼
-TextureAsset                      an address, stored in a component row
+```mermaid
+flowchart TD
+    A["<b>assets_src/sprites/player.png</b><br/>you edit and commit this"]
+    B["<b>assets/sprites/player.webp</b><br/>generated; this is what ships"]
+    C["<b>Textures.spritesPlayer</b><br/>a generated enum value that is an AssetKey"]
+    D["<b>TextureAsset</b><br/>an address, stored in a component row"]
+    A -->|"good assets compact<br/>ffmpeg, one canonical format per kind"| B
+    B -->|"good generate<br/>scans flutter: assets:"| C
+    C -->|"descriptor.has(...)"| D
 ```
 
 Full details of the first two steps are in

@@ -332,16 +332,53 @@ entrance = descriptor.has()
 That clip is **four seconds long**: 0 + 1 + 2 + 1. Its length is derived from
 its keys; you never state it.
 
-```
-value
-100 ┤        ╭───────────────╮
-    │      ╱                  ╲
-    │    ╱                      ╲
-  0 ┼──╯                          ╰────
-    └────┬────┬────┬────┬────┬────┬──── seconds
-         0    1    2    3    4
-         key  key  ──── hold ──── key
-```
+<figure markdown="span">
+<svg viewBox="0 0 600 235" role="img" width="600"
+     aria-label="Value over time for the four-second clip: zero at t=0, rising to 100 at t=1, held at 100 until t=3, then eased back to zero at t=4."
+     style="max-width:100%;height:auto;color:currentColor">
+  <!-- axes -->
+  <line x1="70" y1="40"  x2="70"  y2="192" stroke="currentColor" stroke-width="1" opacity=".45"/>
+  <line x1="70" y1="192" x2="575" y2="192" stroke="currentColor" stroke-width="1" opacity=".45"/>
+  <!-- gridlines at each second -->
+  <g stroke="currentColor" stroke-width="1" opacity=".15">
+    <line x1="190" y1="40" x2="190" y2="192"/>
+    <line x1="310" y1="40" x2="310" y2="192"/>
+    <line x1="430" y1="40" x2="430" y2="192"/>
+    <line x1="550" y1="40" x2="550" y2="192"/>
+  </g>
+  <!-- the track: linear ramp, hold, eased return -->
+  <path d="M 70 192 L 190 40 L 430 40 C 490 40 490 192 550 192"
+        fill="none" stroke="currentColor" stroke-width="2.5"/>
+  <!-- keyframes -->
+  <g fill="currentColor">
+    <circle cx="70"  cy="192" r="4"/>
+    <circle cx="190" cy="40"  r="4"/>
+    <circle cx="550" cy="192" r="4"/>
+  </g>
+  <!-- hold span -->
+  <g stroke="currentColor" stroke-width="1.5" opacity=".7">
+    <line x1="190" y1="26" x2="430" y2="26"/>
+    <line x1="190" y1="21" x2="190" y2="31"/>
+    <line x1="430" y1="21" x2="430" y2="31"/>
+  </g>
+  <g fill="currentColor" font-size="12" font-family="system-ui,sans-serif">
+    <text x="310" y="18" text-anchor="middle" opacity=".8">hold(2.0)</text>
+    <text x="62"  y="45"  text-anchor="end">100</text>
+    <text x="62"  y="196" text-anchor="end">0</text>
+    <text x="70"  y="212" text-anchor="middle" opacity=".7">0</text>
+    <text x="190" y="212" text-anchor="middle" opacity=".7">1</text>
+    <text x="310" y="212" text-anchor="middle" opacity=".7">2</text>
+    <text x="430" y="212" text-anchor="middle" opacity=".7">3</text>
+    <text x="550" y="212" text-anchor="middle" opacity=".7">4</text>
+    <text x="575" y="212" text-anchor="start" opacity=".7">seconds</text>
+    <text x="70"  y="230" text-anchor="middle">key</text>
+    <text x="190" y="230" text-anchor="middle">key</text>
+    <text x="550" y="230" text-anchor="middle">key</text>
+  </g>
+</svg>
+<figcaption>The clip is four seconds long, and its length is derived from its
+keys: 0 + 1 + 2 + 1.</figcaption>
+</figure>
 
 !!! important "Durations are **relative**, not absolute"
     Each call advances a write head, so `.key(0).key(100, 1.0).key(0, 1.0)` is a

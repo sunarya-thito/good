@@ -115,15 +115,16 @@ slower than wall clock rather than locking up.
 
 ### Phases within one advance
 
-```
-advance()
-├── resolve inputs                    ← raw device state → your Input handles
-├── fixed step × N                    ← N = elapsed / fixedTimeStep, capped
-│   ├── beginTick                     ← copy last published snapshot into the write slot
-│   ├── FixedTickable systems         ← your gameplay, in declared order
-│   ├── coroutines                    ← resumed here, so their writes land in-window
-│   └── commitTick                    ← publish
-└── presentation                      ← Tickable systems, then the renderer
+```mermaid
+flowchart TD
+    A["<b>advance()</b>"] --> B["1. resolve inputs<br/><i>raw device state becomes your Input handles</i>"]
+    B --> C["2. fixed step × N<br/><i>N = elapsed / fixedTimeStep, capped</i>"]
+    C --> C1["beginTick<br/><i>copy the last published snapshot into the write slot</i>"]
+    C1 --> C2["FixedTickable systems<br/><i>your gameplay, in declared order</i>"]
+    C2 --> C3["coroutines<br/><i>resumed here, so their writes land in-window</i>"]
+    C3 --> C4["commitTick<br/><i>publish</i>"]
+    C4 -.->|"repeat × N"| C1
+    C --> D["3. presentation<br/><i>Tickable systems, then the renderer</i>"]
 ```
 
 Two consequences worth internalising:

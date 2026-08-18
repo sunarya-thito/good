@@ -176,23 +176,15 @@ See [Networking](networking.md).
 
 ## Package dependency graph
 
-```
-                    ┌─────────┐
-                    │   good   │  kernel
-                    └────┬────┘
-          ┌──────────────┼───────────────┐
-          │              │               │
-     ┌────▼────┐   ┌─────▼─────┐   ┌─────▼──────┐
-     │  goo2d  │   │  good_cli  │   │  good_net   │
-     └────┬────┘   └───────────┘   └─────┬──────┘
-          │                              │
-  ┌───────▼──────────────┐        ┌──────▼───────┐
-  │ goo2d_physics_box2d  │        │ good_net_p2p  │
-  └───────┬──────────────┘        └──────────────┘
-          │
-  ┌───────▼──────────┐
-  │ goo2d_ffi_box2d  │
-  └──────────────────┘
+```mermaid
+flowchart TD
+    good["<b>good</b><br/>kernel"]
+    good --> goo2d["goo2d"]
+    good --> good_cli["good_cli"]
+    good --> good_net["good_net"]
+    goo2d --> phys["goo2d_physics_box2d"]
+    phys --> ffi["goo2d_ffi_box2d"]
+    good_net --> p2p["good_net_p2p"]
 ```
 
 Nothing in the left column is reachable from the right, which is the property

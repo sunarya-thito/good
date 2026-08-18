@@ -2,21 +2,15 @@
 
 Three stages turn the art you edit into the bytes you ship.
 
-```
-assets_src/                    good assets compact      assets/
-  sprites/player.png     ──────────────────────▶        sprites/player.webp
-  sfx/hit.wav              (ffmpeg, one format          sfx/hit.ogg
-                            per kind)
-                                     │
-                                     │ good generate    lib/good.generated/
-                                     ├───────────────▶   textures.dart
-                                     │                   audios.dart
-                                     │
-                                     │ good assets pack assets/packed/
-                                     └───────────────▶   chunk_main.dat
-                                        (compress,        chunk_shared.dat
-                                         then encrypt,
-                                         then chunk)
+```mermaid
+flowchart LR
+    SRC["<b>assets_src/</b><br/>sprites/player.png<br/>sfx/hit.wav"]
+    CAN["<b>assets/</b><br/>sprites/player.webp<br/>sfx/hit.ogg"]
+    GEN["<b>lib/good.generated/</b><br/>textures.dart<br/>audios.dart"]
+    PACK["<b>assets/packed/</b><br/>chunk_main.dat<br/>chunk_shared.dat"]
+    SRC -->|"good assets compact<br/>ffmpeg, one format per kind"| CAN
+    CAN -->|"good generate"| GEN
+    CAN -->|"good assets pack<br/>compress, encrypt, chunk"| PACK
 ```
 
 ## Configuration
@@ -208,12 +202,14 @@ plaintext could be made.
 
 ### The chunk format
 
-```
-┌────────┬─────────┬───────┬──────────┬─────────┬──────────────────┐
-│ 'GOOC' │ version │ flags │  nonce   │ GCM tag │    ciphertext    │
-│ 4 B    │ 1 B     │ 1 B   │ 12 B     │ 16 B    │  the whole chunk │
-└────────┴─────────┴───────┴──────────┴─────────┴──────────────────┘
-```
+| Offset | Field | Size |
+|---|---|---|
+| 0 | `GOOC` magic | 4 B |
+| 4 | version | 1 B |
+| 5 | flags | 1 B |
+| 6 | nonce | 12 B |
+| 18 | GCM tag | 16 B |
+| 34 | ciphertext | the rest of the chunk |
 
 Magic and version first, so a runtime reading a chunk from a future good **says
 so** rather than decrypting nonsense. Flags carry compressed/encrypted

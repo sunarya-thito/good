@@ -3,17 +3,14 @@
 good is a **family**, not a 2D engine with a 3D mode bolted on. The kernel knows
 nothing about dimensions; a renderer package supplies one.
 
+```mermaid
+flowchart TD
+    K["<b>good</b> — the kernel<br/>ECS, scenes, tick loop, memory,<br/>input, assets, coroutines, GameView"]
+    K --- G2["<b>goo2d</b>"]
+    K --- G3["<b>goo3d</b>"]
 ```
-                     ┌───────────────┐
-                     │      good      │   ECS, scenes, tick loop, memory,
-                     │    (kernel)   │   input, assets, coroutines, GameView
-                     └───────┬───────┘
-                  ┌──────────┴──────────┐
-            ┌─────▼─────┐         ┌─────▼─────┐
-            │   goo2d   │         │   goo3d   │
-            └───────────┘         └───────────┘
-             siblings, not layers
-```
+
+`goo2d` and `goo3d` are siblings, not layers. Neither is built on the other.
 
 `goo3d` is a **sibling** of `goo2d`, not a layer on top of it. It depends on the
 same kernel and supplies its own renderer — a native surface rather than a

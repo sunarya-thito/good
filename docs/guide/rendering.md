@@ -9,12 +9,15 @@
 Rendering is two halves on two isolates, and the split is what keeps the Flutter
 side cheap:
 
-```
-game isolate                             Flutter isolate
-  GameRenderer2D (a GameSystem)            Game2D.buildView
-  ├── walk renderables                     └── CustomPaint
-  ├── sort by zIndex                            └── one Canvas.drawVertices
-  └── write geometry into a shared buffer
+```mermaid
+flowchart LR
+    subgraph G["game isolate"]
+        R["<b>GameRenderer2D</b>, a GameSystem<br/>walk renderables<br/>sort by zIndex<br/>write geometry into a shared buffer"]
+    end
+    subgraph F["Flutter isolate"]
+        V["<b>Game2D.buildView</b><br/>CustomPaint<br/>one Canvas.drawVertices"]
+    end
+    R -->|"shared buffer"| V
 ```
 
 `GameRenderer2D` composes world transforms and writes vertex data into a shared
