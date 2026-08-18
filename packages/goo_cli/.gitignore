@@ -1,4 +1,6 @@
 .dart_tool/
 .packages
-build/
+# Anchored. Unanchored it also matched `lib/src/commands/build/`, which left
+# every source file of `goo build` untracked and invisible to `git status`.
+/build/
 /pubspec.lock
