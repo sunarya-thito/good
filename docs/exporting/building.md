@@ -1,10 +1,10 @@
 # Building for a platform
 
 ```bash
-goo build windows
-goo build linux
-goo build android
-goo build ios
+good build windows
+good build linux
+good build android
+good build ios
 ```
 
 One command per platform rather than one command with a `--platform` option,
@@ -14,10 +14,10 @@ target's help has to explain away.
 
 | Command | Runs | Produces |
 |---|---|---|
-| `goo build windows` | `flutter build windows` | `build/windows/x64/runner/Release/` |
-| `goo build linux` | `flutter build linux` | `build/linux/x64/release/bundle/` |
-| `goo build android` | `flutter build apk` | `build/app/outputs/flutter-apk/` |
-| `goo build ios` | `flutter build ios` | An Xcode archive to sign |
+| `good build windows` | `flutter build windows` | `build/windows/x64/runner/Release/` |
+| `good build linux` | `flutter build linux` | `build/linux/x64/release/bundle/` |
+| `good build android` | `flutter build apk` | `build/app/outputs/flutter-apk/` |
+| `good build ios` | `flutter build ios` | An Xcode archive to sign |
 
 ## Options
 
@@ -36,24 +36,24 @@ Every platform shares these:
 ### Check the plan first
 
 ```console
-$ goo build windows --dry-run
-goo build windows
+$ good build windows --dry-run
+good build windows
   project:     .
   assets:      release
   encryption:  aes
   compression: normal
 
 Would run, in order:
-  1. goo assets compact
-  2. goo generate
-  3. goo assets pack --mode=release
+  1. good assets compact
+  2. good generate
+  3. good assets pack --mode=release
   4. flutter build windows
 ```
 
 ### Development assets in a platform build
 
 ```bash
-goo build windows --assets=development
+good build windows --assets=development
 ```
 
 Loose files in a real platform build — for a debugging build you intend to poke
@@ -104,32 +104,32 @@ silently resolving it:
     Needs the Android SDK, and the **NDK** if you use physics: Box2D is compiled
     through Gradle's CMake integration for each ABI.
 
-    `goo build android` produces an APK. For Play Store submission you want an
+    `good build android` produces an APK. For Play Store submission you want an
     App Bundle, which Flutter builds directly:
 
     ```bash
-    goo build android --dry-run     # run the asset pipeline steps you need
+    good build android --dry-run     # run the asset pipeline steps you need
     flutter build appbundle
     ```
 
     Signing is configured in `android/app/build.gradle.kts` as it is for any
-    Flutter app; goo does not interpose.
+    Flutter app; good does not interpose.
 
 === "iOS"
 
     Needs Xcode and CocoaPods. Box2D compiles through a podspec and links
     statically.
 
-    `goo build ios` produces an archive to sign and upload through Xcode or
+    `good build ios` produces an archive to sign and upload through Xcode or
     `xcrun`. Signing identities and provisioning profiles are Xcode's business.
 
 === "macOS"
 
-    There is no `goo build macos` target yet. Run the pipeline steps and then
+    There is no `good build macos` target yet. Run the pipeline steps and then
     Flutter directly:
 
     ```bash
-    goo assets compact && goo generate && goo assets pack
+    good assets compact && good generate && good assets pack
     flutter build macos
     ```
 
@@ -146,18 +146,18 @@ After a release build, the loose assets are gone and the chunks remain:
 ```
 data/flutter_assets/assets/
 ├── .gitkeep
-├── .goo_compact.json              ← the incremental-compaction cache
+├── .good_compact.json              ← the incremental-compaction cache
 └── packed/chunk_shared.dat        ← your assets
 ```
 
-Each asset ships exactly once. `.goo_compact.json` is the compaction cache; it
+Each asset ships exactly once. `.good_compact.json` is the compaction cache; it
 is small, and it names your *source* files, so treat it as one more reason not
 to put anything sensitive in a filename.
 
 Restore the loose files for further development with:
 
 ```bash
-goo assets compact
+good assets compact
 ```
 
 ---
@@ -179,9 +179,9 @@ came from the source it claims to.
 ## CI
 
 ```yaml
-- run: dart pub global activate goo_cli
+- run: dart pub global activate good_cli
 - run: flutter pub get
-- run: goo build windows --no-download --verbose
+- run: good build windows --no-download --verbose
 ```
 
 `--no-download` is the flag that matters: it turns "quietly fetch an ffmpeg"
@@ -189,7 +189,7 @@ into an explicit failure, so a CI machine's toolchain is a decision rather than
 an accident. Install ffmpeg as a build step instead.
 
 Cache `assets/` between runs to keep compaction incremental — the
-`.goo_compact.json` hash cache is what makes an unchanged asset free.
+`.good_compact.json` hash cache is what makes an unchanged asset free.
 
 !!! danger "`asset_key.dart` must be in the repository"
     A CI machine that regenerates it produces a build whose assets no previously

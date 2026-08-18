@@ -1,0 +1,33 @@
+name: good_net
+description: >
+  Networking for the good engine family: declared messages with the same
+  shapes, descriptor pass and record layer as good's commands, plus the
+  transport contract a backend implements (NetTransport/NetSession/
+  NetConnection). Dimension-agnostic - shared by goo2d and, in the future,
+  goo3d. Add a backend (good_net_p2p) beside this for a game that actually
+  reaches another machine; this package alone gives you a loopback one, which
+  is what tests run on.
+version: 0.0.1
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+  flutter: ">=3.47.0"
+
+dependencies:
+  # The conformance suite in lib/testing.dart is library code, not test code:
+  # backends live in their own packages and a test directory is not importable
+  # across packages, so the suite ships where a backend can reach it. That is
+  # what puts flutter_test here rather than below.
+  flutter_test:
+    sdk: flutter
+  # A network message and a command are the same record on two different
+  # wires, so the layout, the descriptor vocabulary and the pointer types all
+  # come from the kernel rather than being written a second time here. See
+  # good's `ParamBatch`.
+  good:
+    path: ../good
+  meta: ^1.15.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0

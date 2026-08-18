@@ -5,19 +5,19 @@ with AES-256-GCM. It belongs to neither package on purpose.
 
 ## Why it exists
 
-The chunk format has two implementations. `goo_cli` writes chunks;
-`packages/goo/lib/src/asset_pack.dart` reads them. The duplication is
+The chunk format has two implementations. `good_cli` writes chunks;
+`packages/good/lib/src/asset_pack.dart` reads them. The duplication is
 deliberate - a shipped game must not depend on the build tool, which carries
 `package:analyzer` and an ffmpeg downloader - but duplication that nothing
 compares is duplication waiting to drift.
 
-Both suites are self-consistent without this file. `goo_cli` could seal chunks
-in a layout `goo` cannot read and both would stay green, because each was only
+Both suites are self-consistent without this file. `good_cli` could seal chunks
+in a layout `good` cannot read and both would stay green, because each was only
 ever tested against its own idea of the format. The failure would land at run
 time, in a release build, on the first asset load.
 
-So: `goo_cli` checks that its packer still produces these exact bytes, and
-`goo` checks that its reader still gets the members back out of them. A change
+So: `good_cli` checks that its packer still produces these exact bytes, and
+`good` checks that its reader still gets the members back out of them. A change
 to either half that the other did not follow breaks one of those two tests.
 
 ## What is in it
@@ -32,13 +32,13 @@ generated `asset_key.dart`. It holds two members:
 | `assets/b.ogg`    | `audio bytes`   |
 
 Sealing is deterministic - the nonce is a hash of the compressed body - so the
-same inputs always produce the same file. That is what lets `goo_cli` compare
+same inputs always produce the same file. That is what lets `good_cli` compare
 bytes rather than round-trip.
 
 ## Regenerating it
 
 ```
-cd packages/goo_cli
+cd packages/good_cli
 dart run test/write_chunk_golden.dart
 ```
 

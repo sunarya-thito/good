@@ -1,6 +1,6 @@
 # Talking to Flutter
 
-!!! abstract "Layer: kernel (`goo`)"
+!!! abstract "Layer: kernel (`good`)"
 
 Your UI is ordinary Flutter — widgets, `setState`, whatever state management you
 like — laid over a `GameView`. What is *not* ordinary is that the simulation is

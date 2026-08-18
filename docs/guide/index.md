@@ -1,12 +1,12 @@
 # Developing a game
 
-This chapter is the working reference for building with goo. Each page says
+This chapter is the working reference for building with good. Each page says
 which layer it belongs to, because most of the engine is not dimension-specific
 and carries over unchanged to a sibling renderer like `goo3d`:
 
 | Page | Layer |
 |---|---|
-| [Coming from Unity/Godot](mental-model.md) | Kernel (`goo`) |
+| [Coming from Unity/Godot](mental-model.md) | Kernel (`good`) |
 | [Architecture](architecture.md) | Kernel |
 | [Entities and components](entities-and-components.md) | Kernel |
 | [Scenes and prefabs](scenes.md) | Kernel |
@@ -21,7 +21,7 @@ and carries over unchanged to a sibling renderer like `goo3d`:
 | [Performance rules](performance.md) | Kernel |
 
 !!! tip "Read this first if you have used Unity, Godot or Flame"
-    goo declares everything up front and **toggles it on and off** — there is no
+    good declares everything up front and **toggles it on and off** — there is no
     `AddComponent`, no `RemoveComponent`, and no component that appears at run
     time. [Coming from Unity, Godot or Flutter](mental-model.md) is the
     translation table.

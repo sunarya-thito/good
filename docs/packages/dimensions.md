@@ -1,11 +1,11 @@
 # Dimensions — 2D and 3D
 
-goo is a **family**, not a 2D engine with a 3D mode bolted on. The kernel knows
+good is a **family**, not a 2D engine with a 3D mode bolted on. The kernel knows
 nothing about dimensions; a renderer package supplies one.
 
 ```
                      ┌───────────────┐
-                     │      goo      │   ECS, scenes, tick loop, memory,
+                     │      good      │   ECS, scenes, tick loop, memory,
                      │    (kernel)   │   input, assets, coroutines, GameView
                      └───────┬───────┘
                   ┌──────────┴──────────┐
@@ -35,7 +35,7 @@ dimension you work in:
 - Commands, state channels, buffers
 - `GameView`, and the whole Flutter bridge
 - Networking, when you add it
-- The `goo` CLI — `create`, `generate`, `assets`, `build`
+- The `good` CLI — `create`, `generate`, `assets`, `build`
 
 ## What is per-dimension
 
@@ -53,8 +53,8 @@ A short list, and it is the whole difference:
 ## Which one a project uses
 
 ```bash
-goo create my_game --dimension=d2    # goo2d — the default
-goo create my_game --dimension=d3    # goo3d
+good create my_game --dimension=d2    # goo2d — the default
+good create my_game --dimension=d3    # goo3d
 ```
 
 The CLI carries the option because it is dimension-agnostic by design. It
@@ -62,7 +62,7 @@ refuses `d3` until `goo3d` resolves, rather than scaffolding a project whose
 dependencies do not exist:
 
 ```console
-$ goo create my_game --dimension=d3
+$ good create my_game --dimension=d3
 goo3d does not exist yet. Only --dimension=d2 can be created today.
 ```
 
@@ -75,7 +75,7 @@ renderer would fight the sprite renderer's assumptions forever.
 
 The split also has a second payoff that has nothing to do with 3D: because the
 kernel has no renderer in it, a **headless dedicated server** can depend on
-`goo` plus physics plus `goo_net` and never pull in a rendering package at all.
+`good` plus physics plus `good_net` and never pull in a rendering package at all.
 
 ## Writing dimension-agnostic code
 
@@ -83,7 +83,7 @@ Shared code — an inventory system, a state machine, a networking layer — sho
 live against the kernel, not against `goo2d`:
 
 ```dart
-import 'package:goo/goo.dart';        // not goo2d
+import 'package:good/good.dart';        // not goo2d
 
 class InventorySystem extends GameSystem with FixedTickable {
   late final Query holders;
@@ -97,7 +97,7 @@ class InventorySystem extends GameSystem with FixedTickable {
 ```
 
 Anything that names `Transform2D` or `Sprite` is 2D code, and that is the line.
-A package of shared gameplay logic that depends on `goo` alone works in both
+A package of shared gameplay logic that depends on `good` alone works in both
 dimensions unchanged.
 
 !!! note "Games do not need to do this"

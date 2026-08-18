@@ -1,12 +1,12 @@
 # CLI reference
 
 ```console
-$ goo --help
-Usage: goo <command> [options]
+$ good --help
+Usage: good <command> [options]
 
 Commands:
-  create    Scaffold a new Flutter project wired up to goo.
-  generate  Write lib/goo.generated/ from the assets the pubspec declares.
+  create    Scaffold a new Flutter project wired up to good.
+  generate  Write lib/good.generated/ from the assets the pubspec declares.
   assets    Convert and pack the assets a project ships.
   build     Build and package a game for a target platform.
 
@@ -20,14 +20,14 @@ its bindings, build it.
 ## Installing
 
 ```bash
-dart pub global activate goo_cli
+dart pub global activate good_cli
 ```
 
 Or run it straight out of a clone, which is what to do in CI or when tracking
 the engine's source:
 
 ```bash
-dart run /path/to/goo2d/packages/goo_cli/bin/goo.dart <command>
+dart run /path/to/goo2d/packages/good_cli/bin/good.dart <command>
 ```
 
 ## Syntax
@@ -38,21 +38,21 @@ dart run /path/to/goo2d/packages/goo_cli/bin/goo.dart <command>
 | `--option value` | The same |
 | `--flag` | A flag. There is no `--no-flag` — leave it out to turn it off |
 | `--` | Everything after is positional, however it is spelled |
-| `--help`, `-h` | Works at every level: `goo assets pack --help` |
+| `--help`, `-h` | Works at every level: `good assets pack --help` |
 
 `--verbose` is available on every command that does work, and shows every file
 touched and every decision made.
 
 ---
 
-## `goo create`
+## `good create`
 
 ```
-Usage: goo create [options] [project_name=]
+Usage: good create [options] [project_name=]
 ```
 
-Scaffolds a Flutter app wired up to goo, patches the pubspec, and runs
-`goo generate`.
+Scaffolds a Flutter app wired up to good, patches the pubspec, and runs
+`good generate`.
 
 | Option | Default | Description |
 |---|---|---|
@@ -60,14 +60,14 @@ Scaffolds a Flutter app wired up to goo, patches the pubspec, and runs
 | `--directory=<dir>` | `.` | Where to create the project |
 | `--dimension=<d2\|d3>` | `d2` | Which engine package to depend on |
 | `--dry-run` | off | Report what would be created, and create nothing |
-| `--no-flutter-create` | off | Write only the goo files, into a project that already exists |
+| `--no-flutter-create` | off | Write only the good files, into a project that already exists |
 | `--verbose` | off | Verbose output |
 
 ```bash
-goo create my_game
-goo create my_game --directory=games
-goo create my_existing_app --no-flutter-create
-goo create my_game --dry-run
+good create my_game
+good create my_game --directory=games
+good create my_existing_app --no-flutter-create
+good create my_game --dry-run
 ```
 
 **Never writes over an existing file** — scaffolding is a starting point, and
@@ -79,13 +79,13 @@ See [Create a project](../getting-started/create-a-project.md).
 
 ---
 
-## `goo generate`
+## `good generate`
 
 ```
-Usage: goo generate [options]
+Usage: good generate [options]
 ```
 
-Writes `lib/goo.generated/` from the assets the pubspec declares.
+Writes `lib/good.generated/` from the assets the pubspec declares.
 
 | Option | Default | Description |
 |---|---|---|
@@ -98,7 +98,7 @@ Writes `lib/goo.generated/` from the assets the pubspec declares.
 |---|---|
 | `textures.dart` | Every run — a pure function of the pubspec |
 | `audios.dart` | Every run |
-| `goo.dart` | Every run — `ensureGameReady()` |
+| `good.dart` | Every run — `ensureGameReady()` |
 | `asset_key.dart` | **Once**, then left alone |
 
 !!! danger "`--rotate-keys`"
@@ -111,17 +111,17 @@ disk — a file in an unlisted directory is invisible to it, and to Flutter.
 
 ---
 
-## `goo assets`
+## `good assets`
 
 ```
-Usage: goo assets <command> [options]
+Usage: good assets <command> [options]
 
 Commands:
   compact  Convert source art into the one canonical format per kind.
   pack     Chunk, compress and encrypt the assets a build ships.
 ```
 
-### `goo assets compact`
+### `good assets compact`
 
 Converts everything in the source directory into one canonical format per kind —
 WebP for images, Ogg Vorbis for audio — using ffmpeg.
@@ -135,10 +135,10 @@ WebP for images, Ogg Vorbis for audio — using ffmpeg.
 | `--verbose` | off | Verbose output |
 
 Incremental by default: a hash of each source plus its settings lives in
-`assets/.goo_compact.json`. A file already in the canonical format is **copied,
+`assets/.good_compact.json`. A file already in the canonical format is **copied,
 not re-encoded** — re-encoding is generation loss.
 
-### `goo assets pack`
+### `good assets pack`
 
 Chunks, compresses and encrypts what a build ships, then writes the chunk
 mapping back into `asset_key.dart`.
@@ -153,8 +153,8 @@ mapping back into `asset_key.dart`.
 | `--dry-run` | off | Report the plan, write nothing |
 | `--verbose` | off | Show chunk membership |
 
-Writes the chunks and **leaves the loose assets alone**. Only `goo build` strips
-them — only there is goo the one who compacted them and able to say which files
+Writes the chunks and **leaves the loose assets alone**. Only `good build` strips
+them — only there is good the one who compacted them and able to say which files
 are safe to delete.
 
 `--mode=development` writes nothing and **clears** the mapping, which is what
@@ -164,10 +164,10 @@ See [The asset pipeline](../exporting/asset-pipeline.md).
 
 ---
 
-## `goo build`
+## `good build`
 
 ```
-Usage: goo build <command> [options]
+Usage: good build <command> [options]
 
 Commands:
   windows  Build for Windows.
@@ -211,11 +211,11 @@ See [Building for a platform](../exporting/building.md).
 
 ## Configuration
 
-Read from the `goo:` section of the project's `pubspec.yaml` — not a separate
+Read from the `good:` section of the project's `pubspec.yaml` — not a separate
 file. A project already has one file that says what it is and what it ships.
 
 ```yaml
-goo:
+good:
   assets:
     source: assets_src/       # originals you edit and commit
     output: assets/           # canonical files, generated
@@ -229,7 +229,7 @@ goo:
 ```
 
 Every value shown is the default and every key is optional — a project with no
-`goo:` section works, because a new project should run before anyone has
+`good:` section works, because a new project should run before anyone has
 configured anything. Directory values are normalised to end in `/`, so `assets`
 and `assets/` mean the same thing.
 

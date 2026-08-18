@@ -1,6 +1,6 @@
 # Scenes and prefabs
 
-!!! abstract "Layer: kernel (`goo`)"
+!!! abstract "Layer: kernel (`good`)"
 
 A `SceneStruct` answers two questions: **which prefabs can exist here**, and
 **what exists when it loads**.

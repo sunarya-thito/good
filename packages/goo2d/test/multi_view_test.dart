@@ -11,7 +11,7 @@ late Game run;
 // Two views, two cameras, two scenes - the thing the whole camera-view design
 // exists for, asserted end to end.
 //
-// Everything else about cameras is unit-level (goo's camera_view_test) or
+// Everything else about cameras is unit-level (good's camera_view_test) or
 // exercises the single-view path (render_2d_test, game_view_test). This file
 // is the one that would fail if per-view rendering were quietly still global.
 

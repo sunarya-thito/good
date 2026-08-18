@@ -1,8 +1,8 @@
 # Input
 
-!!! abstract "Layer: kernel (`goo`)"
+!!! abstract "Layer: kernel (`good`)"
 
-Input in goo is **declared as actions**, not polled as keys. You declare what
+Input in good is **declared as actions**, not polled as keys. You declare what
 the player can *do*; a binding says what currently produces it. That indirection
 is what makes rebinding a one-line assignment rather than a rewrite.
 

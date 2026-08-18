@@ -15,7 +15,7 @@
 // hypothesis was "too many per-sprite component reads: hoist the
 // archetype-constant ones (pivot, border) out of the loop". That hypothesis
 // prices ~8 field reads at ~50 ns each, which is 20x what a field read costs
-// (2.25 ns - `goo/tool/column_dispatch_bench.dart`). So it cannot be the whole
+// (2.25 ns - `good/tool/column_dispatch_bench.dart`). So it cannot be the whole
 // story and probably is not any of it.
 //
 // The competing explanation is **access order**. The walk pass iterates rows in

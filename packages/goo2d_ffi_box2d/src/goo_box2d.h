@@ -203,7 +203,7 @@ extern "C"
 	// pull simulated ones back out. These do it in two, regardless of N.
 	//
 	// The buffers are plain caller-owned arrays - this shim deliberately
-	// knows NOTHING about goo's memory pool. The pool is bit-packed by
+	// knows NOTHING about good's memory pool. The pool is bit-packed by
 	// DataDescriptor's cursor, so a C struct mirroring a row would be a
 	// second copy of that layout which has to agree with data_layout.dart by
 	// hand, and RULES.md rule 10 exists precisely to stop that.

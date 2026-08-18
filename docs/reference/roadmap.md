@@ -10,13 +10,13 @@ Last verified: **2026-08-18**, against the `asset-api-redesign` branch.
 
 | Package | State | Notes |
 |---|---|---|
-| `goo` | **Working** | The kernel is real and tested — ECS, memory pool, ring buffers, scheduler, scenes, hierarchy, input, assets, coroutines, timelines, `GameView` |
+| `good` | **Working** | The kernel is real and tested — ECS, memory pool, ring buffers, scheduler, scenes, hierarchy, input, assets, coroutines, timelines, `GameView` |
 | `goo2d` | **Working** | Transforms, world transforms, camera, colliders, sprite rendering, mouse picking, audio assets |
-| `goo_cli` | **Working** | `create`, `generate`, `assets compact`, `assets pack`, `build windows/linux/android/ios`. Verified end to end |
+| `good_cli` | **Working** | `create`, `generate`, `assets compact`, `assets pack`, `build windows/linux/android/ios`. Verified end to end |
 | `goo2d_ffi_box2d` | **Working** | Box2D v3.1.1 vendored, shim written, bindings generated, builds on Windows/Linux/Android/macOS/iOS |
 | `goo2d_physics_box2d` | **Working** | Bodies, colliders, the nine joints, effectors, raycast and overlap queries |
-| `goo_net` | **Working** | Messages, targets, channels, sessions, roster events and `LoopbackNetTransport`, with a conformance suite every backend is run against |
-| `goo_net_p2p` | **Working on a LAN** | A real UDP protocol — acks, retransmission, ordering, batching, fragmentation, keepalives — plus address-carrying join codes and LAN discovery. **Does not cross the internet yet**: that needs STUN and a rendezvous |
+| `good_net` | **Working** | Messages, targets, channels, sessions, roster events and `LoopbackNetTransport`, with a conformance suite every backend is run against |
+| `good_net_p2p` | **Working on a LAN** | A real UDP protocol — acks, retransmission, ordering, batching, fragmentation, keepalives — plus address-carrying join codes and LAN discovery. **Does not cross the internet yet**: that needs STUN and a rendezvous |
 | `goo3d` and siblings | **Not started** | The kernel split exists so this lands without touching the shared half |
 
 !!! warning "Package READMEs lag behind"
@@ -27,11 +27,11 @@ Last verified: **2026-08-18**, against the `asset-api-redesign` branch.
 
 These were run, not assumed:
 
-- `goo create` → `flutter analyze` clean → `flutter run`
-- `goo assets compact` on a real image, with ffmpeg auto-download
-- `goo generate` producing a populated `Textures` enum
-- `goo assets pack` writing an encrypted chunk and the mapping
-- `goo build windows` producing a launchable application whose bundle contains
+- `good create` → `flutter analyze` clean → `flutter run`
+- `good assets compact` on a real image, with ffmpeg auto-download
+- `good generate` producing a populated `Textures` enum
+- `good assets pack` writing an encrypted chunk and the mapping
+- `good build windows` producing a launchable application whose bundle contains
   the chunk and **not** the loose asset
 - The `NetTransport` conformance suite against **both** backends — the
   in-process one and real UDP sockets
@@ -56,16 +56,16 @@ Deliberately deferred, and documented in place rather than left as silent gaps.
 
 ### Tooling
 
-- **Struct-layout codegen.** `goo generate` writes the asset bindings. Hoisting
+- **Struct-layout codegen.** `good generate` writes the asset bindings. Hoisting
   the runtime `DataDescriptor` layout algorithm to build time by scanning
   `Component`/`EntityStruct` with `package:analyzer` is a separate and much
   larger piece of work, and emitting a stub would make it look done.
-- **`goo build macos`** — run the pipeline steps and `flutter build macos`.
-- **`goo run`** — use `flutter run`.
+- **`good build macos`** — run the pipeline steps and `flutter build macos`.
+- **`good run`** — use `flutter run`.
 
 ### Networking
 
-- **Crossing the internet.** `goo_net_p2p` join codes carry the host's address,
+- **Crossing the internet.** `good_net_p2p` join codes carry the host's address,
   which is enough on one machine or one LAN and not enough through a home
   router. STUN (learning a peer's public address) and a rendezvous (swapping
   those addresses so both sides punch at once) are the next landing.
@@ -74,7 +74,7 @@ Deliberately deferred, and documented in place rather than left as silent gaps.
   claim, and a TURN-style relay is a separate, clearly-scoped addition.
 - **Request/reply messages.** Deliberately absent — see the networking guide.
 - **The ECS replication layer** — a `Replicated` mixin, delta compression,
-  prediction and reconciliation. `goo_net` moves declared records; replication
+  prediction and reconciliation. `good_net` moves declared records; replication
   is built on top of that, and the channel split is the primitive it needs.
 - **Congestion control.** A link sends what the game asks it to and reports
   `packetLoss` so the game can decide to send less. Approximating a congestion
@@ -83,13 +83,13 @@ Deliberately deferred, and documented in place rather than left as silent gaps.
 ### Platforms
 
 - **Web.** The kernel uses `dart:ffi` for storage and spawns an isolate for the
-  simulation; neither exists there. `goo_net_p2p` additionally needs
+  simulation; neither exists there. `good_net_p2p` additionally needs
   `dart:io` sockets.
 
 !!! note "The Steam backend was dropped"
-    `goo_net_steam` was removed rather than built. The transport contract is
+    `good_net_steam` was removed rather than built. The transport contract is
     open, so a Steam backend remains possible as a separate package; nothing in
-    `goo_net` assumes one. `goo_ffi_steamworks`, the empty bindings package it
+    `good_net` assumes one. `good_ffi_steamworks`, the empty bindings package it
     would have been built on, went with it.
 
 ## Publishing
@@ -106,16 +106,16 @@ Until the rewrite is published, depend on the engine by `path:` or `git:`.
 
 Things that work but will catch you out:
 
-- **`goo create` keeps Flutter's `main.dart`.** `flutter create` runs first and
+- **`good create` keeps Flutter's `main.dart`.** `flutter create` runs first and
   writes its counter app; the scaffolder never overwrites an existing file, so
-  the goo `main.dart` is skipped and the log says `Kept existing lib/main.dart`.
+  the good `main.dart` is skipped and the log says `Kept existing lib/main.dart`.
   Delete it and re-run with `--no-flutter-create`.
-- **Re-running `goo create` after editing the pubspec duplicates keys.** The
+- **Re-running `good create` after editing the pubspec duplicates keys.** The
   idempotence check matches the literal line it wrote, so an edited dependency
   line slips past it and you get two `goo2d:` entries and two `assets:` blocks.
 - **`test/widget_test.dart`** from `flutter create` references `MyApp`, which no
-  longer exists once `main.dart` is the goo one.
-- **`.goo_compact.json` ships** inside the built bundle. Harmless, but it names
+  longer exists once `main.dart` is the good one.
+- **`.good_compact.json` ships** inside the built bundle. Harmless, but it names
   your source files.
 - **The scaffolded `main.dart` leaks the game if the widget is disposed during
   startup.** It assigns a nullable `_game` *after* `await Game.start(...)` and

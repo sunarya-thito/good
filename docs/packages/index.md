@@ -1,6 +1,6 @@
-# The goo family
+# The good family
 
-goo is a monorepo of packages that divide along one line: **is this about how
+good is a monorepo of packages that divide along one line: **is this about how
 many dimensions you have, or not?**
 
 Everything that is not — the ECS, the scheduler, scenes, hierarchy, input, the
@@ -10,10 +10,10 @@ physics binding are per-dimension.
 
 ```
 packages/
-├── goo                     the kernel — no dimension anywhere in it
-├── goo_cli                 the `goo` command
-├── goo_net                 declared messages + the transport contract
-│   └── goo_net_p2p         serverless P2P backend
+├── good                     the kernel — no dimension anywhere in it
+├── good_cli                 the `good` command
+├── good_net                 declared messages + the transport contract
+│   └── good_net_p2p         serverless P2P backend
 │
 ├── goo2d                   the 2D engine
 ├── goo2d_physics_box2d     ├── Box2D physics for it
@@ -31,7 +31,7 @@ specifically so that costs nothing above it. See
 
 ---
 
-## goo
+## good
 
 The kernel. Dimension-agnostic, and the largest package in the repository.
 
@@ -72,7 +72,7 @@ The 2D engine, and the one dependency a 2D game needs.
 - `AudioClip` and its loader
 - `Game2D`/`GameState2D` — the pair whose narrowing *is* the 2D opt-in
 
-Re-exports `goo`, so `import 'package:goo2d/goo2d.dart';` is the whole engine.
+Re-exports `good`, so `import 'package:goo2d/goo2d.dart';` is the whole engine.
 
 ## goo2d_physics_box2d
 
@@ -134,16 +134,16 @@ cd packages/goo2d_ffi_box2d
 dart run ffigen --config ffigen.yaml
 ```
 
-## goo_cli
+## good_cli
 
-The `goo` command: project scaffolding, codegen, the asset pipeline, and build
+The `good` command: project scaffolding, codegen, the asset pipeline, and build
 orchestration. **Dimension-agnostic** — it lives beside the kernel rather than
 under `goo2d`, so each renderer registers its own asset types into the same
 pipeline instead of needing its own CLI.
 
 See the [CLI reference](../reference/cli.md).
 
-## goo_net
+## good_net
 
 Networking, shared across dimensions because a 3D game needs the same session
 and messaging plumbing a 2D one does.
@@ -159,9 +159,9 @@ way it declares everything else — a `describe*` pass handing back typed handle
 - `NetTransport`, `NetSession`, `NetConnection`, `NetPeerId`
 - **`LoopbackNetTransport`** — in-process and real, not a mock. What tests and
   split-screen run on
-- `package:goo_net/testing.dart` — the conformance suite every backend passes
+- `package:good_net/testing.dart` — the conformance suite every backend passes
 
-## goo_net_p2p
+## good_net_p2p
 
 The serverless backend: UDP hole punching against public STUN servers, a free
 rendezvous relay for signalling, and a lightweight reliable/unreliable UDP data
@@ -175,16 +175,16 @@ See [Networking](networking.md).
 
 ```
                     ┌─────────┐
-                    │   goo   │  kernel
+                    │   good   │  kernel
                     └────┬────┘
           ┌──────────────┼───────────────┐
           │              │               │
      ┌────▼────┐   ┌─────▼─────┐   ┌─────▼──────┐
-     │  goo2d  │   │  goo_cli  │   │  goo_net   │
+     │  goo2d  │   │  good_cli  │   │  good_net   │
      └────┬────┘   └───────────┘   └─────┬──────┘
           │                              │
   ┌───────▼──────────────┐        ┌──────▼───────┐
-  │ goo2d_physics_box2d  │        │ goo_net_p2p  │
+  │ goo2d_physics_box2d  │        │ good_net_p2p  │
   └───────┬──────────────┘        └──────────────┘
           │
   ┌───────▼──────────┐
@@ -193,5 +193,5 @@ See [Networking](networking.md).
 ```
 
 Nothing in the left column is reachable from the right, which is the property
-that lets a headless dedicated server depend on `goo` + `goo_net` without a
+that lets a headless dedicated server depend on `good` + `good_net` without a
 renderer, and lets `goo3d` arrive without touching any of the shared half.

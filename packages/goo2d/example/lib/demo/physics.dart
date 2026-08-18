@@ -38,7 +38,7 @@ const double _fallbackPixelsPerMetre = 18.0;
 /// that cannot hold what it is given costs far more than one that can.
 ///
 /// **This was not the whole story, and scaling the arena alone barely moved
-/// the numbers.** The rest was a leak in `goo` - `Entity.destroy()` did not
+/// the numbers.** The rest was a leak in `good` - `Entity.destroy()` did not
 /// fire the world-observation despawn event, so every recycled body stayed in
 /// the Box2D world forever. Both had to be fixed, and only the diagnostic
 /// counters told them apart: the arena explains a *large* cost, but only a

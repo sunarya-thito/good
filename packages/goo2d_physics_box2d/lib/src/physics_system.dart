@@ -11,7 +11,7 @@ import 'effectors.dart';
 import 'joint.dart';
 import 'rigid_body.dart';
 
-/// Steps a Box2D world in lockstep with `goo`'s fixed tick, creating one
+/// Steps a Box2D world in lockstep with `good`'s fixed tick, creating one
 /// Box2D body per `RigidBody2D` entity and one Box2D shape per
 /// `ColliderBody` that entity declared.
 ///

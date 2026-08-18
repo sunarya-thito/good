@@ -3,9 +3,9 @@
 Three pages, in the order you meet them:
 
 1. **[Installation](installation.md)** — the Flutter SDK, the per-platform
-   native toolchains, and putting `goo` on your `PATH`.
-2. **[Create a project](create-a-project.md)** — `goo create`, what it writes,
-   and how a goo project is configured.
+   native toolchains, and putting `good` on your `PATH`.
+2. **[Create a project](create-a-project.md)** — `good create`, what it writes,
+   and how a good project is configured.
 3. **[Your first game](your-first-game.md)** — a sprite driven by the keyboard,
    built up from the empty scaffold.
 

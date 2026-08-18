@@ -1,8 +1,8 @@
 # Coming from Unity, Godot or Flutter
 
-!!! abstract "Layer: kernel (`goo`)"
+!!! abstract "Layer: kernel (`good`)"
 
-goo will feel familiar in its vocabulary — entities, components, systems,
+good will feel familiar in its vocabulary — entities, components, systems,
 scenes, prefabs, coroutines — and then surprise you in one specific way:
 
 > **Everything is known at declaration time. Nothing is added or removed at
@@ -18,7 +18,7 @@ on and off.**
 
 ## The translation table
 
-| What you would do elsewhere | What you do in goo |
+| What you would do elsewhere | What you do in good |
 |---|---|
 | `gameObject.AddComponent<Shield>()` | Declare the shield's fields on the prefab; toggle `player.shielded[entity] = true` |
 | `Destroy(GetComponent<Collider>())` | `collider.enable[entity] = false` |
@@ -41,7 +41,7 @@ its row lives in and at what offset every field sits. Adding a component at run
 time means moving the row to a different archetype — copying it, invalidating
 every `Entity` handle that pointed at it, and forcing every compiled query to be
 re-evaluated. Engines that offer it pay for it, usually as a structural-change
-sync point. goo does not offer it, so it does not pay.
+sync point. good does not offer it, so it does not pay.
 
 **Both isolates must agree.** Archetype ids are assigned in first-registration
 order and the [two copies of your `Game`](architecture.md#two-copies-of-one-object)

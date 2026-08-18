@@ -1,8 +1,8 @@
 # Installation
 
-goo is a set of Flutter packages plus a command-line tool. There is nothing to
+good is a set of Flutter packages plus a command-line tool. There is nothing to
 install globally beyond the Flutter SDK and one `dart pub global activate` for
-the `goo` command.
+the `good` command.
 
 ## Prerequisites
 
@@ -10,7 +10,7 @@ the `goo` command.
 |---|---|---|
 | Flutter SDK | `>=3.47.0` | The kernel depends on Flutter — `StateChannel` is a `ValueListenable` and `GameView` is a widget |
 | Dart SDK | `^3.13.0` | Ships with Flutter |
-| A desktop or mobile toolchain | see below | goo uses `dart:ffi` and native memory |
+| A desktop or mobile toolchain | see below | good uses `dart:ffi` and native memory |
 
 Check what you have:
 
@@ -23,7 +23,7 @@ flutter doctor
     The kernel allocates component storage with `dart:ffi` and runs the
     simulation on a spawned isolate. Neither exists on the web. `Game.start`
     falls back to running the simulation inline there, but there is no web
-    renderer and `goo build` has no web target.
+    renderer and `good build` has no web target.
 
 ### Platform toolchains
 
@@ -66,7 +66,7 @@ so tests in sibling packages pick it up with no configuration.
 
 The asset pipeline converts source art into one canonical format per kind
 (WebP for images, Ogg Vorbis for audio) using **ffmpeg**. You do not have to
-install it: `goo assets compact` and `goo build` look for an ffmpeg on your
+install it: `good assets compact` and `good build` look for an ffmpeg on your
 `PATH` and download one if there is none.
 
 Pass `--no-download` to make a missing ffmpeg an error instead — worth doing in
@@ -94,7 +94,7 @@ Each also needs its system declared in `describeSystems`:
 dependencies:
   goo2d: ^0.0.1
   goo2d_physics_box2d: ^0.0.1   # native Box2D — only if you want physics
-  goo_net_p2p: ^0.0.1           # serverless multiplayer — only if you want it
+  good_net_p2p: ^0.0.1           # serverless multiplayer — only if you want it
 ```
 
 ### Working from a clone
@@ -103,7 +103,7 @@ If you are developing against the engine's own source — tracking `main`, or
 working on the engine itself — depend on it by path instead:
 
 ```bash
-git clone https://github.com/sunarya-thito/goo.git
+git clone https://github.com/sunarya-thito/good.git
 ```
 
 ```yaml title="pubspec.yaml"
@@ -120,20 +120,20 @@ intend to ship:
 dependencies:
   goo2d:
     git:
-      url: https://github.com/sunarya-thito/goo.git
+      url: https://github.com/sunarya-thito/good.git
       path: packages/goo2d
       ref: v0.0.1
 ```
 
 ---
 
-## Installing the `goo` CLI
+## Installing the `good` CLI
 
 The CLI is dimension-agnostic — the same tool serves `goo2d` and `goo3d`
 projects.
 
 ```bash
-dart pub global activate goo_cli
+dart pub global activate good_cli
 ```
 
 Make sure the pub cache's `bin` is on your `PATH`:
@@ -153,12 +153,12 @@ Make sure the pub cache's `bin` is on your `PATH`:
 Verify:
 
 ```console
-$ goo --help
-Usage: goo <command> [options]
+$ good --help
+Usage: good <command> [options]
 
 Commands:
-  create    Scaffold a new Flutter project wired up to goo.
-  generate  Write lib/goo.generated/ from the assets the pubspec declares.
+  create    Scaffold a new Flutter project wired up to good.
+  generate  Write lib/good.generated/ from the assets the pubspec declares.
   assets    Convert and pack the assets a project ships.
   build     Build and package a game for a target platform.
 
@@ -172,17 +172,17 @@ Activate the local copy, which is what you want when tracking the engine's
 source:
 
 ```bash
-dart pub global activate --source path packages/goo_cli
+dart pub global activate --source path packages/good_cli
 ```
 
 Or skip activation entirely — handy in CI, and when switching between engine
 versions:
 
 ```bash
-dart run /path/to/goo2d/packages/goo_cli/bin/goo.dart --help
+dart run /path/to/goo2d/packages/good_cli/bin/good.dart --help
 ```
 
-Everywhere this documentation writes `goo <command>`, that form works too.
+Everywhere this documentation writes `good <command>`, that form works too.
 
 ---
 

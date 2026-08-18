@@ -6,7 +6,7 @@
 // Deliberately **not** in `test/`: this is a measurement, not an assertion,
 // and a bench that fails the suite on a slow machine is worse than no bench.
 // It lives under `tool/` with the stress harnesses for the same reason. It
-// does need the Flutter test runner rather than `dart run`, because `goo`
+// does need the Flutter test runner rather than `dart run`, because `good`
 // reaches `package:flutter` for `Game.buildView` - so unlike the pure-memory
 // `field_access_bench.dart`, plain `dart run` cannot load it.
 //

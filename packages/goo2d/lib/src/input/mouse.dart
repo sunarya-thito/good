@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:goo/goo.dart';
+import 'package:good/good.dart';
 
 import 'package:goo2d/src/data/camera.dart';
 import 'package:goo2d/src/data/collider.dart';

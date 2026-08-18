@@ -1,8 +1,8 @@
 # Performance
 
-!!! abstract "Layer: kernel (`goo`)"
+!!! abstract "Layer: kernel (`good`)"
 
-goo is built to make the fast thing the natural thing, but a game can still be
+good is built to make the fast thing the natural thing, but a game can still be
 slow. This page is about finding out *why*, and about the traps that make a
 measurement lie.
 

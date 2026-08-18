@@ -8,7 +8,7 @@ import 'box2d.g.dart';
 /// **This is a library-private static, and that is load-bearing.** A
 /// `DynamicLibrary` is a native handle, and native handles are not sendable
 /// through `Isolate.spawn` - the same category as `ReceivePort` and
-/// `dart:ui.Image`. `goo` boots on the main isolate and hands the whole
+/// `dart:ui.Image`. `good` boots on the main isolate and hands the whole
 /// `Game` object graph to the game isolate by deep copy, so a
 /// `DynamicLibrary` stored in a field of a `GameSystem` (or anything else
 /// reachable from `Game`) would make that spawn fail.

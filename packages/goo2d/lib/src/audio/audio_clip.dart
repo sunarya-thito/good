@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:goo/goo.dart';
+import 'package:good/good.dart';
 
 /// An audio file's bytes, loaded and addressed like any other asset.
 ///
@@ -21,7 +21,7 @@ import 'package:goo/goo.dart';
 class AudioClip {
   AudioClip(this.bytes, this.format);
 
-  /// The file's bytes, in [format]. Whatever `goo assets compact` produced -
+  /// The file's bytes, in [format]. Whatever `good assets compact` produced -
   /// Ogg Vorbis by default.
   final Uint8List bytes;
 

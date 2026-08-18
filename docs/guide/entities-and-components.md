@@ -1,8 +1,8 @@
 # Entities and components
 
-!!! abstract "Layer: kernel (`goo`)"
+!!! abstract "Layer: kernel (`good`)"
 
-This is the page to read slowly. goo's storage model is the thing most unlike
+This is the page to read slowly. good's storage model is the thing most unlike
 an object-oriented engine, and everything else follows from it.
 
 ## An `EntityStruct` is a layout, not an object

@@ -1,6 +1,6 @@
 # Coroutines and animation
 
-!!! abstract "Layer: kernel (`goo`)"
+!!! abstract "Layer: kernel (`good`)"
 
 Two ways to make something happen over time, for two different shapes of
 problem: **coroutines** for a one-shot sequence you write as a script, and

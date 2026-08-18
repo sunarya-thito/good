@@ -1,9 +1,9 @@
 name: goo2d
 description: >
-  The 2D goo game engine: transforms, camera, colliders and Flutter-facing 2D
-  rendering, on top of the goo kernel - which it re-exports, so a 2D game
+  The 2D good game engine: transforms, camera, colliders and Flutter-facing 2D
+  rendering, on top of the good kernel - which it re-exports, so a 2D game
   needs this one dependency and this one import. Physics (goo2d_physics_box2d)
-  and networking (goo_net_*) stay opt-in.
+  and networking (good_net_*) stay opt-in.
 version: 0.0.1
 publish_to: none
 
@@ -14,8 +14,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  goo:
-    path: ../goo
+  good:
+    path: ../good
   meta: ^1.15.0
   vector_math: ^2.2.0
 

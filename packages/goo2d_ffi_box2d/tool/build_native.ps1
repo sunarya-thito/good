@@ -7,7 +7,7 @@
 # is no library for lib/src/library.dart to find.
 #
 # Precedent for a tool/ script that has to be run by hand before certain
-# tests: goo/tool/ring_buffer_stress.dart.
+# tests: good/tool/ring_buffer_stress.dart.
 #
 #   powershell -File tool/build_native.ps1               # release
 #   powershell -File tool/build_native.ps1 -DebugBuild   # for a native debugger

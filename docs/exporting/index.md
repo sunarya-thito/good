@@ -1,9 +1,9 @@
 # Exporting a game
 
-Shipping a goo game is one command:
+Shipping a good game is one command:
 
 ```bash
-goo build windows
+good build windows
 ```
 
 It runs four steps in the order that makes them correct, and the order is the
@@ -11,7 +11,7 @@ whole reason the command exists:
 
 ```
 [1/4] compacting assets     source art  ->  one canonical format per kind
-[2/4] generating bindings   canonical   ->  lib/goo.generated/
+[2/4] generating bindings   canonical   ->  lib/good.generated/
 [3/4] packing assets        canonical   ->  compressed, encrypted chunks
 [4/4] flutter build windows everything on disk  ->  an application
 ```
@@ -28,8 +28,8 @@ the chunk mapping back into the same file, so it follows generation.
 ## What a release build produces
 
 ```console
-$ goo build windows
-goo build windows
+$ good build windows
+good build windows
   project:     .
   assets:      release
   encryption:  aes
@@ -38,11 +38,11 @@ goo build windows
 [1/4] compacting assets
 0 written, 1 up to date, 0 failed.
 [2/4] generating bindings
-Wrote ./lib/goo.generated/textures.dart
+Wrote ./lib/good.generated/textures.dart
 1 texture(s), 0 audio file(s).
 [3/4] packing assets
   1 asset(s) in 1 chunk(s), grouped by scene (1 scene(s); 0 asset(s) shared or unattributed)
-  stripped 1 loose asset(s) now carried in chunks; `goo assets compact` rebuilds them
+  stripped 1 loose asset(s) now carried in chunks; `good assets compact` rebuilds them
 [4/4] flutter build windows
 
 Built windows.
@@ -90,7 +90,7 @@ The two modes want opposite things, and both are first-class.
 | Encryption | None | AES-256-GCM |
 | Asset mapping | Empty | Path → chunk |
 | Resolution | Straight through `rootBundle` | Through the installed `AssetPack` |
-| How you get it | `flutter run` | `goo build <platform>` |
+| How you get it | `flutter run` | `good build <platform>` |
 
 **Development leaves everything alone.** The shortest path from a changed file
 to seeing it is not to touch it, so `flutter run` loads loose files and nothing
@@ -99,15 +99,15 @@ is packed at all.
 **Nothing in your game code differs between the two.** The same logical path
 resolves through `rootBundle` in one and out of an encrypted chunk in the other.
 
-`goo build` defaults to release because `flutter run` is the development path
-and does not come through here — someone typing `goo build windows` is making
+`good build` defaults to release because `flutter run` is the development path
+and does not come through here — someone typing `good build windows` is making
 something to ship. Pass `--assets=development` if you want a platform build
 with loose assets, for a debugging build you intend to poke at.
 
 ## Before you ship
 
 - [ ] `flutter analyze` is clean.
-- [ ] `lib/goo.generated/asset_key.dart` is **committed** — it is the only
+- [ ] `lib/good.generated/asset_key.dart` is **committed** — it is the only
       record of your encryption keys, and losing it orphans every pack already
       shipped.
 - [ ] Both `assets/` and `assets/packed/` are listed under `flutter: assets:`.

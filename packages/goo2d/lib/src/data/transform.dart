@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:goo/goo.dart';
+import 'package:good/good.dart';
 
 mixin Transform2D on Component {
   late final DataPointer<double> transformOffsetX;

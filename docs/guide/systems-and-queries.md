@@ -1,6 +1,6 @@
 # Systems and queries
 
-!!! abstract "Layer: kernel (`goo`)"
+!!! abstract "Layer: kernel (`good`)"
 
 A `GameSystem` is where per-tick work lives. It declares its queries once and
 walks the matching rows every step.
@@ -111,7 +111,7 @@ for (final group in query.groups()) {      // one group per matching archetype
 The two-level shape is the point. `group.get<T>()` resolves that archetype's
 component **once**; the inner loop is then pure indexed access. Resolving inside
 the inner loop repeats a registry lookup per entity, which is the single most
-common performance mistake in a goo system.
+common performance mistake in a good system.
 
 `query.run()` yields entities directly when you do not need per-group resolution
 — fine for a handful of entities like cameras, wasteful for thousands.

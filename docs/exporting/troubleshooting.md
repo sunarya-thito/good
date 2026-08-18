@@ -8,7 +8,7 @@ The failures the pipeline can produce, what each one means, and what to do.
 
 ```
 pubspec.yaml does not list assets/packed/ under `flutter: assets:`, so the
-chunks would be built and never bundled. Add it - goo creates the directory
+chunks would be built and never bundled. Add it - good creates the directory
 itself.
 ```
 
@@ -28,7 +28,7 @@ flutter:
 
 ```
 These directories now hold assets but are not listed under `flutter: assets:`
-in pubspec.yaml, so Flutter will not bundle them and `goo generate` will not
+in pubspec.yaml, so Flutter will not bundle them and `good generate` will not
 see them:
   - assets/sprites/
 ```
@@ -45,18 +45,18 @@ flutter:
 
 ### The `Textures` enum is missing a value you just added
 
-`goo generate` scans what the **pubspec declares**, not what is on disk. If the
+`good generate` scans what the **pubspec declares**, not what is on disk. If the
 file is in a directory the pubspec does not list, generation cannot see it. Fix
 the pubspec and regenerate.
 
-If the file is in `assets_src/` only, run `goo assets compact` first — the
+If the file is in `assets_src/` only, run `good assets compact` first — the
 source directory is deliberately never scanned, because generating keys for
 source art would name files that never reach the bundle.
 
 ### `Missing N asset(s) this build declares`
 
 Thrown by `ensureGameReady()` at startup. Either the install is incomplete, or
-the pubspec declares an asset that was never shipped. Re-running `goo generate`
+the pubspec declares an asset that was never shipped. Re-running `good generate`
 refreshes the declared set.
 
 This check consults the manifest and at most stats a file — it never decodes —
@@ -65,7 +65,7 @@ which is why it can run over a whole game at startup.
 ### `Could not update assetMapping in .../asset_key.dart`
 
 Packing writes the chunk mapping back into that file and could not. Run
-`goo generate` to recreate it; without the mapping, a packed build cannot find
+`good generate` to recreate it; without the mapping, a packed build cannot find
 its chunks.
 
 ### A release build loads no assets, with no error
@@ -75,7 +75,7 @@ The mapping is empty. Either packing did not run, or it ran in
 stops looking for chunks that are no longer built.
 
 ```bash
-goo assets pack --mode=release
+good assets pack --mode=release
 ```
 
 ### Assets vanished from `assets/`
@@ -84,21 +84,21 @@ Expected. A release build strips the loose copies of everything now carried in a
 chunk, so each asset ships exactly once:
 
 ```
-stripped 1 loose asset(s) now carried in chunks; `goo assets compact` rebuilds them
+stripped 1 loose asset(s) now carried in chunks; `good assets compact` rebuilds them
 ```
 
-Run `goo assets compact` to rebuild them from `assets_src/`.
+Run `good assets compact` to rebuild them from `assets_src/`.
 
 ### `Asset chunk is version N; this build understands 1`
 
-A chunk built by a newer goo than the runtime reading it. Rebuild the pack with
+A chunk built by a newer good than the runtime reading it. Rebuild the pack with
 the same version you are shipping.
 
 ### Assets stopped decrypting after a rebuild
 
 `asset_key.dart` was regenerated. Its keys decrypt the packs built with them, so
 new keys orphan every existing pack. Restore the file from version control and
-repack; use `goo generate --rotate-keys` only when you mean it, and repack
+repack; use `good generate --rotate-keys` only when you mean it, and repack
 immediately after.
 
 ### N declarations could not be attributed to a scene
@@ -133,12 +133,12 @@ at run time.
 
 ### A converted asset looks wrong
 
-Change `quality` under `goo: texture:` or `goo: audio:` in the pubspec, then
+Change `quality` under `good: texture:` or `good: audio:` in the pubspec, then
 force a reconversion — the incremental cache keys on the settings, but `--force`
 is the reliable way:
 
 ```bash
-goo assets compact --force
+good assets compact --force
 ```
 
 ## Project setup
@@ -151,13 +151,13 @@ refusal. See [Dimensions](../packages/dimensions.md).
 
 ### `<dir> already exists`
 
-`goo create` refuses to run `flutter create` over an existing tree, because that
-rewrites platform folders. Use `--no-flutter-create` to add only the goo files.
+`good create` refuses to run `flutter create` over an existing tree, because that
+rewrites platform folders. Use `--no-flutter-create` to add only the good files.
 
 ### `Duplicate mapping key` from every `flutter` command
 
 The pubspec has two `goo2d:` entries or two `assets:` blocks. This happens if
-`goo create` re-patches a pubspec whose dependency line has been edited by hand
+`good create` re-patches a pubspec whose dependency line has been edited by hand
 — the idempotence check matches the literal line it wrote. Remove the duplicate.
 
 ### `The name 'AssetKey' isn't a type`
@@ -287,7 +287,7 @@ being released when their entities are.
 
 ### `flutter build <target> failed`
 
-goo prints Flutter's own stdout and stderr. Read that first — the failure is
+good prints Flutter's own stdout and stderr. Read that first — the failure is
 almost always Flutter's toolchain rather than the pipeline. `flutter doctor`
 next.
 

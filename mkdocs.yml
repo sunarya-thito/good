@@ -1,12 +1,12 @@
-site_name: goo
+site_name: good
 site_description: >-
   A data-oriented, allocation-averse game engine family for Flutter and Dart:
-  the dimension-agnostic goo kernel and the renderers built on it.
-site_url: https://sunarya-thito.github.io/goo/
-repo_url: https://github.com/sunarya-thito/goo
-repo_name: sunarya-thito/goo
+  the dimension-agnostic good kernel and the renderers built on it.
+site_url: https://sunarya-thito.github.io/good/
+repo_url: https://github.com/sunarya-thito/good
+repo_name: sunarya-thito/good
 edit_uri: edit/master/docs/
-copyright: Built with goo.
+copyright: Built with good.
 
 docs_dir: docs
 site_dir: site
@@ -106,7 +106,7 @@ nav:
       - The asset pipeline: exporting/asset-pipeline.md
       - Building for a platform: exporting/building.md
       - Troubleshooting: exporting/troubleshooting.md
-  - The goo family:
+  - The good family:
       - packages/index.md
       - Dimensions - 2D, 3D: packages/dimensions.md
       - Networking (planned): packages/networking.md

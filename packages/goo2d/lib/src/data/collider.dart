@@ -1,4 +1,4 @@
-import 'package:goo/goo.dart';
+import 'package:good/good.dart';
 import 'package:meta/meta.dart';
 
 /// One collider shape, plus the fields every shape shares (offset, enable,

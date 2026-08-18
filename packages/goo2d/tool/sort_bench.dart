@@ -18,7 +18,7 @@
 // shared `_zIndices`/`_order`/`_merge` triple laid out exactly as the queue
 // lays it out. Copies rather than imports because `goo2d` reaches
 // `package:flutter` and so cannot be AOT-compiled to an exe - the same reason
-// `goo/tool/column_dispatch_bench.dart` models its storage instead of using
+// `good/tool/column_dispatch_bench.dart` models its storage instead of using
 // it. **If either copy drifts from the original, this bench stops meaning
 // anything**, so both are kept as literal transcriptions with their structure
 // intact rather than tidied.

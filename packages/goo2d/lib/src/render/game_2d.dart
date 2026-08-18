@@ -4,7 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
-import 'package:goo/goo.dart';
+import 'package:good/good.dart';
 
 import 'package:goo2d/src/data/world_transform.dart';
 import 'package:goo2d/src/render/draw/draw_2d.dart';
@@ -159,7 +159,7 @@ mixin Renderer2D on Game {
   /// handle is held by its reader.
   ///
   /// Declared here rather than on `CameraView` itself so the kernel never
-  /// learns what a frame is: `goo` declares that a view exists, and whatever
+  /// learns what a frame is: `good` declares that a view exists, and whatever
   /// draws it sizes its own storage. A future `goo3d` allocates something
   /// else entirely against the same views.
   late final List<HandoffHandle> _viewFrames;

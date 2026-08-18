@@ -1,6 +1,6 @@
 # Your first game
 
-Starting from the project [`goo create`](create-a-project.md) scaffolded, this
+Starting from the project [`good create`](create-a-project.md) scaffolded, this
 page adds the four things every game needs: **a system**, **input**,
 **an asset**, and **a camera**. Every snippet here compiles against the current
 engine.
@@ -191,12 +191,12 @@ my_game/
 Convert it to the canonical format:
 
 ```console
-$ goo assets compact
+$ good assets compact
   sprites/player.png -> sprites/player.webp
 1 written, 0 up to date, 0 failed.
 
 These directories now hold assets but are not listed under `flutter: assets:` in pubspec.yaml,
-so Flutter will not bundle them and `goo generate` will not see them:
+so Flutter will not bundle them and `good generate` will not see them:
   - assets/sprites/
 ```
 
@@ -214,12 +214,12 @@ flutter:
 Then generate the bindings:
 
 ```console
-$ goo generate
-Wrote ./lib/goo.generated/textures.dart
+$ good generate
+Wrote ./lib/good.generated/textures.dart
 1 texture(s), 0 audio file(s).
 ```
 
-```dart title="lib/goo.generated/textures.dart"
+```dart title="lib/good.generated/textures.dart"
 enum Textures with LocalEnumAssetKey<Texture> {
   spritesPlayer('assets/sprites/player.webp');
   // ...
@@ -235,7 +235,7 @@ Declare the asset on the prefab and hand it to the sprite:
 ```dart title="lib/game/prefabs/player.dart" hl_lines="4 10 11 12 13 14 20"
 import 'package:goo2d/goo2d.dart';
 
-import '../../goo.generated/textures.dart';
+import '../../good.generated/textures.dart';
 
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {

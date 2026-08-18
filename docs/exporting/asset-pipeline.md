@@ -3,16 +3,16 @@
 Three stages turn the art you edit into the bytes you ship.
 
 ```
-assets_src/                    goo assets compact      assets/
+assets_src/                    good assets compact      assets/
   sprites/player.png     ──────────────────────▶        sprites/player.webp
   sfx/hit.wav              (ffmpeg, one format          sfx/hit.ogg
                             per kind)
                                      │
-                                     │ goo generate    lib/goo.generated/
+                                     │ good generate    lib/good.generated/
                                      ├───────────────▶   textures.dart
                                      │                   audios.dart
                                      │
-                                     │ goo assets pack assets/packed/
+                                     │ good assets pack assets/packed/
                                      └───────────────▶   chunk_main.dat
                                         (compress,        chunk_shared.dat
                                          then encrypt,
@@ -21,13 +21,13 @@ assets_src/                    goo assets compact      assets/
 
 ## Configuration
 
-Everything is configured in the pubspec's `goo:` section — not a second file
+Everything is configured in the pubspec's `good:` section — not a second file
 beside it. A project already has one file that says what it is and what it
 ships, and this puts the asset *source* directory next to the `flutter: assets:`
 list that names the *output*.
 
 ```yaml title="pubspec.yaml"
-goo:
+good:
   assets:
     source: assets_src/       # originals you edit and commit
     output: assets/           # canonical files, generated
@@ -50,8 +50,8 @@ Every value shown is the default, and the whole section is optional.
 | Directory | Committed? | Contents |
 |---|---|---|
 | `assets_src/` | **Yes** | Your originals, in whatever format you work in |
-| `assets/` | Safe to gitignore | Canonical files. Rebuilt by `goo assets compact` |
-| `assets/packed/` | Safe to gitignore | Release chunks. Rebuilt by `goo assets pack` |
+| `assets/` | Safe to gitignore | Canonical files. Rebuilt by `good assets compact` |
+| `assets/packed/` | Safe to gitignore | Release chunks. Rebuilt by `good assets pack` |
 
 Both `assets/` and `assets/packed/` must appear under `flutter: assets:` — that
 list is the only thing Flutter bundles from. A release build fills `packed` and
@@ -63,13 +63,13 @@ and only one of them ever ships anything.
 ## Stage 1 — compaction
 
 ```bash
-goo assets compact
+good assets compact
 ```
 
 One canonical format per kind: **WebP** for images, **Ogg Vorbis** for audio.
 
 ```console
-$ goo assets compact
+$ good assets compact
   sprites/player.png -> sprites/player.webp
 1 written, 0 up to date, 0 failed.
 ```
@@ -86,7 +86,7 @@ flattening would create collisions the source tree deliberately avoided.
 ### Incremental by default
 
 A hash of each source plus its conversion settings is kept in
-`assets/.goo_compact.json`, so an unchanged file is skipped:
+`assets/.good_compact.json`, so an unchanged file is skipped:
 
 ```console
 0 written, 1 up to date, 0 failed.
@@ -117,16 +117,16 @@ regenerable, so nothing there is ever stripped.
 ## Stage 2 — generation
 
 ```bash
-goo generate
+good generate
 ```
 
 Scans what the pubspec declares under `flutter: assets:` and writes four files.
 
 ```console
-$ goo generate
-Wrote ./lib/goo.generated/textures.dart
-Wrote ./lib/goo.generated/audios.dart
-Wrote ./lib/goo.generated/goo.dart
+$ good generate
+Wrote ./lib/good.generated/textures.dart
+Wrote ./lib/good.generated/audios.dart
+Wrote ./lib/good.generated/good.dart
 1 texture(s), 0 audio file(s).
 ```
 
@@ -134,12 +134,12 @@ Wrote ./lib/goo.generated/goo.dart
 |---|---|---|
 | `textures.dart` | every run | One enum value per shipped image |
 | `audios.dart` | every run | One enum value per shipped audio file |
-| `goo.dart` | every run | `ensureGameReady()`, the startup check |
+| `good.dart` | every run | `ensureGameReady()`, the startup check |
 | `asset_key.dart` | **once** | Encryption keys, and the chunk mapping |
 
 !!! danger "`asset_key.dart` is written once, deliberately"
     Its keys decrypt the packs already built with them, so regenerating would
-    orphan every shipped build. `goo generate --rotate-keys` changes them
+    orphan every shipped build. `good generate --rotate-keys` changes them
     deliberately — and every existing pack stops decrypting, so repack
     immediately after.
 
@@ -153,7 +153,7 @@ when it notices:
 
 ```console
 These directories now hold assets but are not listed under `flutter: assets:` in pubspec.yaml,
-so Flutter will not bundle them and `goo generate` will not see them:
+so Flutter will not bundle them and `good generate` will not see them:
   - assets/sprites/
 ```
 
@@ -170,11 +170,11 @@ flutter:
 ## Stage 3 — packing
 
 ```bash
-goo assets pack
+good assets pack
 ```
 
 ```console
-$ goo assets pack
+$ good assets pack
 1 asset(s) in 1 chunk(s), grouped by scene (1 scene(s); 0 asset(s) shared or unattributed).
   mode: release, encryption: aes, compression: normal
 Wrote 1 chunk(s) to ./assets/packed/
@@ -215,7 +215,7 @@ plaintext could be made.
 └────────┴─────────┴───────┴──────────┴─────────┴──────────────────┘
 ```
 
-Magic and version first, so a runtime reading a chunk from a future goo **says
+Magic and version first, so a runtime reading a chunk from a future good **says
 so** rather than decrypting nonsense. Flags carry compressed/encrypted
 separately, because `--encryption=none` is a real combination.
 
@@ -270,32 +270,32 @@ are no longer built.
 ### What packing does not do
 
 It writes the chunks and **leaves the loose assets where they are**, so running
-`flutter build` straight after bundles both. Only `goo build` strips them — and
-only there, because only there is goo the one who compacted them and can say
+`flutter build` straight after bundles both. Only `good build` strips them — and
+only there, because only there is good the one who compacted them and can say
 which files are safe to delete.
 
 ```console
-stripped 1 loose asset(s) now carried in chunks; `goo assets compact` rebuilds them
+stripped 1 loose asset(s) now carried in chunks; `good assets compact` rebuilds them
 ```
 
 Deleting a working directory's assets out from under someone who asked for a
-pack is not `goo assets pack`'s call to make.
+pack is not `good assets pack`'s call to make.
 
 ---
 
 ## Doing it by hand
 
-`goo build` runs all three in order. If you run them yourself, the order is:
+`good build` runs all three in order. If you run them yourself, the order is:
 
 ```bash
-goo assets compact       # 1. canonical files
-goo generate             # 2. enums, from those files
-goo assets pack          # 3. chunks, writing the mapping back
+good assets compact       # 1. canonical files
+good generate             # 2. enums, from those files
+good assets pack          # 3. chunks, writing the mapping back
 flutter build windows    # 4. bundle whatever is on disk
 ```
 
 Out of order produces a build that is **stale rather than broken**, which is
-worse. Prefer `goo build`.
+worse. Prefer `good build`.
 
 ---
 

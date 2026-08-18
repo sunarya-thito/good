@@ -38,7 +38,7 @@ performance with the ticking and rendering bottlenecks specifically addressed.
 You've also flagged that **2D is the current focus, but 3D (`goo3d`) is a
 real future direction** once Flutter's 3D support matures, and you want the
 package/naming split to absorb that without an API break later. That reshapes
-the split below: a dimension-agnostic `goo` kernel that both `goo2d` and a
+the split below: a dimension-agnostic `good` kernel that both `goo2d` and a
 future `goo3d` depend on, plus a naming rule that any inherently-2D class
 carries a `2D` suffix now so `goo3d` can introduce its `3D` counterpart later
 without colliding.
@@ -48,7 +48,7 @@ is buildable and testable before the next depends on it. Decisions already
 made with you: **desktop+mobile native-first** (web stays a conditional
 fallback seam, not a day-one requirement), **Box2D via FFI to native Box2D
 v3** (not a pure-Dart port), a **full CLI build tool** (codegen + asset
-pipeline + packaging), a **shared dimension-agnostic `goo` kernel** package,
+pipeline + packaging), a **shared dimension-agnostic `good` kernel** package,
 and the **naming conventions** below. The one open design area — the
 non-Steam P2P transport — you clarified as "no server to set up, free, plug
 and play"; §Phase 3 proposes a concrete design for that and calls out its one
@@ -87,42 +87,42 @@ off on explicitly.
 Split the current do-everything `packages/goo2d` into a **shared
 dimension-agnostic kernel** plus **2D-specific specialization** packages, so a
 future `goo3d` can plug into the same kernel/net/cli without duplicating them,
-and so e.g. a headless dedicated-server binary can depend on `goo` +
-`goo2d_physics_box2d` + `goo_net` without pulling in Flutter at all:
+and so e.g. a headless dedicated-server binary can depend on `good` +
+`goo2d_physics_box2d` + `good_net` without pulling in Flutter at all:
 
 ```
 packages/
-  goo/                     # shared, dimension-agnostic kernel: Entity/Component/
+  good/                     # shared, dimension-agnostic kernel: Entity/Component/
                            # System/Query/Event, memory pool, scenes, fixed-tick
                            # loop, hierarchy (Child/Parent), generic asset
                            # registry, Game/isolate bootstrap — no Flutter dep
-  goo_net/                  # transport-agnostic NetPeer/NetConnection/Lobby —
+  good_net/                  # transport-agnostic NetPeer/NetConnection/Lobby —
                            # not dimension-specific, a goo3d game needs the
                            # same lobby/P2P plumbing
-  goo_net_p2p/               # serverless UDP backend — no server to host
-  goo_cli/                   # `goo` command: asset pack/encrypt, codegen,
+  good_net_p2p/               # serverless UDP backend — no server to host
+  good_cli/                   # `good` command: asset pack/encrypt, codegen,
                            # build orchestration — dimension-agnostic; goo2d
                            # (and later goo3d) register their own asset types
                            # as plugins into the same pipeline
 
   goo2d/                    # 2D specialization: Transform2D and anything else
-                           # inherently 2D — depends on `goo`
+                           # inherently 2D — depends on `good`
   goo2d_render/              # DrawCanvas2D/Renderable2D/GameRenderer2D, sprite
                            # assets, GameView widget — the only package
                            # depending on Flutter/Skia
   goo2d_ffi_box2d/           # raw ffigen bindings to Box2D v3's C API
   goo2d_physics_box2d/       # RigidBody2D/Collider2D, Box2DPhysicsSystem —
-                           # depends on `goo` + `goo2d` + `goo2d_ffi_box2d`
+                           # depends on `good` + `goo2d` + `goo2d_ffi_box2d`
 
   # future, not built now — the split above exists specifically so this
-  # slots in later without touching goo / goo_net / goo_cli:
+  # slots in later without touching good / good_net / good_cli:
   # goo3d/, goo3d_render/, goo3d_physics_<backend>/
 ```
 
 The existing `packages/goo2d` files map over roughly like this: `struct.dart`,
 `system.dart`, `scene.dart`, `event*.dart`, `pool.dart`, `data.dart`, and the
-hierarchy parts of `data/hierarchy.dart` become `goo`; `data/transform.dart`
-becomes `goo2d`; `draw*.dart`, `asset.dart` (generic parts move to `goo`,
+hierarchy parts of `data/hierarchy.dart` become `good`; `data/transform.dart`
+becomes `goo2d`; `draw*.dart`, `asset.dart` (generic parts move to `good`,
 sprite-specific parts stay), and `widget/game.dart` become `goo2d_render`.
 Mechanical split, done first so every later phase lands in the right package
 from the start instead of getting migrated later.
@@ -195,7 +195,7 @@ particle spawn — thousands of commands landing inside one tick):
    - Because lane 2 and lane 3 are structurally the same primitive (a
      ring/flat buffer in the pool, one producer, one consumer, drained once
      per tick), this plan treats them as **one generic `RingBuffer`
-     abstraction in `goo`**, not two bespoke mechanisms — used in opposite
+     abstraction in `good`**, not two bespoke mechanisms — used in opposite
      directions.
    - `SendPort` is kept, but demoted to what it's actually good at: rare,
      low-frequency, small-payload traffic — the one-time isolate handshake
@@ -243,12 +243,12 @@ already being walked every tick:
 
 ---
 
-## Phase 1 — Finish the `goo` kernel + `goo2d` specialization (hard prerequisite for everything else)
+## Phase 1 — Finish the `good` kernel + `goo2d` specialization (hard prerequisite for everything else)
 
 Physics needs a working fixed-tick loop and `Transform2D` writes; networking
 replication needs working `DataPointer` reads; the CLI's codegen needs a
 finalized struct-layout contract. Nothing else in this plan can start for real
-until these gaps close (all in `goo` unless noted otherwise):
+until these gaps close (all in `good` unless noted otherwise):
 
 - **Generic `RingBuffer` primitive**: a fixed-header/variable-payload,
   single-producer/single-consumer ring buffer living in the shared
@@ -277,7 +277,7 @@ until these gaps close (all in `goo` unless noted otherwise):
   describe-time); compile a `QueryBuilder` tree into `(includeMask,
   excludeMask, optionalMask)`; `Query.run()`/`runQuery()` iterate matching
   pages.
-- **Hierarchy** (`data/hierarchy.dart`, dimension-agnostic → `goo`): implement
+- **Hierarchy** (`data/hierarchy.dart`, dimension-agnostic → `good`): implement
   `nextSibling`/`prevSibling` as real linked-list `DataPointer`s and
   `addChild`/`removeChild` to maintain them alongside
   `Parent.firstChild/lastChild`.
@@ -301,7 +301,7 @@ until these gaps close (all in `goo` unless noted otherwise):
   ping-driven `CustomPainter` side of this bootstrap.
 - **`AssetManager`** (currently a marker interface only): the generic
   register/load/unload API and integer-indexed loaded-asset table live in
-  `goo` (assets like textures/audio aren't inherently 2D or 3D); the
+  `good` (assets like textures/audio aren't inherently 2D or 3D); the
   address-resolution path `DataPointer<T extends GlobalObject>` already
   documented in `data.dart` plugs into this. Sprite-specific `GameAsset`
   subtypes live in `goo2d_render`.
@@ -353,30 +353,30 @@ to get a first ticking-performance baseline.
 
 ---
 
-## Phase 3 — Networking (`goo_net`, `goo_net_p2p`) — **landed, except the internet**
+## Phase 3 — Networking (`good_net`, `good_net_p2p`) — **landed, except the internet**
 
 Dimension-agnostic (a future `goo3d` game needs the same lobby/P2P plumbing),
-so these live alongside `goo`, not under `goo2d`.
+so these live alongside `good`, not under `goo2d`.
 
 **What this phase actually shipped, and how it differs from the plan above.**
 Three decisions were taken during the work and are worth recording, because
 each one replaced something this document originally said:
 
 1. **A network message is a `GameCommand` over a socket, not a new paradigm.**
-   The plan described `goo_net` as byte-level transport plumbing with the ECS
+   The plan described `good_net` as byte-level transport plumbing with the ECS
    layer deferred. What landed instead is a *declared message* API spelled
    exactly like the command API — `NetMessage`/`NetSignal` beside
    `SinkCommand`/`SignalCommand`, a `describeNetwork` pass beside
    `describeCommands`, the same `ParamDescriptor` vocabulary — because a game
    should not learn two ways to describe the same record. The record layer in
-   `goo` (`ParamBatch`/`ParamBuffer`/`ParamLayout`) was promoted out of the
+   `good` (`ParamBatch`/`ParamBuffer`/`ParamLayout`) was promoted out of the
    command layer and is now shared by both, rather than being written twice.
    The byte-level `NetTransport`/`NetConnection`/`NetSession` contract still
    exists underneath, as the thing a backend implements.
 
-2. **The Steam backend was dropped**, not deferred: `goo_net_steam` is
+2. **The Steam backend was dropped**, not deferred: `good_net_steam` is
    deleted. The transport contract is open, so it remains possible as a
-   separate package, and nothing in `goo_net` assumes one. `goo_ffi_steamworks`,
+   separate package, and nothing in `good_net` assumes one. `good_ffi_steamworks`,
    the empty bindings package it would have been built on, went with it.
 
 3. **The command ring buffer stays SPSC.** The plan flagged that a network
@@ -387,7 +387,7 @@ each one replaced something this document originally said:
    registry and a second producer on the ring, to save a socket read costing
    microseconds.
 
-- **`goo_net`** — messages (`NetMessage`, `NetSignal`), their two declared
+- **`good_net`** — messages (`NetMessage`, `NetSignal`), their two declared
   axes (`NetTarget`: who handles it; `NetChannel`: reliable-ordered or
   unreliable-unordered), `MultiplayerState`/`NetworkSystem`, `NetSession` and
   the roster, `NetPeerListener`/`NetSessionListener`, and
@@ -395,16 +395,16 @@ each one replaced something this document originally said:
   run on. `NetTransport.schemaHash` refuses a peer running a different build,
   which is the failure mode index-on-the-wire creates across *machines* and
   cannot create across isolates.
-- **`goo_net_p2p`** — a real UDP protocol: sequenced packets with
+- **`good_net_p2p`** — a real UDP protocol: sequenced packets with
   ack/ackBits, per-message retransmission, in-order reliable delivery,
   per-tick batching into one datagram, fragmentation and reassembly,
   keepalives and timeouts. Join codes **carry the host's address** (ten
   characters, base-31), so there is no broker at all — the plan's
-  "goo-hosted free rendezvous relay" is not needed for the cases that work
+  "good-hosted free rendezvous relay" is not needed for the cases that work
   today and is what the remaining work is about. LAN discovery is host
   beacons plus a listening client, so nothing has to own a well-known port.
 
-**Verification:** one conformance suite (`package:goo_net/testing.dart`) run
+**Verification:** one conformance suite (`package:good_net/testing.dart`) run
 against both backends — in-process, and over real UDP sockets; the reliable
 channel delivering 30 messages in order across a link throwing away 30% of
 everything (`simulatedLoss`, a knob on the shipped class); and two `Game`s in
@@ -426,10 +426,10 @@ loopback UDP.
 
 ---
 
-## Phase 4 — CLI build tool (`goo_cli`)
+## Phase 4 — CLI build tool (`good_cli`)
 
 Dimension-agnostic (asset packing/codegen/build orchestration isn't 2D- or
-3D-specific), so this lives alongside `goo`, not under `goo2d`. `goo2d_render`
+3D-specific), so this lives alongside `good`, not under `goo2d`. `goo2d_render`
 and (later) `goo3d_render` register their own asset types into the same
 pipeline rather than each having their own CLI.
 
@@ -452,8 +452,8 @@ pipeline rather than each having their own CLI.
   target platform and bundles the encrypted asset pak alongside the binary —
   scoped as orchestration/glue over Flutter's existing build system, not a
   reimplementation of it.
-- **Command shape**: `goo codegen`, `goo assets pack`, `goo build <target>`,
-  `goo run` (dev loop against unencrypted loose assets for fast iteration).
+- **Command shape**: `good codegen`, `good assets pack`, `good build <target>`,
+  `good run` (dev loop against unencrypted loose assets for fast iteration).
 
 **Verification:** run the CLI against the Phase 1 example app end-to-end —
 codegen the structs, pack+encrypt its assets, build a real platform binary,

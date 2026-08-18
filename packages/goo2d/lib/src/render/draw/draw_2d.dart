@@ -2,7 +2,7 @@
 ///
 /// Per the project root plan's "Cross-isolate architecture" section: the game
 /// isolate's `GameRenderer2D` is the only producer of draw records, writing a
-/// flat command buffer (through the same `RingBuffer` primitive `goo` uses
+/// flat command buffer (through the same `RingBuffer` primitive `good` uses
 /// for the command queue, obtained via `Game.describeBuffers`) once per fixed
 /// tick; the main isolate's [DrawCanvas2D] only replays it. That is also why
 /// every record's geometry is already finalized - world space, hierarchy
@@ -37,7 +37,7 @@ library;
 import 'dart:typed_data';
 import 'dart:ui';
 
-import 'package:goo/goo.dart';
+import 'package:good/good.dart';
 import 'package:goo2d/src/render/texture.dart';
 
 /// One *kind* of draw record: its ring-buffer record type, the size of one

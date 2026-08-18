@@ -168,10 +168,10 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.3.0+1"
-  goo:
+  good:
     dependency: transitive
     description:
-      path: "../../goo"
+      path: "../../good"
       relative: true
     source: path
     version: "0.0.1"

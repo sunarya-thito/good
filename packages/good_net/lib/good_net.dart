@@ -1,0 +1,62 @@
+/// Networking for the good engine family.
+///
+/// A game declares network messages the way it declares everything else - a
+/// `describe*` pass handing back typed handles it keeps in `late final`
+/// fields - and sends one by calling it:
+///
+/// ```dart
+/// class MyState extends GameState<MyGame> with MultiplayerState<MyGame> {
+///   late final Fire fire;
+///
+///   @override
+///   void describeNetwork(NetDescriptor descriptor) {
+///     descriptor.transport(LoopbackNetTransport());
+///     fire = descriptor.has(Fire(), channel: NetChannel.unreliable);
+///     descriptor.hasHandler(fire, _onFire);
+///   }
+///
+///   void _onFire(({double angle}) params, NetPeerId from) { ... }
+/// }
+///
+/// fire((angle: 1.2));
+/// ```
+///
+/// # This is the command API, over a socket
+///
+/// A network message and a `GameCommand` are the same idea twice: a typed
+/// record, declared once, identified on the wire by its position in that
+/// declaration, handed to a handler registered where it runs. So they are not
+/// two implementations - `NetMessage` and `NetSignal` are spelled exactly
+/// like `SinkCommand` and `SignalCommand`, and the record layer underneath
+/// (`ParamDescriptor`, `ParamPointer`, `ParamBatch`, `ParamBuffer`) is
+/// `good`'s own, reused rather than reimplemented.
+///
+/// What networking adds is the two facts an isolate boundary does not have:
+/// **which machine** handles a message ([NetTarget]) and **how hard** the
+/// transport should try to deliver it ([NetChannel]). Both are declared, not
+/// passed at the send site, so a message's whole contract is readable in one
+/// place.
+///
+/// # Backends
+///
+/// [NetTransport] is the contract a backend implements. This package ships
+/// [LoopbackNetTransport], which is in-process and real - it is what tests
+/// and split-screen run on. `good_net_p2p` adds the one that reaches another
+/// machine with no server to host.
+library;
+
+export 'src/channel.dart';
+export 'src/connection.dart';
+export 'src/listener.dart';
+export 'src/loopback.dart' show LoopbackNetTransport;
+// NetSender is the plumbing between a message and the system that carries it
+// - `NetworkSystem` is its one implementation, and nothing outside this
+// package has a reason to name it.
+export 'src/message.dart' show NetMessage, NetMessageBase, NetSignal, NetTarget;
+export 'src/peer.dart';
+// NetRegistry and NetBinder are what the `MultiplayerState` mixin drives; a
+// game declares against `NetDescriptor` and holds messages.
+export 'src/registry.dart' show NetDescriptor;
+export 'src/session.dart';
+export 'src/system.dart';
+export 'src/transport.dart';

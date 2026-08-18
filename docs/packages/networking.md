@@ -1,6 +1,6 @@
 # Networking
 
-!!! abstract "Layer: kernel-side (`goo_net`) — dimension-agnostic"
+!!! abstract "Layer: kernel-side (`good_net`) — dimension-agnostic"
     A 3D game needs the same session and messaging plumbing a 2D one does, so
     networking sits beside the kernel rather than under a renderer.
 
@@ -223,17 +223,17 @@ A game that wants a loopback backend in tests and a real one in a build passes a
 different instance here — **nothing else in the game changes**, because messages
 are declared against the game rather than against a backend.
 
-### Loopback — in `goo_net` itself
+### Loopback — in `good_net` itself
 
 `LoopbackNetTransport` is in-process and **real**, not a mock. It is what tests
 and split-screen run on, and it is why a multiplayer game can be developed
 without a second machine.
 
-`package:goo_net/testing.dart` ships a conformance suite that every backend is
+`package:good_net/testing.dart` ships a conformance suite that every backend is
 tested against, so "implements `NetTransport`" means the same thing for all of
 them.
 
-### goo_net_p2p — the serverless backend { #p2p }
+### good_net_p2p — the serverless backend { #p2p }
 
 The "nothing to host, no bill" path, for a game that reaches another machine.
 
@@ -305,7 +305,7 @@ transport.simulatedLoss = 1;
 ```
 
 At 30% loss the reliable channel should still deliver everything, in order.
-`goo_net_p2p`'s own tests assert exactly that.
+`good_net_p2p`'s own tests assert exactly that.
 
 ## Topology
 
@@ -316,7 +316,7 @@ where authority belongs.
 
 ## What this layer is, and is not
 
-`goo_net` is **messaging and sessions**. It moves declared records and manages
+`good_net` is **messaging and sessions**. It moves declared records and manages
 who is in the session.
 
 There is **no request/reply shape**, deliberately. A `GameCommand<P, R>` can

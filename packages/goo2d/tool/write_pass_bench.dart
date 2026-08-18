@@ -24,7 +24,7 @@
 //
 // # What is modelled
 //
-// The layout, not the engine - the arrangement `goo/tool/column_dispatch_bench
+// The layout, not the engine - the arrangement `good/tool/column_dispatch_bench
 // .dart` established. Rows of a fixed stride in a `Float64List`, 13 `float64`
 // columns read per row (what the write pass touches per sprite: width, height,
 // rotation, x, y, four pivot fields, two scales, texture, colour), then the

@@ -18,7 +18,7 @@ late Game run;
 // addTickListener and the renderer system's BufferHandle, both of which behave
 // identically on the inline path, and driving GameState.advance() by hand is
 // what makes "a tick happened" a fact the test states rather than a race it
-// waits on. The isolate handoff itself is covered in goo's
+// waits on. The isolate handoff itself is covered in good's
 // game_isolate_test.dart.
 
 class _Sprite extends EntityStruct with Transform2D, WorldTransform2D, Renderable2D {

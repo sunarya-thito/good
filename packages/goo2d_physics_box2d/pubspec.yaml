@@ -2,7 +2,7 @@ name: goo2d_physics_box2d
 description: >
   ECS-facing Box2D physics for goo2d: the RigidBody2D component and
   Box2DPhysicsSystem, built on goo2d_ffi_box2d. Steps the Box2D world inside
-  the game isolate, in lockstep with goo's fixed-tick scheduler.
+  the game isolate, in lockstep with good's fixed-tick scheduler.
 version: 0.0.1
 publish_to: none
 

@@ -1,0 +1,24 @@
+name: good_net_p2p
+description: >
+  Peer-to-peer backend for good_net: a UDP protocol with reliable-ordered and
+  unreliable-unordered channels, LAN discovery, and join codes that carry the
+  host address so there is no broker, relay or server of any kind to run.
+version: 0.0.1
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+  flutter: ">=3.47.0"
+
+dependencies:
+  good_net:
+    path: ../good_net
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  # Tests declare messages, which means naming ParamPointer/ParamDescriptor -
+  # good_net re-exports neither, because a game gets them from goo2d already.
+  good:
+    path: ../good
+  flutter_test:
+    sdk: flutter

@@ -2,7 +2,7 @@ import 'dart:ffi';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:goo/goo.dart';
+import 'package:good/good.dart';
 import 'package:goo2d/src/data/camera.dart';
 import 'package:goo2d/src/data/world_transform.dart';
 import 'package:goo2d/src/data/transform.dart';
@@ -30,7 +30,7 @@ import 'package:meta/meta.dart';
 /// # This is a parameter type, never a storage type
 ///
 /// A `DataPointer<T>` holds a `num` or a `GlobalObject` and nothing else (see
-/// `goo`'s `data.dart`), so no component row anywhere stores a
+/// `good`'s `data.dart`), so no component row anywhere stores a
 /// `RelativeOffset2D`. This type exists to make *declaring* a default
 /// readable (`pivot: RelativeOffset2D.center`) and to make a runtime change
 /// one call instead of four (`sprite.setPivot(entity, ...)`); the storage
@@ -388,7 +388,7 @@ class NineSliceBorder {
 /// That is the whole reason [Renderable2D] is a `MultiComponent` and these
 /// fields do not live on the mixin itself - Dart cannot mix a mixin in twice,
 /// so a second sprite has to come from a second `has()` rather than from a
-/// second `with Renderable2D` (see `MultiComponent`'s own doc in `goo`, and
+/// second `with Renderable2D` (see `MultiComponent`'s own doc in `good`, and
 /// `Collider2D`/`ColliderBody`, which are the same shape for the same
 /// reason).
 ///
@@ -722,7 +722,7 @@ mixin Renderable2D on MultiComponent {
   // Registering the type here is not optional bookkeeping - it is what sets
   // this component's bit in the archetype signature, and therefore the only
   // reason `withAll(Renderable2D)` matches anything at all. Omitting it (as
-  // this mixin originally did, and as `Child`/`Parent` in goo once did) leaves
+  // this mixin originally did, and as `Child`/`Parent` in good once did) leaves
   // a query silently matching *every* archetype instead of failing loudly.
   // `test/render_2d_test.dart` checks the signature bit directly rather than
   // trusting inspection.

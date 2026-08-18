@@ -1,4 +1,4 @@
-/// The 2D goo engine: everything needed to build a 2D game.
+/// The 2D good engine: everything needed to build a 2D game.
 ///
 /// **One dependency, one import.** Adding `goo2d` to a pubspec and importing
 /// this library gives you the whole engine - the kernel (ECS, scenes, the
@@ -9,11 +9,11 @@
 ///
 /// Opt-in packages stay separate on purpose, because they carry weight not
 /// every game wants: `goo2d_physics_box2d` (native Box2D) and
-/// `goo_net`/`goo_net_p2p` (networking). Those you add
+/// `good_net`/`good_net_p2p` (networking). Those you add
 /// explicitly and declare their systems yourself.
 library;
 
-export 'package:goo/goo.dart';
+export 'package:good/good.dart';
 
 export 'src/data/camera.dart';
 export 'src/data/collider.dart';

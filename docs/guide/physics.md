@@ -241,7 +241,7 @@ final hinge = physics.createRevoluteJoint(
 constructor takes the two entities positionally and everything else by name, and
 returns `Joint.none` if either has no body yet.
 
-| goo | Unity's name |
+| good | Unity's name |
 |---|---|
 | `createDistanceJoint` | Distance / Spring |
 | `createRevoluteJoint` | Hinge |

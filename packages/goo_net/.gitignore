@@ -1,6 +1,0 @@
-.dart_tool/
-.packages
-# Anchored: unanchored `build/` also matches any nested source dir named
-# `build/`, which is how every source file of `goo build` once went missing.
-/build/
-/pubspec.lock

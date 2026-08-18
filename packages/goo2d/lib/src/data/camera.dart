@@ -1,4 +1,4 @@
-import 'package:goo/goo.dart';
+import 'package:good/good.dart';
 
 import 'package:goo2d/src/data/world_transform.dart';
 

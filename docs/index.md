@@ -1,15 +1,15 @@
-# goo
+# good
 
 A data-oriented, allocation-averse **game engine family for Flutter and Dart**.
 
-goo runs your simulation on its own isolate at a fixed timestep, stores every
+good runs your simulation on its own isolate at a fixed timestep, stores every
 component in shared native memory, and keeps the per-frame path free of heap
 allocation. The kernel is **dimension-agnostic**; a renderer package supplies
 the dimension.
 
 <div class="grid cards" markdown>
 
-- :material-cube-outline: **`goo`** — the kernel
+- :material-cube-outline: **`good`** — the kernel
 
     ECS, scenes, the fixed-tick loop, the memory pool, input, assets, coroutines
     and the cross-isolate plumbing. Knows nothing about 2D or 3D.
@@ -46,11 +46,11 @@ class Player extends EntityStruct with Transform2D, WorldTransform2D, Renderable
 
 - **[Installation](getting-started/installation.md)**
 
-    Flutter SDK, per-platform toolchains, and the `goo` command-line tool.
+    Flutter SDK, per-platform toolchains, and the `good` command-line tool.
 
 - **[Create a project](getting-started/create-a-project.md)**
 
-    `goo create`, and what a goo project is made of.
+    `good create`, and what a good project is made of.
 
 - **[Your first game](getting-started/your-first-game.md)**
 
@@ -58,7 +58,7 @@ class Player extends EntityStruct with Transform2D, WorldTransform2D, Renderable
 
 - **[Exporting a game](exporting/index.md)**
 
-    Compaction, packing, encryption, and `goo build <platform>`.
+    Compaction, packing, encryption, and `good build <platform>`.
 
 </div>
 
@@ -72,14 +72,14 @@ carries weight not every game wants.
 | Package | What it is |
 |---|---|
 | [`goo2d`](packages/index.md#goo2d) | The 2D engine. Re-exports the kernel — one dependency, one import |
-| [`goo`](packages/index.md#goo) | The dimension-agnostic kernel. You do not normally depend on it directly |
-| [`goo_cli`](reference/cli.md) | The `goo` build tool: scaffolding, codegen, asset pipeline, packaging |
+| [`good`](packages/index.md#good) | The dimension-agnostic kernel. You do not normally depend on it directly |
+| [`good_cli`](reference/cli.md) | The `good` build tool: scaffolding, codegen, asset pipeline, packaging |
 | [`goo2d_physics_box2d`](guide/physics.md) | Box2D v3 physics: `RigidBody2D`, colliders, joints, effectors |
 | [`goo2d_ffi_box2d`](packages/index.md#goo2d_ffi_box2d) | Vendored Box2D plus a primitives-only C shim. Not used directly |
-| [`goo_net`](packages/networking.md) | Declared network messages, sessions, and the transport contract |
-| [`goo_net_p2p`](packages/networking.md#p2p) | Serverless P2P backend — nothing to host |
+| [`good_net`](packages/networking.md) | Declared network messages, sessions, and the transport contract |
+| [`good_net_p2p`](packages/networking.md#p2p) | Serverless P2P backend — nothing to host |
 
-[The goo family →](packages/index.md) explains how they divide up, and
+[The good family →](packages/index.md) explains how they divide up, and
 [Implementation status](reference/roadmap.md) tracks what is landed in the
 repository right now.
 
@@ -99,7 +99,7 @@ The practical consequence for you: **most of what you learn is not
 
 ---
 
-## The shape of a goo game
+## The shape of a good game
 
 Three ideas carry most of the engine, and they are worth meeting before the
 tutorial.
@@ -128,7 +128,7 @@ a `DataPointer` you index by `Entity`, not a value on an instance. See
 
 ## The rules that shaped it
 
-goo is written against an explicit set of hot-path constraints — no heap
+good is written against an explicit set of hot-path constraints — no heap
 allocation per frame, no closures in a tick, no `Canvas.save`/`restore`. They
 are worth reading before writing systems, because the engine's API shapes are
 consequences of them: [Hot-path rules](reference/rules.md).

@@ -1,10 +1,10 @@
 # Architecture
 
-!!! abstract "Layer: kernel (`goo`)"
+!!! abstract "Layer: kernel (`good`)"
     Everything on this page is dimension-agnostic and applies unchanged to any
     renderer built on the kernel.
 
-goo runs your game on **two isolates**. Understanding how they relate is the
+good runs your game on **two isolates**. Understanding how they relate is the
 one genuinely unusual thing about the engine, and almost every API shape
 downstream follows from it.
 

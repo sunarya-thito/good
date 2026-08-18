@@ -1,6 +1,6 @@
 import 'dart:ui' as ui;
 
-import 'package:goo/goo.dart';
+import 'package:good/good.dart';
 
 /// A decoded image, ready to draw.
 ///

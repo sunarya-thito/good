@@ -43,7 +43,7 @@
 // irregular intervals, which is the "random frame during sliding" signature.
 // Every one of them corrects itself on the following tick.
 //
-// The remaining suspects are in `goo`'s paging, not in `goo2d`:
+// The remaining suspects are in `good`'s paging, not in `goo2d`:
 // `MemoryPage.allocate` defers rows created while a query walk is open, and
 // `MemoryPool.beginTick` both calls `flushPending()` and limits the
 // copy-forward to `page.highWaterMark`. A row that is handed out mid-tick and

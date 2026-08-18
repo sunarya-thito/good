@@ -2,7 +2,7 @@
 
 !!! abstract "Layer: the registry is kernel; `Texture`/`AudioClip` are `goo2d`"
 
-An asset in goo is **declared, not loaded**. You name it, the engine resolves it
+An asset in good is **declared, not loaded**. You name it, the engine resolves it
 when the scene that needs it loads, and what you hold is an address — never a
 path string and never a `Future` you have to remember to await.
 
@@ -10,10 +10,10 @@ path string and never a `Future` you have to remember to await.
 
 ```
 assets_src/sprites/player.png     you edit and commit this
-        │  goo assets compact     (ffmpeg → one canonical format per kind)
+        │  good assets compact     (ffmpeg → one canonical format per kind)
         ▼
 assets/sprites/player.webp        generated; what ships
-        │  goo generate           (scans `flutter: assets:`)
+        │  good generate           (scans `flutter: assets:`)
         ▼
 Textures.spritesPlayer            a generated enum value that IS an AssetKey
         │  descriptor.has(...)
@@ -53,9 +53,9 @@ decode.
 
 ## The generated enums
 
-`goo generate` writes one enum value per shipped file:
+`good generate` writes one enum value per shipped file:
 
-```dart title="lib/goo.generated/textures.dart"
+```dart title="lib/good.generated/textures.dart"
 enum Textures with LocalEnumAssetKey<Texture> {
   spritesPlayer('assets/sprites/player.webp'),
   uiButton('assets/ui/button.webp');
@@ -101,7 +101,7 @@ what nothing else still declares.
 
 ## The startup check
 
-`goo generate` also writes a readiness check, and calling it before starting the
+`good generate` also writes a readiness check, and calling it before starting the
 game is the single best-value line in `main.dart`:
 
 ```dart
@@ -164,7 +164,7 @@ class Level1 extends SceneStruct {
 ```
 
 An `AudioClip` carries the file's bytes and the container they are in — Ogg
-Vorbis by default, whatever `goo assets compact` produced. The format is carried
+Vorbis by default, whatever `good assets compact` produced. The format is carried
 rather than re-sniffed, because the loader already knows it and a backend would
 otherwise have to guess from a header.
 
