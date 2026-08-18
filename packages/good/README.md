@@ -1,21 +1,71 @@
 # good
 
-**G**ame **O**verdrive **O**n **D**art. The dimension-agnostic engine kernel
-for the `good` game engine family: the ECS
-(`Entity`/`Component`/`GameSystem`/`Query`/`GameEvent`), the shared native
-memory pool and ring buffers, `GameScene`, the fixed-tick loop, hierarchy
-(`Child`/`Parent`), and the generic asset registry.
+Game Overdrive On Dart. The kernel the engine is built on: the ECS, the
+fixed-tick loop, scenes, native component storage, input, assets and
+coroutines. It knows nothing about 2D or 3D.
 
-This package is dimension-agnostic, not Flutter-agnostic: it depends on
-Flutter, because `GameView` is a widget and `StateChannel` is a
-`ValueListenable`. What it holds no opinion about is dimensionality. 2D
-games depend on [`goo2d`](https://pub.dev/packages/goo2d) for 2D-specific pieces (`Transform2D`,
-etc.); a future `goo3d` would depend on `good` the same way instead of
-duplicating this kernel.
+**Building a 2D game? Install [`goo2d`](https://pub.dev/packages/goo2d)
+instead.** It re-exports everything here, so you get this package anyway and a
+renderer with it. Depend on `good` directly when you are writing a renderer, a
+headless server, or a package that should work in either dimension.
 
-Status: **working.** The kernel is real and tested - ECS, memory pool, ring
-buffers, scheduler, scenes, hierarchy, input, assets, coroutines, timelines
-and `GameView`. Audio playback, array-typed `DataDescriptor` fields and
-dependency-based system ordering are not implemented yet, and the web is
-unsupported because the kernel needs `dart:ffi` and isolates. The
-[implementation status page](https://sunarya-thito.github.io/good/reference/roadmap/) lists what works today.
+```bash
+flutter pub add good
+```
+
+## The one idea
+
+Components are not objects. A field declared on an entity kind is a **column**
+in native memory, and an entity is a **row index** into it:
+
+```dart
+import 'package:good/good.dart';
+
+class Player extends EntityStruct {
+  late final DataPointer<double> speed;
+
+  @override
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    speed = data.hasFloat64(220);   // the default every new row starts at
+  }
+}
+```
+
+```dart
+speed[entity] = 400;   // write one row
+```
+
+That is what keeps the frame loop free of allocation, and it is the thing worth
+understanding before anything else. Systems then query for the entities they
+care about and walk those columns:
+
+```dart
+class PlayerSystem extends GameSystem with FixedTickable {
+  late final Query players;
+
+  @override
+  void describeQuery(QueryDescriptor descriptor) {
+    super.describeQuery(descriptor);
+    players = descriptor.query().withAll(Player).build();
+  }
+
+  @override
+  void onFixedUpdate() { /* ... */ }
+}
+```
+
+## Next
+
+- **[Entities and components](https://sunarya-thito.github.io/good/guide/entities-and-components/)**
+  for the column-and-row model in full.
+- **[Architecture](https://sunarya-thito.github.io/good/guide/architecture/)**
+  for how the Flutter isolate and the game isolate split the work.
+
+It depends on Flutter, because `GameView` is a widget and `StateChannel` is a
+`ValueListenable`. Dimension-agnostic is not the same as Flutter-agnostic.
+
+The ECS, memory pool, scheduler, scenes, hierarchy, input, assets, coroutines
+and timelines work today. Audio playback and array-typed fields are not
+implemented, and the web is unsupported because this needs `dart:ffi` and
+isolates. [What works today](https://sunarya-thito.github.io/good/reference/roadmap/).

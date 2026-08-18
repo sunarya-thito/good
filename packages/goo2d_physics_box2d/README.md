@@ -1,11 +1,73 @@
 # goo2d_physics_box2d
 
-ECS-facing Box2D physics for [`goo2d`](https://pub.dev/packages/goo2d): `RigidBody2D`/`Collider2D`
-mixins and `Box2DPhysicsSystem`, built on
-[`goo2d_ffi_box2d`](https://pub.dev/packages/goo2d_ffi_box2d)'s raw bindings. Steps the Box2D
-world inside the game isolate, in lockstep with `good`'s fixed-tick
-scheduler, and writes results back into `Transform2D`.
+Box2D v3 physics for [`goo2d`](https://pub.dev/packages/goo2d). Bodies and
+colliders are declared on an entity like any other component, and the world is
+stepped inside the game isolate in step with the fixed tick.
 
-Status: **working.** Bodies, colliders, all nine joints, effectors, and
-raycast and overlap queries, with the solver running across worker threads.
-The [implementation status page](https://sunarya-thito.github.io/good/reference/roadmap/) lists what works today.
+```bash
+flutter pub add goo2d_physics_box2d
+```
+
+## A falling crate
+
+```dart
+import 'package:goo2d_physics_box2d/goo2d_physics_box2d.dart';
+
+class Crate extends EntityStruct
+    with Transform2D, WorldTransform2D, Renderable2D, Collider2D, RigidBody2D {
+  late final BoxBody box;
+  late final Sprite sprite;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    box = descriptor.hasBoxCollider(
+      halfWidth: 0.5, halfHeight: 0.5, friction: 0.4,
+    );
+  }
+
+  @override
+  void describeRigidBody(RigidBody2DDescriptor descriptor) {
+    descriptor.has(type: BodyType2D.dynamicBody);
+  }
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    sprite = descriptor.has(width: 1, height: 1, color: 0xFFCC8844);
+  }
+}
+```
+
+Declare the system once, and that is the whole opt-in. Bodies appear as
+entities spawn and go away as they despawn:
+
+```dart
+@override
+void describeSystems(SystemDescriptor descriptor) {
+  super.describeSystems(descriptor);
+  descriptor.has(Box2DPhysicsSystem(gravityY: 10));
+}
+```
+
+Push a body around, or change what kind of body it is:
+
+```dart
+final body = entity.get<RigidBody2D>();
+body.applyImpulse(entity, 5, 0);
+body.setVelocity(entity, 3, 0);
+body.bodyType[entity] = BodyType2D.staticBody;
+```
+
+> **Work in metres.** Box2D is tuned for objects roughly 0.1 m to 10 m. Treating
+one world unit as one pixel gives a 32-pixel crate the mass of a 32-metre
+building, which is usually reported as "the physics feels floaty". Apply the
+pixels-per-metre scale once, at the rendering edge.
+
+## Next
+
+- **[Physics](https://sunarya-thito.github.io/good/guide/physics/)** covers the
+  nine joints, effectors, raycasts and overlap queries.
+
+Bodies, colliders, all nine joints, effectors and queries work today, with the
+solver spread across worker threads.
