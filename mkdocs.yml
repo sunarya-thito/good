@@ -107,6 +107,7 @@ nav:
       - Installation: getting-started/installation.md
       - Create a project: getting-started/create-a-project.md
       - Your first game: getting-started/your-first-game.md
+  - Dimensions - 2D, 3D: packages/dimensions.md
   - Developing a game:
       - guide/index.md
       - Coming from Unity/Godot: guide/mental-model.md
@@ -114,14 +115,19 @@ nav:
       - Entities and components: guide/entities-and-components.md
       - Scenes and prefabs: guide/scenes.md
       - Systems and queries: guide/systems-and-queries.md
-      - Transforms and hierarchy: guide/transforms-and-hierarchy.md
-      - Rendering and cameras: guide/rendering.md
       - Input: guide/input.md
       - Assets: guide/assets.md
-      - Physics: guide/physics.md
       - Talking to Flutter: guide/flutter-bridge.md
       - Coroutines and animation: guide/coroutines-and-animation.md
       - Performance rules: guide/performance.md
+  - Building in 2D:
+      - Transforms and hierarchy: guide/transforms-and-hierarchy.md
+      - Rendering and cameras: guide/rendering.md
+      - Physics: guide/physics.md
+  - Building in 3D:
+      - Transforms and hierarchy: guide/3d/transforms.md
+      - Rendering and cameras: guide/3d/rendering.md
+      - Physics: guide/3d/physics.md
   - Exporting a game:
       - exporting/index.md
       - The asset pipeline: exporting/asset-pipeline.md
@@ -129,8 +135,7 @@ nav:
       - Troubleshooting: exporting/troubleshooting.md
   - The good family:
       - packages/index.md
-      - Dimensions - 2D, 3D: packages/dimensions.md
-      - Networking (planned): packages/networking.md
+      - Networking: packages/networking.md
   - Reference:
       - CLI: reference/cli.md
       - Hot-path rules: reference/rules.md

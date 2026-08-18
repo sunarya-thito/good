@@ -7,11 +7,6 @@ engine.
 
 At the end you have a textured sprite you can drive with `W` `A` `S` `D`.
 
-!!! note "Almost none of this is 2D-specific"
-    Systems, queries, input, assets and scenes are kernel concepts. What is 2D
-    here is exactly three names: `Transform2D`, `Renderable2D`/`Sprite`, and
-    `Game2D`. A `goo3d` game would swap those and keep the rest.
-
 ## 1. Run the scaffold
 
 ```bash
@@ -323,6 +318,10 @@ my_game/lib/game/
 Four declarations and one loop. That shape holds as the game grows: prefabs
 say what things *are*, scenes say what *exists*, systems say what *happens*,
 and the `Game` says what crosses to Flutter.
+
+Three names above are 2D: `Transform2D`, `Renderable2D`/`Sprite` and `Game2D`.
+The rest — systems, queries, input, assets, scenes — came from the kernel, and
+a `goo3d` game writes them unchanged.
 
 ## Where to go next
 

@@ -61,12 +61,6 @@ Avoid `Canvas.save`, `restore`, `rotate`, `translate` and `drawImage`. The
 renderer batches everything into one `drawVertices` call per frame, and each of
 those calls breaks the batch. Nothing in the replay path uses them.
 
-## Avoid the `Zone` API
-
-Zone lookups add indirection to every asynchronous hop, and a zone that captures
-errors will swallow the ones the engine reports through `assert`. Nothing in the
-engine forks a zone, and game code has no reason to either.
-
 ## Declarations hand back a typed handle
 
 Whatever a `describe*` pass produces comes back as a handle you keep in a field.

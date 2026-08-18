@@ -19,11 +19,6 @@ Last verified: **2026-08-18**, against the `asset-api-redesign` branch.
 | `good_net_p2p` | **Working on a LAN** | A real UDP protocol — acks, retransmission, ordering, batching, fragmentation, keepalives — plus address-carrying join codes and LAN discovery. **Does not cross the internet yet**: that needs STUN and a rendezvous |
 | `goo3d` and siblings | **Not started** | The kernel split exists so this lands without touching the shared half. `good create --dimension=d3` is refused until the package resolves |
 
-!!! note "Package READMEs were brought in line"
-    They used to say "placeholder" for code that is now written. They no
-    longer do, but this page still gets updated first: it is the one that
-    gets updated first.
-
 ## Verified end to end
 
 These were actually run:
