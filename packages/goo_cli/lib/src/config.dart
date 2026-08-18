@@ -9,8 +9,8 @@ import 'package:yaml/yaml.dart';
 /// goo:
 ///   assets:
 ///     source: assets_src/    # originals you edit and commit
-///     output: assets/        # canonical files, generated - and what
-///                            # `flutter: assets:` lists
+///     output: assets/        # canonical files, generated
+///     packed: assets/packed/ # release chunks, generated
 ///   texture:
 ///     format: webp
 ///     quality: 90
@@ -18,6 +18,11 @@ import 'package:yaml/yaml.dart';
 ///     format: ogg
 ///     quality: 5
 /// ```
+///
+/// Both `output` and `packed` have to appear in `flutter: assets:` - that list
+/// is the only thing Flutter bundles from. A release build fills `packed` and
+/// then empties `output` of everything it generated, so the two are listed
+/// together and only one of them ever ships anything.
 ///
 /// **In the pubspec, not a `goo.yaml`.** A project already has one file that
 /// says what it is and what it ships; a second one beside it is a second place
@@ -30,6 +35,7 @@ class GooConfig {
   const GooConfig({
     required this.assetSource,
     required this.assetOutput,
+    this.packOutput = 'assets/packed/',
     required this.texture,
     required this.audio,
   });
@@ -49,6 +55,19 @@ class GooConfig {
   /// *this*, which is the whole reason compaction is not a release-only step -
   /// a format bug that only appears in release is the worst kind.
   final String assetOutput;
+
+  /// Where packed chunks are written, under the project root.
+  ///
+  /// Separate from [assetOutput] deliberately: chunks have to be bundled by
+  /// Flutter, so they must live somewhere `flutter: assets:` lists - but they
+  /// are not *assets* in the sense the rest of the pipeline means. Written
+  /// into the asset directory itself they get re-scanned on the next run, and
+  /// a chunk containing a chunk is not a useful thing to build.
+  ///
+  /// A subdirectory of [assetOutput] by default, which is fine and is why the
+  /// scan skips it by name rather than by extension. Flutter's directory
+  /// entries bundle files and not subdirectories, so the two never overlap.
+  final String packOutput;
 
   final TextureConfig texture;
   final AudioConfig audio;
@@ -85,6 +104,7 @@ class GooConfig {
     return GooConfig(
       assetSource: _dir(assets, 'source', defaults.assetSource),
       assetOutput: _dir(assets, 'output', defaults.assetOutput),
+      packOutput: _dir(assets, 'packed', defaults.packOutput),
       texture: TextureConfig(
         format: _enum(
           texture,

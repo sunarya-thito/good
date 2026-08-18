@@ -109,6 +109,39 @@ void main() {
       );
     });
 
+    test('never scans the chunks a previous build packed', () {
+      // The build that found this wrote its chunks into `assets/`, and the
+      // next run reported each one as an unrecognised extension - one step
+      // away from packing them into chunks of their own, forever.
+      final dir = _project('''
+name: demo
+flutter:
+  assets:
+    - assets/
+    - assets/packed/
+''', [
+        'assets/a.png',
+        'assets/packed/chunk_menuscene.dat',
+      ]);
+      final scan = scanAssets(dir);
+      expect(scan.textures.map((t) => t.path), ['assets/a.png']);
+      expect(
+        scan.unsupported,
+        isEmpty,
+        reason: 'a chunk is not an asset goo failed to understand',
+      );
+    });
+
+    test('ignores the sidecars the pipeline drops beside the assets', () {
+      final dir = _project(_pubspecWithAssets, [
+        'assets/a.png',
+        'assets/.goo_compact.json',
+      ]);
+      final scan = scanAssets(dir);
+      expect(scan.textures.map((t) => t.path), ['assets/a.png']);
+      expect(scan.unsupported, isEmpty);
+    });
+
     test('honours an individually declared file', () {
       final dir = _project(
         '''

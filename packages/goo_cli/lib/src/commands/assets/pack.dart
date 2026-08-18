@@ -49,9 +49,15 @@ class PackCommand extends Command with Verbose {
     );
     outputDir = descriptor.describeArg<Directory>(
       name: 'output-dir',
-      description: 'Where the chunks are written.',
+      description:
+          'Where the chunks are written. Defaults to the `goo: assets: '
+          'packed:` directory, which is what Flutter bundles.',
       parser: parseOutputDirectory,
-      defaultValue: Directory('./build/goo/assets'),
+      // Empty means "wherever the config says", resolved in `execute` once the
+      // pubspec has been read. A literal default here would have to guess at
+      // the project layout before knowing it, and a chunk written somewhere
+      // Flutter does not bundle is a build that silently ships no assets.
+      defaultValue: Directory(''),
     );
     dryRun = descriptor.describeFlag(
       name: 'dry-run',
@@ -81,6 +87,9 @@ class PackCommand extends Command with Verbose {
   Future<void> execute() async {
     final project = projectDir.value;
     final config = GooConfig.read(project);
+    final chunkDir = outputDir.value.path.isEmpty
+        ? Directory('${project.path}/${config.packOutput}')
+        : outputDir.value;
     final scan = scanAssets(project);
     final paths = <String>[
       for (final asset in scan.textures) asset.path,
@@ -135,6 +144,13 @@ class PackCommand extends Command with Verbose {
       return;
     }
 
+    // Created even in development mode, where nothing is written into it.
+    // `flutter: assets:` has to list this directory for the chunks to ship,
+    // and Flutter refuses to build over a listed directory that does not
+    // exist - so a project that has declared it but never packed would fail
+    // every `flutter run` until its first release build.
+    chunkDir.createSync(recursive: true);
+
     final keyFile = File('${project.path}/lib/goo.generated/asset_key.dart');
     List<int> key = const <int>[];
     if (mode.value == AssetMode.release &&
@@ -150,7 +166,7 @@ class PackCommand extends Command with Verbose {
     final result = await impl.packAssets(
       plan: plan,
       assetDir: Directory('${project.path}/${config.assetOutput}'),
-      outputDir: outputDir.value,
+      outputDir: chunkDir,
       mode: mode.value,
       encryption: encryption.value,
       compression: compression.value,
@@ -179,7 +195,7 @@ class PackCommand extends Command with Verbose {
     info
       ..printf('Wrote %s chunk(s) to %s\n', [
         plan.chunks.length,
-        outputDir.value.path,
+        chunkDir.path,
       ])
       ..printf('  %s bytes of assets -> %s bytes packed (%s per cent)\n', [
         result.sourceBytes,

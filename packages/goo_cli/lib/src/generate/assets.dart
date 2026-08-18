@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:goo_cli/src/config.dart';
 import 'package:meta/meta.dart';
 import 'package:yaml/yaml.dart';
 
@@ -122,17 +123,30 @@ AssetScan scanAssets(Directory projectDir) {
     }
   }
 
+  // The packed directory ships, but is not made of assets - it is made *from*
+  // them. Left in, every chunk would be scanned as an asset on the next run,
+  // reported as an unrecognised extension, and then packed into a chunk of its
+  // own, which is a build that grows every time it is run.
+  final config = GooConfig.read(projectDir);
+  final packed = config.packOutput;
+
   final files = <String>[];
   for (final entry in entries) {
+    if (entry == packed) continue;
     if (entry.endsWith('/')) {
       final dir = Directory('${projectDir.path}/$entry');
       if (!dir.existsSync()) continue;
       for (final child in dir.listSync()) {
-        if (child is File) {
-          files.add('$entry${child.uri.pathSegments.last}');
-        }
+        if (child is! File) continue;
+        final name = child.uri.pathSegments.last;
+        // Sidecars the pipeline writes beside the assets - the compaction
+        // journal is the one that exists today. Named by convention rather
+        // than listed, since anything goo drops next to an asset is its own
+        // bookkeeping and never something to key.
+        if (name.startsWith('.')) continue;
+        files.add('$entry$name');
       }
-    } else {
+    } else if (!entry.startsWith(packed)) {
       files.add(entry);
     }
   }

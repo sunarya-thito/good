@@ -28,6 +28,10 @@ Map<String, String> scaffoldFiles({
     'lib/game/scenes/main_scene.dart': _scene(package),
     'lib/game/prefabs/player.dart': _player(package),
     'assets/.gitkeep': _gitkeep(command),
+    // Present from the start so the entry below resolves before anything has
+    // been packed: Flutter refuses to build over an asset directory that does
+    // not exist, and the first `goo build` is the worst moment to discover it.
+    'assets/packed/.gitkeep': _packedGitkeep(),
   };
 }
 
@@ -44,6 +48,17 @@ dependencies:
 flutter:
   assets:
     - assets/
+    - assets/packed/
+''';
+
+/// Why the packed directory exists in a fresh project with nothing in it.
+String _packedGitkeep() =>
+    '''
+# `goo build` writes its chunks here, and strips the loose copies out of
+# ../ once they are inside one. Both directories are listed under
+# `flutter: assets:`, which is what makes the chunks ship.
+#
+# Generated. Safe to delete; `goo build` writes it again.
 ''';
 
 /// The game file's name.
