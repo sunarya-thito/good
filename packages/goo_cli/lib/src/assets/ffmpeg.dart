@@ -64,7 +64,13 @@ class FfmpegUnavailable implements Exception {
 /// downloader are all parameters. Resolution *order* is the interesting logic
 /// and it is testable without a network, without ffmpeg installed, and without
 /// touching the real cache - which is the only way a test of "prefers PATH
-/// over download" means anything.
+/// over download" means anything. `test/ffmpeg_test.dart` covers the order.
+///
+/// The real fetch is deliberately *not* in the suite: it pulls a hundred
+/// megabytes over the network, and a suite that does that on every run is one
+/// people stop running. `test/_ffmpeg_download_probe.dart` exercises it by
+/// hand, which is what to reach for when [FfmpegDownload]'s archive layout
+/// might have shifted under it.
 class FfmpegResolver {
   FfmpegResolver({
     Map<String, String>? environment,
