@@ -24,7 +24,6 @@ import 'package:goo_cli/src/verbosable.dart';
 /// Not a command itself: it declares no subcommand name and is never selected.
 abstract class BuildSubCommand extends Command with Verbose {
   late final Arg<Directory> projectDir;
-  late final Arg<Directory> outputDir;
   late final Arg<bool> dryRun;
   late final Arg<bool> noDownload;
   late final Arg<AssetMode> assetMode;
@@ -42,12 +41,6 @@ abstract class BuildSubCommand extends Command with Verbose {
       description: 'The project to build.',
       parser: parseDirectory,
       defaultValue: Directory('.'),
-    );
-    outputDir = descriptor.describeArg<Directory>(
-      name: 'output-dir',
-      description: 'Where the packaged build is written.',
-      parser: parseOutputDirectory,
-      defaultValue: Directory('./build/goo'),
     );
     dryRun = descriptor.describeFlag(
       name: 'dry-run',
@@ -91,7 +84,6 @@ abstract class BuildSubCommand extends Command with Verbose {
     info
       ..printf('goo build %s\n', [flutterTarget])
       ..printf('  project:     %s\n', [project.path])
-      ..printf('  output:      %s\n', [outputDir.value.path])
       ..printf('  assets:      %s\n', [assetMode.value.name])
       ..printf('  encryption:  %s\n', [assetEncryption.value.name])
       ..printf('  compression: %s\n', [assetCompression.value.name]);
