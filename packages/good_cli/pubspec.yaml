@@ -3,7 +3,7 @@ description: >-
   The build tool for the good game engine: project scaffolding, asset
   compaction and encrypted packing, codegen for asset bindings, and per-
   platform build orchestration.
-version: 0.1.0
+version: 0.1.1
 repository: https://github.com/sunarya-thito/good
 homepage: https://sunarya-thito.github.io/good/
 documentation: https://sunarya-thito.github.io/good/

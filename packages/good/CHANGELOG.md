@@ -1,3 +1,10 @@
+## 0.1.1
+
+Documentation only. No code changes.
+
+The README now opens with the column-and-row model and a code example, and
+says plainly that a 2D game should depend on `goo2d` instead.
+
 ## 0.1.0
 
 First published release. The dimension-agnostic kernel is real and tested:

@@ -1,3 +1,9 @@
+## 0.1.1
+
+Documentation only. No code changes.
+
+README links now resolve on pub.dev.
+
 ## 0.1.0
 
 First published release. Raw FFI bindings to Box2D:

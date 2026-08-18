@@ -1,3 +1,12 @@
+## 0.1.1
+
+Documentation only. No code changes.
+
+The README now shows a declared collider and effector. The library docs
+described the superseded effector API, where you wrote your own system and a
+`compareTo` to order it before the solver; declaring `Effector2D` is the
+current shape and the physics system handles the ordering.
+
 ## 0.1.0
 
 First published release. The ECS-facing 2D physics layer:

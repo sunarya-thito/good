@@ -1,3 +1,10 @@
+## 0.1.1
+
+Documentation only. No code changes.
+
+The README now shows the actual commands, and no longer calls the package a
+placeholder or advertises `good codegen` and `good run`, which do not exist.
+
 ## 0.1.0
 
 First published release. The `good` command is implemented and verified end to

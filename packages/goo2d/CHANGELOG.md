@@ -1,3 +1,9 @@
+## 0.1.1
+
+Documentation only. No code changes.
+
+The README now opens with a runnable example instead of a description.
+
 ## 0.1.0
 
 A ground-up rewrite sharing nothing with 0.0.2. Pin `^0.1.0`.

@@ -3,7 +3,7 @@ description: >-
   The 2D renderer for the good game engine: transforms, camera, sprites,
   nine-slice borders, colliders and mouse picking, on top of the good
   kernel, which it re-exports.
-version: 0.1.0
+version: 0.1.1
 repository: https://github.com/sunarya-thito/good
 homepage: https://sunarya-thito.github.io/good/
 documentation: https://sunarya-thito.github.io/good/
