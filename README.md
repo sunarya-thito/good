@@ -46,6 +46,5 @@ pip install -r docs/requirements.txt
 mkdocs serve
 ```
 
-`packages/` is the engine. `game/` is a real game built against it, which is
-how the awkward parts get found. `docs/` is the site, published by
+`packages/` is the engine. `docs/` is the site, published by
 `.github/workflows/docs.yml` on every push to the default branch.
