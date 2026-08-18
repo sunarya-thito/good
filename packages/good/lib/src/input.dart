@@ -448,14 +448,19 @@ final class InputRegistry implements InputDescriptor {
   }
 
   void release({required bool owned}) {
-    if (owned) _buffer?.dispose();
-    _buffer = null;
+    // Detach BEFORE the storage goes. `detach` releases every occupied slot,
+    // and releasing a slot publishes a button change, which writes through
+    // the buffer - so disposing first lands that write on freed memory and
+    // reads a garbage slot index back out of it.
+    //
     // Dropped without awaiting the cancel: `release` is the teardown path
     // and the subscription's own cleanup does not need to gate a `stop()`.
     // Detaching at all matters because the stream outlives this registry.
     _gamepads?.detach();
     _gamepads = null;
     _device = null;
+    if (owned) _buffer?.dispose();
+    _buffer = null;
     _state.attach(null);
   }
 
