@@ -98,6 +98,10 @@ class CreateCommand extends Command with Verbose {
       for (final path in files.keys) {
         info.printf('Would write %s/%s\n', [root.path, path]);
       }
+      info.printf('Would add to %s/pubspec.yaml:\n%s', [
+        root.path,
+        pubspecPatch(dimension.value.package),
+      ]);
       return;
     }
 
@@ -149,6 +153,8 @@ class CreateCommand extends Command with Verbose {
       info.printf('Wrote %s\n', [entry.key]);
     }
 
+    _patchPubspec(root, dimension.value.package);
+
     // Generate straight away rather than telling them to. A fresh project's
     // lib/goo.generated/ is otherwise missing, so `main.dart` does not compile
     // until a second command has been run - which makes "it does not build" a
@@ -172,5 +178,31 @@ class CreateCommand extends Command with Verbose {
       ..printf('  cd %s\n', [projectName])
       ..println('  flutter pub get')
       ..println('  flutter run');
+  }
+
+  /// Adds the goo dependency and the asset entries to the project's pubspec.
+  ///
+  /// Applied rather than only printed, because the alternative is what this
+  /// command used to do: scaffold a `main.dart` importing a package the
+  /// pubspec does not depend on, then print "flutter run" underneath it. A new
+  /// project's first experience should not be a compile error.
+  ///
+  /// A pubspec whose shape the patcher does not recognise - anything but the
+  /// one `flutter create` just wrote, which is the `--no-flutter-create` case -
+  /// is left alone and the lines are printed instead.
+  void _patchPubspec(Directory root, String package) {
+    final pubspec = File('${root.path}/pubspec.yaml');
+    final patched = pubspec.existsSync()
+        ? patchedPubspecLines(pubspec.readAsLinesSync(), package)
+        : null;
+    if (patched == null) {
+      info
+        ..println('')
+        ..printf('Add this to %s by hand:\n', [pubspec.path])
+        ..println(pubspecPatch(package));
+      return;
+    }
+    pubspec.writeAsStringSync('${patched.join('\n')}\n');
+    info.println('Patched pubspec.yaml');
   }
 }

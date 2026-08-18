@@ -113,16 +113,16 @@ void main() {
       // The build that found this wrote its chunks into `assets/`, and the
       // next run reported each one as an unrecognised extension - one step
       // away from packing them into chunks of their own, forever.
-      final dir = _project('''
+      final dir = _project(
+        '''
 name: demo
 flutter:
   assets:
     - assets/
     - assets/packed/
-''', [
-        'assets/a.png',
-        'assets/packed/chunk_menuscene.dat',
-      ]);
+''',
+        ['assets/a.png', 'assets/packed/chunk_menuscene.dat'],
+      );
       final scan = scanAssets(dir);
       expect(scan.textures.map((t) => t.path), ['assets/a.png']);
       expect(
@@ -240,7 +240,11 @@ flutter:
       final dir = _project(_pubspecWithAssets, [
         'assets/plane_player_blue.png',
       ]);
-      final source = emitTextures(scanAssets(dir), command: 'goo generate');
+      final source = emitTextures(
+        scanAssets(dir),
+        command: 'goo generate',
+        package: 'goo2d',
+      );
       expect(
         source,
         contains("planePlayerBlue('assets/plane_player_blue.png')"),
@@ -254,7 +258,11 @@ flutter:
 
     test('the path keeps its extension, so a loose build can load it', () {
       final dir = _project(_pubspecWithAssets, ['assets/tile.png']);
-      final source = emitTextures(scanAssets(dir), command: 'goo generate');
+      final source = emitTextures(
+        scanAssets(dir),
+        command: 'goo generate',
+        package: 'goo2d',
+      );
       expect(
         source,
         contains("'assets/tile.png'"),
@@ -265,22 +273,59 @@ flutter:
       expect(source, isNot(contains("('tile')")));
     });
 
-    test('an empty project still emits a compilable enum', () {
+    test('an empty project emits something that actually compiles', () {
+      // The version of this test that only asserted `contains('enum
+      // Textures')` passed while every new project failed to build: Dart has
+      // no empty enum, so `enum Textures { ; }` is a compile error. The check
+      // has to be about the shape, not the name.
       final dir = _project('name: demo\n', <String>[]);
-      final source = emitTextures(scanAssets(dir), command: 'goo generate');
+      final source = emitTextures(
+        scanAssets(dir),
+        command: 'goo generate',
+        package: 'goo2d',
+      );
+      expect(
+        source.split('\n').where((line) => line.startsWith('enum ')),
+        isEmpty,
+        reason:
+            'an enum with no constants does not compile - and the doc comment '
+            'above the class legitimately mentions the enum it becomes, so '
+            'this has to look at declarations rather than at the text',
+      );
+      expect(source, contains('abstract final class Textures'));
       expect(
         source,
-        contains('enum Textures'),
-        reason: 'code importing it has to keep compiling',
+        contains('values'),
+        reason:
+            'the readiness check walks Textures.values, so it has to exist '
+            'before the first asset does',
       );
-      expect(source, contains(';'));
+    });
+
+    test('the generated import names the package the project depends on', () {
+      // `package:goo` in a project that only depends on `goo2d` is a warning
+      // on every new project, and an error under a stricter analysis setup.
+      final dir = _project('name: demo\n', <String>[]);
+      final scan = scanAssets(dir);
+      expect(
+        emitTextures(scan, command: 'goo generate', package: 'goo2d'),
+        contains("import 'package:goo2d/goo2d.dart';"),
+      );
+      expect(
+        emitReadiness(command: 'goo generate', package: 'goo2d'),
+        contains("import 'package:goo2d/goo2d.dart';"),
+      );
     });
 
     test('every generated file says how to regenerate it', () {
       final dir = _project('name: demo\n', <String>[]);
       for (final source in [
-        emitTextures(scanAssets(dir), command: 'goo generate'),
-        emitReadiness(command: 'goo generate'),
+        emitTextures(
+          scanAssets(dir),
+          command: 'goo generate',
+          package: 'goo2d',
+        ),
+        emitReadiness(command: 'goo generate', package: 'goo2d'),
         emitAssetKeys(command: 'goo generate', random: Random(1)),
       ]) {
         expect(source, contains('GENERATED - do not edit'));
@@ -390,6 +435,71 @@ flutter:
       );
       expect(pubspecPatch('goo2d'), contains('goo2d:'));
       expect(pubspecPatch('goo2d'), contains('- assets/'));
+    });
+  });
+
+  group('patchedPubspecLines', () {
+    // What `flutter create` writes, trimmed to the two lines this anchors on
+    // plus enough around them to tell placement from luck.
+    const List<String> flutterCreated = <String>[
+      'name: my_game',
+      '',
+      'dependencies:',
+      '  flutter:',
+      '    sdk: flutter',
+      '  cupertino_icons: ^1.0.8',
+      '',
+      'flutter:',
+      '  uses-material-design: true',
+      '',
+      '  # To add assets to your application, add an assets section',
+    ];
+
+    test('adds the dependency and both asset entries', () {
+      final patched = patchedPubspecLines(flutterCreated, 'goo2d')!;
+      expect(patched[3], '  goo2d: ^0.0.1');
+      expect(
+        patched,
+        containsAllInOrder(<String>['    - assets/', '    - assets/packed/']),
+      );
+      expect(
+        patched,
+        contains(
+          '  # To add assets to your application, add an assets section',
+        ),
+        reason:
+            'a textual patch keeps the comments flutter create wrote; a YAML '
+            'round-trip would have dropped them',
+      );
+    });
+
+    test('the assets list lands inside the flutter section', () {
+      final patched = patchedPubspecLines(flutterCreated, 'goo2d')!;
+      expect(
+        patched.indexOf('  assets:'),
+        greaterThan(patched.indexOf('flutter:')),
+        reason:
+            'at the top level it would be silently ignored, and a build that '
+            'bundles nothing is the hardest kind of wrong to see',
+      );
+    });
+
+    test('running it twice does not add the dependency twice', () {
+      final once = patchedPubspecLines(flutterCreated, 'goo2d')!;
+      final twice = patchedPubspecLines(once, 'goo2d')!;
+      expect(twice, once);
+    });
+
+    test('a pubspec it does not recognise is left alone', () {
+      // The caller prints the patch instead. A wrong edit to someone's pubspec
+      // is worse than an instruction to make the right one by hand.
+      expect(
+        patchedPubspecLines(<String>[
+          'name: my_game',
+          'dependencies:',
+        ], 'goo2d'),
+        isNull,
+      );
     });
   });
 }

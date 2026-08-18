@@ -23,6 +23,15 @@ import 'package:goo_cli/src/verbosable.dart';
 /// bytes are indistinguishable from random and do not compress at all, so the
 /// other order costs size and buys nothing.
 ///
+/// # What this does not do
+///
+/// It writes the chunks and leaves the loose assets where they are, so running
+/// `flutter build` straight after this bundles both. Only `goo build` for a
+/// platform strips them, and only there because only there is goo the one
+/// who compacted them and can say which files it is safe to delete. Deleting a
+/// working directory's assets out from under someone who asked for a pack is
+/// not this command's call to make.
+///
 /// # Why per chunk and not per asset
 ///
 /// A per-asset scheme needs an index outside the ciphertext saying where each
@@ -172,7 +181,6 @@ class PackCommand extends Command with Verbose {
       compression: compression.value,
       key: key,
       assetRoot: config.assetOutput,
-
       chunkRoot: config.packOutput,
       out: info,
       verbose: debug,
@@ -195,10 +203,7 @@ class PackCommand extends Command with Verbose {
       return;
     }
     info
-      ..printf('Wrote %s chunk(s) to %s\n', [
-        plan.chunks.length,
-        chunkDir.path,
-      ])
+      ..printf('Wrote %s chunk(s) to %s\n', [plan.chunks.length, chunkDir.path])
       ..printf('  %s bytes of assets -> %s bytes packed (%s per cent)\n', [
         result.sourceBytes,
         result.chunkBytes,

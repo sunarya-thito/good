@@ -41,7 +41,10 @@ CompactPlan _plan(List<String> outputs) => CompactPlan(
 void main() {
   test('removes the loose copies of what was compacted', () {
     final dir = _assets(['a.webp', 'b.webp']);
-    expect(stripLoose(assetDir: dir, compacted: _plan(['a.webp', 'b.webp'])), 2);
+    expect(
+      stripLoose(assetDir: dir, compacted: _plan(['a.webp', 'b.webp'])),
+      2,
+    );
     expect(dir.listSync(), isEmpty);
   });
 
@@ -73,7 +76,10 @@ void main() {
   test('an output already gone is not an error', () {
     // Re-running a build after one has already stripped.
     final dir = _assets(['a.webp']);
-    expect(stripLoose(assetDir: dir, compacted: _plan(['a.webp', 'b.webp'])), 1);
+    expect(
+      stripLoose(assetDir: dir, compacted: _plan(['a.webp', 'b.webp'])),
+      1,
+    );
   });
 
   test('the packed directory survives, since it is not an output', () {

@@ -8,7 +8,7 @@
 ///
 /// The pubspec is **not** here. `flutter create` writes one, and rewriting it
 /// wholesale would discard whatever the installed Flutter version put in it;
-/// the goo dependency is added by patching instead - see [pubspecPatch].
+/// the goo dependency is added by patching instead - see [patchedPubspecLines].
 Map<String, String> scaffoldFiles({
   required String projectName,
   required String package,
@@ -35,11 +35,13 @@ Map<String, String> scaffoldFiles({
   };
 }
 
-/// The lines to add to a `flutter create` pubspec.
+/// The lines a goo project needs in its pubspec, as something to show someone.
 ///
-/// Returned rather than applied, for the same reason the files are: what a
-/// goo project depends on is worth reading in one place, and a patch applied
-/// by hand to someone's existing pubspec is not something to do blind.
+/// [patchedPubspecLines] applies this to a pubspec goo just had `flutter create`
+/// write. This form is what gets printed when that is not possible - an
+/// existing project under `--no-flutter-create`, or a pubspec whose shape the
+/// patcher does not recognise. Editing someone's pubspec blind is not
+/// something to do on their behalf.
 String pubspecPatch(String package) =>
     '''
 dependencies:
@@ -51,9 +53,46 @@ flutter:
     - assets/packed/
 ''';
 
+/// [lines] with the goo dependency and the asset entries added, or null if the
+/// pubspec is not a shape this can edit safely.
+///
+/// Null rather than a best guess: the caller prints [pubspecPatch] instead, and
+/// a wrong edit to someone's pubspec is worse than an instruction to make the
+/// right one by hand.
+///
+/// Textual rather than a YAML round-trip, which would re-emit the file and
+/// strip every comment `flutter create` wrote - and those comments are most of
+/// what a new project has to read. Both anchors are lines `flutter create`
+/// always writes. The dependency goes directly under `dependencies:`: order
+/// within the map means nothing to pub, and the top is the one position that
+/// does not depend on what else is in the list.
+List<String>? patchedPubspecLines(List<String> lines, String package) {
+  final deps = lines.indexWhere((line) => line.trimRight() == 'dependencies:');
+  final material = lines.indexWhere(
+    (line) => line.trimRight() == '  uses-material-design: true',
+  );
+  if (deps < 0 || material < 0) return null;
+  // Already patched. `goo create --no-flutter-create` over a project that has
+  // been through this before must not add the dependency twice.
+  if (lines.any((line) => line.trimRight() == '  $package: ^0.0.1')) {
+    return lines;
+  }
+
+  // Bottom-up, so the first insertion does not move the second's index.
+  return List<String>.of(lines)
+    ..insertAll(material + 1, <String>[
+      '',
+      '  # Both directories ship. `goo build` fills assets/packed/ and empties',
+      '  # assets/ of what it packed, so each asset is bundled exactly once.',
+      '  assets:',
+      '    - assets/',
+      '    - assets/packed/',
+    ])
+    ..insert(deps + 1, '  $package: ^0.0.1');
+}
+
 /// Why the packed directory exists in a fresh project with nothing in it.
-String _packedGitkeep() =>
-    '''
+String _packedGitkeep() => '''
 # `goo build` writes its chunks here, and strips the loose copies out of
 # ../ once they are inside one. Both directories are listed under
 # `flutter: assets:`, which is what makes the chunks ship.

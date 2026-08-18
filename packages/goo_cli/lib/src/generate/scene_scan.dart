@@ -186,8 +186,8 @@ class _DeclarerVisitor extends RecursiveAstVisitor<void> {
   void visitMixinDeclaration(MixinDeclaration node) {
     final name = node.name.lexeme;
     final constraints = <String>[
-      for (final type in node.onClause?.superclassConstraints ??
-          const <NamedType>[])
+      for (final type
+          in node.onClause?.superclassConstraints ?? const <NamedType>[])
         type.name2.lexeme,
     ];
     // `mixin FieldScene on SceneStruct` *is* a scene's asset declaration, and
@@ -223,7 +223,8 @@ class _HasVisitor extends RecursiveAstVisitor<void> {
 
   @override
   void visitMethodInvocation(MethodInvocation node) {
-    if (node.methodName.name == 'has' && node.argumentList.arguments.isNotEmpty) {
+    if (node.methodName.name == 'has' &&
+        node.argumentList.arguments.isNotEmpty) {
       final argument = node.argumentList.arguments.first;
       if (_method == 'describeScene') {
         // `descriptor.has(Player())` - the prefab's own describeAssets is

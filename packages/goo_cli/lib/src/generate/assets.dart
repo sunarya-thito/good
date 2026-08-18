@@ -287,6 +287,31 @@ String identifierFor(String path) {
   return identifier;
 }
 
+/// Which goo package the project depends on, and therefore what the generated
+/// files import.
+///
+/// `goo2d` re-exports the `goo` kernel, so a 2D project must import `goo2d`
+/// and nothing else: importing `package:goo` directly in generated code names
+/// a package the pubspec does not depend on, which pub warns about and a
+/// stricter analysis setup rejects outright.
+///
+/// Falls back to `goo` when neither is declared. A project with no engine
+/// dependency at all has bigger problems than the import line, and guessing
+/// the kernel is the answer that is right for both of them.
+String enginePackageOf(Directory projectDir) {
+  final file = File('${projectDir.path}/pubspec.yaml');
+  if (!file.existsSync()) return 'goo';
+  final doc = loadYaml(file.readAsStringSync());
+  final deps = doc is YamlMap ? doc['dependencies'] : null;
+  if (deps is! YamlMap) return 'goo';
+  // Most specific first: a project can depend on both, and `goo2d` is then the
+  // one whose export surface covers everything the generated code names.
+  for (final candidate in const <String>['goo2d', 'goo']) {
+    if (deps.containsKey(candidate)) return candidate;
+  }
+  return 'goo';
+}
+
 /// The `flutter: assets:` entries a project declares, verbatim.
 ///
 /// Exposed on its own because two very different things need it: the scan

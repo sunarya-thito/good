@@ -41,14 +41,17 @@ SceneUsage _scan(Directory dir) => scanScenes(dir, scanAssets(dir));
 
 void main() {
   test('a scene gets the assets it declares itself', () {
-    final dir = _project('''
+    final dir = _project(
+      '''
 class MenuScene extends SceneStruct {
   @override
   void describeAssets(AssetDescriptor descriptor) {
     logo = descriptor.has(Textures.logo);
   }
 }
-''', assets: <String>['logo.webp', 'other.webp']);
+''',
+      assets: <String>['logo.webp', 'other.webp'],
+    );
     final usage = _scan(dir);
     expect(usage.byScene, {
       'MenuScene': {'assets/logo.webp'},
@@ -58,7 +61,8 @@ class MenuScene extends SceneStruct {
   test('a scene inherits the assets of the prefabs it registers', () {
     // The reason this needs to follow references at all: a scene's asset set
     // is not written in one place.
-    final dir = _project('''
+    final dir = _project(
+      '''
 class FieldScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
@@ -72,7 +76,9 @@ class Bullet extends EntityStruct {
     hit = descriptor.has(Textures.hit);
   }
 }
-''', assets: <String>['hit.webp']);
+''',
+      assets: <String>['hit.webp'],
+    );
     expect(_scan(dir).byScene['FieldScene'], {'assets/hit.webp'});
   });
 
@@ -81,7 +87,8 @@ class Bullet extends EntityStruct {
     // cannot tell a constructor from a function without resolution. Missing
     // this silently detached every prefab from its scene, and the grouping
     // still *looked* plausible.
-    final dir = _project('''
+    final dir = _project(
+      '''
 class A extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
@@ -102,7 +109,9 @@ class Bullet extends EntityStruct {
     hit = descriptor.has(Textures.hit);
   }
 }
-''', assets: <String>['hit.webp']);
+''',
+      assets: <String>['hit.webp'],
+    );
     final usage = _scan(dir);
     expect(usage.byScene['A'], {'assets/hit.webp'});
     expect(usage.byScene['B'], {'assets/hit.webp'});
@@ -111,19 +120,23 @@ class Bullet extends EntityStruct {
 
   test('a scene declared as a mixin on SceneStruct counts', () {
     // How penguincivilwar writes one.
-    final dir = _project('''
+    final dir = _project(
+      '''
 mixin FieldScene on SceneStruct {
   @override
   void describeAssets(AssetDescriptor descriptor) {
     bg = descriptor.has(Textures.bg);
   }
 }
-''', assets: <String>['bg.webp']);
+''',
+      assets: <String>['bg.webp'],
+    );
     expect(_scan(dir).byScene['FieldScene'], {'assets/bg.webp'});
   });
 
   test('a class picks up assets from the scene mixin it applies', () {
-    final dir = _project('''
+    final dir = _project(
+      '''
 mixin FieldAssets on SceneStruct {
   @override
   void describeAssets(AssetDescriptor descriptor) {
@@ -132,12 +145,15 @@ mixin FieldAssets on SceneStruct {
 }
 
 class Level extends SceneStruct with FieldAssets {}
-''', assets: <String>['bg.webp']);
+''',
+      assets: <String>['bg.webp'],
+    );
     expect(_scan(dir).byScene['Level'], {'assets/bg.webp'});
   });
 
   test('a prefab cycle terminates instead of recursing forever', () {
-    final dir = _project('''
+    final dir = _project(
+      '''
 class S extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
@@ -162,19 +178,24 @@ class B extends EntityStruct {
     descriptor.has(A());
   }
 }
-''', assets: <String>['bg.webp']);
+''',
+      assets: <String>['bg.webp'],
+    );
     expect(_scan(dir).byScene['S'], {'assets/bg.webp'});
   });
 
   test('a key it cannot read is reported, never silently dropped', () {
-    final dir = _project('''
+    final dir = _project(
+      '''
 class S extends SceneStruct {
   @override
   void describeAssets(AssetDescriptor descriptor) {
     x = descriptor.has(keys[index]);
   }
 }
-''', assets: <String>['bg.webp']);
+''',
+      assets: <String>['bg.webp'],
+    );
     final usage = _scan(dir);
     expect(usage.unresolved, isNotEmpty);
     expect(usage.byScene['S'], isEmpty);
@@ -219,9 +240,7 @@ class S extends SceneStruct {
       final plan = planPack(
         ['assets/orphan.webp'],
         assetRoot: 'assets/',
-        byScene: {
-          'A': <String>{},
-        },
+        byScene: {'A': <String>{}},
       );
       expect(plan.assetCount, 1);
       expect(plan.chunks.single.name, 'chunk_shared.dat');

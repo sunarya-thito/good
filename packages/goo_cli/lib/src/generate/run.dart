@@ -33,20 +33,41 @@ int runGenerate({
     // the enum still has to exist for code importing it to compile. Said out
     // loud, though, because "my texture is missing from the enum" is the
     // likeliest reason someone runs this.
+    //
+    // The two cases are separated because the fix differs and the wrong one
+    // sends people to edit a pubspec that is already right - a fresh project
+    // has the entries and no files yet, which is not a mistake.
     out.println(
-      'No assets declared under `flutter: assets:` in pubspec.yaml. '
-      'Generating empty Textures and Audios enums.',
+      scan.declaredEntries.isEmpty
+          ? 'No assets declared under `flutter: assets:` in pubspec.yaml. '
+                'Generating empty Textures and Audios enums.'
+          : 'No assets found in the declared directories. Generating empty '
+                'Textures and Audios enums.',
     );
   }
   for (final entry in scan.unsupported.entries) {
     out.printf('Skipped %s - %s\n', [entry.key, entry.value]);
   }
 
+  final package = enginePackageOf(project);
+  verbose.printf('Engine package: %s\n', [package]);
+
   final outDir = Directory('${project.path}/lib/goo.generated');
   final writes = <String, String>{
-    '${outDir.path}/textures.dart': emitTextures(scan, command: command),
-    '${outDir.path}/audios.dart': emitAudios(scan, command: command),
-    '${outDir.path}/goo.dart': emitReadiness(command: command),
+    '${outDir.path}/textures.dart': emitTextures(
+      scan,
+      command: command,
+      package: package,
+    ),
+    '${outDir.path}/audios.dart': emitAudios(
+      scan,
+      command: command,
+      package: package,
+    ),
+    '${outDir.path}/goo.dart': emitReadiness(
+      command: command,
+      package: package,
+    ),
   };
 
   final keyFile = File('${outDir.path}/asset_key.dart');

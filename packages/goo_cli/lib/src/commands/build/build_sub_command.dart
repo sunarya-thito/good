@@ -237,9 +237,9 @@ abstract class BuildSubCommand extends Command with Verbose {
       );
       return false;
     }
-    Directory('${project.path}/${config.packOutput}').createSync(
-      recursive: true,
-    );
+    Directory(
+      '${project.path}/${config.packOutput}',
+    ).createSync(recursive: true);
 
     final usage = scanScenes(project, scan);
     final plan = planPack(
@@ -302,10 +302,12 @@ abstract class BuildSubCommand extends Command with Verbose {
   /// over minutes, and swallowing it to re-print at the end would make the
   /// slowest step of the build look like a hang.
   bool _flutterBuild(Directory project) {
-    final result = Process.runSync('flutter', <String>[
-      'build',
-      flutterTarget,
-    ], workingDirectory: project.path, runInShell: true);
+    final result = Process.runSync(
+      'flutter',
+      <String>['build', flutterTarget],
+      workingDirectory: project.path,
+      runInShell: true,
+    );
     if (result.exitCode == 0) {
       debug.println(result.stdout.toString());
       return true;

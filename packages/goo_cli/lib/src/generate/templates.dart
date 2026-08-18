@@ -19,11 +19,16 @@ String header(String command) =>
 /// already the identity `descriptor.has` wants, with no lookup and nothing to
 /// keep in sync. It also gives the set a `.values`, which is what lets the
 /// readiness check below walk every asset the game ships.
-String emitTextures(AssetScan scan, {required String command}) => _emitEnum(
+String emitTextures(
+  AssetScan scan, {
+  required String command,
+  required String package,
+}) => _emitEnum(
   assets: scan.textures,
   enumName: 'Textures',
   payload: 'Texture',
   command: command,
+  package: package,
   emptyNote: 'image',
 );
 
@@ -32,11 +37,16 @@ String emitTextures(AssetScan scan, {required String command}) => _emitEnum(
 /// Identical in shape to the texture enum, and that is the point: the asset
 /// pipeline is uniform over asset *kinds*, so a second kind costs a payload
 /// type, a loader, and one more call to the same emitter.
-String emitAudios(AssetScan scan, {required String command}) => _emitEnum(
+String emitAudios(
+  AssetScan scan, {
+  required String command,
+  required String package,
+}) => _emitEnum(
   assets: scan.audio,
   enumName: 'Audios',
   payload: 'AudioClip',
   command: command,
+  package: package,
   emptyNote: 'audio',
 );
 
@@ -45,18 +55,40 @@ String _emitEnum({
   required String enumName,
   required String payload,
   required String command,
+  required String package,
   required String emptyNote,
 }) {
   final buffer = StringBuffer(header(command))
     ..writeln()
-    ..writeln("import 'package:goo2d/goo2d.dart';")
+    ..writeln("import 'package:$package/$package.dart';")
     ..writeln();
 
   if (assets.isEmpty) {
-    buffer
-      ..writeln('// No $emptyNote assets are declared in pubspec.yaml under')
-      ..writeln('// `flutter: assets:`, so this enum is empty. It exists so')
-      ..writeln('// that code importing it keeps compiling.');
+    // Not an enum. Dart has no empty enum - `enum Textures { ; }` is a compile
+    // error - and a fresh project declares nothing yet, so emitting one made
+    // every new project fail to build on its first `flutter analyze`. A class
+    // with no members compiles, keeps `import 'textures.dart'` working, and
+    // becomes the enum the moment an asset is declared. Nothing can reference
+    // a member of it in the meantime, because it has none.
+    return (buffer
+          ..writeln('/// No $emptyNote assets are declared in pubspec.yaml')
+          ..writeln('/// under `flutter: assets:` yet.')
+          ..writeln('///')
+          ..writeln('/// A class rather than an enum only because Dart has no')
+          ..writeln('/// empty enum. Declare an asset and this becomes')
+          ..writeln('/// `enum $enumName with LocalEnumAssetKey<$payload>`,')
+          ..writeln('/// with one value per file.')
+          ..writeln('abstract final class $enumName {')
+          ..writeln('  /// Every $emptyNote asset, which is none of them.')
+          ..writeln('  ///')
+          ..writeln('  /// Present so code that walks the list - the readiness')
+          ..writeln('  /// check does - compiles before the first asset lands.')
+          ..writeln(
+            '  static const List<AssetKey<$payload>> values = '
+            '<AssetKey<$payload>>[];',
+          )
+          ..writeln('}'))
+        .toString();
   }
 
   buffer.writeln('enum $enumName with LocalEnumAssetKey<$payload> {');
@@ -65,9 +97,6 @@ String _emitEnum({
     final terminator = i == assets.length - 1 ? ';' : ',';
     buffer.writeln("  ${asset.identifier}('${asset.path}')$terminator");
   }
-  // An enum with no values still needs the semicolon that separates the value
-  // list from the members.
-  if (assets.isEmpty) buffer.writeln('  ;');
   buffer
     ..writeln()
     ..writeln('  const $enumName(this.path);')
@@ -84,10 +113,10 @@ String _emitEnum({
 /// ... WITHOUT LOADING THE ASSET". `AssetSource.check` is exactly that - a
 /// manifest lookup and at most a stat, never a decode - so this can run over
 /// every shipped asset at startup without paying for any of them.
-String emitReadiness({required String command}) =>
+String emitReadiness({required String command, required String package}) =>
     '''
 ${header(command)}
-import 'package:goo/goo.dart';
+import 'package:$package/$package.dart';
 
 import 'asset_key.dart';
 import 'audios.dart';
