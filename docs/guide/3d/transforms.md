@@ -14,10 +14,10 @@ class Crate extends EntityStruct with Transform3D, WorldTransform3D {}
 
 ## The columns
 
-Transforms are stored decomposed, exactly as `goo2d` stores them: position,
-scale and rotation as separate columns, never as a matrix. Composing on demand
-is cheaper than keeping sixteen floats per entity up to date, and a system that
-only wants a position reads one column instead of a matrix row.
+Transforms are stored decomposed: position, scale and rotation as separate
+columns, never as a matrix. Composing on demand is cheaper than keeping sixteen
+floats per entity up to date, and a system that only wants a position reads one
+column instead of a matrix row.
 
 | | Columns |
 |---|---|
@@ -60,27 +60,28 @@ transform.lookAt(entity, targetX, targetY, targetZ);
 
 Both write the four rotation columns. Neither allocates.
 
-!!! warning "Y is up here, and down in `goo2d`"
-    `goo3d` is right-handed with **+Y up** and **-Z forward**, which is what glTF
-    uses and therefore what anything exported from Blender expects.
+!!! warning "+Y is up"
+    The world is right-handed with **+Y up** and **-Z forward**. That is what
+    glTF uses, so anything exported from Blender arrives oriented correctly.
 
-    `goo2d` puts **+Y down**, because it works in screen space where that is the
-    convention. The two are deliberately different and neither is going to
-    change. A `goo2d` game that moves a sprite "up" subtracts; a `goo3d` game
-    adds.
+    To move something up, add to `transformOffsetY`.
+
+    (If you also write 2D: `goo2d` puts +Y *down*, because it works in screen
+    space where that is the convention. Same direction in the world, opposite
+    sign. Nothing you write here is affected by that.)
 
 ## The hierarchy is the kernel's
 
-`Child` and `Parent` are not 3D types. They are the same components a 2D game
-uses, from `good`, and they work here unchanged:
+`Child` and `Parent` come from the kernel and belong to no dimension. They are
+the same two components whatever you are building:
 
 ```dart
 scene.parent(wheel, of: car);
 ```
 
 `WorldTransform3DSystem` walks parents before children and writes the world
-columns during the fixed tick, in the same phase and under the same rules as its
-2D counterpart. Anything that reads a world transform must run after it commits.
+columns during the fixed tick. Anything that reads a world transform must run
+after that system commits, or it reads last tick's answer.
 See [Architecture](../architecture.md#the-fixed-tick).
 
 Change detection is per subtree: an entity whose local transform did not move,
@@ -88,9 +89,9 @@ and whose ancestors did not move, is not recomposed.
 
 ## What this costs
 
-Ten columns of `float64` per entity for the local transform and ten for the
-world one. That is more than 2D's five and five, and it is still a flat native
-row with no object per entity and nothing allocated per tick.
+Ten columns of `float64` per entity for the local transform, and ten for the
+world one. That is a flat native row: no object per entity, and nothing
+allocated per tick.
 
 If a game has thousands of static props, declare them without `WorldTransform3D`
 and read their local transform directly — an entity with no parent has nothing

@@ -48,10 +48,10 @@ void describeSystems(SystemDescriptor descriptor) {
 Bodies appear as entities spawn and go away as they despawn. The system listens
 for that rather than needing to be told.
 
-!!! warning "Gravity is negative here"
-    `goo3d` is Y-up, so gravity points down the negative Y axis. A `goo2d` game
-    writes `gravityY: 10` because its Y axis points down the screen. Same
-    direction in the world, opposite sign.
+!!! warning "Gravity is negative"
+    The world is Y-up, so gravity pulls along **negative** Y. `-9.81` is earth
+    gravity in metres per second squared; a positive value makes things fall
+    upwards, which is a fun bug to find at the wrong moment.
 
 ## Body types
 

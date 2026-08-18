@@ -8,9 +8,9 @@ Rendering is the step that turns "what exists" into "what you see". Your game
 never calls a draw function: it declares that an entity is visible and what it
 looks like, and the renderer walks those declarations once a frame.
 
-That is the same arrangement `goo2d` uses, for the same reason — a game that
-draws things itself has to be told *when*, and the answer changes depending on
-what else is running.
+The reason it works that way: a game that draws things itself has to be told
+*when* to draw, and the right answer changes depending on what else is running.
+Declaring what a thing looks like leaves that decision where it belongs.
 
 ## Making something visible
 
@@ -35,10 +35,9 @@ class Crate extends EntityStruct
 }
 ```
 
-`Meshes` and `Materials` are generated enums, the same way `Textures` is in 2D:
-`good generate` scans the assets your pubspec declares and writes one entry per
-file, so a renamed asset is a compile error instead of a blank object at run
-time.
+`Meshes` and `Materials` are generated: `good generate` scans the assets your
+pubspec declares and writes one entry per file. That is why a renamed asset is a
+compile error instead of a blank object at run time.
 
 ## The camera
 
@@ -60,8 +59,9 @@ class Eye extends EntityStruct with Transform3D, WorldTransform3D, Camera3D {
 anything closer than `near` or further than `far` is skipped.
 
 !!! warning "One camera per view"
-    Same rule as 2D. More than one enabled camera on a view trips a debug
-    assert; in release the first one found is used.
+    More than one enabled camera on the same view trips a debug assert. In a
+    release build the first one found is used, so a second camera is a
+    development mistake rather than a crash in someone's hands.
 
 ## What the renderer does each frame
 
@@ -70,10 +70,11 @@ anything closer than `near` or further than `far` is skipped.
    material together, then by depth.
 3. Write the result into a shared buffer the Flutter isolate reads.
 
-Steps two and three are where 3D differs from 2D in kind rather than degree. In
-2D everything is a textured rectangle, so the whole frame is one draw call. In
-3D each distinct material is its own draw call, which is why grouping by
-material comes before grouping by distance.
+Step two is worth understanding, because it explains a cost you will hit. Each
+distinct material is its own draw call, and draw calls are the expensive unit —
+so a hundred crates sharing one material cost roughly one, while a hundred
+crates with a hundred materials cost a hundred. That is why sorting groups by
+material first and by distance second.
 
 ## Backends
 
