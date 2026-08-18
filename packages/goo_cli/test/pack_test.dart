@@ -251,6 +251,8 @@ void main() {
       compression: AssetCompressionLevel.normal,
       key: _key,
       assetRoot: 'assets/',
+
+      chunkRoot: 'assets/packed/',
       out: _quiet,
       verbose: _quiet,
     );
@@ -283,10 +285,17 @@ void main() {
         output: output,
         mode: AssetMode.release,
       );
-      expect(result.mapping, {
-        'assets/a.webp': 'assets/chunk_root.dat',
-        'assets/ui/b.ogg': 'assets/chunk_ui.dat',
-      });
+      expect(
+        result.mapping,
+        {
+          'assets/a.webp': 'assets/packed/chunk_root.dat',
+          'assets/ui/b.ogg': 'assets/packed/chunk_ui.dat',
+        },
+        reason:
+            'the mapping is a bundle path the runtime looks up at load, so it '
+            'has to name where the chunks *ship* - not the directory the '
+            'assets came from',
+      );
       expect(output.listSync().map((e) => e.uri.pathSegments.last).toSet(), {
         'chunk_root.dat',
         'chunk_ui.dat',
@@ -342,6 +351,8 @@ void main() {
           compression: AssetCompressionLevel.normal,
           key: const <int>[1, 2, 3],
           assetRoot: 'assets/',
+
+          chunkRoot: 'assets/packed/',
           out: _quiet,
           verbose: _quiet,
         ),

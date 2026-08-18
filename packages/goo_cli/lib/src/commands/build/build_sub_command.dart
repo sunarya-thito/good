@@ -262,6 +262,8 @@ abstract class BuildSubCommand extends Command with Verbose {
       compression: assetCompression.value,
       key: key,
       assetRoot: config.assetOutput,
+
+      chunkRoot: config.packOutput,
       out: info,
       verbose: debug,
     );

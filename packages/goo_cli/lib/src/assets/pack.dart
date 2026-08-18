@@ -295,6 +295,7 @@ Future<PackResult> packAssets({
   required AssetCompressionLevel compression,
   required List<int> key,
   required String assetRoot,
+  required String chunkRoot,
   required VerboseOutput out,
   required VerboseOutput verbose,
 }) async {
@@ -316,6 +317,11 @@ Future<PackResult> packAssets({
   }
 
   final root = assetRoot.endsWith('/') ? assetRoot : '$assetRoot/';
+  // Where the chunks *ship*, which is not where the assets came from: they are
+  // written to their own directory so a rebuild does not scan them as assets.
+  // The mapping is a bundle path the runtime looks up at load, so getting this
+  // wrong is a build that packs correctly and then cannot find a single chunk.
+  final chunksRoot = chunkRoot.endsWith('/') ? chunkRoot : '$chunkRoot/';
   final mapping = <String, String>{};
   var chunkBytes = 0;
   var sourceBytes = 0;
@@ -337,7 +343,7 @@ Future<PackResult> packAssets({
       final bytes = file.readAsBytesSync();
       sourceBytes += bytes.length;
       members[logical] = bytes;
-      mapping[logical] = '$root${chunk.name}';
+      mapping[logical] = '$chunksRoot${chunk.name}';
     }
 
     final body = buildChunkBody(members);

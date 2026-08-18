@@ -172,6 +172,8 @@ class PackCommand extends Command with Verbose {
       compression: compression.value,
       key: key,
       assetRoot: config.assetOutput,
+
+      chunkRoot: config.packOutput,
       out: info,
       verbose: debug,
     );
