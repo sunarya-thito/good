@@ -89,8 +89,7 @@ repository right now.
 
 ## What the split buys
 
-Everything that is not inherently about *how many dimensions you have* lives in
-the kernel: the ECS, the scheduler, scenes, hierarchy, input, the asset
+The kernel holds the ECS, the scheduler, scenes, hierarchy, input, the asset
 registry, the isolate bootstrap, networking, and the CLI. That is what lets
 `goo3d` sit beside `goo2d` without duplicating any of it — and what lets a
 headless dedicated server depend on the kernel and physics without pulling in a

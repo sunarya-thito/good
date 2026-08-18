@@ -107,7 +107,7 @@ nav:
       - Installation: getting-started/installation.md
       - Create a project: getting-started/create-a-project.md
       - Your first game: getting-started/your-first-game.md
-  - Dimensions - 2D, 3D: packages/dimensions.md
+  - 2D and 3D: packages/2d-and-3d.md
   - Developing a game:
       - guide/index.md
       - Coming from Unity/Godot: guide/mental-model.md

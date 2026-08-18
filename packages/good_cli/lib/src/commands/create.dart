@@ -1,5 +1,4 @@
-// create flutter + good(2d/3d)
-// good create <project_name> --2d or --3d (future)
+// good create <project_name> [--2d | --3d]
 import 'dart:io';
 
 import 'package:good_cli/src/command.dart';
@@ -9,15 +8,19 @@ import 'package:good_cli/src/parsers.dart';
 import 'package:good_cli/src/verbosable.dart';
 
 /// Which engine package a new project is built against.
-enum GoodDimension {
-  d2('goo2d'),
+///
+/// Never named on the command line - `--2d` and `--3d` choose it. The names
+/// here exist because a Dart enum value cannot begin with a digit, and that is
+/// this file's problem rather than the user's.
+enum GoodEngine {
+  twoD('goo2d'),
 
-  /// Declared and refused. `goo3d` does not exist, and an option that silently
-  /// accepts a value it cannot honour is worse than one that says no - the
+  /// Declared and refused. `goo3d` does not exist, and a flag that silently
+  /// accepts what it cannot honour is worse than one that says no - the
   /// project would scaffold and then fail to resolve its dependencies.
-  d3('goo3d');
+  threeD('goo3d');
 
-  const GoodDimension(this.package);
+  const GoodEngine(this.package);
 
   final String package;
 }
@@ -31,7 +34,8 @@ enum GoodDimension {
 class CreateCommand extends Command with Verbose {
   late final Arg<String> name;
   late final Arg<Directory> parentDir;
-  late final Arg<GoodDimension> dimension;
+  late final Arg<bool> twoD;
+  late final Arg<bool> threeD;
   late final Arg<bool> dryRun;
   late final Arg<bool> noFlutterCreate;
 
@@ -50,11 +54,13 @@ class CreateCommand extends Command with Verbose {
       parser: parseDirectory,
       defaultValue: Directory('.'),
     );
-    dimension = descriptor.describeOption<GoodDimension>(
-      name: 'dimension',
-      description: 'Which engine package to depend on.',
-      choices: GoodDimension.values,
-      defaultValue: GoodDimension.d2,
+    twoD = descriptor.describeFlag(
+      name: '2d',
+      description: 'Build the project against goo2d. The default.',
+    );
+    threeD = descriptor.describeFlag(
+      name: '3d',
+      description: 'Build the project against goo3d.',
     );
     dryRun = descriptor.describeFlag(
       name: 'dry-run',
@@ -77,17 +83,20 @@ class CreateCommand extends Command with Verbose {
       err.println('A project name is required: good create <project_name>');
       return;
     }
-    if (dimension.value == GoodDimension.d3) {
-      err.println(
-        'goo3d does not exist yet. Only --dimension=d2 can be created today.',
-      );
+    if (twoD.value && threeD.value) {
+      err.println('Pass --2d or --3d, not both.');
+      return;
+    }
+    final engine = threeD.value ? GoodEngine.threeD : GoodEngine.twoD;
+    if (engine == GoodEngine.threeD) {
+      err.println('goo3d does not exist yet. Only --2d can be created today.');
       return;
     }
 
     final root = Directory('${parentDir.value.path}/$projectName');
     final files = scaffoldFiles(
       projectName: projectName,
-      package: dimension.value.package,
+      package: engine.package,
       command: session.path.join(' '),
     );
 
@@ -100,7 +109,7 @@ class CreateCommand extends Command with Verbose {
       }
       info.printf('Would add to %s/pubspec.yaml:\n%s', [
         root.path,
-        pubspecPatch(dimension.value.package),
+        pubspecPatch(engine.package),
       ]);
       return;
     }
@@ -153,7 +162,7 @@ class CreateCommand extends Command with Verbose {
       info.printf('Wrote %s\n', [entry.key]);
     }
 
-    _patchPubspec(root, dimension.value.package);
+    _patchPubspec(root, engine.package);
 
     // Generate straight away rather than telling them to. A fresh project's
     // lib/good.generated/ is otherwise missing, so `main.dart` does not compile

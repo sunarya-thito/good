@@ -12,7 +12,7 @@ Three pages, in the order you meet them:
 These pages use `goo2d`. Scenes, prefabs, systems, input, assets and the CLI
 come from the kernel, so a `goo3d` game writes them the same way; the transform,
 sprite and camera types are the 2D ones. See
-[2D and 3D](../packages/dimensions.md).
+[2D and 3D](../packages/2d-and-3d.md).
 
 If you would rather read about the engine before writing any of it, start with
 [Architecture](../guide/architecture.md) instead.

@@ -115,5 +115,5 @@ interfering.
 
 Like the renderer, physics is a contract with backends behind it, so the code
 above does not name an engine. See
-[Backend interfaces](../../packages/dimensions.md) for which ones exist and what
-each is good at.
+[2D and 3D](../../packages/2d-and-3d.md) for which ones exist and what each is
+good at.

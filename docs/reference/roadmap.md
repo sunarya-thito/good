@@ -17,7 +17,7 @@ Last verified: **2026-08-19**, on `master`.
 | `goo2d_physics_box2d` | **Working** | Bodies, colliders, the nine joints, effectors, raycast and overlap queries |
 | `good_net` | **Working** | Messages, targets, channels, sessions, roster events and `LoopbackNetTransport`, with a conformance suite every backend is run against |
 | `good_net_p2p` | **Working on a LAN** | A real UDP protocol — acks, retransmission, ordering, batching, fragmentation, keepalives — plus address-carrying join codes and LAN discovery. **Does not cross the internet yet**: that needs STUN and a rendezvous |
-| `goo3d` and siblings | **Not started** | The kernel split exists so this lands without touching the shared half. `good create --dimension=d3` is refused until the package resolves |
+| `goo3d` and siblings | **Not started** | The kernel split exists so this lands without touching the shared half. `good create --3d` is refused until the package resolves |
 
 ## Verified end to end
 

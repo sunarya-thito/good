@@ -1,8 +1,8 @@
 # Developing a game
 
 This chapter is the working reference for building with good. Each page says
-which layer it belongs to, because most of the engine is not dimension-specific
-and carries over unchanged to a sibling renderer like `goo3d`:
+which layer it belongs to, because most of it comes from the kernel and is
+written the same way under `goo2d` and `goo3d`:
 
 | Page | Layer |
 |---|---|

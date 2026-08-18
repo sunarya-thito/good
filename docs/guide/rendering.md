@@ -1,8 +1,8 @@
 # Rendering and cameras
 
 !!! abstract "Layer: 2D (`goo2d`)"
-    This is the dimension-specific half. A sibling renderer supplies its own
-    equivalent of everything on this page; the kernel below it does not change.
+    Everything on this page is `goo2d`'s. `goo3d` supplies its own equivalent,
+    and the kernel underneath is the same either way.
 
 ## How a frame happens
 
@@ -195,8 +195,8 @@ for (final group in players.groups()) {
 }
 ```
 
-`SpriteFrame.grid` is exact whatever the image's pixel size — there is no source
-dimension in that constructor because none is needed.
+`SpriteFrame.grid` is exact whatever the image's pixel size — the constructor
+never asks how big the source is, because it does not need to know.
 
 ## Cameras
 

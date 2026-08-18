@@ -45,7 +45,8 @@ build" a new project's first experience.
 |---|---|---|
 | `<project_name>` | *(required)* | Package and directory name. Must be a valid Dart package name |
 | `--directory=<dir>` | `.` | Where to create the project |
-| `--dimension=<d2\|d3>` | `d2` | Which engine package to depend on — `goo2d` or `goo3d` |
+| `--2d` | on | Build against `goo2d` |
+| `--3d` | | Build against `goo3d` |
 | `--dry-run` | off | Report what would be created, and create nothing |
 | `--no-flutter-create` | off | Write only the good files, into a Flutter project that already exists |
 

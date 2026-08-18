@@ -1,4 +1,4 @@
-# Dimensions — 2D and 3D
+# 2D and 3D
 
 good is a **family**. `good` is the kernel, and an engine package sits on it:
 `goo2d` for 2D, `goo3d` for 3D.
@@ -16,8 +16,7 @@ on the other, and `GameView` is the same widget either way.
 
 ## What is shared
 
-These are kernel concepts, and they are **identical** whichever dimension you
-work in:
+These come from the kernel, and are written the same way under either engine:
 
 - `Game`, `GameState`, the two-isolate model, the fixed tick
 - `EntityStruct`, `Entity`, `Component`, `DataPointer`, archetypes
@@ -32,7 +31,7 @@ work in:
 - Networking, when you add it
 - The `good` CLI — `create`, `generate`, `assets`, `build`
 
-## What is per-dimension
+## What each engine supplies
 
 A short list, and it is the whole difference:
 
@@ -51,8 +50,8 @@ A short list, and it is the whole difference:
 ## Which one a project uses
 
 ```bash
-good create my_game --dimension=d2    # goo2d — the default
-good create my_game --dimension=d3    # goo3d
+good create my_game          # goo2d, the default
+good create my_game --3d     # goo3d
 ```
 
 One CLI scaffolds either, and everything after the scaffolding step is the same.
@@ -88,10 +87,9 @@ class InventorySystem extends GameSystem with FixedTickable {
 ```
 
 Anything that names `Transform2D` or `Sprite` is 2D code, and that is the line.
-A package of shared gameplay logic that depends on `good` alone works in both
-dimensions unchanged.
+A package of shared gameplay logic that depends on `good` alone works under
+either engine unchanged.
 
 !!! note "Games do not need to do this"
-    A game is written for a dimension and should just depend on `goo2d` and
-    import one library. The kernel-only discipline is for **shared libraries**
-    meant to serve both.
+    A game picks one engine and depends on it, importing one library. The
+    kernel-only discipline is for **shared libraries** meant to serve both.

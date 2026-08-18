@@ -1,7 +1,7 @@
 # The good family
 
 good — **G**ame **O**verdrive **O**n **D**art — is a monorepo of packages that
-divide along one line: **does this depend on how many dimensions you have?**
+divide along one line: **is this about drawing, or about everything else?**
 The names say it: `goo` is the family, and the last letter is the target, so the
 kernel is `good` and the engines are `goo2d` and `goo3d`.
 
@@ -24,7 +24,7 @@ packages/
 ```
 
 `goo2d` and `goo3d` each sit directly on the kernel, and the split costs nothing
-above it. See [Dimensions](dimensions.md).
+above it. See [2D and 3D](2d-and-3d.md).
 
 !!! tip "What a game depends on"
     **One package.** `goo2d` re-exports the kernel, so a 2D game has one
@@ -147,8 +147,8 @@ See the [CLI reference](../reference/cli.md).
 
 ## good_net
 
-Networking, shared across dimensions because a 3D game needs the same session
-and messaging plumbing a 2D one does.
+Networking, beside the kernel because a `goo3d` game needs the same session and
+messaging plumbing a `goo2d` one does.
 
 **It is the command API over a socket.** A game declares network messages the
 way it declares everything else — a `describe*` pass handing back typed handles
