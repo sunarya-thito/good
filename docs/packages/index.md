@@ -88,7 +88,7 @@ Opt-in, and it needs its system declared. See [Physics](../guide/physics.md).
 ## goo2d_ffi_box2d
 
 Vendored **Box2D v3.1.1** behind a flat, primitives-only C shim, plus the ffigen
-bindings to it. Built from source per platform rather than shipped as prebuilt
+bindings to it. Built from source per platform instead of shipped as prebuilt
 binaries. **Not meant to be used directly by game code.**
 
 !!! question "Why a shim instead of binding Box2D directly?"
@@ -106,7 +106,7 @@ binaries. **Not meant to be used directly by game code.**
 
 The shim also carries bulk entry points, turning what would be 2N FFI calls per
 tick into two, independent of body count. Handles are packed by Box2D's own
-`b2StoreBodyId`/`b2LoadBodyId` helpers rather than by arithmetic written here,
+`b2StoreBodyId`/`b2LoadBodyId` helpers instead of by arithmetic written here,
 so the packing is stated in exactly one place — and zero is the null handle,
 which is Box2D's own convention, so a component field defaulting to 0 already
 means "no body yet".
@@ -140,7 +140,7 @@ dart run ffigen --config ffigen.yaml
 ## good_cli
 
 The `good` command: project scaffolding, codegen, the asset pipeline, and build
-orchestration. **Dimension-agnostic** — it lives beside the kernel rather than
+orchestration. **Dimension-agnostic** — it lives beside the kernel instead of
 under `goo2d`, so each renderer registers its own asset types into the same
 pipeline instead of needing its own CLI.
 
@@ -154,7 +154,7 @@ and messaging plumbing a 2D one does.
 **It is the command API over a socket.** A game declares network messages the
 way it declares everything else — a `describe*` pass handing back typed handles
 — and `NetMessage`/`NetSignal` are spelled exactly like `SinkCommand`/
-`SignalCommand`, over the kernel's own record layer rather than a second one.
+`SignalCommand`, over the kernel's own record layer , not a second one.
 
 - `NetDescriptor`, `NetMessage`, `NetSignal`, `NetTarget`, `NetChannel`
 - `MultiplayerState` and `NetworkSystem` — the mixin and the system that carry

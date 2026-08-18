@@ -257,7 +257,7 @@ void main() {
 
       // One instance, repointed per dispatch - a physics step can produce
       // hundreds of contacts and allocating per contact is the hot-path cost
-      // RULES.md rule 1 forbids.
+      // the no-allocation rule forbids.
       final event = Collision2DEvent()
         ..set(scene.player.box, a, scene.player.hurtbox, b);
       expect(event.sourceEntity, a);

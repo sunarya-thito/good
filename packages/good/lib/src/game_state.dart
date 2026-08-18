@@ -81,7 +81,8 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// one case, generalising to nothing.
   late final SignalDispatcher<FixedTickable> fixedTickEvent;
 
-  /// The presentation pass, dispatched once per *frame* - see [runPresentation].
+  /// The presentation pass, dispatched once per *frame* - see
+  /// [runPresentation].
   late final EventDispatcher<Tickable, Duration> tickEvent;
 
   /// The game has come up, on the simulating copy, with its scenes mounted.
@@ -298,8 +299,8 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// which is the honest "this work is too expensive" reading.
   int get lastAdvanceIntervalMicros => _intervalMicros;
 
-  /// Fixed steps the last [advance] ran - 0 when the accumulator had not filled,
-  /// up to `Game.maxFixedStepsPerAdvance` when catching up.
+  /// Fixed steps the last [advance] ran - 0 when the accumulator had not
+  /// filled, up to `Game.maxFixedStepsPerAdvance` when catching up.
   int get lastStepCount => _lastSteps;
   int _lastSteps = 0;
 
@@ -534,10 +535,10 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// # Assets
   ///
   /// The registration half above also declares every asset the incoming scene
-  /// needs - its own `SceneStruct.describeAssets` plus every registered prefab's
-  /// `Component.describeAssets` - which is what assigns each one its
-  /// process-global address, identically on both copies (see `GameAssets`).
-  /// The asynchronous half then reconciles the two scenes' footprints:
+  /// needs - its own `SceneStruct.describeAssets` plus every registered
+  /// prefab's `Component.describeAssets` - which is what assigns each one its
+  /// process-global address, identically on both copies (see `GameAssets`). The
+  /// asynchronous half then reconciles the two scenes' footprints:
   ///
   ///  * an asset **both** scenes declare stays loaded, untouched - a UI atlas
   ///    every scene uses is decoded once for the run, never round-tripped
@@ -689,7 +690,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   ///
   /// Transition-time code: it allocates a `SceneLoadProgress` per completed
   /// asset and a `Set` for the keep-set, both of which are exactly the kind
-  /// of allocation RULES.md rule 1 is *not* about. Nothing here runs per
+  /// of allocation the no-allocation rule is *not* about. Nothing here runs per
   /// entity or per tick.
   Future<void> _reconcileAssets(
     SceneStruct next,
@@ -1103,8 +1104,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// **Strictly after `commitTick`.** That placement is the whole contract:
   /// a `Tickable` reads the snapshot the simulation just published, so it
   /// sees everything the tick derived - `WorldTransform2D` most of all -
-  /// without any second read path into the uncommitted slot (RULES.md rule
-  /// 8). Reading published data here is exactly as fresh as recomputing it
+  /// without any second read path into the uncommitted slot (the no-specialised-variant rule). Reading published data here is exactly as fresh as recomputing it
   /// from published inputs inside the tick, so a renderer that moves from
   /// `FixedTickable` to `Tickable` loses no responsiveness and stops
   /// duplicating what the simulation already computed.
@@ -1300,9 +1300,9 @@ abstract class GameState<T extends Game> extends GameListenerBase
 /// and they will report through this type rather than through a second one
 /// that forces every consumer to handle both.
 ///
-/// Allocated once per reported step, at transition time. That is not a
-/// RULES.md rule 1 concern: a scene transition is not the hot path, and there
-/// is nothing per-entity or per-tick anywhere near it.
+/// Allocated once per reported step, at transition time. That is not a the
+/// no-allocation rule concern: a scene transition is not the hot path, and
+/// there is nothing per-entity or per-tick anywhere near it.
 class SceneLoadProgress {
   const SceneLoadProgress(this.label, this.progress);
 

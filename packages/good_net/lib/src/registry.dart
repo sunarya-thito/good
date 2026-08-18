@@ -37,7 +37,7 @@ import 'transport.dart';
 /// declared on the one object both isolates run. A message's index has to
 /// mean the same thing on two *machines*, which run their own copy of the
 /// whole program - so it belongs where the simulation and the socket are,
-/// which is here (RULES.md rule 9). What could go wrong across machines is
+/// which is here (the isolate-affinity rule). What could go wrong across machines is
 /// not registration order but *build* skew, and that is what
 /// [NetTransport.schemaHash] is for.
 abstract class NetDescriptor {

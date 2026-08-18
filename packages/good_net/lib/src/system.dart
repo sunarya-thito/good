@@ -68,10 +68,10 @@ mixin NetSessionListener on GameListener {
 /// # Why a mixin on the state and not a `Game` subclass
 ///
 /// `Game2D` is a superclass because rendering has a main-isolate half - a
-/// widget to build, native buffers to allocate before the spawn. Networking
-/// has none: the socket, the messages and the handlers all live where the
-/// simulation lives, and `GameState` is the type that says "game isolate"
-/// (RULES.md rule 9). Nothing here needs the Flutter side to have heard of
+/// widget to build, native buffers to allocate before the spawn. Networking has
+/// none: the socket, the messages and the handlers all live where the
+/// simulation lives, and `GameState` is the type that says "game isolate" (the
+/// isolate-affinity rule). Nothing here needs the Flutter side to have heard of
 /// it, so nothing here is declared over there.
 ///
 /// [describeNetwork] is abstract rather than empty-by-default, on the same
@@ -99,7 +99,7 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
   ///
   /// The payload is a record because the event genuinely carries two facts,
   /// and a peer leaving happens at human rate - a handful of times a session
-  /// - so the one allocation is not on any path RULES.md rule 1 is about.
+  /// - so the one allocation is not on any path the no-allocation rule is about.
   late final EventDispatcher<
     NetPeerListener,
     ({NetPeerId peer, NetDisconnectReason reason})

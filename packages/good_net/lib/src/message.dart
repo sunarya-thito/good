@@ -256,9 +256,9 @@ abstract class NetMessage<P> extends NetMessageBase {
 
   /// Sends to exactly one peer, whatever the declared target would have done.
   ///
-  /// For the host answering one client - a spawn burst for the player who
-  /// just joined, a private "you may not do that". Asserts and drops if there
-  /// is no link to [peer] (RULES.md rule 7): a message to an unreachable
+  /// For the host answering one client - a spawn burst for the player who just
+  /// joined, a private "you may not do that". Asserts and drops if there is no
+  /// link to [peer] (the assert-not-print rule): a message to an unreachable
   /// client is a bug in the caller's model of the topology, not a runtime
   /// condition to swallow.
   void sendTo(NetPeerId peer, P params) {

@@ -217,7 +217,7 @@ void main() {
       sawSecondInstance,
       isFalse,
       reason: 'every dispatch must repoint one instance - a second object '
-          'means an allocation per contact, which RULES.md rule 1 forbids',
+          'means an allocation per contact, which the no-allocation rule forbids',
     );
   });
 

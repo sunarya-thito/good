@@ -8,7 +8,8 @@
 ///
 /// The pubspec is **not** here. `flutter create` writes one, and rewriting it
 /// wholesale would discard whatever the installed Flutter version put in it;
-/// the good dependency is added by patching instead - see [patchedPubspecLines].
+/// the good dependency is added by patching instead - see
+/// [patchedPubspecLines].
 Map<String, String> scaffoldFiles({
   required String projectName,
   required String package,
@@ -37,11 +38,11 @@ Map<String, String> scaffoldFiles({
 
 /// The lines a good project needs in its pubspec, as something to show someone.
 ///
-/// [patchedPubspecLines] applies this to a pubspec good just had `flutter create`
-/// write. This form is what gets printed when that is not possible - an
+/// [patchedPubspecLines] applies this to a pubspec good just had `flutter
+/// create` write. This form is what gets printed when that is not possible - an
 /// existing project under `--no-flutter-create`, or a pubspec whose shape the
-/// patcher does not recognise. Editing someone's pubspec blind is not
-/// something to do on their behalf.
+/// patcher does not recognise. Editing someone's pubspec blind is not something
+/// to do on their behalf.
 String pubspecPatch(String package) =>
     '''
 dependencies:

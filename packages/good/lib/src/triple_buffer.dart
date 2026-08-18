@@ -85,7 +85,7 @@ class TripleBuffer {
   /// `Pointer.asTypedList` **allocates** - it builds a new view object every
   /// call. [beginWrite] runs once per page per tick, so building two of them
   /// there was two heap objects per page per tick on the hottest path in the
-  /// engine, which is exactly what RULES.md rules 1 and 2 forbid. Views over
+  /// engine, which is exactly what the hot-path rules forbid. Views over
   /// native memory stay valid for the life of the pointer, so there is no
   /// reason to build them more than once.
   ///

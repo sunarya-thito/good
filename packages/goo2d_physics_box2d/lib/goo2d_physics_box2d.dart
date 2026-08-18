@@ -50,11 +50,13 @@ library;
 /// motor - which covers both Relative and Friction, since the difference is
 /// only what you ask it to hold.
 ///
-/// The effectors are in `Effectors2D`, an extension rather than components,
-/// because **Box2D has no effectors**: Unity's are gameplay code that finds
-/// bodies in a region and applies a force, so there is nothing to bind a
-/// component to. Area, Point, Buoyancy and Surface are there; Platform
-/// (one-way) is not, and that file says why.
+/// **Box2D has no effectors** - Unity's are gameplay code that finds bodies in
+/// a region and applies a force - so this package supplies them two ways.
+/// Declare one with [Effector2D] and [EffectorDescriptor] and the physics
+/// system walks it before each step, which is the better default. `Effectors2D`
+/// exposes the same four as one-shot calls for a region computed per tick.
+/// Area, Point, Buoyancy and Surface are there; Platform (one-way) is not, and
+/// `src/effectors.dart` says why.
 export 'src/effector.dart'
     show
         AreaEffector,

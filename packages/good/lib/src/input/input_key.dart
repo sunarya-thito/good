@@ -98,7 +98,7 @@ sealed class InputKey {
 
   /// Looks up a key by [name] within a [kind], for [fromJson].
   ///
-  /// A `Map` here is not a RULES.md rule 6 violation: nothing the framework
+  /// A `Map` here is not a the typed-handle rule violation: nothing the framework
   /// *hands back* is being looked up by string. This is parsing a file the
   /// user wrote, where a string is all there is, and it runs when a save is
   /// loaded - never per tick and never per action.

@@ -33,8 +33,8 @@ import 'package:good/src/triple_buffer.dart';
 /// }
 /// ```
 ///
-/// This is RULES.md rule 6 applied to input: `describeInputs` hands back a
-/// typed handle you keep in a `late final` field, exactly like
+/// This is the typed-handle rule applied to input: `describeInputs` hands back
+/// a typed handle you keep in a `late final` field, exactly like
 /// `describeState`'s `StateChannel` and `describeBuffers`' `BufferHandle`.
 /// There is no `getAction('jump')`, so there is no string to misspell and
 /// nothing to search at use time.
@@ -81,7 +81,7 @@ abstract class Input<T> {
   /// reference semantics - `Vector2` - this returns the *one* instance this
   /// action owns and mutates in place on every resolution, not a fresh copy
   /// per read (a fresh one would be a heap allocation per read per tick,
-  /// RULES.md rule 1). Storing it in a field means storing something that
+  /// the no-allocation rule). Storing it in a field means storing something that
   /// silently changes under you next tick; copy the numbers out, or
   /// `Vector2.copy(movement.value)` if you really need to keep one.
   ///
@@ -137,7 +137,7 @@ abstract class Input<T> {
   /// Only exists so `pressed += listener` compiles - `a.b += c` is
   /// `a.b = a.b + c`, so a stream needs a setter to assign the stream
   /// `operator +` just handed back. Assigning any *other* stream is a
-  /// programmer error and asserts (RULES.md rule 7).
+  /// programmer error and asserts (the assert-not-print rule).
   set pressed(InputEventStream<T> stream);
 
   /// Fires on the resolution where this action stops being held. See
@@ -154,8 +154,8 @@ abstract class Input<T> {
 /// # One instance per stream, reused
 ///
 /// The engine fires these from inside the fixed tick, so a fresh event per
-/// firing would be a heap allocation on the hot path (RULES.md rules 1 and
-/// 2) - the same reason `GameState` keeps one `FixedTickEvent` for every tick
+/// firing would be a heap allocation on the hot path - the same reason
+/// `GameState` keeps one `FixedTickEvent` for every tick
 /// of every system. [value] is therefore only meaningful *during* the
 /// callback: keeping the event and reading it later reads whatever the next
 /// edge put there.
@@ -465,11 +465,11 @@ final class InputRegistry implements InputDescriptor {
   /// snapshot. Called once per fixed tick, before commands and before any
   /// system runs.
   ///
-  /// Hot path, and allocation-free end to end: a 40-byte copy of the
-  /// snapshot, then per action a couple of virtual calls that do bit tests
-  /// and (for a vector) write two doubles into storage the action already
-  /// owns. No closures, no iterators, no per-tick objects (RULES.md rules 1,
-  /// 2, 5).
+  /// Hot path, and allocation-free end to end: a 40-byte copy of the snapshot,
+  /// then per action a couple of virtual calls that do bit tests and (for a
+  /// vector) write two doubles into storage the action already owns. No
+  /// closures, no iterators, no per-tick objects (the no-allocation, hot-event
+  /// and no-closure rules).
   void resolve() {
     final buffer = _buffer;
     // Copied once, not per action: every action in this tick reads the same

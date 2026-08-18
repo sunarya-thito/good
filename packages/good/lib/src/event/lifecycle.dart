@@ -100,7 +100,7 @@ mixin SceneLifecycleListener on GameListener {
 ///
 /// Firing this costs nothing whether or not anything is listening: the payload
 /// is passed as an argument rather than wrapped in an event object, so the
-/// spawn path allocates nothing at all (RULES.md rules 1 and 2). It used to
+/// spawn path allocates nothing at all (the hot-path rules). It used to
 /// build an `EntityMountedEvent` per entity, which is why the dispatch sites
 /// carried a `listenerCount > 0` guard - that guard is gone with the
 /// allocation it was avoiding.

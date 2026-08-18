@@ -36,7 +36,7 @@ final List<String> events = <String>[];
 /// Subscriptions happen in `describeInputs` rather than in `onMounted`,
 /// because a `GameSystem` does not currently receive `MountEvent` - see the
 /// note on `Input.pressed`. A closure created during a one-shot declaration
-/// pass is explicitly fine (RULES.md rule 5).
+/// pass is explicitly fine (the no-closure rule).
 class _PlayerSystem extends GameSystem with FixedTickable {
   late final Input<Vector2> movement;
   late final Input<bool> triggerSkill;
@@ -478,7 +478,7 @@ void main() {
           isTrue,
           reason:
               'a fresh Vector2 per read (or per resolution) would be a '
-              'heap allocation per action per tick - RULES.md rule 1. The '
+              'heap allocation per action per tick - the no-allocation rule. The '
               'reference is stable and its contents are what change',
         );
         expect(
@@ -1268,7 +1268,7 @@ void main() {
         isTrue,
         reason:
             'reading a pointer sixty times a second must not allocate '
-            '(RULES.md rule 1) - the action owns one MousePosition for its '
+            '(the no-allocation rule) - the action owns one MousePosition for its '
             'whole life, the same way Input<Vector2> owns one vector',
       );
       expect(

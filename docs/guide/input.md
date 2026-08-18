@@ -4,7 +4,7 @@
 
 Input in good is **declared as actions**, not polled as keys. You declare what
 the player can *do*; a binding says what currently produces it. That indirection
-is what makes rebinding a one-line assignment rather than a rewrite.
+is what makes rebinding a one-line assignment , not a rewrite.
 
 ```dart
 class PlayerSystem extends GameSystem with FixedTickable {
@@ -46,7 +46,7 @@ system in a step sees the same input.
 
 !!! info "No `GameView`, no input"
     A game with no `GameView` in the widget tree has nothing feeding it, so
-    every action reads its default forever. That is correct rather than broken,
+    every action reads its default forever. That is correct instead of broken,
     and it is why defaults are mandatory.
 
 ## Reading an action
@@ -87,7 +87,7 @@ throttle. Use the edge for anything that should happen **once per press**:
 jumping, toggling a menu, a semi-automatic weapon, confirming a dialogue.
 
 !!! tip "The edge works on non-bool actions too"
-    This is the reason the flags exist rather than being left to `bool`
+    This is the reason the flags exist instead of being left to `bool`
     actions. `Vec2Binding` is actuated when *any* of its four keys is down, so
     an `Input<Vector2>` can answer "did the player start moving this tick" —
     a question `value` cannot answer, because a vector has no previous-frame
@@ -201,7 +201,7 @@ until the first read of an unbound action, which then throws.
 The engine deliberately does **not** infer a default from `T`. Zero and false
 are real, meaningful values to a game, and inventing one turns a forgotten
 declaration into a number that is quietly wrong instead of an error that says
-so. Declaring the same type twice in one boot is an error rather than a silent
+so. Declaring the same type twice in one boot is an error , not a silent
 overwrite.
 
 ## Events
@@ -266,7 +266,7 @@ p1Jump = descriptor.has<bool>(TriggerBinding(InputKey.padA(1)));
 p2Jump = descriptor.has<bool>(TriggerBinding(InputKey.padA(2)));
 ```
 
-A slotted key is built at run time rather than being a `const`, so two calls
+A slotted key is built at run time instead of being a `const`, so two calls
 produce two instances — they compare equal by id, which is what a rebinding
 screen comparing a saved key against a declared one needs.
 

@@ -22,7 +22,7 @@ the chunk mapping back into the same file, so it follows generation.
 `flutter build` bundles whatever is on disk by then, so it goes last.
 
 !!! tip "Running these by hand in the wrong order does not fail"
-    It produces a build that is subtly **stale** rather than one that errors —
+    It produces a build that is subtly **stale** , not one that errors —
     which is exactly the mistake this command exists to remove.
 
 ## What a release build produces
@@ -112,7 +112,7 @@ with loose assets, for a debugging build you intend to poke at.
       shipped.
 - [ ] Both `assets/` and `assets/packed/` are listed under `flutter: assets:`.
 - [ ] `ensureGameReady()` is called before `Game.start` — it catches a missing
-      asset before the first frame rather than mid-scene.
+      asset before the first frame instead of mid-scene.
 - [ ] A release build has actually been run and launched, not just compiled.
 
 ---

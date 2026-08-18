@@ -70,7 +70,7 @@ install it: `good assets compact` and `good build` look for an ffmpeg on your
 `PATH` and download one if there is none.
 
 Pass `--no-download` to make a missing ffmpeg an error instead — worth doing in
-CI, where an unexpected download is a slow surprise rather than a convenience.
+CI, where an unexpected download is a slow surprise , not a convenience.
 
 ---
 

@@ -32,8 +32,8 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 /// `value` has a setter, and the setter is only meaningful on the copy that
 /// owns the storage. Writing through the main-isolate copy is a programmer
 /// error, not a runtime fallback: it does not own the memory, and the write
-/// would be invisible to the simulation. It `assert`s (RULES.md rule 7) and
-/// does nothing.
+/// would be invisible to the simulation. It `assert`s (the assert-not-print
+/// rule) and does nothing.
 ///
 /// **Direction is game -> main only.** A main -> game channel is a genuinely
 /// different design (the game isolate would have to poll it inside the tick

@@ -165,7 +165,7 @@ class Box2DPhysicsSystem extends GameSystem
   late final Query _bodies;
 
   // Scratch buffers for the bulk transfer. Allocated once, grown only when
-  // the population outgrows them - never per tick (RULES.md rule 1).
+  // the population outgrows them - never per tick (the no-allocation rule).
   //
   // Native rather than Dart-heap because they are handed straight to the
   // shim. They are deliberately NOT cached typed-data views over the memory
@@ -205,9 +205,9 @@ class Box2DPhysicsSystem extends GameSystem
   /// id pool keeps dense and reuses - exactly the property an index into a
   /// flat list wants. Resolving a contact is then one indexed read.
   ///
-  /// One small object per shape rather than two parallel lists: it is
-  /// allocated once at shape creation, never on the hot path, and two lists
-  /// that must agree by index is the coupling RULES.md rule 10 describes.
+  /// One small object per shape rather than two parallel lists: it is allocated
+  /// once at shape creation, never on the hot path, and two lists that must
+  /// agree by index is the coupling the one-fact-one-place rule describes.
   List<_ShapeOwner?> _shapeOwners = <_ShapeOwner?>[];
 
   /// Drained contact/sensor records, 3 int64 each: [kind, shapeA, shapeB].
@@ -482,10 +482,10 @@ class Box2DPhysicsSystem extends GameSystem
   /// Bodies created during the **current** tick, by entity.
   ///
   /// A second home for something `bodyHandle` already holds, which normally
-  /// this codebase forbids (RULES.md rule 10) - justified because the
-  /// component field genuinely cannot answer the question yet. Its write is
-  /// not published until the tick ends, so between creation and the end of
-  /// that tick the row reports 0 and nothing else knows the body exists.
+  /// this codebase forbids (the one-fact-one-place rule) - justified because
+  /// the component field genuinely cannot answer the question yet. Its write is
+  /// not published until the tick ends, so between creation and the end of that
+  /// tick the row reports 0 and nothing else knows the body exists.
   ///
   /// Cleared at the end of every fixed step, so it holds at most one tick's
   /// worth of spawns rather than growing with the population.
@@ -1284,7 +1284,7 @@ class Box2DPhysicsSystem extends GameSystem
   // Results land in fields rather than a returned object, matching the reused
   // `Collision2DEvent`: a raycast per entity per tick is an ordinary thing for
   // a game to do, and returning a fresh result object would allocate on
-  // exactly that path (RULES.md rule 1).
+  // exactly that path (the no-allocation rule).
   //
   // The consequence is stated on each query: the fields are valid only until
   // the next one.

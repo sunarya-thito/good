@@ -86,14 +86,14 @@ mixin Parent on Component {
   /// splice through [firstChild]/[lastChild] and `child`'s own
   /// `nextSibling`/`prevSibling`.
   ///
-  /// Takes [self] explicitly, unlike the field accessors above that don't
-  /// need it: `Parent`'s `DataPointer` fields are shared across every
-  /// entity of this archetype (one prefab instance describes the whole
-  /// archetype, same as every other mixin - see `ArchetypeStorage`'s doc),
-  /// so there is no implicit "this entity" the way there would be on a
-  /// per-instance object. `SceneStruct.addEntity(..., parent: ...)` is the usual caller;
-  /// call this directly only when attaching an *already-existing* entity
-  /// (addEntity both creates the child and calls this).
+  /// Takes [self] explicitly, unlike the field accessors above that don't need
+  /// it: `Parent`'s `DataPointer` fields are shared across every entity of this
+  /// archetype (one prefab instance describes the whole archetype, same as
+  /// every other mixin - see `ArchetypeStorage`'s doc), so there is no implicit
+  /// "this entity" the way there would be on a per-instance object.
+  /// `SceneStruct.addEntity(..., parent: ...)` is the usual caller; call this
+  /// directly only when attaching an *already-existing* entity (addEntity both
+  /// creates the child and calls this).
   ///
   /// [child] must mix in [Child] - checked at runtime (`tryGet<Child>()`)
   /// since the type system has no way to require "some component that

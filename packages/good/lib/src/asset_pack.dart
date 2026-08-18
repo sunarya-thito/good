@@ -240,12 +240,12 @@ class AssetPack {
 
 // --- the chunk format ------------------------------------------------------
 //
-// Written by `good assets pack`; see `good_cli/lib/src/assets/pack.dart` for the
-// producing half and the reasoning behind each choice. Two copies of a wire
+// Written by `good assets pack`; see `good_cli/lib/src/assets/pack.dart` for
+// the producing half and the reasoning behind each choice. Two copies of a wire
 // format is one too many, but the alternative is good depending on the build
-// tool - which would put `package:analyzer` and an ffmpeg downloader into
-// every shipped game. The format is versioned precisely so the two can be
-// checked against each other; `chunkVersion` here and there must agree.
+// tool - which would put `package:analyzer` and an ffmpeg downloader into every
+// shipped game. The format is versioned precisely so the two can be checked
+// against each other; `chunkVersion` here and there must agree.
 
 /// `GOOC`.
 const List<int> chunkMagic = <int>[0x47, 0x4F, 0x4F, 0x43];

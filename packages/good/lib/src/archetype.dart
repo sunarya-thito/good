@@ -278,8 +278,8 @@ class ArchetypeStorage {
   // There is no `owner` field recording the registering `SceneStruct`. There
   // was one, read in exactly one place - the spawn-by-archetype-id path, now
   // deleted - and it was the same fact as `prefab.scene` stored a second time
-  // (RULES.md rule 10). `SceneStruct.addEntityIn` checks `prefab.scene`, which
-  // is the one home for it.
+  // (the one-fact-one-place rule). `SceneStruct.addEntityIn` checks
+  // `prefab.scene`, which is the one home for it.
 
   // There is no `assets` field either. It existed for exactly one reason -
   // an object-valued field read had no other way to reach a table - and that
@@ -488,7 +488,7 @@ class ArchetypeStorage {
   /// the caller might expect: `Entity` is an extension type over `int`, so
   /// this is a plain integer return with no heap traffic, whereas a record
   /// allocates. Spawning happens inside `onFixedUpdate`/game events, which
-  /// RULES.md rule 2 classifies as hot path, so a per-spawn allocation is
+  /// the hot-path rules classifies as hot path, so a per-spawn allocation is
   /// exactly what rule 1 forbids. The storage already knows its own
   /// [archetypeId], so packing here rather than at the call site costs
   /// nothing.

@@ -10,15 +10,15 @@
 /// An extension type over `int`, following `Entity`'s precedent: a peer id
 /// is passed to every message callback, stored in component rows once
 /// replication lands, and written into packet headers, so it must cost
-/// nothing to hold (RULES.md rule 1).
+/// nothing to hold (the no-allocation rule).
 ///
 /// # Why a slot and not a name
 ///
 /// The slot is a small dense index (`0 <= slot < maxPeers`), which is the
-/// property replication needs later: per-peer state - last acked tick,
-/// interest sets, input buffers - is a flat array indexed by slot, not a
-/// `Map<String, ...>` searched per packet (RULES.md rule 6). It is also the
-/// whole of what goes on the wire: one byte, not a UUID.
+/// property replication needs later: per-peer state - last acked tick, interest
+/// sets, input buffers - is a flat array indexed by slot, not a `Map<String,
+/// ...>` searched per packet (the typed-handle rule). It is also the whole of
+/// what goes on the wire: one byte, not a UUID.
 ///
 /// # Why a generation beside it
 ///

@@ -312,8 +312,8 @@ final class Asset<T> implements IntRepresentable {
 }
 
 /// Declares [key] and returns the handle to keep in a field - the third
-/// `describe*` hook alongside `describeType`/`describeStruct`, and RULES.md
-/// rule 6 applied to assets.
+/// `describe*` hook alongside `describeType`/`describeStruct`, and the
+/// typed-handle rule applied to assets.
 ///
 /// There is no asset name and nothing to look up at use time: [has] returns
 /// the handle, the declarer keeps it in a `late final` field, and that field

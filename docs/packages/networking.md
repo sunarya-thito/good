@@ -2,14 +2,14 @@
 
 !!! abstract "Layer: kernel-side (`good_net`) — dimension-agnostic"
     A 3D game needs the same session and messaging plumbing a 2D one does, so
-    networking sits beside the kernel rather than under a renderer.
+    networking sits beside the kernel instead of under a renderer.
 
 **Networking is the command API, over a socket.** A network message and a
 `GameCommand` are the same thing — a typed record, declared once,
 identified on the wire by its position in that declaration, handed to a handler
 registered where it runs. So they are not two implementations: `NetMessage` and
 `NetSignal` are spelled exactly like `SinkCommand` and `SignalCommand`, and the
-record layer underneath is the kernel's own, reused rather than reimplemented.
+record layer underneath is the kernel's own, reused instead of reimplemented.
 
 ```dart
 class MyState extends GameState2D<MyGame> with MultiplayerState<MyGame> {
@@ -36,7 +36,7 @@ fire((angle: 1.2));
 
 ## What networking adds over commands
 
-Two facts an isolate boundary does not have, and **both are declared rather than
+Two facts an isolate boundary does not have, and **both are declared instead of
 passed at the send site** — so a message's whole contract is readable in one
 place, and it cannot be sent reliably in one file and unreliably in another.
 
@@ -49,14 +49,14 @@ place, and it cannot be sent reliably in one file and unreliably in another.
 | `everyone` | Every client **and** the host | Host only | A decision the host must react to through the same path |
 
 `NetTarget.host` is the workhorse of an authoritative game, and it has one
-property worth spelling out: **calling one on the host runs it locally** rather
-than failing. That is what makes single-player, host and client one code
-path — the firing code says `fire((angle: a))` and does not care which machine
-it is on.
+property worth spelling out: **calling one on the host runs it locally** instead
+of failing. That is what makes single-player, host and client one code path —
+the firing code says `fire((angle: a))` and does not care which machine it is
+on.
 
 `clients` deliberately does *not* run on the host: the host already knows, it is
 the one that decided. Use `everyone` when the host must react through the same
-code path, so host and client visibly agree rather than agreeing by two
+code path, so host and client visibly agree instead of agreeing by two
 implementations that drift.
 
 ### `NetChannel` — how hard to try
@@ -78,7 +78,7 @@ descriptor.has(RoundEnded(), channel: NetChannel.reliable);
     an unreliable packet costs a tick of smoothness; waiting for its
     retransmission costs far more.
 
-Two channels rather than a per-message tunable policy, because these are the two
+Two channels , not a per-message tunable policy, because these are the two
 that game netcode actually needs and every extra one costs a receiver-side
 reassembly structure that must be paid for whether or not a game uses it. It is
 the same split ENet, Steam Sockets and QUIC's stream/datagram divide use.
@@ -120,7 +120,7 @@ fire((angle: 1.2, power: 0.8, charged: true));
 ```
 
 Worth a `typedef`: the record type appears in three signatures here, so naming
-it once means a new field is one edit rather than three. See
+it once means a new field is one edit , not three. See
 [commands](../guide/flutter-bridge.md#more-than-one-parameter-use-a-record) for
 the full walk-through — it is the same mechanism.
 
@@ -174,7 +174,7 @@ await network.leave();
 | `sendToAll(...)` | Every peer with a direct link |
 
 !!! info "Indexed roster access, not a list"
-    `peerAt(index)` rather than a `List<NetPeerId>` getter, so walking the
+    `peerAt(index)` , not a `List<NetPeerId>` getter, so walking the
     roster every tick allocates neither a list nor an iterator. Roster order is
     unspecified and shifts as peers come and go — index into it within one tick
     only.
@@ -207,7 +207,7 @@ running the same build.
 
 `NetTransport.schemaHash` is what enforces that: the registry is sealed and
 hashed at boot, the hash is bound to the transport, and a peer running a
-different build is refused at join rather than silently misrouting messages into
+different build is refused at join instead of silently misrouting messages into
 the wrong handlers.
 
 ## Backends
@@ -221,7 +221,7 @@ descriptor.transport(LoopbackNetTransport());
 
 A game that wants a loopback backend in tests and a real one in a build passes a
 different instance here — **nothing else in the game changes**, because messages
-are declared against the game rather than against a backend.
+are declared against the game instead of against a backend.
 
 ### Loopback — in `good_net` itself
 
@@ -273,7 +273,7 @@ for (final found in await network.discover()) {
 
 #### The protocol
 
-A lightweight UDP protocol implementing both channels directly, rather than
+A lightweight UDP protocol implementing both channels directly, instead of
 emulating them over a TCP-shaped stream:
 
 | Mechanism | How |
@@ -293,7 +293,7 @@ emulating them over a TCP-shaped stream:
 #### Testing netcode that has only ever seen loopback
 
 `simulatedLoss` throws away a fraction of **outgoing** datagrams, and it is a
-field on the shipped class rather than a test helper for a reason: netcode that
+field on the shipped class , not a test helper for a reason: netcode that
 has only run over loopback has never had a packet lost, so every retransmission
 path in it is untested code that first runs on a player's hotel wifi.
 
@@ -324,10 +324,10 @@ await a result because the other isolate answers on a known schedule; a remote
 peer may never answer at all, and an API that looks awaitable but can hang
 forever is worse than one that does not offer it.
 
-The **ECS replication layer** — a `Replicated` mixin, delta compression,
-client-side prediction and reconciliation — is its own topic rather than
-something bundled into messaging. Building it on these interfaces is a game's
-decision, and the channel split is exactly the primitive it needs.
+The **ECS replication layer** — a `Replicated` mixin, delta compression, client-
+side prediction and reconciliation — is its own topic instead of something
+bundled into messaging. Building it on these interfaces is a game's decision,
+and the channel split is exactly the primitive it needs.
 
 ## A note on isolates
 

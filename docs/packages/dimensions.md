@@ -13,7 +13,7 @@ flowchart TD
 `goo2d` and `goo3d` are siblings, not layers. Neither is built on the other.
 
 `goo3d` is a **sibling** of `goo2d`, not a layer on top of it. It depends on the
-same kernel and supplies its own renderer — a native surface rather than a
+same kernel and supplies its own renderer — a native surface , not a
 `CustomPaint` — without `GameView` changing at all.
 
 ## What is shared
@@ -55,7 +55,7 @@ good create my_game --dimension=d3    # goo3d
 ```
 
 The CLI carries the option because it is dimension-agnostic by design. It
-refuses `d3` until `goo3d` resolves, rather than scaffolding a project whose
+refuses `d3` until `goo3d` resolves, instead of scaffolding a project whose
 dependencies do not exist:
 
 ```console

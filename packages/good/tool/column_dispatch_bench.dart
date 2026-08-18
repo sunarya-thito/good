@@ -11,8 +11,8 @@
 // system pays ~25ns, and then modelled the *pointer plumbing* around it -
 // nullable returns, nullable fields, cached views. Every call site it measures
 // is statically resolved. The one layer it never modelled is the one the engine
-// actually forces on every field access: an **abstract generic** class with many
-// implementations alive at once.
+// actually forces on every field access: an **abstract generic** class with
+// many implementations alive at once.
 //
 // Two separate things could be hiding in there, and they have different fixes:
 //

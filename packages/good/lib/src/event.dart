@@ -84,10 +84,8 @@ abstract base class _ListenerSet<L extends GameListener> {
 /// ```dart
 /// late final EventDispatcher<EntityLifecycleListener, Entity> entityMounted;
 ///
-/// @override
-/// void describeEvents(EventDescriptor d) {
-///   entityMounted = d.has((listener, entity) => listener.onEntityMounted(entity));
-/// }
+/// @override void describeEvents(EventDescriptor d) { entityMounted =
+/// d.has((listener, entity) => listener.onEntityMounted(entity)); }
 ///
 /// // and firing it:
 /// entityMounted.call(entity);
@@ -98,7 +96,7 @@ abstract base class _ListenerSet<L extends GameListener> {
 /// be constructed per dispatch, so the spawn path built one object per entity
 /// and the tick built one per frame. Passing the payload as an argument
 /// removes the object entirely - **zero allocation per dispatch, whatever the
-/// payload** (RULES.md rules 1 and 2). The closure is built once during
+/// payload** (the hot-path rules). The closure is built once during
 /// `describeEvents`, which rule 5 explicitly permits.
 ///
 /// It also deleted eight classes: an event that carries a `Duration` is now
@@ -168,7 +166,7 @@ final class SignalDispatcher<L extends GameListener> extends _ListenerSet<L> {
 /// [EventBus.describeEvents].
 ///
 /// Same one-pass declarative shape as every other `describe*` hook, and the
-/// same handle-in-a-field discipline (RULES.md rule 6): keep what `has`
+/// same handle-in-a-field discipline (the typed-handle rule): keep what `has`
 /// returns, there is nothing to look up by name.
 abstract class EventDescriptor {
   /// Declares a dispatcher delivering a payload of type [E] to listeners of
@@ -210,7 +208,7 @@ abstract class EventDescriptor {
 /// `SceneStruct.initializeScene`, for a scene and the prefabs it just
 /// registered. A scene brought up headlessly never sees a `Game`, and its
 /// prefabs still need their dispatchers - one home for the machinery, used by
-/// both (RULES.md rule 10).
+/// both (the one-fact-one-place rule).
 @internal
 final class EventBinder implements EventDescriptor, ListenerCollector {
   /// One entry per declared dispatcher: test a candidate, and add it if it
@@ -253,9 +251,9 @@ final class EventBinder implements EventDescriptor, ListenerCollector {
 
   /// Captured here, once per declared dispatcher at boot, because `L` is only
   /// in scope at the `has`/`hasSignal` call that created it. Closures at
-  /// declare time are explicitly fine (RULES.md rule 5); what matters is that
-  /// none of this happens per dispatch. `is L` also promotes, so neither the
-  /// dispatcher nor the candidate needs a cast.
+  /// declare time are explicitly fine (the no-closure rule); what matters is
+  /// that none of this happens per dispatch. `is L` also promotes, so neither
+  /// the dispatcher nor the candidate needs a cast.
   void _accept<L extends GameListener>(void Function(L) add) {
     _offers.add((candidate) {
       if (candidate is L) add(candidate);

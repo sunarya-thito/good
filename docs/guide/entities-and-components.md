@@ -53,7 +53,7 @@ final v = velocityX[entity];       // read it back (published snapshot)
 Rows of the same archetype are contiguous in one native page, so a system
 walking every bullet's `velocityX` walks memory in order — the cache behaviour
 struct-of-arrays exists for. And because a column is an `int` address plus an
-offset rather than a `dart:ffi` `Pointer` object, indexing it allocates nothing.
+offset , not a `dart:ffi` `Pointer` object, indexing it allocates nothing.
 
 ## `Entity`
 
@@ -131,7 +131,7 @@ chain contributes, and skipping `super` silently drops everything below it.
 
 ### Multi-components
 
-Some components are declared through their own descriptor rather than by
+Some components are declared through their own descriptor instead of by
 contributing fields directly — `Renderable2D` (sprites) and `Collider2D`
 (shapes) are `on MultiComponent`, which lets one entity declare several sprites
 or several collider shapes. You use them the same way; the difference is the
@@ -205,7 +205,7 @@ storage.
 
 Archetype ids are process-global and assigned in first-registration order, which
 is why [declaration order must be stable](architecture.md#why-declarations-run-twice)
-and why scenes are declared once and loaded many times rather than registered
+and why scenes are declared once and loaded many times instead of registered
 per load.
 
 ## Lifecycle hooks

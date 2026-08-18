@@ -215,7 +215,8 @@ class SpinSystem extends GameSystem with FixedTickable {
 
       // `tryGet` rather than a type test on the entity: only the player has a
       // Breath, and asking the row whether it has the component is the
-      // sanctioned lookup (RULES.md rule 11 names it explicitly).
+      // sanctioned lookup (the never-dispatch-on-`is` rule names it
+      // explicitly).
       final player = entity.tryGet<Player>();
       if (player == null) continue;
       // Sampled fresh every tick from the clock - no per-entity animation

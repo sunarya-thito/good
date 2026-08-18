@@ -131,7 +131,7 @@ WebP for images, Ogg Vorbis for audio — using ffmpeg.
 | `--project-dir=<dir>` | `.` | The project whose assets to compact |
 | `--dry-run` | off | Report the plan, convert nothing |
 | `--force` | off | Reconvert everything, ignoring what is already up to date |
-| `--no-download` | off | Fail rather than downloading ffmpeg when none is installed |
+| `--no-download` | off | Fail instead of downloading ffmpeg when none is installed |
 | `--verbose` | off | Verbose output |
 
 Incremental by default: a hash of each source plus its settings lives in
@@ -194,11 +194,11 @@ Every platform takes the same options:
 | `--assets=<development\|release>` | `release` | Loose files, or a packed bundle |
 | `--asset-encryption=<none\|aes>` | `aes` | Encryption for packed assets |
 | `--asset-compression=<none\|fast\|normal\|best>` | `normal` | Compression for packed assets |
-| `--no-download` | off | Fail rather than downloading ffmpeg |
+| `--no-download` | off | Fail instead of downloading ffmpeg |
 | `--dry-run` | off | Report the plan, and do nothing |
 | `--verbose` | off | Verbose output |
 
-One command per platform rather than a `--platform` option, because each grows
+One command per platform , not a `--platform` option, because each grows
 its own signing and packaging options and an option that applies to one target
 is one every other target's help has to explain away.
 

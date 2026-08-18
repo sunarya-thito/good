@@ -46,9 +46,9 @@ import 'package:good/src/input/input_state.dart';
 /// # Everything below runs per action per fixed tick
 ///
 /// [resolve] and [isActuated] are the resolution pass (see `Input`), so they
-/// must not allocate and must not close over anything (RULES.md rules 1, 2,
-/// 5). That is why [resolve] writes into storage the action owns and hands it
-/// back, instead of returning a fresh value.
+/// must not allocate and must not close over anything (the no-allocation,
+/// hot-event and no-closure rules). That is why [resolve] writes into storage
+/// the action owns and hands it back, instead of returning a fresh value.
 @immutable
 abstract class InputBinding<T> {
   const InputBinding();
@@ -175,7 +175,7 @@ final class Vec2Binding extends InputBinding<Vector2> {
     if (state.isDown(down)) y += 1;
     if (state.isDown(up)) y -= 1;
     // In place, into the action's own vector: `Vector2(x, y)` here would be
-    // one heap object per action per tick (RULES.md rule 1).
+    // one heap object per action per tick (the no-allocation rule).
     storage.setValues(x, y);
     return storage;
   }
@@ -253,9 +253,9 @@ Map<String, Object?> _map(Map<String, Object?> json, String field) {
 ///
 /// One instance per declared action, mutated in place by [MouseBinding] each
 /// tick - so `Input<MousePosition>.value` is the same object for the life of
-/// the game and reading it allocates nothing (RULES.md rule 1). Treat it, and
-/// the vectors it hands out, as read-only and do not hold either past the
-/// current tick.
+/// the game and reading it allocates nothing (the no-allocation rule). Treat
+/// it, and the vectors it hands out, as read-only and do not hold either past
+/// the current tick.
 ///
 /// # Which spaces are here, and which is not
 ///

@@ -63,7 +63,7 @@ class LoopbackNetTransport extends NetTransport {
 
   /// Spent events, kept for reuse. Delivery is not a hot path in a test, but
   /// this backend also runs split-screen games, where per-message garbage is
-  /// per-frame garbage (RULES.md rule 1).
+  /// per-frame garbage (the no-allocation rule).
   final List<_Event> _spare = <_Event>[];
 
   bool _closed = false;
@@ -254,7 +254,7 @@ class _Room {
 
   /// Everyone in the session, host first. One list rather than peers and
   /// transports side by side: a peer's transport is a property of that peer
-  /// (RULES.md rule 10).
+  /// (the one-fact-one-place rule).
   final List<_Member> members = <_Member>[];
 
   /// How many times each slot has been handed out - what makes a recycled

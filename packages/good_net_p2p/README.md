@@ -43,7 +43,7 @@ fallback is a separate, clearly-scoped addition.
 ## The protocol
 
 A lightweight UDP protocol implementing `good_net`'s two channels directly,
-rather than emulating them over a TCP-shaped stream — and rather than pulling
+instead of emulating them over a TCP-shaped stream — and instead of pulling
 a DTLS and SCTP stack into a native game by binding WebRTC.
 
 | Mechanism | How |
@@ -55,14 +55,14 @@ a DTLS and SCTP stack into a native game by binding WebRTC.
 | Fragmentation | Anything larger is split and reassembled on the far side |
 | Liveness | A keepalive every 100 ms; a link silent for `linkTimeout` (5 s) is declared gone |
 
-Not here, and named rather than approximated: **congestion control**. A link
+Not here, and named instead of approximated: **congestion control**. A link
 sends what the game asks it to and reports `packetLoss` so the game can decide
 to send less.
 
 ## Testing netcode that has only ever seen loopback
 
 `simulatedLoss` throws away a fraction of outgoing datagrams. It is a field on
-the shipped class rather than a test helper on purpose: netcode that has only
+the shipped class , not a test helper on purpose: netcode that has only
 run over loopback has never had a packet lost, so every retransmission path in
 it is untested code that first runs on a player's hotel wifi.
 

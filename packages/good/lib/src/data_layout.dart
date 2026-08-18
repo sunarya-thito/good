@@ -139,8 +139,9 @@ abstract base class _Field<T> extends DataPointer<T> implements ArchetypeField {
 /// Delegation rather than a new `_Field` subclass, and that is deliberate: the
 /// bit-packing, the default handling and the row resolution are already right
 /// in the `uint1` field this wraps, and a parallel implementation would be a
-/// second copy of them to keep in step (RULES.md rule 10). `_EntityField` in
-/// `data/hierarchy.dart` wraps `optInt64` the same way for the same reason.
+/// second copy of them to keep in step (the one-fact-one-place rule).
+/// `_EntityField` in `data/hierarchy.dart` wraps `optInt64` the same way for
+/// the same reason.
 ///
 /// The wrapper is not free at the call site the way a raw field is - it adds
 /// one virtual call and a compare per access - but it is only ever used for
@@ -442,10 +443,10 @@ final class _Float64Field extends _Field<double> {
 
 // --- packed value fields -------------------------------------------------
 //
-// hasPacked<T extends IntRepresentable> stores a plain integer in the row, so
-// a component row never holds a Dart heap reference (RULES.md rule 1). Writes
-// call `pack()`; reads `unpack()` it back through the `IntRepresentation` the
-// field was declared against.
+// hasPacked<T extends IntRepresentable> stores a plain integer in the row, so a
+// component row never holds a Dart heap reference (the no-allocation rule).
+// Writes call `pack()`; reads `unpack()` it back through the
+// `IntRepresentation` the field was declared against.
 //
 // The representation is held *per field*, not looked up from a shared
 // registry. That is what lets two unrelated populations (assets, sprite

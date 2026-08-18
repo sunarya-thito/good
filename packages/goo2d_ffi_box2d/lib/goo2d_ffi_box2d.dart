@@ -19,7 +19,7 @@
 /// every call on the engine's hottest path. This codebase has already
 /// measured that class of cost once and removed it (a `Pointer` held in a
 /// field cost 14.63 ns per access against 2.25 ns for a plain `int`), and
-/// RULES.md rule 1 forbids reintroducing it.
+/// the no-allocation rule forbids reintroducing it.
 ///
 /// So `src/goo_box2d.h` exposes only `int64_t`, `int32_t`, `uint64_t`,
 /// `float`, and pointers to arrays of those. The generated bindings contain

@@ -44,7 +44,7 @@ These were actually run:
 
 ## Not yet implemented
 
-Deliberately deferred, and documented in place rather than left as silent gaps.
+Deliberately deferred, and documented in place instead of left as silent gaps.
 
 ### Engine
 
@@ -88,7 +88,7 @@ Deliberately deferred, and documented in place rather than left as silent gaps.
   `dart:io` sockets.
 
 !!! note "The Steam backend was dropped"
-    `good_net_steam` was removed rather than built. The transport contract is
+    `good_net_steam` was removed instead of built. The transport contract is
     open, so a Steam backend remains possible as a separate package; nothing in
     `good_net` assumes one. `good_ffi_steamworks`, the empty bindings package it
     would have been built on, went with it.
@@ -99,7 +99,7 @@ The packages are `publish_to: none` and are not on pub.dev yet. pub.dev
 currently serves `goo2d` **0.0.2**, an earlier iteration of this engine with an
 entirely different API — a pubspec saying `goo2d: ^0.0.1` resolves to *that*,
 and resolves successfully, so the mismatch surfaces as analyzer errors in
-generated code rather than as a resolution failure.
+generated code instead of as a resolution failure.
 
 Until the rewrite is published, depend on the engine by `path:` or `git:`.
 

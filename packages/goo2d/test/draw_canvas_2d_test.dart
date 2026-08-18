@@ -8,7 +8,7 @@ import 'package:goo2d/goo2d.dart';
 // DrawCanvas2D, the main-isolate replay side: does one frame become the right
 // drawVertices calls with the geometry the producer wrote, does texture
 // batching preserve the z order the producer sorted into, and does the replay
-// path stay inside RULES.md rule 3 (no save/restore/rotate/translate/
+// path stay inside the draw-batch rule (no save/restore/rotate/translate/
 // drawImage). The last is enforced by a spy Canvas that traps every call, not
 // by a promise in a doc comment.
 
@@ -60,15 +60,15 @@ const List<String> _forbidden = <String>[
   'drawAtlas',
 ];
 
-/// Asserts the whole of RULES.md rule 3 against a spy that just replayed: not
-/// one of the forbidden calls appears, whatever else did.
+/// Asserts the whole of the draw-batch rule against a spy that just replayed:
+/// not one of the forbidden calls appears, whatever else did.
 void _expectNoForbiddenCalls(_SpyCanvas spy) {
   for (final call in _forbidden) {
     expect(
       spy.calls,
       isNot(contains(call)),
       reason:
-          'RULES.md rule 3: texturing goes through an ImageShader on the '
+          'the draw-batch rule: texturing goes through an ImageShader on the '
           'paint, so nothing in this pipeline may reach for $call',
     );
   }
@@ -626,7 +626,7 @@ void main() {
           reason:
               'an ImageShader binds engine-side state; building one per '
               'frame at compositor rate is exactly the hot-path allocation '
-              'RULES.md rule 1 exists to prevent',
+              'the no-allocation rule exists to prevent',
         );
         expect(
           second.vertices,

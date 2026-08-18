@@ -454,7 +454,7 @@ mixin Collider2D on MultiComponent {
 /// `late final BoxBody boxCollider` style fields).
 /// **A single instance is reused for every dispatch.** A physics step can
 /// produce hundreds of contacts, and every framework event is hot path
-/// (RULES.md rules 1 and 2), so allocating one of these per contact is
+/// (the hot-path rules), so allocating one of these per contact is
 /// exactly the cost the rule forbids. `MousePickingSystem` already
 /// established the shape with its own reused `MouseEvent`.
 ///

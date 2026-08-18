@@ -14,8 +14,7 @@ import 'package:goo2d/src/render/render_2d.dart';
 /// any of the objects hanging off it) is storing something that will describe
 /// a different entity a millisecond later. Read what you need inside the
 /// callback. The alternative - a fresh event per hover, per entity, per tick -
-/// is a heap object on a path that runs every tick forever (RULES.md rules 1
-/// and 2), which is the same reason `Input<Vector2>.value` hands back a vector
+/// is a heap object on a path that runs every tick forever (the no-allocation and hot-event rules), which is the same reason `Input<Vector2>.value` hands back a vector
 /// it owns.
 class MouseEvent {
   MouseEvent._(this.position, this.worldSpace);
@@ -248,7 +247,7 @@ class MousePickingSystem extends GameSystem with FixedTickable {
       final bodies = entity.get<Collider2D>().bodies;
       var hit = false;
       // Indexed, not `for (final body in bodies)`: an iterator per entity per
-      // tick is a heap object (RULES.md rules 1 and 5).
+      // tick is a heap object (the no-allocation and no-closure rules).
       for (var i = 0; i < bodies.length; i++) {
         final body = bodies[i];
         if (!body.enable[entity]) continue;

@@ -137,9 +137,9 @@ class RingBuffer {
   ///
   /// Takes the destination rather than returning one so a per-tick consumer
   /// (`Game`'s command drain) can keep reusing a single list instead of
-  /// allocating one per tick for what is usually zero records - RULES.md
-  /// rule 1 against a loop that runs 60 times a second. The caller owns
-  /// clearing it.
+  /// allocating one per tick for what is usually zero records - no heap
+  /// allocation on the hot path, and this is a loop that runs 60 times a
+  /// second. The caller owns clearing it.
   void drainInto(List<RingBufferRecord> records) {
     final localWrite = _writeCursorPtr.value; // snapshot once per drain
     final bytes = _bytes;

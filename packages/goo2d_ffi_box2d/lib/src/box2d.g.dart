@@ -684,12 +684,12 @@ class Box2DBindings {
   late final _gooShapeDestroy =
       _gooShapeDestroyPtr.asFunction<void Function(int, int)>();
 
-  /// Box2D v3 has no per-shape enable flag, so goo2d's
-  /// `ColliderBody.enable` is expressed as a filter change: a zero mask
-  /// collides with nothing. Dart passes both bits every time rather than
-  /// this shim remembering a "real" mask to restore - the authoritative
-  /// `layer`/`excludeLayers` already live in component storage, and
-  /// caching a second copy here is the drift RULES.md rule 10 describes.
+  /// Box2D v3 has no per-shape enable flag, so goo2d's `ColliderBody.enable` is
+  /// expressed as a filter change: a zero mask collides with nothing. Dart
+  /// passes both bits every time rather than this shim remembering a "real"
+  /// mask to restore - the authoritative `layer`/`excludeLayers` already live
+  /// in component storage, and caching a second copy here is the drift the
+  /// one-fact-one-place rule describes.
   void gooShapeSetFilter(
     int shape,
     int category,

@@ -1123,7 +1123,7 @@ void main() {
       // The reason these exist: changing a pivot at runtime should not mean
       // remembering to poke four fields, and there is deliberately no matching
       // getter (a read returning a fresh RelativeOffset2D would allocate per
-      // read on the hot path - RULES.md rule 1).
+      // read on the hot path - the no-allocation rule).
       scene.twoSprite.body.setPivot(
         entity,
         const RelativeOffset2D(fractionX: 0.25, offsetY: -4),
@@ -2247,7 +2247,8 @@ void main() {
       expect(atDefault, closeTo(_Panel.inset, 1e-6));
 
       // Between ticks, so the write lands in an open tick rather than in a slot
-      // the next beginTick would copy over - see data_layout.dart's `_writeRow`.
+      // the next beginTick would copy over - see data_layout.dart's
+      // `_writeRow`.
       final pool = run.state.scene!.pool;
       pool.beginTick();
       scene.panel.frame.width[entity] = _Panel.drawSize * 3;

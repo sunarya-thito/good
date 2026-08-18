@@ -85,7 +85,7 @@ abstract class GameSystem extends GameListenerBase
   /// pool and the tick loop.
   ///
   /// **A `GameState`, not a `Game`, and that is the isolate boundary showing
-  /// up in a field type** (RULES.md rule 9). A system only ever exists on the
+  /// up in a field type** (the isolate-affinity rule). A system only ever exists on the
   /// copy that simulates, so the object it holds is the one that simulates
   /// too. Holding a `Game` and asking it for a state would have compiled on
   /// the presentation isolate and found nothing there.
@@ -177,7 +177,7 @@ abstract class GameSystem extends GameListenerBase
   /// ```
   ///
   /// Keep the returned [Input] in a `late final` field; there is no
-  /// `getAction(name)` to look one up by (RULES.md rule 6). Unlike
+  /// `getAction(name)` to look one up by (the typed-handle rule). Unlike
   /// `Game.describeInputs` this has no `super` to call - the framework's own
   /// declarations all live on the `Game`.
   ///
@@ -283,7 +283,7 @@ abstract class QueryDescriptor {
 /// strictly more expressive on paper, but nothing in the engine ever used a
 /// real disjunction of conjunctions, and its `matches` allocated a closure
 /// per call (`clauses.any((c) => ...)`) on the hottest path there is -
-/// RULES.md rules 1, 2 and 5.
+/// the no-allocation, hot-event and no-closure rules.
 ///
 /// Components are named as bare `Type` objects rather than type arguments
 /// (`withAll(Transform2D)`, not `With<Transform2D>()`) so one flat call can
@@ -528,10 +528,10 @@ class _ArchetypeQuery implements Query {
 
   /// Whether an archetype with this signature satisfies every constraint.
   ///
-  /// Two masked compares, then one per `withAny` group. Deliberately an
-  /// indexed `for` and not `_anyGroups.every(...)`: this runs once per
-  /// archetype per query per tick, and a closure here is exactly the
-  /// hot-path allocation RULES.md rules 1/2/5 forbid - the shape that was
+  /// Two masked compares, then one per `withAny` group. Deliberately an indexed
+  /// `for` and not `_anyGroups.every(...)`: this runs once per archetype per
+  /// query per tick, and a closure here is exactly the hot-path allocation the
+  /// no-allocation, hot-event and no-closure rules forbid - the shape that was
   /// wrong in the sum-of-products version this replaced.
   @override
   bool matches(int signature) {
@@ -641,8 +641,8 @@ final class ArchetypeQueryDescriptor implements QueryDescriptor {
 /// per entity. `entity.get<Mote>()` is not a per-entity lookup pretending to be
 /// cheap - it genuinely returns the same object every time, because a component
 /// describes an archetype's layout and every row shares it. A profile put the
-/// repeated resolution (`Entity.get`, `Entity.tryGet`, `ArchetypeRegistry.byId`)
-/// at ~7% of the engine's CPU.
+/// repeated resolution (`Entity.get`, `Entity.tryGet`,
+/// `ArchetypeRegistry.byId`) at ~7% of the engine's CPU.
 ///
 /// Hoisting it by hand is only correct when a query matches exactly one
 /// archetype, which is not something a caller can see from the query. This

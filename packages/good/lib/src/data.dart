@@ -1,8 +1,8 @@
 import 'package:good/src/struct.dart';
 
-// note: we used to support DataPointer<Matrix4>, and etc
-// but we removed them because they are object heap
-// and during loop, they will cause GC to run frequently, which is not good for performance
+// note: we used to support DataPointer<Matrix4>, and etc but we removed them
+// because they are object heap and during loop, they will cause GC to run
+// frequently, which is not good for performance
 
 // default value is stored to the memory pool during object creation
 // NOT accessed through pattern like `hasValue ? value : defaultValue`
@@ -116,8 +116,8 @@ abstract class DataDescriptor {
   // int spriteId = gameObject.spriteId.value;
   // Sprite? sprite = assetManager.getLoadedTexture(spriteId);
   /// A packed-value field: the row stores the `int` [repr] packs [T] into,
-  /// never a Dart heap reference (RULES.md rule 1), and a read unpacks it
-  /// back through that same representation.
+  /// never a Dart heap reference (the no-allocation rule), and a read unpacks
+  /// it back through that same representation.
   ///
   /// [repr] is named at the *declare* site because that is the one place the
   /// field's type is known - so a fourth kind of packed value costs nothing
@@ -193,17 +193,17 @@ abstract class DataPointer<T> {
   ///
   /// # This is for structural mutation, and nothing else
   ///
-  /// A *system* reading uncommitted state is the thing RULES.md rule 8 exists
-  /// to forbid, and this does not change that. What it is for is the narrow
-  /// case of a mutation that has to read back the structure **it is itself
-  /// editing**, within one tick: `Parent.addChild` reads `lastChild` to append
-  /// to the chain, and two `addChild` calls in one tick both read the same
-  /// published value, both conclude the parent has no children yet, and the
-  /// second silently overwrites the first. That is not a race or a subtle
-  /// ordering question - it drops entities out of the hierarchy outright, and
-  /// every existing test missed it because a page that has never published
-  /// falls through to the write slot anyway, making the first tick work by
-  /// accident.
+  /// A *system* reading uncommitted state is the thing the
+  /// no-specialised-variant rule exists to forbid, and this does not change
+  /// that. What it is for is the narrow case of a mutation that has to read
+  /// back the structure **it is itself editing**, within one tick:
+  /// `Parent.addChild` reads `lastChild` to append to the chain, and two
+  /// `addChild` calls in one tick both read the same published value, both
+  /// conclude the parent has no children yet, and the second silently
+  /// overwrites the first. That is not a race or a subtle ordering question -
+  /// it drops entities out of the hierarchy outright, and every existing test
+  /// missed it because a page that has never published falls through to the
+  /// write slot anyway, making the first tick work by accident.
   ///
   /// Outside a tick window there is no write slot to speak of - the one the
   /// buffer would hand back holds whatever was there before `beginWrite`
@@ -234,7 +234,7 @@ abstract class DataPointer<T> {
   ///
   /// Implementers **extend** `DataPointer` rather than implementing it, purely
   /// so this default is inherited instead of copied per implementation - one
-  /// home for the behaviour (RULES.md rule 10).
+  /// home for the behaviour (the one-fact-one-place rule).
   DataBinding<T> bind(Entity instance) => _DataBinding(this, instance);
 }
 
@@ -244,9 +244,9 @@ abstract class DataPointer<T> {
 /// That escape hatch is what keeps a self-describing representation off the
 /// allocator on a hot path. `frame[entity]` has to return a `SpriteFrame`, so
 /// it constructs one - fine at a write site, 20k allocations a frame in a
-/// renderer's loop, which is exactly what RULES.md rule 1 and the removal of
-/// `DataPointer<Matrix4>` (see the note at the top of this file) exist to
-/// prevent. A renderer reads [packedAt] and does the shifts itself.
+/// renderer's loop, which is exactly what the no-allocation rule and the
+/// removal of `DataPointer<Matrix4>` (see the note at the top of this file)
+/// exist to prevent. A renderer reads [packedAt] and does the shifts itself.
 abstract class PackedPointer<T extends IntRepresentable>
     extends DataPointer<T> {
   const PackedPointer();
@@ -277,7 +277,7 @@ class _DataBinding<T> implements DataBinding<T> {
 /// **Why two-argument `get`/`set` instead of `pointer[entity][index]`.**
 /// The chained form needs an intermediate handle that knows *both* the row
 /// and the array's layout (base offset, element width, length). This engine
-/// forbids allocating one per access (RULES.md rule 1: zero heap allocation
+/// forbids allocating one per access (the no-allocation rule: zero heap allocation
 /// on the per-entity-per-tick hot path), and the obvious allocation-free
 /// carrier - an extension type - can hold exactly one representation value.
 /// An extension type over `Entity` alone therefore cannot know which array

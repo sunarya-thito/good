@@ -40,7 +40,7 @@ final running = startCoroutine(startRound);
     ```dart
     startCoroutine(() => entrance(entity));   // allocates a closure per start
     ```
-    That is what [rule 1](../reference/rules.md#1-no-heap-allocation-on-the-hot-path)
+    That is what [no heap allocation on the hot path](../reference/rules.md#no-heap-allocation-on-the-hot-path)
     is about, and it is why the parameterised form below exists.
 
 The body first advances on the **next** fixed step, never inline, so starting
@@ -55,7 +55,7 @@ one is safe from anywhere including outside the tick window.
 | a `YieldInstruction` | When it says so, polled once per step |
 | another `Iterable` | After running that one to completion |
 
-Anything else throws rather than being silently treated as "next frame".
+Anything else throws instead of being silently treated as "next frame".
 
 Seconds are **simulated**, accumulated from `fixedTimeStep`, so a coroutine
 replays identically — `Future.delayed` would not.
@@ -266,7 +266,7 @@ void onFixedUpdate() {
 
 `TimelineSample` is an `extension type` over an `int` — 16 bits of clip id, 48
 bits of microseconds — so producing one **allocates nothing**. That is the whole
-reason sampling is shaped this way rather than as an animation object that owns
+reason sampling is shaped this way instead of as an animation object that owns
 state and gets ticked: a system samples this per entity per frame.
 
 | `WrapMode` | Past the clip's end |
@@ -281,7 +281,7 @@ symmetrical by hand.
 ### Playing — the push path
 
 For a one-shot that must run to completion and then be awaited — an entrance, a
-door opening, a cutscene beat — where you want `await` rather than a flag to
+door opening, a cutscene beat — where you want `await` , not a flag to
 check every tick:
 
 ```dart
@@ -384,7 +384,7 @@ keys: 0 + 1 + 2 + 1.</figcaption>
     Each call advances a write head, so `.key(0).key(100, 1.0).key(0, 1.0)` is a
     **two-second** clip — not a one-second one with keys at t = 1 and t = 1.
 
-    Relative rather than absolute because absolute times would make inserting a
+    Relative instead of absolute because absolute times would make inserting a
     keyframe mean renumbering every one after it.
 
 | Call | Meaning |
@@ -413,7 +413,7 @@ always a straight linear blend and never has to know what easing was asked for.
 
 A `Track<int>` for a sprite index, or a track of any type with no meaningful
 midpoint, is **discrete**: it holds the previous value until the next key is
-reached rather than inventing a value in between. That is correct for a frame
+reached instead of inventing a value in between. That is correct for a frame
 number and is the honest fallback for a type that cannot be interpolated.
 
 ```dart

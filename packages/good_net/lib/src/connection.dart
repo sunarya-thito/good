@@ -57,7 +57,7 @@ enum NetConnectionState {
 ///
 /// [send] takes bytes plus an offset and a length rather than a `Uint8List`
 /// sized to the message, so a caller can keep one scratch buffer for its
-/// lifetime and write successive messages into it (RULES.md rule 1). The
+/// lifetime and write successive messages into it (the no-allocation rule). The
 /// transport copies the bytes out before returning - it has to, since a
 /// reliable message may be retransmitted long after the caller has reused
 /// that scratch space - so the buffer is free the instant [send] returns.
@@ -100,12 +100,11 @@ abstract class NetConnection {
   /// them from [NetTransport.poll]. Sending 1 message or 200 in one tick
   /// costs the same per message.
   ///
-  /// Legal while [state] is [NetConnectionState.connecting]: messages queue
-  /// and go out the moment the handshake completes, so a caller does not
-  /// have to write its own "send once connected" queue. Illegal once
-  /// disconnected - it asserts and drops (RULES.md rule 7), because a send
-  /// that silently vanishes is how a game ends up waiting forever for a
-  /// reply.
+  /// Legal while [state] is [NetConnectionState.connecting]: messages queue and
+  /// go out the moment the handshake completes, so a caller does not have to
+  /// write its own "send once connected" queue. Illegal once disconnected - it
+  /// asserts and drops (the assert-not-print rule), because a send that
+  /// silently vanishes is how a game ends up waiting forever for a reply.
   void send(NetChannel channel, Uint8List bytes, [int offset = 0, int? length]);
 
   /// Closes this connection, telling the peer why if a packet can still get

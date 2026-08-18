@@ -144,7 +144,7 @@ abstract class SceneStruct extends GameListenerBase
   /// `EntityStruct.bindArchetype` gets its own scene reference at registration
   /// time.
   ///
-  /// **A `GameState`, not a `Game`** (RULES.md rule 9): a scene only ever
+  /// **A `GameState`, not a `Game`** (the isolate-affinity rule): a scene only ever
   /// exists on the copy that simulates, so the object it holds is the one that
   /// simulates too. It used to hold a `Game` and reach the state through it,
   /// which is a hop that compiles on the presentation isolate and finds
@@ -233,7 +233,7 @@ abstract class SceneStruct extends GameListenerBase
   /// Declares the assets this scene needs that belong to no prefab -
   /// background music, UI chrome, a loading backdrop. The same hook
   /// `Component.describeAssets` gives a prefab, for the same reason and with
-  /// the same handle-in-a-field discipline (RULES.md rule 6).
+  /// the same handle-in-a-field discipline (the typed-handle rule).
   ///
   /// A scene's full asset footprint is the **union** of this and every prefab
   /// it registers, which is what `GameState.loadScene` loads and later

@@ -157,10 +157,10 @@ abstract class NetSession {
 
   /// The peer at [index] of the roster, `0 <= index < peerCount`.
   ///
-  /// Indexed access rather than a `List<NetPeerId>` getter, so that walking
-  /// the roster every tick allocates neither a list nor an iterator
-  /// (RULES.md rule 5). Roster order is unspecified and shifts as peers come
-  /// and go; index into it within one tick only.
+  /// Indexed access rather than a `List<NetPeerId>` getter, so that walking the
+  /// roster every tick allocates neither a list nor an iterator (the no-closure
+  /// rule). Roster order is unspecified and shifts as peers come and go; index
+  /// into it within one tick only.
   NetPeerId peerAt(int index);
 
   /// The direct link to [peer], or null when there is none - always null

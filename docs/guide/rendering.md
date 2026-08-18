@@ -23,7 +23,7 @@ flowchart LR
 `GameRenderer2D` composes world transforms and writes vertex data into a shared
 native buffer. The Flutter side replays it as a **single `drawVertices` call per
 frame** — no `save`, `restore`, `rotate`, `translate` or `drawImage` anywhere in
-the replay path. The view is push-driven off tick notifications rather than
+the replay path. The view is push-driven off tick notifications instead of
 polling vsync.
 
 You declare neither half. `Game2D` and `GameState2D` bring both, which is what
@@ -217,7 +217,7 @@ eye.view[camera] = game.defaultCamera;
 eye.zoom[camera] = 2;
 ```
 
-`view` is typed rather than an integer — a stray int does not compile there.
+`view` is typed , not an integer — a stray int does not compile there.
 
 ### Views
 
@@ -254,7 +254,7 @@ at the same instant.
 
 A game with no active camera draws at the origin with a zoom of 1, and the whole
 world is drawn. That is deliberate — a game that has not placed a camera yet
-shows something rather than a black screen.
+shows something , not a black screen.
 
 `GameView.headless(game: game)` is the other legitimate shape: a HUD-only or
 headless-plus-Flutter game, with no camera and nothing painted.
@@ -275,7 +275,7 @@ final viewX  = projection.worldToViewX(entityWorldX);
 it always reflects the current zoom and viewport.
 
 A zoom of zero maps the whole world onto one pixel, so the inverse reports the
-camera's own origin rather than an infinity that would poison every downstream
+camera's own origin , not an infinity that would poison every downstream
 comparison silently.
 
 ## Budgets
@@ -293,7 +293,7 @@ the renderer exposes how many sprites it actually emitted, and a debug overlay
 showing it is worth building early.
 
 The renderer also reports its three phases — walking renderables into the draw
-queue, sorting by z, and writing geometry — separately rather than as one
+queue, sorting by z, and writing geometry — separately instead of as one
 presentation total, because they are three unrelated costs with three unrelated
 fixes and one number cannot direct any of them. See
 [Performance](performance.md).

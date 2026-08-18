@@ -155,8 +155,9 @@ mixin RigidBody2D on Component {
   //
   // The last transform this body exchanged with Box2D. Compared against the
   // live Transform2D to answer "did gameplay move this?" without a second
-  // "dirty" flag that something would eventually forget to set (RULES.md
-  // rule 10 - derive it rather than store a fact that must be kept in step).
+  // "dirty" flag that something would eventually forget to set (the
+  // one-fact-one-place rule - derive it rather than store a fact that must be
+  // kept in step).
   //
   // Same mechanism WorldTransform2D already uses for change detection, and
   // for the same reason: comparing a handful of fields beats redoing the

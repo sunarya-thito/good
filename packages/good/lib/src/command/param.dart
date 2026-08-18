@@ -71,10 +71,10 @@ final class ParamBuffer {
   ///
   /// The three offsets are not `final` for one reason: a batch parsed off the
   /// wire is parsed **every tick**, and allocating one handle per record per
-  /// tick is exactly the per-frame garbage RULES.md rule 1 exists to prevent.
-  /// So [ParamBatch] keeps its handles and re-points them, and these fields
-  /// are mutable to let it - see [ParamBatch.reset], which is the only thing
-  /// that makes an outstanding handle stale.
+  /// tick is exactly the per-frame garbage the no-allocation rule exists to
+  /// prevent. So [ParamBatch] keeps its handles and re-points them, and these
+  /// fields are mutable to let it - see [ParamBatch.reset], which is the only
+  /// thing that makes an outstanding handle stale.
   void _bind(int maskOffset, int offset, int fieldCount) {
     this.maskOffset = maskOffset;
     this.offset = offset;
@@ -177,9 +177,9 @@ class ParamBatch {
   /// wrote it.
   ///
   /// A method rather than something every consumer works out from
-  /// `callAt(i).maskOffset - headerBytes`: two places doing that arithmetic
-  /// is two places to get it wrong when the header changes (RULES.md rule
-  /// 10), and the header is this class's business anyway.
+  /// `callAt(i).maskOffset - headerBytes`: two places doing that arithmetic is
+  /// two places to get it wrong when the header changes (the one-fact-one-place
+  /// rule), and the header is this class's business anyway.
   int indexAt(int index) =>
       _data.getUint16(_calls[index].maskOffset - _headerBytes, Endian.little);
 
@@ -480,10 +480,10 @@ abstract class ParamDescriptor {
 /// `describeParams` pass, while the pointers it hands back live as long as
 /// the thing that declared them does.
 ///
-/// Public because it is not command machinery - it is *record* machinery,
-/// and a network message declares its fields with the identical vocabulary
-/// (see [ParamBatch]). One packing rule, one implementation of it: two would
-/// be two mental models for one idea, and RULES.md rule 10 is about exactly
+/// Public because it is not command machinery - it is *record* machinery, and a
+/// network message declares its fields with the identical vocabulary (see
+/// [ParamBatch]). One packing rule, one implementation of it: two would be two
+/// mental models for one idea, and the one-fact-one-place rule is about exactly
 /// that.
 final class ParamLayout implements ParamDescriptor {
   int _bitCursor = 0;

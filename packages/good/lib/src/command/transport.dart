@@ -229,9 +229,10 @@ final class CommandTransport implements CommandSender {
       final ring = outbound;
       if (ring == null) continue;
       if (!_write(ring, replyRecord, batch.id, batch.bytes, batch.length)) {
-        // The sender is awaiting this and will now wait forever, so it is
-        // worth being loud about (RULES.md rule 7). Dropping is still better
-        // than blocking a tick on a ring only the other isolate can drain.
+        // The sender is awaiting this and will now wait forever, so it is worth
+        // being loud about (the assert-not-print rule). Dropping is still
+        // better than blocking a tick on a ring only the other isolate can
+        // drain.
         assert(
           false,
           'the reply ring is full, so batch #${batch.id} has been run but its '

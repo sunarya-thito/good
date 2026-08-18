@@ -117,7 +117,7 @@ obvious to the scan.
 
 ### `ffmpeg is unavailable`
 
-With `--no-download`, a missing ffmpeg is an error rather than a download.
+With `--no-download`, a missing ffmpeg is an error , not a download.
 Install one, or drop the flag.
 
 ### N assets failed to convert
@@ -145,7 +145,7 @@ good assets compact --force
 
 ### `goo3d does not exist yet`
 
-`--dimension=d3` is declared and refused rather than silently accepted: a
+`--dimension=d3` is declared and refused instead of silently accepted: a
 project scaffolded against a package that does not resolve is worse than a clear
 refusal. See [Dimensions](../packages/dimensions.md).
 
@@ -223,8 +223,8 @@ yield WaitForFuture(someFuture);
 
 An ordinary read returns the last **published** snapshot, not what you wrote a
 moment ago in the same tick. That is by design. If a value must be read after it
-is written, move the reader to a later phase rather than looking for a second
-read method — see [Hot-path rules](../reference/rules.md#8-do-not-add-a-specialised-variant-to-escape-a-constraint).
+is written, move the reader to a later phase instead of looking for a second
+read method — see [Engine design rules](../reference/design-rules.md#do-not-add-a-specialised-variant-to-escape-a-constraint).
 
 ### The game never ticks
 
@@ -268,7 +268,7 @@ Tunnelling. Turn on continuous detection for the projectile:
 descriptor.has(type: BodyType2D.dynamicBody, isBullet: true);
 ```
 
-It costs real solver time, so put it on projectiles rather than on everything
+It costs real solver time, so put it on projectiles instead of on everything
 that happens to move quickly.
 
 ### Physics is slow with a moderate body count
@@ -288,7 +288,7 @@ being released when their entities are.
 ### `flutter build <target> failed`
 
 good prints Flutter's own stdout and stderr. Read that first — the failure is
-almost always Flutter's toolchain rather than the pipeline. `flutter doctor`
+almost always Flutter's toolchain , not the pipeline. `flutter doctor`
 next.
 
 ### Box2D fails to link

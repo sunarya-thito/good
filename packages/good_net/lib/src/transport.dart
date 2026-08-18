@@ -68,7 +68,7 @@ abstract class NetTransport {
   /// One entry point rather than a second `joinDiscovered(SessionInfo)`
   /// overload: [discover] hands back codes, and how a code resolves to a
   /// machine - a cached LAN address, a rendezvous lookup - is the backend's
-  /// own business (RULES.md rule 8, one way to do a thing).
+  /// own business (the no-specialised-variant rule, one way to do a thing).
   ///
   /// Fails with a [NetException] if the code is unknown, the session is full,
   /// or the two ends disagree about [schemaHash].

@@ -58,9 +58,10 @@ abstract interface class Component {
 /// what [Component] already declares.
 abstract interface class MultiComponent implements Component {}
 
-// game object is just a structure of data, it doesn't hold the actual data
-// it describes the data structure of the game object, and let the framework
-// allocate memory for the game object and its components, and manage the data of the game object
+// game object is just a structure of data, it doesn't hold the actual data it
+// describes the data structure of the game object, and let the framework
+// allocate memory for the game object and its components, and manage the data
+// of the game object
 //
 // It is also a [GameListener] and an [EventBus], which is the bottom of the
 // composition walk: a `GameState` offers its scenes, a `SceneStruct` offers the
@@ -223,7 +224,7 @@ abstract class ComponentDescriptor {
 ///
 /// An extension type over `int`, so passing one around, storing one in a
 /// native row, or writing one into a command ring buffer costs nothing -
-/// there is no object here to allocate or trace (RULES.md rule 1). Every
+/// there is no object here to allocate or trace (the no-allocation rule). Every
 /// accessor below is shifts and masks on that int.
 ///
 /// The archetype id indexes the *process-global* [ArchetypeRegistry] rather

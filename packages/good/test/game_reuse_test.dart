@@ -7,13 +7,13 @@ import 'package:good/good.dart';
 /// where it is asserted rather than left to be discovered.
 ///
 /// Two facts hold it up and they agree. A declaration is one-shot, because
-/// every one of them lands in a `late final` (RULES.md rule 6) and a `late
-/// final` is assignable exactly once. And a declaration *is* its storage: the
-/// `StateChannel` returned by `descriptor.hasInt32()` holds the run's
-/// `TripleBuffer` directly, a `BufferHandle` its `RingBuffer`, a
-/// `GameCommand` the sender that routes it - which is what keeps reading any
-/// of them a plain field access on the tick path, with no per-access
-/// indirection to work out which run is asking.
+/// every one of them lands in a `late final` (the typed-handle rule) and a
+/// `late final` is assignable exactly once. And a declaration *is* its storage:
+/// the `StateChannel` returned by `descriptor.hasInt32()` holds the run's
+/// `TripleBuffer` directly, a `BufferHandle` its `RingBuffer`, a `GameCommand`
+/// the sender that routes it - which is what keeps reading any of them a plain
+/// field access on the tick path, with no per-access indirection to work out
+/// which run is asking.
 ///
 /// Making an instance reusable means separating those: declarations become
 /// pure (index plus metadata) and each run gets a storage table, reached as

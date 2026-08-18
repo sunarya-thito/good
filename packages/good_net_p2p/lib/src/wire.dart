@@ -73,7 +73,7 @@ const int payloadHeaderBytes = 9;
 /// inherits the sequencing, acknowledgement and batching that the payload
 /// packet already has - a roster update that needed its own retransmission
 /// logic would be a second reliability implementation to keep correct
-/// (RULES.md rule 10).
+/// (the one-fact-one-place rule).
 abstract final class PacketType {
   /// A client asking who is hosting, sent to the broadcast address.
   static const int discover = 0;

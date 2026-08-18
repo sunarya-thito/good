@@ -28,7 +28,7 @@ transform
     sits at a *larger* y than the things falling onto it. Box2D's own examples
     are written y-up; this engine is not.
 
-Scale defaults to `1` rather than to the field's own `0`, because a zero scale
+Scale defaults to `1` instead of to the field's own `0`, because a zero scale
 collapses every point to the origin — an entity that simply never assigned a
 scale would be invisible with nothing anywhere saying why.
 
@@ -42,7 +42,7 @@ final d = transform.distanceTo(a, b);   // local-space distance
 transform.lookAt(entity, targetX, targetY);
 ```
 
-Each resolves every `Entity` argument's own `Transform2D` fresh, rather than
+Each resolves every `Entity` argument's own `Transform2D` fresh, instead of
 reading through the receiver — a second entity may belong to a different
 archetype with a different row layout entirely, and reading it through the wrong
 one would silently address the wrong storage.

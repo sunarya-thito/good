@@ -48,9 +48,10 @@ import 'package:good/src/triple_buffer.dart';
 /// *guaranteed*, rather than true only while the margin happens to hold.
 ///
 /// [isDown] is a bounds-free index, a shift and a mask against a plain
-/// `Uint8List`: no allocation, no map, nothing per call (RULES.md rules 1, 2,
-/// 5). [attach] allocates nothing either - it is an indexed copy, deliberately
-/// not `Pointer.asTypedList`, which builds a view object per call.
+/// `Uint8List`: no allocation, no map, nothing per call (the no-allocation,
+/// hot-event and no-closure rules). [attach] allocates nothing either - it is
+/// an indexed copy, deliberately not `Pointer.asTypedList`, which builds a view
+/// object per call.
 final class InputState {
   @internal
   InputState();
@@ -135,9 +136,9 @@ final class InputState {
   /// once per fixed tick - see the class doc on why it copies.
   ///
   /// An indexed loop rather than `Pointer.asTypedList` + `setAll`:
-  /// `asTypedList` builds a view object per call, which on a per-tick path is
-  /// a heap allocation per tick (RULES.md rule 1). Forty-odd loads is cheaper
-  /// than the object would be, never mind the collection.
+  /// `asTypedList` builds a view object per call, which on a per-tick path is a
+  /// heap allocation per tick (the no-allocation rule). Forty-odd loads is
+  /// cheaper than the object would be, never mind the collection.
   @internal
   void attach(Pointer<Uint8>? slot) {
     if (slot == null) {
@@ -467,11 +468,11 @@ final class InputDevice {
 
   /// The binding-table lookup, built once on first use.
   ///
-  /// Not a RULES.md rule 6 violation and not on the hot path: it translates a
-  /// device event (which really does only identify itself by a USB HID usage
-  /// code) into an [InputKey], once per key press, on the Flutter isolate.
-  /// Resolution - the thing that runs per action per tick - never comes near
-  /// it.
+  /// Not a the typed-handle rule violation and not on the hot path: it
+  /// translates a device event (which really does only identify itself by a USB
+  /// HID usage code) into an [InputKey], once per key press, on the Flutter
+  /// isolate. Resolution - the thing that runs per action per tick - never
+  /// comes near it.
   static InputKey? _keyboardFor(PhysicalKeyboardKey physical) {
     var table = _keyboardByUsage;
     if (table == null) {

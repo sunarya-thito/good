@@ -144,7 +144,7 @@ class P2PLink implements NetConnection {
 
   /// Spent [_Out]s, kept for reuse. A game sending 60 snapshots a second per
   /// peer would otherwise make 60 objects a second per peer, on the frame
-  /// path (RULES.md rule 1).
+  /// path (the no-allocation rule).
   final List<_Out> _spare = <_Out>[];
 
   int _nextSequence = 0;

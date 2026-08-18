@@ -111,7 +111,7 @@ class MyGame extends Game2D {
 `maxFixedStepsPerAdvance` is the spiral-of-death guard: a machine that cannot
 simulate a step in less than `fixedTimeStep` would otherwise fall further behind
 every frame. Dropping time is the only stable answer — the simulation runs
-slower than wall clock rather than locking up.
+slower than wall clock instead of locking up.
 
 ### Phases within one advance
 
@@ -132,7 +132,7 @@ Two consequences worth internalising:
 **Component writes must land inside the tick window.** `beginTick` copies the
 last published snapshot over the write slot, so anything written outside the
 window is silently discarded. This is why coroutines are `sync*` generators
-rather than `async*` — an `async*` body resumes on a microtask, after
+instead of `async*` — an `async*` body resumes on a microtask, after
 `commitTick`, and every write after the first `yield` would be thrown away.
 
 **A read sees the last published snapshot.** If you must read a value after

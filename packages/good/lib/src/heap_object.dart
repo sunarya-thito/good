@@ -3,7 +3,7 @@ import 'package:meta/meta.dart';
 /// Process-global table backing `DataDescriptor.hasHeapObject`/
 /// `optHeapObject`: it hands an arbitrary Dart object a plain integer
 /// address so a component row - which is native memory and cannot hold a
-/// Dart heap pointer (RULES.md rule 1) - can refer to it as a `Uint32`.
+/// Dart heap pointer (the no-allocation rule) - can refer to it as a `Uint32`.
 ///
 /// The sibling of an `ObjectTable` such as `GameAssets` (asset.dart), and
 /// deliberately

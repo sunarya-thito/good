@@ -33,7 +33,7 @@ generated `asset_key.dart`. It holds two members:
 
 Sealing is deterministic - the nonce is a hash of the compressed body - so the
 same inputs always produce the same file. That is what lets `good_cli` compare
-bytes rather than round-trip.
+bytes instead of round-trip.
 
 ## Regenerating it
 

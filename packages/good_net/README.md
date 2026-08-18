@@ -11,8 +11,8 @@ identified on the wire by its position in that declaration, handed to a
 handler registered where it runs. So they are not two implementations:
 `NetMessage` and `NetSignal` are spelled exactly like `SinkCommand` and
 `SignalCommand`, and the record layer underneath (`ParamDescriptor`,
-`ParamPointer`, `ParamBatch`, `ParamBuffer`) is `good`'s own, reused rather
-than reimplemented.
+`ParamPointer`, `ParamBatch`, `ParamBuffer`) is `good`'s own, reused instead of
+reimplementing it here.
 
 ```dart
 class MyState extends GameState2D<MyGame> with MultiplayerState<MyGame> {
@@ -33,7 +33,7 @@ fire((angle: 1.2));
 ```
 
 What networking adds over commands is the two facts an isolate boundary does
-not have, both declared rather than passed at the send site:
+not have, both declared instead of passed at the send site:
 
 - **`NetTarget`** — which machine handles it. `host` is a client's intent and
   runs locally when the host sends it, which is what makes single-player,
@@ -70,7 +70,7 @@ not have, both declared rather than passed at the send site:
 ## Backends
 
 [`good_net_p2p`](https://pub.dev/packages/good_net_p2p) is the one that reaches another machine, with
-no server to host. The Steam backend was dropped rather than built; the
+no server to host. The Steam backend was dropped instead of built; the
 contract is open, so one remains possible as a separate package and nothing
 here assumes it.
 

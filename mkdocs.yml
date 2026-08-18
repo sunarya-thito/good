@@ -125,4 +125,5 @@ nav:
   - Reference:
       - CLI: reference/cli.md
       - Hot-path rules: reference/rules.md
+      - Engine design rules: reference/design-rules.md
       - Roadmap and status: reference/roadmap.md

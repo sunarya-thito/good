@@ -27,7 +27,7 @@ late Game run;
 // Note what these tests can no longer even express: there is no name to
 // misspell, no undeclared name to look up, and no collision between two
 // declarations of "the same" buffer. A declaration hands back a BufferHandle
-// the declarer keeps in a field (RULES.md rule 6), so the whole class of
+// the declarer keeps in a field (the typed-handle rule), so the whole class of
 // name-based failures the old string-keyed API had is gone rather than
 // tested.
 

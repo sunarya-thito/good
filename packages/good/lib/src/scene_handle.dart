@@ -14,10 +14,10 @@ import 'package:good/src/struct.dart';
 /// ```
 ///
 /// `SceneStruct` is to `Scene` what `EntityStruct` is to `Entity`: the class
-/// you write, and a handle to one live instance of it. Like [Entity] this is
-/// an extension type over `int`, so passing one around or storing one costs
-/// nothing (RULES.md rule 1), and like [Entity] it carries no references -
-/// resolution goes through the process-global [SceneRegistry], for the same
+/// you write, and a handle to one live instance of it. Like [Entity] this is an
+/// extension type over `int`, so passing one around or storing one costs
+/// nothing (the no-allocation rule), and like [Entity] it carries no references
+/// - resolution goes through the process-global [SceneRegistry], for the same
 /// reason `Entity.get<T>()` goes through `ArchetypeRegistry`.
 ///
 /// # Why this one has a generation counter and [Entity] does not

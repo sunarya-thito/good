@@ -34,7 +34,7 @@ Created my_game. Next:
   flutter run
 ```
 
-Generation runs straight away rather than telling you to run it: a fresh
+Generation runs straight away instead of telling you to run it: a fresh
 project's `lib/good.generated/` would otherwise be missing, so `main.dart` would
 not compile until a second command had been run — which makes "it does not
 build" a new project's first experience.
@@ -111,7 +111,7 @@ already built. See [`--rotate-keys`](../reference/cli.md#good-generate).
 
 ### The pubspec patch
 
-`good create` edits the pubspec textually rather than through a YAML round-trip,
+`good create` edits the pubspec textually instead of through a YAML round-trip,
 so the comments `flutter create` wrote survive:
 
 ```yaml title="pubspec.yaml"
@@ -162,8 +162,8 @@ Simulation goes on the `GameState`. They are the same object graph, deep-copied
 across an isolate boundary — see [Architecture](../guide/architecture.md).
 
 `Game2D`/`GameState2D` are the 2D layer's pair, and that narrowing is the whole
-opt-in: returning a plain `GameState` from a `Game2D` is a compile error rather
-than a game that silently paints nothing.
+opt-in: returning a plain `GameState` from a `Game2D` is a compile error , not a
+game that silently paints nothing.
 
 ### `lib/game/scenes/main_scene.dart` — what exists
 

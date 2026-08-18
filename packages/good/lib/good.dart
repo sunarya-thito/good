@@ -46,7 +46,7 @@ export 'src/command/command.dart'
 // its network messages on the *same* record layer rather than a parallel one
 // - a message crossing a socket and a command crossing an isolate are the
 // same bytes, and one packing rule with two implementations is the drift
-// RULES.md rule 10 warns about.
+// the one-fact-one-place rule warns about.
 export 'src/command/param.dart'
     show
         CommandBatch,

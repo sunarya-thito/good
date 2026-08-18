@@ -90,9 +90,9 @@ void main() {
       scene.cam.view[b] = view;
       scene.pool.commitTick();
       final query = await _query(scene);
-      // Tests run with asserts enabled, so this is the debug-build
-      // behaviour: two cameras is a development mistake that stops the run
-      // (RULES.md rule 7 - an assert, never a swallowed `print`). In a
+      // Tests run with asserts enabled, so this is the debug-build behaviour:
+      // two cameras is a development mistake that stops the run (the
+      // assert-not-print rule - an assert, never a swallowed `print`). In a
       // release build the assert compiles out and the first camera is used.
       expect(() => ActiveCameraResolver().resolve(query, view),
           throwsA(isA<AssertionError>()));

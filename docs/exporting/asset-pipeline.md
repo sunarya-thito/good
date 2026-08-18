@@ -96,13 +96,13 @@ that is already right is time spent making the asset slightly worse.
 ### ffmpeg
 
 Compaction needs ffmpeg and downloads one if your `PATH` has none. In CI, pass
-`--no-download` to make a missing ffmpeg an explicit failure rather than a slow
+`--no-download` to make a missing ffmpeg an explicit failure , not a slow
 surprise.
 
 ### Files it has no rule for
 
-Anything compaction cannot convert is reported as skipped, with a reason, rather
-than silently dropped. Put files that are already final — a JSON level
+Anything compaction cannot convert is reported as skipped, with a reason,
+instead of silently dropped. Put files that are already final — a JSON level
 definition, a font — directly in the output directory; nothing there is
 regenerable, so nothing there is ever stripped.
 
@@ -190,7 +190,7 @@ in the shared chunk. Run with --verbose to see them.
 ```
 
 A project the scan cannot read anything out of falls back to grouping by
-top-level directory rather than failing. The chunk format and the runtime do not
+top-level directory instead of failing. The chunk format and the runtime do not
 care how members were chosen, only that the mapping agrees with them.
 
 ### Compress, then encrypt — never the other way
@@ -212,7 +212,7 @@ plaintext could be made.
 | 34 | ciphertext | the rest of the chunk |
 
 Magic and version first, so a runtime reading a chunk from a future good **says
-so** rather than decrypting nonsense. Flags carry compressed/encrypted
+so** instead of decrypting nonsense. Flags carry compressed/encrypted
 separately, because `--encryption=none` is a real combination.
 
 The nonce is derived from a **hash of the compressed body**. GCM's one
@@ -221,7 +221,7 @@ means two chunks cannot collide unless their bytes are identical — in which ca
 they are the same chunk and reusing the nonce leaks nothing new. It also makes a
 pack **reproducible**, which a random nonce would not.
 
-!!! question "Why seal whole chunks rather than individual assets?"
+!!! question "Why seal whole chunks instead of individual assets?"
     A per-asset scheme needs an index outside the ciphertext saying where each
     asset begins and how long it is — and that index is a **map of the whole
     pack in plaintext**, which is most of what packing was meant to stop being
@@ -236,7 +236,7 @@ to decrypt its own assets to draw anything.
 The generated keys are four `final` lists combined at run time, not `const` — a
 `const` list is folded into the binary's constant pool where `strings` finds it,
 while a `final` one is assembled at run time. Neither stops someone with a
-debugger, and the design says so plainly rather than implying more.
+debugger, and the design says so plainly instead of implying more.
 
 ### The mapping
 
@@ -290,7 +290,7 @@ good assets pack          # 3. chunks, writing the mapping back
 flutter build windows    # 4. bundle whatever is on disk
 ```
 
-Out of order produces a build that is **stale rather than broken**, which is
+Out of order produces a build that is **stale instead of broken**, which is
 worse. Prefer `good build`.
 
 ---

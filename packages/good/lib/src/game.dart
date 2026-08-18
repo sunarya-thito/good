@@ -244,8 +244,8 @@ abstract class Game {
   /// ```
   ///
   /// Like every other declare pass this hands back the instance it was given,
-  /// to keep in a `late final` field (RULES.md rule 6) - there is no separate
-  /// handle type, and `descriptor.has(MainScene())` reads the same as
+  /// to keep in a `late final` field (the typed-handle rule) - there is no
+  /// separate handle type, and `descriptor.has(MainScene())` reads the same as
   /// `descriptor.has(MySystem())` and `descriptor.has(_Unit())` because it is
   /// the same idea.
   ///
@@ -339,7 +339,8 @@ abstract class Game {
   /// must not put a Flutter- or renderer-specific field on this class.
   ///
   /// Each declaration returns a [BufferHandle] the declarer keeps in a field
-  /// (RULES.md rule 6) - there are no buffer names and nothing to look up:
+  /// (the typed-handle rule) - there are no buffer names and nothing to look
+  /// up:
   ///
   /// ```dart
   /// late final BufferHandle drawBuffer;
@@ -601,11 +602,11 @@ abstract class Game {
   /// copy in the spawned configuration. Null on the game-isolate copy, which
   /// only ever reads input.
   ///
-  /// [GameView] feeds this automatically. It is public because a headless
-  /// host with no widget tree - a test, a replay, a bot - legitimately needs
-  /// to write input, and the alternative would be a second write path that
-  /// only tests use (RULES.md rule 8). Null before `start()` and after
-  /// `stop()`.
+  /// [GameView] feeds this automatically. It is public because a headless host
+  /// with no widget tree - a test, a replay, a bot - legitimately needs to
+  /// write input, and the alternative would be a second write path that only
+  /// tests use (the no-specialised-variant rule). Null before `start()` and
+  /// after `stop()`.
   InputDevice? get inputDevice => _inputs.device;
 
   /// Turns connected gamepads into [inputDevice] writes. Same lifetime and
@@ -906,8 +907,7 @@ abstract class Game {
   // than a limitation waiting to be lifted. Two things say so, and they agree:
   //
   //  * The declaration passes are not re-runnable, and that follows from the
-  //    API's own shape rather than from any implementation choice. RULES.md
-  //    rule 6 has every declaration land in a `late final` field
+  //    API's own shape rather than from any implementation choice. the typed-handle rule has every declaration land in a `late final` field
   //    (`score = descriptor.hasInt32()`), and a `late final` is assignable
   //    exactly once. A second pass throws `LateInitializationError` from
   //    inside the user's own `describeState` - and does it *after* appending a
@@ -1250,12 +1250,12 @@ abstract class Game {
   // simplification on the side.
   //
   // `ArchetypeRegistry`, `ComponentTypeRegistry`, `HeapObjectRegistry` and
-  // `SceneRegistry` are statics, and statics belong to no object graph, so
-  // they do not ride `Isolate.spawn`'s deep copy. While main ran
-  // `describeScenes` and mounted the state, main was the copy that filled
-  // them, and the spawned copy had to be handed the contents in a snapshot
-  // reachable from this object. That was two homes for one fact (RULES.md
-  // rule 10) held in agreement by the two copies running identical code.
+  // `SceneRegistry` are statics, and statics belong to no object graph, so they
+  // do not ride `Isolate.spawn`'s deep copy. While main ran `describeScenes`
+  // and mounted the state, main was the copy that filled them, and the spawned
+  // copy had to be handed the contents in a snapshot reachable from this
+  // object. That was two homes for one fact (the one-fact-one-place rule) held
+  // in agreement by the two copies running identical code.
   //
   // Now exactly one copy registers anything: [_bootGame] runs on the game
   // isolate, so the registries are filled where they are read and there is no
@@ -1958,9 +1958,9 @@ final class GameRuntime {
   /// isolate", pointing at the asset layer, which is not where the problem is.
   ///
   /// Safe because a run owns the isolate it simulates on: statics do not cross
-  /// an `Isolate.spawn`, and one instance runs once (`_requireNotYetDescribed`).
-  /// So there is never a second live run on this isolate whose registry
-  /// entries this could pull out from under.
+  /// an `Isolate.spawn`, and one instance runs once
+  /// (`_requireNotYetDescribed`). So there is never a second live run on this
+  /// isolate whose registry entries this could pull out from under.
   void _resetGlobalRegistries() {
     // The run's own asset table, before the registries that name into it.
     // `reset` calls `onUnloaded` on every instance, which is what releases the
@@ -2317,9 +2317,9 @@ final class GameRuntime {
 
 /// One in-flight [GameRuntime.requestAssetLoad], game-isolate side.
 ///
-/// One object rather than parallel maps keyed by request id (RULES.md rule
-/// 10): the completer, the progress callback and the first failure all belong
-/// to the same request and are only ever used together.
+/// One object rather than parallel maps keyed by request id (the
+/// one-fact-one-place rule): the completer, the progress callback and the first
+/// failure all belong to the same request and are only ever used together.
 final class _AssetLoadRequest {
   _AssetLoadRequest(this.onLoaded);
 
@@ -2375,7 +2375,7 @@ abstract class BufferDescriptor {
 /// A declared auxiliary ring buffer: the thing [BufferDescriptor.has] hands
 /// back and the declarer keeps in a `late final` field.
 ///
-/// This is RULES.md rule 6 applied to buffers. There is no name and no
+/// This is the typed-handle rule applied to buffers. There is no name and no
 /// registry to search: the handle carries its own declaration index, and both
 /// copies of the `Game` produce the same handles in the same order because
 /// both run the same `describeBuffers` passes. So `drawBuffer.ring` is a
@@ -2433,9 +2433,9 @@ final class BufferHandle {
 /// A declared [HandoffBuffer] - what [BufferDescriptor.hasHandoff] hands back
 /// and the declarer keeps in a `late final` field.
 ///
-/// Same discipline as [BufferHandle] (RULES.md rule 6): no name, no registry,
-/// and both copies produce the same handles in the same order because both run
-/// the same `describeBuffers` passes.
+/// Same discipline as [BufferHandle] (the typed-handle rule): no name, no
+/// registry, and both copies produce the same handles in the same order because
+/// both run the same `describeBuffers` passes.
 final class HandoffHandle {
   HandoffHandle._(this.index, this.slotBytes);
 
@@ -2627,12 +2627,12 @@ enum _ChannelFormat {
 /// write paths, and change notification.
 ///
 /// One class for both isolate roles rather than a read-only subclass and a
-/// writable one, because `StateChannel` now *has* a setter on both sides -
-/// the split is enforced by [owned] and an `assert` (RULES.md rule 7) rather
-/// than by the type system. That is a deliberate trade: `ValueListenable`
-/// requires one declared type usable from Flutter on the main isolate, and a
-/// write from there is a programmer error rather than something a caller
-/// should be handed two types to reason about.
+/// writable one, because `StateChannel` now *has* a setter on both sides - the
+/// split is enforced by [owned] and an `assert` (the assert-not-print rule)
+/// rather than by the type system. That is a deliberate trade:
+/// `ValueListenable` requires one declared type usable from Flutter on the main
+/// isolate, and a write from there is a programmer error rather than something
+/// a caller should be handed two types to reason about.
 abstract class _StateChannelBase<T>
     with ChangeNotifier
     implements StateChannel<T>, _ChannelSlot {
@@ -2834,7 +2834,7 @@ abstract class _StateChannelBase<T>
   /// Without this, [pollChanged] would have to decode this channel every
   /// single tick even when nothing listens, purely so that a listener added
   /// later had something honest to compare against - a decode per declared
-  /// channel per tick, forever, for nobody (RULES.md rules 1 and 2). Doing it
+  /// channel per tick, forever, for nobody (the hot-path rules). Doing it
   /// here instead makes the no-listener case free and gives a late-arriving
   /// listener exactly the same guarantee: it is told about changes that
   /// happen *after* it started listening, never about one that predates it.

@@ -18,7 +18,7 @@ case badly.
 ## Where your UI belongs
 
 **Build your UI in Flutter.** That is the recommendation, and it is not a
-fallback — it is the reason the engine renders into a widget rather than owning
+fallback — it is the reason the engine renders into a widget instead of owning
 the window.
 
 Menus, HUDs, inventories, settings screens, dialogue boxes, pause overlays: all
@@ -187,8 +187,8 @@ class Damage extends GameCommand<Blow, int> {
 1. One bit, not a byte. Field widths are wire bandwidth.
 2. The **result** shares the same record as the parameters — one layout, one
    reservation, both directions.
-3. `ParamPointer` is integer-typed, so a `bool` is marshalled explicitly rather
-   than by an implicit conversion you cannot see.
+3. `ParamPointer` is integer-typed, so a `bool` is marshalled explicitly, not by
+   an implicit conversion you cannot see.
 
 Call it with a record literal, and the field names are checked at the call site:
 
@@ -197,9 +197,9 @@ final dealt = await game.damage((amount: 25, crit: true));
 ```
 
 The `typedef` is worth writing. The record type appears in four signatures, and
-naming it once means a new field is one edit rather than four.
+naming it once means a new field is one edit instead of four.
 
-!!! tip "Why a record rather than a parameter list"
+!!! tip "Why a record , not a parameter list"
     A command has to be **one value** to be reserved, marshalled, queued in a
     batch and handed to a handler. A record gives that one value named,
     type-checked fields with no wrapper class to declare and no positional
@@ -207,7 +207,7 @@ naming it once means a new field is one edit rather than four.
     the record that crosses the wire.
 
 The four marshalling methods are the whole contract, and `call`/`execute` are
-provided in terms of them rather than being things you override.
+provided in terms of them instead of being things you override.
 
 ### Handlers take the record
 
@@ -279,7 +279,7 @@ two drains 16 ms apart, which is what `commandBufferBytes` (64 KiB by default)
 sizes.
 
 !!! note "There is no built-in spawn command"
-    `SpawnEntityCommand` was deleted rather than shipped: it named a prefab by
+    `SpawnEntityCommand` was deleted instead of shipped: it named a prefab by
     `archetypeId`, which is a game-isolate identifier the Flutter isolate has no
     way to see. Declare your own, in terms that mean something on both sides —
     an enum of spawnable kinds, say.
@@ -392,7 +392,7 @@ game.addTickListener((tick) => setState(() {}));
 game.removeTickListener(listener);
 ```
 
-`GameView` is already push-driven off these notifications rather than polling
+`GameView` is already push-driven off these notifications instead of polling
 vsync, so you rarely need this directly — reach for it when a HUD must repaint
 exactly in step with the simulation.
 
@@ -486,7 +486,7 @@ class _GameSurfaceState extends State<GameSurface> {
     Constructing the game synchronously fixes half of it. The other half is that
     `stop()` returns immediately when the run has not finished booting, so
     stopping *during* start is also a no-op — which is why `dispose` hands the
-    teardown to the start future rather than calling `stop()` directly.
+    teardown to the start future instead of calling `stop()` directly.
 
 `stop()` is not optional. The game owns native memory and an isolate, and
 neither is reclaimed by the widget going away.

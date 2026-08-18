@@ -25,8 +25,8 @@ import 'package:good/src/game.dart';
 /// ```
 ///
 /// [CameraDescriptor.has] takes no argument because there is nothing to tell
-/// it: the field name is the identity (RULES.md rule 6), so a camera is never
-/// addressed by a name repeated at the use site.
+/// it: the field name is the identity (the typed-handle rule), so a camera is
+/// never addressed by a name repeated at the use site.
 ///
 /// # Why declared at boot
 ///

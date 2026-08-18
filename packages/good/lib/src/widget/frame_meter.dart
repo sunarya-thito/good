@@ -49,7 +49,7 @@ final class FrameMeter {
   ///
   /// A fixed-size ring rather than a growing list: this is fed by the engine
   /// once per frame forever, and anything that allocates per frame here would
-  /// be measuring its own overhead (RULES.md rules 1 and 2).
+  /// be measuring its own overhead (the hot-path rules).
   static const int _window = 60;
 
   final List<int> _at = List<int>.filled(_window, 0);

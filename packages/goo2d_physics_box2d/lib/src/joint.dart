@@ -60,8 +60,8 @@ extension type const Joint(int handle) {
   ///
   /// The force lands in static fields rather than a returned record because a
   /// breakable joint reads this every tick for every joint it watches, and a
-  /// record there would allocate on exactly that path (RULES.md rule 1). They
-  /// are valid only until the next call, which is the same contract the
+  /// record there would allocate on exactly that path (the no-allocation rule).
+  /// They are valid only until the next call, which is the same contract the
   /// raycast results carry.
   double readReaction() {
     final out = _reaction ??= calloc<Float>(2);

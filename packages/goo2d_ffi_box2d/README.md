@@ -14,7 +14,7 @@ Box2D's C API passes small structs by value (`b2Vec2`, `b2BodyId`,
 which is a heap object — so a direct binding would allocate on every call, on
 the engine's hottest path. That is the cost this codebase already measured and
 removed once (a `Pointer` held in a field: 14.63 ns/access vs 2.25 ns for a
-plain `int`), and RULES.md rule 1 forbids reintroducing it.
+plain `int`), and the no-allocation hot-path rule (https://sunarya-thito.github.io/good/reference/rules/) forbids reintroducing it.
 
 `src/goo_box2d.h` therefore exposes only `int64_t`, `int32_t`, `uint64_t`,
 `float`, and pointers to arrays of those. **The generated bindings contain no
@@ -26,7 +26,7 @@ The shim also carries bulk entry points (`gooBodiesPushTransforms` /
 two, independent of body count.
 
 Handles are packed by Box2D's *own* `b2StoreBodyId`/`b2LoadBodyId` helpers
-(`id.h`) rather than by arithmetic written here, so the packing is stated in
+(`id.h`) instead of by arithmetic written here, so the packing is stated in
 exactly one place. Zero is the null handle, which is Box2D's convention too —
 so a `hasInt64` component field defaulting to 0 already means "no body yet".
 
@@ -121,9 +121,9 @@ completely different fixes. A sleeping body costs Box2D almost nothing, so
 "4000 bodies, 40 awake" and "4000 bodies, 4000 awake" are different worlds
 that report the same population.
 
-`gooWorldCounters` flattens `b2Counters` into a caller's `int32` array rather
-than returning it — `b2Counters` is a struct by value, which is the one thing
-this shim exists to keep out of the generated bindings.
+`gooWorldCounters` flattens `b2Counters` into a caller's `int32` array instead
+of returning it — `b2Counters` is a struct by value, which is the one thing this
+shim exists to keep out of the generated bindings.
 
 ## Licence
 

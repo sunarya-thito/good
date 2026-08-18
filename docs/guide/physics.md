@@ -49,7 +49,7 @@ void describeSystems(SystemDescriptor descriptor) {
 ```
 
 That is the whole opt-in. Bodies are created as entities spawn and destroyed as
-they despawn — the system listens to spawn events rather than needing to be told.
+they despawn — the system listens to spawn events instead of needing to be told.
 
 !!! warning "Units are metres, kilograms and seconds"
     Box2D is tuned for objects roughly 0.1 m to 10 m. A game that treats one
@@ -153,7 +153,7 @@ body.bodyType[entity] = BodyType2D.staticBody;
 ```
 
 And a body can be taken out of the simulation entirely without being destroyed —
-the toggle pattern again, rather than a removal:
+the toggle pattern again, not a removal:
 
 ```dart
 body.setSimulated(entity, false);
@@ -202,7 +202,7 @@ if (physics.raycast(originX, originY, dirX, dirY, layerMask: -1)) {
 }
 ```
 
-The hit is read back off the system rather than returned as an object, so a
+The hit is read back off the system instead of returned as an object, so a
 raycast in a tick allocates nothing. `raycast` finds the **closest** hit.
 
 ```dart
@@ -220,7 +220,7 @@ for (var i = 0; i < found; i++) {
     exactness re-tests the survivors, which is cheap once the set is small.
 
     Results are valid until the next query, and `maxResults` bounds the work
-    rather than growing a buffer without limit.
+    instead of growing a buffer without limit.
 
 ## Joints
 
@@ -255,26 +255,62 @@ A `Joint` is an `extension type` over an int handle — passing one costs nothin
 
 ## Effectors
 
-Unity's effectors are gameplay code that finds bodies in a region and applies a
-force, so **Box2D has nothing to bind a component to**. They are extension
-methods on the system instead:
+An effector is a region that pushes on whatever is inside it: wind, a current,
+an updraft, water. Declare one on an entity beside the collider that gives it
+its shape.
 
 ```dart
-class WindSystem extends GameSystem with FixedTickable {
-  @override
-  int compareTo(GameSystem other) => other is Box2DPhysicsSystem ? -1 : 0;
+class WindZone extends EntityStruct with Transform2D, Collider2D, Effector2D {
+  late final BoxBody region;
+  late final AreaEffector wind;
 
   @override
-  void onFixedUpdate() {
-    state.getSystem<Box2DPhysicsSystem>().areaEffector(
-      -10, -5, 10, 5,          // the world-space box it acts in
-      forceX: 20,
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    region = descriptor.hasBoxCollider(
+      halfWidth: 50, halfHeight: 50, isTrigger: true,
     );
+  }
+
+  @override
+  void describeEffector(EffectorDescriptor descriptor) {
+    super.describeEffector(descriptor);
+    wind = descriptor.hasAreaEffector(region, forceY: -400);
   }
 }
 ```
 
-Area, Point, Buoyancy and Surface are provided. Platform (one-way) is not.
+It has no `RigidBody2D`, because a force field is not a thing that falls, and
+its collider is a trigger, so it pushes bodies without blocking them. Positive
+y points down, so a wind that lifts blows toward `-y`.
+
+**You do not write a system for this, and you do not write a `compareTo`.** The
+physics system walks the declared effectors before its own step, so the
+ordering is not your problem.
+
+Four kinds are provided:
+
+| Declare | Does |
+|---|---|
+| `hasAreaEffector(region, forceX:, forceY:, torque:)` | A uniform push, and optionally a spin |
+| `hasPointEffector(region, force:, minDistance:)` | Pulls toward or pushes from the centre. `minDistance` stops the force exploding at zero |
+| `hasBuoyancyEffector(region, density:, linearDrag:, angularDrag:)` | Water: floats what is less dense, drags what moves |
+| `hasSurfaceEffector(region, speed:, speedY:, force:)` | A conveyor, dragging contents toward a target speed |
+
+Platform (one-way) is not provided.
+
+Every parameter is a column, so a zone can change while the game runs, and
+`layerMask` picks what it acts on:
+
+```dart
+wind.forceY[entity] = -800;
+wind.enable[entity] = false;
+```
+
+!!! note "The functions underneath"
+    `Effectors2D` on the system still exposes the same four as one-shot calls
+    for a region you compute per tick. Declaring is the better default: it
+    keeps the region with the entity and gets the ordering right for you.
 
 ## Ordering around physics
 
@@ -310,7 +346,7 @@ transforms back, dispatching contacts — is deliberately thin: bulk entry point
 turn what would be 2N FFI calls per tick into two, independent of body count.
 
 The system exposes per-phase timings and body counts for a debug overlay. They
-are development instrumentation rather than a stable API, but they are how a
+are development instrumentation , not a stable API, but they are how a
 "physics is slow" report gets separated into "the arena is too small" and
 "bodies are leaking" — two problems with nothing in common.
 

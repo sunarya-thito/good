@@ -80,8 +80,8 @@ class Arena {
   ///
   /// Split out because [SandboxSystem] asks this question on **every** fixed
   /// tick to decide whether the box still fits, and allocating an object per
-  /// tick to answer it is the kind of thing RULES.md rule 1 is about. The
-  /// rebuild itself is rare enough to allocate freely.
+  /// tick to answer it is the kind of thing the no-allocation rule is about.
+  /// The rebuild itself is rare enough to allocate freely.
   static double halfWidthFor(int population) {
     // area = (2 * halfWidth) * (2 * halfHeight) and halfWidth / halfHeight is
     // fixed at _arenaAspect, so halfHeight falls straight out.

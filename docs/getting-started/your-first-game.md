@@ -23,7 +23,7 @@ A blue 64×64 square in the middle of the window. That is `Player`, spawned by
 
 It is in the middle because **no camera exists yet**: with no active camera the
 projection stays at the origin with a zoom of 1, and the whole world draws. A
-game that has not placed a camera shows something rather than a black screen.
+game that has not placed a camera shows something , not a black screen.
 
 ## 2. Move it — a system
 
@@ -228,7 +228,7 @@ enum Textures with LocalEnumAssetKey<Texture> {
 
 The path became an identifier: `assets/sprites/player.webp` → `spritesPlayer`.
 Rename a file and the enum value's name changes with it, so a stale reference
-is a **compile error** rather than a missing texture at runtime.
+is a **compile error** , not a missing texture at runtime.
 
 Declare the asset on the prefab and hand it to the sprite:
 
@@ -268,8 +268,8 @@ Run it: your image, moving with `WASD`.
 ## 5. Add a camera
 
 A camera is an entity like any other — a transform plus the `Camera` component.
-That is what makes "the camera follows the player" a parenting problem rather
-than a special case.
+That is what makes "the camera follows the player" a parenting problem , not a
+special case.
 
 ```dart title="lib/game/prefabs/player.dart"
 class Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}

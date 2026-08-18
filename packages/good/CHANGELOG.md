@@ -12,7 +12,7 @@ First published release. The dimension-agnostic kernel is real and tested:
   side.
 * **Commands** — `SinkCommand`/`SignalCommand` over the shared record layer
   (`ParamDescriptor`, `ParamPointer`, `ParamBatch`, `ParamBuffer`), which
-  `good_net` reuses rather than reimplements.
+  `good_net` reuses instead of reimplements.
 
 Not here yet: array-typed `DataDescriptor` fields in the codegen path,
 dependency-based system ordering (`compareTo` is the mechanism today), and

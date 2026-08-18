@@ -280,7 +280,7 @@ class JointScene extends SceneStruct {
   ///
   /// Shared by the initial build and by [respawnLoadedChain], so a rebuilt
   /// chain is the same chain rather than a second description of one that has
-  /// to be kept in step by hand (RULES.md rule 10).
+  /// to be kept in step by hand (the one-fact-one-place rule).
   List<Entity> spawnChain(int i, {required bool loaded}) {
     final x = chainX(i);
     final chain = <Entity>[];

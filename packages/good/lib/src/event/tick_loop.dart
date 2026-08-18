@@ -18,10 +18,10 @@ import 'package:good/src/event.dart';
 /// that consumes what the simulation computed rather than contributing to it,
 /// belongs here.
 ///
-/// This is the same split Unity DOTS draws between `SimulationSystemGroup`
-/// and `PresentationSystemGroup`, and for the same reason: a consumer of
-/// derived data is ordered into a later phase rather than given a sharper way
-/// to read the current one. See RULES.md rule 8 - it is why there is no
+/// This is the same split Unity DOTS draws between `SimulationSystemGroup` and
+/// `PresentationSystemGroup`, and for the same reason: a consumer of derived
+/// data is ordered into a later phase rather than given a sharper way to read
+/// the current one. See the no-specialised-variant rule - it is why there is no
 /// "read the uncommitted value" accessor anywhere in this engine.
 ///
 /// # Latency

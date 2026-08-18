@@ -66,11 +66,10 @@ What is worth watching, whatever it is currently called:
 ### Split totals into phases
 
 Three unrelated costs with three unrelated fixes cannot be directed by one
-number. That is why the renderer reports walk, sort and write separately rather
-than one presentation total, and why the physics system reports its phases
-rather than one step time. Measure your own systems the same way when you
-measure them at all — a single "gameplay is slow" figure tells you nothing you
-can act on.
+number. That is why the renderer reports walk, sort and write separately , not
+one presentation total, and why the physics system reports its phases , not one
+step time. Measure your own systems the same way when you measure them at all —
+a single "gameplay is slow" figure tells you nothing you can act on.
 
 ## The usual causes
 
@@ -139,7 +138,7 @@ field measured 14.63 ns per access against 2.25 ns for a plain `int` — roughly
 integer address plus an offset for this reason.
 
 **Bulk FFI entry points.** The physics shim pushes and pulls every transform in
-two calls rather than 2N, independent of body count.
+two calls instead of 2N, independent of body count.
 
 **One draw call.** The renderer batches into a single `drawVertices` per frame,
 which is why `Canvas.save`/`restore`/`translate` are forbidden in the replay

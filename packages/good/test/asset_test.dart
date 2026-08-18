@@ -133,9 +133,9 @@ class _FakeAsset extends AssetKey<_FakePayload> {
   int get decodes => source.counts.decodes;
 }
 
-/// A prefab that declares [key] and keeps the handle - the shape RULES.md
-/// rule 6 asks for, and what every "did describeAssets run" assertion below
-/// inspects.
+/// A prefab that declares [key] and keeps the handle - the shape the
+/// typed-handle rule asks for, and what every "did describeAssets run"
+/// assertion below inspects.
 class _Prop extends EntityStruct {
   _Prop(this.key);
 

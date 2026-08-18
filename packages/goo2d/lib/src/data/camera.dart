@@ -60,9 +60,9 @@ mixin Camera on Component {
 class ActiveCameraResolver {
   /// Returns the `Camera` entity occupying [view], or `null` if none does.
   ///
-  /// More than one enabled camera trips a debug-only `assert` (RULES.md
-  /// rule 7 - never `print`, which is swallowed in release and invisible in
-  /// a test runner's captured output). In a release build the assert
+  /// More than one enabled camera trips a debug-only `assert` rather than a
+  /// `print`, which is swallowed in release and invisible in a test runner's
+  /// captured output. In a release build the assert
   /// compiles out and the first camera found is used, so a second camera is
   /// never fatal in production - it is a development-time mistake that
   /// should stop a debug run, not a runtime condition to tolerate silently.
@@ -127,7 +127,7 @@ class ActiveCameraResolver {
 /// Holds no query of its own for the same reason [ActiveCameraResolver]
 /// does not - the consumer knows what else it needs the camera to satisfy.
 /// One instance per system, reused every tick: [resolve] only writes three
-/// doubles, so nothing here allocates (RULES.md rule 1).
+/// doubles, so nothing here allocates (the no-allocation rule).
 class CameraProjection {
   final ActiveCameraResolver _resolver = ActiveCameraResolver();
 

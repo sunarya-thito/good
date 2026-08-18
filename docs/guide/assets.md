@@ -65,14 +65,14 @@ enum Textures with LocalEnumAssetKey<Texture> {
 }
 ```
 
-An enum rather than a list of static keys, because `LocalEnumAssetKey` makes an
+An enum , not a list of static keys, because `LocalEnumAssetKey` makes an
 enum value **be** an `AssetKey` — `Textures.spritesPlayer` is already the
 identity `descriptor.has` wants, with no lookup and nothing to keep in sync. It
 also gives the set a `.values`, which is what lets the startup check walk every
 asset the game ships.
 
 The path becomes the identifier, so renaming a file renames the enum value and a
-stale reference is a **compile error** rather than a missing texture at run
+stale reference is a **compile error** , not a missing texture at run
 time.
 
 `Audios` is identical in shape. That uniformity is the point: a new asset kind
@@ -163,7 +163,7 @@ class Level1 extends SceneStruct {
 
 An `AudioClip` carries the file's bytes and the container they are in — Ogg
 Vorbis by default, whatever `good assets compact` produced. The format is carried
-rather than re-sniffed, because the loader already knows it and a backend would
+instead of re-sniffed, because the loader already knows it and a backend would
 otherwise have to guess from a header.
 
 ## Asset sources
@@ -188,7 +188,7 @@ two.**
 A new kind is a payload type, an `AssetInfo`, and an `AssetLoader<T>` registered
 into `AssetLoaders`. `Texture` and `AudioClip` are both implemented that way,
 which is what keeps the registry itself dimension-agnostic: a future renderer
-registers its own kinds into the same pipeline rather than needing its own.
+registers its own kinds into the same pipeline instead of needing its own.
 
 ---
 

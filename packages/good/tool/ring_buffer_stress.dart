@@ -5,17 +5,17 @@
 // consumer isolate in one batch. Verifies every record is delivered, in
 // order, intact - no loss, no corruption - across real isolates.
 //
-// This lives here as a standalone script (`dart run tool/ring_buffer_stress.dart`)
-// rather than under test/, because running this exact producer/consumer
-// pattern *inside* `dart test`'s own isolate-runner reproducibly crashes the
-// VM (confirmed: the crash is in package:test's own isolate nesting/
-// instrumentation around a tight cross-isolate FFI loop, not in RingBuffer
-// itself - the identical logic run standalone via `dart run`, as here,
-// completes cleanly and correctly every time). The deterministic,
+// This lives here as a standalone script (`dart run
+// tool/ring_buffer_stress.dart`) rather than under test/, because running this
+// exact producer/consumer pattern *inside* `dart test`'s own isolate-runner
+// reproducibly crashes the VM (confirmed: the crash is in package:test's own
+// isolate nesting/ instrumentation around a tight cross-isolate FFI loop, not
+// in RingBuffer itself - the identical logic run standalone via `dart run`, as
+// here, completes cleanly and correctly every time). The deterministic,
 // single-isolate RingBuffer tests in test/ring_buffer_test.dart cover
-// wraparound/padding/overflow correctness under `dart test` directly;
-// this script is the cross-isolate complement, run manually or in CI as a
-// separate process.
+// wraparound/padding/overflow correctness under `dart test` directly; this
+// script is the cross-isolate complement, run manually or in CI as a separate
+// process.
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';

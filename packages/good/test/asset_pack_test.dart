@@ -14,14 +14,14 @@ import 'package:good/src/asset_pack.dart';
 // asset.
 //
 // Most chunk bytes here are built by hand rather than by running the packer,
-// because good cannot depend on good_cli - the build tool carries an analyzer and
-// an ffmpeg downloader, neither of which belongs in a shipped game.
+// because good cannot depend on good_cli - the build tool carries an analyzer
+// and an ffmpeg downloader, neither of which belongs in a shipped game.
 //
 // Which would leave this suite proving only that good agrees with itself. The
-// one test that does not is `reads a chunk good_cli actually produced`: it opens
-// a chunk checked in at fixtures/asset_chunk/, sealed by the real packer, that
-// good_cli's suite checks it still produces byte for byte. That fixture is the
-// only thing holding the two implementations of the format together.
+// one test that does not is `reads a chunk good_cli actually produced`: it
+// opens a chunk checked in at fixtures/asset_chunk/, sealed by the real packer,
+// that good_cli's suite checks it still produces byte for byte. That fixture is
+// the only thing holding the two implementations of the format together.
 
 /// Builds a chunk the way `good assets pack` does, minus compression and
 /// encryption - flags 0, so the reader takes the plain path.

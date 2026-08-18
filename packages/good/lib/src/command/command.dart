@@ -48,7 +48,7 @@ abstract class GameCommandBase {
   ///
   /// Assigned by [CommandDescriptor.has], identical on both isolate copies
   /// because both run the same pass in the same order. No hand-picked record
-  /// type numbers and no name lookup (RULES.md rule 6).
+  /// type numbers and no name lookup (the typed-handle rule).
   int get index => _index;
   int _index = -1;
 

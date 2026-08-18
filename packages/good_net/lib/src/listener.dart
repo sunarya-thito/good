@@ -9,12 +9,11 @@ import 'peer.dart';
 ///
 /// # Why an object with methods, and not streams or callbacks
 ///
-/// A `Stream` per event kind allocates a subscription per listener and an
-/// event object per message, and delivers on whatever microtask turn the
-/// socket happened to fire in - i.e. mid-tick, splitting one burst of
-/// traffic across two simulation steps. A record of closures has the same
-/// per-call allocation problem in a different wrapper (RULES.md rules 1 and
-/// 5).
+/// A `Stream` per event kind allocates a subscription per listener and an event
+/// object per message, and delivers on whatever microtask turn the socket
+/// happened to fire in - i.e. mid-tick, splitting one burst of traffic across
+/// two simulation steps. A record of closures has the same per-call allocation
+/// problem in a different wrapper (the no-allocation and no-closure rules).
 ///
 /// One long-lived listener object with methods on it allocates once, at
 /// boot, and every dispatch is a virtual call. The engine-facing layer
@@ -47,7 +46,7 @@ abstract class NetListener {
   /// keep the payload copies it into storage it owns. Handing out a view
   /// rather than a freshly allocated `Uint8List` per message is the whole
   /// point - a 60 Hz snapshot stream would otherwise allocate 60 lists per
-  /// peer per second, on the tick path (RULES.md rules 1 and 2).
+  /// peer per second, on the tick path (the hot-path rules).
   void onMessage(
     NetPeerId from,
     NetChannel channel,

@@ -85,7 +85,7 @@ scene registered afresh on every load would leak ids and leave every unloaded
 scene's archetypes in the registry for queries to keep walking.
 
 Passing an *undeclared* scene to `loadScene` still works and registers lazily,
-so `describeScenes` is additive rather than an obligation — the scaffold's
+so `describeScenes` is additive , not an obligation — the scaffold's
 `loadScene(MainScene())` is fine for a game with one scene.
 
 ## Loading and unloading

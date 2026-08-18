@@ -1,6 +1,6 @@
 /// The draw-command buffer's wire format and its main-isolate replay side.
 ///
-/// Per the project root plan's "Cross-isolate architecture" section: the game
+/// Per the architecture guide's "four lanes across the boundary": the game
 /// isolate's `GameRenderer2D` is the only producer of draw records, writing a
 /// flat command buffer (through the same `RingBuffer` primitive `good` uses
 /// for the command queue, obtained via `Game.describeBuffers`) once per fixed
@@ -8,14 +8,14 @@
 /// every record's geometry is already finalized - world space, hierarchy
 /// already flattened, rotation and scale already baked into the corner
 /// coordinates - there is no `Canvas.save`/`restore`/`translate`/`rotate`
-/// call anywhere in this pipeline, per RULES.md rule 3.
+/// call anywhere in this pipeline, per the draw-batch rule.
 ///
 /// # Two shapes this file deliberately does *not* have
 ///
 /// **No object per drawn thing.** The original sketch here had
 /// `DrawData2D.draw(Canvas)` - one instance per sprite, each drawing itself.
 /// That loses twice: it allocates one object per sprite per frame on a 60 Hz
-/// path (RULES.md rule 1), and it forces one `Canvas` call per sprite, which
+/// path (the no-allocation rule), and it forces one `Canvas` call per sprite, which
 /// is exactly the per-draw overhead batching exists to avoid. So [DrawData2D]
 /// here is one instance per *kind* of record - a codec, effectively a
 /// singleton - and the per-sprite data never becomes a Dart object at all: it
@@ -146,7 +146,7 @@ final class DrawSpriteData2D extends DrawData2D {
   /// harmlessly carries; the atlas/nine-slice cases pass their own. Named
   /// optional parameters rather than a value object holding eight doubles,
   /// because this is called once per sprite per tick and an argument object
-  /// there is exactly the per-sprite heap allocation RULES.md rule 1 forbids
+  /// there is exactly the per-sprite heap allocation the no-allocation rule forbids
   /// (named arguments on a statically-resolved call allocate nothing).
   static int writeQuad(
     ByteData batch,
@@ -289,7 +289,7 @@ final class DrawRegistry2D {
 /// Lives across frames and is only ever refilled, so a steady-state frame
 /// allocates nothing here at all - the typed lists grow to the high-water mark
 /// of the scene and stay there. That is the whole reason geometry is built into
-/// this rather than into a fresh list per frame (RULES.md rule 1).
+/// this rather than into a fresh list per frame (the no-allocation rule).
 ///
 /// # Runs, and why they are not a group-by
 ///
@@ -533,7 +533,7 @@ final class VertexBatch2D {
 ///  * [replay] runs once per paint and does exactly two things: build the
 ///    `Vertices` if the frame moved since last time, and issue one
 ///    `drawVertices` **per texture run** (see below). No `save`, `restore`,
-///    `translate`, `rotate` or `drawImage` - RULES.md rule 3, enforced by a spy
+///    `translate`, `rotate` or `drawImage` - the draw-batch rule, enforced by a spy
 ///    `Canvas` in `test/draw_canvas_2d_test.dart` rather than only promised
 ///    here.
 ///
@@ -559,7 +559,8 @@ final class VertexBatch2D {
 /// Shaders are built **once per texture** and cached here for the life of this
 /// canvas, because constructing one uploads and binds engine-side state; doing
 /// it per frame (let alone per quad) at compositor rate is precisely the
-/// hot-path allocation RULES.md rule 1 exists for. [dispose] releases them.
+/// hot-path allocation the no-allocation rule exists for. [dispose] releases
+/// them.
 ///
 /// # Why batching does not reorder anything
 ///

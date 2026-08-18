@@ -272,10 +272,10 @@ final class _Running {
 ///
 /// One per `GameState` rather than one per owner: a single list is one
 /// deterministic order, and "stop everything this enemy started" is a filter
-/// over it rather than a second place for the same fact to live (RULES.md rule
-/// 10). Owners are compared by identity and never used for anything else, so a
-/// prefab, a system or a scene can all own coroutines without the scheduler
-/// knowing what any of them are.
+/// over it rather than a second place for the same fact to live (the
+/// one-fact-one-place rule). Owners are compared by identity and never used for
+/// anything else, so a prefab, a system or a scene can all own coroutines
+/// without the scheduler knowing what any of them are.
 final class CoroutineScheduler {
   final List<_Running> _running = <_Running>[];
 
@@ -394,9 +394,9 @@ final class CoroutineScheduler {
 /// write `with Coroutines` themselves.
 ///
 /// Before that it was a chain of `is` tests asking "am I a GameState? a
-/// GameSystem?", which is now RULES.md rule 11: it compiled for hosts it did
-/// not handle and failed at runtime, where an unimplemented mixin member fails
-/// to compile.
+/// GameSystem?", which is now the no-allocation rule1: it compiled for hosts it
+/// did not handle and failed at runtime, where an unimplemented mixin member
+/// fails to compile.
 ///
 /// Everything here is scoped to **this owner**: [stopAllCoroutines] stops what
 /// this object started and nothing else. Note that a prefab is shared by every

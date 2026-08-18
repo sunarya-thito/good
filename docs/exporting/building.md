@@ -7,7 +7,7 @@ good build android
 good build ios
 ```
 
-One command per platform rather than one command with a `--platform` option,
+One command per platform , not one command with a `--platform` option,
 because they are genuinely different: each grows its own signing, bundling and
 packaging options, and an option that applies to one target is one every other
 target's help has to explain away.
@@ -29,7 +29,7 @@ Every platform shares these:
 | `--assets=<development\|release>` | `release` | Loose files, or a packed bundle |
 | `--asset-encryption=<none\|aes>` | `aes` | Encryption for packed assets |
 | `--asset-compression=<none\|fast\|normal\|best>` | `normal` | Compression, applied before encryption |
-| `--no-download` | off | Fail rather than downloading ffmpeg when none is installed |
+| `--no-download` | off | Fail instead of downloading ffmpeg when none is installed |
 | `--dry-run` | off | Report the plan and do nothing |
 | `--verbose` | off | Show every file the pipeline touches |
 
@@ -57,7 +57,7 @@ good build windows --assets=development
 ```
 
 Loose files in a real platform build — for a debugging build you intend to poke
-at. The command tells you when a setting has nothing to act on rather than
+at. The command tells you when a setting has nothing to act on instead of
 silently resolving it:
 
 ```console
@@ -185,8 +185,8 @@ came from the source it claims to.
 ```
 
 `--no-download` is the flag that matters: it turns "quietly fetch an ffmpeg"
-into an explicit failure, so a CI machine's toolchain is a decision rather than
-an accident. Install ffmpeg as a build step instead.
+into an explicit failure, so a CI machine's toolchain is a decision , not an
+accident. Install ffmpeg as a build step instead.
 
 Cache `assets/` between runs to keep compaction incremental — the
 `.good_compact.json` hash cache is what makes an unchanged asset free.

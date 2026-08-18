@@ -37,8 +37,7 @@ import 'package:meta/meta.dart';
 /// underneath is always four separate `DataPointer<double>` fields, and a
 /// *read* returns those four fields individually. There is no
 /// `getPivot(entity)` returning one of these, and there should not be:
-/// building one per read is a heap allocation on the hot path, which RULES.md
-/// rule 1 forbids outright.
+/// building one per read is a heap allocation on the hot path, which the no-allocation rule forbids outright.
 class RelativeOffset2D {
   const RelativeOffset2D({
     this.fractionX = 0,
@@ -241,10 +240,10 @@ class SpriteFrame implements IntRepresentable {
 ///
 /// The alternative shape, for the record: a table of declared regions with the
 /// integer as an index into it. That buys exact float precision and a 2-byte
-/// field instead of 8, at the cost of a declare step and losing runtime-computed
-/// frames. Because the encoding sits entirely behind this class, swapping to it
-/// later touches this file and `bitWidth` - not `Sprite`, not the renderer, not
-/// any authoring code.
+/// field instead of 8, at the cost of a declare step and losing
+/// runtime-computed frames. Because the encoding sits entirely behind this
+/// class, swapping to it later touches this file and `bitWidth` - not `Sprite`,
+/// not the renderer, not any authoring code.
 final class SpriteFrames implements IntRepresentation<SpriteFrame> {
   const SpriteFrames();
 
@@ -588,7 +587,7 @@ class SpriteDescriptor {
   final List<Sprite> _sprites;
 
   /// Declares one sprite and returns the handle to keep in a field
-  /// (RULES.md rule 6 - never a name to quote again later).
+  /// (the typed-handle rule - never a name to quote again later).
   ///
   /// [pivot], [alignment] and [nineSliceBorder] arrive as value objects
   /// purely for readability at the call site; each is unpacked into its own
@@ -652,7 +651,7 @@ class SpriteDescriptor {
 ///
 /// One instance per archetype, cached for the life of the run in
 /// [GameRenderer2D._sourceOf] - not per group per frame, which would be an
-/// allocation on the frame path (RULES.md rule 1).
+/// allocation on the frame path (the no-allocation rule).
 class _TransformSource {
   _TransformSource.world(WorldTransform2D world)
     : x = world.worldX,
@@ -753,7 +752,7 @@ mixin Renderable2D on MultiComponent {
 /// allocates nothing here at all. The growth policy is [VertexBatch2D]'s,
 /// deliberately: capacity doubles until it fits and the filled prefix is
 /// copied across, which is the same amortised-growth arrangement that already
-/// keeps the vertex buffers allocation-free (RULES.md rule 1).
+/// keeps the vertex buffers allocation-free (the no-allocation rule).
 ///
 /// The parallel-arrays-plus-an-index-permutation shape is what lets the sort
 /// move a single `int` per swap rather than an entity, a sprite reference and
@@ -762,18 +761,20 @@ mixin Renderable2D on MultiComponent {
 ///
 /// # Why the finished geometry lives here
 ///
-/// [_corners] and [_colorAddress] hold each plain sprite's *already-transformed*
-/// quad, computed by the fill pass rather than by the write pass. That split is
-/// the whole point of this class now, and it was measured into existence.
+/// [_corners] and [_colorAddress] hold each plain sprite's
+/// *already-transformed* quad, computed by the fill pass rather than by the
+/// write pass. That split is the whole point of this class now, and it was
+/// measured into existence.
 ///
 /// The fill pass visits rows in page order; the write pass visits the same rows
 /// in z-sorted order, which for any scene that layers by distance is close to a
 /// random permutation. On a phone, 20,000 rows of ~250 bytes is ~5 MB - past
-/// the last-level cache - so the write pass spent its time stalled on memory.
-/// A device ablation that skipped the sort entirely (`debugSkipZSort`) cut the
+/// the last-level cache - so the write pass spent its time stalled on memory. A
+/// device ablation that skipped the sort entirely (`debugSkipZSort`) cut the
 /// write pass from 8.96 ms to 5.18 ms, **42%**, with identical work and only
-/// the order changed. The same ablation for the two trig calls moved it 0.07 ms,
-/// i.e. nothing: the arithmetic was executing inside the memory stalls for free.
+/// the order changed. The same ablation for the two trig calls moved it 0.07
+/// ms, i.e. nothing: the arithmetic was executing inside the memory stalls for
+/// free.
 ///
 /// So the rows are now read once, sequentially, by the pass that was already
 /// walking them, and what the permutation shuffles is 40 dense bytes per sprite
@@ -986,7 +987,7 @@ final class _SpriteDrawQueue {
   ///
   /// The UVs come from the queued [SpriteFrame], unpacked lane by lane off the
   /// raw integer rather than through a `SpriteFrame` object - one per sprite
-  /// per frame would be exactly the hot-path allocation RULES.md rule 1
+  /// per frame would be exactly the hot-path allocation the no-allocation rule
   /// forbids. A full frame yields `(0,0) (1,0) (1,1) (0,1)`, which is what this
   /// path used to pass as a constant.
   int writeQuadAt(ByteData view, int offset, int i) {
@@ -1077,7 +1078,7 @@ final class _SpriteDrawQueue {
   ///
   /// # Why neither is `List.sort`
   ///
-  /// Both reasons come straight from RULES.md rule 1:
+  /// Both reasons come straight from the no-allocation rule:
   ///
   ///  * **They sort a prefix.** `List.sort` sorts a whole list, and the only
   ///    ways to hand it exactly `_count` elements are a `sublistView`
@@ -1090,9 +1091,9 @@ final class _SpriteDrawQueue {
   void sortByZ() {
     final n = _count;
     if (n < 2) return;
-    // `_zMin`/`_zMax` are plain Dart ints, which are 64-bit, so this subtraction
-    // cannot overflow even for two `int32` extremes - the reason the range is
-    // computed here rather than tracked incrementally as an int32.
+    // `_zMin`/`_zMax` are plain Dart ints, which are 64-bit, so this
+    // subtraction cannot overflow even for two `int32` extremes - the reason
+    // the range is computed here rather than tracked incrementally as an int32.
     final range = _zMax - _zMin + 1;
     if (range <= _maxCountingRange) {
       _countingSortByZ(n, range);
@@ -1232,8 +1233,7 @@ final class _SpriteDrawQueue {
 /// re-reads a component row.
 ///
 /// **The transform maths is plain doubles, not a `Matrix4`.** A matrix object
-/// per entity per tick is precisely the per-entity heap allocation RULES.md
-/// rule 1 forbids, and a 2D affine is six numbers.
+/// per entity per tick is precisely the per-entity heap allocation the no-allocation rule forbids, and a 2D affine is six numbers.
 ///
 /// # Ordering
 ///
@@ -1308,8 +1308,7 @@ class GameRenderer2D extends GameSystem
   /// visible to it. Inside the tick they would not be - reads there see the
   /// *previous* tick's snapshot - which is why this system used to carry its
   /// own copy of the composition math. That duplication was a symptom of
-  /// being in the wrong phase, not of a missing accessor; see RULES.md rule
-  /// 8, and Unity DOTS's `SimulationSystemGroup`/`PresentationSystemGroup`
+  /// being in the wrong phase, not of a missing accessor; see the no-specialised-variant rule, and Unity DOTS's `SimulationSystemGroup`/`PresentationSystemGroup`
   /// split, which resolves the identical problem the identical way.
   ///
   /// Latency is unchanged by the move. Composing from published
@@ -1413,7 +1412,7 @@ class GameRenderer2D extends GameSystem
   int lastWriteMicros = 0;
 
   /// Reused by all three phase timings, per view - a `Stopwatch` is a heap
-  /// object and this runs every frame (RULES.md rule 1).
+  /// object and this runs every frame (the no-allocation rule).
   final Stopwatch _clock = Stopwatch();
 
   /// How many draw records the last [onTick] wrote - quads, not sprites.
@@ -1501,10 +1500,10 @@ class GameRenderer2D extends GameSystem
   ///
   /// Called once per candidate sprite in the fill pass and never again - the
   /// answer is stored in the queue, because the byte scratch is sized from it.
-  // Scratch for one nine-sliced sprite's grid lines: four in each axis,
-  // reused across sprites and ticks. Fields rather than locals so no array is
-  // allocated per sprite (RULES.md rule 1) - `onTick` may hit this once per
-  // sprite per frame.
+  // Scratch for one nine-sliced sprite's grid lines: four in each axis, reused
+  // across sprites and ticks. Fields rather than locals so no array is
+  // allocated per sprite (the no-allocation rule) - `onTick` may hit this once
+  // per sprite per frame.
   //
   // `_lx`/`_ly` are *transformed-space* offsets from the pivot (already
   // scaled); `_u`/`_v` are the matching cuts in 0..1 texture space.
@@ -1847,14 +1846,14 @@ class GameRenderer2D extends GameSystem
       for (final entity in group) {
         if (onlyScene >= 0 && entity.sceneSlot != onlyScene) continue;
         // An indexed loop, not `for (final sprite in sprites)`: this runs once
-        // per entity per tick and a fresh iterator is a heap object (RULES.md
-        // rules 1 and 5).
+        // per entity per tick and a fresh iterator is a heap object (the
+        // no-allocation and no-closure rules).
         for (var i = 0; i < sprites.length; i++) {
           final sprite = sprites[i];
           // Invisible sprites are dropped here, before they are ever a record -
           // not emitted transparent. A transparent quad still costs a record,
-          // six vertices and a share of the batch limit, and would still occlude
-          // nothing while pretending to be drawn.
+          // six vertices and a share of the batch limit, and would still
+          // occlude nothing while pretending to be drawn.
           if (!sprite.visible[entity]) continue;
           // Read into locals rather than compared in place: the geometry below
           // needs both, and this row is only cheap to touch while the walk is
