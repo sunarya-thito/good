@@ -125,6 +125,7 @@ class _GameState extends GameState<_Game> {
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     spawner = descriptor.has(_Spawner());
     descriptor.has(WorldTransformSystem());
   }

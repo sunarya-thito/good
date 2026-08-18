@@ -39,6 +39,7 @@ class _Args extends _Spy {
 
   @override
   void describeCommand(CommandDescriptor descriptor) {
+    super.describeCommand(descriptor);
     name = descriptor.describeArg(
       name: 'name',
       description: 'A name.',
@@ -73,6 +74,7 @@ class _Positionals extends _Spy {
 
   @override
   void describeCommand(CommandDescriptor descriptor) {
+    super.describeCommand(descriptor);
     // `rest` is declared *between* the consumers on purpose: the remainder is
     // order-insensitive, so where it appears in the declaration must not
     // change what it collects.
@@ -101,6 +103,7 @@ class _Required extends _Spy {
 
   @override
   void describeCommand(CommandDescriptor descriptor) {
+    super.describeCommand(descriptor);
     target = descriptor.describeOptionalConsumer(
       name: 'target',
       description: 'Required-ish.',
@@ -119,6 +122,7 @@ class _Multi extends _Spy {
 
   @override
   void describeCommand(CommandDescriptor descriptor) {
+    super.describeCommand(descriptor);
     define = descriptor.describeOptionalMultiArg(
       name: 'define',
       description: 'Repeatable.',
@@ -148,6 +152,7 @@ class _Middle extends _Spy {
 
   @override
   void describeCommand(CommandDescriptor descriptor) {
+    super.describeCommand(descriptor);
     middleFlag = descriptor.describeFlag(
       name: 'middle-flag',
       description: 'On the middle command.',
@@ -166,6 +171,7 @@ class _Root extends _Spy {
 
   @override
   void describeCommand(CommandDescriptor descriptor) {
+    super.describeCommand(descriptor);
     rootFlag = descriptor.describeFlag(
       name: 'root-flag',
       description: 'On the root.',
@@ -675,6 +681,7 @@ void main() {
 class _DuplicateOption extends Command {
   @override
   void describeCommand(CommandDescriptor descriptor) {
+    super.describeCommand(descriptor);
     descriptor.describeFlag(name: 'same', description: 'One.');
     descriptor.describeFlag(name: 'same', description: 'Two.');
   }
@@ -683,6 +690,7 @@ class _DuplicateOption extends Command {
 class _TwoRemainders extends Command {
   @override
   void describeCommand(CommandDescriptor descriptor) {
+    super.describeCommand(descriptor);
     descriptor.describeOptionalRemaining(
       name: 'a',
       description: 'One.',
@@ -699,6 +707,7 @@ class _TwoRemainders extends Command {
 class _DuplicateSub extends Command {
   @override
   void describeCommand(CommandDescriptor descriptor) {
+    super.describeCommand(descriptor);
     descriptor.describeSubCommand('x', 'One.', _Spy());
     descriptor.describeSubCommand('x', 'Two.', _Spy());
   }

@@ -73,6 +73,7 @@ class _Level extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     unit = descriptor.has(_Unit());
   }
 
@@ -135,6 +136,7 @@ class _NosyScene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     nosy = descriptor.has(_Nosy());
     aware = descriptor.has(_SceneAware());
   }
@@ -199,6 +201,7 @@ class _TrackedScene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     tracked = descriptor.has(_Tracked());
     indexed = descriptor.has(_Indexed());
   }
@@ -213,6 +216,7 @@ class _LifecycleState extends GameState<_LifecycleGame> {
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_Watcher());
     descriptor.has(_Census());
     descriptor.has(_Bystander());
@@ -243,6 +247,7 @@ class _LifecycleGame extends Game {
 
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
+    super.describeScenes(descriptor);
     level = descriptor.has(_Level());
     observer = descriptor.has(_Observer());
     nosyScene = descriptor.has(_NosyScene());

@@ -1,3 +1,5 @@
+import 'package:meta/meta.dart';
+
 import 'package:good/src/data.dart';
 import 'package:good/src/struct.dart';
 
@@ -51,12 +53,14 @@ mixin Child on Component {
   // system.dart's query tests, not by inspection - see that file's tests
   // exercising `Without<Child>()` against a real archetype.
   @override
+  @mustCallSuper
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<Child>();
   }
 
   @override
+  @mustCallSuper
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
     parent = _EntityField(data.optInt64());
@@ -70,12 +74,14 @@ mixin Parent on Component {
   late final DataPointer<Entity?> lastChild;
 
   @override
+  @mustCallSuper
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<Parent>();
   }
 
   @override
+  @mustCallSuper
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
     firstChild = _EntityField(data.optInt64());

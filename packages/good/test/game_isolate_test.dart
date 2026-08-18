@@ -127,6 +127,7 @@ class _MoverSystem extends GameSystem with FixedTickable {
 
   @override
   void describeQuery(QueryDescriptor descriptor) {
+    super.describeQuery(descriptor);
     query = descriptor.query().withAll(_Moving).build();
   }
 
@@ -206,6 +207,7 @@ class _IsolateState extends GameState<_IsolateGame> {
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
     descriptor
       ..hasSupplier(game.spawnMover, _onSpawnMover)
       ..hasSink(game.pauseMover, _onPauseMover);
@@ -223,6 +225,7 @@ class _IsolateState extends GameState<_IsolateGame> {
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_MoverSystem());
   }
 }
@@ -248,6 +251,7 @@ class _IsolateGame extends Game {
 
   @override
   void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
     firstX = descriptor.hasFloat64();
     population = descriptor.hasInt32();
     firstMarker = descriptor.hasInt32();
@@ -258,6 +262,7 @@ class _IsolateGame extends Game {
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
     spawnMover = descriptor.has(_SpawnMover());
     pauseMover = descriptor.has(_PauseMover());
   }
@@ -294,6 +299,7 @@ class _PingState extends GameState<_PingGame> {
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_PingSystem());
   }
 }
@@ -314,6 +320,7 @@ class _PingGame extends Game {
 
   @override
   void describeBuffers(BufferDescriptor descriptor) {
+    super.describeBuffers(descriptor);
     pings = descriptor.has(capacityBytes: 4096);
   }
 }
@@ -343,6 +350,7 @@ class _ChannelState extends GameState<_ChannelGame> {
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_CounterSystem());
   }
 }
@@ -359,6 +367,7 @@ class _ChannelGame extends Game {
 
   @override
   void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
     ticks = descriptor.hasInt32();
     alive = descriptor.hasBool();
   }
@@ -395,6 +404,7 @@ class _InputProbeSystem extends GameSystem with FixedTickable {
 
   @override
   void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
     fire = input.has<bool>(const TriggerBinding(.spacebar));
     move = input.has<Vector2>(
       const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
@@ -418,6 +428,7 @@ class _InputProbeState extends GameState<_InputProbeGame> {
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_InputProbeSystem());
   }
 }
@@ -436,6 +447,7 @@ class _InputProbeGame extends Game {
 
   @override
   void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
     fireHeld = descriptor.hasBool();
     presses = descriptor.hasInt32();
     releases = descriptor.hasInt32();
@@ -568,6 +580,7 @@ class _TexturedSystem extends GameSystem with FixedTickable {
 
   @override
   void describeQuery(QueryDescriptor descriptor) {
+    super.describeQuery(descriptor);
     query = descriptor.query().withAll(_Textured).build();
   }
 
@@ -595,6 +608,7 @@ class _TexturedState extends GameState<_TexturedGame> {
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_TexturedSystem());
   }
 }
@@ -611,6 +625,7 @@ class _TexturedGame extends Game {
 
   @override
   void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
     reportedAddress = descriptor.hasInt32(-1);
     reportedLoaded = descriptor.hasInt32(-1);
   }
@@ -680,6 +695,7 @@ class _LateState extends GameState<_LateGame> {
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
     descriptor
       ..hasSignal(game.loadLate, _load)
       ..hasSignal(game.unloadLate, _unload);
@@ -727,17 +743,20 @@ class _LateGame extends Game {
 
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
+    super.describeScenes(descriptor);
     lateScene = descriptor.has(_LateScene());
   }
 
   @override
   void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
     progress = descriptor.hasFloat64(-1);
     lateAddress = descriptor.hasInt32(-1);
   }
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
     loadLate = descriptor.has(_LoadLate());
     unloadLate = descriptor.has(_UnloadLate());
   }
@@ -762,6 +781,7 @@ class _UnloadState extends GameState<_UnloadGame> {
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
     descriptor.hasSignal(game.dropScene, _drop);
   }
 
@@ -776,6 +796,7 @@ class _UnloadState extends GameState<_UnloadGame> {
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_MoverSystem());
   }
 }
@@ -794,6 +815,7 @@ class _UnloadGame extends Game {
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
     dropScene = descriptor.has(_DropScene());
   }
 }

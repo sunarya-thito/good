@@ -377,6 +377,7 @@ class Ground extends EntityStruct
 
   @override
   void describeRigidBody(RigidBody2DDescriptor descriptor) {
+    super.describeRigidBody(descriptor);
     descriptor.has(type: BodyType2D.staticBody);
   }
 
@@ -426,6 +427,7 @@ class Wall extends EntityStruct
 
   @override
   void describeRigidBody(RigidBody2DDescriptor descriptor) {
+    super.describeRigidBody(descriptor);
     descriptor.has(type: BodyType2D.staticBody);
   }
 
@@ -458,6 +460,7 @@ class Sandbox extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     crate = descriptor.has(Crate());
     ball = descriptor.has(Ball());
     ground = descriptor.has(Ground());

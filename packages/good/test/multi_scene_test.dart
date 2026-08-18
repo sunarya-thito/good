@@ -68,6 +68,7 @@ class _Census extends GameSystem with FixedTickable {
 
   @override
   void describeQuery(QueryDescriptor descriptor) {
+    super.describeQuery(descriptor);
     query = descriptor.query().withAll(_Marked).build();
   }
 
@@ -84,6 +85,7 @@ class _Census extends GameSystem with FixedTickable {
 class _MultiState extends GameState<_MultiGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_Census());
   }
 }
@@ -102,6 +104,7 @@ class _MultiGame extends Game {
 
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
+    super.describeScenes(descriptor);
     level = descriptor.has(_Level());
   }
 }

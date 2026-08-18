@@ -326,6 +326,7 @@ abstract class SignalCommand extends GameCommandBase {
   /// Nothing to declare. Overridable anyway, for a signal that grows a field
   /// later and would otherwise have to change class.
   @override
+  @mustCallSuper
   void describeParams(ParamDescriptor descriptor) {}
 
   ParamBuffer execute([CommandBatch? batch]) => _reserve(batch);
@@ -405,6 +406,7 @@ extension CommandBatchCalls on CommandBatch {
 ///
 ///   @override
 ///   void describeCommands(CommandDescriptor descriptor) {
+///     super.describeCommands(descriptor);
 ///     damage = descriptor.has(Damage());
 ///     // handled on the Flutter isolate, so callable from the game isolate
 ///     descriptor.hasHandler(damage, _onDamage);

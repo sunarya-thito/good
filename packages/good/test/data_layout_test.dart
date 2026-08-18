@@ -81,7 +81,10 @@ class _AdHocScene extends SceneStruct {
   final _AdHoc _prefab;
 
   @override
-  void describeScene(SceneDescriptor descriptor) => descriptor.has(_prefab);
+  void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
+    descriptor.has(_prefab);
+  }
 }
 
 /// Registers one throwaway archetype and gives the test a spawner for it.

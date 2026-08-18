@@ -99,11 +99,14 @@ class _BothPhases extends GameSystem with FixedTickable, Tickable {
   void onTick(Duration delta) => log.add('present');
 }
 
-/// Replaces the base fixture's system set entirely - so the *state* is what
-/// varies, and the `Game` only has to say which one to build.
-class _PhaseState extends _TestState {
+/// Carries the two phase probes and no other system, so the listener counts
+/// below are the probes' own - which is why it comes off [_FixtureState]
+/// rather than [_TestState]. The *state* is what varies; the `Game` only has
+/// to say which one to build.
+class _PhaseState extends _FixtureState {
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_PresentSystem());
     descriptor.has(_BothPhases());
   }
@@ -187,6 +190,7 @@ class _CensusSystem extends GameSystem with FixedTickable {
 
   @override
   void describeQuery(QueryDescriptor descriptor) {
+    super.describeQuery(descriptor);
     query = descriptor.query().withAll(_Counter).build();
   }
 
@@ -226,7 +230,12 @@ class _SpawnUnit extends SupplierCommand<Entity> {
   Entity resultFromBuffer(ParamBuffer call) => Entity(spawned[call]);
 }
 
-class _TestState extends GameState<_TestGame> {
+/// The scene, the spawn handler and nothing else. Split out from [_TestState]
+/// so a fixture wanting a different system set inherits the setup without
+/// inheriting systems it would then have to drop - dropping them means an
+/// override that skips `super.describeSystems`, which is the one thing
+/// `@mustCallSuper` is here to stop.
+class _FixtureState extends GameState<_TestGame> {
   /// Held rather than looked up: the handler needs the prefab, and this is the
   /// side that has it.
   final _TestScene level = _TestScene();
@@ -238,12 +247,17 @@ class _TestState extends GameState<_TestGame> {
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
     descriptor.hasSupplier(game.spawnUnit, _onSpawnUnit);
   }
 
   Entity _onSpawnUnit() => loadedScenes.single.addEntity(level.unit);
+}
+
+class _TestState extends _FixtureState {
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_SystemA());
     descriptor.has(_InertSystem());
     descriptor.has(_SystemB());
@@ -265,6 +279,7 @@ class _TestGame extends Game {
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
     spawnUnit = descriptor.has(_SpawnUnit());
   }
 }
@@ -305,6 +320,7 @@ class _CommandGame extends _TestGame {
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
     nudge = descriptor.has(_NudgeCommand());
   }
 }
@@ -317,6 +333,7 @@ class _CommandState extends GameState<_CommandGame> {
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
     descriptor.hasSink(game.nudge, _onNudge);
   }
 
@@ -330,6 +347,7 @@ class _CommandState extends GameState<_CommandGame> {
 class _BadCommandState extends _TestState {
   @override
   void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
     descriptor.has(_NudgeCommand());
   }
 }
@@ -342,7 +360,8 @@ class _BadCommandGame extends _TestGame {
 class _DuplicateSystemState extends _TestState {
   @override
   void describeSystems(SystemDescriptor descriptor) {
-    descriptor.has(_SystemA());
+    // `_TestState` already declared a `_SystemA`; this is the second.
+    super.describeSystems(descriptor);
     descriptor.has(_SystemA());
   }
 }
@@ -994,6 +1013,7 @@ class _UndeclaredSystem extends GameSystem {}
 class _ScenelessState extends GameState<_ScenelessGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_SystemA());
   }
 }

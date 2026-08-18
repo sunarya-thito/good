@@ -12,6 +12,7 @@ import 'package:meta/meta.dart';
 ///
 ///   @override
 ///   void describeCommand(CommandDescriptor descriptor) {
+///     super.describeCommand(descriptor);
 ///     outputDir = descriptor.describeArg<File>(
 ///       name: 'output-dir',
 ///       description: 'Where the build lands.',
@@ -97,6 +98,7 @@ abstract class Command {
 
   /// Declares this command's arguments and subcommands. Runs once, before
   /// parsing.
+  @mustCallSuper
   void describeCommand(CommandDescriptor descriptor) {}
 
   /// What this command does. The base implementation prints help, which is

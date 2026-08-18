@@ -57,6 +57,7 @@ class _Reuse extends Game {
 
   @override
   void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
     score = descriptor.hasInt32();
   }
 

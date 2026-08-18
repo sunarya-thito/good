@@ -10,6 +10,7 @@ class AssetsCommand extends Command {
 
   @override
   void describeCommand(CommandDescriptor descriptor) {
+    super.describeCommand(descriptor);
     compact = descriptor.describeSubCommand(
       'compact',
       'Convert source art into the one canonical format per kind.',

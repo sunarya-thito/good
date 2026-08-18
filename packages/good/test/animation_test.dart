@@ -54,6 +54,7 @@ class _Enemy extends EntityStruct {
 
   @override
   void describeAnimation(AnimationTypeDescriptor descriptor) {
+    super.describeAnimation(descriptor);
     timeline = descriptor.has(_EnemyTimeline());
   }
 }

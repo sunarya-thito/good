@@ -86,6 +86,7 @@ abstract class DemoGame extends Game2D {
 
   @override
   void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
     caseMicros = descriptor.hasInt32();
     systemMicros = descriptor.hasInt32();
     bestSystemMicros = descriptor.hasInt32();
@@ -103,6 +104,7 @@ abstract class DemoGame extends Game2D {
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
     setPopulation = descriptor.has(SetPopulation());
   }
 
@@ -135,6 +137,7 @@ abstract class DemoState<G extends DemoGame> extends GameState2D<G> {
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
     descriptor.hasSink(game.setPopulation, _onSetPopulation);
   }
 

@@ -31,6 +31,7 @@ class _BareState extends GameState<Game> {
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_TickingSystem());
   }
 }

@@ -96,7 +96,9 @@ abstract class EntityStruct extends GameListenerBase
   late final EventDispatcher<EntityLifecycleListener, Entity> unmountedEvent;
 
   @override
+  @mustCallSuper
   void describeEvents(EventDescriptor descriptor) {
+    super.describeEvents(descriptor);
     mountedEvent = descriptor.has(
       (listener, entity) => listener.onEntityMounted(entity),
     );

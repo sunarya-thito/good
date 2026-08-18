@@ -160,6 +160,7 @@ class Swarm extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     critter = descriptor.has(Critter());
     limb = descriptor.has(Limb());
     hub = descriptor.has(Hub());

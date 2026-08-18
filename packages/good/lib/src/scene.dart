@@ -38,7 +38,9 @@ abstract class SceneStruct extends GameListenerBase
   late final EventDispatcher<SceneLifecycleListener, Scene> unmountedEvent;
 
   @override
+  @mustCallSuper
   void describeEvents(EventDescriptor descriptor) {
+    super.describeEvents(descriptor);
     mountedEvent = descriptor.has(
       (listener, scene) => listener.onSceneMounted(scene),
     );
@@ -228,6 +230,7 @@ abstract class SceneStruct extends GameListenerBase
 
   /// Declares every `EntityStruct` prefab this scene can spawn. Runs
   /// exactly once, before the first entity exists - see [initializeScene].
+  @mustCallSuper
   void describeScene(SceneDescriptor descriptor) {}
 
   /// Declares the assets this scene needs that belong to no prefab -

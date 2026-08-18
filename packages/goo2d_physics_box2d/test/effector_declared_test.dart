@@ -105,6 +105,7 @@ class _GameState extends GameState<_Game> {
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     setup = descriptor.has(_Setup());
     // No gravity, so the only thing that can move a body vertically is the
     // effector under test.

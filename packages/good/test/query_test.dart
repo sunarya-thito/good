@@ -70,6 +70,7 @@ class _Level extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     player = descriptor.has(_Player());
     rock = descriptor.has(_Rock());
     trigger = descriptor.has(_Trigger());

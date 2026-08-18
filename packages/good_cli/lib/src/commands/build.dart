@@ -21,6 +21,7 @@ class BuildCommand extends Command {
 
   @override
   void describeCommand(CommandDescriptor descriptor) {
+    super.describeCommand(descriptor);
     windows = descriptor.describeSubCommand(
       'windows',
       'Build for Windows.',

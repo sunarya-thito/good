@@ -149,6 +149,7 @@ class _GameState extends GameState<_Game> {
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(MousePickingSystem());
     // Declared *after* the picker, so the ordering that makes picking read
     // resolved transforms has to come from compareTo rather than from the
@@ -163,6 +164,7 @@ class _Game extends Game {
 
   @override
   void describeCameras(CameraDescriptor descriptor) {
+    super.describeCameras(descriptor);
     view = descriptor.has();
   }
 

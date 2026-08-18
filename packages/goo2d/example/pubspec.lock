@@ -174,28 +174,28 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "0.1.0"
+    version: "0.1.1"
   goo2d_ffi_box2d:
     dependency: "direct overridden"
     description:
       path: "../../goo2d_ffi_box2d"
       relative: true
     source: path
-    version: "0.1.0"
+    version: "0.1.1"
   goo2d_physics_box2d:
     dependency: "direct main"
     description:
       path: "../../goo2d_physics_box2d"
       relative: true
     source: path
-    version: "0.1.0"
+    version: "0.1.1"
   good:
     dependency: "direct overridden"
     description:
       path: "../../good"
       relative: true
     source: path
-    version: "0.1.0"
+    version: "0.1.1"
   leak_tracker:
     dependency: transitive
     description:

@@ -16,6 +16,7 @@ import 'package:good/src/game.dart';
 ///
 ///   @override
 ///   void describeCameras(CameraDescriptor descriptor) {
+///     super.describeCameras(descriptor);
 ///     mainCamera    = descriptor.has();
 ///     minimapCamera = descriptor.has();
 ///   }

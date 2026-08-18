@@ -22,6 +22,7 @@ class _Wall extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
   @override
   void describeRigidBody(RigidBody2DDescriptor d) {
+    super.describeRigidBody(d);
     d.has(type: BodyType2D.staticBody);
   }
 }
@@ -38,6 +39,7 @@ class _Hidden extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
   @override
   void describeRigidBody(RigidBody2DDescriptor d) {
+    super.describeRigidBody(d);
     d.has(type: BodyType2D.staticBody);
   }
 }
@@ -54,6 +56,7 @@ class _Scene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor d) {
+    super.describeScene(d);
     wall = d.has(_Wall());
     hidden = d.has(_Hidden());
   }
@@ -65,6 +68,7 @@ class _GameState extends GameState<_Game> {
 
   @override
   void describeSystems(SystemDescriptor d) {
+    super.describeSystems(d);
     physics = d.has(Box2DPhysicsSystem());
   }
 }

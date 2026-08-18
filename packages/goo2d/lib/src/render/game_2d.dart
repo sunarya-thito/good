@@ -124,6 +124,7 @@ mixin Renderer2D on Game {
   late final CameraView defaultCamera;
 
   @override
+  @mustCallSuper
   void describeCameras(CameraDescriptor descriptor) {
     super.describeCameras(descriptor);
     defaultCamera = descriptor.has();
@@ -169,6 +170,7 @@ mixin Renderer2D on Game {
   HandoffHandle framesFor(CameraView view) => _viewFrames[view.pack()];
 
   @override
+  @mustCallSuper
   void describeBuffers(BufferDescriptor descriptor) {
     super.describeBuffers(descriptor);
     // `describeCameras` runs before `describeBuffers` in `Game._bootMain`, so

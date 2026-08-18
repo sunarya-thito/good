@@ -179,6 +179,7 @@ mixin RigidBody2D on Component {
   /// plain dynamic body with default damping does not need to override this
   /// at all - unlike `Collider2D.describeCollider`, which is abstract because
   /// a collider with no shapes would be meaningless.
+  @mustCallSuper
   void describeRigidBody(RigidBody2DDescriptor descriptor) {}
 
   @override

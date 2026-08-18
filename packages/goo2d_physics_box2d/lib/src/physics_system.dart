@@ -20,6 +20,7 @@ import 'rigid_body.dart';
 /// ```dart
 /// @override
 /// void describeSystems(SystemDescriptor descriptor) {
+///   super.describeSystems(descriptor);
 ///   physics = descriptor.has(Box2DPhysicsSystem());
 /// }
 /// ```

@@ -62,6 +62,7 @@ abstract class GameSystem extends GameListenerBase
   late final SignalDispatcher<GameSystemLifecycleListener> unmountEvent;
 
   @override
+  @mustCallSuper
   void describeEvents(EventDescriptor descriptor) {
     super.describeEvents(descriptor);
     mountEvent = descriptor.hasSignal((dispatcher) => dispatcher.onMounted());
@@ -140,6 +141,7 @@ abstract class GameSystem extends GameListenerBase
   }
 
   // provide a way for GameSystem to compile queries
+  @mustCallSuper
   void describeQuery(QueryDescriptor descriptor) {}
 
   // There is no `describeState` or `describeBuffers` here, and both used to
@@ -170,18 +172,21 @@ abstract class GameSystem extends GameListenerBase
   ///
   /// @override
   /// void describeInputs(InputDescriptor input) {
+  ///   super.describeInputs(input);
   ///   movement = input.has<Vector2>(const Vec2Binding(up: .w, down: .s, left: .a, right: .d));
   ///   triggerSkill = input.has<bool>(const TriggerBinding(.spacebar));
   /// }
   /// ```
   ///
   /// Keep the returned [Input] in a `late final` field; there is no
-  /// `getAction(name)` to look one up by (the typed-handle rule). Unlike
-  /// `Game.describeInputs` this has no `super` to call - the framework's own
-  /// declarations all live on the `Game`.
+  /// `getAction(name)` to look one up by (the typed-handle rule). The base
+  /// here declares nothing - unlike `Game.describeInputs`, which declares the
+  /// framework's own actions - so the `super` call carries only whatever
+  /// mixins a system was assembled from.
   ///
   /// Both isolate twins of this system run this pass, and only the simulating
   /// one's actions ever resolve - see `Input`'s doc.
+  @mustCallSuper
   void describeInputs(InputDescriptor descriptor) {}
 
   /// A sibling system declared in the same `describeSystems`. Reaching one

@@ -58,6 +58,7 @@ class _CensusSystem extends GameSystem with FixedTickable {
 
   @override
   void describeQuery(QueryDescriptor descriptor) {
+    super.describeQuery(descriptor);
     query = descriptor.query().withAll(_Marked).build();
   }
 
@@ -74,6 +75,7 @@ class _CensusSystem extends GameSystem with FixedTickable {
 class _DeclaringState extends GameState<_DeclaringGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_CensusSystem());
   }
 }
@@ -93,6 +95,7 @@ class _DeclaringGame extends Game {
 
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
+    super.describeScenes(descriptor);
     level = descriptor.has(_Level());
     menu = descriptor.has(_Menu());
   }
@@ -102,7 +105,8 @@ class _DeclaringGame extends Game {
 class _DoubleDeclaringGame extends _DeclaringGame {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
-    descriptor.has(_Level());
+    // `_DeclaringGame` already declared a `_Level`; this is the second.
+    super.describeScenes(descriptor);
     descriptor.has(_Level());
   }
 }

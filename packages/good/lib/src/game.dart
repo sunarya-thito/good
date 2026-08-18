@@ -79,7 +79,10 @@ const String _msgUnloadAssets = 'unloadassets';
 ///   MyGameState createState() => MyGameState();
 ///
 ///   @override
-///   void describeState(StateDescriptor d) => score = d.hasInt32();
+///   void describeState(StateDescriptor d) {
+///     super.describeState(d);
+///     score = d.hasInt32();
+///   }
 /// }
 ///
 /// class MyGameState extends GameState<MyGame> {    // game isolate
@@ -238,6 +241,7 @@ abstract class Game {
   ///
   /// @override
   /// void describeScenes(GameSceneDescriptor descriptor) {
+  ///   super.describeScenes(descriptor);
   ///   mainScene = descriptor.has(MainScene());
   ///   hudScene = descriptor.has(HudScene());
   /// }
@@ -272,6 +276,7 @@ abstract class Game {
   ///
   /// Passing an *undeclared* scene to `loadScene` still works and still
   /// registers lazily, so this pass is additive rather than a new obligation.
+  @mustCallSuper
   void describeScenes(GameSceneDescriptor descriptor) {}
 
   /// Declares every command this game understands, and registers the handlers
@@ -283,6 +288,7 @@ abstract class Game {
   ///
   /// @override
   /// void describeCommands(CommandDescriptor descriptor) {
+  ///   super.describeCommands(descriptor);
   ///   damage = descriptor.has(Damage());   // handled on the game isolate
   ///   save = descriptor.has(SaveGame());
   ///   descriptor.hasSink(save, _writeSaveFile);  // ...but this one here
@@ -325,6 +331,7 @@ abstract class Game {
   /// archetype id is a game-isolate identifier, so handing one to the Flutter
   /// isolate made it name something it cannot see. Naming the *intent* leaves
   /// the prefab lookup on the side that owns the memory.
+  @mustCallSuper
   void describeCommands(CommandDescriptor descriptor) {}
 
   /// Declares this game's **auxiliary ring buffers** - shared-memory SPSC
@@ -347,6 +354,7 @@ abstract class Game {
   ///
   /// @override
   /// void describeBuffers(BufferDescriptor d) {
+  ///   super.describeBuffers(d);
   ///   drawBuffer = d.has(capacityBytes: 64 * 1024);
   /// }
   /// ```
@@ -363,6 +371,7 @@ abstract class Game {
   /// on the wire. Systems may declare buffers too - see
   /// `GameSystem.describeBuffers`; declaring a system is then all a user has
   /// to do to get that system's channel wired up.
+  @mustCallSuper
   void describeBuffers(BufferDescriptor descriptor) {}
 
   /// Declares this game's camera views - the places it can be drawn.
@@ -372,6 +381,7 @@ abstract class Game {
   ///
   /// @override
   /// void describeCameras(CameraDescriptor descriptor) {
+  ///   super.describeCameras(descriptor);
   ///   mainCamera = descriptor.has();
   /// }
   /// ```
@@ -385,6 +395,7 @@ abstract class Game {
   /// A game that declares none draws nothing and is shown with
   /// `GameView.headless` - a HUD-only or headless-plus-Flutter setup, which
   /// is a first-class shape here rather than a degenerate one.
+  @mustCallSuper
   void describeCameras(CameraDescriptor descriptor) {}
 
   /// This game's declared camera views. Empty until [describeCameras] has
@@ -402,6 +413,7 @@ abstract class Game {
   ///
   ///   @override
   ///   void describeState(StateDescriptor descriptor) {
+  ///     super.describeState(descriptor);
   ///     score = descriptor.hasInt32();
   ///   }
   /// }
@@ -456,6 +468,7 @@ abstract class Game {
   /// there is no second run for an index to disagree with. Both sources share
   /// **one** descriptor (see [bootStateDescriptor]), so indices never collide
   /// or renumber across sources.
+  @mustCallSuper
   void describeState(StateDescriptor descriptor) {}
 
   /// Declares this game's **input actions**, and the default value every

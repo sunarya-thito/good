@@ -1,3 +1,5 @@
+import 'package:meta/meta.dart';
+
 import 'package:good/src/animation/struct.dart';
 import 'package:good/src/coroutine/coroutine.dart';
 
@@ -31,6 +33,7 @@ import 'package:good/src/coroutine/coroutine.dart';
 ///
 ///   @override
 ///   void describeAnimation(AnimationTypeDescriptor descriptor) {
+///     super.describeAnimation(descriptor);
 ///     timeline = descriptor.has(EnemyTimeline());
 ///   }
 ///
@@ -64,6 +67,7 @@ mixin Animations on Coroutines {
   /// mix this in for everyone: an abstract member here would make every prefab
   /// in every game implement it, including the overwhelming majority that
   /// animate nothing.
+  @mustCallSuper
   void describeAnimation(AnimationTypeDescriptor descriptor) {}
 
   /// Plays [animation] into [bindings], as a coroutine, and completes when it

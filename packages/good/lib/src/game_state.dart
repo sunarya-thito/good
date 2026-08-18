@@ -118,7 +118,9 @@ abstract class GameState<T extends Game> extends GameListenerBase
   late final EventDispatcher<SceneLoadListener, Scene> sceneUnloadedEvent;
 
   @override
+  @mustCallSuper
   void describeEvents(EventDescriptor descriptor) {
+    super.describeEvents(descriptor);
     fixedTickEvent = descriptor.hasSignal(
       (listener) => listener.onFixedUpdate(),
     );
@@ -433,6 +435,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// ```dart
   /// @override
   /// void describeSystems(SystemDescriptor descriptor) {
+  ///   super.describeSystems(descriptor);
   ///   descriptor.has(MovementSystem());
   ///   descriptor.has(CombatSystem());
   /// }
@@ -461,6 +464,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// arrangement was guarding against.
   ///
   /// Runs on the simulating copy only, from `Game._bootGame`.
+  @mustCallSuper
   void describeSystems(SystemDescriptor descriptor) {}
 
   /// Registers the handlers that run on the **game** isolate, for commands
@@ -469,6 +473,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// ```dart
   /// @override
   /// void describeCommands(CommandDescriptor descriptor) {
+  ///   super.describeCommands(descriptor);
   ///   descriptor.hasHandler(game.damage, (p) => p.amount * (p.crit ? 2 : 1));
   ///   descriptor.hasSink(game.spawnWave, _spawnWave);
   /// }
@@ -490,6 +495,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// Runs on both copies, immediately after `Game.describeCommands`, so both
   /// agree about which commands have a handler at all - which is what lets
   /// the sending side refuse a handler-less command without a round trip.
+  @mustCallSuper
   void describeCommands(CommandDescriptor descriptor) {}
 
   // --- scene loading ----------------------------------------------------

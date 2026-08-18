@@ -49,6 +49,7 @@ class _Floor extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
   @override
   void describeRigidBody(RigidBody2DDescriptor descriptor) {
+    super.describeRigidBody(descriptor);
     descriptor.has(type: BodyType2D.staticBody);
   }
 }
@@ -76,6 +77,7 @@ class _Pinned extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
   @override
   void describeRigidBody(RigidBody2DDescriptor descriptor) {
+    super.describeRigidBody(descriptor);
     descriptor.has(fixedRotation: true);
   }
 }
@@ -96,6 +98,7 @@ class _Scene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     crate = descriptor.has(_Crate());
     floor = descriptor.has(_Floor());
     ball = descriptor.has(_Ball());
@@ -137,6 +140,7 @@ class _GameState extends GameState<_Game> {
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_TeleportSystem());
     physics = descriptor.has(Box2DPhysicsSystem(workerCount: _workers));
   }

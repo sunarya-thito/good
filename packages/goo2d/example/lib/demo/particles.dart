@@ -183,6 +183,7 @@ class Galaxy extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     mote = descriptor.has(Mote());
     eye = descriptor.has(Eye());
   }

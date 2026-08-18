@@ -57,6 +57,7 @@ class _SelfishUnit extends EntityStruct with _Ping {
 
   @override
   void describeEvents(EventDescriptor descriptor) {
+    super.describeEvents(descriptor);
     ping = descriptor.hasSignal((listener) => listener.onPing());
   }
 }
@@ -67,6 +68,7 @@ class _PingScene extends SceneStruct with _Ping {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     unit = descriptor.has(_PingUnit());
     selfish = descriptor.has(_SelfishUnit());
   }
@@ -83,6 +85,7 @@ class _PingState extends GameState<_PingGame> with _Ping {
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_PingSystem());
     descriptor.has(_DeafSystem());
   }
@@ -105,6 +108,7 @@ class _PingGame extends Game {
 
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
+    super.describeScenes(descriptor);
     level = descriptor.has(_PingScene());
   }
 }

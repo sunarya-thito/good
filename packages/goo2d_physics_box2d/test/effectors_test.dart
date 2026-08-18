@@ -78,6 +78,7 @@ class _GameState extends GameState<_Game> {
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     effectors = descriptor.has(_EffectorSystem());
     // No gravity, so each test measures its effector and nothing else. The
     // buoyancy test puts gravity back by hand, because floating against

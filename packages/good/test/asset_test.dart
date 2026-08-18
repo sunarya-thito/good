@@ -966,7 +966,10 @@ class _BareScene extends SceneStruct {
   final _Bare _prefab;
 
   @override
-  void describeScene(SceneDescriptor descriptor) => descriptor.has(_prefab);
+  void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
+    descriptor.has(_prefab);
+  }
 }
 
 class GameSceneStub extends SceneStruct {

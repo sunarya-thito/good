@@ -26,6 +26,7 @@ class _TwoCameraGame extends Game {
 
   @override
   void describeCameras(CameraDescriptor descriptor) {
+    super.describeCameras(descriptor);
     main = descriptor.has();
     minimap = descriptor.has();
   }

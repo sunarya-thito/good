@@ -52,6 +52,7 @@ class _PlayerSystem extends GameSystem with FixedTickable {
 
   @override
   void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
     movement = input.has<Vector2>(
       const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
     );
@@ -82,6 +83,7 @@ class _PlayerSystem extends GameSystem with FixedTickable {
 class _InputGameState extends GameState<_InputGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_PlayerSystem());
   }
 }
@@ -159,6 +161,7 @@ class _DuplicateDefaultState extends GameState<_DuplicateDefaultGame> {}
 class _LateDefaultSystem extends GameSystem {
   @override
   void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
     input.hasDefaultValue<double>(0.25);
   }
 }
@@ -184,6 +187,7 @@ class _SharedDescriptorGame extends Game {
 class _SharedDescriptorState extends GameState<_SharedDescriptorGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_LateDefaultSystem());
   }
 }
@@ -199,6 +203,7 @@ class _CursorSystem extends GameSystem {
 
   @override
   void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
     cursor = input.has<MousePosition>(const MouseBinding());
     click = input.has<bool>(const TriggerBinding(.leftMouseButton));
 
@@ -212,6 +217,7 @@ class _CursorSystem extends GameSystem {
 class _MouseGameState extends GameState<_MouseGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_CursorSystem());
   }
 }

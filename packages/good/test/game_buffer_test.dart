@@ -40,6 +40,7 @@ class _EmptyScene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     descriptor.has(_Empty());
   }
 }
@@ -69,6 +70,7 @@ class _BufferState extends GameState<_BufferGame> {
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_PingSystem());
   }
 }
@@ -92,6 +94,7 @@ class _BufferGame extends Game {
 
   @override
   void describeBuffers(BufferDescriptor descriptor) {
+    super.describeBuffers(descriptor);
     gameBuffer = descriptor.has(capacityBytes: 1024);
     pings = descriptor.has(capacityBytes: 4096);
   }
@@ -113,6 +116,8 @@ class _TwoBufferGame extends _BufferGame {
 class _TinyBufferGame extends _BufferGame {
   @override
   void describeBuffers(BufferDescriptor descriptor) {
+    super.describeBuffers(descriptor);
+    // Header and not a byte more - no room for a single record.
     descriptor.has(capacityBytes: RingBuffer.headerBytes);
   }
 }

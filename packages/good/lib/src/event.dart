@@ -84,7 +84,8 @@ abstract base class _ListenerSet<L extends GameListener> {
 /// ```dart
 /// late final EventDispatcher<EntityLifecycleListener, Entity> entityMounted;
 ///
-/// @override void describeEvents(EventDescriptor d) { entityMounted =
+/// @override void describeEvents(EventDescriptor d) {
+/// super.describeEvents(d); entityMounted =
 /// d.has((listener, entity) => listener.onEntityMounted(entity)); }
 ///
 /// // and firing it:
@@ -286,6 +287,7 @@ abstract class ListenerCollector {
 ///
 ///   @override
 ///   void describeEvents(EventDescriptor descriptor) {
+///     super.describeEvents(descriptor);
 ///     mounted = descriptor.has<EntityLifecycleListener>();
 ///   }
 /// }
@@ -301,6 +303,7 @@ abstract class ListenerCollector {
 mixin EventBus on GameListener {
   /// Declares this owner's dispatchers. Runs once, at boot, before
   /// [collectListeners].
+  @mustCallSuper
   void describeEvents(EventDescriptor descriptor) {}
 
   /// Offers this owner's listeners to its own dispatchers.

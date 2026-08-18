@@ -10,11 +10,13 @@
 ///
 ///   @override
 ///   void describeCollider(ColliderDescriptor d) {
+///     super.describeCollider(d);
 ///     box = d.hasBoxCollider(halfWidth: 0.5, halfHeight: 0.5, friction: 0.4);
 ///   }
 ///
 ///   @override
 ///   void describeRigidBody(RigidBody2DDescriptor d) {
+///     super.describeRigidBody(d);
 ///     d.has(type: BodyType2D.dynamicBody);
 ///   }
 /// }

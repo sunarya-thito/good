@@ -60,6 +60,7 @@ class _StateScene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     probe = descriptor.has(_Probe());
   }
 }
@@ -111,6 +112,7 @@ class _StateGameState extends GameState<_StateGame> {
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
     descriptor.has(_StateSystem());
   }
 }
@@ -145,6 +147,7 @@ class _StateGame extends Game {
 
   @override
   void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
     capturedDescriptor = descriptor;
     gameCount = descriptor.hasInt32(7);
     stateCount = descriptor.hasInt64(-5);
@@ -169,6 +172,7 @@ class _OrphanScene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     descriptor.has(_Probe());
   }
 }
@@ -493,6 +497,7 @@ class _WidthGame extends Game {
 
   @override
   void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
     u8 = descriptor.hasUint8();
     i8 = descriptor.hasInt8();
     u16 = descriptor.hasUint16();

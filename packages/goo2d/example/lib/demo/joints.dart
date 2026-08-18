@@ -84,6 +84,7 @@ class Anchor extends EntityStruct
 
   @override
   void describeRigidBody(RigidBody2DDescriptor descriptor) {
+    super.describeRigidBody(descriptor);
     descriptor.has(type: BodyType2D.staticBody);
   }
 }

@@ -15,6 +15,7 @@ import 'package:good/src/triple_buffer.dart';
 ///
 ///   @override
 ///   void describeInputs(InputDescriptor input) {
+///     super.describeInputs(input);
 ///     movement = input.has<Vector2>(const Vec2Binding(up: .w, down: .s, left: .a, right: .d));
 ///     triggerSkill = input.has<bool>(const TriggerBinding(.spacebar));
 ///   }

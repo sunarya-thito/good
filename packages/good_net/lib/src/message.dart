@@ -301,6 +301,7 @@ abstract class NetSignal extends NetMessageBase {
   /// Nothing to declare. Overridable anyway, for a signal that grows a field
   /// later and would otherwise have to change class.
   @override
+  @mustCallSuper
   void describeParams(ParamDescriptor descriptor) {}
 
   /// Sends this signal wherever its [NetTarget] says it goes. See

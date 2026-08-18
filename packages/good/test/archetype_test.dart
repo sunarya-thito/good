@@ -83,6 +83,7 @@ class _Level extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     player = descriptor.has(_Player());
     enemy = descriptor.has(_Enemy());
   }

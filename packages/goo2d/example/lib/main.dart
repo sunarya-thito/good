@@ -54,6 +54,7 @@ class Player extends EntityStruct
 
   @override
   void describeAnimation(AnimationTypeDescriptor descriptor) {
+    super.describeAnimation(descriptor);
     breath = descriptor.has(Breath());
   }
 
@@ -154,6 +155,7 @@ class MainScene extends SceneStruct {
 
   @override
   void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
     playerPrefab = descriptor.has(Player());
     enemyPrefab = descriptor.has(Enemy());
     wingmanPrefab = descriptor.has(Wingman());
@@ -283,6 +285,7 @@ class MyGameState extends GameState2D<MyAwesomeGame> {
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
     // `hasSupplier` only *handles* - the declaration itself belongs to the
     // Game, because that is the side holding the handle the UI calls through.
     descriptor.hasSupplier(game.spawnEnemy, _onSpawnEnemy);
@@ -308,6 +311,7 @@ class MyAwesomeGame extends Game2D {
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
     spawnEnemy = descriptor.has(SpawnEnemy());
   }
 }
