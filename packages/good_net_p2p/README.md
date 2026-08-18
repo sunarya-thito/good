@@ -62,7 +62,7 @@ to send less.
 ## Testing netcode that has only ever seen loopback
 
 `simulatedLoss` throws away a fraction of outgoing datagrams. It is a field on
-the shipped class , not a test helper on purpose: netcode that has only
+the shipped class, not a test helper on purpose: netcode that has only
 run over loopback has never had a packet lost, so every retransmission path in
 it is untested code that first runs on a player's hotel wifi.
 

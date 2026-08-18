@@ -66,8 +66,8 @@ What is worth watching, whatever it is currently called:
 ### Split totals into phases
 
 Three unrelated costs with three unrelated fixes cannot be directed by one
-number. That is why the renderer reports walk, sort and write separately , not
-one presentation total, and why the physics system reports its phases , not one
+number. That is why the renderer reports walk, sort and write separately, not
+one presentation total, and why the physics system reports its phases, not one
 step time. Measure your own systems the same way when you measure them at all —
 a single "gameplay is slow" figure tells you nothing you can act on.
 

@@ -13,7 +13,7 @@ flowchart TD
 `goo2d` and `goo3d` are siblings, not layers. Neither is built on the other.
 
 `goo3d` is a **sibling** of `goo2d`, not a layer on top of it. It depends on the
-same kernel and supplies its own renderer — a native surface , not a
+same kernel and supplies its own renderer — a native surface, not a
 `CustomPaint` — without `GameView` changing at all.
 
 ## What is shared
@@ -54,18 +54,12 @@ good create my_game --dimension=d2    # goo2d — the default
 good create my_game --dimension=d3    # goo3d
 ```
 
-The CLI carries the option because it is dimension-agnostic by design. It
-refuses `d3` until `goo3d` resolves, instead of scaffolding a project whose
-dependencies do not exist:
+The CLI carries the option because it is dimension-agnostic: one tool scaffolds
+either, and everything after the scaffolding step is the same.
 
-```console
-$ good create my_game --dimension=d3
-goo3d does not exist yet. Only --dimension=d2 can be created today.
-```
+## 2D and 3D do not share a renderer
 
-## Why not one engine with a `z` you can ignore
-
-Because the costs are not shared. A 2D renderer that carried 3D's transform
+The costs are not shared. A 2D renderer that carried 3D's transform
 maths, its depth handling and its material model would pay for all of it in
 every sprite batch — and a 3D renderer built as a special case of a sprite
 renderer would fight the sprite renderer's assumptions forever.

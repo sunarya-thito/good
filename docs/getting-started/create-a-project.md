@@ -60,7 +60,7 @@ Would write ./my_game/lib/game/my_game_game.dart
 ...
 Would add to ./my_game/pubspec.yaml:
 dependencies:
-  goo2d: ^0.0.1
+  goo2d: ^0.1.0
 
 flutter:
   assets:
@@ -116,7 +116,7 @@ so the comments `flutter create` wrote survive:
 
 ```yaml title="pubspec.yaml"
 dependencies:
-  goo2d: ^0.0.1
+  goo2d: ^0.1.0
   flutter:
     sdk: flutter
 
@@ -162,7 +162,7 @@ Simulation goes on the `GameState`. They are the same object graph, deep-copied
 across an isolate boundary — see [Architecture](../guide/architecture.md).
 
 `Game2D`/`GameState2D` are the 2D layer's pair, and that narrowing is the whole
-opt-in: returning a plain `GameState` from a `Game2D` is a compile error , not a
+opt-in: returning a plain `GameState` from a `Game2D` is a compile error, not a
 game that silently paints nothing.
 
 ### `lib/game/scenes/main_scene.dart` — what exists
@@ -198,7 +198,7 @@ class Player extends EntityStruct with Transform2D, WorldTransform2D, Renderable
 }
 ```
 
-It starts untextured on purpose: a flat colour is one branch in the renderer and
+It starts untextured: a flat colour is one branch in the renderer and
 needs no asset, so a new project draws something on its first run.
 
 ### `lib/main.dart` — starting it

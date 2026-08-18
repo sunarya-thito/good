@@ -70,7 +70,7 @@ $ good assets compact
 
 The source tree's shape is preserved — `ui/button.jpg` becomes `ui/button.webp`,
 not `button.webp` — because the output path is what becomes an identifier, and
-flattening would create collisions the source tree deliberately avoided.
+flattening would create collisions the source tree avoids.
 
 !!! info "Compaction is not a release-only step"
     Development and release load byte-identical files, because both load the
@@ -96,7 +96,7 @@ that is already right is time spent making the asset slightly worse.
 ### ffmpeg
 
 Compaction needs ffmpeg and downloads one if your `PATH` has none. In CI, pass
-`--no-download` to make a missing ffmpeg an explicit failure , not a slow
+`--no-download` to make a missing ffmpeg an explicit failure, not a slow
 surprise.
 
 ### Files it has no rule for
@@ -131,7 +131,7 @@ Wrote ./lib/good.generated/good.dart
 | `good.dart` | every run | `ensureGameReady()`, the startup check |
 | `asset_key.dart` | **once** | Encryption keys, and the chunk mapping |
 
-!!! danger "`asset_key.dart` is written once, deliberately"
+!!! danger "`asset_key.dart` is written once and never regenerated"
     Its keys decrypt the packs already built with them, so regenerating would
     orphan every shipped build. `good generate --rotate-keys` changes them
     deliberately — and every existing pack stops decrypting, so repack

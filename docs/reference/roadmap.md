@@ -1,8 +1,8 @@
 # Implementation status
 
 The rest of this documentation describes the engine as a whole. **This page is
-the list of what actually works right now**, so that
-nobody follows a guide for code that is not there yet.
+the list of what actually works right now**, so that nobody follows a guide for
+code that is not there yet.
 
 Last verified: **2026-08-18**, against the `asset-api-redesign` branch.
 
@@ -17,7 +17,7 @@ Last verified: **2026-08-18**, against the `asset-api-redesign` branch.
 | `goo2d_physics_box2d` | **Working** | Bodies, colliders, the nine joints, effectors, raycast and overlap queries |
 | `good_net` | **Working** | Messages, targets, channels, sessions, roster events and `LoopbackNetTransport`, with a conformance suite every backend is run against |
 | `good_net_p2p` | **Working on a LAN** | A real UDP protocol — acks, retransmission, ordering, batching, fragmentation, keepalives — plus address-carrying join codes and LAN discovery. **Does not cross the internet yet**: that needs STUN and a rendezvous |
-| `goo3d` and siblings | **Not started** | The kernel split exists so this lands without touching the shared half |
+| `goo3d` and siblings | **Not started** | The kernel split exists so this lands without touching the shared half. `good create --dimension=d3` is refused until the package resolves |
 
 !!! note "Package READMEs were brought in line"
     They used to say "placeholder" for code that is now written. They no
@@ -44,7 +44,7 @@ These were actually run:
 
 ## Not yet implemented
 
-Deliberately deferred, and documented in place instead of left as silent gaps.
+Deferred, and documented in place instead of left as silent gaps.
 
 ### Engine
 
@@ -73,7 +73,7 @@ Deliberately deferred, and documented in place instead of left as silent gaps.
 - **A relay fallback.** Hole punching fails when *both* peers are behind
   symmetric NAT. "Free, no server" and "always connects" are not the same
   claim, and a TURN-style relay is a separate, clearly-scoped addition.
-- **Request/reply messages.** Deliberately absent — see the networking guide.
+- **Request/reply messages.** Not provided — see the networking guide.
 - **The ECS replication layer** — a `Replicated` mixin, delta compression,
   prediction and reconciliation. `good_net` moves declared records; replication
   is built on top of that, and the channel split is the primitive it needs.
@@ -95,13 +95,12 @@ Deliberately deferred, and documented in place instead of left as silent gaps.
 
 ## Publishing
 
-The packages are `publish_to: none` and are not on pub.dev yet. pub.dev
-currently serves `goo2d` **0.0.2**, an earlier iteration of this engine with an
-entirely different API — a pubspec saying `goo2d: ^0.0.1` resolves to *that*,
-and resolves successfully, so the mismatch surfaces as analyzer errors in
-generated code instead of as a resolution failure.
+All seven packages are on pub.dev at **0.1.0**, under BSD 3-Clause.
 
-Until the rewrite is published, depend on the engine by `path:` or `git:`.
+pub.dev also still serves `goo2d` **0.0.2**, an earlier iteration with an
+entirely different API. **Pin `^0.1.0`, not `^0.0.1`** — the older constraint
+resolves to that version, and resolves *successfully*, so the mismatch surfaces
+as analyzer errors in generated code instead of as a resolution failure.
 
 ## Known rough edges
 

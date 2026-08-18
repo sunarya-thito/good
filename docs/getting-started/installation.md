@@ -70,7 +70,7 @@ install it: `good assets compact` and `good build` look for an ffmpeg on your
 `PATH` and download one if there is none.
 
 Pass `--no-download` to make a missing ffmpeg an error instead — worth doing in
-CI, where an unexpected download is a slow surprise , not a convenience.
+CI, where an unexpected download is a slow surprise, not a convenience.
 
 ---
 
@@ -92,14 +92,14 @@ Each also needs its system declared in `describeSystems`:
 
 ```yaml title="pubspec.yaml"
 dependencies:
-  goo2d: ^0.0.1
-  goo2d_physics_box2d: ^0.0.1   # native Box2D — only if you want physics
-  good_net_p2p: ^0.0.1           # serverless multiplayer — only if you want it
+  goo2d: ^0.1.0
+  goo2d_physics_box2d: ^0.1.0   # native Box2D — only if you want physics
+  good_net_p2p: ^0.1.0           # serverless multiplayer — only if you want it
 ```
 
 ### Working from a clone
 
-If you are developing against the engine's own source — tracking `main`, or
+If you are developing against the engine's own source — tracking `master`, or
 working on the engine itself — depend on it by path instead:
 
 ```bash
@@ -109,7 +109,7 @@ git clone https://github.com/sunarya-thito/good.git
 ```yaml title="pubspec.yaml"
 dependencies:
   goo2d:
-    path: ../goo2d/packages/goo2d
+    path: ../good/packages/goo2d
 ```
 
 This is what the repository's own `game/` directory does. A `git:` dependency
@@ -122,7 +122,7 @@ dependencies:
     git:
       url: https://github.com/sunarya-thito/good.git
       path: packages/goo2d
-      ref: v0.0.1
+      ref: v0.1.0
 ```
 
 ---

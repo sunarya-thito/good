@@ -65,14 +65,14 @@ enum Textures with LocalEnumAssetKey<Texture> {
 }
 ```
 
-An enum , not a list of static keys, because `LocalEnumAssetKey` makes an
+An enum, not a list of static keys, because `LocalEnumAssetKey` makes an
 enum value **be** an `AssetKey` — `Textures.spritesPlayer` is already the
 identity `descriptor.has` wants, with no lookup and nothing to keep in sync. It
 also gives the set a `.values`, which is what lets the startup check walk every
 asset the game ships.
 
 The path becomes the identifier, so renaming a file renames the enum value and a
-stale reference is a **compile error** , not a missing texture at run
+stale reference is a **compile error**, not a missing texture at run
 time.
 
 `Audios` is identical in shape. That uniformity is the point: a new asset kind
@@ -126,7 +126,7 @@ Future<void> ensureGameReady();                      // throws if anything is mi
 Future<List<AssetKey<Object?>>> findMissingAssets(); // the list, if you want to show it
 ```
 
-`AssetAvailability.unverifiable` is deliberately **not** counted as a failure. A
+`AssetAvailability.unverifiable` is **not** counted as a failure. A
 loose development build cannot stat a bundle entry and a network source cannot
 be checked offline; reporting those as missing would make the check cry wolf
 exactly where it is most useful.

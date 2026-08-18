@@ -169,10 +169,9 @@ final camera = scene.addEntity(eyePrefab, parent: player);
 eye.view[camera] = game.defaultCamera;
 ```
 
-The camera's own local transform stays at the origin, and
-`WorldTransformSystem` puts it wherever the player is. For a lagging or
-smoothed camera, write its transform from a system that runs after movement
-instead.
+The camera's own local transform stays at the origin, and `WorldTransformSystem`
+puts it wherever the player is. For a lagging or smoothed camera, write its
+transform from a system that runs after movement instead.
 
 ---
 

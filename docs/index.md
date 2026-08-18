@@ -87,7 +87,7 @@ repository right now.
 
 ---
 
-## Why the split
+## What the split buys
 
 Everything that is not inherently about *how many dimensions you have* lives in
 the kernel: the ECS, the scheduler, scenes, hierarchy, input, the asset

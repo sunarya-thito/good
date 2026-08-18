@@ -217,7 +217,7 @@ eye.view[camera] = game.defaultCamera;
 eye.zoom[camera] = 2;
 ```
 
-`view` is typed , not an integer — a stray int does not compile there.
+`view` is typed, not an integer — a stray int does not compile there.
 
 ### Views
 
@@ -253,8 +253,8 @@ at the same instant.
 ### No camera at all
 
 A game with no active camera draws at the origin with a zoom of 1, and the whole
-world is drawn. That is deliberate — a game that has not placed a camera yet
-shows something , not a black screen.
+world is drawn. A game that has not placed a camera yet shows something, not a
+black screen.
 
 `GameView.headless(game: game)` is the other legitimate shape: a HUD-only or
 headless-plus-Flutter game, with no camera and nothing painted.
@@ -275,7 +275,7 @@ final viewX  = projection.worldToViewX(entityWorldX);
 it always reflects the current zoom and viewport.
 
 A zoom of zero maps the whole world onto one pixel, so the inverse reports the
-camera's own origin , not an infinity that would poison every downstream
+camera's own origin, not an infinity that would poison every downstream
 comparison silently.
 
 ## Budgets

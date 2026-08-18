@@ -6,7 +6,7 @@
 
 ```yaml title="pubspec.yaml"
 dependencies:
-  goo2d_physics_box2d: ^0.0.1
+  goo2d_physics_box2d: ^0.1.0
 ```
 
 ## A body in three declarations
@@ -342,11 +342,11 @@ island that never goes quiet never sleeps. If physics is slow, look at density
 before you look at counts.
 
 The ECS layer around the solver — filling the scratch buffers, syncing
-transforms back, dispatching contacts — is deliberately thin: bulk entry points
+transforms back, dispatching contacts — is thin: bulk entry points
 turn what would be 2N FFI calls per tick into two, independent of body count.
 
 The system exposes per-phase timings and body counts for a debug overlay. They
-are development instrumentation , not a stable API, but they are how a
+are development instrumentation, not a stable API, but they are how a
 "physics is slow" report gets separated into "the arena is too small" and
 "bodies are leaking" — two problems with nothing in common.
 

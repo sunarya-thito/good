@@ -85,7 +85,7 @@ scene registered afresh on every load would leak ids and leave every unloaded
 scene's archetypes in the registry for queries to keep walking.
 
 Passing an *undeclared* scene to `loadScene` still works and registers lazily,
-so `describeScenes` is additive , not an obligation — the scaffold's
+so `describeScenes` is additive, not an obligation — the scaffold's
 `loadScene(MainScene())` is fine for a game with one scene.
 
 ## Loading and unloading
@@ -140,7 +140,7 @@ default, fires `onEntityMounted`, and returns the handle.
     means sending a [command](flutter-bridge.md#commands) that a game-side
     handler turns into an `addEntity`.
 
-    The framework deliberately ships no built-in spawn command. One would have
+    The framework ships no built-in spawn command. One would have
     to name a prefab by `archetypeId`, which is a game-isolate identifier the
     Flutter isolate has no way to see. Declare your own, in terms that mean
     something on both sides.

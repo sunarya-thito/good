@@ -48,12 +48,12 @@ final v = velocityX[entity];       // read it back (published snapshot)
     system owns — the example demos use `int _spawned = 0` on a prefab as a
     spawn counter, which is per-prefab and intentional.
 
-### Why this shape
+### What the layout buys you
 
 Rows of the same archetype are contiguous in one native page, so a system
 walking every bullet's `velocityX` walks memory in order — the cache behaviour
 struct-of-arrays exists for. And because a column is an `int` address plus an
-offset , not a `dart:ffi` `Pointer` object, indexing it allocates nothing.
+offset, not a `dart:ffi` `Pointer` object, indexing it allocates nothing.
 
 ## `Entity`
 
@@ -204,7 +204,7 @@ declaration, not from the component set — and each gets its own contiguous
 storage.
 
 Archetype ids are process-global and assigned in first-registration order, which
-is why [declaration order must be stable](architecture.md#why-declarations-run-twice)
+is why [declaration order must be stable](architecture.md#how-both-copies-agree-without-negotiating)
 and why scenes are declared once and loaded many times instead of registered
 per load.
 

@@ -26,7 +26,7 @@ class RoundSystem extends GameSystem with FixedTickable {
 ```
 
 `Coroutine` is `Iterable Function()` — a plain no-argument generator. That
-signature is deliberate: it lets a coroutine be started **without allocating a
+signature lets a coroutine be started **without allocating a
 closure**, which matters because starting one is ordinary gameplay code.
 
 Start it from anywhere that has a simulation — a `GameState`, a `GameSystem`, a
@@ -159,10 +159,7 @@ This is the engine's general answer to "one type parameter, several values":
 [network messages](../packages/networking.md#declaring-messages) do exactly the
 same thing.
 
-### Why `sync*` and not `async*`
-
-This matters enough to state plainly, because the obvious Dart spelling is the
-wrong one here.
+### Coroutines are `sync*`, never `async*`
 
 An `async*` generator resumes on a **microtask**. The engine requires every
 component write to land between `beginTick` and `commitTick` — `beginTick`
@@ -281,7 +278,7 @@ symmetrical by hand.
 ### Playing — the push path
 
 For a one-shot that must run to completion and then be awaited — an entrance, a
-door opening, a cutscene beat — where you want `await` , not a flag to
+door opening, a cutscene beat — where you want `await`, not a flag to
 check every tick:
 
 ```dart
@@ -324,7 +321,7 @@ entrance = descriptor.has()
 2. `key(value, duration)` — reach `100.0` **one second after the previous
    keyframe**. Between them the value is interpolated.
 3. `hold(seconds)` — stay at the previous value for two seconds. Sugar for
-   repeating the last keyframe, and worth having: written by hand it means
+   repeating the last keyframe: written by hand it means
    naming the same value twice, and the two copies then have to be kept in step
    by whoever edits the clip.
 4. `key(value, duration, curve)` — return to `0.0` over one second, eased.

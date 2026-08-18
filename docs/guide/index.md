@@ -52,5 +52,5 @@ step. Nothing between those declarations allocates.
 | `describe*` | A declaration pass, run once, returning typed handles to keep in fields |
 
 The `describe*`-returns-a-handle shape is universal and deliberate: there are no
-string keys anywhere in the API, so a typo is a compile error , not a
+string keys anywhere in the API, so a typo is a compile error, not a
 runtime miss. See [Hot-path rules](../reference/rules.md).

@@ -25,7 +25,7 @@ good generate         # writes lib/good.generated/ — an enum per shipped asset
 ```
 
 `good generate` is what lets you write `Textures.spritesPlayer` instead of a
-string path, so a renamed file is a compile error , not a black square at
+string path, so a renamed file is a compile error, not a black square at
 runtime.
 
 ## Shipping

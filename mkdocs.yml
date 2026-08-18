@@ -6,6 +6,15 @@ site_url: https://sunarya-thito.github.io/good/
 repo_url: https://github.com/sunarya-thito/good
 repo_name: sunarya-thito/good
 edit_uri: edit/master/docs/
+
+# A link to a heading that no longer exists is a broken link, and mkdocs only
+# reports it as INFO by default - which `--strict` does not fail on. Renaming a
+# heading silently broke a cross-reference exactly once; this makes it fail CI.
+validation:
+  anchors: warn
+  links:
+    absolute_links: info
+    unrecognized_links: warn
 copyright: Built with good.
 
 docs_dir: docs

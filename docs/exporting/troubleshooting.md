@@ -50,7 +50,7 @@ file is in a directory the pubspec does not list, generation cannot see it. Fix
 the pubspec and regenerate.
 
 If the file is in `assets_src/` only, run `good assets compact` first — the
-source directory is deliberately never scanned, because generating keys for
+source directory is never scanned, because generating keys for
 source art would name files that never reach the bundle.
 
 ### `Missing N asset(s) this build declares`
@@ -71,7 +71,7 @@ its chunks.
 ### A release build loads no assets, with no error
 
 The mapping is empty. Either packing did not run, or it ran in
-`--mode=development`, which deliberately *clears* the mapping so the runtime
+`--mode=development`, which *clears* the mapping so the runtime
 stops looking for chunks that are no longer built.
 
 ```bash
@@ -117,7 +117,7 @@ obvious to the scan.
 
 ### `ffmpeg is unavailable`
 
-With `--no-download`, a missing ffmpeg is an error , not a download.
+With `--no-download`, a missing ffmpeg is an error, not a download.
 Install one, or drop the flag.
 
 ### N assets failed to convert
@@ -142,12 +142,6 @@ good assets compact --force
 ```
 
 ## Project setup
-
-### `goo3d does not exist yet`
-
-`--dimension=d3` is declared and refused instead of silently accepted: a
-project scaffolded against a package that does not resolve is worse than a clear
-refusal. See [Dimensions](../packages/dimensions.md).
 
 ### `<dir> already exists`
 
@@ -288,7 +282,7 @@ being released when their entities are.
 ### `flutter build <target> failed`
 
 good prints Flutter's own stdout and stderr. Read that first — the failure is
-almost always Flutter's toolchain , not the pipeline. `flutter doctor`
+almost always Flutter's toolchain, not the pipeline. `flutter doctor`
 next.
 
 ### Box2D fails to link

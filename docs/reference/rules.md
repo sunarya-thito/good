@@ -13,7 +13,7 @@ thousands of entities is the whole budget.
     What is *not*: `describe*` passes, `seal()`, boot, and one-off scene setup.
     Closures and allocation there are fine, because they run once.
 
-If you are working on the engine itself , not a game, the structural rules
+If you are working on the engine itself, not a game, the structural rules
 live in [Engine design rules](design-rules.md).
 
 ---

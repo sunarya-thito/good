@@ -23,7 +23,7 @@ A blue 64×64 square in the middle of the window. That is `Player`, spawned by
 
 It is in the middle because **no camera exists yet**: with no active camera the
 projection stays at the origin with a zoom of 1, and the whole world draws. A
-game that has not placed a camera shows something , not a black screen.
+game that has not placed a camera shows something, not a black screen.
 
 ## 2. Move it — a system
 
@@ -87,7 +87,7 @@ class MyGameState extends GameState2D<MyGameGame> {
 Run it: the square slides right forever.
 
 !!! warning "No closures in `onFixedUpdate`"
-    `players.groups()` is walked with indexed `for` loops on purpose.
+    `players.groups()` is walked with indexed `for` loops.
     `.map`, `.where`, `.any` and `.forEach` each allocate a closure — and
     usually an `Iterable` — every call, and this method runs 60 times a second.
     See [Hot-path rules](../reference/rules.md).
@@ -228,7 +228,7 @@ enum Textures with LocalEnumAssetKey<Texture> {
 
 The path became an identifier: `assets/sprites/player.webp` → `spritesPlayer`.
 Rename a file and the enum value's name changes with it, so a stale reference
-is a **compile error** , not a missing texture at runtime.
+is a **compile error**, not a missing texture at runtime.
 
 Declare the asset on the prefab and hand it to the sprite:
 
@@ -268,7 +268,7 @@ Run it: your image, moving with `WASD`.
 ## 5. Add a camera
 
 A camera is an entity like any other — a transform plus the `Camera` component.
-That is what makes "the camera follows the player" a parenting problem , not a
+That is what makes "the camera follows the player" a parenting problem, not a
 special case.
 
 ```dart title="lib/game/prefabs/player.dart"

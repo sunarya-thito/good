@@ -7,7 +7,7 @@ good build android
 good build ios
 ```
 
-One command per platform , not one command with a `--platform` option,
+One command per platform, not one command with a `--platform` option,
 because they are genuinely different: each grows its own signing, bundling and
 packaging options, and an option that applies to one target is one every other
 target's help has to explain away.
@@ -185,7 +185,7 @@ came from the source it claims to.
 ```
 
 `--no-download` is the flag that matters: it turns "quietly fetch an ffmpeg"
-into an explicit failure, so a CI machine's toolchain is a decision , not an
+into an explicit failure, so a CI machine's toolchain is a decision, not an
 accident. Install ffmpeg as a build step instead.
 
 Cache `assets/` between runs to keep compaction incremental — the

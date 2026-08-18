@@ -47,11 +47,11 @@ no copying.
     does not reach the simulation. Anything that must cross goes through one of
     the channels below.
 
-### Why declarations run twice
+### How both copies agree without negotiating
 
 Both copies run `createState()`, `describeScenes`, `describeCommands` and the
-rest, in the same order. That is not waste — it is how the two sides agree on
-every id **without negotiating one**:
+rest, in the same order. That is how the two sides agree on every id
+**without negotiating one**:
 
 - archetype ids are assigned in first-registration order, so the same code
   registering the same prefabs in the same order assigns the same ids on both
@@ -83,7 +83,7 @@ and traffic the other way goes through a command or a state channel.
 !!! info "Isolate affinity is a type"
     `GameListener` means "lives on the game isolate" — `GameState`,
     `SceneStruct`, `EntityStruct`, `GameSystem` are all one. `Game` is
-    deliberately not, so:
+    not, so:
 
     ```dart
     class MyGame extends Game with FixedTickable { }   // compile error

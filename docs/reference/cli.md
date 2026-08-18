@@ -198,7 +198,7 @@ Every platform takes the same options:
 | `--dry-run` | off | Report the plan, and do nothing |
 | `--verbose` | off | Verbose output |
 
-One command per platform , not a `--platform` option, because each grows
+One command per platform, not a `--platform` option, because each grows
 its own signing and packaging options and an option that applies to one target
 is one every other target's help has to explain away.
 

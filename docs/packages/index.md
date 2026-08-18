@@ -19,13 +19,14 @@ packages/
 │   └── good_net_p2p         serverless P2P backend
 │
 ├── goo2d                   the 2D engine
-├── goo2d_physics_box2d     ├── Box2D physics for it
-└── goo2d_ffi_box2d         └── vendored Box2D + C shim + bindings
+│   ├── goo2d_physics_box2d  Box2D physics for it
+│   └── goo2d_ffi_box2d      vendored Box2D + C shim + bindings
+│
+└── goo3d                   the 3D engine, and its own siblings
 ```
 
-A future `goo3d` and its siblings slot in beside `goo2d` — the split exists
-specifically so that costs nothing above it. See
-[Dimensions](dimensions.md).
+`goo2d` and `goo3d` are siblings on one kernel, not layers — the split exists
+specifically so that costs nothing above it. See [Dimensions](dimensions.md).
 
 !!! tip "What a game depends on"
     **One package.** `goo2d` re-exports the kernel, so a 2D game has one
@@ -154,7 +155,7 @@ and messaging plumbing a 2D one does.
 **It is the command API over a socket.** A game declares network messages the
 way it declares everything else — a `describe*` pass handing back typed handles
 — and `NetMessage`/`NetSignal` are spelled exactly like `SinkCommand`/
-`SignalCommand`, over the kernel's own record layer , not a second one.
+`SignalCommand`, over the kernel's own record layer, not a second one.
 
 - `NetDescriptor`, `NetMessage`, `NetSignal`, `NetTarget`, `NetChannel`
 - `MultiplayerState` and `NetworkSystem` — the mixin and the system that carry

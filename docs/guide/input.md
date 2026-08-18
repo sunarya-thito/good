@@ -4,7 +4,7 @@
 
 Input in good is **declared as actions**, not polled as keys. You declare what
 the player can *do*; a binding says what currently produces it. That indirection
-is what makes rebinding a one-line assignment , not a rewrite.
+is what makes rebinding a one-line assignment, not a rewrite.
 
 ```dart
 class PlayerSystem extends GameSystem with FixedTickable {
@@ -198,10 +198,10 @@ void describeInputs(InputDescriptor input) {
 is a *silent* failure: nothing breaks at declaration time, and the game runs
 until the first read of an unbound action, which then throws.
 
-The engine deliberately does **not** infer a default from `T`. Zero and false
+The engine does **not** infer a default from `T`. Zero and false
 are real, meaningful values to a game, and inventing one turns a forgotten
 declaration into a number that is quietly wrong instead of an error that says
-so. Declaring the same type twice in one boot is an error , not a silent
+so. Declaring the same type twice in one boot is an error, not a silent
 overwrite.
 
 ## Events

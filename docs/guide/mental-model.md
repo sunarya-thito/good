@@ -32,7 +32,7 @@ on and off.**
 | `Destroy(gameObject)` | `entity.destroy()` — takes its whole subtree with it |
 | `Dictionary<string, Thing>` lookups | A `late final` handle returned by a `describe*` pass |
 
-## Why it is like this
+## Why an entity cannot change shape
 
 Three reasons, and they compound.
 

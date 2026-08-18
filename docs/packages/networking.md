@@ -54,7 +54,7 @@ of failing. That is what makes single-player, host and client one code path —
 the firing code says `fire((angle: a))` and does not care which machine it is
 on.
 
-`clients` deliberately does *not* run on the host: the host already knows, it is
+`clients` does *not* run on the host: the host already knows, it is
 the one that decided. Use `everyone` when the host must react through the same
 code path, so host and client visibly agree instead of agreeing by two
 implementations that drift.
@@ -78,7 +78,7 @@ descriptor.has(RoundEnded(), channel: NetChannel.reliable);
     an unreliable packet costs a tick of smoothness; waiting for its
     retransmission costs far more.
 
-Two channels , not a per-message tunable policy, because these are the two
+Two channels, not a per-message tunable policy, because these are the two
 that game netcode actually needs and every extra one costs a receiver-side
 reassembly structure that must be paid for whether or not a game uses it. It is
 the same split ENet, Steam Sockets and QUIC's stream/datagram divide use.
@@ -120,7 +120,7 @@ fire((angle: 1.2, power: 0.8, charged: true));
 ```
 
 Worth a `typedef`: the record type appears in three signatures here, so naming
-it once means a new field is one edit , not three. See
+it once means a new field is one edit, not three. See
 [commands](../guide/flutter-bridge.md#more-than-one-parameter-use-a-record) for
 the full walk-through — it is the same mechanism.
 
@@ -174,7 +174,7 @@ await network.leave();
 | `sendToAll(...)` | Every peer with a direct link |
 
 !!! info "Indexed roster access, not a list"
-    `peerAt(index)` , not a `List<NetPeerId>` getter, so walking the
+    `peerAt(index)`, not a `List<NetPeerId>` getter, so walking the
     roster every tick allocates neither a list nor an iterator. Roster order is
     unspecified and shifts as peers come and go — index into it within one tick
     only.
@@ -293,7 +293,7 @@ emulating them over a TCP-shaped stream:
 #### Testing netcode that has only ever seen loopback
 
 `simulatedLoss` throws away a fraction of **outgoing** datagrams, and it is a
-field on the shipped class , not a test helper for a reason: netcode that
+field on the shipped class, not a test helper for a reason: netcode that
 has only run over loopback has never had a packet lost, so every retransmission
 path in it is untested code that first runs on a player's hotel wifi.
 
@@ -319,7 +319,7 @@ where authority belongs.
 `good_net` is **messaging and sessions**. It moves declared records and manages
 who is in the session.
 
-There is **no request/reply shape**, deliberately. A `GameCommand<P, R>` can
+There is **no request/reply shape**. A `GameCommand<P, R>` can
 await a result because the other isolate answers on a known schedule; a remote
 peer may never answer at all, and an API that looks awaitable but can hang
 forever is worse than one that does not offer it.

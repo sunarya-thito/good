@@ -199,7 +199,7 @@ final dealt = await game.damage((amount: 25, crit: true));
 The `typedef` is worth writing. The record type appears in four signatures, and
 naming it once means a new field is one edit instead of four.
 
-!!! tip "Why a record , not a parameter list"
+!!! tip "Why a record, not a parameter list"
     A command has to be **one value** to be reserved, marshalled, queued in a
     batch and handed to a handler. A record gives that one value named,
     type-checked fields with no wrapper class to declare and no positional
@@ -244,7 +244,7 @@ Two things follow from the record being fixed-width:
   small enum are not micro-optimisation here — a batch of a few hundred commands
   per frame pays for every byte.
 
-The schema is separate from `P` on purpose: `P` is what your *code* passes, and
+The schema is separate from `P`: `P` is what your *code* passes, and
 the schema is what crosses the wire. `bufferFromParams` and `paramsFromBuffer`
 are the two places that translate between them, and they are the only places
 that mention a `ParamPointer` at all.

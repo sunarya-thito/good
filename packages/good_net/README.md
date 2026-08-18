@@ -2,7 +2,7 @@
 
 Networking for the good engine family: declared messages, sessions, and the
 transport contract a backend implements. Dimension-agnostic — not under
-`goo2d`, because a future `goo3d` game needs the same session and messaging
+`goo2d`, because a `goo3d` game needs the same session and messaging
 plumbing.
 
 **This is the command API, over a socket.** A network message and a
