@@ -1,2 +1,10 @@
+# A .pubignore REPLACES .gitignore for `dart pub publish` - it does not add to
+# it - so everything .gitignore excludes has to be repeated here, or build
+# output and the .dart_tool compiler cache end up inside the published archive.
+.dart_tool/
+.packages
+/build/
+/pubspec.lock
+
 # Local-only path overrides; consumers must resolve from pub.dev.
 pubspec_overrides.yaml

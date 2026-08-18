@@ -1,6 +1,7 @@
 # goo2d
 
-2D specialization on top of the [`good`](https://pub.dev/packages/good)
+**G**ame **O**verdrive **O**n **2D**. The 2D specialization on top of the
+[`good`](https://pub.dev/packages/good)
 kernel, which it re-exports - so a 2D game needs this one dependency and this
 one import. Transforms, the camera, sprite rendering (`DrawCanvas2D`,
 `GameRenderer2D`), colliders and mouse picking live here. Box2D physics is

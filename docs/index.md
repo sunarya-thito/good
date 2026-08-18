@@ -1,6 +1,8 @@
 # good
 
-A data-oriented, allocation-averse **game engine family for Flutter and Dart**.
+**G**ame **O**verdrive **O**n **D**art — a data-oriented, allocation-averse
+**game engine family for Flutter and Dart**. `goo` is the family; the last
+letter names the target. `good` runs on Dart, `goo2d` on 2D, `goo3d` on 3D.
 
 good runs your simulation on its own isolate at a fixed timestep, stores every
 component in shared native memory, and keeps the per-frame path free of heap

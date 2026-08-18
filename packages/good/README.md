@@ -1,6 +1,7 @@
 # good
 
-Dimension-agnostic engine kernel for the `good` game engine family: the ECS
+**G**ame **O**verdrive **O**n **D**art. The dimension-agnostic engine kernel
+for the `good` game engine family: the ECS
 (`Entity`/`Component`/`GameSystem`/`Query`/`GameEvent`), the shared native
 memory pool and ring buffers, `GameScene`, the fixed-tick loop, hierarchy
 (`Child`/`Parent`), and the generic asset registry.

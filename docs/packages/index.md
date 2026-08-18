@@ -1,7 +1,10 @@
 # The good family
 
-good is a monorepo of packages that divide along one line: **is this about how
-many dimensions you have, or not?**
+good — **G**ame **O**verdrive **O**n **D**art — is a monorepo of packages that
+divide along one line: **is this about how many dimensions you have, or not?**
+The names say it: `goo` is the family, and the last letter is the target, so
+the dimension-agnostic kernel is `good` and the renderers are `goo2d` and
+`goo3d`.
 
 Everything that is not — the ECS, the scheduler, scenes, hierarchy, input, the
 asset registry, the isolate bootstrap, networking, the CLI — lives in the

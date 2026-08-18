@@ -1,7 +1,9 @@
 # good
 
-A data-oriented, allocation-averse game engine family for Flutter/Dart: the
-dimension-agnostic `good` kernel, and the renderers built on it.
+**G**ame **O**verdrive **O**n **D**art — a data-oriented, allocation-averse
+game engine family for Flutter and Dart: the dimension-agnostic `good` kernel,
+and the renderers built on it. The last letter names the target, which is why
+the renderers are [`goo2d`](packages/goo2d) and, later, `goo3d`.
 
 **[Read the documentation →](https://sunarya-thito.github.io/good/)**
 
