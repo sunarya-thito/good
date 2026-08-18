@@ -1,0 +1,74 @@
+# Runs the analyzer and the test suites on every push and pull request.
+#
+# The box2d packages are not here yet. Their tests need the Box2D shared library
+# compiled from vendored source first, and the build script is PowerShell against
+# a local toolchain. That is issue #7's follow-up; 55 of the 867 tests are in
+# those two packages, and a green run covering the other 812 is worth more than a
+# red one covering everything.
+name: test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+# A second push to the same branch makes the first run's answer irrelevant.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          # Pinned, not `stable`. The pubspecs require flutter >=3.47.0, and a
+          # floating channel means a Flutter release can turn CI red on its own
+          # schedule with nothing in this repository having changed.
+          flutter-version: '3.47.0'
+          channel: stable
+          cache: true
+
+      # Resolution is worth its own step. Every package depends on its siblings
+      # by hosted `^0.1.0` constraint with a local path override in
+      # pubspec_overrides.yaml, and each override has to list the full transitive
+      # closure. Get that wrong and version solving fails here rather than in
+      # somebody's fresh clone.
+      - name: Resolve
+        run: |
+          set -e
+          for p in good goo2d good_net good_net_p2p; do
+            echo "::group::flutter pub get $p"
+            (cd "packages/$p" && flutter pub get)
+            echo "::endgroup::"
+          done
+          echo "::group::dart pub get good_cli"
+          (cd packages/good_cli && dart pub get)
+          echo "::endgroup::"
+
+      - name: Analyze
+        run: |
+          set -e
+          for p in good goo2d good_net good_net_p2p; do
+            echo "::group::flutter analyze $p"
+            (cd "packages/$p" && flutter analyze --no-pub)
+            echo "::endgroup::"
+          done
+          echo "::group::dart analyze good_cli"
+          (cd packages/good_cli && dart analyze)
+          echo "::endgroup::"
+
+      - name: Test
+        run: |
+          set -e
+          for p in good goo2d good_net good_net_p2p; do
+            echo "::group::flutter test $p"
+            (cd "packages/$p" && flutter test --no-pub)
+            echo "::endgroup::"
+          done
+          echo "::group::dart test good_cli"
+          (cd packages/good_cli && dart test)
+          echo "::endgroup::"
