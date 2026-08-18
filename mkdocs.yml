@@ -68,9 +68,21 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
+  # Required for Material's icon shortcodes. Without it `:material-cube-outline:`
+  # is left as literal text on the page instead of becoming an inline SVG.
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.keys
   - pymdownx.snippets
-  - pymdownx.superfences
+  # `format: mermaid` routes ```mermaid blocks to Material's bundled Mermaid,
+  # so diagrams are text in the source and SVG on the page. No extra plugin and
+  # no build step; Material loads mermaid.js itself and themes it to match.
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.tasklist:

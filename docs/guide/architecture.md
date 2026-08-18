@@ -15,18 +15,18 @@ the spawn message. Dart deep-copies a plain object graph across that boundary,
 so what runs on the game isolate is a *second* instance of your class — same
 type, same overrides, different identity, different heap.
 
-```
-        Flutter isolate                       game isolate
-    ┌──────────────────────┐  Isolate.spawn ┌──────────────────────┐
-    │ MyGame  (handle)     │ ─────────────▶ │ MyGame  (the real one)│
-    │  • builds widgets    │                │  • owns MemoryPool    │
-    │  • sends commands    │ ◀── ring ────▶ │  • ticks systems      │
-    │  • reads channels    │    buffers     │  • writes components  │
-    │  • resolves Entities │                │  • loads scenes       │
-    └──────────────────────┘                └──────────────────────┘
-              │                                        │
-              └──────── shared native memory ──────────┘
-                   (component pages, state channels)
+```mermaid
+flowchart LR
+    subgraph FL["Flutter isolate"]
+        A["<b>MyGame</b> (handle)<br/>builds widgets<br/>sends commands<br/>reads channels<br/>resolves Entities"]
+    end
+    subgraph GA["game isolate"]
+        B["<b>MyGame</b> (the real one)<br/>owns MemoryPool<br/>ticks systems<br/>writes components<br/>loads scenes"]
+    end
+    A -->|"Isolate.spawn"| B
+    A <-->|"ring buffers"| B
+    A -.-> M(["shared native memory<br/>component pages, state channels"])
+    B -.-> M
 ```
 
 From that moment the two copies do completely different jobs.
