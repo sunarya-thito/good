@@ -1,12 +1,8 @@
 ## 0.1.0
 
-**This is a rewrite. Nothing from 0.0.2 carries over.** pub.dev served 0.0.2 in
-April 2026; that was an earlier iteration of this engine with an entirely
-different API. A pubspec saying `goo2d: ^0.0.1` resolves to *that* version and
-resolves successfully, so the mismatch shows up as analyzer errors rather than
-as a resolution failure. Depend on `^0.1.0` and expect to rewrite call sites.
+A ground-up rewrite sharing nothing with 0.0.2. Pin `^0.1.0`.
 
-The 2D renderer on top of the new [`good`](https://pub.dev/packages/good)
+The 2D renderer on top of the [`good`](https://pub.dev/packages/good)
 kernel:
 
 * **Transforms** — `Transform2D`, composed world transforms, and the camera.

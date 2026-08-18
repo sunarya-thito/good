@@ -97,6 +97,3 @@ Transforms, camera, sprite rendering, colliders and mouse picking work today.
 Audio assets load, but there is no audio backend yet, and the web is
 unsupported because the kernel needs `dart:ffi` and isolates.
 [What works today](https://sunarya-thito.github.io/good/reference/roadmap/).
-
-> **Coming from 0.0.2?** That was a different engine with a different API.
-> Nothing carries over.

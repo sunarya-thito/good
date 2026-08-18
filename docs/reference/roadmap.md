@@ -95,12 +95,8 @@ Deferred, and documented in place instead of left as silent gaps.
 
 ## Publishing
 
-All seven packages are on pub.dev at **0.1.0**, under BSD 3-Clause.
-
-pub.dev also still serves `goo2d` **0.0.2**, an earlier iteration with an
-entirely different API. **Pin `^0.1.0`, not `^0.0.1`** — the older constraint
-resolves to that version, and resolves *successfully*, so the mismatch surfaces
-as analyzer errors in generated code instead of as a resolution failure.
+All seven packages are on pub.dev at **0.1.0**, under BSD 3-Clause. Pin
+`^0.1.0`; the long-dead `goo2d` 0.0.2 still resolves for `^0.0.1`.
 
 ## Known rough edges
 
