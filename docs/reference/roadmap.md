@@ -19,9 +19,10 @@ Last verified: **2026-08-18**, against the `asset-api-redesign` branch.
 | `good_net_p2p` | **Working on a LAN** | A real UDP protocol — acks, retransmission, ordering, batching, fragmentation, keepalives — plus address-carrying join codes and LAN discovery. **Does not cross the internet yet**: that needs STUN and a rendezvous |
 | `goo3d` and siblings | **Not started** | The kernel split exists so this lands without touching the shared half |
 
-!!! warning "Package READMEs lag behind"
-    Several package READMEs still say "placeholder" for code that is now
-    written. Trust this page and the source over them.
+!!! note "Package READMEs were brought in line"
+    They used to say "placeholder" for code that is now written. They no
+    longer do, but this page stays the ledger of record: it is the one that
+    gets updated first.
 
 ## Verified end to end
 

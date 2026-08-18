@@ -69,10 +69,10 @@ not have, both declared rather than passed at the send site:
 
 ## Backends
 
-[`good_net_p2p`](../good_net_p2p) is the one that reaches another machine, with
+[`good_net_p2p`](https://pub.dev/packages/good_net_p2p) is the one that reaches another machine, with
 no server to host. The Steam backend was dropped rather than built; the
 contract is open, so one remains possible as a separate package and nothing
 here assumes it.
 
-See the [networking guide](../../docs/packages/networking.md) for the full
+See the [networking guide](https://sunarya-thito.github.io/good/packages/networking/) for the full
 reference.

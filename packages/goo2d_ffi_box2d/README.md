@@ -4,7 +4,7 @@ Vendored [Box2D](https://github.com/erincatto/box2d) **v3.1.1** behind a flat,
 primitives-only C shim, plus the ffigen bindings to it.
 
 Not meant to be used directly by game code — see
-[`goo2d_physics_box2d`](../goo2d_physics_box2d) for the ECS-facing API
+[`goo2d_physics_box2d`](https://pub.dev/packages/goo2d_physics_box2d) for the ECS-facing API
 (`RigidBody2D`, `Box2DPhysicsSystem`).
 
 ## Why a shim instead of binding Box2D directly

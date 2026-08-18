@@ -1,6 +1,6 @@
 # good_net_p2p
 
-The serverless backend for [`good_net`](../good_net): peer-to-peer UDP with
+The serverless backend for [`good_net`](https://pub.dev/packages/good_net): peer-to-peer UDP with
 nothing in the middle. Add the dependency, declare it, and a game is
 networked.
 

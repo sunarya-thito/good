@@ -1,14 +1,13 @@
 name: good_net
-description: >
-  Networking for the good engine family: declared messages with the same
-  shapes, descriptor pass and record layer as good's commands, plus the
-  transport contract a backend implements (NetTransport/NetSession/
-  NetConnection). Dimension-agnostic - shared by goo2d and, in the future,
-  goo3d. Add a backend (good_net_p2p) beside this for a game that actually
-  reaches another machine; this package alone gives you a loopback one, which
-  is what tests run on.
-version: 0.0.1
-publish_to: none
+description: >-
+  Networking for the good game engine: declared messages built on good's
+  record layer, sessions, reliable and unreliable channels, and the
+  transport contract a backend implements.
+version: 0.1.0
+repository: https://github.com/sunarya-thito/good
+homepage: https://sunarya-thito.github.io/good/
+documentation: https://sunarya-thito.github.io/good/
+issue_tracker: https://github.com/sunarya-thito/good/issues
 
 environment:
   sdk: ^3.13.0
@@ -25,8 +24,7 @@ dependencies:
   # wires, so the layout, the descriptor vocabulary and the pointer types all
   # come from the kernel rather than being written a second time here. See
   # good's `ParamBatch`.
-  good:
-    path: ../good
+  good: ^0.1.0
   meta: ^1.15.0
 
 dev_dependencies:

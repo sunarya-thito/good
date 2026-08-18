@@ -11,12 +11,14 @@ The `good` command-line build tool:
 - **Packaging orchestration**: wraps `dart compile exe`/`flutter build` per
   target platform and bundles the encrypted asset pack alongside.
 
-Dimension-agnostic - lives here, not under `goo2d`, so `goo2d_render` and a
-future `goo3d_render` register their own asset types into the same
-pipeline instead of each needing their own CLI.
+Dimension-agnostic - lives here, not under `goo2d`, so `goo2d` and a future
+`goo3d` register their own asset types into the same pipeline instead of each
+needing their own CLI.
 
-Command shape: `good codegen`, `good assets pack`, `good build <target>`,
-`good run`.
+Commands: `good create`, `good generate`, `good assets compact`,
+`good assets pack`, and `good build windows|linux|android|ios`.
 
-Status: **placeholder.** This is Phase 4 of the project root plan; nothing
-here is implemented yet.
+Status: **working**, verified end to end. Not implemented yet: struct-layout
+codegen, `good build macos`, and `good run`. The
+[implementation status page](https://sunarya-thito.github.io/good/reference/roadmap/) is the honest ledger, including the
+known rough edges in `good create`.

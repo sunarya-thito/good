@@ -1,0 +1,9 @@
+# Local development resolves sibling packages from this repository instead
+# of pub.dev. This is the full transitive closure: resolving one sibling by
+# path pulls in ITS hosted constraints too, which do not exist yet.
+# Excluded from published archives by .pubignore.
+dependency_overrides:
+  good_net:
+    path: ../good_net
+  good:
+    path: ../good

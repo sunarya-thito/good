@@ -1,13 +1,13 @@
 name: good
-description: >
-  Dimension-agnostic engine kernel for the good game engine family: the ECS
-  (Entity/Component/System/Query/Event), the shared native memory pool and
-  ring buffers, scenes, the fixed-tick loop, hierarchy, the generic asset
-  registry, and the GameView widget every renderer plugs into. Depends on
-  Flutter (StateChannel is a ValueListenable, and GameView is a widget), but
-  on nothing dimension-specific - goo2d/goo3d supply the actual renderers.
-version: 0.0.1
-publish_to: none
+description: >-
+  Dimension-agnostic game engine kernel for Flutter: an ECS, native memory
+  pools and ring buffers, scenes, a fixed-tick simulation isolate,
+  hierarchy, assets and the GameView widget.
+version: 0.1.0
+repository: https://github.com/sunarya-thito/good
+homepage: https://sunarya-thito.github.io/good/
+documentation: https://sunarya-thito.github.io/good/
+issue_tracker: https://github.com/sunarya-thito/good/issues
 
 environment:
   sdk: ^3.13.0

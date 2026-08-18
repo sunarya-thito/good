@@ -1,0 +1,2 @@
+# Local-only path overrides; consumers must resolve from pub.dev.
+pubspec_overrides.yaml

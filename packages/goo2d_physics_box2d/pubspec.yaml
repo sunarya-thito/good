@@ -1,10 +1,13 @@
 name: goo2d_physics_box2d
-description: >
-  ECS-facing Box2D physics for goo2d: the RigidBody2D component and
-  Box2DPhysicsSystem, built on goo2d_ffi_box2d. Steps the Box2D world inside
-  the game isolate, in lockstep with good's fixed-tick scheduler.
-version: 0.0.1
-publish_to: none
+description: >-
+  2D physics for the good game engine: bodies, colliders, all nine joints,
+  effectors, and raycast and overlap queries, stepped in the game isolate
+  and solved across threads.
+version: 0.1.0
+repository: https://github.com/sunarya-thito/good
+homepage: https://sunarya-thito.github.io/good/
+documentation: https://sunarya-thito.github.io/good/
+issue_tracker: https://github.com/sunarya-thito/good/issues
 
 environment:
   sdk: ^3.13.0
@@ -16,10 +19,8 @@ dependencies:
   ffi: ^2.2.0
   flutter:
     sdk: flutter
-  goo2d:
-    path: ../goo2d
-  goo2d_ffi_box2d:
-    path: ../goo2d_ffi_box2d
+  goo2d: ^0.1.0
+  goo2d_ffi_box2d: ^0.1.0
   meta: ^1.15.0
 
 dev_dependencies:

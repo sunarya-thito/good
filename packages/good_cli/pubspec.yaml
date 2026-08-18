@@ -1,12 +1,13 @@
 name: good_cli
-description: >
-  The `good` build tool: asset packing/encryption, compile-time codegen for
-  ECS struct layouts, and platform build/packaging orchestration.
-  Dimension-agnostic - goo2d_render (and later goo3d_render) register their
-  own asset types into the same pipeline. Phase 4 of the project root plan;
-  this package is currently a placeholder.
-version: 0.0.1
-publish_to: none
+description: >-
+  The build tool for the good game engine: project scaffolding, asset
+  compaction and encrypted packing, codegen for asset bindings, and per-
+  platform build orchestration.
+version: 0.1.0
+repository: https://github.com/sunarya-thito/good
+homepage: https://sunarya-thito.github.io/good/
+documentation: https://sunarya-thito.github.io/good/
+issue_tracker: https://github.com/sunarya-thito/good/issues
 
 environment:
   sdk: ^3.12.1
@@ -20,8 +21,7 @@ dependencies:
   crypto: ^3.0.6
   cryptography: ^2.7.0
   args: ^2.6.0
-  good:
-    path: ../good
+  good: ^0.1.0
 
 dev_dependencies:
   lints: ^5.0.0

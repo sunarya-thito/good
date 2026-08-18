@@ -168,34 +168,34 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.3.0+1"
-  good:
-    dependency: transitive
-    description:
-      path: "../../good"
-      relative: true
-    source: path
-    version: "0.0.1"
   goo2d:
     dependency: "direct main"
     description:
       path: ".."
       relative: true
     source: path
-    version: "0.0.1"
+    version: "0.1.0"
   goo2d_ffi_box2d:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
       path: "../../goo2d_ffi_box2d"
       relative: true
     source: path
-    version: "0.0.1"
+    version: "0.1.0"
   goo2d_physics_box2d:
     dependency: "direct main"
     description:
       path: "../../goo2d_physics_box2d"
       relative: true
     source: path
-    version: "0.0.1"
+    version: "0.1.0"
+  good:
+    dependency: "direct overridden"
+    description:
+      path: "../../good"
+      relative: true
+    source: path
+    version: "0.1.0"
   leak_tracker:
     dependency: transitive
     description:

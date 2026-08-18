@@ -1,11 +1,13 @@
 name: goo2d
-description: >
-  The 2D good game engine: transforms, camera, colliders and Flutter-facing 2D
-  rendering, on top of the good kernel - which it re-exports, so a 2D game
-  needs this one dependency and this one import. Physics (goo2d_physics_box2d)
-  and networking (good_net_*) stay opt-in.
-version: 0.0.1
-publish_to: none
+description: >-
+  The 2D renderer for the good game engine: transforms, camera, sprites,
+  nine-slice borders, colliders and mouse picking, on top of the good
+  kernel, which it re-exports.
+version: 0.1.0
+repository: https://github.com/sunarya-thito/good
+homepage: https://sunarya-thito.github.io/good/
+documentation: https://sunarya-thito.github.io/good/
+issue_tracker: https://github.com/sunarya-thito/good/issues
 
 environment:
   sdk: ^3.13.0
@@ -14,8 +16,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  good:
-    path: ../good
+  good: ^0.1.0
   meta: ^1.15.0
   vector_math: ^2.2.0
 

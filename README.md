@@ -36,8 +36,8 @@ each opt-in package also needs its system declared. See
 ## Status
 
 [docs/reference/roadmap.md](docs/reference/roadmap.md) is the current ledger of
-what is implemented, what is deferred, and the known rough edges. Package
-READMEs lag behind it — trust that page and the source.
+what is implemented, what is deferred, and the known rough edges. It is updated
+before anything else, so trust it over a package README that disagrees.
 
 ## Repository layout
 
