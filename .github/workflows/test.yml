@@ -32,6 +32,12 @@ jobs:
           channel: stable
           cache: true
 
+      # Without ffmpeg, two compaction tests skip themselves and the asset
+      # pipeline goes untested here. A skip is how coverage disappears quietly,
+      # so install it rather than letting the suite report green over a gap.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       # Resolution is worth its own step. Every package depends on its siblings
       # by hosted `^0.1.0` constraint with a local path override in
       # pubspec_overrides.yaml, and each override has to list the full transitive
