@@ -20,8 +20,12 @@ that moves them. Nothing inherits from anything, and you never write a game
 loop — the engine runs one and calls your systems from it.
 
 If you have used Unity, Godot or Flame, some of that will look familiar and some
-of it will not. [Coming from Unity, Godot or Flutter](../guide/mental-model.md)
-is the faster way in: it names what carries over and what does not.
+of it will not. [Thinking in ECS](../guide/thinking-in-ecs.md) is the gentler
+way in: it takes the habits you already have and shows where each one lands,
+including the ones that have no home here.
+[Coming from Unity, Godot or Flutter](../guide/mental-model.md) is the
+translation table for when you want the call you would have written and its
+replacement, side by side.
 
 ## Three pages, in the order you meet them
 

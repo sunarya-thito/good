@@ -90,7 +90,8 @@ and traffic the other way goes through a command or a state channel.
     ```
 
     fails to compile instead of silently never ticking. Put the tick on the
-    `GameState`, a scene, or a system.
+    `GameState`, a scene, or a system. Those four types are also the only ones
+    that can declare an event — see [Events and listeners](events.md).
 
 ## The fixed tick
 
@@ -117,15 +118,21 @@ slower than wall clock instead of locking up.
 
 ```mermaid
 flowchart TD
-    A["<b>advance()</b>"] --> B["1. resolve inputs<br/><i>raw device state becomes your Input handles</i>"]
-    B --> C["2. fixed step × N<br/><i>N = elapsed / fixedTimeStep, capped</i>"]
-    C --> C1["beginTick<br/><i>copy the last published snapshot into the write slot</i>"]
-    C1 --> C2["FixedTickable systems<br/><i>your gameplay, in declared order</i>"]
+    A["<b>advance()</b>"] --> C["<b>fixed step × N</b><br/><i>N = elapsed / fixedTimeStep, capped</i>"]
+    C --> C0["resolve inputs<br/><i>raw device state becomes your Input handles</i>"]
+    C0 --> C1["beginTick<br/><i>copy the last published snapshot into the write slot</i>"]
+    C1 --> C2["drain commands<br/><i>so an entity a command spawns is visible this step</i>"]
     C2 --> C3["coroutines<br/><i>resumed here, so their writes land in-window</i>"]
-    C3 --> C4["commitTick<br/><i>publish</i>"]
-    C4 -.->|"repeat × N"| C1
-    C --> D["3. presentation<br/><i>Tickable systems, then the renderer</i>"]
+    C3 --> C4["FixedTickable systems<br/><i>your gameplay, in declared order</i>"]
+    C4 --> C5["commitTick<br/><i>publish</i>"]
+    C5 -.->|"repeat × N"| C0
+    C -.-> D["<b>presentation</b> — once per frame<br/><i>Tickable systems, then the renderer</i>"]
 ```
+
+Inputs, commands and coroutines all land before the first system runs, so every
+system in a step sees one settled picture: the same input snapshot, the same
+newly-spawned entities, the same coroutine writes. Presentation runs once per
+`advance` however many steps it just ran, including zero.
 
 Two consequences worth internalising:
 

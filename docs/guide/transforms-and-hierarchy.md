@@ -55,8 +55,8 @@ For world-space equivalents, use `WorldTransform2D`'s fields.
 parent; `Parent` marks an entity that can own children.
 
 ```dart
-class Body extends EntityStruct with Transform2D, WorldTransform2D, Child, Parent {}
-class Limb extends EntityStruct with Transform2D, WorldTransform2D, Child {}
+class Body() extends EntityStruct with Transform2D, WorldTransform2D, Child, Parent;
+class Limb() extends EntityStruct with Transform2D, WorldTransform2D, Child;
 ```
 
 Spawn into the hierarchy directly:
@@ -135,13 +135,13 @@ fixed tick has committed, which is the same discipline Unity's
 ## Building a scene graph
 
 ```dart
-class Hub extends EntityStruct with Transform2D, WorldTransform2D, Parent {}
+class Hub() extends EntityStruct with Transform2D, WorldTransform2D, Parent;
 
-class Critter extends EntityStruct
-    with Transform2D, WorldTransform2D, Child, Parent, Renderable2D {}
+class Critter() extends EntityStruct
+    with Transform2D, WorldTransform2D, Child, Parent, Renderable2D;
 
-class Limb extends EntityStruct
-    with Transform2D, WorldTransform2D, Child, Renderable2D {}
+class Limb() extends EntityStruct
+    with Transform2D, WorldTransform2D, Child, Renderable2D;
 ```
 
 `Child` because it hangs off something, `Parent` because it owns something,

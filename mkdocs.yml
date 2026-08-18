@@ -117,11 +117,13 @@ nav:
   - 2D and 3D: packages/2d-and-3d.md
   - Developing a game:
       - guide/index.md
+      - Thinking in ECS: guide/thinking-in-ecs.md
       - Coming from Unity/Godot: guide/mental-model.md
       - Architecture: guide/architecture.md
       - Entities and components: guide/entities-and-components.md
       - Scenes and prefabs: guide/scenes.md
       - Systems and queries: guide/systems-and-queries.md
+      - Events and listeners: guide/events.md
       - Input: guide/input.md
       - Assets: guide/assets.md
       - Talking to Flutter: guide/flutter-bridge.md

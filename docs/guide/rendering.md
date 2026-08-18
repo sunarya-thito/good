@@ -203,7 +203,7 @@ never asks how big the source is, because it does not need to know.
 A camera is an entity: `Transform2D`, `WorldTransform2D` and `Camera`.
 
 ```dart
-class Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
+class Eye() extends EntityStruct with Transform2D, WorldTransform2D, Camera;
 ```
 
 | Column | Meaning |

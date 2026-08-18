@@ -9,7 +9,7 @@ relative to its parent. A `WorldTransform3D` is the same three facts after every
 ancestor has been applied.
 
 ```dart
-class Crate extends EntityStruct with Transform3D, WorldTransform3D {}
+class Crate() extends EntityStruct with Transform3D, WorldTransform3D;
 ```
 
 ## The columns

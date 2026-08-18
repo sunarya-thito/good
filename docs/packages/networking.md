@@ -127,7 +127,7 @@ the full walk-through — it is the same mechanism.
 `NetSignal` is the no-parameter shape:
 
 ```dart
-class RoundEnded extends NetSignal { }
+class RoundEnded() extends NetSignal;
 
 // declared
 roundEnded = descriptor.has(RoundEnded(), to: NetTarget.everyone);

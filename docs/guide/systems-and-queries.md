@@ -57,10 +57,48 @@ transform system there.
 | `FixedTickable` | `onFixedUpdate()`, once per fixed step | Gameplay, physics, anything that writes component data |
 | `Tickable` | `onTick(Duration delta)`, once per presentation pass | Reading finished results — publishing to the UI, rendering |
 
-The difference is not cosmetic. Phase totals are only complete once the fixed
-step has returned, so a system publishing timings from inside `onFixedUpdate`
-reports a half-accumulated figure — numbers that are nonsense in a way that
-looks plausible.
+### Choosing between them
+
+One question settles almost every case: **does this system write component
+data?** If it does, it is `FixedTickable`, and there is no judgement call to
+make. `onFixedUpdate` runs inside the tick window, between `beginTick` and
+`commitTick`, and that window is the only place a component write survives —
+the next `beginTick` copies the published snapshot over the write slot, so
+anything written outside it is gone before anyone reads it.
+
+If instead the system takes what the simulation finished and sends it somewhere
+else — a score into a state channel, a transform into the renderer, a position
+into an audio backend — it is `Tickable`. `onTick` runs after `commitTick`, so
+it reads the snapshot the step just published, including everything derived
+during that step.
+
+Three details decide the rest.
+
+**They do not run the same number of times.** One `advance` spends whatever
+wall-clock time has accumulated in whole fixed steps, up to
+`maxFixedStepsPerAdvance`, then presents once. So a stuttering frame can run
+three `onFixedUpdate` calls and exactly one `onTick`, and a frame that afforded
+no step at all still gets its `onTick` — which is what lets a camera keep easing
+toward its target on a frame where nothing simulated.
+
+**Only one of them gets a delta.** `onFixedUpdate` takes no argument because
+the answer is always `game.fixedTimeStep`; anything integrating over time wants
+that fixed number, since a variable one makes the same input produce different
+results on different machines. `onTick` is handed the wall-clock `Duration`
+since the previous presentation pass, which is the right input for something
+smoothing on screen and the wrong input for anything the simulation has to
+reproduce.
+
+**Presentation is not stale.** Moving a system out of the fixed step costs no
+freshness. During step N a `FixedTickable` reads state as of the end of N-1; a
+`Tickable` running after N commits reads values derived during N from that same
+end-of-N-1 state. One frame of latency either way, so a renderer belongs in
+presentation and stops recomputing what the simulation already worked out.
+
+The one that catches people out is publishing timings. Phase totals are only
+complete once the fixed step has returned, so a system reporting them from
+inside `onFixedUpdate` publishes a half-accumulated figure — a number that is
+wrong and looks plausible.
 
 ```dart
 class HudPublisher extends GameSystem with Tickable {
@@ -70,6 +108,13 @@ class HudPublisher extends GameSystem with Tickable {
   }
 }
 ```
+
+Nothing stops one system mixing in both, and a few want to: read input and move
+things in `onFixedUpdate`, publish what happened in `onTick`. Splitting it into
+two systems is usually clearer, and costs nothing either way.
+
+The full order of what happens inside one `advance` is in
+[Architecture](architecture.md#phases-within-one-advance).
 
 ## Building queries
 

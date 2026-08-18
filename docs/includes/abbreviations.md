@@ -1,4 +1,6 @@
 *[ECS]: Entity Component System — entities are ids, components are data, systems are the code that runs over them
+*[EC]: Entity-component — one object per thing, with scripts attached to it. Unity, Godot and Flame work this way
+*[cache line]: The block of memory a CPU actually fetches at once — typically 64 bytes
 *[entity]: One thing in your game. Just a number that indexes its data
 *[prefab]: A kind of entity, declared once — what fields it has and what it starts as
 *[archetype]: The group entities with the same set of components are stored in

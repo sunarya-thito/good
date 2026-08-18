@@ -132,7 +132,11 @@ entity.destroy();          // removes it and its whole subtree
 ```
 
 `addEntity` allocates a row in the prefab's archetype, applies every declared
-default, fires `onEntityMounted`, and returns the handle.
+default, fires the prefab's mount event — which is where `onEntityMounted`
+comes from, if the prefab mixes in `EntityLifecycleListener` — and returns the
+handle. That returned handle is the only time the engine offers you this
+particular entity, so keep it if you will want it later; there is no lookup by
+name or tag. See [Events and listeners](events.md).
 
 !!! warning "Spawn from the game isolate"
     `scene.addEntity` writes component storage, so it belongs on the simulation
@@ -204,8 +208,8 @@ mixin FieldScene on SceneStruct {
   }
 }
 
-class Level1 extends SceneStruct with FieldScene { }
-class Level2 extends SceneStruct with FieldScene { }
+class Level1() extends SceneStruct with FieldScene;
+class Level2() extends SceneStruct with FieldScene;
 ```
 
 ## Prefabs are declarations too

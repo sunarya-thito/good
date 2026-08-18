@@ -123,7 +123,7 @@ mixin Health on Component {
 Mix it in, and the archetype gains those columns:
 
 ```dart
-class Enemy extends EntityStruct with Transform2D, Renderable2D, Health {}
+class Enemy() extends EntityStruct with Transform2D, Renderable2D, Health;
 ```
 
 Both `describeType` and `describeStruct` must call `super` — each mixin in the
@@ -230,9 +230,18 @@ class Bullet extends EntityStruct
     with the same expression. Leaving it at the default for one frame is exactly
     how an entity appears to snap or flash at the origin on its second frame.
 
+The mixin is what makes it work, and not as a formality. `onEntityMounted` is
+an event: `EntityStruct` declares a dispatcher for it, and the boot pass
+collects your prefab into that dispatcher because it is an
+`EntityLifecycleListener`. Leave the mixin off and the override compiles, is
+never collected, and never runs. Call `super` for the same reason you do in
+`describeStruct` — another mixin on the same prefab may override the same hook.
+
 Related mixins: `EntitySpawnListener` (a broad "something spawned" signal, which
 is what the physics system listens to), `SceneLifecycleListener`,
 `SceneLoadListener`, `GameLifecycleListener`, `GameSystemLifecycleListener`.
+[Events and listeners](events.md) covers how all of them are delivered, and how
+to declare one of your own.
 
 ## Same-tick reads
 

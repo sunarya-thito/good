@@ -24,7 +24,11 @@ game that has not placed a camera shows something, not a black screen.
 
 A `GameSystem` is where per-tick work lives. `FixedTickable` gets it
 `onFixedUpdate`, called once per fixed step (60 Hz by default) with exactly
-`fixedTimeStep` of simulated time — never a variable frame delta.
+`fixedTimeStep` of simulated time — never a variable frame delta. That is the
+mixin for anything that writes component data, which this system does;
+`Tickable` is the other one, for systems that read what the simulation finished
+and publish it. [Choosing between them](../guide/systems-and-queries.md#choosing-between-them)
+covers the cases where it is less obvious.
 
 Create `lib/game/systems/player_system.dart`:
 
@@ -267,7 +271,7 @@ That is what makes "the camera follows the player" a parenting problem, not a
 special case.
 
 ```dart title="lib/game/prefabs/player.dart"
-class Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
+class Eye() extends EntityStruct with Transform2D, WorldTransform2D, Camera;
 ```
 
 Spawn it and point it at the view the game declared:

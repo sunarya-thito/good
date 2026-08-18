@@ -16,6 +16,12 @@ that shape for its whole life.
 **Instead of adding and removing, you declare everything up front and toggle it
 on and off.**
 
+This page is the translation table: the call you would have written, and the
+one to write instead. For the layer underneath it — what happens to the habits
+an entity-component developer has built, and worked answers to state machines,
+cross-entity references and the rest — read
+[Thinking in ECS](thinking-in-ecs.md).
+
 ## The translation table
 
 | What you would do elsewhere | What you do in good |
@@ -24,7 +30,7 @@ on and off.**
 | `Destroy(GetComponent<Collider>())` | `collider.enable[entity] = false` |
 | `renderer.enabled = false` | `sprite.visible[entity] = false` |
 | `gameObject.SetActive(false)` | Turn off its parts, or `entity.destroy()` if it is really gone |
-| `rigidbody.isKinematic = true` | `body.bodyType[entity] = BodyType2D.kinematicBody` |
+| `rigidbody.isKinematic = true` | `body.bodyType[entity] = BodyType2D.kinematicBody.index` |
 | Attach a script at run time | Declare the system once; `state.disableSystem<S>()` when it should not run |
 | `FindObjectsOfType<Enemy>()` | A `Query` declared once in `describeQuery` |
 | A tag component added to mark state | A `bool`/`uint1` field on the entity, tested in the loop |
@@ -69,7 +75,7 @@ player.hitbox.enable[entity] = false;
 player.hitbox.isTrigger[entity] = true;
 
 // Physics authority — a body can become static without being rebuilt.
-player.bodyType[entity] = BodyType2D.staticBody;
+player.bodyType[entity] = BodyType2D.staticBody.index;
 
 // Whole systems, for a pause menu.
 state.disableSystem<AiSystem>();
@@ -141,8 +147,10 @@ Dart field on a prefab is shared by every entity of that kind — see
 ### There is no `Update()` per entity
 
 Behaviour lives in systems that walk many entities at once, not in a method on
-each entity. A prefab can carry lifecycle hooks (`onEntityMounted`) for setup,
-but the per-frame loop belongs in a `GameSystem`.
+each entity. A prefab can carry lifecycle hooks for setup — `onEntityMounted`,
+which it hears by mixing in `EntityLifecycleListener` — but the per-frame loop
+belongs in a `GameSystem`. Those hooks are events, not virtual methods the
+engine calls on your class; see [Events and listeners](events.md).
 
 ### `Start()`/`Awake()` ordering is explicit
 
