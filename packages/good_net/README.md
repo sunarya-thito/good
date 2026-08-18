@@ -6,7 +6,7 @@ transport contract a backend implements. Dimension-agnostic — not under
 plumbing.
 
 **This is the command API, over a socket.** A network message and a
-`GameCommand` are the same idea twice — a typed record, declared once,
+`GameCommand` are the same thing — a typed record, declared once,
 identified on the wire by its position in that declaration, handed to a
 handler registered where it runs. So they are not two implementations:
 `NetMessage` and `NetSignal` are spelled exactly like `SinkCommand` and

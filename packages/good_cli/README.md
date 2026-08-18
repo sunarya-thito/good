@@ -20,5 +20,5 @@ Commands: `good create`, `good generate`, `good assets compact`,
 
 Status: **working**, verified end to end. Not implemented yet: struct-layout
 codegen, `good build macos`, and `good run`. The
-[implementation status page](https://sunarya-thito.github.io/good/reference/roadmap/) is the honest ledger, including the
-known rough edges in `good create`.
+[implementation status page](https://sunarya-thito.github.io/good/reference/roadmap/) lists what works today, including the
+rough edges in `good create` that will surprise you.

@@ -4,7 +4,7 @@
 
 `goo2d` is currently a pure API sketch: one Flutter package (`packages/goo2d`) full of
 abstract classes and `throw UnimplementedError()` bodies, describing (not yet
-implementing) a data-oriented, allocation-averse 2D game engine:
+implementing) a data-oriented 2D game engine that keeps allocation out of the frame loop:
 
 - A custom ECS where component field storage (`DataDescriptor`/`DataPointer`) is
   meant to live in a raw FFI memory pool, not on the Dart heap (per `RULES.md`:
@@ -464,7 +464,7 @@ and confirm it runs and loads assets correctly.
 ## Phase 5 — Performance hardening pass (cross-cutting, dedicated pass at the end)
 
 Concrete mechanisms for the two bottlenecks you called out, most of which are
-seeded by earlier phases and get a focused pass here:
+set up by earlier phases and get a focused pass here:
 
 - **Ticking**: the Phase-1 fixed-timestep accumulator + system ordering
   handles correctness; this pass adds instrumentation (per-system timing) and

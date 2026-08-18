@@ -1,7 +1,7 @@
 # Implementation status
 
 The rest of this documentation describes the engine as a whole. **This page is
-the honest ledger of what is landed in the repository right now**, so that
+the list of what actually works right now**, so that
 nobody follows a guide for code that is not there yet.
 
 Last verified: **2026-08-18**, against the `asset-api-redesign` branch.
@@ -21,12 +21,12 @@ Last verified: **2026-08-18**, against the `asset-api-redesign` branch.
 
 !!! note "Package READMEs were brought in line"
     They used to say "placeholder" for code that is now written. They no
-    longer do, but this page stays the ledger of record: it is the one that
+    longer do, but this page still gets updated first: it is the one that
     gets updated first.
 
 ## Verified end to end
 
-These were run, not assumed:
+These were actually run:
 
 - `good create` → `flutter analyze` clean → `flutter run`
 - `good assets compact` on a real image, with ffmpeg auto-download

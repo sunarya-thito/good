@@ -8,4 +8,4 @@ scheduler, and writes results back into `Transform2D`.
 
 Status: **working.** Bodies, colliders, all nine joints, effectors, and
 raycast and overlap queries, with the solver running across worker threads.
-The [implementation status page](https://sunarya-thito.github.io/good/reference/roadmap/) is the honest ledger.
+The [implementation status page](https://sunarya-thito.github.io/good/reference/roadmap/) lists what works today.

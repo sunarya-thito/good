@@ -18,4 +18,4 @@ buffers, scheduler, scenes, hierarchy, input, assets, coroutines, timelines
 and `GameView`. Audio playback, array-typed `DataDescriptor` fields and
 dependency-based system ordering are not implemented yet, and the web is
 unsupported because the kernel needs `dart:ffi` and isolates. The
-[implementation status page](https://sunarya-thito.github.io/good/reference/roadmap/) is the honest ledger.
+[implementation status page](https://sunarya-thito.github.io/good/reference/roadmap/) lists what works today.

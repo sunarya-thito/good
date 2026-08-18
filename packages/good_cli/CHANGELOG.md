@@ -14,7 +14,7 @@ end, not scaffolded:
   asset exactly once.
 
 Known rough edges are listed in the documentation's implementation-status page
-rather than smoothed over here; the notable ones are that `good create` keeps
+rather than hidden here; the notable ones are that `good create` keeps
 Flutter's own `main.dart`, and that re-running it after editing the pubspec can
 duplicate keys.
 

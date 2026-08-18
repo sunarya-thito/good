@@ -11,7 +11,7 @@ opt-in through
 Status: **working.** Transforms, world transforms, camera, colliders, sprite
 rendering, mouse picking and audio *assets*. There is no audio backend or
 mixer yet, and z-ordering beyond the `zIndex` sort is not implemented. The
-[implementation status page](https://sunarya-thito.github.io/good/reference/roadmap/) is the honest ledger.
+[implementation status page](https://sunarya-thito.github.io/good/reference/roadmap/) lists what works today.
 
 > **Upgrading from 0.0.2?** That version was an entirely different engine.
 > Nothing carries over; see the changelog.

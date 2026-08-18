@@ -24,7 +24,8 @@ On a LAN nobody types anything: a host announces itself once a second, and
 
 ## How far a code reaches
 
-Stated plainly, because "P2P" is often left to imply more than it delivers:
+What a code actually reaches, because "P2P" tends to promise more than it
+delivers:
 
 | Where | Works | Why |
 |---|---|---|

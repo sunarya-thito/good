@@ -1,49 +1,52 @@
 # good
 
-**G**ame **O**verdrive **O**n **D**art — a data-oriented, allocation-averse
-game engine family for Flutter and Dart: the dimension-agnostic `good` kernel,
-and the renderers built on it. The last letter names the target, which is why
-the renderers are [`goo2d`](packages/goo2d) and, later, `goo3d`.
+Game Overdrive On Dart: a game engine for Flutter that keeps your simulation
+off the UI thread and out of the garbage collector.
 
-**[Read the documentation →](https://sunarya-thito.github.io/good/)**
+`goo` is the family name and the last letter says what it targets. `good` runs
+on Dart and knows nothing about dimensions. `goo2d` does 2D. `goo3d` will do 3D
+when it exists.
 
-The docs are the reference for the whole engine — installation, creating a
-project, developing a game, and exporting one — and they are the spec the
-implementation is measured against. Build them locally with:
+```bash
+flutter pub add goo2d
+```
+
+That is the only dependency a 2D game needs, because `goo2d` re-exports the
+kernel. Physics and networking are separate packages you add when you want
+them, and each one needs its system declared before it does anything.
+
+**[Read the documentation](https://sunarya-thito.github.io/good/)** for
+installing, starting a project, building a game and shipping it.
+
+## Packages
+
+| Package | What it is |
+|---|---|
+| [`goo2d`](packages/goo2d) | The 2D engine, and the only thing a 2D game depends on |
+| [`good`](packages/good) | The kernel: ECS, memory pool, ring buffers, scenes, the tick loop, input, assets, coroutines, `GameView` |
+| [`good_cli`](packages/good_cli) | The `good` command: scaffolding, codegen, the asset pipeline, packaging |
+| [`goo2d_physics_box2d`](packages/goo2d_physics_box2d) | Box2D v3 physics. Opt-in |
+| [`goo2d_ffi_box2d`](packages/goo2d_ffi_box2d) | Vendored Box2D and the C shim under it |
+| [`good_net`](packages/good_net) | Network messages, sessions, and the transport contract. Opt-in |
+| [`good_net_p2p`](packages/good_net_p2p) | A peer-to-peer backend for `good_net`, with no server to run |
+
+[The good family](docs/packages/index.md) explains why the split falls where it
+does.
+
+## What actually works
+
+The documentation describes the finished engine, so not all of it is built yet.
+[docs/reference/roadmap.md](docs/reference/roadmap.md) tracks what is real
+today, what is deferred and which rough edges will catch you out. It gets
+updated first, so believe it over a package README that disagrees.
+
+## Working on the engine
 
 ```bash
 pip install -r docs/requirements.txt
 mkdocs serve
 ```
 
-`docs/reference/roadmap.md` is the honest ledger of what is landed right now;
-the rest of the documentation is written as the finished engine.
-
-## Packages
-
-| Package | What it is |
-|---|---|
-| [`packages/goo2d`](packages/goo2d) | The 2D engine. Re-exports the kernel — one dependency, one import |
-| [`packages/good`](packages/good) | The dimension-agnostic kernel: ECS, memory pool, ring buffers, scenes, the tick loop, input, assets, coroutines, `GameView` |
-| [`packages/good_cli`](packages/good_cli) | The `good` build tool: scaffolding, codegen, the asset pipeline, packaging |
-| [`packages/goo2d_physics_box2d`](packages/goo2d_physics_box2d) | Box2D v3 physics (opt-in) |
-| [`packages/goo2d_ffi_box2d`](packages/goo2d_ffi_box2d) | Vendored Box2D plus a primitives-only C shim |
-| [`packages/good_net`](packages/good_net) | Declared network messages, sessions, and the transport contract (opt-in) |
-| [`packages/good_net_p2p`](packages/good_net_p2p) | Serverless P2P backend for `good_net` |
-
-A 2D game depends on `goo2d` alone; everything else is added explicitly, and
-each opt-in package also needs its system declared. See
-[The good family](docs/packages/index.md).
-
-## Status
-
-[docs/reference/roadmap.md](docs/reference/roadmap.md) is the current ledger of
-what is implemented, what is deferred, and the known rough edges. It is updated
-before anything else, so trust it over a package README that disagrees.
-
-## Repository layout
-
-- `packages/` — the engine
-- `game/` — a real game built against it
-- `docs/` — the documentation site (MkDocs Material), published by
-  `.github/workflows/docs.yml`
+`packages/` is the engine. `game/` is a real game built against it, which is
+how the awkward parts get found. `docs/` is the site, published by
+`.github/workflows/docs.yml` on every push to the default branch.

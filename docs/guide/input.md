@@ -176,7 +176,7 @@ relative to a pointer.
     logical key changes with layout, so WASD would land on ZQSD for a French
     player.
 
-    The cost, stated plainly: `InputKey.q.name` describes the US-layout label,
+    The cost: `InputKey.q.name` describes the US-layout label,
     so a rebinding screen showing it to an AZERTY user names the key their
     keyboard prints "a" on.
 
