@@ -6,6 +6,7 @@ import 'package:goo_cli/src/assets/pack.dart' as impl;
 import 'package:goo_cli/src/command.dart';
 import 'package:goo_cli/src/config.dart';
 import 'package:goo_cli/src/generate/assets.dart';
+import 'package:goo_cli/src/generate/scene_scan.dart';
 import 'package:goo_cli/src/parsers.dart';
 import 'package:goo_cli/src/verbosable.dart';
 
@@ -93,7 +94,27 @@ class PackCommand extends Command with Verbose {
       return;
     }
 
-    final plan = impl.planPack(paths, assetRoot: config.assetOutput);
+    // Which scene needs what, so a scene load reads its own chunk and at most
+    // the shared one. A project this pass cannot read anything out of falls
+    // back to directory grouping rather than failing - see `planPack`.
+    final usage = scanScenes(project, scan);
+    for (final entry in usage.unresolved.entries) {
+      debug.printf('unresolved: %s -> %s\n', [entry.key, entry.value]);
+    }
+    if (usage.unresolved.isNotEmpty) {
+      info.printf(
+        '%s declaration(s) could not be attributed to a scene statically; '
+        'their assets go in the shared chunk. Run with --verbose to see '
+        'them.\n',
+        [usage.unresolved.length],
+      );
+    }
+
+    final plan = impl.planPack(
+      paths,
+      assetRoot: config.assetOutput,
+      byScene: usage.byScene,
+    );
     info
       ..printf('%s asset(s) in %s chunk(s), %s.\n', [
         plan.assetCount,

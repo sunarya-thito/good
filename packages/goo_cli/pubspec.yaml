@@ -13,7 +13,9 @@ environment:
 
 dependencies:
   meta: ^1.15.0
+  path: ^1.9.0
   yaml: ^3.1.2
+  analyzer: ^7.4.0
   archive: ^3.6.1
   crypto: ^3.0.6
   cryptography: ^2.7.0

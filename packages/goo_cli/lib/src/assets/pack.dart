@@ -38,22 +38,23 @@ class PackPlan {
 
 /// Groups the shipped assets into chunks.
 ///
-/// # This is not scene grouping yet, and says so
+/// Scene-aware when [byScene] is supplied - see `_planByScene`, which is the
+/// grouping the design asked for: a scene load then reads its own chunk and at
+/// most a shared one.
 ///
-/// The design calls for chunks grouped by *scene*, so that loading a scene
-/// reads as few chunks as possible. Working out which scene declares which
-/// asset means reading the project's Dart with `package:analyzer` - the same
-/// pass that would hoist struct layouts to build time - and that does not
-/// exist yet.
-///
-/// So this groups by top-level directory under the asset root: everything
-/// directly in `assets/` is one chunk, everything under `assets/ui/` another.
-/// That is a *stand-in*, chosen because it is the grouping a project's own
-/// folder structure already implies and because it is honest about being
-/// arbitrary. The chunk format and the runtime do not care how members were
-/// chosen, so replacing this with a real scene pass later changes this
-/// function and nothing else.
-PackPlan planPack(List<String> assetPaths, {required String assetRoot}) {
+/// Falls back to grouping by top-level directory when no scene information is
+/// available, which happens for a project whose `lib/` declares no scenes this
+/// pass could read. That fallback is arbitrary but harmless: the chunk format
+/// and the runtime do not care how members were chosen, only that the manifest
+/// agrees with them.
+PackPlan planPack(
+  List<String> assetPaths, {
+  required String assetRoot,
+  Map<String, Set<String>>? byScene,
+}) {
+  if (byScene != null && byScene.isNotEmpty) {
+    return _planByScene(assetPaths, byScene);
+  }
   final root = assetRoot.endsWith('/') ? assetRoot : '$assetRoot/';
   final groups = <String, List<String>>{};
   for (final path in assetPaths) {
@@ -381,4 +382,61 @@ Uint8List _sealUnencrypted(Uint8List body, AssetCompressionLevel compression) {
         ..add(List<int>.filled(16, 0))
         ..add(compressed))
       .toBytes();
+}
+
+/// Groups by the scene that uses an asset - the real thing the directory
+/// grouping stood in for.
+///
+/// # The rule, and why it is this one
+///
+/// An asset used by exactly one scene goes in that scene's chunk. Anything used
+/// by two or more, or by none that this pass could attribute, goes in a shared
+/// chunk. So loading a scene reads its own chunk plus at most the shared one.
+///
+/// The alternative - a chunk per distinct *set* of scenes, so `{A,B}` gets its
+/// own - reads fewer bytes and is what a web bundler does. It is not worth it
+/// here: the number of chunks grows toward 2^scenes, a game with thirty scenes
+/// would ship hundreds of tiny files, and the thing being optimised is a
+/// handful of reads at a loading screen.
+///
+/// An asset attributed to no scene still ships. It may be loaded by code this
+/// pass cannot read, and a grouping that dropped it would produce a build that
+/// simply fails - far worse than one that reads an extra chunk.
+PackPlan _planByScene(
+  List<String> assetPaths,
+  Map<String, Set<String>> byScene,
+) {
+  final users = <String, List<String>>{
+    for (final path in assetPaths) path: <String>[],
+  };
+  for (final entry in byScene.entries) {
+    for (final path in entry.value) {
+      users[path]?.add(entry.key);
+    }
+  }
+
+  final groups = <String, List<String>>{};
+  for (final path in assetPaths) {
+    final scenes = users[path]!..sort();
+    final group = scenes.length == 1 ? _sceneChunk(scenes.single) : 'shared';
+    groups.putIfAbsent(group, () => <String>[]).add(path);
+  }
+
+  final chunks = <Chunk>[
+    for (final name in groups.keys.toList()..sort())
+      Chunk(name: 'chunk_$name.dat', members: groups[name]!..sort()),
+  ];
+  final shared = groups['shared']?.length ?? 0;
+  return PackPlan(
+    chunks: chunks,
+    grouping:
+        'grouped by scene (${byScene.length} scene(s); $shared asset(s) '
+        'shared or unattributed)',
+  );
+}
+
+/// A scene's chunk name, reduced to something a filesystem is happy with.
+String _sceneChunk(String scene) {
+  final cleaned = scene.replaceAll(RegExp('[^A-Za-z0-9]'), '').toLowerCase();
+  return cleaned.isEmpty ? 'scene' : cleaned;
 }
