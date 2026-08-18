@@ -64,7 +64,6 @@ abstract class GameSystem extends GameListenerBase
   @override
   void describeEvents(EventDescriptor descriptor) {
     super.describeEvents(descriptor);
-    // TODO: actually dispatch the events
     mountEvent = descriptor.hasSignal((dispatcher) => dispatcher.onMounted());
     unmountEvent = descriptor.hasSignal(
       (dispatcher) => dispatcher.onUnmounted(),
