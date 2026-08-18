@@ -255,8 +255,14 @@ abstract class Query {
   // if (gameObject is Transformable) // do stuff
 }
 
+/// A query over exactly one component type, from [QueryDescriptor.has].
 abstract class SingleQuery<T extends Component> implements Query {
-  T get component => throw UnimplementedError();
+  /// The matched component, for the entity under the cursor.
+  ///
+  /// Sugar for `get<T>()`, and it carries that method's rule: a cursor only
+  /// exists inside a [runQuery] callback, so reading this anywhere else
+  /// throws.
+  T get component;
 }
 
 abstract class QueryDescriptor {
