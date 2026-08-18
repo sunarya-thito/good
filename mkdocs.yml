@@ -20,9 +20,11 @@ copyright: Built with good.
 docs_dir: docs
 site_dir: site
 
-# The CI pin lives in docs/ next to what it builds, but it is not a page.
+# These live in docs/ next to what uses them, but they are not pages: the CI pin,
+# and the abbreviation list every page appends.
 exclude_docs: |
   requirements.txt
+  includes/
 
 theme:
   name: material
@@ -83,7 +85,12 @@ markdown_extensions:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.keys
-  - pymdownx.snippets
+  # Every page gets the abbreviation list appended, so a reader hovering over
+  # "prefab" or "isolate" gets a one-line definition without the prose having to
+  # stop and explain itself. Defined once in docs/includes/abbreviations.md.
+  - pymdownx.snippets:
+      base_path: [docs]
+      auto_append: [includes/abbreviations.md]
   # `format: mermaid` routes ```mermaid blocks to Material's bundled Mermaid,
   # so diagrams are text in the source and SVG on the page. No extra plugin and
   # no build step; Material loads mermaid.js itself and themes it to match.
