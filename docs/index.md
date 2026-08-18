@@ -23,8 +23,8 @@ the dimension.
 
 - :material-cube: **`goo3d`** — the 3D engine
 
-    A *sibling* of `goo2d`, not a layer on top: the same kernel, its own
-    renderer. See [Dimensions](packages/dimensions.md).
+    Transforms, cameras, meshes, materials and lighting. Re-exports the kernel,
+    so a 3D game has one dependency and one import.
 
 </div>
 

@@ -25,8 +25,8 @@ packages/
 └── goo3d                   the 3D engine, and its own siblings
 ```
 
-`goo2d` and `goo3d` are siblings on one kernel, not layers — the split exists
-specifically so that costs nothing above it. See [Dimensions](dimensions.md).
+`goo2d` and `goo3d` each sit directly on the kernel, and the split costs nothing
+above it. See [Dimensions](dimensions.md).
 
 !!! tip "What a game depends on"
     **One package.** `goo2d` re-exports the kernel, so a 2D game has one

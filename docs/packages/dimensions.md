@@ -1,7 +1,7 @@
 # Dimensions — 2D and 3D
 
-good is a **family**, not a 2D engine with a 3D mode bolted on. The kernel knows
-nothing about dimensions; a renderer package supplies one.
+good is a **family**. The kernel knows nothing about dimensions, and a renderer
+package supplies one.
 
 ```mermaid
 flowchart TD
@@ -10,16 +10,14 @@ flowchart TD
     K --- G3["<b>goo3d</b>"]
 ```
 
-`goo2d` and `goo3d` are siblings, not layers. Neither is built on the other.
-
-`goo3d` is a **sibling** of `goo2d`, not a layer on top of it. It depends on the
-same kernel and supplies its own renderer — a native surface, not a
-`CustomPaint` — without `GameView` changing at all.
+Each renderer sits directly on the kernel and supplies its own drawing: `goo2d`
+paints into a Flutter `Canvas`, `goo3d` drives a native surface. Neither depends
+on the other, and `GameView` is the same widget either way.
 
 ## What is shared
 
-Almost everything. These are kernel concepts and are **identical** whichever
-dimension you work in:
+These are kernel concepts, and they are **identical** whichever dimension you
+work in:
 
 - `Game`, `GameState`, the two-isolate model, the fixed tick
 - `EntityStruct`, `Entity`, `Component`, `DataPointer`, archetypes
@@ -41,10 +39,13 @@ A short list, and it is the whole difference:
 | Concern | 2D | 3D |
 |---|---|---|
 | Transform | `Transform2D`, `WorldTransform2D` | `Transform3D`, `WorldTransform3D` |
-| Camera | `Camera` with `zoom` | A camera with a projection and FOV |
-| Drawing | `Renderable2D`, `Sprite`, `GameRenderer2D` | Meshes and materials, a native surface |
-| Geometry | `Collider2D` — circle, box, capsule, polygon | 3D shapes |
-| Physics | `goo2d_physics_box2d` (Box2D v3) | A 3D backend |
+| Rotation | one angle | a quaternion, four columns |
+| Camera | `Camera` with `zoom` | `Camera3D` with `fieldOfView`, `near`, `far` |
+| Drawing | `Renderable2D`, `Sprite`, `GameRenderer2D` | `Renderable3D`, `MeshAsset`, `MaterialAsset`, `Light3D` |
+| Geometry | `Collider2D` — circle, box, capsule, polygon | `Collider3D` — box, sphere, capsule, hull, mesh |
+| Physics | `goo2d_physics_box2d` (Box2D v3) | `goo3d_physics_box3d` (Box3D) |
+| Renderer | Flutter `Canvas`, one `drawVertices` per frame | Filament, a draw call per material |
+| Up axis | +Y down, screen space | +Y up, right-handed |
 | Game pair | `Game2D`/`GameState2D` | `Game3D`/`GameState3D` |
 
 ## Which one a project uses
