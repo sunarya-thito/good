@@ -1,0 +1,191 @@
+# Installation
+
+goo is a set of Flutter packages plus a command-line tool. There is nothing to
+install globally beyond the Flutter SDK and one `dart pub global activate` for
+the `goo` command.
+
+## Prerequisites
+
+| Requirement | Version | Why |
+|---|---|---|
+| Flutter SDK | `>=3.47.0` | The kernel depends on Flutter — `StateChannel` is a `ValueListenable` and `GameView` is a widget |
+| Dart SDK | `^3.13.0` | Ships with Flutter |
+| A desktop or mobile toolchain | see below | goo uses `dart:ffi` and native memory |
+
+Check what you have:
+
+```bash
+flutter --version
+flutter doctor
+```
+
+!!! warning "The web is not a supported target"
+    The kernel allocates component storage with `dart:ffi` and runs the
+    simulation on a spawned isolate. Neither exists on the web. `Game.start`
+    falls back to running the simulation inline there, but there is no web
+    renderer and `goo build` has no web target.
+
+### Platform toolchains
+
+The engine itself is pure Dart. The **physics package** compiles vendored
+Box2D from source per platform, so if you add `goo2d_physics_box2d` you need a
+native toolchain — the same one Flutter already requires for that platform.
+
+=== "Windows"
+
+    - Visual Studio with the *Desktop development with C++* workload
+    - CMake 3.15+ (bundled with Visual Studio)
+
+=== "Linux"
+
+    - `clang`, `cmake`, `ninja-build`, `pkg-config`
+    - `libgtk-3-dev`
+
+=== "Android"
+
+    - Android SDK and the **NDK** (Box2D is built through Gradle's CMake
+      integration)
+
+=== "macOS / iOS"
+
+    - Xcode and CocoaPods (Box2D compiles through a podspec, linked statically)
+
+A Flutter app builds all of this automatically. Outside one — `flutter test`,
+`dart run`, a `tool/` script — nothing builds plugins, so build the native
+library once by hand:
+
+```powershell
+cd packages/goo2d_ffi_box2d
+powershell -File tool/build_native.ps1
+```
+
+`goo2d_ffi_box2d` finds that artifact by walking up from the working directory,
+so tests in sibling packages pick it up with no configuration.
+
+### ffmpeg (optional, fetched on demand)
+
+The asset pipeline converts source art into one canonical format per kind
+(WebP for images, Ogg Vorbis for audio) using **ffmpeg**. You do not have to
+install it: `goo assets compact` and `goo build` look for an ffmpeg on your
+`PATH` and download one if there is none.
+
+Pass `--no-download` to make a missing ffmpeg an error instead — worth doing in
+CI, where an unexpected download is a slow surprise rather than a convenience.
+
+---
+
+## Adding the engine
+
+A 2D game adds **`goo2d` only**. It re-exports the kernel, so there is no second
+package to add and keep version-matched by hand:
+
+```bash
+flutter pub add goo2d
+```
+
+```dart
+import 'package:goo2d/goo2d.dart';   // ECS, scenes, tick loop, rendering, GameView
+```
+
+Opt-in packages stay separate because they carry weight not every game wants.
+Each also needs its system declared in `describeSystems`:
+
+```yaml title="pubspec.yaml"
+dependencies:
+  goo2d: ^0.0.1
+  goo2d_physics_box2d: ^0.0.1   # native Box2D — only if you want physics
+  goo_net_p2p: ^0.0.1           # serverless multiplayer — only if you want it
+```
+
+### Working from a clone
+
+If you are developing against the engine's own source — tracking `main`, or
+working on the engine itself — depend on it by path instead:
+
+```bash
+git clone https://github.com/sunarya-thito/goo.git
+```
+
+```yaml title="pubspec.yaml"
+dependencies:
+  goo2d:
+    path: ../goo2d/packages/goo2d
+```
+
+This is what the repository's own `game/` directory does. A `git:` dependency
+works the same way, and should pin `ref:` to a tag or commit for anything you
+intend to ship:
+
+```yaml
+dependencies:
+  goo2d:
+    git:
+      url: https://github.com/sunarya-thito/goo.git
+      path: packages/goo2d
+      ref: v0.0.1
+```
+
+---
+
+## Installing the `goo` CLI
+
+The CLI is dimension-agnostic — the same tool serves `goo2d` and `goo3d`
+projects.
+
+```bash
+dart pub global activate goo_cli
+```
+
+Make sure the pub cache's `bin` is on your `PATH`:
+
+=== "Windows"
+
+    ```
+    %LOCALAPPDATA%\Pub\Cache\bin
+    ```
+
+=== "macOS / Linux"
+
+    ```
+    $HOME/.pub-cache/bin
+    ```
+
+Verify:
+
+```console
+$ goo --help
+Usage: goo <command> [options]
+
+Commands:
+  create    Scaffold a new Flutter project wired up to goo.
+  generate  Write lib/goo.generated/ from the assets the pubspec declares.
+  assets    Convert and pack the assets a project ships.
+  build     Build and package a game for a target platform.
+
+Options:
+  --help  Show this help and exit.
+```
+
+### From a clone
+
+Activate the local copy, which is what you want when tracking the engine's
+source:
+
+```bash
+dart pub global activate --source path packages/goo_cli
+```
+
+Or skip activation entirely — handy in CI, and when switching between engine
+versions:
+
+```bash
+dart run /path/to/goo2d/packages/goo_cli/bin/goo.dart --help
+```
+
+Everywhere this documentation writes `goo <command>`, that form works too.
+
+---
+
+## Next
+
+[Create a project →](create-a-project.md)

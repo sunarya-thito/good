@@ -64,7 +64,7 @@ off on explicitly.
   `Goo2dGame`, `Goo2dPhysicsEngine`, etc.
 - **Backend-identifying subclass names are fine and encouraged** — they name
   *which backend*, not the engine brand: `Box2DPhysicsSystem`,
-  `SteamNetTransport`, `P2PNetTransport`.
+  `P2PNetTransport`, `LoopbackNetTransport`.
 - **Anything inherently 2D-specific is suffixed `2D`**, matching the existing
   `Transform2D` precedent, so a future `goo3d` package can add a `Transform3D`
   (etc.) side by side without breaking `goo2d`'s API. This applies
@@ -99,10 +99,7 @@ packages/
   goo_net/                  # transport-agnostic NetPeer/NetConnection/Lobby —
                            # not dimension-specific, a goo3d game needs the
                            # same lobby/P2P plumbing
-  goo_net_steam/             # Steam backend (ffigen bindings live in a sibling
-  goo_ffi_steamworks/        # raw-bindings package, kept separate from the
-                           # ergonomic API package)
-  goo_net_p2p/               # serverless UDP hole-punch backend
+  goo_net_p2p/               # serverless UDP backend — no server to host
   goo_cli/                   # `goo` command: asset pack/encrypt, codegen,
                            # build orchestration — dimension-agnostic; goo2d
                            # (and later goo3d) register their own asset types
@@ -356,65 +353,76 @@ to get a first ticking-performance baseline.
 
 ---
 
-## Phase 3 — Networking (`goo_net`, `goo_net_steam`, `goo_net_p2p`)
+## Phase 3 — Networking (`goo_net`, `goo_net_p2p`) — **landed, except the internet**
 
 Dimension-agnostic (a future `goo3d` game needs the same lobby/P2P plumbing),
-so these live alongside `goo`, not under `goo2d`. One transport-agnostic
-interface, two backends, so game code never branches on "am I using Steam or
-not":
+so these live alongside `goo`, not under `goo2d`.
 
-- **Note on the command ring buffer's producer count**: Phase 1 scopes the
-  UI→game `RingBuffer` to a single producer (the main/UI isolate). If a
-  future networked client applies replicated state changes from a dedicated
-  network isolate rather than funneling them through the main isolate first,
-  that's a second producer, and the ring buffer implementation needs to move
-  from SPSC to MPSC (or route network commands through the main isolate as a
-  cheap re-forward). Decide this once Phase 3's isolate layout is actually
-  drawn up — flagged here so it isn't a surprise later.
-- **`goo_net`**: `NetTransport` (factory), `NetPeer`, `NetConnection` with a
-  reliable-ordered channel and an unreliable-unordered channel (the standard
-  split for game netcode: critical state vs. frequent transform snapshots),
-  and `NetSession`/`Lobby` (create/join/list). This phase is scoped to
-  **transport + session only** — the ECS replication layer itself (a
-  `Replicated` mixin, delta compression, client-side prediction/reconciliation)
-  is a large enough topic to be its own follow-up phase (3b) rather than
-  bundled into transport plumbing here.
-- **`goo_net_steam`** (bindings in a sibling `goo_ffi_steamworks` package):
-  `ffigen` bindings to Steamworks' `steam_api_flat.h` (Valve's own flattened C
-  API, built for exactly this kind of binding). Lobbies via
-  `ISteamMatchmaking`, P2P via `ISteamNetworkingSockets` — which also gives
-  Valve's relay network as a free fallback when direct P2P fails, at no
-  hosting cost to you. Note: the Steamworks SDK itself can't be redistributed
-  in this repo (Valve's EULA) — the binding *source* ships, but consumers of
-  this package fetch the SDK themselves, same as existing community bindings
-  do.
-- **`goo_net_p2p`** — the "plug-and-play, nothing to host, free" backend,
-  resolving your requirement concretely:
-  - *Discovery/signaling*: a default **goo-hosted free rendezvous relay** — a
-    tiny stateless service that only shuttles short-lived connection-setup
-    blobs between two peers, the same role PeerJS's free public cloud broker
-    plays for browser WebRTC. Game developers using `goo_net_p2p` don't run
-    anything; the endpoint is swappable if someone wants to self-host later.
-  - *NAT traversal*: ICE-lite-style UDP hole punching against free public
-    STUN servers (Google's/Cloudflare's) to learn each peer's public
-    endpoint, then a direct UDP connection attempt.
-  - *Data channel*: a **custom lightweight UDP protocol** (reliable-ordered +
-    unreliable-unordered channels, shaped like ENet/Steam Sockets) rather than
-    binding full WebRTC/libdatachannel — avoids pulling in a DTLS/SCTP stack
-    just to move game packets natively, and implements the same
-    `NetConnection` interface as the Steam backend.
-  - **Trade-off to sign off on explicitly**: pure hole-punching does not
-    connect 100% of real-world NAT pairs (symmetric NAT on both ends is the
-    known failure case). Scoping this phase to hole-punching only, with a
-    paid/relay fallback (TURN-style, optionally through the same rendezvous
-    box) as an explicit, clearly-separated future add-on rather than promising
-    it now — flagging this so "free, no server" and "always connects" aren't
-    silently conflated.
+**What this phase actually shipped, and how it differs from the plan above.**
+Three decisions were taken during the work and are worth recording, because
+each one replaced something this document originally said:
 
-**Verification:** two-process local test harness (two Dart processes on one
-machine talking over loopback) for both backends against the same
-`NetConnection` conformance test suite, plus a manual real-NAT test for the
-P2P backend once hole-punching is implemented.
+1. **A network message is a `GameCommand` over a socket, not a new paradigm.**
+   The plan described `goo_net` as byte-level transport plumbing with the ECS
+   layer deferred. What landed instead is a *declared message* API spelled
+   exactly like the command API — `NetMessage`/`NetSignal` beside
+   `SinkCommand`/`SignalCommand`, a `describeNetwork` pass beside
+   `describeCommands`, the same `ParamDescriptor` vocabulary — because a game
+   should not learn two ways to describe the same record. The record layer in
+   `goo` (`ParamBatch`/`ParamBuffer`/`ParamLayout`) was promoted out of the
+   command layer and is now shared by both, rather than being written twice.
+   The byte-level `NetTransport`/`NetConnection`/`NetSession` contract still
+   exists underneath, as the thing a backend implements.
+
+2. **The Steam backend was dropped**, not deferred: `goo_net_steam` is
+   deleted. The transport contract is open, so it remains possible as a
+   separate package, and nothing in `goo_net` assumes one. `goo_ffi_steamworks`,
+   the empty bindings package it would have been built on, went with it.
+
+3. **The command ring buffer stays SPSC.** The plan flagged that a network
+   isolate would make the UI→game ring a second producer. It does not arise:
+   the socket lives on the *game* isolate, beside the simulation, because
+   `Game`'s loop is a `Timer` and that isolate already has an ordinary event
+   loop. A separate network isolate would need its own copy of the message
+   registry and a second producer on the ring, to save a socket read costing
+   microseconds.
+
+- **`goo_net`** — messages (`NetMessage`, `NetSignal`), their two declared
+  axes (`NetTarget`: who handles it; `NetChannel`: reliable-ordered or
+  unreliable-unordered), `MultiplayerState`/`NetworkSystem`, `NetSession` and
+  the roster, `NetPeerListener`/`NetSessionListener`, and
+  `LoopbackNetTransport` — in-process, real, and what tests and split-screen
+  run on. `NetTransport.schemaHash` refuses a peer running a different build,
+  which is the failure mode index-on-the-wire creates across *machines* and
+  cannot create across isolates.
+- **`goo_net_p2p`** — a real UDP protocol: sequenced packets with
+  ack/ackBits, per-message retransmission, in-order reliable delivery,
+  per-tick batching into one datagram, fragmentation and reassembly,
+  keepalives and timeouts. Join codes **carry the host's address** (ten
+  characters, base-31), so there is no broker at all — the plan's
+  "goo-hosted free rendezvous relay" is not needed for the cases that work
+  today and is what the remaining work is about. LAN discovery is host
+  beacons plus a listening client, so nothing has to own a well-known port.
+
+**Verification:** one conformance suite (`package:goo_net/testing.dart`) run
+against both backends — in-process, and over real UDP sockets; the reliable
+channel delivering 30 messages in order across a link throwing away 30% of
+everything (`simulatedLoss`, a knob on the shipped class); and two `Game`s in
+one process, each with its own `P2PNetTransport`, playing a round over
+loopback UDP.
+
+**Still to do, in order:**
+
+- **Phase 3a — crossing the internet.** STUN against free public servers to
+  learn each peer's public endpoint, and a rendezvous to swap those endpoints
+  so both sides punch at once. This is where the plan's hosted relay comes
+  back, and it is the only thing between "works on a LAN" and "works from
+  anywhere". The known limit stands and is not to be conflated with it: pure
+  hole punching fails when **both** peers are behind symmetric NAT, and a
+  TURN-style relay fallback is a separate, explicitly-scoped addition.
+- **Phase 3b — ECS replication.** A `Replicated` mixin, delta compression,
+  client-side prediction and reconciliation. Its own phase, as this document
+  always said, and now with the primitive it needs already in place.
 
 ---
 

@@ -6,6 +6,8 @@ import 'package:goo2d/goo2d.dart';
 import 'package:goo2d_ffi_box2d/goo2d_ffi_box2d.dart';
 import 'package:meta/meta.dart';
 
+import 'effector.dart';
+import 'effectors.dart';
 import 'joint.dart';
 import 'rigid_body.dart';
 
@@ -318,6 +320,132 @@ class Box2DPhysicsSystem extends GameSystem
         .withAll(RigidBody2D, Transform2D)
         .withOptional(Collider2D)
         .build();
+    // Effector entities are a different population from bodies: a wind zone
+    // has a region and a transform and usually no RigidBody2D at all.
+    _effectorZones = descriptor
+        .query()
+        .withAll(Effector2D, Transform2D)
+        .build();
+  }
+
+  late final Query _effectorZones;
+
+  /// Applies every declared effector, once, before the step.
+  ///
+  /// Ordering between effectors is deliberately unspecified. Forces
+  /// accumulate, and addition is commutative, so two overlapping zones produce
+  /// the same total whichever runs first - which is what makes walking them in
+  /// archetype order rather than some declared sequence sound.
+  ///
+  /// The region is resolved as an axis-aligned box around the entity's
+  /// `Transform2D`, so a rotated effector zone acts through its bounding box.
+  /// That matches the primitives underneath, which are all broad-phase AABB
+  /// queries - an exact boundary is not something a force field's player can
+  /// see anyway.
+  void _applyEffectors() {
+    for (final group in _effectorZones.groups()) {
+      final zone = group.get<Effector2D>();
+      if (zone.effectors.isEmpty) continue;
+      final transform = group.get<Transform2D>();
+      for (final entity in group) {
+        final centreX = transform.transformOffsetX[entity];
+        final centreY = transform.transformOffsetY[entity];
+        for (var i = 0; i < zone.effectors.length; i++) {
+          final effector = zone.effectors[i];
+          if (!effector.enable[entity]) continue;
+          _applyOne(effector, entity, centreX, centreY);
+        }
+      }
+    }
+  }
+
+  /// The `sealed` dispatch. Adding a fifth effector kind fails to compile here
+  /// until it is handled, which is the whole reason [Effector] is sealed.
+  void _applyOne(
+    Effector effector,
+    Entity entity,
+    double centreX,
+    double centreY,
+  ) {
+    final region = effector.region;
+    final offsetX = centreX + region.offsetX[entity];
+    final offsetY = centreY + region.offsetY[entity];
+    final double halfWidth;
+    final double halfHeight;
+    switch (region) {
+      case BoxBody():
+        halfWidth = region.halfWidth[entity];
+        halfHeight = region.halfHeight[entity];
+      case CircleBody():
+        halfWidth = region.radius[entity];
+        halfHeight = halfWidth;
+      case CapsuleBody() || PolygonBody():
+        // Deliberately not silently approximated: a capsule or polygon region
+        // would act through a bounding box that is visibly bigger than the
+        // shape drawn, and a force field that reaches further than it looks is
+        // worse than one that refuses to be declared.
+        assert(
+          false,
+          'an effector region must be a box or a circle collider - '
+          '\${region.runtimeType} has no meaningful axis-aligned extent for '
+          'this to query. Declare the zone with hasBoxCollider or '
+          'hasCircleCollider.',
+        );
+        return;
+    }
+
+    final minX = offsetX - halfWidth;
+    final maxX = offsetX + halfWidth;
+    final minY = offsetY - halfHeight;
+    final maxY = offsetY + halfHeight;
+    final layerMask = effector.layerMask[entity];
+
+    switch (effector) {
+      case AreaEffector():
+        areaEffector(
+          minX,
+          minY,
+          maxX,
+          maxY,
+          forceX: effector.forceX[entity],
+          forceY: effector.forceY[entity],
+          torque: effector.torque[entity],
+          layerMask: layerMask,
+        );
+      case PointEffector():
+        pointEffector(
+          offsetX,
+          offsetY,
+          radius: halfWidth > halfHeight ? halfWidth : halfHeight,
+          force: effector.force[entity],
+          minDistance: effector.minDistance[entity],
+          layerMask: layerMask,
+        );
+      case BuoyancyEffector():
+        // +y is down in goo2d, so the water line is the *smaller* y - see
+        // BuoyancyEffector's own doc on why it is horizontal regardless.
+        buoyancyEffector(
+          minX,
+          maxX,
+          surfaceY: minY,
+          depth: maxY - minY,
+          density: effector.density[entity],
+          linearDrag: effector.linearDrag[entity],
+          angularDrag: effector.angularDrag[entity],
+          layerMask: layerMask,
+        );
+      case SurfaceEffector():
+        surfaceEffector(
+          minX,
+          minY,
+          maxX,
+          maxY,
+          speed: effector.speed[entity],
+          speedY: effector.speedY[entity],
+          force: effector.force[entity],
+          layerMask: layerMask,
+        );
+    }
   }
 
   @override
@@ -694,6 +822,12 @@ class Box2DPhysicsSystem extends GameSystem
     // Before anything else, so a body queued last tick simulates on this one
     // and the world is complete for the rest of the step.
     _createPending();
+
+    // After creation and before the step: a force applied outside a tick
+    // window is discarded, and one applied after the step lands late. This is
+    // the ordering every game used to have to reproduce by hand with a
+    // compareTo against this system.
+    _applyEffectors();
 
     final count = _fill();
     lastFillMicros = _clock.elapsedMicroseconds;

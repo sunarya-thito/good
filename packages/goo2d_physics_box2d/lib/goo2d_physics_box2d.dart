@@ -55,6 +55,15 @@ library;
 /// bodies in a region and applies a force, so there is nothing to bind a
 /// component to. Area, Point, Buoyancy and Surface are there; Platform
 /// (one-way) is not, and that file says why.
+export 'src/effector.dart'
+    show
+        AreaEffector,
+        BuoyancyEffector,
+        Effector,
+        Effector2D,
+        EffectorDescriptor,
+        PointEffector,
+        SurfaceEffector;
 export 'src/effectors.dart' show Effectors2D;
 export 'src/joint.dart' show Joint;
 export 'src/physics_system.dart' show Box2DPhysicsSystem;

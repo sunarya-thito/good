@@ -219,11 +219,11 @@ class _SpawnUnit extends SupplierCommand<Entity> {
   }
 
   @override
-  void bufferFromResult(CommandBuffer call, Entity result) =>
+  void bufferFromResult(ParamBuffer call, Entity result) =>
       spawned[call] = result.value;
 
   @override
-  Entity resultFromBuffer(CommandBuffer call) => Entity(spawned[call]);
+  Entity resultFromBuffer(ParamBuffer call) => Entity(spawned[call]);
 }
 
 class _TestState extends GameState<_TestGame> {
@@ -284,13 +284,13 @@ class _NudgeCommand extends SinkCommand<_Nudge> {
   }
 
   @override
-  void bufferFromParams(CommandBuffer call, _Nudge params) {
+  void bufferFromParams(ParamBuffer call, _Nudge params) {
     entity[call] = params.entity.value;
     amount[call] = params.amount;
   }
 
   @override
-  _Nudge paramsFromBuffer(CommandBuffer call) =>
+  _Nudge paramsFromBuffer(ParamBuffer call) =>
       (entity: Entity(entity[call]), amount: amount[call]);
 }
 

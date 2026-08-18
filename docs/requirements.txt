@@ -1,0 +1,5 @@
+# Pinned so a docs build is reproducible and a theme release never breaks CI
+# on its own schedule. Bump deliberately.
+mkdocs==1.6.1
+mkdocs-material==9.5.49
+pymdown-extensions==10.12

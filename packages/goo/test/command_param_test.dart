@@ -30,23 +30,23 @@ class _Damage extends GameCommand<_Blow, int> {
   }
 
   @override
-  void bufferFromParams(CommandBuffer call, _Blow params) {
+  void bufferFromParams(ParamBuffer call, _Blow params) {
     amount[call] = params.amount;
     crit[call] = params.crit ? 1 : 0;
   }
 
   @override
-  _Blow paramsFromBuffer(CommandBuffer call) =>
+  _Blow paramsFromBuffer(ParamBuffer call) =>
       (amount: amount[call], crit: crit[call] == 1);
 
   @override
-  void bufferFromResult(CommandBuffer call, int result) {
+  void bufferFromResult(ParamBuffer call, int result) {
     dealt[call] = result;
     overkill[call] = result > 100 ? 1 : 0;
   }
 
   @override
-  int resultFromBuffer(CommandBuffer call) => dealt[call];
+  int resultFromBuffer(ParamBuffer call) => dealt[call];
 }
 
 class _Ping extends SignalCommand {}
@@ -60,10 +60,10 @@ class _NextId extends SupplierCommand<int> {
   }
 
   @override
-  void bufferFromResult(CommandBuffer call, int result) => id[call] = result;
+  void bufferFromResult(ParamBuffer call, int result) => id[call] = result;
 
   @override
-  int resultFromBuffer(CommandBuffer call) => id[call];
+  int resultFromBuffer(ParamBuffer call) => id[call];
 }
 
 class _Log extends SinkCommand<String> {
@@ -75,11 +75,11 @@ class _Log extends SinkCommand<String> {
   }
 
   @override
-  void bufferFromParams(CommandBuffer call, String params) =>
+  void bufferFromParams(ParamBuffer call, String params) =>
       message[call] = params;
 
   @override
-  String paramsFromBuffer(CommandBuffer call) => message[call];
+  String paramsFromBuffer(ParamBuffer call) => message[call];
 }
 
 /// Every field kind, to pin the packing down.
@@ -112,16 +112,16 @@ class _Wide extends GameCommand<int, int> {
   }
 
   @override
-  void bufferFromParams(CommandBuffer call, int params) => u8[call] = params;
+  void bufferFromParams(ParamBuffer call, int params) => u8[call] = params;
 
   @override
-  int paramsFromBuffer(CommandBuffer call) => u8[call];
+  int paramsFromBuffer(ParamBuffer call) => u8[call];
 
   @override
-  void bufferFromResult(CommandBuffer call, int result) => u8[call] = result;
+  void bufferFromResult(ParamBuffer call, int result) => u8[call] = result;
 
   @override
-  int resultFromBuffer(CommandBuffer call) => u8[call];
+  int resultFromBuffer(ParamBuffer call) => u8[call];
 }
 
 class _Unhandled extends SignalCommand {}
@@ -497,7 +497,8 @@ void main() {
       final wide = r.registry.declare(_Wide());
       GameCommandDescriptor(r.registry).hasHandler(wide, (p) => p);
 
-      final call = wide.execute(250);
+      final batch = r.registry.createCommandBatch();
+      final call = wide.execute(250, batch);
       wide.flag[call] = 1;
       wide.pair[call] = 2;
       wide.nibble[call] = 9;
@@ -508,7 +509,7 @@ void main() {
       wide.f32[call] = 0.5;
       wide.f64[call] = 1e-300;
       wide.name[call] = 'hello';
-      await call.batch.send();
+      await batch.send();
 
       expect(wide.flag[call], 1);
       expect(wide.pair[call], 2);

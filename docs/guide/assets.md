@@ -1,0 +1,199 @@
+# Assets
+
+!!! abstract "Layer: the registry is kernel; `Texture`/`AudioClip` are `goo2d`"
+
+An asset in goo is **declared, not loaded**. You name it, the engine resolves it
+when the scene that needs it loads, and what you hold is an address — never a
+path string and never a `Future` you have to remember to await.
+
+## The path from a file to a sprite
+
+```
+assets_src/sprites/player.png     you edit and commit this
+        │  goo assets compact     (ffmpeg → one canonical format per kind)
+        ▼
+assets/sprites/player.webp        generated; what ships
+        │  goo generate           (scans `flutter: assets:`)
+        ▼
+Textures.spritesPlayer            a generated enum value that IS an AssetKey
+        │  descriptor.has(...)
+        ▼
+TextureAsset                      an address, stored in a component row
+```
+
+Full details of the first two steps are in
+[The asset pipeline](../exporting/asset-pipeline.md). This page is the runtime
+half.
+
+## Declaring
+
+```dart
+class Player extends EntityStruct
+    with Transform2D, WorldTransform2D, Renderable2D {
+  late final TextureAsset texture;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    texture = descriptor.has(Textures.spritesPlayer);
+  }
+}
+```
+
+Scenes declare assets the same way, and **prefabs share their scene's
+descriptor**. `has` is idempotent per identity, so declaring the same texture in
+a prefab and in its scene produces the identical handle — one address, one
+decode.
+
+!!! danger "Declare it wherever you read it"
+    A prefab that uses a texture must declare it, even if its scene already
+    does. The scene declaring it does not assign *your* field, and a field read
+    in `describeSprites` that nothing assigned is a `LateInitializationError` on
+    mount. Declaring in both places costs nothing.
+
+## The generated enums
+
+`goo generate` writes one enum value per shipped file:
+
+```dart title="lib/goo.generated/textures.dart"
+enum Textures with LocalEnumAssetKey<Texture> {
+  spritesPlayer('assets/sprites/player.webp'),
+  uiButton('assets/ui/button.webp');
+
+  const Textures(this.path);
+
+  @override
+  final String path;
+}
+```
+
+An enum rather than a list of static keys, because `LocalEnumAssetKey` makes an
+enum value **be** an `AssetKey` — `Textures.spritesPlayer` is already the
+identity `descriptor.has` wants, with no lookup and nothing to keep in sync. It
+also gives the set a `.values`, which is what lets the startup check walk every
+asset the game ships.
+
+The path becomes the identifier, so renaming a file renames the enum value and a
+stale reference is a **compile error** rather than a missing texture at run
+time.
+
+`Audios` is identical in shape. That uniformity is the point: a new asset kind
+costs a payload type, a loader, and one more call to the same emitter.
+
+!!! info "A project with no assets still compiles"
+    Dart has no empty enum, so a project that declares nothing yet gets an
+    `abstract final class` with an empty `values` instead. It becomes the enum
+    the moment an asset is declared.
+
+## Loading
+
+You never call a loader. `loadScene` resolves everything the scene and its
+prefabs declared, and completes when they are ready:
+
+```dart
+await loadScene(game.level1);   // assets are resident when this returns
+```
+
+Decoding happens **on the Flutter isolate** — the game isolate declares assets
+but cannot decode them, so it asks and waits. Assets already resident from
+another loaded scene are not decoded twice, and unloading a scene releases only
+what nothing else still declares.
+
+## The startup check
+
+`goo generate` also writes a readiness check, and calling it before starting the
+game is the single best-value line in `main.dart`:
+
+```dart
+await ensureGameReady();
+await Game.start(_game);      // (1)!
+```
+
+1. Held in a field, constructed synchronously — see
+   [Lifecycle in a widget](flutter-bridge.md#lifecycle-in-a-widget) for why
+   that matters when the widget can be disposed mid-start.
+
+It walks every declared asset and asks whether it will be there — **without
+loading anything**. `AssetSource.check` consults the manifest and at most stats
+a file, never a decode, so it is cheap enough to run over a whole game at
+startup. A missing asset found here is a clear message before the first frame;
+the same asset found later is a failure in the middle of play, with a scene
+half-loaded.
+
+It also installs the asset pack when one exists, which is what makes a packed
+release build find its chunks.
+
+```dart
+Future<void> ensureGameReady();                      // throws if anything is missing
+Future<List<AssetKey<Object?>>> findMissingAssets(); // the list, if you want to show it
+```
+
+`AssetAvailability.unverifiable` is deliberately **not** counted as a failure. A
+loose development build cannot stat a bundle entry and a network source cannot
+be checked offline; reporting those as missing would make the check cry wolf
+exactly where it is most useful.
+
+## Asset kinds
+
+| Kind | Payload | Loader produces |
+|---|---|---|
+| Texture | `Texture` | A decoded image ready for the renderer |
+| Audio | `AudioClip` | The clip's bytes plus its container format |
+
+### Textures
+
+```dart
+sprite = descriptor.has(texture: texture, width: 64, height: 64);
+```
+
+`TextureFilter` chooses sampling — `mipmap` by default, and the crisp option for
+pixel art that must not blur.
+
+### Audio
+
+```dart
+class Level1 extends SceneStruct {
+  late final AudioAsset music;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    music = descriptor.has(Audios.musicTheme);
+  }
+}
+```
+
+An `AudioClip` carries the file's bytes and the container they are in — Ogg
+Vorbis by default, whatever `goo assets compact` produced. The format is carried
+rather than re-sniffed, because the loader already knows it and a backend would
+otherwise have to guess from a header.
+
+## Asset sources
+
+An `AssetSource` answers "where do these bytes come from", and the pipeline
+swaps it without any game code changing:
+
+| Source | Used when |
+|---|---|
+| `BundleSource` | Loose files, resolved through `rootBundle` — the development build |
+| Pack chunk | A release build; `AssetPack` maps a logical path to its chunk |
+| `MemorySource` | Tests and generated content |
+
+A development build installs no pack, so `BundleSource` resolves a logical path
+straight through `rootBundle` — the shortest path from a changed file to seeing
+it. A release build installs the pack, and the same logical path resolves into a
+compressed, encrypted chunk. **Nothing in your game code differs between the
+two.**
+
+## Custom asset types
+
+A new kind is a payload type, an `AssetInfo`, and an `AssetLoader<T>` registered
+into `AssetLoaders`. `Texture` and `AudioClip` are both implemented that way,
+which is what keeps the registry itself dimension-agnostic: a future renderer
+registers its own kinds into the same pipeline rather than needing its own.
+
+---
+
+## Next
+
+[Physics →](physics.md)

@@ -12,16 +12,16 @@ import 'package:meta/meta.dart';
 /// final back = myCommand.result[call];
 /// ```
 ///
-/// The index is a [CommandBuffer] rather than an `Entity` because that is
+/// The index is a [ParamBuffer] rather than an `Entity` because that is
 /// what a command has instead of a row: a byte range inside a batch. Reading
 /// a field nobody wrote throws rather than reporting zero - see
-/// [CommandBuffer].
+/// [ParamBuffer].
 abstract class ParamPointer<T> {
   /// Reads this field out of [call].
-  T operator [](CommandBuffer call);
+  T operator [](ParamBuffer call);
 
   /// Writes this field into [call].
-  void operator []=(CommandBuffer call, T value);
+  void operator []=(ParamBuffer call, T value);
 }
 
 /// A single command invocation: the bytes one call's parameters and results
@@ -45,12 +45,13 @@ abstract class ParamPointer<T> {
 /// write. That turns two silent bugs into exceptions - reading a parameter
 /// the caller forgot to fill, and reading a *result* the handler never wrote
 /// (which otherwise reads as a plausible zero and gets acted on).
-final class CommandBuffer {
+final class ParamBuffer {
   @internal
-  CommandBuffer(this.batch, this.maskOffset, this.offset, this.fieldCount);
+  ParamBuffer(this.batch, this.maskOffset, this.offset, this.fieldCount);
 
-  /// The batch these bytes live in.
-  final CommandBatch batch;
+  /// The record set these bytes live in. Fixed for life - a handle belongs
+  /// to one batch even when its *position* in that batch is re-pointed.
+  final ParamBatch batch;
 
   /// Where this call's written-mask starts inside [batch].
   ///
@@ -58,13 +59,27 @@ final class CommandBuffer {
   /// boundary with the bytes it describes. Keeping it in a side object would
   /// mean the receiving side could not tell a parameter the sender set from
   /// one it left alone - which is the whole distinction this exists to make.
-  final int maskOffset;
+  int maskOffset;
 
   /// Where this call's payload starts inside [batch].
-  final int offset;
+  int offset;
 
-  /// How many fields the command declared - the size of the written-mask.
-  final int fieldCount;
+  /// How many fields the declaration has - the size of the written-mask.
+  int fieldCount;
+
+  /// Re-points this handle at another record of the same batch.
+  ///
+  /// The three offsets are not `final` for one reason: a batch parsed off the
+  /// wire is parsed **every tick**, and allocating one handle per record per
+  /// tick is exactly the per-frame garbage RULES.md rule 1 exists to prevent.
+  /// So [ParamBatch] keeps its handles and re-points them, and these fields
+  /// are mutable to let it - see [ParamBatch.reset], which is the only thing
+  /// that makes an outstanding handle stale.
+  void _bind(int maskOffset, int offset, int fieldCount) {
+    this.maskOffset = maskOffset;
+    this.offset = offset;
+    this.fieldCount = fieldCount;
+  }
 
   /// Bytes of mask a command with [fieldCount] fields needs.
   static int maskBytesFor(int fieldCount) => (fieldCount + 7) >> 3;
@@ -81,26 +96,230 @@ final class CommandBuffer {
       batch.bytes[maskOffset + (index >> 3)] & (1 << (index & 7)) != 0;
 
   @override
-  String toString() => 'CommandBuffer(@$offset of ${batch.length} bytes)';
+  String toString() => 'ParamBuffer(@$offset of ${batch.length} bytes)';
 }
 
-/// A batch of calls, sent as one message.
+/// Several records - calls, messages - packed back to back in one buffer.
+///
+/// The shared record container, and deliberately *not* command-specific: a
+/// command batch crossing an isolate and a network message batch crossing a
+/// socket are the same bytes with the same self-describing walk, so they are
+/// the same class. `CommandBatch` adds the isolate transport's own facts (an
+/// id, a destination, a reply); `goo_net`'s message batch adds none at all.
 ///
 /// One call is a batch of one - a bare `await damage(...)` makes one - so
 /// there is a single path rather than a special case. Batching matters
 /// because the round trip, not the bytes, is what costs: fifty commands in
 /// one batch is one ring record, one wake-up and one reply, where fifty sends
-/// are fifty of each.
-final class CommandBatch {
-  @internal
-  CommandBatch(this.id, {CommandSender? sender, int initialBytes = 256})
-    // ignore: prefer_initializing_formals
-    : _sender = sender,
-      // ignore: prefer_initializing_formals - _bytes is reassigned on
-      // growth, so it cannot be a final initializing formal.
-      _bytes = Uint8List(initialBytes) {
+/// are fifty of each. Over a socket the same argument reads "one datagram
+/// instead of fifty".
+///
+/// # Why the layout is not negotiable per batch
+///
+/// Every record is `[uint16 index][written-mask][payload]`, and the index is
+/// a position in a declaration order both ends ran. That is what lets the
+/// receiver walk a buffer it did not build without a length prefix per
+/// record - and what makes a *disagreement* about that order detectable
+/// (see [adoptIncoming]) rather than silently misread. Across isolates the
+/// two copies run the same pass, so they cannot disagree; across machines
+/// they can, which is why `goo_net` puts a hash of the declaration order in
+/// its handshake instead of trusting it.
+class ParamBatch {
+  ParamBatch({int initialBytes = defaultBytes})
+    // ignore: prefer_initializing_formals - _bytes is reassigned on
+    // growth, so it cannot be a final initializing formal.
+    : _bytes = Uint8List(initialBytes) {
     _data = ByteData.sublistView(_bytes);
   }
+
+  /// What a batch starts out able to hold, before the first growth.
+  static const int defaultBytes = 256;
+
+  Uint8List _bytes;
+  late ByteData _data;
+
+  /// Where this batch's records start in [_bytes], and where they end.
+  ///
+  /// Zero and "bytes written so far" for a batch being built. A batch
+  /// *parsed* off a wire is a slice of a transport's own receive buffer -
+  /// see [adoptIncoming] - so it does not start at zero and the buffer
+  /// around it is not its own.
+  int _base = 0;
+  int _end = 0;
+
+  /// Record handles, live ones first. Longer than [callCount] once a batch
+  /// has held more records than it holds now - those are pooled, not leaked.
+  final List<ParamBuffer> _calls = <ParamBuffer>[];
+
+  int _callCount = 0;
+
+  /// Bytes this batch's records occupy.
+  int get length => _end - _base;
+
+  /// Where those bytes start in [bytes] - zero unless this batch was parsed
+  /// out of the middle of someone else's buffer.
+  int get start => _base;
+
+  /// How many records this batch holds.
+  int get callCount => _callCount;
+
+  /// The raw bytes, for a transport to put on a wire. Only the first
+  /// [length] of them are this batch's.
+  Uint8List get bytes => _bytes;
+
+  ByteData get data => _data;
+
+  /// The record at [index], `0 <= index < callCount`.
+  ParamBuffer callAt(int index) => _calls[index];
+
+  /// Which declaration the record at [index] is - the two header bytes in
+  /// front of it, which is what routes it back to the command or message that
+  /// wrote it.
+  ///
+  /// A method rather than something every consumer works out from
+  /// `callAt(i).maskOffset - headerBytes`: two places doing that arithmetic
+  /// is two places to get it wrong when the header changes (RULES.md rule
+  /// 10), and the header is this class's business anyway.
+  int indexAt(int index) =>
+      _data.getUint16(_calls[index].maskOffset - _headerBytes, Endian.little);
+
+  /// Empties this batch for reuse, keeping its buffer and its record handles.
+  ///
+  /// **Invalidates every [ParamBuffer] handed out so far** - they are the
+  /// handles being reused. That is right for a transport that fills a batch,
+  /// sends it and forgets it (what `goo_net` does, once per frame per
+  /// channel), and wrong for the command path, where a caller holds a buffer
+  /// across an `await` to read the result out of it afterwards. So commands
+  /// never reset: they take a fresh batch per send and let it go.
+  void reset() {
+    _base = 0;
+    _end = 0;
+    _callCount = 0;
+  }
+
+  /// A handle for the record range just reserved - pooled, see [reset].
+  ParamBuffer _record(int maskAt, int payloadAt, int fieldCount) {
+    if (_callCount < _calls.length) {
+      final reused = _calls[_callCount++];
+      reused._bind(maskAt, payloadAt, fieldCount);
+      return reused;
+    }
+    final made = ParamBuffer(this, maskAt, payloadAt, fieldCount);
+    _calls.add(made);
+    _callCount++;
+    return made;
+  }
+
+  /// Reserves [stride] bytes for one record of the declaration at [index],
+  /// and returns the handle to write it through.
+  ///
+  /// Growth is amortized doubling and copies what is already there - the same
+  /// "grow without losing what it held" pattern `VertexBatch2D` uses - so a
+  /// batch that turns out to be bigger than guessed costs one copy, not a
+  /// dropped call.
+  ParamBuffer append(int index, int stride, int fieldCount) {
+    final start = _end;
+    final maskBytes = ParamBuffer.maskBytesFor(fieldCount);
+    final needed = start + _headerBytes + maskBytes + stride;
+    if (needed > _bytes.length) {
+      var size = _bytes.isEmpty ? 256 : _bytes.length;
+      while (size < needed) {
+        size *= 2;
+      }
+      final grown = Uint8List(size)..setRange(0, _end, _bytes);
+      _bytes = grown;
+      _data = ByteData.sublistView(grown);
+    }
+    _data.setUint16(start, index, Endian.little);
+    // The reserved range is not guaranteed clean - a grown buffer is, but a
+    // reused one is not - and a stale mask byte would report a field as
+    // written that nobody wrote.
+    _bytes.fillRange(start + _headerBytes, needed, 0);
+    _end = needed;
+    return _record(
+      start + _headerBytes,
+      start + _headerBytes + maskBytes,
+      fieldCount,
+    );
+  }
+
+  /// Two bytes of "which declaration is this", ahead of every record. The
+  /// receiving side needs it to know the stride before it can step to the
+  /// next one, so it cannot live anywhere but here.
+  static const int _headerBytes = 2;
+
+  static int get headerBytes => _headerBytes;
+
+  /// Rebuilds the record handles for a batch that arrived as bytes.
+  ///
+  /// The wire format is self-describing given the declaration list: each
+  /// record starts with its index, and the index gives the stride, so the
+  /// walk needs nothing the receiving side does not already have. It is also
+  /// what makes a mismatched declaration list *detectable* rather than
+  /// silently misread - a stride that does not add up runs off the end of the
+  /// buffer and says so.
+  ///
+  /// Reads the records in `[offset, offset + length)` of [wire], defaulting
+  /// to the whole of it.
+  ///
+  /// **Allocation-free on a repeat call**, which is what the network path
+  /// needs: [wire] is adopted rather than copied, the `ByteData` view over it
+  /// is kept when the same buffer comes back (a transport reuses one receive
+  /// buffer for the life of the session, so it always does), and the record
+  /// handles come from the pool [reset] maintains. A batch parsed this way is
+  /// a *view* - it is only valid until the transport reuses those bytes,
+  /// which is why every message handler reads what it needs inside the call
+  /// rather than keeping the record.
+  void adoptIncoming(
+    Uint8List wire,
+    ParamLayouts layouts, [
+    int offset = 0,
+    int? length,
+  ]) {
+    if (!identical(wire, _bytes)) {
+      _bytes = wire;
+      _data = ByteData.sublistView(wire);
+    }
+    _base = offset;
+    _end = offset + (length ?? wire.length - offset);
+    _callCount = 0;
+    var at = _base;
+    while (at < _end) {
+      final index = _data.getUint16(at, Endian.little);
+      final fieldCount = layouts.fieldCountOf(index);
+      final maskBytes = ParamBuffer.maskBytesFor(fieldCount);
+      final maskAt = at + _headerBytes;
+      final payloadAt = maskAt + maskBytes;
+      final end = payloadAt + layouts.strideOf(index);
+      if (end > _end) {
+        throw StateError(
+          'a param batch ran off its own end: record at byte ${at - _base} '
+          'claims declaration #$index, whose record is ${end - at} bytes, and '
+          'only ${_end - at} remain. The two ends disagree about the '
+          'declaration list - across isolates that means describeCommands did '
+          'not run identically on both copies, and across a network it means '
+          'the two peers are not running the same build.',
+        );
+      }
+      _record(maskAt, payloadAt, fieldCount);
+      at = end;
+    }
+  }
+}
+
+/// A batch of command calls, sent to the other isolate as one message.
+///
+/// [ParamBatch] holds the records; this adds what the *isolate* transport
+/// needs and a network one does not: an id to correlate the reply, a
+/// destination every call in the batch has to agree on, and the reply itself.
+final class CommandBatch extends ParamBatch {
+  @internal
+  CommandBatch(
+    this.id, {
+    CommandSender? sender,
+    super.initialBytes = ParamBatch.defaultBytes,
+    // ignore: prefer_initializing_formals
+  }) : _sender = sender;
 
   /// Correlates a reply with the send that asked for it.
   ///
@@ -165,116 +384,10 @@ final class CommandBatch {
     return sender.send(this).then((_) => CommandResults._(this));
   }
 
-  Uint8List _bytes;
-  late ByteData _data;
-  int _length = 0;
-
-  final List<CommandBuffer> _calls = <CommandBuffer>[];
-
-  /// Bytes used so far.
-  int get length => _length;
-
-  /// How many calls this batch holds.
-  int get callCount => _calls.length;
-
-  @internal
-  ByteData get data => _data;
-
-  @internal
-  Uint8List get bytes => _bytes;
-
-  @internal
-  CommandBuffer callAt(int index) => _calls[index];
-
-  /// Reserves [stride] bytes for one call of the command at [commandIndex],
-  /// and returns the handle to write it through.
-  ///
-  /// Growth is amortized doubling and copies what is already there - the same
-  /// "grow without losing what it held" pattern `VertexBatch2D` uses - so a
-  /// batch that turns out to be bigger than guessed costs one copy, not a
-  /// dropped call.
-  @internal
-  CommandBuffer append(int commandIndex, int stride, int fieldCount) {
-    final start = _length;
-    final maskBytes = CommandBuffer.maskBytesFor(fieldCount);
-    final needed = start + _headerBytes + maskBytes + stride;
-    if (needed > _bytes.length) {
-      var size = _bytes.isEmpty ? 256 : _bytes.length;
-      while (size < needed) {
-        size *= 2;
-      }
-      final grown = Uint8List(size)..setRange(0, _length, _bytes);
-      _bytes = grown;
-      _data = ByteData.sublistView(grown);
-    }
-    _data.setUint16(start, commandIndex, Endian.little);
-    // The reserved range is not guaranteed clean - a grown buffer is, but a
-    // reused one is not - and a stale mask byte would report a field as
-    // written that nobody wrote.
-    _bytes.fillRange(start + _headerBytes, needed, 0);
-    _length = needed;
-    final call = CommandBuffer(
-      this,
-      start + _headerBytes,
-      start + _headerBytes + maskBytes,
-      fieldCount,
-    );
-    _calls.add(call);
-    return call;
-  }
-
-  /// Two bytes of "which command is this", ahead of every record. The
-  /// receiving side needs it to know the stride before it can step to the
-  /// next one, so it cannot live anywhere but here.
-  static const int _headerBytes = 2;
-
-  @internal
-  static int get headerBytes => _headerBytes;
-
-  /// Copies a reply's bytes back over this batch's own, so the
-  /// [CommandBuffer]s the caller is still holding read the results.
-  ///
-  /// Same length by construction - a reply is the same records with the
-  /// result fields filled in - so this is a memcpy, not a re-parse.
-  /// Rebuilds the call handles for a batch that arrived as bytes.
-  ///
-  /// The wire format is self-describing given the command list: each record
-  /// starts with its command index, and the index gives the stride, so the
-  /// walk needs nothing the receiving side does not already have. It is also
-  /// what makes a mismatched command list *detectable* rather than silently
-  /// misread - a stride that does not add up runs off the end of the buffer
-  /// and says so.
-  @internal
-  void adoptIncoming(Uint8List wire, CommandLayouts layouts) {
-    _bytes = wire;
-    _data = ByteData.sublistView(wire);
-    _length = wire.length;
-    _calls.clear();
-    var at = 0;
-    while (at < _length) {
-      final index = _data.getUint16(at, Endian.little);
-      final fieldCount = layouts.fieldCountOf(index);
-      final maskBytes = CommandBuffer.maskBytesFor(fieldCount);
-      final maskAt = at + _headerBytes;
-      final payloadAt = maskAt + maskBytes;
-      final end = payloadAt + layouts.strideOf(index);
-      if (end > _length) {
-        throw StateError(
-          'a command batch ran off its own end: record at byte $at claims '
-          'command #$index, whose record is ${end - at} bytes, and only '
-          '${_length - at} remain. The two isolate copies disagree about the '
-          'command list.',
-        );
-      }
-      _calls.add(CommandBuffer(this, maskAt, payloadAt, fieldCount));
-      at = end;
-    }
-  }
-
   @internal
   void adoptReply(Uint8List reply) {
     // Same length and same layout by construction - a reply is these records
-    // with the handler's writes added - so the CommandBuffers the caller is
+    // with the handler's writes added - so the ParamBuffers the caller is
     // still holding keep pointing at the right offsets, and the masks that
     // come back are the ones the handler set.
     _bytes.setRange(0, reply.length, reply);
@@ -315,18 +428,19 @@ abstract interface class CommandSender {
   Future<void> send(CommandBatch batch);
 }
 
-/// What a batch needs to know about the commands in it to walk received
+/// What a batch needs to know about the declarations in it to walk received
 /// bytes: how wide each record is, and how many fields its mask covers.
 ///
-/// An interface rather than a direct reference to the command registry, only
-/// because the registry lives a layer up and pointing back down at it would
-/// be a cycle. It has one implementation.
-@internal
-abstract interface class CommandLayouts {
-  /// Payload bytes for the command at [index], excluding header and mask.
+/// An interface rather than a direct reference to the registry that owns the
+/// declarations, because that registry lives a layer up and pointing back
+/// down at it would be a cycle. `CommandRegistry` implements it for
+/// commands; `goo_net`'s message registry implements it for messages.
+abstract interface class ParamLayouts {
+  /// Payload bytes for the declaration at [index], excluding header and
+  /// mask.
   int strideOf(int index);
 
-  /// How many fields the command at [index] declared.
+  /// How many fields the declaration at [index] has.
   int fieldCountOf(int index);
 }
 
@@ -362,11 +476,16 @@ abstract class ParamDescriptor {
 /// Builds one command's layout, then serves as the accessor for it.
 ///
 /// Sealed off behind [ParamDescriptor] for the same reason
-/// `ArchetypeDataDescriptor` is: the descriptor is alive only during the
-/// command's single `describeParams` pass, while the pointers it hands back
-/// live as long as the command does.
-@internal
-final class CommandParamDescriptor implements ParamDescriptor {
+/// `ArchetypeDataDescriptor` is: the descriptor is alive only during the one
+/// `describeParams` pass, while the pointers it hands back live as long as
+/// the thing that declared them does.
+///
+/// Public because it is not command machinery - it is *record* machinery,
+/// and a network message declares its fields with the identical vocabulary
+/// (see [ParamBatch]). One packing rule, one implementation of it: two would
+/// be two mental models for one idea, and RULES.md rule 10 is about exactly
+/// that.
+final class ParamLayout implements ParamDescriptor {
   int _bitCursor = 0;
   int _fieldCount = 0;
   bool _sealed = false;
@@ -466,7 +585,7 @@ abstract class _Pointer<T> implements ParamPointer<T> {
 
   final int index;
 
-  void _requireWritten(CommandBuffer call) {
+  void _requireWritten(ParamBuffer call) {
     if (call._isWritten(index)) return;
     throw StateError(
       'field #$index of this command has not been written, so there is '
@@ -486,7 +605,7 @@ final class _IntPointer extends _Pointer<int> {
   final bool signed;
 
   @override
-  int operator [](CommandBuffer call) {
+  int operator [](ParamBuffer call) {
     _requireWritten(call);
     final at = call.offset + byte;
     final data = call._data;
@@ -502,7 +621,7 @@ final class _IntPointer extends _Pointer<int> {
   }
 
   @override
-  void operator []=(CommandBuffer call, int value) {
+  void operator []=(ParamBuffer call, int value) {
     final at = call.offset + byte;
     final data = call._data;
     switch ((bitWidth, signed)) {
@@ -535,14 +654,14 @@ final class _SubBytePointer extends _Pointer<int> {
   int get _mask => ((1 << bitWidth) - 1) << shift;
 
   @override
-  int operator [](CommandBuffer call) {
+  int operator [](ParamBuffer call) {
     _requireWritten(call);
     final raw = call._data.getUint8(call.offset + byte);
     return (raw & _mask) >> shift;
   }
 
   @override
-  void operator []=(CommandBuffer call, int value) {
+  void operator []=(ParamBuffer call, int value) {
     final at = call.offset + byte;
     final data = call._data;
     // Read-modify-write of the byte, not of the field: neighbours share it.
@@ -559,7 +678,7 @@ final class _FloatPointer extends _Pointer<double> {
   final int bitWidth;
 
   @override
-  double operator [](CommandBuffer call) {
+  double operator [](ParamBuffer call) {
     _requireWritten(call);
     final at = call.offset + byte;
     return bitWidth == 32
@@ -568,7 +687,7 @@ final class _FloatPointer extends _Pointer<double> {
   }
 
   @override
-  void operator []=(CommandBuffer call, double value) {
+  void operator []=(ParamBuffer call, double value) {
     final at = call.offset + byte;
     if (bitWidth == 32) {
       call._data.setFloat32(at, value, Endian.little);
@@ -592,7 +711,7 @@ final class _StringPointer extends _Pointer<String> {
   final Encoding encoding;
 
   @override
-  String operator [](CommandBuffer call) {
+  String operator [](ParamBuffer call) {
     _requireWritten(call);
     final at = call.offset + lengthByte;
     final length = call._data.getUint16(at, Endian.little);
@@ -603,7 +722,7 @@ final class _StringPointer extends _Pointer<String> {
   }
 
   @override
-  void operator []=(CommandBuffer call, String value) {
+  void operator []=(ParamBuffer call, String value) {
     final encoded = encoding.encode(value);
     if (encoded.length > maxBytes) {
       throw ArgumentError.value(

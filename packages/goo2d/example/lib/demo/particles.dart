@@ -31,10 +31,10 @@ class SetAblations extends SinkCommand<int> {
   }
 
   @override
-  void bufferFromParams(CommandBuffer call, int params) => flags[call] = params;
+  void bufferFromParams(ParamBuffer call, int params) => flags[call] = params;
 
   @override
-  int paramsFromBuffer(CommandBuffer call) => flags[call];
+  int paramsFromBuffer(ParamBuffer call) => flags[call];
 }
 
 /// Packs HSV to the ARGB integer `Sprite.color` stores.

@@ -15,10 +15,10 @@ class SetPopulation extends SinkCommand<int> {
   }
 
   @override
-  void bufferFromParams(CommandBuffer call, int params) => count[call] = params;
+  void bufferFromParams(ParamBuffer call, int params) => count[call] = params;
 
   @override
-  int paramsFromBuffer(CommandBuffer call) => count[call];
+  int paramsFromBuffer(ParamBuffer call) => count[call];
 }
 
 /// The half of a demo case that lives on the **main** isolate: the channels

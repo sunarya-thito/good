@@ -9,7 +9,7 @@
 ///
 /// Opt-in packages stay separate on purpose, because they carry weight not
 /// every game wants: `goo2d_physics_box2d` (native Box2D) and
-/// `goo_net_steam`/`goo_net_p2p` (networking backends). Those you add
+/// `goo_net`/`goo_net_p2p` (networking). Those you add
 /// explicitly and declare their systems yourself.
 library;
 

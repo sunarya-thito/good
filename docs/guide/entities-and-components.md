@@ -1,0 +1,262 @@
+# Entities and components
+
+!!! abstract "Layer: kernel (`goo`)"
+
+This is the page to read slowly. goo's storage model is the thing most unlike
+an object-oriented engine, and everything else follows from it.
+
+## An `EntityStruct` is a layout, not an object
+
+```dart
+class Bullet extends EntityStruct with Transform2D, Renderable2D {
+  late final DataPointer<double> velocityX;
+  late final DataPointer<double> velocityY;
+  late final DataPointer<double> life;
+
+  @override
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    velocityX = data.hasFloat64();
+    velocityY = data.hasFloat64();
+    life = data.hasFloat64(3.0);   // default for every new row
+  }
+}
+```
+
+There is **one `Bullet` instance** in your whole game, no matter how many
+bullets exist. It is the *declaration*: it says that a bullet's row has three
+doubles beyond what its mixins contribute, and it hands you a handle to each
+column.
+
+`velocityX` is a **column**. `Entity` is the **row index**:
+
+```dart
+velocityX[entity] = 12.0;          // write row `entity`, column velocityX
+final v = velocityX[entity];       // read it back (published snapshot)
+```
+
+!!! danger "Never store per-entity state as a Dart field"
+    ```dart
+    class Bullet extends EntityStruct {
+      double speed = 0;   // WRONG — one value shared by every bullet
+    }
+    ```
+    The prefab is shared. A plain field is a global. Per-entity state is always
+    a `DataPointer`.
+
+    A plain field *is* fine for declare-time constants and for scratch state a
+    system owns — the example demos use `int _spawned = 0` on a prefab as a
+    spawn counter, which is per-prefab and intentional.
+
+### Why this shape
+
+Rows of the same archetype are contiguous in one native page, so a system
+walking every bullet's `velocityX` walks memory in order — the cache behaviour
+struct-of-arrays exists for. And because a column is an `int` address plus an
+offset rather than a `dart:ffi` `Pointer` object, indexing it allocates nothing.
+
+## `Entity`
+
+An `extension type` over `int`, packing three things:
+
+```dart
+extension type const Entity(int value) implements int {
+  int get archetypeId;
+  int get pageIndex;
+  // + row offset
+}
+```
+
+Passing one around costs an `int`. It is also self-describing — given only the
+integer, the engine finds the archetype, the page, and the row.
+
+```dart
+final transform = entity.get<Transform2D>();      // throws if absent
+final child = entity.tryGet<Child>();             // null if absent
+entity.destroy();                                 // removes it and its subtree
+```
+
+`get<T>()` resolves the *prefab* that declared the archetype, which is why it
+returns the component with all its columns bound to that archetype's layout.
+
+!!! warning "Resolve components per group, not per entity"
+    `entity.get<T>()` is a registry lookup. In a loop over thousands of
+    entities, resolve once per group and index by entity inside:
+
+    ```dart
+    for (final group in query.groups()) {
+      final transform = group.get<Transform2D>();   // once per archetype
+      for (final entity in group) {
+        transform.transformOffsetX[entity] += 1;    // just an indexed write
+      }
+    }
+    ```
+
+## Components
+
+A `Component` is a mixin on an `EntityStruct`. It contributes two things: a
+**queryable type** and some **columns**.
+
+```dart
+mixin Health on Component {
+  late final DataPointer<int> hp;
+  late final DataPointer<int> maxHp;
+
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<Health>();          // (1)!
+  }
+
+  @override
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    hp = data.hasInt32(100);
+    maxHp = data.hasInt32(100);
+  }
+}
+```
+
+1. This is what makes `withAll(Health)` match. A mixin that declares columns but
+   not its type contributes storage without being queryable.
+
+Mix it in, and the archetype gains those columns:
+
+```dart
+class Enemy extends EntityStruct with Transform2D, Renderable2D, Health {}
+```
+
+Both `describeType` and `describeStruct` must call `super` — each mixin in the
+chain contributes, and skipping `super` silently drops everything below it.
+
+### Multi-components
+
+Some components are declared through their own descriptor rather than by
+contributing fields directly — `Renderable2D` (sprites) and `Collider2D`
+(shapes) are `on MultiComponent`, which lets one entity declare several sprites
+or several collider shapes. You use them the same way; the difference is the
+extra `describeSprites`/`describeCollider` pass.
+
+## Field kinds
+
+`DataDescriptor` offers a wide set because packing matters — a flag that takes
+one bit instead of eight is 7 bits per entity per frame of bandwidth saved.
+
+| Call | Column type | Notes |
+|---|---|---|
+| `hasBool()` | `bool` | one bit |
+| `hasUint1/2/4()`, `hasInt1/2/4()` | `int` | sub-byte, for small enums and counters |
+| `hasUint8/16/32/64()`, `hasInt8/16/32/64()` | `int` | |
+| `hasFloat32()`, `hasFloat64()` | `double` | `Transform2D` uses float64 |
+| `hasPacked<T>(table, [default])` | `T` | a value with an `int` representation |
+| `optPacked<T>(table, [default])` | `T?` | nullable packed — how `Sprite.texture` and `Camera.view` are stored |
+| `hasHeapObject<T>()` / `optHeapObject<T>()` | `T` / `T?` | an arbitrary Dart object, by registry address |
+| `has*Array(length, [default])` | `DataArrayPointer<T>` | fixed-length inline array |
+
+Every one takes an optional **default**, which is what a freshly allocated row
+starts at:
+
+```dart
+scale = data.hasFloat64(1);   // not 0 — a zero scale is a degenerate transform
+```
+
+!!! tip "Choose the default carefully"
+    `Transform2D` defaults scale to `1` and offset/rotation to `0`, because `0`
+    *is* the identity for the latter two and is a collapse-to-nothing for the
+    first. A wrong default shows up as an entity that is invisible or at the
+    origin with nothing anywhere saying why.
+
+### Heap objects
+
+`hasHeapObject<T>()` stores an arbitrary Dart object by address in a registry.
+It is the unconstrained escape hatch, and it does not cross the isolate
+boundary meaningfully — the address means something only in the isolate that
+registered it. Prefer `hasPacked` for anything the other side has to read.
+
+## An archetype never changes
+
+There is **no `addComponent` and no `removeComponent`**. A prefab's shape is
+fixed when it is declared, and every entity of that prefab keeps that shape for
+its whole life.
+
+```dart
+entity.addComponent(Shield());     // does not exist, and will not
+```
+
+Instead, declare everything the entity could ever need and **toggle** the parts
+that come and go:
+
+```dart
+player.sprite.visible[entity] = false;    // stop drawing it
+player.hitbox.enable[entity] = false;     // stop colliding
+player.shielded[entity] = true;           // your own bool field
+```
+
+If you are arriving from Unity, Godot or Flame, read
+[Coming from Unity, Godot or Flutter](mental-model.md) — it is the full
+translation table and explains why the engine is strict about this.
+
+## Archetypes
+
+The set of components an `EntityStruct` mixes in *is* its archetype. Two prefabs
+with the same components are still two archetypes — identity comes from the
+declaration, not from the component set — and each gets its own contiguous
+storage.
+
+Archetype ids are process-global and assigned in first-registration order, which
+is why [declaration order must be stable](architecture.md#why-declarations-run-twice)
+and why scenes are declared once and loaded many times rather than registered
+per load.
+
+## Lifecycle hooks
+
+Mix in `EntityLifecycleListener` to run code when a row is created:
+
+```dart
+class Bullet extends EntityStruct
+    with Transform2D, Renderable2D, EntityLifecycleListener {
+  @override
+  void onEntityMounted(Entity entity) {
+    super.onEntityMounted(entity);
+    life[entity] = 3.0;
+    velocityX[entity] = 400;
+  }
+}
+```
+
+!!! warning "An entity must be *finished* when it is mounted"
+    Not finished by the first system pass that happens to see it. If your update
+    loop derives a transform from an angle, write that transform at mount too,
+    with the same expression. Leaving it at the default for one frame is exactly
+    how an entity appears to snap or flash at the origin on its second frame.
+
+Related mixins: `EntitySpawnListener` (a broad "something spawned" signal, which
+is what the physics system listens to), `SceneLifecycleListener`,
+`SceneLoadListener`, `GameLifecycleListener`, `GameSystemLifecycleListener`.
+
+## Same-tick reads
+
+An ordinary read returns the **last published snapshot**, not what you wrote a
+moment ago in the same tick. That is correct and deliberate — see
+[the tick phases](architecture.md#phases-within-one-advance) — but it has one
+sharp consequence worth knowing:
+
+```dart
+// Three children added in one tick.
+for (var i = 0; i < 3; i++) {
+  scene.addEntity(limb, parent: body);
+}
+```
+
+`Parent.addChild` reads the tail of the child chain to append to it. Three
+`addChild` calls in one tick would each read the same stale tail, orphaning all
+but the last. The hierarchy code reads the pending slot for exactly this reason.
+If you write a linked structure across component rows yourself, you will meet
+the same problem — and the fix is placement (a later phase), not a second read
+method.
+
+---
+
+## Next
+
+[Scenes and prefabs →](scenes.md)

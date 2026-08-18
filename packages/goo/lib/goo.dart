@@ -39,12 +39,23 @@ export 'src/command/command.dart'
         SignalCommand,
         SinkCommand,
         SupplierCommand;
+// The record layer under both of them. `ParamDescriptor`/`ParamPointer` is
+// how a command declares its fields, `ParamBatch`/`ParamBuffer` is what those
+// fields are written into, and `ParamLayout`/`ParamLayouts` is the packing
+// rule itself. Exported rather than kept internal because `goo_net` builds
+// its network messages on the *same* record layer rather than a parallel one
+// - a message crossing a socket and a command crossing an isolate are the
+// same bytes, and one packing rule with two implementations is the drift
+// RULES.md rule 10 warns about.
 export 'src/command/param.dart'
     show
         CommandBatch,
-        CommandBuffer,
         CommandResults,
+        ParamBatch,
+        ParamBuffer,
         ParamDescriptor,
+        ParamLayout,
+        ParamLayouts,
         ParamPointer;
 export 'src/data.dart';
 export 'src/data/hierarchy.dart';

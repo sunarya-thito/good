@@ -251,11 +251,11 @@ class SpawnEnemy extends SupplierCommand<Entity> {
   }
 
   @override
-  void bufferFromResult(CommandBuffer call, Entity result) =>
+  void bufferFromResult(ParamBuffer call, Entity result) =>
       spawned[call] = result.value;
 
   @override
-  Entity resultFromBuffer(CommandBuffer call) => Entity(spawned[call]);
+  Entity resultFromBuffer(ParamBuffer call) => Entity(spawned[call]);
 }
 
 /// The simulation half. Everything that mutates the world lives here.

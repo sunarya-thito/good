@@ -1,0 +1,116 @@
+site_name: goo
+site_description: >-
+  A data-oriented, allocation-averse game engine family for Flutter and Dart:
+  the dimension-agnostic goo kernel and the renderers built on it.
+site_url: https://sunarya-thito.github.io/goo/
+repo_url: https://github.com/sunarya-thito/goo
+repo_name: sunarya-thito/goo
+edit_uri: edit/master/docs/
+copyright: Built with goo.
+
+docs_dir: docs
+site_dir: site
+
+# The CI pin lives in docs/ next to what it builds, but it is not a page.
+exclude_docs: |
+  requirements.txt
+
+theme:
+  name: material
+  language: en
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+    - search.highlight
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Follow system theme
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - getting-started/index.md
+      - Installation: getting-started/installation.md
+      - Create a project: getting-started/create-a-project.md
+      - Your first game: getting-started/your-first-game.md
+  - Developing a game:
+      - guide/index.md
+      - Coming from Unity/Godot: guide/mental-model.md
+      - Architecture: guide/architecture.md
+      - Entities and components: guide/entities-and-components.md
+      - Scenes and prefabs: guide/scenes.md
+      - Systems and queries: guide/systems-and-queries.md
+      - Transforms and hierarchy: guide/transforms-and-hierarchy.md
+      - Rendering and cameras: guide/rendering.md
+      - Input: guide/input.md
+      - Assets: guide/assets.md
+      - Physics: guide/physics.md
+      - Talking to Flutter: guide/flutter-bridge.md
+      - Coroutines and animation: guide/coroutines-and-animation.md
+      - Performance rules: guide/performance.md
+  - Exporting a game:
+      - exporting/index.md
+      - The asset pipeline: exporting/asset-pipeline.md
+      - Building for a platform: exporting/building.md
+      - Troubleshooting: exporting/troubleshooting.md
+  - The goo family:
+      - packages/index.md
+      - Dimensions - 2D, 3D: packages/dimensions.md
+      - Networking (planned): packages/networking.md
+  - Reference:
+      - CLI: reference/cli.md
+      - Hot-path rules: reference/rules.md
+      - Roadmap and status: reference/roadmap.md

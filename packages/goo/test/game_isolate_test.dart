@@ -167,11 +167,11 @@ class _SpawnMover extends SupplierCommand<Entity> {
   }
 
   @override
-  void bufferFromResult(CommandBuffer call, Entity result) =>
+  void bufferFromResult(ParamBuffer call, Entity result) =>
       spawned[call] = result.value;
 
   @override
-  Entity resultFromBuffer(CommandBuffer call) => Entity(spawned[call]);
+  Entity resultFromBuffer(ParamBuffer call) => Entity(spawned[call]);
 }
 
 /// "Pause the mover" - the prescribed route for a main-triggered system
@@ -189,11 +189,11 @@ class _PauseMover extends SinkCommand<bool> {
   }
 
   @override
-  void bufferFromParams(CommandBuffer call, bool params) =>
+  void bufferFromParams(ParamBuffer call, bool params) =>
       paused[call] = params ? 1 : 0;
 
   @override
-  bool paramsFromBuffer(CommandBuffer call) => paused[call] != 0;
+  bool paramsFromBuffer(ParamBuffer call) => paused[call] != 0;
 }
 
 class _IsolateState extends GameState<_IsolateGame> {

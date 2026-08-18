@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
 
@@ -89,11 +88,7 @@ abstract class GameCommandBase {
   }
 
   @internal
-  void bind(
-    int index,
-    CommandParamDescriptor descriptor,
-    CommandSender sender,
-  ) {
+  void bind(int index, ParamLayout descriptor, CommandSender sender) {
     _index = index;
     describeParams(descriptor);
     descriptor.seal();
@@ -118,7 +113,7 @@ abstract class GameCommandBase {
   /// and it is what lets a handler be the plain function the command claims
   /// to be, with no buffer in its signature.
   @internal
-  void invoke(CommandBuffer call);
+  void invoke(ParamBuffer call);
 
   /// Reserves one call's bytes, in [batch] or in a batch of its own.
   ///
@@ -132,7 +127,7 @@ abstract class GameCommandBase {
   /// declared, and does anything anywhere handle it" is a question about the
   /// *command*, and answering it only on the batch-less path would mean an
   /// undeclared command sailed through as long as it was batched.
-  CommandBuffer _reserve([CommandBatch? batch]) {
+  ParamBuffer _reserve([CommandBatch? batch]) {
     final sender = _requireSender();
     final target = batch ?? sender.newBatch();
     // Where this call is going, decided by where its handler was registered -
@@ -180,20 +175,20 @@ abstract class GameCommandBase {
 ///   }
 ///
 ///   @override
-///   void bufferFromParams(CommandBuffer c, ({int amount, bool crit}) p) {
+///   void bufferFromParams(ParamBuffer c, ({int amount, bool crit}) p) {
 ///     amount[c] = p.amount;
 ///     crit[c] = p.crit ? 1 : 0;
 ///   }
 ///
 ///   @override
-///   ({int amount, bool crit}) paramsFromBuffer(CommandBuffer c) =>
+///   ({int amount, bool crit}) paramsFromBuffer(ParamBuffer c) =>
 ///       (amount: amount[c], crit: crit[c] == 1);
 ///
 ///   @override
-///   void bufferFromResult(CommandBuffer c, int r) => dealt[c] = r;
+///   void bufferFromResult(ParamBuffer c, int r) => dealt[c] = r;
 ///
 ///   @override
-///   int resultFromBuffer(CommandBuffer c) => dealt[c];
+///   int resultFromBuffer(ParamBuffer c) => dealt[c];
 /// }
 /// ```
 ///
@@ -214,16 +209,16 @@ abstract class GameCommandBase {
 /// ```
 abstract class GameCommand<P, R> extends GameCommandBase {
   /// Writes [params] into the record. One line per field.
-  void bufferFromParams(CommandBuffer call, P params);
+  void bufferFromParams(ParamBuffer call, P params);
 
   /// Reads the parameters back out - what the handler is handed.
-  P paramsFromBuffer(CommandBuffer call);
+  P paramsFromBuffer(ParamBuffer call);
 
   /// Writes what the handler returned into the record.
-  void bufferFromResult(CommandBuffer call, R result);
+  void bufferFromResult(ParamBuffer call, R result);
 
   /// Reads the result out of a call whose batch has been sent.
-  R resultFromBuffer(CommandBuffer call);
+  R resultFromBuffer(ParamBuffer call);
 
   /// Reserves a call and writes [params] into it, without sending. Provided.
   ///
@@ -237,22 +232,28 @@ abstract class GameCommand<P, R> extends GameCommandBase {
   /// final results = await batch.send();
   /// print(a[results]);
   /// ```
-  CommandBuffer execute(P params, [CommandBatch? batch]) {
+  ParamBuffer execute(P params, [CommandBatch? batch]) {
     final call = _reserve(batch);
     bufferFromParams(call, params);
     return call;
   }
 
   /// Sends one call and waits for its result. Provided, not overridden.
+  ///
+  /// The batch is made here rather than reached through `buffer.batch`,
+  /// because a [ParamBuffer] belongs to the shared record layer and that
+  /// layer has no transport in it - a batch of *records* is a buffer, and
+  /// only a [CommandBatch] is a channel. Same shape in all four commands.
   Future<R> call(P params) async {
-    final buffer = execute(params);
-    await buffer.batch.send();
+    final batch = _requireSender().newBatch();
+    final buffer = execute(params, batch);
+    await batch.send();
     return resultFromBuffer(buffer);
   }
 
   @override
   @internal
-  void invoke(CommandBuffer call) => bufferFromResult(
+  void invoke(ParamBuffer call) => bufferFromResult(
     call,
     (handler as R Function(P))(paramsFromBuffer(call)),
   );
@@ -264,23 +265,24 @@ abstract class GameCommand<P, R> extends GameCommandBase {
 /// platform capability: anything the asking isolate cannot see for itself.
 abstract class SupplierCommand<R> extends GameCommandBase {
   /// Writes what the handler returned into the record.
-  void bufferFromResult(CommandBuffer call, R result);
+  void bufferFromResult(ParamBuffer call, R result);
 
   /// Reads the result out of a call whose batch has been sent.
-  R resultFromBuffer(CommandBuffer call);
+  R resultFromBuffer(ParamBuffer call);
 
   /// Nothing to write, so there is nothing to override either.
-  CommandBuffer execute([CommandBatch? batch]) => _reserve(batch);
+  ParamBuffer execute([CommandBatch? batch]) => _reserve(batch);
 
   Future<R> call() async {
-    final buffer = execute();
-    await buffer.batch.send();
+    final batch = _requireSender().newBatch();
+    final buffer = execute(batch);
+    await batch.send();
     return resultFromBuffer(buffer);
   }
 
   @override
   @internal
-  void invoke(CommandBuffer call) =>
+  void invoke(ParamBuffer call) =>
       bufferFromResult(call, (handler as R Function())());
 }
 
@@ -292,23 +294,27 @@ abstract class SupplierCommand<R> extends GameCommandBase {
 /// no second.
 abstract class SinkCommand<P> extends GameCommandBase {
   /// Writes [params] into the record. One line per field.
-  void bufferFromParams(CommandBuffer call, P params);
+  void bufferFromParams(ParamBuffer call, P params);
 
   /// Reads the parameters back out - what the handler is handed.
-  P paramsFromBuffer(CommandBuffer call);
+  P paramsFromBuffer(ParamBuffer call);
 
   /// Reserves a call and writes [params] into it, without sending. Provided.
-  CommandBuffer execute(P params, [CommandBatch? batch]) {
+  ParamBuffer execute(P params, [CommandBatch? batch]) {
     final call = _reserve(batch);
     bufferFromParams(call, params);
     return call;
   }
 
-  Future<void> call(P params) => execute(params).batch.send();
+  Future<void> call(P params) {
+    final batch = _requireSender().newBatch();
+    execute(params, batch);
+    return batch.send();
+  }
 
   @override
   @internal
-  void invoke(CommandBuffer call) =>
+  void invoke(ParamBuffer call) =>
       (handler as void Function(P))(paramsFromBuffer(call));
 }
 
@@ -322,13 +328,17 @@ abstract class SignalCommand extends GameCommandBase {
   @override
   void describeParams(ParamDescriptor descriptor) {}
 
-  CommandBuffer execute([CommandBatch? batch]) => _reserve(batch);
+  ParamBuffer execute([CommandBatch? batch]) => _reserve(batch);
 
-  Future<void> call() => execute().batch.send();
+  Future<void> call() {
+    final batch = _requireSender().newBatch();
+    execute(batch);
+    return batch.send();
+  }
 
   @override
   @internal
-  void invoke(CommandBuffer call) => (handler as void Function())();
+  void invoke(ParamBuffer call) => (handler as void Function())();
 }
 
 /// A place in a batch, and the type of what will come back from it.
@@ -348,8 +358,8 @@ abstract class SignalCommand extends GameCommandBase {
 final class CommandKey<R> {
   const CommandKey._(this._command, this._call);
 
-  final R Function(CommandBuffer) _command;
-  final CommandBuffer _call;
+  final R Function(ParamBuffer) _command;
+  final ParamBuffer _call;
 
   /// This call's result, out of [results].
   R operator [](CommandResults results) {
@@ -400,7 +410,7 @@ extension CommandBatchCalls on CommandBatch {
 ///     descriptor.hasHandler(damage, _onDamage);
 ///   }
 ///
-///   void _onDamage(Damage c, CommandBuffer call) {
+///   void _onDamage(Damage c, ParamBuffer call) {
 ///     c.dealt[call] = c.amount[call] * 2;
 ///   }
 /// }
@@ -446,7 +456,7 @@ abstract class CommandDescriptor {
 
 /// The registry behind [CommandDescriptor], owned by `Game`.
 @internal
-final class CommandRegistry implements CommandLayouts {
+final class CommandRegistry implements ParamLayouts {
   CommandRegistry(this.sender, {required this.simulating, this.inline = false});
 
   final CommandSender sender;
@@ -524,12 +534,7 @@ final class CommandRegistry implements CommandLayouts {
   /// and a game that spawns a unit and then orders it around relies on that.
   void dispatch(CommandBatch batch) {
     for (var i = 0; i < batch.callCount; i++) {
-      final call = batch.callAt(i);
-      final index = batch.data.getUint16(
-        call.maskOffset - CommandBatch.headerBytes,
-        Endian.little,
-      );
-      _requireAt(index).invoke(call);
+      _requireAt(batch.indexAt(i)).invoke(batch.callAt(i));
     }
   }
 
@@ -545,7 +550,7 @@ final class CommandRegistry implements CommandLayouts {
         );
       }
     }
-    command.bind(_commands.length, CommandParamDescriptor(), sender);
+    command.bind(_commands.length, ParamLayout(), sender);
     _commands.add(command);
     return command;
   }

@@ -1,18 +1,33 @@
 name: goo_net
 description: >
-  Transport-agnostic networking interfaces for the goo engine family
-  (NetTransport/NetPeer/NetConnection/NetSession/Lobby). Dimension-agnostic -
-  shared by goo2d and, in the future, goo3d. Phase 3 of the project root
-  plan; this package is currently a placeholder.
+  Networking for the goo engine family: declared messages with the same
+  shapes, descriptor pass and record layer as goo's commands, plus the
+  transport contract a backend implements (NetTransport/NetSession/
+  NetConnection). Dimension-agnostic - shared by goo2d and, in the future,
+  goo3d. Add a backend (goo_net_p2p) beside this for a game that actually
+  reaches another machine; this package alone gives you a loopback one, which
+  is what tests run on.
 version: 0.0.1
 publish_to: none
 
 environment:
-  sdk: ^3.12.1
+  sdk: ^3.13.0
+  flutter: ">=3.47.0"
 
 dependencies:
+  # The conformance suite in lib/testing.dart is library code, not test code:
+  # backends live in their own packages and a test directory is not importable
+  # across packages, so the suite ships where a backend can reach it. That is
+  # what puts flutter_test here rather than below.
+  flutter_test:
+    sdk: flutter
+  # A network message and a command are the same record on two different
+  # wires, so the layout, the descriptor vocabulary and the pointer types all
+  # come from the kernel rather than being written a second time here. See
+  # goo's `ParamBatch`.
+  goo:
+    path: ../goo
   meta: ^1.15.0
 
 dev_dependencies:
-  lints: ^5.0.0
-  test: ^1.25.0
+  flutter_lints: ^6.0.0

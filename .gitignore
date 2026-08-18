@@ -1,0 +1,2 @@
+# MkDocs build output. The site is built by CI from docs/ and mkdocs.yml.
+/site/

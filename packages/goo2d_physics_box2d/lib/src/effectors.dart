@@ -5,28 +5,40 @@ import 'package:goo2d/goo2d.dart';
 import 'physics_system.dart';
 import 'rigid_body.dart';
 
-/// Unity's Effector 2D family, as functions rather than components.
+/// Unity's Effector 2D family, as functions - the primitive layer.
 ///
-/// # Why these are not components
+/// # These are the primitive; `effector.dart` is the API most games want
 ///
-/// **Box2D has no effectors at all.** Unity's are not a physics feature; they
-/// are gameplay code that finds bodies in a region each frame and applies a
-/// force. So there is nothing to bind a component to - the whole of an
-/// effector is the loop, and a loop is a function.
+/// Each function finds bodies in a region and applies a force, right now,
+/// against explicit world-space coordinates. That is the right shape for a
+/// one-shot - an explosion, a shockwave - or for a region computed from
+/// gameplay state that no entity owns.
 ///
-/// Making them components would mean inventing a second scheduler: something
-/// has to walk them, in some order, relative to the physics step. A game that
-/// calls these from its own `FixedTickable` already has that, written where it
-/// can be read, and can order and filter them however it likes.
+/// For a *standing* effector, declare one instead: see `Effector2D` and
+/// `describeEffector` in `effector.dart`. The region lives on the entity's own
+/// collider, so it travels with the entity, every knob becomes a per-entity
+/// field, and `Box2DPhysicsSystem` walks it before its own step - so the
+/// `compareTo` below stops being something each game has to get right.
 ///
-/// # Call them from a fixed step, before physics
+/// **An earlier version of this doc argued effectors could not be components,
+/// because Box2D has none and because walking them would need "a second
+/// scheduler". Both halves were wrong.** Box2D having no effectors argues
+/// against a *shim* feature, not against a declarative API - these are
+/// gameplay code either way. And the scheduler already exists: it is the
+/// physics system, which has a defined position relative to the step, so
+/// making them declarable removed a scheduling burden from every caller
+/// rather than adding one. The ordering worry that remained - two overlapping
+/// zones - dissolves on inspection, because forces accumulate and addition is
+/// commutative.
+///
+/// # Calling these directly: from a fixed step, before physics
 ///
 /// A force applied outside a tick window is discarded, and one applied after
 /// `Box2DPhysicsSystem` has run lands a step late. Give the calling system a
 /// `compareTo` that sorts it before the physics system.
 ///
 /// ```dart
-/// class Wind extends GameSystem with FixedTickable {
+/// class Shockwave extends GameSystem with FixedTickable {
 ///   @override
 ///   int compareTo(GameSystem other) =>
 ///       other is Box2DPhysicsSystem ? -1 : 0;
@@ -42,21 +54,22 @@ import 'rigid_body.dart';
 ///
 /// # What each one is
 ///
-/// | Unity | here |
-/// |---|---|
-/// | Area Effector 2D | [Effectors2D.areaEffector] |
-/// | Point Effector 2D | [Effectors2D.pointEffector] |
-/// | Buoyancy Effector 2D | [Effectors2D.buoyancyEffector] |
-/// | Surface Effector 2D | [Effectors2D.surfaceEffector] |
-/// | Platform Effector 2D | **not here** - see below |
+/// | Unity | function | declared |
+/// |---|---|---|
+/// | Area Effector 2D | [Effectors2D.areaEffector] | `AreaEffector` |
+/// | Point Effector 2D | [Effectors2D.pointEffector] | `PointEffector` |
+/// | Buoyancy Effector 2D | [Effectors2D.buoyancyEffector] | `BuoyancyEffector` |
+/// | Surface Effector 2D | [Effectors2D.surfaceEffector] | `SurfaceEffector` |
+/// | Platform Effector 2D | **not here** - see below | - |
 ///
-/// **Platform Effector 2D is deliberately absent.** A one-way platform has to
-/// reject a contact *during* the solve, based on which way the body is
-/// travelling, and Box2D v3 resolves contacts inside `b2World_Step` with no
-/// callback out. Faking it from outside - disabling the shape when something
-/// approaches from below - changes behaviour a frame late and lets a fast
-/// body through. It needs shim support that does not exist yet, and a broken
-/// one-way platform is worse than an absent one.
+/// **Platform Effector 2D is deliberately absent**, and reshaping the API
+/// changes nothing about why. A one-way platform has to reject a contact
+/// *during* the solve, based on which way the body is travelling, and Box2D v3
+/// resolves contacts inside `b2World_Step` with no callback out. Faking it
+/// from outside - disabling the shape when something approaches from below -
+/// changes behaviour a frame late and lets a fast body through. It needs shim
+/// support that does not exist yet, and a broken one-way platform is worse
+/// than an absent one.
 extension Effectors2D on Box2DPhysicsSystem {
   /// A uniform force on every body overlapping a box - Unity's Area Effector
   /// 2D. Wind, currents, updraughts.
