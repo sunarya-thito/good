@@ -1,7 +1,7 @@
 # Dimensions — 2D and 3D
 
-good is a **family**. The kernel knows nothing about dimensions, and a renderer
-package supplies one.
+good is a **family**. `good` is the kernel, and an engine package sits on it:
+`goo2d` for 2D, `goo3d` for 3D.
 
 ```mermaid
 flowchart TD
@@ -55,8 +55,7 @@ good create my_game --dimension=d2    # goo2d — the default
 good create my_game --dimension=d3    # goo3d
 ```
 
-The CLI carries the option because it is dimension-agnostic: one tool scaffolds
-either, and everything after the scaffolding step is the same.
+One CLI scaffolds either, and everything after the scaffolding step is the same.
 
 ## 2D and 3D do not share a renderer
 
@@ -69,7 +68,7 @@ The split also has a second payoff that has nothing to do with 3D: because the
 kernel has no renderer in it, a **headless dedicated server** can depend on
 `good` plus physics plus `good_net` and never pull in a rendering package at all.
 
-## Writing dimension-agnostic code
+## Writing code that works under both
 
 Shared code — an inventory system, a state machine, a networking layer — should
 live against the kernel, not against `goo2d`:

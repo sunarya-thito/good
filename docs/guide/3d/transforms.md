@@ -72,8 +72,8 @@ Both write the four rotation columns. Neither allocates.
 
 ## The hierarchy is the kernel's
 
-`Child` and `Parent` come from the kernel and belong to no dimension. They are
-the same two components whatever you are building:
+`Child` and `Parent` come from the kernel. They are the same two components
+whatever you are building:
 
 ```dart
 scene.parent(wheel, of: car);

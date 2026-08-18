@@ -1,19 +1,17 @@
 # The good family
 
 good — **G**ame **O**verdrive **O**n **D**art — is a monorepo of packages that
-divide along one line: **is this about how many dimensions you have, or not?**
-The names say it: `goo` is the family, and the last letter is the target, so
-the dimension-agnostic kernel is `good` and the renderers are `goo2d` and
-`goo3d`.
+divide along one line: **does this depend on how many dimensions you have?**
+The names say it: `goo` is the family, and the last letter is the target, so the
+kernel is `good` and the engines are `goo2d` and `goo3d`.
 
-Everything that is not — the ECS, the scheduler, scenes, hierarchy, input, the
-asset registry, the isolate bootstrap, networking, the CLI — lives in the
-dimension-agnostic half and is shared. Only rendering, transforms and the
-physics binding are per-dimension.
+The ECS, the scheduler, scenes, hierarchy, input, the asset registry, the
+isolate bootstrap, networking and the CLI are shared. Rendering, transforms and
+the physics binding belong to an engine.
 
 ```
 packages/
-├── good                     the kernel — no dimension anywhere in it
+├── good                     the kernel both engines are built on
 ├── good_cli                 the `good` command
 ├── good_net                 declared messages + the transport contract
 │   └── good_net_p2p         serverless P2P backend
@@ -37,7 +35,7 @@ above it. See [Dimensions](dimensions.md).
 
 ## good
 
-The kernel. Dimension-agnostic, and the largest package in the repository.
+The kernel, and the largest package in the repository.
 
 - **ECS** — bit-packed component storage, archetype registration, `Entity`
   handles, and a `QueryBuilder` whose `withAll`/`withNone`/`withAny` compile to
@@ -57,7 +55,7 @@ The kernel. Dimension-agnostic, and the largest package in the repository.
 - **`GameView`** — the widget every renderer plugs into.
 
 It depends on Flutter — `StateChannel` is a `ValueListenable` and `GameView` is
-a widget — but on nothing dimension-specific.
+a widget — and on neither engine.
 
 You do not normally depend on this directly; `goo2d` re-exports it.
 
@@ -141,9 +139,9 @@ dart run ffigen --config ffigen.yaml
 ## good_cli
 
 The `good` command: project scaffolding, codegen, the asset pipeline, and build
-orchestration. **Dimension-agnostic** — it lives beside the kernel instead of
-under `goo2d`, so each renderer registers its own asset types into the same
-pipeline instead of needing its own CLI.
+orchestration. It lives beside the kernel instead of under `goo2d`, so each
+engine registers its own asset types into the same pipeline instead of needing
+its own CLI.
 
 See the [CLI reference](../reference/cli.md).
 

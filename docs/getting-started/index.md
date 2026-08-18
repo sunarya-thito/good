@@ -9,10 +9,10 @@ Three pages, in the order you meet them:
 3. **[Your first game](your-first-game.md)** — a sprite driven by the keyboard,
    built up from the empty scaffold.
 
-These pages use `goo2d` throughout. Almost everything they show — scenes,
-prefabs, systems, input, assets, the CLI — belongs to the dimension-agnostic
-kernel and is identical for `goo3d`. See
-[Dimensions](../packages/dimensions.md).
+These pages use `goo2d`. Scenes, prefabs, systems, input, assets and the CLI
+come from the kernel, so a `goo3d` game writes them the same way; the transform,
+sprite and camera types are the 2D ones. See
+[2D and 3D](../packages/dimensions.md).
 
 If you would rather read about the engine before writing any of it, start with
 [Architecture](../guide/architecture.md) instead.

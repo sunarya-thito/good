@@ -1,6 +1,6 @@
 # Networking
 
-!!! abstract "Layer: kernel-side (`good_net`) — dimension-agnostic"
+!!! abstract "Layer: kernel-side (`good_net`)"
     A 3D game needs the same session and messaging plumbing a 2D one does, so
     networking sits beside the kernel instead of under a renderer.
 

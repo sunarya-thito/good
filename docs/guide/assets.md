@@ -187,8 +187,8 @@ two.**
 
 A new kind is a payload type, an `AssetInfo`, and an `AssetLoader<T>` registered
 into `AssetLoaders`. `Texture` and `AudioClip` are both implemented that way,
-which is what keeps the registry itself dimension-agnostic: a future renderer
-registers its own kinds into the same pipeline instead of needing its own.
+which is how a renderer registers its own kinds into the same pipeline instead
+of needing one of its own.
 
 ---
 

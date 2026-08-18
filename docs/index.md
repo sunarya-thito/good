@@ -6,15 +6,15 @@ letter names the target. `good` runs on Dart, `goo2d` on 2D, `goo3d` on 3D.
 
 good runs your simulation on its own isolate at a fixed timestep, stores every
 component in shared native memory, and keeps the per-frame path free of heap
-allocation. The kernel is **dimension-agnostic**; a renderer package supplies
-the dimension.
+allocation. `good` is the kernel; `goo2d` and `goo3d` are the engines built on
+it.
 
 <div class="grid cards" markdown>
 
 - :material-cube-outline: **`good`** — the kernel
 
     ECS, scenes, the fixed-tick loop, the memory pool, input, assets, coroutines
-    and the cross-isolate plumbing. Knows nothing about 2D or 3D.
+    and the cross-isolate plumbing. The base both engines are built on.
 
 - :material-shape-square-plus: **`goo2d`** — the 2D engine
 
@@ -74,7 +74,7 @@ carries weight not every game wants.
 | Package | What it is |
 |---|---|
 | [`goo2d`](packages/index.md#goo2d) | The 2D engine. Re-exports the kernel — one dependency, one import |
-| [`good`](packages/index.md#good) | The dimension-agnostic kernel. You do not normally depend on it directly |
+| [`good`](packages/index.md#good) | The kernel. You do not normally depend on it directly |
 | [`good_cli`](reference/cli.md) | The `good` build tool: scaffolding, codegen, asset pipeline, packaging |
 | [`goo2d_physics_box2d`](guide/physics.md) | Box2D v3 physics: `RigidBody2D`, colliders, joints, effectors |
 | [`goo2d_ffi_box2d`](packages/index.md#goo2d_ffi_box2d) | Vendored Box2D plus a primitives-only C shim. Not used directly |

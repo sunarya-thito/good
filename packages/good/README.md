@@ -1,13 +1,13 @@
 # good
 
-Game Overdrive On Dart. The kernel the engine is built on: the ECS, the
+Game Overdrive On Dart. The kernel every good engine is built on: the ECS, the
 fixed-tick loop, scenes, native component storage, input, assets and
-coroutines. It knows nothing about 2D or 3D.
+coroutines.
 
 **Building a 2D game? Install [`goo2d`](https://pub.dev/packages/goo2d)
 instead.** It re-exports everything here, so you get this package anyway and a
 renderer with it. Depend on `good` directly when you are writing a renderer, a
-headless server, or a package that should work in either dimension.
+headless server, or a package that should work under either engine.
 
 ```bash
 flutter pub add good
@@ -62,8 +62,8 @@ class PlayerSystem extends GameSystem with FixedTickable {
 - **[Architecture](https://sunarya-thito.github.io/good/guide/architecture/)**
   for how the Flutter isolate and the game isolate split the work.
 
-It depends on Flutter, because `GameView` is a widget and `StateChannel` is a
-`ValueListenable`. Dimension-agnostic is not the same as Flutter-agnostic.
+It does depend on Flutter, because `GameView` is a widget and `StateChannel` is
+a `ValueListenable`.
 
 The ECS, memory pool, scheduler, scenes, hierarchy, input, assets, coroutines
 and timelines work today. Audio playback and array-typed fields are not

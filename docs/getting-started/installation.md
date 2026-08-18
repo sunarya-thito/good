@@ -129,7 +129,7 @@ dependencies:
 
 ## Installing the `good` CLI
 
-The CLI is dimension-agnostic — the same tool serves `goo2d` and `goo3d`
+The same CLI serves `goo2d` and `goo3d`
 projects.
 
 ```bash

@@ -1,8 +1,8 @@
 # Architecture
 
 !!! abstract "Layer: kernel (`good`)"
-    Everything on this page is dimension-agnostic and applies unchanged to any
-    renderer built on the kernel.
+    Everything on this page comes from the kernel and applies unchanged under
+    any renderer.
 
 good runs your game on **two isolates**. Understanding how they relate is the
 one genuinely unusual thing about the engine, and almost every API shape

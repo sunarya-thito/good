@@ -3,8 +3,8 @@
 Game Overdrive On Dart: a game engine for Flutter that keeps your simulation
 off the UI thread and out of the garbage collector.
 
-`goo` is the family name and the last letter says what it targets. `good` runs
-on Dart and knows nothing about dimensions. `goo2d` does 2D, `goo3d` does 3D.
+`goo` is the family name and the last letter says what it targets. `good` is the
+kernel on Dart, `goo2d` does 2D, `goo3d` does 3D.
 
 ```bash
 flutter pub add goo2d
