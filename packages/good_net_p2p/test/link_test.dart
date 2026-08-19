@@ -177,8 +177,19 @@ void main() {
       // then the sweep has to reach the dropped one. Waiting for the report
       // rather than for a fixed 1500ms, which used to fail about one run in
       // six on exactly the value it asserts.
+      // Both things this test asserts, not just the first: the host can notice
+      // its own loss before the client has had an ack back to measure a round
+      // trip from, and those are two different links.
+      //
+      // Capped at 3s so the sweep is what satisfies it. The ack window takes
+      // 6.4s to recycle at ten keepalives a second, so a longer cap would let
+      // this pass on the recycle path alone and stop noticing if the sweep
+      // stopped working.
       await runUntil(
-        () => (hosted.connectionTo(joined.localPeer)?.packetLoss ?? 0) > 0,
+        () =>
+            (hosted.connectionTo(joined.localPeer)?.packetLoss ?? 0) > 0 &&
+            (joined.connectionTo(NetPeerId.host)?.roundTripMicros ?? -1) >= 0,
+        limit: const Duration(seconds: 3),
       );
 
       final toHost = joined.connectionTo(NetPeerId.host)!;
