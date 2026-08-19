@@ -46,9 +46,9 @@ const double _linkSpacing = 1.0;
 
 const int _linksPerChain = 9;
 
-/// Where each chain is anchored, in metres. **Negative y is up** - goo2d's
-/// world +y is down, so the anchors are at the top of the view.
-const double _anchorY = -11.0;
+/// Where each chain is anchored, in metres. **Positive y is up** - goo2d's
+/// world +y is up, so the anchors are at the top of the view.
+const double _anchorY = 11.0;
 
 const int _anchorColor = 0xFF546E7A;
 const int _linkColor = 0xFF90A4AE;
@@ -288,14 +288,14 @@ class JointScene extends SceneStruct {
     for (var j = 0; j < _linksPerChain; j++) {
       final entity = handle.addEntity(link);
       link.transformOffsetX[entity] = x;
-      link.transformOffsetY[entity] = _anchorY + (j + 1) * _linkSpacing;
+      link.transformOffsetY[entity] = _anchorY - (j + 1) * _linkSpacing;
       chain.add(entity);
     }
     if (loaded) {
       final mass = handle.addEntity(weight);
       weight.transformOffsetX[mass] = x;
       weight.transformOffsetY[mass] =
-          _anchorY + (_linksPerChain + 1) * _linkSpacing;
+          _anchorY - (_linksPerChain + 1) * _linkSpacing;
       chain.add(mass);
     }
     return chain;
@@ -456,8 +456,8 @@ class JointSystem extends GameSystem with FixedTickable {
       physics.createDistanceJoint(
         scene.anchors[i],
         chain.first,
-        anchorAY: 0.2,
-        anchorBY: -_linkHalfHeight,
+        anchorAY: -0.2,
+        anchorBY: _linkHalfHeight,
         length: _linkSpacing - _linkHalfHeight,
       ),
     ];
@@ -466,8 +466,8 @@ class JointSystem extends GameSystem with FixedTickable {
         physics.createDistanceJoint(
           chain[j - 1],
           chain[j],
-          anchorAY: _linkHalfHeight,
-          anchorBY: -_linkHalfHeight,
+          anchorAY: -_linkHalfHeight,
+          anchorBY: _linkHalfHeight,
           length: _linkSpacing - _linkHalfHeight * 2,
         ),
       );

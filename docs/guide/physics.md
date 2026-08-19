@@ -44,12 +44,21 @@ Declare the system on the state:
 @override
 void describeSystems(SystemDescriptor descriptor) {
   super.describeSystems(descriptor);
-  descriptor.has(Box2DPhysicsSystem(gravityY: 10));
+  descriptor.has(Box2DPhysicsSystem(gravityY: -10));
 }
 ```
 
 That is the whole opt-in. Bodies are created as entities spawn and destroyed as
 they despawn — the system listens to spawn events instead of needing to be told.
+
+!!! note "Gravity is negative"
+    World +Y is up, so down is `-Y` and gravity is `(0, -10)` — the same sign
+    Box2D's own samples use, and the same one `goo3d` uses. A floor sits at a
+    *smaller* y than the bodies landing on it.
+
+    `-10` is also the default, so `Box2DPhysicsSystem()` on its own already
+    falls the right way. The magnitude is 10 rather than 9.81 because Box2D
+    uses 10; it is a game engine, not a geodesy package.
 
 !!! warning "Units are metres, kilograms and seconds"
     Box2D is tuned for objects roughly 0.1 m to 10 m. A game that treats one
@@ -333,7 +342,7 @@ int compareTo(GameSystem other) => other is Box2DPhysicsSystem ? 1 : 0;   // aft
 
 ```dart
 Box2DPhysicsSystem(
-  gravityY: 10,
+  gravityY: -10,
   subStepCount: 4,     // solver accuracy per step
   workerCount: 4,      // parallel solver threads
 )

@@ -352,10 +352,10 @@ void main() {
       run.state.runFixedStep();
       expect(
         system.move.value,
-        Vector2(1, -1),
+        Vector2(1, 1),
         reason:
             'the plugin reports +1 as up, and a Vec2Binding puts up at '
-            '-y - the same convention a keyboard W gets',
+            '+y - the same convention a keyboard W gets',
       );
     });
 

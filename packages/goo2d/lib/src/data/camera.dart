@@ -93,20 +93,35 @@ class ActiveCameraResolver {
 /// then applied as many times as needed.
 ///
 /// `GameRenderer2D` composes every quad as `view = (world - cameraOrigin) *
-/// zoom`. Anything that has to go the *other* way - a cursor, a drag, a
+/// zoom`, with y additionally negated - see "which way is up" below.
+/// Anything that has to go the *other* way - a cursor, a drag, a
 /// tap - has to invert exactly that, and "exactly" is the operative word:
 /// picking that disagreed with drawing by even a constant would mean
 /// clicking next to what you can see. So the forward mapping is written
 /// here once, next to the camera it belongs to, and both directions come
 /// off the same three numbers.
 ///
+/// # Which way is up
+///
+/// **World +y is up.** A larger world y draws *higher* on the screen, the
+/// same rule `goo3d` uses, so a system written against one dimension means
+/// the same thing in the other. Flutter's canvas is y-down, so the y half of
+/// the projection carries a negation the x half does not - and this is the
+/// only place in the engine that negation lives. Everything downstream
+/// (picking, HUD markers, the renderer's own quads) goes through these four
+/// methods and inherits it.
+///
+/// The one thing that does *not* come for free is rotation: composing a quad
+/// in view space after the flip turns a positive world rotation the wrong
+/// way round, which `GameRenderer2D` compensates for where it takes the sine.
+///
 /// # The camera sits in the middle of the view
 ///
-/// `view = (world - cameraOrigin) * zoom + viewSize / 2`. The camera's world
-/// position is the *centre* of what you can see, which is what Unity, Godot,
-/// Unreal and every other engine mean by a camera position, and it is why a
-/// follow camera needs no half-a-screen fudge factor to put its subject in
-/// the middle.
+/// `view = (world - cameraOrigin) * zoom + viewSize / 2`, y negated. The
+/// camera's world position is the *centre* of what you can see, which is
+/// what Unity, Godot, Unreal and every other engine mean by a camera
+/// position, and it is why a follow camera needs no half-a-screen fudge
+/// factor to put its subject in the middle.
 ///
 /// With **no camera** the implicit one is at world (0, 0), so the world
 /// origin is the middle of the view - the same rule, not a second one.
@@ -193,8 +208,11 @@ class CameraProjection {
   double viewToWorldX(double viewX) =>
       zoom == 0 ? originX : (viewX - halfViewWidth) / zoom + originX;
 
+  /// Negated against [viewToWorldX], because world +y is up and a
+  /// `GameView` pixel's y is down: a click near the top of the view is at a
+  /// *larger* world y than one near the bottom.
   double viewToWorldY(double viewY) =>
-      zoom == 0 ? originY : (viewY - halfViewHeight) / zoom + originY;
+      zoom == 0 ? originY : originY - (viewY - halfViewHeight) / zoom;
 
   /// World space to view space - the mapping the renderer applies (it goes
   /// through this very method), exposed so a system placing something *at* a
@@ -203,6 +221,9 @@ class CameraProjection {
   double worldToViewX(double worldX) =>
       (worldX - originX) * zoom + halfViewWidth;
 
+  /// The negation that makes world +y up. It is a sign on the whole term, so
+  /// it is a reflection about the view's horizontal midline and not a shift:
+  /// the camera's own y still lands exactly on [halfViewHeight].
   double worldToViewY(double worldY) =>
-      (worldY - originY) * zoom + halfViewHeight;
+      (originY - worldY) * zoom + halfViewHeight;
 }

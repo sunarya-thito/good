@@ -274,6 +274,12 @@ final viewX  = projection.worldToViewX(entityWorldX);
 `CameraProjection` re-resolves the active camera and the view size each tick, so
 it always reflects the current zoom and viewport.
 
+The **y sign flips here and nowhere else**. World +Y is up and a `GameView`
+pixel's y grows downward, so these four methods are the whole of the conversion
+between the two. Use them rather than `world - cameraOrigin` by hand, or a
+tooltip you place at a world position ends up mirrored about the middle of the
+view.
+
 A zoom of zero maps the whole world onto one pixel, so the inverse reports the
 camera's own origin, not an infinity that would poison every downstream
 comparison silently.

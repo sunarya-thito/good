@@ -193,15 +193,16 @@ void main() {
 
     expect(canvas.frameTick, 1);
     expect(canvas.vertexCount, 6, reason: 'only the child is sized');
-    // Child at parent-local (10,0) under a 2x scale: centre (120,100), half
-    // extent 4 after scaling. Vertex order is the fan split 0-1-2 / 0-2-3.
+    // Child at parent-local (10,0) under a 2x scale: world centre (120,100),
+    // which world +y up projects to canvas (120,-100), half extent 4 after
+    // scaling. Vertex order is the fan split 0-1-2 / 0-2-3.
     expect(canvas.positions, [
-      116, 96, //
-      124, 96, //
-      124, 104, //
-      116, 96, //
-      124, 104, //
-      116, 104, //
+      116, -104, //
+      124, -104, //
+      124, -96, //
+      116, -104, //
+      124, -96, //
+      116, -96, //
     ]);
     expect(canvas.colors.first.toUnsigned(32), 0xFF00FF00);
     expect(canvas.runCount, 1);

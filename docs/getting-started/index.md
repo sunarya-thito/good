@@ -42,7 +42,9 @@ By the end of the third page you have something you can run and move around.
 
 Every example uses `goo2d`, the 2D engine. Scenes, prefabs, systems, input and
 assets come from the kernel underneath it, so a 3D game writes those the same
-way; only the transform, sprite and camera types differ. See
+way; only the transform, sprite and camera types differ. The axes agree too —
+both put **+Y up**, so a system that moves something upward keeps meaning that
+when you carry it into 3D. See
 [2D and 3D](../packages/2d-and-3d.md) if you want the whole picture first.
 
 Words like *prefab*, *archetype* and *isolate* have a dotted underline wherever

@@ -23,10 +23,18 @@ transform
   ..transformScaleY[entity] = 2;
 ```
 
-!!! warning "Positive Y is **down**"
-    World space projects into Flutter's canvas, where y grows downward. A floor
-    sits at a *larger* y than the things falling onto it. Box2D's own examples
-    are written y-up; this engine is not.
+!!! note "Positive Y is **up**"
+    A larger `transformOffsetY` draws *higher* on the screen, and a floor sits
+    at a *smaller* y than the things falling onto it. Box2D's own examples and
+    `goo3d` agree, so gravity is `(0, -10)` here as it is everywhere else.
+
+    Flutter's canvas is y-down, but that is the camera's problem, not yours:
+    `CameraProjection` is the one place the sign is turned round, and
+    everything that maps between world and screen — drawing, pointer picking,
+    world-space HUD markers — goes through it.
+
+    Positive rotation is therefore **counter-clockwise**, the direction
+    `atan2`, `sin` and `cos` already assume.
 
 Scale defaults to `1` instead of to the field's own `0`, because a zero scale
 collapses every point to the origin — an entity that simply never assigned a

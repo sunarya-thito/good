@@ -3,8 +3,8 @@
 // Requires the native library:
 //   cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1
 //
-// **Positive y is DOWN.** A buoyancy surface is above the water it floats
-// things in, so "submerged" means a LARGER y than the surface.
+// **Positive y is UP.** A buoyancy surface is above the water it floats
+// things in, so "submerged" means a SMALLER y than the surface.
 //
 // Every test here drives the effector from a system that sorts BEFORE
 // Box2DPhysicsSystem, because that is the only correct way to use one: a
@@ -202,23 +202,27 @@ void main() {
   test('a buoyancy effector floats a body up to the surface', () async {
     final scene = await _boot();
     final body = scene.add();
-    // Submerged: +y is DOWN, so 5 below a surface at 0.
-    effectors.once = () => scene.box.transformOffsetY[body] = 5;
+    // Submerged: +y is UP, so 5 below a surface at 0.
+    effectors.once = () => scene.box.transformOffsetY[body] = -5;
     _advance(2);
 
     effectors.each = (physics) {
       // Gravity by hand, since the world has none - floating against nothing
       // would prove nothing.
-      scene.box.applyForce(body, 0, 10);
+      scene.box.applyForce(body, 0, -10);
       physics.buoyancyEffector(-50, 50, surfaceY: 0, density: 3);
     };
     _advance(240);
 
     final y = scene.box.transformOffsetY[body];
-    expect(y, lessThan(4), reason: 'it should have risen towards the surface');
     expect(
       y,
-      greaterThan(-2),
+      greaterThan(-4),
+      reason: 'it should have risen towards the surface',
+    );
+    expect(
+      y,
+      lessThan(2),
       reason: 'and settled near it rather than being fired out of the water - '
           'the depth cap is what makes it settle instead of launching',
     );

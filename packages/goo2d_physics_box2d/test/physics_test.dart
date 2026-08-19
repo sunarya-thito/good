@@ -276,36 +276,37 @@ void main() {
 
       expect(
         scene.crate.transformOffsetY[crate],
-        closeTo(5.0, 0.2),
-        reason: 'one second of free fall is about 1/2 g t^2, downward = +y',
+        closeTo(-5.0, 0.2),
+        reason: 'one second of free fall is about 1/2 g t^2, and world +y is '
+            'up so falling is toward a smaller y',
       );
     });
 
     test('a static body does not move', () async {
       final scene = await _boot();
       final floor = scene.addEntity(scene.floor);
-      scene.floor.transformOffsetY[floor] = 10;
+      scene.floor.transformOffsetY[floor] = -10;
 
       _advance(60);
 
-      expect(scene.floor.transformOffsetY[floor], closeTo(10, 1e-4));
+      expect(scene.floor.transformOffsetY[floor], closeTo(-10, 1e-4));
     });
 
     test('a falling body rests on a static floor', () async {
       final scene = await _boot();
 
       final floor = scene.addEntity(scene.floor);
-      scene.floor.transformOffsetY[floor] = 10;
+      scene.floor.transformOffsetY[floor] = -10;
 
       final crate = scene.addEntity(scene.crate);
 
       _advance(300);
 
-      // Floor surface at +9, less the crate's 0.5 half-height. A crate that
+      // Floor surface at -9, plus the crate's 0.5 half-height. A crate that
       // fell straight past means the shapes were never created.
       expect(
         scene.crate.transformOffsetY[crate],
-        closeTo(8.5, 0.1),
+        closeTo(-8.5, 0.1),
         reason: 'the crate should rest on the floor, not fall through it',
       );
     });
@@ -318,8 +319,9 @@ void main() {
 
       expect(
         scene.crate.linearVelocityY[crate],
-        greaterThan(1),
-        reason: 'a falling body should report a downward (+y) velocity',
+        lessThan(-1),
+        reason: 'a falling body should report a downward (negative y) '
+            'velocity',
       );
     });
 
@@ -327,24 +329,25 @@ void main() {
       final scene = await _boot();
 
       final floor = scene.addEntity(scene.floor);
-      scene.floor.transformOffsetY[floor] = 10;
+      scene.floor.transformOffsetY[floor] = -10;
 
       final ball = scene.addEntity(scene.ball);
 
       var landed = false;
-      var highestAfterBounce = 100.0;
+      var highestAfterBounce = -100.0;
       for (var i = 0; i < 400; i++) {
         run.state.advance(_step);
         final y = scene.ball.transformOffsetY[ball];
-        if (!landed && y > 8.4) landed = true;
-        if (landed && y < highestAfterBounce) highestAfterBounce = y;
+        if (!landed && y < -8.4) landed = true;
+        if (landed && y > highestAfterBounce) highestAfterBounce = y;
       }
 
       expect(landed, isTrue, reason: 'the ball should reach the floor');
       expect(
         highestAfterBounce,
-        lessThan(8.0),
-        reason: 'restitution 0.8 should send it back up appreciably',
+        greaterThan(-8.0),
+        reason: 'restitution 0.8 should send it back up appreciably - up '
+            'being a larger y',
       );
     });
   });
@@ -355,7 +358,7 @@ void main() {
       final crate = scene.addEntity(scene.crate);
 
       _advance(30);
-      expect(scene.crate.transformOffsetY[crate], greaterThan(0.5));
+      expect(scene.crate.transformOffsetY[crate], lessThan(-0.5));
 
       // The write goes through a system rather than straight from the test
       // body: component mutation is only legal inside a tick window
@@ -643,7 +646,7 @@ void main() {
       _advance(60);
       expect(
         scene.crate.transformOffsetY[crate],
-        greaterThan(parked + 0.5),
+        lessThan(parked - 0.5),
         reason: 're-enabling should let gravity take it again',
       );
     });
@@ -662,7 +665,7 @@ void main() {
       _advance(30);
       expect(
         scene.crate.transformOffsetY[crate],
-        greaterThan(0.5),
+        lessThan(-0.5),
         reason: 'it has to be falling for stopping to mean anything',
       );
 
@@ -689,12 +692,12 @@ void main() {
     test('a static body turned dynamic starts falling', () async {
       final scene = await _boot();
       final floor = scene.addEntity(scene.floor);
-      scene.floor.transformOffsetY[floor] = 10;
+      scene.floor.transformOffsetY[floor] = -10;
 
       _advance(30);
       expect(
         scene.floor.transformOffsetY[floor],
-        closeTo(10, 1e-4),
+        closeTo(-10, 1e-4),
         reason: 'still static, still parked',
       );
 
@@ -703,7 +706,7 @@ void main() {
 
       expect(
         scene.floor.transformOffsetY[floor],
-        greaterThan(11),
+        lessThan(-11),
         reason: 'about a second of free fall, less the ticks the write spent '
             'reaching the solver',
       );
@@ -718,7 +721,7 @@ void main() {
       _retype = (crate, BodyType2D.kinematicBody);
       _advance(3);
       final coasting = scene.crate.linearVelocityY[crate];
-      expect(coasting, greaterThan(0.4), reason: 'it was falling when it '
+      expect(coasting, lessThan(-0.4), reason: 'it was falling when it '
           'changed, and Box2D leaves a kinematic body the velocity it had');
 
       _advance(60);
@@ -738,7 +741,7 @@ void main() {
       final scene = await _boot();
 
       final floor = scene.addEntity(scene.floor);
-      scene.floor.transformOffsetY[floor] = 10;
+      scene.floor.transformOffsetY[floor] = -10;
       final crate = scene.addEntity(scene.crate);
 
       _advance(1);
@@ -771,7 +774,7 @@ void main() {
       );
       expect(
         scene.crate.transformOffsetY[crate],
-        closeTo(8.5, 0.1),
+        closeTo(-8.5, 0.1),
         reason: 'it still has the box collider it was created with, so it '
             'lands on the floor rather than falling through where its '
             'shapes used to be',
@@ -796,7 +799,7 @@ void main() {
       for (var i = 0; i < crates.length; i++) {
         expect(
           scene.crate.transformOffsetY[crates[i]],
-          closeTo(5.0, 0.2),
+          closeTo(-5.0, 0.2),
           reason: 'crate $i should have fallen like every other',
         );
         expect(
@@ -828,7 +831,7 @@ void main() {
         ('ball', scene.ball.transformOffsetY[ball]),
         ('pinned', scene.pinned.transformOffsetY[pinned]),
       ]) {
-        expect(y, closeTo(5.0, 0.2), reason: '$name should have fallen');
+        expect(y, closeTo(-5.0, 0.2), reason: '$name should have fallen');
       }
     });
   });
@@ -958,7 +961,7 @@ void main() {
 
       expect(
         scene.crate.transformOffsetY[crate],
-        closeTo(5.0, 0.2),
+        closeTo(-5.0, 0.2),
         reason: 'one second of free fall is the same physics on any number '
             'of threads',
       );
@@ -973,8 +976,8 @@ void main() {
       final scene = await _boot();
       final anchor = scene.addEntity(scene.floor);
       final crate = scene.addEntity(scene.crate);
-      // The anchor above (negative y is up), the crate at the origin.
-      scene.floor.transformOffsetY[anchor] = -10;
+      // The anchor above (positive y is up), the crate at the origin.
+      scene.floor.transformOffsetY[anchor] = 10;
       _advance(1);
       return (scene, anchor, crate);
     }
@@ -994,8 +997,11 @@ void main() {
       expect(
         y,
         closeTo(0, 0.5),
-        reason: 'the anchor is at -10 and the tether is 10 long, so the crate '
-            'hangs at about 0; free fall would have it near +20',
+        reason: 'the anchor is at +10 and the tether is 10 long, so the crate '
+            'hangs at about 0; free fall would have it near -20. The anchor '
+            'has to be genuinely above the crate for this to mean anything - '
+            'below it, the crate would be balanced on top of a rigid tether '
+            'and would sit at 0 whether the joint worked or not',
       );
     });
 
@@ -1007,9 +1013,9 @@ void main() {
       final joint = physics.createRevoluteJoint(
         anchor,
         crate,
-        // The anchor's local (0, 10) is the crate's origin in world space.
+        // The anchor's local (0, -10) is the crate's origin in world space.
         anchorAX: 0,
-        anchorAY: 10,
+        anchorAY: -10,
       );
       expect(joint, isNot(Joint.none));
 
@@ -1081,11 +1087,11 @@ void main() {
 
       _advance(60);
       // Both local anchors default to (0, 0), so the joint pulls the crate's
-      // origin onto the ANCHOR's origin at y = -10 and then holds it there.
+      // origin onto the ANCHOR's origin at y = +10 and then holds it there.
       // Gravity is perpendicular to the axis, so it never sinks past that.
       expect(
         scene.crate.transformOffsetY[crate],
-        closeTo(-10, 0.2),
+        closeTo(10, 0.2),
         reason: 'gravity is perpendicular to the axis, so it cannot fall',
       );
 
@@ -1107,8 +1113,8 @@ void main() {
       _advance(120);
 
       // Local anchors both (0, 0), so the weld holds the crate's origin on
-      // the anchor's - which is at y = -10, not where the crate started.
-      expect(scene.crate.transformOffsetY[crate], closeTo(-10, 0.2));
+      // the anchor's - which is at y = +10, not where the crate started.
+      expect(scene.crate.transformOffsetY[crate], closeTo(10, 0.2));
       expect(scene.crate.transformOffsetX[crate], closeTo(0, 0.2));
     });
 
@@ -1124,9 +1130,9 @@ void main() {
 
       expect(
         settled,
-        lessThan(15),
-        reason: 'suspended, not in free fall - two seconds unconstrained is '
-            'about 20 m down from the anchor',
+        greaterThan(-15),
+        reason: 'suspended, not in free fall - three seconds unconstrained is '
+            'about 45 m below the anchor, and down is a smaller y',
       );
       expect(
         scene.crate.transformOffsetY[crate],
@@ -1185,8 +1191,7 @@ void main() {
       // joint did nothing.
       expect(scene.crate.transformOffsetX[crate], closeTo(6, 0.5));
       // **The y axis is deliberately not asserted, and that is a known gap.**
-      // With a target 4 m above the body it settles about 3 m *below* its
-      // start instead - a sag far larger than gravity over this spring should
+      // With a target 4 m below the body it settles further down still - a sag far larger than gravity over this spring should
       // produce, and raising hertz from 5 to 15 and maxForce from 4e3 to 2e5
       // changed it by 0.008 m, which rules out plain stiffness. Something
       // about how v3's mouse joint resolves the vertical is not what I

@@ -60,10 +60,10 @@ const double _minArenaHalfWidth = 15.0;
 
 /// The interior of the box, in metres, sized to hold a given population.
 ///
-/// **Positive y is DOWN** - goo2d projects world space into Flutter's canvas,
-/// where y grows downward - so the floor sits at a *larger* y than the bodies
-/// falling onto it, and the drop zone is at a negative one. Box2D's own
-/// examples are written y-up; this engine is not.
+/// **Positive y is UP**, the same as Box2D's own examples and as `goo3d`, so
+/// the floor sits at a *smaller* y than the bodies falling onto it and the
+/// drop zone is at a positive one. The camera is what turns that into "down
+/// the screen"; nothing here needs to know about the canvas.
 ///
 /// Centred on the world origin, so the camera never has to move.
 class Arena {
@@ -97,15 +97,15 @@ class Arena {
   /// so making them thicker never steals room from the pile.
   static const double wallHalfThickness = 1.0;
 
-  /// The floor's centre.
-  double get floorY => halfHeight + wallHalfThickness;
+  /// The floor's centre - below the interior, so a smaller y.
+  double get floorY => -halfHeight - wallHalfThickness;
 
   /// Each wall's centre, on the x it is given.
   double get wallX => halfWidth + wallHalfThickness;
 
   /// Where bodies are released - just inside the ceiling, so they have the
   /// whole box to fall through.
-  double get dropY => -halfHeight + 1;
+  double get dropY => halfHeight - 1;
 
   /// How far either side of centre a body may be released. Kept clear of the
   /// walls so nothing spawns overlapping one.
@@ -250,8 +250,9 @@ class Crate extends EntityStruct
       // bodies over the tops of the walls, where a shove from a neighbour
       // sends them out of the box - they then fall until the recycler
       // destroys them and the case respawns them, so the population churns
-      // forever instead of settling.
-      ..transformOffsetY[entity] = arena.dropY + (i % 3)
+      // forever instead of settling. Below is now a smaller y, so this
+      // subtracts where it used to add.
+      ..transformOffsetY[entity] = arena.dropY - (i % 3)
       ..transformRotation[entity] = spread * math.pi;
   }
 }
@@ -331,8 +332,9 @@ class Ball extends EntityStruct
       // bodies over the tops of the walls, where a shove from a neighbour
       // sends them out of the box - they then fall until the recycler
       // destroys them and the case respawns them, so the population churns
-      // forever instead of settling.
-      ..transformOffsetY[entity] = arena.dropY + (i % 3)
+      // forever instead of settling. Below is now a smaller y, so this
+      // subtracts where it used to add.
+      ..transformOffsetY[entity] = arena.dropY - (i % 3)
       ..transformRotation[entity] = spread * math.pi;
   }
 }
@@ -622,7 +624,7 @@ class SandboxSystem extends GameSystem with FixedTickable {
         // every measurement above that plateau is quietly describing a much
         // smaller world than its label claims. `escapes` climbing steadily is
         // the tell; a healthy scene recycles almost nothing.
-        if (transform.transformOffsetY[entity] > floorY + 40) {
+        if (transform.transformOffsetY[entity] < floorY - 40) {
           escapes++;
           entity.destroy();
           alive--;
@@ -749,9 +751,9 @@ class PhysicsState extends DemoState<PhysicsGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    // Gravity in metres per second squared. Box2D's own default is -10 rather
-    // than -9.81; it is a game engine, not a geodesy package.
-    // Positive is down; see Box2DPhysicsSystem.gravityY.
+    // Gravity in metres per second squared, and heavier than the -10 default
+    // so a big pile settles while you watch it. Negative is down; see
+    // Box2DPhysicsSystem.gravityY.
     // **Read off the Game, not a top-level.** `describeSystems` runs on the
     // game isolate, and top-level state does not cross `Isolate.spawn` - a
     // top-level `physicsWorkerCount` set on main read back as its default of
@@ -760,7 +762,7 @@ class PhysicsState extends DemoState<PhysicsGame> {
     // changed nothing. A field on the `Game` travels with the copied object
     // graph and arrives.
     descriptor.has(
-      Box2DPhysicsSystem(gravityY: 18, workerCount: game.solverWorkerCount),
+      Box2DPhysicsSystem(gravityY: -18, workerCount: game.solverWorkerCount),
     );
     descriptor.has(SandboxSystem());
   }

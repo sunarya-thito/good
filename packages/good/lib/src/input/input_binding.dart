@@ -135,7 +135,7 @@ final class TriggerBinding extends InputBinding<bool> {
 /// Each axis is the difference of its two keys, so opposing keys cancel to
 /// exactly zero (holding `a` and `d` together stands still, rather than
 /// picking whichever was pressed last). The result is **not normalized**:
-/// holding up and right gives (1, -1), whose length is √2, not 1. Normalizing
+/// holding up and right gives (1, 1), whose length is √2, not 1. Normalizing
 /// here would be a silent policy decision - a top-down walker wants it, a
 /// twin-stick shooter feeding an acceleration does not - and it is one call
 /// (`movement.value.normalized()`) away at the use site, where the game knows
@@ -144,12 +144,15 @@ final class TriggerBinding extends InputBinding<bool> {
 ///
 /// # Which way is up
 ///
-/// [up] contributes **-1** to y and [down] +1, matching the screen-space
-/// convention the 2D renderer draws in (y grows downward, so `Transform2D`'s
-/// `transformOffsetY` increasing moves a sprite *down* the screen). A game
-/// working in a y-up space swaps the two keys in the binding - which is a
-/// one-line data change, and exactly the kind of thing bindings exist to make
-/// cheap.
+/// [up] contributes **+1** to y and [down] -1, matching the world-space
+/// convention both dimensions use: `goo2d` and `goo3d` put +y up, so adding
+/// this vector straight to a `transformOffsetY` moves the thing the way the
+/// key is named. That is the whole point of the sign - a binding whose `up`
+/// moved a sprite down would be the sort of inversion that compiles.
+///
+/// A game working in a y-down space swaps the two keys in the binding - which
+/// is a one-line data change, and exactly the kind of thing bindings exist to
+/// make cheap.
 final class Vec2Binding extends InputBinding<Vector2> {
   const Vec2Binding({
     required this.up,
@@ -172,8 +175,8 @@ final class Vec2Binding extends InputBinding<Vector2> {
     var y = 0.0;
     if (state.isDown(right)) x += 1;
     if (state.isDown(left)) x -= 1;
-    if (state.isDown(down)) y += 1;
-    if (state.isDown(up)) y -= 1;
+    if (state.isDown(up)) y += 1;
+    if (state.isDown(down)) y -= 1;
     // In place, into the action's own vector: `Vector2(x, y)` here would be
     // one heap object per action per tick (the no-allocation rule).
     storage.setValues(x, y);

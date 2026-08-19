@@ -65,23 +65,22 @@ class Box2DPhysicsSystem extends GameSystem
     with FixedTickable, EntitySpawnListener, GameSystemLifecycleListener {
   Box2DPhysicsSystem({
     this.gravityX = 0,
-    this.gravityY = 10,
+    this.gravityY = -10,
     this.subStepCount = 4,
     this.workerCount = 1,
   });
 
   /// World gravity, in metres per second squared.
   ///
-  /// **Positive [gravityY] is down, because goo2d's world +y is down.** The
-  /// camera projects `view = (world - origin) * zoom + viewSize / 2` into
-  /// Flutter's canvas space, where y increases downward, so a world y of +1
-  /// draws *below* a world y of 0.
+  /// **Negative [gravityY] is down, because goo2d's world +y is up.** A body
+  /// under the default falls toward a smaller y, and the camera is what turns
+  /// that into "down the screen" - see `CameraProjection`.
   ///
-  /// That is the opposite of Box2D's own examples, which are written y-up and
-  /// use a gravity of (0, -10). Defaulting to -10 here to match them made
-  /// every body in the first demo fall **upward** - the simulation was right
-  /// and the axis convention was not. The default follows the engine the
-  /// system plugs into, not the library underneath it.
+  /// This is Box2D's own convention, unchanged: goo2d, Box2D and goo3d all
+  /// put +y up, so the solver's numbers are this engine's numbers and nothing
+  /// between them flips a sign. Gravity, a body's velocity, an applied force
+  /// and a joint anchor all mean here exactly what they mean in Box2D's
+  /// documentation and samples.
   ///
   /// The magnitude is 10 rather than 9.81 because Box2D uses 10; it is a game
   /// engine, not a geodesy package.
@@ -1271,8 +1270,8 @@ class Box2DPhysicsSystem extends GameSystem
   /// A suspension axis plus a free spin - Unity's Wheel Joint 2D, and what a
   /// driven vehicle wheel is made of.
   ///
-  /// The axis defaults to **(0, 1), which is down**, because that is the way
-  /// a suspension spring compresses in goo2d's y-down world.
+  /// The axis defaults to **(0, -1), which is down**, because that is the way
+  /// a suspension spring compresses under a gravity of (0, -10).
   Joint createWheelJoint(
     Entity a,
     Entity b, {
@@ -1281,7 +1280,7 @@ class Box2DPhysicsSystem extends GameSystem
     double anchorBX = 0,
     double anchorBY = 0,
     double axisX = 0,
-    double axisY = 1,
+    double axisY = -1,
     bool enableSpring = true,
     double hertz = 4,
     double dampingRatio = 0.7,

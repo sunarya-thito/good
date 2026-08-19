@@ -44,7 +44,7 @@ A short list, and it is the whole difference:
 | Geometry | `Collider2D` — circle, box, capsule, polygon | `Collider3D` — box, sphere, capsule, hull, mesh |
 | Physics | `goo2d_physics_box2d` (Box2D v3) | `goo3d_physics_box3d` (Box3D) |
 | Renderer | Flutter `Canvas`, one `drawVertices` per frame | Filament, a draw call per material |
-| Up axis | +Y down, screen space | +Y up, right-handed |
+| Up axis | +Y up | +Y up, right-handed |
 | Game pair | `Game2D`/`GameState2D` | `Game3D`/`GameState3D` |
 
 ## Which one a project uses

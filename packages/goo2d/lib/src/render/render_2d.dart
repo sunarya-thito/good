@@ -1901,7 +1901,12 @@ class GameRenderer2D extends GameSystem
             sin = 0.0;
           } else {
             cos = math.cos(rotation);
-            sin = math.sin(rotation);
+            // Negated because the quad is composed in view space, which is
+            // y-down, while world +y is up. Without it a positive rotation
+            // turns clockwise on screen - the one thing the y-up flip does
+            // not fix by itself. See `a positive rotation turns
+            // counter-clockwise on screen`.
+            sin = -math.sin(rotation);
           }
           final tx = projection.worldToViewX(source.x[entity]);
           final ty = projection.worldToViewY(source.y[entity]);
@@ -2004,7 +2009,11 @@ class GameRenderer2D extends GameSystem
         sin = 0.0;
       } else {
         cos = math.cos(rotation);
-        sin = math.sin(rotation);
+        // Negated because the quad is composed in view space, which is y-down,
+        // while world +y is up. Without it a positive rotation turns clockwise
+        // on screen - the one thing the y-up flip does not fix by itself. See
+        // `a positive rotation turns counter-clockwise on screen`.
+        sin = -math.sin(rotation);
       }
       final tx = projection.worldToViewX(source.x[entity]);
       final ty = projection.worldToViewY(source.y[entity]);

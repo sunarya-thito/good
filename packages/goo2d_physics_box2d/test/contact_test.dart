@@ -173,7 +173,7 @@ void main() {
     final scene = await _boot();
 
     final floor = scene.addEntity(scene.floor);
-    scene.floor.transformOffsetY[floor] = 10;
+    scene.floor.transformOffsetY[floor] = -10;
     scene.addEntity(scene.crate);
 
     _advance(180);
@@ -192,7 +192,7 @@ void main() {
     final scene = await _boot();
 
     final floor = scene.addEntity(scene.floor);
-    scene.floor.transformOffsetY[floor] = 10;
+    scene.floor.transformOffsetY[floor] = -10;
     scene.addEntity(scene.crate);
 
     _advance(180);
@@ -211,7 +211,7 @@ void main() {
     final scene = await _boot();
 
     final floor = scene.addEntity(scene.floor);
-    scene.floor.transformOffsetY[floor] = 10;
+    scene.floor.transformOffsetY[floor] = -10;
     scene.addEntity(scene.crate);
 
     _advance(180);
@@ -229,7 +229,7 @@ void main() {
     final scene = await _boot();
 
     final zone = scene.addEntity(scene.zone);
-    scene.zone.transformOffsetY[zone] = 5;
+    scene.zone.transformOffsetY[zone] = -5;
     scene.addEntity(scene.crate);
 
     // Fall through the zone entirely.
@@ -251,16 +251,17 @@ void main() {
     final scene = await _boot();
 
     final zone = scene.addEntity(scene.zone);
-    scene.zone.transformOffsetY[zone] = 5;
+    scene.zone.transformOffsetY[zone] = -5;
     final crate = scene.addEntity(scene.crate);
 
     _advance(120);
 
     expect(
       scene.crate.transformOffsetY[crate],
-      greaterThan(10),
+      lessThan(-10),
       reason: 'the crate should have fallen straight through the trigger, '
-          'not rested on it',
+          'not rested on it - and falling means a *smaller* y, since world '
+          '+y is up',
     );
   });
 
@@ -268,7 +269,7 @@ void main() {
     final scene = await _boot();
 
     final zone = scene.addEntity(scene.zone);
-    scene.zone.transformOffsetY[zone] = 5;
+    scene.zone.transformOffsetY[zone] = -5;
     scene.addEntity(scene.crate);
 
     _advance(200);
@@ -291,7 +292,7 @@ void main() {
     final scene = await _boot();
 
     final floor = scene.addEntity(scene.floor);
-    scene.floor.transformOffsetY[floor] = 10;
+    scene.floor.transformOffsetY[floor] = -10;
     final crate = scene.addEntity(scene.crate);
 
     Entity? reportedSource;
@@ -322,7 +323,7 @@ void main() {
     final scene = await _boot();
 
     final floor = scene.addEntity(scene.floor);
-    scene.floor.transformOffsetY[floor] = 10;
+    scene.floor.transformOffsetY[floor] = -10;
     scene.addEntity(scene.crate);
 
     _advance(180);

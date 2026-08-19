@@ -405,7 +405,7 @@ void main() {
   });
 
   group('Vec2Binding composition', () {
-    test('each key drives its own axis, with up as -y', () async {
+    test('each key drives its own axis, with up as +y', () async {
       final game = await _boot(_InputGame());
       final movement = run.state.getSystem<_PlayerSystem>().movement;
 
@@ -420,15 +420,17 @@ void main() {
       _pressAndStep(game, [InputKey.w]);
       expect(
         movement.value,
-        Vector2(0, -1),
+        Vector2(0, 1),
         reason:
-            'up is -y: the 2D renderer draws in screen space, where y '
-            'grows downward, so "up" has to decrease it',
+            'up is +y: world +y is up in both dimensions, so a binding '
+            'named "up" has to increase it. Getting this backwards is the '
+            'inversion that compiles - the player walks the wrong way and '
+            'nothing reports an error',
       );
 
       _releaseAndStep(game, [InputKey.w]);
       _pressAndStep(game, [InputKey.s]);
-      expect(movement.value, Vector2(0, 1), reason: 'down is +y');
+      expect(movement.value, Vector2(0, -1), reason: 'down is -y');
     });
 
     test('diagonals add, and are deliberately not normalized', () async {
@@ -438,7 +440,7 @@ void main() {
       _pressAndStep(game, [InputKey.w, InputKey.d]);
       expect(
         movement.value,
-        Vector2(1, -1),
+        Vector2(1, 1),
         reason:
             'the two axes compose; normalizing here would be a policy '
             'decision the binding has no business making for the game',
@@ -735,7 +737,7 @@ void main() {
       _pressAndStep(game, [InputKey.arrowRight, InputKey.w]);
       expect(
         movement.value,
-        Vector2(1, -1),
+        Vector2(1, 1),
         reason:
             'the new right key drives x, and the three axes copyWith '
             'did not mention still drive what they always did',

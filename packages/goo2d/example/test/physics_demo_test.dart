@@ -70,9 +70,9 @@ void main() {
     // clear any bar you set.
     //
     // What does work: a small batch, only two ticks, and the extreme value.
-    // Correct code creates every body at y = -6..-10 (negative is UP, see
+    // Correct code creates every body at y = +6..+10 (positive is UP, see
     // the demo's own note on the axis), so after two ticks of gravity the
-    // *lowest* on screen is still above -1. The bug creates them all at zero,
+    // *lowest* on screen is still above +1. The bug creates them all at zero,
     // and two ticks is not long enough for the solver to throw any of them
     // clear - so that extreme stays near zero.
     final demo = PhysicsDemo();
@@ -89,15 +89,15 @@ void main() {
     run.state.advance(const Duration(microseconds: 16667));
 
     final bodies = state.getSystem<SandboxSystem>().bodies;
-    // The largest y is the one nearest the floor, since +y is down.
-    var nearestFloor = -1e9;
+    // The smallest y is the one nearest the floor, since +y is up.
+    var nearestFloor = 1e9;
     var seen = 0;
     for (final group in bodies.groups()) {
       final prefab = group.tryGet<Crate>() ?? group.tryGet<Ball>();
       if (prefab == null) continue;
       for (final entity in group) {
         final y = (prefab as Transform2D).transformOffsetY[entity];
-        if (y > nearestFloor) nearestFloor = y;
+        if (y < nearestFloor) nearestFloor = y;
         seen++;
       }
     }
@@ -105,9 +105,9 @@ void main() {
     expect(seen, greaterThan(0), reason: 'nothing spawned to check');
     expect(
       nearestFloor,
-      lessThan(-1),
+      greaterThan(1),
       reason:
-          'every body should be created around y=-6..-10 (above the floor) '
+          'every body should be created around y=+6..+10 (above the floor) '
           'and still be up there two ticks later; a value near zero means '
           'they were created at the origin and the spawn position was '
           'clobbered',

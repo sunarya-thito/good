@@ -66,9 +66,10 @@ Both write the four rotation columns. Neither allocates.
 
     To move something up, add to `transformOffsetY`.
 
-    (If you also write 2D: `goo2d` puts +Y *down*, because it works in screen
-    space where that is the convention. Same direction in the world, opposite
-    sign. Nothing you write here is affected by that.)
+    (If you also write 2D: `goo2d` puts +Y up too. Y means the same thing in
+    both, so a system that moves something upward moves it upward whichever
+    dimension you carry it into — and positive rotation is counter-clockwise
+    in both.)
 
 ## The hierarchy is the kernel's
 

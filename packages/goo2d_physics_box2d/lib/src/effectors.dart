@@ -166,8 +166,8 @@ extension Effectors2D on Box2DPhysicsSystem {
   /// Buoyancy and drag below a surface line - Unity's Buoyancy Effector 2D.
   /// Water, lava, anything a body floats in.
   ///
-  /// [surfaceY] is the waterline; **anything at a larger y is submerged**,
-  /// because goo2d's +y is down. A body's depth drives the lift, so it bobs
+  /// [surfaceY] is the waterline; **anything at a smaller y is submerged**,
+  /// because goo2d's +y is up. A body's depth drives the lift, so it bobs
   /// and settles instead of being pushed with a constant force.
   ///
   /// [density] is the *fluid's*, against the body's own: below 1 the body
@@ -181,15 +181,17 @@ extension Effectors2D on Box2DPhysicsSystem {
     double density = 2,
     double linearDrag = 1,
     double angularDrag = 1,
-    double gravityY = 10,
+    double gravityY = -10,
     int layerMask = -1,
     int maxBodies = 256,
   }) {
+    // The fluid volume hangs *below* the waterline, so `surfaceY` is the box's
+    // maximum y and not its minimum - overlapBox wants them in that order.
     final found = overlapBox(
       minX,
-      surfaceY,
+      surfaceY - depth,
       maxX,
-      surfaceY + depth,
+      surfaceY,
       layerMask: layerMask,
       maxResults: maxBodies,
     );
@@ -200,7 +202,7 @@ extension Effectors2D on Box2DPhysicsSystem {
       final transform = entity.tryGet<Transform2D>();
       if (body == null || transform == null) continue;
 
-      final submerged = transform.transformOffsetY[entity] - surfaceY;
+      final submerged = surfaceY - transform.transformOffsetY[entity];
       if (submerged <= 0) continue;
 
       // Lift proportional to depth, capped at one body-depth so a body deep
@@ -208,6 +210,8 @@ extension Effectors2D on Box2DPhysicsSystem {
       // behaves the same way, and the cap is what makes it settle.
       final scale = submerged > 1 ? 1.0 : submerged;
       body
+        // Against gravity, whichever way that points: with the default
+        // [gravityY] of -10 this is a positive (upward) force.
         ..applyForce(entity, 0, -density * gravityY * scale)
         ..applyForce(
           entity,

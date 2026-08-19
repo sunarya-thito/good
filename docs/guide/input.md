@@ -139,6 +139,12 @@ movement = descriptor.has<Vector2>(
 );
 ```
 
+!!! note "`up` is `+y`"
+    `up` contributes **+1** to y and `down` −1, matching world space in both
+    dimensions, so `transformOffsetY += movement.value.y * speed` moves the
+    player the way the key is named. A game working in a y-down space swaps the
+    two keys in the binding.
+
 !!! note "Analog sticks are thresholded"
     The `*Stick*` directions are not buttons on any real pad — they are analog
     axes thresholded into held/not-held bits by the gamepad collector, which is

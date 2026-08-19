@@ -805,9 +805,10 @@ void main() {
       run.state.advance(_step);
       final quad = _drainFrames(game).single.quads.single;
       // 40x20 centred on (100,50), wound top-left -> top-right -> bottom-right
-      // -> bottom-left.
+      // -> bottom-left. World +y is up and canvas y is down, so a world y of
+      // 50 is a canvas y of -50 and the sprite straddles it as before.
       expect(quad.x, [80, 120, 120, 80]);
-      expect(quad.y, [40, 40, 60, 60]);
+      expect(quad.y, [-60, -60, -40, -40]);
     });
 
     test(
@@ -829,19 +830,109 @@ void main() {
 
         run.state.advance(_step);
         final quad = _drainFrames(game).single.quads.single;
-        // half extent (2,1); scale then rotate by +90 degrees maps
-        // (lx,ly) -> (-3*ly, 2*lx), then translate by (10,10).
+        // Half extent (2,1), scaled by (2,3). A +90 degree world rotation is
+        // a quarter turn *counter-clockwise*, which on the y-down canvas the
+        // corners are composed in is a quarter turn the other way: the local
+        // offsets map (lx,ly) -> (3*ly, -2*lx). The origin (10,10) projects to
+        // canvas (10,-10).
         for (final (i, local) in const [
           (-2.0, -1.0),
           (2.0, -1.0),
           (2.0, 1.0),
           (-2.0, 1.0),
         ].indexed) {
-          expect(quad.x[i], closeTo(10 - 3 * local.$2, 1e-4));
-          expect(quad.y[i], closeTo(10 + 2 * local.$1, 1e-4));
+          expect(quad.x[i], closeTo(10 + 3 * local.$2, 1e-4));
+          expect(quad.y[i], closeTo(-10 - 2 * local.$1, 1e-4));
         }
       },
     );
+
+    // The two tests below are the guard on the axis convention itself, and
+    // they are written to assert a *direction* rather than a number. A
+    // renderer that got the handedness backwards still compiles, still draws
+    // a sprite of the right size in the right place, and only turns the wrong
+    // way - so a magnitude assertion passes it and a `closeTo` on a corner
+    // that happens to be symmetric passes it too. These fail loudly instead.
+
+    test('a larger world y draws higher on the screen', () async {
+      final game = await _game();
+      final scene = run.state.getScene<_SpriteScene>();
+      final low = scene.addEntity(scene.sprite);
+      _place(scene.sprite, low, y: -100);
+      _size(scene.sprite, low, 4, 4, 0xFF0000FF);
+      final high = scene.addEntity(scene.sprite);
+      _place(scene.sprite, high, y: 100);
+      _size(scene.sprite, high, 4, 4, 0xFF00FF00);
+
+      run.state.advance(_step);
+      final quads = _drainFrames(game).single.quads;
+      final lowY = quads.firstWhere((q) => q.color == 0xFF0000FF).y[0];
+      final highY = quads.firstWhere((q) => q.color == 0xFF00FF00).y[0];
+      expect(
+        highY,
+        lessThan(lowY),
+        reason:
+            'world +y is up, and a canvas y that is smaller is nearer the '
+            'top of the view - so the entity at world y 100 must draw above '
+            'the one at -100. This is the whole of the convention, and the '
+            'only assertion in the suite that would survive the projection '
+            'losing its negation is this one failing.',
+      );
+    });
+
+    test('a positive rotation turns counter-clockwise on screen', () async {
+      // Two needles along +x, pivoted in their middles at the world origin
+      // and turned by equal and opposite angles. With no camera the view is
+      // zero-sized in a headless test, so the origin projects to (0, 0) and a
+      // needle's right-hand end sits at view y = -20 * sin(rotation): the
+      // sign of that number *is* the handedness.
+      //
+      // Half a radian, not a right angle, because a quarter turn maps corners
+      // onto other corners and a sign error there can hide inside a symmetric
+      // shape. An oblique angle leaves nowhere for it to hide.
+      final game = await _game();
+      final scene = run.state.getScene<_SpriteScene>();
+      final ccw = scene.addEntity(scene.sprite);
+      _place(scene.sprite, ccw, rotation: 0.5);
+      _size(scene.sprite, ccw, 40, 2, 0xFF00FF00);
+      final cw = scene.addEntity(scene.sprite);
+      _place(scene.sprite, cw, rotation: -0.5);
+      _size(scene.sprite, cw, 40, 2, 0xFF0000FF);
+
+      run.state.advance(_step);
+      final quads = _drainFrames(game).single.quads;
+      // Corners are wound top-left, top-right, bottom-right, bottom-left, so
+      // 1 and 2 are the two that share a needle's right-hand end. Their
+      // midpoint is that end's centre, and it is immune to which of the two
+      // long edges ends up higher.
+      double rightEndY(int color) {
+        final q = quads.firstWhere((q) => q.color == color);
+        return (q.y[1] + q.y[2]) / 2;
+      }
+
+      final turned = rightEndY(0xFF00FF00);
+      expect(
+        turned,
+        lessThan(0),
+        reason:
+            'world +y is up, so a positive rotation is counter-clockwise, so '
+            'the +x end of the needle must rise - and rising on a y-down '
+            'canvas means a smaller y. Under the old y-down convention this '
+            'was +20*sin(0.5) and positive, which is the silent reversal '
+            'this test exists to catch.',
+      );
+      expect(
+        rightEndY(0xFF0000FF),
+        greaterThan(0),
+        reason:
+            'and the opposite angle turns the opposite way. Both halves are '
+            'needed: an offset bug that pushed every quad up would pass the '
+            'first assertion on its own.',
+      );
+      // Equal and opposite, or the "direction" above could be an artefact of
+      // the two needles disagreeing about something other than their angle.
+      expect(rightEndY(0xFF0000FF) + turned, closeTo(0, 1e-9));
+    });
 
     test('a child is drawn - the query must not forbid Child', () async {
       final game = await _game();
@@ -865,7 +956,7 @@ void main() {
         121,
         119,
       ], reason: 'parent 100 + local 20');
-      expect(childQuad.y, [99, 99, 101, 101]);
+      expect(childQuad.y, [-101, -101, -99, -99]);
     });
 
     test(
@@ -881,7 +972,7 @@ void main() {
         run.state.advance(_step);
         final quad = _drainFrames(game).single.quads.single;
         expect(quad.x, [6, 8, 8, 6]);
-        expect(quad.y, [8, 8, 10, 10]);
+        expect(quad.y, [-10, -10, -8, -8]);
       },
     );
 
@@ -909,11 +1000,12 @@ void main() {
         //   M(gp)*M(p) = [2*0.5, 0, 2*10+100; 0, 3*2, 3*20+200]
         //              = [1, 0, 120; 0, 6, 260]
         //   * M(c)     = [1, 0, 125; 0, 6, 290]
-        // Half extent (2,3), so x = lx + 125 and y = 6*ly + 290. Note the
+        // Half extent (2,3), so x = lx + 125 and world y = 6*ly + 290 - which
+        // the projection negates to a canvas y of -290 +/- 18. Note the
         // *child's* height is scaled by the ancestors' 3*2, not by its own 1 -
         // that product is the whole point of flattening here.
         expect(quad.x, [123, 127, 127, 123]);
-        expect(quad.y, [272, 272, 308, 308]);
+        expect(quad.y, [-308, -308, -272, -272]);
       },
     );
 
@@ -932,11 +1024,12 @@ void main() {
         final quad = _drainFrames(game).single.quads
             .firstWhere((q) => q.color == 0xFF445566);
         // The child sits 10 along the parent's local +x, which +90 degrees has
-        // turned into world +y: centre (100, 110), not (110, 100).
+        // turned into world +y: centre (100, 110), not (110, 100). World +y is
+        // up, so it draws 10 *above* the parent - canvas y -110.
         final centreX = quad.x.reduce((a, b) => a + b) / 4;
         final centreY = quad.y.reduce((a, b) => a + b) / 4;
         expect(centreX, closeTo(100, 1e-3));
-        expect(centreY, closeTo(110, 1e-3));
+        expect(centreY, closeTo(-110, 1e-3));
       },
     );
 
@@ -954,7 +1047,7 @@ void main() {
         final quads = _drainFrames(game).single.quads;
         expect(quads.length, 1, reason: 'the parent is unsized');
         expect(quads.single.x, [2, 4, 4, 2]);
-        expect(quads.single.y, [3, 3, 5, 5]);
+        expect(quads.single.y, [-5, -5, -3, -3]);
       },
     );
 
@@ -977,7 +1070,7 @@ void main() {
         final quad = _drainFrames(game).single.quads
             .firstWhere((q) => q.color == 0xFF778899);
         expect(quad.x, [52, 54, 54, 52]);
-        expect(quad.y, [63, 63, 65, 65]);
+        expect(quad.y, [-65, -65, -63, -63]);
       },
     );
   });
@@ -1440,7 +1533,9 @@ void main() {
 
       // The old write pass's arithmetic, verbatim, in double.
       final cos = math.cos(rotation);
-      final sin = math.sin(rotation);
+      // Negated, exactly as the fill pass does it: the corners are composed on
+      // a y-down canvas and the world is y-up.
+      final sin = -math.sin(rotation);
       final pivotX = 0.31 * width;
       final pivotY = 0.67 * height;
       final lx0 = -pivotX * 1.7;
@@ -1448,9 +1543,9 @@ void main() {
       final ly0 = -pivotY * 0.3;
       final ly1 = (height - pivotY) * 0.3;
       // The view centres on the world origin for a headless game (view size is
-      // zero), so `tx`/`ty` are just the world position.
+      // zero), so `tx` is just the world x and `ty` the negated world y.
       const tx = 11.3;
-      const ty = -7.9;
+      const ty = 7.9;
       final expectedX = <double>[
         tx + lx0 * cos - ly0 * sin,
         tx + lx1 * cos - ly0 * sin,
@@ -1512,9 +1607,10 @@ void main() {
         run.state.advance(_step);
         final quad = _drainFrames(game).single.quads.single;
         // pivot = 0.5 * (40,20) + (0,0) = (20,10), so the local extent runs
-        // -20..20 by -10..10 - identical to the pre-pivot geometry.
+        // -20..20 by -10..10 about the projected origin (100,-50) - identical
+        // to the pre-pivot geometry.
         expect(quad.x, [80, 120, 120, 80]);
-        expect(quad.y, [40, 40, 60, 60]);
+        expect(quad.y, [-60, -60, -40, -40]);
       },
     );
 
@@ -1530,7 +1626,10 @@ void main() {
       final quad = _drainFrames(game).single.quads.single;
       // pivot = 0 * (40,20) + (0,0) = (0,0), so the local extent runs 0..40 by
       // 0..20: the same 40x20 sprite at the same position as the test above,
-      // shifted by exactly half its own extent.
+      // shifted by exactly half its own extent. The pivot fraction is measured
+      // from the sprite's *drawn* top-left and stays that way under +y up, so
+      // the sprite still hangs down and right from the transform origin - it
+      // is an anchor within the texture, not a world direction.
       expect(
         quad.x,
         [100, 140, 140, 100],
@@ -1539,7 +1638,7 @@ void main() {
             'about the entity transform changed - only which point of the '
             'sprite that transform names',
       );
-      expect(quad.y, [50, 50, 70, 70]);
+      expect(quad.y, [-50, -50, -30, -30]);
     });
 
     test('the pivot is what rotation turns about', () async {
@@ -1553,17 +1652,19 @@ void main() {
 
       run.state.advance(_step);
       final quad = _drainFrames(game).single.quads.single;
-      // Local corners (0,0),(40,0),(40,20),(0,20) rotated +90 degrees:
-      // (x,y) -> (-y, x). The corner sitting *on* the pivot stays put, which
-      // is the whole observable difference between pivoting and translating.
+      // Local corners (0,0),(40,0),(40,20),(0,20) on the canvas, turned by
+      // +90 degrees in a y-up world - which is -90 on the y-down canvas they
+      // are composed in: (x,y) -> (y, -x). The corner sitting *on* the pivot
+      // stays put, which is the whole observable difference between pivoting
+      // and translating.
       for (final (i, local) in const [
         (0.0, 0.0),
         (40.0, 0.0),
         (40.0, 20.0),
         (0.0, 20.0),
       ].indexed) {
-        expect(quad.x[i], closeTo(-local.$2, 1e-4));
-        expect(quad.y[i], closeTo(local.$1, 1e-4));
+        expect(quad.x[i], closeTo(local.$2, 1e-4));
+        expect(quad.y[i], closeTo(-local.$1, 1e-4));
       }
     });
   });
@@ -1591,7 +1692,7 @@ void main() {
             'is the identity - a game that declares no camera must get '
             'byte-for-byte what it got before cameras existed',
       );
-      expect(quad.y, [40, 40, 60, 60]);
+      expect(quad.y, [-60, -60, -40, -40]);
     });
 
     test('a moved camera shifts every quad by the same offset', () async {
@@ -1611,15 +1712,17 @@ void main() {
       run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
       expect(quads.length, 2, reason: 'the camera itself draws nothing');
-      // Both quads move by exactly -(30,40): the camera position is where
-      // the view is centred, so it is subtracted, and a rigid shift is the
-      // only thing a translation may do to a scene. (The centring term is
-      // zero here because nothing laid this game out - it does not change
-      // the shift, only where the whole scene sits.)
+      // Both quads move by exactly -(30,40) in world terms: the camera
+      // position is where the view is centred, so it is subtracted, and a
+      // rigid shift is the only thing a translation may do to a scene. On the
+      // canvas the y half of that shift comes out the other way up, so moving
+      // the camera to a larger world y moves the scene *down* the screen.
+      // (The centring term is zero here because nothing laid this game out -
+      // it does not change the shift, only where the whole scene sits.)
       expect(quads[0].x, [50, 90, 90, 50]);
-      expect(quads[0].y, [0, 0, 20, 20]);
+      expect(quads[0].y, [-20, -20, 0, 0]);
       expect(quads[1].x, [-31, -29, -29, -31]);
-      expect(quads[1].y, [-41, -41, -39, -39]);
+      expect(quads[1].y, [39, 39, 41, 41]);
     });
 
     test(
@@ -1637,11 +1740,11 @@ void main() {
         run.state.advance(_step);
         final quad = _drainFrames(game).single.quads.single;
         // (world - origin) * zoom, with the origin still at (0,0): the centre
-        // moves to (200,100) and the half-extents double to (40,20). Scaling
-        // only the position would slide sprites apart without magnifying them,
-        // which is a different (and wrong) effect.
+        // moves to canvas (200,-100) and the half-extents double to (40,20).
+        // Scaling only the position would slide sprites apart without
+        // magnifying them, which is a different (and wrong) effect.
         expect(quad.x, [160, 240, 240, 160]);
-        expect(quad.y, [80, 80, 120, 120]);
+        expect(quad.y, [-120, -120, -80, -80]);
       },
     );
 
@@ -2469,18 +2572,21 @@ void main() {
         run.state.advance(_step);
         final quads = _drainFrames(game).single.quads;
 
-        // A quarter turn sends local (x, y) to world (-y, x). Checking the far
-        // corner of the outermost cell pins that the whole grid went through
-        // the same transform the single-quad path uses, rather than each cell
-        // being rotated about its own origin.
+        // A quarter turn counter-clockwise in a y-up world is a quarter turn
+        // the other way on the y-down canvas the cells are composed on, so it
+        // sends local (x, y) to canvas (y, -x). Checking the far corner of the
+        // outermost cell pins that the whole grid went through the same
+        // transform the single-quad path uses, rather than each cell being
+        // rotated about its own origin - and it pins the *direction*, since a
+        // grid rotated the wrong way is still a coherent grid.
         expect(
           quads[8].x[2],
-          closeTo(-40, 1e-9),
+          closeTo(40, 1e-9),
           reason:
               'the bottom-right cell reaches local (40,40), which a '
-              'quarter turn puts at world (-40, 40)',
+              'quarter turn puts at canvas (40, -40)',
         );
-        expect(quads[8].y[2], closeTo(40, 1e-9));
+        expect(quads[8].y[2], closeTo(-40, 1e-9));
 
         // Adjacent cells still share an edge - what a sheared grid would fail.
         expect(
@@ -2534,9 +2640,10 @@ void main() {
 
       expect(frames, hasLength(1));
       final quad = frames.single.quads.single;
-      // 10x10 centred on its default pivot, at (30, -20): corners at +/-5.
+      // 10x10 centred on its default pivot, at world (30, -20) - canvas
+      // (30, 20), since world +y is up: corners at +/-5.
       expect(quad.x, [25.0, 35.0, 35.0, 25.0]);
-      expect(quad.y, [-25.0, -25.0, -15.0, -15.0]);
+      expect(quad.y, [15.0, 15.0, 25.0, 25.0]);
       expect(quad.color, 0xFF223344);
     });
 

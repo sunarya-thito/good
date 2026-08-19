@@ -317,6 +317,51 @@ void main() {
               'scale');
     });
 
+    test('picking turns the same way the renderer draws', () async {
+      // The quarter-turn test above cannot catch a handedness error: a
+      // rectangle turned 90 degrees is the same set of points whichever way it
+      // went. This one uses an oblique angle, where the two answers are
+      // different shapes and the mirrored point is outside.
+      //
+      // Picking and drawing have to agree or a click lands next to what you
+      // can see, and they reach the same answer by different routes - the
+      // renderer composes corners on the y-down canvas with a negated sine,
+      // while this inverts the rotation in y-up world space and lets
+      // `viewToWorldY` carry the flip. That they still meet is the property
+      // under test.
+      final game = await _boot();
+      final scene = run.state.getScene<_Scene>();
+      final panel = scene.addEntity(scene.panel);
+      scene.pool.beginTick();
+      scene.panel.transformRotation[panel] = 0.5;
+      scene.pool.commitTick();
+      _settle(game);
+
+      // The panel is 200x100. Its long axis started along +x; a positive
+      // rotation is counter-clockwise, so it now points up and to the right -
+      // and up the screen is a *smaller* view y. Local (90, 0) is well inside
+      // the panel and lands at world (79, 43), i.e. view (79, -43).
+      _moveTo(game, 79, -43);
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        panel,
+        reason: 'the long axis leans up the screen, so this is on it',
+      );
+
+      // The mirror image of that point about the view's horizontal midline.
+      // It is 76 local units off the panel's short axis, which is only 50
+      // half-extents wide, so it misses - unless picking turned the panel the
+      // other way, in which case it is the hit and the point above is not.
+      _moveTo(game, 79, 43);
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        isNull,
+        reason: 'and the mirrored point is off it entirely. A picker that '
+            'rotated clockwise would swap these two results and pass every '
+            'other test in this file',
+      );
+    });
+
     test('a disabled body stops picking without being removed', () async {
       final game = await _boot();
       final scene = run.state.getScene<_Scene>();
@@ -568,10 +613,12 @@ void main() {
 
       _moveTo(game, 12, 34);
       final picking = run.state.getSystem<MousePickingSystem>();
-      expect(picking.worldSpace, Vector2(12, 34),
-          reason: 'the identity, byte for byte - which is what makes the '
-              'camera optional rather than something every scene has to '
-              'declare');
+      expect(picking.worldSpace, Vector2(12, -34),
+          reason: 'with no camera the x half is the identity byte for byte, '
+              'and the y half is the plain negation that makes world +y up - '
+              'a pointer 34 pixels down the view is 34 world units below the '
+              'camera. That is what makes the camera optional rather than '
+              'something every scene has to declare');
     });
 
     test('a moved camera shifts what the cursor is over', () async {
@@ -627,7 +674,7 @@ void main() {
 
       _moveTo(game, 530, 20);
       expect(scene.panel.lastWorldX, 530);
-      expect(scene.panel.lastWorldY, 20,
+      expect(scene.panel.lastWorldY, -20,
           reason: 'MouseEvent carries the world point so a handler can work '
               'out where *within* itself it was grabbed - subtract the '
               'entity\'s own world position and you have the grab offset');
@@ -689,9 +736,10 @@ void main() {
               'rule the renderer draws by, inverted');
 
       _moveTo(game, 0, 0);
-      expect(picking.worldSpace, Vector2(600, -300),
+      expect(picking.worldSpace, Vector2(600, 300),
           reason: 'and the top-left corner is half a view up and to the left '
-              'of it');
+              'of it - up being a *larger* world y now that world +y is up, '
+              'which is the sign this used to have the other way round');
 
       // The button is at the world origin, which this camera has panned away
       // from - but a button parked under the camera is clickable at the

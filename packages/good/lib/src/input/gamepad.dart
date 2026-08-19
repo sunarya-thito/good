@@ -167,9 +167,10 @@ final class GamepadCollector {
           GamepadButton.leftStickRight,
         );
       case pads.GamepadAxis.leftStickY:
-        // The plugin reports +1 as up, and so does this vocabulary. (The
-        // *world* has +y downward, but that is a `Vec2Binding` question -
-        // which of the two bits it maps to which axis sign - not this one.)
+        // The plugin reports +1 as up, and so does this vocabulary - and so,
+        // now, does the world. Which of the two bits carries which axis sign
+        // is still a `Vec2Binding` question and not this one; all this does
+        // is name the bit.
         _applyStick(
           slot,
           value,
