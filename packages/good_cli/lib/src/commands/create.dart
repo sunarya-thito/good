@@ -129,18 +129,30 @@ class CreateCommand extends Command with Verbose {
       return;
     }
 
+    // Whether the tree below is one this command just made.
+    //
+    // It decides who owns the files already in it. `flutter create` ran
+    // seconds ago into a directory this command refused to touch if it
+    // existed, so everything there is its output and the scaffold is entitled
+    // to replace it - which is the whole of #27: `flutter create` writes a
+    // counter app to lib/main.dart, the loop below skipped it as "existing",
+    // and the good main.dart was never written. A project reached through
+    // --no-flutter-create is somebody's, and nothing there is replaced.
+    final ours = !noFlutterCreate.value;
+
     for (final entry in files.entries) {
       final file = File('${root.path}/${entry.key}');
-      // Never over an existing file. Scaffolding is a starting point, and
-      // silently replacing a main.dart someone has written in is the one
-      // unrecoverable thing this command could do.
-      if (file.existsSync()) {
+      final existed = file.existsSync();
+      // Never over a file this command did not put there. Scaffolding is a
+      // starting point, and silently replacing a main.dart someone has written
+      // in is the one unrecoverable thing this command could do.
+      if (existed && !ours) {
         info.printf('Kept existing %s\n', [entry.key]);
         continue;
       }
       file.parent.createSync(recursive: true);
       file.writeAsStringSync(entry.value);
-      info.printf('Wrote %s\n', [entry.key]);
+      info.printf(existed ? 'Replaced %s\n' : 'Wrote %s\n', [entry.key]);
     }
 
     _patchPubspec(root, engine.package);
