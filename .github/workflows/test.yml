@@ -51,7 +51,7 @@ jobs:
       - name: Resolve
         run: |
           set -e
-          for p in good goo2d good_net good_net_p2p; do
+          for p in good goo2d goo3d good_net good_net_p2p; do
             echo "::group::flutter pub get $p"
             (cd "packages/$p" && flutter pub get)
             echo "::endgroup::"
@@ -66,7 +66,7 @@ jobs:
       - name: Analyze
         run: |
           set -e
-          for p in good goo2d good_net good_net_p2p; do
+          for p in good goo2d goo3d good_net good_net_p2p; do
             echo "::group::flutter analyze $p"
             (cd "packages/$p" && flutter analyze --no-pub)
             echo "::endgroup::"
@@ -81,7 +81,7 @@ jobs:
       - name: Test
         run: |
           set -e
-          for p in good goo2d good_net good_net_p2p; do
+          for p in good goo2d goo3d good_net good_net_p2p; do
             echo "::group::flutter test $p"
             (cd "packages/$p" && flutter test --no-pub)
             echo "::endgroup::"
