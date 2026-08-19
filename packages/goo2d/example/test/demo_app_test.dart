@@ -16,6 +16,11 @@ import 'package:goo2d_example/harness/demo_app.dart';
 /// and replaying frames** on main, and a headless start/stop/start cycle never
 /// touches that path at all.
 void main() {
+  // A `GameView` builds the `DrawCanvas2D` that registers the texture loader in
+  // an app, but only once a case is up, and a case decodes its scene while it
+  // is starting. So the loader has to be in place before the first start.
+  setUp(() => AssetLoaders.register<Texture>(const TextureLoader()));
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

@@ -1,0 +1,9 @@
+# Declared so the runner does not warn about an unrecognised tag, and so the
+# reason it exists is written down next to it.
+#
+# `box2d`: needs the goo2d_ffi_box2d native library, which is built by hand
+# from a PowerShell script against a local toolchain. CI does not build it, so
+# .github/workflows/test.yml runs this package with `--exclude-tags box2d`.
+# Locally, build the library once and the whole suite runs.
+tags:
+  box2d:

@@ -1,5 +1,10 @@
 # Runs the analyzer and the test suites on every push and pull request.
 #
+# packages/goo2d/example is here too, and not as a courtesy: the demos are the
+# worked examples the docs point at, so that suite is the closest thing to an
+# integration test the repository has. It sat in nobody's baseline and rotted to
+# sixteen red tests before anyone noticed (#83), which is what this is for.
+#
 # The box2d packages are not here yet. Their tests need the Box2D shared library
 # compiled from vendored source first, and the build script is PowerShell against
 # a local toolchain. That is issue #7's follow-up; 55 of the 867 tests are in
@@ -51,6 +56,9 @@ jobs:
             (cd "packages/$p" && flutter pub get)
             echo "::endgroup::"
           done
+          echo "::group::flutter pub get goo2d/example"
+          (cd packages/goo2d/example && flutter pub get)
+          echo "::endgroup::"
           echo "::group::dart pub get good_cli"
           (cd packages/good_cli && dart pub get)
           echo "::endgroup::"
@@ -63,6 +71,9 @@ jobs:
             (cd "packages/$p" && flutter analyze --no-pub)
             echo "::endgroup::"
           done
+          echo "::group::flutter analyze goo2d/example"
+          (cd packages/goo2d/example && flutter analyze --no-pub)
+          echo "::endgroup::"
           echo "::group::dart analyze good_cli"
           (cd packages/good_cli && dart analyze)
           echo "::endgroup::"
@@ -75,6 +86,13 @@ jobs:
             (cd "packages/$p" && flutter test --no-pub)
             echo "::endgroup::"
           done
+          # Minus the `box2d` tag, for the reason at the top of this file: the
+          # joints and physics cases drive the native library nothing here
+          # builds. A tag rather than a list of filenames, so a test file added
+          # later is run by default and only opts out deliberately.
+          echo "::group::flutter test goo2d/example"
+          (cd packages/goo2d/example && flutter test --no-pub --exclude-tags box2d)
+          echo "::endgroup::"
           echo "::group::dart test good_cli"
           (cd packages/good_cli && dart test)
           echo "::endgroup::"

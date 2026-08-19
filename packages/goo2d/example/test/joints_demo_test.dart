@@ -3,8 +3,15 @@
 // Requires the native library:
 //   cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1
 //
-// **Positive y is DOWN**, so a chain hangs towards a larger y and its anchor
-// sits at a negative one.
+// **Positive y is UP**, so a chain hangs towards a smaller y and its anchor
+// sits at a larger one. 34c8556 flipped the case and left this file behind;
+// the sign of every y assertion below is the mirror of what it used to be.
+
+// Tagged `box2d` so CI can leave it out: the workflow does not build the
+// native library, and a suite that cannot run is better skipped by name than
+// red for a reason that has nothing to do with the demo.
+@Tags(['box2d'])
+library;
 
 import 'dart:typed_data';
 
@@ -21,6 +28,11 @@ const Duration _step = Duration(microseconds: 16667);
 const int _expectedBodies = 4 + 1 + 9 * 3 + 1;
 
 void main() {
+  // These cases boot inline, so this isolate both simulates and decodes. In an
+  // app the loader arrives with the first `DrawCanvas2D`, which is a widget and
+  // nothing here builds one - a headless boot has to register it itself.
+  setUp(() => AssetLoaders.register<Texture>(const TextureLoader()));
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();
@@ -42,6 +54,12 @@ void main() {
     // happens if the case builds them on the spawn tick, before any body
     // exists - every link would be in free fall and the whole chain would be
     // metres below where it started after two seconds.
+    //
+    // A one-sided bound, and it stays one-sided: the case shoves this chain
+    // sideways on the tick it joints it (see `_swing`), so the bottom link is
+    // *travelling* by the time this looks. What free fall cannot do is end up
+    // near where it started - a jointed link can never be more than the chain's
+    // own length below its anchor, and 2 s of free fall is 20 m.
     final (run, state, _) = await boot();
 
     final scene = state.sandbox;
@@ -57,7 +75,7 @@ void main() {
     final endY = scene.link.transformOffsetY[bottom];
     expect(
       endY - startY,
-      lessThan(1.0),
+      greaterThan(-1.0),
       reason: 'a hanging chain should stay put; two seconds of free fall '
           'would put the bottom link about 20 m lower',
     );
@@ -65,7 +83,7 @@ void main() {
     // ground in this case at all.
     expect(
       endY,
-      lessThan(scene.link.transformOffsetY[chain.first] + 12),
+      greaterThan(scene.link.transformOffsetY[chain.first] - 12),
       reason: 'the chain should not have stretched into a line of dots',
     );
   });
@@ -100,7 +118,7 @@ void main() {
     final bottom = quiet.last;
     expect(
       state.sandbox.link.transformOffsetY[bottom],
-      lessThan(0),
+      greaterThan(0),
       reason: 'the unloaded chain should still be hanging near its anchor',
     );
   });

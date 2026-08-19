@@ -3,6 +3,12 @@
 // Requires the native library:
 //   cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1
 
+// Tagged `box2d` so CI can leave it out: the workflow does not build the
+// native library, and a suite that cannot run is better skipped by name than
+// red for a reason that has nothing to do with the demo.
+@Tags(['box2d'])
+library;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 import 'package:goo2d_physics_box2d/goo2d_physics_box2d.dart';
