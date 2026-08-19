@@ -78,11 +78,12 @@ void main() {
     P2PNetTransport transport({
       double loss = 0,
       Duration linkTimeout = const Duration(seconds: 5),
+      Duration handshakeTimeout = const Duration(seconds: 2),
     }) {
       final made = P2PNetTransport(
         bindAddress: InternetAddress.loopbackIPv4,
         simulatedLoss: loss,
-        handshakeTimeout: const Duration(seconds: 2),
+        handshakeTimeout: handshakeTimeout,
         linkTimeout: linkTimeout,
       );
       transports.add(made);
@@ -192,6 +193,36 @@ void main() {
         reason:
             'the host is dropping a third of what it sends; it should '
             'notice that its packets are not being acknowledged',
+      );
+    });
+
+    test('a handshake survives losing half of itself', () async {
+      final host = transport();
+      // The connect request is retried on an interval until the timeout, so
+      // half of them going missing costs time and not the join. Reaching this
+      // at all needs the loss knob to cover the handshake, which it did not
+      // until `_send` became the one place a packet leaves.
+      final client = transport(loss: 0.5);
+      final hosted = await host.host();
+
+      final joined = await client.join(hosted.id);
+      expect(joined.connectionTo(NetPeerId.host), isNotNull);
+    });
+
+    test('a handshake that never lands gives up and says so', () async {
+      final host = transport();
+      final client = transport(
+        loss: 1,
+        handshakeTimeout: const Duration(milliseconds: 300),
+      );
+      final hosted = await host.host();
+
+      // Nothing leaves at all, so no retry can help and the timeout is the
+      // only way out. The message names the address, because the usual cause
+      // is nobody listening there rather than loss.
+      await expectLater(
+        client.join(hosted.id),
+        throwsA(isA<NetException>()),
       );
     });
 

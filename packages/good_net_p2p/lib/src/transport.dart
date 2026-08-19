@@ -461,12 +461,24 @@ class P2PNetTransport extends NetTransport {
   }
 
   void _sendDatagram(P2PLink link, Uint8List datagram, int length) {
+    _send(datagram, length, link.address, link.port);
+  }
+
+  /// The one place a packet leaves this transport, so that [simulatedLoss]
+  /// covers the whole protocol.
+  ///
+  /// It used to sit in [_sendDatagram] alone, which meant the handshake and
+  /// the goodbye - the two exchanges with no game logic on top to notice
+  /// something went missing - were the only ones a loss knob could not break.
+  /// A join at `simulatedLoss: 1` still succeeded.
+  void _send(
+    Uint8List datagram,
+    int length,
+    InternetAddress address,
+    int port,
+  ) {
     if (simulatedLoss > 0 && _random.nextDouble() < simulatedLoss) return;
-    _socket?.send(
-      Uint8List.sublistView(datagram, 0, length),
-      link.address,
-      link.port,
-    );
+    _socket?.send(Uint8List.sublistView(datagram, 0, length), address, port);
   }
 
   void _queueMessage(
@@ -502,11 +514,7 @@ class P2PNetTransport extends NetTransport {
     _scratchView.setUint32(at, schemaHash, Endian.little);
     at += 4;
     at = _writeString(at, code);
-    _socket?.send(
-      Uint8List.sublistView(_scratch, 0, at),
-      handshake.link.address,
-      handshake.link.port,
-    );
+    _send(_scratch, at, handshake.link.address, handshake.link.port);
     handshake.lastSentMicros = _now;
   }
 
@@ -587,11 +595,7 @@ class P2PNetTransport extends NetTransport {
       _scratchView.setUint16(at, others[i].generation, Endian.little);
       at += 2;
     }
-    _socket?.send(
-      Uint8List.sublistView(_scratch, 0, at),
-      link.address,
-      link.port,
-    );
+    _send(_scratch, at, link.address, link.port);
   }
 
   void _onConnectAccept(InternetAddress address, int port, Uint8List data) {
@@ -633,11 +637,7 @@ class P2PNetTransport extends NetTransport {
   void _sendReject(InternetAddress address, int port, int reason) {
     _prologue(PacketType.connectReject);
     _scratch[prologueBytes] = reason;
-    _socket?.send(
-      Uint8List.sublistView(_scratch, 0, prologueBytes + 1),
-      address,
-      port,
-    );
+    _send(_scratch, prologueBytes + 1, address, port);
   }
 
   void _onConnectReject(InternetAddress address, int port, Uint8List data) {
@@ -665,11 +665,7 @@ class P2PNetTransport extends NetTransport {
   void _sendDisconnect(P2PLink link, NetDisconnectReason reason) {
     _prologue(PacketType.disconnect);
     _scratch[prologueBytes] = reason.index;
-    _socket?.send(
-      Uint8List.sublistView(_scratch, 0, prologueBytes + 1),
-      link.address,
-      link.port,
-    );
+    _send(_scratch, prologueBytes + 1, link.address, link.port);
   }
 
   void _onDisconnect(InternetAddress address, int port, Uint8List data) {
