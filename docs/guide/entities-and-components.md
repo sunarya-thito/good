@@ -220,8 +220,8 @@ and hang it on `Accessor<YourComponent>`.
 
 `Accessor<T>` implements `Entity`, so `this` is the row index and a column takes
 it directly. `component` is the `Health` the receiver's archetype declared,
-sugar for `get<Health>()`. That is a registry lookup, so hold it in a local when
-a helper touches it more than once.
+sugar for `get<Health>()` — an inlined list index and a type check, not a map,
+so reaching for it twice is a style question and not a cost.
 
 The rest of `Entity` is there too:
 
