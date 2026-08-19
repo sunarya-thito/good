@@ -65,6 +65,24 @@ class _Ball extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
   }
 }
 
+/// A kinematic moving platform: gameplay sets its velocity, the solver
+/// integrates it.
+class _Platform extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
+  late final BoxBody box;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    box = descriptor.hasBoxCollider(halfWidth: 4, halfHeight: 0.5);
+  }
+
+  @override
+  void describeRigidBody(RigidBody2DDescriptor descriptor) {
+    super.describeRigidBody(descriptor);
+    descriptor.has(type: BodyType2D.kinematicBody);
+  }
+}
+
 /// A body that never rotates.
 class _Pinned extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
   late final CircleBody circle;
@@ -89,6 +107,7 @@ class _Scene extends SceneStruct {
   late final _Floor floor;
   late final _Ball ball;
   late final _Pinned pinned;
+  late final _Platform platform;
 
   @override
   void onSceneMounted(Scene scene) => handle = scene;
@@ -103,6 +122,7 @@ class _Scene extends SceneStruct {
     floor = descriptor.has(_Floor());
     ball = descriptor.has(_Ball());
     pinned = descriptor.has(_Pinned());
+    platform = descriptor.has(_Platform());
   }
 }
 
@@ -112,6 +132,10 @@ class _Scene extends SceneStruct {
 
 /// A pending body-type change, applied the same way.
 (Entity, BodyType2D)? _retype;
+
+/// A pending rotation write: (entity, radians). Same reason as [_teleport] -
+/// a transform write has to come from inside a tick window.
+(Entity, double)? _turn;
 
 /// Stands in for ordinary gameplay code. Component mutation is only legal
 /// inside a tick window, so a test that wants to move something mid-run has
@@ -124,6 +148,13 @@ class _GameplaySystem extends GameSystem with FixedTickable {
       _retype = null;
       final (entity, type) = retype;
       entity.get<RigidBody2D>().bodyType[entity] = type;
+    }
+
+    final turn = _turn;
+    if (turn != null) {
+      _turn = null;
+      final (entity, angle) = turn;
+      entity.get<Transform2D>().transformRotation[entity] = angle;
     }
 
     final pending = _teleport;
@@ -203,6 +234,7 @@ void main() {
   setUp(() {
     _teleport = null;
     _retype = null;
+    _turn = null;
   });
 
   tearDown(() {
@@ -381,6 +413,121 @@ void main() {
         closeTo(1.0, 0.02),
         reason: 'one radian after one second; drift towards pi/4 (0.785) '
             'would mean pulled angles are being pushed back in',
+      );
+    });
+
+    // #74. `b2MakeRot` is a rational approximation, so an angle pushed in and
+    // pulled back out does not come back the same; do that once per tick and
+    // the error compounds towards a multiple of pi/4. These are exact-equality
+    // assertions on purpose - the defect is a slow drift, and any tolerance
+    // wide enough to be comfortable is wide enough to hide it. Before the
+    // fix the floor below read 0.7184847593307495 at 1000 ticks and
+    // 0.7853957414627075 at 10000.
+    const authored = 0.3;
+
+    test('a static body holds the angle it was authored at', () async {
+      final scene = await _boot();
+      final floor = scene.addEntity(scene.floor);
+      scene.floor.transformRotation[floor] = authored;
+
+      _advance(10000);
+
+      expect(
+        scene.floor.transformRotation[floor],
+        authored,
+        reason: 'the solver never moves a static body, so nothing should '
+            'ever have written its rotation - not even back to itself',
+      );
+    });
+
+    test('a kinematic body holds its angle when nothing turns it', () async {
+      final scene = await _boot();
+      final platform = scene.addEntity(scene.platform);
+      scene.platform.transformRotation[platform] = authored;
+
+      // Kinematic is NOT the same case as static: the solver integrates a
+      // kinematic body's velocity, so its transform is a result and is read
+      // back. That first read is Box2D's own reading of the authored angle -
+      // `authored` put through b2MakeRot and back - so it is not 0.3, and it
+      // is not supposed to be. What matters is that it then stops moving.
+      _advance(1);
+      final settled = scene.platform.transformRotation[platform];
+      expect(settled, isNot(authored));
+
+      _advance(9999);
+
+      expect(
+        scene.platform.transformRotation[platform],
+        settled,
+        reason: 'with no angular velocity there is nothing to integrate, so '
+            'the angle read on the first tick is the one it keeps',
+      );
+    });
+
+    test('a kinematic body still turns when given angular velocity', () async {
+      // The other half of the one above: skipping the push must not have
+      // cost kinematic bodies their motion, which is the solver's to give.
+      final scene = await _boot();
+      final platform = scene.addEntity(scene.platform);
+      _advance(1);
+
+      scene.platform.setAngularVelocity(platform, 1.0); // rad/s
+      _advance(60);
+
+      expect(
+        scene.platform.transformRotation[platform],
+        closeTo(1.0, 0.02),
+        reason: 'one radian after one second, the same as a dynamic body',
+      );
+    });
+
+    test('gameplay can turn a static body', () async {
+      final scene = await _boot();
+      final floor = scene.addEntity(scene.floor);
+      scene.floor.transformRotation[floor] = authored;
+      _advance(10);
+
+      _turn = (floor, 1.2);
+      // Two ticks for the same reason the teleport test needs two: a write
+      // made during tick N is not readable until N+1.
+      _advance(2);
+
+      expect(
+        scene.floor.transformRotation[floor],
+        1.2,
+        reason: 'a static body is gameplay\'s to place, and the value it is '
+            'given is the value it keeps',
+      );
+
+      _advance(10000);
+
+      expect(
+        scene.floor.transformRotation[floor],
+        1.2,
+        reason: 'and it does not start drifting from the new angle either',
+      );
+    });
+
+    test('a body turned static holds the angle it froze at', () async {
+      // The #67 path: a crate that lands and is frozen in place used to enter
+      // the drift loop from the other direction.
+      final scene = await _boot();
+      final crate = scene.addEntity(scene.crate);
+      _advance(1);
+
+      _turn = (crate, authored);
+      _advance(2);
+      _retype = (crate, BodyType2D.staticBody);
+      _advance(3);
+
+      final frozen = scene.crate.transformRotation[crate];
+      _advance(10000);
+
+      expect(
+        scene.crate.transformRotation[crate],
+        frozen,
+        reason: 'freezing a body must not hand it to the round-trip that '
+            'static bodies are now kept out of',
       );
     });
 

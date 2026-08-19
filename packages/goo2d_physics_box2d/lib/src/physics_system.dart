@@ -939,17 +939,31 @@ class Box2DPhysicsSystem extends GameSystem
           _applyBodyType(body, entity, handle, type);
         }
 
-        // Static and kinematic bodies are authored by gameplay, so they are
-        // always pushed. A dynamic body is Box2D's to move, and is pushed
-        // only when it differs from what was last pulled out - see
-        // RigidBody2D's class doc for why the comparison is against the
-        // pulled value.
+        // Every type is pushed on the same rule: only when gameplay's
+        // transform differs from the sync cache. Static and kinematic bodies
+        // were pushed unconditionally until #74, which round-tripped their
+        // angle through `b2MakeRot` once per tick - and that approximation
+        // converges on multiples of pi/4, taking a floor authored at 0.3 rad
+        // to 0.718 in 1000 ticks and to pi/4 in 10000.
         //
-        // Ordered after the type change so a body that just became static
-        // pushes on this tick: the solver has stopped moving it, and its
-        // transform is gameplay's again from now on.
-        final push = type != BodyType2D.dynamicBody ||
-            _movedByGameplay(body, entity, x, y, angle);
+        // A body that just changed type does not push on that account: it is
+        // already where the solver left it and the cache says so. What
+        // freezes a body turned static is `_writeBack` no longer overwriting
+        // its transform.
+        final push = _movedByGameplay(body, entity, x, y, angle);
+
+        if (push && type == BodyType2D.staticBody) {
+          // `_writeBack` leaves a static body's transform alone, so nothing
+          // on the pull side refreshes its cache and it would go on pushing
+          // every tick. Caching what is about to be pushed is sound only
+          // because of that: the value left in `Transform2D` is this one,
+          // bit for bit, so the next comparison is exact rather than against
+          // Box2D's approximation of it.
+          body
+            ..syncedX[entity] = x
+            ..syncedY[entity] = y
+            ..syncedAngle[entity] = angle;
+        }
 
         _handles[index] = handle;
         _pushHandles[index] = push ? handle : 0;
@@ -1002,7 +1016,8 @@ class Box2DPhysicsSystem extends GameSystem
   }
 
   /// Writes the solver's results back into `Transform2D` and refreshes the
-  /// sync cache.
+  /// sync cache, for every body the solver actually moves. A static body
+  /// gets only its velocity mirror - see the comment on the branch below.
   void _writeBack(int count) {
     Entity? previous;
     RigidBody2D? body;
@@ -1021,19 +1036,35 @@ class Box2DPhysicsSystem extends GameSystem
         previous = entity;
       }
 
-      final x = _transforms[i * 3];
-      final y = _transforms[i * 3 + 1];
-      final angle = _transforms[i * 3 + 2];
+      // A static body's transform is an input, so the pulled value can only
+      // be Box2D's own reading of what was pushed in - asking a question
+      // whose answer is already known, and paying `b2MakeRot`'s
+      // approximation error for the answer. Writing it back once per tick is
+      // what took a floor authored at 0.3 rad to pi/4 in 10000 ticks (#74).
+      //
+      // Kinematic bodies are not this case. Gameplay sets their velocity,
+      // but the solver is what integrates it into a transform, so theirs is
+      // a result to be read back exactly like a dynamic body's.
+      if (body!.bodyType[entity] != BodyType2D.staticBody) {
+        final x = _transforms[i * 3];
+        final y = _transforms[i * 3 + 1];
+        final angle = _transforms[i * 3 + 2];
 
-      transform!
-        ..transformOffsetX[entity] = x
-        ..transformOffsetY[entity] = y
-        ..transformRotation[entity] = angle;
+        transform!
+          ..transformOffsetX[entity] = x
+          ..transformOffsetY[entity] = y
+          ..transformRotation[entity] = angle;
 
-      body!
-        ..syncedX[entity] = x
-        ..syncedY[entity] = y
-        ..syncedAngle[entity] = angle
+        body
+          ..syncedX[entity] = x
+          ..syncedY[entity] = y
+          ..syncedAngle[entity] = angle;
+      }
+
+      // Velocity is mirrored for every body, static included: Box2D reports
+      // zero for a static one, which is what a body frozen mid-flight by a
+      // type change has to read as.
+      body
         ..linearVelocityX[entity] = _velocities[i * 3]
         ..linearVelocityY[entity] = _velocities[i * 3 + 1]
         ..angularVelocity[entity] = _velocities[i * 3 + 2];

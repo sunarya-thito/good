@@ -78,15 +78,21 @@ class RigidBody2DDescriptor {
 /// This is the load-bearing rule of the whole physics integration, and it is
 /// **per body type**:
 ///
-/// * [BodyType2D.staticBody] and [BodyType2D.kinematicBody] - **you** own the
-///   transform. Write `Transform2D` and the system pushes it into Box2D.
+/// * [BodyType2D.staticBody] - **you** own the transform outright. Write
+///   `Transform2D` and the system pushes it into Box2D; nothing is ever
+///   written back, because the solver does not move a static body and so has
+///   nothing to report about one.
+/// * [BodyType2D.kinematicBody] - **you** own the motion, the solver owns
+///   the transform. You set the velocity; the solver integrates it, and that
+///   result is written back into `Transform2D` each tick. Writing
+///   `Transform2D` yourself is a teleport, as it is for a dynamic body.
 /// * [BodyType2D.dynamicBody] - **Box2D** owns it. The solver's output is
 ///   written back into `Transform2D` each tick. Writing `Transform2D`
 ///   yourself still works and is treated as a teleport, but doing it every
 ///   tick would fight the solver and destroy the simulation.
 ///
-/// A dynamic body is therefore pushed into Box2D only when its transform
-/// actually differs from what was last pulled out - see [syncedX]. That is
+/// A body of any type is therefore pushed into Box2D only when its transform
+/// actually differs from what the sync cache holds - see [syncedX]. That is
 /// not merely an optimisation: Box2D's `b2MakeRot` is an *approximation*
 /// (Bhaskara rational, not libm), and round-tripping an angle through it
 /// repeatedly converges on multiples of pi/4 - measured, about 27 degrees of
@@ -171,10 +177,15 @@ mixin RigidBody2D on Component {
   // for the same reason: comparing a handful of fields beats redoing the
   // work.
   //
-  // Written after every pull, so the comparison is always against what Box2D
-  // last reported - never against what was last pushed in. That direction is
-  // what keeps b2MakeRot's approximation error from ever reading as a
-  // gameplay edit.
+  // For a body the solver moves, written after every pull, so the comparison
+  // is against what Box2D last reported and never against what was last
+  // pushed in. That direction is what keeps b2MakeRot's approximation error
+  // from ever reading as a gameplay edit.
+  //
+  // A static body has no pull to be written after - its transform is never
+  // read back - so its cache is written from the value being pushed instead.
+  // That is safe here and only here: the pushed value is also the one left
+  // standing in Transform2D, so the next comparison is against itself.
 
   @internal
   late final DataPointer<double> syncedX;
