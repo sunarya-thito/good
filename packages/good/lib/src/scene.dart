@@ -366,7 +366,43 @@ abstract class SceneStruct extends GameListenerBase
     // Before the mount event, not after: `Child`'s linked-list fields are part
     // of what addChild writes, so a listener that saw the entity first would
     // be looking at a half-built one.
-    if (parentComponent != null) parentComponent.addChild(parent!, entity);
+    if (parentComponent != null) parent!<Parent>().addChild(entity);
+    // The children this prefab declared with `EntityStruct.of`, in declaration
+    // order, each one a full spawn of its own - so a child that declares
+    // children gets them, to whatever depth the declarations go. Registration
+    // rejects a cycle, which is what makes that recursion terminate.
+    //
+    // Also before the mount event, and for the same reason as addChild: what
+    // a struct declares is part of what its entity *is*, so a listener never
+    // sees a turret without its barrel. The cost is that a child's own mount
+    // event fires before its parent's - the subtree is announced from the
+    // bottom up.
+    //
+    // Here rather than in an `onEntityMounted` on `Parent`, which was the
+    // other candidate and would have kept the hierarchy out of this method.
+    // Two things ruled it out, both measured (`hierarchy_test.dart`'s
+    // 'the lifecycle-listener route' cases): a struct's own override decides
+    // whether and *when* `super.onEntityMounted` runs, so half the point -
+    // children exist before anything hears about the parent - would be the
+    // user's to keep; and `unmountEntitiesOf` fires the same dispatcher for
+    // every row in an unloading scene, so the teardown half of that design
+    // destroys rows the unload is already freeing.
+    // Cast rather than promote: `is` does not promote a value whose static
+    // type is unrelated to the tested mixin - `EntityStruct` is not a
+    // supertype of `Parent` - so the analyzer leaves it alone and the cast is
+    // the only spelling. Verified; the same shape appears below in
+    // `_SceneDescriptor.declareChild`.
+    if (prefab is Parent) {
+      final declared = (prefab as Parent).declaredChildren;
+      for (var i = 0; i < declared.length; i++) {
+        final childPrefab = declared[i];
+        (childPrefab as Child).declaredIn![entity] = addEntityIn(
+          sceneSlot,
+          childPrefab,
+          parent: entity,
+        );
+      }
+    }
     // The one entity-mount notification there is. A struct that wants to
     // initialise its own rows mixes in `EntityLifecycleListener` and is
     // collected into this dispatcher by the default `collectListeners`, so
@@ -467,7 +503,7 @@ abstract class SceneDescriptor {
 /// the same `with` clause. What matters is that they are *deterministic*, since
 /// the layout is rebuilt from scratch on every run and never persisted.
 /// Changing a struct's mixin list changes its layout, and always did.
-final class _SceneDescriptor implements SceneDescriptor {
+final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
   _SceneDescriptor(this._scene, this._assets);
 
   final SceneStruct _scene;
@@ -478,35 +514,150 @@ final class _SceneDescriptor implements SceneDescriptor {
   /// address, exactly as two prefabs sharing one would be.
   final _AssetDescriptor _assets;
 
+  /// The prefab classes whose registration is currently open, outermost
+  /// first - one entry per level of `EntityStruct.of` nesting.
+  ///
+  /// A declared child registers a prefab from inside another prefab's
+  /// constructor, so a struct that declares itself - directly, or round a ring
+  /// of other structs - registers forever and never reaches a spawn to blame.
+  /// The whole graph is known here and nowhere else, so the check belongs
+  /// here.
+  ///
+  /// Classes rather than instances, and pushed *before* the constructor runs
+  /// rather than after: the recursion happens inside `create()`, so a check
+  /// against the object it returns is a check that never runs. `T` is reified
+  /// and is what the tear-off pins, so it is available in time.
+  final List<Type> _open = <Type>[];
+
+  /// One list per open registration, holding the children declared into it so
+  /// far. A stack because declaring nests: a `Turret` declaring a `Barrel`
+  /// that declares a `Tip` has three open at once, and the `Tip` belongs to
+  /// the `Barrel`.
+  final List<List<EntityStruct>> _children = <List<EntityStruct>>[];
+
+  /// The storage of each open registration, innermost last. `declareChild`
+  /// needs the *declaring* archetype's id, and the declaration runs from that
+  /// struct's constructor, so the innermost entry is it.
+  final List<ArchetypeStorage> _storages = <ArchetypeStorage>[];
+
   @override
-  T has<T extends EntityStruct>(T Function() create) {
+  T has<T extends EntityStruct>(T Function() create) => _register(create);
+
+  @override
+  T declareChild<T extends EntityStruct>(T Function() create) {
+    // The handle column goes on the archetype being declared *now* - the
+    // innermost open data context, which is the declaring struct's, because
+    // this runs from its field initialisers. Declared before the child is
+    // registered so the column lands in field-initialiser order alongside
+    // the declarer's own columns, rather than after everything the child's
+    // registration touches.
+    final handle = DeclarationContext.data.optEntity();
+    // The column belongs to this archetype and addresses something else on
+    // any other, so the child records which one it was declared on - see
+    // `Child.declaredInArchetype`, and the check every read and unlink makes
+    // against it.
+    final declaringArchetype = _storages.last.archetypeId;
+    // Recording the column is what enforces "the declared type mixes in
+    // Child": only `Child` has somewhere to put it. The check is here because
+    // it is a fact about the prefab and there is no reason to wait for a
+    // spawn to report it, and it cannot be a bound on `T` because Dart has no
+    // intersection bound and a scene-scope declaration is not a `Child`.
+    final child = _register(
+      create,
+      validate: (object) {
+        if (object is! Child) {
+          throw ArgumentError.value(
+            object,
+            'create',
+            '${object.runtimeType} does not mix in Child, so it cannot be '
+                'declared as a child of another struct. Add `with Child` to '
+                '${object.runtimeType}.',
+          );
+        }
+        (object as Child).bindDeclaration(handle, declaringArchetype);
+      },
+    );
+    _children.last.add(child);
+    return child;
+  }
+
+  T _register<T extends EntityStruct>(
+    T Function() create, {
+    void Function(T object)? validate,
+  }) {
+    final cycle = _open.indexOf(T);
+    if (cycle >= 0) {
+      throw StateError(
+        'Declaring $T as a child of itself: '
+        '${_open.skip(cycle).join(' -> ')} -> $T. Every entity of the '
+        'archetype would spawn another one, so the mount would not '
+        'terminate. A struct that owns a variable number of the same thing '
+        'spawns them with `scene.addEntity(prefab, parent: ...)` instead, '
+        'where the count is a decision and not a declaration.',
+      );
+    }
     // The storage first, because the constructor's field initialisers declare
     // into it - `final hp = Field.int32(100)` has no descriptor to reach
     // except the one open around the call. It carries no prefab until the
     // line after; nothing reads one in between.
     final storage = ArchetypeRegistry.reserve(_scene.pool);
     final T object;
+    final children = <EntityStruct>[];
+    _open.add(T);
+    _children.add(children);
+    _storages.add(storage);
     DeclarationContext.pushData(ArchetypeDataDescriptor(storage));
+    DeclarationContext.pushPrefabs(this);
     try {
       object = create();
     } finally {
+      DeclarationContext.popPrefabs();
       DeclarationContext.popData();
+      _storages.removeLast();
+      _children.removeLast();
+      _open.removeLast();
+    }
+    validate?.call(object);
+    if (children.isNotEmpty) {
+      if (object is! Parent) {
+        throw StateError(
+          '${object.runtimeType} declares ${children.length} '
+          '${children.length == 1 ? 'child' : 'children'} with '
+          'EntityStruct.of, but does not mix in Parent, so it has nowhere to '
+          'link them. Add `with Parent` to ${object.runtimeType}.',
+        );
+      }
+      (object as Parent).declaredChildren.addAll(children);
     }
     storage.bindPrefab(object);
     object.bindArchetype(_scene, storage);
-    object.describeType(ArchetypeComponentDescriptor(storage));
-    // Before describeStruct, not after: `has` returns an already-addressed
-    // instance, so describeStruct can hand one straight to `data.hasObject`
-    // as this archetype's default row value.
-    object.describeAssets(_assets);
-    object.describeStruct(ArchetypeDataDescriptor(storage));
-    // Timelines last, because keying a clip is pure declaration and depends on
-    // nothing above it. Unconditional and with no `is Animations` test: every
-    // `EntityStruct` has `Animations`, and its default declares nothing.
-    object.describeAnimation(_AnimationTypeDescriptor(_scene));
+    // Barrier, not a descriptor: these passes are not constructors, so
+    // `Field.*` inside one has always been an error - and once registration
+    // nests, "no context" is no longer the same as "an empty stack". Without
+    // it a child's describeStruct body would declare onto its parent's row.
+    DeclarationContext.pushBarrier();
+    try {
+      object.describeType(ArchetypeComponentDescriptor(storage));
+      // Before describeStruct, not after: `has` returns an already-addressed
+      // instance, so describeStruct can hand one straight to `data.hasObject`
+      // as this archetype's default row value.
+      object.describeAssets(_assets);
+      object.describeStruct(ArchetypeDataDescriptor(storage));
+      // Timelines last, because keying a clip is pure declaration and depends
+      // on nothing above it. Unconditional and with no `is Animations` test:
+      // every `EntityStruct` has `Animations`, and its default declares
+      // nothing.
+      object.describeAnimation(_AnimationTypeDescriptor(_scene));
+    } finally {
+      DeclarationContext.popData();
+    }
     // Recorded for the event passes: `Game._bindEvents` gives each prefab its
     // own `describeEvents`, and `SceneStruct.collectListeners` walks this list
     // so an event declared above reaches every struct the scene can spawn.
+    //
+    // A declared child lands here before its declarer does, because its whole
+    // registration happens inside the declarer's constructor. Deterministic,
+    // which is all the event order has ever promised.
     _scene._prefabs.add(object);
     // There is deliberately no describeState pass here. A prefab used to be
     // able to declare a state channel, threaded through the scene's `game`
@@ -661,7 +812,7 @@ extension EntityLifetime on Entity {
 
     final childComponent = tryGet<Child>();
     final parent = childComponent?.parent.readPending(this);
-    if (parent != null) parent.get<Parent>().removeChild(parent, this);
+    if (parent != null) parent<Parent>().unlinkChild(this);
 
     // Broad first, then narrow - the same order `unmountEntitiesOf` uses, so
     // an entity that goes away one at a time is indistinguishable from one

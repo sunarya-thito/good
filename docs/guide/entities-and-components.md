@@ -350,7 +350,7 @@ for (var i = 0; i < 3; i++) {
 }
 ```
 
-`Parent.addChild` reads the tail of the child chain to append to it. Three
+`addChild` reads the tail of the child chain to append to it. Three
 `addChild` calls in one tick would each read the same stale tail, orphaning all
 but the last. The hierarchy code reads the pending slot for exactly this reason.
 If you write a linked structure across component rows yourself, you will meet

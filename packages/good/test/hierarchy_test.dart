@@ -2,6 +2,7 @@ import 'package:good/src/scene_handle.dart';
 import 'package:good/src/archetype.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/data/hierarchy.dart';
+import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/pool.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/struct.dart';
@@ -27,6 +28,107 @@ class _NoChild extends EntityStruct with _Name {}
 /// hierarchy's own cost rather than that plus a fixture's tag field.
 class _BareNode extends EntityStruct with Child, Parent {}
 
+// --- declared children ----------------------------------------------------
+
+class _Barrel extends EntityStruct with _Name, Child {}
+
+class _Tip extends EntityStruct with _Name, Child {}
+
+class _Turret extends EntityStruct with _Name, Child, Parent {
+  final barrel = EntityStruct.of(_Barrel.new);
+}
+
+/// Three declared children, which is the shape `Parent.addChild`'s
+/// `readPending` comment was written about - three links spliced in one tick.
+class _Rig extends EntityStruct with _Name, Parent {
+  final left = EntityStruct.of(_Barrel.new);
+  final middle = EntityStruct.of(_Barrel.new);
+  final right = EntityStruct.of(_Barrel.new);
+}
+
+class _DeepBarrel extends EntityStruct with _Name, Child, Parent {
+  final tip = EntityStruct.of(_Tip.new);
+}
+
+class _DeepTurret extends EntityStruct with _Name, Parent {
+  final barrel = EntityStruct.of(_DeepBarrel.new);
+}
+
+// Declaration-time errors. Each is registered by `_oneOff` in its own scene,
+// because the failure is registration and a scene only registers once.
+
+class _SelfDeclaring extends EntityStruct with _Name, Child, Parent {
+  final loop = EntityStruct.of(_SelfDeclaring.new);
+}
+
+class _DeclaresANonChild extends EntityStruct with _Name, Parent {
+  final loose = EntityStruct.of(_NoChild.new);
+}
+
+class _DeclaresWithoutParent extends EntityStruct with _Name, Child {
+  final barrel = EntityStruct.of(_Barrel.new);
+}
+
+/// A child whose `describeStruct` reaches for `Field.*` instead of the
+/// descriptor it was handed. That body runs while its *declarer's*
+/// constructor is still on the declaration stack, so without a barrier the
+/// column would land on the declarer's row.
+class _StrayFieldChild extends EntityStruct with _Name, Child {
+  @override
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    Field.float64();
+  }
+}
+
+class _DeclaresStrayFieldChild extends EntityStruct with _Name, Parent {
+  final stray = EntityStruct.of(_StrayFieldChild.new);
+}
+
+// --- the lifecycle-listener route -----------------------------------------
+
+final List<String> _dispatchLog = <String>[];
+
+/// The shape a `Parent.onEntityMounted` would have: a component mixin that is
+/// also a lifecycle listener.
+mixin _Probe on Component, EntityLifecycleListener {
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<_Probe>();
+  }
+
+  @override
+  void onEntityMounted(Entity entity) {
+    super.onEntityMounted(entity);
+    _dispatchLog.add('mixin mounted');
+  }
+
+  @override
+  void onEntityUnmounted(Entity entity) {
+    super.onEntityUnmounted(entity);
+    _dispatchLog.add('mixin unmounted');
+  }
+}
+
+class _Probed extends EntityStruct with EntityLifecycleListener, _Probe {}
+
+class _ProbedSuperLast extends EntityStruct
+    with EntityLifecycleListener, _Probe {
+  @override
+  void onEntityMounted(Entity entity) {
+    _dispatchLog.add('struct mounted');
+    super.onEntityMounted(entity);
+  }
+}
+
+class _ProbedNoSuper extends EntityStruct with EntityLifecycleListener, _Probe {
+  @override
+  void onEntityMounted(Entity entity) {
+    _dispatchLog.add('struct mounted');
+  }
+}
+
 class _Level extends SceneStruct {
   /// This fixture's loaded handle. Entity creation lives on `Scene` now (one
   /// `SceneStruct` can back several loaded scenes), so a headless fixture
@@ -42,6 +144,12 @@ class _Level extends SceneStruct {
   late final _Leaf leaf;
   late final _NoChild noChild;
   late final _BareNode bareNode;
+  late final _Turret turret;
+  late final _Rig rig;
+  late final _DeepTurret deepTurret;
+  late final _Probed probed;
+  late final _ProbedSuperLast probedSuperLast;
+  late final _ProbedNoSuper probedNoSuper;
 
   @override
   void describeScene(SceneDescriptor descriptor) {
@@ -50,6 +158,33 @@ class _Level extends SceneStruct {
     leaf = descriptor.has(_Leaf.new);
     noChild = descriptor.has(_NoChild.new);
     bareNode = descriptor.has(_BareNode.new);
+    turret = descriptor.has(_Turret.new);
+    rig = descriptor.has(_Rig.new);
+    deepTurret = descriptor.has(_DeepTurret.new);
+    probed = descriptor.has(_Probed.new);
+    probedSuperLast = descriptor.has(_ProbedSuperLast.new);
+    probedNoSuper = descriptor.has(_ProbedNoSuper.new);
+  }
+}
+
+/// Registers one prefab in a scene of its own, for the cases where
+/// *registration itself* is what has to fail.
+void _register<T extends EntityStruct>(T Function() create) {
+  final scene = _OneOff(create);
+  final pool = MemoryPool(pageSize: 4096);
+  addTearDown(pool.dispose);
+  scene.initializeScene(pool);
+}
+
+class _OneOff<T extends EntityStruct> extends SceneStruct {
+  _OneOff(this._create);
+
+  final T Function() _create;
+
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
+    descriptor.has(_create);
   }
 }
 
@@ -93,8 +228,8 @@ void main() {
       final a = level.addEntity(level.node);
       final b = level.addEntity(level.node);
       final c = level.addEntity(level.node);
-      level.node.addChild(a, b);
-      level.node.addChild(a, c);
+      a<Parent>().addChild(b);
+      a<Parent>().addChild(c);
       level.pool.commitTick();
 
       expect(level.node.firstChild[a], b);
@@ -106,7 +241,7 @@ void main() {
       expect(level.node.nextSibling[a], isNull);
 
       level.pool.beginTick();
-      level.node.removeChild(a, b);
+      b<Child>().detach();
       level.pool.commitTick();
 
       // b's three flags cleared; a's two and c's links are in the same byte
@@ -120,13 +255,13 @@ void main() {
     });
   });
 
-  group('Parent.addChild / removeChild', () {
+  group('Parent.addChild / Child.detach', () {
     test('a single child becomes both firstChild and lastChild', () {
       final level = _level();
       level.pool.beginTick();
       final parent = level.addEntity(level.node);
       final child = level.addEntity(level.leaf);
-      level.node.addChild(parent, child);
+      parent<Parent>().addChild(child);
       level.pool.commitTick();
 
       expect(level.node.firstChild[parent], child);
@@ -159,7 +294,7 @@ void main() {
           for (var i = 0; i < 3; i++) level.addEntity(level.leaf),
         ];
         for (final c in children) {
-          level.node.addChild(parent, c);
+          parent<Parent>().addChild(c);
         }
         level.pool.commitTick();
 
@@ -190,7 +325,7 @@ void main() {
         for (var i = 0; i < 3; i++) level.addEntity(level.leaf),
       ];
       for (final c in children) {
-        level.node.addChild(parent, c);
+        parent<Parent>().addChild(c);
       }
       level.pool.commitTick();
 
@@ -218,7 +353,7 @@ void main() {
     });
 
     test(
-      'removing a middle child splices it out without breaking the chain',
+      'detaching a middle child splices it out without breaking the chain',
       () {
         final level = _level();
         level.pool.beginTick();
@@ -227,16 +362,17 @@ void main() {
           for (var i = 0; i < 3; i++) level.addEntity(level.leaf),
         ];
         for (final c in children) {
-          level.node.addChild(parent, c);
+          parent<Parent>().addChild(c);
         }
-        level.node.removeChild(parent, children[1]);
+        children[1]<Child>().detach();
         level.pool.commitTick();
 
         expect(level.node.firstChild[parent], children[0]);
         expect(level.node.lastChild[parent], children[2]);
         expect(children[0].get<Child>().nextSibling[children[0]], children[2]);
         expect(children[2].get<Child>().prevSibling[children[2]], children[0]);
-        // The removed child is fully detached.
+        // The detached child is fully unlinked, and still alive - which is
+        // the whole difference between this and removeChild.
         final removed = children[1].get<Child>();
         expect(removed.parent[children[1]], isNull);
         expect(removed.nextSibling[children[1]], isNull);
@@ -244,7 +380,7 @@ void main() {
       },
     );
 
-    test('removing the first and last child updates firstChild/lastChild', () {
+    test('detaching the first and last child updates firstChild/lastChild', () {
       final level = _level();
       level.pool.beginTick();
       final parent = level.addEntity(level.node);
@@ -252,10 +388,10 @@ void main() {
         for (var i = 0; i < 3; i++) level.addEntity(level.leaf),
       ];
       for (final c in children) {
-        level.node.addChild(parent, c);
+        parent<Parent>().addChild(c);
       }
-      level.node.removeChild(parent, children[0]);
-      level.node.removeChild(parent, children[2]);
+      children[0]<Child>().detach();
+      children[2]<Child>().detach();
       level.pool.commitTick();
 
       expect(level.node.firstChild[parent], children[1]);
@@ -264,13 +400,13 @@ void main() {
       expect(children[1].get<Child>().prevSibling[children[1]], isNull);
     });
 
-    test('removing the only child empties the list', () {
+    test('detaching the only child empties the list', () {
       final level = _level();
       level.pool.beginTick();
       final parent = level.addEntity(level.node);
       final child = level.addEntity(level.leaf);
-      level.node.addChild(parent, child);
-      level.node.removeChild(parent, child);
+      parent<Parent>().addChild(child);
+      child<Child>().detach();
       level.pool.commitTick();
 
       expect(level.node.firstChild[parent], isNull);
@@ -285,7 +421,7 @@ void main() {
       level.pool.commitTick();
 
       expect(notAChild.tryGet<Child>(), isNull);
-      expect(() => level.node.addChild(parent, notAChild), throwsArgumentError);
+      expect(() => parent<Parent>().addChild(notAChild), throwsArgumentError);
     });
 
     test(
@@ -296,11 +432,11 @@ void main() {
         final parentA = level.addEntity(level.node);
         final parentB = level.addEntity(level.node);
         final child = level.addEntity(level.leaf);
-        level.node.addChild(parentA, child);
+        parentA<Parent>().addChild(child);
         level.pool.commitTick();
 
         expect(
-          () => level.node.removeChild(parentB, child),
+          () => parentB<Parent>().removeChild(child),
           throwsArgumentError,
         );
       },
@@ -360,9 +496,9 @@ void main() {
       final parent = level.addEntity(level.node);
       final a = level.addEntity(level.leaf);
       final b = level.addEntity(level.leaf);
-      level.node
-        ..addChild(parent, a)
-        ..addChild(parent, b);
+      parent<Parent>()
+        ..addChild(a)
+        ..addChild(b);
       level.pool.commitTick();
 
       level.pool.beginTick();
@@ -384,9 +520,8 @@ void main() {
       final root = level.addEntity(level.node);
       final mid = level.addEntity(level.node);
       final leaf = level.addEntity(level.leaf);
-      level.node
-        ..addChild(root, mid)
-        ..addChild(mid, leaf);
+      root<Parent>().addChild(mid);
+      mid<Parent>().addChild(leaf);
       level.pool.commitTick();
 
       level.pool.beginTick();
@@ -426,7 +561,7 @@ void main() {
           for (var i = 0; i < 4; i++) level.addEntity(level.leaf),
         ];
         for (final c in children) {
-          level.node.addChild(parent, c);
+          parent<Parent>().addChild(c);
         }
         level.pool.commitTick();
 
@@ -467,6 +602,367 @@ void main() {
       // limit. Unloading the scene is the case it can speak for.
       SceneRegistry.unregister(level.handle);
       expect(() => entity.scene, throwsStateError);
+    });
+  });
+
+  // What `EntityStruct.of` declares: a child of every entity of the declaring
+  // prefab, spawned and linked at mount and destroyed with its parent.
+  group('EntityStruct.of', () {
+    test('spawning the parent spawns and links the declared child', () {
+      final level = _level();
+      level.pool.beginTick();
+      final turret = level.addEntity(level.turret);
+      level.pool.commitTick();
+
+      final barrel = turret<Parent>()[level.turret.barrel];
+      expect(level.turret.firstChild[turret], barrel);
+      expect(level.turret.lastChild[turret], barrel);
+      expect(barrel.get<Child>().parent[barrel], turret);
+      expect(
+        barrel.tryGet<_Barrel>(),
+        isNotNull,
+        reason: 'the child is an entity of the declared prefab',
+      );
+    });
+
+    // The hazard `Parent.addChild`'s `readPending` comment was written about,
+    // reached by declaration rather than by three calls at a call site: three
+    // links spliced into one chain inside a single tick. Through an ordinary
+    // read it keeps one child and orphans two, with no error anywhere.
+    test('a prefab declaring three children keeps all three', () {
+      final level = _level();
+      level.pool.beginTick();
+      final rig = level.addEntity(level.rig);
+      level.pool.commitTick();
+
+      final left = rig<Parent>()[level.rig.left];
+      final middle = rig<Parent>()[level.rig.middle];
+      final right = rig<Parent>()[level.rig.right];
+      expect(<Entity>{left, middle, right}, hasLength(3));
+
+      final walked = <Entity>[];
+      Entity? cursor = level.rig.firstChild[rig];
+      while (cursor != null) {
+        walked.add(cursor);
+        cursor = cursor.get<Child>().nextSibling[cursor];
+      }
+      expect(
+        walked,
+        <Entity>[left, middle, right],
+        reason:
+            'declaration order is chain order, and none of the three '
+            'overwrote another',
+      );
+      expect(level.rig.lastChild[rig], right);
+    });
+
+    test('declared children nest to whatever depth is declared', () {
+      final level = _level();
+      level.pool.beginTick();
+      final turret = level.addEntity(level.deepTurret);
+      level.pool.commitTick();
+
+      final barrel = turret<Parent>()[level.deepTurret.barrel];
+      final tip = barrel<Parent>()[level.deepTurret.barrel.tip];
+      expect(barrel.get<Child>().parent[barrel], turret);
+      expect(tip.get<Child>().parent[tip], barrel);
+    });
+
+    test('destroying the parent takes its declared children with it', () {
+      final level = _level();
+      level.pool.beginTick();
+      final turret = level.addEntity(level.deepTurret);
+      final barrel = turret<Parent>()[level.deepTurret.barrel];
+      final tip = barrel<Parent>()[level.deepTurret.barrel.tip];
+      level.pool.commitTick();
+
+      level.pool.beginTick();
+      turret.destroy();
+      level.pool.commitTick();
+
+      // Every row of the subtree is available again, which is the observable
+      // proof nothing was promoted to a root and left alive. Spawning one
+      // more `deepTurret` allocates exactly the same three rows in the same
+      // order, so the handles come back numerically equal - which is also
+      // why a handle must not outlive what it named.
+      level.pool.beginTick();
+      final again = level.addEntity(level.deepTurret);
+      final againBarrel = again<Parent>()[level.deepTurret.barrel];
+      final againTip = againBarrel<Parent>()[level.deepTurret.barrel.tip];
+      level.pool.commitTick();
+      expect(<Entity>[again, againBarrel, againTip], <Entity>[
+        turret,
+        barrel,
+        tip,
+      ]);
+    });
+
+    test('detaching a declared child empties the slot that named it', () {
+      final level = _level();
+      level.pool.beginTick();
+      final turret = level.addEntity(level.turret);
+      final barrel = turret<Parent>()[level.turret.barrel];
+      level.pool.commitTick();
+
+      level.pool.beginTick();
+      barrel<Child>().detach();
+      level.pool.commitTick();
+
+      // A declared child is an ordinary child, so detaching it is allowed -
+      // and the slot must stop naming it, because the row is now free to be
+      // destroyed and recycled under a handle nothing can tell is stale.
+      expect(() => turret<Parent>()[level.turret.barrel], throwsStateError);
+      expect(level.turret.firstChild[turret], isNull);
+    });
+
+    test(
+      'asking a parent of another archetype for a child it never declared '
+      'throws rather than reading a foreign offset',
+      () {
+        final level = _level();
+        level.pool.beginTick();
+        final node = level.addEntity(level.node);
+        level.pool.commitTick();
+
+        expect(() => node<Parent>()[level.turret.barrel], throwsStateError);
+      },
+    );
+
+    // Issue #5: a row allocated mid-tick gets the right value in its write
+    // slot while the published snapshot keeps the defaults, so an ordinary
+    // read on the spawn tick is stale on any *recycled* row. Mounting a
+    // declared child is exactly that - allocate, then write two rows - which
+    // is why the read goes through `readPending`.
+    test('a declared child is readable on its own mount tick, on a recycled '
+        'row', () {
+      final level = _level();
+      level.pool.beginTick();
+      final first = level.addEntity(level.turret);
+      level.pool.commitTick();
+
+      level.pool.beginTick();
+      first.destroy();
+      level.pool.commitTick();
+
+      level.pool.beginTick();
+      final second = level.addEntity(level.turret);
+      expect(second, first, reason: 'the row was recycled, which is #5 case');
+      final slot = level.turret.barrel.declaredIn!;
+      expect(
+        slot[second],
+        isNull,
+        reason:
+            'the published snapshot still holds the default - this is #5, '
+            'and it reproduces here',
+      );
+      expect(
+        second<Parent>()[level.turret.barrel],
+        slot.readPending(second),
+        reason: 'the pending slot has the write this tick made',
+      );
+      level.pool.commitTick();
+
+      expect(slot[second], isNotNull, reason: 'published on commit');
+    });
+
+    test('declaring the declaring struct is a registration error', () {
+      expect(
+        () => _register(_SelfDeclaring.new),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('_SelfDeclaring'), contains('->')),
+          ),
+        ),
+      );
+    });
+
+    test('declaring a struct that does not mix in Child is rejected', () {
+      expect(() => _register(_DeclaresANonChild.new), throwsArgumentError);
+    });
+
+    test('declaring children without mixing in Parent is rejected', () {
+      expect(
+        () => _register(_DeclaresWithoutParent.new),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('does not mix in Parent'),
+          ),
+        ),
+      );
+    });
+
+    // Registration nests now, so "no open declaration context" stopped being
+    // the same thing as "an empty stack". Without the barrier this declares a
+    // column on the *declarer's* row and reads it back from the child's.
+    test('a child reaching for Field.* in describeStruct still reports itself',
+        () {
+      expect(() => _register(_DeclaresStrayFieldChild.new), throwsStateError);
+    });
+
+    test('EntityStruct.of outside a registration reports itself', () {
+      expect(() => EntityStruct.of(_Barrel.new), throwsStateError);
+    });
+  });
+
+  group('addChild, adopt and cycles', () {
+    test('addChild refuses an entity that already has a parent', () {
+      final level = _level();
+      level.pool.beginTick();
+      final a = level.addEntity(level.node);
+      final b = level.addEntity(level.node);
+      final child = level.addEntity(level.leaf);
+      a<Parent>().addChild(child);
+      level.pool.commitTick();
+
+      level.pool.beginTick();
+      expect(() => b<Parent>().addChild(child), throwsArgumentError);
+      level.pool.commitTick();
+    });
+
+    test('adopt moves a child from one parent to another', () {
+      final level = _level();
+      level.pool.beginTick();
+      final a = level.addEntity(level.node);
+      final b = level.addEntity(level.node);
+      final child = level.addEntity(level.leaf);
+      a<Parent>().addChild(child);
+      level.pool.commitTick();
+
+      level.pool.beginTick();
+      b<Parent>().adopt(child);
+      level.pool.commitTick();
+
+      expect(level.node.firstChild[a], isNull);
+      expect(level.node.firstChild[b], child);
+      expect(level.leaf.parent[child], b);
+    });
+
+    test('an entity cannot be its own parent', () {
+      final level = _level();
+      level.pool.beginTick();
+      final a = level.addEntity(level.node);
+      expect(() => a<Parent>().addChild(a), throwsArgumentError);
+      level.pool.commitTick();
+    });
+
+    // Rejected where the loop would be made, not caught later by a depth cap
+    // in a consumer: `Entity.destroy()` recurses a subtree with no cap and
+    // would simply not terminate.
+    test('adopting an ancestor into its own descendant is refused', () {
+      final level = _level();
+      level.pool.beginTick();
+      final root = level.addEntity(level.node);
+      final mid = level.addEntity(level.node);
+      final leaf = level.addEntity(level.node);
+      root<Parent>().addChild(mid);
+      mid<Parent>().addChild(leaf);
+      level.pool.commitTick();
+
+      level.pool.beginTick();
+      expect(
+        () => leaf<Parent>().adopt(root),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.message,
+            'message',
+            contains('ancestor'),
+          ),
+        ),
+      );
+      level.pool.commitTick();
+    });
+
+    test('removeChild destroys the child and its subtree', () {
+      final level = _level();
+      level.pool.beginTick();
+      final parent = level.addEntity(level.node);
+      final child = level.addEntity(level.node);
+      final grandchild = level.addEntity(level.leaf);
+      parent<Parent>().addChild(child);
+      child<Parent>().addChild(grandchild);
+      level.pool.commitTick();
+
+      level.pool.beginTick();
+      parent<Parent>().removeChild(child);
+      level.pool.commitTick();
+
+      expect(level.node.firstChild[parent], isNull);
+      level.pool.beginTick();
+      final reused = <Entity>[
+        level.addEntity(level.node),
+        level.addEntity(level.leaf),
+      ];
+      level.pool.commitTick();
+      expect(
+        reused,
+        containsAll(<Entity>[child, grandchild]),
+        reason:
+            'both rows came back, so the subtree was destroyed rather '
+            'than detached',
+      );
+    });
+
+    test('removeChild refuses an entity that is another parent child', () {
+      final level = _level();
+      level.pool.beginTick();
+      final a = level.addEntity(level.node);
+      final b = level.addEntity(level.node);
+      final child = level.addEntity(level.leaf);
+      a<Parent>().addChild(child);
+      level.pool.commitTick();
+
+      level.pool.beginTick();
+      expect(() => b<Parent>().removeChild(child), throwsArgumentError);
+      level.pool.commitTick();
+    });
+  });
+
+  // Why mounting declared children is a walk in `addEntityIn` and not an
+  // `onEntityMounted` on `Parent`. The dispatch does reach a component mixin -
+  // that half works - but the two cases below it do not, and the teardown half
+  // is worse: `unmountEntitiesOf` fires the same dispatcher for every row of
+  // an unloading scene, so a destroy cascade there would free rows the unload
+  // is already freeing.
+  group('the lifecycle-listener route', () {
+    setUp(_dispatchLog.clear);
+
+    test('a Component mixin does receive the entity lifecycle dispatch', () {
+      final level = _level();
+      level.pool.beginTick();
+      level.addEntity(level.probed);
+      level.pool.commitTick();
+      expect(_dispatchLog, <String>['mixin mounted']);
+    });
+
+    test('a struct override decides when the mixin hook runs', () {
+      final level = _level();
+      level.pool.beginTick();
+      level.addEntity(level.probedSuperLast);
+      level.pool.commitTick();
+      expect(_dispatchLog, <String>['struct mounted', 'mixin mounted']);
+    });
+
+    test('a struct override that omits super suppresses the mixin hook', () {
+      final level = _level();
+      level.pool.beginTick();
+      level.addEntity(level.probedNoSuper);
+      level.pool.commitTick();
+      expect(_dispatchLog, <String>['struct mounted']);
+    });
+
+    test('scene unload fires the unmount dispatcher for every entity', () {
+      final level = _level();
+      level.pool.beginTick();
+      level.addEntity(level.probed);
+      level.addEntity(level.probed);
+      level.pool.commitTick();
+      _dispatchLog.clear();
+      level.unmountEntitiesOf(level.handle.slot);
+      expect(_dispatchLog, <String>['mixin unmounted', 'mixin unmounted']);
     });
   });
 }

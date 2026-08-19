@@ -110,10 +110,10 @@ Two things this buys that the first spelling cannot:
   and "don't import both" is no answer when they are in one package.
 
 !!! info "What stays where it is"
-    - **Declaration hooks.** `describeType`, `describeStruct`, `describeSprites`,
-      `describeCollider`, `describeChildren` act on the *archetype*, take no
-      entity, and belong on the mixin. That is the same test, answered the other
-      way.
+    - **Declaration hooks.** `describeType`, `describeStruct`, `describeSprites`
+      and `describeCollider` act on the *archetype*, take no entity, and belong
+      on the mixin. That is the same test, answered the other way, and it is
+      why `EntityStruct.of` returns a prefab rather than something per-entity.
     - **Listener callbacks.** `onEntityMounted`, `onEntitySpawned` and their
       unmount halves take an `Entity` as the event's *payload*, not as the
       receiver's subject. A broadcast listener is asking to be told about

@@ -435,10 +435,11 @@ void main() {
       run.state.advance(_step);
       expect(scene.leaf.worldX[child], 510);
 
-      // Unparent. The childless fast path now owns this row and writes
+      // Unparent, keeping it alive - `detach`, not `removeChild`, which
+      // destroys. The childless fast path now owns this row and writes
       // world = local without consulting or updating the composed cache.
       run.state.pool.beginTick();
-      parent.get<Parent>().removeChild(parent, child);
+      child<Child>().detach();
       run.state.pool.commitTick();
       run.state.advance(_step);
       expect(scene.leaf.worldX[child], 10, reason: 'unparented: world = local');
@@ -448,7 +449,7 @@ void main() {
       // `_resolve` compares equal, so only the cleared `_cachedParent` stands
       // between this and reading back the uncomposed 10.
       run.state.pool.beginTick();
-      parent.get<Parent>().addChild(parent, child);
+      parent<Parent>().addChild(child);
       run.state.pool.commitTick();
       run.state.advance(_step);
 

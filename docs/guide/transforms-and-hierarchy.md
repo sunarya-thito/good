@@ -76,13 +76,21 @@ for (var i = 0; i < 3; i++) {
 }
 ```
 
-Or link afterwards:
+Or link afterwards. Each operation is on the entity it is about:
 
 ```dart
-final parent = parentEntity.get<Parent>();
-parent.addChild(parentEntity, childEntity);
-parent.removeChild(parentEntity, childEntity);
+parentEntity<Parent>().addChild(childEntity);   // childEntity must be unparented
+parentEntity<Parent>().adopt(childEntity);      // move it here from wherever it is
+parentEntity<Parent>().removeChild(childEntity);// destroys it and its subtree
+childEntity<Child>().detach();                  // unlink, keep it alive as a root
 ```
+
+`removeChild` destroys. Reach for `detach` when the entity has to outlive its
+parent, and for `adopt` when it is moving — remove-then-add no longer means
+reparent.
+
+A link that would close a loop is refused where it is made: `addChild` and
+`adopt` walk up from the prospective parent, and throw if they reach the child.
 
 `Child` holds `parent`, `nextSibling` and `prevSibling`; `Parent` holds
 `firstChild` and `lastChild`. They are readable columns like any other, so
@@ -98,6 +106,41 @@ while (next != null) {
 
 `entity.destroy()` destroys the **whole subtree**. One call on a body takes its
 limbs with it.
+
+## Children a prefab always has
+
+A turret that is a base plus a barrel is a fact about the turret, not about
+whoever spawns it. `EntityStruct.of` says so in the prefab:
+
+```dart
+class Barrel extends EntityStruct with Transform2D, WorldTransform2D, Child;
+
+class Turret extends EntityStruct with Transform2D, WorldTransform2D, Parent {
+  final barrel = EntityStruct.of(Barrel.new);
+}
+```
+
+Spawning a `Turret` spawns a `Barrel`, links it under the turret, and destroying
+the turret takes it with it. Declarations nest, so a `Barrel` with children of
+its own gets them too.
+
+The field holds the child's **prefab**, which is one object for the whole
+archetype — the same thing `descriptor.has(Turret.new)` hands a scene. Which
+barrel belongs to which turret is per-entity state, so it lives in a column, and
+the parent is what you ask:
+
+```dart
+final barrelEntity = turretEntity<Parent>()[turret.barrel];
+```
+
+`Barrel.new` and not `<Barrel>()`, for the same reason `descriptor.has` takes a
+constructor: the child's own field initialisers declare columns, so a descriptor
+has to be open before the object exists. A constructor with arguments goes in a
+closure, `EntityStruct.of(() => Barrel(bore: 5))`.
+
+The declarer must mix in `Parent` and the declared type must mix in `Child`.
+Both are reported when the scene registers, along with a struct that declares
+itself — which would spawn forever.
 
 ## `WorldTransform2D`
 
@@ -161,10 +204,11 @@ against. That full set is what a scene graph costs.
     read returns the last **published** snapshot, so three `addChild` calls in
     one tick would each read the same stale tail and orphan all but the last.
 
-    The hierarchy handles this internally by reading the pending slot. If you
-    build a linked structure across component rows yourself, expect the same
-    problem — and fix it by placement (a later phase), not by inventing a second
-    read path.
+    The hierarchy handles this internally by reading the pending slot, and a
+    prefab declaring three children with `EntityStruct.of` is that case every
+    time. If you build a linked structure across component rows yourself,
+    expect the same problem — and fix it by placement (a later phase), not by
+    inventing a second read path.
 
 ## Camera following
 
