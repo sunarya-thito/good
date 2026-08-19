@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:good_cli/src/commands/create.dart';
+import 'package:good_cli/src/generate/scaffold.dart';
 import 'package:good_cli/src/runner.dart';
 import 'package:test/test.dart';
 
@@ -77,5 +78,29 @@ void main() {
       File('${parent.path}/demo/lib/game/demo_game.dart').existsSync(),
       isTrue,
     );
+  });
+
+  test('the scaffold owns the test flutter create writes', () {
+    // #30. `flutter create`'s widget_test.dart builds `MyApp`, which stops
+    // existing the moment main.dart is the good one, so a fresh project came
+    // with a test that did not compile.
+    for (final engine in GoodEngine.values) {
+      final files = scaffoldFiles(
+        projectName: 'demo',
+        engine: engine,
+        command: 'good create',
+      );
+      final test = files['test/widget_test.dart'];
+      expect(test, isNotNull, reason: '${engine.package} has no widget test');
+      expect(test, isNot(contains('MyApp')));
+      expect(test, contains('const DemoApp()'));
+      expect(
+        test,
+        contains('find.byType(GameView)'),
+        reason:
+            'what a new project is most likely to get wrong is building a '
+            'GameView from a game that has not been started',
+      );
+    }
   });
 }

@@ -72,6 +72,7 @@ Map<String, String> scaffoldFiles({
       'lib/game/prefabs/eye.dart': _eye3D(package),
       'lib/game/systems/spin_system.dart': _spinSystem3D(package),
     },
+    'test/widget_test.dart': _widgetTest(projectName, className, package),
     'assets/.gitkeep': _gitkeep(command),
     // Present from the start so the entry below resolves before anything has
     // been packed: Flutter refuses to build over an asset directory that does
@@ -685,6 +686,54 @@ class SpinSystem extends GameSystem with FixedTickable {
       }
     }
   }
+}
+''';
+
+/// `test/widget_test.dart` - the one `flutter create` wrote, replaced.
+///
+/// Its version builds `MyApp`, which stops existing the moment `main.dart` is
+/// the good one, so a fresh project came with a test that did not compile
+/// (#30). Replacing it rather than deleting it: `flutter test` on a new project
+/// should do something, and what is worth checking is exactly what a new
+/// project is most likely to get wrong - that the game is *started* before a
+/// `GameView` is built from it.
+String _widgetTest(String projectName, String className, String package) =>
+    '''
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:$package/$package.dart';
+
+import 'package:$projectName/main.dart';
+
+void main() {
+  tearDown(() {
+    // A game registers its prefabs, archetypes and component types in tables
+    // that outlive it. A second test booting a second game inherits them
+    // unless they are cleared, and the failure that causes is nowhere near
+    // this line.
+    SceneRegistry.reset();
+    ArchetypeRegistry.reset();
+    ComponentTypeRegistry.reset();
+  });
+
+  testWidgets('the game starts and its view appears', (tester) async {
+    await tester.pumpWidget(const ${className}App());
+    // Nothing is running yet - `Game.start` spawns the simulation isolate, and
+    // the app shows a spinner until it is up.
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    // `Game.start` spawns a **real** isolate, and `pump` advances **fake**
+    // time - it never waits for one. `runAsync` steps outside the fake clock
+    // so the spawn can finish, then a pump rebuilds with the game set.
+    for (var i = 0; i < 40 && find.byType(GameView).evaluate().isEmpty; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+    }
+
+    expect(find.byType(GameView), findsOneWidget);
+  });
 }
 ''';
 
