@@ -18,12 +18,12 @@ person.
 ```dart
 class Crate extends EntityStruct
     with Transform3D, WorldTransform3D, Renderable3D, Collider3D, RigidBody3D {
-  late final BoxBody3D box;
+  late final CubeBody box;
 
   @override
   void describeCollider(Collider3DDescriptor descriptor) {
     super.describeCollider(descriptor);
-    box = descriptor.hasBoxCollider(
+    box = descriptor.hasCubeCollider(
       halfWidth: 0.5, halfHeight: 0.5, halfDepth: 0.5, friction: 0.4,
     );
   }
@@ -78,9 +78,21 @@ body.setVelocity(entity, 3, 0, 0);
 
 ## Shapes
 
-Box, sphere, capsule and convex hull cover nearly everything that moves.
-**Triangle meshes** are for terrain and level geometry and can only be static —
-a mesh cannot be a dynamic body, in any engine, because there is no cheap way to
+Cube, sphere, capsule and convex hull cover nearly everything that moves:
+
+```dart
+cube   = descriptor.hasCubeCollider(halfWidth: 0.5, halfHeight: 0.5, halfDepth: 0.5);
+sphere = descriptor.hasSphereCollider(radius: 0.5);
+pill   = descriptor.hasCapsuleCollider(radius: 0.25, halfHeight: 0.5);
+hull   = descriptor.hasHullCollider(points: [...]);
+```
+
+Each returns its own body type — `CubeBody`, `SphereBody`, `CapsuleBody`,
+`HullBody` — and you keep the handle to reach its columns per entity, the same
+way a sprite handle works.
+
+**Triangle meshes** are for terrain and level geometry and can only be static. A
+mesh cannot be a dynamic body, in any engine, because there is no cheap way to
 work out how a concave shape should tumble.
 
 ```dart
