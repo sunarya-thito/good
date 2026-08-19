@@ -1,3 +1,5 @@
+import 'package:yaml/yaml.dart';
+
 /// Which engine package a new project is built against.
 ///
 /// Never named on the command line - `--2d` and `--3d` choose it. The names
@@ -117,29 +119,60 @@ const String engineConstraint = '^0.1.0';
 /// always writes. The dependency goes directly under `dependencies:`: order
 /// within the map means nothing to pub, and the top is the one position that
 /// does not depend on what else is in the list.
+///
+/// # What is already there is read from the parse, not from the text
+///
+/// The two additions are independent, and each is made only if the key it
+/// would add is absent. Asking the *document* rather than searching for the
+/// line this once wrote is the whole of it: the old check matched
+/// `  goo2d: ^0.0.1` exactly, so a dependency someone had edited - pinned,
+/// widened, moved under a comment, or simply written by an older version of
+/// this command - did not look present, and re-running appended a second
+/// `goo2d:` and a second `assets:`. Two of either key is not a bad merge, it is
+/// a pubspec every `flutter` command refuses to read at all.
 List<String>? patchedPubspecLines(List<String> lines, String package) {
+  final YamlNode doc;
+  try {
+    doc = loadYamlNode(lines.join('\n'));
+  } on YamlException {
+    // Already unparseable - possibly already carrying the duplicate keys this
+    // now prevents. Editing it further is not something to do blind.
+    return null;
+  }
+  if (doc is! YamlMap) return null;
+
+  final dependencies = doc['dependencies'];
+  // A `dependencies:` key with nothing under it parses as null, and a project
+  // can legitimately be in that state. It still counts as a section to add to.
+  final hasDependency =
+      dependencies is YamlMap && dependencies.containsKey(package);
+  final flutter = doc['flutter'];
+  final hasAssets = flutter is YamlMap && flutter.containsKey('assets');
+  if (hasDependency && hasAssets) return lines;
+
   final deps = lines.indexWhere((line) => line.trimRight() == 'dependencies:');
   final material = lines.indexWhere(
     (line) => line.trimRight() == '  uses-material-design: true',
   );
-  if (deps < 0 || material < 0) return null;
-  // Already patched. `good create --no-flutter-create` over a project that has
-  // been through this before must not add the dependency twice.
-  if (lines.any((line) => line.trimRight() == '  $package: $engineConstraint')) {
-    return lines;
-  }
+  if (!hasDependency && deps < 0) return null;
+  if (!hasAssets && material < 0) return null;
 
   // Bottom-up, so the first insertion does not move the second's index.
-  return List<String>.of(lines)
-    ..insertAll(material + 1, <String>[
+  final patched = List<String>.of(lines);
+  if (!hasAssets) {
+    patched.insertAll(material + 1, <String>[
       '',
       '  # Both directories ship. `good build` fills assets/packed/ and empties',
       '  # assets/ of what it packed, so each asset is bundled exactly once.',
       '  assets:',
       '    - assets/',
       '    - assets/packed/',
-    ])
-    ..insert(deps + 1, '  $package: $engineConstraint');
+    ]);
+  }
+  if (!hasDependency) {
+    patched.insert(deps + 1, '  $package: $engineConstraint');
+  }
+  return patched;
 }
 
 /// Why the packed directory exists in a fresh project with nothing in it.
@@ -283,8 +316,7 @@ String _main3D(
   // The `GameView` is first and real: it routes keyboard, gamepad and pointer
   // input to the game whether or not anything paints. It is what the renderer
   // will fill in, so the notice sits on top of it rather than in place of it.
-  surface:
-      '''
+  surface: '''
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[

@@ -368,11 +368,15 @@ flutter:
   group('enginePackageOf', () {
     test('names the renderer the project depends on, not the kernel', () {
       expect(
-        enginePackageOf(_project('name: demo\ndependencies:\n  goo2d: ^0.1.0\n', <String>[])),
+        enginePackageOf(
+          _project('name: demo\ndependencies:\n  goo2d: ^0.1.0\n', <String>[]),
+        ),
         'goo2d',
       );
       expect(
-        enginePackageOf(_project('name: demo\ndependencies:\n  goo3d: ^0.1.0\n', <String>[])),
+        enginePackageOf(
+          _project('name: demo\ndependencies:\n  goo3d: ^0.1.0\n', <String>[]),
+        ),
         'goo3d',
         reason:
             'left off this list, a 3D project generated files importing '
@@ -380,7 +384,9 @@ flutter:
             'is a lint on every generated file',
       );
       expect(
-        enginePackageOf(_project('name: demo\ndependencies:\n  good: ^0.1.0\n', <String>[])),
+        enginePackageOf(
+          _project('name: demo\ndependencies:\n  good: ^0.1.0\n', <String>[]),
+        ),
         'good',
       );
     });
@@ -667,6 +673,80 @@ flutter:
       final once = patchedPubspecLines(flutterCreated, 'goo2d')!;
       final twice = patchedPubspecLines(once, 'goo2d')!;
       expect(twice, once);
+    });
+
+    test('an edited dependency line is still the dependency', () {
+      // #28. The check used to match the literal line this wrote, so a
+      // constraint someone had pinned, widened, or that an older version of
+      // this command wrote did not look present - and re-running appended a
+      // second `goo2d:` and a second `assets:`. Two of either key is not a bad
+      // merge; it is a pubspec every flutter command refuses to read.
+      final once = patchedPubspecLines(flutterCreated, 'goo2d')!;
+      for (final edit in <String>[
+        '  goo2d: ^0.0.1', // what an older good create wrote
+        '  goo2d: any',
+        '  goo2d: 0.1.1',
+        '  goo2d: ">=0.1.0 <0.2.0"',
+      ]) {
+        final edited = once
+            .map((line) => line == '  goo2d: ^0.1.0' ? edit : line)
+            .toList();
+        expect(
+          patchedPubspecLines(edited, 'goo2d'),
+          edited,
+          reason: '$edit is the goo2d dependency, however it is spelled',
+        );
+      }
+    });
+
+    test('a dependency under a comment is still the dependency', () {
+      final once = patchedPubspecLines(flutterCreated, 'goo2d')!;
+      final commented = <String>[
+        for (final line in once) ...<String>[
+          if (line == '  goo2d: ^0.1.0') '  # pinned deliberately, see #123',
+          line,
+        ],
+      ];
+      expect(patchedPubspecLines(commented, 'goo2d'), commented);
+    });
+
+    test('the two additions are independent', () {
+      // A pubspec that has the dependency but no assets block gets the assets
+      // block and nothing else. One early return for both used to mean the
+      // first one present suppressed the other.
+      final withDepOnly = <String>[
+        'name: my_game',
+        'dependencies:',
+        '  goo2d: ^0.1.0',
+        '  flutter:',
+        '    sdk: flutter',
+        '',
+        'flutter:',
+        '  uses-material-design: true',
+      ];
+      final patched = patchedPubspecLines(withDepOnly, 'goo2d')!;
+      expect(
+        patched.where((line) => line.trim().startsWith('goo2d:')).length,
+        1,
+      );
+      expect(patched, contains('  assets:'));
+    });
+
+    test('a pubspec that already has duplicate keys is left alone', () {
+      // It no longer parses, which is the state #28 produced. Editing it
+      // further is not something to do blind - the caller prints the patch.
+      expect(
+        patchedPubspecLines(<String>[
+          'name: my_game',
+          'dependencies:',
+          '  goo2d: ^0.1.0',
+          'dependencies:',
+          '  goo2d: ^0.1.0',
+          'flutter:',
+          '  uses-material-design: true',
+        ], 'goo2d'),
+        isNull,
+      );
     });
 
     test('a pubspec it does not recognise is left alone', () {
