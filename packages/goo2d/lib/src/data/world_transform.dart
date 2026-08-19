@@ -44,7 +44,7 @@ mixin WorldTransform2D on Component {
   late final DataPointer<double> _cachedRotation;
   late final DataPointer<double> _cachedScaleX;
   late final DataPointer<double> _cachedScaleY;
-  late final DataPointer<int?> _cachedParent;
+  late final DataPointer<Entity?> _cachedParent;
 
   @override
   void describeType(ComponentDescriptor component) {
@@ -65,7 +65,7 @@ mixin WorldTransform2D on Component {
     _cachedRotation = data.hasFloat64(double.nan);
     _cachedScaleX = data.hasFloat64(double.nan);
     _cachedScaleY = data.hasFloat64(double.nan);
-    _cachedParent = data.optInt64();
+    _cachedParent = data.optEntity();
   }
 }
 
@@ -475,7 +475,7 @@ class WorldTransformSystem extends GameSystem
     final changed =
         world == null ||
         parentChanged ||
-        world._cachedParent[entity] != parent?.value ||
+        world._cachedParent[entity] != parent ||
         world._cachedOffsetX[entity] != offsetX ||
         world._cachedOffsetY[entity] != offsetY ||
         world._cachedRotation[entity] != rotation ||
@@ -526,7 +526,7 @@ class WorldTransformSystem extends GameSystem
         world.worldRotation[entity] = thisWorldRotation;
         world.worldScaleX[entity] = thisWorldScaleX;
         world.worldScaleY[entity] = thisWorldScaleY;
-        world._cachedParent[entity] = parent?.value;
+        world._cachedParent[entity] = parent;
         world._cachedOffsetX[entity] = offsetX;
         world._cachedOffsetY[entity] = offsetY;
         world._cachedRotation[entity] = rotation;

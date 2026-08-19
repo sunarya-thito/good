@@ -553,6 +553,106 @@ void main() {
     });
   });
 
+  group('nullable entity handle (optEntity) fields', () {
+    test('a stored handle round-trips, and null is not Entity(0)', () {
+      late DataPointer<Entity?> target;
+      final h = _Harness((data) => target = data.optEntity());
+      addTearDown(h.dispose);
+
+      final holder = h.spawn();
+      final other = h.spawn();
+      target[holder] = other;
+      expect(target[holder], other);
+
+      const packed = Entity.pack(0xFFFF, 0xFFFF, 0xFFFFFFFF);
+      expect(packed.value < 0, isTrue, reason: 'the fixture must be negative');
+      target[holder] = packed;
+      expect(target[holder]?.value, packed.value);
+
+      // The reason this type exists: `Entity(0)` is a real handle (archetype
+      // 0, page 0, row 0), so "no target" cannot be spelled as a reserved
+      // value. Stored, it reads back as itself; the flag beside the value is
+      // what tells it apart from `null`.
+      target[holder] = const Entity(0);
+      expect(target[holder], isNotNull);
+      expect(target[holder], const Entity(0));
+      target[holder] = null;
+      expect(target[holder], isNull);
+    });
+
+    test(
+      'the declared default is stamped into new rows, recycled ones too',
+      () {
+        const fallback = Entity.pack(3, 2, 128);
+        late DataPointer<Entity?> target;
+        late DataPointer<Entity?> undeclared;
+        final h = _Harness((data) {
+          target = data.optEntity(fallback);
+          undeclared = data.optEntity();
+        });
+        addTearDown(h.dispose);
+
+        final first = h.spawn();
+        expect(target[first], fallback);
+        // No default given means absent, not the handle 0 packs.
+        expect(undeclared[first], isNull);
+
+        target[first] = null;
+        undeclared[first] = const Entity(77);
+        final page = h.prefab.archetype.pageAt(first.pageIndex);
+        page!.free(first.rowOffset);
+
+        final recycled = h.spawn();
+        expect(
+          recycled.rowOffset,
+          first.rowOffset,
+          reason: 'the row was recycled',
+        );
+        expect(target[recycled], fallback);
+        expect(undeclared[recycled], isNull);
+      },
+    );
+
+    test('each row holds its own handle, null included', () {
+      late DataPointer<Entity?> target;
+      final h = _Harness((data) => target = data.optEntity());
+      addTearDown(h.dispose);
+
+      final a = h.spawn();
+      final b = h.spawn();
+      final c = h.spawn();
+      target[a] = c;
+      target[b] = null;
+      target[c] = a;
+
+      expect([target[a], target[b], target[c]], [c, null, a]);
+    });
+
+    test(
+      'the presence flag costs a byte, or nothing after a sub-byte field',
+      () {
+        final has = _Harness((data) => data.hasEntity());
+        addTearDown(has.dispose);
+        final opt = _Harness((data) => data.optEntity());
+        addTearDown(opt.dispose);
+        // The flag is declared ahead of the handle and the handle then rounds
+        // up to its own byte, so on a byte-aligned row the flag takes a whole
+        // one.
+        expect(opt.bitLength - has.bitLength, 8);
+
+        // Those seven spare bits sit in front of the handle, so only a field
+        // declared before the flag can claim them - anything after starts
+        // past the handle, byte-aligned already.
+        final shared = _Harness((data) {
+          data.hasUint4();
+          data.optEntity();
+        });
+        addTearDown(shared.dispose);
+        expect(shared.bitLength, opt.bitLength);
+      },
+    );
+  });
+
   group('enum (hasEnum) fields', () {
     test('every member round-trips', () {
       late DataPointer<_Element> target;

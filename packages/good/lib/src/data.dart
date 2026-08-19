@@ -18,9 +18,9 @@ abstract class DataDescriptor {
   /// This engine stored booleans as `uint1` written `1`/`0` for a long time,
   /// on the reasoning that there was no boolean field *kind*. There still
   /// isn't, and there does not need to be: a `bool` field is a `uint1` with a
-  /// type on it, exactly as `Child.parent` is an `optInt64` with `Entity` on
-  /// it. The storage, the width and the cost are identical; only the spelling
-  /// at the call site changes, from `enable[e] = 1` to `enable[e] = true`.
+  /// type on it, exactly as [hasEntity] is an `int64` with `Entity` on it.
+  /// The storage, the width and the cost are identical; only the spelling at
+  /// the call site changes, from `enable[e] = 1` to `enable[e] = true`.
   ///
   /// Prefer this over `hasUint1` for anything that is genuinely a flag. Keep
   /// `hasUint1` for a one-bit *number* - a two-state enum, a packed counter.
@@ -39,15 +39,16 @@ abstract class DataDescriptor {
   DataPointer<int> hasUint32([int defaultValue = 0]);
   DataPointer<int> hasInt32([int defaultValue = 0]);
   // 64-bit ints exist specifically so a field can hold a full packed
-  // `Entity` handle (archetype id + page index + row offset, see struct.dart)
-  // - `data/hierarchy.dart`'s Child.parent/nextSibling/prevSibling and
-  // Parent.firstChild/lastChild are the reference use. Prefer `hasInt64`/
-  // `optInt64` for that specifically: `Entity.value` is a signed Dart
-  // `int` already (packing can push bits into the sign position, see
-  // Entity's own doc), so storing it signed avoids any unsigned
-  // reinterpretation at the boundary. Uint64 exists for symmetry with
-  // every narrower width, not because this engine needs unsigned 64-bit
-  // arithmetic anywhere yet.
+  // `Entity` handle (archetype id + page index + row offset, see
+  // struct.dart). A field that holds one should say so - `hasEntity` and
+  // `optEntity` are these two widths with the handle type on them, and
+  // `data/hierarchy.dart`'s Child.parent/nextSibling/prevSibling and
+  // Parent.firstChild/lastChild are the reference use. Both are signed,
+  // because `Entity.value` is a signed Dart `int` already (packing can push
+  // bits into the sign position, see Entity's own doc), so storing it signed
+  // avoids any unsigned reinterpretation at the boundary. Uint64 exists for
+  // symmetry with every narrower width, not because this engine needs
+  // unsigned 64-bit arithmetic anywhere yet.
   DataPointer<int> hasUint64([int defaultValue = 0]);
   DataPointer<int> hasInt64([int defaultValue = 0]);
 
@@ -64,8 +65,7 @@ abstract class DataDescriptor {
   /// page 0, row offset 0, which is some scene's first entity. Give a default
   /// only when an entity genuinely is the right starting target; otherwise
   /// write the column before anything reads it. For a link that is allowed to
-  /// be absent, `optInt64` wrapped the way `data/hierarchy.dart` wraps
-  /// `Child.parent` carries `null` as its own state.
+  /// be absent, [optEntity] carries `null` as its own state.
   ///
   /// # A stored handle outlives the entity it names
   ///
@@ -115,6 +115,34 @@ abstract class DataDescriptor {
   DataPointer<int?> optInt32([int? defaultValue]);
   DataPointer<int?> optUint64([int? defaultValue]);
   DataPointer<int?> optInt64([int? defaultValue]);
+
+  /// A column holding an [Entity] handle or `null` - [hasEntity]'s storage
+  /// with a presence flag in front of it, so "no target" is a state of its
+  /// own rather than a handle that has to be reserved as a sentinel.
+  ///
+  /// This is what a link between entities usually wants. [hasEntity]'s
+  /// unwritten value is `Entity(0)`, a real address (archetype 0, page 0,
+  /// row 0) rather than a "nothing here"; here an unwritten column reads
+  /// `null`, and `Entity(0)` stored in it reads back as itself.
+  ///
+  /// With no [defaultValue] a fresh row reads `null`. Pass one and every
+  /// fresh row starts pointing at it.
+  ///
+  /// # The presence flag can cost a byte per row
+  ///
+  /// The flag is a bit declared ahead of the handle, and the handle then
+  /// rounds up to its own byte. Declared where the row is byte-aligned -
+  /// the usual case - the column takes 72 bits against [hasEntity]'s 64.
+  /// Declared after a sub-byte field that left room in the byte (a
+  /// `hasBool`, a `hasUint4`), the flag lands in that room and the column
+  /// costs the same 64 bits. Worth ordering for on a link every entity in a
+  /// scene carries.
+  ///
+  /// The handle-outlives-the-entity warning on [hasEntity] applies here
+  /// unchanged: `null` says the link is absent, never that its target has
+  /// been destroyed.
+  DataPointer<Entity?> optEntity([Entity? defaultValue]);
+
   DataPointer<double?> optFloat32([double? defaultValue]);
   DataPointer<double?> optFloat64([double? defaultValue]);
   DataArrayPointer<int> hasUint1Array(int length, [int defaultValue = 0]);

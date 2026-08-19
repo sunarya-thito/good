@@ -140,8 +140,8 @@ abstract base class _Field<T> extends DataPointer<T> implements ArchetypeField {
 /// bit-packing, the default handling and the row resolution are already right
 /// in the `uint1` field this wraps, and a parallel implementation would be a
 /// second copy of them to keep in step (the one-fact-one-place rule).
-/// `_EntityField` in `data/hierarchy.dart` wraps `optInt64` the same way for
-/// the same reason.
+/// [_EntityHandleField] and [_OptionalEntityHandleField] wrap the int64
+/// fields the same way for the same reason.
 ///
 /// The wrapper is not free at the call site the way a raw field is - it adds
 /// one virtual call and a compare per access - but it is only ever used for
@@ -168,8 +168,8 @@ class _BoolField extends DataPointer<bool> {
 /// Delegation for the same reason [_BoolField] delegates: the row
 /// resolution, the default stamping and the 64-bit load/store are already
 /// right in the `_Int64Field` this wraps (the one-fact-one-place rule).
-/// `data/hierarchy.dart`'s `_EntityField` is the nullable twin of this, over
-/// `optInt64`.
+/// [_OptionalEntityHandleField] is the nullable twin of this, over the
+/// `optInt64` path.
 ///
 /// `Entity` is an extension type over `int`, so it erases: the value handed
 /// back is the very `int` the field read, and `Entity(...)` compiles to
@@ -189,6 +189,43 @@ class _EntityHandleField extends DataPointer<Entity> {
   @override
   void operator []=(Entity entity, Entity newValue) =>
       _raw[entity] = newValue.value;
+}
+
+/// An `Entity?` view over the nullable `int64` field `optEntity` declares -
+/// a presence flag and, when it is set, a packed handle beside it.
+///
+/// Delegation for the same reason [_EntityHandleField] delegates: the flag,
+/// the value and the default stamping are already right in the
+/// `_OptionalField` this wraps (the one-fact-one-place rule). `Entity` is an
+/// extension type over `int`, so the value handed back is the very `int?`
+/// the field read and `Entity(...)` compiles to nothing.
+///
+/// `readPending` *is* delegated here, unlike [_EntityHandleField]'s.
+/// `_OptionalField` implements it - taking the flag and the value from the
+/// same pending row - so forwarding reaches a real implementation rather
+/// than relabelling an `UnsupportedError`. `data/hierarchy.dart` splices its
+/// child lists through it, so this path is load-bearing: two `addChild`
+/// calls in one tick need the second to see the link the first wrote.
+class _OptionalEntityHandleField extends DataPointer<Entity?> {
+  const _OptionalEntityHandleField(this._raw);
+
+  final DataPointer<int?> _raw;
+
+  @override
+  Entity? operator [](Entity entity) {
+    final value = _raw[entity];
+    return value == null ? null : Entity(value);
+  }
+
+  @override
+  void operator []=(Entity entity, Entity? newValue) =>
+      _raw[entity] = newValue?.value;
+
+  @override
+  Entity? readPending(Entity entity) {
+    final value = _raw.readPending(entity);
+    return value == null ? null : Entity(value);
+  }
 }
 
 /// An `E` view over the unsigned field `hasEnum` declares, which holds the
@@ -1362,6 +1399,13 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
   @override
   DataPointer<int?> optInt64([int? defaultValue]) =>
       _opt(64, true, defaultValue);
+
+  /// Signed 64-bit beside a presence flag, the signedness for [hasEntity]'s
+  /// reason.
+  @override
+  DataPointer<Entity?> optEntity([Entity? defaultValue]) =>
+      _OptionalEntityHandleField(_opt(64, true, defaultValue?.value));
+
   @override
   DataPointer<double?> optFloat32([double? defaultValue]) =>
       _optFloat(32, defaultValue);

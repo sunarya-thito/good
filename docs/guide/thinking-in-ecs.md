@@ -279,27 +279,34 @@ late final DataPointer<Entity> owner;
 owner = data.hasEntity();
 ```
 
-There is no `optEntity()`. Where the link can be absent — which is the usual
-case — store it as `optInt64` and let `null` be the "no target" state. The
-engine's own hierarchy links are built that way:
+Where the link can be absent — which is the usual case — `optEntity()` adds a
+presence flag beside the handle, so `null` is the "no target" state. That
+matters because `Entity(0)` is a real handle (archetype 0, page 0, row 0), so
+there is no spare value to reserve as a sentinel. The engine's own hierarchy
+links are built that way:
 
 ```dart
 class Missile extends EntityStruct with Transform2D, Renderable2D {
-  late final DataPointer<int?> target;      // a packed Entity, or null
+  late final DataPointer<Entity?> target;
   late final DataPointer<int> targetStamp;  // which entity that handle meant
 
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    target = data.optInt64();
+    target = data.optEntity();
     targetStamp = data.hasInt64();
   }
 }
 ```
 
 ```dart
-missile.target[entity] = orcEntity.value;
+missile.target[entity] = orcEntity;
 ```
+
+The flag is a bit declared ahead of the handle, and the handle then rounds up
+to its own byte — so the column takes 72 bits rather than `hasEntity()`'s 64,
+unless a sub-byte field declared just before it left room in the byte for the
+flag to land in.
 
 ### What happens when the target is destroyed
 

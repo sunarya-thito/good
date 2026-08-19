@@ -3,43 +3,11 @@ import 'package:meta/meta.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/struct.dart';
 
-/// Adapts a raw `DataPointer<int?>` (an `optInt64` field storing a packed
-/// `Entity.value`) into a `DataPointer<Entity?>` - so `Child.parent` etc.
-/// read/write real `Entity` values instead of making every call site do
-/// `Entity(raw!)`/`.value` conversions by hand. Pure delegation, no
-/// per-access allocation beyond what boxing an `Entity?` already costs
-/// (which is nothing extra - `Entity` is a zero-cost extension type over
-/// `int`, so an `Entity?` is exactly as cheap as an `int?`).
-class _EntityField extends DataPointer<Entity?> {
-  const _EntityField(this._raw);
-
-  final DataPointer<int?> _raw;
-
-  @override
-  Entity? operator [](Entity entity) {
-    final value = _raw[entity];
-    return value == null ? null : Entity(value);
-  }
-
-  @override
-  void operator []=(Entity entity, Entity? newValue) =>
-      _raw[entity] = newValue?.value;
-
-  /// Delegated like everything else here - the pending read belongs to the
-  /// underlying `optInt64`, and this only re-wraps the answer.
-  @override
-  Entity? readPending(Entity entity) {
-    final value = _raw.readPending(entity);
-    return value == null ? null : Entity(value);
-  }
-}
-
 mixin Child on Component {
   /// The full `Entity` handle of this entity's parent, or `null` if
-  /// unparented. Stored as `optInt64` (not `optInt32`, the field's
-  /// original width) because a packed `Entity` is a 64-bit handle
-  /// (archetype id + page index + row offset - see `Entity` in
-  /// struct.dart), not a 32-bit one; see `DataDescriptor.hasInt64`'s doc.
+  /// unparented. A packed `Entity` is a 64-bit handle (archetype id + page
+  /// index + row offset - see `Entity` in struct.dart), which is the width
+  /// `optEntity` stores it at.
   late final DataPointer<Entity?> parent;
   late final DataPointer<Entity?> nextSibling;
   late final DataPointer<Entity?> prevSibling;
@@ -63,9 +31,9 @@ mixin Child on Component {
   @mustCallSuper
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    parent = _EntityField(data.optInt64());
-    nextSibling = _EntityField(data.optInt64());
-    prevSibling = _EntityField(data.optInt64());
+    parent = data.optEntity();
+    nextSibling = data.optEntity();
+    prevSibling = data.optEntity();
   }
 }
 
@@ -84,8 +52,8 @@ mixin Parent on Component {
   @mustCallSuper
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    firstChild = _EntityField(data.optInt64());
-    lastChild = _EntityField(data.optInt64());
+    firstChild = data.optEntity();
+    lastChild = data.optEntity();
   }
 
   /// Appends [child] to the end of [self]'s child list - a doubly-linked

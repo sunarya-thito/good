@@ -148,6 +148,7 @@ one bit instead of eight is 7 bits per entity per frame of bandwidth saved.
 | `hasUint1/2/4()`, `hasInt1/2/4()` | `int` | sub-byte, for small counters and packed bits |
 | `hasUint8/16/32/64()`, `hasInt8/16/32/64()` | `int` | |
 | `hasEntity()` | `Entity` | a handle to another entity, 64 bits — see [storing a handle](thinking-in-ecs.md#storing-a-handle-in-a-column) |
+| `optEntity([default])` | `Entity?` | the same handle, or `null` for no target — a presence bit ahead of the 64 |
 | `hasEnum(values, [default])` | `E` | the member's index, in the narrowest column its `values` fit — two bits for four members |
 | `hasFloat32()`, `hasFloat64()` | `double` | `Transform2D` uses float64 |
 | `hasPacked<T>(table, [default])` | `T` | a value with an `int` representation |
