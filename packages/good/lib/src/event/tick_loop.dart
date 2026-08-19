@@ -21,8 +21,15 @@ import 'package:good/src/event.dart';
 /// This is the same split Unity DOTS draws between `SimulationSystemGroup` and
 /// `PresentationSystemGroup`, and for the same reason: a consumer of derived
 /// data is ordered into a later phase rather than given a sharper way to read
-/// the current one. See the no-specialised-variant rule - it is why there is no
-/// "read the uncommitted value" accessor anywhere in this engine.
+/// the current one. See the no-specialised-variant rule - it is why no system
+/// is handed a "read this tick's uncommitted value" accessor to consume derived
+/// data with.
+///
+/// One thing does read the write slot: `DataPointer.readPending`, which exists
+/// so a structural mutation can read back the links **it is itself editing**
+/// within one tick (`Parent.addChild` appending to a chain). It is implemented
+/// only on the field kinds that need it and throws on the rest, so it is not a
+/// way for a system to look at uncommitted simulation state - see its own doc.
 ///
 /// # Latency
 ///

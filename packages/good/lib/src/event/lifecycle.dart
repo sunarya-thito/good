@@ -16,13 +16,20 @@ import 'package:good/src/struct.dart';
 // bring-up through the dispatcher like anything else. See scene.dart's note
 // on why the ordering the virtuals guaranteed survives that.
 //
-// What was missing, and what these close, is the *other* direction: a
-// `GameSystem` that wants to know the game has come up, or that a scene was
-// loaded, had no way to be told. It could mix in the old `LifecycleListener`,
-// compile cleanly, and silently never fire - the walk only ever reached the
-// `GameState`. That was one of two dead capabilities found when the old event
-// hierarchy came out, and it is the reason these are events rather than more
-// virtuals.
+// What was missing, and what `GameLifecycleListener` closes, is the *other*
+// direction: a `GameSystem` that wants to know the game has come up had no way
+// to be told. It could mix in the old `LifecycleListener`, compile cleanly, and
+// silently never fire - the walk only ever reached the `GameState`. That was
+// one of two dead capabilities found when the old event hierarchy came out, and
+// it is the reason these are events rather than more virtuals.
+//
+// The two levels below it are **not** widened the same way, and this file used
+// to claim they were. A dispatcher's audience is its declaring owner's
+// composition, and scene and entity lifecycle are declared on the `SceneStruct`
+// and the `EntityStruct` (see the note beside `GameState`'s observation
+// dispatchers for why). A system mixing one of those in is offered to nobody
+// that delivers it. `SceneLoadListener` and `EntitySpawnListener`, further
+// down, are the events a system uses to watch the world.
 
 /// Hears the game itself coming up and going down.
 ///
@@ -51,26 +58,32 @@ mixin GameLifecycleListener on GameListener {
   void onGameUnmounted() {}
 }
 
-/// Hears **any** scene being loaded or unloaded, and is told which one.
+/// Hears an instance of **one scene struct** being loaded or unloaded, and is
+/// told which instance.
 ///
-/// Two different questions land on the same hook, and which one a listener is
-/// asking depends on where it is mixed in:
+/// Narrow, always. The only dispatchers that deliver it are that struct's own
+/// `SceneStruct.mountedEvent`/`unmountedEvent`, and those collect the struct
+/// and the prefabs it declared - nothing else. Every `SceneStruct` mixes this
+/// in, which is why a scene spawns its starting entities in [onSceneMounted]
+/// rather than through a separate virtual, and a prefab may mix it in to hear
+/// the scene it belongs to.
 ///
-///  * On a `SceneStruct` - "an instance of **me** mounted". Every scene struct
-///    mixes this in, so this is where a scene spawns its starting entities.
-///    It is narrow because the struct's own [SceneStruct.mountedEvent] only
-///    ever collects that struct.
-///  * On a `GameSystem` (or anything the `GameState` collects) - "**a** scene
-///    mounted". The broadcast, which is what lets a system react to scene
-///    transitions at all.
+/// **On a `GameSystem` this never fires.** `GameState` declares no
+/// `SceneLifecycleListener` dispatcher, and no scene offers a system to its
+/// own, so the mixin compiles and the hook silently never runs. A system that
+/// wants to react to scene transitions wants [SceneLoadListener], the
+/// world-observation counterpart `GameState` does declare. (A struct can still
+/// let one system in, by offering it from `collectListeners` - that is the
+/// struct widening its own audience on purpose, not a game-wide hook.)
 ///
-/// A `SceneStruct` hearing its own mount through both is correct rather than a
-/// quirk: it asked to hear every scene mount, and its own is one of them.
+/// A `SceneStruct` that also mixes in [SceneLoadListener] hears its own mount
+/// twice, which is correct rather than a quirk: `GameState` collects the
+/// scenes, so it asked to hear every scene load and its own is one of them.
 mixin SceneLifecycleListener on GameListener {
-  /// [scene] has been loaded. A listener collected by the `GameState` sees
-  /// this after the scene struct's own [onSceneMounted] has run, so the
-  /// starting entities already exist - that is what the mount dispatcher's
-  /// forward order buys.
+  /// [scene] has been loaded. The struct's own [onSceneMounted] runs before
+  /// any of its prefabs', so a prefab hearing the mount finds the starting
+  /// entities already spawned - that is what the mount dispatcher's forward
+  /// order buys.
   void onSceneMounted(Scene scene) {}
 
   /// [scene] is being unloaded. Dispatched before its pages are released, so
@@ -78,25 +91,22 @@ mixin SceneLifecycleListener on GameListener {
   void onSceneUnmounted(Scene scene) {}
 }
 
-/// Hears **any** entity coming into being or going away.
+/// Hears the entities of **one entity struct** coming into being or going
+/// away.
 ///
-/// The third level of the same pair every other level has, and the same mixin
-/// serves both halves. Mixed into an `EntityStruct` it is the narrow half -
-/// that struct's [EntityStruct.mountedEvent] collects only itself, so it fires
-/// for its own entities and nothing else. Mixed in anywhere the `GameState`
-/// collects it is the broadcast half, for a spatial index, a networked replica
-/// table, an editor overlay.
+/// The third level of the same scoping the two above it have, and narrow for
+/// the same reason: the only dispatchers that deliver it are that struct's own
+/// [EntityStruct.mountedEvent]/[EntityStruct.unmountedEvent], which collect the
+/// struct itself. So it fires for its own entities and nothing else, and a
+/// listener never has to ask whether the entity was one of its own.
 ///
-/// A broadcast listener hears **every** entity in the game, so it filters by
-/// archetype itself:
-///
-/// ```dart
-/// @override
-/// void onEntityMounted(Entity entity) {
-///   final body = entity.tryGet<Rigidbody>();
-///   if (body != null) index.insert(entity);
-/// }
-/// ```
+/// **There is no broadcast half.** `GameState` declares no
+/// `EntityLifecycleListener` dispatcher, so a `GameSystem` mixing this in
+/// compiles and silently never fires - a spatial index, a networked replica
+/// table or an editor overlay wants [EntitySpawnListener], which `GameState`
+/// does declare. (A struct can offer one system into its own dispatcher from
+/// `collectListeners`, which lets that system hear *that struct's* entities
+/// and no others.)
 ///
 /// Firing this costs nothing whether or not anything is listening: the payload
 /// is passed as an argument rather than wrapped in an event object, so the
@@ -111,11 +121,17 @@ mixin EntityLifecycleListener on GameListener {
   /// here at all.
   void onEntityMounted(Entity entity) {}
 
-  /// [entity] is going away, because the scene holding it is being unloaded.
-  /// Its row is still readable here and never again afterwards.
+  /// [entity] is going away, either because `Entity.destroy()` was called on
+  /// it (or on an ancestor, which destroys the subtree) or because the scene
+  /// holding it is being unloaded. Both paths dispatch in the same order -
+  /// [EntitySpawnListener.onEntityDespawned] first, then this - so the two are
+  /// indistinguishable from in here.
   ///
-  /// There is no per-entity destroy yet - rows are not recycled - so scene
-  /// unload is the only thing that fires this.
+  /// Its row is still readable during the dispatch and released immediately
+  /// afterwards. Rows **are** recycled: after a destroy the next entity of the
+  /// same archetype can be handed that row, and `Entity` has no generation
+  /// counter, so a handle kept past this point silently starts naming
+  /// something else rather than reading as dead.
   void onEntityUnmounted(Entity entity) {}
 }
 
@@ -189,8 +205,10 @@ mixin SceneLoadListener on GameListener {
 }
 
 // There are no event classes here. Every one of these is an
-// `EventDispatcher<L, E>` (or a `SignalDispatcher<L>`) declared on `GameState`
-// with a one-line delivery closure, so the payload travels as an argument and
-// nothing is allocated per dispatch. Eight classes -
+// `EventDispatcher<L, E>` (or a `SignalDispatcher<L>`) with a one-line delivery
+// closure - declared on `GameState` for the game-level and world-observation
+// events, and on the `SceneStruct`/`EntityStruct` for the two scoped lifecycle
+// ones - so the payload travels as an argument and nothing is allocated per
+// dispatch. Eight classes -
 // Game/Scene/Entity x Mounted/Unmounted, plus the two tick events - came out
 // when that landed.

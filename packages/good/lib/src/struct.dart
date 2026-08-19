@@ -86,13 +86,16 @@ abstract class EntityStruct extends GameListenerBase
   ///
   /// A struct hears its own entities by mixing in `EntityLifecycleListener`,
   /// which this dispatcher then collects - there is no separate virtual. The
-  /// same mixin on a `GameSystem` hears every entity in the game instead; the
-  /// scope is decided by which dispatcher collects the listener, not by which
-  /// method it overrides.
+  /// same mixin on a `GameSystem` hears **nothing**: this is the only kind of
+  /// dispatcher that delivers it, and it collects the struct. A system wanting
+  /// every entity in the game mixes in `EntitySpawnListener`, which
+  /// `GameState` declares - the scope is decided by which dispatcher collects
+  /// the listener, not by which method it overrides.
   late final EventDispatcher<EntityLifecycleListener, Entity> mountedEvent;
 
-  /// An entity of this struct is going away, because the scene holding it is
-  /// being unloaded. Its row is still readable during dispatch.
+  /// An entity of this struct is going away, because `Entity.destroy()` was
+  /// called on it or because the scene holding it is being unloaded - both
+  /// paths fire this. Its row is still readable during dispatch.
   late final EventDispatcher<EntityLifecycleListener, Entity> unmountedEvent;
 
   @override

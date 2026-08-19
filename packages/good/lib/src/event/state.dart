@@ -2,9 +2,9 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 
 // --- published cross-isolate state ---------------------------------------
 
-/// A typed, cross-isolate published value: **owned and written by the game
-/// isolate, readable on both**, backed by a `TripleBuffer` so a reader always
-/// sees a whole, self-consistent snapshot and the writer never blocks.
+/// A typed, cross-isolate published value: **written by the game isolate,
+/// readable on both**, backed by a `TripleBuffer` so a reader always sees a
+/// whole, self-consistent snapshot and the writer never blocks.
 ///
 /// # Reading, and who gets told when
 ///
@@ -30,10 +30,16 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 /// # Writing
 ///
 /// `value` has a setter, and the setter is only meaningful on the copy that
-/// owns the storage. Writing through the main-isolate copy is a programmer
-/// error, not a runtime fallback: it does not own the memory, and the write
-/// would be invisible to the simulation. It `assert`s (the assert-not-print
-/// rule) and does nothing.
+/// **runs the tick loop**. Writing through the main-isolate copy is a
+/// programmer error, not a runtime fallback: a `TripleBuffer` has exactly one
+/// writer, and a write from there would be invisible to the simulation. It
+/// `assert`s (the assert-not-print rule) and does nothing.
+///
+/// Owning the storage is a different question from being allowed to write it,
+/// and since boot moved to main the two answers differ: in the spawned
+/// configuration main allocates and frees the channel's memory and still may
+/// not write to it. `GameRuntime.owns` and `GameRuntime.simulates` are the two
+/// flags; the setter checks the second.
 ///
 /// **Direction is game -> main only.** A main -> game channel is a genuinely
 /// different design (the game isolate would have to poll it inside the tick

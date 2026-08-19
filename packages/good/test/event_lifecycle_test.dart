@@ -18,11 +18,12 @@ late Game run;
 
 // Lifecycle at all three levels, and the scoping that decides who hears what.
 //
-// Every level has the same pair: a narrow hook called directly on the owner
-// (`GameState.onMounted()`, `SceneStruct.onMounted(Scene)`,
-// `Component.onMounted(Entity)`), and a dispatcher for everything *else* that
-// wants to know. What differs is where the dispatcher is declared, and that is
-// not a detail - it *is* the audience:
+// Only `GameState.onMounted()` is still a plain virtual. The scene and entity
+// levels used to have one each; now the owner mixes in the same listener
+// anything else would - `SceneLifecycleListener`, `EntityLifecycleListener` -
+// and hears itself through its own dispatcher. What differs between the levels
+// is where that dispatcher is declared, and that is not a detail - it *is* the
+// audience:
 //
 //  * game lifecycle is declared on `GameState`, so it reaches everything -
 //    correct, because `GameState` is the only object at that level;
@@ -66,6 +67,48 @@ class _Watcher extends GameSystem with GameLifecycleListener {
 
 /// Listens to nothing - never collected anywhere.
 class _Bystander extends GameSystem {}
+
+/// A system mixing in both halves at once: the two *scoped* lifecycle mixins,
+/// which no dispatcher a system reaches ever delivers, and the two
+/// *observation* events, which `GameState` declares and does.
+///
+/// The pairing is the point. [scoped] staying empty is the claim under test,
+/// and an empty list proves nothing on its own - [observed] filling up is what
+/// says the system is wired, enabled and running, so the empty one means the
+/// event never arrived rather than that the fixture is dead.
+class _Deaf extends GameSystem
+    with
+        SceneLifecycleListener,
+        EntityLifecycleListener,
+        SceneLoadListener,
+        EntitySpawnListener {
+  final List<String> scoped = <String>[];
+  final List<String> observed = <String>[];
+
+  @override
+  void onSceneMounted(Scene scene) => scoped.add('scene.mounted');
+
+  @override
+  void onSceneUnmounted(Scene scene) => scoped.add('scene.unmounted');
+
+  @override
+  void onEntityMounted(Entity entity) => scoped.add('entity.mounted');
+
+  @override
+  void onEntityUnmounted(Entity entity) => scoped.add('entity.unmounted');
+
+  @override
+  void onSceneLoaded(Scene scene) => observed.add('scene.loaded');
+
+  @override
+  void onSceneUnloaded(Scene scene) => observed.add('scene.unloaded');
+
+  @override
+  void onEntitySpawned(Entity entity) => observed.add('entity.spawned');
+
+  @override
+  void onEntityDespawned(Entity entity) => observed.add('entity.despawned');
+}
 
 class _Level extends SceneStruct {
   late final _Unit unit;
@@ -220,6 +263,7 @@ class _LifecycleState extends GameState<_LifecycleGame> {
     descriptor.has(_Watcher());
     descriptor.has(_Census());
     descriptor.has(_Bystander());
+    descriptor.has(_Deaf());
   }
 }
 
@@ -241,6 +285,7 @@ class _LifecycleGame extends Game {
   /// copy that no longer runs it.
   _Watcher get watcher => run.state.getSystem<_Watcher>();
   _Census get census => run.state.getSystem<_Census>();
+  _Deaf get deaf => run.state.getSystem<_Deaf>();
 
   @override
   GameState createState() => _LifecycleState();
@@ -551,6 +596,92 @@ void main() {
         );
       },
     );
+  });
+
+  group('the scoped lifecycle events never reach a system', () {
+    // `event/lifecycle.dart` used to say a `GameSystem` mixing in
+    // `SceneLifecycleListener` heard "a scene mounted" as a broadcast, and
+    // that `EntityLifecycleListener` had a broadcast half wherever `GameState`
+    // collects. Neither dispatcher exists: `GameState` declares
+    // `SceneLoadListener` and `EntitySpawnListener` for that question, and the
+    // scoped pair is declared on the `SceneStruct` and the `EntityStruct`,
+    // which collect their own composition. A system following the old comment
+    // got a hook that compiled and never ran, which is the one kind of failure
+    // no other test can see - it looks exactly like a hook nobody wrote.
+
+    test('a system hears no scene lifecycle, and every scene load', () async {
+      final game = await _boot();
+      final deaf = game.deaf;
+      deaf.scoped.clear();
+      deaf.observed.clear();
+
+      final scene = await run.state.loadScene(game.nosyScene);
+      run.state.unloadScene(scene);
+
+      expect(
+        deaf.scoped,
+        isEmpty,
+        reason:
+            'SceneLifecycleListener is delivered only by a SceneStruct\'s own '
+            'mountedEvent/unmountedEvent, and those collect that struct and '
+            'its prefabs - a system is offered to neither',
+      );
+      expect(
+        deaf.observed,
+        ['scene.loaded', 'scene.unloaded'],
+        reason:
+            'the same system heard both through SceneLoadListener, which is '
+            'what GameState declares for this question',
+      );
+    });
+
+    test('a system hears no entity lifecycle, and every spawn', () async {
+      final game = await _boot();
+      final scene = await run.state.loadScene(game.trackedScene);
+      final deaf = game.deaf;
+      deaf.scoped.clear();
+      deaf.observed.clear();
+
+      final entity = scene.addEntity(game.trackedScene.tracked);
+      entity.destroy();
+
+      expect(
+        deaf.scoped,
+        isEmpty,
+        reason:
+            'EntityLifecycleListener is delivered only by an EntityStruct\'s '
+            'own dispatchers, which collect that struct. _Tracked never '
+            'offered this system in, the way _Indexed offers _Census',
+      );
+      expect(
+        deaf.observed,
+        ['entity.spawned', 'entity.despawned'],
+        reason:
+            'and EntitySpawnListener on the same system saw both ends, which '
+            'is what a spatial index or a physics backend mixes in',
+      );
+    });
+
+    test('destroy() fires the struct\'s own unmount, not scene unload only',
+        () async {
+      // The other stale claim: "there is no per-entity destroy yet - rows are
+      // not recycled - so scene unload is the only thing that fires this".
+      // Both halves were false, and the last change that trusted it leaked a
+      // Box2D body per destroyed entity.
+      final game = await _boot();
+      final scene = await run.state.loadScene(game.trackedScene);
+      final doomed = scene.addEntity(game.trackedScene.tracked);
+      final kept = scene.addEntity(game.trackedScene.tracked);
+
+      doomed.destroy();
+
+      expect(game.trackedScene.tracked.gone, [doomed]);
+      expect(
+        game.trackedScene.tracked.gone,
+        isNot(contains(kept)),
+        reason: 'and only the entity that was actually destroyed',
+      );
+    });
   });
 
   group('bring-up and tear-down run in opposite orders', () {
