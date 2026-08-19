@@ -53,6 +53,78 @@ two were the same decision and the third was never read.
     That needs a benchmark and a comment saying so, and it never applies to
     boot-time structures.
 
+## A method that acts on one entity belongs on that component's accessor
+
+A component mixin is **one instance for the whole archetype**. It describes the
+layout; it is not any particular entity. So a method on it that does something
+to an entity has to be handed the entity, and both spellings of that are wrong:
+
+```dart
+// no - the prefab is the receiver and the subject is an argument
+transform.distanceTo(a, b);
+parent.addChild(self, child);
+body.applyImpulse(entity, ix, iy);
+
+// also no - component-specific behaviour on bare Entity
+extension Transform2DEntity on Entity {
+  double distanceTo(Entity other) { ... }
+}
+```
+
+**The tell:** the signature needs an `Entity` parameter to say *which entity
+this is about*. If removing that parameter would leave the method unable to name
+its subject, the subject should have been the receiver.
+
+The fix is an extension on `Accessor<T>`, named `<Component>Accessor`:
+
+```dart
+// yes
+extension Transform2DAccessor on Accessor<Transform2D> {
+  double distanceTo(Entity other) {
+    final t = component;
+    ...
+  }
+}
+
+a<Transform2D>().distanceTo(b);
+parent<Parent>().addChild(child);
+entity<RigidBody2D>().applyImpulse(ix, iy);
+```
+
+`Accessor<T> implements Entity`, so inside the extension `this` **is** the
+entity: `component.hp[this]` indexes a column directly, and the accessor can be
+passed anywhere an `Entity` is wanted. It costs nothing — `Accessor<T>` erases
+to `Entity`, which erases to `int`.
+
+Two things this buys that the first spelling cannot:
+
+- **A helper can no longer be called through the wrong prefab.** A component
+  instance is bound to one archetype's row layout. `crate.setPivot(orcEntity,
+  …)` type-checks, and either reads the wrong storage or is silently repaired by
+  a defensive re-resolve. With the entity as receiver there is nothing to
+  mismatch.
+- **Two components can want the same name.** `Accessor<Transform2D>` and
+  `Accessor<Collider2D>` are different types, so both can declare `distanceTo` —
+  centre to centre and surface to surface — and a file importing both compiles.
+  The bare-`Entity` extension gives `ambiguous_extension_member_access` instead,
+  and "don't import both" is no answer when they are in one package.
+
+!!! info "What stays where it is"
+    - **Declaration hooks.** `describeType`, `describeStruct`, `describeSprites`,
+      `describeCollider`, `describeChildren` act on the *archetype*, take no
+      entity, and belong on the mixin. That is the same test, answered the other
+      way.
+    - **Listener callbacks.** `onEntityMounted`, `onEntitySpawned` and their
+      unmount halves take an `Entity` as the event's *payload*, not as the
+      receiver's subject. A broadcast listener is asking to be told about
+      entities that are not its own.
+    - **Additional entities.** Only the subject moves to the receiver.
+      `distanceTo(Entity other)` and `lookAtEntity(Entity target)` keep their
+      argument, and must resolve that one's component themselves — it may be a
+      different archetype with a different layout.
+    - **Private helpers inside a system.** `_composeRoot(entity, …)` is a
+      system's own working code, not a component's API.
+
 ## Never dispatch on `is` to work out what the receiver is
 
 ```dart
