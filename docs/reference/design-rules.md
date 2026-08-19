@@ -125,6 +125,50 @@ Two things this buys that the first spelling cannot:
     - **Private helpers inside a system.** `_composeRoot(entity, …)` is a
       system's own working code, not a component's API.
 
+## An accessor carries operations, not one member per column
+
+The tempting next step is a get/set pair for each `Field`, so the columns read
+like properties:
+
+```dart
+// no
+entity<Transform3D>().transformOffsetX = 10;
+entity<Transform3D>().transformOffsetY = 20;
+entity<Transform3D>().transformOffsetZ = 30;
+```
+
+For casual code touching one entity that reads better than what is here. It is
+traded away for two things.
+
+**The cost model.** Each of those three is a registry lookup, so a position
+costs three of them. The current spelling makes the lookup a value you can hoist
+out of a loop, which is what *Resolve components per group, not per entity* in
+[Entities and components](../guide/entities-and-components.md) is about. A
+mirror makes the per-entity lookup the shortest thing to write, in an engine
+whose pitch is that you can see where the work goes.
+
+**Both read modes.** `column[entity]` reads the published snapshot,
+`column.readPending(entity)` reads the write slot, and both are load-bearing —
+`addChild` needs the pending `lastChild`, a prefab's declared children need the
+pending slot on the tick they mount. A property is one or the other, so every
+mirrored column grows a `Pending` twin beside it.
+
+What an accessor carries instead is operations, one lookup each:
+
+```dart
+// yes
+entity<Transform3D>().setEuler(yaw: 0.5);   // one lookup, four writes
+entity<Transform3D>().distanceTo(target);
+entity<Transform3D>().upZ;
+```
+
+`setEuler` reads better than four assignments *and* is faster. That is the
+test: the mirror costs more at the call site to produce worse code.
+
+!!! info "A property that names a concept is fine"
+    `offset = (10, 20, 30)` is one lookup and one idea, and so is a computed
+    `upZ`. The rule is against a member per `Field`, not against properties.
+
 ## Never dispatch on `is` to work out what the receiver is
 
 ```dart
