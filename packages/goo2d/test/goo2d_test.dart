@@ -1,7 +1,6 @@
 import 'package:goo2d/goo2d.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-
 // The same shape the render example declares, minus the experimental
 // primary-constructor syntax (which the analyzer is configured for but the
 // test VM would need a flag to run). Player and Enemy have byte-identical
@@ -31,9 +30,9 @@ class MainScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    playerPrefab = descriptor.has(Player());
-    enemyPrefab = descriptor.has(Enemy());
-    rockPrefab = descriptor.has(Rock());
+    playerPrefab = descriptor.has(Player.new);
+    enemyPrefab = descriptor.has(Enemy.new);
+    rockPrefab = descriptor.has(Rock.new);
   }
 }
 
@@ -52,22 +51,19 @@ void main() {
   });
 
   group('Transform2D through the real kernel API', () {
-    test(
-      'lays out five float64 fields plus Child\'s parent/nextSibling/prevSibling',
-      () {
-        final scene = _scene();
-        // 5 x 64 bits of transform, then Child's three optEntity fields
-        // (parent, nextSibling, prevSibling - each wide enough to hold a
-        // full packed Entity handle, not just a 32-bit id): 64 bits of value
-        // each, and the three has-bits sharing one byte rather than taking a
-        // byte apiece. The first has-bit opens that byte and the alignment
-        // rounding before its value strands the other seven; `declareFlagBit`
-        // hands the next two flags those bits instead of extending the row.
-        expect(scene.playerPrefab.archetype.bitLength, 5 * 64 + (1 + 7) + 3 * 64);
-        expect(scene.playerPrefab.archetype.strideBytes, 65);
-        expect(scene.rockPrefab.archetype.strideBytes, 40);
-      },
-    );
+    test('lays out five float64 fields plus Child\'s parent/nextSibling/prevSibling', () {
+      final scene = _scene();
+      // 5 x 64 bits of transform, then Child's three optEntity fields
+      // (parent, nextSibling, prevSibling - each wide enough to hold a
+      // full packed Entity handle, not just a 32-bit id): 64 bits of value
+      // each, and the three has-bits sharing one byte rather than taking a
+      // byte apiece. The first has-bit opens that byte and the alignment
+      // rounding before its value strands the other seven; `declareFlagBit`
+      // hands the next two flags those bits instead of extending the row.
+      expect(scene.playerPrefab.archetype.bitLength, 5 * 64 + (1 + 7) + 3 * 64);
+      expect(scene.playerPrefab.archetype.strideBytes, 65);
+      expect(scene.rockPrefab.archetype.strideBytes, 40);
+    });
 
     test('identical layouts still get distinct archetypes and storage', () {
       final scene = _scene();
@@ -75,7 +71,10 @@ void main() {
         scene.playerPrefab.archetype.strideBytes,
         scene.enemyPrefab.archetype.strideBytes,
       );
-      expect(scene.playerPrefab.archetypeId, isNot(scene.enemyPrefab.archetypeId));
+      expect(
+        scene.playerPrefab.archetypeId,
+        isNot(scene.enemyPrefab.archetypeId),
+      );
       expect(
         scene.playerPrefab.archetype.componentSignature,
         isNot(scene.enemyPrefab.archetype.componentSignature),
@@ -83,39 +82,42 @@ void main() {
       );
     });
 
-    test('the example scene spawns and each entity keeps its own transform', () {
-      final scene = _scene();
-      scene.pool.beginTick();
-      final player = scene.addEntity(scene.playerPrefab);
-      final enemies = <Entity>[
-        for (var i = 0; i < 5; i++) scene.addEntity(scene.enemyPrefab),
-      ];
+    test(
+      'the example scene spawns and each entity keeps its own transform',
+      () {
+        final scene = _scene();
+        scene.pool.beginTick();
+        final player = scene.addEntity(scene.playerPrefab);
+        final enemies = <Entity>[
+          for (var i = 0; i < 5; i++) scene.addEntity(scene.enemyPrefab),
+        ];
 
-      scene.playerPrefab.transformOffsetX[player] = 320.0;
-      scene.playerPrefab.transformOffsetY[player] = 240.0;
-      scene.playerPrefab.transformRotation[player] = 1.5;
-      for (var i = 0; i < enemies.length; i++) {
-        final t = enemies[i].get<Transform2D>();
-        t.transformOffsetX[enemies[i]] = i * 10.0;
-        t.transformOffsetY[enemies[i]] = i * -10.0;
-        t.transformScaleX[enemies[i]] = 1.0 + i;
-      }
-      scene.pool.commitTick();
+        scene.playerPrefab.transformOffsetX[player] = 320.0;
+        scene.playerPrefab.transformOffsetY[player] = 240.0;
+        scene.playerPrefab.transformRotation[player] = 1.5;
+        for (var i = 0; i < enemies.length; i++) {
+          final t = enemies[i].get<Transform2D>();
+          t.transformOffsetX[enemies[i]] = i * 10.0;
+          t.transformOffsetY[enemies[i]] = i * -10.0;
+          t.transformScaleX[enemies[i]] = 1.0 + i;
+        }
+        scene.pool.commitTick();
 
-      expect(player.get<Transform2D>(), same(scene.playerPrefab));
-      expect(scene.playerPrefab.transformOffsetX[player], 320.0);
-      expect(scene.playerPrefab.transformOffsetY[player], 240.0);
-      expect(scene.playerPrefab.transformRotation[player], 1.5);
+        expect(player.get<Transform2D>(), same(scene.playerPrefab));
+        expect(scene.playerPrefab.transformOffsetX[player], 320.0);
+        expect(scene.playerPrefab.transformOffsetY[player], 240.0);
+        expect(scene.playerPrefab.transformRotation[player], 1.5);
 
-      for (var i = 0; i < enemies.length; i++) {
-        final e = enemies[i];
-        final t = e.get<Transform2D>();
-        expect(t, same(scene.enemyPrefab));
-        expect(t.transformOffsetX[e], i * 10.0, reason: 'enemy $i');
-        expect(t.transformOffsetY[e], i * -10.0, reason: 'enemy $i');
-        expect(t.transformScaleX[e], 1.0 + i, reason: 'enemy $i');
-      }
-    });
+        for (var i = 0; i < enemies.length; i++) {
+          final e = enemies[i];
+          final t = e.get<Transform2D>();
+          expect(t, same(scene.enemyPrefab));
+          expect(t.transformOffsetX[e], i * 10.0, reason: 'enemy $i');
+          expect(t.transformOffsetY[e], i * -10.0, reason: 'enemy $i');
+          expect(t.transformScaleX[e], 1.0 + i, reason: 'enemy $i');
+        }
+      },
+    );
 
     test('the Transform2DSystem inner loop runs unchanged', () {
       final scene = _scene();

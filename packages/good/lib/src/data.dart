@@ -1,3 +1,4 @@
+import 'package:good/src/declare.dart';
 import 'package:good/src/struct.dart';
 
 // note: we used to support DataPointer<Matrix4>, and etc but we removed them
@@ -277,6 +278,296 @@ abstract class DataDescriptor {
     int length, [
     T? defaultValue,
   ]);
+}
+
+/// Declares one column on the struct currently being constructed, from the
+/// field that holds it:
+///
+/// ```dart
+/// class Player extends EntityStruct with Transform2D {
+///   final speed = Field.float64(3.0);
+///   final hp = Field.int32(100);
+/// }
+/// ```
+///
+/// That is the whole declaration: no `late final DataPointer<double> speed;`
+/// above it, no `speed = data.hasFloat64(3.0);` in a `describeStruct` below
+/// it. The name is written once.
+///
+/// Every method here is the matching [DataDescriptor] `has*`/`opt*` with the
+/// prefix dropped, returns exactly what that returns, and reaches the
+/// descriptor through [DeclarationContext] - so `speed[entity]` is the same
+/// read it was when the field was a `late final` assigned in
+/// `describeStruct`. There is no wrapper object and nothing extra on the read
+/// path.
+///
+/// # Statics on a class, not top-level functions
+///
+/// A top-level `Int32(...)` would be silently shadowed by `dart:ffi`'s
+/// `Int32` in any library that imports both, and the error the user sees is
+/// "Too many positional arguments" plus an unused-import hint, with no
+/// mention of a collision. `dart:ffi` exports `Int8/16/32/64`,
+/// `Uint8/16/32/64`, `Bool`, `Double`, `Float` and `Array`, and this repo
+/// imports it in dozens of files. Namespacing them here removes the question.
+///
+/// `Field` and not `Column`, which is what a row's slot is called throughout
+/// these docs: `Column` is a Flutter widget, and a name exported by both
+/// `package:flutter` and this package is an `ambiguous_import` error in every
+/// file that imports the two - which is every file that puts a `GameView`
+/// inside a layout. The engine's own code already says field (`declareField`,
+/// `registerField`, `_Field<T>`), so this is the term that was free.
+///
+/// [boolean] rather than `bool` for a related reason, one level down: a
+/// member named `bool` hides the *type* `bool` inside this class body, so its
+/// own signature stops compiling.
+///
+/// # When a field still needs `describeStruct`
+///
+/// A field initialiser cannot read another field, so a column whose default
+/// comes from a handle declared in an earlier pass - an asset from
+/// `describeAssets`, a sprite built from a texture - keeps its `describeStruct`
+/// body. The two forms coexist: constructor-time declarations run first, then
+/// the passes `SceneDescriptor.has` drives, in the order they already ran.
+///
+/// # Two mixins declaring the same field name are silent here
+///
+/// Components are mixins, so `speed` declared by two of them is an override
+/// rather than an error: the later one in the `with` clause wins. Written as
+/// `describeStruct` assignments that used to be caught by accident - both
+/// bodies assigned the same `late final` and the second throw a
+/// `LateInitializationError` before the game ran. An eager initialiser assigns
+/// nothing, so both columns are allocated, the row grows by both, and one of
+/// them is unreachable for the life of the process. Measured: 128 bits of row
+/// against 64, `speed[entity]` reading the second mixin's column, no error
+/// anywhere.
+///
+/// Prefix a published component's columns the way `Transform2D` prefixes
+/// `transformOffsetX`. Catching it properly is a build-time check over the
+/// mixin closure, which is issue #58.
+abstract final class Field {
+  /// See [DataDescriptor.hasBool].
+  static DataPointer<bool> boolean([bool defaultValue = false]) =>
+      DeclarationContext.data.hasBool(defaultValue);
+
+  static DataPointer<int> uint1([int defaultValue = 0]) =>
+      DeclarationContext.data.hasUint1(defaultValue);
+  static DataPointer<int> int1([int defaultValue = 0]) =>
+      DeclarationContext.data.hasInt1(defaultValue);
+  static DataPointer<int> uint2([int defaultValue = 0]) =>
+      DeclarationContext.data.hasUint2(defaultValue);
+  static DataPointer<int> int2([int defaultValue = 0]) =>
+      DeclarationContext.data.hasInt2(defaultValue);
+  static DataPointer<int> uint4([int defaultValue = 0]) =>
+      DeclarationContext.data.hasUint4(defaultValue);
+  static DataPointer<int> int4([int defaultValue = 0]) =>
+      DeclarationContext.data.hasInt4(defaultValue);
+  static DataPointer<int> uint8([int defaultValue = 0]) =>
+      DeclarationContext.data.hasUint8(defaultValue);
+  static DataPointer<int> int8([int defaultValue = 0]) =>
+      DeclarationContext.data.hasInt8(defaultValue);
+  static DataPointer<int> uint16([int defaultValue = 0]) =>
+      DeclarationContext.data.hasUint16(defaultValue);
+  static DataPointer<int> int16([int defaultValue = 0]) =>
+      DeclarationContext.data.hasInt16(defaultValue);
+  static DataPointer<int> uint32([int defaultValue = 0]) =>
+      DeclarationContext.data.hasUint32(defaultValue);
+  static DataPointer<int> int32([int defaultValue = 0]) =>
+      DeclarationContext.data.hasInt32(defaultValue);
+  static DataPointer<int> uint64([int defaultValue = 0]) =>
+      DeclarationContext.data.hasUint64(defaultValue);
+  static DataPointer<int> int64([int defaultValue = 0]) =>
+      DeclarationContext.data.hasInt64(defaultValue);
+
+  /// See [DataDescriptor.hasEntity], including its warning that a stored
+  /// handle outlives the entity it names.
+  static DataPointer<Entity> entity([Entity? defaultValue]) =>
+      DeclarationContext.data.hasEntity(defaultValue);
+
+  /// See [DataDescriptor.hasEnum]. Named `enumOf` because `enum` is a
+  /// keyword.
+  static DataPointer<E> enumOf<E extends Enum>(
+    List<E> values, [
+    E? defaultValue,
+  ]) => DeclarationContext.data.hasEnum<E>(values, defaultValue);
+
+  static DataPointer<double> float32([double defaultValue = 0.0]) =>
+      DeclarationContext.data.hasFloat32(defaultValue);
+  static DataPointer<double> float64([double defaultValue = 0.0]) =>
+      DeclarationContext.data.hasFloat64(defaultValue);
+
+  static DataPointer<int?> optUint1([int? defaultValue]) =>
+      DeclarationContext.data.optUint1(defaultValue);
+  static DataPointer<int?> optInt1([int? defaultValue]) =>
+      DeclarationContext.data.optInt1(defaultValue);
+  static DataPointer<int?> optUint2([int? defaultValue]) =>
+      DeclarationContext.data.optUint2(defaultValue);
+  static DataPointer<int?> optInt2([int? defaultValue]) =>
+      DeclarationContext.data.optInt2(defaultValue);
+  static DataPointer<int?> optUint4([int? defaultValue]) =>
+      DeclarationContext.data.optUint4(defaultValue);
+  static DataPointer<int?> optInt4([int? defaultValue]) =>
+      DeclarationContext.data.optInt4(defaultValue);
+  static DataPointer<int?> optUint8([int? defaultValue]) =>
+      DeclarationContext.data.optUint8(defaultValue);
+  static DataPointer<int?> optInt8([int? defaultValue]) =>
+      DeclarationContext.data.optInt8(defaultValue);
+  static DataPointer<int?> optUint16([int? defaultValue]) =>
+      DeclarationContext.data.optUint16(defaultValue);
+  static DataPointer<int?> optInt16([int? defaultValue]) =>
+      DeclarationContext.data.optInt16(defaultValue);
+  static DataPointer<int?> optUint32([int? defaultValue]) =>
+      DeclarationContext.data.optUint32(defaultValue);
+  static DataPointer<int?> optInt32([int? defaultValue]) =>
+      DeclarationContext.data.optInt32(defaultValue);
+  static DataPointer<int?> optUint64([int? defaultValue]) =>
+      DeclarationContext.data.optUint64(defaultValue);
+  static DataPointer<int?> optInt64([int? defaultValue]) =>
+      DeclarationContext.data.optInt64(defaultValue);
+
+  /// See [DataDescriptor.optEntity] - the spelling a link that may be absent
+  /// wants.
+  static DataPointer<Entity?> optEntity([Entity? defaultValue]) =>
+      DeclarationContext.data.optEntity(defaultValue);
+
+  static DataPointer<double?> optFloat32([double? defaultValue]) =>
+      DeclarationContext.data.optFloat32(defaultValue);
+  static DataPointer<double?> optFloat64([double? defaultValue]) =>
+      DeclarationContext.data.optFloat64(defaultValue);
+
+  static DataArrayPointer<int> uint1Array(int length, [int defaultValue = 0]) =>
+      DeclarationContext.data.hasUint1Array(length, defaultValue);
+  static DataArrayPointer<int> int1Array(int length, [int defaultValue = 0]) =>
+      DeclarationContext.data.hasInt1Array(length, defaultValue);
+  static DataArrayPointer<int> uint2Array(int length, [int defaultValue = 0]) =>
+      DeclarationContext.data.hasUint2Array(length, defaultValue);
+  static DataArrayPointer<int> int2Array(int length, [int defaultValue = 0]) =>
+      DeclarationContext.data.hasInt2Array(length, defaultValue);
+  static DataArrayPointer<int> uint4Array(int length, [int defaultValue = 0]) =>
+      DeclarationContext.data.hasUint4Array(length, defaultValue);
+  static DataArrayPointer<int> int4Array(int length, [int defaultValue = 0]) =>
+      DeclarationContext.data.hasInt4Array(length, defaultValue);
+  static DataArrayPointer<int> uint8Array(int length, [int defaultValue = 0]) =>
+      DeclarationContext.data.hasUint8Array(length, defaultValue);
+  static DataArrayPointer<int> int8Array(int length, [int defaultValue = 0]) =>
+      DeclarationContext.data.hasInt8Array(length, defaultValue);
+  static DataArrayPointer<int> uint16Array(
+    int length, [
+    int defaultValue = 0,
+  ]) => DeclarationContext.data.hasUint16Array(length, defaultValue);
+  static DataArrayPointer<int> int16Array(int length, [int defaultValue = 0]) =>
+      DeclarationContext.data.hasInt16Array(length, defaultValue);
+  static DataArrayPointer<int> uint32Array(
+    int length, [
+    int defaultValue = 0,
+  ]) => DeclarationContext.data.hasUint32Array(length, defaultValue);
+  static DataArrayPointer<int> int32Array(int length, [int defaultValue = 0]) =>
+      DeclarationContext.data.hasInt32Array(length, defaultValue);
+  static DataArrayPointer<double> float32Array(
+    int length, [
+    double defaultValue = 0.0,
+  ]) => DeclarationContext.data.hasFloat32Array(length, defaultValue);
+  static DataArrayPointer<double> float64Array(
+    int length, [
+    double defaultValue = 0.0,
+  ]) => DeclarationContext.data.hasFloat64Array(length, defaultValue);
+
+  /// See [DataDescriptor.hasFloat32ArrayOf] - element `i` starts at
+  /// `defaultValues[i]`.
+  static DataArrayPointer<double> float32ArrayOf(
+    int length,
+    List<double> defaultValues,
+  ) => DeclarationContext.data.hasFloat32ArrayOf(length, defaultValues);
+
+  /// See [DataDescriptor.hasFloat64ArrayOf].
+  static DataArrayPointer<double> float64ArrayOf(
+    int length,
+    List<double> defaultValues,
+  ) => DeclarationContext.data.hasFloat64ArrayOf(length, defaultValues);
+
+  static DataArrayPointer<int?> optUint1Array(
+    int length, [
+    int? defaultValue,
+  ]) => DeclarationContext.data.optUint1Array(length, defaultValue);
+  static DataArrayPointer<int?> optInt1Array(int length, [int? defaultValue]) =>
+      DeclarationContext.data.optInt1Array(length, defaultValue);
+  static DataArrayPointer<int?> optUint2Array(
+    int length, [
+    int? defaultValue,
+  ]) => DeclarationContext.data.optUint2Array(length, defaultValue);
+  static DataArrayPointer<int?> optInt2Array(int length, [int? defaultValue]) =>
+      DeclarationContext.data.optInt2Array(length, defaultValue);
+  static DataArrayPointer<int?> optUint4Array(
+    int length, [
+    int? defaultValue,
+  ]) => DeclarationContext.data.optUint4Array(length, defaultValue);
+  static DataArrayPointer<int?> optInt4Array(int length, [int? defaultValue]) =>
+      DeclarationContext.data.optInt4Array(length, defaultValue);
+  static DataArrayPointer<int?> optUint8Array(
+    int length, [
+    int? defaultValue,
+  ]) => DeclarationContext.data.optUint8Array(length, defaultValue);
+  static DataArrayPointer<int?> optInt8Array(int length, [int? defaultValue]) =>
+      DeclarationContext.data.optInt8Array(length, defaultValue);
+  static DataArrayPointer<int?> optUint16Array(
+    int length, [
+    int? defaultValue,
+  ]) => DeclarationContext.data.optUint16Array(length, defaultValue);
+  static DataArrayPointer<int?> optInt16Array(
+    int length, [
+    int? defaultValue,
+  ]) => DeclarationContext.data.optInt16Array(length, defaultValue);
+  static DataArrayPointer<int?> optUint32Array(
+    int length, [
+    int? defaultValue,
+  ]) => DeclarationContext.data.optUint32Array(length, defaultValue);
+  static DataArrayPointer<int?> optInt32Array(
+    int length, [
+    int? defaultValue,
+  ]) => DeclarationContext.data.optInt32Array(length, defaultValue);
+  static DataArrayPointer<double?> optFloat32Array(
+    int length, [
+    double? defaultValue,
+  ]) => DeclarationContext.data.optFloat32Array(length, defaultValue);
+  static DataArrayPointer<double?> optFloat64Array(
+    int length, [
+    double? defaultValue,
+  ]) => DeclarationContext.data.optFloat64Array(length, defaultValue);
+
+  /// See [DataDescriptor.hasPacked] - a value stored as the int its
+  /// [IntRepresentation] packs it into.
+  static PackedPointer<T> packed<T extends IntRepresentable>(
+    IntRepresentation<T> repr,
+    T defaultValue,
+  ) => DeclarationContext.data.hasPacked<T>(repr, defaultValue);
+
+  /// See [DataDescriptor.optPacked].
+  static DataPointer<T?> optPacked<T extends IntRepresentable>(
+    IntRepresentation<T> repr, [
+    T? defaultValue,
+  ]) => DeclarationContext.data.optPacked<T>(repr, defaultValue);
+
+  /// See [DataDescriptor.hasHeapObject], including why the value it stores
+  /// means nothing on a second isolate.
+  static DataPointer<T> heapObject<T>(T Function() defaultValue) =>
+      DeclarationContext.data.hasHeapObject<T>(defaultValue);
+
+  /// See [DataDescriptor.optHeapObject].
+  static DataPointer<T?> optHeapObject<T>() =>
+      DeclarationContext.data.optHeapObject<T>();
+
+  /// See [DataDescriptor.hasPackedArray].
+  static DataArrayPointer<T> packedArray<T extends IntRepresentable>(
+    IntRepresentation<T> repr,
+    int length,
+    T defaultValue,
+  ) => DeclarationContext.data.hasPackedArray<T>(repr, length, defaultValue);
+
+  /// See [DataDescriptor.optPackedArray].
+  static DataArrayPointer<T?> optPackedArray<T extends IntRepresentable>(
+    IntRepresentation<T> repr,
+    int length, [
+    T? defaultValue,
+  ]) => DeclarationContext.data.optPackedArray<T>(repr, length, defaultValue);
 }
 
 abstract class DataPointer<T> {

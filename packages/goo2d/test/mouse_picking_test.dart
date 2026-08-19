@@ -8,7 +8,6 @@ import 'package:goo2d/goo2d.dart';
 /// one inline run per isolate means one binding is enough.
 late Game run;
 
-
 // MousePickingSystem end to end: a synthetic pointer written through the
 // same InputDevice a GameView writes through, a real scene of colliders, and
 // the events a MouseReceiver prefab actually receives. Everything runs on one
@@ -23,7 +22,12 @@ final List<String> events = <String>[];
 /// A round button. One circle collider, one sprite, so it participates in
 /// the z-order tie-break.
 class _Button extends EntityStruct
-    with Transform2D, WorldTransform2D, Renderable2D, Collider2D, MouseReceiver {
+    with
+        Transform2D,
+        WorldTransform2D,
+        Renderable2D,
+        Collider2D,
+        MouseReceiver {
   late final Sprite sprite;
   late final CircleBody hitArea;
 
@@ -40,21 +44,31 @@ class _Button extends EntityStruct
   }
 
   @override
-  void onMouseEnter(MouseEvent event) => events.add('enter ${event.entity.value}');
+  void onMouseEnter(MouseEvent event) =>
+      events.add('enter ${event.entity.value}');
   @override
-  void onMouseExit(MouseEvent event) => events.add('exit ${event.entity.value}');
+  void onMouseExit(MouseEvent event) =>
+      events.add('exit ${event.entity.value}');
   @override
-  void onMouseHover(MouseEvent event) => events.add('hover ${event.entity.value}');
+  void onMouseHover(MouseEvent event) =>
+      events.add('hover ${event.entity.value}');
   @override
-  void onMousePressed(MouseEvent event) => events.add('pressed ${event.entity.value}');
+  void onMousePressed(MouseEvent event) =>
+      events.add('pressed ${event.entity.value}');
   @override
-  void onMouseReleased(MouseEvent event) => events.add('released ${event.entity.value}');
+  void onMouseReleased(MouseEvent event) =>
+      events.add('released ${event.entity.value}');
 }
 
 /// A panel drawn above the buttons - same shape family, higher z, and it
 /// records the world position it was clicked at.
 class _Panel extends EntityStruct
-    with Transform2D, WorldTransform2D, Renderable2D, Collider2D, MouseReceiver {
+    with
+        Transform2D,
+        WorldTransform2D,
+        Renderable2D,
+        Collider2D,
+        MouseReceiver {
   late final Sprite sprite;
   late final BoxBody hitArea;
 
@@ -133,11 +147,11 @@ class _Scene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    button = descriptor.has(_Button());
-    panel = descriptor.has(_Panel());
-    zone = descriptor.has(_Zone());
-    naked = descriptor.has(_Naked());
-    eye = descriptor.has(_Eye());
+    button = descriptor.has(_Button.new);
+    panel = descriptor.has(_Panel.new);
+    zone = descriptor.has(_Zone.new);
+    naked = descriptor.has(_Naked.new);
+    eye = descriptor.has(_Eye.new);
   }
 }
 
@@ -234,26 +248,32 @@ void main() {
   });
 
   group('hit testing', () {
-    test('the cursor picks the shape, not the sprite\'s bounding box',
-        () async {
-      final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
-      final button = scene.addEntity(scene.button);
-      _settle(game);
+    test(
+      'the cursor picks the shape, not the sprite\'s bounding box',
+      () async {
+        final game = await _boot();
+        final scene = run.state.getScene<_Scene>();
+        final button = scene.addEntity(scene.button);
+        _settle(game);
 
-      // The button is a radius-20 circle at the origin under a 40x40 sprite.
-      _moveTo(game, 0, 0);
-      expect(run.state.getSystem<MousePickingSystem>().hovered, button);
+        // The button is a radius-20 circle at the origin under a 40x40 sprite.
+        _moveTo(game, 0, 0);
+        expect(run.state.getSystem<MousePickingSystem>().hovered, button);
 
-      _moveTo(game, 19, 0);
-      expect(run.state.getSystem<MousePickingSystem>().hovered, button);
+        _moveTo(game, 19, 0);
+        expect(run.state.getSystem<MousePickingSystem>().hovered, button);
 
-      _moveTo(game, 15, 15);
-      expect(run.state.getSystem<MousePickingSystem>().hovered, isNull,
-          reason: 'the corner of the sprite is outside the circle - the '
+        _moveTo(game, 15, 15);
+        expect(
+          run.state.getSystem<MousePickingSystem>().hovered,
+          isNull,
+          reason:
+              'the corner of the sprite is outside the circle - the '
               'whole reason picking goes through Collider2D instead of '
-              'Renderable2D\'s bounds');
-    });
+              'Renderable2D\'s bounds',
+        );
+      },
+    );
 
     test('a receiver with no collider is never picked', () async {
       final game = await _boot();
@@ -263,9 +283,13 @@ void main() {
 
       _moveTo(game, 0, 0);
       expect(run.state.getSystem<MousePickingSystem>().hovered, isNull);
-      expect(events, isEmpty,
-          reason: 'the query requires Collider2D, so a receiver with nothing '
-              'to hit-test simply is not a candidate');
+      expect(
+        events,
+        isEmpty,
+        reason:
+            'the query requires Collider2D, so a receiver with nothing '
+            'to hit-test simply is not a candidate',
+      );
     });
 
     test('the entity\'s world transform moves its shape', () async {
@@ -280,42 +304,61 @@ void main() {
       _moveTo(game, 0, 0);
       expect(run.state.getSystem<MousePickingSystem>().hovered, isNull);
       _moveTo(game, 300, 0);
-      expect(run.state.getSystem<MousePickingSystem>().hovered, button,
-          reason: 'the collider is declared in local space and placed by the '
-              'entity\'s own WorldTransform2D, which is what makes a moving '
-              'target clickable where it is drawn rather than where it '
-              'started');
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        button,
+        reason:
+            'the collider is declared in local space and placed by the '
+            'entity\'s own WorldTransform2D, which is what makes a moving '
+            'target clickable where it is drawn rather than where it '
+            'started',
+      );
     });
 
-    test('rotation and scale are undone, so a box hit-tests as it looks',
-        () async {
-      final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
-      final panel = scene.addEntity(scene.panel);
-      scene.pool.beginTick();
-      scene.panel
-        ..transformRotation[panel] = math.pi / 2 // a quarter turn
-        ..transformScaleX[panel] = 2;
-      scene.pool.commitTick();
-      _settle(game);
+    test(
+      'rotation and scale are undone, so a box hit-tests as it looks',
+      () async {
+        final game = await _boot();
+        final scene = run.state.getScene<_Scene>();
+        final panel = scene.addEntity(scene.panel);
+        scene.pool.beginTick();
+        scene.panel
+          ..transformRotation[panel] =
+              math.pi /
+              2 // a quarter turn
+          ..transformScaleX[panel] = 2;
+        scene.pool.commitTick();
+        _settle(game);
 
-      // The panel is 200x100 (half-extents 100x50) and its x axis is scaled
-      // 2x, so unrotated it would cover +/-200 horizontally and +/-50
-      // vertically. Turned a quarter turn, those swap.
-      _moveTo(game, 0, 190);
-      expect(run.state.getSystem<MousePickingSystem>().hovered, panel,
-          reason: 'the long axis now runs down the screen');
-      _moveTo(game, 190, 0);
-      expect(run.state.getSystem<MousePickingSystem>().hovered, isNull,
-          reason: 'and no longer runs across it - a picker that ignored '
-              'rotation would report a hit here');
-      _moveTo(game, 0, 210);
-      expect(run.state.getSystem<MousePickingSystem>().hovered, isNull);
-      _moveTo(game, 40, 0);
-      expect(run.state.getSystem<MousePickingSystem>().hovered, panel,
-          reason: 'the short axis is 50 local units, unaffected by the x '
-              'scale');
-    });
+        // The panel is 200x100 (half-extents 100x50) and its x axis is scaled
+        // 2x, so unrotated it would cover +/-200 horizontally and +/-50
+        // vertically. Turned a quarter turn, those swap.
+        _moveTo(game, 0, 190);
+        expect(
+          run.state.getSystem<MousePickingSystem>().hovered,
+          panel,
+          reason: 'the long axis now runs down the screen',
+        );
+        _moveTo(game, 190, 0);
+        expect(
+          run.state.getSystem<MousePickingSystem>().hovered,
+          isNull,
+          reason:
+              'and no longer runs across it - a picker that ignored '
+              'rotation would report a hit here',
+        );
+        _moveTo(game, 0, 210);
+        expect(run.state.getSystem<MousePickingSystem>().hovered, isNull);
+        _moveTo(game, 40, 0);
+        expect(
+          run.state.getSystem<MousePickingSystem>().hovered,
+          panel,
+          reason:
+              'the short axis is 50 local units, unaffected by the x '
+              'scale',
+        );
+      },
+    );
 
     test('picking turns the same way the renderer draws', () async {
       // The quarter-turn test above cannot catch a handedness error: a
@@ -356,7 +399,8 @@ void main() {
       expect(
         run.state.getSystem<MousePickingSystem>().hovered,
         isNull,
-        reason: 'and the mirrored point is off it entirely. A picker that '
+        reason:
+            'and the mirrored point is off it entirely. A picker that '
             'rotated clockwise would swap these two results and pass every '
             'other test in this file',
       );
@@ -377,9 +421,13 @@ void main() {
       _step(game);
 
       expect(run.state.getSystem<MousePickingSystem>().hovered, isNull);
-      expect(events.last, 'exit ${button.value}',
-          reason: 'disabling what the cursor was over is a real exit - the '
-              'entity stopped being under the cursor, however it happened');
+      expect(
+        events.last,
+        'exit ${button.value}',
+        reason:
+            'disabling what the cursor was over is a real exit - the '
+            'entity stopped being under the cursor, however it happened',
+      );
     });
   });
 
@@ -393,14 +441,17 @@ void main() {
       _settle(game);
 
       _moveTo(game, 0, 0);
-      expect(run.state.getSystem<MousePickingSystem>().hovered, panel,
-          reason: 'what is drawn on top is what gets clicked - one ordering, '
-              'not two that can disagree');
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        panel,
+        reason:
+            'what is drawn on top is what gets clicked - one ordering, '
+            'not two that can disagree',
+      );
       expect(events, contains('panel enter'));
     });
 
-    test('at equal z the later entity wins, matching the draw order',
-        () async {
+    test('at equal z the later entity wins, matching the draw order', () async {
       final game = await _boot();
       final scene = run.state.getScene<_Scene>();
       final first = scene.addEntity(scene.button);
@@ -408,11 +459,15 @@ void main() {
       _settle(game);
 
       _moveTo(game, 0, 0);
-      expect(run.state.getSystem<MousePickingSystem>().hovered, second,
-          reason: 'the renderer\'s z sort is stable over query order, so of '
-              'two sprites at the same depth the later one is drawn second - '
-              'i.e. on top. Picking the earlier one would mean clicking '
-              'through the thing you can see (${first.value} is underneath)');
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        second,
+        reason:
+            'the renderer\'s z sort is stable over query order, so of '
+            'two sprites at the same depth the later one is drawn second - '
+            'i.e. on top. Picking the earlier one would mean clicking '
+            'through the thing you can see (${first.value} is underneath)',
+      );
     });
 
     test('an invisible click zone competes at zero', () async {
@@ -422,10 +477,14 @@ void main() {
       _settle(game);
 
       _moveTo(game, 0, 0);
-      expect(run.state.getSystem<MousePickingSystem>().hovered, zone,
-          reason: 'no Renderable2D at all is not a disqualification - an '
-              'entity with only a collider is a click zone, and it sits at '
-              'the depth an undeclared zIndex already means');
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        zone,
+        reason:
+            'no Renderable2D at all is not a disqualification - an '
+            'entity with only a collider is a click zone, and it sits at '
+            'the depth an undeclared zIndex already means',
+      );
 
       // Now put a drawn button over it, one layer up.
       final button = scene.addEntity(scene.button);
@@ -434,10 +493,14 @@ void main() {
       scene.pool.commitTick();
       _step(game);
 
-      expect(run.state.getSystem<MousePickingSystem>().hovered, button,
-          reason: 'zero is a real depth, not an exemption: anything actually '
-              'drawn above the zone takes the click, exactly as if the zone '
-              'were a sprite at zIndex 0');
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        button,
+        reason:
+            'zero is a real depth, not an exemption: anything actually '
+            'drawn above the zone takes the click, exactly as if the zone '
+            'were a sprite at zIndex 0',
+      );
     });
 
     test('an entity is measured by its topmost visible sprite', () async {
@@ -461,31 +524,41 @@ void main() {
       scene.pool.commitTick();
       _step(game);
 
-      expect(run.state.getSystem<MousePickingSystem>().hovered, button,
-          reason: 'an invisible sprite is not drawn, so it cannot be what '
-              'you are clicking on - depth comes from what is actually on '
-              'screen. The panel is still a candidate at depth zero, it just '
-              'no longer outranks the button\'s 5');
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        button,
+        reason:
+            'an invisible sprite is not drawn, so it cannot be what '
+            'you are clicking on - depth comes from what is actually on '
+            'screen. The panel is still a candidate at depth zero, it just '
+            'no longer outranks the button\'s 5',
+      );
     });
   });
 
   group('hover and click events', () {
-    test('enter fires once on the transition, hover every tick after',
-        () async {
-      final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
-      final button = scene.addEntity(scene.button);
-      _settle(game);
+    test(
+      'enter fires once on the transition, hover every tick after',
+      () async {
+        final game = await _boot();
+        final scene = run.state.getScene<_Scene>();
+        final button = scene.addEntity(scene.button);
+        _settle(game);
 
-      _moveTo(game, 0, 0);
-      _step(game);
-      _step(game);
+        _moveTo(game, 0, 0);
+        _step(game);
+        _step(game);
 
-      final id = button.value;
-      expect(events, <String>['enter $id', 'hover $id', 'hover $id', 'hover $id'],
-          reason: 'enter is a transition and hover is a state - a hover that '
-              'only fired on entry would be an enter with a second name');
-    });
+        final id = button.value;
+        expect(
+          events,
+          <String>['enter $id', 'hover $id', 'hover $id', 'hover $id'],
+          reason:
+              'enter is a transition and hover is a state - a hover that '
+              'only fired on entry would be an enter with a second name',
+        );
+      },
+    );
 
     test('exit fires when the cursor leaves, and nothing after', () async {
       final game = await _boot();
@@ -501,26 +574,32 @@ void main() {
       expect(events, <String>['exit ${button.value}']);
     });
 
-    test('moving straight from one receiver to another exits before entering',
-        () async {
-      final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
-      final button = scene.addEntity(scene.button);
-      final panel = scene.addEntity(scene.panel);
-      scene.pool.beginTick();
-      scene.panel.transformOffsetX[panel] = 400;
-      scene.pool.commitTick();
-      _settle(game);
+    test(
+      'moving straight from one receiver to another exits before entering',
+      () async {
+        final game = await _boot();
+        final scene = run.state.getScene<_Scene>();
+        final button = scene.addEntity(scene.button);
+        final panel = scene.addEntity(scene.panel);
+        scene.pool.beginTick();
+        scene.panel.transformOffsetX[panel] = 400;
+        scene.pool.commitTick();
+        _settle(game);
 
-      _moveTo(game, 0, 0);
-      events.clear();
-      _moveTo(game, 400, 0);
+        _moveTo(game, 0, 0);
+        events.clear();
+        _moveTo(game, 400, 0);
 
-      expect(events, <String>['exit ${button.value}', 'panel enter'],
-          reason: 'a handler that swaps a shared highlight has to see the '
+        expect(
+          events,
+          <String>['exit ${button.value}', 'panel enter'],
+          reason:
+              'a handler that swaps a shared highlight has to see the '
               'two in this order, or it ends up clearing the highlight it '
-              'just set');
-    });
+              'just set',
+        );
+      },
+    );
 
     test('press and release fire on whatever is under the cursor', () async {
       final game = await _boot();
@@ -559,11 +638,15 @@ void main() {
       game.inputDevice!.release(InputKey.leftMouseButton);
       _step(game);
 
-      expect(events, isEmpty,
-          reason: 'dragging off a button before letting go cancels the '
-              'click, which is what every OS button does - and it falls out '
-              'of dispatching to whatever is hovered *now* rather than '
-              'remembering what was pressed (${button.value} is long gone)');
+      expect(
+        events,
+        isEmpty,
+        reason:
+            'dragging off a button before letting go cancels the '
+            'click, which is what every OS button does - and it falls out '
+            'of dispatching to whatever is hovered *now* rather than '
+            'remembering what was pressed (${button.value} is long gone)',
+      );
     });
 
     test('clicking empty space fires nothing at all', () async {
@@ -593,10 +676,14 @@ void main() {
       events.clear();
       game.inputDevice!.press(InputKey.leftMouseButton);
       _step(game);
-      expect(events, <String>['hover ${button.value}'],
-          reason: 'the picking has no opinion about which physical button '
-              'clicks - that is the binding\'s job, and a left-handed '
-              'settings screen swaps it');
+      expect(
+        events,
+        <String>['hover ${button.value}'],
+        reason:
+            'the picking has no opinion about which physical button '
+            'clicks - that is the binding\'s job, and a left-handed '
+            'settings screen swaps it',
+      );
 
       game.inputDevice!.press(InputKey.rightMouseButton);
       _step(game);
@@ -613,12 +700,16 @@ void main() {
 
       _moveTo(game, 12, 34);
       final picking = run.state.getSystem<MousePickingSystem>();
-      expect(picking.worldSpace, Vector2(12, -34),
-          reason: 'with no camera the x half is the identity byte for byte, '
-              'and the y half is the plain negation that makes world +y up - '
-              'a pointer 34 pixels down the view is 34 world units below the '
-              'camera. That is what makes the camera optional rather than '
-              'something every scene has to declare');
+      expect(
+        picking.worldSpace,
+        Vector2(12, -34),
+        reason:
+            'with no camera the x half is the identity byte for byte, '
+            'and the y half is the plain negation that makes world +y up - '
+            'a pointer 34 pixels down the view is 34 world units below the '
+            'camera. That is what makes the camera optional rather than '
+            'something every scene has to declare',
+      );
     });
 
     test('a moved camera shifts what the cursor is over', () async {
@@ -633,14 +724,22 @@ void main() {
 
       _moveTo(game, 0, 0);
       final picking = run.state.getSystem<MousePickingSystem>();
-      expect(picking.worldSpace, Vector2(1000, 0),
-          reason: 'this game has no view, so the middle of it is (0, 0) and '
-              'the cursor there reads as exactly the camera position - see '
-              '"a laid-out view puts the camera in the middle" below for the '
-              'same check with a real viewport');
-      expect(picking.hovered, isNull,
-          reason: 'the button is at the world origin, which the camera has '
-              'panned a thousand units away from');
+      expect(
+        picking.worldSpace,
+        Vector2(1000, 0),
+        reason:
+            'this game has no view, so the middle of it is (0, 0) and '
+            'the cursor there reads as exactly the camera position - see '
+            '"a laid-out view puts the camera in the middle" below for the '
+            'same check with a real viewport',
+      );
+      expect(
+        picking.hovered,
+        isNull,
+        reason:
+            'the button is at the world origin, which the camera has '
+            'panned a thousand units away from',
+      );
     });
 
     test('zoom scales the projection', () async {
@@ -674,24 +773,34 @@ void main() {
 
       _moveTo(game, 530, 20);
       expect(scene.panel.lastWorldX, 530);
-      expect(scene.panel.lastWorldY, -20,
-          reason: 'MouseEvent carries the world point so a handler can work '
-              'out where *within* itself it was grabbed - subtract the '
-              'entity\'s own world position and you have the grab offset');
+      expect(
+        scene.panel.lastWorldY,
+        -20,
+        reason:
+            'MouseEvent carries the world point so a handler can work '
+            'out where *within* itself it was grabbed - subtract the '
+            'entity\'s own world position and you have the grab offset',
+      );
     });
 
-    test('a second camera is a programmer error, not a silent choice',
-        () async {
-      final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
-      _eye(game, scene);
-      _eye(game, scene);
+    test(
+      'a second camera is a programmer error, not a silent choice',
+      () async {
+        final game = await _boot();
+        final scene = run.state.getScene<_Scene>();
+        _eye(game, scene);
+        _eye(game, scene);
 
-      expect(() => _step(game), throwsA(isA<AssertionError>()),
-          reason: 'one view origin, so a second camera has no meaning - the '
+        expect(
+          () => _step(game),
+          throwsA(isA<AssertionError>()),
+          reason:
+              'one view origin, so a second camera has no meaning - the '
               'shared ActiveCameraResolver says so once, here as everywhere '
-              'else that asks');
-    });
+              'else that asks',
+        );
+      },
+    );
   });
 
   group('the projection', () {
@@ -709,12 +818,19 @@ void main() {
       _moveTo(game, 0, 0);
 
       final projection = run.state.getSystem<MousePickingSystem>().projection;
-      expect(projection.worldToViewX(projection.viewToWorldX(87)),
-          closeTo(87, 1e-9));
-      expect(projection.worldToViewY(projection.viewToWorldY(-13)),
-          closeTo(-13, 1e-9));
-      expect(projection.worldToViewX(120), 0,
-          reason: 'the camera itself is at the view origin');
+      expect(
+        projection.worldToViewX(projection.viewToWorldX(87)),
+        closeTo(87, 1e-9),
+      );
+      expect(
+        projection.worldToViewY(projection.viewToWorldY(-13)),
+        closeTo(-13, 1e-9),
+      );
+      expect(
+        projection.worldToViewX(120),
+        0,
+        reason: 'the camera itself is at the view origin',
+      );
     });
 
     test('a laid-out view puts the camera in the middle', () async {
@@ -731,15 +847,23 @@ void main() {
 
       final picking = run.state.getSystem<MousePickingSystem>();
       _moveTo(game, 400, 300);
-      expect(picking.worldSpace, Vector2(1000, 0),
-          reason: 'the centre of the view is where the camera is - the same '
-              'rule the renderer draws by, inverted');
+      expect(
+        picking.worldSpace,
+        Vector2(1000, 0),
+        reason:
+            'the centre of the view is where the camera is - the same '
+            'rule the renderer draws by, inverted',
+      );
 
       _moveTo(game, 0, 0);
-      expect(picking.worldSpace, Vector2(600, 300),
-          reason: 'and the top-left corner is half a view up and to the left '
-              'of it - up being a *larger* world y now that world +y is up, '
-              'which is the sign this used to have the other way round');
+      expect(
+        picking.worldSpace,
+        Vector2(600, 300),
+        reason:
+            'and the top-left corner is half a view up and to the left '
+            'of it - up being a *larger* world y now that world +y is up, '
+            'which is the sign this used to have the other way round',
+      );
 
       // The button is at the world origin, which this camera has panned away
       // from - but a button parked under the camera is clickable at the
@@ -753,25 +877,31 @@ void main() {
       expect(picking.hovered, button);
     });
 
-    test('a zero zoom reports the camera origin instead of an infinity',
-        () async {
-      final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
-      final eye = _eye(game, scene);
-      scene.pool.beginTick();
-      scene.eye.transformOffsetX[eye] = 7;
-      scene.eye.zoom[eye] = 0;
-      scene.pool.commitTick();
-      _settle(game);
-      _moveTo(game, 100, 100);
+    test(
+      'a zero zoom reports the camera origin instead of an infinity',
+      () async {
+        final game = await _boot();
+        final scene = run.state.getScene<_Scene>();
+        final eye = _eye(game, scene);
+        scene.pool.beginTick();
+        scene.eye.transformOffsetX[eye] = 7;
+        scene.eye.zoom[eye] = 0;
+        scene.pool.commitTick();
+        _settle(game);
+        _moveTo(game, 100, 100);
 
-      final picking = run.state.getSystem<MousePickingSystem>();
-      expect(picking.worldSpace, Vector2(7, 0),
-          reason: 'a zoom of zero maps the world onto one pixel, so the '
+        final picking = run.state.getSystem<MousePickingSystem>();
+        expect(
+          picking.worldSpace,
+          Vector2(7, 0),
+          reason:
+              'a zoom of zero maps the world onto one pixel, so the '
               'inverse has no answer - reporting the camera origin keeps a '
               'NaN out of every distance comparison downstream, which is the '
               'kind of value that shows up three systems away from its '
-              'cause');
-    });
+              'cause',
+        );
+      },
+    );
   });
 }

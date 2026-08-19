@@ -28,24 +28,17 @@ late Game run;
 final List<String> log = <String>[];
 
 mixin _Counter on Component {
-  late final DataPointer<double> x;
+  final x = Field.float64();
 
   /// Written by [_Unit.onMounted] only - never a declared default - so
   /// reading 7 back proves the prefab's onMounted actually ran, not just
   /// that a row was allocated.
-  late final DataPointer<int> marker;
+  final marker = Field.uint8();
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<_Counter>();
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    x = data.hasFloat64();
-    marker = data.hasUint8();
   }
 }
 
@@ -73,7 +66,7 @@ class _TestScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    unit = descriptor.has(_Unit());
+    unit = descriptor.has(_Unit.new);
   }
 }
 

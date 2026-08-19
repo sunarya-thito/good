@@ -43,13 +43,7 @@ final List<String> changes = <String>[];
 /// A plain prefab. It has no state channel of its own - a Component cannot
 /// declare one (see the note above); the system publishes on its behalf.
 class _Probe extends EntityStruct {
-  late final DataPointer<int> hits;
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    hits = data.hasUint16();
-  }
+  final hits = Field.uint16();
 }
 
 /// A plain scene - like a Component, it cannot declare state channels.
@@ -61,7 +55,7 @@ class _StateScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    probe = descriptor.has(_Probe());
+    probe = descriptor.has(_Probe.new);
   }
 }
 
@@ -173,7 +167,7 @@ class _OrphanScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    descriptor.has(_Probe());
+    descriptor.has(_Probe.new);
   }
 }
 

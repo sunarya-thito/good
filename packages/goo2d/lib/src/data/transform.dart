@@ -3,35 +3,23 @@ import 'dart:math' as math;
 import 'package:good/good.dart';
 
 mixin Transform2D on Component {
-  late final DataPointer<double> transformOffsetX;
-  late final DataPointer<double> transformOffsetY;
+  final transformOffsetX = Field.float64();
+  final transformOffsetY = Field.float64();
 
-  late final DataPointer<double> transformScaleX;
-  late final DataPointer<double> transformScaleY;
+  // Scale defaults to 1, not to the field's own 0 default. A zero scale is
+  // a degenerate transform - it collapses every point to the origin, so an
+  // entity that simply never assigned a scale would be invisible to the
+  // renderer with nothing anywhere saying why. Offset and rotation are the
+  // opposite: 0 *is* their identity, so they keep the plain default.
+  final transformScaleX = Field.float64(1);
+  final transformScaleY = Field.float64(1);
 
-  late final DataPointer<double> transformRotation;
+  final transformRotation = Field.float64();
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<Transform2D>();
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    transformOffsetX = data.hasFloat64();
-    transformOffsetY = data.hasFloat64();
-
-    // Scale defaults to 1, not to the field's own 0 default. A zero scale is
-    // a degenerate transform - it collapses every point to the origin, so an
-    // entity that simply never assigned a scale would be invisible to the
-    // renderer with nothing anywhere saying why. Offset and rotation are the
-    // opposite: 0 *is* their identity, so they keep the plain default.
-    transformScaleX = data.hasFloat64(1);
-    transformScaleY = data.hasFloat64(1);
-
-    transformRotation = data.hasFloat64();
   }
 
   // --- Unity-Transform-inspired helpers -----------------------------------

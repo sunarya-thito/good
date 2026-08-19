@@ -69,8 +69,8 @@ class _PingScene extends SceneStruct with _Ping {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    unit = descriptor.has(_PingUnit());
-    selfish = descriptor.has(_SelfishUnit());
+    unit = descriptor.has(_PingUnit.new);
+    selfish = descriptor.has(_SelfishUnit.new);
   }
 }
 

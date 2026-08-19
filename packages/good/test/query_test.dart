@@ -14,36 +14,23 @@ import 'package:flutter_test/flutter_test.dart';
 // mirrors Transform2DSystem's actual `With<Transform2D>() & OptWith<Child>()`
 // query shape.
 mixin _Position on Component {
-  late final DataPointer<double> x;
-  late final DataPointer<double> y;
+  final x = Field.float64();
+  final y = Field.float64();
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<_Position>();
   }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    x = data.hasFloat64();
-    y = data.hasFloat64();
-  }
 }
 
 mixin _Health on Component {
-  late final DataPointer<int> hitPoints;
+  final hitPoints = Field.uint16(100);
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<_Health>();
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    hitPoints = data.hasUint16(100);
   }
 }
 
@@ -71,9 +58,9 @@ class _Level extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    player = descriptor.has(_Player());
-    rock = descriptor.has(_Rock());
-    trigger = descriptor.has(_Trigger());
+    player = descriptor.has(_Player.new);
+    rock = descriptor.has(_Rock.new);
+    trigger = descriptor.has(_Trigger.new);
   }
 }
 

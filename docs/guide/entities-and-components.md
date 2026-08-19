@@ -9,17 +9,9 @@ an object-oriented engine, and everything else follows from it.
 
 ```dart
 class Bullet extends EntityStruct with Transform2D, Renderable2D {
-  late final DataPointer<double> velocityX;
-  late final DataPointer<double> velocityY;
-  late final DataPointer<double> life;
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    velocityX = data.hasFloat64();
-    velocityY = data.hasFloat64();
-    life = data.hasFloat64(3.0);   // default for every new row
-  }
+  final velocityX = Field.float64();
+  final velocityY = Field.float64();
+  final life = Field.float64(3.0);   // default for every new row
 }
 ```
 
@@ -99,20 +91,13 @@ A `Component` is a mixin on an `EntityStruct`. It contributes two things: a
 
 ```dart
 mixin Health on Component {
-  late final DataPointer<int> hp;
-  late final DataPointer<int> maxHp;
+  final hp = Field.int32(100);
+  final maxHp = Field.int32(100);
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<Health>();          // (1)!
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    hp = data.hasInt32(100);
-    maxHp = data.hasInt32(100);
   }
 }
 ```
@@ -126,14 +111,16 @@ Mix it in, and the archetype gains those columns:
 class Enemy() extends EntityStruct with Transform2D, Renderable2D, Health;
 ```
 
-Both `describeType` and `describeStruct` must call `super` — each mixin in the
-chain contributes, and skipping `super` silently drops everything below it.
+`describeType` must call `super` — each mixin in the chain contributes, and
+skipping `super` silently drops everything below it. Columns declared as fields
+need no such discipline: Dart runs every initialiser in the chain itself.
 
 !!! warning "Field names collide across mixins"
     A component is a mixin, so two of them declaring a field called `speed` is
     not an error in Dart. It is an override: the later mixin in the `with`
     clause wins, the row grows by both columns, and the earlier one's column can
-    no longer be reached under that name.
+    no longer be reached under that name. Nothing reports it — not the analyzer,
+    not the engine.
 
     Pick names that will not collide. `Transform2D` calls its position columns
     `transformOffsetX` and `transformOffsetY`, and a component you publish for
@@ -149,28 +136,32 @@ extra `describeSprites`/`describeCollider` pass.
 
 ## Field kinds
 
-`DataDescriptor` offers a wide set because packing matters — a flag that takes
-one bit instead of eight is 7 bits per entity per frame of bandwidth saved.
+`Field` offers a wide set because packing matters — a flag that takes one bit
+instead of eight is 7 bits per entity per frame of bandwidth saved.
 
 | Call | Column type | Notes |
 |---|---|---|
-| `hasBool()` | `bool` | one bit |
-| `hasUint1/2/4()`, `hasInt1/2/4()` | `int` | sub-byte, for small counters and packed bits |
-| `hasUint8/16/32/64()`, `hasInt8/16/32/64()` | `int` | |
-| `hasEntity()` | `Entity` | a handle to another entity, 64 bits — see [storing a handle](thinking-in-ecs.md#storing-a-handle-in-a-column) |
-| `optEntity([default])` | `Entity?` | the same handle, or `null` for no target — a presence bit ahead of the 64 |
-| `hasEnum(values, [default])` | `E` | the member's index, in the narrowest column its `values` fit — two bits for four members |
-| `hasFloat32()`, `hasFloat64()` | `double` | `Transform2D` uses float64 |
-| `hasPacked<T>(table, [default])` | `T` | a value with an `int` representation |
-| `optPacked<T>(table, [default])` | `T?` | nullable packed — how `Sprite.texture` and `Camera.view` are stored |
-| `hasHeapObject<T>()` / `optHeapObject<T>()` | `T` / `T?` | an arbitrary Dart object, by registry address |
-| `has*Array(length, [default])` | `DataArrayPointer<T>` | fixed-length inline array |
+| `Field.boolean()` | `bool` | one bit |
+| `Field.uint1/2/4()`, `Field.int1/2/4()` | `int` | sub-byte, for small counters and packed bits |
+| `Field.uint8/16/32/64()`, `Field.int8/16/32/64()` | `int` | |
+| `Field.entity()` | `Entity` | a handle to another entity, 64 bits — see [storing a handle](thinking-in-ecs.md#storing-a-handle-in-a-column) |
+| `Field.optEntity([default])` | `Entity?` | the same handle, or `null` for no target — a presence bit ahead of the 64 |
+| `Field.enumOf(values, [default])` | `E` | the member's index, in the narrowest column its `values` fit — two bits for four members |
+| `Field.float32()`, `Field.float64()` | `double` | `Transform2D` uses float64 |
+| `Field.packed<T>(table, [default])` | `T` | a value with an `int` representation |
+| `Field.optPacked<T>(table, [default])` | `T?` | nullable packed — how `Sprite.texture` and `Camera.view` are stored |
+| `Field.heapObject<T>()` / `Field.optHeapObject<T>()` | `T` / `T?` | an arbitrary Dart object, by registry address |
+| `Field.*Array(length, [default])` | `DataArrayPointer<T>` | fixed-length inline array |
+
+`Field.boolean` and not `Field.bool`, and `Field` and not `Column`: `bool` is a
+type and `Column` is a Flutter widget, and neither name can be reused without
+breaking the file that uses it.
 
 Every one takes an optional **default**, which is what a freshly allocated row
 starts at:
 
 ```dart
-scale = data.hasFloat64(1);   // not 0 — a zero scale is a degenerate transform
+final scale = Field.float64(1);   // not 0 — a zero scale is a degenerate transform
 ```
 
 !!! tip "Choose the default carefully"
@@ -181,10 +172,11 @@ scale = data.hasFloat64(1);   // not 0 — a zero scale is a degenerate transfor
 
 ### Heap objects
 
-`hasHeapObject<T>()` stores an arbitrary Dart object by address in a registry.
-It is the unconstrained escape hatch, and it does not cross the isolate
-boundary meaningfully — the address means something only in the isolate that
-registered it. Prefer `hasPacked` for anything the other side has to read.
+`Field.heapObject<T>()` stores an arbitrary Dart object by address in a
+registry. It is the unconstrained escape hatch, and it does not cross the
+isolate boundary meaningfully — the address means something only in the isolate
+that registered it. Prefer `Field.packed` for anything the other side has to
+read.
 
 ## Helpers go on an accessor
 
@@ -336,7 +328,7 @@ an event: `EntityStruct` declares a dispatcher for it, and the boot pass
 collects your prefab into that dispatcher because it is an
 `EntityLifecycleListener`. Leave the mixin off and the override compiles, is
 never collected, and never runs. Call `super` for the same reason you do in
-`describeStruct` — another mixin on the same prefab may override the same hook.
+`describeType` — another mixin on the same prefab may override the same hook.
 
 Related mixins: `EntitySpawnListener` (a broad "something spawned" signal, which
 is what the physics system listens to), `SceneLifecycleListener`,

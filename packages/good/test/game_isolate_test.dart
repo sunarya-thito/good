@@ -50,30 +50,22 @@ late Game run;
 // That is the engine's actual usage, and it runs clean.
 
 mixin _Moving on Component {
-  late final DataPointer<double> x;
+  final x = Field.float64();
 
   /// The number of live entities the mover saw this tick, written into the
   /// *first* entity's row. This is how the main isolate learns that a
   /// command-spawned entity actually exists without needing a second
   /// message channel: it just reads the count out of shared memory.
-  late final DataPointer<int> census;
+  final census = Field.uint16();
 
   /// Set only by [_Mover.onMounted] - proves the prefab's creation hook ran
   /// on the game isolate, for both mount-time and command-time spawns.
-  late final DataPointer<int> marker;
+  final marker = Field.uint8();
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<_Moving>();
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    x = data.hasFloat64();
-    census = data.hasUint16();
-    marker = data.hasUint8();
   }
 }
 
@@ -101,7 +93,7 @@ class _MoverScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    mover = descriptor.has(_Mover());
+    mover = descriptor.has(_Mover.new);
   }
 
   @override
@@ -556,7 +548,7 @@ class _TexturedScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    textured = descriptor.has(_Textured());
+    textured = descriptor.has(_Textured.new);
   }
 
   @override
@@ -667,7 +659,7 @@ class _LateScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    prop = descriptor.has(_LateProp());
+    prop = descriptor.has(_LateProp.new);
   }
 
   @override
@@ -863,9 +855,9 @@ void main() {
   // that decodes. The spawned game isolate declares the same assets, hands
   // out the same addresses and writes them into rows without ever needing a
   // loader - which is what the tests below assert directly.
-  setUp(() => AssetLoaders.register<_IsolateTexture>(
-    const _IsolateTextureLoader(),
-  ));
+  setUp(
+    () => AssetLoaders.register<_IsolateTexture>(const _IsolateTextureLoader()),
+  );
 
   tearDown(() {
     SceneRegistry.reset();

@@ -12,51 +12,30 @@ import 'package:flutter_test/flutter_test.dart';
 // linearization the real consumer relies on, without good depending on
 // goo2d (the dependency runs the other way).
 mixin _Transform on Component {
-  late final DataPointer<double> offsetX;
-  late final DataPointer<double> offsetY;
-  late final DataPointer<double> rotation;
+  final offsetX = Field.float64();
+  final offsetY = Field.float64();
+  final rotation = Field.float64();
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<_Transform>();
   }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    offsetX = data.hasFloat64();
-    offsetY = data.hasFloat64();
-    rotation = data.hasFloat64();
-  }
 }
 
 mixin _Health on Component {
-  late final DataPointer<int> hitPoints;
+  final hitPoints = Field.uint16(100);
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<_Health>();
   }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    hitPoints = data.hasUint16(100);
-  }
 }
 
 mixin _Flags on Component {
-  late final DataPointer<int> team;
-  late final DataPointer<int> visible;
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    team = data.hasUint2();
-    visible = data.hasUint1(1);
-  }
+  final team = Field.uint2();
+  final visible = Field.uint1(1);
 }
 
 class _Player extends EntityStruct with _Transform, _Health, _Flags {}
@@ -84,8 +63,8 @@ class _Level extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    player = descriptor.has(_Player());
-    enemy = descriptor.has(_Enemy());
+    player = descriptor.has(_Player.new);
+    enemy = descriptor.has(_Enemy.new);
   }
 }
 

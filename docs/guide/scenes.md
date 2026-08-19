@@ -14,9 +14,9 @@ class Level1 extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    player = descriptor.has(Player());
-    enemy = descriptor.has(Enemy());
-    eye = descriptor.has(Eye());
+    player = descriptor.has(Player.new);
+    enemy = descriptor.has(Enemy.new);
+    eye = descriptor.has(Eye.new);
   }
 
   @override
@@ -214,15 +214,21 @@ class Level2() extends SceneStruct with FieldScene;
 
 ## Prefabs are declarations too
 
-`descriptor.has(Player())` registers the archetype and runs the prefab's
+`descriptor.has(Player.new)` registers the archetype and runs the prefab's
 `describe*` passes. The returned handle is what you spawn from, and it is the
 same object every entity of that kind shares:
 
 ```dart
-player = descriptor.has(Player());        // declare once
+player = descriptor.has(Player.new);      // declare once
 scene.addEntity(player);                  // spawn many
 player.sprite.color[entity] = 0xFFFF0000; // per entity, through the handle
 ```
+
+It takes the constructor rather than an instance because a prefab's fields
+declare their own columns as they are initialised (`final hp = Field.int32(100)`),
+and that happens while the object is being built - so the engine has to be the
+one building it. A prefab whose constructor takes arguments goes in a closure:
+`descriptor.has(() => Bullet(speed: 5))`.
 
 ---
 

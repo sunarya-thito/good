@@ -81,23 +81,23 @@ class Mote extends EntityStruct
   /// Polar coordinates, kept per entity because the movement is a function of
   /// them and of time - so a tick reads four fields and writes three, and no
   /// entity has to remember where it was.
-  late final DataPointer<double> angle;
-  late final DataPointer<double> radius;
-  late final DataPointer<double> spin;
+  final angle = Field.float64();
+  final radius = Field.float64();
+  final spin = Field.float64();
 
   /// Seconds this mote has left. Counted down by [SwirlSystem], which destroys
   /// it at zero - so the population churns instead of only ever growing, and
   /// spawn *and* despawn are on the hot path rather than just spawn.
-  late final DataPointer<double> life;
+  final life = Field.float64();
 
   /// What it started with, so the fade can be a fraction rather than needing a
   /// second clock.
-  late final DataPointer<double> lifespan;
+  final lifespan = Field.float64();
 
   /// The size this mote would be at the peak of its life. Stored rather than
   /// recomputed because the fade multiplies it every tick and the value it
   /// came from is per entity.
-  late final DataPointer<double> baseSize;
+  final baseSize = Field.float64();
 
   /// Plain Dart state on the prefab: it lives on the game isolate and is never
   /// shared, so it costs nothing across the boundary.
@@ -107,17 +107,6 @@ class Mote extends EntityStruct
   void describeAssets(AssetDescriptor descriptor) {
     super.describeAssets(descriptor);
     texture = descriptor.has(discTexture);
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    angle = data.hasFloat64();
-    radius = data.hasFloat64();
-    spin = data.hasFloat64();
-    life = data.hasFloat64();
-    lifespan = data.hasFloat64();
-    baseSize = data.hasFloat64();
   }
 
   @override
@@ -184,8 +173,8 @@ class Galaxy extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    mote = descriptor.has(Mote());
-    eye = descriptor.has(Eye());
+    mote = descriptor.has(Mote.new);
+    eye = descriptor.has(Eye.new);
   }
 
   @override

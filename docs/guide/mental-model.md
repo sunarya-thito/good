@@ -91,15 +91,8 @@ Do the same thing for gameplay. Declare the field, branch on it:
 
 ```dart
 class Player extends EntityStruct with Transform2D, Renderable2D {
-  late final DataPointer<bool> shielded;
-  late final DataPointer<double> shieldEnergy;
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    shielded = data.hasBool(false);      // one bit
-    shieldEnergy = data.hasFloat64(0);
-  }
+  final shielded = Field.boolean(false);      // one bit
+  final shieldEnergy = Field.float64(0);
 }
 ```
 
@@ -139,7 +132,7 @@ for a kind of thing it simply is.**
 
 ### Components are not objects with methods on instances
 
-A `late final DataPointer<double> speed` is a **column**, and `speed[entity]` is
+A `final speed = Field.float64()` is a **column**, and `speed[entity]` is
 the row. There is one `Player` object in your game, not one per player. A plain
 Dart field on a prefab is shared by every entity of that kind — see
 [Entities and components](entities-and-components.md).

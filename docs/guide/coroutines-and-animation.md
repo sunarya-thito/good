@@ -218,13 +218,7 @@ Declare it on a prefab:
 ```dart
 class Enemy extends EntityStruct with Transform2D, Renderable2D {
   late final EnemyTimeline timeline;
-  late final DataPointer<double> startedAt;
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    startedAt = data.hasFloat64();
-  }
+  final startedAt = Field.float64();
 
   @override
   void describeAnimation(AnimationTypeDescriptor descriptor) {

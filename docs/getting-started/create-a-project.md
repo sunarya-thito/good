@@ -175,7 +175,7 @@ class MainScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    player = descriptor.has(Player());   // registers the prefab
+    player = descriptor.has(Player.new);   // registers the prefab
   }
 
   @override

@@ -228,11 +228,11 @@ class JointScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    anchor = descriptor.has(Anchor());
-    link = descriptor.has(Link());
-    weight = descriptor.has(Weight());
-    wheel = descriptor.has(Wheel());
-    eye = descriptor.has(Eye());
+    anchor = descriptor.has(Anchor.new);
+    link = descriptor.has(Link.new);
+    weight = descriptor.has(Weight.new);
+    wheel = descriptor.has(Wheel.new);
+    eye = descriptor.has(Eye.new);
   }
 
   @override

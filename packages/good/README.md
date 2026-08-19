@@ -22,13 +22,7 @@ in native memory, and an entity is a **row index** into it:
 import 'package:good/good.dart';
 
 class Player extends EntityStruct {
-  late final DataPointer<double> speed;
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    speed = data.hasFloat64(220);   // the default every new row starts at
-  }
+  final speed = Field.float64(220);   // the default every new row starts at
 }
 ```
 

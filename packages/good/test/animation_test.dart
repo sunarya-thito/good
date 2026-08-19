@@ -42,15 +42,8 @@ class _EnemyTimeline extends TimelineStruct {
 
 class _Enemy extends EntityStruct {
   late final _EnemyTimeline timeline;
-  late final DataPointer<double> startedAt;
-  late final DataPointer<double> px;
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    startedAt = data.hasFloat64();
-    px = data.hasFloat64();
-  }
+  final startedAt = Field.float64();
+  final px = Field.float64();
 
   @override
   void describeAnimation(AnimationTypeDescriptor descriptor) {
@@ -78,7 +71,7 @@ class _Scene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    enemy = descriptor.has(_Enemy());
+    enemy = descriptor.has(_Enemy.new);
   }
 }
 

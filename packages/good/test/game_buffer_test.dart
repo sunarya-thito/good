@@ -41,7 +41,7 @@ class _EmptyScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    descriptor.has(_Empty());
+    descriptor.has(_Empty.new);
   }
 }
 

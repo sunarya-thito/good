@@ -91,7 +91,7 @@ class _AdHocScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    descriptor.has(_prefab);
+    descriptor.has(() => _prefab);
   }
 }
 
@@ -392,41 +392,38 @@ void main() {
       expect([a[e], b[e], c[e]], [null, 0x7FFFFFFFFFFFFFFF, 5]);
     });
 
-    test(
-      'a recycled flag bit does not alias the value field it shares a byte with',
-      () {
-        // The stranded bits here come from the rounding *after* `nibble`,
-        // so the byte holding them also holds a real value field. A flag
-        // given one of those bits writes with a read-modify-write, same as
-        // any sub-byte field, so neither can disturb the other.
-        late DataPointer<int> nibble;
-        late DataPointer<double?> x, y;
-        final h = _Harness((data) {
-          nibble = data.hasUint4();
-          x = data.optFloat64();
-          y = data.optFloat64();
-        });
-        addTearDown(h.dispose);
+    test('a recycled flag bit does not alias the value field it shares a byte with', () {
+      // The stranded bits here come from the rounding *after* `nibble`,
+      // so the byte holding them also holds a real value field. A flag
+      // given one of those bits writes with a read-modify-write, same as
+      // any sub-byte field, so neither can disturb the other.
+      late DataPointer<int> nibble;
+      late DataPointer<double?> x, y;
+      final h = _Harness((data) {
+        nibble = data.hasUint4();
+        x = data.optFloat64();
+        y = data.optFloat64();
+      });
+      addTearDown(h.dispose);
 
-        // 4 bits of nibble, x's flag at bit 4, 3 bits stranded (y's flag
-        // takes one), then the two values.
-        expect(h.bitLength, (4 + 1 + 3) + 2 * 64);
-        expect(h.strideBytes, 17);
+      // 4 bits of nibble, x's flag at bit 4, 3 bits stranded (y's flag
+      // takes one), then the two values.
+      expect(h.bitLength, (4 + 1 + 3) + 2 * 64);
+      expect(h.strideBytes, 17);
 
-        final e = h.spawn();
-        nibble[e] = 0xF;
-        x[e] = 1.5;
-        y[e] = -2.5;
-        expect([nibble[e], x[e], y[e]], [0xF, 1.5, -2.5]);
+      final e = h.spawn();
+      nibble[e] = 0xF;
+      x[e] = 1.5;
+      y[e] = -2.5;
+      expect([nibble[e], x[e], y[e]], [0xF, 1.5, -2.5]);
 
-        nibble[e] = 0;
-        expect([nibble[e], x[e], y[e]], [0, 1.5, -2.5]);
-        x[e] = null;
-        expect([nibble[e], x[e], y[e]], [0, null, -2.5]);
-        nibble[e] = 0xA;
-        expect([nibble[e], x[e], y[e]], [0xA, null, -2.5]);
-      },
-    );
+      nibble[e] = 0;
+      expect([nibble[e], x[e], y[e]], [0, 1.5, -2.5]);
+      x[e] = null;
+      expect([nibble[e], x[e], y[e]], [0, null, -2.5]);
+      nibble[e] = 0xA;
+      expect([nibble[e], x[e], y[e]], [0xA, null, -2.5]);
+    });
 
     test('an optional array packs its per-element flags together too', () {
       late DataArrayPointer<double?> slots;
@@ -442,19 +439,15 @@ void main() {
       for (var i = 0; i < 4; i++) {
         slots.set(e, i, i.isEven ? i + 0.5 : null);
       }
-      expect([for (var i = 0; i < 4; i++) slots.get(e, i)], [
-        0.5,
-        null,
-        2.5,
-        null,
-      ]);
+      expect(
+        [for (var i = 0; i < 4; i++) slots.get(e, i)],
+        [0.5, null, 2.5, null],
+      );
       slots.set(e, 1, 11.5);
-      expect([for (var i = 0; i < 4; i++) slots.get(e, i)], [
-        0.5,
-        11.5,
-        2.5,
-        null,
-      ]);
+      expect(
+        [for (var i = 0; i < 4; i++) slots.get(e, i)],
+        [0.5, 11.5, 2.5, null],
+      );
     });
 
     test('a declared default is stamped through a recycled flag bit', () {
@@ -475,7 +468,6 @@ void main() {
       expect([present[e], absent[e], alsoPresent[e]], [7, null, -9]);
     });
   });
-
 
   group('nullable (opt*) fields', () {
     test('null / value / null / value round-trips', () {
@@ -627,36 +619,39 @@ void main() {
       expect(target[holder].rowOffset, 0xFFFFFFFF);
     });
 
-    test('the declared default is stamped into new rows, recycled ones too', () {
-      const fallback = Entity.pack(3, 2, 128);
-      late DataPointer<Entity> target;
-      late DataPointer<Entity> undeclared;
-      final h = _Harness((data) {
-        target = data.hasEntity(fallback);
-        undeclared = data.hasEntity();
-      });
-      addTearDown(h.dispose);
+    test(
+      'the declared default is stamped into new rows, recycled ones too',
+      () {
+        const fallback = Entity.pack(3, 2, 128);
+        late DataPointer<Entity> target;
+        late DataPointer<Entity> undeclared;
+        final h = _Harness((data) {
+          target = data.hasEntity(fallback);
+          undeclared = data.hasEntity();
+        });
+        addTearDown(h.dispose);
 
-      final first = h.spawn();
-      expect(target[first], fallback);
-      // No default given: the row starts at the handle 0 packs, which is a
-      // real address (archetype 0, page 0, row 0) rather than a "none".
-      expect(undeclared[first], const Entity(0));
+        final first = h.spawn();
+        expect(target[first], fallback);
+        // No default given: the row starts at the handle 0 packs, which is a
+        // real address (archetype 0, page 0, row 0) rather than a "none".
+        expect(undeclared[first], const Entity(0));
 
-      target[first] = h.spawn();
-      undeclared[first] = const Entity(77);
-      final page = h.prefab.archetype.pageAt(first.pageIndex);
-      page!.free(first.rowOffset);
+        target[first] = h.spawn();
+        undeclared[first] = const Entity(77);
+        final page = h.prefab.archetype.pageAt(first.pageIndex);
+        page!.free(first.rowOffset);
 
-      final recycled = h.spawn();
-      expect(
-        recycled.rowOffset,
-        first.rowOffset,
-        reason: 'the row was recycled',
-      );
-      expect(target[recycled], fallback);
-      expect(undeclared[recycled], const Entity(0));
-    });
+        final recycled = h.spawn();
+        expect(
+          recycled.rowOffset,
+          first.rowOffset,
+          reason: 'the row was recycled',
+        );
+        expect(target[recycled], fallback);
+        expect(undeclared[recycled], const Entity(0));
+      },
+    );
 
     test('each row holds its own handle', () {
       late DataPointer<Entity> target;
@@ -787,35 +782,38 @@ void main() {
       }
     });
 
-    test('the declared default is stamped into new rows, recycled ones too', () {
-      late DataPointer<_Phase> target;
-      late DataPointer<_Phase> undeclared;
-      final h = _Harness((data) {
-        target = data.hasEnum(_Phase.values, _Phase.falling);
-        undeclared = data.hasEnum(_Phase.values);
-      });
-      addTearDown(h.dispose);
+    test(
+      'the declared default is stamped into new rows, recycled ones too',
+      () {
+        late DataPointer<_Phase> target;
+        late DataPointer<_Phase> undeclared;
+        final h = _Harness((data) {
+          target = data.hasEnum(_Phase.values, _Phase.falling);
+          undeclared = data.hasEnum(_Phase.values);
+        });
+        addTearDown(h.dispose);
 
-      final first = h.spawn();
-      expect(target[first], _Phase.falling);
-      // No default given: the row starts at index 0, which is the member
-      // declared first rather than any kind of "unset".
-      expect(undeclared[first], _Phase.rising);
+        final first = h.spawn();
+        expect(target[first], _Phase.falling);
+        // No default given: the row starts at index 0, which is the member
+        // declared first rather than any kind of "unset".
+        expect(undeclared[first], _Phase.rising);
 
-      target[first] = _Phase.rising;
-      undeclared[first] = _Phase.holding;
-      final page = h.prefab.archetype.pageAt(first.pageIndex);
-      page!.free(first.rowOffset);
+        target[first] = _Phase.rising;
+        undeclared[first] = _Phase.holding;
+        final page = h.prefab.archetype.pageAt(first.pageIndex);
+        page!.free(first.rowOffset);
 
-      final recycled = h.spawn();
-      expect(
-        recycled.rowOffset,
-        first.rowOffset,
-        reason: 'the row was recycled',
-      );
-      expect(target[recycled], _Phase.falling);
-      expect(undeclared[recycled], _Phase.rising);
-    });
+        final recycled = h.spawn();
+        expect(
+          recycled.rowOffset,
+          first.rowOffset,
+          reason: 'the row was recycled',
+        );
+        expect(target[recycled], _Phase.falling);
+        expect(undeclared[recycled], _Phase.rising);
+      },
+    );
 
     test('each row holds its own member', () {
       late DataPointer<_Element> target;
@@ -1302,8 +1300,11 @@ void main() {
 
         late DataArrayPointer<Asset<_Texture>> textures;
         final h = _Harness(
-          (data) =>
-              textures = data.hasPackedArray(assets.of<_Texture>(), 3, placeholder),
+          (data) => textures = data.hasPackedArray(
+            assets.of<_Texture>(),
+            3,
+            placeholder,
+          ),
         );
         addTearDown(h.dispose);
 
@@ -1526,7 +1527,9 @@ void main() {
       final grass = _loaded();
 
       late final DataPointer<Asset<_Texture>?> texture;
-      final h = _Harness((data) => texture = data.optPacked(assets.of<_Texture>()));
+      final h = _Harness(
+        (data) => texture = data.optPacked(assets.of<_Texture>()),
+      );
       addTearDown(h.dispose);
 
       final e = h.spawn();

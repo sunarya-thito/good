@@ -30,64 +30,38 @@ import 'package:goo3d/src/data/transform.dart';
 /// `worldX`/`worldY`/`worldZ` and the world quaternion have no such caveat
 /// while scales are uniform, and the position is exact regardless.
 mixin WorldTransform3D on Component {
-  late final DataPointer<double> worldX;
-  late final DataPointer<double> worldY;
-  late final DataPointer<double> worldZ;
-  late final DataPointer<double> worldScaleX;
-  late final DataPointer<double> worldScaleY;
-  late final DataPointer<double> worldScaleZ;
-  late final DataPointer<double> worldRotationX;
-  late final DataPointer<double> worldRotationY;
-  late final DataPointer<double> worldRotationZ;
-  late final DataPointer<double> worldRotationW;
+  final worldX = Field.float64();
+  final worldY = Field.float64();
+  final worldZ = Field.float64();
+  final worldScaleX = Field.float64(1);
+  final worldScaleY = Field.float64(1);
+  final worldScaleZ = Field.float64(1);
+  final worldRotationX = Field.float64();
+  final worldRotationY = Field.float64();
+  final worldRotationZ = Field.float64();
+  final worldRotationW = Field.float64(1);
 
   // Change-detection cache, packed into the same row - not meant to be read
   // by anything outside WorldTransform3DSystem. Defaulted to NaN so the very
   // first resolve for a freshly-spawned entity always sees "changed" (NaN
   // never compares equal to anything, including itself) without a separate
   // "have I ever run" flag.
-  late final DataPointer<double> _cachedOffsetX;
-  late final DataPointer<double> _cachedOffsetY;
-  late final DataPointer<double> _cachedOffsetZ;
-  late final DataPointer<double> _cachedRotationX;
-  late final DataPointer<double> _cachedRotationY;
-  late final DataPointer<double> _cachedRotationZ;
-  late final DataPointer<double> _cachedRotationW;
-  late final DataPointer<double> _cachedScaleX;
-  late final DataPointer<double> _cachedScaleY;
-  late final DataPointer<double> _cachedScaleZ;
-  late final DataPointer<Entity?> _cachedParent;
+  final _cachedOffsetX = Field.float64(double.nan);
+  final _cachedOffsetY = Field.float64(double.nan);
+  final _cachedOffsetZ = Field.float64(double.nan);
+  final _cachedRotationX = Field.float64(double.nan);
+  final _cachedRotationY = Field.float64(double.nan);
+  final _cachedRotationZ = Field.float64(double.nan);
+  final _cachedRotationW = Field.float64(double.nan);
+  final _cachedScaleX = Field.float64(double.nan);
+  final _cachedScaleY = Field.float64(double.nan);
+  final _cachedScaleZ = Field.float64(double.nan);
+  final _cachedParent = Field.optEntity();
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<WorldTransform3D>();
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    worldX = data.hasFloat64();
-    worldY = data.hasFloat64();
-    worldZ = data.hasFloat64();
-    worldScaleX = data.hasFloat64(1);
-    worldScaleY = data.hasFloat64(1);
-    worldScaleZ = data.hasFloat64(1);
-    worldRotationX = data.hasFloat64();
-    worldRotationY = data.hasFloat64();
-    worldRotationZ = data.hasFloat64();
-    worldRotationW = data.hasFloat64(1);
-    _cachedOffsetX = data.hasFloat64(double.nan);
-    _cachedOffsetY = data.hasFloat64(double.nan);
-    _cachedOffsetZ = data.hasFloat64(double.nan);
-    _cachedRotationX = data.hasFloat64(double.nan);
-    _cachedRotationY = data.hasFloat64(double.nan);
-    _cachedRotationZ = data.hasFloat64(double.nan);
-    _cachedRotationW = data.hasFloat64(double.nan);
-    _cachedScaleX = data.hasFloat64(double.nan);
-    _cachedScaleY = data.hasFloat64(double.nan);
-    _cachedScaleZ = data.hasFloat64(double.nan);
-    _cachedParent = data.optEntity();
   }
 }
 

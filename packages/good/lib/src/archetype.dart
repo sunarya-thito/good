@@ -121,9 +121,15 @@ abstract final class ArchetypeRegistry {
 
   static int get count => _storages.length;
 
-  /// Creates and registers storage for one archetype. Called exactly once
-  /// per `EntityStruct` subclass, from `SceneDescriptor.has`.
-  static ArchetypeStorage register(MemoryPool pool, EntityStruct prefab) {
+  /// Creates and registers storage for one archetype whose prefab does not
+  /// exist yet.
+  ///
+  /// `SceneDescriptor.has` builds the prefab by calling its constructor, and
+  /// the constructor's field initialisers declare columns - so the storage
+  /// they declare into has to exist first. The prefab is attached with
+  /// [ArchetypeStorage.bindPrefab] the moment construction returns, before
+  /// anything can read it.
+  static ArchetypeStorage reserve(MemoryPool pool) {
     if (_storages.length >= maxArchetypes) {
       throw StateError(
         'ArchetypeRegistry is full: $maxArchetypes archetypes have been '
@@ -132,10 +138,15 @@ abstract final class ArchetypeRegistry {
         'recycled on scene unload.',
       );
     }
-    final storage = ArchetypeStorage._(_storages.length, pool, prefab);
+    final storage = ArchetypeStorage._(_storages.length, pool);
     _storages.add(storage);
     return storage;
   }
+
+  /// [reserve] plus [ArchetypeStorage.bindPrefab], for a caller that already
+  /// holds the prefab.
+  static ArchetypeStorage register(MemoryPool pool, EntityStruct prefab) =>
+      reserve(pool)..bindPrefab(prefab);
 
   /// Resolves an archetype id - the hot path behind `Entity.get<T>()`. A
   /// plain list index, no map, no allocation.
@@ -190,7 +201,7 @@ abstract final class ArchetypeRegistry {
 /// set, so a query touches one contiguous page instead of N - is a real
 /// optimization and is not attempted here.
 class ArchetypeStorage {
-  ArchetypeStorage._(this.archetypeId, this.pool, this.prefab);
+  ArchetypeStorage._(this.archetypeId, this.pool);
 
   /// Index into [ArchetypeRegistry]; packed into the top 16 bits of every
   /// `Entity` this storage hands out.
@@ -293,7 +304,18 @@ class ArchetypeStorage {
   /// what `Entity.get<T>()` returns. It holds no per-entity state; its
   /// `DataPointer` fields are (field-offset, storage) pairs that take the
   /// `Entity` as an argument.
-  final EntityStruct prefab;
+  ///
+  /// `late` because the storage outlives its own creation by a few
+  /// statements: the prefab's field initialisers declare columns into this
+  /// storage, so it exists first and is handed the prefab immediately after -
+  /// see [ArchetypeRegistry.reserve]. Nothing reads it in between.
+  late final EntityStruct prefab;
+
+  /// Attaches the prefab whose construction declared this storage's columns.
+  /// Called once, by `SceneDescriptor.has`, the statement after the
+  /// constructor returns.
+  @internal
+  void bindPrefab(EntityStruct struct) => prefab = struct;
 
   /// OR of [ComponentTypeRegistry.bitFor] over every type declared through
   /// `ComponentDescriptor.has<T>()` during this archetype's `describeType`

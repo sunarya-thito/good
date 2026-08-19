@@ -8,9 +8,9 @@ mixin Child on Component {
   /// unparented. A packed `Entity` is a 64-bit handle (archetype id + page
   /// index + row offset - see `Entity` in struct.dart), which is the width
   /// `optEntity` stores it at.
-  late final DataPointer<Entity?> parent;
-  late final DataPointer<Entity?> nextSibling;
-  late final DataPointer<Entity?> prevSibling;
+  final parent = Field.optEntity();
+  final nextSibling = Field.optEntity();
+  final prevSibling = Field.optEntity();
 
   // Every other mixin (Transform2D, and this file's own callers in
   // query_test.dart) registers itself via `component.has<Self>()` in
@@ -26,34 +26,17 @@ mixin Child on Component {
     super.describeType(component);
     component.has<Child>();
   }
-
-  @override
-  @mustCallSuper
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    parent = data.optEntity();
-    nextSibling = data.optEntity();
-    prevSibling = data.optEntity();
-  }
 }
 
 mixin Parent on Component {
-  late final DataPointer<Entity?> firstChild;
-  late final DataPointer<Entity?> lastChild;
+  final firstChild = Field.optEntity();
+  final lastChild = Field.optEntity();
 
   @override
   @mustCallSuper
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<Parent>();
-  }
-
-  @override
-  @mustCallSuper
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    firstChild = data.optEntity();
-    lastChild = data.optEntity();
   }
 
   /// Appends [child] to the end of [self]'s child list - a doubly-linked

@@ -8,18 +8,12 @@ import 'package:good/src/struct.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 mixin _Name on Component {
-  late final DataPointer<int> tag;
+  final tag = Field.uint16();
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<_Name>();
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    tag = data.hasUint16();
   }
 }
 
@@ -52,10 +46,10 @@ class _Level extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    node = descriptor.has(_Node());
-    leaf = descriptor.has(_Leaf());
-    noChild = descriptor.has(_NoChild());
-    bareNode = descriptor.has(_BareNode());
+    node = descriptor.has(_Node.new);
+    leaf = descriptor.has(_Leaf.new);
+    noChild = descriptor.has(_NoChild.new);
+    bareNode = descriptor.has(_BareNode.new);
   }
 }
 
@@ -125,7 +119,6 @@ void main() {
       expect(level.node.parent[c], a);
     });
   });
-
 
   group('Parent.addChild / removeChild', () {
     test('a single child becomes both firstChild and lastChild', () {

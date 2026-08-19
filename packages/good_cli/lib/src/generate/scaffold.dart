@@ -237,7 +237,7 @@ class MainScene extends SceneStruct {
     super.describeScene(descriptor);
     // Declares the prefab: registers its archetype and runs its describe
     // passes. Returns the handle to spawn from.
-    player = descriptor.has(Player());
+    player = descriptor.has(Player.new);
   }
 
   @override

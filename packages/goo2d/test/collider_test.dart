@@ -1,7 +1,8 @@
 import 'package:goo2d/goo2d.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class _Player extends EntityStruct with Transform2D, Collider2D, CollisionListener {
+class _Player extends EntityStruct
+    with Transform2D, Collider2D, CollisionListener {
   late final BoxBody box;
   late final CircleBody hurtbox;
   late final CircleBody pickupRange;
@@ -19,7 +20,8 @@ class _Player extends EntityStruct with Transform2D, Collider2D, CollisionListen
   @override
   void onCollisionEnter2D(Collision2DEvent event) => firedEvents.add('enter');
   @override
-  void onTriggerEnter2D(Collision2DEvent event) => firedEvents.add('triggerEnter');
+  void onTriggerEnter2D(Collision2DEvent event) =>
+      firedEvents.add('triggerEnter');
 }
 
 class _Wall extends EntityStruct with Transform2D, Collider2D {
@@ -99,11 +101,11 @@ class _Scene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    player = descriptor.has(_Player());
-    wall = descriptor.has(_Wall());
-    polygon = descriptor.has(_Polygon());
-    capsule = descriptor.has(_Capsule());
-    concave = descriptor.has(_Concave());
+    player = descriptor.has(_Player.new);
+    wall = descriptor.has(_Wall.new);
+    polygon = descriptor.has(_Polygon.new);
+    capsule = descriptor.has(_Capsule.new);
+    concave = descriptor.has(_Concave.new);
   }
 }
 
@@ -129,7 +131,7 @@ class _AdHocScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    descriptor.has(_AdHoc(_declare));
+    descriptor.has(() => _AdHoc(_declare));
   }
 }
 
@@ -160,7 +162,14 @@ void main() {
     test('declaring several has*Collider calls is a compound collider - all end up in bodies', () {
       final scene = _scene();
       expect(scene.player.bodies, hasLength(3));
-      expect(scene.player.bodies, containsAll([scene.player.box, scene.player.hurtbox, scene.player.pickupRange]));
+      expect(
+        scene.player.bodies,
+        containsAll([
+          scene.player.box,
+          scene.player.hurtbox,
+          scene.player.pickupRange,
+        ]),
+      );
     });
 
     test('named params on has*Collider double as the declared default, no onMounted needed', () {
@@ -175,7 +184,11 @@ void main() {
       expect(scene.player.hurtbox.isTrigger[player], false);
       expect(scene.player.pickupRange.radius[player], 48);
       expect(scene.player.pickupRange.isTrigger[player], true);
-      expect(scene.player.box.enable[player], true, reason: 'enable defaults to true (1)');
+      expect(
+        scene.player.box.enable[player],
+        true,
+        reason: 'enable defaults to true (1)',
+      );
     });
 
     test('each declared body has independent, non-aliasing storage', () {
@@ -227,34 +240,44 @@ void main() {
       scene.pool.beginTick();
       final triangle = scene.addEntity(scene.polygon);
       scene.pool.commitTick();
-      expect(() => scene.polygon.triangle.pointsX.get(triangle, 8), throwsRangeError);
+      expect(
+        () => scene.polygon.triangle.pointsX.get(triangle, 8),
+        throwsRangeError,
+      );
     });
 
-    test('declared points land on every entity, and a per-entity write wins', () {
-      final scene = _scene();
-      scene.pool.beginTick();
-      final first = scene.addEntity(scene.polygon);
-      final second = scene.addEntity(scene.polygon);
-      scene.pool.commitTick();
+    test(
+      'declared points land on every entity, and a per-entity write wins',
+      () {
+        final scene = _scene();
+        scene.pool.beginTick();
+        final first = scene.addEntity(scene.polygon);
+        final second = scene.addEntity(scene.polygon);
+        scene.pool.commitTick();
 
-      final triangle = scene.polygon.triangle;
-      for (final entity in [first, second]) {
-        expect(triangle.pointCount[entity], 3);
-        expect(triangle.pointsX.get(entity, 2), 5);
-        expect(triangle.pointsY.get(entity, 2), 10);
-      }
+        final triangle = scene.polygon.triangle;
+        for (final entity in [first, second]) {
+          expect(triangle.pointCount[entity], 3);
+          expect(triangle.pointsX.get(entity, 2), 5);
+          expect(triangle.pointsY.get(entity, 2), 10);
+        }
 
-      scene.pool.beginTick();
-      triangle.pointsX.set(second, 2, -5);
-      triangle.pointsY.set(second, 2, 20);
-      scene.pool.commitTick();
+        scene.pool.beginTick();
+        triangle.pointsX.set(second, 2, -5);
+        triangle.pointsY.set(second, 2, 20);
+        scene.pool.commitTick();
 
-      expect(triangle.pointsX.get(second, 2), -5);
-      expect(triangle.pointsY.get(second, 2), 20);
-      expect(triangle.pointsX.get(first, 2), 5,
-          reason: 'the declared outline is stamped into each row, not shared '
-              'between them');
-    });
+        expect(triangle.pointsX.get(second, 2), -5);
+        expect(triangle.pointsY.get(second, 2), 20);
+        expect(
+          triangle.pointsX.get(first, 2),
+          5,
+          reason:
+              'the declared outline is stamped into each row, not shared '
+              'between them',
+        );
+      },
+    );
 
     test('a capacity past the eight vertices Box2D allows is accepted', () {
       // Containment here is even-odd crossing, which handles any outline, so
@@ -270,13 +293,18 @@ void main() {
       expect(body.pointsX.length, 12);
     });
 
-    test('an outline of fewer than three points is rejected at declare time', () {
-      expect(
-        () => _adHocScene((descriptor) =>
-            descriptor.hasPolygonCollider(points: const [(0, 0), (10, 0)])),
-        throwsArgumentError,
-      );
-    });
+    test(
+      'an outline of fewer than three points is rejected at declare time',
+      () {
+        expect(
+          () => _adHocScene(
+            (descriptor) =>
+                descriptor.hasPolygonCollider(points: const [(0, 0), (10, 0)]),
+          ),
+          throwsArgumentError,
+        );
+      },
+    );
 
     test('an entity can use fewer points than the declared capacity', () {
       final scene = _scene();
@@ -286,7 +314,10 @@ void main() {
       // Eight slots were reserved and the declared outline fills three -
       // pointCount is what a consumer should trust, not the array's own
       // fixed capacity.
-      expect(scene.polygon.triangle.pointCount[triangle], lessThan(scene.polygon.triangle.pointsX.length));
+      expect(
+        scene.polygon.triangle.pointCount[triangle],
+        lessThan(scene.polygon.triangle.pointsX.length),
+      );
     });
   });
 
@@ -305,7 +336,11 @@ void main() {
       expect(() => scene.player.onCollisionStay2D(event), returnsNormally);
       expect(() => scene.player.onTriggerExit2D(event), returnsNormally);
       expect(() => scene.player.onTriggerStay2D(event), returnsNormally);
-      expect(scene.player.firedEvents, isEmpty, reason: 'none of the no-op ones should record anything');
+      expect(
+        scene.player.firedEvents,
+        isEmpty,
+        reason: 'none of the no-op ones should record anything',
+      );
 
       scene.player.onCollisionEnter2D(event);
       scene.player.onTriggerEnter2D(event);
@@ -345,21 +380,36 @@ void main() {
 
       final circle = scene.player.hurtbox; // radius 20, no offset
       expect(circle.containsLocalPoint(player, 0, 0), isTrue);
-      expect(circle.containsLocalPoint(player, 20, 0), isTrue,
-          reason: 'exactly on the edge counts as inside - a boundary has to '
-              'belong to one side, and picking the shape means the pixel you '
-              'can see is clickable');
+      expect(
+        circle.containsLocalPoint(player, 20, 0),
+        isTrue,
+        reason:
+            'exactly on the edge counts as inside - a boundary has to '
+            'belong to one side, and picking the shape means the pixel you '
+            'can see is clickable',
+      );
       expect(circle.containsLocalPoint(player, 20.001, 0), isFalse);
-      expect(circle.containsLocalPoint(player, 14.1, 14.1), isTrue,
-          reason: 'inside the circle: 14.1^2 * 2 = 397.6, just under 20^2');
+      expect(
+        circle.containsLocalPoint(player, 14.1, 14.1),
+        isTrue,
+        reason: 'inside the circle: 14.1^2 * 2 = 397.6, just under 20^2',
+      );
       expect(circle.containsLocalPoint(player, 14.1, -14.1), isTrue);
-      expect(circle.containsLocalPoint(player, 14.2, 14.2), isFalse,
-          reason: 'and just outside it: 14.2^2 * 2 = 403.3, over 20^2 - the '
-              'edge is where the radius says it is, not a tolerance');
-      expect(circle.containsLocalPoint(player, 15, 15), isFalse,
-          reason: 'the corner of the bounding box is outside the circle - '
-              'this is the whole difference between hit-testing a shape and '
-              'hit-testing a rectangle');
+      expect(
+        circle.containsLocalPoint(player, 14.2, 14.2),
+        isFalse,
+        reason:
+            'and just outside it: 14.2^2 * 2 = 403.3, over 20^2 - the '
+            'edge is where the radius says it is, not a tolerance',
+      );
+      expect(
+        circle.containsLocalPoint(player, 15, 15),
+        isFalse,
+        reason:
+            'the corner of the bounding box is outside the circle - '
+            'this is the whole difference between hit-testing a shape and '
+            'hit-testing a rectangle',
+      );
     });
 
     test('a box covers its full extent and nothing past it', () {
@@ -385,8 +435,11 @@ void main() {
       scene.player.hurtbox.offsetX[player] = 100;
       scene.pool.commitTick();
 
-      expect(scene.player.hurtbox.containsLocalPoint(player, 0, 0), isFalse,
-          reason: 'the body moved out from under the origin');
+      expect(
+        scene.player.hurtbox.containsLocalPoint(player, 0, 0),
+        isFalse,
+        reason: 'the body moved out from under the origin',
+      );
       expect(scene.player.hurtbox.containsLocalPoint(player, 100, 0), isTrue);
     });
 
@@ -399,19 +452,36 @@ void main() {
       // radius 10, half-height 30 - so the straight section runs -20..20 and
       // each cap centre sits at +/-20.
       final pill = scene.capsule.pill;
-      expect(pill.containsLocalPoint(entity, 10, 0), isTrue,
-          reason: 'the straight section is the full radius wide');
-      expect(pill.containsLocalPoint(entity, 10, 20), isTrue,
-          reason: 'and stays that wide right up to the cap centre');
-      expect(pill.containsLocalPoint(entity, 0, 30), isTrue,
-          reason: 'the very top of the cap - halfHeight is the *total* half '
-              'height, caps included, like Unity\'s own capsule size');
+      expect(
+        pill.containsLocalPoint(entity, 10, 0),
+        isTrue,
+        reason: 'the straight section is the full radius wide',
+      );
+      expect(
+        pill.containsLocalPoint(entity, 10, 20),
+        isTrue,
+        reason: 'and stays that wide right up to the cap centre',
+      );
+      expect(
+        pill.containsLocalPoint(entity, 0, 30),
+        isTrue,
+        reason:
+            'the very top of the cap - halfHeight is the *total* half '
+            'height, caps included, like Unity\'s own capsule size',
+      );
       expect(pill.containsLocalPoint(entity, 0, 30.1), isFalse);
-      expect(pill.containsLocalPoint(entity, 10, 30), isFalse,
-          reason: 'the corner of the bounding box is rounded away - that is '
-              'the only thing that makes this a capsule and not a box');
-      expect(pill.containsLocalPoint(entity, 7, 27), isTrue,
-          reason: 'inside the top cap: 7^2 + 7^2 is under 10^2');
+      expect(
+        pill.containsLocalPoint(entity, 10, 30),
+        isFalse,
+        reason:
+            'the corner of the bounding box is rounded away - that is '
+            'the only thing that makes this a capsule and not a box',
+      );
+      expect(
+        pill.containsLocalPoint(entity, 7, 27),
+        isTrue,
+        reason: 'inside the top cap: 7^2 + 7^2 is under 10^2',
+      );
     });
 
     test('a capsule shorter than its radius is a circle', () {
@@ -422,10 +492,14 @@ void main() {
 
       // radius 10, half-height 4: the straight section would be -6 long.
       final squashed = scene.capsule.squashed;
-      expect(squashed.containsLocalPoint(entity, 0, 9), isTrue,
-          reason: 'the degenerate case has an obvious right answer - a '
-              'segment of negative length is a point, so this is a circle of '
-              'the declared radius rather than an error or an empty shape');
+      expect(
+        squashed.containsLocalPoint(entity, 0, 9),
+        isTrue,
+        reason:
+            'the degenerate case has an obvious right answer - a '
+            'segment of negative length is a point, so this is a circle of '
+            'the declared radius rather than an error or an empty shape',
+      );
       expect(squashed.containsLocalPoint(entity, 0, 10), isTrue);
       expect(squashed.containsLocalPoint(entity, 0, 10.1), isFalse);
       expect(squashed.containsLocalPoint(entity, 8, 8), isFalse);
@@ -441,8 +515,11 @@ void main() {
       final triangle = scene.polygon.triangle;
       expect(triangle.containsLocalPoint(entity, 5, 5), isTrue);
       expect(triangle.containsLocalPoint(entity, 5, 1), isTrue);
-      expect(triangle.containsLocalPoint(entity, 1, 8), isFalse,
-          reason: 'inside the bounding box, outside the sloped edge');
+      expect(
+        triangle.containsLocalPoint(entity, 1, 8),
+        isFalse,
+        reason: 'inside the bounding box, outside the sloped edge',
+      );
       expect(triangle.containsLocalPoint(entity, 9, 8), isFalse);
       expect(triangle.containsLocalPoint(entity, 5, 11), isFalse);
     });
@@ -454,13 +531,23 @@ void main() {
       scene.pool.commitTick();
 
       final arrow = scene.concave.arrow;
-      expect(arrow.containsLocalPoint(entity, 0, 10), isTrue,
-          reason: 'up the middle of the arrowhead, above the notch');
-      expect(arrow.containsLocalPoint(entity, 12, 30), isTrue,
-          reason: 'inside the right barb');
-      expect(arrow.containsLocalPoint(entity, 0, 30), isFalse,
-          reason: 'inside the bounding box and inside the convex hull, but '
-              'in the notch - a convex-only test would report a hit here');
+      expect(
+        arrow.containsLocalPoint(entity, 0, 10),
+        isTrue,
+        reason: 'up the middle of the arrowhead, above the notch',
+      );
+      expect(
+        arrow.containsLocalPoint(entity, 12, 30),
+        isTrue,
+        reason: 'inside the right barb',
+      );
+      expect(
+        arrow.containsLocalPoint(entity, 0, 30),
+        isFalse,
+        reason:
+            'inside the bounding box and inside the convex hull, but '
+            'in the notch - a convex-only test would report a hit here',
+      );
     });
 
     test('a polygon with fewer than three points contains nothing', () {
@@ -473,10 +560,14 @@ void main() {
       scene.polygon.triangle.pointCount[entity] = 2;
       scene.pool.commitTick();
 
-      expect(scene.polygon.triangle.containsLocalPoint(entity, 5, 5), isFalse,
-          reason: 'two points enclose no area - an entity that shrank its '
-              'outline, like a prefab that declared none at all, should pick '
-              'up nothing rather than everything');
+      expect(
+        scene.polygon.triangle.containsLocalPoint(entity, 5, 5),
+        isFalse,
+        reason:
+            'two points enclose no area - an entity that shrank its '
+            'outline, like a prefab that declared none at all, should pick '
+            'up nothing rather than everything',
+      );
     });
 
     test('a disabled body still answers the geometry question', () {
@@ -489,11 +580,15 @@ void main() {
       scene.player.hurtbox.enable[player] = false;
       scene.pool.commitTick();
 
-      expect(scene.player.hurtbox.containsLocalPoint(player, 0, 0), isTrue,
-          reason: 'containsLocalPoint is about the shape, not about policy - '
-              'whether a disabled body should be skipped belongs to the '
-              'caller, and a debug overlay drawing every declared shape '
-              'wants the honest answer');
+      expect(
+        scene.player.hurtbox.containsLocalPoint(player, 0, 0),
+        isTrue,
+        reason:
+            'containsLocalPoint is about the shape, not about policy - '
+            'whether a disabled body should be skipped belongs to the '
+            'caller, and a debug overlay drawing every declared shape '
+            'wants the honest answer',
+      );
     });
   });
 }

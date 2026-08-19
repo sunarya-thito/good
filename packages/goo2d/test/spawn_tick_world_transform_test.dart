@@ -59,8 +59,8 @@ class _Scene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    leaf = descriptor.has(_Leaf());
-    node = descriptor.has(_Node());
+    leaf = descriptor.has(_Leaf.new);
+    node = descriptor.has(_Node.new);
   }
 }
 
@@ -80,8 +80,7 @@ class _Spawner extends GameSystem with FixedTickable {
   /// Sorted before WorldTransformSystem so the spawn happens first in the
   /// tick - the ordering a gameplay system spawning something would have.
   @override
-  int compareTo(GameSystem other) =>
-      other is WorldTransformSystem ? -1 : 0;
+  int compareTo(GameSystem other) => other is WorldTransformSystem ? -1 : 0;
 
   @override
   void onFixedUpdate() {
@@ -172,8 +171,7 @@ void main() {
     expect(leaf.worldY[a], 300);
   });
 
-  test('a RECYCLED row composes correctly on the tick it is spawned',
-      () async {
+  test('a RECYCLED row composes correctly on the tick it is spawned', () async {
     // **This asserted the bug until it was fixed**, which is why it exists:
     // it failed in exactly the right place the moment the behaviour changed.
     //
@@ -209,7 +207,8 @@ void main() {
     expect(
       leaf.worldX[b],
       111,
-      reason: 'a recycled row must compose from what the spawner just wrote, '
+      reason:
+          'a recycled row must compose from what the spawner just wrote, '
           'not from what the row held before - that was the one frame of a '
           'sprite at the world origin',
     );
@@ -221,8 +220,7 @@ void main() {
     expect(leaf.worldY[b], 222);
   });
 
-  test('a spawned CHILD composes against its parent on the spawn tick',
-      () async {
+  test('a spawned CHILD composes against its parent on the spawn tick', () async {
     // **The swarm demo's yellow ball.** A child is not merely composed from a
     // stale row like the cases above - it is not visited *at all* on its spawn
     // tick. The main pass descends through `Parent.firstChild`, an ordinary
@@ -255,7 +253,8 @@ void main() {
     expect(
       node.worldX[child],
       110,
-      reason: 'a child spawned this tick must be composed against its '
+      reason:
+          'a child spawned this tick must be composed against its '
           'parent - 0 here is the sprite at the world origin for one frame',
     );
     expect(node.worldY[child], 20);

@@ -6,8 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 /// one inline run per isolate means one binding is enough.
 late Game run;
 
-
-class _CamEntity extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
+class _CamEntity extends EntityStruct
+    with Transform2D, WorldTransform2D, Camera {}
 
 class _Scene extends SceneStruct {
   /// This fixture's loaded handle. Entity creation lives on `Scene` now (one
@@ -25,7 +25,7 @@ class _Scene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    cam = descriptor.has(_CamEntity());
+    cam = descriptor.has(_CamEntity.new);
   }
 }
 
@@ -62,7 +62,10 @@ void main() {
     test('returns null when no camera is active', () async {
       final scene = _scene();
       final query = await _query(scene);
-      expect(ActiveCameraResolver().resolve(query, views.declareDetached()), isNull);
+      expect(
+        ActiveCameraResolver().resolve(query, views.declareDetached()),
+        isNull,
+      );
     });
 
     test('returns the only active camera', () async {
@@ -94,8 +97,10 @@ void main() {
       // two cameras is a development mistake that stops the run (the
       // assert-not-print rule - an assert, never a swallowed `print`). In a
       // release build the assert compiles out and the first camera is used.
-      expect(() => ActiveCameraResolver().resolve(query, view),
-          throwsA(isA<AssertionError>()));
+      expect(
+        () => ActiveCameraResolver().resolve(query, view),
+        throwsA(isA<AssertionError>()),
+      );
     });
   });
 }

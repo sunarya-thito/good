@@ -175,8 +175,8 @@ abstract class EntityStruct extends GameListenerBase
     if (!_bound) {
       throw StateError(
         '$runtimeType has not been registered with a scene. Declare it in '
-        'SceneStruct.describeScene via `descriptor.has($runtimeType())` before '
-        'creating entities from it.',
+        'SceneStruct.describeScene via `descriptor.has($runtimeType.new)` '
+        'before creating entities from it.',
       );
     }
     return this;

@@ -23,47 +23,30 @@ import 'package:good/good.dart';
 /// The columns are here; everything you *do* with them is on
 /// [Transform3DAccessor], reached as `entity<Transform3D>()`.
 mixin Transform3D on Component {
-  late final DataPointer<double> transformOffsetX;
-  late final DataPointer<double> transformOffsetY;
-  late final DataPointer<double> transformOffsetZ;
+  final transformOffsetX = Field.float64();
+  final transformOffsetY = Field.float64();
+  final transformOffsetZ = Field.float64();
 
-  late final DataPointer<double> transformScaleX;
-  late final DataPointer<double> transformScaleY;
-  late final DataPointer<double> transformScaleZ;
+  // Scale defaults to 1 and the quaternion to (0, 0, 0, 1) - each field's
+  // own identity, not the storage layer's 0. A zero scale collapses every
+  // point to the origin and an all-zero quaternion is not a rotation at
+  // all, so an entity that simply never assigned either would be
+  // degenerate with nothing anywhere saying why. Offsets keep the plain
+  // default, because 0 *is* their identity. Same reasoning as
+  // `Transform2D`, one dimension up.
+  final transformScaleX = Field.float64(1);
+  final transformScaleY = Field.float64(1);
+  final transformScaleZ = Field.float64(1);
 
-  late final DataPointer<double> transformRotationX;
-  late final DataPointer<double> transformRotationY;
-  late final DataPointer<double> transformRotationZ;
-  late final DataPointer<double> transformRotationW;
+  final transformRotationX = Field.float64();
+  final transformRotationY = Field.float64();
+  final transformRotationZ = Field.float64();
+  final transformRotationW = Field.float64(1);
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<Transform3D>();
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    transformOffsetX = data.hasFloat64();
-    transformOffsetY = data.hasFloat64();
-    transformOffsetZ = data.hasFloat64();
-
-    // Scale defaults to 1 and the quaternion to (0, 0, 0, 1) - each field's
-    // own identity, not the storage layer's 0. A zero scale collapses every
-    // point to the origin and an all-zero quaternion is not a rotation at
-    // all, so an entity that simply never assigned either would be
-    // degenerate with nothing anywhere saying why. Offsets keep the plain
-    // default, because 0 *is* their identity. Same reasoning as
-    // `Transform2D`, one dimension up.
-    transformScaleX = data.hasFloat64(1);
-    transformScaleY = data.hasFloat64(1);
-    transformScaleZ = data.hasFloat64(1);
-
-    transformRotationX = data.hasFloat64();
-    transformRotationY = data.hasFloat64();
-    transformRotationZ = data.hasFloat64();
-    transformRotationW = data.hasFloat64(1);
   }
 }
 

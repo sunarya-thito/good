@@ -8,6 +8,7 @@ import 'package:good/src/asset.dart';
 import 'package:good/src/camera_view.dart';
 import 'package:good/src/data/hierarchy.dart';
 import 'package:good/src/data_layout.dart';
+import 'package:good/src/declare.dart';
 import 'package:good/src/event.dart';
 import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/game.dart';
@@ -435,19 +436,37 @@ abstract class SceneStruct extends GameListenerBase
 }
 
 abstract class SceneDescriptor {
-  T has<T extends EntityStruct>(T object);
+  /// Declares one prefab and returns it, for the field that keeps it.
+  ///
+  /// Takes the **constructor**, not an instance: a struct's fields declare
+  /// their own columns from their initialisers (`final hp = Field.int32(100)`),
+  /// and those run during construction, so the descriptor they declare against
+  /// has to be open before the object exists. `descriptor.has(Mote())` builds
+  /// it too early and no longer compiles; `descriptor.has(Mote.new)` is the
+  /// spelling. A prefab whose constructor takes arguments passes a closure -
+  /// `descriptor.has(() => Bullet(speed: 5))`.
+  T has<T extends EntityStruct>(T Function() create);
 }
 
 /// The one and only archetype registration point.
 ///
-/// The order of the two describe passes matters and mirrors the
-/// `@mustCallSuper` chains in `EntityStruct`/`Transform2D`/`Child`: each
-/// mixin calls `super.describeStruct(data)` *first*, so the mixin
-/// application order (Dart's linearization: `with Transform2D, Child` runs
-/// `Transform2D`'s fields before `Child`'s) is exactly the field order in
-/// the row. Changing a struct's mixin list changes its layout - which is
-/// fine, because the layout is rebuilt from scratch on every run and never
-/// persisted.
+/// A row's field order is the order the columns were declared in, and there
+/// are now two stretches of that order:
+///
+///  1. **Construction.** Dart runs a class's own field initialisers before its
+///     superclass constructor, and a mixin application *is* a superclass - so
+///     `class Player extends EntityStruct with Transform2D, Child` lays out
+///     `Player`'s own `Field.*` columns first, then `Child`'s, then
+///     `Transform2D`'s. Last mixin in the `with` clause, first in the row.
+///  2. **The describe passes.** Whatever is still declared in a
+///     `describeStruct` body follows, in the opposite mixin order, because
+///     each override calls `super.describeStruct(data)` *first* - so
+///     `Transform2D`'s body runs before `Child`'s.
+///
+/// Two orders, and neither is arbitrary: both are what Dart already does with
+/// the same `with` clause. What matters is that they are *deterministic*, since
+/// the layout is rebuilt from scratch on every run and never persisted.
+/// Changing a struct's mixin list changes its layout, and always did.
 final class _SceneDescriptor implements SceneDescriptor {
   _SceneDescriptor(this._scene, this._assets);
 
@@ -460,8 +479,20 @@ final class _SceneDescriptor implements SceneDescriptor {
   final _AssetDescriptor _assets;
 
   @override
-  T has<T extends EntityStruct>(T object) {
-    final storage = ArchetypeRegistry.register(_scene.pool, object);
+  T has<T extends EntityStruct>(T Function() create) {
+    // The storage first, because the constructor's field initialisers declare
+    // into it - `final hp = Field.int32(100)` has no descriptor to reach
+    // except the one open around the call. It carries no prefab until the
+    // line after; nothing reads one in between.
+    final storage = ArchetypeRegistry.reserve(_scene.pool);
+    final T object;
+    DeclarationContext.pushData(ArchetypeDataDescriptor(storage));
+    try {
+      object = create();
+    } finally {
+      DeclarationContext.popData();
+    }
+    storage.bindPrefab(object);
     object.bindArchetype(_scene, storage);
     object.describeType(ArchetypeComponentDescriptor(storage));
     // Before describeStruct, not after: `has` returns an already-addressed

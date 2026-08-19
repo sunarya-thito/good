@@ -53,7 +53,8 @@ class _Crate extends EntityStruct
   void onCollisionStay2D(Collision2DEvent event) => record('stay', event);
 
   @override
-  void onTriggerEnter2D(Collision2DEvent event) => record('triggerEnter', event);
+  void onTriggerEnter2D(Collision2DEvent event) =>
+      record('triggerEnter', event);
 
   @override
   void onTriggerExit2D(Collision2DEvent event) => record('triggerExit', event);
@@ -111,9 +112,9 @@ class _Scene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor d) {
     super.describeScene(d);
-    crate = d.has(_Crate());
-    floor = d.has(_Floor());
-    zone = d.has(_Zone());
+    crate = d.has(_Crate.new);
+    floor = d.has(_Floor.new);
+    zone = d.has(_Zone.new);
   }
 }
 
@@ -220,7 +221,8 @@ void main() {
     expect(
       sawSecondInstance,
       isFalse,
-      reason: 'every dispatch must repoint one instance - a second object '
+      reason:
+          'every dispatch must repoint one instance - a second object '
           'means an allocation per contact, which the no-allocation rule forbids',
     );
   });
@@ -259,7 +261,8 @@ void main() {
     expect(
       scene.crate.transformOffsetY[crate],
       lessThan(-10),
-      reason: 'the crate should have fallen straight through the trigger, '
+      reason:
+          'the crate should have fallen straight through the trigger, '
           'not rested on it - and falling means a *smaller* y, since world '
           '+y is up',
     );
@@ -287,35 +290,37 @@ void main() {
     );
   });
 
-  test('the event names the listener as source and the other as target',
-      () async {
-    final scene = await _boot();
+  test(
+    'the event names the listener as source and the other as target',
+    () async {
+      final scene = await _boot();
 
-    final floor = scene.addEntity(scene.floor);
-    scene.floor.transformOffsetY[floor] = -10;
-    final crate = scene.addEntity(scene.crate);
+      final floor = scene.addEntity(scene.floor);
+      scene.floor.transformOffsetY[floor] = -10;
+      final crate = scene.addEntity(scene.crate);
 
-    Entity? reportedSource;
-    Entity? reportedTarget;
-    // Capture on the first enter by reading the shared instance during it.
-    var captured = false;
-    for (var i = 0; i < 180 && !captured; i++) {
-      run.state.advance(_step);
-      if (log.contains('enter') && seenInstance != null) {
-        reportedSource = seenInstance!.sourceEntity;
-        reportedTarget = seenInstance!.targetEntity;
-        captured = true;
+      Entity? reportedSource;
+      Entity? reportedTarget;
+      // Capture on the first enter by reading the shared instance during it.
+      var captured = false;
+      for (var i = 0; i < 180 && !captured; i++) {
+        run.state.advance(_step);
+        if (log.contains('enter') && seenInstance != null) {
+          reportedSource = seenInstance!.sourceEntity;
+          reportedTarget = seenInstance!.targetEntity;
+          captured = true;
+        }
       }
-    }
 
-    expect(captured, isTrue);
-    expect(
-      reportedSource,
-      crate,
-      reason: 'the crate is the listener, so it must read itself as source',
-    );
-    expect(reportedTarget, floor);
-  });
+      expect(captured, isTrue);
+      expect(
+        reportedSource,
+        crate,
+        reason: 'the crate is the listener, so it must read itself as source',
+      );
+      expect(reportedTarget, floor);
+    },
+  );
 
   test('a collider with no listener is simply skipped', () async {
     // The floor mixes in no CollisionListener. Dispatching to it must be a

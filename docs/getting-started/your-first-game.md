@@ -152,18 +152,12 @@ void onFixedUpdate() {
 
 ### Per-entity data
 
-`speed` is not a Dart field on `Player`; it is a column in the row layout. Add
-it in `describeStruct`:
+`speed` is not a Dart field on `Player`; it is a column in the row layout, and
+declaring it is one line:
 
 ```dart title="lib/game/prefabs/player.dart"
 class Player extends EntityStruct with Transform2D, WorldTransform2D, Renderable2D {
-  late final DataPointer<double> speed;
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    speed = data.hasFloat64(220);   // (1)!
-  }
+  final speed = Field.float64(220);   // (1)!
 }
 ```
 
@@ -171,7 +165,7 @@ class Player extends EntityStruct with Transform2D, WorldTransform2D, Renderable
    prefab. Write per entity with `speed[entity] = 400`.
 
 This is the single most important thing to internalise about the engine: a
-`late final DataPointer<double>` is a *column*, and `[entity]` is the row index.
+`Field.float64()` is a *column*, and `[entity]` is the row index.
 See [Entities and components](../guide/entities-and-components.md).
 
 Run it: `WASD` drives the square.
@@ -240,7 +234,7 @@ class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   late final TextureAsset texture;
   late final Sprite sprite;
-  late final DataPointer<double> speed;
+  final speed = Field.float64(220);
 
   @override
   void describeAssets(AssetDescriptor descriptor) {
@@ -284,8 +278,8 @@ class MainScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    player = descriptor.has(Player());
-    eye = descriptor.has(Eye());
+    player = descriptor.has(Player.new);
+    eye = descriptor.has(Eye.new);
   }
 
   @override

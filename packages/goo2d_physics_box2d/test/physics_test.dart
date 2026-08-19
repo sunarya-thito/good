@@ -118,11 +118,11 @@ class _Scene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    crate = descriptor.has(_Crate());
-    floor = descriptor.has(_Floor());
-    ball = descriptor.has(_Ball());
-    pinned = descriptor.has(_Pinned());
-    platform = descriptor.has(_Platform());
+    crate = descriptor.has(_Crate.new);
+    floor = descriptor.has(_Floor.new);
+    ball = descriptor.has(_Ball.new);
+    pinned = descriptor.has(_Pinned.new);
+    platform = descriptor.has(_Platform.new);
   }
 }
 
@@ -277,7 +277,8 @@ void main() {
       expect(
         scene.crate.transformOffsetY[crate],
         closeTo(-5.0, 0.2),
-        reason: 'one second of free fall is about 1/2 g t^2, and world +y is '
+        reason:
+            'one second of free fall is about 1/2 g t^2, and world +y is '
             'up so falling is toward a smaller y',
       );
     });
@@ -320,7 +321,8 @@ void main() {
       expect(
         scene.crate.linearVelocityY[crate],
         lessThan(-1),
-        reason: 'a falling body should report a downward (negative y) '
+        reason:
+            'a falling body should report a downward (negative y) '
             'velocity',
       );
     });
@@ -346,7 +348,8 @@ void main() {
       expect(
         highestAfterBounce,
         greaterThan(-8.0),
-        reason: 'restitution 0.8 should send it back up appreciably - up '
+        reason:
+            'restitution 0.8 should send it back up appreciably - up '
             'being a larger y',
       );
     });
@@ -383,13 +386,15 @@ void main() {
       expect(
         scene.crate.transformOffsetX[crate],
         closeTo(100, 0.1),
-        reason: 'x is untouched by gravity, so it should land exactly on the '
+        reason:
+            'x is untouched by gravity, so it should land exactly on the '
             'teleport target',
       );
       expect(
         scene.crate.transformOffsetY[crate],
         closeTo(100, 0.5),
-        reason: 'the body should have moved to the teleport target rather '
+        reason:
+            'the body should have moved to the teleport target rather '
             'than staying where the solver had it - the tolerance allows for '
             'the momentum it still carried into the step after arriving',
       );
@@ -414,7 +419,8 @@ void main() {
       expect(
         scene.crate.transformRotation[crate],
         closeTo(1.0, 0.02),
-        reason: 'one radian after one second; drift towards pi/4 (0.785) '
+        reason:
+            'one radian after one second; drift towards pi/4 (0.785) '
             'would mean pulled angles are being pushed back in',
       );
     });
@@ -438,7 +444,8 @@ void main() {
       expect(
         scene.floor.transformRotation[floor],
         authored,
-        reason: 'the solver never moves a static body, so nothing should '
+        reason:
+            'the solver never moves a static body, so nothing should '
             'ever have written its rotation - not even back to itself',
       );
     });
@@ -462,7 +469,8 @@ void main() {
       expect(
         scene.platform.transformRotation[platform],
         settled,
-        reason: 'with no angular velocity there is nothing to integrate, so '
+        reason:
+            'with no angular velocity there is nothing to integrate, so '
             'the angle read on the first tick is the one it keeps',
       );
     });
@@ -498,7 +506,8 @@ void main() {
       expect(
         scene.floor.transformRotation[floor],
         1.2,
-        reason: 'a static body is gameplay\'s to place, and the value it is '
+        reason:
+            'a static body is gameplay\'s to place, and the value it is '
             'given is the value it keeps',
       );
 
@@ -529,7 +538,8 @@ void main() {
       expect(
         scene.crate.transformRotation[crate],
         frozen,
-        reason: 'freezing a body must not hand it to the round-trip that '
+        reason:
+            'freezing a body must not hand it to the round-trip that '
             'static bodies are now kept out of',
       );
     });
@@ -585,7 +595,11 @@ void main() {
         _advance(1);
       }
 
-      expect(pushed, greaterThan(0.5), reason: 'the force should have moved it');
+      expect(
+        pushed,
+        greaterThan(0.5),
+        reason: 'the force should have moved it',
+      );
       expect(
         scene.crate.linearVelocityX[crate],
         closeTo(speedWhilePushed, 0.5),
@@ -678,13 +692,15 @@ void main() {
       expect(
         scene.crate.transformOffsetY[crate],
         closeTo(stopped, 1e-6),
-        reason: 'the solver does not move a static body, so two seconds of '
+        reason:
+            'the solver does not move a static body, so two seconds of '
             'gravity should leave it exactly where it was',
       );
       expect(
         scene.crate.linearVelocityY[crate],
         closeTo(0, 1e-6),
-        reason: 'a static body does not keep the velocity it was '
+        reason:
+            'a static body does not keep the velocity it was '
             'carrying',
       );
     });
@@ -707,7 +723,8 @@ void main() {
       expect(
         scene.floor.transformOffsetY[floor],
         lessThan(-11),
-        reason: 'about a second of free fall, less the ticks the write spent '
+        reason:
+            'about a second of free fall, less the ticks the write spent '
             'reaching the solver',
       );
     });
@@ -721,8 +738,13 @@ void main() {
       _retype = (crate, BodyType2D.kinematicBody);
       _advance(3);
       final coasting = scene.crate.linearVelocityY[crate];
-      expect(coasting, lessThan(-0.4), reason: 'it was falling when it '
-          'changed, and Box2D leaves a kinematic body the velocity it had');
+      expect(
+        coasting,
+        lessThan(-0.4),
+        reason:
+            'it was falling when it '
+            'changed, and Box2D leaves a kinematic body the velocity it had',
+      );
 
       _advance(60);
 
@@ -732,7 +754,8 @@ void main() {
       expect(
         scene.crate.linearVelocityY[crate],
         closeTo(coasting, 1e-6),
-        reason: 'a kinematic body coasts at whatever velocity it has - a '
+        reason:
+            'a kinematic body coasts at whatever velocity it has - a '
             'still-dynamic one would have gained about 9.8 m/s',
       );
     });
@@ -758,7 +781,8 @@ void main() {
       expect(
         scene.crate.transformOffsetY[crate],
         closeTo(parked, 1e-6),
-        reason: 'the change has to have taken effect for the rest of this '
+        reason:
+            'the change has to have taken effect for the rest of this '
             'test to be about anything',
       );
 
@@ -768,14 +792,16 @@ void main() {
       expect(
         scene.crate.bodyHandle[crate],
         handle,
-        reason: 'a type change must not rebuild the body - a new handle here '
+        reason:
+            'a type change must not rebuild the body - a new handle here '
             'would mean its shapes and joints had been dropped with the old '
             'one',
       );
       expect(
         scene.crate.transformOffsetY[crate],
         closeTo(-8.5, 0.1),
-        reason: 'it still has the box collider it was created with, so it '
+        reason:
+            'it still has the box collider it was created with, so it '
             'lands on the floor rather than falling through where its '
             'shapes used to be',
       );
@@ -805,7 +831,8 @@ void main() {
         expect(
           scene.crate.transformOffsetX[crates[i]],
           closeTo(i * 2.0, 1e-3),
-          reason: 'crate $i drifted sideways, which would mean scratch slots '
+          reason:
+              'crate $i drifted sideways, which would mean scratch slots '
               'and component rows got out of step',
         );
       }
@@ -917,15 +944,19 @@ void main() {
       scene.addEntity(scene.crate);
       _advance(2);
 
-      expect(physics.activeWorkerCount, greaterThan(0),
-          reason: 'a world should exist while the game is running');
+      expect(
+        physics.activeWorkerCount,
+        greaterThan(0),
+        reason: 'a world should exist while the game is running',
+      );
 
       await run.stop();
 
       expect(
         physics.activeWorkerCount,
         0,
-        reason: 'stopping should have released the world, so there is no '
+        reason:
+            'stopping should have released the world, so there is no '
             'longer one to report a worker count for',
       );
     });
@@ -962,7 +993,8 @@ void main() {
       expect(
         scene.crate.transformOffsetY[crate],
         closeTo(-5.0, 0.2),
-        reason: 'one second of free fall is the same physics on any number '
+        reason:
+            'one second of free fall is the same physics on any number '
             'of threads',
       );
     }, timeout: const Timeout(Duration(seconds: 30)));
@@ -997,7 +1029,8 @@ void main() {
       expect(
         y,
         closeTo(0, 0.5),
-        reason: 'the anchor is at +10 and the tether is 10 long, so the crate '
+        reason:
+            'the anchor is at +10 and the tether is 10 long, so the crate '
             'hangs at about 0; free fall would have it near -20. The anchor '
             'has to be genuinely above the crate for this to mean anything - '
             'below it, the crate would be balanced on top of a rigid tether '
@@ -1063,11 +1096,7 @@ void main() {
       crate.destroy();
       _advance(1);
 
-      expect(
-        joint.exists,
-        isFalse,
-        reason: 'the joint went with the body',
-      );
+      expect(joint.exists, isFalse, reason: 'the joint went with the body');
       // All of these must be no-ops on the stale handle.
       joint
         ..setMotor(speed: 1, maxEffort: 1)
@@ -1131,7 +1160,8 @@ void main() {
       expect(
         settled,
         greaterThan(-15),
-        reason: 'suspended, not in free fall - three seconds unconstrained is '
+        reason:
+            'suspended, not in free fall - three seconds unconstrained is '
             'about 45 m below the anchor, and down is a smaller y',
       );
       expect(

@@ -46,7 +46,7 @@ class _Scene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    particle = descriptor.has(_Particle());
+    particle = descriptor.has(_Particle.new);
   }
 }
 
@@ -117,8 +117,10 @@ final List<String> _rows = <String>[];
 
 void main() {
   tearDownAll(() {
-    print('\n$_population entities held constant, '
-        '$_churnPerTick spawned+destroyed per tick');
+    print(
+      '\n$_population entities held constant, '
+      '$_churnPerTick spawned+destroyed per tick',
+    );
     print('(if this column is flat, churn is not the cause)\n');
     print('   tick     ms/tick        live    walked   pages');
     print('   ------------------------------------------------');
@@ -216,7 +218,8 @@ void main() {
     expect(
       extent.rows,
       lessThan((live * 1.25).round()),
-      reason: 'walked extent (${extent.rows}) should track live population '
+      reason:
+          'walked extent (${extent.rows}) should track live population '
           '($live); a large gap is the fragmentation this bench exists to '
           'catch',
     );

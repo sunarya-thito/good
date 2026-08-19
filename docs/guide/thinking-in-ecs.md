@@ -73,13 +73,7 @@ The `speed` field becomes a column on the prefab:
 
 ```dart
 class Orc extends EntityStruct with Transform2D, Renderable2D {
-  late final DataPointer<double> speed;
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    speed = data.hasFloat64(200);   // what a fresh orc starts at
-  }
+  final speed = Field.float64(200);   // what a fresh orc starts at
 }
 ```
 
@@ -143,7 +137,7 @@ own entities and nothing else:
 ```dart
 class Orc extends EntityStruct
     with Transform2D, Renderable2D, EntityLifecycleListener {
-  // ... `speed` and its describeStruct as above
+  // ... `speed` as above
 
   @override
   void onEntityMounted(Entity entity) {
@@ -269,17 +263,15 @@ final ty = orc.transformOffsetY[target];
 
 ### Storing a handle in a column
 
-`hasEntity()` declares a column of `Entity` handles. It is the same 64-bit
+`Field.entity()` declares a column of `Entity` handles. It is the same 64-bit
 column the packed handle has always been stored in, with the type on it, so a
 handle and a score can no longer be assigned to each other:
 
 ```dart
-late final DataPointer<Entity> owner;
-// ...
-owner = data.hasEntity();
+final owner = Field.entity();
 ```
 
-Where the link can be absent — which is the usual case — `optEntity()` adds a
+Where the link can be absent — which is the usual case — `Field.optEntity()` adds a
 presence flag beside the handle, so `null` is the "no target" state. That
 matters because `Entity(0)` is a real handle (archetype 0, page 0, row 0), so
 there is no spare value to reserve as a sentinel. The engine's own hierarchy
@@ -287,15 +279,8 @@ links are built that way:
 
 ```dart
 class Missile extends EntityStruct with Transform2D, Renderable2D {
-  late final DataPointer<Entity?> target;
-  late final DataPointer<int> targetStamp;  // which entity that handle meant
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    target = data.optEntity();
-    targetStamp = data.hasInt64();
-  }
+  final target = Field.optEntity();
+  final targetStamp = Field.int64();  // which entity that handle meant
 }
 ```
 
@@ -325,15 +310,9 @@ number beside it that only the intended entity carries:
 ```dart
 class Orc extends EntityStruct
     with Transform2D, Renderable2D, Health, EntityLifecycleListener {
-  late final DataPointer<int> stamp;
+  final stamp = Field.int64();
 
   int _nextStamp = 1;   // per-prefab counter, not per-entity state — this is fine
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    stamp = data.hasInt64();
-  }
 
   @override
   void onEntityMounted(Entity entity) {
@@ -392,8 +371,8 @@ mixins, each contributing columns and a queryable type.
 
 ```dart
 mixin Character on Component {
-  late final DataPointer<double> moveSpeed;
-  late final DataPointer<double> turnSpeed;
+  final moveSpeed = Field.float64(120);
+  final turnSpeed = Field.float64(4);
 
   @override
   void describeType(ComponentDescriptor component) {
@@ -401,29 +380,16 @@ mixin Character on Component {
     component.has<Character>();
   }
 
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    moveSpeed = data.hasFloat64(120);
-    turnSpeed = data.hasFloat64(4);
-  }
 }
 
 mixin Hostile on Component {
-  late final DataPointer<double> aggroRadius;
-  late final DataPointer<int> contactDamage;
+  final aggroRadius = Field.float64(220);
+  final contactDamage = Field.int32(5);
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<Hostile>();
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    aggroRadius = data.hasFloat64(220);
-    contactDamage = data.hasInt32(5);
   }
 }
 ```
@@ -473,12 +439,12 @@ health" needs `Character` to be a real mixin that every prefab applies. Two
 prefabs that happen to have identically named fields share nothing; identity
 comes from the declaration, never from the field names.
 
-**`super` discipline is load-bearing.** Every `describeType` and
-`describeStruct` override must call `super`, because each mixin in the chain
-contributes. Skipping it silently drops everything below it, and the failure
-surfaces much later as a query matching nothing or a
-`LateInitializationError` on mount. There is no equivalent footgun in a class
-hierarchy, where the compiler wires the base constructor for you.
+**`super` discipline is load-bearing.** Every `describeType` override must call
+`super`, because each mixin in the chain contributes. Skipping it silently drops
+everything below it, and the failure surfaces much later as a query matching
+nothing. There is no equivalent footgun in a class hierarchy, where the compiler
+wires the base constructor for you. Columns are exempt now that they are field
+initialisers - Dart runs the whole chain of those without being asked.
 
 ### When to stop and write a second prefab
 
@@ -516,22 +482,15 @@ everything.
 ### An enum in a column, for states that exclude each other
 
 This is the engine's own pattern. `RigidBody2D` declares its body type with
-`hasEnum`, which stores the member's index in the narrowest column it fits —
+`Field.enumOf`, which stores the member's index in the narrowest column it fits —
 two bits for three or four members. Your gameplay states work the same way:
 
 ```dart
 enum OrcState { idle, chasing, attacking, staggered }
 
 class Orc extends EntityStruct with Transform2D, Renderable2D, Character {
-  late final DataPointer<OrcState> state;
-  late final DataPointer<double> stateTime;
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    state = data.hasEnum(OrcState.values, OrcState.idle);  // two bits
-    stateTime = data.hasFloat64();
-  }
+  final state = Field.enumOf(OrcState.values, OrcState.idle);  // two bits
+  final stateTime = Field.float64();
 
   /// The one place a transition happens, so entry work has one home.
   void enter(Entity entity, OrcState next) {
@@ -588,11 +547,8 @@ Stunned, burning, invulnerable and shielded are not one state machine. They are
 four independent bits, and an enum cannot hold them at once:
 
 ```dart
-late final DataPointer<bool> burning;
-late final DataPointer<bool> invulnerable;
-
-burning = data.hasBool();        // one bit each
-invulnerable = data.hasBool();
+final burning = Field.boolean();        // one bit each
+final invulnerable = Field.boolean();
 ```
 
 ```dart
@@ -848,8 +804,8 @@ class Arena extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    player = descriptor.has(Player());
-    orc = descriptor.has(Orc());
+    player = descriptor.has(Player.new);
+    orc = descriptor.has(Orc.new);
   }
 
   @override
@@ -1105,8 +1061,7 @@ no lock and no copy.
 
 Now the other side, which most ECS writing skips.
 
-**You pay up front.** Adding a field means editing `describeStruct` and picking
-a width and a default. There is no inspector to drag a value into, so tuning a
+**You pay up front.** Adding a field means picking a width and a default. There is no inspector to drag a value into, so tuning a
 number means a constant in code or a slider you wired yourself. Behaviour that
 would have been ten lines in a MonoBehaviour becomes a class, a query and a
 registration. Three files open where one used to be.

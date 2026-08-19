@@ -176,13 +176,7 @@ class Crate extends EntityStruct
   /// Seconds of flash remaining. A component field rather than plain Dart
   /// state on the prefab, because it is per *entity* - the prefab is one
   /// object shared by every crate.
-  late final DataPointer<double> flash;
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    flash = data.hasFloat64();
-  }
+  final flash = Field.float64();
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -269,13 +263,7 @@ class Ball extends EntityStruct
   late final Sprite body;
   late final CircleBody circle;
 
-  late final DataPointer<double> flash;
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    flash = data.hasFloat64();
-  }
+  final flash = Field.float64();
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -357,7 +345,11 @@ class Ball extends EntityStruct
 /// where it was, which looks like the physics having drifted out of sync with
 /// the graphics. [SandboxSystem] rebuilds these entities instead.
 class Ground extends EntityStruct
-    with Transform2D, Renderable2D, Collider2D, RigidBody2D,
+    with
+        Transform2D,
+        Renderable2D,
+        Collider2D,
+        RigidBody2D,
         EntityLifecycleListener {
   late final Sprite body;
   late final BoxBody box;
@@ -404,7 +396,11 @@ class Ground extends EntityStruct
 ///
 /// Sizes itself per entity for the same reason [Ground] does.
 class Wall extends EntityStruct
-    with Transform2D, Renderable2D, Collider2D, RigidBody2D,
+    with
+        Transform2D,
+        Renderable2D,
+        Collider2D,
+        RigidBody2D,
         EntityLifecycleListener {
   late final Sprite body;
   late final BoxBody box;
@@ -463,11 +459,11 @@ class Sandbox extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    crate = descriptor.has(Crate());
-    ball = descriptor.has(Ball());
-    ground = descriptor.has(Ground());
-    wall = descriptor.has(Wall());
-    eye = descriptor.has(Eye());
+    crate = descriptor.has(Crate.new);
+    ball = descriptor.has(Ball.new);
+    ground = descriptor.has(Ground.new);
+    wall = descriptor.has(Wall.new);
+    eye = descriptor.has(Eye.new);
   }
 
   /// The camera. Held so [SandboxSystem] can rezoom it when the arena
@@ -823,7 +819,6 @@ class PhysicsGame extends DemoGame {
   /// Whether it took effect is [solverThreads], which asks Box2D rather than
   /// echoing this back.
   int solverWorkerCount = defaultSolverWorkers();
-
 
   /// Microseconds `Box2DPhysicsSystem` spent in the last fixed step - staging
   /// transforms, `b2World_Step`, writing them back and dispatching contacts,

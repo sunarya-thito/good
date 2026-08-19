@@ -11,7 +11,6 @@ import 'package:goo2d/goo2d.dart';
 /// one inline run per isolate means one binding is enough.
 late Game run;
 
-
 // The seam: GameRenderer2D writes bytes, DrawCanvas2D reads them, and nothing
 // in between re-derives the layout. render_2d_test.dart checks the producer
 // against hand-decoded bytes and draw_canvas_2d_test.dart checks the consumer
@@ -40,8 +39,9 @@ class _Sprite extends EntityStruct
 /// observable in a single crossing.
 class _Billboard extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  static final TextureKey tileAsset =
-      TextureKey(MemorySource(_png2x1, name: 'tile.png'));
+  static final TextureKey tileAsset = TextureKey(
+    MemorySource(_png2x1, name: 'tile.png'),
+  );
 
   late final TextureAsset tile;
   late final Sprite front;
@@ -85,8 +85,8 @@ class _Scene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    sprite = descriptor.has(_Sprite());
-    billboard = descriptor.has(_Billboard());
+    sprite = descriptor.has(_Sprite.new);
+    billboard = descriptor.has(_Billboard.new);
   }
 }
 
@@ -117,7 +117,10 @@ class _Game extends Game2D {
 /// Exactly the two steps `GameView` performs on a tick notification.
 DrawCanvas2D _present(_Game game) {
   final canvas = DrawCanvas2D(assets: assets);
-  final frames = run.state.getSystem<GameRenderer2D>().framesFor(game.view).buffer;
+  final frames = run.state
+      .getSystem<GameRenderer2D>()
+      .framesFor(game.view)
+      .buffer;
   final slot = frames.beginRead();
   expect(slot, isNotNull, reason: 'the renderer published a frame this tick');
   expect(
@@ -167,52 +170,57 @@ void main() {
     ComponentTypeRegistry.reset();
   });
 
-  test('a hierarchy simulated on one end comes out as geometry on the other',
-      () async {
-    final game = await _boot();
-    final scene = run.state.getScene<_Scene>();
+  test(
+    'a hierarchy simulated on one end comes out as geometry on the other',
+    () async {
+      final game = await _boot();
+      final scene = run.state.getScene<_Scene>();
 
-    final parent = scene.addEntity(scene.sprite);
-    scene.sprite
-      ..transformOffsetX[parent] = 100
-      ..transformOffsetY[parent] = 100
-      ..transformScaleX[parent] = 2
-      ..transformScaleY[parent] = 2;
+      final parent = scene.addEntity(scene.sprite);
+      scene.sprite
+        ..transformOffsetX[parent] = 100
+        ..transformOffsetY[parent] = 100
+        ..transformScaleX[parent] = 2
+        ..transformScaleY[parent] = 2;
 
-    final child = scene.addEntity(scene.sprite, parent: parent);
-    scene.sprite.transformOffsetX[child] = 10;
-    scene.sprite.quad
-      ..width[child] = 4
-      ..height[child] = 4
-      ..color[child] = 0xFF00FF00;
+      final child = scene.addEntity(scene.sprite, parent: parent);
+      scene.sprite.transformOffsetX[child] = 10;
+      scene.sprite.quad
+        ..width[child] = 4
+        ..height[child] = 4
+        ..color[child] = 0xFF00FF00;
 
-    run.state.advance(const Duration(milliseconds: 10));
+      run.state.advance(const Duration(milliseconds: 10));
 
-    final canvas = _present(game);
-    addTearDown(canvas.dispose);
+      final canvas = _present(game);
+      addTearDown(canvas.dispose);
 
-    expect(canvas.frameTick, 1);
-    expect(canvas.vertexCount, 6, reason: 'only the child is sized');
-    // Child at parent-local (10,0) under a 2x scale: world centre (120,100),
-    // which world +y up projects to canvas (120,-100), half extent 4 after
-    // scaling. Vertex order is the fan split 0-1-2 / 0-2-3.
-    expect(canvas.positions, [
-      116, -104, //
-      124, -104, //
-      124, -96, //
-      116, -104, //
-      124, -96, //
-      116, -96, //
-    ]);
-    expect(canvas.colors.first.toUnsigned(32), 0xFF00FF00);
-    expect(canvas.runCount, 1);
-    expect(canvas.runTextureAt(0), DrawSpriteData2D.noTexture,
-        reason: 'no texture was ever set on this prefab, so the sentinel has '
-            'to survive the crossing as faithfully as a real address would');
-  });
+      expect(canvas.frameTick, 1);
+      expect(canvas.vertexCount, 6, reason: 'only the child is sized');
+      // Child at parent-local (10,0) under a 2x scale: world centre (120,100),
+      // which world +y up projects to canvas (120,-100), half extent 4 after
+      // scaling. Vertex order is the fan split 0-1-2 / 0-2-3.
+      expect(canvas.positions, [
+        116, -104, //
+        124, -104, //
+        124, -96, //
+        116, -104, //
+        124, -96, //
+        116, -96, //
+      ]);
+      expect(canvas.colors.first.toUnsigned(32), 0xFF00FF00);
+      expect(canvas.runCount, 1);
+      expect(
+        canvas.runTextureAt(0),
+        DrawSpriteData2D.noTexture,
+        reason:
+            'no texture was ever set on this prefab, so the sentinel has '
+            'to survive the crossing as faithfully as a real address would',
+      );
+    },
+  );
 
-  test('a texture address survives the crossing and drives the run split',
-      () async {
+  test('a texture address survives the crossing and drives the run split', () async {
     final game = await _boot();
     final scene = run.state.getScene<_Scene>();
     scene.addEntity(scene.billboard);
@@ -226,38 +234,49 @@ void main() {
     expect(
       [for (var r = 0; r < canvas.runCount; r++) canvas.runTextureAt(r)],
       [address, DrawSpriteData2D.noTexture, address],
-      reason: 'z 0,1,2 is back, middle, front - so the two same-texture '
+      reason:
+          'z 0,1,2 is back, middle, front - so the two same-texture '
           'sprites are separated by the untextured one and must stay in three '
           'runs. Merging them would be one fewer draw call and the middle '
           'sprite painted over something that is meant to be in front of it.',
     );
-    expect(canvas.texCoords.sublist(0, 12), [0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1],
-        reason: 'a plain sprite samples the whole texture, and the producer '
-            'writes the UVs in the same fan split the positions use');
+    expect(
+      canvas.texCoords.sublist(0, 12),
+      [0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1],
+      reason:
+          'a plain sprite samples the whole texture, and the producer '
+          'writes the UVs in the same fan split the positions use',
+    );
   });
 
-  test('the address the producer wrote resolves to a shader on replay',
-      () async {
-    final game = await _boot();
-    final scene = run.state.getScene<_Scene>();
-    scene.addEntity(scene.billboard);
-    run.state.advance(const Duration(milliseconds: 10));
-    final canvas = _present(game);
-    addTearDown(canvas.dispose);
+  test(
+    'the address the producer wrote resolves to a shader on replay',
+    () async {
+      final game = await _boot();
+      final scene = run.state.getScene<_Scene>();
+      scene.addEntity(scene.billboard);
+      run.state.advance(const Duration(milliseconds: 10));
+      final canvas = _present(game);
+      addTearDown(canvas.dispose);
 
-    expect(scene.billboard.tile.isLoaded, isTrue,
-        reason: 'loadScene decodes the scene declared assets on the isolate '
+      expect(
+        scene.billboard.tile.isLoaded,
+        isTrue,
+        reason:
+            'loadScene decodes the scene declared assets on the isolate '
             'that can - which is the half of the arrangement that makes an '
-            'address written by a producer that cannot decode resolvable here');
+            'address written by a producer that cannot decode resolvable here',
+      );
 
-    // The full trip: bytes the producer wrote -> address -> registry -> live
-    // Texture -> ui.Image -> ImageShader -> a real Picture. Nothing in this
-    // chain is stubbed, and a stale or mis-encoded address would throw rather
-    // than paint nothing.
-    final recorder = PictureRecorder();
-    expect(() => canvas.replay(Canvas(recorder)), returnsNormally);
-    final picture = recorder.endRecording();
-    addTearDown(picture.dispose);
-    expect(picture, isNotNull);
-  });
+      // The full trip: bytes the producer wrote -> address -> registry -> live
+      // Texture -> ui.Image -> ImageShader -> a real Picture. Nothing in this
+      // chain is stubbed, and a stale or mis-encoded address would throw rather
+      // than paint nothing.
+      final recorder = PictureRecorder();
+      expect(() => canvas.replay(Canvas(recorder)), returnsNormally);
+      final picture = recorder.endRecording();
+      addTearDown(picture.dispose);
+      expect(picture, isNotNull);
+    },
+  );
 }

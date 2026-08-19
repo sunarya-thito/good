@@ -86,25 +86,14 @@ class _Mote extends EntityStruct
     with Transform2D, Renderable2D, EntityLifecycleListener {
   late final Sprite body;
 
-  late final DataPointer<double> angle;
-  late final DataPointer<double> radius;
-  late final DataPointer<double> spin;
-  late final DataPointer<double> life;
-  late final DataPointer<double> lifespan;
-  late final DataPointer<double> baseSize;
+  final angle = Field.float64();
+  final radius = Field.float64();
+  final spin = Field.float64();
+  final life = Field.float64();
+  final lifespan = Field.float64();
+  final baseSize = Field.float64();
 
   int _spawned = 0;
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    angle = data.hasFloat64();
-    radius = data.hasFloat64();
-    spin = data.hasFloat64();
-    life = data.hasFloat64();
-    lifespan = data.hasFloat64();
-    baseSize = data.hasFloat64();
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -141,7 +130,7 @@ class _Galaxy extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    mote = descriptor.has(_Mote());
+    mote = descriptor.has(_Mote.new);
   }
 
   @override
@@ -157,10 +146,7 @@ class _Probe extends GameSystem {
   @override
   void describeQuery(QueryDescriptor descriptor) {
     super.describeQuery(descriptor);
-    renderables = descriptor
-        .query()
-        .withAll(Renderable2D, Transform2D)
-        .build();
+    renderables = descriptor.query().withAll(Renderable2D, Transform2D).build();
   }
 }
 
@@ -200,7 +186,6 @@ class _Cell {
     required this.zQuad,
   });
 
-
   /// ns per sprite, from the ablation loops.
   final double rowOrder;
   final double zOrder;
@@ -235,10 +220,8 @@ double _readFields(
     acc += transform.transformRotation[entity];
     acc += transform.transformOffsetX[entity];
     acc += transform.transformOffsetY[entity];
-    acc +=
-        sprite.pivotFractionX[entity] * width + sprite.pivotOffsetX[entity];
-    acc +=
-        sprite.pivotFractionY[entity] * height + sprite.pivotOffsetY[entity];
+    acc += sprite.pivotFractionX[entity] * width + sprite.pivotOffsetX[entity];
+    acc += sprite.pivotFractionY[entity] * height + sprite.pivotOffsetY[entity];
     acc += transform.transformScaleX[entity];
     acc += transform.transformScaleY[entity];
     acc += sprite.texture[entity] == null ? 0 : 1;
@@ -266,10 +249,8 @@ double _readFieldsAndTrig(
     acc += math.cos(rotation) + math.sin(rotation);
     acc += transform.transformOffsetX[entity];
     acc += transform.transformOffsetY[entity];
-    acc +=
-        sprite.pivotFractionX[entity] * width + sprite.pivotOffsetX[entity];
-    acc +=
-        sprite.pivotFractionY[entity] * height + sprite.pivotOffsetY[entity];
+    acc += sprite.pivotFractionX[entity] * width + sprite.pivotOffsetX[entity];
+    acc += sprite.pivotFractionY[entity] * height + sprite.pivotOffsetY[entity];
     acc += transform.transformScaleX[entity];
     acc += transform.transformScaleY[entity];
     acc += sprite.texture[entity] == null ? 0 : 1;
@@ -443,7 +424,8 @@ Future<_Cell> _measure(int count) async {
 
   final scratch = ByteData(DrawData2D.batchHeaderBytes + count * 72);
 
-  double stageRow() => _readFields(sprite, transform, entities, rowOrder, count);
+  double stageRow() =>
+      _readFields(sprite, transform, entities, rowOrder, count);
   double stageZ() => _readFields(sprite, transform, entities, zOrder, count);
   double stageTrig() =>
       _readFieldsAndTrig(sprite, transform, entities, zOrder, count);
@@ -486,8 +468,10 @@ void main() {
 
   tearDownAll(() {
     final report = StringBuffer()
-      ..writeln('\nns per sprite ($_timedTicks ticks, $_ablationPasses '
-          'ablation passes)\n')
+      ..writeln(
+        '\nns per sprite ($_timedTicks ticks, $_ablationPasses '
+        'ablation passes)\n',
+      )
       ..writeln('                    ablation stages')
       ..writeln('   sprites     row     z    +trig  +quad')
       ..writeln('   ${'-' * 44}');

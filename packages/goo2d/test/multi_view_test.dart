@@ -7,7 +7,6 @@ import 'package:goo2d/goo2d.dart';
 /// one inline run per isolate means one binding is enough.
 late Game run;
 
-
 // Two views, two cameras, two scenes - the thing the whole camera-view design
 // exists for, asserted end to end.
 //
@@ -15,7 +14,8 @@ late Game run;
 // exercises the single-view path (render_2d_test, game_view_test). This file
 // is the one that would fail if per-view rendering were quietly still global.
 
-class _Sprite extends EntityStruct with Transform2D, WorldTransform2D, Renderable2D {
+class _Sprite extends EntityStruct
+    with Transform2D, WorldTransform2D, Renderable2D {
   late final Sprite quad;
 
   @override
@@ -39,8 +39,8 @@ class _Level extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    sprite = descriptor.has(_Sprite());
-    eye = descriptor.has(_Eye());
+    sprite = descriptor.has(_Sprite.new);
+    eye = descriptor.has(_Eye.new);
   }
 }
 
@@ -59,8 +59,8 @@ class _Overlay extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    sprite = descriptor.has(_Sprite());
-    eye = descriptor.has(_Eye());
+    sprite = descriptor.has(_Sprite.new);
+    eye = descriptor.has(_Eye.new);
   }
 }
 
@@ -153,21 +153,29 @@ void main() {
     // only the ones sharing a scene with its camera - which is what replaced
     // the deleted global front scene. Without that scoping both views would
     // draw all three sprites and this would read six.
-    expect(run.state.getSystem<GameRenderer2D>().lastSpriteCount, 3,
-        reason: 'one sprite for the level view, two for the overlay view');
+    expect(
+      run.state.getSystem<GameRenderer2D>().lastSpriteCount,
+      3,
+      reason: 'one sprite for the level view, two for the overlay view',
+    );
 
     // And they landed in *different* buffers, carrying different amounts.
     final levelBytes = _publishedBytes(game, game.defaultCamera);
     final overlayBytes = _publishedBytes(game, game.minimap);
     expect(levelBytes, isNotNull);
     expect(overlayBytes, isNotNull);
-    expect(overlayBytes! > levelBytes!, isTrue,
-        reason: 'two quads occupy more of a slot than one - the two views did '
-            'not write the same bytes, which is the whole claim');
+    expect(
+      overlayBytes! > levelBytes!,
+      isTrue,
+      reason:
+          'two quads occupy more of a slot than one - the two views did '
+          'not write the same bytes, which is the whole claim',
+    );
   });
 
-  testWidgets('a view whose camera is elsewhere still draws its own scene',
-      (tester) async {
+  testWidgets('a view whose camera is elsewhere still draws its own scene', (
+    tester,
+  ) async {
     final game = await _start();
     final state = run.state as _MultiState;
 
@@ -181,9 +189,13 @@ void main() {
     // publishes an empty frame rather than borrowing the level's.
     final levelBytes = _publishedBytes(game, game.defaultCamera)!;
     final minimapBytes = _publishedBytes(game, game.minimap)!;
-    expect(minimapBytes < levelBytes, isTrue,
-        reason: 'an empty scene draws nothing, and must not fall back to '
-            'whatever another view is looking at');
+    expect(
+      minimapBytes < levelBytes,
+      isTrue,
+      reason:
+          'an empty scene draws nothing, and must not fall back to '
+          'whatever another view is looking at',
+    );
   });
 
   testWidgets('two GameViews on two cameras both paint', (tester) async {
@@ -210,13 +222,17 @@ void main() {
     run.state.advance(_step);
     await tester.pump();
 
-    expect(find.byType(CustomPaint), findsNWidgets(2),
-        reason: 'one painter per view, each fed by its own surface');
+    expect(
+      find.byType(CustomPaint),
+      findsNWidgets(2),
+      reason: 'one painter per view, each fed by its own surface',
+    );
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('each GameView reports its own size to its own view',
-      (tester) async {
+  testWidgets('each GameView reports its own size to its own view', (
+    tester,
+  ) async {
     final game = await _start();
     final state = run.state as _MultiState;
     final eye = state.level.handle.addEntity(state.level.eye);
@@ -226,8 +242,16 @@ void main() {
       Row(
         textDirection: TextDirection.ltr,
         children: <Widget>[
-          SizedBox(width: 200, height: 100, child: GameView(camera: game.defaultCamera)),
-          SizedBox(width: 600, height: 400, child: GameView(camera: game.minimap)),
+          SizedBox(
+            width: 200,
+            height: 100,
+            child: GameView(camera: game.defaultCamera),
+          ),
+          SizedBox(
+            width: 600,
+            height: 400,
+            child: GameView(camera: game.minimap),
+          ),
         ],
       ),
     );
@@ -241,8 +265,9 @@ void main() {
     expect(game.minimap.viewportHeight, 400);
   });
 
-  testWidgets('the pointer picks against the view it is actually over',
-      (tester) async {
+  testWidgets('the pointer picks against the view it is actually over', (
+    tester,
+  ) async {
     final game = await _start();
     final state = run.state as _MultiState;
 
@@ -263,22 +288,40 @@ void main() {
     final picking = run.state.getSystem<MousePickingSystem>();
 
     game.inputDevice!.movePointer(
-      screenX: 0, screenY: 0, viewX: 200, viewY: 200, view: game.defaultCamera);
+      screenX: 0,
+      screenY: 0,
+      viewX: 200,
+      viewY: 200,
+      view: game.defaultCamera,
+    );
     run.state.runFixedStep();
     expect(game.pointerView, same(game.defaultCamera));
-    expect(picking.worldSpace.x, 0,
-        reason: 'the centre of a view is where its camera is, and the level '
-            'camera is at the origin');
+    expect(
+      picking.worldSpace.x,
+      0,
+      reason:
+          'the centre of a view is where its camera is, and the level '
+          'camera is at the origin',
+    );
 
     game.inputDevice!.movePointer(
-      screenX: 0, screenY: 0, viewX: 200, viewY: 200, view: game.minimap);
+      screenX: 0,
+      screenY: 0,
+      viewX: 200,
+      viewY: 200,
+      view: game.minimap,
+    );
     run.state.runFixedStep();
     expect(game.pointerView, same(game.minimap));
-    expect(picking.worldSpace.x, 1000,
-        reason: 'same pixel, different view - so a different world point. '
-            'Projecting through the first declared view instead would report '
-            '0 here, which is a click landing on something the user is not '
-            'even looking at');
+    expect(
+      picking.worldSpace.x,
+      1000,
+      reason:
+          'same pixel, different view - so a different world point. '
+          'Projecting through the first declared view instead would report '
+          '0 here, which is a click landing on something the user is not '
+          'even looking at',
+    );
   });
 
   // NOT COVERED: that `MousePosition.viewSize` follows the pointer between two
@@ -306,13 +349,18 @@ void main() {
   testWidgets('a pointer over no view reports none', (tester) async {
     final game = await _start();
     game.inputDevice!.movePointer(screenX: 10, screenY: 10);
-    expect(game.pointerView, isNull,
-        reason: 'a headless harness driving the cursor names no view, and '
-            'that is not an error - picking falls back to the first');
+    expect(
+      game.pointerView,
+      isNull,
+      reason:
+          'a headless harness driving the cursor names no view, and '
+          'that is not an error - picking falls back to the first',
+    );
   });
 
-  testWidgets('two GameViews on the same camera share one surface',
-      (tester) async {
+  testWidgets('two GameViews on the same camera share one surface', (
+    tester,
+  ) async {
     final game = await _start();
     final state = run.state as _MultiState;
     state.level.handle.addEntity(state.level.sprite);

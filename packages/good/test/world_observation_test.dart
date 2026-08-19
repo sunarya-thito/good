@@ -45,10 +45,10 @@ class _Scene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    rock = descriptor.has(_Rock());
-    tree = descriptor.has(_Tree());
-    node = descriptor.has(_Node());
-    watched = descriptor.has(_Watched());
+    rock = descriptor.has(_Rock.new);
+    tree = descriptor.has(_Tree.new);
+    node = descriptor.has(_Node.new);
+    watched = descriptor.has(_Watched.new);
   }
 }
 
@@ -139,28 +139,32 @@ void main() {
     expect(
       observer.spawned,
       containsAll(<Entity>[rock, tree]),
-      reason: 'an EntitySpawnListener on a GameSystem should hear entities of '
+      reason:
+          'an EntitySpawnListener on a GameSystem should hear entities of '
           'archetypes it has no relationship with - that is the whole point '
           'of the broad scope',
     );
   });
 
-  test('spawn observation does not disturb the narrow lifecycle event',
-      () async {
-    final (_, scene) = await _boot();
+  test(
+    'spawn observation does not disturb the narrow lifecycle event',
+    () async {
+      final (_, scene) = await _boot();
 
-    scene.handle.addEntity(scene.rock);
-    scene.handle.addEntity(scene.watched);
-    scene.handle.addEntity(scene.watched);
+      scene.handle.addEntity(scene.rock);
+      scene.handle.addEntity(scene.watched);
+      scene.handle.addEntity(scene.watched);
 
-    expect(
-      _Watched.mounted,
-      2,
-      reason: "the struct's own onEntityMounted must still fire only for its "
-          'own entities, not for the rock',
-    );
-    expect(observer.spawned.length, 3, reason: 'the observer saw all three');
-  });
+      expect(
+        _Watched.mounted,
+        2,
+        reason:
+            "the struct's own onEntityMounted must still fire only for its "
+            'own entities, not for the rock',
+      );
+      expect(observer.spawned.length, 3, reason: 'the observer saw all three');
+    },
+  );
 
   test('the prefab is told before the world observer', () async {
     // Something watching the whole world should see an entity whose own
@@ -213,11 +217,11 @@ void main() {
     order.clear();
     run.state.unloadScene(scene.handle);
 
-    expect(
-      order,
-      <String>['world.sceneUnloaded', 'world.despawned', 'world.despawned'],
-      reason: 'the scene must be reported once, before any of its entities',
-    );
+    expect(order, <String>[
+      'world.sceneUnloaded',
+      'world.despawned',
+      'world.despawned',
+    ], reason: 'the scene must be reported once, before any of its entities');
   });
 
   test('destroying one entity reports it, like unloading its scene', () async {
@@ -239,11 +243,9 @@ void main() {
     observer.despawned.clear();
     rock.destroy();
 
-    expect(
-      observer.despawned,
-      <Entity>[rock],
-      reason: 'destroy() must tell world observers, exactly as unload does',
-    );
+    expect(observer.despawned, <Entity>[
+      rock,
+    ], reason: 'destroy() must tell world observers, exactly as unload does');
     expect(
       observer.despawned,
       isNot(contains(keep)),
@@ -252,7 +254,8 @@ void main() {
     expect(
       order,
       <String>['world.despawned'],
-      reason: 'broad before narrow, matching the scene-unload path (_Rock has '
+      reason:
+          'broad before narrow, matching the scene-unload path (_Rock has '
           'no narrow listener of its own, so only the broad one appears)',
     );
   });

@@ -31,8 +31,8 @@ class _Scene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    defaultEye = descriptor.has(_DefaultEye());
-    wideEye = descriptor.has(_WideEye());
+    defaultEye = descriptor.has(_DefaultEye.new);
+    wideEye = descriptor.has(_WideEye.new);
   }
 }
 

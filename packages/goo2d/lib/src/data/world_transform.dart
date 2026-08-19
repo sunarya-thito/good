@@ -28,44 +28,28 @@ import 'package:goo2d/src/data/transform.dart';
 /// the exact result of transforming the origin through the real composed
 /// affine chain.
 mixin WorldTransform2D on Component {
-  late final DataPointer<double> worldX;
-  late final DataPointer<double> worldY;
-  late final DataPointer<double> worldScaleX;
-  late final DataPointer<double> worldScaleY;
-  late final DataPointer<double> worldRotation;
+  final worldX = Field.float64();
+  final worldY = Field.float64();
+  final worldScaleX = Field.float64(1);
+  final worldScaleY = Field.float64(1);
+  final worldRotation = Field.float64();
 
   // Change-detection cache, packed into the same row - not meant to be read
   // by anything outside WorldTransformSystem. Defaulted to NaN (offsets/
   // rotation) so the very first resolve for a freshly-spawned entity always
   // sees "changed" (NaN never compares equal to anything, including
   // itself) without a separate "have I ever run" flag.
-  late final DataPointer<double> _cachedOffsetX;
-  late final DataPointer<double> _cachedOffsetY;
-  late final DataPointer<double> _cachedRotation;
-  late final DataPointer<double> _cachedScaleX;
-  late final DataPointer<double> _cachedScaleY;
-  late final DataPointer<Entity?> _cachedParent;
+  final _cachedOffsetX = Field.float64(double.nan);
+  final _cachedOffsetY = Field.float64(double.nan);
+  final _cachedRotation = Field.float64(double.nan);
+  final _cachedScaleX = Field.float64(double.nan);
+  final _cachedScaleY = Field.float64(double.nan);
+  final _cachedParent = Field.optEntity();
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<WorldTransform2D>();
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    worldX = data.hasFloat64();
-    worldY = data.hasFloat64();
-    worldScaleX = data.hasFloat64(1);
-    worldScaleY = data.hasFloat64(1);
-    worldRotation = data.hasFloat64();
-    _cachedOffsetX = data.hasFloat64(double.nan);
-    _cachedOffsetY = data.hasFloat64(double.nan);
-    _cachedRotation = data.hasFloat64(double.nan);
-    _cachedScaleX = data.hasFloat64(double.nan);
-    _cachedScaleY = data.hasFloat64(double.nan);
-    _cachedParent = data.optEntity();
   }
 }
 

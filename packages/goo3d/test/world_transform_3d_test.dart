@@ -54,10 +54,10 @@ class _Scene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    node = descriptor.has(_Node());
-    leaf = descriptor.has(_Leaf());
-    group = descriptor.has(_Group());
-    prop = descriptor.has(_Prop());
+    node = descriptor.has(_Node.new);
+    leaf = descriptor.has(_Leaf.new);
+    group = descriptor.has(_Group.new);
+    prop = descriptor.has(_Prop.new);
   }
 }
 
@@ -209,25 +209,27 @@ void main() {
       }
     });
 
-    test('two quarter turns about the same axis compose into a half turn',
-        () async {
-      await _game();
-      final scene = run.state.getScene<_Scene>();
+    test(
+      'two quarter turns about the same axis compose into a half turn',
+      () async {
+        await _game();
+        final scene = run.state.getScene<_Scene>();
 
-      final root = scene.addEntity(scene.node);
-      root<Transform3D>().setEuler(yaw: math.pi / 2);
-      final child = scene.addEntity(scene.node, parent: root);
-      child<Transform3D>().setEuler(yaw: math.pi / 2);
+        final root = scene.addEntity(scene.node);
+        root<Transform3D>().setEuler(yaw: math.pi / 2);
+        final child = scene.addEntity(scene.node, parent: root);
+        child<Transform3D>().setEuler(yaw: math.pi / 2);
 
-      run.state.advance(_step);
+        run.state.advance(_step);
 
-      // A half turn about +Y is (0, 1, 0, 0) - and the quaternion product is
-      // what produces it, not an angle sum.
-      expect(scene.node.worldRotationX[child], closeTo(0, 1e-15));
-      expect(scene.node.worldRotationY[child], closeTo(1, 1e-15));
-      expect(scene.node.worldRotationZ[child], closeTo(0, 1e-15));
-      expect(scene.node.worldRotationW[child], closeTo(0, 1e-15));
-    });
+        // A half turn about +Y is (0, 1, 0, 0) - and the quaternion product is
+        // what produces it, not an angle sum.
+        expect(scene.node.worldRotationX[child], closeTo(0, 1e-15));
+        expect(scene.node.worldRotationY[child], closeTo(1, 1e-15));
+        expect(scene.node.worldRotationZ[child], closeTo(0, 1e-15));
+        expect(scene.node.worldRotationW[child], closeTo(0, 1e-15));
+      },
+    );
 
     test('rotating a parent swings its child around it', () async {
       await _game();
@@ -271,78 +273,84 @@ void main() {
       expect(scene.node.worldZ[child], closeTo(0, 1e-9));
     });
 
-    test('a grouping node with no world columns still composes its subtree',
-        () async {
-      await _game();
-      final scene = run.state.getScene<_Scene>();
+    test(
+      'a grouping node with no world columns still composes its subtree',
+      () async {
+        await _game();
+        final scene = run.state.getScene<_Scene>();
 
-      final root = scene.addEntity(scene.node);
-      scene.node.transformOffsetX[root] = 100;
+        final root = scene.addEntity(scene.node);
+        scene.node.transformOffsetX[root] = 100;
 
-      final middle = scene.addEntity(scene.group, parent: root);
-      scene.group.transformOffsetY[middle] = 5;
+        final middle = scene.addEntity(scene.group, parent: root);
+        scene.group.transformOffsetY[middle] = 5;
 
-      final leaf = scene.addEntity(scene.leaf, parent: middle);
-      scene.leaf.transformOffsetZ[leaf] = -2;
+        final leaf = scene.addEntity(scene.leaf, parent: middle);
+        scene.leaf.transformOffsetZ[leaf] = -2;
 
-      run.state.advance(_step);
+        run.state.advance(_step);
 
-      // The middle has nowhere to store a world transform, so it is composed
-      // only to be handed down.
-      expect(scene.leaf.worldX[leaf], 100);
-      expect(scene.leaf.worldY[leaf], 5);
-      expect(scene.leaf.worldZ[leaf], -2);
-    });
+        // The middle has nowhere to store a world transform, so it is composed
+        // only to be handed down.
+        expect(scene.leaf.worldX[leaf], 100);
+        expect(scene.leaf.worldY[leaf], 5);
+        expect(scene.leaf.worldZ[leaf], -2);
+      },
+    );
   });
 
   group('opting out', () {
-    test('an unparented entity with no WorldTransform3D is left alone',
-        () async {
-      await _game();
-      final scene = run.state.getScene<_Scene>();
+    test(
+      'an unparented entity with no WorldTransform3D is left alone',
+      () async {
+        await _game();
+        final scene = run.state.getScene<_Scene>();
 
-      final prop = scene.addEntity(scene.prop);
-      scene.prop
-        ..transformOffsetX[prop] = 3
-        ..transformOffsetY[prop] = -8
-        ..transformOffsetZ[prop] = 12;
-      prop<Transform3D>().setEuler(yaw: 1.1);
+        final prop = scene.addEntity(scene.prop);
+        scene.prop
+          ..transformOffsetX[prop] = 3
+          ..transformOffsetY[prop] = -8
+          ..transformOffsetZ[prop] = 12;
+        prop<Transform3D>().setEuler(yaw: 1.1);
 
-      run.state.advance(_step);
-      run.state.advance(_step);
+        run.state.advance(_step);
+        run.state.advance(_step);
 
-      // Its local transform *is* its world transform, and the system does not
-      // touch it - a prop that is never parented pays nothing.
-      expect(scene.prop.transformOffsetX[prop], 3);
-      expect(scene.prop.transformOffsetY[prop], -8);
-      expect(scene.prop.transformOffsetZ[prop], 12);
-      expect(prop<Transform3D>().yaw, closeTo(1.1, 1e-12));
-    });
+        // Its local transform *is* its world transform, and the system does not
+        // touch it - a prop that is never parented pays nothing.
+        expect(scene.prop.transformOffsetX[prop], 3);
+        expect(scene.prop.transformOffsetY[prop], -8);
+        expect(scene.prop.transformOffsetZ[prop], 12);
+        expect(prop<Transform3D>().yaw, closeTo(1.1, 1e-12));
+      },
+    );
 
-    test('a childless archetype resolves world from its own local transform',
-        () async {
-      await _game();
-      final scene = run.state.getScene<_Scene>();
+    test(
+      'a childless archetype resolves world from its own local transform',
+      () async {
+        await _game();
+        final scene = run.state.getScene<_Scene>();
 
-      final entity = scene.addEntity(scene.leaf);
-      scene.leaf
-        ..transformOffsetX[entity] = 12
-        ..transformOffsetY[entity] = -4
-        ..transformOffsetZ[entity] = 6
-        ..transformScaleX[entity] = 3
-        ..transformScaleZ[entity] = 0.5;
-      entity<Transform3D>().setEuler(roll: 1.5);
+        final entity = scene.addEntity(scene.leaf);
+        scene.leaf
+          ..transformOffsetX[entity] = 12
+          ..transformOffsetY[entity] = -4
+          ..transformOffsetZ[entity] = 6
+          ..transformScaleX[entity] = 3
+          ..transformScaleZ[entity] = 0.5;
+        entity<Transform3D>().setEuler(roll: 1.5);
 
-      run.state.advance(_step);
+        run.state.advance(_step);
 
-      expect(scene.leaf.worldX[entity], 12);
-      expect(scene.leaf.worldY[entity], -4);
-      expect(scene.leaf.worldZ[entity], 6);
-      expect(scene.leaf.worldScaleX[entity], 3);
-      expect(scene.leaf.worldScaleZ[entity], 0.5);
-      expect(scene.leaf.worldRotationZ[entity], math.sin(0.75));
-      expect(scene.leaf.worldRotationW[entity], math.cos(0.75));
-    });
+        expect(scene.leaf.worldX[entity], 12);
+        expect(scene.leaf.worldY[entity], -4);
+        expect(scene.leaf.worldZ[entity], 6);
+        expect(scene.leaf.worldScaleX[entity], 3);
+        expect(scene.leaf.worldScaleZ[entity], 0.5);
+        expect(scene.leaf.worldRotationZ[entity], math.sin(0.75));
+        expect(scene.leaf.worldRotationW[entity], math.cos(0.75));
+      },
+    );
   });
 
   group('change-detection caching', () {
@@ -363,7 +371,8 @@ void main() {
       expect(
         scene.node.worldX[entity],
         _sentinel,
-        reason: 'the system must have skipped this entity entirely - a real '
+        reason:
+            'the system must have skipped this entity entirely - a real '
             'recompute would have overwritten the sentinel with 42 again, not '
             'merely happened to leave it alone',
       );
@@ -407,7 +416,8 @@ void main() {
       expect(
         scene.node.worldX[child],
         105,
-        reason: 'the child never touched its own local offset, but its world '
+        reason:
+            'the child never touched its own local offset, but its world '
             'position must still follow its parent',
       );
     });
@@ -445,7 +455,8 @@ void main() {
       expect(
         scene.leaf.worldX[child],
         510,
-        reason: 'the fast path must invalidate the cache on its way past, or '
+        reason:
+            'the fast path must invalidate the cache on its way past, or '
             'this reads back a world transform that was never composed',
       );
     });
@@ -464,7 +475,8 @@ void main() {
       expect(
         scene.node.worldX[spawned],
         33,
-        reason: 'the main pass reads the last published snapshot and cannot '
+        reason:
+            'the main pass reads the last published snapshot and cannot '
             'see a write made earlier in its own tick, so the spawn list is '
             'what makes this right',
       );
@@ -486,7 +498,8 @@ void main() {
       expect(
         scene.node.worldX[spawner.spawned!],
         207,
-        reason: 'the splice into the parent\'s child list happened this tick, '
+        reason:
+            'the splice into the parent\'s child list happened this tick, '
             'so the top-down walk never reached this entity at all',
       );
     });

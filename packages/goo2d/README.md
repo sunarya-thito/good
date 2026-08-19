@@ -21,14 +21,8 @@ import 'package:goo2d/goo2d.dart';
 
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final DataPointer<double> speed;
+  final speed = Field.float64(220);
   late final Sprite sprite;
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    speed = data.hasFloat64(220);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {

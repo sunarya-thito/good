@@ -57,8 +57,8 @@ class _Scene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor d) {
     super.describeScene(d);
-    wall = d.has(_Wall());
-    hidden = d.has(_Hidden());
+    wall = d.has(_Wall.new);
+    hidden = d.has(_Hidden.new);
   }
 }
 
@@ -135,7 +135,8 @@ void main() {
     expect(
       physics.raycast(0, 0, 5, 0),
       isFalse,
-      reason: 'the ray stops at x=5, short of the wall at x=9 - the '
+      reason:
+          'the ray stops at x=5, short of the wall at x=9 - the '
           'translation IS the length',
     );
     expect(physics.raycast(0, 50, 20, 0), isFalse, reason: 'well above it');

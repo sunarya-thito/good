@@ -35,7 +35,7 @@ class _Level extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    thing = descriptor.has(_Thing());
+    thing = descriptor.has(_Thing.new);
   }
 }
 

@@ -261,15 +261,35 @@ class _HasVisitor extends RecursiveAstVisitor<void> {
   }
 }
 
-/// The type name [argument] constructs, or null if it does not look like a
-/// constructor call.
+/// The type name [argument] names a constructor of, or null if it does not
+/// look like one.
 ///
-/// `Player()` and `new Player()` both count. The first arrives as a
-/// `MethodInvocation` because a parsed unit has no resolution to tell a
-/// constructor from a function, so the initial capital is what distinguishes
-/// them - Dart's own lints enforce that convention, and a false negative here
-/// costs one asset a place in the shared chunk rather than correctness.
+/// `Player.new` is what `describeScene` takes, and without resolution it
+/// arrives as a `PrefixedIdentifier` whose identifier is the keyword `new` -
+/// nothing else in the language reads that way, so no capitalisation guess is
+/// needed for this spelling. A prefab with constructor arguments is wrapped
+/// in a closure, `() => Bullet(speed: 5)`, and that is unwrapped here too.
+///
+/// `Player()` and `new Player()` are still read even though neither compiles
+/// against `SceneDescriptor.has` any more: this scanner runs over whatever
+/// source it is pointed at, and an unmigrated file should still contribute
+/// its prefab to the chunking rather than land in `unresolved`. `Player()`
+/// arrives as a `MethodInvocation` because a parsed unit has no resolution to
+/// tell a constructor from a function, so the initial capital is what
+/// distinguishes them - Dart's own lints enforce that convention, and a false
+/// negative here costs one asset a place in the shared chunk rather than
+/// correctness.
 String? _constructedTypeName(Expression argument) {
+  if (argument is PrefixedIdentifier && argument.identifier.name == 'new') {
+    return argument.prefix.name;
+  }
+  if (argument is FunctionExpression) {
+    final body = argument.body;
+    if (body is ExpressionFunctionBody) {
+      return _constructedTypeName(body.expression);
+    }
+    return null;
+  }
   if (argument is InstanceCreationExpression) {
     return argument.constructorName.type.name2.lexeme;
   }

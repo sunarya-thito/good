@@ -21,18 +21,12 @@ late Game run;
 // no row-by-row reclamation, which `Entity` has no spare bits to make safe.
 
 mixin _Marked on Component {
-  late final DataPointer<int> mark;
+  final mark = Field.uint16(3);
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<_Marked>();
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    mark = data.hasUint16(3);
   }
 }
 
@@ -49,7 +43,7 @@ class _Level extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    unit = descriptor.has(_Unit());
+    unit = descriptor.has(_Unit.new);
   }
 
   @override

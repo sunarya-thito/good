@@ -10,13 +10,7 @@ class _Turret extends EntityStruct with Transform3D {}
 // entity through the other's DataPointer would address the wrong storage and
 // these tests would say so.
 class _Enemy extends EntityStruct with Transform3D {
-  late final DataPointer<int> health;
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    health = data.hasInt32(100);
-    super.describeStruct(data);
-  }
+  final health = Field.int32(100);
 }
 
 class _Scene extends SceneStruct {
@@ -35,8 +29,8 @@ class _Scene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    turret = descriptor.has(_Turret());
-    enemy = descriptor.has(_Enemy());
+    turret = descriptor.has(_Turret.new);
+    enemy = descriptor.has(_Enemy.new);
   }
 }
 
@@ -75,7 +69,8 @@ void main() {
       expect(
         scene.turret.transformRotationW[entity],
         1,
-        reason: 'w defaults to 1, not to the field default of 0 - an all-zero '
+        reason:
+            'w defaults to 1, not to the field default of 0 - an all-zero '
             'quaternion is not a rotation at all',
       );
       expect(scene.turret.transformScaleX[entity], 1);
@@ -129,7 +124,10 @@ void main() {
 
     test('yaw turns about +Y: a quarter turn faces -X', () {
       final scene = _scene();
-      final entity = _turret(scene, (e) => e<Transform3D>().setEuler(yaw: math.pi / 2));
+      final entity = _turret(
+        scene,
+        (e) => e<Transform3D>().setEuler(yaw: math.pi / 2),
+      );
       expect(entity<Transform3D>().forwardX, closeTo(-1, _tolerance));
       expect(entity<Transform3D>().forwardY, closeTo(0, _tolerance));
       expect(entity<Transform3D>().forwardZ, closeTo(0, _tolerance));
@@ -140,7 +138,10 @@ void main() {
 
     test('pitch turns about +X: a quarter turn looks straight up', () {
       final scene = _scene();
-      final entity = _turret(scene, (e) => e<Transform3D>().setEuler(pitch: math.pi / 2));
+      final entity = _turret(
+        scene,
+        (e) => e<Transform3D>().setEuler(pitch: math.pi / 2),
+      );
       expect(entity<Transform3D>().forwardX, closeTo(0, _tolerance));
       expect(entity<Transform3D>().forwardY, closeTo(1, _tolerance));
       expect(entity<Transform3D>().forwardZ, closeTo(0, _tolerance));
@@ -148,10 +149,16 @@ void main() {
 
     test('roll turns about +Z, which leaves forward alone', () {
       final scene = _scene();
-      final entity = _turret(scene, (e) => e<Transform3D>().setEuler(roll: math.pi / 2));
+      final entity = _turret(
+        scene,
+        (e) => e<Transform3D>().setEuler(roll: math.pi / 2),
+      );
       expect(entity<Transform3D>().forwardZ, closeTo(-1, _tolerance));
-      expect(entity<Transform3D>().upX, closeTo(-1, _tolerance),
-          reason: 'a quarter roll puts the entity\'s up along -X');
+      expect(
+        entity<Transform3D>().upX,
+        closeTo(-1, _tolerance),
+        reason: 'a quarter roll puts the entity\'s up along -X',
+      );
       expect(entity<Transform3D>().rightY, closeTo(1, _tolerance));
     });
 
@@ -226,19 +233,24 @@ void main() {
       expect(entity<Transform3D>().upZ, closeTo(1, _tolerance));
     });
 
-    test('a target at the entity\'s own position leaves the rotation alone',
-        () {
-      final scene = _scene();
-      final entity = _turret(scene, (e) => e<Transform3D>().setEuler(yaw: 0.75));
-      scene.pool.beginTick();
-      entity<Transform3D>().lookAt(0, 0, 0);
-      scene.pool.commitTick();
-      expect(
-        entity<Transform3D>().yaw,
-        closeTo(0.75, _tolerance),
-        reason: 'there is no direction to face, so nothing should be written',
-      );
-    });
+    test(
+      'a target at the entity\'s own position leaves the rotation alone',
+      () {
+        final scene = _scene();
+        final entity = _turret(
+          scene,
+          (e) => e<Transform3D>().setEuler(yaw: 0.75),
+        );
+        scene.pool.beginTick();
+        entity<Transform3D>().lookAt(0, 0, 0);
+        scene.pool.commitTick();
+        expect(
+          entity<Transform3D>().yaw,
+          closeTo(0.75, _tolerance),
+          reason: 'there is no direction to face, so nothing should be written',
+        );
+      },
+    );
   });
 
   group('the accessor the helpers hang off', () {
@@ -275,7 +287,8 @@ void main() {
       expect(
         scene.enemy.health[enemy],
         100,
-        reason: 'the write must not have gone through _Turret\'s offsets, '
+        reason:
+            'the write must not have gone through _Turret\'s offsets, '
             'which would land on _Enemy\'s leading field',
       );
     });
@@ -295,7 +308,8 @@ void main() {
       expect(
         enemy<Transform3D>().distanceTo(turret),
         7,
-        reason: 'symmetric, and neither side is read through the other\'s row '
+        reason:
+            'symmetric, and neither side is read through the other\'s row '
             'layout - _Enemy has an extra leading field',
       );
     });

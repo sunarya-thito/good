@@ -40,7 +40,7 @@ class _Scene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    box = descriptor.has(_Box());
+    box = descriptor.has(_Box.new);
   }
 }
 
@@ -121,58 +121,63 @@ void main() {
     ComponentTypeRegistry.reset();
   });
 
-  test('an area effector pushes bodies inside it and nothing outside',
-      () async {
-    final scene = await _boot();
-    final inside = scene.add();
-    final outside = scene.add();
-    effectors.once = () => scene.box.transformOffsetX[outside] = 100;
-    _advance(2);
+  test(
+    'an area effector pushes bodies inside it and nothing outside',
+    () async {
+      final scene = await _boot();
+      final inside = scene.add();
+      final outside = scene.add();
+      effectors.once = () => scene.box.transformOffsetX[outside] = 100;
+      _advance(2);
 
-    effectors.each = (physics) =>
-        physics.areaEffector(-10, -10, 10, 10, forceX: 50);
-    _advance(60);
+      effectors.each = (physics) =>
+          physics.areaEffector(-10, -10, 10, 10, forceX: 50);
+      _advance(60);
 
-    expect(
-      scene.box.transformOffsetX[inside],
-      greaterThan(1),
-      reason: 'a body in the region should be pushed along +x',
-    );
-    expect(
-      scene.box.transformOffsetX[outside],
-      closeTo(100, 0.5),
-      reason: 'and one outside it must not be touched - an effector that '
-          'moved everything would pass a test that only looked inside',
-    );
-  });
+      expect(
+        scene.box.transformOffsetX[inside],
+        greaterThan(1),
+        reason: 'a body in the region should be pushed along +x',
+      );
+      expect(
+        scene.box.transformOffsetX[outside],
+        closeTo(100, 0.5),
+        reason:
+            'and one outside it must not be touched - an effector that '
+            'moved everything would pass a test that only looked inside',
+      );
+    },
+  );
 
-  test('a point effector repels on positive force and attracts on negative',
-      () async {
-    final scene = await _boot();
-    final body = scene.add();
-    effectors.once = () => scene.box.transformOffsetX[body] = 3;
-    _advance(2);
+  test(
+    'a point effector repels on positive force and attracts on negative',
+    () async {
+      final scene = await _boot();
+      final body = scene.add();
+      effectors.once = () => scene.box.transformOffsetX[body] = 3;
+      _advance(2);
 
-    effectors.each =
-        (physics) => physics.pointEffector(0, 0, radius: 10, force: 400);
-    _advance(45);
-    final pushed = scene.box.transformOffsetX[body];
-    expect(pushed, greaterThan(3.5), reason: 'positive force pushes away');
+      effectors.each = (physics) =>
+          physics.pointEffector(0, 0, radius: 10, force: 400);
+      _advance(45);
+      final pushed = scene.box.transformOffsetX[body];
+      expect(pushed, greaterThan(3.5), reason: 'positive force pushes away');
 
-    // Same effector, negative force: it must pull back, not merely stop. The
-    // radius has to cover where the repel actually left it - at 20 the body
-    // had already been pushed to x=22 and simply sat outside the region,
-    // which reads as "attraction does nothing" rather than "bad test".
-    scene.box.setVelocity(body, 0, 0);
-    effectors.each =
-        (physics) => physics.pointEffector(0, 0, radius: 60, force: -400);
-    _advance(45);
-    expect(
-      scene.box.transformOffsetX[body],
-      lessThan(pushed),
-      reason: 'negative force attracts, matching Unity',
-    );
-  });
+      // Same effector, negative force: it must pull back, not merely stop. The
+      // radius has to cover where the repel actually left it - at 20 the body
+      // had already been pushed to x=22 and simply sat outside the region,
+      // which reads as "attraction does nothing" rather than "bad test".
+      scene.box.setVelocity(body, 0, 0);
+      effectors.each = (physics) =>
+          physics.pointEffector(0, 0, radius: 60, force: -400);
+      _advance(45);
+      expect(
+        scene.box.transformOffsetX[body],
+        lessThan(pushed),
+        reason: 'negative force attracts, matching Unity',
+      );
+    },
+  );
 
   test('a point effector does not reach past its radius', () async {
     // The region searched is a square AABB but the effect is a circle. Without
@@ -187,14 +192,15 @@ void main() {
       ..transformOffsetY[corner] = 6;
     _advance(2);
 
-    effectors.each =
-        (physics) => physics.pointEffector(0, 0, radius: 7, force: 4000);
+    effectors.each = (physics) =>
+        physics.pointEffector(0, 0, radius: 7, force: 4000);
     _advance(60);
 
     expect(
       scene.box.transformOffsetX[corner],
       closeTo(6, 0.5),
-      reason: 'a body 8.49 from the centre is outside a radius of 7, even '
+      reason:
+          'a body 8.49 from the centre is outside a radius of 7, even '
           'though it sits inside the square the broad phase searched',
     );
   });
@@ -223,7 +229,8 @@ void main() {
     expect(
       y,
       lessThan(2),
-      reason: 'and settled near it rather than being fired out of the water - '
+      reason:
+          'and settled near it rather than being fired out of the water - '
           'the depth cap is what makes it settle instead of launching',
     );
   });

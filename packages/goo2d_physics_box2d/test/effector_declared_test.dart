@@ -75,8 +75,8 @@ class _Scene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    box = descriptor.has(_Box());
-    zone = descriptor.has(_Zone());
+    box = descriptor.has(_Box.new);
+    zone = descriptor.has(_Zone.new);
   }
 }
 
@@ -159,7 +159,8 @@ void main() {
     expect(
       scene.box.linearVelocityY[box],
       lessThan(-1),
-      reason: 'the wind blows toward -y and gravity is off, so nothing else '
+      reason:
+          'the wind blows toward -y and gravity is off, so nothing else '
           'in this scene could have moved the body at all',
     );
   });
@@ -192,7 +193,8 @@ void main() {
     expect(
       scene.box.linearVelocityY[box],
       closeTo(coasting, 0.001),
-      reason: 'a disabled effector applies no further force, so an undamped '
+      reason:
+          'a disabled effector applies no further force, so an undamped '
           'body coasts',
     );
     expect(

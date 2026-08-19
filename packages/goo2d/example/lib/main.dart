@@ -156,10 +156,10 @@ class MainScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    playerPrefab = descriptor.has(Player());
-    enemyPrefab = descriptor.has(Enemy());
-    wingmanPrefab = descriptor.has(Wingman());
-    eyePrefab = descriptor.has(Eye());
+    playerPrefab = descriptor.has(Player.new);
+    enemyPrefab = descriptor.has(Enemy.new);
+    wingmanPrefab = descriptor.has(Wingman.new);
+    eyePrefab = descriptor.has(Eye.new);
   }
 
   /// Runs on the game isolate before the first tick. Writing component data

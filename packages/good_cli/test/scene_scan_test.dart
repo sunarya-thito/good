@@ -66,7 +66,7 @@ class MenuScene extends SceneStruct {
 class FieldScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
-    descriptor.has(Bullet());
+    descriptor.has(Bullet.new);
   }
 }
 
@@ -82,17 +82,19 @@ class Bullet extends EntityStruct {
     expect(_scan(dir).byScene['FieldScene'], {'assets/hit.webp'});
   });
 
-  test('a bare constructor call is recognised, not just `new`', () {
-    // `Bullet()` arrives as a MethodInvocation in a parsed unit - the parser
-    // cannot tell a constructor from a function without resolution. Missing
-    // this silently detached every prefab from its scene, and the grouping
-    // still *looked* plausible.
+  test('every way of naming a prefab is recognised', () {
+    // `Bullet.new` is the spelling `SceneDescriptor.has` takes, and a prefab
+    // with constructor arguments is wrapped in a closure. `Bullet()` and
+    // `new Bullet()` no longer compile against it, but source that has not
+    // been migrated is still worth reading rather than dropping into
+    // `unresolved` - missing a prefab silently detaches it from its scene,
+    // and the grouping still *looks* plausible.
     final dir = _project(
       '''
 class A extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
-    descriptor.has(Bullet());
+    descriptor.has(Bullet.new);
   }
 }
 
@@ -100,6 +102,20 @@ class B extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     descriptor.has(new Bullet());
+  }
+}
+
+class C extends SceneStruct {
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    descriptor.has(Bullet());
+  }
+}
+
+class D extends SceneStruct {
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    descriptor.has(() => Bullet(speed: 5));
   }
 }
 
@@ -113,8 +129,9 @@ class Bullet extends EntityStruct {
       assets: <String>['hit.webp'],
     );
     final usage = _scan(dir);
-    expect(usage.byScene['A'], {'assets/hit.webp'});
-    expect(usage.byScene['B'], {'assets/hit.webp'});
+    for (final scene in ['A', 'B', 'C', 'D']) {
+      expect(usage.byScene[scene], {'assets/hit.webp'}, reason: scene);
+    }
     expect(usage.unresolved, isEmpty);
   });
 
@@ -157,14 +174,14 @@ class Level extends SceneStruct with FieldAssets {}
 class S extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
-    descriptor.has(A());
+    descriptor.has(A.new);
   }
 }
 
 class A extends EntityStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
-    descriptor.has(B());
+    descriptor.has(B.new);
   }
   @override
   void describeAssets(AssetDescriptor descriptor) {
@@ -175,7 +192,7 @@ class A extends EntityStruct {
 class B extends EntityStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
-    descriptor.has(A());
+    descriptor.has(A.new);
   }
 }
 ''',

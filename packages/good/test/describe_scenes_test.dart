@@ -21,18 +21,12 @@ late Game run;
 // and never recycled, so registering afresh per load would leak them.
 
 mixin _Marked on Component {
-  late final DataPointer<int> mark;
+  final mark = Field.uint8(3);
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<_Marked>();
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    mark = data.hasUint8(3);
   }
 }
 
@@ -44,7 +38,7 @@ class _Level extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    unit = descriptor.has(_Unit());
+    unit = descriptor.has(_Unit.new);
   }
 }
 

@@ -344,19 +344,19 @@ class _SpriteScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    sprite = descriptor.has(_Sprite());
-    invisible = descriptor.has(_Invisible());
-    group = descriptor.has(_Group());
-    twoSprite = descriptor.has(_TwoSprite());
-    halfHidden = descriptor.has(_HalfHidden());
-    stack = descriptor.has(_Stack());
-    topLeft = descriptor.has(_TopLeft());
-    eye = descriptor.has(_Eye());
-    texturedPair = descriptor.has(_Textured());
-    panel = descriptor.has(_Panel());
-    unsizedPanel = descriptor.has(_UnsizedPanel());
-    borderedUntextured = descriptor.has(_BorderedUntextured());
-    flat = descriptor.has(_Flat());
+    sprite = descriptor.has(_Sprite.new);
+    invisible = descriptor.has(_Invisible.new);
+    group = descriptor.has(_Group.new);
+    twoSprite = descriptor.has(_TwoSprite.new);
+    halfHidden = descriptor.has(_HalfHidden.new);
+    stack = descriptor.has(_Stack.new);
+    topLeft = descriptor.has(_TopLeft.new);
+    eye = descriptor.has(_Eye.new);
+    texturedPair = descriptor.has(_Textured.new);
+    panel = descriptor.has(_Panel.new);
+    unsizedPanel = descriptor.has(_UnsizedPanel.new);
+    borderedUntextured = descriptor.has(_BorderedUntextured.new);
+    flat = descriptor.has(_Flat.new);
   }
 }
 
@@ -761,7 +761,12 @@ void main() {
       await _game();
       final state = run.state;
       final first = state.getScene<_SpriteScene>();
-      _size(first.sprite, state.loadedScenes.single.addEntity(first.sprite), 10, 10);
+      _size(
+        first.sprite,
+        state.loadedScenes.single.addEntity(first.sprite),
+        10,
+        10,
+      );
 
       final second = await state.loadScene(_SpriteScene());
       final secondStruct = second.get<_SpriteScene>();
@@ -1408,8 +1413,22 @@ void main() {
       final game = await _game();
       final scene = run.state.getScene<_SpriteScene>();
       // Spread far wider than the 65,536-bucket cap, so the merge sort runs.
-      _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFF000003, 900000);
-      _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFF000001, -900000);
+      _size(
+        scene.sprite,
+        scene.addEntity(scene.sprite),
+        2,
+        2,
+        0xFF000003,
+        900000,
+      );
+      _size(
+        scene.sprite,
+        scene.addEntity(scene.sprite),
+        2,
+        2,
+        0xFF000001,
+        -900000,
+      );
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFF000002, 0);
 
       run.state.advance(_step);
@@ -1433,7 +1452,14 @@ void main() {
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFAA0002);
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFAA0003);
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFAA0004);
-      _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFFFFFFF, 500000);
+      _size(
+        scene.sprite,
+        scene.addEntity(scene.sprite),
+        2,
+        2,
+        0xFFFFFFFF,
+        500000,
+      );
 
       run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
@@ -1563,7 +1589,8 @@ void main() {
       expect(
         quad.x,
         (narrow..setAll(0, expectedX)).toList(),
-        reason: 'one rounding, not two - the corner must survive the trip '
+        reason:
+            'one rounding, not two - the corner must survive the trip '
             'through the queue unchanged',
       );
       expect(quad.y, (narrow..setAll(0, expectedY)).toList());
@@ -2079,7 +2106,10 @@ void main() {
 
     test('a grid cell is exact and needs no source size', () {
       const cell = SpriteFrame.grid(columns: 8, rows: 4, index: 5);
-      expect([cell.u, cell.v, cell.width, cell.height], [5 / 8, 0, 1 / 8, 1 / 4]);
+      expect(
+        [cell.u, cell.v, cell.width, cell.height],
+        [5 / 8, 0, 1 / 8, 1 / 4],
+      );
 
       const wrapped = SpriteFrame.grid(columns: 8, rows: 4, index: 11);
       expect(
@@ -2101,12 +2131,10 @@ void main() {
         sheetWidth: 1024,
         sheetHeight: 512,
       );
-      expect([region.u, region.v, region.width, region.height], [
-        0.5,
-        0.5,
-        0.125,
-        0.125,
-      ]);
+      expect(
+        [region.u, region.v, region.width, region.height],
+        [0.5, 0.5, 0.125, 0.125],
+      );
     });
 
     test('packing round-trips every lane, sign bit included', () {
@@ -2146,12 +2174,7 @@ void main() {
           for (var lane = 0; lane < 4; lane++)
             SpriteFrame.unpackLane(bits, lane),
         ],
-        [
-          object.u,
-          object.v,
-          object.u + object.width,
-          object.v + object.height,
-        ],
+        [object.u, object.v, object.u + object.width, object.v + object.height],
         reason:
             'the lanes are edges, not origin-and-extent - and the renderer '
             'reads them off the raw int to avoid building one of these per '
@@ -2162,10 +2185,14 @@ void main() {
     test('the full frame is the identity, and round-trips exactly', () {
       expect(SpriteFrame.full.isFull, isTrue);
       final back = SpriteFrame.unpack(SpriteFrame.full.pack());
-      expect([back.u, back.v, back.width, back.height], [0, 0, 1, 1],
-          reason: '0 and 1 are both exact at either end of the quantisation, '
-              'so an unframed sprite must be bit-for-bit unchanged rather than '
-              'off by a rounding step');
+      expect(
+        [back.u, back.v, back.width, back.height],
+        [0, 0, 1, 1],
+        reason:
+            '0 and 1 are both exact at either end of the quantisation, '
+            'so an unframed sprite must be bit-for-bit unchanged rather than '
+            'off by a rounding step',
+      );
       expect(back.isFull, isTrue);
     });
 
@@ -2174,8 +2201,16 @@ void main() {
       const b = SpriteFrames();
       expect(a.bitWidth, 64);
       expect(
-        a.unpack(const SpriteFrame.grid(columns: 2, rows: 2, index: 3).pack()).u,
-        b.unpack(const SpriteFrame.grid(columns: 2, rows: 2, index: 3).pack()).u,
+        a
+            .unpack(
+              const SpriteFrame.grid(columns: 2, rows: 2, index: 3).pack(),
+            )
+            .u,
+        b
+            .unpack(
+              const SpriteFrame.grid(columns: 2, rows: 2, index: 3).pack(),
+            )
+            .u,
         reason:
             'the int *is* the frame - two independently constructed '
             'representations must agree, because neither holds anything',
@@ -2227,11 +2262,12 @@ void main() {
         closeTo(1, q),
         closeTo(1, q),
       ]);
-      expect(
-        quads.firstWhere((q) => q.texture == -1).u,
-        [0, 1, 1, 0],
-        reason: 'and the untextured sprite beside it is untouched',
-      );
+      expect(quads.firstWhere((q) => q.texture == -1).u, [
+        0,
+        1,
+        1,
+        0,
+      ], reason: 'and the untextured sprite beside it is untouched');
     });
 
     test('a nine-sliced sprite cuts inside its frame, never outside', () async {
@@ -2263,9 +2299,9 @@ void main() {
         }
       }
       expect(
-        quads.map((q) => q.u.reduce((a, b) => a < b ? a : b)).reduce(
-          (a, b) => a < b ? a : b,
-        ),
+        quads
+            .map((q) => q.u.reduce((a, b) => a < b ? a : b))
+            .reduce((a, b) => a < b ? a : b),
         closeTo(0.5, 1e-4),
         reason: "the left column starts at the frame's own left edge",
       );

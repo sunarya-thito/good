@@ -36,8 +36,7 @@ late Game run;
 class _Counts {
   static final Map<String, _Counts> _byName = <String, _Counts>{};
 
-  static _Counts of(String name) =>
-      _byName.putIfAbsent(name, () => _Counts());
+  static _Counts of(String name) => _byName.putIfAbsent(name, () => _Counts());
 
   static void resetAll() => _byName.clear();
 
@@ -196,7 +195,7 @@ class _PropScene extends SceneStruct {
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
     for (final prefab in prefabs) {
-      descriptor.has(prefab);
+      descriptor.has(() => prefab);
     }
   }
 }
@@ -716,14 +715,11 @@ void main() {
   });
 
   group('address unpacking', () {
-    test(
-      'tryUnpack is null for a never-declared or out-of-range address',
-      () {
-        expect(assets.of<_FakePayload>().tryUnpack(0), isNull);
-        expect(assets.of<_FakePayload>().tryUnpack(-1), isNull);
-        expect(assets.of<_FakePayload>().tryUnpack(999), isNull);
-      },
-    );
+    test('tryUnpack is null for a never-declared or out-of-range address', () {
+      expect(assets.of<_FakePayload>().tryUnpack(0), isNull);
+      expect(assets.of<_FakePayload>().tryUnpack(-1), isNull);
+      expect(assets.of<_FakePayload>().tryUnpack(999), isNull);
+    });
 
     test('tryUnpack is null for the wrong type at a valid address', () {
       final instance = assets.declare(_FakeAsset('typed'));
@@ -968,7 +964,7 @@ class _BareScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    descriptor.has(_prefab);
+    descriptor.has(() => _prefab);
   }
 }
 

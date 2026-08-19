@@ -88,7 +88,7 @@ class _Field extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    mote = descriptor.has(_Mote());
+    mote = descriptor.has(_Mote.new);
   }
 
   @override

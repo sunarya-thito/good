@@ -25,14 +25,14 @@ class Critter extends EntityStruct
   late final Sprite body;
   late final TextureAsset texture;
 
-  late final DataPointer<double> angle;
-  late final DataPointer<double> radius;
-  late final DataPointer<double> spin;
+  final angle = Field.float64();
+  final radius = Field.float64();
+  final spin = Field.float64();
 
   /// Seconds left. A critter that expires takes its limbs with it, because
   /// `Scene.removeEntity` destroys the subtree - which is the cheapest
   /// demonstration there is that the hierarchy is real.
-  late final DataPointer<double> life;
+  final life = Field.float64();
 
   int _spawned = 0;
 
@@ -40,15 +40,6 @@ class Critter extends EntityStruct
   void describeAssets(AssetDescriptor descriptor) {
     super.describeAssets(descriptor);
     texture = descriptor.has(discTexture);
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    angle = data.hasFloat64();
-    radius = data.hasFloat64();
-    spin = data.hasFloat64();
-    life = data.hasFloat64();
   }
 
   @override
@@ -161,10 +152,10 @@ class Swarm extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    critter = descriptor.has(Critter());
-    limb = descriptor.has(Limb());
-    hub = descriptor.has(Hub());
-    eye = descriptor.has(Eye());
+    critter = descriptor.has(Critter.new);
+    limb = descriptor.has(Limb.new);
+    hub = descriptor.has(Hub.new);
+    eye = descriptor.has(Eye.new);
   }
 
   @override

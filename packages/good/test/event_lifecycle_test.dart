@@ -36,18 +36,12 @@ late Game run;
 // listener in, which `_Indexed` below does for a system.
 
 mixin _Marked on Component {
-  late final DataPointer<int> mark;
+  final mark = Field.uint8(7);
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<_Marked>();
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    mark = data.hasUint8(7);
   }
 }
 
@@ -117,7 +111,7 @@ class _Level extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    unit = descriptor.has(_Unit());
+    unit = descriptor.has(_Unit.new);
   }
 
   @override
@@ -180,8 +174,8 @@ class _NosyScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    nosy = descriptor.has(_Nosy());
-    aware = descriptor.has(_SceneAware());
+    nosy = descriptor.has(_Nosy.new);
+    aware = descriptor.has(_SceneAware.new);
   }
 }
 
@@ -245,8 +239,8 @@ class _TrackedScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    tracked = descriptor.has(_Tracked());
-    indexed = descriptor.has(_Indexed());
+    tracked = descriptor.has(_Tracked.new);
+    indexed = descriptor.has(_Indexed.new);
   }
 }
 
@@ -662,26 +656,28 @@ void main() {
       );
     });
 
-    test('destroy() fires the struct\'s own unmount, not scene unload only',
-        () async {
-      // The other stale claim: "there is no per-entity destroy yet - rows are
-      // not recycled - so scene unload is the only thing that fires this".
-      // Both halves were false, and the last change that trusted it leaked a
-      // Box2D body per destroyed entity.
-      final game = await _boot();
-      final scene = await run.state.loadScene(game.trackedScene);
-      final doomed = scene.addEntity(game.trackedScene.tracked);
-      final kept = scene.addEntity(game.trackedScene.tracked);
+    test(
+      'destroy() fires the struct\'s own unmount, not scene unload only',
+      () async {
+        // The other stale claim: "there is no per-entity destroy yet - rows are
+        // not recycled - so scene unload is the only thing that fires this".
+        // Both halves were false, and the last change that trusted it leaked a
+        // Box2D body per destroyed entity.
+        final game = await _boot();
+        final scene = await run.state.loadScene(game.trackedScene);
+        final doomed = scene.addEntity(game.trackedScene.tracked);
+        final kept = scene.addEntity(game.trackedScene.tracked);
 
-      doomed.destroy();
+        doomed.destroy();
 
-      expect(game.trackedScene.tracked.gone, [doomed]);
-      expect(
-        game.trackedScene.tracked.gone,
-        isNot(contains(kept)),
-        reason: 'and only the entity that was actually destroyed',
-      );
-    });
+        expect(game.trackedScene.tracked.gone, [doomed]);
+        expect(
+          game.trackedScene.tracked.gone,
+          isNot(contains(kept)),
+          reason: 'and only the entity that was actually destroyed',
+        );
+      },
+    );
   });
 
   group('bring-up and tear-down run in opposite orders', () {

@@ -15,13 +15,7 @@ late Game run;
 // rather than taking it on faith.
 
 class _Mover extends EntityStruct {
-  late final DataPointer<int> marker;
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    marker = data.hasInt32();
-  }
+  final marker = Field.int32();
 
   /// Waits, then writes. The write is the whole point: it has to land.
   Iterable stamp(Entity self, int value) sync* {
@@ -36,7 +30,7 @@ class _Scene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    mover = descriptor.has(_Mover());
+    mover = descriptor.has(_Mover.new);
   }
 }
 
