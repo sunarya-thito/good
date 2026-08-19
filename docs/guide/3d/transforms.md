@@ -54,11 +54,15 @@ thing that is also correct.
 The two conversions a game actually wants are helpers, not storage:
 
 ```dart
-transform.setEuler(entity, yaw: 0.5, pitch: 0.0, roll: 0.0);
-transform.lookAt(entity, targetX, targetY, targetZ);
+entity<Transform3D>().setEuler(yaw: 0.5, pitch: 0.0, roll: 0.0);
+entity<Transform3D>().lookAt(targetX, targetY, targetZ);
 ```
 
-Both write the four rotation columns. Neither allocates.
+Both write the four rotation columns. Neither allocates. They sit on
+`Accessor<Transform3D>` with the rest of what a transform does — `distanceTo`,
+the `yaw`/`pitch`/`roll` getters, and the forward, right and up axes. To write
+the same kind of helper for a component of your own, see
+[helpers go on an accessor](../entities-and-components.md#helpers-go-on-an-accessor).
 
 !!! warning "+Y is up"
     The world is right-handed with **+Y up** and **-Z forward**. That is what

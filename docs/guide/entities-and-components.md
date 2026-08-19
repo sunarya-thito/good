@@ -129,6 +129,16 @@ class Enemy() extends EntityStruct with Transform2D, Renderable2D, Health;
 Both `describeType` and `describeStruct` must call `super` — each mixin in the
 chain contributes, and skipping `super` silently drops everything below it.
 
+!!! warning "Field names collide across mixins"
+    A component is a mixin, so two of them declaring a field called `speed` is
+    not an error in Dart. It is an override: the later mixin in the `with`
+    clause wins, the row grows by both columns, and the earlier one's column can
+    no longer be reached under that name.
+
+    Pick names that will not collide. `Transform2D` calls its position columns
+    `transformOffsetX` and `transformOffsetY`, and a component you publish for
+    other people to mix in wants the same kind of prefix.
+
 ### Multi-components
 
 Some components are declared through their own descriptor instead of by
@@ -175,6 +185,94 @@ scale = data.hasFloat64(1);   // not 0 — a zero scale is a degenerate transfor
 It is the unconstrained escape hatch, and it does not cross the isolate
 boundary meaningfully — the address means something only in the isolate that
 registered it. Prefer `hasPacked` for anything the other side has to read.
+
+## Helpers go on an accessor
+
+`Health` gives you `hp` and `maxHp` and nothing that *does* anything with them.
+Methods like `damage` and `isDead` do not go on the mixin. They go on an
+extension of `Accessor<Health>`:
+
+```dart
+extension HealthAccessor on Accessor<Health> {
+  void damage(int amount) {
+    final health = component;
+    health.hp[this] = health.hp[this] - amount;
+  }
+
+  bool get isDead => component.hp[this] <= 0;
+}
+```
+
+You reach them through the entity:
+
+```dart
+enemy<Health>().damage(25);
+if (enemy<Health>().isDead) enemy.destroy();
+```
+
+That is a call and not an index, because an operator cannot be generic:
+`enemy[Health]` could only ever be typed `Null`.
+
+The convention is the whole of it — name the extension `<Component>Accessor`
+and hang it on `Accessor<YourComponent>`.
+
+### Inside the extension, `this` is the entity
+
+`Accessor<T>` implements `Entity`, so `this` is the row index and a column takes
+it directly. `component` is the `Health` the receiver's archetype declared,
+sugar for `get<Health>()`. That is a registry lookup, so hold it in a local when
+a helper touches it more than once.
+
+The rest of `Entity` is there too:
+
+```dart
+extension HealthAccessor on Accessor<Health> {
+  void kill() {
+    component.hp[this] = 0;
+    destroy();
+  }
+}
+```
+
+and an accessor goes anywhere an entity is wanted:
+
+```dart
+final target = enemy<Health>();
+player<Health>().drain(target, 5);
+```
+
+A helper that takes a *second* entity resolves that one's component itself:
+
+```dart
+extension HealthAccessor on Accessor<Health> {
+  void drain(Entity other, int amount) {
+    final mine = component;
+    final theirs = other.get<Health>();
+    theirs.hp[other] -= amount;
+    mine.hp[this] += amount;
+  }
+}
+```
+
+`other` may be a different prefab with a different row layout, and only the
+receiver is guaranteed to be this one. `mine.hp[other]` compiles, and reads
+*this* archetype's storage at the other entity's page and row — some unrelated
+entity's health, or nothing at all.
+
+### Two components can want the same method name
+
+`Accessor<Health>` and `Accessor<Transform3D>` are different types, so both can
+declare `distanceTo` and a file importing both still compiles. Two mixins
+declaring it collide.
+
+A method on the mixin also has to take the entity as an argument, because the
+`Health` it would run on is the prefab, one for the whole archetype, and belongs
+to no row in particular. Once two entities are in the signature, nothing in it
+says which one the receiver is about.
+
+None of this costs anything. `Accessor<T>` is an extension type over `Entity`,
+which is an extension type over `int`, so reaching a helper allocates nothing and
+`identical(enemy<Health>().entity, enemy)` is true.
 
 ## An archetype never changes
 

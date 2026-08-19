@@ -47,6 +47,10 @@ Deferred, and documented in place instead of left as silent gaps.
 - **Array-typed `DataDescriptor` fields** in the codegen path
 - **Z-ordering and culling** beyond declaration order and the `zIndex` sort
 - **Dependency-based system ordering** — `compareTo` is the mechanism today
+- **`goo2d`'s transform helpers are still on the mixin.** `Transform2D.lookAt`,
+  `distanceTo` and the rest take the entity as an argument
+  (`transform.lookAt(entity, x, y)`). The accessor form the guide teaches,
+  `entity<Transform2D>().lookAt(x, y)`, is `goo3d` only so far.
 - **Audio playback.** `AudioClip` decodes and the asset pipeline ships audio,
   but there is **no audio backend, no mixer and no voice management**. The asset
   half is done; the playback half is not.
