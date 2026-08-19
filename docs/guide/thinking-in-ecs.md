@@ -269,9 +269,19 @@ final ty = orc.transformOffsetY[target];
 
 ### Storing a handle in a column
 
-There is no `hasEntity()`. An `Entity` is a packed 64-bit int, so it is stored
-as one — `optInt64` when it can be absent, which is the usual case. The
-engine's own hierarchy links are built exactly this way:
+`hasEntity()` declares a column of `Entity` handles. It is the same 64-bit
+column the packed handle has always been stored in, with the type on it, so a
+handle and a score can no longer be assigned to each other:
+
+```dart
+late final DataPointer<Entity> owner;
+// ...
+owner = data.hasEntity();
+```
+
+There is no `optEntity()`. Where the link can be absent — which is the usual
+case — store it as `optInt64` and let `null` be the "no target" state. The
+engine's own hierarchy links are built that way:
 
 ```dart
 class Missile extends EntityStruct with Transform2D, Renderable2D {

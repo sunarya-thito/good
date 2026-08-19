@@ -163,6 +163,34 @@ class _BoolField extends DataPointer<bool> {
   bool readPending(Entity entity) => _raw.readPending(entity) != 0;
 }
 
+/// An `Entity` view over the `int64` field `hasEntity` declares.
+///
+/// Delegation for the same reason [_BoolField] delegates: the row
+/// resolution, the default stamping and the 64-bit load/store are already
+/// right in the `_Int64Field` this wraps (the one-fact-one-place rule).
+/// `data/hierarchy.dart`'s `_EntityField` is the nullable twin of this, over
+/// `optInt64`.
+///
+/// `Entity` is an extension type over `int`, so it erases: the value handed
+/// back is the very `int` the field read, and `Entity(...)` compiles to
+/// nothing. The wrapper costs one virtual call per access and no allocation.
+///
+/// `readPending` is deliberately not delegated - `_Int64Field` does not
+/// implement it, so forwarding would only move the `UnsupportedError` to a
+/// message naming the wrong class.
+class _EntityHandleField extends DataPointer<Entity> {
+  const _EntityHandleField(this._raw);
+
+  final DataPointer<int> _raw;
+
+  @override
+  Entity operator [](Entity entity) => Entity(_raw[entity]);
+
+  @override
+  void operator []=(Entity entity, Entity newValue) =>
+      _raw[entity] = newValue.value;
+}
+
 // --- sub-byte fields ---------------------------------------------------
 //
 // 1/2/4-bit fields never span a byte (see ArchetypeStorage.declareField),
@@ -1211,6 +1239,14 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
   @override
   DataPointer<int> hasInt64([int defaultValue = 0]) =>
       _has(64, true, defaultValue);
+
+  /// Signed 64-bit, like [hasInt64] and for its reason: `Entity.pack` shifts
+  /// the archetype id up into the sign position, so only a signed slot
+  /// round-trips every handle unchanged.
+  @override
+  DataPointer<Entity> hasEntity([Entity? defaultValue]) =>
+      _EntityHandleField(_has(64, true, defaultValue?.value ?? 0));
+
   @override
   DataPointer<double> hasFloat32([double defaultValue = 0.0]) =>
       _hasFloat(32, defaultValue);

@@ -50,6 +50,39 @@ abstract class DataDescriptor {
   // arithmetic anywhere yet.
   DataPointer<int> hasUint64([int defaultValue = 0]);
   DataPointer<int> hasInt64([int defaultValue = 0]);
+
+  /// A column holding an [Entity] handle - the same signed 64-bit storage
+  /// [hasInt64] gives, with the type saying what the column holds.
+  ///
+  /// `Entity` is an extension type over `int` (see struct.dart), so this is
+  /// the int64 read and write path exactly: no conversion, no allocation.
+  /// What changes is the declare and call sites - an entity handle and a
+  /// score stop being assignable to each other.
+  ///
+  /// With no [defaultValue] a fresh row reads `Entity(0)`, and that is a
+  /// real handle rather than a "nothing here" marker - it packs archetype 0,
+  /// page 0, row offset 0, which is some scene's first entity. Give a default
+  /// only when an entity genuinely is the right starting target; otherwise
+  /// write the column before anything reads it. For a link that is allowed to
+  /// be absent, `optInt64` wrapped the way `data/hierarchy.dart` wraps
+  /// `Child.parent` carries `null` as its own state.
+  ///
+  /// # A stored handle outlives the entity it names
+  ///
+  /// A handle is a row address (archetype id, page index, row offset).
+  /// Destroying an entity frees the row, and the next `addEntity` on that
+  /// archetype hands the row to a new entity whose handle is numerically
+  /// equal to the old one. So a handle kept across the destroy resolves to
+  /// whichever entity holds the row now, and reads and writes through it land
+  /// on that entity's data, with `get`/`tryGet` answering for the archetype
+  /// as usual.
+  ///
+  /// A link that outlives the tick it was made in therefore needs something
+  /// beside it: a stamp the target also carries, compared against the stored
+  /// one before the handle is trusted. `docs/guide/thinking-in-ecs.md` writes
+  /// that recipe out in full.
+  DataPointer<Entity> hasEntity([Entity? defaultValue]);
+
   DataPointer<double> hasFloat32([double defaultValue = 0.0]);
   DataPointer<double> hasFloat64([double defaultValue = 0.0]);
   DataPointer<int?> optUint1([int? defaultValue]);

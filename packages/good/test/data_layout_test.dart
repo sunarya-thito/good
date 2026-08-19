@@ -472,6 +472,79 @@ void main() {
     });
   });
 
+  group('entity handle (hasEntity) fields', () {
+    test('a stored handle round-trips, top bits included', () {
+      late DataPointer<Entity> target;
+      final h = _Harness((data) => target = data.hasEntity());
+      addTearDown(h.dispose);
+
+      final holder = h.spawn();
+      final other = h.spawn();
+      target[holder] = other;
+      expect(target[holder], other);
+      expect(target[holder].archetypeId, other.archetypeId);
+      expect(target[holder].rowOffset, other.rowOffset);
+
+      // A high archetype id puts bits in the top half of the handle, up to
+      // and including bit 63 - `Entity.pack` shifts the id up 48. These
+      // fixtures never get past archetype 0, so the pattern is written
+      // directly to prove the whole 64 bits come back.
+      const packed = Entity.pack(0xFFFF, 0xFFFF, 0xFFFFFFFF);
+      expect(packed.value < 0, isTrue, reason: 'the fixture must be negative');
+      target[holder] = packed;
+      expect(target[holder].value, packed.value);
+      expect(target[holder].archetypeId, 0xFFFF);
+      expect(target[holder].pageIndex, 0xFFFF);
+      expect(target[holder].rowOffset, 0xFFFFFFFF);
+    });
+
+    test('the declared default is stamped into new rows, recycled ones too', () {
+      const fallback = Entity.pack(3, 2, 128);
+      late DataPointer<Entity> target;
+      late DataPointer<Entity> undeclared;
+      final h = _Harness((data) {
+        target = data.hasEntity(fallback);
+        undeclared = data.hasEntity();
+      });
+      addTearDown(h.dispose);
+
+      final first = h.spawn();
+      expect(target[first], fallback);
+      // No default given: the row starts at the handle 0 packs, which is a
+      // real address (archetype 0, page 0, row 0) rather than a "none".
+      expect(undeclared[first], const Entity(0));
+
+      target[first] = h.spawn();
+      undeclared[first] = const Entity(77);
+      final page = h.prefab.archetype.pageAt(first.pageIndex);
+      page!.free(first.rowOffset);
+
+      final recycled = h.spawn();
+      expect(
+        recycled.rowOffset,
+        first.rowOffset,
+        reason: 'the row was recycled',
+      );
+      expect(target[recycled], fallback);
+      expect(undeclared[recycled], const Entity(0));
+    });
+
+    test('each row holds its own handle', () {
+      late DataPointer<Entity> target;
+      final h = _Harness((data) => target = data.hasEntity());
+      addTearDown(h.dispose);
+
+      final a = h.spawn();
+      final b = h.spawn();
+      final c = h.spawn();
+      target[a] = c;
+      target[b] = a;
+      target[c] = b;
+
+      expect([target[a], target[b], target[c]], [c, a, b]);
+    });
+  });
+
   group('tick semantics', () {
     test('reads see the last published tick while writes land in this one', () {
       late DataPointer<double> x;
