@@ -5,6 +5,11 @@
 This is the page to read slowly. good's storage model is the thing most unlike
 an object-oriented engine, and everything else follows from it.
 
+A column has to hold something, so the examples build 2D things. `Transform2D`,
+`Renderable2D` and `Collider2D` come from `goo2d`; the storage model underneath
+them is the kernel's and is the same either way. For the 3D components see
+[Transforms and hierarchy (3D)](3d/transforms.md).
+
 ## An `EntityStruct` is a layout, not an object
 
 ```dart

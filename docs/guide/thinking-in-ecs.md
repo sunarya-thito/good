@@ -13,7 +13,10 @@ shaped the way it is, what happens to the habits you have built, and worked
 answers to the eight things people actually get stuck on.
 
 All of it is kernel (`good`), so it holds in 2D and 3D alike. Where an example
-needs something concrete it reaches for `goo2d`.
+needs something concrete it reaches for `goo2d`, so the components you will see
+named — `Transform2D`, `Renderable2D`, `Collider2D` — are that package's and
+not the kernel's. The 3D spellings are in
+[Transforms and hierarchy (3D)](3d/transforms.md).
 
 ## The one thing that moved
 
