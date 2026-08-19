@@ -32,18 +32,41 @@ import '../transport.dart';
 /// several and expects them not to share state beyond the backend's
 /// switchboard.
 ///
-/// [settle] is awaited whenever the suite has done something and wants the
-/// backend to have finished reacting - a handshake to complete, a datagram to
-/// cross a socket. In-process backends leave it null; a real one waits long
-/// enough for a round trip on the local machine.
+/// [settle] is awaited on both sides of every flush, so that a backend which
+/// has to cross a socket gets the chance to. In-process backends leave it
+/// null. It is a nudge and not a guarantee - how long delivery really takes
+/// is what `pump` waits out.
 void runNetTransportConformance(
   String backend, {
   required NetTransport Function() create,
   Future<void> Function()? settle,
   void Function()? tearDownAll,
 }) {
-  Future<void> pump(List<_Peer> peers, {int times = 4}) async {
-    for (var i = 0; i < times; i++) {
+  /// Flushes every peer and then polls every peer, over and over, until
+  /// [arrived] says the thing the caller is about to assert has happened.
+  ///
+  /// A fixed round count is a race with anything slower than a function call.
+  /// It suits an in-process backend, where a send has landed by the time it
+  /// returns, and it loses to a socket the moment a reliable message needs a
+  /// retransmit - the test then fails on a timing accident rather than on the
+  /// backend being wrong. Waiting for the condition costs the in-process case
+  /// nothing, because its first round satisfies [arrived] and this returns
+  /// without ever yielding, and it gives a socket the rounds it needs.
+  ///
+  /// [arrived] has to be something a working backend eventually makes true;
+  /// "nobody received anything" cannot be waited for and is asserted after
+  /// this returns, not passed in here.
+  ///
+  /// Reaching [limit] returns instead of failing, because the `expect` that
+  /// follows names what is missing - `Expected: <1> Actual: <0>` - which
+  /// beats anything this could say about a predicate it cannot describe.
+  Future<void> pump(
+    List<_Peer> peers,
+    bool Function() arrived, {
+    Duration limit = const Duration(seconds: 5),
+  }) async {
+    final deadline = DateTime.now().add(limit);
+    while (true) {
       if (settle != null) await settle();
       for (var p = 0; p < peers.length; p++) {
         peers[p].transport.flush();
@@ -52,8 +75,21 @@ void runNetTransportConformance(
       for (var p = 0; p < peers.length; p++) {
         peers[p].pump();
       }
+      if (arrived()) return;
+      if (!DateTime.now().isBefore(deadline)) return;
+      // A backend with no `settle` never yields inside a round, so a
+      // condition that is never coming would spin the isolate flat for the
+      // whole of `limit` and starve whatever it is waiting on.
+      if (settle == null) await Future<void>.delayed(_idle);
     }
   }
+
+  /// Every joiner is on the host's roster, and the host has been told about
+  /// each of them. The client side of a join is done by the time
+  /// `NetTransport.join` completes; this is the half that needs a poll.
+  bool joinedUp(_Peer host, int clients) =>
+      host.joined.length == clients &&
+      (host.transport.session?.peerCount ?? -1) == clients;
 
   group('$backend: NetTransport conformance', () {
     final peers = <_Peer>[];
@@ -94,7 +130,7 @@ void runNetTransportConformance(
       final client = peer();
       final hosted = await host.transport.host();
       final joined = await client.transport.join(hosted.id);
-      await pump(peers);
+      await pump(peers, () => joinedUp(host, 1));
 
       expect(joined.isHost, isFalse);
       expect(joined.localPeer.isHost, isFalse);
@@ -116,11 +152,11 @@ void runNetTransportConformance(
       final client = peer();
       final hosted = await host.transport.host();
       final joined = await client.transport.join(hosted.id);
-      await pump(peers);
+      await pump(peers, () => joinedUp(host, 1));
 
       final up = Uint8List.fromList(<int>[1, 2, 3, 250]);
       joined.connectionTo(NetPeerId.host)!.send(NetChannel.reliable, up);
-      await pump(peers);
+      await pump(peers, () => host.received.length == 1);
 
       expect(host.received.length, 1);
       expect(host.received.single.bytes, up);
@@ -131,7 +167,7 @@ void runNetTransportConformance(
       host.transport.session!
           .connectionTo(joined.localPeer)!
           .send(NetChannel.reliable, down);
-      await pump(peers);
+      await pump(peers, () => client.received.length == 1);
 
       expect(client.received.length, 1);
       expect(client.received.single.bytes, down);
@@ -147,13 +183,13 @@ void runNetTransportConformance(
       final client = peer();
       final hosted = await host.transport.host();
       final joined = await client.transport.join(hosted.id);
-      await pump(peers);
+      await pump(peers, () => joinedUp(host, 1));
 
       final scratch = Uint8List.fromList(<int>[0, 0, 42, 43, 0]);
       joined
           .connectionTo(NetPeerId.host)!
           .send(NetChannel.reliable, scratch, 2, 2);
-      await pump(peers);
+      await pump(peers, () => host.received.length == 1);
 
       expect(
         host.received.single.bytes,
@@ -169,13 +205,13 @@ void runNetTransportConformance(
       final client = peer();
       final hosted = await host.transport.host();
       final joined = await client.transport.join(hosted.id);
-      await pump(peers);
+      await pump(peers, () => joinedUp(host, 1));
 
       final connection = joined.connectionTo(NetPeerId.host)!;
       for (var i = 0; i < 20; i++) {
         connection.send(NetChannel.reliable, Uint8List.fromList(<int>[i]));
       }
-      await pump(peers, times: 8);
+      await pump(peers, () => host.received.length == 20);
 
       expect(host.received.length, 20);
       for (var i = 0; i < 20; i++) {
@@ -190,12 +226,12 @@ void runNetTransportConformance(
         final client = peer();
         final hosted = await host.transport.host();
         final joined = await client.transport.join(hosted.id);
-        await pump(peers);
+        await pump(peers, () => joinedUp(host, 1));
 
         joined
             .connectionTo(NetPeerId.host)!
             .send(NetChannel.unreliable, Uint8List.fromList(<int>[77]));
-        await pump(peers, times: 8);
+        await pump(peers, () => host.received.length == 1);
 
         expect(host.received.length, 1);
         expect(host.received.single.channel, NetChannel.unreliable);
@@ -208,14 +244,14 @@ void runNetTransportConformance(
       final client = peer();
       final hosted = await host.transport.host();
       final joined = await client.transport.join(hosted.id);
-      await pump(peers);
+      await pump(peers, () => joinedUp(host, 1));
 
       final big = Uint8List(8000);
       for (var i = 0; i < big.length; i++) {
         big[i] = i & 0xFF;
       }
       joined.connectionTo(NetPeerId.host)!.send(NetChannel.reliable, big);
-      await pump(peers, times: 16);
+      await pump(peers, () => host.received.length == 1);
 
       expect(host.received.length, 1);
       expect(host.received.single.bytes, big);
@@ -228,10 +264,13 @@ void runNetTransportConformance(
       final hosted = await host.transport.host();
       await one.transport.join(hosted.id);
       await two.transport.join(hosted.id);
-      await pump(peers);
+      await pump(peers, () => joinedUp(host, 2));
 
       hosted.sendToAll(NetChannel.reliable, Uint8List.fromList(<int>[5]));
-      await pump(peers);
+      await pump(
+        peers,
+        () => one.received.length == 1 && two.received.length == 1,
+      );
 
       expect(one.received.length, 1);
       expect(two.received.length, 1);
@@ -243,7 +282,7 @@ void runNetTransportConformance(
       final client = peer();
       final hosted = await host.transport.host();
       final joined = await client.transport.join(hosted.id);
-      await pump(peers);
+      await pump(peers, () => joinedUp(host, 1));
       host.received.clear();
 
       joined
@@ -270,11 +309,11 @@ void runNetTransportConformance(
       final client = peer();
       final hosted = await host.transport.host();
       final joined = await client.transport.join(hosted.id);
-      await pump(peers);
+      await pump(peers, () => joinedUp(host, 1));
       final id = joined.localPeer;
 
       await joined.leave();
-      await pump(peers, times: 8);
+      await pump(peers, () => host.left.length == 1 && client.closed != null);
 
       expect(host.left.length, 1);
       expect(host.left.single.peer, id);
@@ -293,10 +332,10 @@ void runNetTransportConformance(
       final client = peer();
       final hosted = await host.transport.host();
       await client.transport.join(hosted.id);
-      await pump(peers);
+      await pump(peers, () => joinedUp(host, 1));
 
       await hosted.leave();
-      await pump(peers, times: 8);
+      await pump(peers, () => client.closed != null);
 
       expect(client.closed, isNotNull);
       expect(client.transport.session, isNull);
@@ -308,15 +347,15 @@ void runNetTransportConformance(
       final first = peer();
       final hosted = await host.transport.host();
       final firstSession = await first.transport.join(hosted.id);
-      await pump(peers);
+      await pump(peers, () => joinedUp(host, 1));
       final firstId = firstSession.localPeer;
 
       await firstSession.leave();
-      await pump(peers, times: 8);
+      await pump(peers, () => host.left.length == 1);
 
       final second = peer();
       final secondSession = await second.transport.join(hosted.id);
-      await pump(peers);
+      await pump(peers, () => host.joined.length == 2);
       final secondId = secondSession.localPeer;
 
       expect(
@@ -350,7 +389,7 @@ void runNetTransportConformance(
         const SessionOptions(maxPeers: 2),
       );
       await client.transport.join(hosted.id);
-      await pump(peers);
+      await pump(peers, () => joinedUp(host, 1));
 
       final late = peer();
       await expectLater(
@@ -376,6 +415,9 @@ void runNetTransportConformance(
     });
   });
 }
+
+/// How long a pump round waits when the backend gave no [settle] to wait in.
+const Duration _idle = Duration(milliseconds: 1);
 
 /// One participant under test: a transport plus everything it has reported.
 class _Peer implements NetListener {
