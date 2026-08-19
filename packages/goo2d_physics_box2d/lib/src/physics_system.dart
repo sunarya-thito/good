@@ -607,7 +607,7 @@ class Box2DPhysicsSystem extends GameSystem
   void _createBody(Entity entity, RigidBody2D body, Transform2D transform) {
     final handle = box2d.gooBodyCreate(
       world,
-      body.bodyType[entity],
+      body.bodyType[entity].index,
       transform.transformOffsetX[entity],
       transform.transformOffsetY[entity],
       transform.transformRotation[entity],
@@ -926,7 +926,7 @@ class Box2DPhysicsSystem extends GameSystem
         // RigidBody2D's class doc for why the comparison is against the
         // pulled value.
         final type = body.bodyType[entity];
-        final push = type != BodyType2D.dynamicBody.index ||
+        final push = type != BodyType2D.dynamicBody ||
             _movedByGameplay(body, entity, x, y, angle);
 
         _handles[index] = handle;

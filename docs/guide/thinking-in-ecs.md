@@ -508,29 +508,27 @@ everything.
 
 ### An enum in a column, for states that exclude each other
 
-This is the engine's own pattern. `RigidBody2D` stores its body type as a
-two-bit column and decodes it through the enum's `values` list. Your gameplay
-states work the same way:
+This is the engine's own pattern. `RigidBody2D` declares its body type with
+`hasEnum`, which stores the member's index in the narrowest column it fits —
+two bits for three or four members. Your gameplay states work the same way:
 
 ```dart
 enum OrcState { idle, chasing, attacking, staggered }
 
 class Orc extends EntityStruct with Transform2D, Renderable2D, Character {
-  late final DataPointer<int> state;
+  late final DataPointer<OrcState> state;
   late final DataPointer<double> stateTime;
 
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    state = data.hasUint2(OrcState.idle.index);   // four states fit in two bits
+    state = data.hasEnum(OrcState.values, OrcState.idle);  // two bits
     stateTime = data.hasFloat64();
   }
 
-  OrcState stateOf(Entity entity) => OrcState.values[state[entity]];
-
   /// The one place a transition happens, so entry work has one home.
   void enter(Entity entity, OrcState next) {
-    state[entity] = next.index;
+    state[entity] = next;
     stateTime[entity] = 0;
   }
 }
@@ -548,7 +546,7 @@ void onFixedUpdate() {
     for (final entity in group) {
       orc.stateTime[entity] += dt;
 
-      switch (orc.stateOf(entity)) {
+      switch (orc.state[entity]) {
         case OrcState.idle:
           if (_playerIsNear(entity)) orc.enter(entity, OrcState.chasing);
         case OrcState.chasing:

@@ -53,6 +53,14 @@ var _nextAsset = 0;
 Asset<_Texture> _loaded() =>
     assets.declare(AssetKey<_Texture>(_NoBytes('fixture-${_nextAsset++}')));
 
+/// Fixtures for the `hasEnum` group, sized to land on three different rungs
+/// of the width ladder: two members fit one bit, three fit two, five fit four.
+enum _Toggle { off, on }
+
+enum _Phase { rising, holding, falling }
+
+enum _Element { none, fire, water, earth, air }
+
 /// One struct type reused for every ad-hoc layout below, so this file's
 /// many cases cost `ComponentTypeRegistry` exactly one of its 64 bits.
 class _AdHoc extends EntityStruct {
@@ -542,6 +550,127 @@ void main() {
       target[c] = b;
 
       expect([target[a], target[b], target[c]], [c, a, b]);
+    });
+  });
+
+  group('enum (hasEnum) fields', () {
+    test('every member round-trips', () {
+      late DataPointer<_Element> target;
+      final h = _Harness((data) => target = data.hasEnum(_Element.values));
+      addTearDown(h.dispose);
+
+      final e = h.spawn();
+      for (final element in _Element.values) {
+        target[e] = element;
+        expect(target[e], element);
+      }
+    });
+
+    test('the declared default is stamped into new rows, recycled ones too', () {
+      late DataPointer<_Phase> target;
+      late DataPointer<_Phase> undeclared;
+      final h = _Harness((data) {
+        target = data.hasEnum(_Phase.values, _Phase.falling);
+        undeclared = data.hasEnum(_Phase.values);
+      });
+      addTearDown(h.dispose);
+
+      final first = h.spawn();
+      expect(target[first], _Phase.falling);
+      // No default given: the row starts at index 0, which is the member
+      // declared first rather than any kind of "unset".
+      expect(undeclared[first], _Phase.rising);
+
+      target[first] = _Phase.rising;
+      undeclared[first] = _Phase.holding;
+      final page = h.prefab.archetype.pageAt(first.pageIndex);
+      page!.free(first.rowOffset);
+
+      final recycled = h.spawn();
+      expect(
+        recycled.rowOffset,
+        first.rowOffset,
+        reason: 'the row was recycled',
+      );
+      expect(target[recycled], _Phase.falling);
+      expect(undeclared[recycled], _Phase.rising);
+    });
+
+    test('each row holds its own member', () {
+      late DataPointer<_Element> target;
+      final h = _Harness((data) => target = data.hasEnum(_Element.values));
+      addTearDown(h.dispose);
+
+      final a = h.spawn();
+      final b = h.spawn();
+      final c = h.spawn();
+      target[a] = _Element.fire;
+      target[b] = _Element.air;
+      target[c] = _Element.none;
+
+      expect(
+        [target[a], target[b], target[c]],
+        [_Element.fire, _Element.air, _Element.none],
+      );
+    });
+
+    // The next three read the chosen width off the row itself. The point of
+    // the ladder is that a three-member enum costs the two bits `hasUint2`
+    // cost when callers packed the index by hand, not a whole byte.
+    test('two members take one bit', () {
+      final h = _Harness((data) => data.hasEnum(_Toggle.values));
+      addTearDown(h.dispose);
+      expect(h.bitLength, 1);
+    });
+
+    test('three members take two bits, as BodyType2D does', () {
+      final h = _Harness((data) => data.hasEnum(_Phase.values));
+      addTearDown(h.dispose);
+      expect(h.bitLength, 2);
+    });
+
+    test('five members take four bits', () {
+      final h = _Harness((data) => data.hasEnum(_Element.values));
+      addTearDown(h.dispose);
+      expect(h.bitLength, 4);
+    });
+
+    test('a field declared after the enum column starts at its end', () {
+      // The width seen from the other side: a flag behind a three-member
+      // enum lands at bit 2, and neither field can reach the other's bits.
+      late DataPointer<_Phase> phase;
+      late DataPointer<int> flag;
+      final h = _Harness((data) {
+        phase = data.hasEnum(_Phase.values);
+        flag = data.hasUint1(1);
+      });
+      addTearDown(h.dispose);
+
+      expect(h.bitLength, 3, reason: '2 bits for the enum, 1 for the flag');
+
+      final e = h.spawn();
+      // The last member sets both of the enum's bits, so a flag overlapping
+      // either would read back wrong here - and the enum would read back
+      // wrong when the flag is cleared below.
+      phase[e] = _Phase.values.last;
+      expect(flag[e], 1);
+      flag[e] = 0;
+      expect(phase[e], _Phase.values.last);
+    });
+
+    test('a list that is not the whole values list is rejected', () {
+      // Writing stores `Enum.index`, so a partial list reads back a
+      // different member than was written - silent, and only at run time.
+      late Object? error;
+      final h = _Harness((data) {
+        try {
+          data.hasEnum(_Element.values.sublist(1));
+        } catch (e) {
+          error = e;
+        }
+      });
+      addTearDown(h.dispose);
+      expect(error, isA<AssertionError>());
     });
   });
 

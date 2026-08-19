@@ -30,7 +30,7 @@ cross-entity references and the rest — read
 | `Destroy(GetComponent<Collider>())` | `collider.enable[entity] = false` |
 | `renderer.enabled = false` | `sprite.visible[entity] = false` |
 | `gameObject.SetActive(false)` | Turn off its parts, or `entity.destroy()` if it is really gone |
-| `rigidbody.isKinematic = true` | `body.bodyType[entity] = BodyType2D.kinematicBody.index` |
+| `rigidbody.isKinematic = true` | `body.bodyType[entity] = BodyType2D.kinematicBody` |
 | Attach a script at run time | Declare the system once; `state.disableSystem<S>()` when it should not run |
 | `FindObjectsOfType<Enemy>()` | A `Query` declared once in `describeQuery` |
 | A tag component added to mark state | A `bool`/`uint1` field on the entity, tested in the loop |
@@ -75,7 +75,7 @@ player.hitbox.enable[entity] = false;
 player.hitbox.isTrigger[entity] = true;
 
 // Physics authority — a body can become static without being rebuilt.
-player.bodyType[entity] = BodyType2D.staticBody.index;
+player.bodyType[entity] = BodyType2D.staticBody;
 
 // Whole systems, for a pause menu.
 state.disableSystem<AiSystem>();

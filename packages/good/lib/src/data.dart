@@ -83,6 +83,22 @@ abstract class DataDescriptor {
   /// that recipe out in full.
   DataPointer<Entity> hasEntity([Entity? defaultValue]);
 
+  /// A column holding one member of [E], stored as that member's `index` in
+  /// the narrowest unsigned width the enum fits: one bit for up to two
+  /// members, two bits for up to four, then 4, 8, 16 and 32. A three-member
+  /// enum therefore takes the same two bits it took when callers declared
+  /// `hasUint2` and packed the index themselves.
+  ///
+  /// [values] is a parameter because Dart cannot reach `E.values` from the
+  /// type parameter. It has to be the enum's own `values` list: writing
+  /// stores `Enum.index`, and reading is `values[index]`, so the two only
+  /// agree on the complete list. Reading indexes the const list the enum
+  /// declares, which allocates nothing.
+  ///
+  /// With no [defaultValue] a fresh row reads `values.first` - the member
+  /// declared first, since its index is the `0` an unwritten field holds.
+  DataPointer<E> hasEnum<E extends Enum>(List<E> values, [E? defaultValue]);
+
   DataPointer<double> hasFloat32([double defaultValue = 0.0]);
   DataPointer<double> hasFloat64([double defaultValue = 0.0]);
   DataPointer<int?> optUint1([int? defaultValue]);

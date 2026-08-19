@@ -65,7 +65,7 @@ The type is a column, so a platform can become dynamic when it breaks without
 anything being rebuilt:
 
 ```dart
-body.bodyType[entity] = BodyType3D.dynamicBody.index;
+body.bodyType[entity] = BodyType3D.dynamicBody;
 ```
 
 ## Pushing things

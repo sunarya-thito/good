@@ -117,11 +117,11 @@ mixin RigidBody2D on Component {
   /// a debug overlay.
   late final DataPointer<int> bodyHandle;
 
-  /// Which [BodyType2D] this body is, as that enum's index.
+  /// Which [BodyType2D] this body is.
   ///
   /// Changing this at runtime is honoured: the system notices and calls
   /// Box2D's own type change rather than rebuilding the body.
-  late final DataPointer<int> bodyType;
+  late final DataPointer<BodyType2D> bodyType;
 
   /// The solver's velocity, refreshed every tick. **Read-only** - these are a
   /// mirror, not an input.
@@ -196,7 +196,7 @@ mixin RigidBody2D on Component {
     describeRigidBody(descriptor);
 
     bodyHandle = data.hasInt64();
-    bodyType = data.hasUint2(descriptor._type.index);
+    bodyType = data.hasEnum(BodyType2D.values, descriptor._type);
 
     linearVelocityX = data.hasFloat64();
     linearVelocityY = data.hasFloat64();
@@ -217,9 +217,6 @@ mixin RigidBody2D on Component {
     syncedY = data.hasFloat64(double.nan);
     syncedAngle = data.hasFloat64(double.nan);
   }
-
-  /// This entity's [BodyType2D], decoded from [bodyType].
-  BodyType2D bodyTypeOf(Entity entity) => BodyType2D.values[bodyType[entity]];
 
   // --- forces ---------------------------------------------------------------
   //

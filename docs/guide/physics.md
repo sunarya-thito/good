@@ -153,7 +153,7 @@ A body's type is itself a column, so a platform can become static and a
 kinematic lift can become dynamic without anything being rebuilt:
 
 ```dart
-body.bodyType[entity] = BodyType2D.staticBody.index;
+body.bodyType[entity] = BodyType2D.staticBody;
 ```
 
 And a body can be taken out of the simulation entirely without being destroyed —

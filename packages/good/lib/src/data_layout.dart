@@ -191,6 +191,52 @@ class _EntityHandleField extends DataPointer<Entity> {
       _raw[entity] = newValue.value;
 }
 
+/// An `E` view over the unsigned field `hasEnum` declares, which holds the
+/// member's `index`.
+///
+/// Delegation for the same reason [_EntityHandleField] delegates: the width,
+/// the default stamping and the row resolution are already right in the field
+/// this wraps (the one-fact-one-place rule).
+///
+/// [_values] is the enum's own `values` list, so a read is one load out of a
+/// const list and allocates nothing.
+///
+/// `readPending` is deliberately not delegated - the narrow int fields this
+/// wraps do not implement it, so forwarding would only move the
+/// `UnsupportedError` to a message naming the wrong class.
+class _EnumField<E extends Enum> extends DataPointer<E> {
+  const _EnumField(this._raw, this._values);
+
+  final DataPointer<int> _raw;
+  final List<E> _values;
+
+  @override
+  E operator [](Entity entity) => _values[_raw[entity]];
+
+  @override
+  void operator []=(Entity entity, E newValue) => _raw[entity] = newValue.index;
+}
+
+/// The narrowest unsigned width that can index [count] members.
+///
+/// Widths are in *bits*, so a three-member enum answers 2 - the two bits
+/// callers spent on `hasUint2` when they packed the index by hand.
+///
+/// The ladder stops at 32: Dart evaluates `1 << 64` to 0, so a 64-bit rung
+/// could not state its own bound. An enum big enough to need one cannot be
+/// written down, so the throw is what an out-of-range [count] hits rather
+/// than silently truncating to a width that cannot hold it.
+int _enumIndexWidth(int count) {
+  for (final width in const [1, 2, 4, 8, 16, 32]) {
+    if (count <= 1 << width) return width;
+  }
+  throw ArgumentError.value(
+    count,
+    'values.length',
+    'more members than a 32-bit index column can address',
+  );
+}
+
 // --- sub-byte fields ---------------------------------------------------
 //
 // 1/2/4-bit fields never span a byte (see ArchetypeStorage.declareField),
@@ -1246,6 +1292,30 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
   @override
   DataPointer<Entity> hasEntity([Entity? defaultValue]) =>
       _EntityHandleField(_has(64, true, defaultValue?.value ?? 0));
+
+  /// Unsigned, and as narrow as the member count allows - see
+  /// [_enumIndexWidth].
+  @override
+  DataPointer<E> hasEnum<E extends Enum>(List<E> values, [E? defaultValue]) {
+    // The write stores `Enum.index` and the read is `values[index]`, so the
+    // two address the same member only when `values` is the enum's whole
+    // list in declaration order. Checked here, at declare time, because a
+    // partial list is silent otherwise: it reads back the wrong member.
+    assert(
+      values.isNotEmpty &&
+          values.every(
+            (value) => value.index < values.length &&
+                identical(values[value.index], value),
+          ),
+      'hasEnum indexes `values` by Enum.index, so it must be the whole '
+      'values list the enum declares.',
+    );
+
+    return _EnumField<E>(
+      _has(_enumIndexWidth(values.length), false, defaultValue?.index ?? 0),
+      values,
+    );
+  }
 
   @override
   DataPointer<double> hasFloat32([double defaultValue = 0.0]) =>
