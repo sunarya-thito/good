@@ -231,43 +231,11 @@ class Box2DPhysicsSystem extends GameSystem
   /// One reused event for every dispatch - see `Collision2DEvent`'s doc.
   final Collision2DEvent _event = Collision2DEvent();
 
-  // --- phase timings ---------------------------------------------------------
-  //
-  // Always on, not behind a flag. Five `Stopwatch.elapsedMicroseconds` reads
-  // per tick is five QueryPerformanceCounter calls - tens of nanoseconds
-  // against a step measured in hundreds of microseconds - and a profiling
-  // switch that has to be turned on is a switch that is off on the run where
-  // the number was needed.
-  //
-  // These exist because "physics is slow" is not actionable: the four phases
-  // have four unrelated fixes, and this system was blamed once for a cost that
-  // turned out to be somewhere else entirely.
-
-  final Stopwatch _clock = Stopwatch();
-
-  /// Staging every body's transform into the scratch buffers - the ECS read
-  /// side. Scales with body count.
-  int lastFillMicros = 0;
-
-  /// The push plus `b2World_Step` itself: Box2D's own solver. Scales with the
-  /// *contact graph*, not with body count, which is why a dense pile costs so
-  /// much more than the same bodies spread out.
-  int lastSolveMicros = 0;
-
-  /// Pulling transforms and velocities back and writing them into rows - the
-  /// ECS write side. Scales with body count.
-  int lastSyncMicros = 0;
-
-  /// Draining touch events and dispatching them. Scales with the number of
-  /// touching pairs, and with [dispatchStayEvents] doing so *every* tick.
-  int lastContactMicros = 0;
-
   /// How many pairs are currently touching, as tracked for the stay events.
   ///
-  /// The companion to [lastSolveMicros]: a solve time on its own cannot
-  /// distinguish "a lot of bodies" from "a lot of bodies overlapping each
-  /// other", and Box2D's cost follows the contact graph rather than the
-  /// population.
+  /// The companion to a step time: a step time on its own cannot distinguish
+  /// "a lot of bodies" from "a lot of bodies overlapping each other", and
+  /// Box2D's cost follows the contact graph rather than the population.
   int get touchingPairCount => _touchingCount;
 
   /// Threads the **live world** is actually using, asked of Box2D rather than
@@ -836,10 +804,6 @@ class Box2DPhysicsSystem extends GameSystem
 
   @override
   void onFixedUpdate() {
-    _clock
-      ..reset()
-      ..start();
-
     // Cleared at the *start* rather than the end, so it covers every path out
     // of this method - including the early return for an empty world, which
     // is the one taken on the very tick the first bodies are created.
@@ -856,18 +820,13 @@ class Box2DPhysicsSystem extends GameSystem
     _applyEffectors();
 
     final count = _fill();
-    lastFillMicros = _clock.elapsedMicroseconds;
 
     if (count == 0) {
       // Still step, so a world with only static geometry keeps a consistent
       // clock - and so `time` in Box2D does not diverge from the game's.
       if (_world != 0) {
         box2d.gooWorldStep(world, _stepSeconds, subStepCount);
-        lastSolveMicros = _clock.elapsedMicroseconds - lastFillMicros;
-        lastSyncMicros = 0;
         _dispatchContacts();
-        lastContactMicros =
-            _clock.elapsedMicroseconds - lastFillMicros - lastSolveMicros;
       }
       return;
     }
@@ -885,19 +844,13 @@ class Box2DPhysicsSystem extends GameSystem
     box2d
       ..gooBodiesPushTransforms(_pushHandles, _transforms, count)
       ..gooWorldStep(world, _stepSeconds, subStepCount);
-    final afterSolve = _clock.elapsedMicroseconds;
 
     box2d
       ..gooBodiesPullTransforms(_handles, _transforms, count)
       ..gooBodiesPullVelocities(_handles, _velocities, count);
     _writeBack(count);
-    final afterSync = _clock.elapsedMicroseconds;
 
     _dispatchContacts();
-
-    lastSolveMicros = afterSolve - lastFillMicros;
-    lastSyncMicros = afterSync - afterSolve;
-    lastContactMicros = _clock.elapsedMicroseconds - afterSync;
   }
 
   double get _stepSeconds =>

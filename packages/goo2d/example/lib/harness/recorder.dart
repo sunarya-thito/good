@@ -53,9 +53,7 @@ class DemoRecorder {
     _add('steps', game.stepsPerAdvance.value);
     _add('case', game.caseMicros.value);
     _add('present', game.presentMicros.value);
-    _add('  walk', game.presentWalkMicros.value);
-    _add('  sort', game.presentSortMicros.value);
-    _add('  write', game.presentWriteMicros.value);
+    _add('  render', game.renderMicros.value);
     _add('systems', game.systemMicros.value);
     _add('step', game.stepMicros.value);
     // The two that are comparable across entity counts: per *step*, which is

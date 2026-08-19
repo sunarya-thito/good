@@ -194,19 +194,12 @@ class _Bench extends Game2D {
 /// One `(count)` cell: the renderer's own phase costs plus the ablation.
 class _Cell {
   _Cell({
-    required this.walk,
-    required this.sort,
-    required this.write,
     required this.rowOrder,
     required this.zOrder,
     required this.zTrig,
     required this.zQuad,
   });
 
-  /// ns per sprite, from `GameRenderer2D`'s own counters.
-  final double walk;
-  final double sort;
-  final double write;
 
   /// ns per sprite, from the ablation loops.
   final double rowOrder;
@@ -402,16 +395,14 @@ Future<_Cell> _measure(int count) async {
     state.advance(_step);
   }
 
+  // The renderer no longer reports its own phase timings - the engine does not
+  // carry a profiler. The ablation below measures the same three stages by
+  // rebuilding them here, which is what this bench was always really doing;
+  // the engine counters were a second, less controllable copy of it.
   final renderer = state.getSystem<GameRenderer2D>();
-  var walk = 0;
-  var sort = 0;
-  var write = 0;
   var sprites = 0;
   for (var i = 0; i < _timedTicks; i++) {
     state.advance(_step);
-    walk += renderer.lastWalkMicros;
-    sort += renderer.lastSortMicros;
-    write += renderer.lastWriteMicros;
     sprites += renderer.lastSpriteCount;
   }
   // A frame that drew nothing contributes no work and would deflate every
@@ -462,9 +453,6 @@ Future<_Cell> _measure(int count) async {
   _warmAll(<double Function()>[stageRow, stageZ, stageTrig, stageQuad]);
 
   final cell = _Cell(
-    walk: walk * 1000.0 / (_timedTicks * count),
-    sort: sort * 1000.0 / (_timedTicks * count),
-    write: write * 1000.0 / (_timedTicks * count),
     rowOrder: _time(count, stageRow),
     zOrder: _time(count, stageZ),
     zTrig: _time(count, stageTrig),
@@ -500,16 +488,15 @@ void main() {
     final report = StringBuffer()
       ..writeln('\nns per sprite ($_timedTicks ticks, $_ablationPasses '
           'ablation passes)\n')
-      ..writeln('             renderer phases        ablation stages')
-      ..writeln('   sprites   walk   sort  write |   row     z    +trig  +quad')
-      ..writeln('   ${'-' * 62}');
+      ..writeln('                    ablation stages')
+      ..writeln('   sprites     row     z    +trig  +quad')
+      ..writeln('   ${'-' * 44}');
     for (final count in _counts) {
       final cell = results[count];
       if (cell == null) continue;
       String n(double v) => v.toStringAsFixed(0).padLeft(6);
       report.writeln(
         '   ${count.toString().padLeft(7)}'
-        '${n(cell.walk)}${n(cell.sort)}${n(cell.write)} |'
         '${n(cell.rowOrder)}${n(cell.zOrder)}${n(cell.zTrig)}'
         '${n(cell.zQuad)}',
       );

@@ -191,116 +191,6 @@ abstract class GameState<T extends Game> extends GameListenerBase
   int _accumulatedMicros = 0;
   Timer? _timer;
 
-  // --- where the frame went ------------------------------------------------
-  //
-  // Two numbers, because the two halves fail for different reasons and the
-  // fix is different. Simulation cost is systems and the pool; presentation
-  // cost is whatever the renderer does walking the world and writing a batch.
-  // A game at 10 published frames a second is spending 100ms *somewhere*, and
-  // without this split the only honest answer is "in the tick".
-  //
-  // Always on rather than behind a flag: this is two `Stopwatch` reads per
-  // `advance`, not per entity, so it does not scale with the thing being
-  // measured. A flag would be a second way for the numbers to be missing
-  // exactly when someone reaches for them.
-  final Stopwatch _profile = Stopwatch();
-
-  /// Free-running, never reset - used to measure the *gap* between advances,
-  /// which is the number that separates "this work is slow" from "this loop is
-  /// not being called".
-  final Stopwatch _wall = Stopwatch()..start();
-  int _lastAdvanceAt = 0;
-  int _simulationMicros = 0;
-  int _systemMicros = 0;
-  int _presentationMicros = 0;
-
-  /// Rolling minima over the last [_bestWindow] advances.
-  ///
-  /// **Every number here is wall clock, not CPU time**, and the game isolate
-  /// shares a machine with Flutter's UI and raster threads. Preemption only
-  /// ever *adds* to a measurement, so the minimum over a window is the closest
-  /// thing to "how much work is this" that a stopwatch can give - while the
-  /// latest value is "how long did it take, on this contended machine, this
-  /// frame". Both are worth having and they answer different questions.
-  ///
-  /// This is not theoretical: raising the display scale from 100% to 150% on a
-  /// desktop was observed to nearly double the *reported* system time at a
-  /// fixed entity count, because more raster work meant less CPU for the
-  /// simulation. Nothing about the simulation had changed.
-  static const int _bestWindow = 180;
-  final List<int> _simRing = List<int>.filled(_bestWindow, 0);
-  final List<int> _sysRing = List<int>.filled(_bestWindow, 0);
-  final List<int> _presRing = List<int>.filled(_bestWindow, 0);
-  int _ringNext = 0;
-  int _ringCount = 0;
-
-  static int _minOf(List<int> ring, int count) {
-    if (count == 0) return 0;
-    var best = ring[0];
-    for (var i = 1; i < count; i++) {
-      if (ring[i] < best) best = ring[i];
-    }
-    return best;
-  }
-
-  /// The cheapest fixed-step half seen recently - work, with contention
-  /// squeezed out as far as a wall clock allows. See [_bestWindow].
-  int get bestSimulationMicros => _minOf(_simRing, _ringCount);
-
-  /// The cheapest time inside `FixedTickable` systems seen recently.
-  int get bestSystemMicros => _minOf(_sysRing, _ringCount);
-
-  /// The cheapest presentation pass seen recently.
-  int get bestPresentationMicros => _minOf(_presRing, _ringCount);
-  int _advanceMicros = 0;
-  int _intervalMicros = 0;
-
-  /// Microseconds the last [advance] spent in fixed steps - commands,
-  /// coroutines, every `FixedTickable` system, and the pool's tick window.
-  ///
-  /// Covers however many steps that frame afforded, so a frame that caught up
-  /// three steps reports all three. Divide by [lastStepCount] for per-step.
-  int get lastSimulationMicros => _simulationMicros;
-
-  /// Microseconds the last [advance] spent inside `FixedTickable` systems -
-  /// the game's own simulation code, summed over every step that frame.
-  ///
-  /// `lastSimulationMicros - lastSystemMicros` is what the **engine** spent in
-  /// the fixed step: the pool's `beginTick` snapshot copy, the command drain
-  /// and the coroutine step. That difference being large is an engine problem;
-  /// this number being large is the game's own systems, and the two are fixed
-  /// in completely different places.
-  int get lastSystemMicros => _systemMicros;
-
-  /// Microseconds the last [advance] spent in presentation - every `Tickable`,
-  /// which in a 2D game means `GameRenderer2D` walking the renderables and
-  /// writing the draw batch.
-  ///
-  /// **This is the one people do not expect.** The renderer runs on the
-  /// simulating isolate, inside `advance`, so its cost shows up as a low
-  /// simulation frame rate rather than as a high Flutter frame time. A game
-  /// whose `frameMillis` looks healthy and whose `simulationFps` is on the
-  /// floor is usually spending it here.
-  int get lastPresentationMicros => _presentationMicros;
-
-  /// Microseconds the whole of the last [advance] took, end to end.
-  ///
-  /// Wider than [lastSimulationMicros] + [lastPresentationMicros] on purpose:
-  /// it also covers `presentFrame`, which announces the finished frame to the
-  /// other isolate. If the two halves add up to far less than this, the cost is
-  /// in the announcement rather than in the work.
-  int get lastAdvanceMicros => _advanceMicros;
-
-  /// Microseconds between the start of the previous [advance] and this one.
-  ///
-  /// **The number that says whether the loop is slow or merely starved.**
-  /// [lastAdvanceMicros] is how long the work took; this is how often it got to
-  /// run. A game publishing 10 frames a second whose advance takes 15ms is not
-  /// slow - something is stopping it being called, and no amount of optimising
-  /// the tick will move it. The two being equal means the loop is saturated,
-  /// which is the honest "this work is too expensive" reading.
-  int get lastAdvanceIntervalMicros => _intervalMicros;
-
   /// Fixed steps the last [advance] ran - 0 when the accumulator had not
   /// filled, up to `Game.maxFixedStepsPerAdvance` when catching up.
   int get lastStepCount => _lastSteps;
@@ -1008,15 +898,6 @@ abstract class GameState<T extends Game> extends GameListenerBase
     final step = game.fixedTimeStep.inMicroseconds;
     _accumulatedMicros += elapsed.inMicroseconds;
 
-    final startedAt = _wall.elapsedMicroseconds;
-    _intervalMicros = startedAt - _lastAdvanceAt;
-    _lastAdvanceAt = startedAt;
-
-    _profile
-      ..reset()
-      ..start();
-
-    _systemMicros = 0;
     var steps = 0;
     final cap = game.maxFixedStepsPerAdvance;
     while (_accumulatedMicros >= step && steps < cap) {
@@ -1024,7 +905,6 @@ abstract class GameState<T extends Game> extends GameListenerBase
       runFixedStep();
       steps++;
     }
-    _simulationMicros = _profile.elapsedMicroseconds;
     if (_accumulatedMicros >= step) {
       _accumulatedMicros = _accumulatedMicros % step;
     }
@@ -1040,20 +920,11 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // advance is still a frame - an interpolating renderer or a camera
     // smoothing toward a target has work to do on it.
     runPresentation(elapsed);
-    _presentationMicros = _profile.elapsedMicroseconds - _simulationMicros;
     _lastSteps = steps;
     // Only now is the frame actually complete: the simulation advanced and
     // the presentation pass wrote whatever it produces. See
     // `Game.presentFrame` for why the announcement cannot happen earlier.
     runtime.presentFrame();
-    _advanceMicros = _profile.elapsedMicroseconds;
-
-    // Recorded after everything, so a frame contributes one sample of each.
-    _simRing[_ringNext] = _simulationMicros;
-    _sysRing[_ringNext] = _systemMicros;
-    _presRing[_ringNext] = _presentationMicros;
-    _ringNext = (_ringNext + 1) % _bestWindow;
-    if (_ringCount < _bestWindow) _ringCount++;
     return steps;
   }
 
@@ -1090,16 +961,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
     coroutines.step(game.fixedTimeStep.inMicroseconds / 1000000.0);
     // One dispatch over a list resolved at boot. `const` because the event
     // carries nothing, so the hottest event in the engine allocates nothing.
-    //
-    // Timed separately from the step around it, because "the fixed step is
-    // slow" has two completely different causes with different fixes: the
-    // *systems* a game wrote, or the pool's own tick window. Subtracting this
-    // from `lastSimulationMicros` leaves `beginTick`'s snapshot copy, the
-    // command drain and the coroutine step - engine cost the game cannot see
-    // and cannot fix, so it had better be small.
-    final systemsAt = _profile.elapsedMicroseconds;
     fixedTickEvent.call();
-    _systemMicros += _profile.elapsedMicroseconds - systemsAt;
     pool.commitTick();
     runtime.completeTick();
   }

@@ -972,35 +972,34 @@ void main() {
     );
   });
 
-  group('where the frame went', () {
-    test('advance splits its cost into simulation and presentation', () async {
+  // DELETED: the two 'where the frame went' timing assertions. `advance` used
+  // to carry a Stopwatch and publish lastSimulationMicros /
+  // lastPresentationMicros / lastAdvanceMicros / lastAdvanceIntervalMicros;
+  // those were benchmarking instrumentation and are gone, so an assertion that
+  // one of them returned a non-negative int went with them. What the two tests
+  // were *also* checking survives here, split from the timings it was mixed
+  // with: presentation running once per frame regardless of step count is
+  // covered by 'presentation phase (Tickable)' above, and the step count
+  // itself is below.
+  group('lastStepCount', () {
+    test('reports the steps the last advance ran', () async {
       await _game(_TestGame());
-      run.advance(_step * 3);
-
-      // The split exists because the two halves fail for different reasons and
-      // have different fixes - and because the renderer runs *inside* advance,
-      // on the simulating isolate. Its cost therefore shows up as a low
-      // simulation frame rate rather than as a high Flutter frame time, which
-      // is the one thing nobody expects when they go looking.
+      // Two spellings of the same number, and they have to agree: a host
+      // driving the loop reads the return value, while anything asking after
+      // the fact - a HUD dividing a per-advance total to get a per-step one -
+      // reads the field.
+      expect(run.advance(_step * 3), 3);
       expect(run.state.lastStepCount, 3);
-      expect(run.state.lastSimulationMicros, greaterThanOrEqualTo(0));
-      expect(run.state.lastPresentationMicros, greaterThanOrEqualTo(0));
     });
 
-    test('a frame that afforded no steps still ran presentation', () async {
+    test('is zero on a frame the accumulator could not fill', () async {
       await _game(_TestGame());
-      run.advance(const Duration(milliseconds: 1));
-
+      expect(run.advance(const Duration(milliseconds: 1)), 0);
       expect(
         run.state.lastStepCount,
         0,
         reason: 'the accumulator had not filled',
       );
-      // And presentation still happened - a frame in which the simulation did
-      // not advance is still a frame. So a game can be spending its whole
-      // budget in presentation while running zero steps, and only these two
-      // numbers apart can say so.
-      expect(run.state.lastPresentationMicros, greaterThanOrEqualTo(0));
     });
   });
 }

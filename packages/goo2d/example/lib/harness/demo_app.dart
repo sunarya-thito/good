@@ -475,13 +475,9 @@ class _Readout extends StatelessWidget {
               const SizedBox(height: 6),
               _Line(label: 'case', channel: game.caseMicros, ms: true),
               _Line(label: 'present', channel: game.presentMicros, ms: true),
-              _Line(label: '  walk', channel: game.presentWalkMicros, ms: true),
-              _Line(label: '  sort', channel: game.presentSortMicros, ms: true),
-              _Line(
-                label: '  write',
-                channel: game.presentWriteMicros,
-                ms: true,
-              ),
+              // The renderer's share of it. Presentation being expensive
+              // while this is small means some other Tickable is the cost.
+              _Line(label: '  render', channel: game.renderMicros, ms: true),
               _Line(label: 'step', channel: game.stepMicros, ms: true),
               _Line(label: 'systems', channel: game.systemMicros, ms: true),
               // The case's own breakdown, if it declared one. Directly under

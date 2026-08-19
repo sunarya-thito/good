@@ -523,6 +523,31 @@ class Sandbox extends SceneStruct {
   }
 }
 
+/// Stamps the clock immediately before `Box2DPhysicsSystem` runs.
+class _PhysicsPhaseStart extends GameSystem with FixedTickable {
+  @override
+  int compareTo(GameSystem other) => other is Box2DPhysicsSystem ? -1 : 0;
+
+  @override
+  void onFixedUpdate() {
+    final state = getState<PhysicsState>();
+    state.physicsStartedAt = state.profile.clock.elapsedMicroseconds;
+  }
+}
+
+/// And immediately after, which is the whole measurement.
+class _PhysicsPhaseEnd extends GameSystem with FixedTickable {
+  @override
+  int compareTo(GameSystem other) => other is Box2DPhysicsSystem ? 1 : 0;
+
+  @override
+  void onFixedUpdate() {
+    final state = getState<PhysicsState>();
+    state.physicsMicros =
+        state.profile.clock.elapsedMicroseconds - state.physicsStartedAt;
+  }
+}
+
 /// Spawns towards the target population, ages the collision flashes, and
 /// recycles anything that escapes.
 class SandboxSystem extends GameSystem with FixedTickable {
@@ -663,16 +688,14 @@ class SandboxSystem extends GameSystem with FixedTickable {
 
     // Published from inside the fixed step rather than from `DemoStats`, and
     // that is safe *here* specifically: this system sorts after the physics
-    // system, so all four phase totals are final by the time this line runs.
-    // The warning on `DemoStats` is about the step's own accumulating totals,
-    // which are not final until the step returns.
+    // system and after the probe that closes around it, so the total is final
+    // by the time this line runs. The warning on `DemoStats` is about the
+    // step's own accumulating totals, which are not final until the step
+    // returns.
     final physics = state.getSystem<Box2DPhysicsSystem>();
     physics.counters(_counters);
     getGame<PhysicsGame>()
-      ..fillMicros.value = physics.lastFillMicros
-      ..solveMicros.value = physics.lastSolveMicros
-      ..syncMicros.value = physics.lastSyncMicros
-      ..contactMicros.value = physics.lastContactMicros
+      ..physicsMicros.value = demo.physicsMicros
       ..escapedBodies.value = escapes
       ..solverThreads.value = physics.activeWorkerCount
       ..physicsBodies.value = _counters[0]
@@ -745,6 +768,13 @@ class SandboxSystem extends GameSystem with FixedTickable {
 class PhysicsState extends DemoState<PhysicsGame> {
   final Sandbox sandbox = Sandbox();
 
+  /// Written by the probe pair below, read by [SandboxSystem] when it
+  /// publishes. On [DemoProfile]'s clock rather than one of its own: the case
+  /// already has a free-running monotonic clock and a second would only be a
+  /// second thing to keep started.
+  int physicsStartedAt = 0;
+  int physicsMicros = 0;
+
   @override
   void onMounted() => loadScene(sandbox);
 
@@ -764,7 +794,15 @@ class PhysicsState extends DemoState<PhysicsGame> {
     descriptor.has(
       Box2DPhysicsSystem(gravityY: -18, workerCount: game.solverWorkerCount),
     );
-    descriptor.has(SandboxSystem());
+    // Either side of it, so the case can time the one system it is here to
+    // watch. Both state their position relative to `Box2DPhysicsSystem` and
+    // have no opinion about anything else, which leaves `SandboxSystem` -
+    // which also sorts after physics - to break its tie with the end probe on
+    // declaration order. Declared first, so it does.
+    descriptor
+      ..has(_PhysicsPhaseStart())
+      ..has(_PhysicsPhaseEnd())
+      ..has(SandboxSystem());
   }
 }
 
@@ -787,18 +825,23 @@ class PhysicsGame extends DemoGame {
   int solverWorkerCount = defaultSolverWorkers();
 
 
-  /// `Box2DPhysicsSystem`'s four phases, in microseconds, from the last fixed
-  /// step.
+  /// Microseconds `Box2DPhysicsSystem` spent in the last fixed step - staging
+  /// transforms, `b2World_Step`, writing them back and dispatching contacts,
+  /// all of it.
   ///
-  /// One total for "physics" cannot direct anything, because the four have
-  /// four unrelated fixes: [fillMicros] and [syncMicros] are the ECS read and
-  /// write sides and scale with body count; [solveMicros] is Box2D itself and
-  /// scales with the *contact graph*; [contactMicros] is event dispatch and
-  /// scales with touching pairs.
-  late final StateChannel<int> fillMicros;
-  late final StateChannel<int> solveMicros;
-  late final StateChannel<int> syncMicros;
-  late final StateChannel<int> contactMicros;
+  /// **Measured by the case, not by the system.** The physics system used to
+  /// carry a `Stopwatch` and publish its four phases separately; that is a
+  /// profiler inside a shipped package, and it went the way of the engine's.
+  /// A pair of probe systems sorted either side of it can only see the total,
+  /// so that is what this is.
+  ///
+  /// The split is still reachable, it is just not a timing any more: on this
+  /// machine at 4000 crushed bodies the step was 40 ms, of which the solver
+  /// was 36 and the whole Dart side - the ECS read, the ECS write and contact
+  /// dispatch together - was 0.8. What says which of those a frame is in is
+  /// [awakeBodies] and [broadPhasePairs] against the population; a solver cost
+  /// follows the contact graph, and the Dart side follows body count.
+  late final StateChannel<int> physicsMicros;
 
   /// What the world *contains*, which is what a solve time cannot say on its
   /// own.
@@ -837,10 +880,7 @@ class PhysicsGame extends DemoGame {
   @override
   void describeState(StateDescriptor descriptor) {
     super.describeState(descriptor);
-    fillMicros = descriptor.hasInt32();
-    solveMicros = descriptor.hasInt32();
-    syncMicros = descriptor.hasInt32();
-    contactMicros = descriptor.hasInt32();
+    physicsMicros = descriptor.hasInt32();
     solverThreads = descriptor.hasInt32();
     physicsBodies = descriptor.hasInt32();
     escapedBodies = descriptor.hasInt32();
@@ -887,20 +927,12 @@ class PhysicsDemo extends Demo {
     ),
   ];
 
-  /// The four phases of `Box2DPhysicsSystem`, so the overlay says *which* part
-  /// of physics a frame went into rather than only that it did.
-  ///
-  /// The split is the whole point. On this machine at 4000 crushed bodies the
-  /// step was 40 ms, of which the solver was 36 and everything on the Dart
-  /// side - the ECS read, the ECS write and contact dispatch together - was
-  /// 0.8. Without these lines that frame reads as "physics is slow" and sends
-  /// you optimising the 2%.
+  /// What physics cost and what the world it cost it on contains - the second
+  /// half being what says *which* part of physics a frame went into now that
+  /// the phases are no longer timed separately. See [PhysicsGame.physicsMicros].
   @override
   List<DemoStat> get stats => <DemoStat>[
-    DemoStat('fill', _game.fillMicros, ms: true),
-    DemoStat('solve', _game.solveMicros, ms: true),
-    DemoStat('sync', _game.syncMicros, ms: true),
-    DemoStat('contact', _game.contactMicros, ms: true),
+    DemoStat('physics', _game.physicsMicros, ms: true),
     DemoStat('threads', _game.solverThreads),
     DemoStat('b2 bodies', _game.physicsBodies),
     DemoStat('escaped', _game.escapedBodies),

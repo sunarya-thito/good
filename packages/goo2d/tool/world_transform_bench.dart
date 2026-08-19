@@ -134,9 +134,49 @@ class _DriftSystem extends GameSystem with FixedTickable {
   }
 }
 
+/// Stamps the clock immediately before `WorldTransformSystem` runs.
+///
+/// The bench used to get this system's cost by subtracting [_DriftSystem]'s
+/// self-timing from `GameState.lastSystemMicros`, which the engine published
+/// from a `Stopwatch` of its own. That instrumentation is gone - a game
+/// framework is not a profiler - so the bench brackets the one system it is
+/// here to measure and reads it directly. Strictly better as well as
+/// necessary: a difference of two numbers carries both their errors, and this
+/// no longer depends on the control system's timing being right.
+class _PhaseStart extends GameSystem with FixedTickable {
+  @override
+  int compareTo(GameSystem other) => other is WorldTransformSystem ? -1 : 0;
+
+  @override
+  void onFixedUpdate() {
+    final state = getState<_BenchState>();
+    state.worldStartedAt = state.clock.elapsedMicroseconds;
+  }
+}
+
+/// And immediately after.
+class _PhaseEnd extends GameSystem with FixedTickable {
+  @override
+  int compareTo(GameSystem other) => other is WorldTransformSystem ? 1 : 0;
+
+  @override
+  void onFixedUpdate() {
+    final state = getState<_BenchState>();
+    state.worldMicros = state.clock.elapsedMicroseconds - state.worldStartedAt;
+  }
+}
+
 class _BenchState extends GameState<_Bench> {
   final _Field field = _Field();
   final _DriftSystem drift = _DriftSystem();
+
+  /// Free-running, never reset - both stamps below are readings of it and only
+  /// their difference is ever used.
+  final Stopwatch clock = Stopwatch()..start();
+  int worldStartedAt = 0;
+
+  /// What `WorldTransformSystem` cost on the step that just ran.
+  int worldMicros = 0;
 
   @override
   void onMounted() => loadScene(field);
@@ -144,8 +184,13 @@ class _BenchState extends GameState<_Bench> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
+    // The probes have no opinion about `drift` and it has none about them, so
+    // the ties between them break on declaration order - which is why the
+    // control system is still declared first.
     descriptor.has(drift);
+    descriptor.has(_PhaseStart());
     descriptor.has(WorldTransformSystem());
+    descriptor.has(_PhaseEnd());
   }
 }
 
@@ -182,12 +227,12 @@ Future<_Cell> _measure(int count) async {
   }
 
   final benchState = state as _BenchState;
-  var systems = 0;
+  var world = 0;
   var drift = 0;
   var steps = 0;
   for (var i = 0; i < _timedTicks; i++) {
     steps += state.advance(_step);
-    systems += state.lastSystemMicros;
+    world += benchState.worldMicros;
     drift += benchState.drift.lastMicros;
   }
   // A tick that ran zero steps contributes zero work and would deflate every
@@ -198,7 +243,7 @@ Future<_Cell> _measure(int count) async {
   await game.stop();
 
   final perEntity = 1000.0 / (_timedTicks * count);
-  return _Cell(drift * perEntity, (systems - drift) * perEntity);
+  return _Cell(drift * perEntity, world * perEntity);
 }
 
 /// Each cell runs its own game in the same process, so the process-global

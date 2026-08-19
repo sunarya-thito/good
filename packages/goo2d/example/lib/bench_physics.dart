@@ -18,10 +18,15 @@
 // # What it is trying to settle
 //
 // "Physics is slow" is not actionable. `advance` splits into `present` and
-// `step`, `step` into systems, and `Box2DPhysicsSystem` into four phases with
-// four unrelated fixes - the ECS read side, Box2D's own solver, the ECS write
-// side, and contact dispatch. The point of the table is to say which of those
-// is the frame, at a population where the frame is already too long.
+// `step`, `step` into systems, and systems into `physics` and everything the
+// case itself does. The point of the table is to say which of those is the
+// frame, at a population where the frame is already too long - and then, for
+// physics specifically, to say whether the cost is the *population* or the
+// contact graph, which is what `awake` and `bppairs` are for.
+//
+// `physics` used to be four columns, because `Box2DPhysicsSystem` timed its
+// own phases. It no longer does - a shipped package is not a profiler - and
+// what the case can measure from outside is the system as a whole.
 
 import 'dart:async';
 import 'dart:io';
@@ -193,7 +198,7 @@ class _BenchAppState extends State<_BenchApp> {
       ..writeln('')
       ..writeln(
         '  target  actual  advance     step  systems  present |'
-        '     fill    solve     sync  contact |'
+        '  physics |'
         '   b2bod  escaped    awake  touching  bppairs | st/adv   simfps',
       )
       ..writeln(
@@ -220,9 +225,9 @@ class _BenchAppState extends State<_BenchApp> {
     out
       ..writeln('')
       ..writeln('All times milliseconds. `advance` is the whole game-isolate')
-      ..writeln('frame: present + step. `fill`/`solve`/`sync`/`contact` are')
-      ..writeln('Box2DPhysicsSystem`s four phases and sum to its share of')
-      ..writeln('`systems`, which is itself the bulk of `step`.')
+      ..writeln('frame: present + step. `physics` is Box2DPhysicsSystem`s')
+      ..writeln('share of `systems`, which is itself the bulk of `step`,')
+      ..writeln('timed by a probe system either side of it.')
       ..writeln('')
       ..writeln('`b2bod` is what BOX2D holds, against `bodies` which is what')
       ..writeln('the case asked for (plus three static arena pieces). The two')
@@ -276,10 +281,7 @@ class _Row {
   int step = _none;
   int systems = _none;
   int present = _none;
-  int fill = _none;
-  int solve = _none;
-  int sync = _none;
-  int contact = _none;
+  int physics = _none;
   int stepsPerAdvance = 0;
   double simFps = 0;
   /// How many bodies the case actually had, as opposed to how many were
@@ -315,21 +317,20 @@ class _Row {
     // population - next to a `solve` of 36 ms, which is how the mistake was
     // caught rather than believed.
     //
-    // Gating on `stepsPerAdvance` instead does **not** work, and the second
-    // version of this bench proved it by reporting the same zeros: `GameState`
-    // assigns `_lastSteps` *after* running the presentation pass, and
-    // `DemoStats` publishes from inside that pass - so the step count on the
-    // wire is always one advance stale. `stepMicros` is not.
+    // Gating on `stepsPerAdvance` used to be the obvious fix and did **not**
+    // work, which the second version of this bench proved by reporting the
+    // same zeros: `GameState` assigns `_lastSteps` *after* running the
+    // presentation pass, and `DemoStats` publishes from inside that pass, so
+    // the count on the wire was always one advance stale. `DemoProfile` counts
+    // the steps itself now and is current - but gating on `stepMicros` is
+    // still the honest test, because it is the number being minimised.
     if (game.advanceMicros.value <= 0 || game.stepMicros.value <= 0) return;
     samples++;
     advance = _min(advance, game.advanceMicros.value);
     step = _min(step, game.stepMicros.value);
     systems = _min(systems, game.systemMicros.value);
     present = _min(present, game.presentMicros.value);
-    fill = _min(fill, game.fillMicros.value);
-    solve = _min(solve, game.solveMicros.value);
-    sync = _min(sync, game.syncMicros.value);
-    contact = _min(contact, game.contactMicros.value);
+    physics = _min(physics, game.physicsMicros.value);
     // Not a minimum: these describe the row rather than time it, and the last
     // one is the one that matches the state the timings were taken in.
     stepsPerAdvance = game.stepsPerAdvance.value;
@@ -355,10 +356,7 @@ class _Row {
       '  ${_ms(step).padLeft(7)}'
       '  ${_ms(systems).padLeft(7)}'
       '  ${_ms(present).padLeft(7)} |'
-      '  ${_ms(fill).padLeft(7)}'
-      '  ${_ms(solve).padLeft(7)}'
-      '  ${_ms(sync).padLeft(7)}'
-      '  ${_ms(contact).padLeft(7)} |'
+      '  ${_ms(physics).padLeft(7)} |'
       '  ${b2Bodies.toString().padLeft(6)}'
       '  ${escaped.toString().padLeft(7)}'
       '  ${awake.toString().padLeft(6)}'

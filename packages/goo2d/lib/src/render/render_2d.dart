@@ -1387,34 +1387,6 @@ class GameRenderer2D extends GameSystem
   /// under the budget.
   int lastSpriteCount = 0;
 
-  /// Microseconds the last [onTick] spent in each of the three phases of the
-  /// present pass, across every view it rendered.
-  ///
-  /// One number for "presentation" says how expensive drawing is; it does not
-  /// say which of three unrelated things to do about it, and they have nothing
-  /// in common:
-  ///
-  ///  * [lastWalkMicros] - iterating renderables and filling the draw queue.
-  ///    Scales with *entities* and is component-field reads, the same cost
-  ///    every system pays.
-  ///  * [lastSortMicros] - `sortByZ`. Scales with `n log n` in sprites and
-  ///    touches no component data at all.
-  ///  * [lastWriteMicros] - turning queued sprites into geometry in the
-  ///    scratch buffer. Scales with sprites and is dominated by how many bytes
-  ///    a sprite costs in the wire format.
-  ///
-  /// Only the third is affected by changing the vertex format, only the second
-  /// by changing the ordering strategy, and only the first by anything the
-  /// storage layer does. Measured with one `Stopwatch` reused across all three
-  /// (see [_clock]) so the instrumentation itself allocates nothing.
-  int lastWalkMicros = 0;
-  int lastSortMicros = 0;
-  int lastWriteMicros = 0;
-
-  /// Reused by all three phase timings, per view - a `Stopwatch` is a heap
-  /// object and this runs every frame (the no-allocation rule).
-  final Stopwatch _clock = Stopwatch();
-
   /// How many draw records the last [onTick] wrote - quads, not sprites.
   ///
   /// This is what `maxSpritesPerTick` bounds and what `spriteBatchBytes`
@@ -1437,8 +1409,9 @@ class GameRenderer2D extends GameSystem
   /// write pass on a desktop, where the whole pass costs ~72 ns/sprite; the
   /// device reports ~368. The gap is real, so the attribution has to be redone
   /// where the gap is, and this is the one-line ablation that does it: turn it
-  /// on, read [lastWriteMicros], and the difference is what the permutation
-  /// costs in cache misses.
+  /// on, time this system's `onTick` from outside - `example`'s HUD and
+  /// `tool/render_write_bench.dart` both do - and the difference is what the
+  /// permutation costs in cache misses.
   ///
   /// One bool read per view per frame, so leaving it here costs a shipped
   /// build nothing measurable. The matching trig ablation deliberately needs
@@ -1713,25 +1686,16 @@ class GameRenderer2D extends GameSystem
     var sprites = 0;
     var records = 0;
     var dropped = false;
-    var walk = 0;
-    var sort = 0;
-    var write = 0;
     final views = game.cameraViews;
     for (var i = 0; i < views.length; i++) {
       _renderView(views[i], framesFor(views[i]));
       sprites += lastSpriteCount;
       records += lastRecordCount;
       dropped = dropped || lastWriteDropped;
-      walk += lastWalkMicros;
-      sort += lastSortMicros;
-      write += lastWriteMicros;
     }
     lastSpriteCount = sprites;
     lastRecordCount = records;
     lastWriteDropped = dropped;
-    lastWalkMicros = walk;
-    lastSortMicros = sort;
-    lastWriteMicros = write;
   }
 
   /// One [_TransformSource] per archetype, keyed by that archetype's
@@ -1763,9 +1727,6 @@ class GameRenderer2D extends GameSystem
   void _renderView(CameraView cameraView, HandoffHandle handle) {
     lastSpriteCount = 0;
     lastRecordCount = 0;
-    lastWalkMicros = 0;
-    lastSortMicros = 0;
-    lastWriteMicros = 0;
     // Asked *before* any work is done, and that ordering is the point. Null
     // means main has not taken the last frame yet, so there is nowhere safe to
     // write - and rather than build a frame and throw it away, the whole pass
@@ -1833,9 +1794,6 @@ class GameRenderer2D extends GameSystem
     // below fires when the record budget is spent, and that has to stop the
     // whole pass. Left on the inner loop it would only finish this archetype
     // and start the next, quietly overrunning the budget once per group.
-    _clock
-      ..reset()
-      ..start();
     outer:
     for (final group in _renderables.groups()) {
       final renderable = group.get<Renderable2D>();
@@ -1962,15 +1920,7 @@ class GameRenderer2D extends GameSystem
         }
       }
     }
-    lastWalkMicros = _clock.elapsedMicroseconds;
-
-    _clock
-      ..reset()
-      ..start();
-    // Timed either way, so an ablated run reports `sort` near zero and the
-    // change lands visibly in `write` rather than vanishing from both.
     if (!debugSkipZSort) queue.sortByZ();
-    lastSortMicros = _clock.elapsedMicroseconds;
 
     // Pass two: emit the records, in draw order.
     //
@@ -1979,9 +1929,6 @@ class GameRenderer2D extends GameSystem
     // the row, and left the finished quad in a dense array. All that happens
     // here is a permutation over 40 bytes per sprite. See `_SpriteDrawQueue`'s
     // class doc for the device measurement that forced the split.
-    _clock
-      ..reset()
-      ..start();
     var offset = DrawData2D.batchHeaderBytes;
     final count = queue.length;
     for (var i = 0; i < count; i++) {
@@ -2048,7 +1995,6 @@ class GameRenderer2D extends GameSystem
       );
     }
 
-    lastWriteMicros = _clock.elapsedMicroseconds;
     lastSpriteCount = count;
     lastRecordCount = queue.recordCount;
     // One record for the whole tick - see draw_2d.dart's library doc for why

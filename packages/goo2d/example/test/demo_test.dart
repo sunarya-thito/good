@@ -73,11 +73,13 @@ void main() {
       expect(game.stepMicros.value, greaterThanOrEqualTo(0));
       expect(game.presentMicros.value, greaterThan(0));
       expect(
-        game.presentWalkMicros.value +
-            game.presentSortMicros.value +
-            game.presentWriteMicros.value,
-        lessThanOrEqualTo(game.presentMicros.value + 1000),
-        reason: 'the three phases are a breakdown of present, not extra work',
+        game.renderMicros.value,
+        lessThanOrEqualTo(game.presentMicros.value),
+        reason:
+            'the renderer is one Tickable among several, so its time is a '
+            'share of the presentation pass and never more than all of it - '
+            'which is also the check that the two probe brackets did not end '
+            'up sorted the wrong way round',
       );
     });
   });
