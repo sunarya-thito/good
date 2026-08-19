@@ -139,6 +139,7 @@ abstract final class ArchetypeRegistry {
 
   /// Resolves an archetype id - the hot path behind `Entity.get<T>()`. A
   /// plain list index, no map, no allocation.
+  @pragma('vm:prefer-inline')
   static ArchetypeStorage byId(int archetypeId) {
     if (archetypeId < 0 || archetypeId >= _storages.length) {
       throw StateError(

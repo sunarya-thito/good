@@ -97,7 +97,7 @@ extension Transform3DAccessor on Accessor<Transform3D> {
   /// [other] may be a different archetype with a different row layout, so it
   /// is read through its own component, not through this one's.
   double distanceTo(Entity other) {
-    final ta = get<Transform3D>();
+    final ta = component;
     final tb = other.get<Transform3D>();
     final dx = tb.transformOffsetX[other] - ta.transformOffsetX[this];
     final dy = tb.transformOffsetY[other] - ta.transformOffsetY[this];
@@ -118,7 +118,7 @@ extension Transform3DAccessor on Accessor<Transform3D> {
   /// that makes three angles a bad *representation* never reaches the
   /// hierarchy. [yaw], [pitch] and [roll] - the getters - invert this.
   void setEuler({double yaw = 0, double pitch = 0, double roll = 0}) {
-    final t = get<Transform3D>();
+    final t = component;
     // Half angles: a quaternion built from angle a turns by a, not a/2.
     final cy = math.cos(yaw * 0.5);
     final sy = math.sin(yaw * 0.5);
@@ -149,7 +149,7 @@ extension Transform3DAccessor on Accessor<Transform3D> {
   /// case: yaw and roll are no longer separable there, only their sum, so
   /// [roll] reports 0 and [yaw] carries the whole turn.
   double get yaw {
-    final t = get<Transform3D>();
+    final t = component;
     final x = t.transformRotationX[this];
     final y = t.transformRotationY[this];
     final z = t.transformRotationZ[this];
@@ -169,7 +169,7 @@ extension Transform3DAccessor on Accessor<Transform3D> {
   /// The pitch of the current local rotation, in radians, in [-pi/2, pi/2].
   /// See [yaw].
   double get pitch {
-    final t = get<Transform3D>();
+    final t = component;
     final x = t.transformRotationX[this];
     final y = t.transformRotationY[this];
     final z = t.transformRotationZ[this];
@@ -181,7 +181,7 @@ extension Transform3DAccessor on Accessor<Transform3D> {
   /// the angle that is not separable when pitched straight up or down, and
   /// reports 0 there.
   double get roll {
-    final t = get<Transform3D>();
+    final t = component;
     final x = t.transformRotationX[this];
     final y = t.transformRotationY[this];
     final z = t.transformRotationZ[this];
@@ -210,7 +210,7 @@ extension Transform3DAccessor on Accessor<Transform3D> {
   ///    -Z for looking down and +Z for looking up, both of which leave
   ///    screen-right along +X, so a top-down camera lands the right way up.
   void lookAt(double targetX, double targetY, double targetZ) {
-    final t = get<Transform3D>();
+    final t = component;
     var fx = targetX - t.transformOffsetX[this];
     var fy = targetY - t.transformOffsetY[this];
     var fz = targetZ - t.transformOffsetZ[this];
@@ -267,21 +267,21 @@ extension Transform3DAccessor on Accessor<Transform3D> {
   /// Three scalar getters rather than one returning a vector, matching this
   /// codebase's standing zero-allocation-per-tick stance.
   double get forwardX {
-    final t = get<Transform3D>();
+    final t = component;
     return -2 *
         (t.transformRotationX[this] * t.transformRotationZ[this] +
             t.transformRotationW[this] * t.transformRotationY[this]);
   }
 
   double get forwardY {
-    final t = get<Transform3D>();
+    final t = component;
     return -2 *
         (t.transformRotationY[this] * t.transformRotationZ[this] -
             t.transformRotationW[this] * t.transformRotationX[this]);
   }
 
   double get forwardZ {
-    final t = get<Transform3D>();
+    final t = component;
     final x = t.transformRotationX[this];
     final y = t.transformRotationY[this];
     return -(1 - 2 * (x * x + y * y));
@@ -290,21 +290,21 @@ extension Transform3DAccessor on Accessor<Transform3D> {
   /// The unit direction of this entity's own +X axis - to its right when
   /// facing [forwardX]/[forwardY]/[forwardZ].
   double get rightX {
-    final t = get<Transform3D>();
+    final t = component;
     final y = t.transformRotationY[this];
     final z = t.transformRotationZ[this];
     return 1 - 2 * (y * y + z * z);
   }
 
   double get rightY {
-    final t = get<Transform3D>();
+    final t = component;
     return 2 *
         (t.transformRotationX[this] * t.transformRotationY[this] +
             t.transformRotationW[this] * t.transformRotationZ[this]);
   }
 
   double get rightZ {
-    final t = get<Transform3D>();
+    final t = component;
     return 2 *
         (t.transformRotationX[this] * t.transformRotationZ[this] -
             t.transformRotationW[this] * t.transformRotationY[this]);
@@ -313,21 +313,21 @@ extension Transform3DAccessor on Accessor<Transform3D> {
   /// The unit direction of this entity's own +Y axis - its up, which is world
   /// +Y only while it is unrolled and unpitched.
   double get upX {
-    final t = get<Transform3D>();
+    final t = component;
     return 2 *
         (t.transformRotationX[this] * t.transformRotationY[this] -
             t.transformRotationW[this] * t.transformRotationZ[this]);
   }
 
   double get upY {
-    final t = get<Transform3D>();
+    final t = component;
     final x = t.transformRotationX[this];
     final z = t.transformRotationZ[this];
     return 1 - 2 * (x * x + z * z);
   }
 
   double get upZ {
-    final t = get<Transform3D>();
+    final t = component;
     return 2 *
         (t.transformRotationY[this] * t.transformRotationZ[this] +
             t.transformRotationW[this] * t.transformRotationX[this]);

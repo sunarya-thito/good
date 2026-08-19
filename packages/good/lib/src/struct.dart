@@ -271,6 +271,7 @@ extension type const Entity(int value) implements int {
   /// One list index plus an `is` test; no allocation on the success path.
   /// Throws if this entity's archetype does not include [T] - use
   /// [tryGet] when absence is expected.
+  @pragma('vm:prefer-inline')
   T get<T extends Component>() {
     final prefab = ArchetypeRegistry.byId(archetypeId).prefab;
     if (prefab is T) return prefab as T;
@@ -294,6 +295,7 @@ extension type const Entity(int value) implements int {
 
   /// [get], but `null` instead of throwing when the archetype lacks [T] -
   /// the `OptWith<Child>()` half of a query.
+  @pragma('vm:prefer-inline')
   T? tryGet<T extends Component>() {
     final prefab = ArchetypeRegistry.byId(archetypeId).prefab;
     return prefab is T ? prefab as T : null;
@@ -311,7 +313,8 @@ extension type const Entity(int value) implements int {
   /// `call` rather than `operator []`: an operator cannot be generic, and an
   /// operator's return type cannot depend on its argument, so
   /// `entity[Transform3D]` could only ever be typed `Null`.
-  Accessor<T> call<T>() => Accessor<T>(this);
+  @pragma('vm:prefer-inline')
+  Accessor<T> call<T extends Component>() => Accessor<T>(this);
 }
 
 /// One entity seen as its [T] component - what `entity<Transform3D>()`
@@ -343,16 +346,24 @@ extension type const Entity(int value) implements int {
 ///
 /// extension HealthAccessor on Accessor<Health> {
 ///   void damage(int amount) {
-///     final health = get<Health>();
+///     final health = component;
 ///     health.hp[this] = health.hp[this] - amount;
 ///   }
 /// }
 /// ```
 ///
-/// Inside the extension `this` **is** the entity, so `get<Health>()` needs no
-/// receiver and a column indexes with `this` directly. Everything on [Entity]
-/// is available too - `destroy()`, `sceneSlot`, `tryGet` - and an accessor
-/// can be passed anywhere an entity is wanted, because it implements [Entity].
+/// Inside the extension `this` **is** the entity, so a column indexes with
+/// `this` directly, and [component] hands back the `Health` it belongs to.
+/// Hold that in a local when you touch it more than once - each read resolves
+/// the component again.
+///
+/// A helper taking a *second* entity reads that one through its own component
+/// (`other.get<Health>()`), because it may be a different archetype with a
+/// different row layout. Only the receiver is guaranteed to be this one.
+///
+/// Everything on [Entity] is available too - `destroy()`, `sceneSlot`,
+/// `tryGet` - and an accessor can be passed anywhere an entity is wanted,
+/// because it implements [Entity].
 ///
 /// # Why the helpers go here and not on the component
 ///
@@ -365,4 +376,8 @@ extension type const Entity(int value) implements int {
 /// It costs nothing: `Accessor<T>` erases to [Entity], which erases to `int`,
 /// so `identical(entity<T>().entity, entity)` holds and nothing is allocated
 /// to reach a helper.
-extension type const Accessor<T>(Entity entity) implements Entity {}
+extension type const Accessor<T extends Component>(Entity entity)
+    implements Entity {
+  @pragma('vm:prefer-inline')
+  T get component => entity.get<T>();
+}
