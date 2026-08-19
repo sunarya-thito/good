@@ -1,0 +1,21 @@
+/// The 3D good engine.
+///
+/// **One dependency, one import.** Adding `goo3d` to a pubspec and importing
+/// this library gives you the kernel (ECS, scenes, the tick loop,
+/// `Game`/`GameState`, `GameView`) *and* the 3D layer. The kernel is
+/// re-exported below rather than left as a second dependency the user has to
+/// add and keep version-matched by hand, which is the arrangement `goo2d`
+/// already uses.
+///
+/// **There is no renderer here yet.** This library is transforms, hierarchy
+/// composition and the camera - the maths and columns everything above them
+/// stands on. Meshes, materials, lights and the draw path are issue #43, a
+/// native backend behind a C shim, and nothing here pretends to stand in for
+/// it.
+library;
+
+export 'package:good/good.dart';
+
+export 'src/data/camera.dart';
+export 'src/data/transform.dart';
+export 'src/data/world_transform.dart';

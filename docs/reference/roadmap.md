@@ -17,7 +17,8 @@ Last verified: **2026-08-19**, on `master`.
 | `goo2d_physics_box2d` | **Working** | Bodies, colliders, the nine joints, effectors, raycast and overlap queries |
 | `good_net` | **Working** | Messages, targets, channels, sessions, roster events and `LoopbackNetTransport`, with a conformance suite every backend is run against |
 | `good_net_p2p` | **Working on a LAN** | A real UDP protocol — acks, retransmission, ordering, batching, fragmentation, keepalives — plus address-carrying join codes and LAN discovery. **Does not cross the internet yet**: that needs STUN and a rendezvous |
-| `goo3d` and siblings | **Not started** | The kernel split exists so this lands without touching the shared half. `good create --3d` is refused until the package resolves |
+| `goo3d` | **Transforms only** | `Transform3D`, composed `WorldTransform3D` and `Camera3D` are real and tested. **Nothing draws**: there is no renderer, no mesh, no material and no light. Not on pub.dev, and `good create --3d` is still refused |
+| `goo3d`'s siblings | **Not started** | `goo3d_physics_box3d` and the rest. The kernel split exists so they land without touching the shared half |
 
 ## Verified end to end
 
@@ -49,6 +50,10 @@ Deferred, and documented in place instead of left as silent gaps.
 - **Audio playback.** `AudioClip` decodes and the asset pipeline ships audio,
   but there is **no audio backend, no mixer and no voice management**. The asset
   half is done; the playback half is not.
+- **The 3D renderer.** `goo3d` composes transforms and carries a camera; the
+  half that draws is a native backend behind our own C shim and is not written.
+  `Renderable3D`, `MeshAsset`, `MaterialAsset` and `Light3D` do not exist yet,
+  so the 3D rendering guide describes them ahead of the code.
 
 ### Tooling
 

@@ -298,4 +298,71 @@ extension type const Entity(int value) implements int {
     final prefab = ArchetypeRegistry.byId(archetypeId).prefab;
     return prefab is T ? prefab as T : null;
   }
+
+  /// This entity, seen as its [T] component:
+  ///
+  /// ```dart
+  /// entity<Transform3D>().distanceTo(other)
+  /// ```
+  ///
+  /// See [Accessor], which is what this returns and where a component's
+  /// helpers live.
+  ///
+  /// `call` rather than `operator []`: an operator cannot be generic, and an
+  /// operator's return type cannot depend on its argument, so
+  /// `entity[Transform3D]` could only ever be typed `Null`.
+  Accessor<T> call<T>() => Accessor<T>(this);
 }
+
+/// One entity seen as its [T] component - what `entity<Transform3D>()`
+/// returns, and where a component's helper methods live.
+///
+/// A helper reached this way takes only what it is *about*, because the
+/// entity it operates on is the receiver:
+///
+/// ```dart
+/// entity<Transform3D>().setEuler(yaw: 0.5);
+/// entity<Transform3D>().lookAt(0, 0, 0);
+/// final gap = entity<Transform3D>().distanceTo(other);
+/// ```
+///
+/// # Writing one for your own component
+///
+/// Declare an extension named after the component, on `Accessor` of it:
+///
+/// ```dart
+/// mixin Health on Component {
+///   late final DataPointer<int> hp;
+///
+///   @override
+///   void describeStruct(DataDescriptor data) {
+///     super.describeStruct(data);
+///     hp = data.hasInt32(100);
+///   }
+/// }
+///
+/// extension HealthAccessor on Accessor<Health> {
+///   void damage(int amount) {
+///     final health = get<Health>();
+///     health.hp[this] = health.hp[this] - amount;
+///   }
+/// }
+/// ```
+///
+/// Inside the extension `this` **is** the entity, so `get<Health>()` needs no
+/// receiver and a column indexes with `this` directly. Everything on [Entity]
+/// is available too - `destroy()`, `sceneSlot`, `tryGet` - and an accessor
+/// can be passed anywhere an entity is wanted, because it implements [Entity].
+///
+/// # Why the helpers go here and not on the component
+///
+/// Two components can want the same method name, and `Accessor<Health>` and
+/// `Accessor<Transform3D>` are different types, so each can declare
+/// `distanceTo` or `damage` without the two colliding in a library that
+/// imports both. A helper put on the component mixin, or on [Entity] itself,
+/// has no such separation.
+///
+/// It costs nothing: `Accessor<T>` erases to [Entity], which erases to `int`,
+/// so `identical(entity<T>().entity, entity)` holds and nothing is allocated
+/// to reach a helper.
+extension type const Accessor<T>(Entity entity) implements Entity {}

@@ -1,0 +1,27 @@
+name: goo3d
+description: >-
+  The 3D renderer for the good game engine: decomposed transforms with
+  quaternion rotation, composed world transforms and the camera, on top of
+  the good kernel, which it re-exports.
+version: 0.1.0
+repository: https://github.com/sunarya-thito/good
+homepage: https://sunarya-thito.github.io/good/
+documentation: https://sunarya-thito.github.io/good/
+issue_tracker: https://github.com/sunarya-thito/good/issues
+
+environment:
+  sdk: ^3.13.0
+  flutter: ">=3.47.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  good: ^0.1.0
+  meta: ^1.15.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
