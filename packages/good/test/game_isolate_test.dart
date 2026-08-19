@@ -509,26 +509,20 @@ class _IsolateTextureLoader extends AssetLoader<_IsolateTexture> {
 class _Textured extends EntityStruct {
   late final Asset<_IsolateTexture> texture;
 
+  // Both seeded to a value the writer can never legitimately produce, so a row
+  // that was never written fails the test instead of accidentally matching
+  // address 0.
+
   /// What the *game isolate's* copy thinks this asset's address is.
-  late final DataPointer<int> seenAddress;
+  final seenAddress = Field.int32(-1);
 
   /// And whether that copy has a decoded payload - `0` there, always.
-  late final DataPointer<int> seenLoaded;
+  final seenLoaded = Field.int32(-1);
 
   @override
   void describeAssets(AssetDescriptor descriptor) {
     super.describeAssets(descriptor);
     texture = descriptor.has(_isolateTexture);
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    // Seeded to a value the writer can never legitimately produce, so a row
-    // that was never written fails the test instead of accidentally matching
-    // address 0.
-    seenAddress = data.hasInt32(-1);
-    seenLoaded = data.hasInt32(-1);
   }
 }
 
