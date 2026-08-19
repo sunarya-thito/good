@@ -119,8 +119,16 @@ mixin RigidBody2D on Component {
 
   /// Which [BodyType2D] this body is.
   ///
-  /// Changing this at runtime is honoured: the system notices and calls
-  /// Box2D's own type change rather than rebuilding the body.
+  /// Writing it on a live body is honoured. The next fixed step compares it
+  /// against [syncedType] and, when they differ, calls Box2D's own
+  /// `b2Body_SetType` - which keeps the body's handle, its shapes and its
+  /// joints, moves it between the solver's static and awake sets, rebuilds
+  /// its broad-phase proxies and recomputes its mass. Nothing is destroyed
+  /// and nothing is recreated.
+  ///
+  /// So a dynamic body turned static stops where it is, and a static one
+  /// turned dynamic starts falling. Like every other component write it is
+  /// read from the next step onward, not the one already in flight.
   late final DataPointer<BodyType2D> bodyType;
 
   /// The solver's velocity, refreshed every tick. **Read-only** - these are a
@@ -175,6 +183,23 @@ mixin RigidBody2D on Component {
   @internal
   late final DataPointer<double> syncedAngle;
 
+  /// The [BodyType2D] Box2D was last told to simulate this body as, which is
+  /// what it is simulating it as - unlike the transform, the solver never
+  /// changes a body's type on its own, so what it was told is the whole
+  /// truth.
+  ///
+  /// Mirrored here because the shim exposes no `b2Body_GetType`, and reading
+  /// the type back one body at a time would cost an FFI call per body per
+  /// tick - the very thing `gooBodiesPushTransforms` batches away. A column
+  /// makes the per-tick comparison two bits out of a row that is already
+  /// being read.
+  ///
+  /// `Box2DPhysicsSystem._applyBodyType` is the only writer, and it is also
+  /// the only caller of `gooBodySetType`, so the mirror cannot claim a type
+  /// the shim was not given.
+  @internal
+  late final DataPointer<BodyType2D> syncedType;
+
   /// Overridden by the prefab to configure its body. A prefab that wants a
   /// plain dynamic body with default damping does not need to override this
   /// at all - unlike `Collider2D.describeCollider`, which is abstract because
@@ -216,6 +241,14 @@ mixin RigidBody2D on Component {
     syncedX = data.hasFloat64(double.nan);
     syncedY = data.hasFloat64(double.nan);
     syncedAngle = data.hasFloat64(double.nan);
+
+    // No "never applied" sentinel, unlike the three above: a body whose
+    // handle is still 0 is skipped by `_fill` entirely, and `_createBody`
+    // writes this before the row can ever be compared. Defaulting it to the
+    // same type `bodyType` defaults to means the one case that could slip
+    // through - a row read before creation - compares equal and does
+    // nothing, rather than pushing a type change at a body that has none.
+    syncedType = data.hasEnum(BodyType2D.values, descriptor._type);
   }
 
   // --- forces ---------------------------------------------------------------

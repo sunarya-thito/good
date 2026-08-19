@@ -605,9 +605,10 @@ class Box2DPhysicsSystem extends GameSystem
   }
 
   void _createBody(Entity entity, RigidBody2D body, Transform2D transform) {
+    final type = body.bodyType[entity];
     final handle = box2d.gooBodyCreate(
       world,
-      body.bodyType[entity].index,
+      type.index,
       transform.transformOffsetX[entity],
       transform.transformOffsetY[entity],
       transform.transformRotation[entity],
@@ -616,6 +617,14 @@ class Box2DPhysicsSystem extends GameSystem
     // Readable *this* tick, which the row above will not be until it is
     // published - see [_freshHandles].
     _freshHandles[entity] = handle;
+
+    // Seeds `syncedType` through the same call that will later change it,
+    // rather than assigning the column here, so that one method is the only
+    // writer of the mirror and it cannot disagree with what the shim was
+    // told. The shim call itself does nothing: `gooBodyCreate` was just
+    // handed this exact value and `b2Body_SetType` returns immediately when
+    // the type already matches.
+    _applyBodyType(body, entity, handle, type);
 
     box2d
       ..gooBodySetGravityScale(handle, body.gravityScale[entity])
@@ -920,12 +929,25 @@ class Box2DPhysicsSystem extends GameSystem
         final y = transform.transformOffsetY[entity];
         final angle = transform.transformRotation[entity];
 
+        // A `bodyType` write reaches Box2D here, before the step it should
+        // take effect on. The comparison is one narrow column read against
+        // another on a row already in cache - cheaper than the three float
+        // reads `_movedByGameplay` does below - and the call it guards fires
+        // only on the tick a type actually changes.
+        final type = body.bodyType[entity];
+        if (type != body.syncedType[entity]) {
+          _applyBodyType(body, entity, handle, type);
+        }
+
         // Static and kinematic bodies are authored by gameplay, so they are
         // always pushed. A dynamic body is Box2D's to move, and is pushed
         // only when it differs from what was last pulled out - see
         // RigidBody2D's class doc for why the comparison is against the
         // pulled value.
-        final type = body.bodyType[entity];
+        //
+        // Ordered after the type change so a body that just became static
+        // pushes on this tick: the solver has stopped moving it, and its
+        // transform is gameplay's again from now on.
         final push = type != BodyType2D.dynamicBody ||
             _movedByGameplay(body, entity, x, y, angle);
 
@@ -939,6 +961,27 @@ class Box2DPhysicsSystem extends GameSystem
       }
     }
     return index;
+  }
+
+  /// Points Box2D at [type] and records it as the type this body now has.
+  ///
+  /// The only caller of `gooBodySetType` and the only writer of
+  /// [RigidBody2D.syncedType], which is what keeps the mirror honest.
+  ///
+  /// The change is not a rebuild: `b2Body_SetType` keeps the body id, its
+  /// shapes and its joints, and does the work around them - it drops the
+  /// body's contacts, wakes it, moves it between the static and awake solver
+  /// sets, recreates its shape proxies in the matching broad-phase tree,
+  /// relinks its joints and recomputes its mass from its shapes. Nothing is
+  /// left for this side to do.
+  void _applyBodyType(
+    RigidBody2D body,
+    Entity entity,
+    int handle,
+    BodyType2D type,
+  ) {
+    box2d.gooBodySetType(handle, type.index);
+    body.syncedType[entity] = type;
   }
 
   bool _movedByGameplay(

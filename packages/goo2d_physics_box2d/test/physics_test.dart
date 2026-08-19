@@ -106,16 +106,26 @@ class _Scene extends SceneStruct {
   }
 }
 
-/// A pending teleport: (entity, x, y). Applied by [_TeleportSystem] on the
+/// A pending teleport: (entity, x, y). Applied by [_GameplaySystem] on the
 /// next tick, then cleared.
 (Entity, double, double)? _teleport;
+
+/// A pending body-type change, applied the same way.
+(Entity, BodyType2D)? _retype;
 
 /// Stands in for ordinary gameplay code. Component mutation is only legal
 /// inside a tick window, so a test that wants to move something mid-run has
 /// to do it from a system like any real game would.
-class _TeleportSystem extends GameSystem with FixedTickable {
+class _GameplaySystem extends GameSystem with FixedTickable {
   @override
   void onFixedUpdate() {
+    final retype = _retype;
+    if (retype != null) {
+      _retype = null;
+      final (entity, type) = retype;
+      entity.get<RigidBody2D>().bodyType[entity] = type;
+    }
+
     final pending = _teleport;
     if (pending == null) return;
     _teleport = null;
@@ -141,7 +151,7 @@ class _GameState extends GameState<_Game> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_TeleportSystem());
+    descriptor.has(_GameplaySystem());
     physics = descriptor.has(Box2DPhysicsSystem(workerCount: _workers));
   }
 }
@@ -190,7 +200,10 @@ void _advance(int steps) {
 }
 
 void main() {
-  setUp(() => _teleport = null);
+  setUp(() {
+    _teleport = null;
+    _retype = null;
+  });
 
   tearDown(() {
     SceneRegistry.reset();
@@ -485,6 +498,136 @@ void main() {
         scene.crate.transformOffsetY[crate],
         greaterThan(parked + 0.5),
         reason: 're-enabling should let gravity take it again',
+      );
+    });
+  });
+
+  // A `bodyType` write on a live body, which `_fill` turns into Box2D's own
+  // b2Body_SetType. Three ticks between the write and the assertion in each
+  // test: one for the write to publish, one for the step that applies it,
+  // and one more so the tick after the change is included rather than
+  // straddled.
+  group('body type', () {
+    test('a dynamic body turned static stops where it is', () async {
+      final scene = await _boot();
+      final crate = scene.addEntity(scene.crate);
+
+      _advance(30);
+      expect(
+        scene.crate.transformOffsetY[crate],
+        greaterThan(0.5),
+        reason: 'it has to be falling for stopping to mean anything',
+      );
+
+      _retype = (crate, BodyType2D.staticBody);
+      _advance(3);
+      final stopped = scene.crate.transformOffsetY[crate];
+
+      _advance(120);
+
+      expect(
+        scene.crate.transformOffsetY[crate],
+        closeTo(stopped, 1e-6),
+        reason: 'the solver does not move a static body, so two seconds of '
+            'gravity should leave it exactly where it was',
+      );
+      expect(
+        scene.crate.linearVelocityY[crate],
+        closeTo(0, 1e-6),
+        reason: 'a static body does not keep the velocity it was '
+            'carrying',
+      );
+    });
+
+    test('a static body turned dynamic starts falling', () async {
+      final scene = await _boot();
+      final floor = scene.addEntity(scene.floor);
+      scene.floor.transformOffsetY[floor] = 10;
+
+      _advance(30);
+      expect(
+        scene.floor.transformOffsetY[floor],
+        closeTo(10, 1e-4),
+        reason: 'still static, still parked',
+      );
+
+      _retype = (floor, BodyType2D.dynamicBody);
+      _advance(60);
+
+      expect(
+        scene.floor.transformOffsetY[floor],
+        greaterThan(11),
+        reason: 'about a second of free fall, less the ticks the write spent '
+            'reaching the solver',
+      );
+    });
+
+    test('a body turned kinematic stops accelerating', () async {
+      final scene = await _boot();
+      final crate = scene.addEntity(scene.crate);
+
+      _advance(30);
+
+      _retype = (crate, BodyType2D.kinematicBody);
+      _advance(3);
+      final coasting = scene.crate.linearVelocityY[crate];
+      expect(coasting, greaterThan(0.4), reason: 'it was falling when it '
+          'changed, and Box2D leaves a kinematic body the velocity it had');
+
+      _advance(60);
+
+      // The distinguishing property: gravity is what a kinematic body is
+      // exempt from, not motion. A dynamic body would be a second of g
+      // faster by now.
+      expect(
+        scene.crate.linearVelocityY[crate],
+        closeTo(coasting, 1e-6),
+        reason: 'a kinematic body coasts at whatever velocity it has - a '
+            'still-dynamic one would have gained about 9.8 m/s',
+      );
+    });
+
+    test('a type change keeps the body handle and its shapes', () async {
+      final scene = await _boot();
+
+      final floor = scene.addEntity(scene.floor);
+      scene.floor.transformOffsetY[floor] = 10;
+      final crate = scene.addEntity(scene.crate);
+
+      _advance(1);
+      final handle = scene.crate.bodyHandle[crate];
+      expect(handle, isNot(0));
+
+      // Out to static and back, so both directions are exercised on one
+      // body - and the halt in between is what stops this test passing on a
+      // build where the type change never reaches Box2D at all.
+      _retype = (crate, BodyType2D.staticBody);
+      _advance(3);
+      final parked = scene.crate.transformOffsetY[crate];
+      _advance(60);
+      expect(
+        scene.crate.transformOffsetY[crate],
+        closeTo(parked, 1e-6),
+        reason: 'the change has to have taken effect for the rest of this '
+            'test to be about anything',
+      );
+
+      _retype = (crate, BodyType2D.dynamicBody);
+      _advance(300);
+
+      expect(
+        scene.crate.bodyHandle[crate],
+        handle,
+        reason: 'a type change must not rebuild the body - a new handle here '
+            'would mean its shapes and joints had been dropped with the old '
+            'one',
+      );
+      expect(
+        scene.crate.transformOffsetY[crate],
+        closeTo(8.5, 0.1),
+        reason: 'it still has the box collider it was created with, so it '
+            'lands on the floor rather than falling through where its '
+            'shapes used to be',
       );
     });
   });
