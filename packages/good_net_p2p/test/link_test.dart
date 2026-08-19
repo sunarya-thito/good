@@ -107,6 +107,28 @@ void main() {
       }
     }
 
+    /// [run], but stopping as soon as [done] holds.
+    ///
+    /// For anything waiting on the loss sweep. `P2PLink._sweepLost` only counts
+    /// a packet once `_lossDeadlineMicros` - 500ms at the shortest - has passed
+    /// since that packet was sent, so a fixed wait is a race: a drop late in
+    /// the window is still pending when the window closes, and the link
+    /// correctly reports no loss yet. Waiting for the event instead of for a
+    /// duration takes the clock out of it.
+    Future<void> runUntil(
+      bool Function() done, {
+      Duration limit = const Duration(seconds: 8),
+    }) async {
+      final until = DateTime.now().add(limit);
+      while (DateTime.now().isBefore(until)) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        for (var i = 0; i < transports.length; i++) {
+          transports[i].flush();
+        }
+        if (done()) return;
+      }
+    }
+
     test(
       'every reliable message survives a link losing a third of it',
       () async {
@@ -149,10 +171,14 @@ void main() {
       final client = transport();
       final hosted = await host.host();
       final joined = await client.join(hosted.id);
-      // Long enough for several keepalives to survive the loss - an ack rides
-      // on the peer's next packet, so a measurement takes a keepalive or two
-      // even before a third of them are thrown away.
-      await run(const Duration(milliseconds: 1500));
+      // An ack rides on the peer's next packet, so a measurement takes a
+      // keepalive or two even before a third of them are thrown away - and
+      // then the sweep has to reach the dropped one. Waiting for the report
+      // rather than for a fixed 1500ms, which used to fail about one run in
+      // six on exactly the value it asserts.
+      await runUntil(
+        () => (hosted.connectionTo(joined.localPeer)?.packetLoss ?? 0) > 0,
+      );
 
       final toHost = joined.connectionTo(NetPeerId.host)!;
       expect(
