@@ -290,23 +290,26 @@ String identifierFor(String path) {
 /// Which good package the project depends on, and therefore what the generated
 /// files import.
 ///
-/// `goo2d` re-exports the `good` kernel, so a 2D project must import `goo2d`
-/// and nothing else: importing `package:good` directly in generated code names
-/// a package the pubspec does not depend on, which pub warns about and a
-/// stricter analysis setup rejects outright.
+/// `goo2d` and `goo3d` both re-export the `good` kernel, so a project must
+/// import the one it depends on and nothing else: importing `package:good`
+/// directly in generated code names a package the pubspec does not depend on,
+/// which pub warns about and a stricter analysis setup rejects outright. A
+/// `goo3d` project left off this list is exactly that warning, on every
+/// generated file, from the first run.
 ///
-/// Falls back to `good` when neither is declared. A project with no engine
+/// Falls back to `good` when none is declared. A project with no engine
 /// dependency at all has bigger problems than the import line, and guessing
-/// the kernel is the answer that is right for both of them.
+/// the kernel is the answer that is right for all of them.
 String enginePackageOf(Directory projectDir) {
   final file = File('${projectDir.path}/pubspec.yaml');
   if (!file.existsSync()) return 'good';
   final doc = loadYaml(file.readAsStringSync());
   final deps = doc is YamlMap ? doc['dependencies'] : null;
   if (deps is! YamlMap) return 'good';
-  // Most specific first: a project can depend on both, and `goo2d` is then the
-  // one whose export surface covers everything the generated code names.
-  for (final candidate in const <String>['goo2d', 'good']) {
+  // Most specific first: a project can depend on a renderer and the kernel
+  // both, and the renderer is then the one whose export surface covers
+  // everything the generated code names.
+  for (final candidate in const <String>['goo2d', 'goo3d', 'good']) {
     if (deps.containsKey(candidate)) return candidate;
   }
   return 'good';

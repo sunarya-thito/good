@@ -365,11 +365,44 @@ flutter:
     });
   });
 
+  group('enginePackageOf', () {
+    test('names the renderer the project depends on, not the kernel', () {
+      expect(
+        enginePackageOf(_project('name: demo\ndependencies:\n  goo2d: ^0.1.0\n', <String>[])),
+        'goo2d',
+      );
+      expect(
+        enginePackageOf(_project('name: demo\ndependencies:\n  goo3d: ^0.1.0\n', <String>[])),
+        'goo3d',
+        reason:
+            'left off this list, a 3D project generated files importing '
+            'package:good - a package its pubspec does not depend on, which '
+            'is a lint on every generated file',
+      );
+      expect(
+        enginePackageOf(_project('name: demo\ndependencies:\n  good: ^0.1.0\n', <String>[])),
+        'good',
+      );
+    });
+
+    test('an asset has a payload type only where the engine names one', () {
+      expect(payloadType('goo2d', 'Texture'), 'Texture');
+      expect(
+        payloadType('goo3d', 'Texture'),
+        'Object?',
+        reason:
+            'Texture and AudioClip are goo2d types. Naming them in a 3D '
+            "project's generated bindings put four `Texture isn't a type` "
+            'errors into its first flutter analyze',
+      );
+    });
+  });
+
   group('scaffoldFiles', () {
     test('names the game file after the project', () {
       final files = scaffoldFiles(
         projectName: 'demo',
-        package: 'goo2d',
+        engine: GoodEngine.twoD,
         command: 'good create',
       );
       expect(files.keys, contains('lib/game/demo_game.dart'));
@@ -378,7 +411,7 @@ flutter:
     test('does not double a _game suffix the name already has', () {
       final files = scaffoldFiles(
         projectName: 'penguin_game',
-        package: 'goo2d',
+        engine: GoodEngine.twoD,
         command: 'good create',
       );
       expect(files.keys, contains('lib/game/penguin_game.dart'));
@@ -388,7 +421,7 @@ flutter:
     test('class names are PascalCase from the package name', () {
       final files = scaffoldFiles(
         projectName: 'my_arcade',
-        package: 'goo2d',
+        engine: GoodEngine.twoD,
         command: 'good create',
       );
       expect(
@@ -401,7 +434,7 @@ flutter:
     test('starts the game before showing it', () {
       final files = scaffoldFiles(
         projectName: 'demo',
-        package: 'goo2d',
+        engine: GoodEngine.twoD,
         command: 'good create',
       );
       final main = files['lib/main.dart']!;
@@ -423,7 +456,7 @@ flutter:
     test('does not write a pubspec over the one flutter create made', () {
       final files = scaffoldFiles(
         projectName: 'demo',
-        package: 'goo2d',
+        engine: GoodEngine.twoD,
         command: 'good create',
       );
       expect(
@@ -435,6 +468,152 @@ flutter:
       );
       expect(pubspecPatch('goo2d'), contains('goo2d:'));
       expect(pubspecPatch('goo2d'), contains('- assets/'));
+    });
+
+    test('the dependency admits the version that is actually published', () {
+      expect(
+        pubspecPatch('goo3d'),
+        contains('goo3d: ^0.1.0'),
+        reason:
+            'this said ^0.0.1 long after 0.1.0 shipped, and ^0.0.1 does not '
+            'allow 0.1.0 - so every project scaffolded in between failed '
+            'flutter pub get anywhere without a path override',
+      );
+    });
+
+    test('a column is declared by the field that holds it', () {
+      final files = scaffoldFiles(
+        projectName: 'demo',
+        engine: GoodEngine.threeD,
+        command: 'good create',
+      );
+      final player = files['lib/game/prefabs/player.dart']!;
+      expect(player, contains('Field.float64('));
+      expect(
+        player,
+        isNot(contains('DataPointer<')),
+        reason:
+            'the superseded form. A scaffold is how a shape spreads, so it '
+            'has to teach the current one',
+      );
+      expect(player, isNot(contains('describeStruct')));
+    });
+
+    test('a prefab is declared by its constructor, not an instance', () {
+      for (final engine in GoodEngine.values) {
+        final files = scaffoldFiles(
+          projectName: 'demo',
+          engine: engine,
+          command: 'good create',
+        );
+        expect(
+          files['lib/game/scenes/main_scene.dart'],
+          contains('descriptor.has(Player.new)'),
+          reason:
+              'a field initialiser has no descriptor in scope, so the '
+              'framework opens one around the constructor call',
+        );
+      }
+    });
+  });
+
+  group('scaffoldFiles --3d', () {
+    Map<String, String> files() => scaffoldFiles(
+      projectName: 'demo',
+      engine: GoodEngine.threeD,
+      command: 'good create',
+    );
+
+    /// [source] with its comments removed.
+    ///
+    /// The templates talk *about* the 2D side - what `Game2D` declares for you
+    /// that a 3D game declares by hand - so a search for `2D` over the whole
+    /// file finds prose. What must not appear is a 2D name in the code.
+    String code(String source) => source
+        .split('\n')
+        .where((line) => !line.trimLeft().startsWith('//'))
+        .join('\n');
+
+    test('imports goo3d and names nothing 2D', () {
+      for (final entry in files().entries) {
+        if (!entry.key.endsWith('.dart')) continue;
+        expect(
+          code(entry.value),
+          isNot(contains('goo2d')),
+          reason: '${entry.key} imports the wrong engine',
+        );
+        expect(
+          code(entry.value),
+          isNot(contains('2D')),
+          reason:
+              '${entry.key} names a 2D type - Transform2D, Renderable2D and '
+              'Game2D are all things a goo3d project cannot resolve',
+        );
+      }
+    });
+
+    test('claims no renderer, because there is none', () {
+      final scaffolded = files();
+      final player = scaffolded['lib/game/prefabs/player.dart']!;
+      expect(
+        code(player),
+        isNot(contains('Renderable3D')),
+        reason:
+            'there is no such component. goo3d is transforms, hierarchy and '
+            'the camera; the draw path is issue #43',
+      );
+      expect(
+        player,
+        contains('#43'),
+        reason:
+            'a template that goes quiet about what is missing is worse than '
+            'one that names the issue that brings it',
+      );
+      expect(
+        scaffolded['lib/main.dart'],
+        contains('Nothing is drawn here yet'),
+      );
+    });
+
+    test('declares the view it shows, and a camera entity to occupy it', () {
+      final scaffolded = files();
+      final game = scaffolded['lib/game/demo_game.dart']!;
+      expect(game, contains('mainView'));
+      expect(
+        game,
+        contains('describeCameras'),
+        reason: 'Game2D declares a default view for you; plain Game does not',
+      );
+      expect(
+        scaffolded['lib/main.dart'],
+        contains('GameView(camera: game.mainView)'),
+      );
+      expect(scaffolded.keys, contains('lib/game/prefabs/eye.dart'));
+      expect(
+        scaffolded['lib/game/scenes/main_scene.dart'],
+        contains('eye.view[camera] ='),
+        reason: 'a camera occupying no view is a camera nothing would show',
+      );
+    });
+
+    test('declares the composition pass nothing else declares', () {
+      expect(
+        files()['lib/game/demo_game.dart'],
+        contains('WorldTransform3DSystem()'),
+        reason:
+            'Renderer2DState declares the 2D twin for you. Without this a '
+            'child never moves with its parent',
+      );
+    });
+
+    test('turns an entity through the accessor, not a helper taking one', () {
+      expect(
+        files()['lib/game/systems/spin_system.dart'],
+        contains('entity<Transform3D>().setEuler('),
+        reason:
+            "a method acting on one entity belongs on that component's "
+            'accessor - see docs/reference/design-rules.md',
+      );
     });
   });
 
@@ -457,7 +636,7 @@ flutter:
 
     test('adds the dependency and both asset entries', () {
       final patched = patchedPubspecLines(flutterCreated, 'goo2d')!;
-      expect(patched[3], '  goo2d: ^0.0.1');
+      expect(patched[3], '  goo2d: ^0.1.0');
       expect(
         patched,
         containsAllInOrder(<String>['    - assets/', '    - assets/packed/']),

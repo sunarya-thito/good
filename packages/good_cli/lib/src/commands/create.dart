@@ -7,24 +7,6 @@ import 'package:good_cli/src/generate/scaffold.dart';
 import 'package:good_cli/src/parsers.dart';
 import 'package:good_cli/src/verbosable.dart';
 
-/// Which engine package a new project is built against.
-///
-/// Never named on the command line - `--2d` and `--3d` choose it. The names
-/// here exist because a Dart enum value cannot begin with a digit, and that is
-/// this file's problem rather than the user's.
-enum GoodEngine {
-  twoD('goo2d'),
-
-  /// Declared and refused. `goo3d` does not exist, and a flag that silently
-  /// accepts what it cannot honour is worse than one that says no - the
-  /// project would scaffold and then fail to resolve its dependencies.
-  threeD('goo3d');
-
-  const GoodEngine(this.package);
-
-  final String package;
-}
-
 /// `good create <name>` - a Flutter app wired up to good.
 ///
 /// Two halves, deliberately separable: [scaffoldFiles] decides *what files a
@@ -60,7 +42,10 @@ class CreateCommand extends Command with Verbose {
     );
     threeD = descriptor.describeFlag(
       name: '3d',
-      description: 'Build the project against goo3d.',
+      description:
+          'Build the project against goo3d - transforms, hierarchy and the '
+          'camera. There is no 3D renderer yet, so the project simulates and '
+          'draws nothing; see issue #43.',
     );
     dryRun = descriptor.describeFlag(
       name: 'dry-run',
@@ -88,15 +73,11 @@ class CreateCommand extends Command with Verbose {
       return;
     }
     final engine = threeD.value ? GoodEngine.threeD : GoodEngine.twoD;
-    if (engine == GoodEngine.threeD) {
-      err.println('goo3d does not exist yet. Only --2d can be created today.');
-      return;
-    }
 
     final root = Directory('${parentDir.value.path}/$projectName');
     final files = scaffoldFiles(
       projectName: projectName,
-      package: engine.package,
+      engine: engine,
       command: session.path.join(' '),
     );
 
@@ -182,7 +163,23 @@ class CreateCommand extends Command with Verbose {
     );
     info
       ..printf('Generated %s file(s) in lib/good.generated/.\n', [generated])
-      ..println('')
+      ..println('');
+    if (engine == GoodEngine.threeD) {
+      // Said here as well as in the scaffolded code's own comments, because
+      // "I ran it and the window is empty" is the first thing that happens
+      // and the terminal is where the person is still looking.
+      info
+        ..println(
+          'goo3d has no renderer yet (issue #43), so this project simulates '
+          'and draws nothing.',
+        )
+        ..println(
+          'What it does have is real: transforms, the hierarchy, and a camera '
+          'entity occupying a declared view.',
+        )
+        ..println('');
+    }
+    info
       ..printf('Created %s. Next:\n', [projectName])
       ..printf('  cd %s\n', [projectName])
       ..println('  flutter pub get')
