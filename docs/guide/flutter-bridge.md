@@ -232,6 +232,7 @@ void describeParams(ParamDescriptor descriptor) {
   x = descriptor.hasFloat32();
   y = descriptor.hasFloat32();
   kind = descriptor.hasUint4();          // 16 kinds in half a byte
+  target = descriptor.hasEntity();       // a handle, not a bare int64
   name = descriptor.hasString(32);       // bounded, so the record has a size
 }
 ```
@@ -357,33 +358,40 @@ identical archetype layout and adopts every page the game isolate allocates. An
 `Entity` therefore resolves and reads with **no message and no copy**.
 
 Getting the handle across is the only part that needs a command — an `Entity` is
-an `int`, so it fits in one parameter:
+an `int`, so it fits in one parameter, and `hasEntity` is the field that says
+so:
 
 ```dart
-class WhoIsPlayer extends SupplierCommand<int> {
-  late final ParamPointer<int> entity;
+class WhoIsPlayer extends SupplierCommand<Entity> {
+  late final ParamPointer<Entity> entity;
 
   @override
   void describeParams(ParamDescriptor descriptor) {
-    entity = descriptor.hasInt64();
+    entity = descriptor.hasEntity();
   }
 
   @override
-  void bufferFromResult(ParamBuffer call, int result) => entity[call] = result;
+  void bufferFromResult(ParamBuffer call, Entity result) =>
+      entity[call] = result;
 
   @override
-  int resultFromBuffer(ParamBuffer call) => entity[call];
+  Entity resultFromBuffer(ParamBuffer call) => entity[call];
 }
 ```
 
 ```dart
-final playerEntity = Entity(await game.whoIsPlayer());
+final playerEntity = await game.whoIsPlayer();
 final transform = playerEntity.get<Transform2D>();
 final x = transform.transformOffsetX[playerEntity];
 ```
 
 This is a read of the published snapshot, coherent per tick, and **read-only** —
 the game isolate is the only writer anywhere in the process.
+
+`hasEntity` is `hasInt64` with the handle type on it — same eight bytes on the
+wire, same cost — but a command declaring one cannot be handed a score by
+mistake, and a mix-up that did cross the boundary would look like eight
+perfectly ordinary bytes on the other side.
 
 ## Frames and ticks
 

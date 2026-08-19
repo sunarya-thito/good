@@ -213,21 +213,19 @@ class _CensusSystem extends GameSystem with FixedTickable {
 /// it has no way to see, which is why the built-in was deleted rather than
 /// kept.
 class _SpawnUnit extends SupplierCommand<Entity> {
-  late final ParamPointer<int> spawned;
+  late final ParamPointer<Entity> spawned;
 
   @override
   void describeParams(ParamDescriptor descriptor) {
-    // Signed, and it has to be: `Entity.pack` shifts the archetype id up 48
-    // bits, straight into the sign position of Dart's 64-bit int.
-    spawned = descriptor.hasInt64();
+    spawned = descriptor.hasEntity();
   }
 
   @override
   void bufferFromResult(ParamBuffer call, Entity result) =>
-      spawned[call] = result.value;
+      spawned[call] = result;
 
   @override
-  Entity resultFromBuffer(ParamBuffer call) => Entity(spawned[call]);
+  Entity resultFromBuffer(ParamBuffer call) => spawned[call];
 }
 
 /// The scene, the spawn handler and nothing else. Split out from [_TestState]
@@ -289,24 +287,24 @@ typedef _Nudge = ({Entity entity, double amount});
 /// A user command, to prove the dispatch table is not hardcoded to the
 /// framework's own spawn. Sets [x] on an entity it is handed by value.
 class _NudgeCommand extends SinkCommand<_Nudge> {
-  late final ParamPointer<int> entity;
+  late final ParamPointer<Entity> entity;
   late final ParamPointer<double> amount;
 
   @override
   void describeParams(ParamDescriptor descriptor) {
-    entity = descriptor.hasInt64();
+    entity = descriptor.hasEntity();
     amount = descriptor.hasFloat64();
   }
 
   @override
   void bufferFromParams(ParamBuffer call, _Nudge params) {
-    entity[call] = params.entity.value;
+    entity[call] = params.entity;
     amount[call] = params.amount;
   }
 
   @override
   _Nudge paramsFromBuffer(ParamBuffer call) =>
-      (entity: Entity(entity[call]), amount: amount[call]);
+      (entity: entity[call], amount: amount[call]);
 }
 
 /// Declared on the `Game` (the only place a command may be declared) and

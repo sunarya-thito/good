@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:good/src/command/command.dart';
 import 'package:good/src/command/param.dart';
+import 'package:good/src/struct.dart';
 
 // The command API's two lower layers - the parameter record and the
 // declaration/dispatch registry - exercised with a loopback sender: no
@@ -122,6 +123,42 @@ class _Wide extends GameCommand<int, int> {
 
   @override
   int resultFromBuffer(ParamBuffer call) => u8[call];
+}
+
+typedef _Order = ({Entity unit, int waypoint});
+
+/// A command that carries an entity handle, to pin down the field kind that
+/// exists so an id and a number stop being interchangeable on the wire. The
+/// `waypoint` beside it is the number: both are 64 bits of payload, and only
+/// the declaration tells them apart.
+class _OrderUnit extends GameCommand<_Order, Entity> {
+  late final ParamPointer<Entity> unit;
+  late final ParamPointer<int> waypoint;
+  late final ParamPointer<Entity> escort;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    unit = descriptor.hasEntity();
+    waypoint = descriptor.hasInt64();
+    escort = descriptor.hasEntity();
+  }
+
+  @override
+  void bufferFromParams(ParamBuffer call, _Order params) {
+    unit[call] = params.unit;
+    waypoint[call] = params.waypoint;
+  }
+
+  @override
+  _Order paramsFromBuffer(ParamBuffer call) =>
+      (unit: unit[call], waypoint: waypoint[call]);
+
+  @override
+  void bufferFromResult(ParamBuffer call, Entity result) =>
+      escort[call] = result;
+
+  @override
+  Entity resultFromBuffer(ParamBuffer call) => escort[call];
 }
 
 class _Unhandled extends SignalCommand {}
@@ -551,6 +588,54 @@ void main() {
             'a command record has a fixed stride, exactly like an '
             'archetype row, so capacity is part of the declaration - '
             'silently truncating a message is worse than saying so',
+      );
+    });
+
+    test('an entity parameter arrives at the handler as an Entity', () async {
+      final r = _registry();
+      final order = r.registry.declare(_OrderUnit());
+      late _Order seen;
+      GameCommandDescriptor(r.registry).hasHandler(order, (p) {
+        seen = p;
+        return Entity.pack(0xF00D, 4, 5);
+      });
+
+      // An archetype id big enough to reach bit 63, so the handle's `int`
+      // value is negative - the case a narrower or unsigned slot would not
+      // round-trip.
+      final unit = Entity.pack(0x9001, 2, 11);
+      final escort = await order((unit: unit, waypoint: -9000000000000000000));
+
+      expect(
+        seen.unit,
+        unit,
+        reason:
+            'the handler receives the handle the caller sent, through a '
+            'real byte round trip - the archetype id rides in the sign bit',
+      );
+      expect(seen.unit.archetypeId, 0x9001);
+      expect(seen.unit.value.isNegative, isTrue);
+      expect(seen.waypoint, -9000000000000000000);
+      expect(
+        escort,
+        Entity.pack(0xF00D, 4, 5),
+        reason: 'and a result field carries one back the same way',
+      );
+    });
+
+    test('an entity field is the int64 path, not a parallel one', () {
+      final r = _registry();
+      final order = r.registry.declare(_OrderUnit());
+      GameCommandDescriptor(r.registry).hasHandler(order, (p) => p.unit);
+
+      final call = order.execute((unit: Entity(1), waypoint: 2));
+      expect(
+        () => order.escort[call],
+        throwsStateError,
+        reason:
+            'the wrapper delegates to the int64 field, written-mask '
+            'included, so a result nobody wrote is still an error rather '
+            'than Entity(0)',
       );
     });
 

@@ -244,21 +244,19 @@ class SpinSystem extends GameSystem with FixedTickable {
 /// live here and was removed for exactly that reason - it made the UI name an
 /// identifier belonging to the other isolate.
 class SpawnEnemy extends SupplierCommand<Entity> {
-  late final ParamPointer<int> spawned;
+  late final ParamPointer<Entity> spawned;
 
   @override
   void describeParams(ParamDescriptor descriptor) {
-    // Signed: `Entity.pack` shifts the archetype id up into the sign bit, and
-    // only getInt64/setInt64 round-trip every bit pattern.
-    spawned = descriptor.hasInt64();
+    spawned = descriptor.hasEntity();
   }
 
   @override
   void bufferFromResult(ParamBuffer call, Entity result) =>
-      spawned[call] = result.value;
+      spawned[call] = result;
 
   @override
-  Entity resultFromBuffer(ParamBuffer call) => Entity(spawned[call]);
+  Entity resultFromBuffer(ParamBuffer call) => spawned[call];
 }
 
 /// The simulation half. Everything that mutates the world lives here.

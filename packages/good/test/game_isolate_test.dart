@@ -159,20 +159,19 @@ class _MoverSystem extends GameSystem with FixedTickable {
 /// Main names the intent; the handler, over on the game isolate, is what turns
 /// that into a prefab. Nothing about an archetype id crosses the boundary.
 class _SpawnMover extends SupplierCommand<Entity> {
-  late final ParamPointer<int> spawned;
+  late final ParamPointer<Entity> spawned;
 
   @override
   void describeParams(ParamDescriptor descriptor) {
-    // Signed: `Entity.pack` shifts the archetype id into the sign bit.
-    spawned = descriptor.hasInt64();
+    spawned = descriptor.hasEntity();
   }
 
   @override
   void bufferFromResult(ParamBuffer call, Entity result) =>
-      spawned[call] = result.value;
+      spawned[call] = result;
 
   @override
-  Entity resultFromBuffer(ParamBuffer call) => Entity(spawned[call]);
+  Entity resultFromBuffer(ParamBuffer call) => spawned[call];
 }
 
 /// "Pause the mover" - the prescribed route for a main-triggered system

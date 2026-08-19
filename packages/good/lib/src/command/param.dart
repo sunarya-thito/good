@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
 
+import 'package:good/src/struct.dart';
+
 /// One field of one command's parameter block - the command-side twin of
 /// `DataPointer`, and deliberately the same shape: one pointer object per
 /// *field*, never per call, with the call passed in as the index.
@@ -467,6 +469,24 @@ abstract class ParamDescriptor {
   ParamPointer<double> hasFloat32([double defaultValue = 0]);
   ParamPointer<double> hasFloat64([double defaultValue = 0]);
 
+  /// A field holding an [Entity] handle - the same signed 64-bit storage
+  /// [hasInt64] gives, with the type saying what the field holds.
+  ///
+  /// `Entity` is an extension type over `int` (see struct.dart), so this is
+  /// the int64 read and write path exactly: no conversion, no allocation.
+  /// What changes is the declare and call sites - an entity handle and a
+  /// score stop being assignable to each other.
+  ///
+  /// That matters more here than on a component column. A parameter crosses
+  /// an isolate boundary, where both are eight little-endian bytes: swapping
+  /// one for the other survives the crossing intact and surfaces as wrong
+  /// behaviour on the far side, a long way from the call that wrote it.
+  ///
+  /// A handle names a *row*, and a row is reused once the entity in it is
+  /// destroyed, so one held across ticks can come to name a different entity
+  /// - `DataDescriptor.hasEntity` writes that out in full.
+  ParamPointer<Entity> hasEntity();
+
   /// A UTF-8 string of at most [maxBytes] **bytes** - not characters, since
   /// that is what the buffer actually reserves and a caller sizing a field
   /// should be thinking in the unit that can overflow.
@@ -557,6 +577,12 @@ final class ParamLayout implements ParamDescriptor {
     return _FloatPointer(_fieldCount++, byte, 64);
   }
 
+  /// Signed 64-bit, like [hasInt64] and for its reason: `Entity.pack` shifts
+  /// the archetype id up into the sign position, so only a signed slot
+  /// round-trips every handle unchanged.
+  @override
+  ParamPointer<Entity> hasEntity() => _EntityPointer(_int(64, true));
+
   @override
   ParamPointer<String> hasString(int maxBytes, {Encoding encoding = utf8}) {
     if (maxBytes <= 0 || maxBytes > 0xFFFF) {
@@ -642,6 +668,31 @@ final class _IntPointer extends _Pointer<int> {
     }
     call._markWritten(index);
   }
+}
+
+/// An `Entity` view over the `int64` field [ParamDescriptor.hasEntity]
+/// declares.
+///
+/// Delegation rather than a fifth `_Pointer` subclass: the byte offset, the
+/// 64-bit load and store and the written-mask bookkeeping are already right
+/// in the [_IntPointer] this wraps, and a parallel implementation would be a
+/// second copy of them to keep in step (the one-fact-one-place rule). It is
+/// the command-side twin of `data_layout.dart`'s `_EntityHandleField`, which
+/// wraps the component column the same way.
+///
+/// `Entity` is an extension type over `int`, so it erases: the value handed
+/// back is the very `int` the field read, and `Entity(...)` compiles to
+/// nothing. The wrapper costs one virtual call per access and no allocation.
+final class _EntityPointer implements ParamPointer<Entity> {
+  const _EntityPointer(this._raw);
+
+  final ParamPointer<int> _raw;
+
+  @override
+  Entity operator [](ParamBuffer call) => Entity(_raw[call]);
+
+  @override
+  void operator []=(ParamBuffer call, Entity value) => _raw[call] = value.value;
 }
 
 final class _SubBytePointer extends _Pointer<int> {
