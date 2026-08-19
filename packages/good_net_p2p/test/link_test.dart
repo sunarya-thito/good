@@ -248,5 +248,45 @@ void main() {
         expect(client.session, isNull);
       },
     );
+
+    test('a link that stops hearing back reports the loss', () async {
+      final host = transport();
+      // The sibling test above is about the teardown; this one is about the
+      // number, so the link has to outlive the measurement rather than race
+      // it. Nothing here waits anywhere near 30s.
+      final client = transport(linkTimeout: const Duration(seconds: 30));
+      final hosted = await host.host();
+      final joined = await client.join(hosted.id);
+      await run(const Duration(milliseconds: 200));
+
+      final toHost = joined.connectionTo(NetPeerId.host)!;
+      expect(
+        toHost.packetLoss,
+        0,
+        reason: 'nothing has been dropped, and the link is younger than the '
+            'deadline an unanswered packet gets anyway',
+      );
+
+      // The host stops answering without saying so. What makes this the case
+      // the sweep exists for: the client hears nothing at all from here, so
+      // there is no ack with a gap in it to read loss out of, and no traffic
+      // of its own to retransmit. Keepalives leave and nothing comes back.
+      host.simulatedLoss = 1;
+
+      // Ten keepalives a second take 6.4s to wrap the 64-packet ack window,
+      // which is the other place a packet is written off. Stopping well short
+      // of that leaves the sweep as the only thing that can move the figure.
+      await runUntil(
+        () => toHost.packetLoss > 0,
+        limit: const Duration(seconds: 3),
+      );
+
+      expect(
+        toHost.packetLoss,
+        greaterThan(0),
+        reason: 'the keepalives it is still sending are going unanswered, and '
+            'unanswered past the deadline is what lost means',
+      );
+    });
   });
 }
