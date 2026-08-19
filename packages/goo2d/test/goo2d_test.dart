@@ -56,12 +56,15 @@ void main() {
       'lays out five float64 fields plus Child\'s parent/nextSibling/prevSibling',
       () {
         final scene = _scene();
-        // 5 x 64 bits of transform, then Child's three optInt64 fields
+        // 5 x 64 bits of transform, then Child's three optEntity fields
         // (parent, nextSibling, prevSibling - each wide enough to hold a
-        // full packed Entity handle, not just a 32-bit id): one has-bit
-        // plus 7 bits of byte-alignment padding, then 64 bits of value.
-        expect(scene.playerPrefab.archetype.bitLength, 5 * 64 + 3 * (1 + 7 + 64));
-        expect(scene.playerPrefab.archetype.strideBytes, 67);
+        // full packed Entity handle, not just a 32-bit id): 64 bits of value
+        // each, and the three has-bits sharing one byte rather than taking a
+        // byte apiece. The first has-bit opens that byte and the alignment
+        // rounding before its value strands the other seven; `declareFlagBit`
+        // hands the next two flags those bits instead of extending the row.
+        expect(scene.playerPrefab.archetype.bitLength, 5 * 64 + (1 + 7) + 3 * 64);
+        expect(scene.playerPrefab.archetype.strideBytes, 65);
         expect(scene.rockPrefab.archetype.strideBytes, 40);
       },
     );

@@ -302,6 +302,16 @@ class ArchetypeStorage {
   /// Bit-granular allocation cursor for [declareField]. Bits, not bytes -
   /// sub-byte fields are the point.
   int _bitCursor = 0;
+
+  /// Bits [declareField]'s byte-rounding skipped over, in bytes the cursor
+  /// has already moved past. They are unreachable through the cursor - it
+  /// only ever moves forward - so without this list they stay stranded for
+  /// the life of the archetype. Only [declareFlagBit] draws on them, which
+  /// is what keeps handing one out safe: a value field's placement still
+  /// comes from the cursor alone, so no two fields can be given the same
+  /// bit, and [declareField]'s stated rule is unchanged.
+  final List<int> _strandedBits = <int>[];
+
   bool _sealed = false;
 
   final List<ArchetypeField> _fields = <ArchetypeField>[];
@@ -428,6 +438,11 @@ class ArchetypeStorage {
   /// profiling ever shows it; do not assume it is required for
   /// correctness. (`test/data_layout_test.dart` round-trips a
   /// deliberately-misaligned float64 to keep this honest.)
+  ///
+  /// Rounding up records the bits it skipped in [_strandedBits], which is
+  /// where [declareFlagBit] gets them from. That is a side effect of calling
+  /// this, not a change to what it returns - the offset handed back is still
+  /// the cursor's, and the cursor still only moves forward.
   int declareField(int bitWidth) {
     if (_sealed) {
       throw StateError(
@@ -452,11 +467,45 @@ class ArchetypeStorage {
         );
     }
     if (bitWidth >= 8 || (_bitCursor & 7) + bitWidth > 8) {
-      _bitCursor = (_bitCursor + 7) & -8; // round up to the next byte
+      final rounded = (_bitCursor + 7) & -8; // round up to the next byte
+      for (var bit = _bitCursor; bit < rounded; bit++) {
+        _strandedBits.add(bit);
+      }
+      _bitCursor = rounded;
     }
     final bitOffset = _bitCursor;
     _bitCursor += bitWidth;
     return bitOffset;
+  }
+
+  /// Reserves one bit for an optional field's presence flag, preferring a
+  /// bit [declareField]'s rounding stranded over extending the row.
+  ///
+  /// A presence flag is the one field that can take a leftover bit without
+  /// the caller arranging anything: it is declared by the descriptor itself,
+  /// immediately before its value, so nothing outside `data_layout.dart`
+  /// depends on where it lands. Value fields keep coming from the cursor, so
+  /// the row still grows in declaration order and every offset is still
+  /// derived from that order alone - both isolates build the same layout.
+  ///
+  /// Without this, each optional field wider than a byte costs a whole byte
+  /// for its flag: the flag takes bit 0 of a fresh byte, then the value's
+  /// rounding jumps past the other seven. Five `optEntity` fields (what a
+  /// `Child` + `Parent` archetype declares) stranded five bytes that way,
+  /// four of which nothing could reach. Recycling makes the flags share one
+  /// byte no matter which mixin declared them, which matters because
+  /// separate mixins cannot order their declarations relative to each other.
+  int declareFlagBit() {
+    if (_sealed) {
+      throw StateError(
+        'ArchetypeStorage for ${prefab.runtimeType} is sealed - fields can '
+        'only be declared during its one-time describeStruct pass.',
+      );
+    }
+    // Oldest first, so flags gather in the earliest byte that has room
+    // rather than scattering backwards through the row.
+    if (_strandedBits.isNotEmpty) return _strandedBits.removeAt(0);
+    return declareField(1);
   }
 
   /// Registers a field so its default gets stamped into every new row. The

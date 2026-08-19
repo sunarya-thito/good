@@ -29,6 +29,10 @@ class _Leaf extends EntityStruct with _Name, Child {}
 
 class _NoChild extends EntityStruct with _Name {}
 
+/// `Child` + `Parent` and nothing else, so the row layout test can state the
+/// hierarchy's own cost rather than that plus a fixture's tag field.
+class _BareNode extends EntityStruct with Child, Parent {}
+
 class _Level extends SceneStruct {
   /// This fixture's loaded handle. Entity creation lives on `Scene` now (one
   /// `SceneStruct` can back several loaded scenes), so a headless fixture
@@ -43,6 +47,7 @@ class _Level extends SceneStruct {
   late final _Node node;
   late final _Leaf leaf;
   late final _NoChild noChild;
+  late final _BareNode bareNode;
 
   @override
   void describeScene(SceneDescriptor descriptor) {
@@ -50,6 +55,7 @@ class _Level extends SceneStruct {
     node = descriptor.has(_Node());
     leaf = descriptor.has(_Leaf());
     noChild = descriptor.has(_NoChild());
+    bareNode = descriptor.has(_BareNode());
   }
 }
 
@@ -66,6 +72,60 @@ void main() {
     ArchetypeRegistry.reset();
     ComponentTypeRegistry.reset();
   });
+
+  group('row layout', () {
+    test('the five hierarchy handles cost one flag byte between them', () {
+      // Every entity in a hierarchy carries this archetype, so the flag
+      // bytes are paid per entity. `Child`'s three `optEntity` fields and
+      // `Parent`'s two each declare a 1-bit presence flag before a 64-bit
+      // handle, and the handle's byte-alignment rounding skips the rest of
+      // the flag's byte - so each one used to take nine bytes and strand
+      // seven bits, five bytes of flags for five bits of information.
+      // `ArchetypeStorage.declareFlagBit` gives the later flags those
+      // stranded bits: 45 bytes becomes 41.
+      //
+      // The two mixins matter here. They are declared separately and know
+      // nothing of each other, so no ordering they could choose for their
+      // own fields would pack flags across the pair - only recycling at the
+      // allocator does.
+      final level = _level();
+      expect(level.bareNode.archetype.bitLength, (1 + 7) + 5 * 64);
+      expect(level.bareNode.archetype.strideBytes, 41);
+
+      // Sharing a byte only helps if the flags stay independent, so write
+      // every combination that could alias: set all five, then clear them
+      // one at a time and check the rest survive.
+      level.pool.beginTick();
+      final a = level.addEntity(level.node);
+      final b = level.addEntity(level.node);
+      final c = level.addEntity(level.node);
+      level.node.addChild(a, b);
+      level.node.addChild(a, c);
+      level.pool.commitTick();
+
+      expect(level.node.firstChild[a], b);
+      expect(level.node.lastChild[a], c);
+      expect(level.node.parent[b], a);
+      expect(level.node.nextSibling[b], c);
+      expect(level.node.prevSibling[c], b);
+      expect(level.node.parent[a], isNull);
+      expect(level.node.nextSibling[a], isNull);
+
+      level.pool.beginTick();
+      level.node.removeChild(a, b);
+      level.pool.commitTick();
+
+      // b's three flags cleared; a's two and c's links are in the same byte
+      // of their own rows and must be untouched.
+      expect(level.node.parent[b], isNull);
+      expect(level.node.nextSibling[b], isNull);
+      expect(level.node.prevSibling[b], isNull);
+      expect(level.node.firstChild[a], c);
+      expect(level.node.lastChild[a], c);
+      expect(level.node.parent[c], a);
+    });
+  });
+
 
   group('Parent.addChild / removeChild', () {
     test('a single child becomes both firstChild and lastChild', () {

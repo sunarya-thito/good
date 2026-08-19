@@ -1249,9 +1249,11 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
   }
 
   DataPointer<int?> _opt(int bitWidth, bool signed, int? defaultValue) {
-    // Flag first, then the value - the value's own alignment rule then
-    // applies to whatever byte the flag left the cursor in.
-    final flagBit = _storage.declareField(1);
+    // Flag first, then the value - but the flag takes a bit an earlier
+    // field's byte-rounding stranded when there is one, so it usually costs
+    // the row nothing (see `ArchetypeStorage.declareFlagBit`). The value
+    // still comes from the cursor, so its own alignment rule is unchanged.
+    final flagBit = _storage.declareFlagBit();
     final value = _declareInt(bitWidth, signed, defaultValue ?? 0);
     final field = _OptionalField<int>(
       _storage,
@@ -1264,7 +1266,7 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
   }
 
   DataPointer<double?> _optFloat(int bitWidth, double? defaultValue) {
-    final flagBit = _storage.declareField(1);
+    final flagBit = _storage.declareFlagBit();
     final value = _declareFloat(bitWidth, defaultValue ?? 0.0);
     final field = _OptionalField<double>(
       _storage,
@@ -1572,7 +1574,7 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     final flagBits = List<int>.filled(length, 0);
     final values = <_Field<int>>[];
     for (var i = 0; i < length; i++) {
-      flagBits[i] = _storage.declareField(1);
+      flagBits[i] = _storage.declareFlagBit();
       values.add(_declareInt(bitWidth, signed, defaultValue ?? 0));
     }
     final field = _OptionalArrayField<int>(
@@ -1595,7 +1597,7 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     final flagBits = List<int>.filled(length, 0);
     final values = <_Field<double>>[];
     for (var i = 0; i < length; i++) {
-      flagBits[i] = _storage.declareField(1);
+      flagBits[i] = _storage.declareFlagBit();
       values.add(_declareFloat(bitWidth, defaultValue ?? 0.0));
     }
     final field = _OptionalArrayField<double>(
@@ -1640,9 +1642,11 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     IntRepresentation<T> repr,
     T? defaultValue,
   ) {
-    // Flag first, then the value - the value's own alignment rule then
-    // applies to whatever byte the flag left the cursor in.
-    final flagBit = _storage.declareField(1);
+    // Flag first, then the value - but the flag takes a bit an earlier
+    // field's byte-rounding stranded when there is one, so it usually costs
+    // the row nothing (see `ArchetypeStorage.declareFlagBit`). The value
+    // still comes from the cursor, so its own alignment rule is unchanged.
+    final flagBit = _storage.declareFlagBit();
     final bits = _declareInt(
       _checkBitWidth(repr),
       false,
@@ -1687,7 +1691,7 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     final flagBits = List<int>.filled(length, 0);
     final values = <_Field<T>>[];
     for (var i = 0; i < length; i++) {
-      flagBits[i] = _storage.declareField(1);
+      flagBits[i] = _storage.declareFlagBit();
       values.add(
         _PackedField<T>(
           _storage,
@@ -1843,7 +1847,7 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
 
   @override
   DataPointer<T?> optHeapObject<T>() {
-    final flagBit = _storage.declareField(1);
+    final flagBit = _storage.declareFlagBit();
     final byte = _storage.declareField(32) >> 3;
     // No default factory: the wrapper's has-bit defaults to clear, so
     // `_OptionalField.writeDefault` never asks the value field for one and
