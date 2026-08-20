@@ -25,45 +25,6 @@ enum BodyType2D {
   dynamicBody,
 }
 
-/// Per-prefab defaults for a [RigidBody2D], collected during the declare
-/// pass and baked into the archetype's row defaults - so the common case
-/// needs no `onEntityMounted` write at all.
-///
-/// The same shape as `ColliderDescriptor`'s `has*Collider` methods: named
-/// parameters that double as that archetype's defaults.
-class RigidBody2DDescriptor {
-  RigidBody2DDescriptor._();
-
-  BodyType2D _type = BodyType2D.dynamicBody;
-  double _gravityScale = 1;
-  double _linearDamping = 0;
-  double _angularDamping = 0;
-  bool _fixedRotation = false;
-  bool _isBullet = false;
-
-  /// Declares this prefab's body.
-  ///
-  /// [isBullet] turns on continuous collision detection, which is the fix for
-  /// a fast body tunnelling through a thin wall between two steps. It costs
-  /// real solver time, so it is off by default and belongs on projectiles
-  /// rather than on everything that happens to move quickly.
-  void has({
-    BodyType2D type = BodyType2D.dynamicBody,
-    double gravityScale = 1,
-    double linearDamping = 0,
-    double angularDamping = 0,
-    bool fixedRotation = false,
-    bool isBullet = false,
-  }) {
-    _type = type;
-    _gravityScale = gravityScale;
-    _linearDamping = linearDamping;
-    _angularDamping = angularDamping;
-    _fixedRotation = fixedRotation;
-    _isBullet = isBullet;
-  }
-}
-
 /// An entity simulated by `Box2DPhysicsSystem`.
 ///
 /// Mixed in alongside `Transform2D` (which it reads and writes) and usually
@@ -98,6 +59,29 @@ class RigidBody2DDescriptor {
 /// repeatedly converges on multiples of pi/4 - measured, about 27 degrees of
 /// drift from 0.3 rad after 10000 cycles. Pushing back a value that was only
 /// ever pulled is how that drift would get in.
+///
+/// # How a prefab configures its body
+///
+/// By moving the column defaults in its own `describeStruct`. Every field
+/// here starts at the value a plain dynamic body wants, so a prefab only
+/// says what differs:
+///
+/// ```dart
+/// class Wall extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
+///   @override
+///   void describeStruct(DataDescriptor data) {
+///     super.describeStruct(data);
+///     bodyType.defaultValue = BodyType2D.staticBody;
+///   }
+/// }
+/// ```
+///
+/// This was a `RigidBody2DDescriptor` handed to a `describeRigidBody` hook,
+/// which is the shape `Collider2D` uses for a genuinely different job - a
+/// collider declares however many shapes the prefab has, and only the prefab
+/// knows how many. A body has none of that: the hook existed only to carry
+/// six values into six `has*` calls.
+///
 /// # How a body gets created
 ///
 /// Nothing here - `Box2DPhysicsSystem` mixes in `EntitySpawnListener` and
@@ -121,7 +105,7 @@ mixin RigidBody2D on Component {
   /// Read-only from game code. It is `@internal`-in-spirit rather than in
   /// annotation because a game legitimately wants it for a raycast filter or
   /// a debug overlay.
-  late final DataPointer<int> bodyHandle;
+  final bodyHandle = Field.int64();
 
   /// Which [BodyType2D] this body is.
   ///
@@ -135,7 +119,7 @@ mixin RigidBody2D on Component {
   /// So a dynamic body turned static stops where it is, and a static one
   /// turned dynamic starts falling. Like every other component write it is
   /// read from the next step onward, not the one already in flight.
-  late final DataPointer<BodyType2D> bodyType;
+  final bodyType = Field.enumOf(BodyType2D.values, BodyType2D.dynamicBody);
 
   /// The solver's velocity, refreshed every tick. **Read-only** - these are a
   /// mirror, not an input.
@@ -148,22 +132,25 @@ mixin RigidBody2D on Component {
   /// It was briefly an input, and that silently undid every impulse -
   /// `applyImpulse` changed Box2D's velocity while the component still held
   /// last tick's, and the push wrote the stale value back over it.
-  late final DataPointer<double> linearVelocityX;
-  late final DataPointer<double> linearVelocityY;
-  late final DataPointer<double> angularVelocity;
+  final linearVelocityX = Field.float64();
+  final linearVelocityY = Field.float64();
+  final angularVelocity = Field.float64();
 
   /// Multiplier on world gravity for this body alone. Defaults to 1 for the
   /// same reason `Transform2D.transformScaleX` does: 0 is a degenerate value
   /// that would silently make every body float, with nothing saying why.
-  late final DataPointer<double> gravityScale;
+  final gravityScale = Field.float64(1);
 
-  late final DataPointer<double> linearDamping;
-  late final DataPointer<double> angularDamping;
+  final linearDamping = Field.float64();
+  final angularDamping = Field.float64();
 
-  /// `0`/`1`. This engine has no boolean field kind - see `ColliderBody`'s
-  /// own note on the `uint1` convention.
-  late final DataPointer<bool> fixedRotation;
-  late final DataPointer<bool> isBullet;
+  /// One bit each, with a `bool` on it. [isBullet] turns on continuous
+  /// collision detection, which is the fix for a fast body tunnelling
+  /// through a thin wall between two steps; it costs real solver time, so it
+  /// is off by default and belongs on projectiles rather than on everything
+  /// that happens to move quickly.
+  final fixedRotation = Field.boolean();
+  final isBullet = Field.boolean();
 
   // --- sync cache -----------------------------------------------------------
   //
@@ -187,12 +174,16 @@ mixin RigidBody2D on Component {
   // That is safe here and only here: the pushed value is also the one left
   // standing in Transform2D, so the next comparison is against itself.
 
+  // NaN so the very first comparison always reports "changed" - NaN never
+  // equals anything, including itself. The same trick, for the same reason,
+  // as WorldTransform2D's own cache defaults: it removes the need for a
+  // separate "have I ever synced this" flag.
   @internal
-  late final DataPointer<double> syncedX;
+  final syncedX = Field.float64(double.nan);
   @internal
-  late final DataPointer<double> syncedY;
+  final syncedY = Field.float64(double.nan);
   @internal
-  late final DataPointer<double> syncedAngle;
+  final syncedAngle = Field.float64(double.nan);
 
   /// The [BodyType2D] Box2D was last told to simulate this body as, which is
   /// what it is simulating it as - unlike the transform, the solver never
@@ -208,58 +199,20 @@ mixin RigidBody2D on Component {
   /// `Box2DPhysicsSystem._applyBodyType` is the only writer, and it is also
   /// the only caller of `gooBodySetType`, so the mirror cannot claim a type
   /// the shim was not given.
+  ///
+  /// The default is never read, unlike the three NaNs above. `_fill` skips a
+  /// row whose handle is still 0, and `_createBody` seeds this column through
+  /// `_applyBodyType` on the way past - so by the time anything compares the
+  /// two, both hold what the shim was told. It used to track whatever
+  /// `describeRigidBody` set `bodyType` to; a prefab now moves `bodyType`'s
+  /// default on its own and this one stays put, which changes nothing.
   @internal
-  late final DataPointer<BodyType2D> syncedType;
-
-  /// Overridden by the prefab to configure its body. A prefab that wants a
-  /// plain dynamic body with default damping does not need to override this
-  /// at all - unlike `Collider2D.describeCollider`, which is abstract because
-  /// a collider with no shapes would be meaningless.
-  @mustCallSuper
-  void describeRigidBody(RigidBody2DDescriptor descriptor) {}
+  final syncedType = Field.enumOf(BodyType2D.values, BodyType2D.dynamicBody);
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<RigidBody2D>();
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-
-    final descriptor = RigidBody2DDescriptor._();
-    describeRigidBody(descriptor);
-
-    bodyHandle = data.hasInt64();
-    bodyType = data.hasEnum(BodyType2D.values, descriptor._type);
-
-    linearVelocityX = data.hasFloat64();
-    linearVelocityY = data.hasFloat64();
-    angularVelocity = data.hasFloat64();
-
-    gravityScale = data.hasFloat64(descriptor._gravityScale);
-    linearDamping = data.hasFloat64(descriptor._linearDamping);
-    angularDamping = data.hasFloat64(descriptor._angularDamping);
-
-    fixedRotation = data.hasBool(descriptor._fixedRotation);
-    isBullet = data.hasBool(descriptor._isBullet);
-
-    // NaN so the very first comparison always reports "changed" - NaN never
-    // equals anything, including itself. The same trick, for the same
-    // reason, as WorldTransform2D's own cache defaults: it removes the need
-    // for a separate "have I ever synced this" flag.
-    syncedX = data.hasFloat64(double.nan);
-    syncedY = data.hasFloat64(double.nan);
-    syncedAngle = data.hasFloat64(double.nan);
-
-    // No "never applied" sentinel, unlike the three above: a body whose
-    // handle is still 0 is skipped by `_fill` entirely, and `_createBody`
-    // writes this before the row can ever be compared. Defaulting it to the
-    // same type `bodyType` defaults to means the one case that could slip
-    // through - a row read before creation - compares equal and does
-    // nothing, rather than pushing a type change at a body that has none.
-    syncedType = data.hasEnum(BodyType2D.values, descriptor._type);
   }
 
   // --- forces ---------------------------------------------------------------

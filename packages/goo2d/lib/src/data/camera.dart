@@ -12,11 +12,24 @@ import 'package:goo2d/src/data/world_transform.dart';
 /// [ActiveCameraResolver] finds the camera for a view and warns (not throws)
 /// if a second claims it, rather than silently picking one with no
 /// explanation.
+///
+/// A prefab that wants to start zoomed in overrides the column default in
+/// its own `describeStruct`:
+///
+/// ```dart
+/// class Player extends EntityStruct with Transform2D, WorldTransform2D, Camera {
+///   @override
+///   void describeStruct(DataDescriptor data) {
+///     super.describeStruct(data);
+///     zoom.defaultValue = 2;
+///   }
+/// }
+/// ```
 mixin Camera on Component {
   /// World units per screen pixel. `1` (the default) means one world unit
   /// draws as one pixel; `2` zooms in (things draw twice as large), `0.5`
   /// zooms out.
-  late final DataPointer<double> zoom;
+  final zoom = Field.float64(1);
 
   /// Which declared view this camera fills, or null for a camera that is not
   /// currently shown anywhere.
@@ -29,6 +42,10 @@ mixin Camera on Component {
   ///
   /// Typed rather than an int, which is the payoff of `CameraView` being a
   /// `GlobalObject`: a stray integer does not compile here.
+  ///
+  /// The one field here that still needs [describeStruct]: the view table it
+  /// is declared against comes from `getScene`, an instance method a field
+  /// initialiser cannot reach.
   late final DataPointer<CameraView?> view;
 
   @override
@@ -40,7 +57,6 @@ mixin Camera on Component {
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    zoom = data.hasFloat64(1);
     // The declaring game's own view table - not a shared registry. An address
     // read out of this field means nothing except against this table.
     view = data.optPacked(getScene<SceneStruct>().cameraViews);

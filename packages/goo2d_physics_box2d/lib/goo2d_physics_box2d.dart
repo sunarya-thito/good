@@ -15,9 +15,9 @@
 ///   }
 ///
 ///   @override
-///   void describeRigidBody(RigidBody2DDescriptor d) {
-///     super.describeRigidBody(d);
-///     d.has(type: BodyType2D.dynamicBody);
+///   void describeStruct(DataDescriptor data) {
+///     super.describeStruct(data);
+///     bodyType.defaultValue = BodyType2D.dynamicBody;
 ///   }
 /// }
 /// ```
@@ -71,5 +71,4 @@ export 'src/effector.dart'
 export 'src/effectors.dart' show Effectors2D;
 export 'src/joint.dart' show Joint;
 export 'src/physics_system.dart' show Box2DPhysicsSystem;
-export 'src/rigid_body.dart'
-    show BodyType2D, RigidBody2D, RigidBody2DDescriptor;
+export 'src/rigid_body.dart' show BodyType2D, RigidBody2D;

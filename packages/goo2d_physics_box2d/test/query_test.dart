@@ -21,9 +21,9 @@ class _Wall extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
   }
 
   @override
-  void describeRigidBody(RigidBody2DDescriptor d) {
-    super.describeRigidBody(d);
-    d.has(type: BodyType2D.staticBody);
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    bodyType.defaultValue = BodyType2D.staticBody;
   }
 }
 
@@ -38,9 +38,9 @@ class _Hidden extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
   }
 
   @override
-  void describeRigidBody(RigidBody2DDescriptor d) {
-    super.describeRigidBody(d);
-    d.has(type: BodyType2D.staticBody);
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    bodyType.defaultValue = BodyType2D.staticBody;
   }
 }
 

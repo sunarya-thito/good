@@ -25,20 +25,20 @@ abstract class DataDescriptor {
   ///
   /// Prefer this over `hasUint1` for anything that is genuinely a flag. Keep
   /// `hasUint1` for a one-bit *number* - a two-state enum, a packed counter.
-  DataPointer<bool> hasBool([bool defaultValue = false]);
+  DefaultPointer<bool> hasBool([bool defaultValue = false]);
 
-  DataPointer<int> hasUint1([int defaultValue = 0]);
-  DataPointer<int> hasInt1([int defaultValue = 0]);
-  DataPointer<int> hasUint2([int defaultValue = 0]);
-  DataPointer<int> hasInt2([int defaultValue = 0]);
-  DataPointer<int> hasUint4([int defaultValue = 0]);
-  DataPointer<int> hasInt4([int defaultValue = 0]);
-  DataPointer<int> hasUint8([int defaultValue = 0]);
-  DataPointer<int> hasInt8([int defaultValue = 0]);
-  DataPointer<int> hasUint16([int defaultValue = 0]);
-  DataPointer<int> hasInt16([int defaultValue = 0]);
-  DataPointer<int> hasUint32([int defaultValue = 0]);
-  DataPointer<int> hasInt32([int defaultValue = 0]);
+  DefaultPointer<int> hasUint1([int defaultValue = 0]);
+  DefaultPointer<int> hasInt1([int defaultValue = 0]);
+  DefaultPointer<int> hasUint2([int defaultValue = 0]);
+  DefaultPointer<int> hasInt2([int defaultValue = 0]);
+  DefaultPointer<int> hasUint4([int defaultValue = 0]);
+  DefaultPointer<int> hasInt4([int defaultValue = 0]);
+  DefaultPointer<int> hasUint8([int defaultValue = 0]);
+  DefaultPointer<int> hasInt8([int defaultValue = 0]);
+  DefaultPointer<int> hasUint16([int defaultValue = 0]);
+  DefaultPointer<int> hasInt16([int defaultValue = 0]);
+  DefaultPointer<int> hasUint32([int defaultValue = 0]);
+  DefaultPointer<int> hasInt32([int defaultValue = 0]);
   // 64-bit ints exist specifically so a field can hold a full packed
   // `Entity` handle (archetype id + page index + row offset, see
   // struct.dart). A field that holds one should say so - `hasEntity` and
@@ -50,8 +50,8 @@ abstract class DataDescriptor {
   // avoids any unsigned reinterpretation at the boundary. Uint64 exists for
   // symmetry with every narrower width, not because this engine needs
   // unsigned 64-bit arithmetic anywhere yet.
-  DataPointer<int> hasUint64([int defaultValue = 0]);
-  DataPointer<int> hasInt64([int defaultValue = 0]);
+  DefaultPointer<int> hasUint64([int defaultValue = 0]);
+  DefaultPointer<int> hasInt64([int defaultValue = 0]);
 
   /// A column holding an [Entity] handle - the same signed 64-bit storage
   /// [hasInt64] gives, with the type saying what the column holds.
@@ -82,7 +82,7 @@ abstract class DataDescriptor {
   /// beside it: a stamp the target also carries, compared against the stored
   /// one before the handle is trusted. `docs/guide/thinking-in-ecs.md` writes
   /// that recipe out in full.
-  DataPointer<Entity> hasEntity([Entity? defaultValue]);
+  DefaultPointer<Entity> hasEntity([Entity? defaultValue]);
 
   /// A column holding one member of [E], stored as that member's `index` in
   /// the narrowest unsigned width the enum fits: one bit for up to two
@@ -98,24 +98,24 @@ abstract class DataDescriptor {
   ///
   /// With no [defaultValue] a fresh row reads `values.first` - the member
   /// declared first, since its index is the `0` an unwritten field holds.
-  DataPointer<E> hasEnum<E extends Enum>(List<E> values, [E? defaultValue]);
+  DefaultPointer<E> hasEnum<E extends Enum>(List<E> values, [E? defaultValue]);
 
-  DataPointer<double> hasFloat32([double defaultValue = 0.0]);
-  DataPointer<double> hasFloat64([double defaultValue = 0.0]);
-  DataPointer<int?> optUint1([int? defaultValue]);
-  DataPointer<int?> optInt1([int? defaultValue]);
-  DataPointer<int?> optUint2([int? defaultValue]);
-  DataPointer<int?> optInt2([int? defaultValue]);
-  DataPointer<int?> optUint4([int? defaultValue]);
-  DataPointer<int?> optInt4([int? defaultValue]);
-  DataPointer<int?> optUint8([int? defaultValue]);
-  DataPointer<int?> optInt8([int? defaultValue]);
-  DataPointer<int?> optUint16([int? defaultValue]);
-  DataPointer<int?> optInt16([int? defaultValue]);
-  DataPointer<int?> optUint32([int? defaultValue]);
-  DataPointer<int?> optInt32([int? defaultValue]);
-  DataPointer<int?> optUint64([int? defaultValue]);
-  DataPointer<int?> optInt64([int? defaultValue]);
+  DefaultPointer<double> hasFloat32([double defaultValue = 0.0]);
+  DefaultPointer<double> hasFloat64([double defaultValue = 0.0]);
+  DefaultPointer<int?> optUint1([int? defaultValue]);
+  DefaultPointer<int?> optInt1([int? defaultValue]);
+  DefaultPointer<int?> optUint2([int? defaultValue]);
+  DefaultPointer<int?> optInt2([int? defaultValue]);
+  DefaultPointer<int?> optUint4([int? defaultValue]);
+  DefaultPointer<int?> optInt4([int? defaultValue]);
+  DefaultPointer<int?> optUint8([int? defaultValue]);
+  DefaultPointer<int?> optInt8([int? defaultValue]);
+  DefaultPointer<int?> optUint16([int? defaultValue]);
+  DefaultPointer<int?> optInt16([int? defaultValue]);
+  DefaultPointer<int?> optUint32([int? defaultValue]);
+  DefaultPointer<int?> optInt32([int? defaultValue]);
+  DefaultPointer<int?> optUint64([int? defaultValue]);
+  DefaultPointer<int?> optInt64([int? defaultValue]);
 
   /// A column holding an [Entity] handle or `null` - [hasEntity]'s storage
   /// with a presence flag in front of it, so "no target" is a state of its
@@ -142,10 +142,10 @@ abstract class DataDescriptor {
   /// The handle-outlives-the-entity warning on [hasEntity] applies here
   /// unchanged: `null` says the link is absent, never that its target has
   /// been destroyed.
-  DataPointer<Entity?> optEntity([Entity? defaultValue]);
+  DefaultPointer<Entity?> optEntity([Entity? defaultValue]);
 
-  DataPointer<double?> optFloat32([double? defaultValue]);
-  DataPointer<double?> optFloat64([double? defaultValue]);
+  DefaultPointer<double?> optFloat32([double? defaultValue]);
+  DefaultPointer<double?> optFloat64([double? defaultValue]);
   DataArrayPointer<int> hasUint1Array(int length, [int defaultValue = 0]);
   DataArrayPointer<int> hasInt1Array(int length, [int defaultValue = 0]);
   DataArrayPointer<int> hasUint2Array(int length, [int defaultValue = 0]);
@@ -329,6 +329,11 @@ abstract class DataDescriptor {
 /// body. The two forms coexist: constructor-time declarations run first, then
 /// the passes `SceneDescriptor.has` drives, in the order they already ran.
 ///
+/// A prefab that wants a *different* default for a column one of its mixins
+/// declared also uses `describeStruct`, but to move the default rather than
+/// to declare anything - see [DefaultPointer.defaultValue]. Declaring the
+/// name a second time would not do it.
+///
 /// # Two mixins declaring the same field name are silent here
 ///
 /// Components are mixins, so `speed` declared by two of them is an override
@@ -346,92 +351,92 @@ abstract class DataDescriptor {
 /// mixin closure, which is issue #58.
 abstract final class Field {
   /// See [DataDescriptor.hasBool].
-  static DataPointer<bool> boolean([bool defaultValue = false]) =>
+  static DefaultPointer<bool> boolean([bool defaultValue = false]) =>
       DeclarationContext.data.hasBool(defaultValue);
 
-  static DataPointer<int> uint1([int defaultValue = 0]) =>
+  static DefaultPointer<int> uint1([int defaultValue = 0]) =>
       DeclarationContext.data.hasUint1(defaultValue);
-  static DataPointer<int> int1([int defaultValue = 0]) =>
+  static DefaultPointer<int> int1([int defaultValue = 0]) =>
       DeclarationContext.data.hasInt1(defaultValue);
-  static DataPointer<int> uint2([int defaultValue = 0]) =>
+  static DefaultPointer<int> uint2([int defaultValue = 0]) =>
       DeclarationContext.data.hasUint2(defaultValue);
-  static DataPointer<int> int2([int defaultValue = 0]) =>
+  static DefaultPointer<int> int2([int defaultValue = 0]) =>
       DeclarationContext.data.hasInt2(defaultValue);
-  static DataPointer<int> uint4([int defaultValue = 0]) =>
+  static DefaultPointer<int> uint4([int defaultValue = 0]) =>
       DeclarationContext.data.hasUint4(defaultValue);
-  static DataPointer<int> int4([int defaultValue = 0]) =>
+  static DefaultPointer<int> int4([int defaultValue = 0]) =>
       DeclarationContext.data.hasInt4(defaultValue);
-  static DataPointer<int> uint8([int defaultValue = 0]) =>
+  static DefaultPointer<int> uint8([int defaultValue = 0]) =>
       DeclarationContext.data.hasUint8(defaultValue);
-  static DataPointer<int> int8([int defaultValue = 0]) =>
+  static DefaultPointer<int> int8([int defaultValue = 0]) =>
       DeclarationContext.data.hasInt8(defaultValue);
-  static DataPointer<int> uint16([int defaultValue = 0]) =>
+  static DefaultPointer<int> uint16([int defaultValue = 0]) =>
       DeclarationContext.data.hasUint16(defaultValue);
-  static DataPointer<int> int16([int defaultValue = 0]) =>
+  static DefaultPointer<int> int16([int defaultValue = 0]) =>
       DeclarationContext.data.hasInt16(defaultValue);
-  static DataPointer<int> uint32([int defaultValue = 0]) =>
+  static DefaultPointer<int> uint32([int defaultValue = 0]) =>
       DeclarationContext.data.hasUint32(defaultValue);
-  static DataPointer<int> int32([int defaultValue = 0]) =>
+  static DefaultPointer<int> int32([int defaultValue = 0]) =>
       DeclarationContext.data.hasInt32(defaultValue);
-  static DataPointer<int> uint64([int defaultValue = 0]) =>
+  static DefaultPointer<int> uint64([int defaultValue = 0]) =>
       DeclarationContext.data.hasUint64(defaultValue);
-  static DataPointer<int> int64([int defaultValue = 0]) =>
+  static DefaultPointer<int> int64([int defaultValue = 0]) =>
       DeclarationContext.data.hasInt64(defaultValue);
 
   /// See [DataDescriptor.hasEntity], including its warning that a stored
   /// handle outlives the entity it names.
-  static DataPointer<Entity> entity([Entity? defaultValue]) =>
+  static DefaultPointer<Entity> entity([Entity? defaultValue]) =>
       DeclarationContext.data.hasEntity(defaultValue);
 
   /// See [DataDescriptor.hasEnum]. Named `enumOf` because `enum` is a
   /// keyword.
-  static DataPointer<E> enumOf<E extends Enum>(
+  static DefaultPointer<E> enumOf<E extends Enum>(
     List<E> values, [
     E? defaultValue,
   ]) => DeclarationContext.data.hasEnum<E>(values, defaultValue);
 
-  static DataPointer<double> float32([double defaultValue = 0.0]) =>
+  static DefaultPointer<double> float32([double defaultValue = 0.0]) =>
       DeclarationContext.data.hasFloat32(defaultValue);
-  static DataPointer<double> float64([double defaultValue = 0.0]) =>
+  static DefaultPointer<double> float64([double defaultValue = 0.0]) =>
       DeclarationContext.data.hasFloat64(defaultValue);
 
-  static DataPointer<int?> optUint1([int? defaultValue]) =>
+  static DefaultPointer<int?> optUint1([int? defaultValue]) =>
       DeclarationContext.data.optUint1(defaultValue);
-  static DataPointer<int?> optInt1([int? defaultValue]) =>
+  static DefaultPointer<int?> optInt1([int? defaultValue]) =>
       DeclarationContext.data.optInt1(defaultValue);
-  static DataPointer<int?> optUint2([int? defaultValue]) =>
+  static DefaultPointer<int?> optUint2([int? defaultValue]) =>
       DeclarationContext.data.optUint2(defaultValue);
-  static DataPointer<int?> optInt2([int? defaultValue]) =>
+  static DefaultPointer<int?> optInt2([int? defaultValue]) =>
       DeclarationContext.data.optInt2(defaultValue);
-  static DataPointer<int?> optUint4([int? defaultValue]) =>
+  static DefaultPointer<int?> optUint4([int? defaultValue]) =>
       DeclarationContext.data.optUint4(defaultValue);
-  static DataPointer<int?> optInt4([int? defaultValue]) =>
+  static DefaultPointer<int?> optInt4([int? defaultValue]) =>
       DeclarationContext.data.optInt4(defaultValue);
-  static DataPointer<int?> optUint8([int? defaultValue]) =>
+  static DefaultPointer<int?> optUint8([int? defaultValue]) =>
       DeclarationContext.data.optUint8(defaultValue);
-  static DataPointer<int?> optInt8([int? defaultValue]) =>
+  static DefaultPointer<int?> optInt8([int? defaultValue]) =>
       DeclarationContext.data.optInt8(defaultValue);
-  static DataPointer<int?> optUint16([int? defaultValue]) =>
+  static DefaultPointer<int?> optUint16([int? defaultValue]) =>
       DeclarationContext.data.optUint16(defaultValue);
-  static DataPointer<int?> optInt16([int? defaultValue]) =>
+  static DefaultPointer<int?> optInt16([int? defaultValue]) =>
       DeclarationContext.data.optInt16(defaultValue);
-  static DataPointer<int?> optUint32([int? defaultValue]) =>
+  static DefaultPointer<int?> optUint32([int? defaultValue]) =>
       DeclarationContext.data.optUint32(defaultValue);
-  static DataPointer<int?> optInt32([int? defaultValue]) =>
+  static DefaultPointer<int?> optInt32([int? defaultValue]) =>
       DeclarationContext.data.optInt32(defaultValue);
-  static DataPointer<int?> optUint64([int? defaultValue]) =>
+  static DefaultPointer<int?> optUint64([int? defaultValue]) =>
       DeclarationContext.data.optUint64(defaultValue);
-  static DataPointer<int?> optInt64([int? defaultValue]) =>
+  static DefaultPointer<int?> optInt64([int? defaultValue]) =>
       DeclarationContext.data.optInt64(defaultValue);
 
   /// See [DataDescriptor.optEntity] - the spelling a link that may be absent
   /// wants.
-  static DataPointer<Entity?> optEntity([Entity? defaultValue]) =>
+  static DefaultPointer<Entity?> optEntity([Entity? defaultValue]) =>
       DeclarationContext.data.optEntity(defaultValue);
 
-  static DataPointer<double?> optFloat32([double? defaultValue]) =>
+  static DefaultPointer<double?> optFloat32([double? defaultValue]) =>
       DeclarationContext.data.optFloat32(defaultValue);
-  static DataPointer<double?> optFloat64([double? defaultValue]) =>
+  static DefaultPointer<double?> optFloat64([double? defaultValue]) =>
       DeclarationContext.data.optFloat64(defaultValue);
 
   static DataArrayPointer<int> uint1Array(int length, [int defaultValue = 0]) =>
@@ -625,6 +630,85 @@ abstract class DataPointer<T> {
   /// so this default is inherited instead of copied per implementation - one
   /// home for the behaviour (the one-fact-one-place rule).
   DataBinding<T> bind(Entity instance) => _DataBinding(this, instance);
+}
+
+/// A column whose declared default a prefab can still change while the
+/// archetype is being described.
+///
+/// A default written where the column is declared - `Field.float64(60)`, or
+/// `data.hasFloat64(60)` - is the same for every archetype that mixes the
+/// component in. Setting [defaultValue] in a prefab's own `describeStruct`
+/// changes it for that archetype and no other:
+///
+/// ```dart
+/// class Eye extends EntityStruct with Transform3D, WorldTransform3D, Camera3D {
+///   @override
+///   void describeStruct(DataDescriptor data) {
+///     super.describeStruct(data);
+///     near.defaultValue = 10;
+///     far.defaultValue *= 2;
+///   }
+/// }
+/// ```
+///
+/// [defaultValue] reads as well as writes, which is what the second line
+/// needs: the prefab doubles whatever `Camera3D` chose instead of copying
+/// the number down and having to keep the copy in step.
+///
+/// Re-declaring `near` in the prefab would not do this. A field declared
+/// twice is an override of the name and not of the column, so both columns
+/// get allocated and one of them is unreachable - see `Field`'s note on two
+/// mixins declaring the same name.
+///
+/// # Which columns have one
+///
+/// Every column whose default is a plain stored value: the integer widths,
+/// the floats, `bool`, an enum member, an `Entity` handle, and the nullable
+/// form of each. Packed columns, heap-object columns and arrays are
+/// deliberately left out - see [defaultValue].
+abstract class DefaultPointer<T> extends DataPointer<T> {
+  const DefaultPointer();
+
+  /// The value a freshly allocated row starts with - what the column was
+  /// declared with, or whatever a prefab has since moved it to.
+  ///
+  /// Reading it never throws. Writing it does once the archetype is sealed,
+  /// which happens as soon as `describeStruct` has returned, and the pair is
+  /// deliberately asymmetric: a default is *stamped*, not consulted.
+  /// `ArchetypeStorage.seal` builds one prototype row holding every column's
+  /// default and memcpy's it into each row allocated afterwards, and there
+  /// is no `hasValue ? value : defaultValue` anywhere on the read path. So
+  /// after `seal` the stored value is still exactly what every new row will
+  /// hold - true, and worth being able to ask about - while a *write* to it
+  /// could no longer reach the prototype and would be a lie.
+  ///
+  /// Having both halves is what lets a prefab adjust an inherited default
+  /// rather than restate it:
+  ///
+  /// ```dart
+  /// far.defaultValue *= 2;      // twice whatever Camera3D chose
+  /// hp.defaultValue += 50;      // the component's number, plus fifty
+  /// ```
+  ///
+  /// Neither is a write to any entity. `near.defaultValue = 10` changes what
+  /// the *next* row starts with; `near[entity] = 10` changes one entity now.
+  ///
+  /// # Why packed, heap-object and array columns have neither half
+  ///
+  /// A packed column's value means something only against the
+  /// `IntRepresentation` it was declared with, and the two in this engine -
+  /// a `CameraView` and an `Asset` - are things an entity is pointed at
+  /// individually, not things a whole archetype starts out holding. A
+  /// heap-object default is a factory whose one result every row of the
+  /// archetype then shares, on whichever isolate ran it. Neither has a
+  /// per-archetype default anybody has wanted, and leaving them off beats
+  /// inventing a meaning for one. The getter goes with the setter rather
+  /// than being offered alone, because `defaultValue` on a column that
+  /// cannot have one moved is a reading nobody can act on. Arrays are
+  /// excluded by construction: a `DataArrayPointer` is not a [DataPointer]
+  /// at all.
+  T get defaultValue;
+  set defaultValue(T newValue);
 }
 
 /// A [DataPointer] over an [IntRepresentable], which can additionally hand

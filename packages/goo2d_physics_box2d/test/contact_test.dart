@@ -74,9 +74,9 @@ class _Floor extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
   }
 
   @override
-  void describeRigidBody(RigidBody2DDescriptor d) {
-    super.describeRigidBody(d);
-    d.has(type: BodyType2D.staticBody);
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    bodyType.defaultValue = BodyType2D.staticBody;
   }
 }
 
@@ -91,9 +91,9 @@ class _Zone extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
   }
 
   @override
-  void describeRigidBody(RigidBody2DDescriptor d) {
-    super.describeRigidBody(d);
-    d.has(type: BodyType2D.staticBody);
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    bodyType.defaultValue = BodyType2D.staticBody;
   }
 }
 

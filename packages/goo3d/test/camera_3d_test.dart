@@ -5,13 +5,15 @@ import 'package:goo3d/goo3d.dart';
 class _DefaultEye extends EntityStruct
     with Transform3D, WorldTransform3D, Camera3D {}
 
-/// A camera that declares all three, the way the guide writes one.
+/// A camera that moves all three defaults, the way the guide writes one.
 class _WideEye extends EntityStruct
     with Transform3D, WorldTransform3D, Camera3D {
   @override
-  void describeCamera(Camera3DDescriptor descriptor) {
-    super.describeCamera(descriptor);
-    descriptor.has(fieldOfView: 90, near: 0.5, far: 250);
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    fieldOfView.defaultValue = 90;
+    near.defaultValue = 0.5;
+    far.defaultValue = 250;
   }
 }
 
@@ -68,7 +70,7 @@ void main() {
     expect(scene.defaultEye.view[eye], isNull);
   });
 
-  test('describeCamera lands in the row defaults, with nothing written at '
+  test('an overridden default lands in the row, with nothing written at '
       'mount time', () {
     final scene = _scene();
     scene.pool.beginTick();
@@ -78,6 +80,18 @@ void main() {
     expect(scene.wideEye.fieldOfView[eye], 90);
     expect(scene.wideEye.near[eye], 0.5);
     expect(scene.wideEye.far[eye], 250);
+  });
+
+  test('one prefab moving its defaults leaves another mixing Camera3D '
+      'alone', () {
+    final scene = _scene();
+    scene.pool.beginTick();
+    final wide = scene.addEntity(scene.wideEye);
+    final plain = scene.addEntity(scene.defaultEye);
+    scene.pool.commitTick();
+
+    expect(scene.wideEye.near[wide], 0.5);
+    expect(scene.defaultEye.near[plain], 0.1, reason: 'per archetype');
   });
 
   test('the declared values are defaults, not constants', () {

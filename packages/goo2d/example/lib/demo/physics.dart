@@ -370,9 +370,9 @@ class Ground extends EntityStruct
   }
 
   @override
-  void describeRigidBody(RigidBody2DDescriptor descriptor) {
-    super.describeRigidBody(descriptor);
-    descriptor.has(type: BodyType2D.staticBody);
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    bodyType.defaultValue = BodyType2D.staticBody;
   }
 
   @override
@@ -424,9 +424,9 @@ class Wall extends EntityStruct
   }
 
   @override
-  void describeRigidBody(RigidBody2DDescriptor descriptor) {
-    super.describeRigidBody(descriptor);
-    descriptor.has(type: BodyType2D.staticBody);
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    bodyType.defaultValue = BodyType2D.staticBody;
   }
 
   @override
