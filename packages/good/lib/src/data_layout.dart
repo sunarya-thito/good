@@ -28,6 +28,61 @@ import 'package:good/src/struct.dart';
 /// Row addresses are plain `int`s throughout this file rather than
 /// `Pointer<Uint8>` - see [_readRow] for the measurement that forced it.
 
+/// Rejects a column indexed with an entity of another archetype.
+///
+/// Nothing on the access path consults `entity.archetypeId` - [_readRow] and
+/// [_writeRow] resolve a row from the page index and the row offset alone -
+/// so a foreign entity does not fail where the mistake is made. It addresses
+/// whatever row happens to sit at that page and offset in *this* archetype's
+/// storage, which is a live entity of the wrong prefab, and the write lands
+/// on it silently. `Child.declaredInArchetype` in `data/hierarchy.dart`
+/// states the fact this rests on, for the one column kind that was guarded
+/// before this existed: a column is a byte offset into one archetype's row
+/// and means nothing in another's.
+///
+/// Shaped as a predicate rather than a two-argument `assert` inside
+/// [_readRow] so that [column] never becomes a parameter of the row
+/// resolvers. Everything here - the argument, the comparison, the message -
+/// sits inside `assert(...)` at the call site and is gone from a release
+/// build, which matters because [_readRow] is the hottest function in the
+/// engine (see the measurements in its body). It always returns `true`, or
+/// throws with the whole diagnosis.
+///
+/// The message names three things and needs all three: the entity's
+/// archetype, the column's archetype, and the column. The symptom otherwise
+/// surfaces arbitrarily far from the cause - a wrong value read in one
+/// scene, long after a line that ran in another.
+bool _ownsRow(ArchetypeStorage storage, Entity entity, Object column) {
+  if (entity.archetypeId == storage.archetypeId) return true;
+  final theirs = _prefabName(entity.archetypeId);
+  final ours = _prefabName(storage.archetypeId);
+  throw StateError(
+    'Entity ${entity.value} belongs to archetype ${entity.archetypeId} '
+    '($theirs), but this ${column.runtimeType} is a column of archetype '
+    "${storage.archetypeId} ($ours). A column is a byte offset into one "
+    "archetype's row and means nothing in another's, so this access does "
+    'not fail where it is made: it reads or writes whatever row sits at '
+    'page ${entity.pageIndex}, offset ${entity.rowOffset} of '
+    "$ours's storage - very likely a different, live entity - and the "
+    'damage surfaces later and somewhere else.\n'
+    'Index a column with an entity of the prefab that declared it. Two '
+    'scenes each declaring the same prefab type declare two archetypes, and '
+    "reaching for the wrong scene's declaration is the usual way to arrive "
+    'here.',
+  );
+}
+
+/// The prefab type behind an archetype id, for a message that is already
+/// reporting a broken access - so every step of it has to survive an id that
+/// names nothing and a storage that never got its prefab.
+String _prefabName(int archetypeId) {
+  try {
+    return ArchetypeRegistry.byId(archetypeId).prefab.runtimeType.toString();
+  } on Object {
+    return 'unregistered';
+  }
+}
+
 /// Resolves a row for reading - the **last published** snapshot, never the
 /// tick currently being written.
 ///
@@ -55,6 +110,11 @@ import 'package:good/src/struct.dart';
 /// state that exists. No reader isolate can be running yet - the scene is
 /// not live - and once anything has been published this branch is never
 /// taken again.
+///
+/// Takes no argument it does not need. The foreign-entity check that guards
+/// this lives in [_ownsRow], called from an `assert` in the accessors above
+/// it, so the field it names never reaches this signature - see the numbers
+/// in the body for how little room there is here.
 @pragma('vm:prefer-inline')
 int _readRow(ArchetypeStorage storage, Entity entity) {
   // Returns an **address**, not a `Pointer`, and that is the whole point.
@@ -87,7 +147,7 @@ int _readRow(ArchetypeStorage storage, Entity entity) {
 
 /// Resolves this tick's write slot for [entity]'s row.
 ///
-/// The assertion is the only thing standing between a caller and silent
+/// The tick assertion is the only thing standing between a caller and silent
 /// data loss: `MemoryPool.beginTick` copies each page's published bytes
 /// over the write slot, so a write that lands outside a tick window is
 /// erased by the next `beginTick` with no error anywhere. Writing before
@@ -128,10 +188,16 @@ abstract base class _Field<T> extends DataPointer<T> implements ArchetypeField {
   );
 
   @pragma('vm:prefer-inline')
-  int _write(Entity entity) => _writeRow(_storage, entity);
+  int _write(Entity entity) {
+    assert(_ownsRow(_storage, entity, this));
+    return _writeRow(_storage, entity);
+  }
 
   @pragma('vm:prefer-inline')
-  int _read(Entity entity) => _readRow(_storage, entity);
+  int _read(Entity entity) {
+    assert(_ownsRow(_storage, entity, this));
+    return _readRow(_storage, entity);
+  }
 }
 
 /// A field whose stamped default can still be changed - see
@@ -776,7 +842,7 @@ base class _OptionalField<T> extends _Field<T?> {
     // published read is the only correct answer there, and is what every
     // caller wants anyway.
     if (!_storage.pool.isTickOpen) return this[entity];
-    final row = _storage.rowWrite(entity);
+    final row = _write(entity);
     if (Pointer<Uint8>.fromAddress(row + _flagByte).value & _flagMask == 0) {
       return null;
     }
@@ -884,8 +950,15 @@ abstract base class _ArrayField<T>
   @override
   final int length;
 
-  int _read(Entity entity) => _readRow(_storage, entity);
-  int _write(Entity entity) => _writeRow(_storage, entity);
+  int _read(Entity entity) {
+    assert(_ownsRow(_storage, entity, this));
+    return _readRow(_storage, entity);
+  }
+
+  int _write(Entity entity) {
+    assert(_ownsRow(_storage, entity, this));
+    return _writeRow(_storage, entity);
+  }
 
   /// Bounds check. Without it an out-of-range index is not an error but
   /// silent corruption: the arithmetic would happily address a neighbouring

@@ -1609,4 +1609,89 @@ void main() {
       );
     });
   });
+
+  group('a column indexed with an entity of another archetype', () {
+    // Nothing on the access path reads `entity.archetypeId` - `rowRead` and
+    // `rowWrite` use the page index and the row offset only - so a foreign
+    // entity addresses whatever row happens to sit at that page and offset
+    // in this archetype's storage. That is a live entity of the wrong
+    // prefab, overwritten with no error and noticed hours later. The guard
+    // is the only thing that names it, and it is debug-only - these cases
+    // pass because the test runner runs with asserts on, which is where a
+    // game is developed.
+
+    test('a write is rejected, naming both archetypes and the column', () {
+      late DataPointer<int> mine;
+      final ours = _Harness((data) => mine = data.hasUint32(11));
+      addTearDown(ours.dispose);
+      final theirs = _Harness((data) => data.hasUint32(22));
+      addTearDown(theirs.dispose);
+
+      final foreign = theirs.spawn();
+      final victim = ours.spawn();
+      expect(
+        foreign.pageIndex,
+        victim.pageIndex,
+        reason:
+            'the two rows collide - which is exactly why the write lands '
+            'somewhere real instead of failing on its own',
+      );
+      expect(foreign.rowOffset, victim.rowOffset);
+
+      expect(
+        () => mine[foreign] = 999,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('archetype ${foreign.archetypeId}'),
+              contains('archetype ${ours.prefab.archetypeId}'),
+              contains('_AdHoc'),
+              contains('Uint32'),
+            ),
+          ),
+        ),
+      );
+      expect(
+        mine[victim],
+        11,
+        reason: 'and the entity that would have been overwritten is intact',
+      );
+    });
+
+    test('a read is rejected too - it used to answer 0', () {
+      late DataPointer<int> mine;
+      final ours = _Harness((data) => mine = data.hasUint32(100));
+      addTearDown(ours.dispose);
+      final theirs = _Harness((data) => data.hasUint32(0));
+      addTearDown(theirs.dispose);
+
+      final foreign = theirs.spawn();
+      expect(() => mine[foreign], throwsStateError);
+    });
+
+    test('array columns are guarded on the same path', () {
+      late DataArrayPointer<int> mine;
+      final ours = _Harness((data) => mine = data.hasUint16Array(4, 7));
+      addTearDown(ours.dispose);
+      final theirs = _Harness((data) => data.hasUint16Array(4, 0));
+      addTearDown(theirs.dispose);
+
+      final foreign = theirs.spawn();
+      expect(() => mine.get(foreign, 0), throwsStateError);
+      expect(() => mine.set(foreign, 0, 5), throwsStateError);
+    });
+
+    test('an entity of the declaring archetype still passes', () {
+      late DataPointer<int> mine;
+      final ours = _Harness((data) => mine = data.hasUint32(3));
+      addTearDown(ours.dispose);
+
+      final e = ours.spawn();
+      expect(mine[e], 3);
+      mine[e] = 4;
+      expect(mine[e], 4);
+    });
+  });
 }
