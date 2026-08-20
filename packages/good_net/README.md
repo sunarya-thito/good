@@ -1,6 +1,6 @@
 # good_net
 
-Networking for the good engine family: declared messages, sessions, and the
+Networking for the good engine: declared messages, sessions, and the
 transport contract a backend implements. It sits beside the kernel, so `goo2d`
 and `goo3d` games share the same session and messaging plumbing.
 

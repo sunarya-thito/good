@@ -1,13 +1,15 @@
 # good
 
-**G**ame **O**verdrive **O**n **D**art. A game engine for Flutter that keeps
-your simulation off the UI thread and out of the garbage collector. `goo` is the family; the last
-letter names the target. `good` runs on Dart, `goo2d` on 2D, `goo3d` on 3D.
+GOOD — **G**ame **O**verdrive **O**n **D**art — is an ECS game engine for
+Flutter.
 
-good runs your simulation on its own isolate at a fixed timestep, stores every
-component in shared native memory, and keeps the per-frame path free of heap
-allocation. `good` is the kernel; `goo2d` and `goo3d` are the engines built on
-it.
+Your game is data in columns and systems that walk them. The simulation runs on
+its own isolate at a fixed timestep, keeps every component in shared native
+memory, and allocates nothing on the per-frame path, so neither a Flutter
+rebuild nor the garbage collector can stall it.
+
+`good` is the kernel. The ecosystem around it includes `goo2d` for 2D games and
+`goo3d` for 3D games, both built on it.
 
 <div class="grid cards" markdown>
 
@@ -81,7 +83,7 @@ carries weight not every game wants.
 | [`good_net`](packages/networking.md) | Declared network messages, sessions, and the transport contract |
 | [`good_net_p2p`](packages/networking.md#p2p) | Serverless P2P backend — nothing to host |
 
-[The good family →](packages/index.md) explains how they divide up, and
+[The packages →](packages/index.md) explain how they divide up, and
 [Implementation status](reference/roadmap.md) tracks what is landed in the
 repository right now.
 

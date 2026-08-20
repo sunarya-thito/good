@@ -1,9 +1,8 @@
-# The good family
+# The packages
 
 good — **G**ame **O**verdrive **O**n **D**art — is a monorepo of packages that
 divide along one line: **is this about drawing, or about everything else?**
-The names say it: `goo` is the family, and the last letter is the target, so the
-kernel is `good` and the engines are `goo2d` and `goo3d`.
+The kernel is `good`, and the engines built on it are `goo2d` and `goo3d`.
 
 The ECS, the scheduler, scenes, hierarchy, input, the asset registry, the
 isolate bootstrap, networking and the CLI are shared. Rendering, transforms and

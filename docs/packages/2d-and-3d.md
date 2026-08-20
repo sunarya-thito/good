@@ -1,7 +1,7 @@
 # 2D and 3D
 
-good is a **family**. `good` is the kernel, and an engine package sits on it:
-`goo2d` for 2D, `goo3d` for 3D.
+`good` is the kernel, and an engine package sits on it: `goo2d` for 2D,
+`goo3d` for 3D.
 
 ```mermaid
 flowchart TD
