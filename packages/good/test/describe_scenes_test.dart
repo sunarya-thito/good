@@ -5,6 +5,7 @@ import 'package:good/src/data.dart';
 import 'package:good/src/event/fixed_loop.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
+import 'package:good/src/pool.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/struct.dart';
@@ -43,6 +44,12 @@ class _Level extends SceneStruct {
 }
 
 class _Menu extends SceneStruct {}
+
+/// A prefab with no `Field.*` initialisers, so it can be constructed
+/// directly in a test - the field-declaring ones can only be built by the
+/// framework, inside the descriptor pass that gives `Field.*` something to
+/// declare against.
+class _Bare extends EntityStruct {}
 
 /// Counts what a query sees, to prove a declared-but-unloaded scene's
 /// archetypes are registered without any entities in them.
@@ -227,6 +234,30 @@ void main() {
           'and one asset table, or a scene would declare into a table '
           'nothing loads from',
     );
+  });
+
+  group('a prefab this scene cannot spawn', () {
+    // These are checked in an assert now rather than on every spawn, so each
+    // needs a case that fails without the check.
+    //
+    // Two of the three already had one: `archetype_test.dart`'s 'addEntity
+    // rejects a prefab from another scene' and 'an unregistered prefab
+    // explains itself instead of crashing', plus `game_test.dart`'s 'a scene
+    // refuses a prefab another scene registered'. What had no case is the
+    // state between those two - registered, so `archetype` answers, and not
+    // yet sealed.
+
+    test('an archetype with no layout yet refuses to allocate a row', () {
+      // Registered but never sealed - the state between `reserve` and the
+      // `seal()` that ends `describeScene`. A row allocated here would be
+      // stamped from a prototype that does not exist.
+      final pool = MemoryPool(pageSize: 4096);
+      addTearDown(pool.dispose);
+      final storage = ArchetypeRegistry.register(pool, _Bare());
+
+      expect(storage.isSealed, isFalse);
+      expect(() => storage.allocateRow(-1), throwsStateError);
+    });
   });
 
   test('scenes are declared before systems build their queries', () async {

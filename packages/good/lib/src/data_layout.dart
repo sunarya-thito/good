@@ -965,12 +965,18 @@ abstract base class _ArrayField<T>
   /// field's bits, or - past the end of the row - the next entity's row
   /// entirely, since rows are packed back to back in a page.
   ///
-  /// Allocation-free on the passing path; the `RangeError` is only built
-  /// when the call is already failing.
-  void _checkIndex(int index) {
+  /// Every caller spells it `assert(_checkIndex(index))`, so it returns
+  /// `true` rather than nothing and throws rather than answering `false`.
+  /// That shape is what keeps it out of a release build: this is the most
+  /// called guard in the engine - 22 call sites, one on every element get
+  /// and every element set - and a compare and a branch on each of those is
+  /// a cost every shipped game pays to catch a mistake that only a developer
+  /// can make. Debug is where the indexing is wrong; release trusts it.
+  bool _checkIndex(int index) {
     if (index < 0 || index >= length) {
       throw RangeError.index(index, this, 'index', null, length);
     }
+    return true;
   }
 }
 
@@ -1000,7 +1006,7 @@ base class _SubByteUintArrayField extends _ArrayField<int> {
 
   @override
   int get(Entity entity, int index) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     final bit = _baseBit + index * _bitWidth;
     return (Pointer<Uint8>.fromAddress(_read(entity) + (bit >> 3)).value >>
             (bit & 7)) &
@@ -1009,7 +1015,7 @@ base class _SubByteUintArrayField extends _ArrayField<int> {
 
   @override
   void set(Entity entity, int index, int newValue) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     _store(_write(entity), index, newValue);
   }
 
@@ -1061,13 +1067,13 @@ final class _Uint8ArrayField extends _ArrayField<int> {
 
   @override
   int get(Entity entity, int index) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     return Pointer<Uint8>.fromAddress(_read(entity) + _baseByte + index).value;
   }
 
   @override
   void set(Entity entity, int index, int newValue) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     Pointer<Uint8>.fromAddress(_write(entity) + _baseByte + index).value =
         newValue;
   }
@@ -1087,13 +1093,13 @@ final class _Int8ArrayField extends _ArrayField<int> {
 
   @override
   int get(Entity entity, int index) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     return Pointer<Int8>.fromAddress(_read(entity) + _baseByte)[index];
   }
 
   @override
   void set(Entity entity, int index, int newValue) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     Pointer<Int8>.fromAddress(_write(entity) + _baseByte)[index] = newValue;
   }
 
@@ -1113,13 +1119,13 @@ final class _Uint16ArrayField extends _ArrayField<int> {
 
   @override
   int get(Entity entity, int index) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     return Pointer<Uint16>.fromAddress(_read(entity) + _baseByte)[index];
   }
 
   @override
   void set(Entity entity, int index, int newValue) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     Pointer<Uint16>.fromAddress(_write(entity) + _baseByte)[index] = newValue;
   }
 
@@ -1139,13 +1145,13 @@ final class _Int16ArrayField extends _ArrayField<int> {
 
   @override
   int get(Entity entity, int index) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     return Pointer<Int16>.fromAddress(_read(entity) + _baseByte)[index];
   }
 
   @override
   void set(Entity entity, int index, int newValue) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     Pointer<Int16>.fromAddress(_write(entity) + _baseByte)[index] = newValue;
   }
 
@@ -1165,13 +1171,13 @@ final class _Uint32ArrayField extends _ArrayField<int> {
 
   @override
   int get(Entity entity, int index) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     return Pointer<Uint32>.fromAddress(_read(entity) + _baseByte)[index];
   }
 
   @override
   void set(Entity entity, int index, int newValue) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     Pointer<Uint32>.fromAddress(_write(entity) + _baseByte)[index] = newValue;
   }
 
@@ -1191,13 +1197,13 @@ final class _Int32ArrayField extends _ArrayField<int> {
 
   @override
   int get(Entity entity, int index) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     return Pointer<Int32>.fromAddress(_read(entity) + _baseByte)[index];
   }
 
   @override
   void set(Entity entity, int index, int newValue) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     Pointer<Int32>.fromAddress(_write(entity) + _baseByte)[index] = newValue;
   }
 
@@ -1226,13 +1232,13 @@ final class _Float32ArrayField extends _ArrayField<double> {
 
   @override
   double get(Entity entity, int index) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     return Pointer<Float>.fromAddress(_read(entity) + _baseByte)[index];
   }
 
   @override
   void set(Entity entity, int index, double newValue) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     Pointer<Float>.fromAddress(_write(entity) + _baseByte)[index] = newValue;
   }
 
@@ -1259,13 +1265,13 @@ final class _Float64ArrayField extends _ArrayField<double> {
 
   @override
   double get(Entity entity, int index) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     return Pointer<Double>.fromAddress(_read(entity) + _baseByte)[index];
   }
 
   @override
   void set(Entity entity, int index, double newValue) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     Pointer<Double>.fromAddress(_write(entity) + _baseByte)[index] = newValue;
   }
 
@@ -1295,13 +1301,13 @@ final class _PackedArrayField<T extends IntRepresentable>
 
   @override
   T get(Entity entity, int index) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     return _repr.unpack(_bits.get(entity, index));
   }
 
   @override
   void set(Entity entity, int index, T newValue) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     _bits.set(entity, index, newValue.pack());
   }
 
@@ -1345,7 +1351,7 @@ final class _OptionalArrayField<T> extends _ArrayField<T?> {
 
   @override
   T? get(Entity entity, int index) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     final flagBit = _flagBits[index];
     if (Pointer<Uint8>.fromAddress(_read(entity) + (flagBit >> 3)).value &
             (1 << (flagBit & 7)) ==
@@ -1357,7 +1363,7 @@ final class _OptionalArrayField<T> extends _ArrayField<T?> {
 
   @override
   void set(Entity entity, int index, T? newValue) {
-    _checkIndex(index);
+    assert(_checkIndex(index));
     final flagBit = _flagBits[index];
     final byte = flagBit >> 3;
     final mask = 1 << (flagBit & 7);

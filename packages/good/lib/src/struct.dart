@@ -117,7 +117,10 @@ abstract class EntityStruct extends GameListenerBase
 
   /// The scene this prefab was registered with, via
   /// `SceneDescriptor.has(...)` in `SceneStruct.describeScene`.
-  SceneStruct get scene => _requireBound()._associatedScene;
+  SceneStruct get scene {
+    assert(_requireBound());
+    return _associatedScene;
+  }
 
   @override
   @protected
@@ -147,7 +150,10 @@ abstract class EntityStruct extends GameListenerBase
   /// subclass, created the single time the struct is registered - see
   /// [ArchetypeStorage]'s note on why two structs with identical fields
   /// still get two archetypes.
-  ArchetypeStorage get archetype => _requireBound()._archetype;
+  ArchetypeStorage get archetype {
+    assert(_requireBound());
+    return _archetype;
+  }
 
   /// Packed into the top 16 bits of every `Entity` created from this
   /// prefab.
@@ -172,7 +178,16 @@ abstract class EntityStruct extends GameListenerBase
     _bound = true;
   }
 
-  EntityStruct _requireBound() {
+  /// Rejects a prefab that was never registered with a scene.
+  ///
+  /// Read through [scene] and [archetype], so `addEntityIn` pays it on every
+  /// spawn - hence the `assert(_requireBound())` spelling at both call
+  /// sites. Whether a prefab reached `descriptor.has` is decided by
+  /// `describeScene` and cannot change afterwards, so it is a question about
+  /// the code rather than about the running game. A release build that
+  /// somehow got here still fails, on the `late` fields this guards, just
+  /// without the sentence explaining what to do about it.
+  bool _requireBound() {
     if (!_bound) {
       throw StateError(
         '$runtimeType has not been registered with a scene. Declare it in '
@@ -180,7 +195,7 @@ abstract class EntityStruct extends GameListenerBase
         'before creating entities from it.',
       );
     }
-    return this;
+    return true;
   }
 
   @override

@@ -238,6 +238,22 @@ class ArchetypeStorage {
   late int _cacheRead;
   late int _cacheWrite;
 
+  /// Rejects allocating from a layout that was never sealed.
+  ///
+  /// Sealing happens once, at registration, so an unsealed storage means a
+  /// prefab that never reached `SceneDescriptor.has` - a fact about the
+  /// declaration, fixed before the first frame. `allocateRow` spells it
+  /// `assert(_requireSealed())` because it is otherwise a bool test on every
+  /// spawn to re-answer that.
+  bool _requireSealed() {
+    if (_sealed) return true;
+    throw StateError(
+      'ArchetypeStorage for ${prefab.runtimeType} has no layout yet - it '
+      'must be registered through SceneDescriptor.has() before entities '
+      'can be created from it.',
+    );
+  }
+
   /// The stale-handle diagnostic. Same failure `data_layout`'s row guard
   /// reported before the cache existed: an `Entity` has no generation bits, so
   /// the only way to catch a handle that outlived its scene is to notice the
@@ -574,13 +590,7 @@ class ArchetypeStorage {
   /// and it decides which *page group* the row lands in - see
   /// [_currentPageBySlot]. Pass -1 for a row outside any scene.
   Entity allocateRow(int sceneSlot) {
-    if (!_sealed) {
-      throw StateError(
-        'ArchetypeStorage for ${prefab.runtimeType} has no layout yet - it '
-        'must be registered through SceneDescriptor.has() before entities '
-        'can be created from it.',
-      );
-    }
+    assert(_requireSealed());
     var current = _currentPageBySlot[sceneSlot] ?? -1;
     if (current < 0 || _pages[current] == null || _pages[current]!.isFull) {
       // Before opening a *new* page, look for an existing one with room.

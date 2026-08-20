@@ -461,22 +461,9 @@ class MemoryPage {
   /// page. Every call on a given page must pass the same [size] - see the
   /// class doc.
   int allocate(int size) {
-    if (!_ownsMemory) {
-      throw StateError(
-        'MemoryPage was adopted from another isolate (see '
-        'MemoryPool.adoptPage) - only the isolate that allocated it may '
-        'create rows in it.',
-      );
-    }
+    assert(_ownsMemory || _notAdopted());
     _strideBytes ??= size;
-    if (size != _strideBytes) {
-      throw ArgumentError(
-        'MemoryPage is locked to a $_strideBytes byte stride (set by its '
-        'first allocate() call); got $size. Each page stores rows for one '
-        'archetype/component-set - use a different page for a different '
-        'struct layout.',
-      );
-    }
+    assert(size == _strideBytes || _wrongStride(size));
     if (_freeOffsets.isNotEmpty) {
       final offset = _freeOffsets.first;
       _freeOffsets.remove(offset);
@@ -500,6 +487,30 @@ class MemoryPage {
     if (_deferring) _pendingOffsets.add(offset);
     return offset;
   }
+
+  /// Rejects a row allocated in a page this isolate only borrowed.
+  ///
+  /// Which isolate adopted which page is decided by the handoff code, not by
+  /// anything a player does, so [allocate] asserts it. The page-full check
+  /// below is the opposite kind of thing and stays: a page filling up is a
+  /// real runtime condition that depends on how many entities exist.
+  bool _notAdopted() => throw StateError(
+    'MemoryPage was adopted from another isolate (see '
+    'MemoryPool.adoptPage) - only the isolate that allocated it may '
+    'create rows in it.',
+  );
+
+  /// Rejects a second stride on a page already locked to one.
+  ///
+  /// A page belongs to one archetype and an archetype has one row size, so
+  /// two different sizes reaching one page is a wiring mistake in the
+  /// allocator rather than anything the running game can produce.
+  bool _wrongStride(int size) => throw ArgumentError(
+    'MemoryPage is locked to a $_strideBytes byte stride (set by its '
+    'first allocate() call); got $size. Each page stores rows for one '
+    'archetype/component-set - use a different page for a different '
+    'struct layout.',
+  );
 
   /// Recycles the row at [offset] (as returned by [allocate]) for reuse by
   /// a future [allocate] call on this page.

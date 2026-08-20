@@ -338,35 +338,23 @@ abstract class SceneStruct extends GameListenerBase
     T prefab, {
     Entity? parent,
   }) {
-    if (!identical(prefab.scene, this)) {
-      throw StateError(
-        '$T was registered with a different SceneStruct. Pass the instance '
-        'returned by `descriptor.has(...)` in this scene\'s describeScene.',
-      );
-    }
-    Parent? parentComponent;
-    if (parent != null) {
-      if (prefab is! Child) {
-        throw ArgumentError.value(
-          prefab,
-          'prefab',
-          '$T does not mix in Child - cannot be attached to a parent',
-        );
-      }
-      parentComponent = parent.tryGet<Parent>();
-      if (parentComponent == null) {
-        throw ArgumentError.value(
-          parent,
-          'parent',
-          'does not mix in Parent - cannot accept children',
-        );
-      }
-    }
+    // Three declaration mistakes, all settled the first time the line runs
+    // and none of them able to start being true in a shipped build. They
+    // were checked outright, which put a `tryGet<Parent>` registry lookup on
+    // every parented spawn - five thousand of them in a five-thousand-entity
+    // burst - to re-answer a question about the shape of the code.
+    //
+    // Nothing downstream needs the lookup either: `parent<Parent>()` below
+    // does its own, and its `is` test is the one `Entity.get<T>` needs for
+    // the cast anyway, so a bad parent still fails loudly in release. It
+    // just fails there rather than here.
+    assert(_declaredHere<T>(prefab));
+    assert(parent == null || _attachable<T>(prefab, parent));
     final entity = prefab.archetype.allocateRow(sceneSlot);
     // Before the mount event, not after: `Child`'s linked-list fields are part
     // of what addChild writes, so a listener that saw the entity first would
     // be looking at a half-built one.
-    if (parentComponent != null) parent!<Parent>().addChild(entity);
+    if (parent != null) parent<Parent>().addChild(entity);
     // The children this prefab declared with `EntityStruct.of`, in declaration
     // order, each one a full spawn of its own - so a child that declares
     // children gets them, to whatever depth the declarations go. Registration
@@ -424,6 +412,39 @@ abstract class SceneStruct extends GameListenerBase
     // skipping the dispatch is not a lost event.
     stateOrNull?.entitySpawnedEvent.call(entity);
     return entity;
+  }
+
+  /// Rejects a prefab some other `SceneStruct` registered.
+  ///
+  /// Its archetype belongs to that scene's declaration, so a row allocated
+  /// here would carry this scene's slot on another scene's storage and be
+  /// freed by whichever of the two unloads first.
+  bool _declaredHere<T extends EntityStruct>(T prefab) {
+    if (identical(prefab.scene, this)) return true;
+    throw StateError(
+      '$T was registered with a different SceneStruct. Pass the instance '
+      'returned by `descriptor.has(...)` in this scene\'s describeScene.',
+    );
+  }
+
+  /// Rejects a prefab that cannot hang off a parent, or a parent that cannot
+  /// hold children.
+  bool _attachable<T extends EntityStruct>(T prefab, Entity parent) {
+    if (prefab is! Child) {
+      throw ArgumentError.value(
+        prefab,
+        'prefab',
+        '$T does not mix in Child - cannot be attached to a parent',
+      );
+    }
+    if (parent.tryGet<Parent>() == null) {
+      throw ArgumentError.value(
+        parent,
+        'parent',
+        'does not mix in Parent - cannot accept children',
+      );
+    }
+    return true;
   }
 
   /// Fires the unmount event for every entity belonging to [sceneSlot].

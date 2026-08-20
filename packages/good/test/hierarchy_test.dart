@@ -728,6 +728,23 @@ void main() {
       },
     );
 
+    test(
+      'asking for a prefab nothing declared as a child throws rather than '
+      'reading a column that does not exist',
+      () {
+        // `_Leaf` mixes in Child, so it type-checks as an argument, but no
+        // prefab ever declared it with `EntityStruct.of` - so there is no
+        // column on anybody's row holding one, and `declaredIn` is null.
+        final level = _level();
+        level.pool.beginTick();
+        final node = level.addEntity(level.node);
+        level.pool.commitTick();
+
+        expect(level.leaf.declaredIn, isNull);
+        expect(() => node<Parent>()[level.leaf], throwsStateError);
+      },
+    );
+
     // Issue #5: a row allocated mid-tick gets the right value in its write
     // slot while the published snapshot keeps the defaults, so an ordinary
     // read on the spawn tick is stale on any *recycled* row. Mounting a

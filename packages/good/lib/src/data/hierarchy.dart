@@ -148,26 +148,8 @@ extension ParentAccessor on Accessor<Parent> {
   /// [DataPointer.readPending] and [addChild], which reads `lastChild` the
   /// same way for the same reason.
   Entity operator [](Child child) {
-    final handle = child.declaredIn;
-    if (handle == null) {
-      throw StateError(
-        '${child.runtimeType} was not declared as a child of anything, so no '
-        'entity holds one. `EntityStruct.of(...)` in a prefab\'s field '
-        'initialisers declares a child; the same call in a scene declares a '
-        'scene entity, and a scene entity is spawned with '
-        '`scene.addEntity(prefab)` rather than held by a parent.',
-      );
-    }
-    if (child.declaredInArchetype != archetypeId) {
-      throw StateError(
-        'Entity $entity is of archetype '
-        '${ArchetypeRegistry.byId(archetypeId).prefab.runtimeType}, which did '
-        'not declare ${child.runtimeType}. The declaration reserved a column '
-        'on the declaring archetype\'s row, and that offset addresses '
-        'something else here.',
-      );
-    }
-    final owned = handle.readPending(this);
+    assert(_declaredHere(child));
+    final owned = child.declaredIn!.readPending(this);
     if (owned == null) {
       throw StateError(
         'Entity $entity holds no ${child.runtimeType}. Either it is not an '
@@ -193,6 +175,18 @@ extension ParentAccessor on Accessor<Parent> {
   /// mixes in Child" as a constraint on a bare `Entity`.
   void addChild(Entity child) {
     final childComponent = _requireChild(child);
+    assert(_unparented(childComponent, child));
+    _append(childComponent, child);
+  }
+
+  /// Rejects an entity that already hangs off some parent.
+  ///
+  /// The check is a column read on the write slot, paid once per [addChild]
+  /// - so once per declared child on every spawn - and what it catches is a
+  /// caller reaching for [addChild] where [adopt] is the operation. That is
+  /// a fixed property of the calling code, so it belongs in an assert; the
+  /// read is what makes leaving it in release worth avoiding.
+  bool _unparented(Child childComponent, Entity child) {
     if (childComponent.parent.readPending(child) != null) {
       throw ArgumentError.value(
         child,
@@ -202,7 +196,7 @@ extension ParentAccessor on Accessor<Parent> {
             'naming it.',
       );
     }
-    _append(childComponent, child);
+    return true;
   }
 
   /// Moves [child] here from wherever it is, keeping it and its subtree alive
@@ -296,6 +290,39 @@ extension ParentAccessor on Accessor<Parent> {
     }
   }
 
+  /// Rejects a declared-child slot that this entity's row does not carry.
+  ///
+  /// Both cases are declaration mistakes - a prefab nothing declared as a
+  /// child, or one declared by some other archetype - so both are settled
+  /// the first time the line runs and neither can start being true in a
+  /// shipped build. `assert(_declaredHere(child))` at the one call site
+  /// keeps them out of release, where this is a column read.
+  ///
+  /// The second case is the declared-child spelling of the general rule that
+  /// `data_layout`'s row guard now states for every column: a column is a
+  /// byte offset into one archetype's row and means nothing in another's.
+  bool _declaredHere(Child child) {
+    if (child.declaredIn == null) {
+      throw StateError(
+        '${child.runtimeType} was not declared as a child of anything, so no '
+        'entity holds one. `EntityStruct.of(...)` in a prefab\'s field '
+        'initialisers declares a child; the same call in a scene declares a '
+        'scene entity, and a scene entity is spawned with '
+        '`scene.addEntity(prefab)` rather than held by a parent.',
+      );
+    }
+    if (child.declaredInArchetype != archetypeId) {
+      throw StateError(
+        'Entity $entity is of archetype '
+        '${ArchetypeRegistry.byId(archetypeId).prefab.runtimeType}, which did '
+        'not declare ${child.runtimeType}. The declaration reserved a column '
+        'on the declaring archetype\'s row, and that offset addresses '
+        'something else here.',
+      );
+    }
+    return true;
+  }
+
   Child _requireChild(Entity child) {
     final childComponent = child.tryGet<Child>();
     if (childComponent == null) {
@@ -321,10 +348,15 @@ extension ParentAccessor on Accessor<Parent> {
   /// cover that one walk, while `Entity.destroy()` recurses a subtree with no
   /// cap at all and would simply not terminate.
   ///
-  /// O(depth) on a structural edit. `SceneStruct.addEntityIn` puts it on the
-  /// spawn path - a fresh row's chain is one link long, and a declared
-  /// child's is as deep as the declaration nests.
-  void _requireAcyclic(Entity child) {
+  /// O(depth) on a structural edit, and `SceneStruct.addEntityIn` puts it on
+  /// the spawn path - a fresh row's chain is one link long, but a declared
+  /// child's is as deep as the declaration nests, and a burst of five
+  /// thousand entities walks it five thousand times. That is why it is
+  /// spelled `assert(_requireAcyclic(child))` at its one call site rather
+  /// than called outright: a release build should not walk a chain to
+  /// re-answer a question about the shape of the code, which is what a cycle
+  /// is. It returns `true`, or throws.
+  bool _requireAcyclic(Entity child) {
     var ancestor = entity;
     while (true) {
       if (ancestor == child) {
@@ -343,10 +375,11 @@ extension ParentAccessor on Accessor<Parent> {
       if (above == null) break;
       ancestor = above;
     }
+    return true;
   }
 
   void _append(Child childComponent, Entity child) {
-    _requireAcyclic(child);
+    assert(_requireAcyclic(child));
     final self = component;
     // `readPending`, not `lastChild[this]`. An ordinary read sees the last
     // *published* snapshot, so two `addChild` calls in the same tick both read

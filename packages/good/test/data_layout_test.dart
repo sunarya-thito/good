@@ -1136,6 +1136,49 @@ void main() {
       },
     );
 
+    test('every array width checks its own bounds', () {
+      // The bounds check is one method, but each width calls it from its own
+      // `get` and `set` - 22 call sites. One left out is invisible until an
+      // array of exactly that width is indexed past its end, and then it is
+      // silent corruption rather than an error. So walk every width rather
+      // than trusting the one above to stand for all of them.
+      late List<DataArrayPointer<Object?>> widths;
+      final h = _Harness((data) {
+        widths = <DataArrayPointer<Object?>>[
+          data.hasUint2Array(3), // sub-byte unsigned
+          data.hasInt2Array(3), // sub-byte signed
+          data.hasUint8Array(3),
+          data.hasInt8Array(3),
+          data.hasUint16Array(3),
+          data.hasInt16Array(3),
+          data.hasUint32Array(3),
+          data.hasInt32Array(3),
+          data.hasFloat32Array(3),
+          data.hasFloat64Array(3),
+          data.hasPackedArray(assets.of<_Texture>(), 3, _loaded()),
+          data.optUint8Array(3),
+        ];
+      });
+      addTearDown(h.dispose);
+
+      final e = h.spawn();
+      for (final column in widths) {
+        final what = column.runtimeType;
+        expect(() => column.get(e, -1), throwsRangeError, reason: '$what get');
+        expect(() => column.get(e, 3), throwsRangeError, reason: '$what get');
+        expect(
+          () => column.set(e, -1, column.get(e, 0)),
+          throwsRangeError,
+          reason: '$what set',
+        );
+        expect(
+          () => column.set(e, 3, column.get(e, 0)),
+          throwsRangeError,
+          reason: '$what set',
+        );
+      }
+    });
+
     test('a zero-length array is rejected at declare time', () {
       // Every index into it would be out of range, so it can only ever be a
       // caller mistake - better one failure at describe time than a

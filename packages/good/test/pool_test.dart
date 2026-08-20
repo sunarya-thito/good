@@ -288,5 +288,53 @@ void main() {
             'shared memory cannot report one - it just returns wrong bytes',
       );
     });
+
+    group('what allocate refuses', () {
+      // Two of these three are wiring mistakes - decided by which isolate
+      // holds the page and by which archetype owns it, both fixed before any
+      // entity exists - so they are asserts now. A page filling up is the
+      // one that depends on how many entities the game made, and it stays a
+      // throw in every build.
+
+      test('a page adopted from another isolate cannot allocate', () {
+        final pool = MemoryPool(pageSize: 4096);
+        addTearDown(pool.dispose);
+        final source = pool.allocatePage();
+        pool.beginTick();
+        source.allocate(8);
+        pool.commitTick();
+
+        final adopted = pool.adoptPage(
+          ownerArchetypeId: 0,
+          latestAddress: source.resolveRead(0)!.address,
+          slotAddresses: [source.resolveWrite(0).address],
+        );
+
+        expect(
+          () => adopted.allocate(8),
+          throwsStateError,
+          reason:
+              'the allocating isolate owns row occupancy - a second one '
+              'handing out offsets would hand out the same ones',
+        );
+      });
+
+      // The stride lock already has a case: 'a page is stride-locked to its
+      // first allocate() size', above.
+
+      test('a full page still throws in every build', () {
+        // Not an assert: this one is about how many entities exist, which is
+        // a property of the running game rather than of the code.
+        final pool = MemoryPool(pageSize: 64);
+        addTearDown(pool.dispose);
+        final page = pool.allocatePage();
+
+        for (var i = 0; i < 4; i++) {
+          page.allocate(16);
+        }
+        expect(page.isFull, isTrue);
+        expect(() => page.allocate(16), throwsStateError);
+      });
+    });
   });
 }
