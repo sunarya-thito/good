@@ -6,6 +6,8 @@ import 'dart:io';
 import 'package:good_cli/src/assets/compact.dart';
 import 'package:test/test.dart';
 
+import '_cli.dart';
+
 // Where the compaction journal lives, and how a project already carrying one
 // at the old path gets moved over.
 //
@@ -13,8 +15,6 @@ import 'package:test/test.dart';
 // used to be written into the asset directory, which `flutter: assets:` lists
 // and flutter_tools expands by listing every file in it - dotfiles included -
 // so it went into every release in plaintext beside the encrypted chunks.
-
-final String _repoRoot = Directory.current.path;
 
 Directory _tempDir() {
   final dir = Directory.systemTemp.createTempSync('good_journal');
@@ -33,6 +33,8 @@ bool get _hasFfmpeg {
 }
 
 void main() {
+  tearDownAll(GoodCli.disposeAll);
+
   group('readCompactJournal', () {
     test('reads the journal when nothing is at the old path', () {
       final dir = _tempDir();
@@ -112,15 +114,12 @@ flutter:
       return dir;
     }
 
-    ProcessResult compact(Directory dir) =>
-        Process.runSync(Platform.resolvedExecutable, <String>[
-          'run',
-          'bin/good.dart',
-          'assets',
-          'compact',
-          '--project-dir',
-          dir.path,
-        ], workingDirectory: _repoRoot);
+    ProcessResult compact(Directory dir) => GoodCli.instance.run(<String>[
+      'assets',
+      'compact',
+      '--project-dir',
+      dir.path,
+    ]);
 
     test('writes nothing of its own into the shipped directory', () {
       final dir = project();

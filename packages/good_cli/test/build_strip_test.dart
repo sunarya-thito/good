@@ -5,6 +5,8 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 
+import '_cli.dart';
+
 // `good build` end to end, as far as the strip.
 //
 // The unit tests in strip_test.dart pin what `stripLoose` does with the set it
@@ -14,10 +16,8 @@ import 'package:test/test.dart';
 // asset directory by hand shipped twice - once inside the chunk and once loose
 // in plaintext.
 //
-// The `flutter build` at step 4 fails, and that is fine: it runs after the
-// strip, and nothing here reads the exit code.
-
-final String _repoRoot = Directory.current.path;
+// The `flutter build` at step 4 runs against a stub that fails at once - see
+// GoodCli. It runs after the strip, and nothing here reads the exit code.
 
 bool get _hasFfmpeg {
   try {
@@ -72,13 +72,11 @@ void _image(String path, String colour, String size) {
   }
 }
 
-ProcessResult _good(Directory project, List<String> args) => Process.runSync(
-  Platform.resolvedExecutable,
-  <String>['run', 'bin/good.dart', ...args, '--project-dir', project.path],
-  workingDirectory: _repoRoot,
-);
+ProcessResult _good(Directory project, List<String> args) =>
+    GoodCli.instance.run(<String>[...args, '--project-dir', project.path]);
 
 void main() {
+  tearDownAll(GoodCli.disposeAll);
   test('a release build leaves no asset both packed and loose', () {
     final project = _project();
     // One asset that comes from a source file, and one placed straight into
