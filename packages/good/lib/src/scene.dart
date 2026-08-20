@@ -349,7 +349,7 @@ abstract class SceneStruct extends GameListenerBase
     // the cast anyway, so a bad parent still fails loudly in release. It
     // just fails there rather than here.
     assert(_declaredHere<T>(prefab));
-    assert(parent == null || _attachable<T>(prefab, parent));
+    assert(parent == null || _attachable<T>(prefab, parent, sceneSlot));
     final entity = prefab.archetype.allocateRow(sceneSlot);
     // Before the mount event, not after: `Child`'s linked-list fields are part
     // of what addChild writes, so a listener that saw the entity first would
@@ -427,9 +427,19 @@ abstract class SceneStruct extends GameListenerBase
     );
   }
 
-  /// Rejects a prefab that cannot hang off a parent, or a parent that cannot
-  /// hold children.
-  bool _attachable<T extends EntityStruct>(T prefab, Entity parent) {
+  /// Rejects a prefab that cannot hang off a parent, a parent that cannot
+  /// hold children, or a parent living in some other loaded scene.
+  ///
+  /// The scene check is not the one [_declaredHere] makes. That one compares
+  /// `SceneStruct`s - declarations - and passes happily when two *instances*
+  /// of one declaration are loaded at once, which is precisely when a caller
+  /// holding a handle from the wrong one gets here. See
+  /// `ParentAccessor._sameScene` for what the resulting edge costs.
+  bool _attachable<T extends EntityStruct>(
+    T prefab,
+    Entity parent,
+    int sceneSlot,
+  ) {
     if (prefab is! Child) {
       throw ArgumentError.value(
         prefab,
@@ -442,6 +452,17 @@ abstract class SceneStruct extends GameListenerBase
         parent,
         'parent',
         'does not mix in Parent - cannot accept children',
+      );
+    }
+    final parentSlot = parent.sceneSlot;
+    if (parentSlot != sceneSlot) {
+      throw ArgumentError.value(
+        parent,
+        'parent',
+        'is in scene slot $parentSlot and this spawn is into scene slot '
+            '$sceneSlot. A hierarchy edge may not cross scenes: whichever of '
+            'the two unloads first leaves the other naming a freed row. Spawn '
+            "into the parent's own scene - `parent.scene.addEntity(...)`.",
       );
     }
     return true;
@@ -459,6 +480,11 @@ abstract class SceneStruct extends GameListenerBase
   /// this comment claiming otherwise is why the broad `entityDespawnedEvent`
   /// went in here and not there for a while, leaking a native handle per
   /// destroyed entity. Both paths fire both events now.
+  ///
+  /// Then, once every listener has been told,
+  /// [_detachLinksLeavingScene] cuts the hierarchy edges that point out of
+  /// this scene, so nothing that is staying is left naming a page this unload
+  /// is about to free.
   @internal
   void unmountEntitiesOf(int sceneSlot) {
     for (var id = 0; id < ArchetypeRegistry.count; id++) {
@@ -477,6 +503,72 @@ abstract class SceneStruct extends GameListenerBase
           // entity has not yet torn anything down.
           observers?.entityDespawnedEvent.call(entity);
           prefab.unmountedEvent.call(entity);
+        }
+      }
+    }
+    _detachLinksLeavingScene(sceneSlot);
+  }
+
+  /// Unlinks every hierarchy edge between [sceneSlot] and a scene that is
+  /// staying, while both sides are still readable.
+  ///
+  /// `ParentAccessor` asserts that an edge stays within one scene, and an
+  /// assert is not there in release, so this is what stands between a shipped
+  /// build and the two ways such an edge fails. The two halves are not the
+  /// same check written twice: the assert states the rule at the moment the
+  /// edge is made, this repairs the breach at the moment it comes due.
+  ///
+  /// **The surviving side loses the link and nothing else.** A parent that
+  /// stays simply no longer has that child - the ordinary unlink, the one
+  /// `detach()` performs - and a child that stays is left an unparented root,
+  /// alive and holding its own subtree. Destroying the surviving side instead
+  /// would turn "unload the pause menu" into "and delete part of the level",
+  /// and it would do it through `destroy()`, which fires unmount events for
+  /// entities of a scene that is not unloading, from inside the unload of one
+  /// that is.
+  ///
+  /// **After the unmount events, not interleaved with them.** A listener
+  /// therefore reads the hierarchy as it stood, and no entity is announced
+  /// with its links already cut because it happened to sit in an archetype
+  /// this walk reached first. The cost is a second walk of the scene's rows,
+  /// which is unload-time work either way.
+  ///
+  /// Both directions, because either side can be the one going: a doomed row
+  /// is checked for a parent that is staying, and for children that are.
+  void _detachLinksLeavingScene(int sceneSlot) {
+    for (var id = 0; id < ArchetypeRegistry.count; id++) {
+      final storage = ArchetypeRegistry.byId(id);
+      final prefab = storage.prefab;
+      // Hoisted out of the row loop: one prefab describes every row of an
+      // archetype, so whether these components exist is settled here rather
+      // than re-asked through `tryGet` per row. Cast rather than promote, for
+      // the reason `addEntityIn` gives.
+      final asChild = prefab is Child ? prefab as Child : null;
+      final asParent = prefab is Parent ? prefab as Parent : null;
+      if (asChild == null && asParent == null) continue;
+      for (var pageIndex = 0; pageIndex < storage.pageCount; pageIndex++) {
+        final page = storage.pageAt(pageIndex);
+        if (page == null || page.ownerSceneSlot != sceneSlot) continue;
+        for (final offset in page.rowOffsets) {
+          final entity = Entity.pack(id, pageIndex, offset);
+          if (asChild != null) {
+            final parent = asChild.parent.readPending(entity);
+            if (parent != null && parent.sceneSlot != sceneSlot) {
+              parent<Parent>().unlinkChildAcrossScenes(entity);
+            }
+          }
+          if (asParent != null) {
+            var child = asParent.firstChild.readPending(entity);
+            while (child != null) {
+              // Read before the splice, which clears it - the same order
+              // `EntityLifetime.destroy` walks a subtree in.
+              final after = child.get<Child>().nextSibling.readPending(child);
+              if (child.sceneSlot != sceneSlot) {
+                entity<Parent>().unlinkChildAcrossScenes(child);
+              }
+              child = after;
+            }
+          }
         }
       }
     }

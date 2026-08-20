@@ -116,6 +116,10 @@ mixin Parent on Component {
 /// something unparented, [adopt] moves something that already has a parent,
 /// [removeChild] destroys, and `ChildAccessor.detach` unlinks and keeps the
 /// entity alive.
+///
+/// All of them stay inside one scene - see [_sameScene] for why an edge that
+/// crosses one cannot be unloaded correctly, and `unmountEntitiesOf` for what
+/// repairs one that a release build let through.
 extension ParentAccessor on Accessor<Parent> {
   /// The entity of [child] that this one owns - the other half of what
   /// `EntityStruct.of` declares.
@@ -175,6 +179,7 @@ extension ParentAccessor on Accessor<Parent> {
   /// mixes in Child" as a constraint on a bare `Entity`.
   void addChild(Entity child) {
     final childComponent = _requireChild(child);
+    assert(_sameScene(child));
     assert(_unparented(childComponent, child));
     _append(childComponent, child);
   }
@@ -212,6 +217,7 @@ extension ParentAccessor on Accessor<Parent> {
   /// spelled out by hand would do.
   void adopt(Entity child) {
     final childComponent = _requireChild(child);
+    assert(_sameScene(child));
     final current = childComponent.parent.readPending(child);
     if (current != null) current<Parent>().unlinkChild(child);
     _append(childComponent, child);
@@ -232,6 +238,7 @@ extension ParentAccessor on Accessor<Parent> {
   /// not do.
   void removeChild(Entity child) {
     final childComponent = _requireChild(child);
+    assert(_sameScene(child));
     // `readPending`, for the same reason the splice needs it: a chain edited
     // earlier this tick is only visible in the write slot.
     if (childComponent.parent.readPending(child) != entity) {
@@ -253,6 +260,20 @@ extension ParentAccessor on Accessor<Parent> {
   /// and unclaimed is reachable only through a handle nobody is holding.
   @internal
   void unlinkChild(Entity child) {
+    assert(_sameScene(child));
+    unlinkChildAcrossScenes(child);
+  }
+
+  /// [unlinkChild] with the scene check dropped, for the one caller that
+  /// exists to undo what that check forbids.
+  ///
+  /// `SceneStruct.unmountEntitiesOf` unlinks the edges leaving an unloading
+  /// scene, and every one of them is by definition an edge [unlinkChild]
+  /// would refuse. The two are not a choice: this is the splice, and
+  /// [unlinkChild] is that splice plus the rule. Any other caller wants
+  /// [unlinkChild].
+  @internal
+  void unlinkChildAcrossScenes(Entity child) {
     final childComponent = _requireChild(child);
     final self = component;
     // `readPending` throughout, for the same reason the splice needs it:
@@ -321,6 +342,40 @@ extension ParentAccessor on Accessor<Parent> {
       );
     }
     return true;
+  }
+
+  /// Rejects an edge between two scenes.
+  ///
+  /// A scene's pages are freed wholesale when it unloads, so an edge across
+  /// two of them has a side that outlives the other, and neither survivor is
+  /// left in a usable state. Unload the child's scene and the parent's chain
+  /// still names the freed row: its next `destroy()` throws part way down the
+  /// subtree, having already fired half the unmount events, so a listener
+  /// holding a resource per entity keeps the ones it was never told about.
+  /// Unload the parent's scene and the child cannot be cleaned up at all -
+  /// `detach()` and `destroy()` both route through [unlinkChild], which writes
+  /// into the freed page.
+  ///
+  /// Which scene an entity is in is decided when its row is allocated and
+  /// never changes, so this is a fact about the calling code rather than
+  /// something that can start being true in a shipped build - an assert, and
+  /// `SceneStruct.addEntityIn` puts it on the spawn path.
+  ///
+  /// What holds the release build together is not this line but
+  /// `unmountEntitiesOf`, which unlinks these before the pages go.
+  bool _sameScene(Entity child) {
+    final childSlot = child.sceneSlot;
+    final parentSlot = sceneSlot;
+    if (childSlot == parentSlot) return true;
+    throw ArgumentError.value(
+      child,
+      'child',
+      'is in scene slot $childSlot and $entity is in scene slot $parentSlot. '
+          'A hierarchy edge may not cross scenes: whichever of the two '
+          'unloads first leaves the other naming a freed row. Spawn the child '
+          "in the parent's own scene - `parent.scene.addEntity(...)` - or "
+          'keep the two subtrees apart.',
+    );
   }
 
   Child _requireChild(Entity child) {
