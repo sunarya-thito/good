@@ -1,7 +1,5 @@
 # Rendering and cameras (3D)
 
-<!-- snippet-page: skip goo3d has no renderer yet (roadmap: Renderable3D, MeshAsset, MaterialAsset, Light3D) -->
-
 !!! abstract "Layer: 3D (`goo3d`)"
     The renderer is a backend behind a contract, so a `goo3d` game does not name
     one directly.
@@ -16,6 +14,7 @@ Declaring what a thing looks like leaves that decision where it belongs.
 
 ## Making something visible
 
+<!-- snippet: skip goo3d has no renderer yet (roadmap: Renderable3D, MeshAsset, MaterialAsset) -->
 ```dart
 class Crate extends EntityStruct
     with Transform3D, WorldTransform3D, Renderable3D {
@@ -48,17 +47,32 @@ parenting it to something is how a follow camera works — there is no separate
 "camera controller" concept to learn.
 
 ```dart
-class Eye extends EntityStruct with Transform3D, WorldTransform3D, Camera3D {
+class Eye extends EntityStruct with Transform3D, WorldTransform3D, Camera3D {}
+```
+
+That is the whole prefab. `Camera3D` declares the lens — a 60 degree field of
+view, clipping from 0.1 out to 1000 — so a camera that wants those says nothing.
+
+`fieldOfView` is in degrees, vertical. `near` and `far` bound what is drawn:
+anything closer than `near` or further than `far` is skipped.
+
+A camera that wants a different lens moves the column defaults in its own
+`describeStruct`, and only the ones that differ:
+
+```dart
+class LongLens extends EntityStruct
+    with Transform3D, WorldTransform3D, Camera3D {
   @override
-  void describeCamera(Camera3DDescriptor descriptor) {
-    super.describeCamera(descriptor);
-    descriptor.has(fieldOfView: 60, near: 0.1, far: 1000);
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    fieldOfView.defaultValue = 20;
+    far.defaultValue = 5000;
   }
 }
 ```
 
-`fieldOfView` is in degrees, vertical. `near` and `far` bound what is drawn:
-anything closer than `near` or further than `far` is skipped.
+Those are row defaults for this archetype, not writes to any entity, so a
+camera whose lens never changes needs nothing at mount time.
 
 !!! warning "One camera per view"
     More than one enabled camera on the same view trips a debug assert. In a
@@ -94,6 +108,7 @@ Two exist:
 A game picks one by depending on it and declaring it, and nothing else in the
 game changes:
 
+<!-- snippet: skip goo3d has no renderer yet (roadmap: the backend contract) -->
 ```dart
 descriptor.renderer(FlutterGpuRenderer());
 ```
@@ -107,6 +122,7 @@ descriptor.renderer(FlutterGpuRenderer());
 
 Lights are entities too, declared the same way:
 
+<!-- snippet: skip goo3d has no renderer yet (roadmap: Light3D) -->
 ```dart
 class Sun extends EntityStruct with Transform3D, WorldTransform3D, Light3D {
   @override

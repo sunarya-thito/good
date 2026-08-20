@@ -30,9 +30,19 @@ class Crate extends EntityStruct
     );
   }
 
+}
+```
+
+Nothing there says the crate is dynamic, because that is where `RigidBody3D`
+starts. A prefab that wants a different body moves the column default in its own
+`describeStruct`:
+
+```dart
+class Ground extends EntityStruct with Transform3D, Collider3D, RigidBody3D {
   @override
-  void describeRigidBody(RigidBody3DDescriptor descriptor) {
-    descriptor.has(type: BodyType3D.dynamicBody);
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    bodyType.defaultValue = BodyType3D.staticBody;
   }
 }
 ```
