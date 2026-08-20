@@ -188,4 +188,5 @@ Plenty carries over unchanged:
 
 ## Next
 
-[Architecture →](architecture.md)
+[Thinking in ECS →](thinking-in-ecs.md) is the layer under the table: why the
+engine is shaped this way, and what happens to the habits you built.

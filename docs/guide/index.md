@@ -6,8 +6,8 @@ written the same way under `goo2d` and `goo3d`:
 
 | Page | Layer |
 |---|---|
-| [Thinking in ECS](thinking-in-ecs.md) | Kernel (`good`) |
 | [Coming from Unity/Godot](mental-model.md) | Kernel (`good`) |
+| [Thinking in ECS](thinking-in-ecs.md) | Kernel (`good`) |
 | [Architecture](architecture.md) | Kernel |
 | [Entities and components](entities-and-components.md) | Kernel |
 | [Scenes and prefabs](scenes.md) | Kernel |
@@ -25,10 +25,11 @@ written the same way under `goo2d` and `goo3d`:
 !!! tip "Read this first if you have used Unity, Godot or Flame"
     good declares everything up front and **toggles it on and off** — there is no
     `AddComponent`, no `RemoveComponent`, and no component that appears at run
-    time. [Thinking in ECS](thinking-in-ecs.md) is the gentler way in: what
+    time. [Coming from Unity, Godot or Flutter](mental-model.md) is the
+    translation table: the call you would have written and what to write
+    instead. [Thinking in ECS](thinking-in-ecs.md) is the layer under it — what
     happens to the habits you built, and worked answers to state machines,
-    events and the rest. [Coming from Unity, Godot or Flutter](mental-model.md)
-    is the translation table beside it.
+    events and the rest.
 
 ## The one paragraph version
 

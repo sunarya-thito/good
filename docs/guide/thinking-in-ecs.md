@@ -6,11 +6,11 @@ You already know how to build a game. You know what a player object is, where
 the jump code goes, what the health bar reads from. Almost none of that is
 wrong here. Most of it needs re-filing.
 
-This page is the re-filing. It is not a list of renamed methods —
-[Coming from Unity, Godot or Flutter](mental-model.md) is that, and it reads
-well straight after this one. This is the layer underneath: why the engine is
-shaped the way it is, what happens to the habits you have built, and worked
-answers to the eight things people actually get stuck on.
+This page is the re-filing. It is not a list of renamed methods — the page
+before it, [Coming from Unity, Godot or Flutter](mental-model.md), is that.
+This is the layer underneath: why the engine is shaped the way it is, what
+happens to the habits you have built, and worked answers to the eight things
+people actually get stuck on.
 
 All of it is kernel (`good`), so it holds in 2D and 3D alike. Where an example
 needs something concrete it reaches for `goo2d`, so the components you will see
@@ -1092,9 +1092,8 @@ fits on the checklist at the end of [Hot-path rules](../reference/rules.md).
 
 ## Next
 
-Now that the model makes sense, [Coming from Unity, Godot or Flutter](mental-model.md)
-is the translation table: the call you would have written, and what to write
-instead.
+[Architecture](architecture.md) is the machinery underneath: the two isolates
+and the tick.
 
-For the machinery underneath, [Architecture](architecture.md) covers the two
-isolates and the tick.
+If a call you would have written elsewhere is still missing its replacement,
+[Coming from Unity, Godot or Flutter](mental-model.md) has the table.
