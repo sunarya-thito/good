@@ -626,19 +626,26 @@ import 'package:$package/$package.dart';
 /// follow camera is therefore just a camera parented to the thing it follows;
 /// there is no separate camera-controller concept to learn.
 ///
-/// Nothing reads these columns yet. The camera is declared, positioned and
+/// The lens is whatever `Camera3D` declares - a 60 degree vertical field of
+/// view, clipping from 0.1 out to 1000 - so there is nothing to write here. A
+/// camera that wants a different one moves the column defaults in its own
+/// `describeStruct`, and only the ones that differ:
+///
+/// ```dart
+/// @override
+/// void describeStruct(DataDescriptor data) {
+///   super.describeStruct(data);
+///   fieldOfView.defaultValue = 90;
+/// }
+/// ```
+///
+/// That is a row default for this archetype, not a write to any entity, so a
+/// camera that never changes its lens at run time needs nothing at mount time.
+///
+/// Nothing reads those columns yet. The camera is declared, positioned and
 /// pointed at a view in `MainScene`, and the renderer that would turn that
 /// into a projection matrix is issue #43.
-class Eye extends EntityStruct with Transform3D, WorldTransform3D, Camera3D {
-  @override
-  void describeCamera(Camera3DDescriptor descriptor) {
-    super.describeCamera(descriptor);
-    // The named arguments are this archetype's row defaults, so a camera that
-    // never changes its lens at run time needs no write at mount time at all.
-    // The field of view is vertical, in degrees.
-    descriptor.has(fieldOfView: 60, near: 0.1, far: 1000);
-  }
-}
+class Eye extends EntityStruct with Transform3D, WorldTransform3D, Camera3D {}
 ''';
 
 String _spinSystem3D(String package) =>
