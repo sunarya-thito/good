@@ -1,8 +1,7 @@
 # Implementation status
 
-The rest of this documentation describes the engine as a whole. **This page is
-the list of what actually works right now**, so that nobody follows a guide for
-code that is not there yet.
+The rest of this documentation describes the engine as a whole. **This page says which parts of it
+are built**, so that nobody follows a guide for code that is not there yet.
 
 Last verified: **2026-08-19**, on `master`.
 
