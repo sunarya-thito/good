@@ -1,5 +1,10 @@
 # good
 
+<!-- snippet-scope
+late Sprite sprite;
+late SpriteDescriptor descriptor;
+-->
+
 GOOD — **G**ame **O**verdrive **O**n **D**art — is an ECS game engine for
 Flutter.
 

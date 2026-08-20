@@ -1,5 +1,10 @@
 # Troubleshooting
 
+<!-- snippet-scope
+late Future<void> someFuture;
+late DefaultPointer<bool> isBullet;
+-->
+
 The failures the pipeline can produce, what each one means, and what to do.
 
 ## Assets
@@ -259,7 +264,7 @@ want to drive it directly.
 Tunnelling. Turn on continuous detection for the projectile:
 
 ```dart
-descriptor.has(type: BodyType2D.dynamicBody, isBullet: true);
+isBullet.defaultValue = true;   // in the prefab's describeStruct
 ```
 
 It costs real solver time, so put it on projectiles instead of on everything

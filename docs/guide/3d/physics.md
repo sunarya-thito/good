@@ -1,5 +1,7 @@
 # Physics (3D)
 
+<!-- snippet-page: skip no 3D physics backend exists yet (roadmap: goo3d_physics_box3d not started) -->
+
 !!! abstract "Layer: opt-in — a `goo3d` physics backend"
     Physics is not part of `goo3d`. Add a backend package when you want it.
 

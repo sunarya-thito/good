@@ -1,5 +1,15 @@
 # 2D and 3D
 
+<!-- snippet-scope
+mixin Inventory on Component {
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<Inventory>();
+  }
+}
+-->
+
 `good` is the kernel, and an engine package sits on it: `goo2d` for 2D,
 `goo3d` for 3D.
 

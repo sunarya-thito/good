@@ -1,5 +1,19 @@
 # Networking
 
+<!-- snippet-scope
+class PlayerMoved extends NetMessage<({double x, double y})> {
+  @override
+  void bufferFromParams(ParamBuffer message, ({double x, double y}) params) {}
+
+  @override
+  ({double x, double y}) paramsFromBuffer(ParamBuffer message) => (x: 0, y: 0);
+}
+
+class RoundEnded() extends NetSignal;
+
+void spawnBullet(NetPeerId from, double angle) {}
+-->
+
 !!! abstract "Layer: kernel-side (`good_net`)"
     A 3D game needs the same session and messaging plumbing a 2D one does, so
     networking sits beside the kernel instead of under a renderer.
@@ -30,6 +44,9 @@ class MyState extends GameState2D<MyGame> with MultiplayerState<MyGame> {
 
 Send it by calling it:
 
+<!-- snippet-setup
+final fire = given<Fire>();
+-->
 ```dart
 fire((angle: 1.2));
 ```
@@ -61,6 +78,9 @@ implementations that drift.
 
 ### `NetChannel` — how hard to try
 
+<!-- snippet-setup
+final descriptor = given<NetDescriptor>();
+-->
 ```dart
 descriptor.has(PlayerMoved(), channel: NetChannel.unreliable);
 descriptor.has(RoundEnded(), channel: NetChannel.reliable);
@@ -111,6 +131,9 @@ same packing rules, same "keep the handle in a `late final` field", and the same
 answer for **more than one parameter**: `P` is a single type, so several values
 travel as a **Dart record**.
 
+<!-- snippet-setup
+final fire = given<Fire>();
+-->
 ```dart
 typedef Shot = ({double angle, double power, bool charged});
 
@@ -126,6 +149,11 @@ the full walk-through — it is the same mechanism.
 
 `NetSignal` is the no-parameter shape:
 
+<!-- snippet-setup
+final descriptor = given<NetDescriptor>();
+late RoundEnded roundEnded;
+void _onRoundEnded(NetPeerId from) {}
+-->
 ```dart
 class RoundEnded() extends NetSignal;
 
@@ -139,8 +167,12 @@ roundEnded();
 
 ### Sending to one peer
 
+<!-- snippet-setup
+final fire = given<Fire>();
+final peerId = given<NetPeerId>();
+-->
 ```dart
-fire.sendTo(peerId, (angle: 1.2));
+fire.sendTo(peerId, (angle: 1.2, power: 0.8, charged: true));
 ```
 
 ### Nobody to send to is not an error
@@ -153,6 +185,7 @@ made a mistake, and neither has a host with no clients yet.
 
 Mix `MultiplayerState` into your `GameState` and you get `network`:
 
+<!-- snippet: body MyState with MultiplayerState<MyGame> -->
 ```dart
 final session = await network.host(SessionOptions(name: 'My Game', maxPeers: 4));
 print(session.id);                       // the join code
@@ -215,6 +248,9 @@ the wrong handlers.
 `NetTransport` is the contract a backend implements. Exactly one is declared per
 game:
 
+<!-- snippet-setup
+final descriptor = given<NetDescriptor>();
+-->
 ```dart
 descriptor.transport(LoopbackNetTransport());
 ```
@@ -237,6 +273,9 @@ them.
 
 The "nothing to host, no bill" path, for a game that reaches another machine.
 
+<!-- snippet-setup
+final descriptor = given<NetDescriptor>();
+-->
 ```dart
 descriptor.transport(P2PNetTransport());
 ```
@@ -245,6 +284,7 @@ Hosting binds a UDP socket and hands back a **ten-character code that is the
 host's address**. Joining decodes it and starts talking. There is no broker, no
 relay, no account, nothing to deploy and nothing that can go down.
 
+<!-- snippet: body MyState with MultiplayerState<MyGame> -->
 ```dart
 final session = await network.host(SessionOptions(name: 'Kitchen table'));
 print(session.id);          // e.g. 4KM2QX9P7T — read this out to a friend
@@ -255,6 +295,7 @@ await network.join(SessionId('4KM2QX9P7T'));
 On a LAN nobody has to type anything at all: a host announces itself once a
 second, and `network.discover()` lists what is out there.
 
+<!-- snippet: body MyState with MultiplayerState<MyGame> -->
 ```dart
 for (final found in await network.discover()) {
   print('${found.name} — ${found.peerCount}/${found.maxPeers}');

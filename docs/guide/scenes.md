@@ -1,5 +1,19 @@
 # Scenes and prefabs
 
+<!-- snippet-scope
+class HudScene extends SceneStruct {}
+
+class Level2 extends SceneStruct {}
+
+late SceneDescriptor descriptor;
+late Player player;
+late EntityStruct prefab;
+late EntityStruct limb;
+int targetPopulation = 0;
+int alive = 0;
+void spawnOne() {}
+-->
+
 !!! abstract "Layer: kernel (`good`)"
 
 A `SceneStruct` answers two questions: **which prefabs can exist here**, and
@@ -66,11 +80,14 @@ boot** — before the game isolate is spawned, and before any system's
 ```dart
 class MyGame extends Game2D {
   late final Level1 level1;
+  late final Level2 level2;
   late final HudScene hud;
 
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
+    super.describeScenes(descriptor);
     level1 = descriptor.has(Level1());
+    level2 = descriptor.has(Level2());
     hud = descriptor.has(HudScene());
   }
 }
@@ -155,6 +172,9 @@ Spawning is cheap but not free, and a burst that allocates thousands of rows in
 one step shows up as a frame spike. The example demos cap per tick and converge
 over several:
 
+<!-- snippet-setup
+const _maxSpawnPerTick = 64;
+-->
 ```dart
 final shortfall = targetPopulation - alive;
 if (shortfall > 0) {

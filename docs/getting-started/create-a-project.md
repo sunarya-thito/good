@@ -207,6 +207,7 @@ needs no asset, so a new project draws something on its first run.
 `Game.start` spawns the simulation isolate and brings the world up, so it is
 asynchronous, and `GameView` needs a camera from a game that is already running:
 
+<!-- snippet: in State<StatefulWidget> -->
 ```dart
 /// Constructed synchronously, so there is always something to stop.
 final MyGameGame _game = MyGameGame();

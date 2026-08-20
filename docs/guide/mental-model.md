@@ -1,5 +1,43 @@
 # Coming from Unity, Godot or Flutter
 
+<!-- snippet-scope
+// The page's Player before it is cut down to two fields under "Your own
+// optional behaviour". Declaring it here cuts the page at that redeclaration,
+// so each fence sees the version above it.
+class Player extends EntityStruct
+    with Transform2D, WorldTransform2D, Renderable2D, Collider2D, RigidBody2D {
+  final shielded = Field.boolean();
+  final shieldEnergy = Field.float64();
+
+  late final Sprite sprite;
+  late final CircleBody hitbox;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    sprite = descriptor.has(width: 64, height: 64);
+  }
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    hitbox = descriptor.hasCircleCollider(radius: 0.5);
+  }
+}
+
+late Player player;
+
+class AiSystem extends GameSystem {}
+
+class Bullet() extends EntityStruct with Transform2D, Renderable2D;
+
+class HomingBullet() extends EntityStruct with Transform2D, Renderable2D;
+
+late QueryDescriptor descriptor;
+late Query homing;
+late Query allBullets;
+-->
+
 !!! abstract "Layer: kernel (`good`)"
 
 good will feel familiar in its vocabulary — entities, components, systems,

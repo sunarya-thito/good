@@ -1,5 +1,19 @@
 # Your first game
 
+<!-- snippet-scope
+class MyGameGame extends Game2D {
+  @override
+  MyGameState createState() => MyGameState();
+}
+
+class MyGameState extends GameState2D<MyGameGame> {}
+
+class MainScene extends SceneStruct {}
+
+late Input<Vector2> movement;
+late Query players;
+-->
+
 Starting from the project [`good create`](create-a-project.md) scaffolded, this
 page adds the four things every game needs: **a system**, **input**,
 **an asset**, and **a camera**. Every snippet here compiles against the current
@@ -124,6 +138,7 @@ regardless of the player's layout — WASD stays under the same fingers on AZERT
 
 Now use it:
 
+<!-- snippet: in GameSystem with FixedTickable -->
 ```dart
 @override
 void onFixedUpdate() {
@@ -212,6 +227,7 @@ Wrote ./lib/good.generated/textures.dart
 1 texture(s), 0 audio file(s).
 ```
 
+<!-- snippet: skip generated output, elided -->
 ```dart title="lib/good.generated/textures.dart"
 enum Textures with LocalEnumAssetKey<Texture> {
   spritesPlayer('assets/sprites/player.webp');

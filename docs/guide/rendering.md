@@ -1,5 +1,13 @@
 # Rendering and cameras
 
+<!-- snippet-scope
+late Sprite sprite;
+late Query players;
+late Eye eye;
+late MyGame game;
+double localX = 0, localY = 0, entityWorldX = 0;
+-->
+
 !!! abstract "Layer: 2D (`goo2d`)"
     Everything on this page is `goo2d`'s. `goo3d` supplies its own equivalent,
     and the kernel underneath is the same either way.
@@ -54,6 +62,7 @@ ones.
 Everything `descriptor.has` takes becomes a **column**, so every one of these is
 per-entity and writable at run time:
 
+<!-- snippet: skip a signature, not a call -->
 ```dart
 Sprite has({
   TextureAsset? texture,
@@ -102,6 +111,13 @@ sprite
 
 `Renderable2D` is a multi-component, so a prefab can declare more than one:
 
+<!-- snippet: in EntityStruct with Renderable2D -->
+<!-- snippet-setup
+late Sprite body;
+late Sprite muzzleFlash;
+late TextureAsset bodyTexture;
+late TextureAsset flashTexture;
+-->
 ```dart
 @override
 void describeSprites(SpriteDescriptor descriptor) {
@@ -171,17 +187,27 @@ Both are `const`, so a frame table costs nothing at run time:
 ```dart
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
+  final animTime = Field.float64();
+
+  late final Sprite sprite;
+
   static const List<SpriteFrame> walkCycle = <SpriteFrame>[
     SpriteFrame.grid(columns: 8, rows: 4, index: 0),
     SpriteFrame.grid(columns: 8, rows: 4, index: 1),
     SpriteFrame.grid(columns: 8, rows: 4, index: 2),
     SpriteFrame.grid(columns: 8, rows: 4, index: 3),
   ];
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    sprite = descriptor.has(width: 64, height: 64);
+  }
 }
 ```
 
-Then advance it per entity from a system. `animTime` is a `hasFloat64()` column
-on the prefab, and `12` is the frame rate:
+Then advance it per entity from a system. `animTime` is a `Field.float64()`
+column on the prefab, and `12` is the frame rate:
 
 ```dart
 for (final group in players.groups()) {
@@ -211,6 +237,7 @@ class Eye() extends EntityStruct with Transform2D, WorldTransform2D, Camera;
 | `zoom` | World units per screen pixel. `1` is 1:1, `2` zooms in, `0.5` out |
 | `view` | Which declared `CameraView` this camera fills, or null for none |
 
+<!-- snippet: plain -->
 ```dart
 final camera = scene.addEntity(eye);
 eye.view[camera] = game.defaultCamera;
@@ -223,6 +250,7 @@ eye.zoom[camera] = 2;
 
 A **view** is a surface a camera can fill. `Game2D` declares one for you:
 
+<!-- snippet: expr -->
 ```dart
 GameView(camera: game.defaultCamera)
 ```

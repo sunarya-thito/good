@@ -1,5 +1,13 @@
 # Engine design rules
 
+<!-- snippet-scope
+late Transform2D transform;
+late Entity a;
+late Entity b;
+late Entity child;
+late Entity parent;
+-->
+
 These are for working on the engine itself. They are not about the per-frame
 path — see [Hot-path rules](rules.md) for that — they are about keeping the
 codebase from acquiring the kind of structure that rots. Each one is here
@@ -59,6 +67,7 @@ A component mixin is **one instance for the whole archetype**. It describes the
 layout; it is not any particular entity. So a method on it that does something
 to an entity has to be handed the entity, and both spellings of that are wrong:
 
+<!-- snippet: skip shows the shapes the rule rejects -->
 ```dart
 // no - the prefab is the receiver and the subject is an argument
 transform.distanceTo(a, b);
@@ -88,7 +97,6 @@ extension Transform2DAccessor on Accessor<Transform2D> {
 
 a<Transform2D>().distanceTo(b);
 parent<Parent>().addChild(child);
-entity<RigidBody2D>().applyImpulse(ix, iy);
 ```
 
 `Accessor<T> implements Entity`, so inside the extension `this` **is** the
@@ -130,6 +138,7 @@ Two things this buys that the first spelling cannot:
 The tempting next step is a get/set pair for each `Field`, so the columns read
 like properties:
 
+<!-- snippet: skip shows the shape the rule rejects -->
 ```dart
 // no
 entity<Transform3D>().transformOffsetX = 10;
@@ -171,6 +180,7 @@ test: the mirror costs more at the call site to produce worse code.
 
 ## Never dispatch on `is` to work out what the receiver is
 
+<!-- snippet: skip shows the shape the rule rejects -->
 ```dart
 // no — the type system reimplemented by hand, badly
 final Object self = this;

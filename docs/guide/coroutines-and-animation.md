@@ -1,5 +1,42 @@
 # Coroutines and animation
 
+<!-- snippet-scope
+// The names this page uses without introducing: a system's resolved components
+// and columns, and the game's own helpers.
+late Transform2D transform;
+late Sprite sprite;
+late DataPointer<double> speed;
+late DataPointer<double> targetX;
+late DataPointer<bool> landed;
+late EnemyTimeline timeline;
+late Query enemies;
+
+abstract class PlayerActor {
+  bool get isGrounded;
+}
+
+late PlayerActor player;
+
+void showBanner() {}
+void hideBanner() {}
+void beginPlay() {}
+bool get everyoneReady => true;
+bool get menuIsOpen => false;
+Future<void> saveGame() async {}
+
+Iterable startRound() sync* {
+  yield null;
+}
+
+Iterable openDoor(Entity self) sync* {
+  yield null;
+}
+
+Iterable walkInside(Entity self) sync* {
+  yield null;
+}
+-->
+
 !!! abstract "Layer: kernel (`good`)"
 
 Two ways to make something happen over time, for two different shapes of
@@ -63,6 +100,7 @@ replays identically — `Future.delayed` would not.
 Nesting is a plain stack, so a coroutine can be composed of coroutines without
 either knowing about the other:
 
+<!-- snippet: top -->
 ```dart
 Iterable cutscene(Entity actor) sync* {
   yield walkToDoor(actor);       // an Iterable, run to completion first
@@ -114,6 +152,7 @@ A coroutine that has to know *which entity* it is running for takes exactly one
 parameter, and is started through the parameterised call — never through a
 closure:
 
+<!-- snippet: top -->
 ```dart
 /// One argument, and the type is CoroutineWithParam<Entity>.
 Iterable entrance(Entity self) sync* {
@@ -134,6 +173,7 @@ startCoroutineWithParam(entrance, param: entity);
 `CoroutineWithParam<T>` takes a single `T`, and for several values that `T` is a
 **Dart record**:
 
+<!-- snippet: top -->
 ```dart
 Iterable walkTo((Entity self, double x, double y) to) sync* {
   final (self, targetX, targetY) = to;         // destructure once, up front
@@ -222,6 +262,7 @@ class Enemy extends EntityStruct with Transform2D, Renderable2D {
 
   @override
   void describeAnimation(AnimationTypeDescriptor descriptor) {
+    super.describeAnimation(descriptor);
     timeline = descriptor.has(EnemyTimeline());
   }
 }
@@ -236,6 +277,7 @@ tracks it actually moves.
 What an entity stores is **one double**: when it started. Everything else is
 derived:
 
+<!-- snippet: in GameSystem with FixedTickable -->
 ```dart
 @override
 void onFixedUpdate() {
@@ -275,6 +317,7 @@ For a one-shot that must run to completion and then be awaited — an entrance, 
 door opening, a cutscene beat — where you want `await`, not a flag to
 check every tick:
 
+<!-- snippet: body EntityStruct -->
 ```dart
 await startAnimation(
   timeline.entrance,
@@ -301,6 +344,11 @@ It runs on the coroutine scheduler, so its writes land inside the tick window.
 
 A clip is written as a chain of keyframes per track. Two calls do everything:
 
+<!-- snippet-setup
+final descriptor = given<TimelineAnimationDescriptor>();
+var entrance = given<TimelineAnimation>();
+final x = given<Track<double>>();
+-->
 ```dart
 entrance = descriptor.has()
   ..track(x)
@@ -390,6 +438,7 @@ A negative duration throws — a keyframe cannot arrive before the one it follow
 
 #### The curve belongs to the key being moved *towards*
 
+<!-- snippet: skip a cascade fragment, not a statement -->
 ```dart
 .key(100.0, 1.0, Curves.easeIn)
 ```
@@ -407,6 +456,7 @@ midpoint, is **discrete**: it holds the previous value until the next key is
 reached instead of inventing a value in between. That is correct for a frame
 number and is the honest fallback for a type that cannot be interpolated.
 
+<!-- snippet: skip a cascade fragment, not a statement -->
 ```dart
 ..track(frame).key(0).key(3, 1.0)   // frames 0,1,2,3 — stepped, not blended
 ```
@@ -415,6 +465,12 @@ number and is the honest fallback for a type that cannot be interpolated.
 
 The `..` cascade is what lets one clip drive several tracks:
 
+<!-- snippet-setup
+final descriptor = given<TimelineAnimationDescriptor>();
+var blink = given<TimelineAnimation>();
+final y = given<Track<double>>();
+final frame = given<Track<int>>();
+-->
 ```dart
 blink = descriptor.has()
   ..track(y).key(0.0).key(10.0, 1.0)

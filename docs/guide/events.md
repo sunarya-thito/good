@@ -1,5 +1,20 @@
 # Events and listeners
 
+<!-- snippet-scope
+class ArenaGame extends Game2D {
+  @override
+  ArenaState createState() => ArenaState();
+}
+
+class ArenaState extends GameState2D<ArenaGame> {}
+
+class MusicSystem extends GameSystem {}
+
+late EventDispatcher<EntityLifecycleListener, Entity> mountedEvent;
+late EventDispatcher<WaveListener, int> waveCleared;
+int wave = 1;
+-->
+
 !!! abstract "Layer: kernel (`good`)"
 
 Every callback the engine hands you arrives the same way. The fixed tick, an
@@ -21,6 +36,7 @@ listener type it delivers to; `E` is the payload it carries. You declare it in
 This is the declaration behind `onEntityMounted` — `EntityStruct` holds it, and
 your prefab receives the event because it mixes in the listener type:
 
+<!-- snippet: in EntityStruct -->
 ```dart
 late final EventDispatcher<EntityLifecycleListener, Entity> mountedEvent;
 
@@ -50,6 +66,9 @@ For an event that carries nothing, use `hasSignal` and hold a
 `SignalDispatcher<L>`. The fixed tick is the case — it happened, and that is
 the entire message:
 
+<!-- snippet-setup
+final descriptor = given<EventDescriptor>();
+-->
 ```dart
 late final SignalDispatcher<FixedTickable> fixedTickEvent;
 
@@ -128,6 +147,7 @@ Put a game-wide event on the state.
 You can widen your own walk by overriding `collectListeners`, calling `super`
 first:
 
+<!-- snippet: in GameState -->
 ```dart
 @override
 void collectListeners(ListenerCollector collector) {
@@ -163,6 +183,10 @@ Teardown has to run the other way. A listener told the world is going away
 `reverse: true` and the dispatcher reads its collected list backwards, which is
 one list serving both orders instead of two that could drift apart:
 
+<!-- snippet-setup
+final descriptor = given<EventDescriptor>();
+late SignalDispatcher<GameSystemLifecycleListener> unmountEvent;
+-->
 ```dart
 unmountEvent = descriptor.hasSignal(
   (listener) => listener.onUnmounted(),

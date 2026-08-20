@@ -5,7 +5,7 @@
 # integration test the repository has. It sat in nobody's baseline and rotted to
 # sixteen red tests before anyone noticed (#83), which is what this is for.
 #
-# The box2d packages are not here yet. Their tests need the Box2D shared library
+# The box2d packages have no test job here. Their tests need the Box2D shared library
 # compiled from vendored source first, and the build script is PowerShell against
 # a local toolchain. That is issue #7's follow-up; 55 of the 867 tests are in
 # those two packages, and a green run covering the other 812 is worth more than a
@@ -62,6 +62,22 @@ jobs:
           echo "::group::dart pub get good_cli"
           (cd packages/good_cli && dart pub get)
           echo "::endgroup::"
+          echo "::group::flutter pub get doc_snippets"
+          (cd packages/doc_snippets && flutter pub get)
+          echo "::endgroup::"
+
+      # The fenced dart blocks in docs/, compiled against the real packages, so
+      # a rename breaks here rather than being found by a person reading the
+      # guide a month later. Extraction writes packages/doc_snippets/lib/pages,
+      # which is git-ignored - the check runs on what docs/ says right now, not
+      # on a copy that could go stale. The box2d packages are analyzed here even
+      # though their tests are not run: analysis needs their Dart source, not
+      # the native library.
+      - name: Compile the doc snippets
+        run: |
+          set -e
+          (cd packages/doc_snippets && dart run tool/extract.dart)
+          (cd packages/doc_snippets && flutter analyze --no-pub)
 
       - name: Analyze
         run: |

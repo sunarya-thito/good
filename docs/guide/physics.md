@@ -1,5 +1,22 @@
 # Physics
 
+<!-- snippet-scope
+late ColliderDescriptor descriptor;
+late CircleBody circle;
+late BoxBody box;
+late CapsuleBody pill;
+late PolygonBody poly;
+late Wedge wedge;
+late Crate crate;
+late RigidBody2D body;
+late AreaEffector wind;
+late Box2DPhysicsSystem physics;
+late Entity post;
+late Entity arm;
+double originX = 0, originY = 0, dirX = 1, dirY = 0;
+double minX = 0, minY = 0, maxX = 1, maxY = 1;
+-->
+
 !!! abstract "Layer: opt-in — `goo2d_physics_box2d`"
     Box2D v3, compiled from vendored source per platform, stepped inside the
     game isolate in lockstep with the fixed tick.
@@ -9,7 +26,7 @@ dependencies:
   goo2d_physics_box2d: ^0.1.0
 ```
 
-## A body in three declarations
+## A body in one mixin
 
 ```dart
 class Crate extends EntityStruct
@@ -26,11 +43,6 @@ class Crate extends EntityStruct
   }
 
   @override
-  void describeRigidBody(RigidBody2DDescriptor descriptor) {
-    descriptor.has(type: BodyType2D.dynamicBody);
-  }
-
-  @override
   void describeSprites(SpriteDescriptor descriptor) {
     super.describeSprites(descriptor);
     sprite = descriptor.has(width: 1, height: 1, color: 0xFFCC8844);
@@ -38,8 +50,28 @@ class Crate extends EntityStruct
 }
 ```
 
+`RigidBody2D` has no declaration pass of its own. Every one of its columns
+already starts at what a plain dynamic body wants, so a crate that wants a
+plain dynamic body says nothing. A prefab that wants something else moves the
+column's default:
+
+```dart
+class Wall extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
+  @override
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    bodyType.defaultValue = BodyType2D.staticBody;
+  }
+}
+```
+
+That is a default for every wall's row, not a write to one — the same column
+[you set per entity](#body-types-and-who-owns-the-transform) once the game is
+running.
+
 Declare the system on the state:
 
+<!-- snippet: in GameState -->
 ```dart
 @override
 void describeSystems(SystemDescriptor descriptor) {
@@ -330,6 +362,7 @@ wind.enable[entity] = false;
 A system that *sets up* physics state runs before the solver; one that *reacts*
 to results runs after:
 
+<!-- snippet: skip two alternatives, one per system, not one class -->
 ```dart
 @override
 int compareTo(GameSystem other) => other is Box2DPhysicsSystem ? -1 : 0;  // before
@@ -340,6 +373,7 @@ int compareTo(GameSystem other) => other is Box2DPhysicsSystem ? 1 : 0;   // aft
 
 ## Performance
 
+<!-- snippet: expr -->
 ```dart
 Box2DPhysicsSystem(
   gravityY: -10,

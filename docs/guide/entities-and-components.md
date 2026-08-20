@@ -1,5 +1,14 @@
 # Entities and components
 
+<!-- snippet-scope
+late DataPointer<double> velocityX;
+late DataPointer<double> life;
+late Entity enemy;
+late Entity player;
+late EntityStruct limb;
+late Entity body;
+-->
+
 !!! abstract "Layer: kernel (`good`)"
 
 This is the page to read slowly. good's storage model is the thing most unlike
@@ -56,6 +65,7 @@ offset, not a `dart:ffi` `Pointer` object, indexing it allocates nothing.
 
 An `extension type` over `int`, packing three things:
 
+<!-- snippet: skip a sketch of Entity, whose real declaration is the kernel's -->
 ```dart
 extension type const Entity(int value) implements int {
   int get archetypeId;
@@ -233,6 +243,7 @@ extension HealthAccessor on Accessor<Health> {
 
 and an accessor goes anywhere an entity is wanted:
 
+<!-- snippet: skip calls drain, which the fence below declares -->
 ```dart
 final target = enemy<Health>();
 player<Health>().drain(target, 5);
@@ -277,6 +288,7 @@ There is **no `addComponent` and no `removeComponent`**. A prefab's shape is
 fixed when it is declared, and every entity of that prefab keeps that shape for
 its whole life.
 
+<!-- snippet: skip shows an API that does not exist -->
 ```dart
 entity.addComponent(Shield());     // does not exist, and will not
 ```
@@ -284,6 +296,9 @@ entity.addComponent(Shield());     // does not exist, and will not
 Instead, declare everything the entity could ever need and **toggle** the parts
 that come and go:
 
+<!-- snippet-setup
+final player = given<Player>();
+-->
 ```dart
 player.sprite.visible[entity] = false;    // stop drawing it
 player.hitbox.enable[entity] = false;     // stop colliding

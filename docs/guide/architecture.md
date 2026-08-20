@@ -85,6 +85,7 @@ and traffic the other way goes through a command or a state channel.
     `SceneStruct`, `EntityStruct`, `GameSystem` are all one. `Game` is
     not, so:
 
+    <!-- snippet: skip shows what does not compile, and says so -->
     ```dart
     class MyGame extends Game with FixedTickable { }   // compile error
     ```

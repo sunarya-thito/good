@@ -1,0 +1,7 @@
+# Generated from docs/ by tool/extract.dart. Thousands of extracted lines are
+# not worth reviewing in a diff, and a stale copy is worse than none.
+/lib/pages/
+
+.dart_tool/
+.packages
+pubspec.lock

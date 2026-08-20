@@ -1,0 +1,18 @@
+# Local development resolves sibling packages from this repository instead
+# of pub.dev. This is the full transitive closure: resolving one sibling by
+# path pulls in ITS hosted constraints too, which do not exist yet.
+dependency_overrides:
+  good:
+    path: ../good
+  goo2d:
+    path: ../goo2d
+  goo3d:
+    path: ../goo3d
+  good_net:
+    path: ../good_net
+  good_net_p2p:
+    path: ../good_net_p2p
+  goo2d_physics_box2d:
+    path: ../goo2d_physics_box2d
+  goo2d_ffi_box2d:
+    path: ../goo2d_ffi_box2d

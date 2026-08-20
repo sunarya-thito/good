@@ -1,5 +1,40 @@
 # Talking to Flutter
 
+<!-- snippet-scope
+// The reader's own game, seen from the Flutter side. Spelled out here so the
+// fences that call into it are checked against the real command and state
+// channel types.
+class SpawnEnemy extends SinkCommand<int> {}
+
+class SaveGame extends SinkCommand<String> {}
+
+class WhoIsPlayer extends SupplierCommand<Entity> {}
+
+class DocGame extends Game2D {
+  late final StateChannel<int> score;
+  late final SetPopulation setPopulation;
+  late final SpawnEnemy spawnEnemy;
+  late final Damage damage;
+  late final SaveGame save;
+  late final WhoIsPlayer whoIsPlayer;
+
+  void pause() {}
+}
+
+late DocGame game;
+
+class GameSurface extends StatefulWidget {
+  const GameSurface({super.key});
+
+  @override
+  State<GameSurface> createState() => given<State<GameSurface>>();
+}
+
+Future<void> ensureGameReady() async {}
+
+void _writeSaveFile(String path) {}
+-->
+
 !!! abstract "Layer: kernel (`good`)"
 
 Your UI is ordinary Flutter — widgets, `setState`, whatever state management you
@@ -26,6 +61,7 @@ ordinary widgets, laid over the `GameView`. You get Flutter's layout, text
 rendering, accessibility, focus handling, animation, theming and hot reload for
 free, and none of it costs the simulation anything — it is on the other isolate.
 
+<!-- snippet: expr -->
 ```dart
 Stack(
   children: <Widget>[
@@ -107,13 +143,18 @@ class MyGame extends Game2D {
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
     setPopulation = descriptor.has(SetPopulation());
   }
 }
 
 class MyState extends GameState2D<MyGame> {
+  int targetPopulation = 0;
+  int score = 0;
+
   @override
   void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
     descriptor.hasSink(game.setPopulation, _onSetPopulation);
   }
 
@@ -123,6 +164,7 @@ class MyState extends GameState2D<MyGame> {
 
 Send it from anywhere on the Flutter side:
 
+<!-- snippet: skip a widget argument, not a statement -->
 ```dart
 onPressed: () => game.setPopulation(400),
 ```
@@ -192,6 +234,7 @@ class Damage extends GameCommand<Blow, int> {
 
 Call it with a record literal, and the field names are checked at the call site:
 
+<!-- snippet: plain -->
 ```dart
 final dealt = await game.damage((amount: 25, crit: true));
 ```
@@ -211,6 +254,10 @@ provided in terms of them instead of being things you override.
 
 ### Handlers take the record
 
+<!-- snippet: plain -->
+<!-- snippet-setup
+final descriptor = given<CommandDescriptor>();
+-->
 ```dart
 descriptor.hasHandler(game.damage, (Blow params) {
   return params.amount * (params.crit ? 2 : 1);
@@ -226,6 +273,14 @@ descriptor.hasHandler(game.damage, (Blow params) {
 `ParamDescriptor` mirrors `DataDescriptor`, with the same widths and the same
 packing:
 
+<!-- snippet: in Damage -->
+<!-- snippet-setup
+late ParamPointer<double> x;
+late ParamPointer<double> y;
+late ParamPointer<int> kind;
+late ParamPointer<Entity> target;
+late ParamPointer<String> name;
+-->
 ```dart
 @override
 void describeParams(ParamDescriptor descriptor) {
@@ -255,9 +310,14 @@ that mention a `ParamPointer` at all.
 Some commands belong on main — writing a save file, opening a URL. Register the
 handler in the `Game`'s own pass:
 
+<!-- snippet: in Game2D -->
+<!-- snippet-setup
+late SaveGame save;
+-->
 ```dart
 @override
 void describeCommands(CommandDescriptor descriptor) {
+  super.describeCommands(descriptor);
   save = descriptor.has(SaveGame());
   descriptor.hasSink(save, _writeSaveFile);   // handled here, not on the game isolate
 }
@@ -267,6 +327,7 @@ void describeCommands(CommandDescriptor descriptor) {
 
 Several commands in one round trip:
 
+<!-- snippet: plain -->
 ```dart
 final batch = game.createCommandBatch();
 game.spawnEnemy.execute(1, batch);
@@ -299,6 +360,7 @@ class MyGame extends Game2D {
 
   @override
   void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
     score = descriptor.hasInt32();
     health = descriptor.hasFloat32(100);
     paused = descriptor.hasBool();
@@ -320,6 +382,7 @@ class ScoreSystem extends GameSystem with Tickable {
 Read from Flutter — a `StateChannel` **is** a `ValueListenable`, so it drops
 straight into a `ValueListenableBuilder`:
 
+<!-- snippet: expr -->
 ```dart
 ValueListenableBuilder<int>(
   valueListenable: game.score,
@@ -379,6 +442,7 @@ class WhoIsPlayer extends SupplierCommand<Entity> {
 }
 ```
 
+<!-- snippet: plain -->
 ```dart
 final playerEntity = await game.whoIsPlayer();
 final transform = playerEntity.get<Transform2D>();
@@ -395,14 +459,22 @@ perfectly ordinary bytes on the other side.
 
 ## Frames and ticks
 
+<!-- snippet: plain -->
+<!-- snippet-setup
+void setState(void Function() fn) {}
+final listener = given<void Function(int)>();
+-->
+<!-- snippet: skip GameRuntime.addTickListener is @internal and unreachable from a game -->
 ```dart
-game.addTickListener((tick) => setState(() {}));
-game.removeTickListener(listener);
+game.runtimeOrNull?.addTickListener((tick) => setState(() {}));
+game.runtimeOrNull?.removeTickListener(listener);
 ```
 
-`GameView` is already push-driven off these notifications instead of polling
-vsync, so you rarely need this directly — reach for it when a HUD must repaint
-exactly in step with the simulation.
+The listeners hang off the `GameRuntime`, which exists only while the game is
+running — hence the `?.`. `GameView` repaints from a `SchedulerBinding` frame
+callback and not from these, so you rarely need them: reach for one when
+something must react to the published snapshot moving rather than to the next
+frame.
 
 ## The widget surface
 
@@ -469,6 +541,7 @@ class _GameSurfaceState extends State<GameSurface> {
 !!! danger "Do not stop through a nullable field assigned after the await"
     This is the shape to avoid, and it leaks silently:
 
+    <!-- snippet: in State<GameSurface> -->
     ```dart
     MyGame? _game;
 

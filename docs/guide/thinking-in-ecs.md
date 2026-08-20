@@ -1,5 +1,57 @@
 # Thinking in ECS
 
+<!-- snippet-scope
+// The page's running cast. Health is the only component it names without
+// declaring; the rest are the queries, columns and handles the fragments read.
+mixin Health on Component {
+  final hp = Field.int32(100);
+
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<Health>();
+  }
+}
+
+class Bullet extends EntityStruct with Transform2D, Renderable2D {
+  final damage = Field.int32(10);
+}
+
+class Mote extends EntityStruct with Transform2D, Renderable2D {
+  final life = Field.float64(1);
+}
+
+class WhoIsPlayer extends SupplierCommand<Entity> {}
+
+class ArenaGame extends Game2D {
+  late final StateChannel<int> wave;
+  late final StateChannel<int> alive;
+  late final StateChannel<int> score;
+  late final WhoIsPlayer whoIsPlayer;
+}
+
+/// The reader's own structure, not an engine type.
+class SpatialIndex {
+  void insert(Entity entity) {}
+  void remove(Entity entity) {}
+}
+
+late ArenaGame game;
+late QueryDescriptor descriptor;
+late Query orcs;
+late Query missiles;
+late Query motes;
+late Query cameras;
+late Query everyone;
+late Query enemies;
+late Query civilians;
+late DataPointer<double> speed;
+late DataPointer<int> hp;
+late Sprite sprite;
+late EntityStruct prefab;
+int alive = 0;
+-->
+
 !!! abstract "Layer: kernel (`good`)"
 
 You already know how to build a game. You know what a player object is, where
@@ -137,6 +189,9 @@ of total CPU.
 Not everything wants to be a system. A prefab can carry hooks that fire for its
 own entities and nothing else:
 
+<!-- snippet-setup
+double _spread() => 0;
+-->
 ```dart
 class Orc extends EntityStruct
     with Transform2D, Renderable2D, EntityLifecycleListener {
@@ -287,6 +342,9 @@ class Missile extends EntityStruct with Transform2D, Renderable2D {
 }
 ```
 
+<!-- snippet-setup
+final missile = given<Missile>();
+-->
 ```dart
 missile.target[entity] = orcEntity;
 ```
@@ -505,6 +563,11 @@ class Orc extends EntityStruct with Transform2D, Renderable2D, Character {
 
 The system is a `switch` inside the walk you were doing anyway:
 
+<!-- snippet: in GameSystem with FixedTickable -->
+<!-- snippet-setup
+bool _playerIsNear(Entity self) => true;
+bool _playerIsClose(Entity self) => true;
+-->
 ```dart
 @override
 void onFixedUpdate() {
@@ -549,11 +612,13 @@ there, and exit work goes there too, keyed off the state being left.
 Stunned, burning, invulnerable and shielded are not one state machine. They are
 four independent bits, and an enum cannot hold them at once:
 
+<!-- snippet: in Orc -->
 ```dart
 final burning = Field.boolean();        // one bit each
 final invulnerable = Field.boolean();
 ```
 
+<!-- snippet: skip reads the flag column the fence above declares -->
 ```dart
 for (final entity in group) {
   if (orc.invulnerable[entity]) continue;
@@ -592,6 +657,12 @@ A state machine is the wrong tool for "wind up, swing, recover, cool down".
 That is a script, and scripts are what
 [coroutines](coroutines-and-animation.md) are for:
 
+<!-- snippet: top -->
+<!-- snippet-setup
+final orc = given<Orc>();
+void _swing(Entity self) {}
+bool _blocked(Entity self) => false;
+-->
 ```dart
 Iterable attack(Entity self) sync* {
   orc.enter(self, OrcState.attacking);
@@ -699,6 +770,7 @@ class DamageSystem extends GameSystem with FixedTickable {
 The handler reaches the system through `getSystem`, which every `EntityStruct`
 has. Cache it, because one call per contact is one map lookup per contact:
 
+<!-- snippet: in EntityStruct with Collider2D, CollisionListener -->
 ```dart
 DamageSystem? _damage;
 
@@ -724,6 +796,9 @@ to hear about **every** entity in the game mixes in `EntitySpawnListener` and
 filters by archetype itself, which is what a spatial index or a replication
 table wants:
 
+<!-- snippet-setup
+final _index = given<SpatialIndex>();
+-->
 ```dart
 class SpatialIndexSystem extends GameSystem with EntitySpawnListener {
   @override
@@ -775,6 +850,7 @@ workaround:
 class ArenaState extends GameState2D<ArenaGame> {
   int wave = 1;
   int score = 0;
+  int aliveCount = 0;
   int targetPopulation = 40;
 }
 ```
@@ -896,6 +972,10 @@ A row created while a walk is open is **not** visited by that walk. Spawn at
 the end of the loop and treat the new entity as arriving on the next step,
 which is what the example demos do:
 
+<!-- snippet-setup
+final state = given<ArenaState>();
+const _maxSpawnPerTick = 64;
+-->
 ```dart
 final shortfall = state.targetPopulation - alive;
 if (shortfall > 0) {

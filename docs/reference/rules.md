@@ -1,5 +1,13 @@
 # Hot-path rules
 
+<!-- snippet-scope
+double dx = 0, dy = 0, speed = 1;
+late List<Entity> entities;
+late DataPointer<int> hp;
+late List<Entity> enemies;
+void update(Entity entity) {}
+-->
+
 These are the constraints the engine is written against, and the reason its API
 looks the way it does. They apply to **your** game code too — they are about the
 per-frame path, where a small cost repeated sixty times a second across
@@ -67,6 +75,7 @@ Whatever a `describe*` pass produces comes back as a handle you keep in a field.
 **No string or int keys, no `Map<String, ...>` the framework searches at use
 time.**
 
+<!-- snippet: skip two alternatives, one per prefab, not one class -->
 ```dart
 // yes
 late final Sprite playerSprite;

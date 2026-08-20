@@ -1,0 +1,56 @@
+# Deliberately not `package:lints/recommended.yaml`. This package is generated
+# prose, not code anybody maintains: style lints on it would only teach doc
+# authors to write Dart that reads worse on the page. What is kept is everything
+# that answers "does this name still exist and still take these arguments".
+
+analyzer:
+  # The docs teach primary constructors (`class Eye() extends EntityStruct ...`),
+  # and goo2d enables the experiment, so the snippets have to as well.
+  enable-experiment:
+    - primary-constructors
+
+  language:
+    strict-casts: true
+    # Not strict-raw-types. `Coroutine` is `Iterable Function()`, so every
+    # coroutine on the animation page is written `Iterable startRound() sync*`
+    # - the bare `Iterable` is the signature the engine asks for, and turning
+    # this on would make the docs write a type argument the typedef does not
+    # have.
+
+  errors:
+    # A snippet is an excerpt. It declares things it never reads, imports the
+    # package it is illustrating whether or not it names a symbol from it, and
+    # stops halfway through a function. None of that is a documentation bug.
+    unused_local_variable: ignore
+    unused_element: ignore
+    unused_element_parameter: ignore
+    unused_field: ignore
+    unused_import: ignore
+    unused_shown_name: ignore
+    dead_code: ignore
+    body_might_complete_normally: ignore
+    body_might_complete_normally_nullable: ignore
+
+    # `class MyGame extends Game2D` on a page about systems shows
+    # `describeSystems` and nothing else, because `createState` is not what the
+    # page is about. Requiring it would put four lines of noise in every example
+    # to catch a rename that the pages which *do* override the member already
+    # catch, through override_on_non_overriding_member.
+    non_abstract_class_inherits_abstract_member: ignore
+
+    # A snippet that ends before it returns is normal; one that calls a method on
+    # `dynamic` is not. Without this the scaffold could silently accept any name
+    # at all, which would make the whole check a no-op.
+    avoid_dynamic_calls: error
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
+
+linter:
+  rules:
+    - avoid_dynamic_calls

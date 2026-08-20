@@ -1,5 +1,12 @@
 # Transforms and hierarchy (3D)
 
+<!-- snippet-scope
+late Crate crate;
+late Entity car;
+late Entity wheel;
+double targetX = 0, targetY = 0, targetZ = 0;
+-->
+
 !!! abstract "Layer: 3D (`goo3d`)"
     `Child`/`Parent` come from the kernel and are shared with 2D. `Transform3D`
     and `WorldTransform3D` are this package.
@@ -81,7 +88,7 @@ the same kind of helper for a component of your own, see
 whatever you are building:
 
 ```dart
-scene.parent(wheel, of: car);
+car<Parent>().addChild(wheel);
 ```
 
 `WorldTransform3DSystem` walks parents before children and writes the world

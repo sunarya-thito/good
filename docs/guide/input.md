@@ -1,5 +1,24 @@
 # Input
 
+<!-- snippet-scope
+// The actions and the game's own helpers this page reads without introducing.
+late InputDescriptor descriptor;
+late InputBinding<double> binding;
+late Input<bool> fire;
+late Input<bool> jump;
+late Input<bool> p1Jump;
+late Input<bool> p2Jump;
+late Input<double> throttle;
+late Input<Vector2> movement;
+late Input<MousePosition> pointer;
+Vector2 _saved = Vector2.zero();
+
+void shoot() {}
+void stopShooting() {}
+void startWalkAnimation() {}
+void startIdleAnimation() {}
+-->
+
 !!! abstract "Layer: kernel (`good`)"
 
 Input in good is **declared as actions**, not polled as keys. You declare what
@@ -118,6 +137,9 @@ and a release can never land on the same resolution.
 
 ### `TriggerBinding` — one key, held or not
 
+<!-- snippet-setup
+late Input<bool> shoot;
+-->
 ```dart
 jump = descriptor.has<bool>(const TriggerBinding(InputKey.spacebar));
 shoot = descriptor.has<bool>(const TriggerBinding(InputKey.leftMouseButton));
@@ -191,6 +213,7 @@ relative to a pointer.
 Every action needs a default, because there is a real window — before the first
 resolution, or with no `GameView` — where it has no value:
 
+<!-- snippet: in Game2D -->
 ```dart
 @override
 void describeInputs(InputDescriptor input) {
@@ -212,6 +235,7 @@ overwrite.
 
 ## Events
 
+<!-- snippet: in GameSystem with GameSystemLifecycleListener -->
 ```dart
 @override
 void onMounted() {
@@ -250,7 +274,7 @@ goes unanswered. If that matters, unbind from the `released` handler.
 Bindings serialise, which is what a rebinding screen needs:
 
 ```dart
-final json = jump.binding?.toJson();
+final json = jump.binding!.toJson();
 jump.binding = TriggerBinding.fromJson(json);
 ```
 

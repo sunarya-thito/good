@@ -1,5 +1,7 @@
 # Rendering and cameras (3D)
 
+<!-- snippet-page: skip goo3d has no renderer yet (roadmap: Renderable3D, MeshAsset, MaterialAsset, Light3D) -->
+
 !!! abstract "Layer: 3D (`goo3d`)"
     The renderer is a backend behind a contract, so a `goo3d` game does not name
     one directly.

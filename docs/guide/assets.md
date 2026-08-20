@@ -1,5 +1,17 @@
 # Assets
 
+<!-- snippet-scope
+class Level1 extends SceneStruct {}
+
+class AssetGame extends Game2D {
+  late final Level1 level1;
+}
+
+Future<void> ensureGameReady() async {}
+
+late MyGame _game;
+-->
+
 !!! abstract "Layer: the registry is kernel; `Texture`/`AudioClip` are `goo2d`"
 
 An asset in good is **declared, not loaded**. You name it, the engine resolves it
@@ -88,6 +100,7 @@ costs a payload type, a loader, and one more call to the same emitter.
 You never call a loader. `loadScene` resolves everything the scene and its
 prefabs declared, and completes when they are ready:
 
+<!-- snippet: body GameState2D<AssetGame> -->
 ```dart
 await loadScene(game.level1);   // assets are resident when this returns
 ```
@@ -102,6 +115,7 @@ what nothing else still declares.
 `good generate` also writes a readiness check, and calling it before starting the
 game is the single best-value line in `main.dart`:
 
+<!-- snippet: plain -->
 ```dart
 await ensureGameReady();
 await Game.start(_game);      // (1)!
@@ -121,6 +135,7 @@ half-loaded.
 It also installs the asset pack when one exists, which is what makes a packed
 release build find its chunks.
 
+<!-- snippet: skip two signatures, not calls -->
 ```dart
 Future<void> ensureGameReady();                      // throws if anything is missing
 Future<List<AssetKey<Object?>>> findMissingAssets(); // the list, if you want to show it
@@ -140,6 +155,11 @@ exactly where it is most useful.
 
 ### Textures
 
+<!-- snippet-setup
+final descriptor = given<SpriteDescriptor>();
+late Sprite sprite;
+final texture = given<TextureAsset>();
+-->
 ```dart
 sprite = descriptor.has(texture: texture, width: 64, height: 64);
 ```

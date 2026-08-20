@@ -1,5 +1,22 @@
 # Transforms and hierarchy
 
+<!-- snippet-scope
+import 'dart:math' as math;
+
+late Transform2D transform;
+late Parent parent;
+late Turret turret;
+late Eye eye;
+late MyGame game;
+late Entity a;
+late Entity b;
+late EntityStruct bodyPrefab;
+late EntityStruct limbPrefab;
+late EntityStruct playerPrefab;
+late EntityStruct eyePrefab;
+double targetX = 0, targetY = 0;
+-->
+
 !!! abstract "Layer: `Child`/`Parent` are kernel; `Transform2D`/`WorldTransform2D` are `goo2d`"
 
 ## `Transform2D`
@@ -215,6 +232,7 @@ against. That full set is what a scene graph costs.
 A camera is an entity with `Transform2D`, `WorldTransform2D` and `Camera`, so
 "the camera follows the player" is just parenting:
 
+<!-- snippet: plain -->
 ```dart
 final player = scene.addEntity(playerPrefab);
 final camera = scene.addEntity(eyePrefab, parent: player);

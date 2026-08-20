@@ -1,5 +1,24 @@
 # Systems and queries
 
+<!-- snippet-scope
+// The component the movement example walks, and the systems the enable /
+// disable example names.
+mixin Velocity on Component {
+  final x = Field.float64();
+  final y = Field.float64();
+
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<Velocity>();
+  }
+}
+
+class AiSystem extends GameSystem {}
+
+class SpawnSystem extends GameSystem {}
+-->
+
 !!! abstract "Layer: kernel (`good`)"
 
 A `GameSystem` is where per-tick work lives. It declares its queries once and
@@ -39,6 +58,8 @@ ticks it:
 
 ```dart
 class MyState extends GameState2D<MyGame> {
+  int score = 0;
+
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
@@ -184,6 +205,7 @@ Return `-1` for "before", `1` for "after", `0` for no opinion — which is the
 default, and the right answer for most systems. A system that must run *after*
 physics does the mirror:
 
+<!-- snippet: in GameSystem -->
 ```dart
 @override
 int compareTo(GameSystem other) => other is Box2DPhysicsSystem ? 1 : 0;
@@ -214,12 +236,13 @@ pause menu switches simulation systems off without unloading the scene.
 | `getSystem<S>()` | Another system, for reading its results |
 | `getScene<S>()` | A loaded scene's declaration |
 
+<!-- snippet: in GameSystem with Tickable -->
 ```dart
 @override
 void onTick(Duration delta) {
   // Read another system's finished results and publish them to the UI.
   final physics = getSystem<Box2DPhysicsSystem>();
-  getGame<MyGame>().contactCount.value = physics.contactCount;
+  getGame<MyGame>().contactCount.value = physics.touchingPairCount;
 }
 ```
 
