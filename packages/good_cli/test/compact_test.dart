@@ -367,14 +367,15 @@ void main() {
 
     test('a corrupt manifest means recompact, not crash', () {
       final dir = _tempDir();
-      final file = File('${dir.path}/${CompactManifest.fileName}')
+      final file = compactJournal(dir)
+        ..parent.createSync(recursive: true)
         ..writeAsStringSync('not json at all');
       expect(CompactManifest.read(file).entries, isEmpty);
     });
 
     test('a manifest round-trips', () {
       final dir = _tempDir();
-      final file = File('${dir.path}/${CompactManifest.fileName}');
+      final file = compactJournal(dir);
       CompactManifest({'a.png': 'abc:webp:90'}).write(file);
       expect(CompactManifest.read(file).entries, {'a.png': 'abc:webp:90'});
     });
@@ -464,12 +465,14 @@ void main() {
         config: GoodConfig.defaults,
       );
 
+      final journal = compactJournal(_tempDir());
       final first = await runCompaction(
         plan: plan,
         sourceDir: source,
         outputDir: output,
         config: GoodConfig.defaults,
         ffmpeg: const Ffmpeg('ffmpeg', FfmpegOrigin.path),
+        journal: journal,
         out: _quiet,
         verbose: _quiet,
       );
@@ -483,6 +486,7 @@ void main() {
         outputDir: output,
         config: GoodConfig.defaults,
         ffmpeg: const Ffmpeg('ffmpeg', FfmpegOrigin.path),
+        journal: journal,
         out: _quiet,
         verbose: _quiet,
       );
@@ -506,21 +510,21 @@ void main() {
         // The source is not real audio, so the conversion fails - which is the
         // point of this one: a failure is recorded, not thrown, and does not
         // land in the manifest.
+        final journal = compactJournal(_tempDir());
         final result = await runCompaction(
           plan: plan,
           sourceDir: source,
           outputDir: output,
           config: GoodConfig.defaults,
           ffmpeg: const Ffmpeg('ffmpeg', FfmpegOrigin.path),
+          journal: journal,
           out: _quiet,
           verbose: _quiet,
         );
         expect(result.failed.keys, ['tone.wav']);
         expect(result.written, 0);
         expect(
-          CompactManifest.read(
-            File('${output.path}/${CompactManifest.fileName}'),
-          ).entries,
+          CompactManifest.read(journal).entries,
           isEmpty,
           reason:
               'a file that failed must not be recorded as done, or the next run '

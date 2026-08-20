@@ -80,7 +80,7 @@ flattening would create collisions the source tree avoids.
 ### Incremental by default
 
 A hash of each source plus its conversion settings is kept in
-`assets/.good_compact.json`, so an unchanged file is skipped:
+`.dart_tool/good/compact.json`, so an unchanged file is skipped:
 
 ```console
 0 written, 1 up to date, 0 failed.

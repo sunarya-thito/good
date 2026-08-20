@@ -181,6 +181,7 @@ abstract class BuildSubCommand extends Command with Verbose {
       outputDir: Directory('${project.path}/${config.assetOutput}'),
       config: config,
       ffmpeg: ffmpeg,
+      journal: compactJournal(project),
       out: info,
       verbose: debug,
     );

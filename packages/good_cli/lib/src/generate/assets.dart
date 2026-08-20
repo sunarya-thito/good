@@ -139,10 +139,10 @@ AssetScan scanAssets(Directory projectDir) {
       for (final child in dir.listSync()) {
         if (child is! File) continue;
         final name = child.uri.pathSegments.last;
-        // Sidecars the pipeline writes beside the assets - the compaction
-        // journal is the one that exists today. Named by convention rather
-        // than listed, since anything good drops next to an asset is its own
-        // bookkeeping and never something to key.
+        // Dotfiles are not assets. good writes none of its own here any more
+        // - the compaction journal moved to .dart_tool/good/ - but a project
+        // that last compacted under an older version still has one until its
+        // next run, and .gitkeep is ordinary.
         if (name.startsWith('.')) continue;
         files.add('$entry$name');
       }

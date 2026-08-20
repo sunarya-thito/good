@@ -146,13 +146,12 @@ After a release build, the loose assets are gone and the chunks remain:
 ```
 data/flutter_assets/assets/
 ├── .gitkeep
-├── .good_compact.json              ← the incremental-compaction cache
 └── packed/chunk_shared.dat        ← your assets
 ```
 
-Each asset ships exactly once. `.good_compact.json` is the compaction cache; it
-is small, and it names your *source* files, so treat it as one more reason not
-to put anything sensitive in a filename.
+Each asset ships exactly once, and nothing good keeps for its own bookkeeping is
+in there. The compaction journal names every source file and hashes its bytes,
+so it lives in `.dart_tool/good/compact.json`, where no build can bundle it.
 
 Restore the loose files for further development with:
 
@@ -188,8 +187,9 @@ came from the source it claims to.
 into an explicit failure, so a CI machine's toolchain is a decision, not an
 accident. Install ffmpeg as a build step instead.
 
-Cache `assets/` between runs to keep compaction incremental — the
-`.good_compact.json` hash cache is what makes an unchanged asset free.
+Cache `assets/` and `.dart_tool/good/` between runs to keep compaction
+incremental. The hashes in `.dart_tool/good/compact.json` are what make an
+unchanged asset free, and they are no use without the outputs they describe.
 
 !!! danger "`asset_key.dart` must be in the repository"
     A CI machine that regenerates it produces a build whose assets no previously

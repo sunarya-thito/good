@@ -114,8 +114,6 @@ Things that work but will catch you out:
   line slips past it and you get two `goo2d:` entries and two `assets:` blocks.
 - **`test/widget_test.dart`** from `flutter create` references `MyApp`, which no
   longer exists once `main.dart` is the good one.
-- **`.good_compact.json` ships** inside the built bundle. Harmless, but it names
-  your source files.
 - **The scaffolded `main.dart` leaks the game if the widget is disposed during
   startup.** It assigns a nullable `_game` *after* `await Game.start(...)` and
   calls `_game?.stop()` in `dispose`, so a dispose that lands mid-start stops

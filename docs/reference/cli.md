@@ -136,8 +136,8 @@ WebP for images, Ogg Vorbis for audio — using ffmpeg.
 | `--verbose` | off | Verbose output |
 
 Incremental by default: a hash of each source plus its settings lives in
-`assets/.good_compact.json`. A file already in the canonical format is **copied,
-not re-encoded** — re-encoding is generation loss.
+`.dart_tool/good/compact.json`. A file already in the canonical format is
+**copied, not re-encoded** — re-encoding is generation loss.
 
 ### `good assets pack`
 

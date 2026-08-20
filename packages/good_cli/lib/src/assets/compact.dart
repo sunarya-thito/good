@@ -129,7 +129,10 @@ class CompactManifest {
 
   final Map<String, String> entries;
 
-  static const String fileName = '.good_compact.json';
+  /// The journal's old home, beside the assets it describes.
+  ///
+  /// Read once, to migrate, and never written again. See [compactJournal].
+  static const String legacyFileName = '.good_compact.json';
 
   factory CompactManifest.read(File file) {
     if (!file.existsSync()) return CompactManifest.empty();
@@ -162,6 +165,38 @@ class CompactManifest {
   }
 }
 
+/// Where the compaction journal lives.
+///
+/// Under `.dart_tool/`, which is where a Dart project keeps build state, and
+/// not in the asset directory. `flutter: assets:` has to list that directory
+/// for anything to ship out of it, and flutter_tools expands a directory entry
+/// by listing every file in it - dotfiles included. So the journal went into
+/// every release, naming each source file and carrying the SHA-256 of its
+/// bytes, in plaintext beside the encrypted chunks.
+File compactJournal(Directory projectDir) =>
+    File('${projectDir.path}/.dart_tool/good/compact.json');
+
+/// Reads the journal, adopting one left behind at the old path.
+///
+/// A project whose last compaction ran under an older good has its journal in
+/// [legacy]. Starting from empty would re-encode every asset once - slow, and
+/// nothing a person asked for - so the old entries are read when there is no
+/// new journal yet. It is deleted either way, because the whole point is that
+/// it stops shipping.
+CompactManifest readCompactJournal({
+  required File journal,
+  required File legacy,
+  void Function(File moved)? onMigrate,
+}) {
+  if (!legacy.existsSync()) return CompactManifest.read(journal);
+  final manifest = journal.existsSync()
+      ? CompactManifest.read(journal)
+      : CompactManifest.read(legacy);
+  legacy.deleteSync();
+  onMigrate?.call(legacy);
+  return manifest;
+}
+
 /// The result of running compaction.
 @immutable
 class CompactResult {
@@ -187,14 +222,28 @@ Future<CompactResult> runCompaction({
   required Directory outputDir,
   required GoodConfig config,
   required Ffmpeg ffmpeg,
+  required File journal,
   required VerboseOutput out,
   required VerboseOutput verbose,
   bool force = false,
 }) async {
-  final manifestFile = File('${outputDir.path}/${CompactManifest.fileName}');
-  final manifest = force
-      ? CompactManifest.empty()
-      : CompactManifest.read(manifestFile);
+  final legacy = File('${outputDir.path}/${CompactManifest.legacyFileName}');
+  final CompactManifest manifest;
+  if (force) {
+    // Still removed under --force. Nothing is read from it, but leaving it in
+    // the asset directory leaves it in the next release.
+    if (legacy.existsSync()) legacy.deleteSync();
+    manifest = CompactManifest.empty();
+  } else {
+    manifest = readCompactJournal(
+      journal: journal,
+      legacy: legacy,
+      onMigrate: (moved) => verbose.printf(
+        'moved the compaction journal out of %s\n',
+        [moved.path],
+      ),
+    );
+  }
   final next = CompactManifest.empty();
 
   var written = 0;
@@ -243,7 +292,7 @@ Future<CompactResult> runCompaction({
     written++;
   }
 
-  next.write(manifestFile);
+  next.write(journal);
   out.printf('%s written, %s up to date, %s failed.\n', [
     written,
     upToDate,

@@ -116,6 +116,7 @@ class CompactCommand extends Command with Verbose {
       outputDir: outputDir,
       config: config,
       ffmpeg: ffmpeg,
+      journal: impl.compactJournal(project),
       out: info,
       verbose: debug,
       force: force.value,
