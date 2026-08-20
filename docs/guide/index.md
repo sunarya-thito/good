@@ -20,7 +20,7 @@ written the same way under `goo2d` and `goo3d`:
 | [Physics](physics.md) | Opt-in (`goo2d_physics_box2d`) |
 | [Talking to Flutter](flutter-bridge.md) | Kernel |
 | [Coroutines and animation](coroutines-and-animation.md) | Kernel |
-| [Performance rules](performance.md) | Kernel |
+| [Performance](performance.md) | Kernel |
 
 !!! tip "Read this first if you have used Unity, Godot or Flame"
     good declares everything up front and **toggles it on and off** — there is no

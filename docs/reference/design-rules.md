@@ -209,3 +209,29 @@ silently getting a second scheduler.
     Narrowing a value whose type genuinely varies at run time (`yielded is num`,
     `listener is EventBus`), and `tryGet<T>`-style lookups that return null. The
     rule is about *dispatching on the receiver's own type*.
+
+## AOT-compile any benchmark that would change code
+
+`flutter test` runs the JIT. Two write-path costs measured that way came out
+wrong by roughly 100x, and what was tuned against them was tuned for a compiler
+nobody ships.
+
+```bash
+dart compile exe bench/my_bench.dart -o build/my_bench
+./build/my_bench
+```
+
+Prefer a real device over a desktop for anything the frame budget depends on.
+
+## A benchmark must be able to fail
+
+Two benches here reported "flat" — no effect — because their setup had made the
+effect unobservable. A negative result is worth something only if the same
+harness could have produced a positive one, so turn the optimisation off and
+watch the number move before you believe it did not.
+
+The same trap wearing a different hat: whole-step totals reset once per
+`advance` and accumulate over every fixed step inside it, while one system's
+timing is a single step. The moment an advance costs more than one step, those
+two stop sharing a denominator. A recording here read as a catastrophic
+super-linear blowup and was entirely this.

@@ -109,5 +109,5 @@ save files. The set that matters day to day is short:
 - [ ] Toggle flags instead of restructuring entities.
 - [ ] Keep declaration passes pure and order-stable — both isolates run them.
 
-See [Performance](../guide/performance.md) for measuring, and the traps that
-make a benchmark lie.
+See [Performance](../guide/performance.md) for finding out which of these you
+broke.

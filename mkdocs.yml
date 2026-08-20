@@ -128,7 +128,7 @@ nav:
       - Assets: guide/assets.md
       - Talking to Flutter: guide/flutter-bridge.md
       - Coroutines and animation: guide/coroutines-and-animation.md
-      - Performance rules: guide/performance.md
+      - Performance: guide/performance.md
   - Building in 2D:
       - Transforms and hierarchy: guide/transforms-and-hierarchy.md
       - Rendering and cameras: guide/rendering.md
