@@ -125,15 +125,15 @@ class _SystemB extends GameSystem with FixedTickable {
 class _InertSystem extends GameSystem {}
 
 /// Declared last, but sorts itself before every other system - the
-/// `Comparable` ordering mechanism's reference usage. Unconditional `-1`
-/// (not "before _SystemA specifically") deliberately: an opinion about only
-/// *one* other system, combined with declaration-order tie-breaks for every
-/// other pair, has no valid total order at all (this system would have to
-/// be simultaneously "before A" and, transitively through the tie-broken
-/// pairs, "after" a system A is itself tie-broken before) - that is a
-/// self-contradictory scenario to test against, not a real one. An
-/// unconditional opinion has no such conflict: it is consistently the
-/// minimum against every other system regardless of comparison direction.
+/// `Comparable` ordering mechanism's reference usage.
+///
+/// Unconditional `-1`, and there is a second one of these below. Two systems
+/// that both claim to precede everything contradict each other, which is
+/// exactly the shape that used to wreck the sort: it is not a comparator, and
+/// `List.sort` handed one does not confine the damage to the offending pair.
+/// Ordering is resolved as a constraint graph now (`GameState.sortSystems`),
+/// so the pair is settled by declaration order and every *other* constraint
+/// survives it.
 class _SortsFirst extends GameSystem with FixedTickable {
   @override
   int compareTo(GameSystem other) => -1;
@@ -155,6 +155,41 @@ class _Indifferent2 extends GameSystem with FixedTickable {
   void onFixedUpdate() => log.add('2');
 }
 
+/// A second unconditional "I am first", contradicting [_SortsFirst].
+class _AlsoSortsFirst extends GameSystem with FixedTickable {
+  @override
+  int compareTo(GameSystem other) => -1;
+
+  @override
+  void onFixedUpdate() => log.add('D');
+}
+
+/// The pair that reproduces #5 in miniature: a spawner that must run before
+/// the pass consuming what it writes, and nothing else.
+///
+/// [_Composer] states no opinion at all - it is the `WorldTransformSystem`
+/// shape, which deliberately does not claim to precede everyone - so the whole
+/// constraint rests on [_Spawner]'s single targeted `-1`. That is the one that
+/// went missing: the two contradictory unconditional opinions above made the
+/// comparator inconsistent, and `List.sort` permuted this pair along with
+/// everything else. In the swarm demo that put `WorldTransformSystem` ahead of
+/// its spawner, so freshly created entities were composed a tick late and drew
+/// one frame at the world origin.
+class _Composer extends GameSystem with FixedTickable {
+  @override
+  void onFixedUpdate() => log.add('compose');
+}
+
+/// Declared **after** [_Composer], so declaration order alone would run it
+/// second and only the constraint can put it first.
+class _Spawner extends GameSystem with FixedTickable {
+  @override
+  int compareTo(GameSystem other) => other is _Composer ? -1 : 0;
+
+  @override
+  void onFixedUpdate() => log.add('spawn');
+}
+
 /// Extends the base fixture's set rather than replacing it - the `super` call
 /// is what makes declaration order (and therefore execution order) the thing
 /// under test.
@@ -162,12 +197,55 @@ class _OrderingState extends _TestState {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     // Declaration order: A, InertSystem, B, CensusSystem, Indifferent1,
-    // Indifferent2, SortsBeforeA.
+    // Indifferent2, SortsFirst, AlsoSortsFirst, Composer, Spawner.
     super.describeSystems(descriptor);
     descriptor.has(_Indifferent1());
     descriptor.has(_Indifferent2());
     descriptor.has(_SortsFirst());
+    descriptor.has(_AlsoSortsFirst());
+    descriptor.has(_Composer());
+    descriptor.has(_Spawner());
   }
+}
+
+/// Three systems whose stated positions genuinely cannot all hold.
+class _CycleA extends GameSystem with FixedTickable {
+  @override
+  int compareTo(GameSystem other) => other is _CycleB ? -1 : 0;
+
+  @override
+  void onFixedUpdate() {}
+}
+
+class _CycleB extends GameSystem with FixedTickable {
+  @override
+  int compareTo(GameSystem other) => other is _CycleC ? -1 : 0;
+
+  @override
+  void onFixedUpdate() {}
+}
+
+class _CycleC extends GameSystem with FixedTickable {
+  @override
+  int compareTo(GameSystem other) => other is _CycleA ? -1 : 0;
+
+  @override
+  void onFixedUpdate() {}
+}
+
+class _CyclicState extends _FixtureState {
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_CycleA());
+    descriptor.has(_CycleB());
+    descriptor.has(_CycleC());
+  }
+}
+
+class _CyclicGame extends _TestGame {
+  @override
+  GameState createState() => _CyclicState();
 }
 
 class _OrderingGame extends _TestGame {
@@ -646,14 +724,52 @@ void main() {
         _state(game).advance(_step);
         expect(
           log,
-          ['C', 'A', 'B', '1', '2'],
+          ['C', 'D', 'A', 'B', '1', '2', 'spawn', 'compose'],
           reason:
               'declaration order was A, B, Indifferent1, Indifferent2, '
-              'SortsFirst (InertSystem/CensusSystem are not FixedTickable '
-              'and do not log) - only C moving to the front should change',
+              'SortsFirst, AlsoSortsFirst, Composer, Spawner '
+              '(InertSystem/CensusSystem are not FixedTickable and do not '
+              'log). C and D both claim to be first, so they take the front '
+              'in declaration order; Spawner crosses Composer; everything '
+              'else stays where it was declared',
         );
       },
     );
+
+    test(
+      'a targeted constraint survives two systems that both claim to be first',
+      () async {
+        final game = await _game(_OrderingGame());
+        _state(game).advance(_step);
+        expect(
+          log.indexOf('spawn'),
+          lessThan(log.indexOf('compose')),
+          reason:
+              'Spawner returns -1 against Composer and nothing else, and was '
+              'declared after it. C and D contradict each other, which is '
+              'what a comparison sort could not survive - it permuted the '
+              'whole list and dropped this constraint, which is #5',
+        );
+      },
+    );
+
+    test('systems whose stated positions form a cycle are rejected', () async {
+      await expectLater(
+        Game.startInline(_CyclicGame()),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('cycle'),
+              contains('_CycleA'),
+              contains('_CycleB'),
+              contains('_CycleC'),
+            ),
+          ),
+        ),
+      );
+    });
   });
 
   group('tick phases', () {

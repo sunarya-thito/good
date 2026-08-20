@@ -1,19 +1,8 @@
 // The "one ball at the centre of the screen for a single frame" report, run
 // against the real `SceneGraphGame` rather than a synthetic stand-in.
 //
-// **This test reproduces an open defect (#5) and fails when it runs**, which is
-// the point of it. `spawn_tick_world_transform_test.dart` in `goo2d` pins the
-// composition half of the problem and passes; this one shows the demo is still
-// wrong, which is the gap two rounds of "fixed" fell into - a synthetic test
-// went green while the thing on screen kept flashing.
-//
-// It is `skip`ped rather than left red, because this package is in CI now (#83)
-// and a suite that is permanently red is a suite nobody reads - which is how it
-// came to carry sixteen unrelated failures in the first place. The skip is
-// named and prints on every run, so the defect stays in front of anyone
-// looking. Take it off to see the failure, and take it off for good when #5
-// lands - at which point this inverts from reproducing the bug to asserting
-// the fix.
+// This pins #5. It ran red for as long as that defect was open and is the case
+// that finally located it, after three fixes aimed at the wrong layer.
 //
 // # What is asserted, and why exactly this
 //
@@ -33,29 +22,30 @@
 // probe lands wherever the sort puts it. One was tried here and silently ran
 // *before* the transform pass, reporting stale values that meant nothing.
 //
-// # What is known about the failure, measured rather than assumed
+// # What it turned out to be
 //
-// `WorldTransformSystem` receives a spawn callback for every one of these
-// entities and composes every one of them (16002 seen, 16002 composed), and
-// the value it computes is correct - entity 0 composes to (89.999, 0.375) from
-// a local offset of (90, 0) under a hub rotated a fraction of a degree. Reading
-// it straight back through `readPending` returns that same value, so the write
-// reaches the write slot.
+// Not paging, which is where the first three attempts looked. Dumping all
+// three of the page's triple-buffer slots for a flashing row showed the
+// composed world position in **none** of them - so nothing had written it yet,
+// and there was no lost write to find. The write came a tick later.
 //
-// The published snapshot for that same row, that same frame, is still (0, 0).
-// So this is not a composition bug and not a "which entities get composed" bug.
-// A correct write into the write slot is not surviving into the published one
-// for rows allocated during that tick. The per-tick distribution says the same
-// thing: {1: 320, 16: 122, 31: 4, 40: 42, 47: 126} - tick 1 is the entire first
-// batch (80 critters + 240 limbs), and the rest are partial batches at
-// irregular intervals, which is the "random frame during sliding" signature.
-// Every one of them corrects itself on the following tick.
+// `CritterSystem` returns -1 against `WorldTransformSystem` precisely so the
+// spawner runs before the pass that composes what it wrote. It did not:
+// `GameState.sortSystems` ran that constraint through `List.sort`, and the
+// profiling markers this demo declares (`_FixedPhaseStart` and
+// `_PresentPhaseStart` each return -1 unconditionally, so both claim to be
+// first) made the comparator inconsistent. `List.sort` given one of those does
+// not just mis-order the offending pair - it permutes the list, and
+// `CritterSystem`'s unrelated and perfectly consistent constraint went with it.
+// The sorted order came out with `WorldTransformSystem` ahead of
+// `CritterSystem`, so every entity a tick spawned was composed on the *next*
+// tick and published its defaults - (0, 0) - in between.
 //
-// The remaining suspects are in `good`'s paging, not in `goo2d`:
-// `MemoryPage.allocate` defers rows created while a query walk is open, and
-// `MemoryPool.beginTick` both calls `flushPending()` and limits the
-// copy-forward to `page.highWaterMark`. A row that is handed out mid-tick and
-// only becomes "real" at the next `beginTick` is the shape that fits.
+// `sortSystems` builds a constraint graph and topologically sorts it now, so a
+// stated constraint cannot be outvoted by anybody else's. The per-tick
+// distribution this used to report - {1: 320, 15: 140, 29: 40, 38: 53,
+// 44: 180}, tick 1 being the whole first batch of 80 critters and 240 limbs -
+// is empty.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
 
@@ -135,41 +125,44 @@ void main() {
     ComponentTypeRegistry.reset();
   });
 
-  test('no sprite is ever drawn at the world origin while the swarm fills',
-      () async {
-    // **The reported repro, as a test**: start at zero, ask for the maximum,
-    // and watch every frame on the way up. The population has to be *growing*
-    // for this to be visible at all - a row that has never held anything reads
-    // back the defaults, where a recycled row holds the previous critter's
-    // position, which is somewhere plausible in the swarm and invisible. That
-    // is why the flash appeared at no repeatable point while dragging the
-    // slider, and why a fixture that spawns a handful of entities into a fresh
-    // scene cannot reproduce it.
-    final game = _ProbedGame();
-    await Game.startInline(game);
-    addTearDown(() async {
-      if (game.isRunning) await game.stop();
-    });
+  test(
+    'no sprite is ever drawn at the world origin while the swarm fills',
+    () async {
+      // **The reported repro, as a test**: start at zero, ask for the maximum,
+      // and watch every frame on the way up. Both halves matter. The fill is
+      // where a spawn lands on a row that has never held anything, so a late
+      // composition publishes the defaults and the sprite is visibly at the
+      // centre of the screen; the churn after it is where a spawn lands on a
+      // *recycled* row, which is the case a fixture spawning into a fresh scene
+      // cannot produce at all. A recycled row holds the previous critter's
+      // position - somewhere plausible in the swarm, and invisible - so the
+      // sighting count alone under-reports it, but it is the same one-tick lag
+      // and it is covered by running well past the fill.
+      final game = _ProbedGame();
+      await Game.startInline(game);
+      addTearDown(() async {
+        if (game.isRunning) await game.stop();
+      });
 
-    final pending = game.setPopulation(4000);
-    game.state.advance(_step);
-    await pending;
-
-    // 80 critters per step, so ~50 steps to fill; well past that so the fill
-    // crosses page boundaries repeatedly and then settles into churn.
-    for (var i = 0; i < 120; i++) {
+      final pending = game.setPopulation(4000);
       game.state.advance(_step);
-    }
+      await pending;
 
-    final probe = game.probedState.probe;
-    expect(
-      probe.sightings,
-      isEmpty,
-      reason:
-          'each of these is one frame of a sprite at the centre of the '
-          'screen. Per tick: ${probe.perTick}\n'
-          '${probe.sightings.take(5).join('\n')}',
-    );
-  }, skip: 'reproduces open defect #5 (rows allocated mid-tick lose their '
-      'writes); see the note at the top of this file');
+      // 80 critters per step, so ~50 steps to fill; well past that so the fill
+      // crosses page boundaries repeatedly and then settles into churn.
+      for (var i = 0; i < 120; i++) {
+        game.state.advance(_step);
+      }
+
+      final probe = game.probedState.probe;
+      expect(
+        probe.sightings,
+        isEmpty,
+        reason:
+            'each of these is one frame of a sprite at the centre of the '
+            'screen. Per tick: ${probe.perTick}\n'
+            '${probe.sightings.take(5).join('\n')}',
+      );
+    },
+  );
 }

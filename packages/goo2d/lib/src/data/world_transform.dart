@@ -66,13 +66,18 @@ mixin WorldTransform2D on Component {
 ///
 /// Ordering: any system reading `WorldTransform2D` should extend its own
 /// `compareTo` to run after this one (`other is WorldTransformSystem ? 1 :
-/// 0`) - this system does not declare "I run first" unconditionally, since
-/// that would only reciprocate for systems that happen to land as the "a"
-/// argument in a given comparison (see `Game._sortSystems`'s own doc on
-/// checking both comparison directions) and, more importantly, is simply
-/// the wrong default: a system with no opinion about ordering should not be
-/// silently forced to run after this one just because this one has an
-/// opinion about everyone.
+/// 0`), and any system *writing* a `Transform2D` this pass then composes
+/// should declare -1 against it. This system states no opinion of its own,
+/// deliberately: a system with no view about ordering should not be forced
+/// behind this one just because this one has a view about everyone.
+///
+/// That the constraint is one-sided is fine - `GameState.sortSystems` asks
+/// both directions and treats the answer as a graph edge, so a single -1 from
+/// the other side is honoured. It was not always: under the old `List.sort`,
+/// `CritterSystem`'s -1 was lost to unrelated systems' contradictory opinions
+/// and this pass ran *before* its spawner, composing every new entity a tick
+/// late. That was #5, the one-frame sprite at the world origin, and
+/// `goo2d/example/test/swarm_origin_flash_test.dart` is what pins it.
 class WorldTransformSystem extends GameSystem
     with FixedTickable, EntitySpawnListener {
   /// Guards against a cycle in the parent chain, matching

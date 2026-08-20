@@ -53,14 +53,15 @@ import 'package:good/src/system.dart';
 /// system in the tick, and every command applied during it, sees the same
 /// input snapshot rather than one that shifts underneath them (see `Input`).
 ///
-/// Ordering is declaration order - the order `SystemDescriptor.has<T>()` was
-/// called in `Game.describeSystems`, then `GameSystem.compareTo` - and
-/// nothing else. Dependency-based ordering ("run me after physics") is
-/// deliberately deferred: it needs a declared dependency edge on
-/// `GameSystem`, a topological sort, and a cycle diagnostic, none of which
-/// unblock anything the engine currently does. Declaring the order explicitly
-/// in one place is not a workaround for its absence; it is a perfectly good
-/// answer that happens to also be the whole feature.
+/// Ordering starts from declaration order - the order the systems were
+/// declared in `Game.describeSystems` - and is then constrained by
+/// whatever `GameSystem.compareTo` states. "Run me after physics" is spelled
+/// there, as `other is PhysicsSystem ? 1 : 0`, and it is a constraint rather
+/// than a rank: [sortSystems] collects every pair's answer into a graph and
+/// topologically sorts it, so one system's opinion cannot be outweighed by
+/// anyone else's and a set that cannot all hold is reported as a cycle instead
+/// of quietly resolved. Systems no constraint separates keep their declared
+/// order.
 ///
 /// # Isolate affinity
 ///
@@ -1050,28 +1051,81 @@ abstract class GameState<T extends Game> extends GameListenerBase
   @internal
   bool isSystemEnabledAt(int i) => _systems[i].listensToEvents;
 
-  /// Sorts [declaredSystems] by `GameSystem.compareTo`, breaking ties on
-  /// original declaration index rather than relying on `List.sort`'s stability
-  /// (which Dart does not guarantee) - a system that expresses no opinion keeps
-  /// its declared position relative to every other opinion-less system. Runs
-  /// once, right after `Game.describeSystems`.
+  /// Orders [declaredSystems] so that every constraint `GameSystem.compareTo`
+  /// states is honoured, breaking ties on original declaration index - a system
+  /// that expresses no opinion keeps its declared position relative to every
+  /// other opinion-less system. Runs once, right after `Game.describeSystems`.
+  ///
+  /// # Why this is a graph and not a `List.sort`
+  ///
+  /// `compareTo` is a **partial** order here: most pairs of systems have no
+  /// opinion about each other, and the ones that do usually name a single other
+  /// type (`other is WorldTransformSystem ? -1 : 0`). That is not a comparator.
+  /// It is neither antisymmetric - two systems that each return -1 to
+  /// everything both claim to be first - nor transitive, and `List.sort` is
+  /// only defined for a comparator that is both. Given one that is not, it does
+  /// not merely mis-order the offending pair: it permutes the whole list, and
+  /// unrelated constraints elsewhere are silently dropped.
+  ///
+  /// That is not hypothetical. The swarm demo declares two profiling markers
+  /// that each return -1 unconditionally, and their contradiction cost
+  /// `CritterSystem` its "-1 against `WorldTransformSystem`" - the spawner
+  /// sorted *after* the pass that composes what it writes, so every entity it
+  /// created was composed a tick late and drew one frame at the world origin
+  /// (#5). Asking both directions, which is what this used to do, does not
+  /// help: the comparator was already being consulted correctly and the sort
+  /// scrambled it anyway.
+  ///
+  /// So each unordered pair is asked once, in declaration order, and the answer
+  /// becomes an edge. Kahn's algorithm then emits the systems, always taking
+  /// the lowest declaration index among those whose predecessors have all run,
+  /// which is what keeps unconstrained systems in declared order. A constraint
+  /// no longer competes with anything - it either holds or the graph has a
+  /// cycle and this throws.
+  ///
+  /// O(n^2) comparisons against the old O(n log n), paid once at boot for a
+  /// list that holds tens of systems. Nothing here runs per tick.
   @internal
   void sortSystems() {
-    final order = List<int>.generate(_systems.length, (i) => i);
-    order.sort((a, b) {
-      final sa = _systems[a];
-      final sb = _systems[b];
-      // Ask both directions: a sort only ever calls compare(a, b) with a
-      // given pair in one order, so a system that expresses its opinion by
-      // overriding compareTo would be silently ignored half the time if
-      // only a.compareTo(b) were consulted - it might land as the "b"
-      // argument instead. sb.compareTo(sa) returning -1 means "b wants to
-      // be before a", i.e. a should sort after b, hence the negation.
-      var cmp = sa.compareTo(sb);
-      if (cmp == 0) cmp = -sb.compareTo(sa);
-      return cmp != 0 ? cmp : a.compareTo(b);
-    });
-    final sorted = <GameSystem>[for (final i in order) _systems[i]];
+    final n = _systems.length;
+    if (n < 2) return;
+    final after = List<List<int>>.generate(n, (_) => <int>[], growable: false);
+    final blockedBy = List<int>.filled(n, 0);
+    for (var i = 0; i < n; i++) {
+      final si = _systems[i];
+      for (var j = i + 1; j < n; j++) {
+        final sj = _systems[j];
+        // Both directions, for the reason the old comparator gave: a system
+        // stating its position by overriding `compareTo` may be either operand,
+        // and only one of the two calls carries the opinion. `sj.compareTo(si)`
+        // returning -1 means "j wants to be before i", hence the negation.
+        var cmp = si.compareTo(sj);
+        if (cmp == 0) cmp = -sj.compareTo(si);
+        if (cmp == 0) continue; // no opinion either way; declaration order
+        final first = cmp < 0 ? i : j;
+        final second = cmp < 0 ? j : i;
+        after[first].add(second);
+        blockedBy[second]++;
+      }
+    }
+    final sorted = <GameSystem>[];
+    final ready = <int>[];
+    for (var i = 0; i < n; i++) {
+      if (blockedBy[i] == 0) ready.add(i);
+    }
+    while (ready.isNotEmpty) {
+      var pick = 0;
+      for (var k = 1; k < ready.length; k++) {
+        if (ready[k] < ready[pick]) pick = k;
+      }
+      final i = ready.removeAt(pick);
+      sorted.add(_systems[i]);
+      final unblocked = after[i];
+      for (var k = 0; k < unblocked.length; k++) {
+        if (--blockedBy[unblocked[k]] == 0) ready.add(unblocked[k]);
+      }
+    }
+    if (sorted.length != n) _cyclicSystemOrder(blockedBy);
     _systems
       ..clear()
       ..addAll(sorted);
@@ -1079,6 +1133,27 @@ abstract class GameState<T extends Game> extends GameListenerBase
     for (var i = 0; i < _systems.length; i++) {
       _systemIndex[_systems[i].runtimeType] = i;
     }
+  }
+
+  /// Rejects a set of `compareTo` opinions that cannot all be satisfied.
+  ///
+  /// Whatever is still blocked when Kahn's algorithm runs dry sits on a cycle
+  /// or downstream of one, so naming those systems names the argument. Every
+  /// pair was resolved to a single edge before this point, so two systems each
+  /// claiming to precede everything cannot land here - it takes three or more
+  /// systems whose stated positions genuinely disagree.
+  Never _cyclicSystemOrder(List<int> blockedBy) {
+    final stuck = <Type>[
+      for (var i = 0; i < blockedBy.length; i++)
+        if (blockedBy[i] > 0) _systems[i].runtimeType,
+    ];
+    throw StateError(
+      'The systems $stuck cannot be ordered: their GameSystem.compareTo '
+      'results form a cycle, so each one is required to run before another '
+      'that is required to run before it. Ordering is a set of constraints, '
+      'not a ranking - a system should name the specific systems it must run '
+      'before or after and return 0 for the rest.',
+    );
   }
 
   /// A system declared in `Game.describeSystems`.

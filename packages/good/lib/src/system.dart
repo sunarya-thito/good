@@ -18,11 +18,23 @@ mixin GameSystemLifecycleListener on GameListener {
 /// Systems run in declaration order by default. A subclass wanting to run
 /// relative to specific other systems overrides [compareTo] and type-checks
 /// [other] (`if (other is PhysicsSystem) return -1;` to sort before it, `1`
-/// to sort after) - simpler than a `runBefore`/`runAfter` dependency graph,
-/// at a real cost: an inconsistent `compareTo` (two systems each claiming to
-/// run after the other) isn't detected as a cycle, it just produces
-/// whatever order the sort happens to land on. `compareTo` is invoked once
-/// per pair, during `Game`'s boot pass - never on the tick hot path.
+/// to sort after). `compareTo` is invoked once per pair, during `Game`'s boot
+/// pass - never on the tick hot path.
+///
+/// **Name the systems you mean and return 0 for everything else.** An answer
+/// is a constraint, not a rank: `GameState.sortSystems` builds a graph out of
+/// them and topologically sorts it, so a targeted opinion is honoured no
+/// matter what any other system claims, and constraints that cannot all hold
+/// are rejected as a cycle rather than silently resolved. An unconditional
+/// `-1` or `1` is legal and means "before/after everything", but two systems
+/// that both claim the same end contradict each other, and the tie between
+/// those two falls back to declaration order.
+///
+/// This used to be a `List.sort` over the same answers, and that is a
+/// different thing: a partial order is not a comparator, and `List.sort`
+/// given one does not confine the damage to the pair that disagrees - it
+/// permutes the list, so an unrelated and perfectly consistent constraint
+/// elsewhere is dropped. That is what #5 was.
 ///
 /// # One isolate, and a mirror
 ///
