@@ -275,18 +275,38 @@ abstract class BuildSubCommand extends Command with Verbose {
       );
       return false;
     }
-    if (result.mapping.isNotEmpty) _stripLoose(project, config, compacted);
+    if (result.mapping.isNotEmpty) {
+      _stripLoose(project, config, compacted, result.mapping.keys);
+    }
     return true;
   }
 
-  /// Removes the loose copies of everything that is now inside a chunk. See
-  /// [stripLoose] for why a release build has to, and why it is safe.
-  void _stripLoose(Directory project, GoodConfig config, CompactPlan compacted) {
+  /// Removes the loose copies of everything that is now inside a chunk.
+  ///
+  /// [packed] is what the chunks carry, which is not what compaction produced.
+  /// A file placed in the asset directory by hand is packed like any other, and
+  /// leaving it loose ships it twice with one of the copies legible. See
+  /// [stripLoose].
+  ///
+  /// [compacted] is still read, for one thing: it says which of the removed
+  /// files `good assets compact` can build again. The rest were originals, and
+  /// naming them is the difference between someone keeping a copy and finding
+  /// out later.
+  void _stripLoose(
+    Directory project,
+    GoodConfig config,
+    CompactPlan compacted,
+    Iterable<String> packed,
+  ) {
+    final stripped = <String>[];
     final removed = stripLoose(
       assetDir: Directory('${project.path}/${config.assetOutput}'),
-      compacted: compacted,
-      onStrip: (output) =>
-          debug.printf('  stripped %s%s\n', [config.assetOutput, output]),
+      packed: packed,
+      assetRoot: config.assetOutput,
+      onStrip: (path) {
+        stripped.add(path);
+        debug.printf('  stripped %s%s\n', [config.assetOutput, path]);
+      },
     );
     if (removed == 0) return;
     info.printf(
@@ -294,6 +314,19 @@ abstract class BuildSubCommand extends Command with Verbose {
       '`good assets compact` rebuilds them\n',
       [removed],
     );
+
+    final generated = <String>{for (final step in compacted.steps) step.output};
+    final originals = stripped.where((p) => !generated.contains(p)).toList()
+      ..sort();
+    if (originals.isEmpty) return;
+    info.printf(
+      '  %s of those were not built from %s, so compaction cannot bring them '
+      'back. Keep the originals under %s:\n',
+      [originals.length, config.assetSource, config.assetSource],
+    );
+    for (final path in originals) {
+      info.printf('    %s%s\n', [config.assetOutput, path]);
+    }
   }
 
   /// Hands off to Flutter.

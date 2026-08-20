@@ -21,7 +21,7 @@ import 'package:yaml/yaml.dart';
 ///
 /// Both `output` and `packed` have to appear in `flutter: assets:` - that list
 /// is the only thing Flutter bundles from. A release build fills `packed` and
-/// then empties `output` of everything it generated, so the two are listed
+/// then empties `output` of everything it packed, so the two are listed
 /// together and only one of them ever ships anything.
 ///
 /// **In the pubspec, not a `good.yaml`.** A project already has one file that

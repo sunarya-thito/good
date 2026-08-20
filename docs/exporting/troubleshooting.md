@@ -85,14 +85,25 @@ good assets pack --mode=release
 
 ### Assets vanished from `assets/`
 
-Expected. A release build strips the loose copies of everything now carried in a
-chunk, so each asset ships exactly once:
+Expected. A release build strips the loose copy of everything it packed, so each
+asset ships exactly once, inside a chunk:
 
 ```
-stripped 1 loose asset(s) now carried in chunks; `good assets compact` rebuilds them
+stripped 3 loose asset(s) now carried in chunks; `good assets compact` rebuilds them
 ```
 
-Run `good assets compact` to rebuild them from `assets_src/`.
+`good assets compact` rebuilds whatever came from `assets_src/`. A file you put
+into `assets/` yourself was built from nothing, so the build lists those on
+their own:
+
+```
+1 of those were not built from assets_src/, so compaction cannot bring them back.
+Keep the originals under assets_src/:
+    assets/handmade.png
+```
+
+Move those into `assets_src/`. `assets/` is generated, and a release build
+empties it.
 
 ### `Asset chunk is version N; this build understands 1`
 

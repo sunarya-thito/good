@@ -1,7 +1,5 @@
 import 'dart:io';
 
-import 'package:good_cli/src/assets/compact.dart';
-
 /// Removes the loose copies of assets that are now inside a chunk.
 ///
 /// # Why a release build has to do this
@@ -12,30 +10,43 @@ import 'package:good_cli/src/assets/compact.dart';
 /// legible, once inside an encrypted chunk. That is double the download, and it
 /// hands back in plaintext exactly what packing was for.
 ///
-/// # Why deleting is safe here, and only here
+/// # What comes out, and why it is that set
 ///
-/// Only the outputs named by [compacted] are removed - not everything in
-/// [assetDir]. Those are files this build generated from the source directory,
-/// and the next `good assets compact` rebuilds any whose output has gone
-/// missing, which is why deleting them costs a re-encode at worst. Anything
-/// else there is an original: a file placed by hand, or every file in a project
-/// with no source directory at all, whose plan is empty and which therefore
-/// loses nothing. Emptying the directory instead would destroy work that cannot
-/// be rebuilt.
+/// [packed] is the logical paths the pack step wrote into a chunk, so the bytes
+/// of every file removed here are in one. Nothing else in [assetDir] is
+/// touched: a file no chunk carries is still the only copy of itself, and
+/// emptying the directory would destroy it for nothing.
+///
+/// This used to remove the *compaction outputs* instead, which is a different
+/// set in both directions. A file placed in [assetDir] by hand is packed and
+/// was never a compaction output, so it survived and shipped a second time in
+/// plaintext. A compaction output the pubspec does not declare is not packed,
+/// and was deleted anyway.
+///
+/// Compaction rebuilds anything it generated. A hand-placed original has
+/// nowhere to come back from, so a caller that can tell the two apart should
+/// say which is which - see `BuildSubCommand._stripLoose`.
 ///
 /// Returns how many files were removed.
 int stripLoose({
   required Directory assetDir,
-  required CompactPlan compacted,
-  void Function(String output)? onStrip,
+  required Iterable<String> packed,
+  required String assetRoot,
+  void Function(String path)? onStrip,
 }) {
+  final root = assetRoot.endsWith('/') ? assetRoot : '$assetRoot/';
   var removed = 0;
-  for (final step in compacted.steps) {
-    final file = File('${assetDir.path}/${step.output}');
+  for (final logical in packed) {
+    // The same arithmetic `packAssets` used to find the file it read, so strip
+    // and pack cannot disagree about which file a logical path names.
+    final relative = logical.startsWith(root)
+        ? logical.substring(root.length)
+        : logical;
+    final file = File('${assetDir.path}/$relative');
     if (!file.existsSync()) continue;
     file.deleteSync();
     removed++;
-    onStrip?.call(step.output);
+    onStrip?.call(relative);
   }
   return removed;
 }

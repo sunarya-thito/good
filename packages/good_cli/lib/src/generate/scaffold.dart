@@ -164,7 +164,8 @@ List<String>? patchedPubspecLines(List<String> lines, String package) {
     patched.insertAll(material + 1, <String>[
       '',
       '  # Both directories ship. `good build` fills assets/packed/ and empties',
-      '  # assets/ of what it packed, so each asset is bundled exactly once.',
+      '  # assets/ of everything it packed, so each asset is bundled exactly',
+      '  # once. Keep your originals in assets_src/; assets/ is generated.',
       '  assets:',
       '    - assets/',
       '    - assets/packed/',
