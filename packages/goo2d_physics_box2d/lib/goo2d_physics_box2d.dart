@@ -4,7 +4,7 @@
 /// `Collider2D`), declare a [Box2DPhysicsSystem], and entities simulate:
 ///
 /// ```dart
-/// class Crate extends EntityStruct<Crate>
+/// class Crate extends EntityStruct
 ///     with Transform2D, WorldTransform2D, Collider2D, RigidBody2D {
 ///   late final BoxBody box;
 ///
@@ -13,13 +13,15 @@
 ///     super.describeCollider(d);
 ///     box = d.hasBoxCollider(halfWidth: 0.5, halfHeight: 0.5, friction: 0.4);
 ///   }
-///
-///   @override
-///   void describeStruct(DataDescriptor data) {
-///     super.describeStruct(data);
-///     bodyType.defaultValue = BodyType2D.dynamicBody;
-///   }
 /// }
+/// ```
+///
+/// A crate is dynamic because that is where `RigidBody2D` starts. Something
+/// that should not move says so by moving one column default in its own
+/// `describeStruct`:
+///
+/// ```dart
+/// bodyType.defaultValue = BodyType2D.staticBody;
 /// ```
 ///
 /// The shapes themselves are declared through `goo2d`'s existing

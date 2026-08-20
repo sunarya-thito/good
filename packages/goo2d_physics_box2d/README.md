@@ -27,14 +27,23 @@ class Crate extends EntityStruct
   }
 
   @override
-  void describeRigidBody(RigidBody2DDescriptor descriptor) {
-    descriptor.has(type: BodyType2D.dynamicBody);
-  }
-
-  @override
   void describeSprites(SpriteDescriptor descriptor) {
     super.describeSprites(descriptor);
     sprite = descriptor.has(width: 1, height: 1, color: 0xFFCC8844);
+  }
+}
+```
+
+Nothing here says the crate is dynamic, because that is where `RigidBody2D`
+starts. A prefab configures its body by moving the column defaults it wants
+different, and only those:
+
+```dart
+class Ground extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
+  @override
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    bodyType.defaultValue = BodyType2D.staticBody;
   }
 }
 ```
