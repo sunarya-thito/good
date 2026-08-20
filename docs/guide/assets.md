@@ -77,6 +77,23 @@ enum Textures with LocalEnumAssetKey<Texture> {
 }
 ```
 
+!!! warning "Every subdirectory needs a line of its own"
+    `flutter: assets:` entries are not recursive. `- assets/` bundles the files
+    sitting directly in `assets/` and nothing below it, so the two values above
+    need three entries between them:
+
+    ```yaml
+    flutter:
+      assets:
+        - assets/
+        - assets/sprites/
+        - assets/ui/
+        - assets/packed/
+    ```
+
+    Leave one out and Flutter ships nothing from that directory. `good
+    generate` stops the build and names the line to add.
+
 An enum, not a list of static keys, because `LocalEnumAssetKey` makes an
 enum value **be** an `AssetKey` — `Textures.spritesPlayer` is already the
 identity `descriptor.has` wants, with no lookup and nothing to keep in sync. It

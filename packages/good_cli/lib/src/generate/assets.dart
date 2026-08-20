@@ -199,6 +199,78 @@ AssetScan scanAssets(Directory projectDir) {
   );
 }
 
+/// Assets on disk that `flutter: assets:` does not bundle, keyed by the pubspec
+/// line that would bundle them.
+///
+/// Flutter's directory entries are **not recursive**: `- assets/` bundles the
+/// files directly inside `assets/` and nothing deeper. So compaction writing
+/// `assets/ui/button.webp` produces a file that ships nowhere, appears in no
+/// generated enum, and sits on disk the whole time looking correct. Every new
+/// subdirectory needs its own line, and nothing about the layout says so.
+///
+/// Keyed by that line - `assets/ui/` - because the line is the entire fix, and
+/// an error that makes the reader work out its shape is most of the problem
+/// again.
+///
+/// Only files that would have become an enum value count. A chunk, a `.gitkeep`
+/// or a font is not something codegen was going to name, so a directory holding
+/// nothing else is not a mistake to stop a build for.
+Map<String, List<String>> unbundledAssets(Directory projectDir) {
+  final config = GoodConfig.read(projectDir);
+  final output = Directory('${projectDir.path}/${config.assetOutput}');
+  if (!output.existsSync()) return const <String, List<String>>{};
+
+  final declared = declaredAssetEntries(projectDir).toSet();
+  final root = config.assetOutput.endsWith('/')
+      ? config.assetOutput
+      : '${config.assetOutput}/';
+  // Trailing separators stripped before anything is measured against this, so
+  // a `GoodConfig` directory that ends in `/` does not eat the first character
+  // of every relative path. Windows also hands back a mix of separators.
+  final base = output.path.replaceAll(r'\', '/').replaceAll(RegExp(r'/+$'), '');
+
+  final missing = <String, List<String>>{};
+  for (final file in output.listSync(recursive: true).whereType<File>()) {
+    final relative = file.path.replaceAll(r'\', '/').substring(base.length + 1);
+    if (relative.split('/').any((segment) => segment.startsWith('.'))) continue;
+    final bundlePath = '$root$relative';
+    if (bundlePath.startsWith(config.packOutput)) continue;
+    if (AssetKind.of(relative) == AssetKind.other) continue;
+    if (declared.contains(bundlePath)) continue;
+    final slash = bundlePath.lastIndexOf('/');
+    final entry = bundlePath.substring(0, slash + 1);
+    if (declared.contains(entry)) continue;
+    missing.putIfAbsent(entry, () => <String>[]).add(bundlePath);
+  }
+  for (final paths in missing.values) {
+    paths.sort();
+  }
+  return missing;
+}
+
+/// What to tell someone whose assets are not bundled.
+///
+/// Names the files, then the exact lines to add. Both halves matter: the files
+/// are how you recognise the problem as yours, and the lines are how it stops.
+String unbundledAssetsMessage(Map<String, List<String>> unbundled) {
+  final all = <String>[for (final paths in unbundled.values) ...paths]..sort();
+  final shown = all.length > 5 ? all.sublist(0, 5) : all;
+  final listed = shown.join(', ');
+  final rest = all.length - shown.length;
+  final buffer = StringBuffer()
+    ..write('${all.length} asset(s) under the output directory are not ')
+    ..write('bundled: $listed')
+    ..write(rest > 0 ? ', and $rest more.' : '.')
+    ..write(
+      " Flutter's `flutter: assets:` entries are not recursive, so a "
+      'subdirectory needs a line of its own. Add to pubspec.yaml:\n',
+    );
+  for (final entry in unbundled.keys.toList()..sort()) {
+    buffer.write('    - $entry\n');
+  }
+  return buffer.toString();
+}
+
 /// Dart words that cannot be an identifier on their own. A `new.png` is a
 /// perfectly ordinary filename and must not generate uncompilable code.
 const Set<String> _reserved = <String>{

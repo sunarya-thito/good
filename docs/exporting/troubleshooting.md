@@ -48,11 +48,24 @@ flutter:
     - assets/sprites/
 ```
 
+### `N asset(s) under the output directory are not bundled`
+
+The same cause, caught later. `good generate` stops rather than writing an enum
+with the file missing, and names the entry to add:
+
+```
+1 asset(s) under the output directory are not bundled: assets/ui/button.webp.
+Flutter's `flutter: assets:` entries are not recursive, so a subdirectory needs
+a line of its own. Add to pubspec.yaml:
+    - assets/ui/
+```
+
 ### The `Textures` enum is missing a value you just added
 
 `good generate` scans what the **pubspec declares**, not what is on disk. If the
-file is in a directory the pubspec does not list, generation cannot see it. Fix
-the pubspec and regenerate.
+file is in a directory the pubspec does not list, generation now stops with the
+message above instead of writing the enum without it. Fix the pubspec and
+regenerate.
 
 If the file is in `assets_src/` only, run `good assets compact` first — the
 source directory is never scanned, because generating keys for

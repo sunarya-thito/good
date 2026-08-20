@@ -2,8 +2,10 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:good_cli/src/generate/assets.dart';
+import 'package:good_cli/src/generate/run.dart';
 import 'package:good_cli/src/generate/scaffold.dart';
 import 'package:good_cli/src/generate/templates.dart';
+import 'package:good_cli/src/verbosable.dart';
 import 'package:test/test.dart';
 
 // Codegen: does a project's *declared* assets become the right enum, and does
@@ -23,6 +25,17 @@ Directory _project(String pubspec, List<String> files) {
     file.writeAsStringSync('');
   }
   return dir;
+}
+
+final VerboseOutput _quiet = _NullOutput();
+
+class _NullOutput implements VerboseOutput {
+  @override
+  void println(Object? object) {}
+  @override
+  void print(Object? object) {}
+  @override
+  void printf(String format, List<Object?> args) {}
 }
 
 const String _pubspecWithAssets = '''
@@ -759,6 +772,133 @@ flutter:
         ], 'goo2d'),
         isNull,
       );
+    });
+  });
+
+  group('unbundledAssets', () {
+    // Flutter's directory entries are not recursive, so a compaction output in
+    // a subdirectory ships nowhere and produces no enum value. It used to do
+    // that silently, and `good generate` exited 0.
+
+    test('finds an asset in a subdirectory the pubspec does not list', () {
+      final dir = _project(_pubspecWithAssets, <String>[
+        'assets/player.png',
+        'assets/ui/button.png',
+      ]);
+      expect(unbundledAssets(dir), {
+        'assets/ui/': ['assets/ui/button.png'],
+      });
+    });
+
+    test('a listed subdirectory is bundled and so is not reported', () {
+      final dir = _project(
+        '''
+name: demo
+flutter:
+  assets:
+    - assets/
+    - assets/ui/
+''',
+        <String>['assets/player.png', 'assets/ui/button.png'],
+      );
+      expect(unbundledAssets(dir), isEmpty);
+    });
+
+    test('an individually declared file needs no directory entry', () {
+      final dir = _project(
+        '''
+name: demo
+flutter:
+  assets:
+    - assets/
+    - assets/ui/button.png
+''',
+        <String>['assets/player.png', 'assets/ui/button.png'],
+      );
+      expect(unbundledAssets(dir), isEmpty);
+    });
+
+    test('chunks are not assets, so the packed directory is not reported', () {
+      final dir = _project(_pubspecWithAssets, <String>[
+        'assets/player.png',
+        'assets/packed/chunk_root.dat',
+      ]);
+      expect(unbundledAssets(dir), isEmpty);
+    });
+
+    test('a subdirectory of things codegen would not name is left alone', () {
+      // A font or a `.gitkeep` was never going to become an enum value, so a
+      // directory holding only those is not a build to stop.
+      final dir = _project(_pubspecWithAssets, <String>[
+        'assets/player.png',
+        'assets/fonts/roboto.ttf',
+        'assets/ui/.gitkeep',
+      ]);
+      expect(unbundledAssets(dir), isEmpty);
+    });
+
+    test('the message names the files and the exact line to add', () {
+      final message = unbundledAssetsMessage({
+        'assets/ui/': ['assets/ui/button.png'],
+      });
+      expect(message, contains('assets/ui/button.png'));
+      expect(
+        message,
+        contains('    - assets/ui/'),
+        reason: 'the pubspec line is the whole fix, so it has to be in there',
+      );
+    });
+  });
+
+  group('runGenerate', () {
+    test('fails rather than dropping an asset Flutter will not bundle', () {
+      final dir = _project(_pubspecWithAssets, <String>[
+        'assets/player.png',
+        'assets/ui/button.png',
+      ]);
+      expect(
+        () => runGenerate(
+          projectDir: dir,
+          command: 'good generate',
+          out: _quiet,
+          verbose: _quiet,
+        ),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => '${e.message}',
+            'message',
+            allOf(contains('assets/ui/button.png'), contains('- assets/ui/')),
+          ),
+        ),
+      );
+      expect(
+        Directory('${dir.path}/lib/good.generated').existsSync(),
+        isFalse,
+        reason: 'it stops before writing an enum that is missing a value',
+      );
+    });
+
+    test('writes the enum when every asset is bundled', () {
+      final dir = _project(
+        '''
+name: demo
+flutter:
+  assets:
+    - assets/
+    - assets/ui/
+''',
+        <String>['assets/player.png', 'assets/ui/button.png'],
+      );
+      runGenerate(
+        projectDir: dir,
+        command: 'good generate',
+        out: _quiet,
+        verbose: _quiet,
+      );
+      final textures = File(
+        '${dir.path}/lib/good.generated/textures.dart',
+      ).readAsStringSync();
+      expect(textures, contains("uiButton('assets/ui/button.png')"));
     });
   });
 }

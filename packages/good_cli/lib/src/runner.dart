@@ -27,6 +27,15 @@ Future<int> runCommand(
     stderr.writeln();
     stderr.writeln(runner.usageFor(error.path));
     return 64; // EX_USAGE
+  } on ArgumentError catch (error) {
+    // A command refusing to run over something it read - a pubspec that does
+    // not bundle its own assets, two files that generate one identifier, key
+    // material that is the wrong length. The message is written for the person
+    // who has to fix it, and burying it under fifteen stack frames from
+    // `main` is throwing that away. No usage block: the command line was
+    // fine, so reprinting it answers a question nobody asked.
+    stderr.writeln(error.message);
+    return 65; // EX_DATAERR
   } finally {
     if (sink is IOSink) sink.flush();
   }

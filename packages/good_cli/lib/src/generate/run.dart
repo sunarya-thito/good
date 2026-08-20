@@ -24,6 +24,16 @@ int runGenerate({
   final project = projectDir;
   final scan = scanAssets(project);
 
+  // Before anything is written. An asset Flutter will not bundle produces no
+  // enum value, and today the only sign of it is a note printed by a different
+  // command; `good generate` said nothing and exited 0, so the first symptom
+  // was a missing texture in a shipped game. Failing here costs a pubspec line
+  // and catches it at the build that introduced it.
+  final unbundled = unbundledAssets(project);
+  if (unbundled.isNotEmpty) {
+    throw ArgumentError(unbundledAssetsMessage(unbundled));
+  }
+
   verbose.printf('Declared asset entries: %s\n', [
     scan.declaredEntries.isEmpty ? '(none)' : scan.declaredEntries.join(', '),
   ]);
