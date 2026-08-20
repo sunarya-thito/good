@@ -187,6 +187,17 @@ class CameraProjection {
   /// not placed a camera yet from showing a black screen.
   int sceneSlot = -1;
 
+  /// Whether this view shows [entity] at all - it is in the scene the view's
+  /// camera is in, or there is no camera and nothing is scoped out.
+  ///
+  /// The rule lives here rather than at each call site because there are two
+  /// call sites and they have to agree: `GameRenderer2D` decides what to draw
+  /// with it and `MousePickingSystem` decides what is clickable with it. When
+  /// only the renderer had it, a click landed on an entity that was never
+  /// drawn.
+  @pragma('vm:prefer-inline')
+  bool shows(Entity entity) => sceneSlot < 0 || entity.sceneSlot == sceneSlot;
+
   /// Re-reads the active camera out of [cameras] - typically
   /// `descriptor.query().withAll(Camera, WorldTransform2D).build()` - and
   /// the view size, typically `game.viewWidth`/`game.viewHeight`.

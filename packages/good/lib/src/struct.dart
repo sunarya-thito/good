@@ -341,8 +341,9 @@ extension type const Entity(int value) implements int {
   /// Not packed into the handle - there are no spare bits (see the diagram
   /// above) - so it is read from the *page*, which carries the slot because
   /// rows of one archetype from two loaded scenes never share one. Two list
-  /// indices and a field read, no allocation; the renderer and the mouse
-  /// picker use it to skip scenes that are not the front one.
+  /// indices and a field read, no allocation. There is no front scene for it
+  /// to name; `goo2d` compares it against the slot a camera is in, so a view
+  /// draws - and its pointer picks - only the scene that camera occupies.
   int get sceneSlot =>
       ArchetypeRegistry.byId(archetypeId).pageAt(pageIndex)?.ownerSceneSlot ??
       -1;

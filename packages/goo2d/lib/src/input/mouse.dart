@@ -103,6 +103,12 @@ mixin MouseReceiver on Component implements MouseListener {
 /// invisible click zone - competes at zero, which is where an undeclared
 /// `zIndex` already sits.
 ///
+/// Only entities the view under the pointer actually draws are candidates. A
+/// view draws the scene its camera is in, and picking asks the same
+/// `CameraProjection` the drawing asked, so a level preloaded behind the one
+/// on screen is not clickable and a click cannot reach something that was
+/// never drawn.
+///
 /// # Why it is fixed-rate
 ///
 /// The plan called for the render rate, on the reasoning that input
@@ -221,11 +227,13 @@ class MousePickingSystem extends GameSystem with FixedTickable {
   Entity? _pick(double x, double y) {
     Entity? best;
     var bestZ = 0;
-    // Every loaded scene is clickable, matching `GameRenderer2D`, which now
-    // draws every loaded scene. Picking has to agree with what is drawn or a
-    // click lands on something invisible - so when the renderer stopped
-    // filtering by front scene, this had to stop too, in the same landing.
     for (final entity in _receivers.run()) {
+      // Only what the view under the pointer draws is clickable, and
+      // `projection.shows` is the same call `GameRenderer2D` skips entities
+      // with - off a projection resolved for the same view, so the two cannot
+      // disagree about which scene that is. They did once, and a click landed
+      // on an entity that was never drawn.
+      if (!projection.shows(entity)) continue;
       final world = entity.get<WorldTransform2D>();
       final scaleX = world.worldScaleX[entity];
       final scaleY = world.worldScaleY[entity];

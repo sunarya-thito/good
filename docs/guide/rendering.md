@@ -367,6 +367,10 @@ class Button extends EntityStruct
 Enter, hover, exit, pressed and released are separate phases, so hover feedback
 does not have to be reconstructed from raw positions.
 
+Picking is scoped the way drawing is: the pointer hits only entities in the
+scene the view's camera is in. A second scene resident behind the one on screen
+simulates, but nothing in it can be clicked.
+
 ---
 
 ## Next

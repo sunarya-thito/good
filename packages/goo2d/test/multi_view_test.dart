@@ -27,6 +27,44 @@ class _Sprite extends EntityStruct
 
 class _Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
 
+/// What every receiver in this file appends to.
+final List<String> events = <String>[];
+
+/// Drawable *and* clickable, which is what makes it able to tell the renderer
+/// and the picker apart: anything it reports here it should also have drawn a
+/// quad for.
+class _Target extends EntityStruct
+    with
+        Transform2D,
+        WorldTransform2D,
+        Renderable2D,
+        Collider2D,
+        MouseReceiver {
+  late final Sprite quad;
+  late final BoxBody hitArea;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    quad = descriptor.has(width: 40, height: 40);
+  }
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    hitArea = descriptor.hasBoxCollider(halfWidth: 20, halfHeight: 20);
+  }
+
+  @override
+  void onMouseEnter(MouseEvent event) => events.add('enter');
+
+  @override
+  void onMouseHover(MouseEvent event) => events.add('hover');
+
+  @override
+  void onMouseExit(MouseEvent event) => events.add('exit');
+}
+
 class _Level extends SceneStruct {
   @override
   void onSceneMounted(Scene scene) => handle = scene;
@@ -55,12 +93,14 @@ class _Overlay extends SceneStruct {
 
   late final _Sprite sprite;
   late final _Eye eye;
+  late final _Target target;
 
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
     sprite = descriptor.has(_Sprite.new);
     eye = descriptor.has(_Eye.new);
+    target = descriptor.has(_Target.new);
   }
 }
 
@@ -122,7 +162,18 @@ int? _publishedBytes(_MultiGame game, CameraView view) {
   return buffer.beginRead() == null ? null : buffer.readUsedBytes;
 }
 
+/// How many quads the newest frame for [view] carries. Reading the published
+/// batch rather than `lastSpriteCount`, which is the total across every view
+/// and so cannot say which view drew what.
+int _publishedQuads(_MultiGame game, CameraView view) {
+  final buffer = run.state.getSystem<GameRenderer2D>().framesFor(view).buffer;
+  if (buffer.beginRead() == null) return 0;
+  return const DrawSpriteData2D().itemCount(buffer.readUsedBytes);
+}
+
 void main() {
+  setUp(events.clear);
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();
@@ -322,6 +373,68 @@ void main() {
           '0 here, which is a click landing on something the user is not '
           'even looking at',
     );
+  });
+
+  testWidgets('a click cannot land on an entity the view did not draw', (
+    tester,
+  ) async {
+    final game = await _start();
+    final state = run.state as _MultiState;
+
+    // A camera per view, each in its own scene, and the one clickable target
+    // in the overlay - so the level view has nothing to draw and the minimap
+    // draws the target.
+    final levelEye = state.level.handle.addEntity(state.level.eye);
+    state.level.eye.view[levelEye] = game.defaultCamera;
+    final overlayEye = state.overlay.handle.addEntity(state.overlay.eye);
+    state.overlay.eye.view[overlayEye] = game.minimap;
+    state.overlay.handle.addEntity(state.overlay.target);
+
+    game.defaultCamera.setViewport(400, 400);
+    game.minimap.setViewport(400, 400);
+    run.state.advance(_step);
+    events.clear();
+
+    // Dead centre of the level view, which is where the level camera is and
+    // where the target sits in world space too - both cameras are at the
+    // origin, so the *only* thing between this pointer and that target is
+    // which scene each is in.
+    game.inputDevice!.movePointer(
+      screenX: 0,
+      screenY: 0,
+      viewX: 200,
+      viewY: 200,
+      view: game.defaultCamera,
+    );
+    run.state.advance(_step);
+
+    final picking = run.state.getSystem<MousePickingSystem>();
+    expect(_publishedQuads(game, game.defaultCamera), 0);
+    expect(picking.hovered, isNull);
+    expect(
+      events,
+      isEmpty,
+      reason:
+          'the picker walked every loaded scene until it read the view\'s '
+          'scene slot, so this fired enter and hover on an entity the '
+          'level view refused to draw',
+    );
+
+    // The other half, and it is what stops the first from passing for the
+    // wrong reason: point at the view that *does* draw the target and it
+    // picks exactly as it always did.
+    game.inputDevice!.movePointer(
+      screenX: 0,
+      screenY: 0,
+      viewX: 200,
+      viewY: 200,
+      view: game.minimap,
+    );
+    run.state.advance(_step);
+
+    expect(_publishedQuads(game, game.minimap), 1);
+    expect(picking.hovered, isNotNull);
+    expect(events, contains('enter'));
   });
 
   // NOT COVERED: that `MousePosition.viewSize` follows the pointer between two

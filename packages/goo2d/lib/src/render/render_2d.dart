@@ -146,12 +146,7 @@ class SpriteFrame implements IntRepresentable {
 
   /// The whole texture - the default, and what an untextured sprite carries
   /// harmlessly.
-  static const SpriteFrame full = SpriteFrame(
-    u: 0,
-    v: 0,
-    width: 1,
-    height: 1,
-  );
+  static const SpriteFrame full = SpriteFrame(u: 0, v: 0, width: 1, height: 1);
 
   /// True when this frame is the whole texture, i.e. there is nothing to
   /// offset. Named rather than four inline comparisons, matching
@@ -373,10 +368,7 @@ class NineSliceBorder {
   /// in produces nothing. The renderer branches on the *stored* fields rather
   /// than on an instance of this class; see [Sprite.insetLeft].
   bool get isEmpty =>
-      insetLeft == 0 &&
-      insetTop == 0 &&
-      insetRight == 0 &&
-      insetBottom == 0;
+      insetLeft == 0 && insetTop == 0 && insetRight == 0 && insetBottom == 0;
 }
 
 /// One drawable rectangle belonging to an entity - what a single
@@ -1764,12 +1756,6 @@ class GameRenderer2D extends GameSystem
     // not an error: the projection resolves to the identity plus centring.
     final projection = _projection..resolve(_cameras, cameraView);
     final zoom = projection.zoom;
-    // Which scene this view shows: the one its camera lives in. -1 means the
-    // view has no camera, and then nothing is scoped out - an unconfigured
-    // game draws its world rather than a black screen, which is the same
-    // answer "no camera" already gave for the projection itself.
-    final onlyScene = projection.sceneSlot;
-
     // Pass one: collect what is going to be drawn. Nothing is written to the
     // byte scratch yet, because the order is not known until every candidate
     // has been seen.
@@ -1780,11 +1766,12 @@ class GameRenderer2D extends GameSystem
     // number times the record stride. Counting records keeps the two honest
     // against each other whatever mix of sliced and plain sprites shows up.
     final limit = _renderer.maxSpritesPerTick;
-    // Every loaded scene renders. There used to be a front-scene filter here,
-    // honouring `switchScene`; that is deleted, because "which scene do I
-    // draw" is a question a *view* answers and there can be several views. A
-    // game that wants a preloaded level to simulate unseen keeps its sprites
-    // invisible or unloads it.
+    // This view draws the scene its camera is in and no other - the test is
+    // `projection.shows` below. The global front scene that used to answer
+    // that is deleted, because "which scene do I draw" is a question a *view*
+    // answers and there can be several views; a view with no camera at all
+    // scopes nothing out and draws the whole world.
+    //
     // Grouped, so the component and its sprite list are resolved once per
     // archetype instead of once per entity - `entity.get<Renderable2D>()`
     // returned the same object for every row, and at 10k rows that showed up
@@ -1802,7 +1789,7 @@ class GameRenderer2D extends GameSystem
       // write pass never asks - see `_SpriteDrawQueue._sources`.
       final source = _sourceOf(group);
       for (final entity in group) {
-        if (onlyScene >= 0 && entity.sceneSlot != onlyScene) continue;
+        if (!projection.shows(entity)) continue;
         // An indexed loop, not `for (final sprite in sprites)`: this runs once
         // per entity per tick and a fresh iterator is a heap object (the
         // no-allocation and no-closure rules).
