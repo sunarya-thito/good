@@ -1,3 +1,75 @@
+## Unreleased
+
+Six changes stop a build that worked at 0.1.1. Each one turns something that
+used to fail quietly, or not at all, into something that fails while you are
+looking at it.
+
+### Breaking
+
+* **`--dimension=d2|d3` on `good create` is now `--2d` and `--3d`.** The old
+  option is gone, and a command line still using it exits 64. `d2` and `d3`
+  existed because a Dart enum value cannot begin with a digit, which was never
+  a reason for you to type them.
+* **`good build` exits 70 when a step fails.** It printed the error and exited
+  0, so a CI job wrapped around a broken build passed, and
+  `good build windows && upload` uploaded. Failure now has a code everywhere:
+  64 for a malformed command line, 65 for something a command read, 70 for work
+  that could not finish.
+* **`good generate` fails on an asset directory the pubspec does not list.**
+  `flutter: assets:` entries are not recursive, so a file in `assets/ui/` was
+  bundled nowhere and got no enum value, and nothing said so. The error names
+  the exact line to add.
+* **`good generate` fails when two components declare the same field name.**
+  Both columns were allocated and one of them was unreachable, so a row spent
+  128 bits where one mixin uses 64. Rename one of the fields.
+* **`good generate` fails on a component mixin whose `describeType`,
+  `describeAssets` or `describeStruct` override drops its `super` call.** A
+  mixin like that contributed no columns and no query bit, silently. Chain the
+  call.
+* **`good build` refuses to strip an asset compaction cannot rebuild.** A file
+  you placed in `assets/` yourself is packed like any other, and removing the
+  loose copies would delete the only one that exists. Move those files into
+  `assets_src/` so compaction owns them, or set `strip-originals: true` under
+  `good: assets:` to let the build delete them. At 0.1.1 they shipped twice,
+  once inside the chunk and once in plaintext beside it.
+
+### Added
+
+* **`good create --3d` scaffolds a project that builds and runs.** It used to
+  print `goo3d does not exist yet` and stop. What it writes is what `goo3d`
+  has — a `Transform3D` prefab, a camera, the composition system and a system
+  that turns the entity once per tick — and each file says in its comments what
+  is missing and which issue brings it.
+* **`strip-originals`** under `good: assets:`, covering the refusal above.
+* **`good generate` reports an unbundled asset with exit 65**, so a build script
+  can tell a bad pubspec from a command it typed wrong.
+
+### Fixed
+
+* **`good create` writes its own `lib/main.dart`.** `flutter create` runs first
+  and writes a counter app, and the scaffolder skipped every file that already
+  existed, so a new project ran Flutter's demo and the log said
+  `Kept existing lib/main.dart`. A project you reach through
+  `--no-flutter-create` is still never overwritten.
+* **The scaffolded `test/widget_test.dart` compiles.** It named `MyApp`, which
+  stops existing the moment `main.dart` is the good one, so `flutter analyze`
+  failed on a project one minute old. It now builds the real app and waits for
+  the game to start.
+* **Re-running `good create --no-flutter-create` no longer breaks the pubspec.**
+  The check for "already added" matched the literal line it had written, so a
+  constraint you had pinned, widened or moved under a comment read as absent and
+  the command appended a second `goo2d:` and a second `assets:`. A duplicate
+  mapping key is not a bad merge to clean up; every `flutter` command refuses to
+  read the file at all.
+* **The compaction journal moved to `.dart_tool/good/compact.json`.** It sat in
+  the asset directory, which `flutter: assets:` lists, and flutter_tools bundles
+  dotfiles like anything else — so every release carried the name and SHA-256 of
+  every source file, in plaintext beside the encrypted chunks. A journal at the
+  old path is picked up once so nothing re-encodes, then deleted.
+* **A scaffolded project's engine constraint is `^0.1.0`.** It was `^0.0.1`,
+  which has admitted no published version since 0.1.0, so a new project failed
+  `flutter pub get` on any machine without a path override.
+
 ## 0.1.1
 
 Documentation only. No code changes.

@@ -1,3 +1,25 @@
+## Unreleased
+
+### Breaking
+
+* **`+y` is up, following `goo2d`.** Gravity defaults to `-10`, the wheel
+  joint's axis to `(0, -1)`, and buoyancy searches below the waterline. A world
+  that set any of these itself needs the sign checked.
+* **A polygon collider takes its points**, and the eight-vertex cap now lives
+  here — Box2D's solver is what the limit was ever about.
+
+### Fixed
+
+* **Static and kinematic bodies no longer drift toward multiples of π/4.** A
+  non-dynamic body pushed its transform every tick and read Box2D's reading of
+  it back, and that round trip has an error that converges there. A floor
+  authored at 0.3 rad reached 0.785 in ten thousand ticks — 17 degrees to 41 in
+  sixteen seconds. Static bodies no longer write back at all, and both kinds
+  push only when gameplay wrote the value.
+* **Changing `bodyType` on a live body is applied.** It was documented as
+  working and moved only the column, so the solver went on treating the body as
+  whatever it was created as.
+
 ## 0.1.1
 
 Documentation only. No code changes.

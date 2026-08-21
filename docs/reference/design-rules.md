@@ -273,3 +273,21 @@ The same trap wearing a different hat: whole-step totals reset once per
 timing is a single step. The moment an advance costs more than one step, those
 two stop sharing a denominator. A recording here read as a catastrophic
 super-linear blowup and was entirely this.
+
+## A change to what a command or an API does updates `Unreleased` with it
+
+In the same commit, under `## Unreleased` in the `CHANGELOG.md` of the package
+it affects, and saying what someone upgrading has to do about it.
+
+Doing it at release time means reading every commit since the last tag and
+working out user-visible effect from a diff that also touches tests and docs.
+That is how a breaking change gets missed: not because anyone decided to leave
+it out, but because it did not look like one in the diff. Six changes to what
+`good_cli`'s commands do went unrecorded between `0.1.1` and the pass that
+reconstructed them, and every one of the six turns a build that worked into a
+build that fails.
+
+Three weeks later nobody remembers which commits were user-visible. The commit
+making the change is the only place that knowledge exists while it is still
+reliable.
+

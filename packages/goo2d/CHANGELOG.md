@@ -1,3 +1,33 @@
+## Unreleased
+
+World space changed direction. Read the first entry before you upgrade a game
+that has any y in it.
+
+### Breaking
+
+* **`+y` is up.** It pointed down to match Flutter's canvas, while `goo3d` has
+  always had `+y` up, so a game moving between the two had every y-touching
+  system reverse meaning with nothing to catch it. Anything you wrote with a
+  sign in y needs that sign checked: an input binding that yielded `-1` on `W`
+  now walks a player the other way. Sprites are unaffected, since the quad is
+  composed in view space. A positive rotation still turns the same way on
+  screen.
+* **A polygon collider takes its points.** `hasPolygonCollider` took only a
+  capacity, so a fixed triangle needed an `EntityLifecycleListener` and an
+  `onEntityMounted` body to fill in; it now takes the shape as a named
+  parameter like every other `has*Collider`. The eight-vertex cap moved to the
+  physics bridge, so `goo2d` on its own accepts a longer outline — containment
+  here is an even-odd crossing test, which needs no solver.
+
+### Fixed
+
+* **Mouse picking is filtered by the view's scene.** The renderer skipped
+  entities outside the scene its view's camera is in and the picker did not, so
+  a click could land on an entity that drew nothing.
+
+`goo2d` re-exports the `good` kernel, so its `Unreleased` entries apply here
+too — in particular the profiler coming out of `GameState`.
+
 ## 0.1.1
 
 Documentation only. No code changes.

@@ -1,3 +1,14 @@
+## Unreleased
+
+### Fixed
+
+* **`simulatedLoss` applies to the handshake.** It was applied when sending a
+  datagram, and the connect request, accept, reject and disconnect each called
+  the socket directly — so a transport at `simulatedLoss: 1` still completed
+  every join, and `handshakeTimeout` could not be made to elapse by the one
+  knob that exists to break it. A handshake now survives losing half of itself,
+  because the request is retried on an interval.
+
 ## 0.1.1
 
 Documentation only. No code changes.
