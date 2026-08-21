@@ -355,6 +355,16 @@ class ArchetypeStorage {
 
   final List<ArchetypeField> _fields = <ArchetypeField>[];
 
+  /// The subset of [_fields] holding a `HeapObjectRegistry` address, in
+  /// declaration order - what [releaseHeapSlots] walks. Empty for every
+  /// archetype that declares no `hasHeapObject`/`optHeapObject` field.
+  final List<HeapArchetypeField> _heapFields = <HeapArchetypeField>[];
+
+  /// Whether any field of this archetype owns a registry slot, i.e. whether
+  /// [releaseHeapSlots] has anything to do.
+  @internal
+  bool get hasHeapFields => _heapFields.isNotEmpty;
+
   /// Every page this archetype has ever been given, by index - and
   /// **nullable**, because unloading a scene frees its pages and nulls their
   /// slots rather than removing them. `Entity.pageIndex` is an index into this
@@ -557,6 +567,34 @@ class ArchetypeStorage {
       throw StateError('ArchetypeStorage for ${prefab.runtimeType} is sealed.');
     }
     _fields.add(field);
+    // Collected separately rather than found by testing every field at
+    // teardown: this is the only field kind that owns anything outside the
+    // row, and an archetype that declares none - which is every archetype the
+    // engine itself ships - then pays one `isEmpty` check per destroyed
+    // entity instead of a walk. Nothing is added to the read/write path.
+    // Cast rather than promote, the same shape `SceneStruct.addEntityIn`
+    // spells out: `ArchetypeField` is not a supertype of `HeapArchetypeField`,
+    // so `is` leaves the static type alone and the cast is the only spelling.
+    if (field is HeapArchetypeField) {
+      _heapFields.add(field as HeapArchetypeField);
+    }
+  }
+
+  /// Registers a field for teardown **only** - it gets no default of its own
+  /// stamped and is not part of [_fields].
+  ///
+  /// `optHeapObject` needs this because what it registers as a field is the
+  /// nullable *wrapper*, which owns the has-bit and delegates the value; the
+  /// thing holding the registry slot is the heap field inside it, and that one
+  /// must never be stamped separately or the has-bit would stop deciding
+  /// whether the default is written at all. Declaring the two halves through
+  /// two calls keeps that split visible instead of making [registerField] reach
+  /// inside a wrapper it should not know the shape of.
+  void registerHeapField(HeapArchetypeField field) {
+    if (_sealed) {
+      throw StateError('ArchetypeStorage for ${prefab.runtimeType} is sealed.');
+    }
+    _heapFields.add(field);
   }
 
   /// Freezes the layout and builds the default-row prototype. Called once,
@@ -685,6 +723,41 @@ class ArchetypeStorage {
     return Entity.pack(archetypeId, current, rowOffset);
   }
 
+  /// Frees the `HeapObjectRegistry` slots the row at [rowOffset] owns.
+  ///
+  /// Called from every path that stops a row being an entity - `destroy()`
+  /// for one entity or a subtree, and `SceneStruct.unmountEntitiesOf` for a
+  /// scene coming down - because a registry slot is the one thing a row holds
+  /// that freeing the row does not release. Without it the table grows for
+  /// the life of the process (#49). Nothing else a row owns needs this: every
+  /// other field kind is bytes in the page, and the page goes.
+  ///
+  /// **A row that never wrote the field is left alone.** `writeDefault` runs
+  /// once, at [seal], and `allocateRow` memcpys that prototype row into every
+  /// entity - so an untouched `hasHeapObject` field carries *the prototype's*
+  /// address, one slot shared by every entity of this archetype. Unregistering
+  /// it on the first destroy would dangle every other entity still reading it
+  /// and hand the slot to the next unrelated `register`. Comparing against the
+  /// prototype's own bytes is what tells the two apart, and it settles
+  /// `optHeapObject` at the same time: its prototype holds 0, which is
+  /// otherwise indistinguishable from the perfectly real address 0 that the
+  /// very first `register` of the process hands out.
+  ///
+  /// Reads through [MemoryPage.resolveWrite] when a tick is open and the
+  /// published slot otherwise, matching `DataPointer.readPending` - a value
+  /// written earlier in this same tick is the one whose slot has to be freed.
+  @internal
+  void releaseHeapSlots(MemoryPage page, int rowOffset) {
+    if (_heapFields.isEmpty) return;
+    final row = pool.isTickOpen
+        ? page.resolveWrite(rowOffset).address
+        : page.resolveRow(rowOffset).address;
+    final prototype = _defaultRow.address;
+    for (var i = 0; i < _heapFields.length; i++) {
+      _heapFields[i].releaseRow(row, prototype);
+    }
+  }
+
   void _dispose() {
     if (_defaultRow != nullptr) {
       calloc.free(_defaultRow);
@@ -698,6 +771,27 @@ class ArchetypeStorage {
 /// Declared here rather than in the data-layout implementation so
 /// [ArchetypeStorage] can hold the field list without depending on the
 /// `DataDescriptor` implementation (the dependency runs the other way).
+/// A field that owns something outside its row and must be told when the row
+/// stops being an entity.
+///
+/// Implemented only by the heap-object field kinds, whose value is an index
+/// into the process-global `HeapObjectRegistry` rather than bytes in the page.
+/// Freeing the row reclaims the bytes; only this reclaims the slot.
+///
+/// Separate from [ArchetypeField] rather than a no-op method on it, so that
+/// `ArchetypeStorage` can collect the few fields that need teardown at declare
+/// time and skip the walk entirely for the archetypes - all of the engine's
+/// own - that have none.
+abstract interface class HeapArchetypeField {
+  /// Frees the registry slot the field holds in the row at address [row].
+  ///
+  /// [prototype] is the address of the archetype's default row. A field whose
+  /// value in [row] equals its value in [prototype] was never written by this
+  /// entity and shares the one slot `writeDefault` registered, so it must be
+  /// left alone - see `ArchetypeStorage.releaseHeapSlots`.
+  void releaseRow(int row, int prototype);
+}
+
 abstract interface class ArchetypeField {
   /// Stamps this field's default into the row at **address** [row]. An `int`
   /// rather than a `Pointer<Uint8>` to match the read/write path - see

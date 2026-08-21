@@ -507,6 +507,38 @@ abstract class SceneStruct extends GameListenerBase
       }
     }
     _detachLinksLeavingScene(sceneSlot);
+    _releaseHeapSlotsOf(sceneSlot);
+  }
+
+  /// Frees the `HeapObjectRegistry` slots every row of [sceneSlot] owns.
+  ///
+  /// The unload counterpart of the same call `destroy()` makes: an unloading
+  /// scene frees its pages wholesale rather than row by row, so without this
+  /// pass every heap-object field in it leaks its slot (#49). Both entrances
+  /// have to do it, and this is the one that covers stopping the game, since
+  /// `GameState` tears every loaded scene down through here.
+  ///
+  /// **Last, after the unmount events and after the detach pass.** A listener
+  /// reads the row it is being told about, and `_detachLinksLeavingScene`
+  /// reads links out of it; a slot freed before either would resolve to
+  /// nothing, or to whatever the next `register` put there. Freeing the row's
+  /// bytes is `releaseScenePages`' job and happens later still.
+  ///
+  /// Skips an archetype with no heap-object field, which is every archetype
+  /// the engine ships - so the common unload walks the archetype list and
+  /// stops, without touching a page.
+  void _releaseHeapSlotsOf(int sceneSlot) {
+    for (var id = 0; id < ArchetypeRegistry.count; id++) {
+      final storage = ArchetypeRegistry.byId(id);
+      if (!storage.hasHeapFields) continue;
+      for (var pageIndex = 0; pageIndex < storage.pageCount; pageIndex++) {
+        final page = storage.pageAt(pageIndex);
+        if (page == null || page.ownerSceneSlot != sceneSlot) continue;
+        for (final offset in page.rowOffsets) {
+          storage.releaseHeapSlots(page, offset);
+        }
+      }
+    }
   }
 
   /// Unlinks every hierarchy edge between [sceneSlot] and a scene that is
@@ -950,6 +982,13 @@ extension EntityLifetime on Entity {
     final owner = handle == null ? null : SceneRegistry.tryResolve(handle);
     owner?.stateOrNull?.entityDespawnedEvent.call(this);
     storage.prefab.unmountedEvent.call(this);
+    // After every listener has read the row and before the row goes: a
+    // heap-object field's value is a slot in a process-global table, and
+    // freeing the row reclaims the page bytes holding the address but not the
+    // slot they point at. Nothing did this until #49; the table grew for the
+    // life of the process. No-op for an archetype declaring no such field,
+    // which is all of them in the engine itself.
+    storage.releaseHeapSlots(page, rowOffset);
     page.free(rowOffset);
   }
 }

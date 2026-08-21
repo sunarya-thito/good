@@ -744,11 +744,16 @@ final class _PackedField<T extends IntRepresentable> extends _Field<T>
 /// the same object was written twice and reuse its address - that would need
 /// an identity map consulted on the hot path, which is exactly what this
 /// engine's row storage exists to avoid. So `field[e] = x` twice leaves the
-/// first slot occupied until something unregisters it, and nothing does yet:
-/// entity destruction is the natural place to free these and this engine has
-/// no despawn API (see the TODO on [HeapObjectRegistry]). Accepted, and
+/// first slot occupied until the entity is destroyed, which is when
+/// [releaseRow] frees whatever address the row holds by then. Accepted, and
 /// documented rather than half-solved: heap-object fields are for references
 /// assigned a bounded number of times, not for per-tick churn.
+///
+/// Destruction itself no longer leaks. It did, for as long as the note here
+/// said entity destruction was the natural place to free a slot and this
+/// engine had no despawn API - `destroy()` had existed for some time by then
+/// (#49). See [HeapObjectRegistry] for the hook and for how a row that never
+/// wrote the field is told apart from one that did.
 ///
 /// **The default is a factory, and it is called exactly once.**
 /// [writeDefault] runs once, at `ArchetypeStorage.seal`, to build the
@@ -762,7 +767,8 @@ final class _PackedField<T extends IntRepresentable> extends _Field<T>
 /// The factory exists so the default can be *built* at seal time rather than
 /// forced into existence at `describeStruct` time; it does not, and cannot,
 /// make the default per-entity.
-final class _HeapObjectField<T> extends _Field<T> {
+final class _HeapObjectField<T> extends _Field<T>
+    implements HeapArchetypeField {
   _HeapObjectField(super.storage, this._byte, this._defaultFactory);
   final int _byte;
 
@@ -788,6 +794,18 @@ final class _HeapObjectField<T> extends _Field<T> {
     Pointer<Uint32>.fromAddress(row + _byte).value = factory == null
         ? 0
         : HeapObjectRegistry.register(factory());
+  }
+
+  /// Frees this row's slot unless the row still carries the prototype's.
+  ///
+  /// The equality test is doing real work in both directions - see
+  /// `ArchetypeStorage.releaseHeapSlots` for why the shared default must
+  /// survive, and why `optHeapObject`'s 0 cannot simply be special-cased.
+  @override
+  void releaseRow(int row, int prototype) {
+    final address = Pointer<Uint32>.fromAddress(row + _byte).value;
+    if (address == Pointer<Uint32>.fromAddress(prototype + _byte).value) return;
+    HeapObjectRegistry.unregister(address);
   }
 }
 
@@ -2055,6 +2073,9 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     final value = _HeapObjectField<T>(_storage, byte, null);
     final field = _OptionalField<T>(_storage, flagBit, value, false);
     _storage.registerField(field);
+    // The wrapper carries the default; the value field carries the registry
+    // slot. Teardown has to reach the latter - see `registerHeapField`.
+    _storage.registerHeapField(value);
     return field;
   }
 }

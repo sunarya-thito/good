@@ -27,15 +27,30 @@ import 'package:meta/meta.dart';
 /// arbitrary times in response to whatever each isolate happened to write.
 /// A heap-object field read from a second isolate is a bug, not a feature.
 ///
-// TODO(despawn): nothing frees a heap-object slot when the entity holding
-// its address is destroyed, because this engine has no despawn/entity
-// destruction API yet (see ArchetypeStorage.allocateRow's note that
-// "recycling across an archetype's older pages lands with the despawn API,
-// which does not exist yet"). Until that lands, a row's heap-object slot is
-// only reclaimed by an explicit `unregister` or by `reset`. When despawn
-// arrives it must walk the destroyed row's heap-object fields and
-// `unregister` each one; that hook is the missing half of this registry, and
-// building it is out of scope here.
+/// # What frees a slot
+///
+/// Destroying an entity does, through `ArchetypeStorage.releaseHeapSlots`:
+/// every path that stops a row being an entity - `Entity.destroy()` for one
+/// entity or a subtree, and `SceneStruct.unmountEntitiesOf` for a scene coming
+/// down or a game stopping - walks the row's heap-object fields and
+/// [unregister]s each. A row that never wrote the field is left alone, because
+/// it carries the one address `writeDefault` registered at seal time and every
+/// other entity of that archetype is still reading it.
+///
+/// This carried a `TODO(despawn)` for a long time saying the leak was
+/// acceptable *because* there was no way to destroy an entity. `destroy()`
+/// arrived, the hook the comment asked for did not, and the comment kept
+/// explaining why a now-live leak was fine (#49). It is the second stale
+/// premise in this codebase to hide a leak - the first claimed there was no
+/// per-entity destroy, and the change that trusted it leaked a Box2D body per
+/// destroyed entity. A comment saying "this is safe because X" is a claim
+/// about X that stops being true when X does.
+///
+/// What is still **not** freed is a slot orphaned by overwriting a field:
+/// `field[e] = a; field[e] = b` leaks `a`'s slot until the entity dies, since
+/// noticing the overwrite would need an identity map on the write path. That
+/// one is a real trade and is documented on `_HeapObjectField`; a destroyed
+/// entity releases whatever address its row holds at the end.
 abstract final class HeapObjectRegistry {
   /// Marks a slot that is on the free list. A dedicated sentinel rather than
   /// `null`, because `null` is a value a caller may legitimately register -
