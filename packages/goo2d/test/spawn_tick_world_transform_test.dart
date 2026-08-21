@@ -89,7 +89,7 @@ class _Spawner extends GameSystem with FixedTickable {
       toDestroy = null;
       kill.destroy();
     }
-    final scene = state.getScene<_Scene>();
+    final scene = state.singleScene<_Scene>();
 
     if (nodeRequests.isNotEmpty) {
       for (final request in nodeRequests) {
@@ -159,7 +159,7 @@ void main() {
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
-    final leaf = run.state.getScene<_Scene>().leaf;
+    final leaf = run.state.singleScene<_Scene>().leaf;
 
     spawner
       ..spawnX = 500
@@ -186,7 +186,7 @@ void main() {
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
-    final leaf = run.state.getScene<_Scene>().leaf;
+    final leaf = run.state.singleScene<_Scene>().leaf;
 
     // Use the row once, then free it so the next spawn recycles it - by
     // which point the page has published and the fall-through is gone.
@@ -239,7 +239,7 @@ void main() {
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
-    final node = run.state.getScene<_Scene>().node;
+    final node = run.state.singleScene<_Scene>().node;
 
     spawner.nodeRequests.add(_NodeRequest(100, 0));
     run.state.advance(_step);
@@ -276,7 +276,7 @@ void main() {
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
-    final node = run.state.getScene<_Scene>().node;
+    final node = run.state.singleScene<_Scene>().node;
 
     spawner.nodeRequests.add(_NodeRequest(100, 0));
     run.state.advance(_step);

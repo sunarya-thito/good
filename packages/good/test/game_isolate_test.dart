@@ -949,7 +949,7 @@ void main() {
       // which is the point, and a stronger property than what these lines used
       // to check. There were four assertions here: that this copy's state was
       // non-null, that it was not simulating, that it had loaded no scenes,
-      // and that `getScene` threw. All of them reached the mirror through
+      // and that `singleScene` threw. All of them reached the mirror through
       // `Game.state`, so all of them are gone with it: `run` is a `GameHandle`,
       // not an `InlineGameHandle`, and `run.state` does not compile.
       //

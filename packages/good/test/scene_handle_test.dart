@@ -182,7 +182,7 @@ void main() {
     test('is the only spelling, and stamps the declared defaults', () async {
       await _boot();
       final state = run.state;
-      final scene = state.getScene<_Level>();
+      final scene = state.singleScene<_Level>();
       final handle = state.loadedScenes.single;
 
       state.pool.beginTick();

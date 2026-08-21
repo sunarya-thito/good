@@ -64,12 +64,17 @@ class Level1 extends SceneStruct {
 }
 ```
 
-Per-instance state belongs in components, or on a system that scopes it by
-`Scene`.
+Per-instance state belongs in components and columns, which is what the rows
+are for, or on your `GameState`.
 
-Scene *content* is different from scene *handles*, and both are legitimate
-fields — the example demos keep a `late Entity hubEntity` for the one entity the
-scene creates itself, so spawns have something to parent to.
+An `Entity` handle is per-instance too, and storing one here has the same
+problem. `late Entity hubEntity` on a `SceneStruct` looks like scene content
+and not configuration, but `onSceneMounted` runs once per loaded copy against
+the one declaration object, so the second load overwrites the first and every
+read afterwards gets the wrong row. Nothing raises. The demos in this
+repository do keep such a field, and they get away with it because they load
+their scene exactly once — that is their assumption, not a rule you can carry
+into a game that loads a level twice.
 
 ## Declaring scenes up front
 
@@ -129,7 +134,7 @@ class MyState extends GameState2D<MyGame> {
 | `unloadScene(scene)` | Unmounts one loaded instance and releases its pages |
 | `unloadAllScene(struct)` | Unloads every instance of that declaration |
 | `loadedScenes` | The live `Scene` handles |
-| `getScene<S>()` | The declaration of type `S` |
+| `singleScene<S>()` | The declaration of type `S`, **when exactly one scene is loaded**. Throws otherwise |
 
 `loadScene` is asynchronous because assets are decoded on the Flutter isolate:
 the game isolate declares them but cannot decode them, so it asks and waits.

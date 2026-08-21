@@ -33,8 +33,8 @@ counted every build instead of accumulating quietly.
 
 Most fences need no tag. A block starting with `class`, `mixin`, `enum` or an
 import goes to the top level; anything else is wrapped in a method of a
-generated `GameSystem`, which is where `game`, `state`, `getSystem`, `getScene`
-and `startCoroutine` come from. Override that with:
+generated `GameSystem`, which is where `game`, `state`, `getSystem`,
+`singleScene` and `startCoroutine` come from. Override that with:
 
 | Tag | Wraps the fence in |
 |---|---|

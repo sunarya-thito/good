@@ -214,10 +214,15 @@ abstract class GameSystem extends GameListenerBase
   @internal
   GameState get simulationState => state;
 
-  /// The running scene, as [T] - sugar for `state.getScene<T>()`. Throws if
-  /// no scene is loaded (`GameState.scene` is nullable by design) or if it is
-  /// some other type; read `state.scene` directly when absence is expected.
-  T getScene<T extends SceneStruct>() => state.getScene<T>();
+  /// The one loaded scene, as [T] - sugar for `state.singleScene<T>()`, and
+  /// carrying the same precondition its name states: it throws once a second
+  /// scene is resident. See `GameState.singleScene`.
+  ///
+  /// A system that has to work with several scenes loaded reads
+  /// `state.loadedScenes`, or takes the entity it is already holding and asks
+  /// that - `entity.scene` names the scene an entity belongs to without any
+  /// assumption about how many exist.
+  T singleScene<T extends SceneStruct>() => state.singleScene<T>();
 
   // GameSystem will listen to an event and run a query
 }

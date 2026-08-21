@@ -77,7 +77,7 @@ class _Spawner extends GameSystem with FixedTickable {
     final x = spawnX;
     if (x == null) return;
     spawnX = null;
-    final scene = state.getScene<_Scene>();
+    final scene = state.singleScene<_Scene>();
     final parent = spawnParent;
     final entity = parent == null
         ? scene.handle.addEntity(scene.node)
@@ -136,7 +136,7 @@ void main() {
   group('hierarchy composition matches hand-computed numbers', () {
     test('a root\'s world transform is its local one', () async {
       await _game();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final entity = scene.addEntity(scene.node);
       scene.node
         ..transformOffsetX[entity] = 7
@@ -157,7 +157,7 @@ void main() {
 
     test('a 3-deep chain composes position, rotation and scale', () async {
       await _game();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
 
       final root = scene.addEntity(scene.node);
       scene.node
@@ -213,7 +213,7 @@ void main() {
       'two quarter turns about the same axis compose into a half turn',
       () async {
         await _game();
-        final scene = run.state.getScene<_Scene>();
+        final scene = run.state.singleScene<_Scene>();
 
         final root = scene.addEntity(scene.node);
         root<Transform3D>().setEuler(yaw: math.pi / 2);
@@ -233,7 +233,7 @@ void main() {
 
     test('rotating a parent swings its child around it', () async {
       await _game();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
 
       final parent = scene.addEntity(scene.node);
       final child = scene.addEntity(scene.node, parent: parent);
@@ -257,7 +257,7 @@ void main() {
 
     test('pitching a parent up lifts the child in front of it', () async {
       await _game();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
 
       final parent = scene.addEntity(scene.node);
       parent<Transform3D>().setEuler(pitch: math.pi / 2);
@@ -277,7 +277,7 @@ void main() {
       'a grouping node with no world columns still composes its subtree',
       () async {
         await _game();
-        final scene = run.state.getScene<_Scene>();
+        final scene = run.state.singleScene<_Scene>();
 
         final root = scene.addEntity(scene.node);
         scene.node.transformOffsetX[root] = 100;
@@ -304,7 +304,7 @@ void main() {
       'an unparented entity with no WorldTransform3D is left alone',
       () async {
         await _game();
-        final scene = run.state.getScene<_Scene>();
+        final scene = run.state.singleScene<_Scene>();
 
         final prop = scene.addEntity(scene.prop);
         scene.prop
@@ -329,7 +329,7 @@ void main() {
       'a childless archetype resolves world from its own local transform',
       () async {
         await _game();
-        final scene = run.state.getScene<_Scene>();
+        final scene = run.state.singleScene<_Scene>();
 
         final entity = scene.addEntity(scene.leaf);
         scene.leaf
@@ -356,7 +356,7 @@ void main() {
   group('change-detection caching', () {
     test('an unchanged entity is skipped entirely', () async {
       await _game();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final parent = scene.addEntity(scene.node);
       final entity = scene.addEntity(scene.node, parent: parent);
       scene.node.transformOffsetX[entity] = 42;
@@ -380,7 +380,7 @@ void main() {
 
     test('a rotation change alone invalidates the cache', () async {
       await _game();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final parent = scene.addEntity(scene.node);
       final child = scene.addEntity(scene.node, parent: parent);
       scene.node.transformOffsetX[child] = 10;
@@ -400,7 +400,7 @@ void main() {
 
     test('moving a parent invalidates every descendant', () async {
       await _game();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final parent = scene.addEntity(scene.node);
       final child = scene.addEntity(scene.node, parent: parent);
       scene.node.transformOffsetX[child] = 5;
@@ -425,7 +425,7 @@ void main() {
     test('parent, unparent, then re-parent with untouched offsets still '
         'recomposes', () async {
       await _game();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
 
       final parent = scene.addEntity(scene.node);
       scene.node.transformOffsetX[parent] = 500;
@@ -471,7 +471,7 @@ void main() {
       spawner.spawnX = 33;
       run.state.advance(_step);
 
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final spawned = spawner.spawned!;
       expect(
         scene.node.worldX[spawned],
@@ -485,7 +485,7 @@ void main() {
 
     test('a child spawned during the tick composes with its parent', () async {
       await _game();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final parent = scene.addEntity(scene.node);
       scene.node.transformOffsetX[parent] = 200;
       run.state.advance(_step);

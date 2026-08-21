@@ -555,7 +555,7 @@ void main() {
       'sets its own signature bit, so withAll(Renderable2D) discriminates',
       () async {
         await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         final matcher = ArchetypeQueryDescriptor()
             .query()
             .withAll(Renderable2D)
@@ -580,7 +580,7 @@ void main() {
       'declares sane defaults: visible, unsized, opaque white, centred',
       () async {
         await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         final entity = scene.addEntity(scene.sprite);
         final quad = scene.sprite.quad;
         expect(quad.visible[entity], true);
@@ -629,7 +629,7 @@ void main() {
       'several has() calls give several sprites, in declaration order',
       () async {
         await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         expect(
           scene.twoSprite.sprites,
           hasLength(2),
@@ -653,7 +653,7 @@ void main() {
       'Transform2D defaults to unit scale, not the field default of zero',
       () async {
         await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         final entity = scene.addEntity(scene.sprite);
         // A zero default would collapse every quad to a point - the renderer
         // would produce records that draw nothing at all.
@@ -668,7 +668,7 @@ void main() {
       'one batch per presented frame, stamped with the tick it depicts',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         _size(scene.sprite, scene.addEntity(scene.sprite), 10, 10);
 
         // One frame, read straight away - the stamp names the tick it depicts.
@@ -690,7 +690,7 @@ void main() {
       'a frame that ran several catch-up steps still produces one record',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         _size(scene.sprite, scene.addEntity(scene.sprite), 10, 10);
 
         // One frame worth three whole fixed steps - a stall being caught up.
@@ -717,7 +717,7 @@ void main() {
       'one quad per visible, sized entity - colour carried through',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         _size(scene.sprite, scene.addEntity(scene.sprite), 10, 10, 0xFF203040);
         _size(scene.sprite, scene.addEntity(scene.sprite), 4, 4, 0x80FF0000);
         scene.addEntity(scene.sprite); // unsized - skipped
@@ -756,7 +756,7 @@ void main() {
     test('every loaded scene is drawn, not just the first', () async {
       await _game();
       final state = run.state;
-      final first = state.getScene<_SpriteScene>();
+      final first = state.singleScene<_SpriteScene>();
       _size(
         first.sprite,
         state.loadedScenes.single.addEntity(first.sprite),
@@ -786,7 +786,7 @@ void main() {
 
     test('the renderer reports what it wrote', () async {
       await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       _size(scene.sprite, scene.addEntity(scene.sprite), 10, 10);
       run.state.advance(_step);
       final renderer = run.state.getSystem<GameRenderer2D>();
@@ -798,7 +798,7 @@ void main() {
   group('world-space quad geometry', () {
     test('an unparented entity: centred on its own offset', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       _place(scene.sprite, entity, x: 100, y: 50);
       _size(scene.sprite, entity, 40, 20);
@@ -816,7 +816,7 @@ void main() {
       'scale and rotation are baked into the corners, not left to Canvas',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         final entity = scene.addEntity(scene.sprite);
         _place(
           scene.sprite,
@@ -857,7 +857,7 @@ void main() {
 
     test('a larger world y draws higher on the screen', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final low = scene.addEntity(scene.sprite);
       _place(scene.sprite, low, y: -100);
       _size(scene.sprite, low, 4, 4, 0xFF0000FF);
@@ -892,7 +892,7 @@ void main() {
       // onto other corners and a sign error there can hide inside a symmetric
       // shape. An oblique angle leaves nowhere for it to hide.
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final ccw = scene.addEntity(scene.sprite);
       _place(scene.sprite, ccw, rotation: 0.5);
       _size(scene.sprite, ccw, 40, 2, 0xFF00FF00);
@@ -937,7 +937,7 @@ void main() {
 
     test('a child is drawn - the query must not forbid Child', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final parent = scene.addEntity(scene.sprite);
       _place(scene.sprite, parent, x: 100, y: 100);
       _size(scene.sprite, parent, 10, 10);
@@ -964,7 +964,7 @@ void main() {
       'an unparented entity that merely *has* Child uses its own transform',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         final entity = scene.addEntity(scene.sprite);
         _place(scene.sprite, entity, x: 7, y: 9);
         _size(scene.sprite, entity, 2, 2);
@@ -981,7 +981,7 @@ void main() {
       'a three-level chain composes translate/scale in the right order',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
 
         final grandparent = scene.addEntity(scene.sprite);
         _place(scene.sprite, grandparent, x: 100, y: 200, scaleX: 2, scaleY: 3);
@@ -1014,7 +1014,7 @@ void main() {
       'a rotated parent rotates its child about the parent origin',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         final parent = scene.addEntity(scene.sprite);
         _place(scene.sprite, parent, x: 100, y: 100, rotation: math.pi / 2);
         final child = scene.addEntity(scene.sprite, parent: parent);
@@ -1038,7 +1038,7 @@ void main() {
       'a parent left at its default transform contributes identity',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         final parent = scene.addEntity(scene.sprite);
         final child = scene.addEntity(scene.sprite, parent: parent);
         _place(scene.sprite, child, x: 3, y: 4);
@@ -1056,7 +1056,7 @@ void main() {
       'an ancestor with no Transform2D at all is skipped, not fatal',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         // A bare grouping node: Child/Parent links, no transform of its own.
         // The walk has to step over it rather than abort, or its subtree stops
         // inheriting from everything above it.
@@ -1103,7 +1103,7 @@ void main() {
 
     test('an unread frame is replaced, not queued behind', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       _size(scene.sprite, scene.addEntity(scene.sprite), 10, 10);
 
       run.state.advance(_step);
@@ -1127,7 +1127,7 @@ void main() {
   group('several sprites per entity', () {
     test('two declared sprites produce two independent records', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       scene.addEntity(scene.twoSprite);
 
       run.state.advance(_step);
@@ -1164,7 +1164,7 @@ void main() {
 
     test('has() named parameters are the archetype row defaults - no onMounted', () async {
       await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       // _TwoSprite declares no onMounted at all. Every value below therefore
       // came from the storage layer stamping the declared default into a fresh
       // row, which is the property that lets a prefab be pure declaration.
@@ -1212,7 +1212,7 @@ void main() {
 
     test('a runtime setter writes all four fields of a group at once', () async {
       await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final entity = scene.addEntity(scene.twoSprite);
       // The reason these exist: changing a pivot at runtime should not mean
       // remembering to poke four fields, and there is deliberately no matching
@@ -1248,7 +1248,7 @@ void main() {
       'visible: false produces no record at all, not a transparent one',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         scene.addEntity(scene.halfHidden);
 
         run.state.advance(_step);
@@ -1273,7 +1273,7 @@ void main() {
       'toggling visible off at runtime removes the record next frame',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         final entity = scene.addEntity(scene.halfHidden);
         run.state.advance(_step);
         expect(_drainFrames(game).single.quads.length, 1);
@@ -1302,7 +1302,7 @@ void main() {
   group('z-ordering', () {
     test('higher zIndex draws later, whatever order the query yields', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       // Created (and therefore encountered) in the *opposite* order to the one
       // they must be drawn in, so a pass that ignored zIndex would fail here.
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFF000005, 5);
@@ -1323,7 +1323,7 @@ void main() {
 
     test('equal zIndex keeps encounter order - the sort is stable', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFAA0001);
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFAA0002);
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFAA0003);
@@ -1345,7 +1345,7 @@ void main() {
 
     test('ordering holds within one entity sprite list too', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       // _Stack declares its z:3 sprite *first* and its z:1 sprite second.
       scene.addEntity(scene.stack);
 
@@ -1363,7 +1363,7 @@ void main() {
 
     test('ordering interleaves sprites of different entities', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       // Encounter order is archetype registration order, and _Sprite is
       // registered before _Stack - so this entity is seen first and has to be
       // sorted *between* the two sprites of the entity seen second.
@@ -1384,7 +1384,7 @@ void main() {
 
     test('negative zIndex sorts behind the default of zero', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFF000000);
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFBBBBBB, -4);
 
@@ -1407,7 +1407,7 @@ void main() {
     // that which sort ran is unobservable - which is the whole contract.
     test('a zIndex range too wide to bucket still sorts correctly', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       // Spread far wider than the 65,536-bucket cap, so the merge sort runs.
       _size(
         scene.sprite,
@@ -1441,7 +1441,7 @@ void main() {
 
     test('the merge-sort fallback is stable too', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       // One far-away sprite widens the range past the bucketing cap; the rest
       // tie on zIndex 0 and must keep encounter order regardless.
       _size(scene.sprite, scene.addEntity(scene.sprite), 2, 2, 0xFFAA0001);
@@ -1486,7 +1486,7 @@ void main() {
 
     Future<List<int>> sortedColors(int scale) async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       for (var i = 0; i < zIndices.length; i++) {
         _size(
           scene.sprite,
@@ -1530,7 +1530,7 @@ void main() {
       // chosen to land nowhere near a representable float32: an irrational
       // rotation, a non-dyadic pivot fraction and an odd scale.
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       const rotation = 0.7853981633974483; // pi/4
       const width = 37.0;
@@ -1594,7 +1594,7 @@ void main() {
 
     test('debugSkipZSort leaves the queue in encounter order', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       run.state.getSystem<GameRenderer2D>().debugSkipZSort = true;
       // Encounter order is the reverse of draw order, so a pass that still
       // sorted would come back the other way round and this could not pass by
@@ -1622,7 +1622,7 @@ void main() {
       'the default centred pivot puts the transform origin in the middle',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         final entity = scene.addEntity(scene.sprite);
         _place(scene.sprite, entity, x: 100, y: 50);
         _size(scene.sprite, entity, 40, 20);
@@ -1639,7 +1639,7 @@ void main() {
 
     test('fraction 0,0 anchors the top-left corner on the transform origin', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final entity = scene.addEntity(scene.topLeft);
       scene.topLeft
         ..transformOffsetX[entity] = 100
@@ -1666,7 +1666,7 @@ void main() {
 
     test('the pivot is what rotation turns about', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final entity = scene.addEntity(scene.topLeft);
       scene.topLeft
         ..transformOffsetX[entity] = 0
@@ -1695,7 +1695,7 @@ void main() {
   group('camera', () {
     test('no camera reproduces the pre-camera output exactly', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       _place(scene.sprite, entity, x: 100, y: 50);
       _size(scene.sprite, entity, 40, 20);
@@ -1720,7 +1720,7 @@ void main() {
 
     test('a moved camera shifts every quad by the same offset', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final near = scene.addEntity(scene.sprite);
       _place(scene.sprite, near, x: 100, y: 50);
       _size(scene.sprite, near, 40, 20, 0xFF000001);
@@ -1752,7 +1752,7 @@ void main() {
       'zoom scales position and extent together about the view origin',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         final entity = scene.addEntity(scene.sprite);
         _place(scene.sprite, entity, x: 100, y: 50);
         _size(scene.sprite, entity, 40, 20);
@@ -1773,7 +1773,7 @@ void main() {
 
     test('a camera parented into the hierarchy is followed through its world transform', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final anchor = scene.addEntity(scene.sprite);
       _place(scene.sprite, anchor, x: 200, y: 0);
       _size(scene.sprite, anchor, 2, 2);
@@ -1798,7 +1798,7 @@ void main() {
 
     test('two cameras still trip ActiveCameraResolver assert', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       scene.addEntity(scene.sprite);
       _eye(game, scene);
       _eye(game, scene);
@@ -1813,7 +1813,7 @@ void main() {
   group('view centring', () {
     test('the world origin sits in the middle of a laid-out view', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       _place(scene.sprite, entity, x: 0, y: 0);
       _size(scene.sprite, entity, 40, 20);
@@ -1841,7 +1841,7 @@ void main() {
 
     test('a camera puts what it is over in the middle', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       _place(scene.sprite, entity, x: 100, y: 50);
       _size(scene.sprite, entity, 40, 20);
@@ -1870,7 +1870,7 @@ void main() {
 
     test('zoom scales about the middle, not the corner', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       _place(scene.sprite, entity, x: 0, y: 0);
       _size(scene.sprite, entity, 40, 20);
@@ -1899,7 +1899,7 @@ void main() {
 
     test('a game nobody laid out draws plain world coordinates', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final entity = scene.addEntity(scene.sprite);
       _place(scene.sprite, entity, x: 0, y: 0);
       _size(scene.sprite, entity, 40, 20);
@@ -1924,7 +1924,7 @@ void main() {
       'a textured sprite carries its address and the full-texture UVs',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         final prefab = scene.texturedPair;
         scene.addEntity(prefab);
 
@@ -1960,7 +1960,7 @@ void main() {
       'an untextured sprite carries the sentinel and its flat colour',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         scene.addEntity(scene.texturedPair);
 
         run.state.advance(_step);
@@ -1991,7 +1991,7 @@ void main() {
       'one entity mixes textured and untextured sprites in one frame',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         scene.addEntity(scene.texturedPair);
 
         run.state.advance(_step);
@@ -2014,7 +2014,7 @@ void main() {
 
     test('the producer writes the address and never reads the image', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       scene.addEntity(scene.texturedPair);
 
       // This used to arm a trap: a `Texture` subclass whose `image` getter
@@ -2046,7 +2046,7 @@ void main() {
 
     test('a texture swapped at runtime changes the address next frame', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final entity = scene.addEntity(scene.texturedPair);
       run.state.advance(_step);
       expect(
@@ -2217,7 +2217,7 @@ void main() {
   group('sprite frames on a drawn sprite', () {
     test('an unframed sprite still samples the whole texture', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       scene.addEntity(scene.texturedPair);
 
       run.state.advance(_step);
@@ -2229,7 +2229,7 @@ void main() {
 
     test('a framed sprite samples exactly its cell', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final entity = scene.addEntity(scene.texturedPair);
       // Cell (1,1) of a 2x2 sheet: the bottom-right quarter, whose bounds are
       // all exact in binary and so safe to assert on the nose.
@@ -2268,7 +2268,7 @@ void main() {
 
     test('a nine-sliced sprite cuts inside its frame, never outside', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final entity = scene.addEntity(scene.panel);
       // The right half of the sheet. The panel's insets are 4px against a
       // 16x16 declared source, so within a half-width frame they cut at
@@ -2313,7 +2313,7 @@ void main() {
     const uvCuts = [0.0, 0.25, 0.75, 1.0];
 
     _Frame drawPanel(_RenderGame game) {
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       scene.addEntity(scene.panel);
       run.state.advance(_step);
       return _drainFrames(game).single;
@@ -2358,7 +2358,7 @@ void main() {
       // is absolute while the source cut is relative. A fractional corner
       // would scale here, which is a plain stretch.
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       final entity = scene.addEntity(scene.panel);
 
       double topLeftWidth() {
@@ -2454,7 +2454,7 @@ void main() {
       'every cell carries the panel texture, so they stay one batch run',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         final quads = drawPanel(game).quads;
         final address = scene.panel.skin.pack();
         for (final q in quads) {
@@ -2474,7 +2474,7 @@ void main() {
       'growing the sprite keeps corner sizes and stretches only the middle',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         final entity = scene.addEntity(scene.panel);
         run.state.advance(_step);
         final small = _drainFrames(game).single.quads;
@@ -2515,7 +2515,7 @@ void main() {
       'insets larger than the draw size collapse instead of inverting',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         scene.addEntity(scene.unsizedPanel);
         run.state.advance(_step);
         final quads = _drainFrames(game).single.quads;
@@ -2559,7 +2559,7 @@ void main() {
 
     test('a collapsed destination does not re-slice the source', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       scene.addEntity(scene.unsizedPanel);
       run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
@@ -2577,7 +2577,7 @@ void main() {
 
     test('a bordered sprite with no texture is a plain quad', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       scene.addEntity(scene.borderedUntextured);
       run.state.advance(_step);
       final quads = _drainFrames(game).single.quads;
@@ -2598,7 +2598,7 @@ void main() {
       'the grid rotates with the entity instead of shearing apart',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         final entity = scene.addEntity(scene.panel);
         scene.panel.transformRotation[entity] = math.pi / 2;
         run.state.advance(_step);
@@ -2637,7 +2637,7 @@ void main() {
       () async {
         await _game();
         final renderer = run.state.getSystem<GameRenderer2D>();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         scene.addEntity(scene.panel);
         run.state.advance(_step);
         expect(
@@ -2660,7 +2660,7 @@ void main() {
   group('renderables without WorldTransform2D', () {
     test('a flat renderable is drawn from its local transform', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       _eye(game, scene);
 
       final entity = scene.addEntity(scene.flat);
@@ -2681,7 +2681,7 @@ void main() {
 
     test('a flat renderable tracks its local transform as it moves', () async {
       final game = await _game();
-      final scene = run.state.getScene<_SpriteScene>();
+      final scene = run.state.singleScene<_SpriteScene>();
       _eye(game, scene);
       final entity = scene.addEntity(scene.flat);
 
@@ -2708,7 +2708,7 @@ void main() {
       'flat and world-transformed renderables draw in the same pass',
       () async {
         final game = await _game();
-        final scene = run.state.getScene<_SpriteScene>();
+        final scene = run.state.singleScene<_SpriteScene>();
         _eye(game, scene);
 
         final composed = scene.addEntity(scene.sprite);

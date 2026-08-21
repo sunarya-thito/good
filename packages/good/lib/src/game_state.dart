@@ -999,9 +999,22 @@ abstract class GameState<T extends Game> extends GameListenerBase
 
   // --- reaching the rest of the engine ----------------------------------
 
-  /// The running scene, as [S]. Throws if there is no scene, or if it is
-  /// some other type - use [scene] directly when absence is expected.
-  S getScene<S extends SceneStruct>() {
+  /// The one loaded scene, as [S].
+  ///
+  /// **Named for its precondition, because that is the whole hazard.** This
+  /// throws the moment a second scene is resident, and several scenes resident
+  /// at once is an ordinary thing here - a level plus a HUD, a pause menu over
+  /// a game. Called `getScene`, it read as "get me the scene" and worked right
+  /// through development, then started throwing on the first tick after
+  /// something loaded a second one. The name is the only place that
+  /// precondition can be seen at the call site.
+  ///
+  /// Use it when the game genuinely has one scene. When it does not, keep the
+  /// handle `loadScene` returned, or index [loadedScenes].
+  ///
+  /// Throws when no scene is loaded too - [scene] is nullable by design, and
+  /// none loaded is a legitimate state.
+  S singleScene<S extends SceneStruct>() {
     final scene = this.scene;
     if (scene == null) {
       throw StateError(

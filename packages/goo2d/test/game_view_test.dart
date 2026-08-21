@@ -148,7 +148,7 @@ void main() {
     tester,
   ) async {
     final game = await _start(_ViewGame());
-    final scene = run.state.getScene<_Scene>();
+    final scene = run.state.singleScene<_Scene>();
     final entity = scene.addEntity(scene.sprite);
     scene.sprite.quad
       ..width[entity] = 20
@@ -169,7 +169,7 @@ void main() {
     tester,
   ) async {
     final game = await _start(_ViewGame());
-    final scene = run.state.getScene<_Scene>();
+    final scene = run.state.singleScene<_Scene>();
     final entity = scene.addEntity(scene.sprite);
     scene.sprite.quad
       ..width[entity] = 20
@@ -237,7 +237,7 @@ void main() {
     tester,
   ) async {
     final game = await _start(_ViewGame());
-    final scene = run.state.getScene<_Scene>();
+    final scene = run.state.singleScene<_Scene>();
     scene.addEntity(scene.sprite);
 
     await tester.pumpWidget(GameView(camera: game.defaultCamera));

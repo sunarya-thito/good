@@ -116,7 +116,7 @@ Future<_Game> _boot() async {
   return game;
 }
 
-_EnemyTimeline _timeline() => run.state.getScene<_Scene>().enemy.timeline;
+_EnemyTimeline _timeline() => run.state.singleScene<_Scene>().enemy.timeline;
 
 void main() {
   tearDown(() {
@@ -337,7 +337,8 @@ void main() {
         // divide by it. Built by hand rather than declared on the fixture,
         // because a declared-but-unkeyed clip is exactly the state a
         // half-written timeline is in.
-        final bare = _Bare()..initializeTimeline(run.state.getScene<_Scene>());
+        final bare = _Bare()
+          ..initializeTimeline(run.state.singleScene<_Scene>());
         expect(bare.empty.length, 0.0);
         expect(bare.empty.animate().micros, 0);
         expect(
@@ -352,7 +353,7 @@ void main() {
   group('startAnimation pushes into component data', () {
     test('it writes each tick and completes at the end of the clip', () async {
       run = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final enemy = scene.enemy;
       final entity = run.state.loadedScenes.single.addEntity(enemy);
 
@@ -387,7 +388,7 @@ void main() {
 
     test('a looping animation runs until it is stopped', () async {
       run = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final enemy = scene.enemy;
       final entity = run.state.loadedScenes.single.addEntity(enemy);
 

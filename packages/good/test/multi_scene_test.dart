@@ -40,6 +40,12 @@ class _Level extends SceneStruct {
   int mounts = 0;
   int unmounts = 0;
 
+  /// The hazard #104 is about, written down where it cannot go stale the way
+  /// the guide did: an `Entity` cached on the declaration. `onSceneMounted`
+  /// runs once per loaded copy against this one object, so the second load
+  /// overwrites what the first stored and nothing is raised.
+  Entity? cachedEntity;
+
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
@@ -49,7 +55,7 @@ class _Level extends SceneStruct {
   @override
   void onSceneMounted(Scene scene) {
     mounts++;
-    scene.addEntity(unit);
+    cachedEntity = scene.addEntity(unit);
   }
 
   @override
@@ -145,6 +151,69 @@ void main() {
         reason:
             'every loaded scene is live - all tick, all receive input, '
             'all render. There is no front scene to be excluded from',
+      );
+    },
+  );
+
+  test(
+    'an Entity cached on the declaration is overwritten by the second load',
+    () async {
+      // The guide taught this shape - `late Entity playerEntity` on a
+      // SceneStruct, read back through what is now `singleScene` - and it is
+      // wrong for the same reason `mounts` counts to two above. Pinned here
+      // because a doc cannot fail a build when the engine moves under it.
+      final game = await _boot();
+      final state = run.state;
+
+      final a = await state.loadScene(game.level);
+      final first = game.level.cachedEntity;
+      expect(first, isNotNull);
+
+      final b = await state.loadScene(game.level);
+      final second = game.level.cachedEntity;
+
+      expect(
+        second,
+        isNot(first),
+        reason: 'the second mount wrote over the first, with nothing raised',
+      );
+      expect(
+        first!.sceneSlot,
+        a.slot,
+        reason:
+            'and the first entity is still alive in its own scene - the field '
+            'is not stale, it is naming the wrong instance',
+      );
+      expect(second!.sceneSlot, b.slot);
+    },
+  );
+
+  test(
+    'singleScene refuses to guess once a second scene is resident',
+    () async {
+      final game = await _boot();
+      final state = run.state;
+
+      await state.loadScene(game.level);
+      expect(
+        state.singleScene<_Level>(),
+        same(game.level),
+        reason: 'one loaded scene is what it is for',
+      );
+
+      await state.loadScene(game.level);
+      expect(
+        () => state.singleScene<_Level>(),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('loadedScenes'),
+          ),
+        ),
+        reason:
+            'this is the call that worked all through development and started '
+            'throwing the day a HUD loaded. The name says so now',
       );
     },
   );

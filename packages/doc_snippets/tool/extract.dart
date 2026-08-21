@@ -27,17 +27,16 @@ void main(List<String> args) {
   outDir.createSync(recursive: true);
 
   final pages = <_Page>[];
-  final files = docsDir
-      .listSync(recursive: true)
-      .whereType<File>()
-      .where((f) => f.path.endsWith('.md'))
-      .toList()
-    ..sort((a, b) => a.path.compareTo(b.path));
+  final files =
+      docsDir
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.md'))
+          .toList()
+        ..sort((a, b) => a.path.compareTo(b.path));
 
   for (final file in files) {
-    final rel = file.path
-        .substring(root.path.length + 1)
-        .replaceAll(r'\', '/');
+    final rel = file.path.substring(root.path.length + 1).replaceAll(r'\', '/');
     final page = _parse(rel, file.readAsLinesSync());
     if (page.fences.isEmpty) continue;
     pages.add(page);
@@ -108,7 +107,7 @@ enum _Placement {
   /// Into a method of a generated subclass - `GameSystem` unless the tag names
   /// something else. This is the default
   /// for statement fragments, and it is what makes most of them compile with no
-  /// tagging at all: `game`, `state`, `getSystem`, `getScene` and
+  /// tagging at all: `game`, `state`, `getSystem`, `singleScene` and
   /// `startCoroutine` are all members a system already has, and the prose uses
   /// them bare because that is where the code it is describing lives.
   body,
@@ -431,8 +430,10 @@ Map<String, String> _emit(_Page page) {
       ..writeln('// Source: ${page.relPath}')
       ..writeln('// Edit the documentation, not this file.')
       ..writeln('//')
-      ..writeln('// ignore_for_file: non_constant_identifier_names, '
-          'unnecessary_import')
+      ..writeln(
+        '// ignore_for_file: non_constant_identifier_names, '
+        'unnecessary_import',
+      )
       ..writeln();
 
     if (s == 0) {
@@ -475,8 +476,10 @@ Map<String, String> _emit(_Page page) {
           }
         case _Placement.body:
           out
-            ..writeln('abstract class _Snippet$n extends '
-                '${fence.memberHeader ?? 'GameSystem'} {')
+            ..writeln(
+              'abstract class _Snippet$n extends '
+              '${fence.memberHeader ?? 'GameSystem'} {',
+            )
             ..writeln('  ${_wrapper(n, fence.code)}')
             ..writeln(_indent(body, 4))
             ..writeln('  }')
@@ -493,7 +496,9 @@ Map<String, String> _emit(_Page page) {
             ..writeln('    ;');
         case _Placement.member:
           out
-            ..writeln('abstract class _Snippet$n extends ${fence.memberHeader} {')
+            ..writeln(
+              'abstract class _Snippet$n extends ${fence.memberHeader} {',
+            )
             ..writeln(_indent(body, 2))
             ..writeln('}');
       }
@@ -514,7 +519,9 @@ String _wrapper(int n, List<String> code) => _yields(code)
     ? 'Iterable<Object?> run$n() sync* {'
     : 'Future<Object?> run$n() async {';
 
-final _directive = RegExp(r"^\s*(import|export|library|part)\b[^;]*;\s*(//.*)?$");
+final _directive = RegExp(
+  r"^\s*(import|export|library|part)\b[^;]*;\s*(//.*)?$",
+);
 
 /// Drops the `import` lines out of a fence.
 ///
@@ -525,8 +532,10 @@ final _directive = RegExp(r"^\s*(import|export|library|part)\b[^;]*;\s*(//.*)?$"
 /// could never resolve here at all. Either way the line is prose about the
 /// project layout, not an assertion about the API, and Dart wants directives
 /// before declarations, which a fence halfway down a page cannot be.
-List<String> _withoutDirectives(List<String> code) =>
-    [for (final l in code) if (!_directive.hasMatch(l)) l];
+List<String> _withoutDirectives(List<String> code) => [
+  for (final l in code)
+    if (!_directive.hasMatch(l)) l,
+];
 
 /// A bare statement at the outermost level of an otherwise top-level fence.
 ///
@@ -576,10 +585,10 @@ final _decl = RegExp(
 );
 
 List<String> _declarations(List<String> code) => [
-      for (final line in code)
-        if (!line.startsWith(' ') && !line.startsWith('\t'))
-          if (_decl.firstMatch(line) case final m?) m.group(1)!,
-    ];
+  for (final line in code)
+    if (!line.startsWith(' ') && !line.startsWith('\t'))
+      if (_decl.firstMatch(line) case final m?) m.group(1)!,
+];
 
 String _indent(List<String> code, int n) {
   final pad = ' ' * n;

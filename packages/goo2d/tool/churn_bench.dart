@@ -144,7 +144,7 @@ void main() {
       if (run.isRunning) await run.stop();
     });
 
-    final scene = run.state.getScene<_Scene>();
+    final scene = run.state.singleScene<_Scene>();
 
     // **Lifetimes, not a strict 1-for-1 swap.** The first version of this bench
     // pre-filled to exactly [_population] and then destroyed one and spawned

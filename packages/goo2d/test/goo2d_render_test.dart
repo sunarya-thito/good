@@ -172,7 +172,7 @@ void main() {
     'a hierarchy simulated on one end comes out as geometry on the other',
     () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
 
       final parent = scene.addEntity(scene.sprite);
       scene.sprite
@@ -220,7 +220,7 @@ void main() {
 
   test('a texture address survives the crossing and drives the run split', () async {
     final game = await _boot();
-    final scene = run.state.getScene<_Scene>();
+    final scene = run.state.singleScene<_Scene>();
     scene.addEntity(scene.billboard);
 
     run.state.advance(const Duration(milliseconds: 10));
@@ -251,7 +251,7 @@ void main() {
     'the address the producer wrote resolves to a shader on replay',
     () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       scene.addEntity(scene.billboard);
       run.state.advance(const Duration(milliseconds: 10));
       final canvas = _present(game);

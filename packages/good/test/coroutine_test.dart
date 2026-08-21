@@ -292,7 +292,7 @@ void main() {
       'stopAllCoroutines is scoped to the prefab that started them',
       () async {
         run = await _boot();
-        final scene = run.state.getScene<_Scene>();
+        final scene = run.state.singleScene<_Scene>();
         final other = Object();
         Iterable body() sync* {
           while (true) {
@@ -341,7 +341,7 @@ void main() {
   group('the reason this is sync* and not async*', () {
     test('a write after a yield actually lands in the row', () async {
       run = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final entity = run.state.loadedScenes.single.addEntity(scene.mover);
 
       scene.mover.startCoroutine(() => scene.mover.stamp(entity, 42));
@@ -363,7 +363,7 @@ void main() {
       'an async* body genuinely cannot do that - shown, not assumed',
       () async {
         run = await _boot();
-        final scene = run.state.getScene<_Scene>();
+        final scene = run.state.singleScene<_Scene>();
         final entity = run.state.loadedScenes.single.addEntity(scene.mover);
         final pool = run.state.pool;
 

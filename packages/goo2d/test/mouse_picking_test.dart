@@ -252,7 +252,7 @@ void main() {
       'the cursor picks the shape, not the sprite\'s bounding box',
       () async {
         final game = await _boot();
-        final scene = run.state.getScene<_Scene>();
+        final scene = run.state.singleScene<_Scene>();
         final button = scene.addEntity(scene.button);
         _settle(game);
 
@@ -277,7 +277,7 @@ void main() {
 
     test('a receiver with no collider is never picked', () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       scene.addEntity(scene.naked);
       _settle(game);
 
@@ -294,7 +294,7 @@ void main() {
 
     test('the entity\'s world transform moves its shape', () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final button = scene.addEntity(scene.button);
       scene.pool.beginTick();
       scene.button.transformOffsetX[button] = 300;
@@ -319,7 +319,7 @@ void main() {
       'rotation and scale are undone, so a box hit-tests as it looks',
       () async {
         final game = await _boot();
-        final scene = run.state.getScene<_Scene>();
+        final scene = run.state.singleScene<_Scene>();
         final panel = scene.addEntity(scene.panel);
         scene.pool.beginTick();
         scene.panel
@@ -373,7 +373,7 @@ void main() {
       // `viewToWorldY` carry the flip. That they still meet is the property
       // under test.
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final panel = scene.addEntity(scene.panel);
       scene.pool.beginTick();
       scene.panel.transformRotation[panel] = 0.5;
@@ -408,7 +408,7 @@ void main() {
 
     test('a disabled body stops picking without being removed', () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final button = scene.addEntity(scene.button);
       _settle(game);
 
@@ -434,7 +434,7 @@ void main() {
   group('overlap order', () {
     test('the higher zIndex wins', () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       // Both cover the origin; the panel's sprite is at zIndex 10.
       scene.addEntity(scene.button);
       final panel = scene.addEntity(scene.panel);
@@ -453,7 +453,7 @@ void main() {
 
     test('at equal z the later entity wins, matching the draw order', () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final first = scene.addEntity(scene.button);
       final second = scene.addEntity(scene.button);
       _settle(game);
@@ -472,7 +472,7 @@ void main() {
 
     test('an invisible click zone competes at zero', () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final zone = scene.addEntity(scene.zone);
       _settle(game);
 
@@ -505,7 +505,7 @@ void main() {
 
     test('an entity is measured by its topmost visible sprite', () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final button = scene.addEntity(scene.button);
       final panel = scene.addEntity(scene.panel);
       scene.pool.beginTick();
@@ -541,7 +541,7 @@ void main() {
       'enter fires once on the transition, hover every tick after',
       () async {
         final game = await _boot();
-        final scene = run.state.getScene<_Scene>();
+        final scene = run.state.singleScene<_Scene>();
         final button = scene.addEntity(scene.button);
         _settle(game);
 
@@ -562,7 +562,7 @@ void main() {
 
     test('exit fires when the cursor leaves, and nothing after', () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final button = scene.addEntity(scene.button);
       _settle(game);
 
@@ -578,7 +578,7 @@ void main() {
       'moving straight from one receiver to another exits before entering',
       () async {
         final game = await _boot();
-        final scene = run.state.getScene<_Scene>();
+        final scene = run.state.singleScene<_Scene>();
         final button = scene.addEntity(scene.button);
         final panel = scene.addEntity(scene.panel);
         scene.pool.beginTick();
@@ -603,7 +603,7 @@ void main() {
 
     test('press and release fire on whatever is under the cursor', () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final button = scene.addEntity(scene.button);
       _settle(game);
 
@@ -626,7 +626,7 @@ void main() {
 
     test('a press that drags off the entity fires no release on it', () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final button = scene.addEntity(scene.button);
       _settle(game);
 
@@ -651,7 +651,7 @@ void main() {
 
     test('clicking empty space fires nothing at all', () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       scene.addEntity(scene.button);
       _settle(game);
 
@@ -666,7 +666,7 @@ void main() {
 
     test('the button is rebindable like any other action', () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final button = scene.addEntity(scene.button);
       final picking = run.state.getSystem<MousePickingSystem>();
       picking.click.binding = const TriggerBinding(.rightMouseButton);
@@ -694,7 +694,7 @@ void main() {
   group('the camera', () {
     test('with no camera the view is the world', () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       scene.addEntity(scene.button);
       _settle(game);
 
@@ -714,7 +714,7 @@ void main() {
 
     test('a moved camera shifts what the cursor is over', () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       scene.addEntity(scene.button);
       final eye = _eye(game, scene);
       scene.pool.beginTick();
@@ -744,7 +744,7 @@ void main() {
 
     test('zoom scales the projection', () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final button = scene.addEntity(scene.button);
       final eye = _eye(game, scene);
       scene.pool.beginTick();
@@ -764,7 +764,7 @@ void main() {
 
     test('the world position reaches the handler that was clicked', () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final panel = scene.addEntity(scene.panel);
       scene.pool.beginTick();
       scene.panel.transformOffsetX[panel] = 500;
@@ -787,7 +787,7 @@ void main() {
       'a second camera is a programmer error, not a silent choice',
       () async {
         final game = await _boot();
-        final scene = run.state.getScene<_Scene>();
+        final scene = run.state.singleScene<_Scene>();
         _eye(game, scene);
         _eye(game, scene);
 
@@ -806,7 +806,7 @@ void main() {
   group('the projection', () {
     test('view and world round-trip through each other', () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final eye = _eye(game, scene);
       scene.pool.beginTick();
       scene.eye
@@ -835,7 +835,7 @@ void main() {
 
     test('a laid-out view puts the camera in the middle', () async {
       final game = await _boot();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final button = scene.addEntity(scene.button);
       final eye = _eye(game, scene);
       scene.pool.beginTick();
@@ -881,7 +881,7 @@ void main() {
       'a zero zoom reports the camera origin instead of an infinity',
       () async {
         final game = await _boot();
-        final scene = run.state.getScene<_Scene>();
+        final scene = run.state.singleScene<_Scene>();
         final eye = _eye(game, scene);
         scene.pool.beginTick();
         scene.eye.transformOffsetX[eye] = 7;

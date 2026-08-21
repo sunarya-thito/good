@@ -6,6 +6,17 @@ sorting. Several checks that used to let a mistake through now stop it.
 
 ### Breaking
 
+* **`getScene<S>()` is now `singleScene<S>()`**, on `GameState` and on
+  `GameSystem`. Rename the call; nothing else changes. It always threw once a
+  second scene was resident, and several scenes at once is ordinary here — a
+  level plus a HUD, a pause menu over a game — so the old name described a call
+  that worked right through development and then threw on the first tick after
+  something loaded a HUD. The name is the only place that precondition is
+  visible at the call site. A game with more than one scene loaded reaches them
+  through `loadedScenes` or the handle `loadScene` returned, and asks an entity
+  which scene it belongs to with `entity.sceneSlot`. `Component.getScene`,
+  which resolves the scene *that entity* was registered with, is unaffected and
+  keeps its name.
 * **The profiler is out of the engine.** `GameState` no longer publishes
   `lastSimulationMicros`, `lastSystemMicros`, `lastPresentationMicros` or their
   best-of rings. A game framework is not a profiler, and anything that wanted

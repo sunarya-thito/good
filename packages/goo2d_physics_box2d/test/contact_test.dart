@@ -148,7 +148,7 @@ Future<_Scene> _boot() async {
     if (run.isRunning) await run.stop();
     physics.dispose();
   });
-  return run.state.getScene<_Scene>();
+  return run.state.singleScene<_Scene>();
 }
 
 void _advance(int steps) {

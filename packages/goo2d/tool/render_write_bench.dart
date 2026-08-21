@@ -367,7 +367,7 @@ void _warmAll(List<double Function()> stages) {
 Future<_Cell> _measure(int count) async {
   final game = await Game.startInline(_Bench());
   final state = game.state;
-  final scene = state.getScene<_Galaxy>();
+  final scene = state.singleScene<_Galaxy>();
   for (var i = 0; i < count; i++) {
     scene.handle.addEntity(scene.mote);
   }

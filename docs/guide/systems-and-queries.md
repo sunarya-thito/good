@@ -234,7 +234,7 @@ pause menu switches simulation systems off without unloading the scene.
 | `getState<S>()` | The state, narrowed to your subclass |
 | `getGame<G>()` | The game, narrowed to your subclass |
 | `getSystem<S>()` | Another system, for reading its results |
-| `getScene<S>()` | A loaded scene's declaration |
+| `singleScene<S>()` | The one loaded scene's declaration. Throws when a second is resident |
 
 <!-- snippet: in GameSystem with Tickable -->
 ```dart

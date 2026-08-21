@@ -115,7 +115,7 @@ Future<(Game, _Scene)> _boot() async {
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });
-  return (run, run.state.getScene<_Scene>());
+  return (run, run.state.singleScene<_Scene>());
 }
 
 void main() {

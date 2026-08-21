@@ -94,7 +94,7 @@ void main() {
   group('hierarchy composition matches hand-computed numbers', () {
     test('a 2-level hierarchy: offset + 2x scale composes exactly like the renderer\'s own math', () async {
       await _game();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
 
       final parent = scene.addEntity(scene.node);
       scene.node
@@ -126,7 +126,7 @@ void main() {
       'a 3-level hierarchy with rotation composes correctly, root to leaf',
       () async {
         await _game();
-        final scene = run.state.getScene<_Scene>();
+        final scene = run.state.singleScene<_Scene>();
 
         final root = scene.addEntity(scene.node);
         scene.node
@@ -159,7 +159,7 @@ void main() {
       'a non-rendering system can read the resolved world transform too',
       () async {
         await _game();
-        final scene = run.state.getScene<_Scene>();
+        final scene = run.state.singleScene<_Scene>();
         final entity = scene.addEntity(scene.node);
         scene.node
           ..transformOffsetX[entity] = 7
@@ -177,7 +177,7 @@ void main() {
   group('change-detection caching', () {
     test("an unchanged subtree's cached world fields are untouched after a tick where nothing moved", () async {
       await _game();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final entity = scene.addEntity(scene.node);
       scene.node.transformOffsetX[entity] = 42;
       run.state.advance(_step); // first tick: real compute, worldX becomes 42
@@ -202,7 +202,7 @@ void main() {
       'moving a leaf does not touch its unrelated sibling\'s cache',
       () async {
         await _game();
-        final scene = run.state.getScene<_Scene>();
+        final scene = run.state.singleScene<_Scene>();
         final parent = scene.addEntity(scene.node);
         final a = scene.addEntity(scene.node, parent: parent);
         final b = scene.addEntity(scene.node, parent: parent);
@@ -228,7 +228,7 @@ void main() {
 
     test('moving a parent invalidates every descendant even though their own local fields did not change', () async {
       await _game();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final parent = scene.addEntity(scene.node);
       final child = scene.addEntity(scene.node, parent: parent);
       scene.node.transformOffsetX[child] = 5;
@@ -253,7 +253,7 @@ void main() {
 
     test('reparenting is detected as a change even when the local offset is untouched', () async {
       await _game();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
       final parentA = scene.addEntity(scene.node);
       final parentB = scene.addEntity(scene.node);
       scene.node
@@ -290,7 +290,7 @@ void main() {
       'an unparented leaf resolves world from its own local transform',
       () async {
         await _game();
-        final scene = run.state.getScene<_Scene>();
+        final scene = run.state.singleScene<_Scene>();
 
         final entity = scene.addEntity(scene.leaf);
         scene.leaf
@@ -314,7 +314,7 @@ void main() {
       'a leaf parented under a node still composes with its ancestor',
       () async {
         await _game();
-        final scene = run.state.getScene<_Scene>();
+        final scene = run.state.singleScene<_Scene>();
 
         final parent = scene.addEntity(scene.node);
         scene.node
@@ -337,7 +337,7 @@ void main() {
     test('parent, unparent, then re-parent to the same parent with untouched '
         'offsets still recomposes', () async {
       await _game();
-      final scene = run.state.getScene<_Scene>();
+      final scene = run.state.singleScene<_Scene>();
 
       final parent = scene.addEntity(scene.node);
       scene.node.transformOffsetX[parent] = 500;

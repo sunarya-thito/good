@@ -179,7 +179,7 @@ Future<T> _boot<T extends Game>(T game) async {
   return game;
 }
 
-_StateScene _scene(Game game) => run.state.getScene<_StateScene>();
+_StateScene _scene(Game game) => run.state.singleScene<_StateScene>();
 
 void _watch(String name, StateChannel<Object?> channel) {
   channel.addListener(() => changes.add('$name -> ${channel.value}'));
@@ -209,7 +209,7 @@ void main() {
       // The declared initial value, published the moment storage was
       // allocated - not a null, not zeroed memory, not a throw.
       expect(game.gameCount.value, 7, reason: 'declared on the Game');
-      expect(run.state.getScene<_StateScene>(), same(scene));
+      expect(run.state.singleScene<_StateScene>(), same(scene));
       expect(
         game.stateCount.value,
         -5,

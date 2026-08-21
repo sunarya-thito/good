@@ -677,7 +677,7 @@ void main() {
         census.getSystem<_SystemA>(),
         same(run.state.getSystem<_SystemA>()),
       );
-      expect(census.getScene<_TestScene>(), same(_state(game).scene));
+      expect(census.singleScene<_TestScene>(), same(_state(game).scene));
       expect(census.state, same(run.state));
     });
   });
@@ -824,7 +824,7 @@ void main() {
       'a spawn command round-trips to a real entity with onMounted run',
       () async {
         final game = await _game(_TestGame());
-        final scene = _state(game).getScene<_TestScene>();
+        final scene = _state(game).singleScene<_TestScene>();
         final archetypeId = scene.unit.archetypeId;
 
         final pending = game.spawnUnit();
@@ -876,7 +876,7 @@ void main() {
       'a burst of commands travels as one batch and lands on one tick',
       () async {
         final game = await _game(_TestGame());
-        final scene = _state(game).getScene<_TestScene>();
+        final scene = _state(game).singleScene<_TestScene>();
         final id = scene.unit.archetypeId;
 
         // One batch, fifty calls: one message, one wake-up, one reply. The
@@ -905,7 +905,7 @@ void main() {
       'a user-declared command runs its handler on the game isolate',
       () async {
         final game = await _game(_CommandGame());
-        final scene = _state(game).getScene<_TestScene>();
+        final scene = _state(game).singleScene<_TestScene>();
         final entity = _state(game).loadedScenes.single.addEntity(scene.unit);
         _state(game).advance(_step);
         expect(scene.unit.x[entity], 0.0);
@@ -940,7 +940,7 @@ void main() {
 
     test('a scene refuses a prefab another scene registered', () async {
       final game = await _game(_TestGame());
-      final scene = _state(game).getScene<_TestScene>();
+      final scene = _state(game).singleScene<_TestScene>();
       // Deliberately brought up on the *same* pool the loaded scene uses.
       // That is the case a pool-identity check could not see: ownership used
       // to be inferred from pool identity, which was only ever true because a
@@ -990,7 +990,7 @@ void main() {
 
     test('the pool has committed by the time a listener runs', () async {
       final game = await _game(_TestGame());
-      final scene = _state(game).getScene<_TestScene>();
+      final scene = _state(game).singleScene<_TestScene>();
       final entity = _state(game).loadedScenes.single.addEntity(scene.unit);
       run.runtimeOrNull!.addTickListener((_) {
         expect(scene.pool.isTickOpen, isFalse);
@@ -1059,7 +1059,7 @@ void main() {
         reason: 'systems still run without a world to run over',
       );
       expect(log, ['A', 'A']);
-      expect(() => run.state.getScene<_TestScene>(), throwsStateError);
+      expect(() => run.state.singleScene<_TestScene>(), throwsStateError);
     });
 
     // DELETED: 'loadScene is explicitly unimplemented, not silently broken'.

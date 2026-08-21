@@ -217,7 +217,7 @@ class _Cell {
 Future<_Cell> _measure(int count) async {
   final game = await Game.startInline(_Bench());
   final state = game.state;
-  final scene = state.getScene<_Field>();
+  final scene = state.singleScene<_Field>();
   for (var i = 0; i < count; i++) {
     scene.handle.addEntity(scene.mote);
   }

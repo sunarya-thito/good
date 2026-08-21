@@ -269,23 +269,21 @@ component its prefab declared, which is the next section.
     No `FindObjectOfType`, no lookup by name, no lookup by tag. An entity has
     no name and no tag — it is a packed integer naming a row, and nothing in
     the engine indexes them by anything else. **You keep the handle at the
-    point you spawn it**, in an ordinary Dart field on the scene or the system
-    that spawned it:
+    point you spawn it**, and where you keep it decides whether it survives a
+    second scene:
 
+    <!-- snippet: skip a sketch of where the field lives, not a whole state -->
     ```dart
-    class Arena extends SceneStruct {
-      late final Player player;
-      late Entity playerEntity;
-
-      @override
-      void onSceneMounted(Scene scene) {
-        playerEntity = scene.addEntity(player);
-      }
+    class ArenaState extends GameState<MyGame> {
+      Entity? playerEntity;
     }
     ```
 
-    Any system then reads `getScene<Arena>().playerEntity` with no search at
-    all. The full version, and when a one-entity query is fine anyway, is in
+    A field on the `GameState` holds one handle for one loaded arena, which is
+    what most games have. Put that field on the `SceneStruct` and it breaks the
+    day you load that scene twice — see
+    [declaration versus instance](scenes.md#declaration-versus-instance). The full
+    version, and when a one-entity query is fine anyway, is in
     [The player, and the game manager](#the-player-is-an-entity-but-you-do-not-have-to-search-for-it).
 
 A handle stored in a plain field is safe as long as the entity outlives it.
@@ -852,6 +850,10 @@ class ArenaState extends GameState2D<ArenaGame> {
   int score = 0;
   int aliveCount = 0;
   int targetPopulation = 40;
+
+  /// The handle the spawn gave back. Here and not on the `SceneStruct`, which
+  /// is one object however many times its scene is loaded.
+  Entity? playerEntity;
 }
 ```
 
@@ -870,15 +872,17 @@ demo keeps its own `double _time` and a `Stopwatch`, both plain fields.
 ### The player is an entity, but you do not have to search for it
 
 The player has a transform, a sprite and a collider, so it is an entity. That
-does not mean a system should run a query to find it every tick. The scene that
-spawned it already knows:
+does not mean a system should run a query to find it every tick. Keep the
+handle the spawn gave you.
+
+Keep it on the `GameState`, not on the `SceneStruct`. The scene declaration is
+one object however many times the scene is loaded, so a handle stored there is
+overwritten by the next load with nothing raised:
 
 ```dart
 class Arena extends SceneStruct {
   late final Player player;
   late final Orc orc;
-
-  late Entity playerEntity;   // scene *content*, not per-instance config
 
   @override
   void describeScene(SceneDescriptor descriptor) {
@@ -889,7 +893,6 @@ class Arena extends SceneStruct {
 
   @override
   void onSceneMounted(Scene scene) {
-    playerEntity = scene.addEntity(player);
     for (var i = 0; i < 20; i++) {
       scene.addEntity(orc);
     }
@@ -897,15 +900,30 @@ class Arena extends SceneStruct {
 }
 ```
 
-Any system reads it directly:
+The state that loaded the scene keeps the handle, in the `playerEntity` field
+[the game manager](#a-game-manager-is-not-an-entity) already declares:
+
+<!-- snippet: skip the mount body, not a whole state -->
+```dart
+final scene = await loadScene(game.arena);
+playerEntity = scene.addEntity(game.arena.player);
+```
+
+A system reads it through the state it already has:
 
 ```dart
-final arena = getScene<Arena>();
-final px = arena.player.transformOffsetX[arena.playerEntity];
+final arena = singleScene<Arena>();
+final state = getState<ArenaState>();
+final px = arena.player.transformOffsetX[state.playerEntity!];
 ```
 
 One field read and one indexed column read. No query, no search, no
 `FindObjectOfType`.
+
+`singleScene<Arena>()` throws once a second scene is loaded, which is what its
+name is for. A game that keeps a HUD or a pause menu resident reaches its
+scenes through `state.loadedScenes` or the handle `loadScene` returned, and
+asks an entity which scene it belongs to with `entity.sceneSlot`.
 
 ### When a query over one entity is fine anyway
 
