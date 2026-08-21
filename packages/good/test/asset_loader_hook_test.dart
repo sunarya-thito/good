@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:good/src/archetype.dart';
 import 'package:good/src/asset.dart';
+import 'package:good/src/audio/audio_clip.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/scene_handle.dart';
@@ -141,6 +142,28 @@ void main() {
       reason: 'and the type only it declared is registered too',
     );
   });
+
+  test('the kernel registers its own payload type unasked', () async {
+    // `AudioClip` is the one payload the kernel ships - bytes and a container
+    // name, no canvas and no dimension - so the kernel registers its decoder
+    // and every game gets audio loading without declaring anything. That is
+    // what lets a 3D project load a sound (#93); goo3d declares no loaders at
+    // all.
+    await _boot(_BareGame());
+    expect(AssetLoaders.isRegistered<AudioClip>(), isTrue);
+  });
+
+  test(
+    'a game that overrides the hook still inherits the kernel decoder',
+    () async {
+      await _boot(_UserGame());
+      expect(
+        AssetLoaders.isRegistered<AudioClip>(),
+        isTrue,
+        reason: 'the super chain reaches Game, which registers it',
+      );
+    },
+  );
 
   test('the engine layer still contributes when the game adds its own', () async {
     // The failure this guards is a subclass that overrides the hook and forgets

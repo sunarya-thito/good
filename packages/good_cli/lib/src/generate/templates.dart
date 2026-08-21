@@ -26,7 +26,7 @@ String emitTextures(
 }) => _emitEnum(
   assets: scan.textures,
   enumName: 'Textures',
-  payload: payloadType(package, 'Texture'),
+  payload: rendererPayloadType(package, 'Texture'),
   command: command,
   package: package,
   emptyNote: 'image',
@@ -44,27 +44,32 @@ String emitAudios(
 }) => _emitEnum(
   assets: scan.audio,
   enumName: 'Audios',
-  payload: payloadType(package, 'AudioClip'),
+  payload: 'AudioClip',
   command: command,
   package: package,
   emptyNote: 'audio',
 );
 
-/// What an asset of some kind loads to, named as the project's engine package
-/// spells it - or `Object?` where that package has no name for it.
+/// What a **renderer's** asset kind loads to, named as the project's engine
+/// package spells it - or `Object?` where that package has no name for it.
 ///
-/// `Texture` and `AudioClip` are `goo2d` types: they are what its loaders
-/// produce, and no other engine package declares them. `goo3d` registers no
-/// asset loaders at all yet - they arrive with the renderer, issue #43 - so a
-/// 3D project has nothing for a key to be typed to. Naming [goo2dType] anyway
-/// is what this used to do, and it emitted four `Texture isn't a type` errors
-/// into the first `flutter analyze` a 3D project ever ran.
+/// `Texture` is a `goo2d` type: it is what its loader produces, and it is a
+/// `ui.Image` behind a handle, which is only meaningful to something that can
+/// draw one. `goo3d` has no renderer until #43, so a 3D project has nothing
+/// for a texture key to be typed to. Naming the 2D type anyway is what this
+/// used to do, and it emitted four `Texture isn't a type` errors into the
+/// first `flutter analyze` a 3D project ever ran.
 ///
 /// `Object?` and not a refusal to generate: the keys still compile, `.values`
 /// still walks them for the readiness check, and nothing claims a payload type
-/// that does not exist. It narrows on its own the day `goo3d` has a loader.
-String payloadType(String package, String goo2dType) =>
-    package == 'goo2d' ? goo2dType : 'Object?';
+/// that does not exist. It narrows on its own the day `goo3d` can draw.
+///
+/// Audio does **not** come through here any more. `AudioClip` moved into the
+/// kernel (#93), which every engine package re-exports, so an audio key is
+/// typed for a 3D project exactly as it is for a 2D one - it is bytes and a
+/// container name, with no canvas or dimension anywhere in it.
+String rendererPayloadType(String package, String rendererType) =>
+    package == 'goo2d' ? rendererType : 'Object?';
 
 String _emitEnum({
   required List<DiscoveredAsset> assets,

@@ -11,6 +11,7 @@ import 'package:vector_math/vector_math_64.dart' show Vector2;
 
 import 'package:good/src/archetype.dart';
 import 'package:good/src/asset.dart';
+import 'package:good/src/audio/audio_clip.dart';
 import 'package:good/src/camera_view.dart';
 import 'package:good/src/command/command.dart';
 import 'package:good/src/command/param.dart';
@@ -436,7 +437,14 @@ abstract class Game {
   /// (#83). Audio has no canvas to hang on at all, so there was no second
   /// place to put the same trick.
   @mustCallSuper
-  void describeAssetLoaders(AssetLoaderRegistrar loaders) {}
+  void describeAssetLoaders(AssetLoaderRegistrar loaders) {
+    // The kernel ships one payload type, so the kernel registers its decoder.
+    // `AudioClip` is bytes and a container name - no canvas, no device, no
+    // dimension - which is why it sits here rather than in a renderer package
+    // and why a 3D game gets sound loading without goo3d declaring anything
+    // (#93). Reading the bytes is all this buys: nothing here plays them.
+    loaders.register<AudioClip>(const AudioLoader());
+  }
 
   /// This game's declared camera views. Empty until [describeCameras] has
   /// run; both isolate copies see the same table, because it rides the deep

@@ -1,12 +1,13 @@
 import 'dart:typed_data';
 
-import 'package:good/good.dart';
+import 'package:good/src/asset.dart';
 
 /// An audio file's bytes, loaded and addressed like any other asset.
 ///
 /// # What this is not
 ///
-/// It is **not** playback. goo2d has no audio backend, no mixer and no voice
+/// It is **not** playback. This engine has no audio backend, no mixer and no
+/// voice
 /// management, and this does not pretend otherwise: the bytes are read and
 /// held, and nothing decodes or plays them. What it *is* is the other half of
 /// the asset pipeline - a clip can be declared in `describeAssets`, addressed,

@@ -404,16 +404,40 @@ flutter:
       );
     });
 
-    test('an asset has a payload type only where the engine names one', () {
-      expect(payloadType('goo2d', 'Texture'), 'Texture');
+    test('a renderer payload is typed only where the engine draws', () {
+      expect(rendererPayloadType('goo2d', 'Texture'), 'Texture');
       expect(
-        payloadType('goo3d', 'Texture'),
+        rendererPayloadType('goo3d', 'Texture'),
         'Object?',
         reason:
-            'Texture and AudioClip are goo2d types. Naming them in a 3D '
-            "project's generated bindings put four `Texture isn't a type` "
-            'errors into its first flutter analyze',
+            'Texture is a goo2d type - a ui.Image behind a handle, meaningful '
+            "only to something that can draw one. Naming it in a 3D project's "
+            "generated bindings put four `Texture isn't a type` errors into "
+            'its first flutter analyze',
       );
+    });
+
+    test('an audio key is typed in a 3D project too', () {
+      // AudioClip moved into the kernel (#93), and every engine package
+      // re-exports the kernel - so this one needs no per-package answer. It
+      // used to come back `Object?` for goo3d, which is why a 3D project could
+      // declare a sound and never load it.
+      for (final package in <String>['goo2d', 'goo3d', 'good']) {
+        expect(
+          emitAudios(
+            const AssetScan(
+              textures: <DiscoveredAsset>[],
+              audio: <DiscoveredAsset>[],
+              unsupported: <String, String>{},
+              declaredEntries: <String>[],
+            ),
+            command: 'good generate',
+            package: package,
+          ),
+          contains('LocalEnumAssetKey<AudioClip>'),
+          reason: '$package re-exports the kernel, so it names AudioClip',
+        );
+      }
     });
   });
 

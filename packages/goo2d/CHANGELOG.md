@@ -21,6 +21,10 @@ that has any y in it.
 
 ### Fixed
 
+* **`AudioClip` moved into the kernel.** Nothing to do: `goo2d` re-exports the
+  kernel, so every name is where it was. It moved because a clip has no canvas
+  or dimension in it and a 3D project needs sound too (#93).
+
 * **Audio assets load.** `AudioLoader` was written and registered nowhere, so
   every `Audios.x` load threw `StateError` - the CLI transcoded a clip, keyed
   it, packed it and shipped it, and the pipeline stopped there. `Game2D`

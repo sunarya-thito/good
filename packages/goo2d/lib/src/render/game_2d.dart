@@ -8,7 +8,6 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart' hide Texture;
 import 'package:good/good.dart';
 
-import 'package:goo2d/src/audio/audio_clip.dart';
 import 'package:goo2d/src/data/world_transform.dart';
 import 'package:goo2d/src/render/draw/draw_2d.dart';
 import 'package:goo2d/src/render/render_2d.dart';
@@ -59,20 +58,6 @@ abstract class Game2D extends Game with Renderer2D {
   /// `describeSystems` was a `Game` pass.
   @override
   GameState2D createState();
-
-  /// Adds the audio decoder to the texture one [Renderer2D] registers.
-  ///
-  /// Here rather than on that mixin because a clip has nothing to do with
-  /// drawing: this is the goo2d game base, so it is where the payload types
-  /// goo2d ships all become loadable. Note what it does **not** buy - goo2d
-  /// has no audio backend, no mixer and no voice management, so a loaded
-  /// `AudioClip` is bytes held in memory and nothing plays them yet.
-  @override
-  @mustCallSuper
-  void describeAssetLoaders(AssetLoaderRegistrar loaders) {
-    super.describeAssetLoaders(loaders);
-    loaders.register<AudioClip>(const AudioLoader());
-  }
 }
 
 /// The simulation half of [Game2D] - declares the two systems 2D rendering

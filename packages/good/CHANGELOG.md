@@ -39,6 +39,15 @@ sorting. Several checks that used to let a mistake through now stop it.
 
 ### Added
 
+* **`AudioClip` is a kernel type, and the kernel registers its decoder.** It
+  was in `goo2d`, which put sound behind a 2D renderer for no reason it could
+  defend: a clip is bytes and a container name, with no canvas, device or
+  dimension in it. A `goo3d` project could load nothing at all as a result
+  (#93). Every engine package re-exports the kernel, so `AudioClip`,
+  `AudioLoader`, `AudioKey` and `AudioAsset` are named exactly where they were
+  for a `goo2d` game and are now reachable from a 3D one. `Game` registers the
+  decoder itself, so no game declares anything to get it. Still no playback.
+
 * **`Game.describeAssetLoaders` registers a payload type's decoder.** It joins
   `describeState`, `describeScenes`, `describeCommands`, `describeBuffers` and
   `describeCameras`, chains through `super` the same way, and is the one of
