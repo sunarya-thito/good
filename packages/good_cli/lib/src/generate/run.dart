@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:good_cli/src/generate/assets.dart';
-import 'package:good_cli/src/generate/shadow_scan.dart';
+import 'package:good_cli/src/generate/struct_scan.dart';
 import 'package:good_cli/src/generate/templates.dart';
 import 'package:good_cli/src/verbosable.dart';
 
@@ -43,12 +43,15 @@ int runGenerate({
   // gets refused (#107), and it is the command a build runs whether or not
   // there is an asset to chunk, which is why this is here and not in the scene
   // scan that only asset packing calls.
-  final shadow = scanShadowedFields(project);
+  final shadow = scanStructRules(project);
   for (final entry in shadow.unresolved.entries) {
     verbose.println('Not compared: ${entry.key} - ${entry.value}');
   }
-  if (!shadow.isEmpty) {
+  if (shadow.shadowed.isNotEmpty) {
     throw ArgumentError(shadowedFieldsMessage(shadow));
+  }
+  if (shadow.missingSuper.isNotEmpty) {
+    throw ArgumentError(missingSuperMessage(shadow));
   }
 
   verbose.printf('Declared asset entries: %s\n', [

@@ -127,8 +127,23 @@ class Enemy() extends EntityStruct with Transform2D, Renderable2D, Health;
 ```
 
 `describeType` must call `super` — each mixin in the chain contributes, and
-skipping `super` silently drops everything below it. Columns declared as fields
-need no such discipline: Dart runs every initialiser in the chain itself.
+skipping `super` silently drops everything below it. The same goes for
+`describeAssets` and `describeStruct`. Columns declared as fields need no such
+discipline: Dart runs every initialiser in the chain itself.
+
+On your own `EntityStruct` subclass the analyzer enforces this, because the
+hook it overrides carries `@mustCallSuper`. Inside a component mixin it cannot:
+that annotation reports only where there is a concrete implementation
+underneath, and `Component` declares all three hooks with no body. So
+`good generate` checks it instead, and stops:
+
+```
+Velocity.describeType does not call super.describeType()
+  lib/velocity.dart
+```
+
+A mixin that never overrides a hook is fine and is not mentioned. Only an
+override that leaves the call out is the defect.
 
 !!! warning "Field names collide across mixins"
     A component is a mixin, so two of them declaring a field called `speed` is

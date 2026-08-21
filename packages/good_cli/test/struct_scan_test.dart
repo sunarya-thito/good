@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:good_cli/src/generate/shadow_scan.dart';
+import 'package:good_cli/src/generate/struct_scan.dart';
 import 'package:test/test.dart';
 
 // Two components on one struct declaring the same field name.
@@ -70,7 +70,7 @@ class Player extends EntityStruct with Velocity, Momentum {}
 ''',
     });
 
-    final scan = scanShadowedFields(dir);
+    final scan = scanStructRules(dir);
     expect(scan.shadowed, hasLength(1));
     final hit = scan.shadowed.single;
     expect(hit.field, 'speed');
@@ -102,7 +102,7 @@ class Player extends EntityStruct with Velocity, Health {}
 ''',
     });
 
-    expect(scanShadowedFields(dir).shadowed, isEmpty);
+    expect(scanStructRules(dir).shadowed, isEmpty);
   });
 
   test('a collision through the superclass chain is found', () {
@@ -121,7 +121,7 @@ class Player extends Base with Health {}
 ''',
     });
 
-    final scan = scanShadowedFields(dir);
+    final scan = scanStructRules(dir);
     expect(scan.shadowed.map((s) => '${s.winner}.${s.field}'), <String>[
       'Health.speed',
     ]);
@@ -138,7 +138,7 @@ mixin Velocity on Component {
 ''',
     });
 
-    final scan = scanShadowedFields(dir);
+    final scan = scanStructRules(dir);
     expect(scan.shadowed, isEmpty);
     expect(
       scan.unresolved.keys,
@@ -170,7 +170,7 @@ class Player extends EntityStruct with Velocity, Health {}
 ''',
     });
 
-    final scan = scanShadowedFields(dir);
+    final scan = scanStructRules(dir);
     expect(
       scan.shadowed,
       isEmpty,
@@ -203,7 +203,7 @@ mixin Child on Component {
 }
 ''');
 
-    final scan = scanShadowedFields(dir);
+    final scan = scanStructRules(dir);
     expect(scan.shadowed, hasLength(1));
     expect(scan.shadowed.single.field, 'parent');
     expect(scan.shadowed.single.loser, 'Child');
@@ -225,7 +225,7 @@ class Crate extends EntityStruct with Child, Ownership {}
 ''',
     });
 
-    final scan = scanShadowedFields(dir);
+    final scan = scanStructRules(dir);
     expect(scan.shadowed, isEmpty);
     expect(scan.unresolved.keys, contains('Crate with Child'));
   });
@@ -263,7 +263,7 @@ mixin Child on Component {
 }
 ''');
 
-    final scan = scanShadowedFields(dir);
+    final scan = scanStructRules(dir);
     expect(scan.shadowed.map((s) => '${s.winner}.${s.field}'), <String>[
       'Ownership.parent',
     ]);
@@ -284,7 +284,7 @@ class Player extends EntityStruct with Velocity, Fast {}
 ''',
     });
 
-    expect(scanShadowedFields(dir).shadowed, isEmpty);
+    expect(scanStructRules(dir).shadowed, isEmpty);
   });
 
   test('two plain fields colliding are not this check\'s business', () {
@@ -301,7 +301,7 @@ class Player extends EntityStruct with Velocity, Fast {}
     });
 
     expect(
-      scanShadowedFields(dir).shadowed,
+      scanStructRules(dir).shadowed,
       isEmpty,
       reason:
           'no column is allocated either side, so no row grows and nothing is '
@@ -314,8 +314,231 @@ class Player extends EntityStruct with Velocity, Fast {}
     addTearDown(() {
       if (dir.existsSync()) dir.deleteSync(recursive: true);
     });
-    final scan = scanShadowedFields(dir);
+    final scan = scanStructRules(dir);
     expect(scan.isEmpty, isTrue);
     expect(scan.unresolved, isEmpty);
+  });
+
+  // --- #64: a component mixin that stops chaining a declare-time hook ------
+  //
+  // `@mustCallSuper` cannot reach this. It reports only where the analyzer
+  // finds a concrete super implementation to point at, and `Component`
+  // declares describeType, describeAssets and describeStruct with no body - so
+  // the annotation is inert exactly where mixins chain. A user's own struct
+  // subclass is covered, because the lookup walks past the mixins to
+  // `EntityStruct`. Library and third-party component mixins are the gap.
+  //
+  // Surveyed before any of this was written: all fourteen describeX overrides
+  // across the engine's eleven component mixins chain, so no legitimate
+  // pattern here overrides without calling super.
+
+  group('a component mixin has to chain its declare-time hooks', () {
+    test('an override that drops the call is named with its hook and file', () {
+      final dir = _project(<String, String>{
+        'velocity.dart': '''
+mixin Velocity on Component {
+  final speed = Field.float64();
+
+  @override
+  void describeType(ComponentDescriptor component) {
+    component.has<Velocity>();
+  }
+}
+''',
+      });
+
+      final scan = scanStructRules(dir);
+      expect(scan.missingSuper, hasLength(1));
+      final hit = scan.missingSuper.single;
+      expect(hit.mixin, 'Velocity');
+      expect(hit.hook, 'describeType');
+      expect(hit.file, endsWith('velocity.dart'));
+      expect(
+        missingSuperMessage(scan),
+        contains('Velocity.describeType does not call super.describeType()'),
+      );
+    });
+
+    test('an override that chains is left alone', () {
+      final dir = _project(<String, String>{
+        'game.dart': '''
+mixin Velocity on Component {
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<Velocity>();
+  }
+}
+''',
+      });
+      expect(scanStructRules(dir).missingSuper, isEmpty);
+    });
+
+    test('a mixin that overrides no hook at all is not mentioned', () {
+      final dir = _project(<String, String>{
+        'game.dart': '''
+mixin Velocity on Component {
+  final speed = Field.float64();
+}
+''',
+      });
+      final scan = scanStructRules(dir);
+      expect(scan.missingSuper, isEmpty);
+      expect(scan.unresolved, isEmpty);
+    });
+
+    test('a MultiComponent mixin is held to the same rule', () {
+      final dir = _project(<String, String>{
+        'game.dart': '''
+mixin Renderable2D on MultiComponent {
+  @override
+  void describeStruct(DataDescriptor data) {
+    data.hasFloat64();
+  }
+}
+''',
+      });
+      expect(scanStructRules(dir).missingSuper.single.mixin, 'Renderable2D');
+    });
+
+    test('an arrow-bodied override counts as chaining', () {
+      final dir = _project(<String, String>{
+        'game.dart': '''
+mixin Velocity on Component {
+  @override
+  void describeAssets(AssetDescriptor descriptor) =>
+      super.describeAssets(descriptor);
+}
+''',
+      });
+      expect(scanStructRules(dir).missingSuper, isEmpty);
+    });
+
+    test('chaining a different hook does not count', () {
+      // Calling super.describeStruct from describeType leaves the describeType
+      // chain cut, and runs the other pass twice.
+      final dir = _project(<String, String>{
+        'game.dart': '''
+mixin Velocity on Component {
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeStruct(component);
+  }
+}
+''',
+      });
+      expect(scanStructRules(dir).missingSuper.single.hook, 'describeType');
+    });
+
+    test('the call has to be code, not a comment or a string', () {
+      // Matched on the AST. A text search would call both of these chained.
+      final dir = _project(<String, String>{
+        'game.dart': '''
+mixin Velocity on Component {
+  @override
+  void describeType(ComponentDescriptor component) {
+    // super.describeType(component);
+    final note = 'super.describeType(component)';
+    component.has<Velocity>();
+  }
+}
+''',
+      });
+      expect(scanStructRules(dir).missingSuper, hasLength(1));
+    });
+
+    test('a mixin constrained to another component mixin is covered', () {
+      final dir = _project(<String, String>{
+        'game.dart': '''
+mixin Transform2D on Component {
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+  }
+}
+mixin Aimed on Transform2D {
+  @override
+  void describeStruct(DataDescriptor data) {
+    data.hasFloat64();
+  }
+}
+''',
+      });
+      final scan = scanStructRules(dir);
+      expect(scan.missingSuper.single.mixin, 'Aimed');
+      expect(scan.missingSuper.single.hook, 'describeStruct');
+    });
+
+    test('a mixin on an unrelated type is not this rule to apply', () {
+      // `describeStruct` on a mixin that is not a component means nothing here,
+      // and failing a build over it would be the false positive that makes the
+      // check hostile.
+      final dir = _project(<String, String>{
+        'game.dart': '''
+mixin Reporting on StringBuffer {
+  void describeStruct(DataDescriptor data) {
+    data.hasFloat64();
+  }
+}
+''',
+      });
+      expect(scanStructRules(dir).missingSuper, isEmpty);
+    });
+
+    test('a hook on a mixin whose constraint went unread is reported', () {
+      final dir = _project(<String, String>{
+        'game.dart': '''
+mixin Velocity on SomethingElsewhere {
+  @override
+  void describeType(ComponentDescriptor component) {
+    component.has<Velocity>();
+  }
+}
+''',
+      });
+      final scan = scanStructRules(dir);
+      expect(
+        scan.missingSuper,
+        isEmpty,
+        reason: 'nothing says this is a component, so nothing is failed over',
+      );
+      expect(
+        scan.unresolved.keys,
+        contains('Velocity on SomethingElsewhere'),
+        reason: 'but it declares a declare-time hook, so it is worth saying',
+      );
+    });
+
+    test('a struct subclass is left to @mustCallSuper', () {
+      final dir = _project(<String, String>{
+        'game.dart': '''
+class Player extends EntityStruct {
+  @override
+  void describeStruct(DataDescriptor data) {
+    data.hasFloat64();
+  }
+}
+''',
+      });
+      expect(
+        scanStructRules(dir).missingSuper,
+        isEmpty,
+        reason:
+            'the analyzer already enforces this one, and reporting it twice '
+            'would put two different errors on one line',
+      );
+    });
+
+    test('a bodiless hook declaration overrides nothing and is skipped', () {
+      final dir = _project(<String, String>{
+        'game.dart': '''
+mixin Velocity on Component {
+  @override
+  void describeType(ComponentDescriptor component);
+}
+''',
+      });
+      expect(scanStructRules(dir).missingSuper, isEmpty);
+    });
   });
 }

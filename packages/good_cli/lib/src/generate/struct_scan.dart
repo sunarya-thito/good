@@ -31,12 +31,38 @@ class ShadowedField {
   final String loserFile;
 }
 
+/// One `describeX` override in a component mixin that does not chain.
 @immutable
-class ShadowScan {
-  const ShadowScan({required this.shadowed, required this.unresolved});
+class MissingSuperCall {
+  const MissingSuperCall({
+    required this.mixin,
+    required this.hook,
+    required this.file,
+  });
+
+  /// The mixin whose override drops the call.
+  final String mixin;
+
+  /// `describeType`, `describeAssets` or `describeStruct`.
+  final String hook;
+
+  final String file;
+}
+
+@immutable
+class StructScan {
+  const StructScan({
+    required this.shadowed,
+    required this.missingSuper,
+    required this.unresolved,
+  });
 
   /// Every collision found, in the order the structs were read.
   final List<ShadowedField> shadowed;
+
+  /// Every component mixin that overrides a declare-time hook and does not
+  /// chain to the one below it.
+  final List<MissingSuperCall> missingSuper;
 
   /// Mixins in some struct's applied order this pass could not read, as
   /// `Struct with Mixin -> why`.
@@ -48,7 +74,9 @@ class ShadowScan {
   /// different reasons.
   final Map<String, String> unresolved;
 
-  bool get isEmpty => shadowed.isEmpty;
+  /// Whether the scan found nothing that should stop a build. [unresolved] is
+  /// reported and does not count - see its own doc.
+  bool get isEmpty => shadowed.isEmpty && missingSuper.isEmpty;
 }
 
 /// Finds columns that two declarations on one struct declare under one name.
@@ -81,13 +109,14 @@ class ShadowScan {
 /// those are the collisions a user is likeliest to walk into.
 ///
 /// A name that resolves to two different files is not guessed at. Both land in
-/// [ShadowScan.unresolved], because a build error that fires wrongly is worse
+/// [StructScan.unresolved], because a build error that fires wrongly is worse
 /// than the bug it is looking for.
-ShadowScan scanShadowedFields(Directory projectDir) {
+StructScan scanStructRules(Directory projectDir) {
   final roots = _scanRoots(projectDir);
   if (roots.isEmpty) {
-    return const ShadowScan(
+    return const StructScan(
       shadowed: <ShadowedField>[],
+      missingSuper: <MissingSuperCall>[],
       unresolved: <String, String>{},
     );
   }
@@ -128,16 +157,24 @@ ShadowScan scanShadowedFields(Directory projectDir) {
   }
 
   _markStructs(byName);
+  _markComponentMixins(byName);
 
   final shadowed = <ShadowedField>[];
+  final missingSuper = <MissingSuperCall>[];
   final unresolved = <String, String>{};
   for (final owners in byName.values) {
     for (final owner in owners) {
-      if (!owner.isStruct) continue;
-      _check(owner, byName, shadowed, unresolved, projectDir);
+      if (owner.isStruct) {
+        _check(owner, byName, shadowed, unresolved, projectDir);
+      }
+      _checkHooks(owner, byName, missingSuper, unresolved, projectDir);
     }
   }
-  return ShadowScan(shadowed: shadowed, unresolved: unresolved);
+  return StructScan(
+    shadowed: shadowed,
+    missingSuper: missingSuper,
+    unresolved: unresolved,
+  );
 }
 
 /// Decides which classes are laid out as entity rows, so the rest are skipped.
@@ -186,6 +223,99 @@ void _markStructs(Map<String, List<_Owner>> byName) {
         }
       }
     }
+  }
+}
+
+/// Decides which mixins end up applied to a `Component`, and are therefore
+/// subject to the chained-hook rule.
+///
+/// `mixin Transform2D on Component` is the direct case. A mixin constrained to
+/// another component mixin - `mixin Aimed on Transform2D` - is one too, and
+/// needs a fixed point for the same reason [_markStructs] does: the files
+/// arrive in no order, so `Aimed` can only be settled once `Transform2D` is.
+void _markComponentMixins(Map<String, List<_Owner>> byName) {
+  for (final owners in byName.values) {
+    for (final owner in owners) {
+      owner.isComponentMixin =
+          owner.isMixin && owner.onConstraints.any(_isComponentRoot);
+    }
+  }
+
+  var changed = true;
+  while (changed) {
+    changed = false;
+    for (final owners in byName.values) {
+      for (final owner in owners) {
+        if (!owner.isMixin || owner.isComponentMixin) continue;
+        for (final constraint in owner.onConstraints) {
+          final candidates = byName[constraint];
+          if (candidates == null) continue;
+          if (candidates.any((c) => c.isComponentMixin)) {
+            owner.isComponentMixin = true;
+            changed = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+}
+
+/// The two interfaces a component mixin is constrained to.
+bool _isComponentRoot(String name) =>
+    name == 'Component' || name == 'MultiComponent';
+
+/// Reports a component mixin whose `describeX` override does not chain.
+///
+/// # Why a mixin and not a class
+///
+/// `EntityStruct` and friends carry `@mustCallSuper` on these hooks, and the
+/// analyzer enforces it for anything that overrides them - a user's own struct
+/// subclass is already covered. It cannot be made to cover a component mixin:
+/// `@mustCallSuper` reports only where there is a concrete super implementation
+/// to point at, and `Component` declares all three hooks with no body. So the
+/// annotation is inert exactly where mixins chain, which is the whole of the
+/// gap and the reason this is here.
+///
+/// A mixin that never overrides a hook is fine and is not mentioned. Only an
+/// override that leaves the call out is a defect, and the engine's own eleven
+/// component mixins all chain, so this fires on nothing that ships today.
+void _checkHooks(
+  _Owner owner,
+  Map<String, List<_Owner>> byName,
+  List<MissingSuperCall> into,
+  Map<String, String> unresolved,
+  Directory projectDir,
+) {
+  // No `isMixin` test: [_markComponentMixins] only ever sets this on a mixin,
+  // so asking twice would be a second guard standing in front of the first -
+  // and a redundant guard is what lets a test pass while the check it names is
+  // switched off.
+  if (owner.hooks.isEmpty) return;
+  if (!owner.isComponentMixin) {
+    // It overrides a declare-time hook but nothing says it is a component. If
+    // its constraint is simply something this pass never read, that is worth
+    // saying; if it is a mixin on some unrelated type that happens to declare a
+    // method by the same name, there is nothing to report and nothing to warn
+    // about either.
+    final unreadable = owner.onConstraints.where((c) => byName[c] == null);
+    for (final constraint in unreadable) {
+      unresolved['${owner.name} on $constraint'] =
+          'declares ${owner.hooks.map((h) => h.hook).join(', ')} but its '
+          'constraint was not read, so whether it is a component mixin is '
+          'unknown and its chaining was not checked';
+    }
+    return;
+  }
+  for (final hook in owner.hooks) {
+    if (hook.callsSuper) continue;
+    into.add(
+      MissingSuperCall(
+        mixin: owner.name,
+        hook: hook.hook,
+        file: _display(owner.file, projectDir),
+      ),
+    );
   }
 }
 
@@ -330,7 +460,7 @@ List<String> _scanRoots(Directory projectDir) {
 /// config.
 ///
 /// Absent before a `pub get`, and that is not an error here: the mixins go to
-/// [ShadowScan.unresolved] and are reported, which is the same answer this pass
+/// [StructScan.unresolved] and are reported, which is the same answer this pass
 /// gives for any other declaration it cannot read.
 List<String> _enginePackageLibs(Directory projectDir) {
   final file = File(
@@ -370,7 +500,7 @@ List<String> _enginePackageLibs(Directory projectDir) {
 ///
 /// The kernel plus anything built on it - `goo2d`, `goo3d`, a physics backend.
 /// A third-party component package is not covered and lands in
-/// [ShadowScan.unresolved]; widening this to every dependency would mean
+/// [StructScan.unresolved]; widening this to every dependency would mean
 /// parsing Flutter itself on every generate.
 bool _isEnginePackage(String name) => name == 'good' || name.startsWith('goo');
 
@@ -419,9 +549,60 @@ class _Owner {
   /// because it depends on what the class descends from.
   bool isStruct = false;
 
+  /// Whether this is a mixin that ends up applied to a `Component`, and so is
+  /// subject to the chained-hook rule. Set by [_markComponentMixins].
+  bool isComponentMixin = false;
+
+  /// True for a `mixin` declaration, false for a `class`.
+  bool isMixin = false;
+
   String? superName;
+
+  /// The `on` clause of a mixin declaration.
+  final List<String> onConstraints = <String>[];
+
   final List<String> mixes = <String>[];
   final List<_Field> fields = <_Field>[];
+
+  /// The declare-time hooks this declaration overrides with a body.
+  final List<_HookOverride> hooks = <_HookOverride>[];
+}
+
+/// One `describeX` override, and whether it chains.
+@immutable
+class _HookOverride {
+  const _HookOverride(this.hook, {required this.callsSuper});
+
+  final String hook;
+  final bool callsSuper;
+}
+
+/// The declare-time passes a component contributes to, each chained through
+/// every mixin on the entity.
+const Set<String> _describeHooks = <String>{
+  'describeType',
+  'describeAssets',
+  'describeStruct',
+};
+
+/// Looks for `super.<hook>(...)` anywhere in one method body.
+///
+/// Matched on the AST and not the text, so a mention inside a comment or a
+/// string is not a call, and `super.describeStruct(data)` inside a
+/// `describeType` body does not count as chaining `describeType`.
+class _SuperCallVisitor extends RecursiveAstVisitor<void> {
+  _SuperCallVisitor(this._hook);
+
+  final String _hook;
+  bool found = false;
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    if (node.target is SuperExpression && node.methodName.name == _hook) {
+      found = true;
+    }
+    super.visitMethodInvocation(node);
+  }
 }
 
 /// Collects declarations and the fields they declare.
@@ -439,16 +620,41 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
       owner.mixes.add(type.name2.lexeme);
     }
     _readFields(node.members, owner);
+    _readHooks(node.members, owner);
     owners.add(owner);
     super.visitClassDeclaration(node);
   }
 
   @override
   void visitMixinDeclaration(MixinDeclaration node) {
-    final owner = _Owner(node.name.lexeme, _file);
+    final owner = _Owner(node.name.lexeme, _file)..isMixin = true;
+    for (final type
+        in node.onClause?.superclassConstraints ?? const <NamedType>[]) {
+      owner.onConstraints.add(type.name2.lexeme);
+    }
     _readFields(node.members, owner);
+    _readHooks(node.members, owner);
     owners.add(owner);
     super.visitMixinDeclaration(node);
+  }
+
+  /// Records each declare-time hook this declaration overrides with a body,
+  /// and whether that body chains to the one it is overriding.
+  ///
+  /// A bodiless declaration is skipped. `Component` itself declares all three
+  /// with no body, and re-declaring one abstract overrides nothing at run
+  /// time - there is no call to leave out.
+  void _readHooks(List<ClassMember> members, _Owner owner) {
+    for (final member in members) {
+      if (member is! MethodDeclaration) continue;
+      final hook = member.name.lexeme;
+      if (!_describeHooks.contains(hook)) continue;
+      final body = member.body;
+      if (body is EmptyFunctionBody) continue;
+      final visitor = _SuperCallVisitor(hook);
+      body.accept(visitor);
+      owner.hooks.add(_HookOverride(hook, callsSuper: visitor.found));
+    }
   }
 
   void _readFields(List<ClassMember> members, _Owner owner) {
@@ -498,7 +704,7 @@ bool _isColumn(VariableDeclaration variable, TypeAnnotation? declaredType) {
 }
 
 /// What `good generate` prints when it refuses to proceed.
-String shadowedFieldsMessage(ShadowScan scan) {
+String shadowedFieldsMessage(StructScan scan) {
   final lines = StringBuffer()
     ..writeln('Two declarations on one struct share a field name.')
     ..writeln();
@@ -527,6 +733,40 @@ String shadowedFieldsMessage(ShadowScan scan) {
   return lines.toString();
 }
 
+/// What `good generate` prints when a component mixin stops chaining.
+String missingSuperMessage(StructScan scan) {
+  final lines = StringBuffer()
+    ..writeln(
+      'A component mixin overrides a declare-time hook without '
+      'chaining it.',
+    )
+    ..writeln();
+  for (final hit in scan.missingSuper) {
+    lines
+      ..writeln(
+        '  ${hit.mixin}.${hit.hook} does not call '
+        'super.${hit.hook}()',
+      )
+      ..writeln('    ${hit.file}');
+  }
+  lines
+    ..writeln()
+    ..writeln(
+      'Each pass is chained through every mixin on the entity, so the one '
+      'that stops calling super cuts off every mixin applied before it. Those '
+      'components contribute no columns and no query bit, and the entity is '
+      'missing that data with nothing said at run time.',
+    )
+    ..writeln()
+    ..writeln(
+      'Add the call as the first statement of the override. Dart cannot '
+      'require it here the way it does on a struct subclass: the annotation '
+      'that enforces it needs a concrete implementation underneath, and '
+      'Component declares these hooks with no body.',
+    );
+  return lines.toString();
+}
+
 /// What it prints for the parts it could not read - a warning, never a
 /// failure.
 ///
@@ -535,7 +775,7 @@ String shadowedFieldsMessage(ShadowScan scan) {
 /// hostile to exactly the third-party components the naming convention exists
 /// for. Saying which parts went unread is what keeps a clean run from meaning
 /// two different things.
-String unreadPartsMessage(ShadowScan scan) {
+String unreadPartsMessage(StructScan scan) {
   final lines = StringBuffer()
     ..writeln(
       'Some parts of a struct could not be read, and were not '
