@@ -107,7 +107,7 @@ class CompactCommand extends Command with Verbose {
       );
     } on FfmpegUnavailable catch (error) {
       err.println(error.message);
-      return;
+      throw const CommandFailure();
     }
 
     final result = await impl.runCompaction(
@@ -130,6 +130,9 @@ class CompactCommand extends Command with Verbose {
     for (final entry in result.failed.entries) {
       err.printf('  %s: %s\n', [entry.key, entry.value]);
     }
+    // A file that would not convert is an asset the game ships without. The
+    // report above is the detail; this is what makes the build stop.
+    throw const CommandFailure();
   }
 
   void _report(GoodConfig config, Directory source, Directory output) {

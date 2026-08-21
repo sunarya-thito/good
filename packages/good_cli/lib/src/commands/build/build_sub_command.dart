@@ -123,7 +123,7 @@ abstract class BuildSubCommand extends Command with Verbose {
     info.println('');
     info.println('[1/4] compacting assets');
     final compacted = await _compact(project, config);
-    if (compacted == null) return;
+    if (compacted == null) throw const CommandFailure();
 
     info.println('[2/4] generating bindings');
     runGenerate(
@@ -134,10 +134,10 @@ abstract class BuildSubCommand extends Command with Verbose {
     );
 
     info.println('[3/4] packing assets');
-    if (!await _pack(project, config, compacted)) return;
+    if (!await _pack(project, config, compacted)) throw const CommandFailure();
 
     info.printf('[4/4] flutter build %s\n', [flutterTarget]);
-    if (!_flutterBuild(project)) return;
+    if (!_flutterBuild(project)) throw const CommandFailure();
 
     info
       ..println('')

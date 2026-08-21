@@ -66,11 +66,11 @@ class CreateCommand extends Command with Verbose {
       // The consumer carries an empty default so that `good create --help`
       // works; an actual run needs a name.
       err.println('A project name is required: good create <project_name>');
-      return;
+      throw const CommandFailure();
     }
     if (twoD.value && threeD.value) {
       err.println('Pass --2d or --3d, not both.');
-      return;
+      throw const CommandFailure();
     }
     final engine = threeD.value ? GoodEngine.threeD : GoodEngine.twoD;
 
@@ -105,7 +105,7 @@ class CreateCommand extends Command with Verbose {
           'a project that is already there.\n',
           [root.path],
         );
-        return;
+        throw const CommandFailure();
       }
       info.printf('Running flutter create %s\n', [root.path]);
       final result = Process.runSync('flutter', <String>[
@@ -118,7 +118,7 @@ class CreateCommand extends Command with Verbose {
         err
           ..println('flutter create failed:')
           ..println(result.stderr);
-        return;
+        throw const CommandFailure();
       }
       debug.println(result.stdout.toString());
     } else if (!root.existsSync()) {
@@ -126,7 +126,7 @@ class CreateCommand extends Command with Verbose {
         '%s does not exist, and --no-flutter-create says not to create it.\n',
         [root.path],
       );
-      return;
+      throw const CommandFailure();
     }
 
     // Whether the tree below is one this command just made.

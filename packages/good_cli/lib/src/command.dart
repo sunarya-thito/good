@@ -289,6 +289,37 @@ typedef ArgumentParser<T> = T Function(String value);
 /// Carries the command it happened in, so [CommandRunner] can print that
 /// command's usage rather than the root's - `good compile windows --nope`
 /// should show the windows usage.
+/// A command that ran, understood its input, and could not finish.
+///
+/// Distinct from [UsageException], which means the command *line* was wrong,
+/// and from `ArgumentError`, which means something the command read was. This
+/// one is the work failing: no ffmpeg, `flutter build` returning non-zero, a
+/// key file that cannot be written.
+///
+/// # Why an exception and not an `int` returned from `execute`
+///
+/// A returned code has to be passed back through every command signature and
+/// every helper between the failure and the runner, and forgetting to pass it
+/// is silent - which is the bug this type exists to remove, moved one layer
+/// along. Throwing is not something you can leave out by accident.
+///
+/// # Why [message] is usually absent
+///
+/// Nearly every site that throws this has already written the detail to its own
+/// `err` sink: the failing command's own output, the path that could not be
+/// written, the list of assets that would not convert. A summary printed under
+/// that by the runner would say it a second time. Pass a message only where
+/// nothing has been printed yet.
+class CommandFailure implements Exception {
+  const CommandFailure([this.message]);
+
+  /// A line for the runner to print, when the thrower has not printed one.
+  final String? message;
+
+  @override
+  String toString() => message ?? 'the command failed';
+}
+
 class UsageException implements Exception {
   UsageException(this.message, [this.path = const <String>[]]);
 

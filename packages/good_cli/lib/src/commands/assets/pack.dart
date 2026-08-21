@@ -168,7 +168,7 @@ class PackCommand extends Command with Verbose {
         key = readKeyMaterial(keyFile);
       } on ArgumentError catch (error) {
         err.println('${error.message}');
-        return;
+        throw const CommandFailure();
       }
     }
 
@@ -195,7 +195,7 @@ class PackCommand extends Command with Verbose {
         'to recreate it - without the mapping a packed build cannot find its '
         'chunks.',
       );
-      return;
+      throw const CommandFailure();
     }
 
     if (result.mapping.isEmpty) {

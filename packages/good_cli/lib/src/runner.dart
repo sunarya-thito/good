@@ -2,8 +2,12 @@ import 'dart:io';
 
 import 'package:good_cli/src/command.dart';
 
-/// Runs [command] against [args], printing usage and returning a non-zero
-/// exit code on a malformed command line.
+/// Runs [command] against [args], returning the process exit code.
+///
+/// Zero means the command finished. Every way of not finishing has a code of
+/// its own, because a non-zero exit is the only part of this a CI step, a shell
+/// `&&` or any other script can read: [UsageException] is 64, `ArgumentError`
+/// 65, [CommandFailure] 70.
 ///
 /// [args] is what `main` was handed. It is **not** optional in practice:
 /// `Platform.executableArguments` - which this used to fall back to - is the
@@ -27,6 +31,14 @@ Future<int> runCommand(
     stderr.writeln();
     stderr.writeln(runner.usageFor(error.path));
     return 64; // EX_USAGE
+  } on CommandFailure catch (failure) {
+    // The work failed. Almost always silent here, because the command has
+    // already written why to stderr; what was missing was never the message,
+    // it was a non-zero code for anything that is not a person reading a
+    // screen. `good build windows && upload` used to upload.
+    final message = failure.message;
+    if (message != null) stderr.writeln(message);
+    return 70; // EX_SOFTWARE
   } on ArgumentError catch (error) {
     // A command refusing to run over something it read - a pubspec that does
     // not bundle its own assets, two files that generate one identifier, key
