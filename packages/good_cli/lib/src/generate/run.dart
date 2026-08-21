@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:good_cli/src/generate/assets.dart';
+import 'package:good_cli/src/generate/shadow_scan.dart';
 import 'package:good_cli/src/generate/templates.dart';
 import 'package:good_cli/src/verbosable.dart';
 
@@ -32,6 +33,22 @@ int runGenerate({
   final unbundled = unbundledAssets(project);
   if (unbundled.isNotEmpty) {
     throw ArgumentError(unbundledAssetsMessage(unbundled));
+  }
+
+  // Also before anything is written, and not gated on the project having
+  // assets: two components declaring one field name is a defect in the same
+  // class as an asset Flutter will not bundle - it costs a column in every row
+  // and silently sends reads and writes to the wrong one, and no run of the
+  // game will ever mention it. `good generate` is where a project-level defect
+  // gets refused (#107), and it is the command a build runs whether or not
+  // there is an asset to chunk, which is why this is here and not in the scene
+  // scan that only asset packing calls.
+  final shadow = scanShadowedFields(project);
+  for (final entry in shadow.unresolved.entries) {
+    verbose.println('Not compared: ${entry.key} - ${entry.value}');
+  }
+  if (!shadow.isEmpty) {
+    throw ArgumentError(shadowedFieldsMessage(shadow));
   }
 
   verbose.printf('Declared asset entries: %s\n', [

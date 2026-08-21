@@ -132,10 +132,30 @@ need no such discipline: Dart runs every initialiser in the chain itself.
 
 !!! warning "Field names collide across mixins"
     A component is a mixin, so two of them declaring a field called `speed` is
-    not an error in Dart. It is an override: the later mixin in the `with`
-    clause wins, the row grows by both columns, and the earlier one's column can
-    no longer be reached under that name. Nothing reports it — not the analyzer,
-    not the engine.
+    not an error in Dart. It is an override. The later mixin in the `with`
+    clause wins, the row grows by both columns, and the earlier column can no
+    longer be reached under that name. Anything you write against the hidden
+    one reads and writes its neighbour.
+
+    The engine cannot catch this for you. `Field.float64()` declares a column
+    against the descriptor the framework has open, and nothing tells it which
+    Dart field holds the result — so two mixins declaring `speed` reach the
+    engine as two anonymous columns, which is exactly what two columns that
+    genuinely differ look like. The name is in your source and nowhere else.
+
+    `good generate` reads it there, and stops:
+
+    ```
+    Momentum.speed shadows Velocity.speed
+      Momentum: lib/momentum.dart
+      Velocity: lib/velocity.dart
+    ```
+
+    It compares your `lib/` against the engine packages your project resolves,
+    so a field you call `parent` colliding with `Child.parent` is caught as
+    well. A component from some other package is one it cannot read. Those
+    parts are listed by `good generate --verbose`, so you can tell a clean run
+    from an incomplete one.
 
     Pick names that will not collide. `Transform2D` calls its position columns
     `transformOffsetX` and `transformOffsetY`, and a component you publish for

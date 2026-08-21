@@ -878,6 +878,48 @@ flutter:
       );
     });
 
+    test('fails rather than generating over a shadowed column', () {
+      // The same refusal as the unbundled asset above, and here for the same
+      // reason: nothing downstream will ever mention it. The row simply grows
+      // by a column no expression can reach, and reads written against the
+      // hidden one land on its neighbour.
+      final dir = _project(_pubspecWithAssets, <String>[]);
+      File('${dir.path}/lib/game.dart')
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync('''
+mixin Velocity on Component {
+  final speed = Field.float64();
+}
+mixin Momentum on Component {
+  final speed = Field.float64();
+}
+class Player extends EntityStruct with Velocity, Momentum {}
+''');
+      expect(
+        () => runGenerate(
+          projectDir: dir,
+          command: 'good generate',
+          out: _quiet,
+          verbose: _quiet,
+        ),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => '${e.message}',
+            'message',
+            allOf(
+              contains('Momentum.speed shadows Velocity.speed'),
+              contains('game.dart'),
+            ),
+          ),
+        ),
+      );
+      expect(
+        Directory('${dir.path}/lib/good.generated').existsSync(),
+        isFalse,
+        reason: 'it stops before writing anything',
+      );
+    });
+
     test('writes the enum when every asset is bundled', () {
       final dir = _project(
         '''
