@@ -26,6 +26,7 @@ good:
     source: assets_src/       # originals you edit and commit
     output: assets/           # canonical files, generated
     packed: assets/packed/    # release chunks, generated
+    strip-originals: false    # may a build delete art it cannot rebuild
   texture:
     format: webp
     quality: 90
@@ -103,8 +104,13 @@ surprise.
 
 Anything compaction cannot convert is reported as skipped, with a reason,
 instead of silently dropped. Put files that are already final — a JSON level
-definition, a font — directly in the output directory; nothing there is
-regenerable, so nothing there is ever stripped.
+definition, a font — directly in the output directory. Codegen does not
+recognise them, so they are never packed and never stripped.
+
+An image or audio file you put there is a different matter. It ships, so it gets
+packed, so stripping the loose copies would take it — and compaction has no
+source to rebuild it from. A release build stops instead of deleting one; see
+[Originals in the output directory](#originals-in-the-output-directory).
 
 ---
 
@@ -276,6 +282,39 @@ stripped 1 loose asset(s) now carried in chunks; `good assets compact` rebuilds 
 
 Deleting a working directory's assets out from under someone who asked for a
 pack is not `good assets pack`'s call to make.
+
+### Originals in the output directory
+
+`good build` strips the loose copy of everything it packed, and compaction can
+rebuild anything it produced. A file you placed in `assets/` yourself came from
+no source, so stripping it destroys the only copy.
+
+The build refuses when the packed set holds one:
+
+```console
+1 packed asset(s) cannot be rebuilt if the build strips them:
+    assets/handmade.png
+Compaction did not produce these, so deleting the loose copy destroys the only
+one. Leaving it in place ships a legible copy beside the encrypted chunk.
+
+Choose one:
+  - move them into assets_src/ so compaction owns them, or
+  - add `strip-originals: true` under `good: assets:` in pubspec.yaml to accept
+    the deletion.
+```
+
+Moving the file into `assets_src/` is the fix that keeps both properties: the
+art survives, and the release ships it only inside a chunk. Opting in is for a
+project where `assets_src/` already holds everything and `assets/` is
+disposable:
+
+```yaml
+good:
+  assets:
+    strip-originals: true
+```
+
+The build then strips those files and names each one as it goes.
 
 ---
 

@@ -221,6 +221,7 @@ good:
     source: assets_src/       # originals you edit and commit
     output: assets/           # canonical files, generated
     packed: assets/packed/    # release chunks, generated
+    strip-originals: false    # may a build delete art it cannot rebuild
   texture:
     format: webp
     quality: 90
@@ -236,6 +237,11 @@ and `assets/` mean the same thing.
 
 Both `output` and `packed` must appear under `flutter: assets:` — that list is
 the only thing Flutter bundles from.
+
+`strip-originals` covers one case: a file you put in `output` yourself, which
+packing takes and stripping would delete with no source to rebuild it from. The
+build stops and names those files. Turn it on when `source` holds every original
+and `output` is disposable.
 
 ---
 

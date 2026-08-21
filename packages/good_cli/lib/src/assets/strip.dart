@@ -23,9 +23,14 @@ import 'dart:io';
 /// plaintext. A compaction output the pubspec does not declare is not packed,
 /// and was deleted anyway.
 ///
-/// Compaction rebuilds anything it generated. A hand-placed original has
-/// nowhere to come back from, so a caller that can tell the two apart should
-/// say which is which - see `BuildSubCommand._stripLoose`.
+/// Compaction rebuilds anything it generated, so removing one of those costs a
+/// re-encode at worst. A hand-placed original has nowhere to come back from,
+/// and this function cannot tell the difference: it deletes what it is handed.
+///
+/// Deciding what is safe to hand it belongs to the caller. `good build` works
+/// out which of the packed paths compaction produced, and stops before calling
+/// this at all when any of them is an original - unless the project set
+/// `strip-originals: true`. See `BuildSubCommand._pack`.
 ///
 /// Returns how many files were removed.
 int stripLoose({

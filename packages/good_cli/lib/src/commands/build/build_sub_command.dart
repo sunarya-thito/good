@@ -238,6 +238,46 @@ abstract class BuildSubCommand extends Command with Verbose {
       );
       return false;
     }
+
+    // Checked before anything is written, for the same reason as the guard
+    // above and a heavier one: what it prevents cannot be undone.
+    //
+    // Packing takes every declared asset, and stripping then removes the loose
+    // copy of everything packed. For a compaction output that costs a re-encode
+    // and nothing else. For a file someone put in the asset directory by hand
+    // there is no source to build it from, so the strip is the last anyone sees
+    // of it. The two mistakes are not the same size, so the safe one is the
+    // default and the project says when it wants the other.
+    if (assetMode.value == AssetMode.release && !config.stripOriginals) {
+      final generated = <String>{
+        for (final step in compacted.steps)
+          '${config.assetOutput}${step.output}',
+      };
+      final originals = paths.where((p) => !generated.contains(p)).toList()
+        ..sort();
+      if (originals.isNotEmpty) {
+        err.printf(
+          '%s packed asset(s) cannot be rebuilt if the build strips them:\n',
+          [originals.length],
+        );
+        for (final path in originals) {
+          err.printf('    %s\n', [path]);
+        }
+        err.printf(
+          'Compaction did not produce these, so deleting the loose copy '
+          'destroys the only one. Leaving it in place ships a legible copy '
+          'beside the encrypted chunk.\n'
+          '\n'
+          'Choose one:\n'
+          '  - move them into %s so compaction owns them, or\n'
+          '  - add `strip-originals: true` under `good: assets:` in '
+          'pubspec.yaml to accept the deletion.\n',
+          [config.assetSource],
+        );
+        return false;
+      }
+    }
+
     Directory(
       '${project.path}/${config.packOutput}',
     ).createSync(recursive: true);
@@ -290,9 +330,10 @@ abstract class BuildSubCommand extends Command with Verbose {
   /// [stripLoose].
   ///
   /// [compacted] is still read, for one thing: it says which of the removed
-  /// files `good assets compact` can build again. The rest were originals, and
-  /// naming them is the difference between someone keeping a copy and finding
-  /// out later.
+  /// files `good assets compact` can build again. Reaching here with any of the
+  /// others in [packed] means the project set `strip-originals: true`, so they
+  /// are named as they go - an opt-in is a reason to say what it cost, not a
+  /// reason to go quiet.
   void _stripLoose(
     Directory project,
     GoodConfig config,

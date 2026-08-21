@@ -11,6 +11,7 @@ import 'package:yaml/yaml.dart';
 ///     source: assets_src/    # originals you edit and commit
 ///     output: assets/        # canonical files, generated
 ///     packed: assets/packed/ # release chunks, generated
+///     strip-originals: false # may a build delete art it cannot rebuild
 ///   texture:
 ///     format: webp
 ///     quality: 90
@@ -22,7 +23,9 @@ import 'package:yaml/yaml.dart';
 /// Both `output` and `packed` have to appear in `flutter: assets:` - that list
 /// is the only thing Flutter bundles from. A release build fills `packed` and
 /// then empties `output` of everything it packed, so the two are listed
-/// together and only one of them ever ships anything.
+/// together and only one of them ever ships anything. It stops short of that
+/// when `output` holds something compaction cannot build again - see
+/// [stripOriginals].
 ///
 /// **In the pubspec, not a `good.yaml`.** A project already has one file that
 /// says what it is and what it ships; a second one beside it is a second place
@@ -36,6 +39,7 @@ class GoodConfig {
     required this.assetSource,
     required this.assetOutput,
     this.packOutput = 'assets/packed/',
+    this.stripOriginals = false,
     required this.texture,
     required this.audio,
   });
@@ -68,6 +72,22 @@ class GoodConfig {
   /// scan skips it by name rather than by extension. Flutter's directory
   /// entries bundle files and not subdirectories, so the two never overlap.
   final String packOutput;
+
+  /// Whether a release build may delete an asset compaction cannot rebuild.
+  ///
+  /// A file you put in [assetOutput] by hand is packed like any other, so
+  /// stripping the loose copies takes it too - and `good assets compact` has no
+  /// source to build it from again. Off by default: a build that would do this
+  /// stops and names the files instead.
+  ///
+  /// The two mistakes are not the same size. Leaving a file loose ships a
+  /// legible copy beside the encrypted chunk, which is a bug you can see, name
+  /// and fix on the next build. Deleting it destroys the only copy, says
+  /// nothing at the time, and no later build brings it back.
+  ///
+  /// Turn it on when [assetSource] holds everything and [assetOutput] is
+  /// genuinely disposable.
+  final bool stripOriginals;
 
   final TextureConfig texture;
   final AudioConfig audio;
@@ -105,6 +125,7 @@ class GoodConfig {
       assetSource: _dir(assets, 'source', defaults.assetSource),
       assetOutput: _dir(assets, 'output', defaults.assetOutput),
       packOutput: _dir(assets, 'packed', defaults.packOutput),
+      stripOriginals: _bool(assets, 'strip-originals', defaults.stripOriginals),
       texture: TextureConfig(
         format: _enum(
           texture,
@@ -152,6 +173,11 @@ class GoodConfig {
   static int _int(Object? map, String key, int fallback) {
     final value = map is YamlMap ? map[key] : null;
     return value is int ? value : fallback;
+  }
+
+  static bool _bool(Object? map, String key, bool fallback) {
+    final value = map is YamlMap ? map[key] : null;
+    return value is bool ? value : fallback;
   }
 }
 

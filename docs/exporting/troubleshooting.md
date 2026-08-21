@@ -105,18 +105,40 @@ asset ships exactly once, inside a chunk:
 stripped 3 loose asset(s) now carried in chunks; `good assets compact` rebuilds them
 ```
 
-`good assets compact` rebuilds whatever came from `assets_src/`. A file you put
-into `assets/` yourself was built from nothing, so the build lists those on
-their own:
+`good assets compact` rebuilds whatever came from `assets_src/`, which is
+everything a build will strip unless you have opted out of that protection.
+
+### `N packed asset(s) cannot be rebuilt if the build strips them`
+
+A file you put into `assets/` yourself came from no source. It ships, so packing
+takes it, and stripping the loose copies would delete the only one there is. The
+build stops before that happens:
 
 ```
-1 of those were not built from assets_src/, so compaction cannot bring them back.
-Keep the originals under assets_src/:
+1 packed asset(s) cannot be rebuilt if the build strips them:
     assets/handmade.png
+Compaction did not produce these, so deleting the loose copy destroys the only
+one. Leaving it in place ships a legible copy beside the encrypted chunk.
+
+Choose one:
+  - move them into assets_src/ so compaction owns them, or
+  - add `strip-originals: true` under `good: assets:` in pubspec.yaml to accept
+    the deletion.
 ```
 
-Move those into `assets_src/`. `assets/` is generated, and a release build
-empties it.
+Move the file into `assets_src/` and run `good assets compact`. Compaction owns
+it from then on, the art survives, and the release ships it only inside a chunk.
+
+Opt in when `assets_src/` already holds every original and `assets/` is
+disposable:
+
+```yaml
+good:
+  assets:
+    strip-originals: true
+```
+
+The build strips those files and names each one as it goes.
 
 ### `Asset chunk is version N; this build understands 1`
 

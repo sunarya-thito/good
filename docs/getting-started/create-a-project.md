@@ -280,6 +280,7 @@ good:
     source: assets_src/     # originals you edit and commit
     output: assets/         # canonical files, generated
     packed: assets/packed/  # release chunks, generated
+    strip-originals: false  # may a build delete art it cannot rebuild
   texture:
     format: webp
     quality: 90
