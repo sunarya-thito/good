@@ -206,7 +206,20 @@ final class AssetLoaders {
 
   /// Registers [loader] as the decoder for payload type [T], replacing any
   /// previous registration.
+  ///
+  /// **Replaces, so the last registration for a type wins.** That is what
+  /// makes `Game.describeAssetLoaders` work the way the rest of the `describeX`
+  /// family does: a subclass calls `super` first and then registers, so its own
+  /// decoder for a type the engine already covers takes over. Overriding an
+  /// engine decoder is a supported thing to do, and this is how.
   static void register<T>(AssetLoader<T> loader) => _loaders[T] = loader;
+
+  /// Whether a decoder for [T] is registered on this isolate.
+  ///
+  /// [of] answers the same question by throwing, which is right for a decode
+  /// path and useless for anything that needs to *ask* - a test proving the
+  /// game isolate registered nothing, most of all.
+  static bool isRegistered<T>() => _loaders.containsKey(T);
 
   /// The loader for [T], or a `StateError` naming what is missing.
   static AssetLoader<T> of<T>() {
@@ -227,6 +240,21 @@ final class AssetLoaders {
   /// cannot answer for the next one's assets.
   @visibleForTesting
   static void reset() => _loaders.clear();
+}
+
+/// What `Game.describeAssetLoaders` hands each layer to register into.
+///
+/// A one-method view of [AssetLoaders], for the reason every other `describeX`
+/// pass takes a descriptor: the hook is a declaration, and what it declares
+/// into is the framework's business. It also keeps the pass honest - a hook
+/// that was handed the static registry directly could just as easily read it,
+/// reset it, or run at a moment nothing constrains.
+abstract interface class AssetLoaderRegistrar {
+  /// Registers [loader] as this game's decoder for payload type [T].
+  ///
+  /// Later wins, so a subclass registering after its `super` call replaces
+  /// whatever the layer below registered for [T]. See [AssetLoaders.register].
+  void register<T>(AssetLoader<T> loader);
 }
 
 /// A declared asset: its identity, its address, and - on the copy that loaded

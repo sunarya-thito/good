@@ -161,6 +161,7 @@ final class DrawSpriteData2D extends DrawData2D {
     double y3,
     int argb, {
     int textureAddress = noTexture,
+
     /// A [TextureFilter] index. An `int` rather than the enum because this is
     /// the wire format: the producer already holds the index (it read one out
     /// of a row) and only [DrawCanvas2D] ever turns it back into a
@@ -569,19 +570,24 @@ final class VertexBatch2D {
 /// than grouping the frame by texture. See its class doc for the trade that
 /// buys and the alternating-texture case that pays for it.
 final class DrawCanvas2D {
+  // No loader registration here any more.
+  //
+  // It used to register `Texture`'s, on the argument that a canvas is
+  // constructed only on the isolate with Flutter attached and always before
+  // anything it draws is decoded - "the one place that is both necessary and
+  // sufficient". Necessary and sufficient it was, for a game that builds a
+  // canvas. It was neither for one that does not: construct no canvas and
+  // every texture load failed at boot with a `StateError` naming the missing
+  // loader instead of the cause, which is what kept the example suite red for
+  // sixty commits (#83). And the argument generalised to nothing - audio has
+  // no canvas, so `AudioClip`'s loader had nowhere to copy the trick to and
+  // was simply never registered at all (#123).
+  //
+  // `Renderer2D.describeAssetLoaders` registers it now, from `Game._bootMain`,
+  // which runs on the decoding isolate before anything is loaded and never on
+  // the game isolate.
   DrawCanvas2D({required this.assets, DrawRegistry2D? registry})
-    : registry = registry ?? DrawRegistry2D.standard {
-    // Registered here rather than from a `GameSystem.onMounted`, which is
-    // where it used to live and which was the wrong isolate *and* an
-    // undispatched hook: systems run on the game isolate, which never decodes
-    // anything and therefore never needs a loader, while the copy that does
-    // decode was never told. A canvas is constructed only on the isolate with
-    // Flutter attached, and always before anything it draws is decoded, so it
-    // is the one place that is both necessary and sufficient.
-    //
-    // Idempotent - `register` replaces, and the loader is `const`.
-    AssetLoaders.register<Texture>(const TextureLoader());
-  }
+    : registry = registry ?? DrawRegistry2D.standard;
 
   final DrawRegistry2D registry;
 

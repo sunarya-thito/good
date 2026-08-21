@@ -114,11 +114,6 @@ class _ProbedGame extends SceneGraphGame {
 }
 
 void main() {
-  // These cases boot inline, so this isolate both simulates and decodes. In an
-  // app the loader arrives with the first `DrawCanvas2D`, which is a widget and
-  // nothing here builds one - a headless boot has to register it itself.
-  setUp(() => AssetLoaders.register<Texture>(const TextureLoader()));
-
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

@@ -843,6 +843,77 @@ Future<void> _waitTicks(Game run, int count) {
       .whenComplete(() => runtime.removeTickListener(listener));
 }
 
+// --- #123: which isolate registers an asset decoder ------------------------
+//
+// `AssetLoaders` is a per-isolate static map, so the question "who registers"
+// is really "on which copy". `describeAssetLoaders` is called from
+// `Game._bootMain`, which main runs before the spawn and the game isolate
+// never runs at all - so the decoder exists exactly where decoding happens and
+// nowhere else. That is asserted from both sides below, because a hook wired
+// into the declaration passes *both* copies run would still look right from
+// main.
+
+class _LoaderProbe {}
+
+class _ProbeInfo extends AssetInfo {
+  const _ProbeInfo();
+}
+
+class _LoaderProbeLoader extends AssetLoader<_LoaderProbe> {
+  const _LoaderProbeLoader();
+
+  @override
+  Future<_LoaderProbe> load(AssetKey<_LoaderProbe> key) async => _LoaderProbe();
+
+  @override
+  AssetInfo describe(_LoaderProbe value) => const _ProbeInfo();
+}
+
+/// Publishes what the *game* isolate can see of the registry.
+class _RegistrarSystem extends GameSystem with FixedTickable {
+  _RegistrarGame get _own => game as _RegistrarGame;
+
+  @override
+  void onFixedUpdate() {
+    _own.registeredHere.value = AssetLoaders.isRegistered<_LoaderProbe>()
+        ? 1
+        : 0;
+  }
+}
+
+class _RegistrarState extends GameState<_RegistrarGame> {
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_RegistrarSystem());
+  }
+}
+
+class _RegistrarGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 5);
+
+  late final StateChannel<int> registeredHere;
+
+  @override
+  void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
+    registeredHere = descriptor.hasInt32(-1);
+  }
+
+  @override
+  void describeAssetLoaders(AssetLoaderRegistrar loaders) {
+    super.describeAssetLoaders(loaders);
+    loaders.register<_LoaderProbe>(const _LoaderProbeLoader());
+  }
+
+  @override
+  GameState createState() => _RegistrarState();
+}
+
 void main() {
   // Registered on *this* isolate only, and that is the point rather than an
   // omission: this is the copy with Flutter attached, so it is the only one
@@ -1377,6 +1448,34 @@ void main() {
     },
     timeout: const Timeout(Duration(seconds: 60)),
   );
+
+  test('the game isolate registers no asset decoder, and main does', () async {
+    final game = _RegistrarGame();
+    run = await Game.start(game);
+    addTearDown(() async {
+      if (run.isRunning) await run.stop();
+    });
+
+    expect(
+      AssetLoaders.isRegistered<_LoaderProbe>(),
+      isTrue,
+      reason:
+          'this copy ran _bootMain, which is the only call site of '
+          'describeAssetLoaders, and this copy is the one that decodes',
+    );
+
+    expect(await _waitUntil(run, () => game.registeredHere.value >= 0), isTrue);
+    expect(
+      game.registeredHere.value,
+      0,
+      reason:
+          'and the game isolate never ran that pass. AssetLoaders is a '
+          'per-isolate static, so a decoder registered there would answer '
+          'for nothing - that copy holds payload-free declarations and '
+          'never decodes. A hook wired into one of the two passes both '
+          'copies run would report 1 here and still look correct from main',
+    );
+  }, timeout: const Timeout(Duration(seconds: 60)));
 
   // DELETED, not disabled: 'unloading a scene drops the main copy page views
   // before the memory goes'.

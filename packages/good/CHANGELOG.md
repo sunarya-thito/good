@@ -39,6 +39,16 @@ sorting. Several checks that used to let a mistake through now stop it.
 
 ### Added
 
+* **`Game.describeAssetLoaders` registers a payload type's decoder.** It joins
+  `describeState`, `describeScenes`, `describeCommands`, `describeBuffers` and
+  `describeCameras`, chains through `super` the same way, and is the one of
+  that family that runs on the decoding isolate only - `AssetLoaders` is a
+  per-isolate static, and the game isolate holds payload-free declarations and
+  never decodes. Registering a type the layer below already covers replaces it,
+  so a game can substitute its own decoder for an engine one. `AssetLoaders`
+  also gained `isRegistered<T>()`, which answers what `of<T>()` could only
+  answer by throwing.
+
 * **A column can be declared by the field that holds it.**
   `final speed = Field.float64(220)` replaces a `late final DataPointer<double>`
   paired with a `describeStruct` body a few lines down. Both forms work: a

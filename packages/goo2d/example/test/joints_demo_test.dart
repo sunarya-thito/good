@@ -28,11 +28,6 @@ const Duration _step = Duration(microseconds: 16667);
 const int _expectedBodies = 4 + 1 + 9 * 3 + 1;
 
 void main() {
-  // These cases boot inline, so this isolate both simulates and decodes. In an
-  // app the loader arrives with the first `DrawCanvas2D`, which is a widget and
-  // nothing here builds one - a headless boot has to register it itself.
-  setUp(() => AssetLoaders.register<Texture>(const TextureLoader()));
-
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();
@@ -76,7 +71,8 @@ void main() {
     expect(
       endY - startY,
       greaterThan(-1.0),
-      reason: 'a hanging chain should stay put; two seconds of free fall '
+      reason:
+          'a hanging chain should stay put; two seconds of free fall '
           'would put the bottom link about 20 m lower',
     );
     // And it is genuinely suspended, not resting on anything - there is no
@@ -106,7 +102,8 @@ void main() {
     expect(
       game.peakJointForce.value,
       greaterThan(0),
-      reason: 'a loaded joint must report a non-zero constraint force, or the '
+      reason:
+          'a loaded joint must report a non-zero constraint force, or the '
           'threshold is being compared against nothing. This is the '
           'all-time peak on purpose: the live reading is 0 once the last '
           'joint has let go, which is exactly when this is sampled',
@@ -181,7 +178,8 @@ void main() {
     expect(
       counters[0],
       _expectedBodies,
-      reason: 'one anchor per chain plus the wheel hub, the wheel, three '
+      reason:
+          'one anchor per chain plus the wheel hub, the wheel, three '
           'chains of nine links and one weight - and nothing accumulated '
           'across ${state.rehangs} rehangs',
     );

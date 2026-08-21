@@ -398,6 +398,46 @@ abstract class Game {
   @mustCallSuper
   void describeCameras(CameraDescriptor descriptor) {}
 
+  /// Registers the decoders for every payload type this game loads.
+  ///
+  /// ```dart
+  /// @override
+  /// void describeAssetLoaders(AssetLoaderRegistrar loaders) {
+  ///   super.describeAssetLoaders(loaders);
+  ///   loaders.register<Dialogue>(const DialogueLoader());
+  /// }
+  /// ```
+  ///
+  /// Each layer contributes its own and chains, so a game adds a decoder
+  /// without knowing what the engine below it registered. Registering a type
+  /// the layer below already covers replaces it, which is how a game
+  /// substitutes its own decoder for an engine one - see
+  /// [AssetLoaders.register].
+  ///
+  /// # Where this runs, and why it is not with the others
+  ///
+  /// On the isolate that **decodes**, once, before anything is loaded - and
+  /// never on the game isolate. `AssetLoaders` is a per-isolate static map and
+  /// the game isolate holds payload-free declarations, so a decoder there
+  /// would answer for nothing; its own `StateError` says as much. That makes
+  /// this the one `describeX` pass that is deliberately not part of the shared
+  /// declaration sequence both copies run. It is called from [_bootMain],
+  /// which main runs before the spawn and which the game isolate never runs at
+  /// all.
+  ///
+  /// # Why a hook rather than a constructor
+  ///
+  /// `Texture`'s decoder used to be registered by `DrawCanvas2D`'s
+  /// constructor, on the argument that a canvas is built only where Flutter is
+  /// attached and always before anything it draws is decoded. True for that
+  /// one type, and it generalises to nothing: construct no canvas and every
+  /// texture load failed at boot with an error naming the loader rather than
+  /// the cause, which is what left the example suite red for sixty commits
+  /// (#83). Audio has no canvas to hang on at all, so there was no second
+  /// place to put the same trick.
+  @mustCallSuper
+  void describeAssetLoaders(AssetLoaderRegistrar loaders) {}
+
   /// This game's declared camera views. Empty until [describeCameras] has
   /// run; both isolate copies see the same table, because it rides the deep
   /// copy like every other piece of declared state.
@@ -1009,6 +1049,11 @@ abstract class Game {
     final state = createState();
     runtime.state = state;
     state.bindRuntime(runtime, simulating: runtime.simulates);
+
+    // First, and on this copy only: a decoder has to exist before anything is
+    // loaded, and nothing below here loads. See [describeAssetLoaders] for why
+    // this pass is not one of the two both copies run.
+    describeAssetLoaders(const _LoaderRegistrar());
 
     // --- describeState, the only call site --------------------------------
     //
@@ -2545,6 +2590,18 @@ final class _SystemDescriptor implements SystemDescriptor {
     }
     return _state.addDeclaredSystem(system);
   }
+}
+
+/// Forwards `Game.describeAssetLoaders` into the per-isolate registry.
+///
+/// `const`, holding nothing: the registry it writes to is a static, and giving
+/// the hook an object to talk to rather than the static itself is what keeps
+/// the pass a declaration - see [AssetLoaderRegistrar].
+final class _LoaderRegistrar implements AssetLoaderRegistrar {
+  const _LoaderRegistrar();
+
+  @override
+  void register<T>(AssetLoader<T> loader) => AssetLoaders.register<T>(loader);
 }
 
 final class _BufferDescriptor implements BufferDescriptor {

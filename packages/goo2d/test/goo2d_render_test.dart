@@ -135,8 +135,6 @@ DrawCanvas2D _present(_Game game) {
 
 Future<_Game> _boot() async {
   final game = _Game();
-  // Inline: this isolate both simulates and decodes, so it needs a loader.
-  AssetLoaders.register<Texture>(const TextureLoader());
   run = await Game.startInline(game);
   addTearDown(() async {
     if (run.isRunning) await run.stop();

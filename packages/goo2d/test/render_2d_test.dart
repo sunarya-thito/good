@@ -475,10 +475,6 @@ List<_Frame> _drainFrames(_RenderGame game) {
 }
 
 Future<_RenderGame> _game() async {
-  // Inline, so this isolate both simulates and decodes - which means it does
-  // need a loader, unlike the spawned configuration where the game isolate
-  // never has one.
-  AssetLoaders.register<Texture>(const TextureLoader());
   final game = _RenderGame();
   run = await Game.startInline(game);
   addTearDown(() async {

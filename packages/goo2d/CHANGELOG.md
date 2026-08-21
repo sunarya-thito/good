@@ -21,6 +21,22 @@ that has any y in it.
 
 ### Fixed
 
+* **Audio assets load.** `AudioLoader` was written and registered nowhere, so
+  every `Audios.x` load threw `StateError` - the CLI transcoded a clip, keyed
+  it, packed it and shipped it, and the pipeline stopped there. `Game2D`
+  registers it now, through the new `describeAssetLoaders`. This is loading and
+  not playback: `goo2d` still has no audio backend, mixer or voice management,
+  so a loaded `AudioClip` is bytes held in memory.
+
+* **Textures decode without a `DrawCanvas2D` being built.** The texture decoder
+  was registered by that widget's constructor, so a game that built no canvas -
+  a headless boot, a test, a case that starts before its first frame - failed
+  every texture load with an error naming the missing loader rather than the
+  cause. `Renderer2D` registers it now, which means mixing in the renderer is
+  what gets you the decoder. If your game called
+  `AssetLoaders.register<Texture>(const TextureLoader())` to work around this,
+  that line is no longer needed; leaving it in is harmless.
+
 * **Mouse picking is filtered by the view's scene.** The renderer skipped
   entities outside the scene its view's camera is in and the picker did not, so
   a click could land on an entity that drew nothing.

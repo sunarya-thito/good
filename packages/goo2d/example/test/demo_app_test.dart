@@ -16,11 +16,6 @@ import 'package:goo2d_example/harness/demo_app.dart';
 /// and replaying frames** on main, and a headless start/stop/start cycle never
 /// touches that path at all.
 void main() {
-  // A `GameView` builds the `DrawCanvas2D` that registers the texture loader in
-  // an app, but only once a case is up, and a case decodes its scene while it
-  // is starting. So the loader has to be in place before the first start.
-  setUp(() => AssetLoaders.register<Texture>(const TextureLoader()));
-
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();
@@ -39,8 +34,9 @@ void main() {
     }
   }
 
-  testWidgets('a case that fails to start does not wedge the menu',
-      (tester) async {
+  testWidgets('a case that fails to start does not wedge the menu', (
+    tester,
+  ) async {
     // **The "sometimes stuck on loading" bug, made deterministic.**
     //
     // `_select` set `_switching = true` at the top and cleared it only on the
@@ -64,7 +60,8 @@ void main() {
     expect(
       find.textContaining('failed to start'),
       findsOneWidget,
-      reason: 'the failure should be reported, not shown as a spinner that '
+      reason:
+          'the failure should be reported, not shown as a spinner that '
           'never resolves',
     );
 
@@ -74,7 +71,8 @@ void main() {
     expect(
       find.byType(GameView),
       findsOneWidget,
-      reason: 'a failed switch must not leave _switching true - if it does, '
+      reason:
+          'a failed switch must not leave _switching true - if it does, '
           'this tap is ignored and the app is dead until restarted',
     );
     expect(tester.takeException(), isNull);
