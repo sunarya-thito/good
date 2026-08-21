@@ -3,3 +3,7 @@
 
 # A game built against the engine lives outside this repository.
 /game/
+
+# A Git Bash / MSYS tool crashing writes one of these, named after whichever
+# tool it was, so no targeted pattern would have caught the one that got in.
+*.stackdump
