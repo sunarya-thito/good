@@ -50,6 +50,36 @@ sorting. Several checks that used to let a mistake through now stop it.
 
 ### Added
 
+* **The game reacts to the app being hidden.** Nothing in the engine knew the
+  app had been backgrounded, so a game went on simulating at its fixed tick
+  while nobody was looking at it — battery spent on a world off screen (#117).
+  The fixed tick now stops when the app is hidden and starts again when it
+  comes back. Override `Game.pauseWhenHidden` to `false` for a game that has to
+  keep running unattended: a live server-authoritative session, a download, a
+  timer the player expects to have advanced.
+
+  A system hears it by mixing in `AppVisibilityListener`, which gets
+  `onAppHidden()` and `onAppShown(Duration gap)`.
+
+  **Visibility, never focus.** Flutter's five `AppLifecycleState`s collapse to
+  two, and `inactive` counts as visible: a window losing focus, a phone call,
+  the notification shade, the app switcher. Pausing on those is why some games
+  stop when you alt-tab.
+
+  **There is no "about to be killed" hook**, deliberately. `onAppHidden` is the
+  last reliable moment and it is a real one — iOS and Android both synthesise
+  `hidden` before `paused` — so a save goes there. `detached` gets no callback:
+  it is also the state an app is in before it starts, a killed process never
+  sends it, and no platform promises time to act on it.
+
+  On the accumulator, one correction worth stating because it is easy to assume
+  otherwise: a long absence never queued a long catch-up. `advance` already
+  capped a single frame at `maxFixedStepsPerAdvance` and dropped the rest, and
+  it leaves under one step behind it, so the burst a resume could produce was
+  never proportional to the time away. Stopping the tick is what saves the
+  battery; discarding the leftover on the way back is worth **one** step, not
+  five, and that is the step this no longer spends.
+
 * **`AudioClip` is a kernel type, and the kernel registers its decoder.** It
   was in `goo2d`, which put sound behind a 2D renderer for no reason it could
   defend: a clip is bytes and a container name, with no canvas, device or

@@ -5,7 +5,13 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart'
     show ChangeNotifier, VoidCallback, kIsWeb;
-import 'package:flutter/widgets.dart' show BuildContext, Widget;
+import 'package:flutter/widgets.dart'
+    show
+        AppLifecycleState,
+        BuildContext,
+        Widget,
+        WidgetsBinding,
+        WidgetsBindingObserver;
 import 'package:meta/meta.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector2;
 
@@ -52,6 +58,10 @@ const String _msgReady = 'ready';
 const String _msgStopped = 'stopped';
 const String _msgStop = 'stop';
 const String _msgDispose = 'dispose';
+// App visibility, main -> game. One tag rather than a `GameCommand`: it is the
+// engine's own signal, it carries no reply, and a command would put it in the
+// user's command surface for no reason.
+const String _msgVisible = 'visible';
 // Asset decoding: the game isolate declares assets but cannot decode them (a
 // decode needs Flutter), so it asks. Assets are named by their **address** -
 // the index `GameAssets` assigns at declare time, which both copies agree on
@@ -175,6 +185,23 @@ abstract class Game {
   /// failure. Dropping time is the only stable answer: the simulation runs
   /// slower than wall clock rather than locking up.
   int get maxFixedStepsPerAdvance => 5;
+
+  /// Stop the fixed tick while the app is hidden. Default true.
+  ///
+  /// A backgrounded game that goes on simulating burns a phone's battery on a
+  /// world nobody is looking at, so the safe behaviour is the default and
+  /// opting out is explicit. Return false for a game that has to keep running
+  /// unattended - a live server-authoritative session, a running download, a
+  /// timer the player expects to have advanced while they were away.
+  ///
+  /// This is about *visibility*, never focus: a desktop window that merely
+  /// loses focus is still visible and never reaches this. See
+  /// [AppVisibilityListener].
+  ///
+  /// Opting out does not promise the game keeps ticking. A phone is free to
+  /// suspend or kill a backgrounded process whatever this says; false only
+  /// means the engine will not stop the tick itself.
+  bool get pauseWhenHidden => true;
 
   /// Page size for this game's one [MemoryPool], in bytes.
   ///
@@ -1462,6 +1489,7 @@ abstract class Game {
   bool get hasView => _mountedViews > 0;
 
   final FrameMeter _frames = FrameMeter();
+  final _VisibilityObserver _visibility = _VisibilityObserver();
 
   /// Frames this game has actually presented - a counter, incremented once per
   /// real frame by the engine, never derived from a delta.
@@ -1525,6 +1553,10 @@ abstract class Game {
     // widget may be running in a tool or a plain `dart run` where there is
     // none. A view existing is proof there is one.
     _frames.arm();
+    // Same reasoning as `_frames.arm()` above, and the same proof: an observer
+    // needs `WidgetsBinding.instance`, and a headless game has no binding to
+    // register with. A view existing is what says there is one.
+    _visibility.arm(this);
     onViewAttached();
   }
 
@@ -1532,6 +1564,7 @@ abstract class Game {
   void detachView() {
     if (--_mountedViews > 0) return;
     _frames.disarm();
+    _visibility.disarm();
     onViewDetached();
   }
 
@@ -1993,6 +2026,22 @@ final class GameRuntime {
     _resetGlobalRegistries();
   }
 
+  /// Tells the simulating copy the app became hidden or visible.
+  ///
+  /// Fire and forget. There is no reply to wait for, and the one moment this
+  /// matters most - the app going away - is also the moment least likely to
+  /// afford a round trip, so nothing here is allowed to block on the game
+  /// isolate answering.
+  @internal
+  void setVisible(bool visible) {
+    if (!booted) return;
+    if (inline) {
+      state?.setVisible(visible);
+      return;
+    }
+    _toGame?.send(<Object>[_msgVisible, visible]);
+  }
+
   void _stopInline() {
     final state = this.state!;
     state.stopTimer();
@@ -2185,6 +2234,8 @@ final class GameRuntime {
         state?.stopTimer();
         state?.unmount();
         _toMain?.send(const <Object>[_msgStopped]);
+      case _msgVisible:
+        state?.setVisible(parts[1] as bool);
       case _msgDispose:
         _disposeBuffers();
         state?.pool.dispose();
@@ -3123,5 +3174,71 @@ final class _StateDescriptor implements StateDescriptor {
     );
     _game._stateChannels.add(channel);
     return channel;
+  }
+}
+
+/// Whether [state] counts as the app being visible.
+///
+/// The five-to-two collapse, in one place so it can be tested as itself: the
+/// alternative is a widget test that drives real lifecycle messages to assert
+/// a `switch`, which tests the binding more than the decision.
+///
+/// `inactive` is the load-bearing entry. It is a window that lost focus, a
+/// phone call, the notification shade, the app switcher - all of them still on
+/// screen - so it is **visible**, and pausing there is the bug where a game
+/// stops because you alt-tabbed. `hidden` is where every view is actually
+/// gone, and iOS and Android synthesise it before `paused` so this needs no
+/// per-platform branch.
+@internal
+bool visibleInLifecycleState(AppLifecycleState state) => switch (state) {
+  AppLifecycleState.resumed || AppLifecycleState.inactive => true,
+  AppLifecycleState.hidden ||
+  AppLifecycleState.paused ||
+  AppLifecycleState.detached => false,
+};
+
+/// Watches `AppLifecycleState` on the main isolate and forwards **visibility**
+/// to the simulating copy.
+///
+/// # Five states become two
+///
+/// `resumed` and `inactive` are visible; `hidden`, `paused` and `detached` are
+/// not. The interesting line is the one between `inactive` and `hidden`, and
+/// Flutter draws it exactly where a game wants it:
+///
+///   * `inactive` is a window that lost focus, a phone call, the notification
+///     shade, the app switcher - **still on screen**. Pausing here is the bug
+///     where a game stops because you alt-tabbed to look something up.
+///   * `hidden` is every view gone: minimised, or about to be paused. iOS and
+///     Android synthesise it *before* `paused` specifically so cross-platform
+///     code needs only one handler, which is why this needs no per-platform
+///     branch.
+///
+/// `detached` counts as hidden and gets no hook of its own. See
+/// [AppVisibilityListener] for why there is no "about to be killed" callback.
+class _VisibilityObserver with WidgetsBindingObserver {
+  Game? _game;
+
+  void arm(Game game) {
+    if (_game != null) return;
+    _game = game;
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  void disarm() {
+    if (_game == null) return;
+    WidgetsBinding.instance.removeObserver(this);
+    _game = null;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final game = _game;
+    if (game == null) return;
+    final visible = visibleInLifecycleState(state);
+    // `GameState.setVisible` is idempotent, which it has to be: the walk down
+    // is `inactive -> hidden -> paused` and the walk back up reverses it, so
+    // "not visible" arrives twice around any real backgrounding.
+    game.runtimeOrNull?.setVisible(visible);
   }
 }

@@ -92,6 +92,12 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// The game is going down, dispatched before anything is torn down.
   late final SignalDispatcher<GameLifecycleListener> gameUnmountedEvent;
 
+  /// The app is no longer visible - see [AppVisibilityListener].
+  late final SignalDispatcher<AppVisibilityListener> appHiddenEvent;
+
+  /// The app is visible again, carrying the wall clock spent hidden.
+  late final EventDispatcher<AppVisibilityListener, Duration> appShownEvent;
+
   // Scene and entity *lifecycle* are **not** declared here. They belong to the
   // scene and the prefab respectively (`SceneStruct.mountedEvent`,
   // `EntityStruct.mountedEvent`), because a dispatcher's audience is its
@@ -132,6 +138,8 @@ abstract class GameState<T extends Game> extends GameListenerBase
     gameUnmountedEvent = descriptor.hasSignal(
       (listener) => listener.onGameUnmounted(),
     );
+    appHiddenEvent = descriptor.hasSignal((listener) => listener.onAppHidden());
+    appShownEvent = descriptor.has((listener, gap) => listener.onAppShown(gap));
     entitySpawnedEvent = descriptor.has(
       (listener, entity) => listener.onEntitySpawned(entity),
     );
@@ -191,6 +199,26 @@ abstract class GameState<T extends Game> extends GameListenerBase
   final Map<Asset<Object?>, int> _assetClaims = <Asset<Object?>, int>{};
   int _accumulatedMicros = 0;
   Timer? _timer;
+
+  /// Whether the app is currently visible - see [setVisible].
+  ///
+  /// Starts true: a game that never hears from a lifecycle observer at all
+  /// (a test, a headless host, a tool) has to keep ticking.
+  bool _visible = true;
+
+  /// Set while the tick is stopped *because* the app went hidden, so that
+  /// showing it again only restarts a timer this stopped. A game stopped for
+  /// any other reason is not restarted by becoming visible.
+  bool _pausedWhileHidden = false;
+
+  /// Whether [setVisible] cancelled a running timer that it owes back.
+  bool _restartTimerOnShow = false;
+
+  /// Runs across the hidden stretch to measure it. A `Stopwatch` and not two
+  /// `DateTime`s: this is the one measurement a clock adjustment mid-pause
+  /// would corrupt, and a monotonic source cannot be stepped by NTP or by
+  /// the user changing the time zone on a phone that was in their pocket.
+  final Stopwatch _hiddenFor = Stopwatch();
 
   /// Fixed steps the last [advance] ran - 0 when the accumulator had not
   /// filled, up to `Game.maxFixedStepsPerAdvance` when catching up.
@@ -881,6 +909,67 @@ abstract class GameState<T extends Game> extends GameListenerBase
     _timer = null;
   }
 
+  /// Whether the app is visible. False once every view is hidden.
+  bool get isVisible => _visible;
+
+  /// Reports the app becoming hidden or visible, from the main isolate's
+  /// lifecycle observer - see `Game.pauseWhenHidden`.
+  ///
+  /// Idempotent, because the states that collapse onto each of these are not
+  /// one message each: Flutter walks `inactive -> hidden -> paused` on the way
+  /// down and back up again on the way out, so "hidden" arrives twice around
+  /// any real backgrounding.
+  ///
+  /// # Why the gap is discarded and not caught up
+  ///
+  /// The accumulator is reset to zero rather than left holding the hidden
+  /// stretch. Left alone it would not run a step per hidden second - the
+  /// spiral guard in [advance] already caps a single advance at
+  /// `Game.maxFixedStepsPerAdvance` and drops the rest - so the choice here is
+  /// between **five** catch-up steps on the first frame back and **none**.
+  ///
+  /// None is right. Those five steps would simulate 83ms of a world the player
+  /// stopped watching some time ago, landing on the frame that is already
+  /// paying to rebuild and redraw everything. A game that genuinely needs to
+  /// account for the missing time gets it as
+  /// [AppVisibilityListener.onAppShown]'s gap and can decide for itself -
+  /// resynchronise from a server, advance a timer, do nothing.
+  @internal
+  void setVisible(bool visible) {
+    _requireSimulating('setVisible');
+    if (visible == _visible) return;
+    _visible = visible;
+
+    if (!visible) {
+      _hiddenFor
+        ..reset()
+        ..start();
+      if (game.pauseWhenHidden) {
+        _pausedWhileHidden = true;
+        // Whether to put a timer *back*, which is not the same question as
+        // whether to pause. A host driving `advance` by hand has no timer to
+        // stop, and starting one for it on the way out would hand it a second
+        // tick source it never asked for.
+        _restartTimerOnShow = _timer != null;
+        stopTimer();
+      }
+      appHiddenEvent.call();
+      return;
+    }
+
+    _hiddenFor.stop();
+    final gap = _hiddenFor.elapsed;
+    if (_pausedWhileHidden) {
+      _pausedWhileHidden = false;
+      // Before the timer, not after: `startTimer` begins measuring from now,
+      // so anything left here is time earned before the pause.
+      _accumulatedMicros = 0;
+      if (_restartTimerOnShow) startTimer();
+      _restartTimerOnShow = false;
+    }
+    appShownEvent.call(gap);
+  }
+
   // --- the scheduler ----------------------------------------------------
 
   /// Accumulates [elapsed] wall-clock time and runs however many whole fixed
@@ -893,6 +982,12 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// `Game.maxFixedStepsPerAdvance`; the leftover is reduced modulo the step
   /// so the sub-step phase survives and the very next [advance] isn't
   /// immediately capped again by a backlog it can never clear.
+  ///
+  /// An app that was hidden does **not** come back to a catch-up burst, and it
+  /// never could have: the cap above bounds a single frame however long the
+  /// gap, and what survives a call is always under one step. [setVisible]
+  /// discards that remainder too, so the first frame back spends nothing it
+  /// earned before the app went away.
   int advance(Duration elapsed) {
     _requireSimulating('advance');
     final game = this.game;

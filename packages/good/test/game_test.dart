@@ -11,6 +11,7 @@ import 'package:good/src/game_state.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/struct.dart';
 import 'package:good/src/system.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
@@ -108,6 +109,40 @@ class _PhaseState extends _FixtureState {
 class _PhaseGame extends _TestGame {
   @override
   GameState createState() => _PhaseState();
+}
+
+/// Records the visibility hooks so a test can assert they arrived, and in
+/// which order relative to the tick stopping.
+class _VisibilitySystem extends GameSystem with AppVisibilityListener {
+  final List<Duration> shown = <Duration>[];
+  int hidden = 0;
+
+  @override
+  void onAppHidden() => hidden++;
+
+  @override
+  void onAppShown(Duration gap) => shown.add(gap);
+}
+
+late _VisibilitySystem _visibility;
+
+class _VisibilityState extends _FixtureState {
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    _visibility = descriptor.has(_VisibilitySystem());
+  }
+}
+
+class _VisibilityGame extends _TestGame {
+  @override
+  GameState createState() => _VisibilityState();
+}
+
+/// The opt-out: a game that has to keep running unattended.
+class _AlwaysTickingGame extends _VisibilityGame {
+  @override
+  bool get pauseWhenHidden => false;
 }
 
 class _SystemA extends GameSystem with FixedTickable {
@@ -523,6 +558,121 @@ void main() {
     });
   });
 
+  // #117. Two things are being pinned here and they fail independently: that
+  // the tick actually stops while hidden, and that the time spent hidden is
+  // discarded instead of spent on the way back in.
+  group('app visibility', () {
+    test('hiding stops the fixed tick and showing starts it again', () async {
+      final game = await _game(_VisibilityGame());
+      final state = _state(game);
+      state.startTimer();
+      addTearDown(state.stopTimer);
+
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      final before = run.tick;
+      expect(
+        before,
+        greaterThan(0),
+        reason:
+            'the timer has to be running for stopping it to mean anything - '
+            'a bench that cannot fail is worse than none',
+      );
+
+      state.setVisible(false);
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(
+        run.tick,
+        before,
+        reason:
+            'six steps worth of wall clock passed while hidden and not one '
+            'of them may have run',
+      );
+      expect(_visibility.hidden, 1);
+
+      state.setVisible(true);
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(
+        run.tick,
+        greaterThan(before),
+        reason: 'and the tick comes back, or this pauses a game forever',
+      );
+      expect(_visibility.shown, hasLength(1));
+    });
+
+    test('showing discards the time left over from before hiding', () async {
+      final game = await _game(_VisibilityGame());
+      final state = _state(game);
+      // The state 'sub-step phase survives the drop' pins: the batch is
+      // capped and dropped, and 3ms of phase stays in the accumulator. Seven
+      // more milliseconds would complete a step - and that is the step this
+      // must not run, because it was earned before the app went away.
+      state.advance(_step * 100 + const Duration(milliseconds: 3));
+
+      state.setVisible(false);
+      state.setVisible(true);
+
+      expect(
+        state.advance(const Duration(milliseconds: 7)),
+        0,
+        reason:
+            'the 3ms was earned before hiding and is discarded on the way '
+            'back, so 7ms is 7ms and not a whole step. Without the reset '
+            'this is 1 - the first frame back spends a step on a world the '
+            'player stopped watching.',
+      );
+    });
+
+    test('a game can opt out and keep ticking while hidden', () async {
+      final game = await _game(_AlwaysTickingGame());
+      final state = _state(game);
+      state.startTimer();
+      addTearDown(state.stopTimer);
+
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      final before = run.tick;
+      state.setVisible(false);
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+
+      expect(
+        run.tick,
+        greaterThan(before),
+        reason:
+            'pauseWhenHidden is false, so the session keeps running - this '
+            'is the escape hatch and it has to actually let go',
+      );
+      expect(
+        _visibility.hidden,
+        1,
+        reason: 'opting out of the pause does not opt out of the hook',
+      );
+    });
+
+    test('losing focus is not being hidden', () {
+      // The distinction the whole design turns on. `inactive` is a window
+      // that lost focus, a phone call, the shade coming down - all still on
+      // screen. Treating it as hidden is why some games stop on alt-tab.
+      expect(visibleInLifecycleState(AppLifecycleState.resumed), isTrue);
+      expect(visibleInLifecycleState(AppLifecycleState.inactive), isTrue);
+      expect(visibleInLifecycleState(AppLifecycleState.hidden), isFalse);
+      expect(visibleInLifecycleState(AppLifecycleState.paused), isFalse);
+      expect(visibleInLifecycleState(AppLifecycleState.detached), isFalse);
+    });
+
+    test('the same state twice is not two events', () async {
+      final game = await _game(_VisibilityGame());
+      final state = _state(game);
+      // Flutter walks inactive -> hidden -> paused on the way down and back
+      // up again, so "not visible" arrives more than once around any real
+      // backgrounding.
+      state.setVisible(false);
+      state.setVisible(false);
+      state.setVisible(true);
+      state.setVisible(true);
+
+      expect(_visibility.hidden, 1);
+      expect(_visibility.shown, hasLength(1));
+    });
+  });
   group('presentation phase (Tickable)', () {
     test('runs once per frame, not once per simulation step', () async {
       await _game(_PhaseGame());

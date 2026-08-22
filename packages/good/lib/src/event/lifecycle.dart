@@ -212,3 +212,54 @@ mixin SceneLoadListener on GameListener {
 // dispatch. Eight classes -
 // Game/Scene/Entity x Mounted/Unmounted, plus the two tick events - came out
 // when that landed.
+
+/// Hears the app becoming hidden and visible again.
+///
+/// Mixed into a [GameListener] - typically a `GameSystem`:
+///
+/// ```dart
+/// class AutosaveSystem extends GameSystem with AppVisibilityListener {
+///   @override
+///   void onAppHidden() => save();
+/// }
+/// ```
+///
+/// # Visibility, not focus
+///
+/// Flutter reports five `AppLifecycleState`s and the engine collapses them to
+/// two. `resumed` and `inactive` both count as visible; `hidden`, `paused` and
+/// `detached` all count as hidden.
+///
+/// `inactive` deliberately does **not** hide. It is a window losing focus, a
+/// phone call arriving, the notification shade coming down, an app sitting in
+/// the switcher - the app is still on screen. Pausing there is why some games
+/// stop when you alt-tab to a browser. A game that genuinely wants focus can
+/// read it from Flutter directly.
+///
+/// # There is no "about to be killed" hook, deliberately
+///
+/// [onAppHidden] is the last moment worth writing a save in, and it is a
+/// reliable one: iOS and Android both synthesise `hidden` *before* `paused`
+/// exactly so cross-platform code has one place to handle it.
+///
+/// `detached` is not that place, which is why nothing here fires on it. It is
+/// also the state an app is in *before* it starts, a process killed while
+/// hidden never sends it at all, and no platform promises time to act on it.
+/// A hook that returned a future for the engine to await would be describing
+/// an intention rather than a behaviour - so a save belongs in [onAppHidden],
+/// and a process killed after that has already had its chance.
+mixin AppVisibilityListener on GameListener {
+  /// The app is no longer visible.
+  ///
+  /// The fixed tick has already stopped unless `Game.pauseWhenHidden` is
+  /// false. This is the last point at which anything is guaranteed to run,
+  /// so it is where a save goes.
+  void onAppHidden() {}
+
+  /// The app is visible again.
+  ///
+  /// [gap] is the wall-clock time spent hidden. It has already been
+  /// **discarded** from the fixed-step accumulator, not caught up, so no
+  /// fixed steps ran for it and none are queued - see `GameState.advance`.
+  void onAppShown(Duration gap) {}
+}
