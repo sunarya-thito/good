@@ -62,7 +62,11 @@ import 'rigid_body.dart';
 /// putting physics first is what makes gameplay's write the winner - picked
 /// up by the next tick's push.
 class Box2DPhysicsSystem extends GameSystem
-    with FixedTickable, EntitySpawnListener, GameSystemLifecycleListener {
+    with
+        FixedTickable,
+        EntitySpawnListener,
+        SceneLoadListener,
+        GameSystemLifecycleListener {
   Box2DPhysicsSystem({
     this.gravityX = 0,
     this.gravityY = -10,
@@ -160,7 +164,20 @@ class Box2DPhysicsSystem extends GameSystem
   /// error here is ordinary narrowing rather than an approximation.
   static const double positionEpsilon = 1e-4;
 
-  int _world = 0;
+  /// One Box2D world per loaded scene, by `Scene.slot`.
+  ///
+  /// **A scene is this engine's isolation boundary, and physics is the last
+  /// subsystem to say so.** Hierarchy edges refuse to cross a scene, pages
+  /// carry `ownerSceneSlot` and are freed per scene, and a view draws only the
+  /// scene its camera occupies. One world for the whole game made physics the
+  /// exception: a dynamic body in one scene rested on static geometry in
+  /// another, and `overlapBox` returned shapes from both interleaved, with
+  /// `layerMask` the only way to tell them apart - a budget that exists for
+  /// something else entirely (#106).
+  ///
+  /// Created on demand by [worldOf] and destroyed in [onSceneUnloaded], so a
+  /// scene that declares no body never makes one.
+  final Map<int, int> _worlds = <int, int>{};
 
   late final Query _bodies;
 
@@ -244,8 +261,10 @@ class Box2DPhysicsSystem extends GameSystem
   /// Those two can disagree, and the difference is invisible in a step time.
   /// [workerCount] is what this object was constructed with; this is what the
   /// world got. 0 means no world exists yet.
+  /// Every world this system makes is built with the same [workerCount], so
+  /// any of them answers for all; 0 when none exists yet.
   int get activeWorkerCount =>
-      _world == 0 ? 0 : box2d.gooWorldWorkerCount(_world);
+      _worlds.isEmpty ? 0 : box2d.gooWorldWorkerCount(_worlds.values.first);
 
   /// Bodies Box2D is still integrating, as opposed to asleep.
   ///
@@ -254,8 +273,15 @@ class Box2DPhysicsSystem extends GameSystem
   /// keeps twitching - bouncy restitution, bodies with nowhere to separate
   /// to, something being teleported into it every tick - pays full price
   /// forever. Those have completely different fixes and the same step time.
-  int get awakeBodyCount =>
-      _world == 0 ? 0 : box2d.gooWorldAwakeBodyCount(_world);
+  /// Summed over every loaded scene's world, so this reads the same for a
+  /// one-scene game as it always did.
+  int get awakeBodyCount {
+    var total = 0;
+    for (final world in _worlds.values) {
+      total += box2d.gooWorldAwakeBodyCount(world);
+    }
+    return total;
+  }
 
   /// Box2D's own view of the world: `[bodies, shapes, contacts, joints,
   /// islands]`, written into [into] (at least 5 long) and returned.
@@ -264,13 +290,20 @@ class Box2DPhysicsSystem extends GameSystem
   /// ones - see [touchingPairCount] for those. A count that climbs far faster
   /// than the population is the signature of overlap.
   Int32List counters(Int32List into) {
-    if (_world == 0) return into;
-    _countersOut ??= calloc<Int32>(5);
-    final out = _countersOut!;
-    box2d.gooWorldCounters(_world, out, 5);
     final n = into.length < 5 ? into.length : 5;
     for (var i = 0; i < n; i++) {
-      into[i] = out[i];
+      into[i] = 0;
+    }
+    if (_worlds.isEmpty) return into;
+    _countersOut ??= calloc<Int32>(5);
+    final out = _countersOut!;
+    // Summed over every world. All five are counts of things, so they add;
+    // for a game with one scene this is what it always reported.
+    for (final world in _worlds.values) {
+      box2d.gooWorldCounters(world, out, 5);
+      for (var i = 0; i < n; i++) {
+        into[i] += out[i];
+      }
     }
     return into;
   }
@@ -367,10 +400,14 @@ class Box2DPhysicsSystem extends GameSystem
     final minY = offsetY - halfHeight;
     final maxY = offsetY + halfHeight;
     final layerMask = effector.layerMask[entity];
+    // A declared effector acts in its own scene and nowhere else: it reaches
+    // bodies through an overlap query, and that query belongs to one world.
+    final scene = entity.scene;
 
     switch (effector) {
       case AreaEffector():
         areaEffector(
+          scene,
           minX,
           minY,
           maxX,
@@ -382,6 +419,7 @@ class Box2DPhysicsSystem extends GameSystem
         );
       case PointEffector():
         pointEffector(
+          scene,
           offsetX,
           offsetY,
           radius: halfWidth > halfHeight ? halfWidth : halfHeight,
@@ -393,6 +431,7 @@ class Box2DPhysicsSystem extends GameSystem
         // +y is down in goo2d, so the water line is the *smaller* y - see
         // BuoyancyEffector's own doc on why it is horizontal regardless.
         buoyancyEffector(
+          scene,
           minX,
           maxX,
           surfaceY: minY,
@@ -404,6 +443,7 @@ class Box2DPhysicsSystem extends GameSystem
         );
       case SurfaceEffector():
         surfaceEffector(
+          scene,
           minX,
           minY,
           maxX,
@@ -419,20 +459,29 @@ class Box2DPhysicsSystem extends GameSystem
   @override
   int compareTo(GameSystem other) => other is Box2DPhysicsSystem ? 0 : -1;
 
-  /// The Box2D world, created on first use.
-  int get world {
-    if (_world == 0) {
+  /// The Box2D world [scene]'s bodies live in, created on first use.
+  ///
+  /// There is no world-for-the-game to ask for. A body belongs to an entity,
+  /// an entity belongs to exactly one scene, and that is what decides which
+  /// solver it is in.
+  int worldOf(Scene scene) => _worldOfSlot(scene.slot);
+
+  int _worldOfSlot(int slot) {
+    final existing = _worlds[slot];
+    if (existing != null) return existing;
+    {
       // The threads, if any, are created here rather than in the constructor
       // - and that matters as much as the world does. `Game` runs every
       // declare pass on the main isolate and deep-copies the graph to the
       // game isolate, so a pool built at construction time would be built by
       // the copy that never simulates, and the copy that does would inherit a
       // handle to threads it does not own.
-      _world = workerCount > 1
+      final created = workerCount > 1
           ? box2d.gooWorldCreateThreaded(gravityX, gravityY, workerCount)
           : box2d.gooWorldCreate(gravityX, gravityY);
+      _worlds[slot] = created;
+      return created;
     }
-    return _world;
   }
 
   // --- lifecycle ------------------------------------------------------------
@@ -505,6 +554,25 @@ class Box2DPhysicsSystem extends GameSystem
     _pendingCreate.add(entity);
   }
 
+  /// Destroys the world [scene] owned, and every body and joint in it.
+  ///
+  /// **Before its entities are despawned**, which is the ordering
+  /// `SceneLoadListener` gives and the reason this is safe: one
+  /// `gooWorldDestroy` takes the bodies with it, so there is no per-entity
+  /// teardown to get wrong and nothing left behind if a handle was written
+  /// this tick and not yet published.
+  ///
+  /// It does mean [onEntityDespawned] then runs for every entity of a scene
+  /// whose world is already gone. That path checks, and it has to: calling
+  /// `gooBodyDestroy` on a handle in a destroyed world is a native
+  /// use-after-free, which kills the isolate with no Dart exception and no
+  /// output - the failure mode this file already carries a scar from.
+  @override
+  void onSceneUnloaded(Scene scene) {
+    final world = _worlds.remove(scene.slot);
+    if (world != null && world != 0) box2d.gooWorldDestroy(world);
+  }
+
   /// Creates the bodies queued by [onEntitySpawned] since the last step.
   void _createPending() {
     if (_pendingCreate.isEmpty) return;
@@ -516,6 +584,9 @@ class Box2DPhysicsSystem extends GameSystem
       // queue, but an entity whose whole scene went away does not come
       // through there with a resolvable archetype.
       if (body == null || transform == null) continue;
+      // Its scene unloaded between the spawn and this step, so there is no
+      // world to build it in and no entity left to build it for.
+      if (entity.sceneSlot < 0) continue;
       _createBody(entity, body, transform);
     }
     _pendingCreate.clear();
@@ -530,16 +601,24 @@ class Box2DPhysicsSystem extends GameSystem
     // Leaving it queued would create a body for a freed row on the next step.
     if (_pendingCreate.isNotEmpty) _pendingCreate.remove(entity);
 
-    // If the world is already gone there is nothing to destroy, and trying
-    // is a use-after-free: b2DestroyBody would walk a freed world.
+    // If this entity's world is already gone there is nothing to destroy, and
+    // trying is a use-after-free: b2DestroyBody would walk a freed world.
     //
-    // This is reachable through ordinary teardown, not just misuse -
-    // [dispose] destroys the world, and stopping a game afterwards unloads
-    // its scenes, which unmounts every entity and lands here. It cost real
-    // debugging time precisely because a native crash kills the isolate
-    // with no Dart exception and no output at all: the test simply "did not
-    // complete".
-    if (_world == 0) return;
+    // Two ordinary paths reach here with no world, neither of them misuse.
+    // [dispose] destroys every world, and stopping a game afterwards unloads
+    // its scenes, which unmounts every entity and lands here. And
+    // [onSceneUnloaded] destroys one scene's world *before* that scene's
+    // entities are despawned, so every one of them arrives here with its
+    // world already released.
+    //
+    // It cost real debugging time precisely because a native crash kills the
+    // isolate with no Dart exception and no output at all: the test simply
+    // "did not complete".
+    //
+    // `sceneSlot` reads the row's page, and answers -1 once that page is gone,
+    // so a slot that was never a world and a slot whose world has been
+    // destroyed both miss the same way.
+    if (!_worlds.containsKey(entity.sceneSlot)) return;
 
     // **The freshly created map is consulted first, and it has to be.**
     //
@@ -574,7 +653,9 @@ class Box2DPhysicsSystem extends GameSystem
   void _createBody(Entity entity, RigidBody2D body, Transform2D transform) {
     final type = body.bodyType[entity];
     final handle = box2d.gooBodyCreate(
-      world,
+      // Routed by the entity, not by anything ambient: this is the line that
+      // decides which solver a body is in, and it reads the answer off the row.
+      _worldOfSlot(entity.sceneSlot),
       type.index,
       transform.transformOffsetX[entity],
       transform.transformOffsetY[entity],
@@ -824,10 +905,8 @@ class Box2DPhysicsSystem extends GameSystem
     if (count == 0) {
       // Still step, so a world with only static geometry keeps a consistent
       // clock - and so `time` in Box2D does not diverge from the game's.
-      if (_world != 0) {
-        box2d.gooWorldStep(world, _stepSeconds, subStepCount);
-        _dispatchContacts();
-      }
+      _stepWorlds();
+      _dispatchContacts();
       return;
     }
 
@@ -841,9 +920,10 @@ class Box2DPhysicsSystem extends GameSystem
     // value back over the impulse. Dirty-checking it instead would need a
     // third cache and would still lose a force applied in the same tick a
     // gameplay write happened.
-    box2d
-      ..gooBodiesPushTransforms(_pushHandles, _transforms, count)
-      ..gooWorldStep(world, _stepSeconds, subStepCount);
+    // Push and pull are per *body*, so they stay one bulk call across every
+    // scene; only the solve and its event queues belong to a world.
+    box2d.gooBodiesPushTransforms(_pushHandles, _transforms, count);
+    _stepWorlds();
 
     box2d
       ..gooBodiesPullTransforms(_handles, _transforms, count)
@@ -851,6 +931,16 @@ class Box2DPhysicsSystem extends GameSystem
     _writeBack(count);
 
     _dispatchContacts();
+  }
+
+  /// Steps every loaded scene's world, each by the same fixed delta.
+  ///
+  /// Order across worlds is not observable: they share no body, no contact and
+  /// no constraint, which is the whole point of there being more than one.
+  void _stepWorlds() {
+    for (final world in _worlds.values) {
+      box2d.gooWorldStep(world, _stepSeconds, subStepCount);
+    }
   }
 
   double get _stepSeconds =>
@@ -1053,6 +1143,29 @@ class Box2DPhysicsSystem extends GameSystem
   ///
   /// Returns 0 if either entity has no body **yet** - see [createRevoluteJoint]
   /// for why that is easy to hit.
+  /// Refuses a joint whose two bodies are in different scenes.
+  ///
+  /// The same rule `ParentAccessor._sameScene` states for hierarchy edges, and
+  /// for the same reason: whichever scene unloads first would leave the other
+  /// holding a constraint into freed memory. It is spelled as a real throw
+  /// rather than an `assert`, which is where it differs. Hierarchy can repair a
+  /// stray edge at unload; this cannot, because the bodies are in two separate
+  /// `b2World`s and Box2D has no defined answer for jointing across them. What
+  /// it does instead is not something to expose, so the refusal is ours and it
+  /// happens before the native call.
+  void _requireSameScene(Entity a, Entity b) {
+    final slotA = a.sceneSlot;
+    final slotB = b.sceneSlot;
+    if (slotA == slotB) return;
+    throw ArgumentError(
+      'Cannot joint $a in scene slot $slotA to $b in scene slot $slotB. Each '
+      'loaded scene simulates in its own Box2D world, so two bodies from '
+      'different scenes have no solver in common and no constraint between '
+      'them could be stepped. Spawn both in one scene - '
+      '`a.scene.addEntity(...)` - or connect each to something in its own.',
+    );
+  }
+
   Joint createDistanceJoint(
     Entity a,
     Entity b, {
@@ -1072,23 +1185,26 @@ class Box2DPhysicsSystem extends GameSystem
     final handleA = _bodyHandleOf(a);
     final handleB = _bodyHandleOf(b);
     if (handleA == 0 || handleB == 0) return Joint.none;
+    _requireSameScene(a, b);
 
-    return Joint(box2d.gooJointCreateDistance(
-      handleA,
-      handleB,
-      anchorAX,
-      anchorAY,
-      anchorBX,
-      anchorBY,
-      length,
-      enableSpring ? 1 : 0,
-      hertz,
-      dampingRatio,
-      enableLimit ? 1 : 0,
-      minLength,
-      maxLength,
-      collideConnected ? 1 : 0,
-    ));
+    return Joint(
+      box2d.gooJointCreateDistance(
+        handleA,
+        handleB,
+        anchorAX,
+        anchorAY,
+        anchorBX,
+        anchorBY,
+        length,
+        enableSpring ? 1 : 0,
+        hertz,
+        dampingRatio,
+        enableLimit ? 1 : 0,
+        minLength,
+        maxLength,
+        collideConnected ? 1 : 0,
+      ),
+    );
   }
 
   /// Pins two bodies to a shared pivot, optionally limited and motorised.
@@ -1138,23 +1254,26 @@ class Box2DPhysicsSystem extends GameSystem
     final handleA = _bodyHandleOf(a);
     final handleB = _bodyHandleOf(b);
     if (handleA == 0 || handleB == 0) return Joint.none;
+    _requireSameScene(a, b);
 
-    return Joint(box2d.gooJointCreateRevolute(
-      handleA,
-      handleB,
-      anchorAX,
-      anchorAY,
-      anchorBX,
-      anchorBY,
-      referenceAngle,
-      enableLimit ? 1 : 0,
-      lowerAngle,
-      upperAngle,
-      enableMotor ? 1 : 0,
-      motorSpeed,
-      maxMotorTorque,
-      collideConnected ? 1 : 0,
-    ));
+    return Joint(
+      box2d.gooJointCreateRevolute(
+        handleA,
+        handleB,
+        anchorAX,
+        anchorAY,
+        anchorBX,
+        anchorBY,
+        referenceAngle,
+        enableLimit ? 1 : 0,
+        lowerAngle,
+        upperAngle,
+        enableMotor ? 1 : 0,
+        motorSpeed,
+        maxMotorTorque,
+        collideConnected ? 1 : 0,
+      ),
+    );
   }
 
   /// Constrains two bodies to slide along one axis - Unity's Slider Joint 2D.
@@ -1184,11 +1303,27 @@ class Box2DPhysicsSystem extends GameSystem
     final ha = _bodyHandleOf(a);
     final hb = _bodyHandleOf(b);
     if (ha == 0 || hb == 0) return Joint.none;
-    return Joint(box2d.gooJointCreatePrismatic(
-      ha, hb, anchorAX, anchorAY, anchorBX, anchorBY, axisX, axisY,
-      referenceAngle, enableLimit ? 1 : 0, lowerTranslation, upperTranslation,
-      enableMotor ? 1 : 0, motorSpeed, maxMotorForce, collideConnected ? 1 : 0,
-    ));
+    _requireSameScene(a, b);
+    return Joint(
+      box2d.gooJointCreatePrismatic(
+        ha,
+        hb,
+        anchorAX,
+        anchorAY,
+        anchorBX,
+        anchorBY,
+        axisX,
+        axisY,
+        referenceAngle,
+        enableLimit ? 1 : 0,
+        lowerTranslation,
+        upperTranslation,
+        enableMotor ? 1 : 0,
+        motorSpeed,
+        maxMotorForce,
+        collideConnected ? 1 : 0,
+      ),
+    );
   }
 
   /// Holds two bodies rigidly together - Unity's Fixed Joint 2D.
@@ -1213,11 +1348,23 @@ class Box2DPhysicsSystem extends GameSystem
     final ha = _bodyHandleOf(a);
     final hb = _bodyHandleOf(b);
     if (ha == 0 || hb == 0) return Joint.none;
-    return Joint(box2d.gooJointCreateWeld(
-      ha, hb, anchorAX, anchorAY, anchorBX, anchorBY, referenceAngle,
-      linearHertz, linearDampingRatio, angularHertz, angularDampingRatio,
-      collideConnected ? 1 : 0,
-    ));
+    _requireSameScene(a, b);
+    return Joint(
+      box2d.gooJointCreateWeld(
+        ha,
+        hb,
+        anchorAX,
+        anchorAY,
+        anchorBX,
+        anchorBY,
+        referenceAngle,
+        linearHertz,
+        linearDampingRatio,
+        angularHertz,
+        angularDampingRatio,
+        collideConnected ? 1 : 0,
+      ),
+    );
   }
 
   /// A suspension axis plus a free spin - Unity's Wheel Joint 2D, and what a
@@ -1248,12 +1395,29 @@ class Box2DPhysicsSystem extends GameSystem
     final ha = _bodyHandleOf(a);
     final hb = _bodyHandleOf(b);
     if (ha == 0 || hb == 0) return Joint.none;
-    return Joint(box2d.gooJointCreateWheel(
-      ha, hb, anchorAX, anchorAY, anchorBX, anchorBY, axisX, axisY,
-      enableSpring ? 1 : 0, hertz, dampingRatio, enableLimit ? 1 : 0,
-      lowerTranslation, upperTranslation, enableMotor ? 1 : 0, motorSpeed,
-      maxMotorTorque, collideConnected ? 1 : 0,
-    ));
+    _requireSameScene(a, b);
+    return Joint(
+      box2d.gooJointCreateWheel(
+        ha,
+        hb,
+        anchorAX,
+        anchorAY,
+        anchorBX,
+        anchorBY,
+        axisX,
+        axisY,
+        enableSpring ? 1 : 0,
+        hertz,
+        dampingRatio,
+        enableLimit ? 1 : 0,
+        lowerTranslation,
+        upperTranslation,
+        enableMotor ? 1 : 0,
+        motorSpeed,
+        maxMotorTorque,
+        collideConnected ? 1 : 0,
+      ),
+    );
   }
 
   /// Drives body [b] towards a position and angle relative to body [a] -
@@ -1277,10 +1441,20 @@ class Box2DPhysicsSystem extends GameSystem
     final ha = _bodyHandleOf(a);
     final hb = _bodyHandleOf(b);
     if (ha == 0 || hb == 0) return Joint.none;
-    return Joint(box2d.gooJointCreateMotor(
-      ha, hb, offsetX, offsetY, angularOffset, maxForce, maxTorque,
-      correctionFactor, collideConnected ? 1 : 0,
-    ));
+    _requireSameScene(a, b);
+    return Joint(
+      box2d.gooJointCreateMotor(
+        ha,
+        hb,
+        offsetX,
+        offsetY,
+        angularOffset,
+        maxForce,
+        maxTorque,
+        correctionFactor,
+        collideConnected ? 1 : 0,
+      ),
+    );
   }
 
   /// Drags body [b] towards a **world-space** target - Unity's Target Joint
@@ -1311,10 +1485,19 @@ class Box2DPhysicsSystem extends GameSystem
     final ha = _bodyHandleOf(a);
     final hb = _bodyHandleOf(b);
     if (ha == 0 || hb == 0) return Joint.none;
-    return Joint(box2d.gooJointCreateMouse(
-      ha, hb, targetX, targetY, hertz, dampingRatio, maxForce,
-      collideConnected ? 1 : 0,
-    ));
+    _requireSameScene(a, b);
+    return Joint(
+      box2d.gooJointCreateMouse(
+        ha,
+        hb,
+        targetX,
+        targetY,
+        hertz,
+        dampingRatio,
+        maxForce,
+        collideConnected ? 1 : 0,
+      ),
+    );
   }
 
   /// The body behind an entity, or 0 if it has none yet.
@@ -1366,14 +1549,23 @@ class Box2DPhysicsSystem extends GameSystem
   /// it, and they stay valid **only until the next query**.
   ///
   /// [layerMask] is a bitmask of layers to test against, defaulting to all.
+  ///
+  /// [scene] says which world to cast in, and it is required on purpose.
+  /// Defaulting it to "the one loaded scene" would give a call that works for
+  /// months and then queries the wrong world - or throws - the day a HUD scene
+  /// loads. That shape is what `getScene` became `singleScene` to remove, and
+  /// here the symptom would be a silently wrong answer instead of a clean
+  /// failure. A one-scene game passes the scene it has.
   bool raycast(
+    Scene scene,
     double x,
     double y,
     double dx,
     double dy, {
     int layerMask = -1,
   }) {
-    if (_world == 0) return false;
+    final world = _worlds[scene.slot];
+    if (world == null) return false;
     _queryFloats = _queryFloats == nullptr ? calloc<Float>(5) : _queryFloats;
 
     final shape = box2d.gooWorldCastRayClosest(
@@ -1413,7 +1605,11 @@ class Box2DPhysicsSystem extends GameSystem
   ///
   /// Results are valid until the next query. [maxResults] bounds the work;
   /// anything beyond it is dropped rather than growing a buffer without limit.
+  /// [scene] says which world to search, and is required for the reason
+  /// [raycast] gives: one shared world used to return shapes from two scenes
+  /// interleaved, with `layerMask` the only way to tell them apart.
   int overlapBox(
+    Scene scene,
     double minX,
     double minY,
     double maxX,
@@ -1421,7 +1617,8 @@ class Box2DPhysicsSystem extends GameSystem
     int layerMask = -1,
     int maxResults = 256,
   }) {
-    if (_world == 0) return 0;
+    final world = _worlds[scene.slot];
+    if (world == null) return 0;
     if (maxResults > _queryShapeCapacity) {
       if (_queryShapeCapacity != 0) calloc.free(_queryShapes);
       _queryShapes = calloc<Int64>(maxResults);
@@ -1453,12 +1650,16 @@ class Box2DPhysicsSystem extends GameSystem
   /// Drains this step's touch transitions, dispatches enter/exit, then
   /// dispatches stay for everything still touching.
   void _dispatchContacts() {
-    _drain(sensors: false);
-    _drain(sensors: true);
+    for (final world in _worlds.values) {
+      _drain(world, sensors: false);
+      _drain(world, sensors: true);
+    }
+    // Once, not per world: the touching set is keyed by shape and a pair can
+    // only ever come from the world both its shapes are in.
     if (dispatchStayEvents) _dispatchStay();
   }
 
-  void _drain({required bool sensors}) {
+  void _drain(int world, {required bool sensors}) {
     final available = sensors
         ? box2d.gooWorldSensorEventCount(world)
         : box2d.gooWorldContactEventCount(world);
@@ -1522,8 +1723,12 @@ class Box2DPhysicsSystem extends GameSystem
     _deliver(b, a, sensor, phase);
   }
 
-  void _deliver(_ShapeOwner source, _ShapeOwner target, bool sensor,
-      _Phase phase) {
+  void _deliver(
+    _ShapeOwner source,
+    _ShapeOwner target,
+    bool sensor,
+    _Phase phase,
+  ) {
     final listener = source.listener;
     if (listener == null) return;
 
@@ -1665,10 +1870,10 @@ class Box2DPhysicsSystem extends GameSystem
 
   /// See [onUnmounted] - this is what it calls.
   void dispose() {
-    if (_world != 0) {
-      box2d.gooWorldDestroy(_world);
-      _world = 0;
+    for (final world in _worlds.values) {
+      box2d.gooWorldDestroy(world);
     }
+    _worlds.clear();
     if (_capacity != 0) {
       calloc
         ..free(_handles)

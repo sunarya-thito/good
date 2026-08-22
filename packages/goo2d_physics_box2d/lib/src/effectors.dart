@@ -81,6 +81,7 @@ extension Effectors2D on Box2DPhysicsSystem {
   /// Returns how many bodies were affected, which is the cheapest way to tell
   /// a mis-placed region from a mis-scaled force.
   int areaEffector(
+    Scene scene,
     double minX,
     double minY,
     double maxX,
@@ -92,6 +93,7 @@ extension Effectors2D on Box2DPhysicsSystem {
     int maxBodies = 256,
   }) {
     final found = overlapBox(
+      scene,
       minX,
       minY,
       maxX,
@@ -123,6 +125,7 @@ extension Effectors2D on Box2DPhysicsSystem {
   /// undefined and the magnitude infinite, and games that skip that guard
   /// launch anything spawned on top of the effector into orbit.
   int pointEffector(
+    Scene scene,
     double x,
     double y, {
     required double radius,
@@ -133,6 +136,7 @@ extension Effectors2D on Box2DPhysicsSystem {
     int maxBodies = 256,
   }) {
     final found = overlapBox(
+      scene,
       x - radius,
       y - radius,
       x + radius,
@@ -174,6 +178,7 @@ extension Effectors2D on Box2DPhysicsSystem {
   /// sinks, above it floats. [linearDrag] and [angularDrag] are what stop it
   /// oscillating forever, and a buoyancy effector without them is a spring.
   int buoyancyEffector(
+    Scene scene,
     double minX,
     double maxX, {
     required double surfaceY,
@@ -188,6 +193,7 @@ extension Effectors2D on Box2DPhysicsSystem {
     // The fluid volume hangs *below* the waterline, so `surfaceY` is the box's
     // maximum y and not its minimum - overlapBox wants them in that order.
     final found = overlapBox(
+      scene,
       minX,
       surfaceY - depth,
       maxX,
@@ -233,6 +239,7 @@ extension Effectors2D on Box2DPhysicsSystem {
   /// win every argument, which is the usual way this gets built and the usual
   /// reason it feels wrong.
   int surfaceEffector(
+    Scene scene,
     double minX,
     double minY,
     double maxX,
@@ -244,6 +251,7 @@ extension Effectors2D on Box2DPhysicsSystem {
     int maxBodies = 256,
   }) {
     final found = overlapBox(
+      scene,
       minX,
       minY,
       maxX,

@@ -2,6 +2,31 @@
 
 ### Breaking
 
+* **One Box2D world per loaded scene, and the queries name the scene.**
+  `raycast` and `overlapBox` take a `Scene` as their first argument, as do the
+  four `Effectors2D` functions (`areaEffector`, `pointEffector`,
+  `buoyancyEffector`, `surfaceEffector`). Pass the handle `loadScene` returned;
+  a game with one scene passes the one it has. There is deliberately no default
+  and no fallback to "the one loaded scene" - that shape works for months and
+  then queries the wrong world the day a HUD scene loads, which is why
+  `getScene` became `singleScene` in the kernel.
+
+  Before this, every loaded scene shared one world: a dynamic body in one scene
+  came to rest on static geometry in another, one `overlapBox` returned shapes
+  from two scenes interleaved, and `layerMask` was the only way to tell them
+  apart - a budget that exists for something else. A scene is this engine's
+  isolation boundary everywhere else, so physics was the subsystem catching up.
+
+  Two more consequences. A joint between bodies in different scenes is refused
+  with an `ArgumentError` naming both slots, because they have no solver in
+  common and Box2D has no defined behaviour for it. And unloading a scene
+  destroys its world outright, taking every body and joint in it, so nothing
+  survives an unload that used to.
+
+  `Box2DPhysicsSystem.world` is gone; `worldOf(scene)` replaces it.
+  `awakeBodyCount` and `counters` sum across loaded scenes, which reads the
+  same as before for a game with one.
+
 * **`+y` is up, following `goo2d`.** Gravity defaults to `-10`, the wheel
   joint's axis to `(0, -1)`, and buoyancy searches below the waterline. A world
   that set any of these itself needs the sign checked.

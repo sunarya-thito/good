@@ -233,12 +233,13 @@ have to be filtered out of collision logic.
 
 ## Queries
 
-Raycasts and overlap queries go through the system:
+Raycasts and overlap queries go through the system, and each one names the
+scene to search:
 
 ```dart
 final physics = state.getSystem<Box2DPhysicsSystem>();
 
-if (physics.raycast(originX, originY, dirX, dirY, layerMask: -1)) {
+if (physics.raycast(scene, originX, originY, dirX, dirY, layerMask: -1)) {
   final entity = physics.hitEntity;
   final x = physics.hitX;
   final y = physics.hitY;
@@ -250,8 +251,13 @@ if (physics.raycast(originX, originY, dirX, dirY, layerMask: -1)) {
 The hit is read back off the system instead of returned as an object, so a
 raycast in a tick allocates nothing. `raycast` finds the **closest** hit.
 
+Each loaded scene simulates in its own Box2D world, so a query has to say which
+one it means. There is no default: a query that fell back to "the one loaded
+scene" would work for months and then search the wrong world the day you load a
+HUD. Pass the handle `loadScene` gave you.
+
 ```dart
-final found = physics.overlapBox(minX, minY, maxX, maxY, maxResults: 256);
+final found = physics.overlapBox(scene, minX, minY, maxX, maxY, maxResults: 256);
 for (var i = 0; i < found; i++) {
   final entity = physics.overlapEntityAt(i);
   final collider = physics.overlapColliderAt(i);

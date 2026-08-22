@@ -131,7 +131,7 @@ void main() {
       _advance(2);
 
       effectors.each = (physics) =>
-          physics.areaEffector(-10, -10, 10, 10, forceX: 50);
+          physics.areaEffector(scene.handle, -10, -10, 10, 10, forceX: 50);
       _advance(60);
 
       expect(
@@ -158,7 +158,7 @@ void main() {
       _advance(2);
 
       effectors.each = (physics) =>
-          physics.pointEffector(0, 0, radius: 10, force: 400);
+          physics.pointEffector(scene.handle, 0, 0, radius: 10, force: 400);
       _advance(45);
       final pushed = scene.box.transformOffsetX[body];
       expect(pushed, greaterThan(3.5), reason: 'positive force pushes away');
@@ -169,7 +169,7 @@ void main() {
       // which reads as "attraction does nothing" rather than "bad test".
       scene.box.setVelocity(body, 0, 0);
       effectors.each = (physics) =>
-          physics.pointEffector(0, 0, radius: 60, force: -400);
+          physics.pointEffector(scene.handle, 0, 0, radius: 60, force: -400);
       _advance(45);
       expect(
         scene.box.transformOffsetX[body],
@@ -193,7 +193,7 @@ void main() {
     _advance(2);
 
     effectors.each = (physics) =>
-        physics.pointEffector(0, 0, radius: 7, force: 4000);
+        physics.pointEffector(scene.handle, 0, 0, radius: 7, force: 4000);
     _advance(60);
 
     expect(
@@ -216,7 +216,7 @@ void main() {
       // Gravity by hand, since the world has none - floating against nothing
       // would prove nothing.
       scene.box.applyForce(body, 0, -10);
-      physics.buoyancyEffector(-50, 50, surfaceY: 0, density: 3);
+      physics.buoyancyEffector(scene.handle, -50, 50, surfaceY: 0, density: 3);
     };
     _advance(240);
 
@@ -241,7 +241,7 @@ void main() {
     _advance(2);
 
     effectors.each = (physics) =>
-        physics.surfaceEffector(-20, -5, 20, 5, speed: 4);
+        physics.surfaceEffector(scene.handle, -20, -5, 20, 5, speed: 4);
     _advance(60);
 
     expect(

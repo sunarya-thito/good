@@ -118,7 +118,7 @@ void main() {
     _settle();
 
     // From the origin, 20 units to the right. The wall spans x 9..11.
-    expect(physics.raycast(0, 0, 20, 0), isTrue);
+    expect(physics.raycast(scene.handle, 0, 0, 20, 0), isTrue);
     expect(physics.hitEntity, wall);
     expect(physics.hitCollider, isA<BoxBody>());
     expect(physics.hitX, closeTo(9, 0.01), reason: 'the near face is at x=9');
@@ -133,13 +133,17 @@ void main() {
     _settle();
 
     expect(
-      physics.raycast(0, 0, 5, 0),
+      physics.raycast(scene.handle, 0, 0, 5, 0),
       isFalse,
       reason:
           'the ray stops at x=5, short of the wall at x=9 - the '
           'translation IS the length',
     );
-    expect(physics.raycast(0, 50, 20, 0), isFalse, reason: 'well above it');
+    expect(
+      physics.raycast(scene.handle, 0, 50, 20, 0),
+      isFalse,
+      reason: 'well above it',
+    );
   });
 
   test('a ray reports the closest of several hits', () async {
@@ -150,7 +154,7 @@ void main() {
     scene.wall.transformOffsetX[far] = 15;
     _settle();
 
-    expect(physics.raycast(0, 0, 30, 0), isTrue);
+    expect(physics.raycast(scene.handle, 0, 0, 30, 0), isTrue);
     expect(physics.hitEntity, near, reason: 'closest, not first found');
   });
 
@@ -161,13 +165,17 @@ void main() {
     _settle();
 
     // _Hidden is on layer 3, so its category bit is 1 << 3 = 8.
-    expect(physics.raycast(0, 0, 20, 0), isTrue, reason: 'default mask is all');
     expect(
-      physics.raycast(0, 0, 20, 0, layerMask: 1),
+      physics.raycast(scene.handle, 0, 0, 20, 0),
+      isTrue,
+      reason: 'default mask is all',
+    );
+    expect(
+      physics.raycast(scene.handle, 0, 0, 20, 0, layerMask: 1),
       isFalse,
       reason: 'a mask of layer 0 only should not see a layer-3 collider',
     );
-    expect(physics.raycast(0, 0, 20, 0, layerMask: 8), isTrue);
+    expect(physics.raycast(scene.handle, 0, 0, 20, 0, layerMask: 8), isTrue);
   });
 
   test('overlap finds colliders in a box and nothing outside it', () async {
@@ -178,18 +186,18 @@ void main() {
     scene.wall.transformOffsetX[outside] = 100;
     _settle();
 
-    final count = physics.overlapBox(-5, -5, 5, 5);
+    final count = physics.overlapBox(scene.handle, -5, -5, 5, 5);
     expect(count, 1);
     expect(physics.overlapEntityAt(0), inside);
     expect(physics.overlapColliderAt(0), isA<BoxBody>());
 
     expect(
-      physics.overlapBox(-500, -500, 500, 500),
+      physics.overlapBox(scene.handle, -500, -500, 500, 500),
       2,
       reason: 'a box covering both should find both',
     );
     expect(
-      physics.overlapBox(40, 40, 50, 50),
+      physics.overlapBox(scene.handle, 40, 40, 50, 50),
       0,
       reason: 'empty space should find nothing',
     );
@@ -201,13 +209,13 @@ void main() {
     scene.hidden.transformOffsetX[hidden] = 0;
     _settle();
 
-    expect(physics.overlapBox(-5, -5, 5, 5), 1);
-    expect(physics.overlapBox(-5, -5, 5, 5, layerMask: 1), 0);
+    expect(physics.overlapBox(scene.handle, -5, -5, 5, 5), 1);
+    expect(physics.overlapBox(scene.handle, -5, -5, 5, 5, layerMask: 1), 0);
   });
 
   test('a query before anything exists is a clean miss', () async {
-    await _boot();
-    expect(physics.raycast(0, 0, 10, 0), isFalse);
-    expect(physics.overlapBox(-1, -1, 1, 1), 0);
+    final scene = await _boot();
+    expect(physics.raycast(scene.handle, 0, 0, 10, 0), isFalse);
+    expect(physics.overlapBox(scene.handle, -1, -1, 1, 1), 0);
   });
 }

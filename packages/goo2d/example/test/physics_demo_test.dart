@@ -193,11 +193,18 @@ void main() {
     final arena = scene.arena;
     // From below, casting up: +y is down, so this can only hit the floor's
     // underside and never the pile resting on top of it.
-    final hit = physics.raycast(arena.halfWidth * 0.9, arena.floorY + 6, 0, -8);
+    final hit = physics.raycast(
+      scene.handle,
+      arena.halfWidth * 0.9,
+      arena.floorY + 6,
+      0,
+      -8,
+    );
     expect(
       hit && identical(physics.hitCollider, scene.ground.box),
       isTrue,
-      reason: 'there should be floor near the edge of the resized arena - if '
+      reason:
+          'there should be floor near the edge of the resized arena - if '
           'there is not, the collider kept the old size while the sprite grew',
     );
   });
@@ -248,7 +255,8 @@ void main() {
     expect(
       state.spawnedCount,
       1000,
-      reason: 'and the population should reach its target rather than '
+      reason:
+          'and the population should reach its target rather than '
           'plateauing where escapes cancel out spawns',
     );
   });
@@ -296,7 +304,8 @@ void main() {
     expect(
       game.physicsBodies.value,
       10 + arenaBodies,
-      reason: 'a shed entity must take its Box2D body with it - if this is '
+      reason:
+          'a shed entity must take its Box2D body with it - if this is '
           'high, destroy() is not reaching the physics system and every '
           'recycled body is leaking',
     );
@@ -344,7 +353,8 @@ void main() {
     expect(
       game.physicsBodies.value,
       state.spawnedCount + 3,
-      reason: 'Box2D should hold exactly the live bodies plus one floor and '
+      reason:
+          'Box2D should hold exactly the live bodies plus one floor and '
           'two walls. Anything more is a ghost arena - walls whose entities '
           'were destroyed on the same tick their bodies were created',
     );
