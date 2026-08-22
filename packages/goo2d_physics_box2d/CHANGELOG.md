@@ -33,6 +33,31 @@
 * **A polygon collider takes its points**, and the eight-vertex cap now lives
   here — Box2D's solver is what the limit was ever about.
 
+### Performance
+
+* **A static body no longer has its transform read back from the solver.**
+  Since the drift fix below, a static body's pulled transform was discarded on
+  arrival, but the read still happened — one per static body per tick, thrown
+  away. The transform pull now runs off its own handle array with the static
+  rows zeroed, and the shim skips those. Velocities still come back for every
+  body, static included, because a body turned static has to report zero.
+
+  The cost was about 11 ns per static body per tick, so it scaled with level
+  geometry and was worst on exactly the scenes that notice it least — a
+  mostly-static tilemap. Measured against the raw shim, AOT-compiled, on a
+  scene of 500 dynamic bodies dropped onto a row of statics:
+
+  | static bodies | transform pull, before | after | saved per tick |
+  | --- | --- | --- | --- |
+  | 1,000 | 14.2 µs | 4.7 µs | 9.5 µs |
+  | 5,000 | 58.8 µs | 5.4 µs | 53.4 µs |
+  | 20,000 | 243.2 µs | 8.9 µs | 234.3 µs |
+
+  At 20,000 statics that is 1.4% of a whole 60 Hz frame, and roughly half the
+  native part of a physics tick. `tool/static_pull_bench.dart` is the
+  measurement, including the control case that shows what no difference looks
+  like.
+
 ### Fixed
 
 * **Static and kinematic bodies no longer drift toward multiples of π/4.** A

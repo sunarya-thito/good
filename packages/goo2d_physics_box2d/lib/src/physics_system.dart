@@ -204,6 +204,23 @@ class Box2DPhysicsSystem extends GameSystem
   /// bug the falling-body tests caught.
   Pointer<Int64> _pushHandles = nullptr;
 
+  /// The same slots again, zeroed wherever the body is static - so the
+  /// transform pull skips exactly the bodies whose pulled transform
+  /// [_writeBack] was going to discard.
+  ///
+  /// A static body's transform is an input, and since #74 the pull's answer
+  /// for one is thrown away on arrival. The pull still ran, though, because
+  /// [_handles] drove it and the velocity pull alike, and the velocity mirror
+  /// is load-bearing: #67 needs a body turned static to report zero. Hence a
+  /// third array and not a filter on the second.
+  ///
+  /// Zeroed and not compacted, which is what keeps this cheap. The shim skips
+  /// a null handle, so every surviving index still lines up with the slot it
+  /// came from and [_writeBack] needs no second mapping to find its row. A
+  /// compacted array would save another ~0.5 ns per static body and cost that
+  /// mapping; measured, it was not worth it (#76).
+  Pointer<Int64> _pullTransformHandles = nullptr;
+
   Pointer<Float> _transforms = nullptr;
   Pointer<Float> _velocities = nullptr;
   int _capacity = 0;
@@ -925,8 +942,13 @@ class Box2DPhysicsSystem extends GameSystem
     box2d.gooBodiesPushTransforms(_pushHandles, _transforms, count);
     _stepWorlds();
 
+    // Transforms come back through the static-zeroed array and velocities
+    // through the full one - see [_pullTransformHandles]. A skipped body
+    // leaves its three transform slots untouched, which is exactly right:
+    // they still hold what `_fill` staged from `Transform2D`, and
+    // `_writeBack` does not read them for a static body anyway.
     box2d
-      ..gooBodiesPullTransforms(_handles, _transforms, count)
+      ..gooBodiesPullTransforms(_pullTransformHandles, _transforms, count)
       ..gooBodiesPullVelocities(_handles, _velocities, count);
     _writeBack(count);
 
@@ -1009,6 +1031,11 @@ class Box2DPhysicsSystem extends GameSystem
 
         _handles[index] = handle;
         _pushHandles[index] = push ? handle : 0;
+        // `type` is already in hand from the check above, so skipping a
+        // static body's transform pull costs no extra column read here.
+        _pullTransformHandles[index] = type == BodyType2D.staticBody
+            ? 0
+            : handle;
         _transforms[index * 3] = x;
         _transforms[index * 3 + 1] = y;
         _transforms[index * 3 + 2] = angle;
@@ -1810,6 +1837,7 @@ class Box2DPhysicsSystem extends GameSystem
 
     final handles = calloc<Int64>(capacity);
     final pushHandles = calloc<Int64>(capacity);
+    final pullTransformHandles = calloc<Int64>(capacity);
     final transforms = calloc<Float>(capacity * 3);
     final velocities = calloc<Float>(capacity * 3);
 
@@ -1823,6 +1851,7 @@ class Box2DPhysicsSystem extends GameSystem
       for (var i = 0; i < old; i++) {
         handles[i] = _handles[i];
         pushHandles[i] = _pushHandles[i];
+        pullTransformHandles[i] = _pullTransformHandles[i];
       }
       for (var i = 0; i < old * 3; i++) {
         transforms[i] = _transforms[i];
@@ -1831,12 +1860,14 @@ class Box2DPhysicsSystem extends GameSystem
       calloc
         ..free(_handles)
         ..free(_pushHandles)
+        ..free(_pullTransformHandles)
         ..free(_transforms)
         ..free(_velocities);
     }
 
     _handles = handles;
     _pushHandles = pushHandles;
+    _pullTransformHandles = pullTransformHandles;
     _transforms = transforms;
     _velocities = velocities;
     _capacity = capacity;
@@ -1878,10 +1909,12 @@ class Box2DPhysicsSystem extends GameSystem
       calloc
         ..free(_handles)
         ..free(_pushHandles)
+        ..free(_pullTransformHandles)
         ..free(_transforms)
         ..free(_velocities);
       _handles = nullptr;
       _pushHandles = nullptr;
+      _pullTransformHandles = nullptr;
       _transforms = nullptr;
       _velocities = nullptr;
       _capacity = 0;
