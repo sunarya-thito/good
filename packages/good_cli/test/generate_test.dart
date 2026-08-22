@@ -6,6 +6,7 @@ import 'package:good_cli/src/generate/run.dart';
 import 'package:good_cli/src/generate/scaffold.dart';
 import 'package:good_cli/src/generate/templates.dart';
 import 'package:good_cli/src/verbosable.dart';
+import 'package:pub_semver/pub_semver.dart';
 import 'package:test/test.dart';
 
 // Codegen: does a project's *declared* assets become the right enum, and does
@@ -14,6 +15,32 @@ import 'package:test/test.dart';
 // The emitters are pure functions of a scan, so almost none of this needs a
 // disk. `scanAssets` does, and gets a real temp project - reading a pubspec is
 // the thing it is for, and a fake would be testing the fake.
+
+/// The version `packages/[package]` declares, read from its pubspec.
+///
+/// Walks up for the repository root the same way `scaffold_analyze_test` does,
+/// so the suite can be run from the package directory or from the root.
+Version _packageVersion(String package) {
+  var dir = Directory.current;
+  for (var i = 0; i < 6; i++) {
+    if (File('${dir.path}/mkdocs.yml').existsSync() &&
+        Directory('${dir.path}/packages').existsSync()) {
+      final pubspec = File('${dir.path}/packages/$package/pubspec.yaml');
+      if (!pubspec.existsSync()) {
+        fail('packages/$package has no pubspec.yaml');
+      }
+      final line = pubspec.readAsLinesSync().firstWhere(
+        (l) => l.startsWith('version:'),
+        orElse: () => fail('packages/$package declares no version'),
+      );
+      return Version.parse(line.substring('version:'.length).trim());
+    }
+    final parent = dir.parent;
+    if (parent.path == dir.path) break;
+    dir = parent;
+  }
+  fail('run this suite from inside the repository');
+}
 
 Directory _project(String pubspec, List<String> files) {
   final dir = Directory.systemTemp.createTempSync('good_cli_test');
@@ -513,15 +540,35 @@ flutter:
       expect(pubspecPatch('goo2d'), contains('- assets/'));
     });
 
-    test('the dependency admits the version that is actually published', () {
-      expect(
-        pubspecPatch('goo3d'),
-        contains('goo3d: ^0.1.0'),
-        reason:
-            'this said ^0.0.1 long after 0.1.0 shipped, and ^0.0.1 does not '
-            'allow 0.1.0 - so every project scaffolded in between failed '
-            'flutter pub get anywhere without a path override',
-      );
+    test('the dependency admits the version the engine is about to ship', () {
+      // This test had this name and asserted the literal string `^0.1.0`,
+      // which is not the same question and cannot answer it. The bug it was
+      // written for has now happened twice: `engineConstraint` said `^0.0.1`
+      // long after 0.1.0 shipped, and every project scaffolded in between
+      // failed `flutter pub get` anywhere without a path override. A string
+      // equality check passes just as happily the second time (#95).
+      //
+      // The repository's own version is the proxy for "what is published",
+      // because it is what a release publishes. That makes this go red at the
+      // moment someone bumps a package for a release and leaves the scaffold
+      // pointing at the range before it - which is the only moment the fix is
+      // cheap. `good` and `goo2d` both carry breaking changes under
+      // `## Unreleased`, so the next release is 0.2.0, and `^0.1.0` stops at
+      // 0.2.0 exclusive.
+      final constraint = VersionConstraint.parse(engineConstraint);
+      for (final engine in GoodEngine.values) {
+        final version = _packageVersion(engine.package);
+        expect(
+          constraint.allows(version),
+          isTrue,
+          reason:
+              'good create writes `${engine.package}: $engineConstraint`, and '
+              'packages/${engine.package} is at $version. A project '
+              'scaffolded against that constraint would not resolve the '
+              'engine it was generated from. Bump `engineConstraint` in '
+              'scaffold.dart to match the release.',
+        );
+      }
     });
 
     test('a column is declared by the field that holds it', () {
