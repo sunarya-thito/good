@@ -248,6 +248,55 @@ silently getting a second scheduler.
     `listener is EventBus`), and `tryGet<T>`-style lookups that return null. The
     rule is about *dispatching on the receiver's own type*.
 
+## Nothing is resolved by name
+
+A key is a reference: a field, a tear-off, a type, a handle. Never a `String`,
+and never a name that has to match something declared somewhere else.
+
+Whatever a `describe*` pass produces comes back typed, and the caller keeps it in
+a field. No `Map<String, ...>` the framework searches at use time, and no integer
+index into a table you keep in step by hand. That covers buffers, state channels,
+inputs, coroutines and colliders — every `describe*`.
+
+A name used as a key is unanalyzable. `'chsae'` compiles, passes review, and
+fails at run time with an error naming the string instead of the mistake. A
+reference makes the compiler reject the typo. It makes rename work, it makes
+go-to-definition work, and it turns a dead entry into something the analyzer
+finds before a player does.
+
+Here is the shape, from `Transitions` in #115 — real, unbuilt, and drafted with
+string keys during the months this rule was not written down:
+
+<!-- snippet: skip shows the shape the rule rejects, against an unbuilt API -->
+```dart
+// no
+final transitions = Transitions.from({
+  'patrol': ['chase', 'flee'],
+});
+
+// yes — the nodes are already fields
+final transitions = Transitions.from({
+  patrol: [chase, flee],
+});
+```
+
+The distinction that keeps this usable is between *resolving* and *displaying*.
+Resolving by name is what the rule forbids: any map keyed by a name that has to
+match a declaration elsewhere. Carrying a name for display is fine — an
+inspector label, a debug-draw caption, a log line. So a state node may hold a
+label. Nothing may look a node up by that label. When you are unsure which side
+you are on, ask whether some Dart declaration has to be spelled the same way for
+the code to work.
+
+!!! note "A label cannot be inferred"
+    Nothing on the declaration path sees a Dart field name. The runtime watches
+    an anonymous object register itself against the open descriptor, and the
+    identifier `patrol` never reaches it — which is why a label has to be passed
+    if it is wanted at all. That is the same fact that moved #58's shadowed-field
+    check out of the runtime and into the analyzer, so a check that a label
+    matches the field holding it belongs beside it, in
+    `packages/good_cli/lib/src/generate/struct_scan.dart`.
+
 ## AOT-compile any benchmark that would change code
 
 `flutter test` runs the JIT. Two write-path costs measured that way came out
@@ -290,4 +339,30 @@ build that fails.
 Three weeks later nobody remembers which commits were user-visible. The commit
 making the change is the only place that knowledge exists while it is still
 reliable.
+
+## Every commit names its issue
+
+The subject ends with a trailing `(#N)`.
+
+```
+Give each loaded scene its own Box2D world (#106)
+Refuse to strip an asset compaction cannot rebuild (#136)
+```
+
+Of the sixty commits before this rule, twelve referenced an issue somewhere in
+the body and not one did in a subject. So `git log --oneline` — the view anyone
+actually reads — could not tell you what a single one of them was for. It gives
+you the what and never the why, and the why sits in a tracker the log offers no
+route to.
+
+Use a bare `(#N)`. No `Closes`, no `Fixes`: those cross-link *and* close, and
+closing is not the commit's to do. An issue here is closed deliberately, with a
+comment carrying the evidence and the test counts, and GitHub's auto-close fires
+on push — which on this repo is rare and batched. A keyword would shut a stack of
+issues at once, silently, on the schedule of whoever happened to push, and throw
+that record away.
+
+If a change has no issue, file one before you commit. The exception is pure
+mechanics with no design content — a formatting sweep, a revert — which should
+say so plainly instead of inventing an issue to point at.
 
