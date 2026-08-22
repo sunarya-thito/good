@@ -4,6 +4,7 @@
 late Sprite sprite;
 late Query players;
 late Eye eye;
+late BoxBody box;
 late MyGame game;
 double localX = 0, localY = 0, entityWorldX = 0;
 -->
@@ -106,6 +107,38 @@ sprite
     `visible[entity] = false` drops the sprite before it becomes a draw record.
     There is no "remove the renderer component" — see
     [Coming from Unity, Godot or Flutter](mental-model.md).
+
+### Which way a pivot moves the sprite
+
+A pivot's fraction is measured from the texture's top-left, so a `fractionY` of
+`0` is the top edge and `1` is the bottom. That is texture space, and texture
+space starts at the top in every atlas you are likely to import.
+
+The world it draws into is y-up. The two meet in one fact worth stating
+plainly: **moving the pivot down the texture lifts the sprite up in the
+world.** The pivot is the point the transform origin sits on, so pushing it
+toward the bottom of the image leaves more of the image above the origin.
+
+```dart
+sprite.setPivot(entity, const RelativeOffset2D(fractionX: 0.5, fractionY: 1));
+```
+
+That anchors a character at its feet. `fractionY` of `1` is the bottom edge of
+the texture, and the sprite stands above the entity's position.
+
+The offset you add on top runs the same way, and this is the part that decides
+where a collider goes. A pivot `offsetY` of `+20` draws the sprite 20 units
+higher; a `Collider2D` offset of `+20` puts a body 20 units higher. So a
+collider meant to cover an off-centre sprite takes **the same sign** — and the
+same number, when the pivot was nudged with an offset instead of a fraction:
+
+```dart
+sprite.setPivot(
+  entity,
+  const RelativeOffset2D(fractionX: 0.5, fractionY: 0.5, offsetY: 20),
+);
+box.offsetY[entity] = 20; // matches, and +20 is up for both
+```
 
 ### Several sprites on one entity
 

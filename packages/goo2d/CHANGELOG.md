@@ -21,6 +21,17 @@ that has any y in it.
 
 ### Fixed
 
+* **A collider offset and a sprite pivot take the same sign, and the docs said
+  otherwise.** `ColliderBody.containsLocalPoint` claimed a collider lining up
+  with an off-centre sprite needed the opposite sign. It does not, and a body
+  placed by that advice sits at twice the offset from where it belongs, on the
+  wrong side. A pivot `offsetY` of `+20` draws the sprite 20 units up; a
+  collider `offsetY` of `+20` puts a body 20 units up. Check the sign on any
+  collider you offset to match a pivot. Nothing about how either one behaves
+  has changed — only what the documentation said about it, and
+  `docs/guide/rendering.md` now works it through where pivots are explained
+  (#84).
+
 * **`AudioClip` moved into the kernel.** Nothing to do: `goo2d` re-exports the
   kernel, so every name is where it was. It moved because a clip has no canvas
   or dimension in it and a 3D project needs sound too (#93).

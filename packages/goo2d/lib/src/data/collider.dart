@@ -79,11 +79,17 @@ sealed class ColliderBody {
   /// [offsetX]/[offsetY] are measured in, i.e. after the entity's world
   /// rotation, scale and translation have been undone.
   ///
-  /// That space is **y-up**, like world space and unlike a `Sprite`'s: an
-  /// [offsetY] of +5 puts the body 5 units *above* the entity's origin, while
-  /// a sprite's pivot is an anchor within its own texture and still measures
-  /// from the drawn top-left. The two are not the same axis and a collider
-  /// meant to line up with an off-centre sprite needs the opposite sign.
+  /// That space is **y-up**, like world space: an [offsetY] of +5 puts the
+  /// body 5 units *above* the entity's origin.
+  ///
+  /// A `Sprite`'s pivot agrees with it, and this comment used to say it did
+  /// not. The pivot's *fraction* is measured from the texture's top-left,
+  /// because that is where a texture's own coordinates start - but moving a
+  /// pivot down the texture lifts the drawn sprite off it, so a pivot
+  /// `offsetY` of +5 and an [offsetY] of +5 each move their own side 5 units
+  /// up. A collider covering an off-centre sprite takes the same sign, and
+  /// the same number when the pivot was nudged with an offset. See
+  /// `docs/guide/rendering.md` for the worked version.
   ///
   /// Local rather than world on purpose: undoing the transform is one
   /// trig-and-divide per *entity*, while a shape test is one per *body*, and

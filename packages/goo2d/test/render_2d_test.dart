@@ -309,6 +309,32 @@ class _BorderedUntextured extends EntityStruct
   }
 }
 
+/// A sprite and a box collider on one entity, for the question #84 asked:
+/// whether a pivot and a collider offset disagree about which way y points.
+///
+/// Deliberately 40 by 100 and deliberately driven off centre by the tests. A
+/// square sprite, a centred pivot and a zero offset all draw the same picture
+/// under either convention, so a fixture with any of them would pass while
+/// proving nothing. The collider's half-height matches the sprite's half so
+/// the two spans can be compared edge for edge.
+class _PivotBody extends EntityStruct
+    with Transform2D, WorldTransform2D, Renderable2D, Collider2D {
+  late final Sprite quad;
+  late final BoxBody box;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    quad = descriptor.has(width: 40, height: 100);
+  }
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    box = descriptor.hasBoxCollider(halfWidth: 20, halfHeight: 50);
+  }
+}
+
 class _SpriteScene extends SceneStruct {
   /// This fixture's handle, captured when the framework mounts it. Entity
   /// creation lives on `Scene` now - one `SceneStruct` can back several loaded
@@ -340,6 +366,7 @@ class _SpriteScene extends SceneStruct {
   late final _Panel panel;
   late final _UnsizedPanel unsizedPanel;
   late final _BorderedUntextured borderedUntextured;
+  late final _PivotBody pivotBody;
 
   @override
   void describeScene(SceneDescriptor descriptor) {
@@ -357,6 +384,7 @@ class _SpriteScene extends SceneStruct {
     unsizedPanel = descriptor.has(_UnsizedPanel.new);
     borderedUntextured = descriptor.has(_BorderedUntextured.new);
     flat = descriptor.has(_Flat.new);
+    pivotBody = descriptor.has(_PivotBody.new);
   }
 }
 
@@ -934,6 +962,112 @@ void main() {
       // the two needles disagreeing about something other than their angle.
       expect(rightEndY(0xFF0000FF) + turned, closeTo(0, 1e-9));
     });
+
+    // #84 asked whether sprite pivots and collider offsets disagree about
+    // which way y points, and whether a collider lining up with an off-centre
+    // sprite therefore needs the opposite sign. It does not: the same positive
+    // number moves both the same way, and these two pin that.
+    //
+    // With no camera the view is zero-sized in a headless test, so the world
+    // origin projects to view (0, 0) and a view y is the negation of a world
+    // y. That is what lets these read world positions straight off the quad.
+
+    test('a positive pivot offset draws the sprite higher', () async {
+      final game = await _game();
+      final scene = run.state.singleScene<_SpriteScene>();
+
+      final centred = scene.addEntity(scene.pivotBody);
+      scene.pivotBody.quad.color[centred] = 0xFF0000FF;
+
+      final raised = scene.addEntity(scene.pivotBody);
+      scene.pivotBody.quad.color[raised] = 0xFF00FF00;
+      scene.pivotBody.quad.setPivot(
+        raised,
+        const RelativeOffset2D(fractionX: 0.5, fractionY: 0.5, offsetY: 20),
+      );
+
+      run.state.advance(_step);
+      final quads = _drainFrames(game).single.quads;
+      double drawnCentreViewY(int color) {
+        final q = quads.firstWhere((q) => q.color == color);
+        return (q.y[0] + q.y[2]) / 2;
+      }
+
+      expect(
+        drawnCentreViewY(0xFF00FF00),
+        closeTo(-20, 1e-4),
+        reason:
+            'pushing the pivot down inside the texture lifts the texture off '
+            'it, so a pivot offset of +20 puts the sprite 20 units up in the '
+            'world - a view y of -20. The sign of this number is the whole '
+            'question #84 asked.',
+      );
+      expect(
+        drawnCentreViewY(0xFF0000FF),
+        closeTo(0, 1e-4),
+        reason:
+            'and the centred pivot is the control: it draws on the origin '
+            'under either convention, which is why it cannot be the only '
+            'fixture here.',
+      );
+    });
+
+    test(
+      'a collider offset lines up with the pivot that moved the sprite',
+      () async {
+        final game = await _game();
+        final scene = run.state.singleScene<_SpriteScene>();
+
+        final entity = scene.addEntity(scene.pivotBody);
+        scene.pivotBody.quad
+          ..color[entity] = 0xFF00FF00
+          ..setPivot(
+            entity,
+            const RelativeOffset2D(fractionX: 0.5, fractionY: 0.5, offsetY: 20),
+          );
+        // The same sign and the same number as the pivot's offset. If the two
+        // spaces really disagreed this would have to be -20 to line up.
+        scene.pivotBody.box.offsetY[entity] = 20;
+
+        run.state.advance(_step);
+        final q = _drainFrames(game).single.quads
+            .firstWhere((q) => q.color == 0xFF00FF00);
+        // View y is down and world y is up, so the drawn top edge is the
+        // largest world y and the negation turns one into the other.
+        expect(
+          -q.y[0],
+          closeTo(70, 1e-4),
+          reason: 'drawn top edge, in world y',
+        );
+        expect(
+          -q.y[2],
+          closeTo(-30, 1e-4),
+          reason: 'drawn bottom edge, in world y',
+        );
+
+        // The collider spans offsetY +/- halfHeight, so 20 +/- 50 is -30..+70 -
+        // edge for edge with the sprite above. These two points are chosen to
+        // sit inside that span and outside the one the opposite sign would
+        // give (-70..+30): both assertions invert together if the sign is
+        // wrong, and neither can be satisfied by a body that is merely the
+        // right size in the wrong place.
+        final box = scene.pivotBody.box;
+        expect(
+          box.containsLocalPoint(entity, 0, 65),
+          isTrue,
+          reason:
+              'world y 65 is inside the drawn sprite, so the body that is '
+              'meant to cover it has to contain that point',
+        );
+        expect(
+          box.containsLocalPoint(entity, 0, -65),
+          isFalse,
+          reason:
+              'and world y -65 is below the sprite entirely - it is only '
+              'covered if the offset went the other way',
+        );
+      },
+    );
 
     test('a child is drawn - the query must not forbid Child', () async {
       final game = await _game();
