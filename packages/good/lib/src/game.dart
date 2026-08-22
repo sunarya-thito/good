@@ -62,6 +62,11 @@ const String _msgDispose = 'dispose';
 // engine's own signal, it carries no reply, and a command would put it in the
 // user's command surface for no reason.
 const String _msgVisible = 'visible';
+// Time scale and pause, main -> game. Same shape and the same reasoning as
+// _msgVisible: engine state, no reply, and a pause button is a widget on main.
+const String _msgTimeScale = 'timescale';
+const String _msgPaused = 'paused';
+const String _msgStepOnce = 'steponce';
 // Asset decoding: the game isolate declares assets but cannot decode them (a
 // decode needs Flutter), so it asks. Assets are named by their **address** -
 // the index `GameAssets` assigns at declare time, which both copies agree on
@@ -988,6 +993,43 @@ abstract class Game {
   ///
   /// **Inline runs only**; see [_requireInline].
   void runFixedStep() => _requireInline('runFixedStep').state!.runFixedStep();
+
+  /// Sets how fast simulated time runs - 1 real time, 0.25 quarter speed, 0
+  /// stopped. See `GameState.timeScale`, which this reaches across the
+  /// isolate boundary to set.
+  ///
+  /// Callable from the main isolate, because that is where a pause button
+  /// lives. Fire and forget: it takes effect on the game isolate's next
+  /// frame, and there is nothing to await.
+  ///
+  /// A fixed tick is always exactly [fixedTimeStep]; this changes how often
+  /// one happens, never how big it is.
+  void setTimeScale(double scale) {
+    assert(
+      scale >= 0,
+      'timeScale must not be negative (got $scale). Nothing in this engine '
+      'is reversible.',
+    );
+    runtimeOrNull?.sendTiming(_msgTimeScale, scale);
+  }
+
+  /// Stops the fixed tick without disturbing [setTimeScale], so a game paused
+  /// at half speed comes back at half speed.
+  ///
+  /// Presentation keeps running, which is what lets a pause menu draw itself.
+  /// Unrelated to [pauseWhenHidden]: a game paused here stays paused across
+  /// being hidden and shown again.
+  void pause() => runtimeOrNull?.sendTiming(_msgPaused, true);
+
+  /// Undoes [pause]. A game that was never paused is unaffected.
+  void resume() => runtimeOrNull?.sendTiming(_msgPaused, false);
+
+  /// Advances exactly one fixed step, whatever the clock and scale say.
+  ///
+  /// For stepping a paused game - a debugger, a replay. Leaves the
+  /// accumulator untouched, so unpausing afterwards resumes from where it
+  /// was. See `GameState.stepOnce`.
+  void stepOnce() => runtimeOrNull?.sendTiming(_msgStepOnce, null);
 
   // --- one instance, one run ----------------------------------------------
   //
@@ -2042,6 +2084,27 @@ final class GameRuntime {
     _toGame?.send(<Object>[_msgVisible, visible]);
   }
 
+  /// Sends one tagged value to the simulating copy, or applies it here when
+  /// the run is inline. The shared half of the timing controls.
+  @internal
+  void sendTiming(String tag, Object? value) {
+    if (!booted) return;
+    if (inline) {
+      final state = this.state;
+      if (state == null) return;
+      switch (tag) {
+        case _msgTimeScale:
+          state.timeScale = value! as double;
+        case _msgPaused:
+          state.paused = value! as bool;
+        case _msgStepOnce:
+          state.stepOnce();
+      }
+      return;
+    }
+    _toGame?.send(<Object?>[tag, value]);
+  }
+
   void _stopInline() {
     final state = this.state!;
     state.stopTimer();
@@ -2236,6 +2299,12 @@ final class GameRuntime {
         _toMain?.send(const <Object>[_msgStopped]);
       case _msgVisible:
         state?.setVisible(parts[1] as bool);
+      case _msgTimeScale:
+        state?.timeScale = parts[1] as double;
+      case _msgPaused:
+        state?.paused = parts[1] as bool;
+      case _msgStepOnce:
+        state?.stepOnce();
       case _msgDispose:
         _disposeBuffers();
         state?.pool.dispose();

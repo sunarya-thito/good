@@ -80,7 +80,7 @@ export 'src/event/tick_loop.dart';
 // was the main-side half of a design where a `Game` could back several runs,
 // and once one instance meant one run it had nothing left to hold that `Game`
 // itself could not.
-export 'src/game.dart' hide GameRuntime;
+export 'src/game.dart' hide GameRuntime, visibleInLifecycleState;
 export 'src/game_state.dart';
 export 'src/handoff_buffer.dart';
 export 'src/heap_object.dart';

@@ -673,6 +673,149 @@ void main() {
       expect(_visibility.shown, hasLength(1));
     });
   });
+
+  // #124. Time scale changes how *often* a fixed tick happens, never how big
+  // one is, so every assertion here counts ticks. There is no dt to inspect
+  // and that is the design: a fixed step is always `fixedTimeStep`.
+  group('time scale and pause', () {
+    test('a scale of zero runs no fixed ticks at all', () async {
+      final game = await _game(_TestGame());
+      final state = _state(game);
+      state.timeScale = 0;
+
+      expect(
+        state.advance(_step * 3),
+        0,
+        reason:
+            'zero means the accumulator stops filling, so no step runs - not '
+            'three steps of size zero. A system that divides by its timestep '
+            'never sees one it was not written for.',
+      );
+      expect(run.tick, 0);
+    });
+
+    test('a half scale runs half as many ticks', () async {
+      final game = await _game(_TestGame());
+      final state = _state(game);
+      state.timeScale = 0.5;
+
+      expect(
+        state.advance(_step * 4),
+        2,
+        reason:
+            'four steps of wall clock at half speed earns two steps of '
+            'simulated time, each still exactly one fixedTimeStep',
+      );
+    });
+
+    test(
+      'pausing stops the fixed tick and leaves presentation running',
+      () async {
+        await _game(_PhaseGame());
+        run.state.advance(_step * 2);
+        final simmed = log.where((e) => e == 'sim').length;
+        final presented = log.where((e) => e == 'present').length;
+        expect(simmed, greaterThan(0));
+
+        run.state.paused = true;
+        run.state.advance(_step * 5);
+
+        expect(
+          log.where((e) => e == 'sim').length,
+          simmed,
+          reason: 'paused means no simulation',
+        );
+        expect(
+          log.where((e) => e == 'present').length,
+          greaterThan(presented),
+          reason:
+              'and the frame keeps being presented, which is the whole reason '
+              'this is not #117 - a pause menu has to draw',
+        );
+      },
+    );
+
+    test(
+      'stepOnce advances one step and leaves the accumulator alone',
+      () async {
+        final game = await _game(_TestGame());
+        final state = _state(game);
+        state.paused = true;
+        // Three milliseconds of phase, short of the ten a step costs.
+        state.timeScale = 1;
+        state.paused = false;
+        state.advance(const Duration(milliseconds: 3));
+        expect(run.tick, 0);
+        state.paused = true;
+
+        state.stepOnce();
+        expect(run.tick, 1, reason: 'exactly one step, clock regardless');
+
+        state.paused = false;
+        expect(
+          state.advance(const Duration(milliseconds: 7)),
+          1,
+          reason:
+              'the 3ms of phase was still there - stepOnce goes straight to '
+              'runFixedStep and must not drain or reset the accumulator, or '
+              'unpausing would resume from a different point than it paused at',
+        );
+      },
+    );
+
+    test('unpausing returns to the scale it was paused at', () async {
+      final game = await _game(_TestGame());
+      final state = _state(game);
+      state.timeScale = 0.5;
+      state.paused = true;
+      state.advance(_step * 4);
+      expect(run.tick, 0);
+
+      state.paused = false;
+      expect(
+        state.advance(_step * 4),
+        2,
+        reason:
+            'pause and scale are two facts. One field could not hold "paused, '
+            'and half speed when it comes back".',
+      );
+    });
+
+    test('a negative scale is refused', () async {
+      final game = await _game(_TestGame());
+      expect(
+        () => _state(game).timeScale = -1,
+        throwsA(isA<AssertionError>()),
+        reason:
+            'nothing here is reversible, so a negative delta would corrupt '
+            'the step arithmetic rather than rewind anything',
+      );
+    });
+
+    // The composition case. #117 restarts the timer when the app comes back;
+    // this must not also restart the *game*.
+    test(
+      'a game paused by the game stays paused across hide and show',
+      () async {
+        final game = await _game(_VisibilityGame());
+        final state = _state(game);
+        state.paused = true;
+
+        state.setVisible(false);
+        state.setVisible(true);
+
+        expect(
+          state.advance(_step * 5),
+          0,
+          reason:
+              'the player paused it, then the app went away and came back. '
+              'Being shown again restores what #117 stopped, never what the '
+              'game stopped.',
+        );
+        expect(run.tick, 0);
+      },
+    );
+  });
   group('presentation phase (Tickable)', () {
     test('runs once per frame, not once per simulation step', () async {
       await _game(_PhaseGame());

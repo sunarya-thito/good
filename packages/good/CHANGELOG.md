@@ -50,6 +50,51 @@ sorting. Several checks that used to let a mistake through now stop it.
 
 ### Added
 
+* **Pause, time scale and single-step.** There was no way to pause a game, run
+  it in slow motion, or advance it one tick (#124).
+
+  ```dart
+  game.setTimeScale(0.25);   // quarter speed
+  game.pause();              // and stopped
+  game.stepOnce();           // exactly one fixed tick
+  game.resume();             // back at quarter speed
+  ```
+
+  Callable from the main isolate, because that is where a pause button lives;
+  `GameState.timeScale`, `.paused` and `.stepOnce()` are the same controls on
+  the simulating side. Pause and scale are separate state, so a game paused at
+  half speed comes back at half speed.
+
+  **The scale changes how often a fixed tick happens, never how big one is.**
+  Every `onFixedUpdate` still represents exactly `Game.fixedTimeStep` at every
+  scale — a fixed timestep means a constant step, and that guarantee is why
+  anything integrating over it is stable. So there is no `dt` parameter to
+  scale and none was added.
+
+  For the same reason a `timeScale` of `0` runs **no fixed ticks at all**,
+  rather than ticks with a zero-size step: nothing divides by zero and no
+  system sees a step it was not written for.
+
+  There is no `unscaledDt` to look for either, because both clocks already
+  exist under other names. The fixed loop is scaled simulation time; a
+  `Tickable`'s `onTick(Duration)` is real wall clock and keeps running while
+  the simulation is stopped. Anything that must ignore pause and scale — a UI
+  animation, a network heartbeat, an autosave timer — is a `Tickable`, which
+  is where it already belonged. Presentation running while paused is also what
+  lets a pause menu draw itself.
+
+  Two edges worth knowing. A negative scale is rejected with an assert, since
+  nothing here is reversible and a negative delta would corrupt the step
+  arithmetic rather than rewind anything. And a *large* scale meets the
+  existing `maxFixedStepsPerAdvance` guard: a frame affords at most 5 steps
+  however much scaled time it earned, so scales past about 5 run the game
+  slower than asked instead of faster. Raise that cap if a game genuinely
+  needs fast-forward; it is deliberately unchanged here, because it is what
+  stops a slow machine spiralling.
+
+  Independent of `pauseWhenHidden`: a game paused here stays paused across
+  being hidden and shown again.
+
 * **The game reacts to the app being hidden.** Nothing in the engine knew the
   app had been backgrounded, so a game went on simulating at its fixed tick
   while nobody was looking at it — battery spent on a world off screen (#117).

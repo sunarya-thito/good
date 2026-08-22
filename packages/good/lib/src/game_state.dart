@@ -198,6 +198,10 @@ abstract class GameState<T extends Game> extends GameListenerBase
   // for it.
   final Map<Asset<Object?>, int> _assetClaims = <Asset<Object?>, int>{};
   int _accumulatedMicros = 0;
+
+  /// How fast simulated time runs against wall clock - see [timeScale].
+  double _timeScale = 1;
+
   Timer? _timer;
 
   /// Whether the app is currently visible - see [setVisible].
@@ -912,6 +916,83 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// Whether the app is visible. False once every view is hidden.
   bool get isVisible => _visible;
 
+  /// How fast simulated time runs against the wall clock. 1 is real time,
+  /// 0.25 is quarter speed, 0 stops the simulation.
+  ///
+  /// # This scales the *rate*, never the step
+  ///
+  /// A fixed timestep means a constant step - that is the whole contract, and
+  /// it is why anything integrating over it is stable. So [timeScale] changes
+  /// **how often** a fixed tick happens, not how big it is. Every
+  /// `onFixedUpdate` still represents exactly `Game.fixedTimeStep`, at every
+  /// scale, and a system integrating over it needs to know nothing about this.
+  ///
+  /// That is also why there is no `unscaledDt` to look for. The engine already
+  /// has both clocks under other names: the fixed loop is scaled simulation
+  /// time, and `Tickable.onTick` is real wall clock that keeps running while
+  /// the simulation is stopped. Anything that must ignore pause and scale - a
+  /// UI animation, a network heartbeat, an autosave timer - is a `Tickable`,
+  /// which is where it already belonged.
+  ///
+  /// # Zero runs no ticks at all
+  ///
+  /// At 0 the accumulator stops filling, so **no fixed tick runs** - rather
+  /// than running with a zero-size step. Nothing divides by zero, no query
+  /// walks for a step that changes nothing, and gameplay code never sees a
+  /// step it was not written for. Presentation is untouched either way, which
+  /// is what lets a pause menu draw.
+  ///
+  /// # There is a ceiling, and it is not this
+  ///
+  /// A large scale meets `Game.maxFixedStepsPerAdvance` and stops there: at
+  /// 60Hz and the default cap of 5, a frame affords 5 steps however much
+  /// scaled time it earned, and the rest is dropped. So scales past about 5
+  /// run the game *slower* than asked instead of faster. Raise
+  /// `maxFixedStepsPerAdvance` if a game genuinely needs fast-forward; this
+  /// deliberately does not change that guard, which is what stops a slow
+  /// machine spiralling.
+  double get timeScale => _timeScale;
+
+  set timeScale(double value) {
+    assert(
+      value >= 0,
+      'timeScale must not be negative (got $value). Nothing in this engine '
+      'is reversible - a negative delta would run the accumulator backwards '
+      'and corrupt the step arithmetic rather than rewind anything.',
+    );
+    assert(!value.isNaN, 'timeScale must be a number (got NaN).');
+    _timeScale = value;
+  }
+
+  /// Whether the game has paused its own simulation.
+  ///
+  /// Separate from a [timeScale] of 0, and both stop the fixed tick. A game
+  /// that pauses at half speed and then unpauses is back at half speed,
+  /// which one number could not express.
+  ///
+  /// Unrelated to the app being hidden. That is `Game.pauseWhenHidden` and
+  /// [setVisible], and the two compose: a game paused here stays paused
+  /// across being hidden and shown again.
+  bool paused = false;
+
+  /// Whether a fixed tick can run at all right now.
+  bool get _simulationRunning => !paused && _timeScale > 0;
+
+  /// Runs exactly one fixed step, whatever the clock and [timeScale] say.
+  ///
+  /// For stepping a paused game forward - a debugger, a replay, a test. It
+  /// goes straight to [runFixedStep] and **does not touch the accumulator**,
+  /// so stepping a paused game leaves its timing exactly as it found it and
+  /// unpausing afterwards resumes from where it was.
+  ///
+  /// One fixed *step*, not one frame: no presentation pass runs here. The
+  /// frame loop is still going while paused, so the step is drawn by the
+  /// next frame like any other.
+  void stepOnce() {
+    _requireSimulating('stepOnce');
+    runFixedStep();
+  }
+
   /// Reports the app becoming hidden or visible, from the main isolate's
   /// lifecycle observer - see `Game.pauseWhenHidden`.
   ///
@@ -992,7 +1073,17 @@ abstract class GameState<T extends Game> extends GameListenerBase
     _requireSimulating('advance');
     final game = this.game;
     final step = game.fixedTimeStep.inMicroseconds;
-    _accumulatedMicros += elapsed.inMicroseconds;
+    // Scaled on the way *in*, which is the whole of time scale: the step
+    // below is always `Game.fixedTimeStep`, and a slower scale earns one
+    // less often. Nothing downstream - not the cap, not the modulo, not a
+    // single system - knows this happened. See [timeScale].
+    //
+    // Stopped means adding nothing, not adding zero-size steps. The
+    // accumulator keeps whatever phase it had, so unpausing resumes mid-step
+    // instead of snapping to a step boundary.
+    if (_simulationRunning) {
+      _accumulatedMicros += (elapsed.inMicroseconds * _timeScale).round();
+    }
 
     var steps = 0;
     final cap = game.maxFixedStepsPerAdvance;
