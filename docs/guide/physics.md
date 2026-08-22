@@ -197,6 +197,30 @@ kinematic lift can become dynamic without anything being rebuilt:
 body.bodyType[entity] = BodyType2D.staticBody;
 ```
 
+### Move a platform with a kinematic body
+
+Give a moving platform `kinematicBody` and drive it with `setVelocity`. It
+carries whatever rests on it, contacts never push it off course, and its motion
+reaches the solver on every tick.
+
+A static body you script by writing `Transform2D` behaves differently, and the
+difference is easy to read as a bug. Each tick the system compares what you
+wrote against what it last sent to Box2D, and sends nothing when the change is
+smaller than `1e-4` units of position or `5e-3` radians of angle. Turn a static
+body by 0.001 rad per tick and it holds still for around five ticks, then turns
+by the whole accumulated amount at once. It ends up within one threshold of
+everything you wrote; it gets there in steps.
+
+The threshold earns its place. Sending a static body's transform every tick
+round-trips its angle through `b2MakeRot`, and that is an approximation — a
+floor authored at 0.3 rad drifts to 0.718 over a thousand ticks and to π/4 over
+ten thousand. Comparing first is what stops an unmoved body being re-sent and
+re-approximated forever.
+
+Static suits geometry that stays put, and geometry you reposition in jumps
+nobody tracks frame by frame: a door that opens, a bridge that drops. Anything
+meant to glide is kinematic.
+
 And a body can be taken out of the simulation entirely without being destroyed —
 the toggle pattern again, not a removal:
 

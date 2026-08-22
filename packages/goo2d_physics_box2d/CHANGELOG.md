@@ -40,7 +40,12 @@
   it back, and that round trip has an error that converges there. A floor
   authored at 0.3 rad reached 0.785 in ten thousand ticks — 17 degrees to 41 in
   sixteen seconds. Static bodies no longer write back at all, and both kinds
-  push only when gameplay wrote the value.
+  push only when gameplay wrote the value. The comparison has a threshold —
+  `1e-4` units of position, `5e-3` radians of angle — so a static body scripted
+  in smaller increments than that now moves in steps instead of continuously.
+  It ends up where you told it. `docs/guide/physics.md` says which body type a
+  moving platform wants and why; the short answer is kinematic, which is driven
+  by velocity and never meets the threshold at all.
 * **Changing `bodyType` on a live body is applied.** It was documented as
   working and moved only the column, so the solver went on treating the body as
   whatever it was created as.
