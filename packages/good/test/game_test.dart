@@ -502,6 +502,20 @@ class _AnsweringGame extends _TestGame {
   }
 }
 
+/// The same refusal, asked of the **main** descriptor. Both sides share one
+/// message function, so this exists to prove the shared call is actually
+/// wired on both rather than only on the side that happened to be tested.
+class _AnsweringMainGame extends _TestGame {
+  late final _Answering answeringMain;
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    answeringMain = descriptor.has(_Answering());
+    descriptor.hasControlSupplier(answeringMain, () => 1);
+  }
+}
+
 typedef _Nudge = ({Entity entity, double amount});
 
 /// A user command, to prove the dispatch table is not hardcoded to the
@@ -845,6 +859,23 @@ void main() {
             'nowhere to come from. Failing at the declaration is the whole '
             'point - the alternative is a caller awaiting a future that '
             'never completes.',
+      );
+    });
+
+    test('the refusal holds on the main descriptor too', () async {
+      expect(
+        () => _game(_AnsweringMainGame()),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('cannot'), contains('hasSupplier')),
+          ),
+        ),
+        reason:
+            'the two descriptors share one message function, and sharing is '
+            'not the same as both calling it - this is the side the '
+            'game-side test does not reach',
       );
     });
   });

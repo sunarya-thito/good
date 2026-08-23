@@ -65,12 +65,6 @@ const String _msgDispose = 'dispose';
 // that lets the twelve tags below become commands - see
 // `CommandDescriptor.hasControlSink` (#142).
 const String _msgControlBatch = 'controlbatch';
-const String _msgVisible = 'visible';
-// Time scale and pause, main -> game. Same shape and the same reasoning as
-// _msgVisible: engine state, no reply, and a pause button is a widget on main.
-const String _msgTimeScale = 'timescale';
-const String _msgPaused = 'paused';
-const String _msgStepOnce = 'steponce';
 // Asset decoding: the game isolate declares assets but cannot decode them (a
 // decode needs Flutter), so it asks. Assets are named by their **address** -
 // the index `GameAssets` assigns at declare time, which both copies agree on
@@ -368,8 +362,51 @@ abstract class Game {
   /// archetype id is a game-isolate identifier, so handing one to the Flutter
   /// isolate made it name something it cannot see. Naming the *intent* leaves
   /// the prefab lookup on the side that owns the memory.
+  /// The engine's own control commands, declared here so both copies agree
+  /// about them before a game declares anything of its own. See
+  /// [_SetVisibleCommand] for why all four are receipt-delivered.
+  late final _SetVisibleCommand _setVisibleCommand;
+  late final _SetPausedCommand _setPausedCommand;
+  late final _SetTimeScaleCommand _setTimeScaleCommand;
+  late final _StepOnceCommand _stepOnceCommand;
+
   @mustCallSuper
-  void describeCommands(CommandDescriptor descriptor) {}
+  void describeCommands(CommandDescriptor descriptor) {
+    _setVisibleCommand = descriptor.has(_SetVisibleCommand());
+    _setPausedCommand = descriptor.has(_SetPausedCommand());
+    _setTimeScaleCommand = descriptor.has(_SetTimeScaleCommand());
+    _stepOnceCommand = descriptor.has(_StepOnceCommand());
+  }
+
+  /// Registers the game-isolate handlers for the four commands [Game]
+  /// declared above.
+  ///
+  /// Here rather than in `GameState.describeCommands` because the commands
+  /// are private to this file, and they should stay that way - a game has no
+  /// reason to reach them, and `Game.pause` is the surface it uses instead.
+  ///
+  /// All four are **receipt-delivered**. Every one can stop the fixed tick,
+  /// and a tick-delivered handler is pumped from `runFixedStep` - so the
+  /// message that started the tick again would be waiting on the tick it
+  /// stopped. None of them writes component data, which is the rule that
+  /// buys them that delivery; see `CommandDescriptor.hasControlSink`.
+  @internal
+  void describeEngineCommandHandlers(
+    CommandDescriptor descriptor,
+    GameState<Game> state,
+  ) {
+    descriptor
+      ..hasControlSink<bool>(_setVisibleCommand, state.setVisible)
+      ..hasControlSink<bool>(
+        _setPausedCommand,
+        (bool value) => state.paused = value,
+      )
+      ..hasControlSink<double>(
+        _setTimeScaleCommand,
+        (double value) => state.timeScale = value,
+      )
+      ..hasControlSignal(_stepOnceCommand, state.stepOnce);
+  }
 
   /// Declares this game's **auxiliary ring buffers** - shared-memory SPSC
   /// channels, allocated on the simulating copy and handed to the other one
@@ -1014,7 +1051,7 @@ abstract class Game {
       'timeScale must not be negative (got $scale). Nothing in this engine '
       'is reversible.',
     );
-    runtimeOrNull?.sendTiming(_msgTimeScale, scale);
+    _sendControl(() => _setTimeScaleCommand(scale));
   }
 
   /// Stops the fixed tick without disturbing [setTimeScale], so a game paused
@@ -1023,17 +1060,34 @@ abstract class Game {
   /// Presentation keeps running, which is what lets a pause menu draw itself.
   /// Unrelated to [pauseWhenHidden]: a game paused here stays paused across
   /// being hidden and shown again.
-  void pause() => runtimeOrNull?.sendTiming(_msgPaused, true);
+  void pause() => _sendControl(() => _setPausedCommand(true));
 
   /// Undoes [pause]. A game that was never paused is unaffected.
-  void resume() => runtimeOrNull?.sendTiming(_msgPaused, false);
+  void resume() => _sendControl(() => _setPausedCommand(false));
 
   /// Advances exactly one fixed step, whatever the clock and scale say.
   ///
   /// For stepping a paused game - a debugger, a replay. Leaves the
   /// accumulator untouched, so unpausing afterwards resumes from where it
   /// was. See `GameState.stepOnce`.
-  void stepOnce() => runtimeOrNull?.sendTiming(_msgStepOnce, null);
+  void stepOnce() => _sendControl(_stepOnceCommand.call);
+
+  /// Sends one of the engine's control commands, if there is a run to send it
+  /// to.
+  ///
+  /// The guard is what keeps these callable on a `Game` that has not started:
+  /// the commands are `late final`, declared during boot, so reaching one
+  /// before then would throw rather than no-op - and a pause button that
+  /// throws because the game has not finished starting is not an improvement
+  /// on one that does nothing.
+  ///
+  /// The future is dropped deliberately. A control command completes when the
+  /// batch reaches the port, not when the handler has run, so there is
+  /// nothing here worth waiting for.
+  void _sendControl(Future<void> Function() send) {
+    if (runtimeOrNull?.isRunning != true) return;
+    unawaited(send());
+  }
 
   // --- one instance, one run ----------------------------------------------
   //
@@ -2150,43 +2204,6 @@ final class GameRuntime {
     _resetGlobalRegistries();
   }
 
-  /// Tells the simulating copy the app became hidden or visible.
-  ///
-  /// Fire and forget. There is no reply to wait for, and the one moment this
-  /// matters most - the app going away - is also the moment least likely to
-  /// afford a round trip, so nothing here is allowed to block on the game
-  /// isolate answering.
-  @internal
-  void setVisible(bool visible) {
-    if (!booted) return;
-    if (inline) {
-      state?.setVisible(visible);
-      return;
-    }
-    _toGame?.send(<Object>[_msgVisible, visible]);
-  }
-
-  /// Sends one tagged value to the simulating copy, or applies it here when
-  /// the run is inline. The shared half of the timing controls.
-  @internal
-  void sendTiming(String tag, Object? value) {
-    if (!booted) return;
-    if (inline) {
-      final state = this.state;
-      if (state == null) return;
-      switch (tag) {
-        case _msgTimeScale:
-          state.timeScale = value! as double;
-        case _msgPaused:
-          state.paused = value! as bool;
-        case _msgStepOnce:
-          state.stepOnce();
-      }
-      return;
-    }
-    _toGame?.send(<Object?>[tag, value]);
-  }
-
   void _stopInline() {
     final state = this.state!;
     state.stopTimer();
@@ -2383,14 +2400,6 @@ final class GameRuntime {
         // Run here, in the port callback, with no tick involved. See
         // `CommandTransport.receiveControlBatch`.
         commandTransport?.receiveControlBatch(parts[1] as Uint8List);
-      case _msgVisible:
-        state?.setVisible(parts[1] as bool);
-      case _msgTimeScale:
-        state?.timeScale = parts[1] as double;
-      case _msgPaused:
-        state?.paused = parts[1] as bool;
-      case _msgStepOnce:
-        state?.stepOnce();
       case _msgDispose:
         _disposeBuffers();
         state?.pool.dispose();
@@ -3336,6 +3345,67 @@ final class _StateDescriptor implements StateDescriptor {
   }
 }
 
+// --- the engine's own control commands -------------------------------------
+//
+// These replace four string tags on the control port (#142). Every one of them
+// is **receipt-delivered**, and it has to be: each can stop the fixed tick, and
+// a tick-delivered command is pumped from `runFixedStep`, so the message that
+// started the tick again would be waiting on the tick it stopped.
+//
+// Declared by the engine in `Game.describeCommands`, before anything a game
+// declares. Both copies run the same pass in the same order, so the indices
+// agree the way they do for a game's own commands.
+
+final class _SetVisibleCommand extends SinkCommand<bool> {
+  late final ParamPointer<int> visible;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    visible = descriptor.hasUint1();
+  }
+
+  @override
+  void bufferFromParams(ParamBuffer call, bool params) =>
+      visible[call] = params ? 1 : 0;
+
+  @override
+  bool paramsFromBuffer(ParamBuffer call) => visible[call] == 1;
+}
+
+final class _SetPausedCommand extends SinkCommand<bool> {
+  late final ParamPointer<int> paused;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    paused = descriptor.hasUint1();
+  }
+
+  @override
+  void bufferFromParams(ParamBuffer call, bool params) =>
+      paused[call] = params ? 1 : 0;
+
+  @override
+  bool paramsFromBuffer(ParamBuffer call) => paused[call] == 1;
+}
+
+final class _SetTimeScaleCommand extends SinkCommand<double> {
+  late final ParamPointer<double> scale;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    scale = descriptor.hasFloat64();
+  }
+
+  @override
+  void bufferFromParams(ParamBuffer call, double params) =>
+      scale[call] = params;
+
+  @override
+  double paramsFromBuffer(ParamBuffer call) => scale[call];
+}
+
+final class _StepOnceCommand extends SignalCommand {}
+
 /// Whether [state] counts as the app being visible.
 ///
 /// The five-to-two collapse, in one place so it can be tested as itself: the
@@ -3398,6 +3468,6 @@ class _VisibilityObserver with WidgetsBindingObserver {
     // `GameState.setVisible` is idempotent, which it has to be: the walk down
     // is `inactive -> hidden -> paused` and the walk back up reverses it, so
     // "not visible" arrives twice around any real backgrounding.
-    game.runtimeOrNull?.setVisible(visible);
+    game._sendControl(() => game._setVisibleCommand(visible));
   }
 }

@@ -419,7 +419,11 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// agree about which commands have a handler at all - which is what lets
   /// the sending side refuse a handler-less command without a round trip.
   @mustCallSuper
-  void describeCommands(CommandDescriptor descriptor) {}
+  void describeCommands(CommandDescriptor descriptor) {
+    // The engine's own four, registered by the `Game` that declared them so
+    // the fields stay private to the file that owns them (#142).
+    game.describeEngineCommandHandlers(descriptor, this);
+  }
 
   // --- scene loading ----------------------------------------------------
 

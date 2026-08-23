@@ -50,6 +50,24 @@ sorting. Several checks that used to let a mistake through now stop it.
 
 ### Added
 
+* **`pause`, `resume`, `setTimeScale` and `stepOnce` travel as commands.** They
+  were four hand-rolled string tags on the control port; they are now ordinary
+  receipt-delivered commands (#142). Nothing changes at the call site, and the
+  behaviour is the same — the tests for #117 and #124 pass unmodified — but
+  there is one less bespoke channel between the isolates, and the four tags are
+  gone.
+
+  Receipt-delivered because each one can stop the fixed tick. A tick-delivered
+  command is pumped from `runFixedStep`, so the message that started the tick
+  again would be waiting on the tick it stopped.
+
+  **The engine now declares four commands of its own**, before anything a game
+  declares, so a game's commands sit after them in the declaration order. That
+  order is internal wire identity and both isolate copies agree on it, so a
+  game sees no difference — but `good_net` hashes the declaration order into
+  its handshake, so a networked build of this version will not accept a peer
+  built against the previous one.
+
 * **A command can be delivered when the message arrives instead of on the next
   tick.** Register the handler with `hasControlSink` or `hasControlSignal`
   instead of `hasSink`/`hasSignal` (#142).

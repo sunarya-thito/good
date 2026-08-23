@@ -1030,6 +1030,81 @@ void main() {
   // implementation that quietly made everything receipt-delivered, and that
   // would destroy the guarantee `runFixedStep` gives a tick-delivered
   // handler - that it runs inside the write window.
+
+  // #142 Stage 2. `Game.pause` and `Game.resume` used to be string tags on
+  // the control port; they are commands now. This is the test that says the
+  // migration kept the property the tags had - resume reaches a game whose
+  // tick is stopped - and it is the one that fails if any of the four
+  // engine commands regresses to tick delivery.
+  //
+  // The existing #117 and #124 tests drive `GameState` directly, so they pin
+  // the semantics but never touch the carrier. This one goes through the
+  // main-isolate API a pause button would use.
+  test('pause and resume cross as commands, with the tick stopped', () async {
+    final game = _IsolateGame();
+    run = await Game.start(game);
+    addTearDown(() async {
+      if (run.isRunning) await run.stop();
+    });
+    await _waitTicks(run, 3);
+
+    game.pause();
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    final stopped = run.tick;
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    expect(
+      run.tick,
+      stopped,
+      reason: 'the tick has to be genuinely stopped for resume to be a test',
+    );
+
+    game.resume();
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    expect(
+      run.tick,
+      greaterThan(stopped),
+      reason:
+          'resume is receipt-delivered, so it lands in the port callback. '
+          'Tick-delivered it could never arrive - the command that restarts '
+          'the tick would be pumped by the tick it stopped.',
+    );
+  });
+
+  // The other two public controls on the same migrated path. A scale of zero
+  // stops the tick exactly as pause does, so restoring it has the same
+  // problem to solve, and stepOnce only means anything while stopped.
+  test('time scale and stepOnce cross as commands too', () async {
+    final game = _IsolateGame();
+    run = await Game.start(game);
+    addTearDown(() async {
+      if (run.isRunning) await run.stop();
+    });
+    await _waitTicks(run, 3);
+
+    game.setTimeScale(0);
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    final stopped = run.tick;
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    expect(run.tick, stopped, reason: 'a zero scale runs no fixed ticks');
+
+    game.stepOnce();
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    expect(
+      run.tick,
+      stopped + 1,
+      reason:
+          'exactly one step, delivered while nothing was ticking - which is '
+          'the only time stepping is worth anything',
+    );
+
+    game.setTimeScale(1);
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    expect(
+      run.tick,
+      greaterThan(stopped + 1),
+      reason: 'and restoring the scale reaches a game that is not ticking',
+    );
+  });
   test('a control command reaches a game whose tick is stopped', () async {
     final game = _IsolateGame();
     run = await Game.start(game);
