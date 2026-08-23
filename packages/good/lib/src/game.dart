@@ -46,36 +46,120 @@ If its on web, we don't use isolate nor ffi - start(inline: true) runs the
 GameState on the calling isolate instead.
 */
 
-// Wire tags for the two SendPort control lanes. Strings rather than ints
-// because these are rare (bring-up, shutdown, enable/disable, asset decoding)
-// and legibility in a stack trace beats a byte. Bulk traffic never goes near a
-// SendPort - that is the ring buffer's job.
+// Wire tags for the two SendPort control lanes. An enum rather than the
+// `const String`s that used to be here: a string tag is resolved by name, so
+// a typo compiles and misses at run time, and two tags spelled the same are a
+// bug nothing reports. A value cannot collide with another value, and because
+// both switches below cover every value, an arm nobody wrote is an analyzer
+// error instead of a message that quietly does nothing.
+//
+// Enum identity survives `Isolate.spawn`: the value that arrives on the far
+// side is `identical` to the declared one, which is what makes a `switch` on
+// it match rather than fall through every arm. `game_isolate_test.dart` pins
+// that against a real spawn rather than trusting it.
+//
+// Bulk traffic never goes near a SendPort - that is the ring buffer's job.
+// These are the rare ones: bring-up, shutdown and asset decoding.
 //
 // Three tags used to live here and are gone: `page`, `pagegone` and
 // `pagesdropped`, which announced newly allocated pages to main and negotiated
 // freeing them again. Main holds no archetypes and resolves no entity, so
-// there is nothing on that side for a page to be announced *to*.
-const String _msgReady = 'ready';
-const String _msgStopped = 'stopped';
-const String _msgStop = 'stop';
-const String _msgDispose = 'dispose';
-// App visibility, main -> game. One tag rather than a `GameCommand`: it is the
-// engine's own signal, it carries no reply, and a command would put it in the
-// user's command surface for no reason.
-// A receipt-delivered command batch, either direction. This is the carrier
-// that lets the twelve tags below become commands - see
-// `CommandDescriptor.hasControlSink` (#142).
-const String _msgControlBatch = 'controlbatch';
-// Asset decoding: the game isolate declares assets but cannot decode them (a
-// decode needs Flutter), so it asks. Assets are named by their **address** -
-// the index `GameAssets` assigns at declare time, which both copies agree on
-// because both run the same declarations in the same order. That is already
-// the integer a component row stores to point at an asset, so no second
-// identity is invented for the wire.
-const String _msgLoadAssets = 'loadassets';
-const String _msgAssetLoaded = 'assetloaded';
-const String _msgAssetsDone = 'assetsdone';
-const String _msgUnloadAssets = 'unloadassets';
+// there is nothing on that side for a page to be announced *to*. Four more
+// went in #142 - visibility, pause, time scale and step-once - and are
+// receipt-delivered commands now.
+//
+// Each survivor carries why it survived, so the next reader does not have to
+// work it out again.
+enum _ControlMessage {
+  /// Game -> main once the far copy has booted, carrying the `SendPort`
+  /// everything main sends goes through.
+  ///
+  /// This is what brings the lane a command would need into existence. Until
+  /// it lands `_toGame` is null, so the `controlSend` closure
+  /// `attachCommandRings` installs resolves its port to null and drops a
+  /// control batch without a word. Its payload is a `SendPort` besides - a
+  /// live VM handle, in the same category as the asset keys below: only the
+  /// isolate copy moves one, bytes never will.
+  ready,
+
+  /// Game -> main once the world is down. Releases the `stop()` that asked
+  /// and is what prompts [dispose] back.
+  stopped,
+
+  /// Main -> game: stop the timer and unmount the world.
+  ///
+  /// `GameState.unmount` takes down every loaded scene and destroys their
+  /// entities, which is component-data writing. A receipt-delivered handler
+  /// runs in the port callback with no tick window open, where that is the
+  /// one thing it must not do. Ring delivery would need a tick, and this
+  /// message exists to end them.
+  stop,
+
+  /// Main -> game after [stopped]: free the native memory and close this
+  /// lane.
+  ///
+  /// The handler reaches `CommandTransport.shutdown` through
+  /// `_disposeBuffers`, and after that `send` throws and
+  /// `receiveControlBatch` returns without dispatching. It ends the delivery
+  /// machinery, so it cannot be delivered by it.
+  dispose,
+
+  /// Either direction: the bytes of a receipt-delivered command batch.
+  ///
+  /// The carrier that let the four migrated tags become commands (#142). It
+  /// cannot be one itself, for the same reason the per-tick ping cannot: it
+  /// would have to be delivered by the thing it delivers.
+  controlBatch,
+
+  // Asset decoding: the game isolate declares assets but cannot decode them
+  // (a decode needs Flutter), so it asks. Assets are named by their
+  // **address** - the index `GameAssets` assigns at declare time, which both
+  // copies agree on because both run the same declarations in the same order.
+  // That is already the integer a component row stores to point at an asset,
+  // so no second identity is invented for the wire.
+  //
+  // These four are one-way messages correlated by request id, not a
+  // request/reply pair - `requestAssetLoad` completes its own `Completer` when
+  // [assetsDone] arrives. So four receipt-delivered sinks would preserve the
+  // semantics exactly and no reply-over-port is needed for them. What stops
+  // them is the payload, in two halves worth keeping apart.
+  //
+  // The half that will outlast any change to the record format: [loadAssets]
+  // carries `AssetKey` instances and [assetLoaded] carries an `AssetInfo`,
+  // and both are open classes a game subclasses (asset.dart). A key is not
+  // data. Main reaches through it to `AssetSource.load()` and
+  // `AssetKey.loader`, and reads `payloadType` off its reified type argument
+  // to build an `Asset<T>` that comes out correctly typed. Bytes carry
+  // neither a method nor a type argument, so `Isolate.spawn`'s object copy is
+  // the only thing that can move one; what it would take instead is a
+  // serialization the engine does not have and every game would have to
+  // implement.
+  //
+  // The half that is only true today: the address lists are variable-length,
+  // and the param vocabulary has no field kind for a list. That is a property
+  // of the vocabulary rather than of the design - a control batch is a plain
+  // `Uint8List` the sender builds and hands to `controlSend`, nothing
+  // ring-allocates it, and `ParamBatch.adoptIncoming` walks records forwards
+  // rather than indexing them, so a param record's stride is not load-bearing
+  // the way an archetype row's is. If a dynamic-length field turns up, this
+  // half stops applying; the half above still stands.
+
+  /// Game -> main: decode these addresses, whose keys ride along because main
+  /// ran no `describeAssets` and has nothing to resolve an address against.
+  loadAssets,
+
+  /// Main -> game: one address finished, with the running counts and whatever
+  /// decoding discovered (`AssetLoader.describe`).
+  assetLoaded,
+
+  /// Main -> game: the whole request is finished, carrying the first failure
+  /// if there was one.
+  assetsDone,
+
+  /// Game -> main: drop these payloads. Fire and forget - the declaration is
+  /// already gone on the asking copy.
+  unloadAssets,
+}
 
 /// The main-isolate half of a game: **declarations live here**.
 ///
@@ -2023,7 +2107,7 @@ final class GameRuntime {
     // it is reachable while the tick is stopped.
     transport.controlSend = (bytes) {
       final port = simulates ? _toMain : _toGame;
-      port?.send(<Object?>[_msgControlBatch, bytes]);
+      port?.send(<Object?>[_ControlMessage.controlBatch, bytes]);
     };
   }
 
@@ -2176,7 +2260,7 @@ final class GameRuntime {
   ///
   /// Without this the death was **silent and unrecoverable**: the tick simply
   /// stopped, [isRunning] went on answering true, and `stop()` waited forever
-  /// for a `_msgStopped` from an isolate that no longer existed - a 30-second
+  /// for a `stopped` from an isolate that no longer existed - a 30-second
   /// timeout in a test, a hung shutdown and a leaked pool in an application.
   /// The only trace was an engine-level log no Dart code could see (#126).
   ///
@@ -2249,7 +2333,7 @@ final class GameRuntime {
     }
     final stopping = Completer<void>();
     _stopping = stopping;
-    toGame.send(const <Object>[_msgStop]);
+    toGame.send(const <Object>[_ControlMessage.stop]);
     await stopping.future;
     // The game isolate has freed the native memory by now, so this copy's
     // views are dangling - drop them rather than leave a RingBuffer around
@@ -2442,7 +2526,7 @@ final class GameRuntime {
     // Nothing but the control port: the buffers, state channels, input block
     // and both command rings all arrived with the copy, already addressed.
     // The three announcement messages that used to carry them are gone.
-    toMain.send(<Object>[_msgReady, control.sendPort]);
+    toMain.send(<Object>[_ControlMessage.ready, control.sendPort]);
 
     if (autoTick) state!.startTimer();
   }
@@ -2450,23 +2534,23 @@ final class GameRuntime {
   void _handleControlMessage(dynamic message) {
     final parts = message as List;
     final state = this.state;
-    switch (parts[0] as String) {
-      case _msgStop:
+    switch (parts[0] as _ControlMessage) {
+      case _ControlMessage.stop:
         state?.stopTimer();
         state?.unmount();
-        _toMain?.send(const <Object>[_msgStopped]);
-      case _msgControlBatch:
+        _toMain?.send(const <Object>[_ControlMessage.stopped]);
+      case _ControlMessage.controlBatch:
         // Run here, in the port callback, with no tick involved. See
         // `CommandTransport.receiveControlBatch`.
         commandTransport?.receiveControlBatch(parts[1] as Uint8List);
-      case _msgDispose:
+      case _ControlMessage.dispose:
         _disposeBuffers();
         state?.pool.dispose();
         _control?.close();
         _control = null;
         _toMain = null;
         booted = false;
-      case _msgAssetLoaded:
+      case _ControlMessage.assetLoaded:
         // Record the shape before reporting progress, so a progress callback
         // that reaches for it already sees it.
         game.assets.adoptInfo(parts[2] as int, parts[5] as AssetInfo?);
@@ -2476,7 +2560,7 @@ final class GameRuntime {
           parts[3] as int,
           parts[4] as int,
         );
-      case _msgAssetsDone:
+      case _ControlMessage.assetsDone:
         final request = _assetRequests.remove(parts[1] as int);
         final failure = parts[2] as String?;
         if (request == null || request.done.isCompleted) break;
@@ -2491,6 +2575,18 @@ final class GameRuntime {
             ),
           );
         }
+      // Listed rather than defaulted, so that adding a message and forgetting
+      // to handle it here is an analyzer error. These four belong to main; one
+      // arriving on this port means a send went the wrong way, which used to
+      // be a silent no-op.
+      case _ControlMessage.ready:
+      case _ControlMessage.stopped:
+      case _ControlMessage.loadAssets:
+      case _ControlMessage.unloadAssets:
+        assert(
+          false,
+          '${parts[0]} is handled on main, not on the game isolate.',
+        );
     }
   }
 
@@ -2512,12 +2608,12 @@ final class GameRuntime {
       return;
     }
     final parts = message as List;
-    switch (parts[0] as String) {
-      case _msgControlBatch:
+    switch (parts[0] as _ControlMessage) {
+      case _ControlMessage.controlBatch:
         // Run here, in the port callback, with no tick involved. See
         // `CommandTransport.receiveControlBatch`.
         commandTransport?.receiveControlBatch(parts[1] as Uint8List);
-      case _msgReady:
+      case _ControlMessage.ready:
         // The control port is all `ready` carries now. Every shared buffer -
         // both command rings, the auxiliary buffers, the state channels and
         // the input block - was allocated on this copy before the spawn and
@@ -2526,21 +2622,32 @@ final class GameRuntime {
         // are gone, and so is the reason `start()` had to wait for them.
         _toGame = parts[1] as SendPort;
         ready.complete();
-      case _msgLoadAssets:
+      case _ControlMessage.loadAssets:
         // Unawaited by design: this is a port callback, and the decode is
         // asynchronous. Its completion is reported back over the port rather
         // than by this future, and every failure is caught inside.
         unawaited(_handleAssetLoadRequest(parts));
-      case _msgUnloadAssets:
+      case _ControlMessage.unloadAssets:
         final addresses = (parts[1] as List).cast<int>();
         for (var i = 0; i < addresses.length; i++) {
           game.assets.unloadAddress(addresses[i]);
         }
-      case _msgStopped:
-        _toGame?.send(const <Object>[_msgDispose]);
+      case _ControlMessage.stopped:
+        _toGame?.send(const <Object>[_ControlMessage.dispose]);
         _toGame = null;
         _stopping?.complete();
         _stopping = null;
+      // The mirror of the arm in `_handleControlMessage`, and there for the
+      // same reason: these four are handled on the game isolate, and one
+      // arriving here means a send went the wrong way.
+      case _ControlMessage.stop:
+      case _ControlMessage.dispose:
+      case _ControlMessage.assetLoaded:
+      case _ControlMessage.assetsDone:
+        assert(
+          false,
+          '${parts[0]} is handled on the game isolate, not on main.',
+        );
     }
   }
 
@@ -2584,7 +2691,7 @@ final class GameRuntime {
     final id = ++_assetRequestId;
     final request = _AssetLoadRequest(onLoaded);
     _assetRequests[id] = request;
-    toMain.send(<Object>[_msgLoadAssets, id, addresses, keys]);
+    toMain.send(<Object>[_ControlMessage.loadAssets, id, addresses, keys]);
     return request.done.future;
   }
 
@@ -2593,7 +2700,7 @@ final class GameRuntime {
   /// memory the way a page free does.
   void requestAssetUnload(List<int> addresses) {
     if (addresses.isEmpty) return;
-    _toMain?.send(<Object>[_msgUnloadAssets, addresses]);
+    _toMain?.send(<Object>[_ControlMessage.unloadAssets, addresses]);
   }
 
   /// Main's half: decode what was asked for, reporting each one back.
@@ -2642,7 +2749,7 @@ final class GameRuntime {
       }
       completed++;
       _toGame?.send(<Object?>[
-        _msgAssetLoaded,
+        _ControlMessage.assetLoaded,
         id,
         address,
         completed,
@@ -2655,7 +2762,7 @@ final class GameRuntime {
         asset.info,
       ]);
     }
-    _toGame?.send(<Object?>[_msgAssetsDone, id, failure]);
+    _toGame?.send(<Object?>[_ControlMessage.assetsDone, id, failure]);
   }
 }
 

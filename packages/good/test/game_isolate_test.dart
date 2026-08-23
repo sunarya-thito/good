@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:good/src/scene_handle.dart';
@@ -1839,4 +1840,73 @@ void main() {
   // it is asserted in the first test in this file: a component read on main
   // throws, naming the presentation-only rule. There is nothing left here to
   // race with.
+
+  // The assumption `_ControlMessage` rests on, pinned against a real spawn
+  // rather than assumed (#142).
+  //
+  // The two control lanes tag every message with an enum value and route it
+  // with a `switch`. A `switch` on an enum compares with `==`, which for an
+  // enum is identity, so if `Isolate.spawn` copied the value instead of
+  // handing back the canonical one, every arm would miss and the message
+  // would vanish - `start()` hanging with nothing to point at, which is the
+  // worst way for this to be wrong. `_ControlMessage` is private to game.dart,
+  // so this pins the language guarantee it depends on, in both directions and
+  // over a real port.
+  test('an enum survives a real spawn with its identity intact', () async {
+    final fromChild = ReceivePort();
+    final greeted = Completer<List<Object?>>();
+    final echoed = Completer<List<Object?>>();
+    fromChild.listen((dynamic message) {
+      final parts = (message as List).cast<Object?>();
+      (greeted.isCompleted ? echoed : greeted).complete(parts);
+    });
+    final child = await Isolate.spawn(_echoTags, fromChild.sendPort);
+
+    // Child -> parent: the value the child sent is the parent's own constant.
+    final hello = await greeted.future;
+    expect(
+      identical(hello[0], _WireTag.hello),
+      isTrue,
+      reason:
+          'an enum arrived from a spawned isolate as a copy rather than the '
+          'canonical value, so a switch on it would match no arm',
+    );
+
+    // Parent -> child, and the answer says what the child's own switch did
+    // with it rather than just whether it compared equal.
+    (hello[1]! as SendPort).send(<Object>[_WireTag.farewell]);
+    final back = await echoed.future;
+    expect(
+      back[0],
+      'farewell',
+      reason: 'the switch on the far side matched the wrong arm, or none',
+    );
+    expect(back[1], isTrue);
+
+    child.kill(priority: Isolate.immediate);
+    fromChild.close();
+  }, timeout: const Timeout(Duration(seconds: 30)));
+}
+
+/// Two values, so a `switch` on the far side has something to get wrong.
+enum _WireTag { hello, farewell }
+
+/// The far half of 'an enum survives a real spawn with its identity intact'.
+/// Top-level because a closure is not sendable.
+void _echoTags(SendPort toParent) {
+  final fromParent = ReceivePort();
+  toParent.send(<Object>[_WireTag.hello, fromParent.sendPort]);
+  fromParent.listen((dynamic message) {
+    final tag = (message as List)[0] as _WireTag;
+    // The routing itself, not a comparison standing in for it.
+    var arm = 'no arm matched';
+    switch (tag) {
+      case _WireTag.hello:
+        arm = 'hello';
+      case _WireTag.farewell:
+        arm = 'farewell';
+    }
+    toParent.send(<Object>[arm, identical(tag, _WireTag.farewell)]);
+    fromParent.close();
+  });
 }
