@@ -247,6 +247,33 @@ final class TimelineAnimation {
     }
     return TimelineSample.pack(clipId, micros);
   }
+
+  @internal
+  Iterable play(
+    List<TrackBinding> bindings, {
+    required double duration,
+    required WrapMode wrapMode,
+    required bool reverse,
+  }) sync* {
+    final startedAt = _owner.state.time;
+    final length = duration > 0 ? duration : this.length;
+    while (true) {
+      final elapsed = _owner.state.time - startedAt;
+      final sample = animate(
+        offset: -startedAt,
+        duration: duration,
+        wrapMode: wrapMode,
+        reverse: reverse,
+      );
+      for (var i = 0; i < bindings.length; i++) {
+        bindings[i].apply(sample);
+      }
+      // A looping or ping-ponging clip has no end to wait for, so this runs
+      // until something stops it - which is what the returned handle is for.
+      if (wrapMode == WrapMode.clamp && elapsed >= length) return;
+      yield null;
+    }
+  }
 }
 
 /// Builds one track's keyframes inside one clip. Chainable.

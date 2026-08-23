@@ -386,7 +386,7 @@ void main() {
       await handle;
     });
 
-    test('a looping animation runs until it is stopped', () async {
+    test('stopAnimation stops one animation and leaves the last written value', () async {
       run = await _boot();
       final scene = run.state.singleScene<_Scene>();
       final enemy = scene.enemy;
@@ -395,15 +395,66 @@ void main() {
       final handle = enemy.startAnimation(
         enemy.timeline.entrance,
         <TrackBinding>[enemy.timeline.x.bind(enemy.px.bind(entity))],
+      );
+
+      run.advance(_step); // first resume: writes t=0
+      _tick(5); // half a second in: x is 50.0
+      expect(enemy.px[entity], closeTo(50.0, 1e-6));
+      expect(handle.isDone, isFalse);
+
+      enemy.stopAnimation(handle);
+      expect(handle.isDone, isTrue);
+
+      _tick(10);
+      expect(
+        enemy.px[entity],
+        closeTo(50.0, 1e-6),
+        reason: 'a stopped animation leaves behind whatever the last tick wrote',
+      );
+      await handle;
+    });
+
+    test('stopAnimations stops every coroutine playing that timeline', () async {
+      run = await _boot();
+      final scene = run.state.singleScene<_Scene>();
+      final enemy = scene.enemy;
+      final loaded = run.state.loadedScenes.single;
+      final e1 = loaded.addEntity(enemy);
+      final e2 = loaded.addEntity(enemy);
+      final e3 = loaded.addEntity(enemy);
+
+      final h1 = enemy.startAnimation(
+        enemy.timeline.entrance,
+        <TrackBinding>[enemy.timeline.x.bind(enemy.px.bind(e1))],
+        wrapMode: WrapMode.loop,
+      );
+      final h2 = enemy.startAnimation(
+        enemy.timeline.entrance,
+        <TrackBinding>[enemy.timeline.x.bind(enemy.px.bind(e2))],
+        wrapMode: WrapMode.loop,
+      );
+      final h3 = enemy.startAnimation(
+        enemy.timeline.blink,
+        <TrackBinding>[enemy.timeline.y.bind(enemy.px.bind(e3))],
         wrapMode: WrapMode.loop,
       );
 
-      _tick(100);
-      expect(handle.isDone, isFalse, reason: 'a loop has no end to wait for');
-      handle.stop();
-      run.advance(_step);
-      expect(handle.isDone, isTrue);
-      await handle;
+      _tick(5);
+      expect(h1.isDone, isFalse);
+      expect(h2.isDone, isFalse);
+      expect(h3.isDone, isFalse);
+
+      // Stop every coroutine playing `entrance`.
+      enemy.stopAnimations(enemy.timeline.entrance);
+      expect(h1.isDone, isTrue);
+      expect(h2.isDone, isTrue);
+      expect(h3.isDone, isFalse, reason: 'blink is a different timeline clip and keeps running');
+
+      _tick(10);
+      expect(h3.isDone, isFalse);
+      enemy.stopAnimation(h3);
+      expect(h3.isDone, isTrue);
+      await Future.wait(<Future<void>>[h1, h2, h3]);
     });
   });
 }
