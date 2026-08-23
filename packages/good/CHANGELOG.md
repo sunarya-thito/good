@@ -1,3 +1,15 @@
+## Unreleased
+
+### Fixed
+
+* **A false claim in the 0.2.0 notes is corrected.** They said the four
+  commands the engine now declares broke `good_net` peer compatibility. They
+  did not: the handshake hash reads network messages, declared in
+  `describeNetwork` on the `GameState`, and never the commands
+  `describeCommands` declares on the `Game`. No behaviour changed, here or
+  there. `good_net` 0.2.1 carries the same correction for the users it
+  actually reached.
+
 ## 0.2.0
 
 Two gaps 0.1.0 admitted are closed: a column can be declared by the field that
@@ -111,9 +123,13 @@ sorting. Several checks that used to let a mistake through now stop it.
   **The engine now declares four commands of its own**, before anything a game
   declares, so a game's commands sit after them in the declaration order. That
   order is internal wire identity and both isolate copies agree on it, so a
-  game sees no difference — but `good_net` hashes the declaration order into
-  its handshake, so a networked build of this version will not accept a peer
-  built against the previous one.
+  game sees no difference.
+
+  0.2.0 shipped this paragraph claiming the shift also broke `good_net` peer
+  compatibility. **It does not**, and that sentence has been corrected rather
+  than removed. `good_net` hashes the messages `describeNetwork` declares on
+  the `GameState`, not the commands `describeCommands` declares on the `Game`,
+  so the two passes are independent - see `good_net` 0.2.1.
 
 * **A command can be delivered when the message arrives instead of on the next
   tick.** Register the handler with `hasControlSink` or `hasControlSignal`

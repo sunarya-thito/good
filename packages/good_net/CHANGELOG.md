@@ -1,6 +1,37 @@
+## 0.2.1
+
+Documentation only. No code changes.
+
+### The 0.2.0 breaking note was wrong
+
+**0.2.0 does not break peer compatibility. A build against 0.2.0 talks to a
+build against 0.1.x exactly as before, and no coordinated update is needed.**
+If you read that note and planned a fleet-wide rollout, you can drop it.
+
+The claim was that `good` 0.2.0 declaring four commands of its own shifted the
+declaration order the handshake hashes. It does shift the order commands are
+declared in — but the handshake hash does not read commands. Network messages
+are declared in `describeNetwork` on the `GameState`, commands in
+`describeCommands` on the `Game`, and `SchemaRegistry.seal` walks only the
+messages. The two passes are independent, which `NetDescriptor`'s own doc says:
+a command's index has to mean the same thing on two *isolates*, a message's on
+two *machines*.
+
+Measured rather than reasoned: a game with three extra commands declared and an
+otherwise identical set of messages hashes to the same value, while adding one
+message changes it.
+
+The mistake was mine, not a change in behaviour. The 0.2.0 entry is left below
+rather than deleted, since it was published and may have been read.
+
 ## 0.2.0
 
 ### Breaking
+
+> **Retracted in 0.2.1 — the entry below is wrong.** Peer compatibility with
+> 0.1.x is unaffected and no coordinated update is needed. The handshake hash
+> reads network messages, not commands. Kept here because 0.2.0 shipped with
+> it.
 
 * **Peers built against 0.1.x can no longer connect.** The handshake hashes the
   order commands are declared in, and `good` 0.2.0 declares four of its own
