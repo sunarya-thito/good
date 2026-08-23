@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/event/tick_loop.dart';
 import 'package:good/src/archetype.dart';
@@ -12,6 +14,7 @@ import 'package:good/src/random.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/struct.dart';
 import 'package:good/src/system.dart';
+import 'package:flutter/foundation.dart' show FlutterError, FlutterErrorDetails;
 import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
 
@@ -116,11 +119,12 @@ class _PhaseGame extends _TestGame {
 class _ThrowingSystem extends GameSystem with FixedTickable {
   int ran = 0;
   int throwOnTick = 1;
+  String throwMessage = 'system boom';
 
   @override
   void onFixedUpdate() {
     ran++;
-    if (ran == throwOnTick) throw StateError('system boom');
+    if (ran == throwOnTick) throw StateError(throwMessage);
   }
 }
 
@@ -148,6 +152,34 @@ class _ThrowState extends _FixtureState {
 class _ThrowGame extends _TestGame {
   @override
   GameState createState() => _ThrowState();
+}
+
+class _ReportingThrowGame extends _ThrowGame {
+  final List<({String systemName, String error, String stackTrace})> reports =
+      <({String systemName, String error, String stackTrace})>[];
+
+  @override
+  void onSystemDisabled(String systemName, String error, String stackTrace) {
+    reports.add((
+      systemName: systemName,
+      error: error,
+      stackTrace: stackTrace,
+    ));
+    super.onSystemDisabled(systemName, error, stackTrace);
+  }
+}
+
+/// A game whose report handler throws. Under `startInline` the main-side
+/// handler runs on the game's own stack, so this lands back inside the
+/// dispatch guard that called it.
+class _BadReportGame extends _ThrowGame {
+  int calls = 0;
+
+  @override
+  void onSystemDisabled(String systemName, String error, String stackTrace) {
+    calls++;
+    throw StateError('the report handler is broken too');
+  }
 }
 
 /// Records the visibility hooks so a test can assert they arrived, and in
@@ -1105,6 +1137,124 @@ void main() {
             'and everything else goes on ticking - one bad system is not a '
             'dead game',
       );
+    });
+
+    test('the disable is reported to the main isolate', () async {
+      FlutterErrorDetails? reportedToFlutter;
+      final previousOnError = FlutterError.onError;
+      FlutterError.onError = (details) => reportedToFlutter = details;
+      addTearDown(() => FlutterError.onError = previousOnError);
+
+      final game = await _game(_ReportingThrowGame());
+      final state = _state(game);
+      _thrower
+        ..ran = 0
+        ..throwOnTick = 1
+        ..throwMessage = 'system boom';
+      _afterThrower.ran = 0;
+
+      // The report is handed to the command inside the guard's catch, before
+      // the assert that ends this tick - so it is already gone by the time
+      // the assert throws, and nothing here has to pretend to be a release
+      // build to see it. The assert is the only thing debug adds, and that is
+      // the compiler's doing rather than the engine's.
+      //
+      // `startInline` is one copy, so `CommandRegistry.inline` installs both
+      // sides' handlers here and the main-side handler runs without a ring
+      // crossing. What that leaves untested is the delivery *timing* across a
+      // real isolate, where main pumps on the tick notification - and that is
+      // unreachable from a debug test either way, because there the assert
+      // kills the game isolate and `Game.start`'s error port is what reports
+      // the failure instead.
+      expect(() => state.advance(_step), throwsA(isA<AssertionError>()));
+
+      expect(game.reports, hasLength(1));
+      expect(game.reports.first.systemName, contains('_ThrowingSystem'));
+      expect(game.reports.first.error, contains('system boom'));
+      expect(
+        game.reports.first.stackTrace,
+        contains('_ThrowingSystem.onFixedUpdate'),
+        reason: 'the stack is what says which line threw, and #143 asks for '
+            'it by name',
+      );
+
+      // And the base implementation hands it to Flutter, so a game that does
+      // not override onSystemDisabled still sees it.
+      expect(reportedToFlutter, isNotNull);
+      expect(
+        reportedToFlutter!.exception.toString(),
+        contains('system _ThrowingSystem threw: Bad state: system boom'),
+      );
+
+      // Reported once, not once per tick: the system is disabled, so it never
+      // throws again.
+      state
+        ..advance(_step)
+        ..advance(_step);
+      expect(_thrower.ran, 1);
+      expect(_afterThrower.ran, 3);
+      expect(game.reports, hasLength(1));
+    });
+
+    test('a report too long for its fields is truncated, not refused', () async {
+      final previousOnError = FlutterError.onError;
+      FlutterError.onError = (_) {};
+      addTearDown(() => FlutterError.onError = previousOnError);
+
+      final game = await _game(_ReportingThrowGame());
+      final state = _state(game);
+      _thrower
+        ..ran = 0
+        ..throwOnTick = 1
+        // Longer than the 1024-byte error field, and not ASCII: a cut through
+        // the middle of a multi-byte character has to come back inside the
+        // cap, not one replacement character over it. `hasString` refuses an
+        // oversized write, and a throw from inside the reporting path would
+        // take out the report of the throw.
+        ..throwMessage = 'é' * 4000;
+      addTearDown(() => _thrower.throwMessage = 'system boom');
+
+      expect(() => state.advance(_step), throwsA(isA<AssertionError>()));
+      expect(game.reports, hasLength(1));
+      expect(
+        utf8.encode(game.reports.first.error).length,
+        lessThanOrEqualTo(1024),
+        reason: 'the cap _ReportDisabledSystemCommand declares for the field',
+      );
+      expect(
+        utf8.encode(game.reports.first.stackTrace).length,
+        lessThanOrEqualTo(2048),
+      );
+      expect(
+        game.reports.first.error,
+        startsWith('Bad state: '),
+        reason: 'truncated at the end, so the front of the message survives',
+      );
+    });
+
+    test('a report that cannot be sent does not take the tick with it', () async {
+      final game = await _game(_BadReportGame());
+      final state = _state(game);
+      _thrower
+        ..ran = 0
+        ..throwOnTick = 1
+        ..throwMessage = 'system boom';
+      _afterThrower.ran = 0;
+
+      // Still the assert, and nothing else: the report handler threw on this
+      // stack, and that must not become the failure the tick reports, nor
+      // stop the listeners declared after the thrower.
+      expect(() => state.advance(_step), throwsA(isA<AssertionError>()));
+      expect(game.calls, 1, reason: 'the handler really did run, and throw');
+      expect(
+        _afterThrower.ran,
+        1,
+        reason: 'the guard promises one bad listener does not stop the rest, '
+            'and the reporting path runs inside the catch that keeps it',
+      );
+
+      state.advance(_step);
+      expect(_afterThrower.ran, 2, reason: 'and the game goes on ticking');
     });
 
     test('a throwing coroutine is unaffected by any of this', () async {

@@ -27,6 +27,14 @@
   is new. Widen the three signatures and add `inScene`. Nothing that only
   *calls* a query is affected.
 
+* **`GameListener.disableAfterUncaught` takes the error and stack.** Both are
+  optional positional, so a call site needs no change - but a class outside
+  the engine that `implements GameListener` no longer satisfies the interface
+  and has to widen its override to
+  `disableAfterUncaught([Object? error, StackTrace? stack])`. Anything that
+  extends `GameListenerBase`, which is every listener the engine ships, is
+  unaffected.
+
 ### Added
 
 * **A running animation can be stopped.** `stopAnimation(handle)` takes the
@@ -60,6 +68,23 @@
   working, a long way from the stale handle that caused it. A `Scene` carries
   a generation counter, so a handle whose slot has since been reused by a
   different scene is refused rather than answered for.
+
+* **A system switched off by an uncaught throw now says so in release.** The
+  guard from 0.2.0 reported through `assert`, which a release build strips, so
+  a shipped game went on ticking with a system quietly disabled and nothing
+  said anywhere. The engine now declares a fire-and-forget command in
+  `Game.describeCommands` carrying the system's name, the error and a
+  truncated stack from the game isolate to the main one.
+
+  `Game.onSystemDisabled(systemName, error, stackTrace)` is where it arrives.
+  The default hands it to `FlutterError.reportError`; override it to send the
+  report to a crash reporter or an in-game console instead, and do not call
+  `super` unless you want both. Debug is unchanged: the assert still fires and
+  is still the loud answer.
+
+  The three strings are cut to fit fixed-width fields - 256, 1024 and 2048
+  bytes - on a character boundary, and a report that cannot be sent at all is
+  dropped rather than allowed to end the tick that was already going wrong.
 
 ### Fixed
 

@@ -1,10 +1,17 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart'
-    show ChangeNotifier, VoidCallback, kIsWeb;
+    show
+        ChangeNotifier,
+        ErrorDescription,
+        FlutterError,
+        FlutterErrorDetails,
+        VoidCallback,
+        kIsWeb;
 import 'package:flutter/widgets.dart'
     show
         AppLifecycleState,
@@ -454,6 +461,7 @@ abstract class Game implements RandomOwner {
   late final _SetPausedCommand _setPausedCommand;
   late final _SetTimeScaleCommand _setTimeScaleCommand;
   late final _StepOnceCommand _stepOnceCommand;
+  late final _ReportDisabledSystemCommand _reportDisabledSystemCommand;
 
   @mustCallSuper
   void describeCommands(CommandDescriptor descriptor) {
@@ -461,6 +469,72 @@ abstract class Game implements RandomOwner {
     _setPausedCommand = descriptor.has(_SetPausedCommand());
     _setTimeScaleCommand = descriptor.has(_SetTimeScaleCommand());
     _stepOnceCommand = descriptor.has(_StepOnceCommand());
+    _reportDisabledSystemCommand = descriptor.has(
+      _ReportDisabledSystemCommand(),
+    );
+    descriptor.hasSink(
+      _reportDisabledSystemCommand,
+      _onSystemDisabledReport,
+    );
+  }
+
+  void _onSystemDisabledReport(_DisabledSystemReport params) {
+    onSystemDisabled(params.systemName, params.error, params.stackTrace);
+  }
+
+  /// Called on the main isolate when a system on the game isolate threw out
+  /// of an event dispatch and was switched off.
+  ///
+  /// The three strings are cut to fit the command that carried them, so a
+  /// long message or a deep stack arrives truncated rather than not at all.
+  /// [systemName] is `runtimeType.toString()` and is for reading, not for
+  /// looking anything up: nothing here resolves a system by its name.
+  ///
+  /// The default hands it to [FlutterError.reportError], which is what makes
+  /// a release build say something at all. Override to send it somewhere else
+  /// - a crash reporter, an in-game console - and **do not** call `super`
+  /// unless you want both. That is the whole reason this is not
+  /// `@mustCallSuper`: a game routing diagnostics to its own sink is the case
+  /// this exists for, not a mistake to guard against.
+  ///
+  /// Under `Game.startInline` - a test, a headless host, and every web build
+  /// - there is no second isolate, so this runs on the game's own stack
+  /// inside the dispatch guard. Throwing from here is caught and dropped
+  /// rather than allowed to end the tick; see `GameSystem.disableAfterUncaught`.
+  void onSystemDisabled(String systemName, String error, String stackTrace) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: StateError('system $systemName threw: $error'),
+        stack: stackTrace.isNotEmpty ? StackTrace.fromString(stackTrace) : null,
+        library: 'good',
+        context: ErrorDescription(
+          'which has been switched off. Game.enableSystem brings it back if '
+          'the throw was transient',
+        ),
+      ),
+    );
+  }
+
+  /// Queues the game -> main report for a system the dispatch guard has just
+  /// switched off.
+  ///
+  /// Fire-and-forget, and deliberately: this is called from inside the guard,
+  /// on a tick that has already gone wrong, so it must not be able to fail.
+  /// The three strings are cut to fit their fields by
+  /// [_ReportDisabledSystemCommand.bufferFromParams] - one place, because an
+  /// oversized write is refused and a throw from the reporting path would
+  /// take out the report of the throw.
+  @internal
+  void reportDisabledSystem(
+    String systemName,
+    String error,
+    String stackTrace,
+  ) {
+    _reportDisabledSystemCommand((
+      systemName: systemName,
+      error: error,
+      stackTrace: stackTrace,
+    ));
   }
 
   /// Registers the game-isolate handlers for the four commands [Game]
@@ -3571,6 +3645,71 @@ final class _SetTimeScaleCommand extends SinkCommand<double> {
 }
 
 final class _StepOnceCommand extends SignalCommand {}
+
+typedef _DisabledSystemReport = ({
+  String systemName,
+  String error,
+  String stackTrace,
+});
+
+final class _ReportDisabledSystemCommand
+    extends SinkCommand<_DisabledSystemReport> {
+  static const int maxSystemNameBytes = 256;
+  static const int maxErrorBytes = 1024;
+  static const int maxStackTraceBytes = 2048;
+
+  late final ParamPointer<String> systemName;
+  late final ParamPointer<String> error;
+  late final ParamPointer<String> stackTrace;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    systemName = descriptor.hasString(maxSystemNameBytes);
+    error = descriptor.hasString(maxErrorBytes);
+    stackTrace = descriptor.hasString(maxStackTraceBytes);
+  }
+
+  @override
+  void bufferFromParams(ParamBuffer call, _DisabledSystemReport params) {
+    systemName[call] = _truncateToUtf8Bytes(
+      params.systemName,
+      maxSystemNameBytes,
+    );
+    error[call] = _truncateToUtf8Bytes(params.error, maxErrorBytes);
+    stackTrace[call] = _truncateToUtf8Bytes(
+      params.stackTrace,
+      maxStackTraceBytes,
+    );
+  }
+
+  @override
+  _DisabledSystemReport paramsFromBuffer(ParamBuffer call) => (
+    systemName: systemName[call],
+    error: error[call],
+    stackTrace: stackTrace[call],
+  );
+}
+
+/// [text] cut to at most [maxBytes] **bytes** of UTF-8, on a character
+/// boundary.
+///
+/// The boundary matters. `hasString` reserves a byte count and refuses a
+/// write that does not fit, so a cut through the middle of a multi-byte
+/// character cannot simply be decoded with `allowMalformed`: the malformed
+/// tail comes back as U+FFFD, which re-encodes to three bytes and can push
+/// the result back over the cap - and the throw would land inside the path
+/// reporting somebody else's throw. Continuation bytes are `10xxxxxx`, so
+/// walking back off them finds the start of the character the cut fell
+/// inside, and dropping it keeps the result under the cap.
+String _truncateToUtf8Bytes(String text, int maxBytes) {
+  final bytes = utf8.encode(text);
+  if (bytes.length <= maxBytes) return text;
+  var end = maxBytes;
+  while (end > 0 && (bytes[end] & 0xC0) == 0x80) {
+    end--;
+  }
+  return utf8.decode(bytes.sublist(0, end));
+}
 
 /// Whether [state] counts as the app being visible.
 ///

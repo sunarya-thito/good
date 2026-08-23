@@ -73,7 +73,7 @@ class _Listener implements GameListener {
   bool get listensToEvents => true;
 
   @override
-  void disableAfterUncaught() {}
+  void disableAfterUncaught([Object? error, StackTrace? stack]) {}
 
   void fire() => sink++;
 

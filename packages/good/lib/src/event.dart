@@ -23,7 +23,7 @@ abstract interface class GameListener {
   /// interface rather than an `is GameSystem` test inside the dispatcher: the
   /// four hosts differ in whether they can be switched off at all, and letting
   /// each answer for itself is what the no-dispatch-on-`is` rule asks for.
-  void disableAfterUncaught();
+  void disableAfterUncaught([Object? error, StackTrace? stack]);
 }
 
 /// The default [GameListener] implementation the framework's own listener
@@ -44,7 +44,7 @@ abstract class GameListenerBase implements GameListener {
   /// `GameSystem` overrides it, being the one host the engine can drop and
   /// keep going without.
   @override
-  void disableAfterUncaught() {}
+  void disableAfterUncaught([Object? error, StackTrace? stack]) {}
 }
 
 /// The listener list every dispatcher holds, and the collection machinery
@@ -87,7 +87,8 @@ abstract base class _ListenerSet<L extends GameListener> {
   ///    below never gets to matter, because nothing ticks again.
   ///  * **In release** the assert is compiled out. The listener is disabled
   ///    and the game keeps running without it, which is what a shipped game
-  ///    should do when one system has a bad day.
+  ///    should do when one system has a bad day. The disable is reported
+  ///    to the main isolate via an engine command.
   ///
   /// So the disable is release behaviour. `Game.enableSystem` brings a system
   /// back if the throw was transient.
@@ -196,7 +197,7 @@ final class EventDispatcher<L extends GameListener, E> extends _ListenerSet<L> {
         // `assert` mid-dispatch and, in debug, throw straight back out -
         // skipping every listener after this one, which is the exact thing
         // this guard exists to prevent.
-        listener.disableAfterUncaught();
+        listener.disableAfterUncaught(error, stack);
         failed ??= listener;
         failure ??= error;
         failureStack ??= stack;
@@ -234,7 +235,7 @@ final class SignalDispatcher<L extends GameListener> extends _ListenerSet<L> {
       try {
         _deliver(listener);
       } catch (error, stack) {
-        listener.disableAfterUncaught();
+        listener.disableAfterUncaught(error, stack);
         failed ??= listener;
         failure ??= error;
         failureStack ??= stack;
