@@ -2,6 +2,16 @@
 
 ### Breaking
 
+* **`ParamDescriptor`'s integer and float declarations no longer take a
+  default value.** `descriptor.hasInt32(100)` used to compile and then do
+  nothing: `ParamLayout` never read the argument, and there was nowhere for it
+  to go. A param record carries a written-mask, and reading a field nobody
+  wrote throws instead of handing back a default — zero is a real value for
+  every width here, so the engine reports the omission rather than inventing
+  one. Drop the argument at the call site; nothing else changes. The
+  same-named methods on `DataDescriptor` and `StateDescriptor` keep their
+  defaults, which are read and do apply.
+
 * **`Query` and `SingleQuery` gained members.** They are exported, so a class
   outside the engine that `implements Query` no longer satisfies it: `run`,
   `groups` and `runQuery` each take a trailing optional `Scene`, and `inScene`

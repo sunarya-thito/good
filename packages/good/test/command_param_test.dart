@@ -91,6 +91,8 @@ class _Wide extends GameCommand<int, int> {
   late final ParamPointer<int> u8;
   late final ParamPointer<int> i8;
   late final ParamPointer<int> u16;
+  late final ParamPointer<int> i16;
+  late final ParamPointer<int> u32;
   late final ParamPointer<int> i32;
   late final ParamPointer<int> i64;
   late final ParamPointer<double> f32;
@@ -105,6 +107,8 @@ class _Wide extends GameCommand<int, int> {
     u8 = descriptor.hasUint8();
     i8 = descriptor.hasInt8();
     u16 = descriptor.hasUint16();
+    i16 = descriptor.hasInt16();
+    u32 = descriptor.hasUint32();
     i32 = descriptor.hasInt32();
     i64 = descriptor.hasInt64();
     f32 = descriptor.hasFloat32();
@@ -541,6 +545,8 @@ void main() {
       wide.nibble[call] = 9;
       wide.i8[call] = -120;
       wide.u16[call] = 65000;
+      wide.i16[call] = -32000;
+      wide.u32[call] = 4000000000;
       wide.i32[call] = -2000000000;
       wide.i64[call] = -9000000000000000000;
       wide.f32[call] = 0.5;
@@ -554,6 +560,8 @@ void main() {
       expect(wide.u8[call], 250);
       expect(wide.i8[call], -120);
       expect(wide.u16[call], 65000);
+      expect(wide.i16[call], -32000);
+      expect(wide.u32[call], 4000000000);
       expect(wide.i32[call], -2000000000);
       expect(wide.i64[call], -9000000000000000000);
       expect(wide.f32[call], 0.5);
