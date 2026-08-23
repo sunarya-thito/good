@@ -1752,6 +1752,9 @@ final class GameRuntime {
   SendPort? _toGame;
   Completer<void>? _stopping;
 
+  /// The game isolate died of an uncaught error - see [_handleIsolateDeath].
+  RawReceivePort? _isolateErrors;
+
   final List<void Function(int tick)> _tickListeners =
       <void Function(int tick)>[];
 
@@ -1852,13 +1855,32 @@ final class GameRuntime {
     // `Pointer` is sendable and arrives at the same address, so the spawned
     // copy sees the same native memory with no handshake. Verified by
     // `tool/spawn_pointer_spike.dart`.
+    // Dart's own error port, and the only cross-isolate route this failure
+    // has. `errorsAreFatal` defaults to true, so any uncaught error on the
+    // game isolate kills it; without an `onError` nothing on this side is
+    // ever told, which is exactly the silent stall #126 is about. There is no
+    // engine channel that fits: `GameCommand` is main -> game, a
+    // `StateChannel` carries only fixed-width numbers and bools, and
+    // `describeBuffers` is the bulk per-tick lane.
+    // The zone `start` was called in, captured because a RawReceivePort
+    // callback is invoked by the VM and is not reliably bound to it. Reporting
+    // through this is what puts the failure where Flutter and the test
+    // runner already look.
+    final zone = Zone.current;
+    final isolateErrors = RawReceivePort(
+      (dynamic m) => _handleIsolateDeath(m, zone),
+    );
+    // Assigned *after* the spawn, exactly as `_fromGame` is: this object rides
+    // inside the spawn message, and a ReceivePort on it is unsendable - see
+    // `Game`'s note on holding no unsendable state at handover.
     await Isolate.spawn<List<Object>>(_gameIsolateEntryPoint, <Object>[
       this,
       fromGame.sendPort,
       autoTick,
-    ]);
+    ], onError: isolateErrors.sendPort);
 
     _fromGame = fromGame;
+    _isolateErrors = isolateErrors;
     // `ready` is sent *after* the game isolate has run `_bootGame`, so by the
     // time this returns the world exists: scenes registered, entities spawned,
     // queries compiled. Only asset decoding is still in flight, and that is
@@ -2026,6 +2048,53 @@ final class GameRuntime {
 
   // --- shutdown -----------------------------------------------------------
 
+  /// The game isolate died of an uncaught error.
+  ///
+  /// Without this the death was **silent and unrecoverable**: the tick simply
+  /// stopped, [isRunning] went on answering true, and `stop()` waited forever
+  /// for a `_msgStopped` from an isolate that no longer existed - a 30-second
+  /// timeout in a test, a hung shutdown and a leaked pool in an application.
+  /// The only trace was an engine-level log no Dart code could see (#126).
+  ///
+  /// So this marks the runtime dead first and reports second. Marking dead is
+  /// what makes [isRunning] false and what lets [shutDown]'s `if (!booted)`
+  /// return immediately, so a later `stop()` completes instead of hanging.
+  ///
+  /// A pending `stop()` is completed **with the error**, because the game did
+  /// not stop cleanly and a caller that awaited a clean stop should not be
+  /// told it got one. In that case this does not also rethrow: the awaiting
+  /// caller is already being told, and throwing again would report one death
+  /// twice. With no stop pending there is nobody to tell, so it rethrows on
+  /// this isolate rather than let the failure disappear.
+  void _handleIsolateDeath(dynamic message, Zone zone) {
+    // Two strings, already stringified by the sending isolate - an error
+    // object cannot cross a port, so this is what Dart's own error port
+    // gives and there is no richer form to ask for.
+    final parts = message as List;
+    final error = parts.isNotEmpty ? '${parts[0]}' : 'unknown error';
+    final stack = parts.length > 1 && parts[1] != null ? '\n${parts[1]}' : '';
+
+    if (!booted) return;
+    booted = false;
+    _toGame = null;
+    _isolateErrors?.close();
+    _isolateErrors = null;
+    _fromGame?.close();
+    _fromGame = null;
+
+    final failure = StateError(
+      'the ${game.runtimeType} game isolate died of an uncaught error:\n'
+      '$error$stack',
+    );
+    final stopping = _stopping;
+    if (stopping != null && !stopping.isCompleted) {
+      _stopping = null;
+      stopping.completeError(failure);
+      return;
+    }
+    zone.handleUncaughtError(failure, StackTrace.current);
+  }
+
   /// Stops the simulation and releases the shared memory.
   ///
   /// Two phases on purpose in the spawned configuration. The game isolate
@@ -2062,6 +2131,8 @@ final class GameRuntime {
     // views are dangling - drop them rather than leave a RingBuffer around
     // that would happily read freed pages.
     _disposeBuffers();
+    _isolateErrors?.close();
+    _isolateErrors = null;
     _fromGame?.close();
     _fromGame = null;
     booted = false;

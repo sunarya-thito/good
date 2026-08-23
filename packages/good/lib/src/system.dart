@@ -70,6 +70,13 @@ abstract class GameSystem extends GameListenerBase
   @internal
   set enabled(bool value) => _enabled = value;
 
+  /// A system is the one listener the engine can switch off and carry on, so
+  /// this is where the base class's no-op is overridden - see
+  /// `GameListener.disableAfterUncaught`. Same flag `disableSystem` sets, so
+  /// `Game.enableSystem` brings it back.
+  @override
+  void disableAfterUncaught() => _enabled = false;
+
   late final SignalDispatcher<GameSystemLifecycleListener> mountEvent;
   late final SignalDispatcher<GameSystemLifecycleListener> unmountEvent;
 

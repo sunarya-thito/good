@@ -221,6 +221,40 @@ class _IsolateState extends GameState<_IsolateGame> {
   }
 }
 
+/// A system that throws on its third tick, on the game isolate, with a real
+/// timer driving it - the shape #126 was filed about.
+class _DyingSystem extends GameSystem with FixedTickable {
+  int ran = 0;
+
+  @override
+  void onFixedUpdate() {
+    ran++;
+    if (ran == 3) throw StateError('system boom on the game isolate');
+  }
+}
+
+class _DyingState extends GameState<_DyingGame> {
+  @override
+  void onMounted() {}
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_DyingSystem());
+  }
+}
+
+class _DyingGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 5);
+
+  @override
+  GameState createState() => _DyingState();
+}
+
 class _IsolateGame extends Game {
   @override
   int get pageSize => 4096;
@@ -931,6 +965,51 @@ void main() {
     AssetLoaders.reset();
   });
 
+  // #126. Before this, a system throwing on the game isolate killed it and
+  // nothing on this side was told: the tick stopped, `isRunning` went on
+  // answering true, and `stop()` waited forever for a message from an isolate
+  // that no longer existed. That last part is why this test asserts on
+  // `stop()` completing and not only on the error arriving - a test that
+  // checked the report alone would pass with the hang still there, and a
+  // thirty-second timeout is a miserable way to find that out.
+  test('a dead game isolate is reported, and can still be stopped', () async {
+    final errors = <Object>[];
+    late Game game;
+
+    await runZonedGuarded(() async {
+          game = await Game.start(_DyingGame());
+          // Well past the third tick at a 5ms step.
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+        }, (Object error, StackTrace stack) => errors.add(error)) ??
+        Future<void>.value();
+
+    expect(
+      game.isRunning,
+      isFalse,
+      reason:
+          'the isolate is gone, so the handle must stop claiming otherwise - '
+          'this is what makes shutDown return instead of waiting',
+    );
+    expect(
+      errors,
+      isNotEmpty,
+      reason:
+          'the death has to reach this isolate. Dart error port aside there '
+          'is no channel for it: GameCommand is main -> game, a StateChannel '
+          'carries only numbers and bools, describeBuffers is the bulk lane.',
+    );
+    expect(
+      errors.first.toString(),
+      contains('system boom on the game isolate'),
+      reason: 'and it has to carry what actually went wrong',
+    );
+
+    // The whole point: this completes rather than hanging.
+    await game.stop().timeout(
+      const Duration(seconds: 5),
+      onTimeout: () => fail('stop() hung on a dead isolate - the #126 bug'),
+    );
+  });
   test(
     'a Game subclass survives Isolate.spawn and ticks on the other side',
     () async {

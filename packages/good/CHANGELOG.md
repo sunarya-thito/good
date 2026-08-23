@@ -166,6 +166,42 @@ sorting. Several checks that used to let a mistake through now stop it.
 
 ### Fixed
 
+* **A system that throws no longer kills the game.** It used to, silently and
+  permanently (#126). One uncaught error anywhere on the game isolate stopped
+  the tick for good, while `Game.isRunning` went on answering `true` and
+  `stop()` waited forever for a message from an isolate that no longer
+  existed — a hung shutdown and a leaked pool, with no Dart error anywhere.
+  The only trace was an engine log nothing in the app could see.
+
+  Each listener is now guarded individually, so one bad system does not stop
+  the others in the same tick, and the offending listener is disabled.
+
+  **Debug and release differ here, and the difference is surprising enough to
+  spell out.** In debug an `assert` fires and stops the game isolate — the
+  loud answer, and no longer a silent one, because `Game.start` now installs
+  an error port: the death reaches the main isolate, `isRunning` goes false, a
+  pending `stop()` completes with the error instead of hanging, and the
+  failure is reported where Flutter and the test runner already look. In
+  release there is no assert: the system stays disabled and the game keeps
+  running. So **the disable is release behaviour**, and
+  `Game.enableSystem<MySystem>()` brings it back if the throw was transient.
+
+  Two things that were already true and are now written down. The tick is
+  **atomic** as far as any reader is concerned: the fixed-tick dispatch runs
+  before the tick is committed, so a tick that throws publishes nothing, and
+  the next tick copies the last published state back over the partial write. A
+  failed step is **not retried**, because the accumulator is debited before the
+  step runs — otherwise a deterministically throwing system would be handed the
+  same step forever.
+
+  Coroutines were already handled and are unchanged: `CoroutineScheduler`
+  removes a throwing coroutine and completes its handle with the error.
+
+  `GameListener` gains `disableAfterUncaught()`, which is how a listener says
+  whether it can be switched off. `GameSystem` disables itself; the other three
+  hosts do nothing, since switching off a `GameState`, `SceneStruct` or
+  `EntityStruct` is not a smaller failure than the throw was.
+
 * **An entity's heap-object slots are freed when its row goes.** A slot in the
   process-global table was the one thing a row owned that neither freeing the
   row nor dropping its page reclaimed, so a game using `hasHeapObject` and

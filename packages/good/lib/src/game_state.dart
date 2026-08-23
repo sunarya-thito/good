@@ -1069,6 +1069,11 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// gap, and what survives a call is always under one step. [setVisible]
   /// discards that remainder too, so the first frame back spends nothing it
   /// earned before the app went away.
+  ///
+  /// A step whose systems threw is **not** retried. The subtraction above
+  /// happens before the step runs, so the time is already spent by the time
+  /// anything can fail - which is the right way round: a system that throws
+  /// deterministically would otherwise be handed the same step forever.
   int advance(Duration elapsed) {
     _requireSimulating('advance');
     final game = this.game;
@@ -1118,6 +1123,22 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// Runs exactly one fixed step - see the class doc for the sequence.
   /// Public so a headless host can drive its own loop; [advance] is what
   /// decides *how many* of these a real frame is worth.
+  ///
+  /// # A tick that throws publishes nothing
+  ///
+  /// The tick is atomic with respect to what a reader sees, and it is worth
+  /// saying because the opposite is the natural assumption. A system throwing
+  /// half way through leaves the *write* slot half updated - but
+  /// [fixedTickEvent] runs before `pool.commitTick()`, so a tick that did not
+  /// finish never publishes, and the next `pool.beginTick()` copies the last
+  /// published state back over the write slot before anything runs. The
+  /// half-simulated frame is overwritten rather than shown.
+  ///
+  /// A throwing system is caught per listener and disabled - see
+  /// `GameListener.disableAfterUncaught`. A throwing *coroutine* has been
+  /// handled for longer and separately, in `CoroutineScheduler.step`, which
+  /// removes it and completes its handle with the error; this changed nothing
+  /// about that.
   void runFixedStep() {
     _requireSimulating('runFixedStep');
     final game = this.game;

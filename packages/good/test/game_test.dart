@@ -111,6 +111,44 @@ class _PhaseGame extends _TestGame {
   GameState createState() => _PhaseState();
 }
 
+/// Throws once, on the tick named by [throwOnTick].
+class _ThrowingSystem extends GameSystem with FixedTickable {
+  int ran = 0;
+  int throwOnTick = 1;
+
+  @override
+  void onFixedUpdate() {
+    ran++;
+    if (ran == throwOnTick) throw StateError('system boom');
+  }
+}
+
+/// Declared *after* the thrower, so "one bad listener must not skip the
+/// others" is a property this can actually observe.
+class _AfterThrowerSystem extends GameSystem with FixedTickable {
+  int ran = 0;
+
+  @override
+  void onFixedUpdate() => ran++;
+}
+
+late _ThrowingSystem _thrower;
+late _AfterThrowerSystem _afterThrower;
+
+class _ThrowState extends _FixtureState {
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    _thrower = descriptor.has(_ThrowingSystem());
+    _afterThrower = descriptor.has(_AfterThrowerSystem());
+  }
+}
+
+class _ThrowGame extends _TestGame {
+  @override
+  GameState createState() => _ThrowState();
+}
+
 /// Records the visibility hooks so a test can assert they arrived, and in
 /// which order relative to the tick stopping.
 class _VisibilitySystem extends GameSystem with AppVisibilityListener {
@@ -677,6 +715,98 @@ void main() {
   // #124. Time scale changes how *often* a fixed tick happens, never how big
   // one is, so every assertion here counts ticks. There is no dt to inspect
   // and that is the design: a fixed step is always `fixedTimeStep`.
+
+  // #126. A system that throws used to kill the game isolate silently and
+  // permanently. These pin the two halves of the answer: the dispatch
+  // survives one bad listener, and the listener is taken out of circulation.
+  //
+  // Debug and release differ here and the tests say so, because the suite
+  // runs in debug: the `assert` in `_ListenerSet._reportUncaught` fires, so
+  // these expect an `AssertionError` where a release build would simply carry
+  // on with the system disabled.
+  group('a system that throws', () {
+    test('does not stop the listeners declared after it', () async {
+      final game = await _game(_ThrowGame());
+      _thrower
+        ..ran = 0
+        ..throwOnTick = 1;
+      _afterThrower.ran = 0;
+
+      expect(
+        () => _state(game).advance(_step),
+        throwsA(isA<AssertionError>()),
+        reason: 'debug reports the throw by asserting, and that stops the run',
+      );
+      expect(
+        _afterThrower.ran,
+        1,
+        reason:
+            'it is declared after the thrower and must still have run. '
+            'Reporting inside the loop instead of after it would skip it, '
+            'which is the whole thing the guard exists to stop.',
+      );
+    });
+
+    test('is disabled, and the rest of the game keeps ticking', () async {
+      final game = await _game(_ThrowGame());
+      final state = _state(game);
+      _thrower
+        ..ran = 0
+        ..throwOnTick = 1;
+      _afterThrower.ran = 0;
+
+      expect(() => state.advance(_step), throwsA(isA<AssertionError>()));
+      expect(
+        state.isSystemEnabled<_ThrowingSystem>(),
+        isFalse,
+        reason:
+            'taken out of circulation, the way a throwing coroutine is '
+            'removed. Game.enableSystem brings it back.',
+      );
+
+      // Three more ticks. In release this is simply what happens; here it is
+      // what happens after the assert has been caught.
+      state
+        ..advance(_step)
+        ..advance(_step)
+        ..advance(_step);
+      expect(_thrower.ran, 1, reason: 'disabled means it is not called again');
+      expect(
+        _afterThrower.ran,
+        4,
+        reason:
+            'and everything else goes on ticking - one bad system is not a '
+            'dead game',
+      );
+    });
+
+    test('a throwing coroutine is unaffected by any of this', () async {
+      // Coroutines were already guarded, in CoroutineScheduler.step, and this
+      // change did not touch them. Pinned so a later edit to one guard does
+      // not quietly assume it owns both.
+      final game = await _game(_TestGame());
+      final state = _state(game);
+      Object? landed;
+      Iterable<Object?> boom() sync* {
+        yield null;
+        throw StateError("coroutine boom");
+      }
+
+      state.coroutines
+          .start(state, boom())
+          .catchError((Object e) => landed = e);
+
+      state
+        ..advance(_step)
+        ..advance(_step)
+        ..advance(_step);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(landed, isA<StateError>(), reason: 'lands on the handle');
+      expect(state.coroutines.length, 0, reason: 'and it is removed');
+      expect(run.tick, 3, reason: 'the simulation never noticed');
+    });
+  });
   group('time scale and pause', () {
     test('a scale of zero runs no fixed ticks at all', () async {
       final game = await _game(_TestGame());

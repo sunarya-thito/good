@@ -16,6 +16,14 @@ abstract interface class GameListener {
   /// dispatch, against the runtime `is` test plus virtual dispatch it
   /// replaced.
   bool get listensToEvents;
+
+  /// Stops this listener receiving events, after it threw out of one.
+  ///
+  /// Called by the dispatcher that caught it. A requirement stated on the
+  /// interface rather than an `is GameSystem` test inside the dispatcher: the
+  /// four hosts differ in whether they can be switched off at all, and letting
+  /// each answer for itself is what the no-dispatch-on-`is` rule asks for.
+  void disableAfterUncaught();
 }
 
 /// The default [GameListener] implementation the framework's own listener
@@ -28,6 +36,15 @@ abstract interface class GameListener {
 abstract class GameListenerBase implements GameListener {
   @override
   bool get listensToEvents => true;
+
+  /// A no-op by default, which is the right answer for three of the four
+  /// hosts. Switching off the `GameState` would stop the whole game, and a
+  /// `SceneStruct` or `EntityStruct` that declined events would leave its own
+  /// world half-simulated - neither is a smaller failure than the throw was.
+  /// `GameSystem` overrides it, being the one host the engine can drop and
+  /// keep going without.
+  @override
+  void disableAfterUncaught() {}
 }
 
 /// The listener list every dispatcher holds, and the collection machinery
@@ -54,6 +71,37 @@ abstract base class _ListenerSet<L extends GameListener> {
 
   @internal
   void clear() => _listeners.clear();
+
+  /// Reports a listener that threw out of a dispatch, and takes it out of
+  /// circulation.
+  ///
+  /// **Debug and release differ here, deliberately, and the difference is
+  /// surprising enough to state.** The `assert` below fires in debug and
+  /// nowhere else:
+  ///
+  ///  * **In debug** the assert throws, which stops the game isolate. That is
+  ///    the loud answer a developer wants, and it is no longer a silent stall:
+  ///    `Game.start` installs an error port, so the death reaches the main
+  ///    isolate, `Game.isRunning` goes false, a pending `stop()` completes,
+  ///    and the error is rethrown there with its stack. The disable just
+  ///    below never gets to matter, because nothing ticks again.
+  ///  * **In release** the assert is compiled out. The listener is disabled
+  ///    and the game keeps running without it, which is what a shipped game
+  ///    should do when one system has a bad day.
+  ///
+  /// So the disable is release behaviour. `Game.enableSystem` brings a system
+  /// back if the throw was transient.
+  void _reportUncaught(L listener, Object error, StackTrace stack) {
+    assert(false, '''
+${listener.runtimeType} threw during an event dispatch and has been disabled.
+
+$error
+$stack
+This assert stops the game isolate, and Game.start's error port carries it to
+the main isolate rather than losing it. In release there is no assert: the
+listener stays disabled and the game keeps running. Game.enableSystem<${listener.runtimeType}>()
+re-enables it if the throw was transient.''');
+  }
 }
 
 /// A pre-resolved set of listeners for one event type.
@@ -129,11 +177,32 @@ final class EventDispatcher<L extends GameListener, E> extends _ListenerSet<L> {
   /// captured closure. Named `call`, so `dispatcher(payload)` works too.
   void call(E payload) {
     final listeners = _listeners;
+    // Null unless something throws, so a healthy dispatch pays three null
+    // stores and nothing else.
+    L? failed;
+    Object? failure;
+    StackTrace? failureStack;
     for (var n = 0; n < listeners.length; n++) {
       final listener = listeners[reverse ? listeners.length - 1 - n : n];
       if (!listener.listensToEvents) continue;
-      _deliver(listener, payload);
+      // Guarded per listener, not per dispatch: one bad system must not stop
+      // the others in the same tick from running. Measured before it went in
+      // - `tool/dispatch_guard_bench.dart` - and the try/catch costs nothing
+      // at any realistic listener count.
+      try {
+        _deliver(listener, payload);
+      } catch (error, stack) {
+        // Disabled here, reported after the loop. Reporting inline would
+        // `assert` mid-dispatch and, in debug, throw straight back out -
+        // skipping every listener after this one, which is the exact thing
+        // this guard exists to prevent.
+        listener.disableAfterUncaught();
+        failed ??= listener;
+        failure ??= error;
+        failureStack ??= stack;
+      }
     }
+    if (failure != null) _reportUncaught(failed!, failure, failureStack!);
   }
 }
 
@@ -155,11 +224,23 @@ final class SignalDispatcher<L extends GameListener> extends _ListenerSet<L> {
   /// Delivers to every collected listener that is currently listening.
   void call() {
     final listeners = _listeners;
+    L? failed;
+    Object? failure;
+    StackTrace? failureStack;
     for (var n = 0; n < listeners.length; n++) {
       final listener = listeners[reverse ? listeners.length - 1 - n : n];
       if (!listener.listensToEvents) continue;
-      _deliver(listener);
+      // See `EventDispatcher.call` - same guard, same reason.
+      try {
+        _deliver(listener);
+      } catch (error, stack) {
+        listener.disableAfterUncaught();
+        failed ??= listener;
+        failure ??= error;
+        failureStack ??= stack;
+      }
     }
+    if (failure != null) _reportUncaught(failed!, failure, failureStack!);
   }
 }
 
