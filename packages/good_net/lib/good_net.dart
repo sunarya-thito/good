@@ -11,7 +11,7 @@
 ///   @override
 ///   void describeNetwork(NetDescriptor descriptor) {
 ///     descriptor.transport(LoopbackNetTransport());
-///     fire = descriptor.has(Fire(), channel: NetChannel.unreliable);
+///     fire = descriptor.has(Fire(), id: 'fire', channel: NetChannel.unreliable);
 ///     descriptor.hasHandler(fire, _onFire);
 ///   }
 ///

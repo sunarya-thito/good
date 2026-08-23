@@ -89,29 +89,33 @@ class _NetState extends GameState<_NetGame> with MultiplayerState<_NetGame> {
   void describeNetwork(NetDescriptor descriptor) {
     descriptor.transport(LoopbackNetTransport());
 
-    fire = descriptor.has(_Fire(), channel: NetChannel.unreliable);
+    fire = descriptor.has(_Fire(), id: 'fire', channel: NetChannel.unreliable);
     descriptor.hasHandler(
       fire,
       (params, from) =>
           log.add('fire ${params.angle} w${params.weapon} <- ${from.slot}'),
     );
 
-    chat = descriptor.has(_Chat());
+    chat = descriptor.has(_Chat(), id: 'chat');
     descriptor.hasHandler(
       chat,
       (params, from) => log.add('say ${params.text}'),
     );
 
-    score = descriptor.has(_Score(), to: NetTarget.clients);
+    score = descriptor.has(_Score(), id: 'score', to: NetTarget.clients);
     descriptor.hasHandler(
       score,
       (params, from) => log.add('score ${params.score}'),
     );
 
-    roundOver = descriptor.has(_RoundOver(), to: NetTarget.everyone);
+    roundOver = descriptor.has(
+      _RoundOver(),
+      id: 'roundOver',
+      to: NetTarget.everyone,
+    );
     descriptor.hasSignal(roundOver, (from) => log.add('over <- ${from.slot}'));
 
-    ready = descriptor.has(_Ready());
+    ready = descriptor.has(_Ready(), id: 'ready');
     descriptor.hasSignal(ready, (from) => log.add('ready <- ${from.slot}'));
   }
 }
@@ -134,6 +138,82 @@ class _Watcher extends GameSystem with NetPeerListener, NetSessionListener {
   @override
   void onSessionClosed(NetDisconnectReason reason) =>
       log.add('closed ${reason.name}');
+}
+
+/// Byte-for-byte identical to [_Fire] apart from the class name - the rename
+/// this issue is about (#141).
+class _FireRenamed extends NetMessage<({double angle, int weapon})> {
+  late final ParamPointer<double> angle;
+  late final ParamPointer<int> weapon;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    angle = descriptor.hasFloat32();
+    weapon = descriptor.hasUint4();
+  }
+
+  @override
+  void bufferFromParams(
+    ParamBuffer message,
+    ({double angle, int weapon}) params,
+  ) {
+    angle[message] = params.angle;
+    weapon[message] = params.weapon;
+  }
+
+  @override
+  ({double angle, int weapon}) paramsFromBuffer(ParamBuffer message) =>
+      (angle: angle[message], weapon: weapon[message]);
+}
+
+/// One message, declared under the id a peer agreed on.
+class _OneMessageState extends GameState<_NetGame>
+    with MultiplayerState<_NetGame> {
+  _OneMessageState(this._make, this._id);
+
+  final NetMessageBase Function() _make;
+  final String _id;
+
+  @override
+  void onMounted() {}
+
+  @override
+  void describeNetwork(NetDescriptor descriptor) {
+    descriptor.transport(LoopbackNetTransport());
+    final message = descriptor.has(_make(), id: _id);
+    if (message is NetMessage<({double angle, int weapon})>) {
+      descriptor.hasHandler(message, (params, from) {});
+    }
+  }
+}
+
+class _OneMessageGame extends _NetGame {
+  _OneMessageGame(this._make, this._id);
+
+  final NetMessageBase Function() _make;
+  final String _id;
+
+  @override
+  GameState createState() => _OneMessageState(_make, _id);
+}
+
+/// Two messages, same id - a copy-paste that must not reach a peer.
+class _CollidingState extends GameState<_NetGame>
+    with MultiplayerState<_NetGame> {
+  @override
+  void onMounted() {}
+
+  @override
+  void describeNetwork(NetDescriptor descriptor) {
+    descriptor.transport(LoopbackNetTransport());
+    descriptor.has(_Fire(), id: 'same');
+    descriptor.has(_FireRenamed(), id: 'same');
+  }
+}
+
+class _CollidingGame extends _NetGame {
+  @override
+  GameState createState() => _CollidingState();
 }
 
 class _WatchedState extends _NetState {
@@ -160,7 +240,7 @@ class _SkewedState extends _NetState {
 
   @override
   void describeNetwork(NetDescriptor descriptor) {
-    emote = descriptor.has(_Emote());
+    emote = descriptor.has(_Emote(), id: 'emote');
     descriptor.hasSignal(emote, (from) => log.add('emote <- ${from.slot}'));
     super.describeNetwork(descriptor);
   }
@@ -195,6 +275,71 @@ void main() {
     }
   }
 
+  // #141. The handshake used to mix each message's Dart class name, so two
+  // things a reader would call behaviour-preserving broke peer compatibility:
+  // renaming a class, and building with --obfuscate. Measured before the fix:
+  // --obfuscate rewrote `PlayerInputMessage` to `zl` and moved the hash.
+  group('schema identity', () {
+    int hashOf(Game game) => (game.state as MultiplayerState)
+        .getSystem<NetworkSystem>()
+        .registry
+        .schemaHash;
+
+    test('renaming a message class does not change the hash', () async {
+      final original = await boot(_OneMessageGame(_Fire.new, 'fire'));
+      final renamed = await boot(_OneMessageGame(_FireRenamed.new, 'fire'));
+
+      expect(
+        hashOf(renamed),
+        hashOf(original),
+        reason:
+            'same id, same layout, same target and channel - only the Dart '
+            'class name differs, and a rename is a refactor rather than a '
+            'protocol change. This is the whole of #141.',
+      );
+    });
+
+    test('a different id does change the hash', () async {
+      final fire = await boot(_OneMessageGame(_Fire.new, 'fire'));
+      final renamedId = await boot(_OneMessageGame(_Fire.new, 'fire.v2'));
+
+      expect(
+        hashOf(renamedId),
+        isNot(hashOf(fire)),
+        reason:
+            'the control. If the id were not in the hash the test above '
+            'would pass on a hash that had simply stopped noticing anything, '
+            'and two peers would form a session over incompatible bytes.',
+      );
+    });
+
+    test('two messages cannot share an id', () async {
+      await expectLater(
+        boot(_CollidingGame()),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('"same"'), contains('_Fire')),
+          ),
+        ),
+        reason:
+            'an id is what the handshake compares, so two of them would be '
+            'indistinguishable to a peer while being different here - and it '
+            'is a copy-paste away',
+      );
+    });
+
+    test('an id cannot be empty', () async {
+      await expectLater(
+        boot(_OneMessageGame(_Fire.new, '')),
+        throwsA(isA<ArgumentError>()),
+        reason:
+            'an empty id is a forgotten id, and every message that forgot '
+            'one would look like the same message',
+      );
+    });
+  });
   tearDown(() async {
     for (var i = 0; i < running.length; i++) {
       if (running[i].isRunning) await running[i].stop();

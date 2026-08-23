@@ -20,12 +20,13 @@ import 'transport.dart';
 ///
 ///     fire = descriptor.has(
 ///       Fire(),
+///       id: 'fire',
 ///       to: NetTarget.host,
 ///       channel: NetChannel.unreliable,
 ///     );
 ///     descriptor.hasHandler(fire, _onFire);
 ///
-///     ready = descriptor.has(Ready());
+///     ready = descriptor.has(Ready(), id: 'ready');
 ///     descriptor.hasSignal(ready, _onReady);
 ///   }
 /// }
@@ -60,6 +61,7 @@ abstract class NetDescriptor {
   /// desync waiting to be debugged.
   T has<T extends NetMessageBase>(
     T message, {
+    required String id,
     NetTarget to = NetTarget.host,
     NetChannel channel = NetChannel.reliable,
   });
@@ -151,10 +153,13 @@ final class NetRegistry implements ParamLayouts {
 
     for (var i = 0; i < _messages.length; i++) {
       final message = _messages[i];
-      final name = message.runtimeType.toString();
-      for (var c = 0; c < name.length; c++) {
-        mix(name.codeUnitAt(c));
-        mix(name.codeUnitAt(c) >> 8);
+      // The declared id, never the class name. A name is renameable and,
+      // under `--obfuscate`, rewritten outright - measured: PlayerInputMessage
+      // becomes `zl`, which moved this hash and refused a plain peer (#141).
+      final id = message.protocolId;
+      for (var c = 0; c < id.length; c++) {
+        mix(id.codeUnitAt(c));
+        mix(id.codeUnitAt(c) >> 8);
       }
       mix(message.strideBytes);
       mix(message.strideBytes >> 8);
@@ -167,11 +172,21 @@ final class NetRegistry implements ParamLayouts {
 
   T declare<T extends NetMessageBase>(
     T message,
+    String protocolId,
     NetTarget target,
     NetChannel channel,
     NetSender sender,
   ) {
     _requireOpen();
+    if (protocolId.isEmpty) {
+      throw ArgumentError.value(
+        protocolId,
+        'id',
+        'a network message needs a non-empty id: it is what the handshake '
+            'compares, and an empty one would make every message that forgot '
+            'it look like the same message.',
+      );
+    }
     for (var i = 0; i < _messages.length; i++) {
       if (_messages[i].runtimeType == message.runtimeType) {
         throw StateError(
@@ -181,8 +196,24 @@ final class NetRegistry implements ParamLayouts {
           'name.',
         );
       }
+      if (_messages[i].protocolId == protocolId) {
+        throw StateError(
+          'two messages are declared with the id "$protocolId": '
+          '${_messages[i].runtimeType} and ${message.runtimeType}. An id is '
+          'what the handshake compares, so two of them would make the two '
+          'messages indistinguishable to a peer while being different here. '
+          'Give each its own.',
+        );
+      }
     }
-    message.bind(_messages.length, ParamLayout(), target, channel, sender);
+    message.bind(
+      _messages.length,
+      protocolId,
+      ParamLayout(),
+      target,
+      channel,
+      sender,
+    );
     _messages.add(message);
     return message;
   }
@@ -193,7 +224,7 @@ final class NetRegistry implements ParamLayouts {
       throw StateError(
         '${message.runtimeType} has no handler to register against because it '
         'was never declared. Declare it first: '
-        '`myMessage = descriptor.has(${message.runtimeType}())`.',
+        '`myMessage = descriptor.has(${message.runtimeType}(), id: ...)`.',
       );
     }
     if (message.hasHandler) {
@@ -247,9 +278,10 @@ final class NetBinder implements NetDescriptor {
   @override
   T has<T extends NetMessageBase>(
     T message, {
+    required String id,
     NetTarget to = NetTarget.host,
     NetChannel channel = NetChannel.reliable,
-  }) => _registry.declare(message, to, channel, _sender);
+  }) => _registry.declare(message, id, to, channel, _sender);
 
   @override
   void hasHandler<P>(

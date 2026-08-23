@@ -1,3 +1,40 @@
+## 0.3.0
+
+### Breaking
+
+* **A network message now declares its own protocol id.** `descriptor.has`
+  takes a required `id`, and the handshake hash is computed from that instead
+  of the message's Dart class name (#141).
+
+  ```dart
+  fire = descriptor.has(Fire(), id: 'fire', channel: NetChannel.unreliable);
+  ```
+
+  Add an `id` to every `descriptor.has` call. Pick the string once and treat it
+  as part of the protocol: peers agree because someone wrote the same id in
+  both builds, not because a class is still spelled the same way.
+
+  **Why it had to change.** The hash mixed `runtimeType.toString()`, so two
+  changes a reader would rightly call behaviour-preserving broke peer
+  compatibility with no wire format change at all. Renaming `PlayerInput` to
+  `InputCommand` made every old peer refuse the new build. And `--obfuscate`
+  rewrites type names outright — measured on a release build, where
+  `PlayerInputMessage` became `zl` and the hash moved with it, so an
+  obfuscated client could not talk to a plain server built from identical
+  source.
+
+  There is deliberately **no fallback to the class name** for messages that do
+  not supply an id. A fallback would leave the fragile path as the default and
+  make the safe one something you have to already know about, which fails
+  exactly the people this protects.
+
+  Two messages sharing an id, or an empty id, are refused where they are
+  declared rather than at a handshake.
+
+  **This changes the hash**, so 0.3.0 peers do not accept 0.2.x peers. That is
+  a real break, unlike the one 0.2.0 claimed and 0.2.1 retracted — update every
+  peer together.
+
 ## 0.2.1
 
 Documentation only. No code changes.

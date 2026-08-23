@@ -32,7 +32,7 @@ class MyState extends GameState2D<MyGame> with MultiplayerState<MyGame> {
   @override
   void describeNetwork(NetDescriptor descriptor) {
     descriptor.transport(LoopbackNetTransport());
-    fire = descriptor.has(Fire(), channel: NetChannel.unreliable);
+    fire = descriptor.has(Fire(), id: 'fire', channel: NetChannel.unreliable);
     descriptor.hasHandler(fire, _onFire);
   }
 
@@ -42,6 +42,32 @@ class MyState extends GameState2D<MyGame> with MultiplayerState<MyGame> {
 }
 ```
 
+
+## The `id` is the protocol, not the class name
+
+Every message declares an `id`, and it is the thing two peers actually agree
+on. The handshake hashes it — along with each message's layout, target and
+channel — and refuses a peer whose hash differs, which is what stops two builds
+forming a session over bytes they will read differently.
+
+It is a string you choose, and the only rule the engine enforces is that no two
+messages in one game share one. Both halves of that are checked where you
+declare them, not at a handshake.
+
+**Rename the class freely.** `Fire` can become `FireCommand` without touching
+the protocol, because the id did not move. That is the point: a refactor should
+not be a wire change.
+
+The alternative — hashing the Dart class name — is what this replaced, and it
+failed in two ways that look like nothing from the code. A rename broke every
+peer. And `--obfuscate`, which release builds use, rewrites type names outright:
+measured on a Windows release build, `PlayerInputMessage` became `zl`, so an
+obfuscated client computed a different hash from a plain server built from the
+same source and the two refused each other.
+
+**Change an id when the wire format changes** and you want old peers turned
+away — a field added, a width widened, a meaning altered. `'fire'` becoming
+`'fire.v2'` is a deliberate break, which is the only kind worth having.
 Send it by calling it:
 
 <!-- snippet-setup
@@ -82,8 +108,8 @@ implementations that drift.
 final descriptor = given<NetDescriptor>();
 -->
 ```dart
-descriptor.has(PlayerMoved(), channel: NetChannel.unreliable);
-descriptor.has(RoundEnded(), channel: NetChannel.reliable);
+descriptor.has(PlayerMoved(), id: 'playerMoved', channel: NetChannel.unreliable);
+descriptor.has(RoundEnded(), id: 'roundEnded', channel: NetChannel.reliable);
 ```
 
 | Channel | Guarantee | For |
@@ -158,7 +184,7 @@ void _onRoundEnded(NetPeerId from) {}
 class RoundEnded() extends NetSignal;
 
 // declared
-roundEnded = descriptor.has(RoundEnded(), to: NetTarget.everyone);
+roundEnded = descriptor.has(RoundEnded(), id: 'roundEnded', to: NetTarget.everyone);
 descriptor.hasSignal(roundEnded, _onRoundEnded);
 
 // sent

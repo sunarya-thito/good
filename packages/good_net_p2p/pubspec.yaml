@@ -3,7 +3,7 @@ description: >-
   Serverless peer-to-peer UDP backend for good_net: reliable and unreliable
   channels, LAN discovery, and join codes that carry the host address. No
   broker, relay or server to run.
-version: 0.2.0
+version: 0.3.0
 repository: https://github.com/sunarya-thito/good
 homepage: https://sunarya-thito.github.io/good/
 documentation: https://sunarya-thito.github.io/good/
@@ -14,7 +14,7 @@ environment:
   flutter: ">=3.47.0"
 
 dependencies:
-  good_net: ^0.2.0
+  good_net: ^0.3.0
 
 dev_dependencies:
   flutter_lints: ^6.0.0

@@ -3,7 +3,7 @@ description: >-
   Networking for the good game engine: declared messages built on good's
   record layer, sessions, reliable and unreliable channels, and the
   transport contract a backend implements.
-version: 0.2.1
+version: 0.3.0
 repository: https://github.com/sunarya-thito/good
 homepage: https://sunarya-thito.github.io/good/
 documentation: https://sunarya-thito.github.io/good/

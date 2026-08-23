@@ -73,10 +73,14 @@ class ShooterState extends GameState<ShooterGame>
       ),
     );
 
-    fire = descriptor.has(fireMessage(), channel: NetChannel.unreliable);
+    fire = descriptor.has(
+      fireMessage(),
+      id: 'fire',
+      channel: NetChannel.unreliable,
+    );
     descriptor.hasHandler(fire, _onFire);
 
-    hit = descriptor.has(Hit(), to: NetTarget.everyone);
+    hit = descriptor.has(Hit(), id: 'hit', to: NetTarget.everyone);
     descriptor.hasHandler(hit, _onHit);
   }
 

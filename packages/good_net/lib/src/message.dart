@@ -83,6 +83,22 @@ abstract class NetMessageBase {
   int get fieldCount => _fieldCount;
   int _fieldCount = 0;
 
+  /// This message's identity in the protocol, given at its declaration.
+  ///
+  /// Part of the handshake hash, and the reason a Dart class name is not.
+  /// Two builds agree about what a message *is* because someone wrote the
+  /// same string in both, rather than because the class happens to still be
+  /// spelled the same way - so a rename is a refactor, and an obfuscated
+  /// build talks to a plain one. Measured: `--obfuscate` rewrites
+  /// `PlayerInputMessage` to `zl`, which moved the old hash.
+  ///
+  /// Change it when the wire format changes and you want old peers refused;
+  /// leave it alone for anything a peer cannot observe. `'fire'` and
+  /// `'fire.v2'` are both reasonable - it is a value you chose, and the only
+  /// rule the engine enforces is that no two messages in one game share one.
+  String get protocolId => _protocolId;
+  String _protocolId = '';
+
   /// Where this message is handled, from its declaration.
   NetTarget get target => _target;
   NetTarget _target = NetTarget.host;
@@ -121,12 +137,14 @@ abstract class NetMessageBase {
   @internal
   void bind(
     int index,
+    String protocolId,
     ParamLayout layout,
     NetTarget target,
     NetChannel channel,
     NetSender sender,
   ) {
     _index = index;
+    _protocolId = protocolId;
     _target = target;
     _channel = channel;
     describeParams(layout);
@@ -152,7 +170,7 @@ abstract class NetMessageBase {
     if (sender == null) {
       throw StateError(
         '$runtimeType was never declared. Add it to describeNetwork - '
-        '`myMessage = descriptor.has($runtimeType())` - and keep the handle '
+        '`myMessage = descriptor.has($runtimeType(), id: ...)` - and keep the handle '
         'it returns; a message built with `new` has no index, no layout and '
         'no transport to leave through.',
       );
@@ -206,7 +224,7 @@ abstract class NetMessageBase {
 /// Declared and handled in one pass, and sent by calling it:
 ///
 /// ```dart
-/// fire = d.has(Fire(), to: NetTarget.host, channel: NetChannel.reliable);
+/// fire = d.has(Fire(), id: 'fire', to: NetTarget.host, channel: NetChannel.reliable);
 /// d.hasHandler(fire, _onFire);
 ///
 /// void _onFire(({double angle, int weapon}) p, NetPeerId from) { ... }
@@ -292,7 +310,7 @@ abstract class NetMessage<P> extends NetMessageBase {
 /// ```dart
 /// class Ready extends NetSignal {}
 ///
-/// ready = d.has(Ready());
+/// ready = d.has(Ready(), id: 'ready');
 /// d.hasSignal(ready, (from) => _readyPeers.add(from));
 ///
 /// ready();

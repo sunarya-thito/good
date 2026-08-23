@@ -54,7 +54,7 @@ mixin NetSessionListener on GameListener {
 ///   @override
 ///   void describeNetwork(NetDescriptor descriptor) {
 ///     descriptor.transport(P2PNetTransport());
-///     fire = descriptor.has(Fire(), channel: NetChannel.unreliable);
+///     fire = descriptor.has(Fire(), id: 'fire', channel: NetChannel.unreliable);
 ///     descriptor.hasHandler(fire, _onFire);
 ///   }
 ///

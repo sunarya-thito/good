@@ -1,3 +1,14 @@
+## 0.3.0
+
+### Breaking
+
+* **Messages need an `id`, from `good_net` 0.3.0.** Nothing in this package's
+  own API changed, but every `descriptor.has` call in a game using it now takes
+  a required `id` — see `good_net`'s 0.3.0 notes for what to write and why.
+
+  The handshake hash changed with it, so 0.3.0 peers do not accept 0.2.x peers.
+  Update every peer together.
+
 ## 0.2.0
 
 ### Fixed
