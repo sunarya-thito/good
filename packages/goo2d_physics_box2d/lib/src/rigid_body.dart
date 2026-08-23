@@ -42,7 +42,10 @@ enum BodyType2D {
 /// * [BodyType2D.staticBody] - **you** own the transform outright. Write
 ///   `Transform2D` and the system pushes it into Box2D; nothing is ever
 ///   written back, because the solver does not move a static body and so has
-///   nothing to report about one.
+///   nothing to report about one. Small scripted rotations below `angleEpsilon`
+///   (5e-3 rad) accumulate in `Transform2D` and push in steps once the
+///   threshold is crossed; use [BodyType2D.kinematicBody] for smooth continuous
+///   rotation.
 /// * [BodyType2D.kinematicBody] - **you** own the motion, the solver owns
 ///   the transform. You set the velocity; the solver integrates it, and that
 ///   result is written back into `Transform2D` each tick. Writing

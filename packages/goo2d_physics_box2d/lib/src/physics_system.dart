@@ -157,6 +157,11 @@ class Box2DPhysicsSystem extends GameSystem
   /// would read as a gameplay edit on every tick, the push would happen
   /// anyway, and the drift this whole mechanism exists to prevent would
   /// arrive by the front door. See `goo2d_ffi_box2d`'s README.
+  ///
+  /// For static bodies scripted with sub-epsilon rotation per tick, this causes
+  /// angle changes to accumulate in `Transform2D` and sync to Box2D in steps
+  /// once the accumulated delta exceeds this threshold. Moving platforms or
+  /// continuously rotating bodies should use [BodyType2D.kinematicBody] instead.
   static const double angleEpsilon = 5e-3;
 
   /// Position difference below which a body is considered not to have been
