@@ -77,12 +77,30 @@ abstract class GameSystem extends GameListenerBase
   @override
   void disableAfterUncaught([Object? error, StackTrace? stack]) {
     _enabled = false;
-    if (error != null) {
-      _state?.game.reportDisabledSystem(
+    final game = _state?.game;
+    if (error == null || game == null) return;
+    try {
+      game.reportDisabledSystem(
         runtimeType.toString(),
         error.toString(),
         stack?.toString() ?? '',
       );
+    } catch (_) {
+      // Swallowed on purpose, and this is the one place it is right to.
+      //
+      // This runs inside the `catch` that keeps the dispatch guard's promise
+      // - one bad listener does not stop the ones after it - so a throw from
+      // here would break that promise in exactly the situation the guard
+      // exists for, and turn a survivable system failure into a dead tick.
+      // It is reachable: a single-copy run (`startInline`, and every web
+      // build) runs the main-side handler on this stack, so an override of
+      // `Game.onSystemDisabled` that throws lands here.
+      //
+      // Nothing is lost that matters. In debug the dispatcher asserts with
+      // the full error and stack once the loop finishes, which is the report
+      // a developer reads; in release a report that could not be sent is the
+      // state this whole path was added to improve on, not one it makes
+      // worse.
     }
   }
 

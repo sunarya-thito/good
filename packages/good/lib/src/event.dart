@@ -57,13 +57,6 @@ abstract base class _ListenerSet<L extends GameListener> {
   /// the design is that this number is settled before the first dispatch.
   int get listenerCount => _listeners.length;
 
-  /// Whether uncaught listener exceptions assert in debug mode.
-  /// Defaults to true. Setting this to false simulates a release build,
-  /// where asserts are stripped by the compiler and a throwing listener
-  /// is disabled while the simulation continues ticking.
-  @visibleForTesting
-  static bool debugAssertUncaught = true;
-
   @internal
   void add(L listener) {
     // Guarded because the composition walk can legitimately reach the same
@@ -100,7 +93,6 @@ abstract base class _ListenerSet<L extends GameListener> {
   /// So the disable is release behaviour. `Game.enableSystem` brings a system
   /// back if the throw was transient.
   void _reportUncaught(L listener, Object error, StackTrace stack) {
-    if (!debugAssertUncaught) return;
     assert(false, '''
 ${listener.runtimeType} threw during an event dispatch and has been disabled.
 
@@ -168,17 +160,6 @@ final class EventDispatcher<L extends GameListener, E> extends _ListenerSet<L> {
 
   final void Function(L listener, E payload) _deliver;
 
-  /// Whether uncaught listener exceptions assert in debug mode.
-  /// Defaults to true. Setting this to false simulates a release build,
-  /// where asserts are stripped by the compiler and a throwing listener
-  /// is disabled while the simulation continues ticking.
-  @visibleForTesting
-  static bool get debugAssertUncaught => _ListenerSet.debugAssertUncaught;
-
-  @visibleForTesting
-  static set debugAssertUncaught(bool value) =>
-      _ListenerSet.debugAssertUncaught = value;
-
   /// Whether to deliver in **reverse** collection order.
   ///
   /// For teardown. Bring-up runs outside-in - the owner first, then what
@@ -237,17 +218,6 @@ final class SignalDispatcher<L extends GameListener> extends _ListenerSet<L> {
   SignalDispatcher(this._deliver, {this.reverse = false});
 
   final void Function(L listener) _deliver;
-
-  /// Whether uncaught listener exceptions assert in debug mode.
-  /// Defaults to true. Setting this to false simulates a release build,
-  /// where asserts are stripped by the compiler and a throwing listener
-  /// is disabled while the simulation continues ticking.
-  @visibleForTesting
-  static bool get debugAssertUncaught => _ListenerSet.debugAssertUncaught;
-
-  @visibleForTesting
-  static set debugAssertUncaught(bool value) =>
-      _ListenerSet.debugAssertUncaught = value;
 
   /// See [EventDispatcher.reverse].
   final bool reverse;
