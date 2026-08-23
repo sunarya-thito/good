@@ -400,4 +400,42 @@ void main() {
     );
     expect(() => inA.get<_Marked>().mark[inA], throwsStateError);
   });
+
+  test('a query can be scoped to one loaded scene', () async {
+    final game = await _boot();
+    final state = run.state;
+
+    final a = await state.loadScene(game.level);
+    final b = await state.loadScene(game.level);
+
+    // Each scene gets 1 unit from onSceneMounted.
+    // Add 2 more to a, and 3 more to b.
+    for (var i = 0; i < 2; i++) {
+      a.addEntity(game.level.unit);
+    }
+    for (var i = 0; i < 3; i++) {
+      b.addEntity(game.level.unit);
+    }
+
+    final census = run.state.getSystem<_Census>();
+    expect(census.query.run().length, 7, reason: 'unscoped sees all 7');
+    expect(census.query.run(a).length, 3, reason: 'scene a has 3');
+    expect(census.query.run(b).length, 4, reason: 'scene b has 4');
+
+    var groupsSeenA = 0;
+    for (final group in census.query.groups(a)) {
+      for (final _ in group) {
+        groupsSeenA++;
+      }
+    }
+    expect(groupsSeenA, 3);
+
+    var groupsSeenB = 0;
+    for (final group in census.query.groups(b)) {
+      for (final _ in group) {
+        groupsSeenB++;
+      }
+    }
+    expect(groupsSeenB, 4);
+  });
 }

@@ -433,4 +433,213 @@ void main() {
       expect(query.groups(), isEmpty);
     });
   });
+
+  group('Scene scoping', () {
+    test('Query.run(scene) yields only entities from that scene', () {
+      final levelA = _level(pageSize: 64);
+      final levelB = _level(pageSize: 64);
+
+      final playersA = [
+        for (var i = 0; i < 15; i++) levelA.addEntity(levelA.player),
+      ];
+      final rocksA = [
+        for (var i = 0; i < 15; i++) levelA.addEntity(levelA.rock),
+      ];
+
+      final playersB = [
+        for (var i = 0; i < 15; i++) levelB.addEntity(levelB.player),
+      ];
+      final rocksB = [
+        for (var i = 0; i < 15; i++) levelB.addEntity(levelB.rock),
+      ];
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position).build();
+
+      // Unscoped query sees entities from both scenes.
+      expect(
+        query.run().toSet(),
+        {...playersA, ...rocksA, ...playersB, ...rocksB},
+      );
+
+      // Scoped query sees only entities from target scene.
+      expect(query.run(levelA.handle).toSet(), {...playersA, ...rocksA});
+      expect(query.run(levelB.handle).toSet(), {...playersB, ...rocksB});
+    });
+
+    test('Query.groups(scene) yields groups scoped to that scene', () {
+      final levelA = _level(pageSize: 64);
+      final levelB = _level(pageSize: 64);
+
+      final playersA = [
+        for (var i = 0; i < 20; i++) levelA.addEntity(levelA.player),
+      ];
+      final rocksA = [
+        for (var i = 0; i < 20; i++) levelA.addEntity(levelA.rock),
+      ];
+
+      final playersB = [
+        for (var i = 0; i < 20; i++) levelB.addEntity(levelB.player),
+      ];
+      final rocksB = [
+        for (var i = 0; i < 20; i++) levelB.addEntity(levelB.rock),
+      ];
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position).build();
+
+      final groupedA = <Entity>{};
+      for (final group in query.groups(levelA.handle)) {
+        groupedA.addAll(group);
+      }
+      expect(groupedA, {...playersA, ...rocksA});
+
+      final groupedB = <Entity>{};
+      for (final group in query.groups(levelB.handle)) {
+        groupedB.addAll(group);
+      }
+      expect(groupedB, {...playersB, ...rocksB});
+    });
+
+    test('Query.runQuery(runner, scene) sets cursor for entities in scene', () {
+      final levelA = _level(pageSize: 64);
+      final levelB = _level(pageSize: 64);
+
+      levelA.pool.beginTick();
+      final pA = levelA.addEntity(levelA.player);
+      levelA.player.x[pA] = 10;
+      levelA.pool.commitTick();
+
+      levelB.pool.beginTick();
+      final pB = levelB.addEntity(levelB.player);
+      levelB.player.x[pB] = 20;
+      levelB.pool.commitTick();
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position).build();
+
+      final seenA = <double>[];
+      query.runQuery(() {
+        seenA.add(query.get<_Position>().x[query.tryGet<Child>() != null ? pA : pA]);
+      }, levelA.handle);
+      expect(seenA, [10]);
+
+      final seenB = <double>[];
+      query.runQuery(() {
+        seenB.add(query.get<_Position>().x[pB]);
+      }, levelB.handle);
+      expect(seenB, [20]);
+    });
+
+    test('SingleQuery.inScene(scene) and component work with scene scoping', () {
+      final levelA = _level();
+      final levelB = _level();
+
+      levelA.pool.beginTick();
+      final pA = levelA.addEntity(levelA.player);
+      levelA.player.x[pA] = 99;
+      levelA.pool.commitTick();
+
+      levelB.pool.beginTick();
+      final pB = levelB.addEntity(levelB.player);
+      levelB.player.x[pB] = 100;
+      levelB.pool.commitTick();
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final single = descriptor.has<_Position>();
+      final scopedA = single.inScene(levelA.handle);
+
+      var countA = 0;
+      scopedA.runQuery(() {
+        countA++;
+        expect(scopedA.component.x[pA], 99);
+      });
+      expect(countA, 1);
+    });
+
+    test('Query.inScene(scene) returns a view matching run(scene) / groups(scene)', () {
+      final levelA = _level(pageSize: 64);
+      final levelB = _level(pageSize: 64);
+
+      final playersA = [
+        for (var i = 0; i < 10; i++) levelA.addEntity(levelA.player),
+      ];
+      levelB.addEntity(levelB.player);
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position).build();
+      final scoped = query.inScene(levelA.handle);
+
+      expect(scoped.run().toSet(), playersA.toSet());
+
+      final grouped = <Entity>{};
+      for (final group in scoped.groups()) {
+        grouped.addAll(group);
+      }
+      expect(grouped, playersA.toSet());
+    });
+
+    test('QueryGroup.inScene(scene) scopes an individual group', () {
+      final level = _level(pageSize: 64);
+      final handleA = level.handle;
+      final handleB = SceneRegistry.register(level);
+
+      final pA = handleA.addEntity(level.player);
+      final pB = handleB.addEntity(level.player);
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position, _Health).build();
+      final group = query.groups().first;
+
+      expect(group.toSet(), {pA, pB});
+      expect(group.inScene(handleA).toSet(), {pA});
+      expect(group.inScene(handleB).toSet(), {pB});
+    });
+
+    test('stale or unloaded Scene handle throws StateError on query methods', () {
+      final level = _level();
+      level.addEntity(level.player);
+
+      final handle = level.handle;
+      SceneRegistry.unregister(handle);
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position).build();
+
+      expect(() => query.run(handle).toList(), throwsStateError);
+      expect(() => query.groups(handle), throwsStateError);
+      expect(() => query.runQuery(() {}, handle), throwsStateError);
+      expect(() => query.inScene(handle), throwsStateError);
+
+      final liveGroup = query.groups().first;
+      expect(() => liveGroup.inScene(handle), throwsStateError);
+    });
+
+    test('reused slot does not match stale handle of previous generation', () {
+      final levelA = _level();
+      levelA.addEntity(levelA.player);
+      final handleA = levelA.handle;
+
+      // Simulate scene unload: release pages and unregister
+      levelA.player.archetype.releaseScene(handleA.slot, levelA.pool);
+      SceneRegistry.unregister(handleA);
+
+      // Register levelB which reuses slot 0 with generation 1.
+      final levelB = _Level()..initializeScene(MemoryPool(pageSize: 4096));
+      levelB.handle = SceneRegistry.register(levelB);
+      addTearDown(levelB.pool.dispose);
+      levelB.addEntity(levelB.player);
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position).build();
+
+      // Stale handleA must throw, not match levelB's rows.
+      expect(() => query.run(handleA).toList(), throwsStateError);
+      expect(() => query.groups(handleA), throwsStateError);
+      expect(() => query.inScene(handleA), throwsStateError);
+
+      // Live handleB resolves correctly.
+      expect(query.run(levelB.handle).length, 1);
+    });
+  });
 }
