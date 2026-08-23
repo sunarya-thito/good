@@ -1043,8 +1043,12 @@ void main() {
 
     await runZonedGuarded(() async {
           game = await Game.start(_DyingGame());
-          // Well past the third tick at a 5ms step.
-          await Future<void>.delayed(const Duration(milliseconds: 200));
+          final deadline = DateTime.now().add(const Duration(seconds: 10));
+          while (game.isRunning &&
+              errors.isEmpty &&
+              DateTime.now().isBefore(deadline)) {
+            await Future<void>.delayed(const Duration(milliseconds: 10));
+          }
         }, (Object error, StackTrace stack) => errors.add(error)) ??
         Future<void>.value();
 
@@ -1152,7 +1156,7 @@ void main() {
     );
 
     game.resume();
-    await Future<void>.delayed(const Duration(milliseconds: 350));
+    await _waitTicks(run, 1);
     expect(
       run.tick,
       greaterThan(stopped),
@@ -1181,7 +1185,8 @@ void main() {
     expect(run.tick, stopped, reason: 'a zero scale runs no fixed ticks');
 
     game.stepOnce();
-    await Future<void>.delayed(const Duration(milliseconds: 250));
+    await _waitTicks(run, 1);
+    await Future<void>.delayed(const Duration(milliseconds: 100));
     expect(
       run.tick,
       stopped + 1,
@@ -1191,7 +1196,7 @@ void main() {
     );
 
     game.setTimeScale(1);
-    await Future<void>.delayed(const Duration(milliseconds: 350));
+    await _waitTicks(run, 1);
     expect(
       run.tick,
       greaterThan(stopped + 1),
@@ -1219,7 +1224,7 @@ void main() {
     // Carried over the control port and run in the port callback. Nothing
     // pumps a ring here, because nothing is ticking to pump it.
     await game.resumeByControl().timeout(const Duration(seconds: 5));
-    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await _waitTicks(run, 1);
 
     expect(
       run.tick,
@@ -1307,32 +1312,26 @@ void main() {
 
       final mover =
           game; // the channels live on the Game; main holds no systems
-      await _waitTicks(run, 3);
-
-      // Everything below reads a `StateChannel` - shared memory the game
-      // isolate published this tick. No copy, no message carrying the value,
-      // and no component row, which this copy could not resolve anyway.
       expect(
-        mover.firstMarker.value,
-        7,
+        await _waitUntil(
+          run,
+          () => mover.firstMarker.value == 7 && mover.firstX.value > 0,
+        ),
+        isTrue,
         reason:
             'the scene mounted an entity on the game isolate and its '
             'onEntityMounted ran there',
       );
       final firstRead = mover.firstX.value;
-      expect(
-        firstRead,
-        greaterThan(0),
-        reason: 'the mover system is running on the other isolate',
-      );
 
-      await _waitTicks(run, 5);
       expect(
-        mover.firstX.value,
-        greaterThan(firstRead),
+        await _waitUntil(
+          run,
+          () => mover.firstX.value > firstRead && mover.population.value == 1,
+        ),
+        isTrue,
         reason: 'entity state must keep changing across ticks',
       );
-      expect(mover.population.value, 1);
 
       // --- a command sent from the main isolate lands, and answers --------
       //
@@ -1345,10 +1344,9 @@ void main() {
         const Duration(seconds: 20),
       );
 
-      await _waitTicks(run, 3);
       expect(
-        mover.population.value,
-        2,
+        await _waitUntil(run, () => mover.population.value == 2),
+        isTrue,
         reason:
             'the ring-buffer spawn command created a second entity on '
             'the game isolate',
@@ -1365,8 +1363,10 @@ void main() {
             'naming two different rows - the encode/apply lane this '
             'replaces could not return anything at all',
       );
-      await _waitTicks(run, 3);
-      expect(mover.population.value, 3);
+      expect(
+        await _waitUntil(run, () => mover.population.value == 3),
+        isTrue,
+      );
 
       // And the entity that came back is deliberately **not** readable here.
       // It is a valid handle on the isolate that made it and meaningless on
@@ -1405,8 +1405,7 @@ void main() {
         if (run.isRunning) await run.stop();
       });
 
-      await _waitTicks(run, 3);
-      expect(game.firstX.value, greaterThan(0));
+      expect(await _waitUntil(run, () => game.firstX.value > 0), isTrue);
 
       // Main cannot call `disableSystem` any more: it holds no systems and so
       // no index to name one by. It sends a command that says what it means,
@@ -1428,8 +1427,7 @@ void main() {
       );
 
       await game.pauseMover(false).timeout(const Duration(seconds: 20));
-      await _waitTicks(run, 5);
-      expect(game.firstX.value, greaterThan(frozen));
+      expect(await _waitUntil(run, () => game.firstX.value > frozen), isTrue);
 
       await run.stop();
     },
@@ -1525,11 +1523,17 @@ void main() {
       // The main isolate's half of the two-speed notification: this copy
       // learns nothing until a tick message lands, and reconciles then.
       final seen = <int>[];
-      void listener() => seen.add(counter.ticks.value);
+      final observed = Completer<void>();
+      void listener() {
+        seen.add(counter.ticks.value);
+        if (!observed.isCompleted && seen.length >= 3) {
+          observed.complete();
+        }
+      }
       counter.ticks.addListener(listener);
       addTearDown(() => counter.ticks.removeListener(listener));
 
-      await _waitTicks(run, 4);
+      await observed.future.timeout(const Duration(seconds: 20));
       expect(
         counter.ticks.value,
         greaterThan(0),
@@ -1601,10 +1605,14 @@ void main() {
       device!
         ..press(InputKey.spacebar)
         ..press(InputKey.d);
-      await _waitTicks(run, 4);
-
       expect(
-        probe.fireHeld.value,
+        await _waitUntil(
+          run,
+          () =>
+              probe.fireHeld.value &&
+              probe.moveX.value == 1 &&
+              probe.presses.value == 1,
+        ),
         isTrue,
         reason:
             'the game isolate resolved a binding against bits this '
@@ -1630,9 +1638,13 @@ void main() {
       expect(probe.releases.value, 0);
 
       device.release(InputKey.spacebar);
-      await _waitTicks(run, 4);
-      expect(probe.fireHeld.value, isFalse);
-      expect(probe.releases.value, 1);
+      expect(
+        await _waitUntil(
+          run,
+          () => !probe.fireHeld.value && probe.releases.value == 1,
+        ),
+        isTrue,
+      );
       expect(probe.presses.value, 1, reason: 'and no phantom second press');
       expect(
         probe.moveX.value,
