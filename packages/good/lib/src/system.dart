@@ -9,6 +9,7 @@ import 'package:good/src/game_state.dart';
 import 'package:good/src/input.dart';
 import 'package:good/src/struct.dart';
 import 'package:good/src/scene.dart';
+import 'package:good/src/scene_handle.dart';
 
 mixin GameSystemLifecycleListener on GameListener {
   void onMounted() {}
@@ -261,6 +262,34 @@ abstract class GameSystem extends GameListenerBase
   // GameSystem will listen to an event and run a query
 }
 
+/// A compiled set of archetype constraints, and the ways to walk the rows
+/// that satisfy them.
+///
+/// # Scoping to one loaded scene
+///
+/// Every entry point that iterates takes an optional [Scene], and [inScene]
+/// binds one for good. A scope skips at the *page* level: a `MemoryPage`
+/// records the scene it was allocated for, so scoped iteration steps over
+/// another scene's pages without touching a row, where the per-row
+/// `Entity.sceneSlot` test a caller writes by hand pays for every row it
+/// rejects. `tool/scene_scope_bench.dart` measures the difference.
+///
+/// **A scope named by an unloaded scene throws; it does not iterate empty.**
+/// `Scene` carries a generation counter precisely so a handle held across an
+/// unload is detectable, including one whose slot has since been reused by a
+/// different scene - and #145 named the silently-empty alternative as the
+/// dangerous one, since a system that stops seeing its entities reads as a
+/// logic bug a long way from the stale handle that caused it.
+///
+/// The check is `Scene.get`, the same resolve `scene.addEntity` does, and it
+/// runs twice:
+///
+///  * when the scope is applied - [run], [groups], [runQuery], [inScene] and
+///    [QueryGroup.inScene] all throw at the call, including [run], whose body
+///    is a generator and would otherwise not run until the first `moveNext`;
+///  * and again when a walk starts, because a [QueryGroup] and a lazy [run]
+///    both outlive the call that made them, and the scene under one can be
+///    unloaded in between.
 abstract class Query {
   T get<T extends Component>();
   T? tryGet<T extends Component>();
@@ -296,14 +325,34 @@ abstract class Query {
   /// iterator, not one per entity. [run] walks the same rows through two
   /// nested `sync*` generators instead, which a profile put at ~7% of the
   /// engine's CPU.
-  Iterable<QueryGroup> groups();
+  ///
+  /// [scene] scopes the walk to one loaded scene - see *Scoping to one loaded
+  /// scene* on [Query].
+  Iterable<QueryGroup> groups([Scene? scene]);
 
-  // TODO: is closure the best way to run a query?
-  void runQuery(void Function() runner);
-  // should we do this instead?
-  Iterable<Entity> run();
-  // and then, have get and tryGet to be
-  // if (gameObject is Transformable) // do stuff
+  /// Invokes [runner] once per matching entity with an internal "current
+  /// entity" cursor, and [get]/[tryGet] read through that cursor.
+  ///
+  /// [scene] scopes the walk to one loaded scene - see *Scoping to one loaded
+  /// scene* on [Query].
+  void runQuery(void Function() runner, [Scene? scene]);
+
+  /// A lazy `Iterable<Entity>` of matching entities.
+  ///
+  /// [scene] scopes the walk to one loaded scene - see *Scoping to one loaded
+  /// scene* on [Query].
+  Iterable<Entity> run([Scene? scene]);
+
+  /// This query, scoped to [scene]: [groups], [run] and [runQuery] on what
+  /// comes back walk only rows belonging to [scene], with no argument to
+  /// remember at each call site.
+  ///
+  /// The view is a small object, so hoist it into a field rather than calling
+  /// this per tick - a system's scope is settled when it learns which scene it
+  /// belongs to, not once per frame. [get], [tryGet] and the cursor behind
+  /// them are shared with the query this was made from: scoping changes which
+  /// rows are walked, nothing else.
+  Query inScene(Scene scene);
 }
 
 /// A query over exactly one component type, from [QueryDescriptor.has].
@@ -314,6 +363,9 @@ abstract class SingleQuery<T extends Component> implements Query {
   /// exists inside a [runQuery] callback, so reading this anywhere else
   /// throws.
   T get component;
+
+  @override
+  SingleQuery<T> inScene(Scene scene);
 }
 
 abstract class QueryDescriptor {
@@ -620,8 +672,8 @@ class _ArchetypeQuery implements Query {
   T? tryGet<T extends Component>() => _cursor?.tryGet<T>();
 
   @override
-  void runQuery(void Function() runner) {
-    for (final entity in run()) {
+  void runQuery(void Function() runner, [Scene? scene]) {
+    for (final entity in run(scene)) {
       _cursor = entity;
       runner();
     }
@@ -634,13 +686,23 @@ class _ArchetypeQuery implements Query {
   /// one list iterator per tick rather than the per-archetype allocation a
   /// freshly-built list would.
   final List<QueryGroup> _groups = <QueryGroup>[];
+
+  /// The same list scoped to a scene, keyed by *slot* and not by handle: a
+  /// slot is reused, so a map keyed by the handle would grow one dead entry
+  /// per load for the life of the process, while slots are bounded by how
+  /// many scenes are ever resident at once. Each entry remembers which load
+  /// built it, so a reused slot rebuilds rather than serving the previous
+  /// scene's groups - the groups themselves carry the handle, and iterating
+  /// one built for a dead load would throw rather than answer.
+  final Map<int, _ScopedGroups> _scopedGroups = <int, _ScopedGroups>{};
   int _groupsBuiltFor = -1;
 
   @override
-  Iterable<QueryGroup> groups() {
+  Iterable<QueryGroup> groups([Scene? scene]) {
     final count = ArchetypeRegistry.count;
     if (_groupsBuiltFor != count) {
       _groups.clear();
+      _scopedGroups.clear();
       for (var archetypeId = 0; archetypeId < count; archetypeId++) {
         final storage = ArchetypeRegistry.byId(archetypeId);
         if (matches(storage.componentSignature)) {
@@ -649,11 +711,40 @@ class _ArchetypeQuery implements Query {
       }
       _groupsBuiltFor = count;
     }
-    return _groups;
+    if (scene == null) return _groups;
+    scene.get<SceneStruct>();
+    final slot = scene.slot;
+    var cached = _scopedGroups[slot];
+    if (cached == null || cached.scene != scene) {
+      final scoped = <QueryGroup>[];
+      for (var i = 0; i < _groups.length; i++) {
+        scoped.add(QueryGroup(_groups[i].storage, scene));
+      }
+      cached = _ScopedGroups(scene, scoped);
+      _scopedGroups[slot] = cached;
+    }
+    return cached.groups;
   }
 
   @override
-  Iterable<Entity> run() sync* {
+  Iterable<Entity> run([Scene? scene]) {
+    // Resolved here as well as inside the generator. A `sync*` body does not
+    // start until the first `moveNext`, so without this a dead scope would be
+    // reported at whatever line happened to iterate rather than at the call
+    // that named it - and a caller that only asked `isEmpty` would be told
+    // "no rows" instead.
+    if (scene != null) scene.get<SceneStruct>();
+    return _run(scene);
+  }
+
+  Iterable<Entity> _run(Scene? scene) sync* {
+    final int? sceneSlot;
+    if (scene != null) {
+      scene.get<SceneStruct>();
+      sceneSlot = scene.slot;
+    } else {
+      sceneSlot = null;
+    }
     final archetypeCount = ArchetypeRegistry.count;
     for (var archetypeId = 0; archetypeId < archetypeCount; archetypeId++) {
       final storage = ArchetypeRegistry.byId(archetypeId);
@@ -665,11 +756,18 @@ class _ArchetypeQuery implements Query {
         // over the holes.
         final page = storage.pageAt(pageIndex);
         if (page == null) continue;
+        if (sceneSlot != null && page.ownerSceneSlot != sceneSlot) continue;
         for (final offset in page.rowOffsets) {
           yield Entity.pack(archetypeId, pageIndex, offset);
         }
       }
     }
+  }
+
+  @override
+  Query inScene(Scene scene) {
+    scene.get<SceneStruct>();
+    return _ScopedQuery(this, scene);
   }
 }
 
@@ -684,6 +782,68 @@ final class _ArchetypeSingleQuery<T extends Component> extends _ArchetypeQuery
 
   @override
   T get component => get<T>();
+
+  @override
+  SingleQuery<T> inScene(Scene scene) {
+    scene.get<SceneStruct>();
+    return _ScopedSingleQuery<T>(this, scene);
+  }
+}
+
+/// One [_ArchetypeQuery._scopedGroups] entry: the groups, and which load of
+/// the slot they were built for.
+final class _ScopedGroups {
+  _ScopedGroups(this.scene, this.groups);
+
+  final Scene scene;
+  final List<QueryGroup> groups;
+}
+
+class _ScopedQuery implements Query {
+  _ScopedQuery(this._query, this._scene);
+
+  final _ArchetypeQuery _query;
+  final Scene _scene;
+
+  @override
+  bool matches(int signature) => _query.matches(signature);
+
+  @override
+  T get<T extends Component>() => _query.get<T>();
+
+  @override
+  T? tryGet<T extends Component>() => _query.tryGet<T>();
+
+  @override
+  Iterable<QueryGroup> groups([Scene? scene]) =>
+      _query.groups(scene ?? _scene);
+
+  @override
+  Iterable<Entity> run([Scene? scene]) => _query.run(scene ?? _scene);
+
+  @override
+  void runQuery(void Function() runner, [Scene? scene]) =>
+      _query.runQuery(runner, scene ?? _scene);
+
+  @override
+  Query inScene(Scene scene) {
+    scene.get<SceneStruct>();
+    return _ScopedQuery(_query, scene);
+  }
+}
+
+final class _ScopedSingleQuery<T extends Component> extends _ScopedQuery
+    implements SingleQuery<T> {
+  _ScopedSingleQuery(super.query, super.scene);
+
+  @override
+  T get component => get<T>();
+
+  @override
+  SingleQuery<T> inScene(Scene scene) {
+    scene.get<SceneStruct>();
+    return _ScopedSingleQuery<T>(_query, scene);
+  }
 }
 
 /// Concrete [QueryDescriptor] - built once per `GameSystem.describeQuery`
@@ -711,10 +871,25 @@ final class ArchetypeQueryDescriptor implements QueryDescriptor {
 /// [get] is both hoistable and obviously correct.
 final class QueryGroup extends Iterable<Entity> {
   @internal
-  QueryGroup(this.storage);
+  QueryGroup(this.storage, [this.scene]);
 
   /// The archetype this group iterates.
   final ArchetypeStorage storage;
+
+  /// The loaded scene this group is scoped to, or null when it walks every
+  /// scene's rows.
+  ///
+  /// The handle and not the bare slot, so that a group outliving the scene it
+  /// was built for is caught: a slot alone would go on matching whatever
+  /// loaded into it next. See *Scoping to one loaded scene* on [Query].
+  final Scene? scene;
+
+  /// This group, scoped to [scene] - the rows of this one archetype that
+  /// belong to that scene.
+  QueryGroup inScene(Scene scene) {
+    scene.get<SceneStruct>();
+    return QueryGroup(storage, scene);
+  }
 
   /// This archetype's instance of [T] - the prefab, viewed as one of the
   /// components it mixes in.
@@ -745,14 +920,23 @@ final class QueryGroup extends Iterable<Entity> {
   /// per `moveNext`, which a profile put at ~5% of total CPU when the query
   /// ran through two of them nested (`run()` yielding through `rowOffsets`).
   @override
-  Iterator<Entity> get iterator => _GroupIterator(storage);
+  Iterator<Entity> get iterator => _GroupIterator(storage, scene);
 }
 
 final class _GroupIterator implements Iterator<Entity> {
-  _GroupIterator(this._storage) : _archetypeId = _storage.archetypeId;
+  _GroupIterator(this._storage, Scene? scene)
+    : _archetypeId = _storage.archetypeId,
+      _sceneSlot = scene?.slot {
+    // Checked when the walk starts, not only when the group was built. A
+    // group is held across ticks, so its scene can be unloaded between the
+    // two - and a freed page answers `pageAt` with null, which would make an
+    // unloaded scope look like an archetype with no rows in it.
+    scene?.get<SceneStruct>();
+  }
 
   final ArchetypeStorage _storage;
   final int _archetypeId;
+  final int? _sceneSlot;
 
   int _pageIndex = -1;
   MemoryPage? _page;
@@ -786,6 +970,7 @@ final class _GroupIterator implements Iterator<Entity> {
       if (_pageIndex >= _storage.pageCount) return false;
       final next = _storage.pageAt(_pageIndex);
       if (next == null) continue;
+      if (_sceneSlot != null && next.ownerSceneSlot != _sceneSlot) continue;
       final stride = next.strideBytes;
       if (stride == null || stride <= 0) continue;
       _page = next;

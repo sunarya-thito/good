@@ -433,4 +433,297 @@ void main() {
       expect(query.groups(), isEmpty);
     });
   });
+
+  group('Scene scoping', () {
+    test('Query.run(scene) yields only entities from that scene', () {
+      final levelA = _level(pageSize: 64);
+      final levelB = _level(pageSize: 64);
+
+      final playersA = [
+        for (var i = 0; i < 15; i++) levelA.addEntity(levelA.player),
+      ];
+      final rocksA = [
+        for (var i = 0; i < 15; i++) levelA.addEntity(levelA.rock),
+      ];
+
+      final playersB = [
+        for (var i = 0; i < 15; i++) levelB.addEntity(levelB.player),
+      ];
+      final rocksB = [
+        for (var i = 0; i < 15; i++) levelB.addEntity(levelB.rock),
+      ];
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position).build();
+
+      // Unscoped query sees entities from both scenes.
+      expect(
+        query.run().toSet(),
+        {...playersA, ...rocksA, ...playersB, ...rocksB},
+      );
+
+      // Scoped query sees only entities from target scene.
+      expect(query.run(levelA.handle).toSet(), {...playersA, ...rocksA});
+      expect(query.run(levelB.handle).toSet(), {...playersB, ...rocksB});
+    });
+
+    test('Query.groups(scene) yields groups scoped to that scene', () {
+      final levelA = _level(pageSize: 64);
+      final levelB = _level(pageSize: 64);
+
+      final playersA = [
+        for (var i = 0; i < 20; i++) levelA.addEntity(levelA.player),
+      ];
+      final rocksA = [
+        for (var i = 0; i < 20; i++) levelA.addEntity(levelA.rock),
+      ];
+
+      final playersB = [
+        for (var i = 0; i < 20; i++) levelB.addEntity(levelB.player),
+      ];
+      final rocksB = [
+        for (var i = 0; i < 20; i++) levelB.addEntity(levelB.rock),
+      ];
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position).build();
+
+      final groupedA = <Entity>{};
+      for (final group in query.groups(levelA.handle)) {
+        groupedA.addAll(group);
+      }
+      expect(groupedA, {...playersA, ...rocksA});
+
+      final groupedB = <Entity>{};
+      for (final group in query.groups(levelB.handle)) {
+        groupedB.addAll(group);
+      }
+      expect(groupedB, {...playersB, ...rocksB});
+    });
+
+    test('Query.runQuery(runner, scene) drives the cursor over that scene', () {
+      // One SceneStruct, two loaded instances of it, so both scenes share
+      // every archetype and the page-level `ownerSceneSlot` skip is the only
+      // thing that can separate them.
+      final level = _level(pageSize: 64);
+      final handleA = level.handle;
+      final handleB = SceneRegistry.register(level);
+
+      for (var i = 0; i < 2; i++) {
+        handleA.addEntity(level.player); // _Position + _Health + Child
+      }
+      for (var i = 0; i < 3; i++) {
+        handleA.addEntity(level.rock); // _Position only
+      }
+      for (var i = 0; i < 5; i++) {
+        handleB.addEntity(level.player);
+      }
+      handleB.addEntity(level.rock);
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position).build();
+
+      // The cursor is observable only through get/tryGet, and both resolve
+      // against the archetype of the entity *under the cursor*. So a tally of
+      // which components the callback could reach reports two things at once:
+      // that the cursor moved from row to row, and which scene's rows it
+      // moved over. A cursor that was never set makes `get` throw; one set
+      // once and left there gives the wrong tally.
+      var runs = 0;
+      var health = 0;
+      query.runQuery(() {
+        runs++;
+        expect(
+          query.get<_Position>(),
+          anyOf(same(level.player), same(level.rock)),
+          reason: 'get<T>() throws when there is no cursor, and returns '
+              'the prefab of the archetype under it when there is one',
+        );
+        if (query.tryGet<_Health>() != null) health++;
+      }, handleA);
+      expect(runs, 5, reason: 'scene A holds 2 players and 3 rocks');
+      expect(health, 2, reason: 'only the players carry _Health');
+
+      runs = 0;
+      health = 0;
+      query.runQuery(() {
+        runs++;
+        if (query.tryGet<_Health>() != null) health++;
+      }, handleB);
+      expect(runs, 6, reason: 'scene B holds 5 players and 1 rock');
+      expect(health, 5);
+
+      // And the cursor is cleared on the way out, scoped or not.
+      expect(() => query.get<_Position>(), throwsStateError);
+    });
+
+    test('SingleQuery.inScene(scene) and component work with scene scoping', () {
+      final levelA = _level();
+      final levelB = _level();
+
+      levelA.pool.beginTick();
+      final pA = levelA.addEntity(levelA.player);
+      levelA.player.x[pA] = 99;
+      levelA.pool.commitTick();
+
+      levelB.pool.beginTick();
+      final pB = levelB.addEntity(levelB.player);
+      levelB.player.x[pB] = 100;
+      levelB.pool.commitTick();
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final single = descriptor.has<_Position>();
+      final scopedA = single.inScene(levelA.handle);
+
+      var countA = 0;
+      scopedA.runQuery(() {
+        countA++;
+        expect(scopedA.component.x[pA], 99);
+      });
+      expect(countA, 1);
+    });
+
+    test('Query.inScene(scene) returns a view matching run(scene) / groups(scene)', () {
+      final levelA = _level(pageSize: 64);
+      final levelB = _level(pageSize: 64);
+
+      final playersA = [
+        for (var i = 0; i < 10; i++) levelA.addEntity(levelA.player),
+      ];
+      levelB.addEntity(levelB.player);
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position).build();
+      final scoped = query.inScene(levelA.handle);
+
+      expect(scoped.run().toSet(), playersA.toSet());
+
+      final grouped = <Entity>{};
+      for (final group in scoped.groups()) {
+        grouped.addAll(group);
+      }
+      expect(grouped, playersA.toSet());
+    });
+
+    test('QueryGroup.inScene(scene) scopes an individual group', () {
+      final level = _level(pageSize: 64);
+      final handleA = level.handle;
+      final handleB = SceneRegistry.register(level);
+
+      final pA = handleA.addEntity(level.player);
+      final pB = handleB.addEntity(level.player);
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position, _Health).build();
+      final group = query.groups().first;
+
+      expect(group.toSet(), {pA, pB});
+      expect(group.inScene(handleA).toSet(), {pA});
+      expect(group.inScene(handleB).toSet(), {pB});
+    });
+
+    test('a dead scope is refused at the call, on every entry point', () {
+      final level = _level();
+      level.addEntity(level.player);
+      final handle = level.handle;
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position).build();
+      final liveGroup = query.groups().first;
+
+      SceneRegistry.unregister(handle);
+
+      // Every one of these is a *block* body, not `() => expr`. `throwsA`
+      // pretty-prints whatever the closure returned, and pretty-printing an
+      // `Iterable` walks it - so an arrow body hands the matcher a lazy
+      // `run()` or a `QueryGroup`, the walk throws inside the matcher's own
+      // try, and a check deferred to first `moveNext` is indistinguishable
+      // from one made at the call. A block body returns null and cannot be
+      // confused that way.
+      //
+      // The distinction is the point: a caller that asks a scoped `run()`
+      // only for `isEmpty` has to be told the scene is gone, not "no rows".
+      expect(() {
+        query.run(handle);
+      }, throwsStateError);
+      expect(() {
+        query.groups(handle);
+      }, throwsStateError);
+      expect(() {
+        query.runQuery(() {}, handle);
+      }, throwsStateError);
+      expect(() {
+        query.inScene(handle);
+      }, throwsStateError);
+      expect(() {
+        liveGroup.inScene(handle);
+      }, throwsStateError);
+    });
+
+    test('a scope that dies after the call is refused when the walk starts', () {
+      final level = _level();
+      level.addEntity(level.player);
+      level.addEntity(level.rock);
+      final handle = level.handle;
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position).build();
+
+      // All three are taken while the scene is loaded and walked after it is
+      // gone. A page-level slot test cannot notice this on its own: the pages
+      // are freed, so the walk finds nothing and reports an empty scene.
+      final pending = query.run(handle);
+      final group = query.groups(handle).first;
+      final scoped = query.inScene(handle);
+
+      level.player.archetype.releaseScene(handle.slot, level.pool);
+      level.rock.archetype.releaseScene(handle.slot, level.pool);
+      SceneRegistry.unregister(handle);
+
+      expect(() => pending.toList(), throwsStateError);
+      expect(() => group.toList(), throwsStateError);
+      expect(() => scoped.run().toList(), throwsStateError);
+      expect(() => scoped.groups(), throwsStateError);
+    });
+
+    test('a reloaded scene reusing a slot serves its own rows', () {
+      final level = _level();
+      final first = level.handle;
+      final before = first.addEntity(level.player);
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position).build();
+
+      // Warm the per-slot group cache while the first load is live.
+      expect(query.groups(first).expand((g) => g).toSet(), {before});
+      expect(query.run(first).toSet(), {before});
+
+      level.player.archetype.releaseScene(first.slot, level.pool);
+      SceneRegistry.unregister(first);
+
+      // The same SceneStruct loaded again. It takes the slot back - and it
+      // declares no new archetypes, so the group list is not rebuilt for an
+      // archetype-count change and the cache from the previous load is still
+      // sitting there under this slot.
+      final second = SceneRegistry.register(level);
+      expect(second.slot, first.slot, reason: 'the slot really is reused');
+      expect(second.generation, isNot(first.generation));
+      final after = second.addEntity(level.player);
+
+      expect(query.run(second).toSet(), {after});
+      expect(query.groups(second).expand((g) => g).toSet(), {after});
+
+      // ...and the handle from the load before is still refused. Block
+      // bodies again - see the note in the dead-scope test above.
+      expect(() {
+        query.run(first);
+      }, throwsStateError);
+      expect(() {
+        query.groups(first);
+      }, throwsStateError);
+      expect(() {
+        query.inScene(first);
+      }, throwsStateError);
+    });
+  });
 }

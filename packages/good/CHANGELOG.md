@@ -21,6 +21,12 @@
   possible at all: `stopAllOf` groups by owner, and the old owner grouped
   every animation one host had started, which is nobody's idea of a group.
 
+* **`Query` and `SingleQuery` gained members.** They are exported, so a class
+  outside the engine that `implements Query` no longer satisfies it: `run`,
+  `groups` and `runQuery` each take a trailing optional `Scene`, and `inScene`
+  is new. Widen the three signatures and add `inScene`. Nothing that only
+  *calls* a query is affected.
+
 * **`GameListener.disableAfterUncaught` takes the error and stack.** Both are
   optional positional, so a call site needs no change - but a class outside
   the engine that `implements GameListener` no longer satisfies the interface
@@ -45,6 +51,23 @@
   A stopped animation leaves the bound tracks holding whatever the last tick
   wrote - stop it mid-fade and the sprite stays half faded. Nothing is reset
   or restored.
+
+* **A query can be scoped to one loaded scene.** `Query.run`, `Query.groups`
+  and `Query.runQuery` take an optional `Scene`; `Query.inScene(scene)` binds
+  one once, for a system that always works in the same scene; and
+  `QueryGroup.inScene(scene)` narrows a single archetype's group. The scope
+  skips at the *page* level - a `MemoryPage` records the scene it was
+  allocated for - so another scene's rows are rejected without being
+  touched, where the per-row `entity.sceneSlot` test this replaces pays for
+  every row it throws away. Nothing changes for a call with no scene.
+
+  A scope naming a scene that is no longer loaded **throws**, and it throws
+  twice over: when the scope is applied, and again when a walk starts, since a
+  `QueryGroup` and a lazy `run()` both outlive the call that made them. The
+  alternative - iterating empty - reads as a system that has quietly stopped
+  working, a long way from the stale handle that caused it. A `Scene` carries
+  a generation counter, so a handle whose slot has since been reused by a
+  different scene is refused rather than answered for.
 
 * **A system switched off by an uncaught throw now says so in release.** The
   guard from 0.2.0 reported through `assert`, which a release build strips, so
