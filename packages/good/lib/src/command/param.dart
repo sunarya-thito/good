@@ -495,18 +495,18 @@ abstract interface class ParamLayouts {
 /// declares its capacity up front and a value that does not fit is an error
 /// rather than a resize.
 abstract class ParamDescriptor {
-  ParamPointer<int> hasUint1([int defaultValue = 0]);
-  ParamPointer<int> hasUint2([int defaultValue = 0]);
-  ParamPointer<int> hasUint4([int defaultValue = 0]);
-  ParamPointer<int> hasUint8([int defaultValue = 0]);
-  ParamPointer<int> hasUint16([int defaultValue = 0]);
-  ParamPointer<int> hasUint32([int defaultValue = 0]);
-  ParamPointer<int> hasInt8([int defaultValue = 0]);
-  ParamPointer<int> hasInt16([int defaultValue = 0]);
-  ParamPointer<int> hasInt32([int defaultValue = 0]);
-  ParamPointer<int> hasInt64([int defaultValue = 0]);
-  ParamPointer<double> hasFloat32([double defaultValue = 0]);
-  ParamPointer<double> hasFloat64([double defaultValue = 0]);
+  ParamPointer<int> hasUint1();
+  ParamPointer<int> hasUint2();
+  ParamPointer<int> hasUint4();
+  ParamPointer<int> hasUint8();
+  ParamPointer<int> hasUint16();
+  ParamPointer<int> hasUint32();
+  ParamPointer<int> hasInt8();
+  ParamPointer<int> hasInt16();
+  ParamPointer<int> hasInt32();
+  ParamPointer<int> hasInt64();
+  ParamPointer<double> hasFloat32();
+  ParamPointer<double> hasFloat64();
 
   /// A field holding an [Entity] handle - the same signed 64-bit storage
   /// [hasInt64] gives, with the type saying what the field holds.
@@ -584,34 +584,34 @@ final class ParamLayout implements ParamDescriptor {
   }
 
   @override
-  ParamPointer<int> hasUint1([int defaultValue = 0]) => _int(1, false);
+  ParamPointer<int> hasUint1() => _int(1, false);
   @override
-  ParamPointer<int> hasUint2([int defaultValue = 0]) => _int(2, false);
+  ParamPointer<int> hasUint2() => _int(2, false);
   @override
-  ParamPointer<int> hasUint4([int defaultValue = 0]) => _int(4, false);
+  ParamPointer<int> hasUint4() => _int(4, false);
   @override
-  ParamPointer<int> hasUint8([int defaultValue = 0]) => _int(8, false);
+  ParamPointer<int> hasUint8() => _int(8, false);
   @override
-  ParamPointer<int> hasUint16([int defaultValue = 0]) => _int(16, false);
+  ParamPointer<int> hasUint16() => _int(16, false);
   @override
-  ParamPointer<int> hasUint32([int defaultValue = 0]) => _int(32, false);
+  ParamPointer<int> hasUint32() => _int(32, false);
   @override
-  ParamPointer<int> hasInt8([int defaultValue = 0]) => _int(8, true);
+  ParamPointer<int> hasInt8() => _int(8, true);
   @override
-  ParamPointer<int> hasInt16([int defaultValue = 0]) => _int(16, true);
+  ParamPointer<int> hasInt16() => _int(16, true);
   @override
-  ParamPointer<int> hasInt32([int defaultValue = 0]) => _int(32, true);
+  ParamPointer<int> hasInt32() => _int(32, true);
   @override
-  ParamPointer<int> hasInt64([int defaultValue = 0]) => _int(64, true);
+  ParamPointer<int> hasInt64() => _int(64, true);
 
   @override
-  ParamPointer<double> hasFloat32([double defaultValue = 0]) {
+  ParamPointer<double> hasFloat32() {
     final byte = _declare(32) >> 3;
     return _FloatPointer(_fieldCount++, byte, 32);
   }
 
   @override
-  ParamPointer<double> hasFloat64([double defaultValue = 0]) {
+  ParamPointer<double> hasFloat64() {
     final byte = _declare(64) >> 3;
     return _FloatPointer(_fieldCount++, byte, 64);
   }
