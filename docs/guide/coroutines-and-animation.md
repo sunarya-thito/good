@@ -340,6 +340,31 @@ It runs on the coroutine scheduler, so its writes land inside the tick window.
     occasional event. In a per-entity update loop, use `animate` and index the
     track — it costs nothing.
 
+### Stopping an animation
+
+An animation started with `startAnimation` can be stopped in two ways:
+
+<!-- snippet-setup
+final bindings = <TrackBinding>[
+  timeline.x.bind(transform.transformOffsetX.bind(entity)),
+];
+-->
+<!-- snippet: body EntityStruct -->
+```dart
+// Stop a single animation by its handle:
+final playing = startAnimation(timeline.entrance, bindings);
+stopAnimation(playing);
+
+// Stop every coroutine playing this timeline across all entities:
+stopAnimations(timeline.entrance);
+```
+
+Both forms complete the handle normally rather than throwing an error.
+
+!!! note "What a stopped animation leaves behind"
+    Bound tracks retain whatever value the last tick wrote. Stopping an
+    animation mid-fade leaves the value where it was when stopped.
+
 ### Keys and curves
 
 A clip is written as a chain of keyframes per track. Two calls do everything:

@@ -15,17 +15,6 @@ import 'package:good/src/coroutine/coroutine.dart';
 /// [startAnimation] is why the bound exists - a pushed animation *is* a
 /// coroutine.
 ///
-/// **Nothing to mix in** - `EntityStruct` has it, the same way it has
-/// `Coroutines`. [describeAnimation] defaults to declaring nothing, so a prefab
-/// with no timelines costs one empty call at registration and nothing at all
-/// afterwards.
-///
-/// `on Coroutines` works here where it could not for `Coroutines` itself: an
-/// `on` bound is checked against the applying class's superclass, and by the
-/// time `EntityStruct` applies this one, `Coroutines` is already in its chain.
-/// [startAnimation] is why the bound exists - a pushed animation *is* a
-/// coroutine.
-///
 /// ```dart
 /// class Enemy extends EntityStruct with Transform2D, Animations {
 ///   late final EnemyTimeline timeline;
@@ -90,9 +79,9 @@ mixin Animations on Coroutines {
     double duration = 0.0,
     WrapMode wrapMode = WrapMode.clamp,
     bool reverse = false,
-  }) => startCoroutine(
-    () => _play(
-      animation,
+  }) => simulationState.coroutines.start(
+    animation,
+    animation.play(
       bindings,
       duration: duration,
       wrapMode: wrapMode,
@@ -100,39 +89,17 @@ mixin Animations on Coroutines {
     ),
   );
 
-  // TODO: Stop animation by CoroutineFuture, stop animation by TimelineAnimation
-  // Coroutine API has already method to stop by CoroutineFuture, so delegate that
-  // and for stop by TimelineAnimation, Coroutine API has method to stop by method that provides the Iterable
-  // we need to change [_play] here, instead of placing it here,
-  // place it inside TimelineAnimation, so that its tied to TimelineAnimation instance.
-  // and then we can do stop coroutine by method which the method provided by TimelineAnimation
+  /// Stops a single running animation.
+  ///
+  /// Safe to call if the animation has already finished or been stopped.
+  /// Bound tracks retain whatever value the last tick wrote.
+  void stopAnimation(CoroutineFuture handle) => handle.stop();
 
-  Iterable _play(
-    TimelineAnimation animation,
-    List<TrackBinding> bindings, {
-    required double duration,
-    required WrapMode wrapMode,
-    required bool reverse,
-  }) sync* {
-    final startedAt = simulationState.time;
-    final length = duration > 0 ? duration : animation.length;
-    while (true) {
-      final elapsed = simulationState.time - startedAt;
-      final sample = animation.animate(
-        offset: -startedAt,
-        duration: duration,
-        wrapMode: wrapMode,
-        reverse: reverse,
-      );
-      for (var i = 0; i < bindings.length; i++) {
-        bindings[i].apply(sample);
-      }
-      // A looping or ping-ponging clip has no end to wait for, so this runs
-      // until something stops it - which is what the returned handle is for.
-      if (wrapMode == WrapMode.clamp && elapsed >= length) return;
-      yield null;
-    }
-  }
+  /// Stops every coroutine currently playing [animation].
+  ///
+  /// Bound tracks retain whatever value the last tick wrote.
+  void stopAnimations(TimelineAnimation animation) =>
+      simulationState.coroutines.stopAllOf(animation);
 }
 
 /// Declares the timelines a struct owns - see [Animations.describeAnimation].
