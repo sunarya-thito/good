@@ -61,6 +61,10 @@ const String _msgDispose = 'dispose';
 // App visibility, main -> game. One tag rather than a `GameCommand`: it is the
 // engine's own signal, it carries no reply, and a command would put it in the
 // user's command surface for no reason.
+// A receipt-delivered command batch, either direction. This is the carrier
+// that lets the twelve tags below become commands - see
+// `CommandDescriptor.hasControlSink` (#142).
+const String _msgControlBatch = 'controlbatch';
 const String _msgVisible = 'visible';
 // Time scale and pause, main -> game. Same shape and the same reasoning as
 // _msgVisible: engine state, no reply, and a pause button is a widget on main.
@@ -1901,6 +1905,13 @@ final class GameRuntime {
     if (transport == null) return;
     transport.inbound = simulates ? commandsToGame : commandsToMain;
     transport.outbound = simulates ? commandsToMain : commandsToGame;
+    // The same place, for the same reason: this is where the direction is
+    // known. A receipt-delivered batch goes by port rather than by ring, so
+    // it is reachable while the tick is stopped.
+    transport.controlSend = (bytes) {
+      final port = simulates ? _toMain : _toGame;
+      port?.send(<Object?>[_msgControlBatch, bytes]);
+    };
   }
 
   // --- what GameState reaches back for ------------------------------------
@@ -2368,6 +2379,10 @@ final class GameRuntime {
         state?.stopTimer();
         state?.unmount();
         _toMain?.send(const <Object>[_msgStopped]);
+      case _msgControlBatch:
+        // Run here, in the port callback, with no tick involved. See
+        // `CommandTransport.receiveControlBatch`.
+        commandTransport?.receiveControlBatch(parts[1] as Uint8List);
       case _msgVisible:
         state?.setVisible(parts[1] as bool);
       case _msgTimeScale:
@@ -2430,6 +2445,10 @@ final class GameRuntime {
     }
     final parts = message as List;
     switch (parts[0] as String) {
+      case _msgControlBatch:
+        // Run here, in the port callback, with no tick involved. See
+        // `CommandTransport.receiveControlBatch`.
+        commandTransport?.receiveControlBatch(parts[1] as Uint8List);
       case _msgReady:
         // The control port is all `ready` carries now. Every shared buffer -
         // both command rings, the auxiliary buffers, the state channels and

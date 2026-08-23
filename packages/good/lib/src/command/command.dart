@@ -64,6 +64,13 @@ abstract class GameCommandBase {
   bool get hasHandler => _handlerSide != null;
 
   HandlerSide? _handlerSide;
+
+  /// How this command travels once it has a handler - see [HandlerDelivery].
+  HandlerDelivery _handlerDelivery = HandlerDelivery.tick;
+
+  /// Whether this command is carried over the control port and run on
+  /// arrival, rather than pumped inside the tick window.
+  bool get isControlDelivered => _handlerDelivery == HandlerDelivery.receipt;
   Function? _handler;
 
   /// The registered handler, on the copy that runs it.
@@ -102,8 +109,10 @@ abstract class GameCommandBase {
     HandlerSide side,
     Function handler, {
     required bool install,
+    HandlerDelivery delivery = HandlerDelivery.tick,
   }) {
     _handlerSide = side;
+    _handlerDelivery = delivery;
     if (install) _handler = handler;
   }
 
@@ -132,7 +141,7 @@ abstract class GameCommandBase {
     final target = batch ?? sender.newBatch();
     // Where this call is going, decided by where its handler was registered -
     // and, for a batch that already holds calls, checked against theirs.
-    target.routeTo(_handlerSide!, runtimeType);
+    target.routeTo(_handlerSide!, _handlerDelivery, runtimeType);
     return target.append(_index, _strideBytes, _fieldCount);
   }
 
@@ -454,6 +463,66 @@ abstract class CommandDescriptor {
 
   /// Registers a [SignalCommand]'s handler: takes and returns nothing.
   void hasSignal(SignalCommand command, void Function() handler);
+
+  /// Registers a [SinkCommand]'s handler to run **when the message arrives**
+  /// rather than inside the next tick window.
+  ///
+  /// This is what a control signal needs. A tick-delivered command is pumped
+  /// from `GameState.runFixedStep`, so it arrives only if the tick runs -
+  /// which makes it useless for anything that *stops* the tick, because the
+  /// message that starts it again would be waiting on the tick it stopped.
+  /// A receipt-delivered command is carried over the control port and run
+  /// from the port callback, with no tick involved.
+  ///
+  /// ```dart
+  /// // in GameState.describeCommands
+  /// descriptor.hasControlSink(setTimeScale, (s) => state.timeScale = s);
+  /// ```
+  ///
+  /// Four things are true of it that are not true of [hasSink], and all four
+  /// follow from there being no tick:
+  ///
+  /// **The future completes on send, not on execution.** `await` on a control
+  /// command means "handed to the port", not "done". A tick-delivered command
+  /// resolves when the far side has run it and replied; there is no reply leg
+  /// here, because a reply would be pumped by the tick this exists to work
+  /// without.
+  ///
+  /// **The handler must not write component data.** There is no open write
+  /// window outside a tick: `MemoryPool.beginTick` copies each page's
+  /// published bytes over the write slot, so a write landing outside one is
+  /// erased by the next tick with nothing said. A debug assert in
+  /// `data_layout.dart` catches it.
+  ///
+  /// **That assert has one hole**, and it is worth knowing rather than
+  /// trusting the guard blindly: it stays silent while a page has never
+  /// published, which is scene bootstrap and nothing else. A running game is
+  /// covered; a control handler that writes during bring-up is not.
+  ///
+  /// **There is no ordering against tick-delivered commands.** They travel by
+  /// different carriers, so two calls sent in order can run in either. That
+  /// is inherent to working while the tick is stopped rather than a defect,
+  /// and it was equally true of the control messages this replaces.
+  void hasControlSink<P>(SinkCommand<P> command, void Function(P) handler);
+
+  /// [hasControlSink] for a [SignalCommand] - takes and returns nothing.
+  void hasControlSignal(SignalCommand command, void Function() handler);
+
+  /// Always throws. A receipt-delivered command **cannot answer**.
+  ///
+  /// It exists so the name someone reaches for explains itself rather than
+  /// being absent. A control command completes when it reaches the port, and
+  /// its handler runs with no tick and no reply leg - so there is nowhere for
+  /// an `R` to come from. Use [hasHandler], which is tick-delivered and does
+  /// reply, or restate the call as a [SinkCommand] and publish the answer
+  /// through a `StateChannel`.
+  void hasControlHandler<P, R>(
+    GameCommand<P, R> command,
+    R Function(P) handler,
+  );
+
+  /// Always throws, for the same reason as [hasControlHandler].
+  void hasControlSupplier<R>(SupplierCommand<R> command, R Function() handler);
 }
 
 /// The registry behind [CommandDescriptor], owned by `Game`.
@@ -560,8 +629,9 @@ final class CommandRegistry implements ParamLayouts {
   void declareHandler(
     GameCommandBase command,
     Function handler,
-    HandlerSide side,
-  ) {
+    HandlerSide side, [
+    HandlerDelivery delivery = HandlerDelivery.tick,
+  ]) {
     _requireOpen();
     if (command.index < 0 || tryAt(command.index) != command) {
       throw StateError(
@@ -585,7 +655,7 @@ final class CommandRegistry implements ParamLayouts {
     // command with no handler at all. Who *dispatches* is still decided by
     // [handles], in the transport; this only decides who is holding the
     // function, and a handler that is never dispatched costs one field.
-    command.bindHandler(side, handler, install: true);
+    command.bindHandler(side, handler, install: true, delivery: delivery);
   }
 
   void _requireOpen() {
@@ -596,6 +666,21 @@ final class CommandRegistry implements ParamLayouts {
       'copies have already agreed on the list.',
     );
   }
+}
+
+/// The message both descriptors give for a control handler on a shape that
+/// returns something. One function so the two sides cannot drift.
+Never _controlCannotAnswer(Type command, String method) {
+  throw StateError(
+    '$command returns a value, so it cannot be registered with $method. A '
+    'receipt-delivered command is carried over the control port and run when '
+    'the port callback fires, which is what lets it work while the fixed '
+    'tick is stopped - and it is also why there is no reply leg: a reply '
+    'would be pumped inside the tick window it exists to work without, so '
+    'the caller would wait forever. Register it with hasHandler or '
+    'hasSupplier, which are tick-delivered and do reply, or make it a '
+    'SinkCommand and publish the answer on a StateChannel.',
+  );
 }
 
 /// `CommandDescriptor` as seen by `Game.describeCommands` - may declare
@@ -624,6 +709,36 @@ final class MainCommandDescriptor implements CommandDescriptor {
   @override
   void hasSignal(SignalCommand command, void Function() handler) =>
       _registry.declareHandler(command, handler, HandlerSide.main);
+
+  @override
+  void hasControlSink<P>(SinkCommand<P> command, void Function(P) handler) =>
+      _registry.declareHandler(
+        command,
+        handler,
+        HandlerSide.main,
+        HandlerDelivery.receipt,
+      );
+
+  @override
+  void hasControlSignal(SignalCommand command, void Function() handler) =>
+      _registry.declareHandler(
+        command,
+        handler,
+        HandlerSide.main,
+        HandlerDelivery.receipt,
+      );
+
+  @override
+  void hasControlHandler<P, R>(
+    GameCommand<P, R> command,
+    R Function(P) handler,
+  ) => _controlCannotAnswer(command.runtimeType, 'hasControlHandler');
+
+  @override
+  void hasControlSupplier<R>(
+    SupplierCommand<R> command,
+    R Function() handler,
+  ) => _controlCannotAnswer(command.runtimeType, 'hasControlSupplier');
 }
 
 /// `CommandDescriptor` as seen by `GameState.describeCommands` - registers
@@ -659,4 +774,34 @@ final class GameCommandDescriptor implements CommandDescriptor {
   @override
   void hasSignal(SignalCommand command, void Function() handler) =>
       _registry.declareHandler(command, handler, HandlerSide.game);
+
+  @override
+  void hasControlSink<P>(SinkCommand<P> command, void Function(P) handler) =>
+      _registry.declareHandler(
+        command,
+        handler,
+        HandlerSide.game,
+        HandlerDelivery.receipt,
+      );
+
+  @override
+  void hasControlSignal(SignalCommand command, void Function() handler) =>
+      _registry.declareHandler(
+        command,
+        handler,
+        HandlerSide.game,
+        HandlerDelivery.receipt,
+      );
+
+  @override
+  void hasControlHandler<P, R>(
+    GameCommand<P, R> command,
+    R Function(P) handler,
+  ) => _controlCannotAnswer(command.runtimeType, 'hasControlHandler');
+
+  @override
+  void hasControlSupplier<R>(
+    SupplierCommand<R> command,
+    R Function() handler,
+  ) => _controlCannotAnswer(command.runtimeType, 'hasControlSupplier');
 }

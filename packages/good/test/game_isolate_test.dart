@@ -172,6 +172,13 @@ class _SpawnMover extends SupplierCommand<Entity> {
 /// Main cannot name a system by declaration index any more, because it holds
 /// no declarations to index into. It says what it *means* and the handler,
 /// over where the systems are, resolves that to a type.
+
+/// Two signals that do exactly the same thing and differ only in how they are
+/// delivered, so a test can tell the two carriers apart (#142).
+class _ResumeByControl extends SignalCommand {}
+
+class _ResumeByTick extends SignalCommand {}
+
 class _PauseMover extends SinkCommand<bool> {
   late final ParamPointer<int> paused;
 
@@ -201,7 +208,9 @@ class _IsolateState extends GameState<_IsolateGame> {
     super.describeCommands(descriptor);
     descriptor
       ..hasSupplier(game.spawnMover, _onSpawnMover)
-      ..hasSink(game.pauseMover, _onPauseMover);
+      ..hasSink(game.pauseMover, _onPauseMover)
+      ..hasControlSignal(game.resumeByControl, () => paused = false)
+      ..hasSignal(game.resumeByTick, () => paused = false);
   }
 
   Entity _onSpawnMover() => loadedScenes.single.addEntity(level.mover);
@@ -266,6 +275,8 @@ class _IsolateGame extends Game {
 
   late final _SpawnMover spawnMover;
   late final _PauseMover pauseMover;
+  late final _ResumeByControl resumeByControl;
+  late final _ResumeByTick resumeByTick;
 
   /// What `_MoverSystem` publishes. Declared here because main is the copy
   /// that allocates the storage - and main is also the only reader, which is
@@ -290,6 +301,8 @@ class _IsolateGame extends Game {
     super.describeCommands(descriptor);
     spawnMover = descriptor.has(_SpawnMover());
     pauseMover = descriptor.has(_PauseMover());
+    resumeByControl = descriptor.has(_ResumeByControl());
+    resumeByTick = descriptor.has(_ResumeByTick());
   }
 }
 
@@ -1009,6 +1022,94 @@ void main() {
       const Duration(seconds: 5),
       onTimeout: () => fail('stop() hung on a dead isolate - the #126 bug'),
     );
+  });
+
+  // #142 Stage 1. The two tests below are a pair and have to fail
+  // independently: one says a control command reaches a stopped game, the
+  // other says a tick command does not. Only the first would pass on an
+  // implementation that quietly made everything receipt-delivered, and that
+  // would destroy the guarantee `runFixedStep` gives a tick-delivered
+  // handler - that it runs inside the write window.
+  test('a control command reaches a game whose tick is stopped', () async {
+    final game = _IsolateGame();
+    run = await Game.start(game);
+    addTearDown(() async {
+      if (run.isRunning) await run.stop();
+    });
+    await _waitTicks(run, 3);
+
+    game.pause();
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    final stopped = run.tick;
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(
+      run.tick,
+      stopped,
+      reason: 'the tick has to be genuinely stopped for this to mean anything',
+    );
+
+    // Carried over the control port and run in the port callback. Nothing
+    // pumps a ring here, because nothing is ticking to pump it.
+    await game.resumeByControl().timeout(const Duration(seconds: 5));
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+
+    expect(
+      run.tick,
+      greaterThan(stopped),
+      reason:
+          'the handler set paused = false, so the tick came back. Sent as a '
+          'tick-delivered command this could never arrive - the message that '
+          'restarts the tick would be waiting on the tick it stopped.',
+    );
+  });
+
+  test('a tick command does not reach a game whose tick is stopped', () async {
+    final game = _IsolateGame();
+    run = await Game.start(game);
+    addTearDown(() async {
+      if (run.isRunning) await run.stop();
+      // The batch never ran, so its future never completes - dropped rather
+      // than awaited, which is the failure mode this test exists to pin.
+    });
+    await _waitTicks(run, 3);
+
+    game.pause();
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    final stopped = run.tick;
+
+    // Same handler body, same command shape, tick-delivered instead. It sits
+    // in the ring with nothing to drain it.
+    var completed = false;
+    unawaited(
+      game
+          .resumeByTick()
+          .then<void>((_) {
+            completed = true;
+          })
+          .catchError((Object _) {
+            // Stopping the game errors every batch it never answered, which is
+            // this one and is correct. Swallowed so an expected failure does not
+            // surface as an unhandled async error at teardown.
+          }),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+
+    expect(
+      run.tick,
+      stopped,
+      reason:
+          'a tick-delivered command is pumped from runFixedStep, so a stopped '
+          'tick never sees it - which is the whole reason control delivery '
+          'had to exist',
+    );
+    expect(
+      completed,
+      isFalse,
+      reason: 'and its future is still waiting, because nothing ran it',
+    );
+
+    // Let the game go so teardown can stop it.
+    await game.resumeByControl().timeout(const Duration(seconds: 5));
   });
   test(
     'a Game subclass survives Isolate.spawn and ticks on the other side',

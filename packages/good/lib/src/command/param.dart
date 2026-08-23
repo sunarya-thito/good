@@ -343,6 +343,13 @@ final class CommandBatch extends ParamBatch {
   @internal
   HandlerSide? get destination => _destination;
 
+  /// How this batch travels - see [HandlerDelivery]. Null until the first
+  /// call is routed into it.
+  HandlerDelivery? _delivery;
+
+  /// How this batch travels, once something has been routed into it.
+  HandlerDelivery? get delivery => _delivery;
+
   /// Records that a call bound for [side] has been added, and refuses a batch
   /// that would need to go to both isolates.
   ///
@@ -353,7 +360,18 @@ final class CommandBatch extends ParamBatch {
   /// this one is going and a second opinion is an error at the call that
   /// causes it, naming both commands.
   @internal
-  void routeTo(HandlerSide side, Type command) {
+  void routeTo(HandlerSide side, HandlerDelivery delivery, Type command) {
+    final currentDelivery = _delivery;
+    if (currentDelivery != null && currentDelivery != delivery) {
+      throw StateError(
+        '$command is ${delivery.name}-delivered and this batch already holds '
+        '${currentDelivery.name}-delivered calls. The two travel by '
+        'different carriers - one rides the command ring inside the tick '
+        'window, the other the control port - so they cannot share a '
+        'message. Use two batches.',
+      );
+    }
+    _delivery = delivery;
     final current = _destination;
     if (current == null) {
       _destination = side;
@@ -419,6 +437,27 @@ final class CommandResults {
 /// routing decision are the only things that read it.
 @internal
 enum HandlerSide { main, game }
+
+/// When a command's handler runs, which decides how its batch travels.
+///
+/// See `CommandDescriptor.hasControlSink` for what a receipt-delivered
+/// command may and may not do.
+enum HandlerDelivery {
+  /// The default. The batch rides the command ring and is pumped inside the
+  /// tick window, so a handler can write component data and a spawned entity
+  /// is visible to every system on the tick its command lands.
+  ///
+  /// It also means the batch arrives **only if the tick runs**: a command
+  /// that would stop the tick cannot be delivered this way, because the
+  /// message that restarts it would need the tick it stopped.
+  tick,
+
+  /// The batch is carried over the control port and run when the port
+  /// callback fires, with no tick involved. That is the whole point - it
+  /// works while the fixed tick is stopped - and the whole cost: there is no
+  /// open write window, so a handler must not touch component data.
+  receipt,
+}
 
 @internal
 abstract interface class CommandSender {

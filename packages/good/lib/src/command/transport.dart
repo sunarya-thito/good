@@ -74,6 +74,12 @@ final class CommandTransport implements CommandSender {
   /// This copy's consumer end - drained by [pump].
   RingBuffer? inbound;
 
+  /// Carries a receipt-delivered batch to the other copy, or null when there
+  /// is no other copy. A callback rather than a `SendPort` so this layer
+  /// never learns the control port's message vocabulary - `GameRuntime`
+  /// wraps these bytes in whatever shape it already speaks.
+  void Function(Uint8List bytes)? controlSend;
+
   int _nextId = 0;
 
   /// Batches this copy has sent and not yet had answered, by id.
@@ -116,6 +122,35 @@ final class CommandTransport implements CommandSender {
         'The ring buffers are freed by stop().',
       );
     }
+    // Receipt delivery: run on arrival, never wait for a tick window. That is
+    // the whole point - a command that stops the tick cannot be delivered by
+    // the tick - and it is why this completes as soon as the bytes are handed
+    // over rather than when the handler has run. There is no reply leg,
+    // because a reply would be pumped inside the tick this exists to work
+    // without and the caller would wait forever.
+    if (batch.delivery == HandlerDelivery.receipt) {
+      if (registry.handles(destination)) {
+        registry.dispatch(batch);
+        return Future<void>.value();
+      }
+      final carry = controlSend;
+      if (carry == null) {
+        throw StateError(
+          'a control command has nowhere to go: this copy of the Game is not '
+          'connected to the other one. Await start() first.',
+        );
+      }
+      carry(
+        Uint8List.fromList(
+          Uint8List.sublistView(
+            batch.bytes,
+            batch.start,
+            batch.start + batch.length,
+          ),
+        ),
+      );
+      return Future<void>.value();
+    }
     if (registry.handles(destination)) {
       if (destination == HandlerSide.main) {
         registry.dispatch(batch);
@@ -155,6 +190,21 @@ final class CommandTransport implements CommandSender {
   ///
   /// Called once per fixed tick on the game isolate (from
   /// `GameState.runFixedStep`, inside the tick window and before any system)
+
+  /// Runs a receipt-delivered batch that arrived over the control port.
+  ///
+  /// Straight to [CommandRegistry.dispatch] with no inbox: the inbox is what
+  /// makes a batch wait for the tick window, and waiting is exactly what this
+  /// carrier exists to avoid. Same `adoptIncoming` the ring path uses - the
+  /// record format does not change with the carrier.
+  void receiveControlBatch(Uint8List bytes) {
+    if (_shutdown) return;
+    registry.dispatch(
+      CommandBatch(-1, initialBytes: bytes.length)
+        ..adoptIncoming(bytes, registry),
+    );
+  }
+
   /// and once per tick notification on the main isolate. Cheap when nothing
   /// has arrived: one cursor comparison and an empty list.
   void pump() {

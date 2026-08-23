@@ -426,6 +426,82 @@ class _TestGame extends Game {
   }
 }
 
+/// A control command whose handler does the one thing a control handler must
+/// not do - write component data outside a tick window (#142).
+class _WriteOutsideTick extends SignalCommand {}
+
+class _BadControlState extends _FixtureState {
+  /// Set by the test during the bootstrap window, before the first tick has
+  /// published anything - the one time a write outside a tick is legitimate.
+  late Entity victim;
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    descriptor.hasControlSignal(
+      (game as _BadControlGame).writeOutsideTick,
+      _onWrite,
+    );
+  }
+
+  void _onWrite() {
+    // A plain column write on an entity that already exists - the guard is
+    // about the write window, not about allocation.
+    level.unit.marker[victim] = 5;
+  }
+}
+
+class _BadControlGame extends _TestGame {
+  late final _WriteOutsideTick writeOutsideTick;
+
+  @override
+  GameState createState() => _BadControlState();
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    writeOutsideTick = descriptor.has(_WriteOutsideTick());
+  }
+}
+
+/// Registers a command that *returns* something as a control handler, which
+/// has to fail where it is written rather than hang where it is called.
+class _Answering extends SupplierCommand<int> {
+  late final ParamPointer<int> value;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    value = descriptor.hasInt32();
+  }
+
+  @override
+  void bufferFromResult(ParamBuffer call, int result) => value[call] = result;
+
+  @override
+  int resultFromBuffer(ParamBuffer call) => value[call];
+}
+
+class _AnsweringState extends _FixtureState {
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    descriptor.hasControlSupplier((game as _AnsweringGame).answering, () => 1);
+  }
+}
+
+class _AnsweringGame extends _TestGame {
+  late final _Answering answering;
+
+  @override
+  GameState createState() => _AnsweringState();
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    answering = descriptor.has(_Answering());
+  }
+}
+
 typedef _Nudge = ({Entity entity, double amount});
 
 /// A user command, to prove the dispatch table is not hardcoded to the
@@ -724,6 +800,54 @@ void main() {
   // runs in debug: the `assert` in `_ListenerSet._reportUncaught` fires, so
   // these expect an `AssertionError` where a release build would simply carry
   // on with the system disabled.
+
+  // #142 Stage 1. The constraint that pays for receipt delivery, and the
+  // declaration-time refusal that keeps a caller from discovering it as a
+  // hang.
+  group('control-delivered commands', () {
+    test('a control handler writing component data trips the guard', () async {
+      final game = await _game(_BadControlGame());
+      final state = _state(game) as _BadControlState;
+      state.victim = state.loadedScenes.single.addEntity(state.level.unit);
+      // One committed tick, so the page has published - the assert stays
+      // silent before the first publish, which is scene bootstrap and the one
+      // hole in the guard.
+      state.advance(_step);
+
+      expect(
+        () => game.writeOutsideTick(),
+        throwsA(
+          isA<AssertionError>().having(
+            (e) => e.toString(),
+            'message',
+            contains('outside a tick'),
+          ),
+        ),
+        reason:
+            'there is no open write slot outside a tick, so the write would '
+            'be erased by the next beginTick with nothing said. The debug '
+            'assert is what turns a silent loss into a failure.',
+      );
+    });
+
+    test('a command that answers cannot be control-delivered', () async {
+      expect(
+        () => _game(_AnsweringGame()),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('cannot'), contains('hasSupplier')),
+          ),
+        ),
+        reason:
+            'a receipt-delivered command has no reply leg, so an R has '
+            'nowhere to come from. Failing at the declaration is the whole '
+            'point - the alternative is a caller awaiting a future that '
+            'never completes.',
+      );
+    });
+  });
   group('a system that throws', () {
     test('does not stop the listeners declared after it', () async {
       final game = await _game(_ThrowGame());

@@ -50,6 +50,44 @@ sorting. Several checks that used to let a mistake through now stop it.
 
 ### Added
 
+* **A command can be delivered when the message arrives instead of on the next
+  tick.** Register the handler with `hasControlSink` or `hasControlSignal`
+  instead of `hasSink`/`hasSignal` (#142).
+
+  ```dart
+  // in GameState.describeCommands
+  descriptor.hasControlSink(setTimeScale, (s) => state.timeScale = s);
+  ```
+
+  A normal command is pumped from `GameState.runFixedStep`, so it arrives only
+  if the tick runs. That is right for gameplay — a command-spawned entity is
+  visible to every system on the tick its command lands — and useless for
+  anything that *stops* the tick, because the message that starts it again
+  would be waiting on the tick it stopped. A control command is carried over
+  the control port and run from the port callback, with no tick involved.
+
+  Four things are true of it that are not true of `hasSink`, all following from
+  there being no tick:
+
+  * **Its future completes on send, not on execution.** `await` means "handed
+    to the port", not "done". There is no reply leg, because a reply would be
+    pumped inside the tick window this exists to work without.
+  * **Its handler must not write component data.** There is no open write slot
+    outside a tick, so a write would be erased by the next `beginTick` with
+    nothing said. A debug assert catches it.
+  * **That assert has one hole**: it stays silent while a page has never
+    published, which is scene bootstrap and nothing else. A running game is
+    covered.
+  * **No ordering against ordinary commands.** Two calls sent in order can run
+    in either, since they travel by different carriers.
+
+  `hasControlHandler` and `hasControlSupplier` exist and **always throw**. A
+  receipt-delivered command cannot answer, so the names that promise a reply
+  fail where they are written rather than hanging where they are called.
+
+  `CommandDescriptor` gained these four methods. Nothing outside the engine
+  implements it, so this affects no game.
+
 * **Pause, time scale and single-step.** There was no way to pause a game, run
   it in slow motion, or advance it one tick (#124).
 
