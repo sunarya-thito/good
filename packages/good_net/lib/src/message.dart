@@ -76,12 +76,21 @@ abstract class NetMessageBase {
   int get index => _index;
   int _index = -1;
 
-  /// Bytes one record of this message occupies, excluding header and mask.
-  int get strideBytes => _strideBytes;
-  int _strideBytes = 0;
+  /// Bytes one record of this message occupies, excluding header, mask and
+  /// any variable-length tail.
+  int get strideBytes => _layout.strideBytes;
 
-  int get fieldCount => _fieldCount;
-  int _fieldCount = 0;
+  int get fieldCount => _layout.fieldCount;
+
+  /// How this message's record is laid out. Kept rather than copied fact by
+  /// fact: a batch needs the head stride, the field count and where the tail
+  /// length lives, and the handshake hash needs what the fields *are*.
+  @internal
+  ParamLayout get layout => _layout;
+
+  /// Empty until [bind] runs, so an undeclared message reports a zero stride
+  /// and no fields rather than failing on a half-built object.
+  ParamLayout _layout = ParamLayout();
 
   /// This message's identity in the protocol, given at its declaration.
   ///
@@ -147,10 +156,9 @@ abstract class NetMessageBase {
     _protocolId = protocolId;
     _target = target;
     _channel = channel;
+    _layout = layout;
     describeParams(layout);
     layout.seal();
-    _strideBytes = layout.strideBytes;
-    _fieldCount = layout.fieldCount;
     _sender = sender;
   }
 

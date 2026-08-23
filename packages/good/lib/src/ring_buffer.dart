@@ -79,6 +79,14 @@ class RingBuffer {
     return (bd.getInt32(0, Endian.little), bd.getInt32(4, Endian.little));
   }
 
+  /// The largest payload one record can ever carry: the whole buffer, less
+  /// the record header that has to precede it.
+  ///
+  /// [tryWrite] refuses anything longer however empty the ring is, which is a
+  /// different failure from "full at the moment" and worth telling apart at
+  /// the call site - one is answered by waiting, the other never is.
+  int get maxPayloadBytes => capacityBytes - headerBytes;
+
   /// Encodes and appends one record. Returns `false` if the buffer is full
   /// (the caller decides the overflow policy - assert in debug, log + drop
   /// in release; this method itself never blocks or allocates). Only the

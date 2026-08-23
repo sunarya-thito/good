@@ -2,6 +2,34 @@
 
 ### Breaking
 
+* **`ParamDescriptor.hasString(int maxBytes)` is now `hasFixedString`, and
+  `hasString()` takes no capacity at all.** The unadorned name went to the
+  kind you should reach for first: a string whose length nobody has to guess.
+  Rename the call, or drop the argument and let the value size itself.
+
+  ```dart
+  name = descriptor.hasString();          // any length, kept in the record's tail
+  code = descriptor.hasFixedString(2);    // two bytes reserved inline, every record
+  ```
+
+  `hasFixedString` behaves exactly as `hasString(n)` did, overflow error
+  included, and is still the right answer where the bound is real — a
+  two-letter country code, a fixed-width digest. Everywhere else it reserved
+  its capacity in every record whether it was used or not, and refused a value
+  a byte over it (#146).
+
+* **`ParamLayouts` has one method where it had two.** `strideOf(index)` and
+  `fieldCountOf(index)` are replaced by `layoutOf(index)`, which returns the
+  `ParamLayout`. A record is no longer described by one number — it has a head
+  stride, a field count, and, if it declares a variable-length field, a slot
+  saying where its tail length is kept — and handing back the layout keeps
+  those together instead of copying each one onto whatever declared it. Only
+  something implementing `ParamLayouts` itself is affected; `CommandRegistry`
+  and `good_net`'s registry are the two in this repo (#146).
+
+* **`ParamBatch.append` takes the layout instead of a stride and a field
+  count**: `append(index, layout)`. Same reason (#146).
+
 * **`ParamDescriptor`'s integer and float declarations no longer take a
   default value.** `descriptor.hasInt32(100)` used to compile and then do
   nothing: `ParamLayout` never read the argument, and there was nowhere for it
@@ -36,6 +64,36 @@
   unaffected.
 
 ### Added
+
+* **A record field can hold a string or a list whose length is not declared up
+  front.** `hasString()` and `hasBytes()` size themselves from what is written
+  into them; `hasFixedString(n)` and `hasFixedBytes(n)` are the
+  capacity-reserving pair beside them. Commands and `good_net` messages share
+  the record layer, so both gained all four at once (#146).
+
+  A record keeps its fixed head — every pointer still resolves to a fixed
+  offset in it, so nothing about the `XPointer` pattern changes. A
+  variable-length field puts an offset and a length in that head and its bytes
+  in a **tail** behind it, and the record carries its own total tail length so
+  a receiver can still walk a batch forwards. A declaration with no
+  variable-length field is laid out exactly as before, tail slot and all
+  absent.
+
+  Two things to know before reaching for one. **A variable-length field is
+  written once per record** — the tail is filled by appending, so a second
+  value would have to move every field behind it, and a second write throws
+  rather than rearranging the record silently. And **reading a `hasBytes`
+  field hands back a view onto the batch's own bytes**, not a copy, which is
+  what keeps a per-tick network message off the allocator: read what you need
+  inside the call rather than keeping the list.
+
+* **A command batch too big for the command ring is refused at `send()`.**
+  Nothing is truncated and nothing is silently dropped. This is the bound a
+  length-free field has instead of a declared capacity, so it now says so:
+  the error names the batch's size, the ring's maximum, and
+  `Game.commandBufferBytes`. It is deliberately a different error from "the
+  ring is full", which is answered by waiting and this one never is.
+  `RingBuffer.maxPayloadBytes` is the number behind it (#146).
 
 * **A running animation can be stopped.** `stopAnimation(handle)` takes the
   `CoroutineFuture` that `startAnimation` returned and stops that one

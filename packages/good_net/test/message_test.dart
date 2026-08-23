@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:good/good.dart';
 import 'package:good_net/good_net.dart';
@@ -52,7 +54,7 @@ class _Chat extends NetMessage<({String text})> {
 
   @override
   void describeParams(ParamDescriptor descriptor) {
-    text = descriptor.hasString(32);
+    text = descriptor.hasFixedString(32);
   }
 
   @override
@@ -62,6 +64,69 @@ class _Chat extends NetMessage<({String text})> {
   @override
   ({String text}) paramsFromBuffer(ParamBuffer message) =>
       (text: text[message]);
+}
+
+/// A client's request whose payload has no declared length at all - the
+/// message that could not have been declared before #146.
+class _Post extends NetMessage<({String text, Uint8List blob})> {
+  late final ParamPointer<String> text;
+  late final ParamPointer<Uint8List> blob;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    text = descriptor.hasString();
+    blob = descriptor.hasBytes();
+  }
+
+  @override
+  void bufferFromParams(
+    ParamBuffer message,
+    ({String text, Uint8List blob}) params,
+  ) {
+    text[message] = params.text;
+    blob[message] = params.blob;
+  }
+
+  @override
+  ({String text, Uint8List blob}) paramsFromBuffer(ParamBuffer message) =>
+      (text: text[message], blob: Uint8List.fromList(blob[message]));
+}
+
+/// Two declarations the handshake hash could not tell apart before the field
+/// kinds went into it: a length-free string and a ten-byte inline field are
+/// both twelve bytes of head and one field. See [_TailKindState].
+class _TailKind extends NetMessage<({String value})> {
+  late final ParamPointer<String> value;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    value = descriptor.hasString();
+  }
+
+  @override
+  void bufferFromParams(ParamBuffer message, ({String value}) params) =>
+      value[message] = params.value;
+
+  @override
+  ({String value}) paramsFromBuffer(ParamBuffer message) =>
+      (value: value[message]);
+}
+
+class _InlineKind extends NetMessage<({Uint8List value})> {
+  late final ParamPointer<Uint8List> value;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    value = descriptor.hasFixedBytes(10);
+  }
+
+  @override
+  void bufferFromParams(ParamBuffer message, ({Uint8List value}) params) =>
+      value[message] = params.value;
+
+  @override
+  ({Uint8List value}) paramsFromBuffer(ParamBuffer message) =>
+      (value: Uint8List.fromList(value[message]));
 }
 
 /// The host's decision, run everywhere including on the host.
@@ -84,6 +149,7 @@ class _NetState extends GameState<_NetGame> with MultiplayerState<_NetGame> {
   late final _Score score;
   late final _RoundOver roundOver;
   late final _Ready ready;
+  late final _Post post;
 
   @override
   void describeNetwork(NetDescriptor descriptor) {
@@ -117,6 +183,13 @@ class _NetState extends GameState<_NetGame> with MultiplayerState<_NetGame> {
 
     ready = descriptor.has(_Ready(), id: 'ready');
     descriptor.hasSignal(ready, (from) => log.add('ready <- ${from.slot}'));
+
+    post = descriptor.has(_Post(), id: 'post');
+    descriptor.hasHandler(
+      post,
+      (params, from) =>
+          log.add('post ${params.text.length} ${params.blob.length}'),
+    );
   }
 }
 
@@ -182,6 +255,12 @@ class _OneMessageState extends GameState<_NetGame>
     descriptor.transport(LoopbackNetTransport());
     final message = descriptor.has(_make(), id: _id);
     if (message is NetMessage<({double angle, int weapon})>) {
+      descriptor.hasHandler(message, (params, from) {});
+    }
+    if (message is NetMessage<({String value})>) {
+      descriptor.hasHandler(message, (params, from) {});
+    }
+    if (message is NetMessage<({Uint8List value})>) {
       descriptor.hasHandler(message, (params, from) {});
     }
   }
@@ -250,6 +329,7 @@ class _SkewedGame extends _NetGame {
   @override
   GameState createState() => _SkewedState();
 }
+
 
 const Duration _step = Duration(milliseconds: 16);
 
@@ -521,6 +601,67 @@ void main() {
 
     expect(hostWatcher.log.last, 'left ${joined.slot} remoteClose');
     expect(clientWatcher.log.last, 'closed localClose');
+  });
+
+  test('a message carries a payload no declaration could have sized', () async {
+    final host = await boot(_NetGame());
+    final client = await boot(_NetGame());
+    await stateOf(host).network.host(SessionOptions(id: SessionId('DDDDDD')));
+    await stateOf(client).network.join(SessionId('DDDDDD'));
+    exchange([host, client]);
+    stateOf(host).log.clear();
+
+    // 120,000 bytes of UTF-8 and 70,000 raw. Both are past 0xFFFF, which is
+    // the largest capacity hasFixedString and hasFixedBytes will accept -
+    // their reservation sits behind a 16-bit length prefix. So this is not a
+    // payload the old vocabulary could have declared a field for, let alone
+    // sent, which is what makes the round trip worth asserting.
+    final text = 'π' * 40000;
+    final blob = Uint8List.fromList(
+      List<int>.generate(70000, (i) => (i * 7) & 0xFF),
+    );
+    stateOf(client).post((text: text, blob: blob));
+    exchange([host, client]);
+
+    expect(stateOf(host).log, <String>['post 40000 70000']);
+  });
+
+  test('a length-free field is a different message from an inline one of the '
+      'same width', () async {
+    final tail = await boot(_OneMessageGame(_TailKind.new, 'kind'));
+    final inline = await boot(_OneMessageGame(_InlineKind.new, 'kind'));
+
+    NetMessageBase firstMessageOf(Game game) => (game.state as MultiplayerState)
+        .getSystem<NetworkSystem>()
+        .registry[0];
+    int hashOf(Game game) => (game.state as MultiplayerState)
+        .getSystem<NetworkSystem>()
+        .registry
+        .schemaHash;
+
+    final tailMessage = firstMessageOf(tail);
+    final inlineMessage = firstMessageOf(inline);
+    expect(
+      tailMessage.strideBytes,
+      inlineMessage.strideBytes,
+      reason:
+          'twelve bytes of head either way - a tail length, an offset and a '
+          'length for one, a 16-bit length and ten reserved bytes for the '
+          'other',
+    );
+    expect(tailMessage.fieldCount, inlineMessage.fieldCount);
+
+    expect(
+      hashOf(tail),
+      isNot(hashOf(inline)),
+      reason:
+          'so a hash made of stride and field count could not have told them '
+          'apart, and the peers would have formed a session. The damage is '
+          'not one misread field: one end reads twelve head bytes and stops, '
+          'the other reads a tail length out of those same bytes and loses '
+          'every record behind it in the batch. That is why the field kinds '
+          'are in the hash and #141 still holds - a kind is wire format.',
+    );
   });
 
   test('the schema hash tracks the message declarations and nothing else', () async {

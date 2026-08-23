@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:good/src/command/command.dart';
 import 'package:good/src/command/param.dart';
+import 'package:good/src/command/transport.dart';
+import 'package:good/src/ring_buffer.dart';
 import 'package:good/src/struct.dart';
 
 // The command API's two lower layers - the parameter record and the
@@ -72,7 +74,7 @@ class _Log extends SinkCommand<String> {
 
   @override
   void describeParams(ParamDescriptor descriptor) {
-    message = descriptor.hasString(32);
+    message = descriptor.hasFixedString(32);
   }
 
   @override
@@ -113,7 +115,7 @@ class _Wide extends GameCommand<int, int> {
     i64 = descriptor.hasInt64();
     f32 = descriptor.hasFloat32();
     f64 = descriptor.hasFloat64();
-    name = descriptor.hasString(16);
+    name = descriptor.hasFixedString(16);
   }
 
   @override
@@ -165,6 +167,53 @@ class _OrderUnit extends GameCommand<_Order, Entity> {
   Entity resultFromBuffer(ParamBuffer call) => escort[call];
 }
 
+typedef _Note = ({String body, Uint8List blob});
+
+/// The variable-length reference command. Two fields whose length is not
+/// declared up front, with fixed fields in front of, between and behind them,
+/// so the head arithmetic has to keep working around the tail descriptors -
+/// and a variable-length *result*, which is the case that makes a record grow
+/// after the records behind it have already been placed.
+class _Publish extends GameCommand<_Note, String> {
+  late final ParamPointer<int> topic;
+  late final ParamPointer<String> body;
+  late final ParamPointer<Uint8List> blob;
+  late final ParamPointer<int> stamp;
+  late final ParamPointer<String> receipt;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    topic = descriptor.hasUint16();
+    body = descriptor.hasString();
+    blob = descriptor.hasBytes();
+    stamp = descriptor.hasInt64();
+    receipt = descriptor.hasString();
+  }
+
+  @override
+  void bufferFromParams(ParamBuffer call, _Note params) {
+    topic[call] = 7;
+    body[call] = params.body;
+    blob[call] = params.blob;
+    stamp[call] = -9000000000000000000;
+  }
+
+  @override
+  _Note paramsFromBuffer(ParamBuffer call) => (
+    body: body[call],
+    // Copied, because the list handed back is a view onto the batch's own
+    // bytes and writing this call's result moves them.
+    blob: Uint8List.fromList(blob[call]),
+  );
+
+  @override
+  void bufferFromResult(ParamBuffer call, String result) =>
+      receipt[call] = result;
+
+  @override
+  String resultFromBuffer(ParamBuffer call) => receipt[call];
+}
+
 class _Unhandled extends SignalCommand {}
 
 /// Runs handlers in place instead of sending anywhere - the transport seam,
@@ -193,7 +242,10 @@ final class _Loopback implements CommandSender {
     final received = CommandBatch(batch.id, initialBytes: wire.length)
       ..adoptIncoming(wire, registry);
     registry.dispatch(received);
-    batch.adoptReply(Uint8List.sublistView(received.bytes, 0, received.length));
+    batch.adoptReply(
+      Uint8List.sublistView(received.bytes, 0, received.length),
+      registry,
+    );
   }
 }
 
@@ -647,6 +699,28 @@ void main() {
       );
     });
 
+    test('a declaration with no variable-length field carries no tail', () {
+      final r = _registry();
+      final damage = r.registry.declare(_Damage());
+      GameCommandDescriptor(r.registry).hasHandler(damage, (p) => 0);
+
+      expect(damage.layout.hasTail, isFalse);
+      expect(damage.layout.tailSlotByte, -1);
+
+      final batch = r.registry.createCommandBatch();
+      damage.execute((amount: 1, crit: false), batch);
+      expect(
+        batch.length,
+        ParamBatch.headerBytes +
+            ParamBuffer.maskBytesFor(damage.layout.fieldCount) +
+            damage.strideBytes,
+        reason:
+            'the tail is declared by the first variable-length field and by '
+            'nothing else, so a record made only of numbers is the same '
+            'bytes it always was - no length slot nobody would ever read',
+      );
+    });
+
     test('two calls of one command do not share bytes', () {
       final r = _registry();
       final damage = r.registry.declare(_Damage());
@@ -663,6 +737,209 @@ void main() {
         reason:
             "and neither do their written-masks - b's writes must not "
             "make a's results look present",
+      );
+    });
+  });
+
+  group('variable-length fields', () {
+    test('a string no fixed field could have held round-trips', () async {
+      final r = _registry();
+      final publish = r.registry.declare(_Publish());
+      late _Note seen;
+      GameCommandDescriptor(r.registry).hasHandler(publish, (p) {
+        seen = p;
+        return 'stored';
+      });
+
+      // U+03C0 is two bytes of UTF-8, so this is 180,000 bytes - nearly
+      // three times what the *largest declarable* capacity-capped field could
+      // have held, and the length that makes this test able to fail. A
+      // payload under 0xFFFF would round-trip identically against the old
+      // inline layout and prove nothing about the tail.
+      final body = 'π' * 90000;
+      expect(
+        () => ParamLayout().hasFixedString(body.length * 3),
+        throwsArgumentError,
+        reason:
+            'no capacity-capped declaration can accept this length at all - '
+            'the reservation sits behind a 16-bit length prefix',
+      );
+
+      final blob = Uint8List.fromList(
+        List<int>.generate(100000, (i) => i & 0xFF),
+      );
+      final receipt = await publish((body: body, blob: blob));
+
+      expect(seen.body.length, 90000);
+      expect(seen.body, body);
+      expect(seen.blob, blob);
+      expect(receipt, 'stored');
+      expect(
+        publish.layout.hasTail,
+        isTrue,
+        reason: 'and the head still has a stride, it just is not the record',
+      );
+    });
+
+    test('an empty value is a written value, not an absent one', () async {
+      final r = _registry();
+      final publish = r.registry.declare(_Publish());
+      late _Note seen;
+      GameCommandDescriptor(r.registry).hasHandler(publish, (p) {
+        seen = p;
+        return '';
+      });
+
+      final receipt = await publish((body: '', blob: Uint8List(0)));
+      expect(seen.body, '');
+      expect(seen.blob, isEmpty);
+      expect(
+        receipt,
+        '',
+        reason:
+            'the written-mask is what says a field was set, so a zero-length '
+            'tail still reads back rather than throwing',
+      );
+    });
+
+    test('reading a variable-length field nobody wrote throws', () {
+      final r = _registry();
+      final publish = r.registry.declare(_Publish());
+      GameCommandDescriptor(r.registry).hasHandler(publish, (p) => 'x');
+
+      final call = publish.execute((body: 'hi', blob: Uint8List(0)));
+      expect(
+        () => publish.receipt[call],
+        throwsStateError,
+        reason:
+            'a tail field carries its own mask bit like every other kind - '
+            'an offset and a length of zero is not "the empty string"',
+      );
+    });
+
+    test('a variable-length field is written once', () {
+      final r = _registry();
+      final publish = r.registry.declare(_Publish());
+      GameCommandDescriptor(r.registry).hasHandler(publish, (p) => 'x');
+
+      final call = publish.execute((body: 'first', blob: Uint8List(0)));
+      expect(
+        () {
+          publish.body[call] = 'second';
+        },
+        throwsStateError,
+        reason:
+            'the tail is filled by appending, so a second value cannot take '
+            'the first one\'s place without moving every field behind it - '
+            'and silently rearranging a record is worse than saying so',
+      );
+      expect(publish.body[call], 'first');
+    });
+
+    test('growing a record re-points the handles behind it', () {
+      final r = _registry();
+      final publish = r.registry.declare(_Publish());
+      final damage = r.registry.declare(_Damage());
+      final descriptor = GameCommandDescriptor(r.registry);
+      descriptor.hasHandler(publish, (p) => 'x');
+      descriptor.hasHandler(damage, (p) => 0);
+
+      final batch = r.registry.createCommandBatch();
+      final note = publish.execute((
+        body: 'a',
+        blob: Uint8List(0),
+      ), batch);
+      final blow = damage.execute((amount: 4242, crit: true), batch);
+
+      // The second record is already placed when the first one's result is
+      // written, so 5,000 bytes have to be inserted in front of it.
+      publish.receipt[note] = 'z' * 5000;
+
+      expect(
+        batch.indexAt(1),
+        damage.index,
+        reason:
+            'the second handle has to arrive at the front of its own record '
+            'after the shift - the two header bytes it reads are what routes '
+            'the record back to the command that wrote it',
+      );
+      expect(damage.amount[blow], 4242);
+      expect(damage.crit[blow], 1);
+      expect(publish.body[note], 'a');
+      expect(publish.receipt[note].length, 5000);
+    });
+
+    test('a record that grows moves the records behind it', () async {
+      final r = _registry();
+      final publish = r.registry.declare(_Publish());
+      final damage = r.registry.declare(_Damage());
+      final descriptor = GameCommandDescriptor(r.registry);
+      descriptor.hasHandler(publish, (p) => 'z' * 50000);
+      descriptor.hasHandler(damage, (p) => p.amount * 10);
+
+      final batch = r.registry.createCommandBatch();
+      final note = batch.execute(publish, (
+        body: 'short',
+        blob: Uint8List.fromList([1, 2, 3]),
+      ));
+      final blow = batch.execute(damage, (amount: 4242, crit: true));
+      final results = await batch.send();
+
+      expect(
+        note[results].length,
+        50000,
+        reason:
+            'the first record grew by 50,000 bytes when its handler answered, '
+            'long after the second one had been placed behind it',
+      );
+      expect(
+        blow[results],
+        42420,
+        reason:
+            'and the record behind it was moved along rather than written '
+            'over - its handle was re-pointed with the bytes',
+      );
+    });
+
+    test('a batch too big for the command ring is refused, not truncated', () {
+      final transport = CommandTransport();
+      final registry = CommandRegistry(transport, simulating: false);
+      transport.registry = registry;
+      final publish = registry.declare(_Publish());
+      // Handled on the game isolate, which this copy is not, so the batch has
+      // to leave through the ring.
+      GameCommandDescriptor(registry).hasHandler(publish, (p) => 'x');
+      final ring = RingBuffer(1024);
+      addTearDown(ring.dispose);
+      transport.outbound = ring;
+
+      final batch = registry.createCommandBatch();
+      batch.execute(publish, (body: 'x' * 4000, blob: Uint8List(0)));
+
+      expect(
+        () {
+          batch.send();
+        },
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('will never fit'),
+          ),
+        ),
+        reason:
+            'a variable-length field is bounded by the carrier rather than by '
+            'its declaration, and this is that bound said out loud - a batch '
+            'over it can never be drained into, so "the ring is full" would '
+            'be the wrong answer',
+      );
+
+      final drained = <RingBufferRecord>[];
+      ring.drainInto(drained);
+      expect(
+        drained,
+        isEmpty,
+        reason: 'and nothing partial was placed on the way to finding out',
       );
     });
   });

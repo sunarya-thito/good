@@ -172,6 +172,21 @@ final class CommandTransport implements CommandSender {
         'their addresses as part of coming up.',
       );
     }
+    // The batch itself grows to hold whatever was written into it, including
+    // a variable-length field's tail, so the only bound on a record's size is
+    // the ring's - and a batch over that bound will not fit however long the
+    // other isolate is given to drain. Checked here rather than left to
+    // [tryWrite]'s `false`, which cannot tell the two apart.
+    if (_idBytes + batch.length > ring.maxPayloadBytes) {
+      throw StateError(
+        'this command batch is ${batch.length} bytes and the command ring can '
+        'carry at most ${ring.maxPayloadBytes - _idBytes} in one record, so '
+        'it will never fit - draining does not help. Raise '
+        'Game.commandBufferBytes, split the batch, or send a shorter value: '
+        'a variable-length parameter is bounded by the carrier rather than by '
+        'its declaration, and this is that bound.',
+      );
+    }
     final pending = _Pending(batch, Completer<void>());
     _pending[batch.id] = pending;
     if (!_write(ring, requestRecord, batch.id, batch.bytes, batch.length)) {
@@ -229,7 +244,9 @@ final class CommandTransport implements CommandSender {
       // later in this same pump, after arbitrary handler code) and a reply
       // (which is copied over a batch the caller still holds) outlive this
       // loop.
-      final bytes = Uint8List.fromList(Uint8List.sublistView(payload, 4));
+      final bytes = Uint8List.fromList(
+        Uint8List.sublistView(payload, _idBytes),
+      );
       if (record.recordType == requestRecord) {
         _inbox.add(
           _Inbound(
@@ -251,7 +268,7 @@ final class CommandTransport implements CommandSender {
         );
         continue;
       }
-      pending.batch.adoptReply(bytes);
+      pending.batch.adoptReply(bytes, registry);
       pending.completer.complete();
     }
   }
@@ -293,6 +310,9 @@ final class CommandTransport implements CommandSender {
     _inbox.removeRange(0, due);
   }
 
+  /// The batch id in front of every ring record - see [_write].
+  static const int _idBytes = 4;
+
   /// Writes `[uint32 id][batch bytes]` as one ring record.
   bool _write(
     RingBuffer ring,
@@ -301,11 +321,15 @@ final class CommandTransport implements CommandSender {
     Uint8List bytes,
     int length,
   ) {
-    final needed = 4 + length;
+    final needed = _idBytes + length;
     if (_scratch.length < needed) _scratch = Uint8List(needed);
     final scratch = _scratch;
-    ByteData.sublistView(scratch, 0, 4).setUint32(0, id, Endian.little);
-    scratch.setRange(4, needed, bytes);
+    ByteData.sublistView(
+      scratch,
+      0,
+      _idBytes,
+    ).setUint32(0, id, Endian.little);
+    scratch.setRange(_idBytes, needed, bytes);
     return ring.tryWrite(recordType, Uint8List.sublistView(scratch, 0, needed));
   }
 

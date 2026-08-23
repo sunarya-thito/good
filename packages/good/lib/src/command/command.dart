@@ -52,11 +52,20 @@ abstract class GameCommandBase {
   int get index => _index;
   int _index = -1;
 
-  /// Bytes one call of this command occupies, excluding header and mask.
-  int get strideBytes => _strideBytes;
-  int _strideBytes = 0;
+  /// Bytes one call of this command occupies, excluding header, mask and any
+  /// variable-length tail.
+  int get strideBytes => _layout.strideBytes;
 
-  int _fieldCount = 0;
+  /// How this command's record is laid out. Kept rather than copied field by
+  /// field: a batch needs the head stride, the field count and where the tail
+  /// length lives, and three copies of one object's facts is three things to
+  /// keep in step.
+  @internal
+  ParamLayout get layout => _layout;
+
+  /// Empty until [bind] runs, so an undeclared command reports a zero stride
+  /// and no fields rather than failing on a half-built object.
+  ParamLayout _layout = ParamLayout();
 
   CommandSender? _sender;
 
@@ -97,10 +106,9 @@ abstract class GameCommandBase {
   @internal
   void bind(int index, ParamLayout descriptor, CommandSender sender) {
     _index = index;
+    _layout = descriptor;
     describeParams(descriptor);
     descriptor.seal();
-    _strideBytes = descriptor.strideBytes;
-    _fieldCount = descriptor.fieldCount;
     _sender = sender;
   }
 
@@ -142,7 +150,7 @@ abstract class GameCommandBase {
     // Where this call is going, decided by where its handler was registered -
     // and, for a batch that already holds calls, checked against theirs.
     target.routeTo(_handlerSide!, _handlerDelivery, runtimeType);
-    return target.append(_index, _strideBytes, _fieldCount);
+    return target.append(_index, _layout);
   }
 
   CommandSender _requireSender() {
@@ -571,10 +579,7 @@ final class CommandRegistry implements ParamLayouts {
       index >= 0 && index < _commands.length ? _commands[index] : null;
 
   @override
-  int strideOf(int index) => _requireAt(index).strideBytes;
-
-  @override
-  int fieldCountOf(int index) => _requireAt(index)._fieldCount;
+  ParamLayout layoutOf(int index) => _requireAt(index).layout;
 
   GameCommandBase _requireAt(int index) {
     final command = tryAt(index);

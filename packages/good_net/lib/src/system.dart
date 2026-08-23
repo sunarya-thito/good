@@ -447,7 +447,7 @@ class NetworkSystem extends GameSystem
       message.invoke(record, localPeer);
 
   ParamBuffer _append(ParamBatch batch, NetMessageBase message) =>
-      batch.append(message.index, message.strideBytes, message.fieldCount);
+      batch.append(message.index, message.layout);
 
   ParamBatch _batchFor(int slot, NetChannel channel) {
     while (_perPeer.length <= slot) {

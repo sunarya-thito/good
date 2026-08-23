@@ -3664,9 +3664,16 @@ final class _ReportDisabledSystemCommand
 
   @override
   void describeParams(ParamDescriptor descriptor) {
-    systemName = descriptor.hasString(maxSystemNameBytes);
-    error = descriptor.hasString(maxErrorBytes);
-    stackTrace = descriptor.hasString(maxStackTraceBytes);
+    // Capped on purpose, and one of the few places where that is the right
+    // answer rather than the only one available. This command reports a system
+    // that threw, so it travels while the game is already in trouble: a
+    // length-free hasString() would put an unbounded stack trace on the
+    // command ring, and a batch too big for the ring throws at the send -
+    // inside the path reporting somebody else's throw. See
+    // [_truncateToUtf8Bytes].
+    systemName = descriptor.hasFixedString(maxSystemNameBytes);
+    error = descriptor.hasFixedString(maxErrorBytes);
+    stackTrace = descriptor.hasFixedString(maxStackTraceBytes);
   }
 
   @override
@@ -3693,7 +3700,7 @@ final class _ReportDisabledSystemCommand
 /// [text] cut to at most [maxBytes] **bytes** of UTF-8, on a character
 /// boundary.
 ///
-/// The boundary matters. `hasString` reserves a byte count and refuses a
+/// The boundary matters. `hasFixedString` reserves a byte count and refuses a
 /// write that does not fit, so a cut through the middle of a multi-byte
 /// character cannot simply be decoded with `allowMalformed`: the malformed
 /// tail comes back as U+FFFD, which re-encodes to three bytes and can push

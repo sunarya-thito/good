@@ -49,11 +49,28 @@ abstract class ParamPointer<T> {
 /// (which otherwise reads as a plausible zero and gets acted on).
 final class ParamBuffer {
   @internal
-  ParamBuffer(this.batch, this.maskOffset, this.offset, this.fieldCount);
+  ParamBuffer(
+    this.batch,
+    this.ordinal,
+    this.layout,
+    this.maskOffset,
+    this.offset,
+  );
 
   /// The record set these bytes live in. Fixed for life - a handle belongs
   /// to one batch even when its *position* in that batch is re-pointed.
   final ParamBatch batch;
+
+  /// Which record of [batch] this is, counting from zero.
+  ///
+  /// A record's tail sits directly behind its head, so a record that grows
+  /// pushes every record behind it along. That fix-up has to find the records
+  /// behind this one, and the ordinal is how.
+  int ordinal;
+
+  /// The declaration these bytes are laid out by: where the fixed head ends,
+  /// how many fields the mask covers, and where the tail length is kept.
+  ParamLayout layout;
 
   /// Where this call's written-mask starts inside [batch].
   ///
@@ -67,20 +84,26 @@ final class ParamBuffer {
   int offset;
 
   /// How many fields the declaration has - the size of the written-mask.
-  int fieldCount;
+  int get fieldCount => layout.fieldCount;
+
+  /// Where this record's variable-length tail starts inside [batch], which is
+  /// directly behind its fixed head. For a declaration with no
+  /// variable-length field this is simply where the record ends.
+  int get tailAt => offset + layout.strideBytes;
 
   /// Re-points this handle at another record of the same batch.
   ///
-  /// The three offsets are not `final` for one reason: a batch parsed off the
+  /// The offsets are not `final` for one reason: a batch parsed off the
   /// wire is parsed **every tick**, and allocating one handle per record per
   /// tick is exactly the per-frame garbage the no-allocation rule exists to
   /// prevent. So [ParamBatch] keeps its handles and re-points them, and these
   /// fields are mutable to let it - see [ParamBatch.reset], which is the only
   /// thing that makes an outstanding handle stale.
-  void _bind(int maskOffset, int offset, int fieldCount) {
+  void _bind(int ordinal, ParamLayout layout, int maskOffset, int offset) {
+    this.ordinal = ordinal;
+    this.layout = layout;
     this.maskOffset = maskOffset;
     this.offset = offset;
-    this.fieldCount = fieldCount;
   }
 
   /// Bytes of mask a command with [fieldCount] fields needs.
@@ -118,14 +141,22 @@ final class ParamBuffer {
 ///
 /// # Why the layout is not negotiable per batch
 ///
-/// Every record is `[uint16 index][written-mask][payload]`, and the index is
-/// a position in a declaration order both ends ran. That is what lets the
+/// Every record is `[uint16 index][written-mask][head][tail]`, and the index
+/// is a position in a declaration order both ends ran. That is what lets the
 /// receiver walk a buffer it did not build without a length prefix per
 /// record - and what makes a *disagreement* about that order detectable
 /// (see [adoptIncoming]) rather than silently misread. Across isolates the
 /// two copies run the same pass, so they cannot disagree; across machines
 /// they can, which is why `good_net` puts a hash of the declaration order in
 /// its handshake instead of trusting it.
+///
+/// The head is the declaration's stride and is where every pointer resolves
+/// to. The tail is present only for a declaration that has a variable-length
+/// field, holds those fields' bytes, and carries its own total length in the
+/// head - so the walk stays a forward walk over records whose size it can
+/// work out, without the record having to be one fixed size. See
+/// [ParamDescriptor], which is where the difference between this and an
+/// archetype row is set out.
 class ParamBatch {
   ParamBatch({int initialBytes = defaultBytes})
     // ignore: prefer_initializing_formals - _bytes is reassigned on
@@ -148,6 +179,16 @@ class ParamBatch {
   /// around it is not its own.
   int _base = 0;
   int _end = 0;
+
+  /// Whether [_bytes] belongs to this batch.
+  ///
+  /// False for a batch parsed by [adoptIncoming], which is a window onto
+  /// someone else's buffer - a transport's receive buffer, holding other
+  /// batches on either side of this one. Reading through that window is the
+  /// whole point; *growing* a record inside it would write over a neighbour,
+  /// so the first write that needs room takes a private copy first. See
+  /// [_growTail], which is the only thing that needs the distinction today.
+  bool _owned = true;
 
   /// Record handles, live ones first. Longer than [callCount] once a batch
   /// has held more records than it holds now - those are pooled, not leaked.
@@ -200,49 +241,106 @@ class ParamBatch {
   }
 
   /// A handle for the record range just reserved - pooled, see [reset].
-  ParamBuffer _record(int maskAt, int payloadAt, int fieldCount) {
-    if (_callCount < _calls.length) {
-      final reused = _calls[_callCount++];
-      reused._bind(maskAt, payloadAt, fieldCount);
+  ParamBuffer _record(int maskAt, int payloadAt, ParamLayout layout) {
+    final ordinal = _callCount++;
+    if (ordinal < _calls.length) {
+      final reused = _calls[ordinal];
+      reused._bind(ordinal, layout, maskAt, payloadAt);
       return reused;
     }
-    final made = ParamBuffer(this, maskAt, payloadAt, fieldCount);
+    final made = ParamBuffer(this, ordinal, layout, maskAt, payloadAt);
     _calls.add(made);
-    _callCount++;
     return made;
   }
 
-  /// Reserves [stride] bytes for one record of the declaration at [index],
-  /// and returns the handle to write it through.
+  /// Grows the backing buffer to hold at least [needed] bytes, keeping what
+  /// is already there.
   ///
-  /// Growth is amortized doubling and copies what is already there - the same
-  /// "grow without losing what it held" pattern `VertexBatch2D` uses - so a
-  /// batch that turns out to be bigger than guessed costs one copy, not a
-  /// dropped call.
-  ParamBuffer append(int index, int stride, int fieldCount) {
-    final start = _end;
-    final maskBytes = ParamBuffer.maskBytesFor(fieldCount);
-    final needed = start + _headerBytes + maskBytes + stride;
-    if (needed > _bytes.length) {
-      var size = _bytes.isEmpty ? 256 : _bytes.length;
-      while (size < needed) {
-        size *= 2;
-      }
-      final grown = Uint8List(size)..setRange(0, _end, _bytes);
-      _bytes = grown;
-      _data = ByteData.sublistView(grown);
+  /// Amortized doubling and a copy - the same "grow without losing what it
+  /// held" pattern `VertexBatch2D` uses - so a batch that turns out bigger
+  /// than guessed costs one copy, not a dropped call.
+  void _reserve(int needed) {
+    if (needed <= _bytes.length) return;
+    var size = _bytes.isEmpty ? defaultBytes : _bytes.length;
+    while (size < needed) {
+      size *= 2;
     }
+    final grown = Uint8List(size)..setRange(0, _end, _bytes);
+    _bytes = grown;
+    _data = ByteData.sublistView(grown);
+  }
+
+  /// Copies an adopted view into a buffer this batch owns, rebased to zero.
+  void _privatize() {
+    final length = _end - _base;
+    final fresh = Uint8List(length)..setRange(0, length, _bytes, _base);
+    for (var i = 0; i < _callCount; i++) {
+      final call = _calls[i];
+      call.maskOffset -= _base;
+      call.offset -= _base;
+    }
+    _bytes = fresh;
+    _data = ByteData.sublistView(fresh);
+    _base = 0;
+    _end = length;
+    _owned = true;
+  }
+
+  /// Makes room for [count] bytes at the end of [call]'s tail, and answers
+  /// where in [bytes] they start.
+  ///
+  /// A record's tail sits directly behind its own head rather than in a pool
+  /// at the end of the batch, so that a record stays one contiguous run of
+  /// bytes and [adoptIncoming] can keep walking forwards. The cost is that
+  /// growing a record in the middle of a batch moves every record behind it.
+  /// That is a memmove and a handle fix-up rather than a refusal, because the
+  /// case it exists for is a handler writing a variable-length **result**
+  /// into a call that is not the last one in its batch, and "send fewer calls
+  /// per batch" is no kind of answer to that.
+  int _growTail(ParamBuffer call, int count) {
+    assert(
+      call.layout.hasTail,
+      'only a declaration with a variable-length field has a tail to grow',
+    );
+    if (!_owned) _privatize();
+    final slot = call.offset + call.layout.tailSlotByte;
+    final tailBytes = _data.getUint32(slot, Endian.little);
+    final at = call.tailAt + tailBytes;
+    _reserve(_end + count);
+    // Backwards, because source and destination overlap.
+    for (var i = _end - 1; i >= at; i--) {
+      _bytes[i + count] = _bytes[i];
+    }
+    _bytes.fillRange(at, at + count, 0);
+    _end += count;
+    for (var i = call.ordinal + 1; i < _callCount; i++) {
+      final later = _calls[i];
+      later.maskOffset += count;
+      later.offset += count;
+    }
+    _data.setUint32(slot, tailBytes + count, Endian.little);
+    return at;
+  }
+
+  /// Reserves one record of the declaration at [index] - header, mask and
+  /// fixed head - and returns the handle to write it through.
+  ///
+  /// Only the head is reserved here. A variable-length field appends its
+  /// bytes to the record's tail as it is written, which is what lets a
+  /// declaration hold a string nobody sized in advance.
+  ParamBuffer append(int index, ParamLayout layout) {
+    final start = _end;
+    final maskBytes = ParamBuffer.maskBytesFor(layout.fieldCount);
+    final needed = start + _headerBytes + maskBytes + layout.strideBytes;
+    _reserve(needed);
     _data.setUint16(start, index, Endian.little);
     // The reserved range is not guaranteed clean - a grown buffer is, but a
     // reused one is not - and a stale mask byte would report a field as
-    // written that nobody wrote.
+    // written that nobody wrote. It is also what starts the tail length at
+    // zero, which every variable-length write counts up from.
     _bytes.fillRange(start + _headerBytes, needed, 0);
     _end = needed;
-    return _record(
-      start + _headerBytes,
-      start + _headerBytes + maskBytes,
-      fieldCount,
-    );
+    return _record(start + _headerBytes, start + _headerBytes + maskBytes, layout);
   }
 
   /// Two bytes of "which declaration is this", ahead of every record. The
@@ -255,11 +353,12 @@ class ParamBatch {
   /// Rebuilds the record handles for a batch that arrived as bytes.
   ///
   /// The wire format is self-describing given the declaration list: each
-  /// record starts with its index, and the index gives the stride, so the
-  /// walk needs nothing the receiving side does not already have. It is also
-  /// what makes a mismatched declaration list *detectable* rather than
-  /// silently misread - a stride that does not add up runs off the end of the
-  /// buffer and says so.
+  /// record starts with its index, the index gives the head stride, and a
+  /// declaration that carries a tail keeps that tail's length in its own
+  /// head. So the walk needs nothing the receiving side does not already
+  /// have. It is also what makes a mismatched declaration list *detectable*
+  /// rather than silently misread - a record whose length does not add up
+  /// runs off the end of the buffer and says so.
   ///
   /// Reads the records in `[offset, offset + length)` of [wire], defaulting
   /// to the whole of it.
@@ -282,17 +381,24 @@ class ParamBatch {
       _bytes = wire;
       _data = ByteData.sublistView(wire);
     }
+    _owned = false;
     _base = offset;
     _end = offset + (length ?? wire.length - offset);
     _callCount = 0;
     var at = _base;
     while (at < _end) {
       final index = _data.getUint16(at, Endian.little);
-      final fieldCount = layouts.fieldCountOf(index);
-      final maskBytes = ParamBuffer.maskBytesFor(fieldCount);
+      final layout = layouts.layoutOf(index);
+      final maskBytes = ParamBuffer.maskBytesFor(layout.fieldCount);
       final maskAt = at + _headerBytes;
       final payloadAt = maskAt + maskBytes;
-      final end = payloadAt + layouts.strideOf(index);
+      var end = payloadAt + layout.strideBytes;
+      // The tail length is read out of the head, so the head has to be inside
+      // the buffer before it can be trusted - a truncated record would
+      // otherwise be read as a wild length rather than as the overrun it is.
+      if (end <= _end && layout.hasTail) {
+        end += _data.getUint32(payloadAt + layout.tailSlotByte, Endian.little);
+      }
       if (end > _end) {
         throw StateError(
           'a param batch ran off its own end: record at byte ${at - _base} '
@@ -303,7 +409,7 @@ class ParamBatch {
           'the two peers are not running the same build.',
         );
       }
-      _record(maskAt, payloadAt, fieldCount);
+      _record(maskAt, payloadAt, layout);
       at = end;
     }
   }
@@ -405,12 +511,16 @@ final class CommandBatch extends ParamBatch {
   }
 
   @internal
-  void adoptReply(Uint8List reply) {
-    // Same length and same layout by construction - a reply is these records
-    // with the handler's writes added - so the ParamBuffers the caller is
-    // still holding keep pointing at the right offsets, and the masks that
-    // come back are the ones the handler set.
-    _bytes.setRange(0, reply.length, reply);
+  void adoptReply(Uint8List reply, ParamLayouts layouts) {
+    // Re-walked rather than copied over the bytes that are here. A reply is
+    // these records with the handler's writes added, and a handler that wrote
+    // a variable-length result made its record longer - so the offsets the
+    // caller's ParamBuffers hold are no longer where those records are.
+    // [adoptIncoming] re-points the very same pooled handles in the very same
+    // record order they were appended in, so a caller still holding the
+    // buffer it wrote its parameters through reads its own results back out
+    // of it.
+    adoptIncoming(reply, layouts);
   }
 }
 
@@ -477,23 +587,44 @@ abstract interface class CommandSender {
 /// down at it would be a cycle. `CommandRegistry` implements it for
 /// commands; `good_net`'s message registry implements it for messages.
 abstract interface class ParamLayouts {
-  /// Payload bytes for the declaration at [index], excluding header and
-  /// mask.
-  int strideOf(int index);
-
-  /// How many fields the declaration at [index] has.
-  int fieldCountOf(int index);
+  /// The layout of the declaration at [index].
+  ///
+  /// One method rather than a getter per fact. A walk needs the head stride,
+  /// the field count and where the tail length is kept, and those three are
+  /// one object's business already - handing back the [ParamLayout] keeps
+  /// them where they are computed instead of copying each onto whatever
+  /// declared it and hoping the copies stay in step.
+  ParamLayout layoutOf(int index);
 }
 
 /// Declares one command's parameter and result fields.
 ///
 /// The vocabulary is `DataDescriptor`'s, on purpose: a game that knows how to
 /// lay out a component already knows how to lay out a command, and the two
-/// really are the same problem - a fixed-width, bit-packed record. What is
-/// deliberately absent is anything variable-length: a command record has a
-/// stride, exactly like an archetype row, so a `String` or a `List` field
-/// declares its capacity up front and a value that does not fit is an error
-/// rather than a resize.
+/// really are the same problem - a bit-packed record.
+///
+/// # Where it stops being the same problem
+///
+/// An archetype row genuinely needs a stride: a page is an array of rows and
+/// a row is *reached* by multiplying, so a variable-length field would break
+/// random access outright. A record is not reached that way. It is walked
+/// forwards from the front of a batch, and pre-built handles hold absolute
+/// offsets, so the stride is used as a record *length* and never as a
+/// multiplier. That is a weaker requirement, and this vocabulary used to
+/// answer the stronger one anyway.
+///
+/// So a record has a fixed **head** and, if it declares a variable-length
+/// field, a **tail** behind it. [hasString] and [hasBytes] put an offset and
+/// a length in the head and their payload in the tail; the record's total
+/// tail length lives in the head too, which is what keeps the walk
+/// self-describing. A pointer still resolves to a fixed offset in the head,
+/// so nothing about the `XPointer` pattern changes.
+///
+/// [hasFixedString] and [hasFixedBytes] are the other answer, kept because it
+/// is sometimes the right one: capacity reserved inline, no tail, and a value
+/// that does not fit is an error rather than a resize. Reach for them when
+/// the field really does have a bound - a four-character country code, a
+/// 16-byte digest - and for anything else declare the length-free kind.
 abstract class ParamDescriptor {
   ParamPointer<int> hasUint1();
   ParamPointer<int> hasUint2();
@@ -526,10 +657,47 @@ abstract class ParamDescriptor {
   /// - `DataDescriptor.hasEntity` writes that out in full.
   ParamPointer<Entity> hasEntity();
 
-  /// A UTF-8 string of at most [maxBytes] **bytes** - not characters, since
-  /// that is what the buffer actually reserves and a caller sizing a field
-  /// should be thinking in the unit that can overflow.
-  ParamPointer<String> hasString(int maxBytes, {Encoding encoding = utf8});
+  /// A string of no declared length.
+  ///
+  /// The head carries an offset and a length; the bytes go in the record's
+  /// tail as they are written, so nothing has to be sized in advance and
+  /// nothing is reserved for a value that never arrives. What bounds it is
+  /// the carrier the record leaves through, not the declaration - see
+  /// `CommandTransport.send`, which refuses a batch the command ring could
+  /// never carry.
+  ///
+  /// **Written once per record.** The tail is filled by appending, so a
+  /// second value cannot take the first one's place without moving everything
+  /// declared behind it; a second write throws rather than silently
+  /// rearranging the record. Build the value, then write it.
+  ParamPointer<String> hasString({Encoding encoding = utf8});
+
+  /// A string of at most [maxBytes] **bytes** - not characters, since that is
+  /// what the buffer actually reserves and a caller sizing a field should be
+  /// thinking in the unit that can overflow.
+  ///
+  /// Reserved inline in every record of this declaration, whether it is
+  /// written or not, and a longer value is an error at the write. Use
+  /// [hasString] unless the bound is real.
+  ParamPointer<String> hasFixedString(int maxBytes, {Encoding encoding = utf8});
+
+  /// Bytes of no declared length - the untyped twin of [hasString], and what
+  /// a list of anything is packed into.
+  ///
+  /// Reading one hands back a **view** onto the batch's own buffer rather
+  /// than a copy, which is what keeps a per-tick network message off the
+  /// allocator. A batch parsed off a wire is only valid until its transport
+  /// reuses those bytes, so read what you need inside the call rather than
+  /// keeping the list - the same rule `ParamBatch.adoptIncoming` states for
+  /// the record as a whole.
+  ///
+  /// **Written once per record**, for [hasString]'s reason.
+  ParamPointer<Uint8List> hasBytes();
+
+  /// Bytes with capacity reserved inline, at most [maxBytes] of them - the
+  /// untyped twin of [hasFixedString], and reading one is a view for
+  /// [hasBytes]'s reason.
+  ParamPointer<Uint8List> hasFixedBytes(int maxBytes);
 }
 
 /// Builds one command's layout, then serves as the accessor for it.
@@ -548,13 +716,101 @@ final class ParamLayout implements ParamDescriptor {
   int _bitCursor = 0;
   int _fieldCount = 0;
   bool _sealed = false;
+  int _tailSlotByte = -1;
+  final List<int> _signature = <int>[];
+  Uint8List? _signatureBytes;
 
-  /// The record's stride in bytes, rounded up from the bit cursor.
+  /// The record's fixed head, in bytes, rounded up from the bit cursor.
+  ///
+  /// Still a stride in the sense that matters - every record of this
+  /// declaration has the same head, and every pointer resolves to a fixed
+  /// offset in it - but no longer the whole record. A declaration with a
+  /// variable-length field carries a tail behind the head whose length is
+  /// decided by what was written; see [tailSlotByte].
   int get strideBytes => (_bitCursor + 7) >> 3;
 
   int get fieldCount => _fieldCount;
 
-  void seal() => _sealed = true;
+  /// Where in the head this record's total tail length is kept, as a
+  /// little-endian uint32 - or -1 for a declaration with no variable-length
+  /// field, which is what [hasTail] asks.
+  ///
+  /// One number per record rather than a sum over the variable fields.
+  /// [ParamBatch.adoptIncoming] reads it to find where a record ends, and a
+  /// walk that had to add fields up would first have to consult the
+  /// written-mask to know which of them contributed anything.
+  int get tailSlotByte => _tailSlotByte;
+
+  /// Whether records of this declaration can carry a tail at all.
+  bool get hasTail => _tailSlotByte >= 0;
+
+  /// A compact description of what this record's fields *are*, in declaration
+  /// order: per field a kind code and either its width in bits or, for a
+  /// capacity-capped string or byte field, that capacity; plus, for a string,
+  /// the name of its encoding.
+  ///
+  /// `good_net` mixes this into its handshake hash. #141's rule is that the
+  /// hash carries the wire format and nothing else, and a field's kind is
+  /// wire format twice over. A variable-length field's four head bytes are an
+  /// offset into the tail, not a value, so a peer that declared a `uint32`
+  /// where the sender declared a [hasString] does not misread one field - it
+  /// computes the wrong tail length and loses every record behind it. And
+  /// `hasInt32` against `hasFloat32` has always been invisible to a hash made
+  /// of stride and field count, which are equal for both.
+  Uint8List get signature {
+    final bytes = _signatureBytes;
+    if (bytes == null) {
+      throw StateError(
+        'a layout signature is only settled once its describeParams pass has '
+        'run, and seal() has not been called on this one yet.',
+      );
+    }
+    return bytes;
+  }
+
+  void seal() {
+    if (_sealed) return;
+    _sealed = true;
+    _signatureBytes = Uint8List.fromList(_signature);
+  }
+
+  /// Records what the field just declared is, for [signature].
+  void _note(int kind, int detail) {
+    _signature
+      ..add(kind)
+      ..add(detail & 0xFF)
+      ..add((detail >> 8) & 0xFF);
+  }
+
+  /// The encoding's own name - `utf-8`, `iso-8859-1` - which is a value the
+  /// codec declares about itself rather than a Dart class name, so it is
+  /// stable under a rename and under `--obfuscate`. That is exactly the
+  /// distinction #141 turned on.
+  void _noteEncoding(Encoding encoding) {
+    final name = encoding.name;
+    _signature.add(name.length & 0xFF);
+    for (var i = 0; i < name.length; i++) {
+      _signature.add(name.codeUnitAt(i) & 0xFF);
+    }
+  }
+
+  /// Reserves the record's tail-length slot, once, at the first
+  /// variable-length field to ask for it. Both ends run the same declaration
+  /// pass, so both put it in the same place.
+  void _declareTailSlot() {
+    if (_tailSlotByte < 0) _tailSlotByte = _declare(32) >> 3;
+  }
+
+  /// Reserves a variable-length field's head - `[uint32 offset][uint32
+  /// length]` - and answers where it starts. The offset is counted from the
+  /// start of the record's tail rather than from the batch, so it survives
+  /// the record being moved along by a neighbour that grew.
+  int _declareTailSlots() {
+    _declareTailSlot();
+    final slot = _declare(32) >> 3;
+    _declare(32);
+    return slot;
+  }
 
   /// The same packing rule `ArchetypeStorage.declareField` uses, and it has
   /// to be the same: two descriptors that packed differently would be two
@@ -574,8 +830,9 @@ final class ParamLayout implements ParamDescriptor {
     return offset;
   }
 
-  ParamPointer<int> _int(int bitWidth, bool signed) {
+  ParamPointer<int> _int(int bitWidth, bool signed, [int? kind]) {
     final bitOffset = _declare(bitWidth);
+    _note(kind ?? (signed ? _FieldKind.sint : _FieldKind.uint), bitWidth);
     final index = _fieldCount++;
     if (bitWidth < 8) {
       return _SubBytePointer(index, bitOffset >> 3, bitOffset & 7, bitWidth);
@@ -607,12 +864,14 @@ final class ParamLayout implements ParamDescriptor {
   @override
   ParamPointer<double> hasFloat32() {
     final byte = _declare(32) >> 3;
+    _note(_FieldKind.float, 32);
     return _FloatPointer(_fieldCount++, byte, 32);
   }
 
   @override
   ParamPointer<double> hasFloat64() {
     final byte = _declare(64) >> 3;
+    _note(_FieldKind.float, 64);
     return _FloatPointer(_fieldCount++, byte, 64);
   }
 
@@ -620,27 +879,79 @@ final class ParamLayout implements ParamDescriptor {
   /// the archetype id up into the sign position, so only a signed slot
   /// round-trips every handle unchanged.
   @override
-  ParamPointer<Entity> hasEntity() => _EntityPointer(_int(64, true));
+  ParamPointer<Entity> hasEntity() =>
+      _EntityPointer(_int(64, true, _FieldKind.entity));
 
   @override
-  ParamPointer<String> hasString(int maxBytes, {Encoding encoding = utf8}) {
+  ParamPointer<String> hasString({Encoding encoding = utf8}) {
+    final slot = _declareTailSlots();
+    _note(_FieldKind.stringTail, 0);
+    _noteEncoding(encoding);
+    return _TailStringPointer(_fieldCount++, slot, encoding);
+  }
+
+  @override
+  ParamPointer<Uint8List> hasBytes() {
+    final slot = _declareTailSlots();
+    _note(_FieldKind.bytesTail, 0);
+    return _TailBytesPointer(_fieldCount++, slot);
+  }
+
+  @override
+  ParamPointer<String> hasFixedString(
+    int maxBytes, {
+    Encoding encoding = utf8,
+  }) {
+    final lengthByte = _declareInline(maxBytes, 'hasFixedString');
+    _note(_FieldKind.stringFixed, maxBytes);
+    _noteEncoding(encoding);
+    return _StringPointer(_fieldCount++, lengthByte, maxBytes, encoding);
+  }
+
+  @override
+  ParamPointer<Uint8List> hasFixedBytes(int maxBytes) {
+    final lengthByte = _declareInline(maxBytes, 'hasFixedBytes');
+    _note(_FieldKind.bytesFixed, maxBytes);
+    return _BytesPointer(_fieldCount++, lengthByte, maxBytes);
+  }
+
+  /// A 16-bit length followed by [maxBytes] reserved bytes, and the head
+  /// offset of that length. Both are byte-aligned because the length is
+  /// declared as a 16-bit field, which forces alignment first.
+  int _declareInline(int maxBytes, String at) {
     if (maxBytes <= 0 || maxBytes > 0xFFFF) {
       throw ArgumentError.value(
         maxBytes,
         'maxBytes',
-        'a string field reserves this many bytes in every call of this '
-            'command, so it has to be a positive number that fits its own '
-            '16-bit length prefix',
+        'a $at field reserves this many bytes in every record of this '
+            'declaration, so it has to be a positive number that fits its own '
+            '16-bit length prefix. For a field with no real bound, declare it '
+            'with hasString() or hasBytes() and let it live in the tail',
       );
     }
-    // A 16-bit length, then the bytes. Both are byte-aligned because the
-    // length is declared as a 16-bit field, which forces alignment first.
     final lengthByte = _declare(16) >> 3;
     for (var i = 0; i < maxBytes; i++) {
       _declare(8);
     }
-    return _StringPointer(_fieldCount++, lengthByte, maxBytes, encoding);
+    return lengthByte;
   }
+}
+
+/// What kind of thing a field is, as it goes into [ParamLayout.signature] and
+/// from there into `good_net`'s handshake hash.
+///
+/// **These numbers are on the wire.** Renumbering one makes two builds of the
+/// same source refuse each other at handshake, so add at the end and never
+/// reuse a code.
+abstract final class _FieldKind {
+  static const int uint = 0;
+  static const int sint = 1;
+  static const int float = 2;
+  static const int entity = 3;
+  static const int stringFixed = 4;
+  static const int stringTail = 5;
+  static const int bytesFixed = 6;
+  static const int bytesTail = 7;
 }
 
 /// Shared bookkeeping: every pointer knows its own index in the written-mask
@@ -788,40 +1099,39 @@ final class _FloatPointer extends _Pointer<double> {
   }
 }
 
-final class _StringPointer extends _Pointer<String> {
-  const _StringPointer(
-    super.index,
-    this.lengthByte,
-    this.maxBytes,
-    this.encoding,
-  );
+/// Shared mechanics for a field whose capacity is reserved inline: a 16-bit
+/// length at [lengthByte], then [maxBytes] bytes of room behind it, written
+/// or not.
+abstract class _InlinePointer<T> extends _Pointer<T> {
+  const _InlinePointer(super.index, this.lengthByte, this.maxBytes);
 
   final int lengthByte;
   final int maxBytes;
-  final Encoding encoding;
 
-  @override
-  String operator [](ParamBuffer call) {
-    _requireWritten(call);
-    final at = call.offset + lengthByte;
-    final length = call._data.getUint16(at, Endian.little);
-    if (length == 0) return '';
-    return encoding.decode(
-      Uint8List.sublistView(call.batch.bytes, at + 2, at + 2 + length),
-    );
-  }
+  /// Which declaration to name when a value will not fit, and which
+  /// length-free declaration to point at instead.
+  String get declaredBy;
+  String get insteadOf;
 
-  @override
-  void operator []=(ParamBuffer call, String value) {
-    final encoded = encoding.encode(value);
+  int _length(ParamBuffer call) =>
+      call._data.getUint16(call.offset + lengthByte, Endian.little);
+
+  int _payloadAt(ParamBuffer call) => call.offset + lengthByte + 2;
+
+  /// Refuses a value the declaration cannot hold, rather than storing as much
+  /// of it as fits. A truncated string is a value the receiver has no way to
+  /// tell from a short one, and it crosses an isolate or a socket before
+  /// anyone finds out.
+  void _store(ParamBuffer call, List<int> encoded, Object value) {
     if (encoded.length > maxBytes) {
       throw ArgumentError.value(
         value,
         'value',
-        'is ${encoded.length} bytes encoded, and this field reserved '
-            '$maxBytes. A command record has a fixed stride, so the capacity '
-            'is part of the declaration - raise it at hasString(), or send '
-            'less',
+        'is ${encoded.length} bytes, and this field reserved $maxBytes. A '
+            '$declaredBy field reserves its capacity inline in every record, '
+            'so the capacity is part of the declaration - raise it at '
+            '$declaredBy(), send less, or declare the field with $insteadOf(), '
+            'which reserves nothing and has no capacity to overrun',
       );
     }
     final at = call.offset + lengthByte;
@@ -829,4 +1139,135 @@ final class _StringPointer extends _Pointer<String> {
     call.batch.bytes.setRange(at + 2, at + 2 + encoded.length, encoded);
     call._markWritten(index);
   }
+}
+
+final class _StringPointer extends _InlinePointer<String> {
+  const _StringPointer(
+    super.index,
+    super.lengthByte,
+    super.maxBytes,
+    this.encoding,
+  );
+
+  final Encoding encoding;
+
+  @override
+  String get declaredBy => 'hasFixedString';
+  @override
+  String get insteadOf => 'hasString';
+
+  @override
+  String operator [](ParamBuffer call) {
+    _requireWritten(call);
+    final length = _length(call);
+    if (length == 0) return '';
+    final at = _payloadAt(call);
+    return encoding.decode(
+      Uint8List.sublistView(call.batch.bytes, at, at + length),
+    );
+  }
+
+  @override
+  void operator []=(ParamBuffer call, String value) =>
+      _store(call, encoding.encode(value), value);
+}
+
+final class _BytesPointer extends _InlinePointer<Uint8List> {
+  const _BytesPointer(super.index, super.lengthByte, super.maxBytes);
+
+  @override
+  String get declaredBy => 'hasFixedBytes';
+  @override
+  String get insteadOf => 'hasBytes';
+
+  @override
+  Uint8List operator [](ParamBuffer call) {
+    _requireWritten(call);
+    final at = _payloadAt(call);
+    return Uint8List.sublistView(call.batch.bytes, at, at + _length(call));
+  }
+
+  @override
+  void operator []=(ParamBuffer call, Uint8List value) =>
+      _store(call, value, value);
+}
+
+/// Shared mechanics for a field whose payload lives in the record's tail.
+///
+/// The head holds `[uint32 offset][uint32 length]` at [slotByte], so the
+/// pointer still resolves to a fixed offset in a fixed head and the
+/// `XPointer` pattern is untouched - what stops being constant is only the
+/// record's total size. The offset is counted from the start of the record's
+/// tail, not from the batch, so it stays correct when a record in front of
+/// this one grows and pushes this one along.
+abstract class _TailPointer<T> extends _Pointer<T> {
+  const _TailPointer(super.index, this.slotByte);
+
+  final int slotByte;
+
+  int _payloadAt(ParamBuffer call) =>
+      call.tailAt + call._data.getUint32(call.offset + slotByte, Endian.little);
+
+  int _length(ParamBuffer call) =>
+      call._data.getUint32(call.offset + slotByte + 4, Endian.little);
+
+  /// Appends [payload] to this record's tail and records where it landed.
+  ///
+  /// There is no capacity to overrun here, so there is nothing to refuse: the
+  /// batch grows to hold whatever is written. What can still fail is getting
+  /// the finished batch onto a carrier - `CommandTransport.send` refuses a
+  /// batch the command ring could never carry, rather than truncating it.
+  void _store(ParamBuffer call, List<int> payload) {
+    if (call._isWritten(index)) {
+      throw StateError(
+        'field #$index of this record has already been written, and a '
+        'variable-length field is written once. Its bytes were appended to '
+        'the tail, so a second value cannot take the first one\'s place '
+        'without moving every field declared behind it. Build the whole value '
+        'first, then write it.',
+      );
+    }
+    final at = call.batch._growTail(call, payload.length);
+    final slot = call.offset + slotByte;
+    call._data
+      ..setUint32(slot, at - call.tailAt, Endian.little)
+      ..setUint32(slot + 4, payload.length, Endian.little);
+    call.batch.bytes.setRange(at, at + payload.length, payload);
+    call._markWritten(index);
+  }
+}
+
+final class _TailStringPointer extends _TailPointer<String> {
+  const _TailStringPointer(super.index, super.slotByte, this.encoding);
+
+  final Encoding encoding;
+
+  @override
+  String operator [](ParamBuffer call) {
+    _requireWritten(call);
+    final length = _length(call);
+    if (length == 0) return '';
+    final at = _payloadAt(call);
+    return encoding.decode(
+      Uint8List.sublistView(call.batch.bytes, at, at + length),
+    );
+  }
+
+  @override
+  void operator []=(ParamBuffer call, String value) =>
+      _store(call, encoding.encode(value));
+}
+
+final class _TailBytesPointer extends _TailPointer<Uint8List> {
+  const _TailBytesPointer(super.index, super.slotByte);
+
+  @override
+  Uint8List operator [](ParamBuffer call) {
+    _requireWritten(call);
+    final at = _payloadAt(call);
+    return Uint8List.sublistView(call.batch.bytes, at, at + _length(call));
+  }
+
+  @override
+  void operator []=(ParamBuffer call, Uint8List value) => _store(call, value);
 }

@@ -1,3 +1,44 @@
+## Unreleased
+
+### Breaking
+
+* **The handshake hash now covers what each field *is*, not just how wide the
+  record is.** Two builds that were compatible under 0.3.0 will refuse each
+  other, so peers have to be upgraded together — for any game declaring at
+  least one message with at least one field. A game whose messages are all
+  `NetSignal`s is unaffected, because a signal declares no fields and so
+  contributes nothing new to the hash (#146).
+
+  Nothing to change in your code. This is a wire-compatibility break, not a
+  source one.
+
+  **Why.** #141's rule is that the hash carries the wire format and nothing
+  else, and the stride-plus-field-count summary it used to carry stopped being
+  enough when a field's length stopped being fixed. A `hasString()` field
+  keeps an offset and a length into the record's tail in the same four head
+  bytes a `hasUint32()` would keep a number in — and a `hasString()` against a
+  `hasFixedBytes(10)` is twelve bytes of head and one field either way, so the
+  old hash could not tell them apart at all. The damage from getting that
+  wrong is not one misread field: one peer reads the head and stops, the other
+  reads a tail length out of those same bytes, and every record behind it in
+  the batch is lost. Mixing the field kinds catches it, and closes an older
+  hole of the same shape while it is there — `hasInt32` against `hasFloat32`
+  has always had an identical stride and field count.
+
+  A capacity-capped field's declared maximum is **not** mixed separately. It
+  is already in the hash by way of the stride, because those bytes really are
+  reserved in every record. A length-free field has no declared maximum to
+  mix: the bound it does have is its carrier's ring or datagram, which is a
+  local fact about one peer rather than something the two ends must agree on.
+
+### Added
+
+* **A message field can hold a string or a list whose length is not declared
+  up front.** `hasString()` and `hasBytes()`, with `hasFixedString(n)` and
+  `hasFixedBytes(n)` beside them for the cases where a bound is real. This is
+  `good`'s record layer, shared with commands — see its changelog for the
+  layout and for the two rules that come with a variable-length field (#146).
+
 ## 0.3.0
 
 ### Breaking

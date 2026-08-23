@@ -106,10 +106,7 @@ final class NetRegistry implements ParamLayouts {
       index >= 0 && index < _messages.length ? _messages[index] : null;
 
   @override
-  int strideOf(int index) => requireAt(index).strideBytes;
-
-  @override
-  int fieldCountOf(int index) => requireAt(index).fieldCount;
+  ParamLayout layoutOf(int index) => requireAt(index).layout;
 
   NetMessageBase requireAt(int index) {
     final message = tryAt(index);
@@ -130,13 +127,36 @@ final class NetRegistry implements ParamLayouts {
 
   /// Fixes the declaration list and computes the hash both peers compare.
   ///
-  /// The hash covers, per message and in order: its class name, its stride,
-  /// its field count, its target and its channel. Everything, in other words,
-  /// that the two ends have to agree on for a record to mean the same thing
-  /// twice - a renamed message, a reordered declaration, a field that grew
-  /// from `hasUint8` to `hasUint16`, a channel changed from reliable to
+  /// The hash covers, per message and in order: its declared id, its head
+  /// stride, its field count, what each of those fields *is*
+  /// (`ParamLayout.signature`), its target and its channel. Everything, in
+  /// other words, that the two ends have to agree on for a record to mean the
+  /// same thing twice - a reordered declaration, a field that grew from
+  /// `hasUint8` to `hasUint16`, a channel changed from reliable to
   /// unreliable. Any of those and the peers refuse each other with a version
   /// error, instead of forming a session in which damage arrives as chat.
+  ///
+  /// # Why the field kinds are in it and a declared capacity is not
+  ///
+  /// #141's rule is that the hash carries the wire format and nothing else.
+  /// The head stride and the field count are a *summary* of the wire format,
+  /// and they were enough while every field was a value in the head. They are
+  /// not enough now. A `hasString()` field keeps an offset and a length into
+  /// the record's tail in the four head bytes an `hasUint32()` would hold a
+  /// number in, and a peer that reads the wrong one of those does not misread
+  /// one field: it computes the wrong tail length, and every record behind it
+  /// in the batch is lost. The signature is what tells those two declarations
+  /// apart, and it closes an older hole of the same shape at the same time -
+  /// `hasInt32` against `hasFloat32` has always had an identical stride and
+  /// field count.
+  ///
+  /// What does **not** go in is the capacity `hasFixedString(n)` declares.
+  /// That one is already in the hash by way of the stride, because the bytes
+  /// really are reserved in every record. There is nothing further to add,
+  /// and nothing about a length-free field to add either: it has no declared
+  /// maximum, and the bound it does have is the carrier's, which is a local
+  /// fact about one peer's ring or datagram rather than something the two
+  /// ends have to agree on.
   ///
   /// 32-bit FNV-1a rather than a cryptographic digest: this catches
   /// *accidents* - two builds that drifted - and there is nothing to gain by
@@ -164,6 +184,10 @@ final class NetRegistry implements ParamLayouts {
       mix(message.strideBytes);
       mix(message.strideBytes >> 8);
       mix(message.fieldCount);
+      final signature = message.layout.signature;
+      for (var b = 0; b < signature.length; b++) {
+        mix(signature[b]);
+      }
       mix(message.target.index);
       mix(message.channel.index);
     }

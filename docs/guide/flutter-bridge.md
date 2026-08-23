@@ -280,6 +280,7 @@ late ParamPointer<double> y;
 late ParamPointer<int> kind;
 late ParamPointer<Entity> target;
 late ParamPointer<String> name;
+late ParamPointer<String> code;
 -->
 ```dart
 @override
@@ -288,14 +289,25 @@ void describeParams(ParamDescriptor descriptor) {
   y = descriptor.hasFloat32();
   kind = descriptor.hasUint4();          // 16 kinds in half a byte
   target = descriptor.hasEntity();       // a handle, not a bare int64
-  name = descriptor.hasString(32);       // bounded, so the record has a size
+  name = descriptor.hasString();         // any length, kept in the tail
+  code = descriptor.hasFixedString(2);   // reserved inline, because 2 is real
 }
 ```
 
-Two things follow from the record being fixed-width:
+A record has a fixed **head** — every numeric field, and the offset and length
+of every variable-length one — and, if it declares any variable-length field, a
+**tail** behind the head holding their bytes. Three things follow:
 
-- **Strings need a maximum byte length.** A command's whole wire image has to
-  fit in one ring-buffer record, so an unbounded string has no place to live.
+- **A string does not need a maximum.** `hasString()` and `hasBytes()` size
+  themselves from what you write. `hasFixedString(n)` and `hasFixedBytes(n)`
+  reserve `n` bytes in *every* record whether they are used or not, so reach for
+  them when the bound is real — a two-letter country code, a 16-byte digest —
+  and use the length-free kind for everything else.
+- **The carrier is what bounds a record, not the declaration.** A batch grows to
+  hold whatever is written into it, but it still has to fit in one ring-buffer
+  record on the way across. A batch too big for that ring is refused at
+  `send()`, naming the bound and `Game.commandBufferBytes`. It is never
+  truncated.
 - **Field widths are bandwidth.** `hasUint1()` for a flag and `hasUint4()` for a
   small enum are not micro-optimisation here — a batch of a few hundred commands
   per frame pays for every byte.
