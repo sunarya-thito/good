@@ -100,6 +100,13 @@ mixin Animations on Coroutines {
     ),
   );
 
+  // TODO: Stop animation by CoroutineFuture, stop animation by TimelineAnimation
+  // Coroutine API has already method to stop by CoroutineFuture, so delegate that
+  // and for stop by TimelineAnimation, Coroutine API has method to stop by method that provides the Iterable
+  // we need to change [_play] here, instead of placing it here,
+  // place it inside TimelineAnimation, so that its tied to TimelineAnimation instance.
+  // and then we can do stop coroutine by method which the method provided by TimelineAnimation
+
   Iterable _play(
     TimelineAnimation animation,
     List<TrackBinding> bindings, {
