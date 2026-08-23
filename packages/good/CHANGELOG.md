@@ -1,5 +1,33 @@
 ## Unreleased
 
+### Breaking
+
+* **An animation coroutine is owned by the timeline it plays, not by the
+  struct that started it.** `startAnimation` used to go through
+  `startCoroutine`, so `stopAllCoroutines()` on a prefab took its animations
+  down along with everything else that prefab had started. It no longer does.
+  Stop animations with `stopAnimations(timeline)` instead, or `stopAnimation`
+  for a single handle. The regrouping is what makes stopping by timeline
+  possible at all: `stopAllOf` groups by owner, and the old owner grouped
+  every animation one host had started, which is nobody's idea of a group.
+
+### Added
+
+* **A running animation can be stopped.** `stopAnimation(handle)` takes the
+  `CoroutineFuture` that `startAnimation` returned and stops that one
+  playback. `stopAnimations(timeline)` stops every coroutine playing that
+  timeline - on a timeline shared by forty entities, that is all forty, which
+  is the point of the grouping and worth knowing before reaching for it.
+
+  Both complete the handle **normally**, not with an error: cancelling
+  something is not a failure, and a caller awaiting the handle carries on. A
+  caller that has to tell "it finished" from "someone stopped it" cannot do
+  it from the handle.
+
+  A stopped animation leaves the bound tracks holding whatever the last tick
+  wrote - stop it mid-fade and the sprite stays half faded. Nothing is reset
+  or restored.
+
 ### Fixed
 
 * **A false claim in the 0.2.0 notes is corrected.** They said the four

@@ -94,6 +94,13 @@ class _Game extends Game {
   GameState createState() => _State();
 }
 
+/// A coroutine with no end, so a test can watch something stop it.
+Iterable _forever() sync* {
+  while (true) {
+    yield null;
+  }
+}
+
 const Duration _step = Duration(milliseconds: 100);
 
 /// Advances [steps] fixed steps, one `advance` each.
@@ -386,32 +393,51 @@ void main() {
       await handle;
     });
 
-    test('stopAnimation stops one animation and leaves the last written value', () async {
+    test('a stopped animation stops writing and leaves the last value', () async {
       run = await _boot();
       final scene = run.state.singleScene<_Scene>();
       final enemy = scene.enemy;
-      final entity = run.state.loadedScenes.single.addEntity(enemy);
+      final loaded = run.state.loadedScenes.single;
+      final stopped = loaded.addEntity(enemy);
+      final control = loaded.addEntity(enemy);
 
       final handle = enemy.startAnimation(
         enemy.timeline.entrance,
-        <TrackBinding>[enemy.timeline.x.bind(enemy.px.bind(entity))],
+        <TrackBinding>[enemy.timeline.x.bind(enemy.px.bind(stopped))],
+      );
+      // The same clip on a second entity, never stopped. Without it, "still
+      // 50" would be satisfied by a clip that never moved in the first place,
+      // and the test could not fail for the reason it claims to.
+      final running = enemy.startAnimation(
+        enemy.timeline.entrance,
+        <TrackBinding>[enemy.timeline.x.bind(enemy.px.bind(control))],
       );
 
       run.advance(_step); // first resume: writes t=0
-      _tick(5); // half a second in: x is 50.0
-      expect(enemy.px[entity], closeTo(50.0, 1e-6));
-      expect(handle.isDone, isFalse);
+      _tick(5); // half a second into a 0 -> 100 ramp
+      expect(enemy.px[stopped], closeTo(50.0, 1e-6));
+      expect(enemy.px[control], closeTo(50.0, 1e-6));
 
       enemy.stopAnimation(handle);
-      expect(handle.isDone, isTrue);
+      _tick(10); // the ramp finishes and holds at 100
 
-      _tick(10);
       expect(
-        enemy.px[entity],
+        enemy.px[stopped],
         closeTo(50.0, 1e-6),
-        reason: 'a stopped animation leaves behind whatever the last tick wrote',
+        reason: 'a stopped animation leaves the bound track holding whatever '
+            'the last tick wrote - nothing resets or restores it',
       );
-      await handle;
+      expect(
+        enemy.px[control],
+        closeTo(100.0, 1e-6),
+        reason: 'and the one still running went on writing, so the value '
+            'above really did stay put rather than never having moved',
+      );
+      expect(handle.isDone, isTrue);
+      expect(running.isDone, isFalse, reason: 'stopping one stops only one');
+
+      enemy.stopAnimation(running);
+      await Future.wait(<Future<void>>[handle, running]);
     });
 
     test('stopAnimations stops every coroutine playing that timeline', () async {
@@ -455,6 +481,41 @@ void main() {
       enemy.stopAnimation(h3);
       expect(h3.isDone, isTrue);
       await Future.wait(<Future<void>>[h1, h2, h3]);
+    });
+
+    test('an animation is owned by its timeline, not by what started it', () async {
+      run = await _boot();
+      final scene = run.state.singleScene<_Scene>();
+      final enemy = scene.enemy;
+      final entity = run.state.loadedScenes.single.addEntity(enemy);
+
+      final plain = enemy.startCoroutine(_forever);
+      final animation = enemy.startAnimation(
+        enemy.timeline.entrance,
+        <TrackBinding>[enemy.timeline.x.bind(enemy.px.bind(entity))],
+        wrapMode: WrapMode.loop,
+      );
+
+      _tick(5);
+      expect(plain.isDone, isFalse);
+      expect(animation.isDone, isFalse);
+
+      // `stopAllCoroutines` groups by owner, and an animation's owner is the
+      // timeline now rather than the struct that started it. That regrouping
+      // is the whole reason `stopAnimations` can exist - and it is a change
+      // in what this call takes down, so it is pinned here rather than left
+      // to be discovered.
+      enemy.stopAllCoroutines();
+      expect(plain.isDone, isTrue);
+      expect(
+        animation.isDone,
+        isFalse,
+        reason: 'the prefab no longer owns the animations it started',
+      );
+
+      enemy.stopAnimations(enemy.timeline.entrance);
+      expect(animation.isDone, isTrue);
+      await Future.wait(<Future<void>>[plain, animation]);
     });
   });
 }
