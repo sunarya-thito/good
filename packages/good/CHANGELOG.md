@@ -1,5 +1,15 @@
 ## Unreleased
 
+### Added
+
+* **A system disabled after an uncaught throw reports itself to the main isolate in release.**
+  In debug builds `#126`'s assert stops the game isolate and carries the failure
+  over the error port. In release builds asserts are stripped, so the system was
+  silently disabled while ticks continued; the engine now declares a `SinkCommand`
+  in `Game.describeCommands` that carries the system name, error string, and
+  truncated stack trace to the main isolate, where `Game.onSystemDisabled`
+  delivers the diagnostic report via `FlutterError.reportError`. (#143)
+
 ### Fixed
 
 * **A false claim in the 0.2.0 notes is corrected.** They said the four

@@ -1,10 +1,18 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart'
-    show ChangeNotifier, VoidCallback, kIsWeb;
+    show
+        ChangeNotifier,
+        DiagnosticsNode,
+        ErrorDescription,
+        FlutterError,
+        FlutterErrorDetails,
+        VoidCallback,
+        kIsWeb;
 import 'package:flutter/widgets.dart'
     show
         AppLifecycleState,
@@ -454,6 +462,7 @@ abstract class Game implements RandomOwner {
   late final _SetPausedCommand _setPausedCommand;
   late final _SetTimeScaleCommand _setTimeScaleCommand;
   late final _StepOnceCommand _stepOnceCommand;
+  late final _ReportDisabledSystemCommand _reportDisabledSystemCommand;
 
   @mustCallSuper
   void describeCommands(CommandDescriptor descriptor) {
@@ -461,6 +470,62 @@ abstract class Game implements RandomOwner {
     _setPausedCommand = descriptor.has(_SetPausedCommand());
     _setTimeScaleCommand = descriptor.has(_SetTimeScaleCommand());
     _stepOnceCommand = descriptor.has(_StepOnceCommand());
+    _reportDisabledSystemCommand = descriptor.has(
+      _ReportDisabledSystemCommand(),
+    );
+    descriptor.hasSink(
+      _reportDisabledSystemCommand,
+      _onSystemDisabledReport,
+    );
+  }
+
+  void _onSystemDisabledReport(_DisabledSystemReport params) {
+    onSystemDisabled(params.systemName, params.error, params.stackTrace);
+  }
+
+  /// Called on the main isolate when a system on the game isolate threw an
+  /// uncaught exception and was disabled.
+  ///
+  /// Delivers a diagnostic report via [FlutterError.reportError]. May be
+  /// overridden by games to route diagnostics elsewhere (e.g. crash reporting).
+  @mustCallSuper
+  void onSystemDisabled(String systemName, String error, String stackTrace) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: StateError('system $systemName threw: $error'),
+        stack: stackTrace.isNotEmpty ? StackTrace.fromString(stackTrace) : null,
+        library: 'good',
+        context: ErrorDescription('while running $systemName'),
+        informationCollector: () => <DiagnosticsNode>[
+          ErrorDescription(
+            'A game system threw an uncaught exception and has been disabled: '
+            '$systemName: $error',
+          ),
+        ],
+      ),
+    );
+  }
+
+  @internal
+  void reportDisabledSystem(
+    String systemName,
+    String error,
+    String stackTrace,
+  ) {
+    _reportDisabledSystemCommand((
+      systemName: _truncateToUtf8Bytes(
+        systemName,
+        _ReportDisabledSystemCommand.maxSystemNameBytes,
+      ),
+      error: _truncateToUtf8Bytes(
+        error,
+        _ReportDisabledSystemCommand.maxErrorBytes,
+      ),
+      stackTrace: _truncateToUtf8Bytes(
+        stackTrace,
+        _ReportDisabledSystemCommand.maxStackTraceBytes,
+      ),
+    ));
   }
 
   /// Registers the game-isolate handlers for the four commands [Game]
@@ -3571,6 +3636,56 @@ final class _SetTimeScaleCommand extends SinkCommand<double> {
 }
 
 final class _StepOnceCommand extends SignalCommand {}
+
+typedef _DisabledSystemReport = ({
+  String systemName,
+  String error,
+  String stackTrace,
+});
+
+final class _ReportDisabledSystemCommand
+    extends SinkCommand<_DisabledSystemReport> {
+  static const int maxSystemNameBytes = 256;
+  static const int maxErrorBytes = 1024;
+  static const int maxStackTraceBytes = 2048;
+
+  late final ParamPointer<String> systemName;
+  late final ParamPointer<String> error;
+  late final ParamPointer<String> stackTrace;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    systemName = descriptor.hasString(maxSystemNameBytes);
+    error = descriptor.hasString(maxErrorBytes);
+    stackTrace = descriptor.hasString(maxStackTraceBytes);
+  }
+
+  @override
+  void bufferFromParams(ParamBuffer call, _DisabledSystemReport params) {
+    systemName[call] = _truncateToUtf8Bytes(
+      params.systemName,
+      maxSystemNameBytes,
+    );
+    error[call] = _truncateToUtf8Bytes(params.error, maxErrorBytes);
+    stackTrace[call] = _truncateToUtf8Bytes(
+      params.stackTrace,
+      maxStackTraceBytes,
+    );
+  }
+
+  @override
+  _DisabledSystemReport paramsFromBuffer(ParamBuffer call) => (
+    systemName: systemName[call],
+    error: error[call],
+    stackTrace: stackTrace[call],
+  );
+}
+
+String _truncateToUtf8Bytes(String text, int maxBytes) {
+  final bytes = utf8.encode(text);
+  if (bytes.length <= maxBytes) return text;
+  return utf8.decode(bytes.sublist(0, maxBytes), allowMalformed: true);
+}
 
 /// Whether [state] counts as the app being visible.
 ///

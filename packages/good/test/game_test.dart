@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/event/tick_loop.dart';
 import 'package:good/src/archetype.dart';
 import 'package:good/src/command/command.dart';
 import 'package:good/src/command/param.dart';
 import 'package:good/src/data.dart';
+import 'package:good/src/event.dart';
 import 'package:good/src/event/fixed_loop.dart';
 import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/game.dart';
@@ -12,6 +15,7 @@ import 'package:good/src/random.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/struct.dart';
 import 'package:good/src/system.dart';
+import 'package:flutter/foundation.dart' show FlutterError, FlutterErrorDetails;
 import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
 
@@ -116,11 +120,12 @@ class _PhaseGame extends _TestGame {
 class _ThrowingSystem extends GameSystem with FixedTickable {
   int ran = 0;
   int throwOnTick = 1;
+  String throwMessage = 'system boom';
 
   @override
   void onFixedUpdate() {
     ran++;
-    if (ran == throwOnTick) throw StateError('system boom');
+    if (ran == throwOnTick) throw StateError(throwMessage);
   }
 }
 
@@ -148,6 +153,21 @@ class _ThrowState extends _FixtureState {
 class _ThrowGame extends _TestGame {
   @override
   GameState createState() => _ThrowState();
+}
+
+class _ReportingThrowGame extends _ThrowGame {
+  final List<({String systemName, String error, String stackTrace})> reports =
+      <({String systemName, String error, String stackTrace})>[];
+
+  @override
+  void onSystemDisabled(String systemName, String error, String stackTrace) {
+    reports.add((
+      systemName: systemName,
+      error: error,
+      stackTrace: stackTrace,
+    ));
+    super.onSystemDisabled(systemName, error, stackTrace);
+  }
 }
 
 /// Records the visibility hooks so a test can assert they arrived, and in
@@ -1105,6 +1125,81 @@ void main() {
             'and everything else goes on ticking - one bad system is not a '
             'dead game',
       );
+    });
+
+    test(
+      'reports disabled system to main with diagnostic in release simulation',
+      () async {
+        final oldDebugAssert = SignalDispatcher.debugAssertUncaught;
+        FlutterErrorDetails? caughtFlutterError;
+        final oldOnError = FlutterError.onError;
+        FlutterError.onError = (details) => caughtFlutterError = details;
+        try {
+          SignalDispatcher.debugAssertUncaught = false;
+          final game = await _game(_ReportingThrowGame());
+          final state = _state(game);
+          _thrower
+            ..ran = 0
+            ..throwOnTick = 1;
+          _afterThrower.ran = 0;
+
+          // In a release simulation, the tick does not assert and completes normally.
+          expect(() => state.advance(_step), returnsNormally);
+          expect(state.isSystemEnabled<_ThrowingSystem>(), isFalse);
+          expect(_thrower.ran, 1);
+          expect(_afterThrower.ran, 1);
+
+          // The report arrived on main with system name and message.
+          expect(game.reports, hasLength(1));
+          expect(game.reports.first.systemName, contains('_ThrowingSystem'));
+          expect(game.reports.first.error, contains('system boom'));
+          expect(caughtFlutterError, isNotNull);
+          expect(
+            caughtFlutterError!.exception.toString(),
+            contains('system _ThrowingSystem threw: Bad state: system boom'),
+          );
+
+          // Subsequent ticks continue ticking without re-reporting.
+          state
+            ..advance(_step)
+            ..advance(_step);
+          expect(_thrower.ran, 1);
+          expect(_afterThrower.ran, 3);
+          expect(game.reports, hasLength(1));
+        } finally {
+          SignalDispatcher.debugAssertUncaught = oldDebugAssert;
+          FlutterError.onError = oldOnError;
+        }
+      },
+    );
+
+    test('truncates error and stack trace exceeding param limits', () async {
+      final oldDebugAssert = SignalDispatcher.debugAssertUncaught;
+      final oldOnError = FlutterError.onError;
+      FlutterError.onError = (details) {};
+      try {
+        SignalDispatcher.debugAssertUncaught = false;
+        final game = await _game(_ReportingThrowGame());
+        final state = _state(game);
+        _thrower
+          ..ran = 0
+          ..throwOnTick = 1;
+        _thrower.throwMessage = 'E' * 5000;
+
+        expect(() => state.advance(_step), returnsNormally);
+        expect(game.reports, hasLength(1));
+        expect(
+          utf8.encode(game.reports.first.error).length,
+          lessThanOrEqualTo(1024),
+        );
+        expect(
+          utf8.encode(game.reports.first.stackTrace).length,
+          lessThanOrEqualTo(2048),
+        );
+      } finally {
+        SignalDispatcher.debugAssertUncaught = oldDebugAssert;
+        FlutterError.onError = oldOnError;
+      }
     });
 
     test('a throwing coroutine is unaffected by any of this', () async {

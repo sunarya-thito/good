@@ -23,7 +23,7 @@ abstract interface class GameListener {
   /// interface rather than an `is GameSystem` test inside the dispatcher: the
   /// four hosts differ in whether they can be switched off at all, and letting
   /// each answer for itself is what the no-dispatch-on-`is` rule asks for.
-  void disableAfterUncaught();
+  void disableAfterUncaught([Object? error, StackTrace? stack]);
 }
 
 /// The default [GameListener] implementation the framework's own listener
@@ -44,7 +44,7 @@ abstract class GameListenerBase implements GameListener {
   /// `GameSystem` overrides it, being the one host the engine can drop and
   /// keep going without.
   @override
-  void disableAfterUncaught() {}
+  void disableAfterUncaught([Object? error, StackTrace? stack]) {}
 }
 
 /// The listener list every dispatcher holds, and the collection machinery
@@ -56,6 +56,13 @@ abstract base class _ListenerSet<L extends GameListener> {
   /// How many listeners were collected. Diagnostics and tests - the point of
   /// the design is that this number is settled before the first dispatch.
   int get listenerCount => _listeners.length;
+
+  /// Whether uncaught listener exceptions assert in debug mode.
+  /// Defaults to true. Setting this to false simulates a release build,
+  /// where asserts are stripped by the compiler and a throwing listener
+  /// is disabled while the simulation continues ticking.
+  @visibleForTesting
+  static bool debugAssertUncaught = true;
 
   @internal
   void add(L listener) {
@@ -87,11 +94,13 @@ abstract base class _ListenerSet<L extends GameListener> {
   ///    below never gets to matter, because nothing ticks again.
   ///  * **In release** the assert is compiled out. The listener is disabled
   ///    and the game keeps running without it, which is what a shipped game
-  ///    should do when one system has a bad day.
+  ///    should do when one system has a bad day. The disable is reported
+  ///    to the main isolate via an engine command.
   ///
   /// So the disable is release behaviour. `Game.enableSystem` brings a system
   /// back if the throw was transient.
   void _reportUncaught(L listener, Object error, StackTrace stack) {
+    if (!debugAssertUncaught) return;
     assert(false, '''
 ${listener.runtimeType} threw during an event dispatch and has been disabled.
 
@@ -159,6 +168,17 @@ final class EventDispatcher<L extends GameListener, E> extends _ListenerSet<L> {
 
   final void Function(L listener, E payload) _deliver;
 
+  /// Whether uncaught listener exceptions assert in debug mode.
+  /// Defaults to true. Setting this to false simulates a release build,
+  /// where asserts are stripped by the compiler and a throwing listener
+  /// is disabled while the simulation continues ticking.
+  @visibleForTesting
+  static bool get debugAssertUncaught => _ListenerSet.debugAssertUncaught;
+
+  @visibleForTesting
+  static set debugAssertUncaught(bool value) =>
+      _ListenerSet.debugAssertUncaught = value;
+
   /// Whether to deliver in **reverse** collection order.
   ///
   /// For teardown. Bring-up runs outside-in - the owner first, then what
@@ -196,7 +216,7 @@ final class EventDispatcher<L extends GameListener, E> extends _ListenerSet<L> {
         // `assert` mid-dispatch and, in debug, throw straight back out -
         // skipping every listener after this one, which is the exact thing
         // this guard exists to prevent.
-        listener.disableAfterUncaught();
+        listener.disableAfterUncaught(error, stack);
         failed ??= listener;
         failure ??= error;
         failureStack ??= stack;
@@ -218,6 +238,17 @@ final class SignalDispatcher<L extends GameListener> extends _ListenerSet<L> {
 
   final void Function(L listener) _deliver;
 
+  /// Whether uncaught listener exceptions assert in debug mode.
+  /// Defaults to true. Setting this to false simulates a release build,
+  /// where asserts are stripped by the compiler and a throwing listener
+  /// is disabled while the simulation continues ticking.
+  @visibleForTesting
+  static bool get debugAssertUncaught => _ListenerSet.debugAssertUncaught;
+
+  @visibleForTesting
+  static set debugAssertUncaught(bool value) =>
+      _ListenerSet.debugAssertUncaught = value;
+
   /// See [EventDispatcher.reverse].
   final bool reverse;
 
@@ -234,7 +265,7 @@ final class SignalDispatcher<L extends GameListener> extends _ListenerSet<L> {
       try {
         _deliver(listener);
       } catch (error, stack) {
-        listener.disableAfterUncaught();
+        listener.disableAfterUncaught(error, stack);
         failed ??= listener;
         failure ??= error;
         failureStack ??= stack;

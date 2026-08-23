@@ -75,7 +75,16 @@ abstract class GameSystem extends GameListenerBase
   /// `GameListener.disableAfterUncaught`. Same flag `disableSystem` sets, so
   /// `Game.enableSystem` brings it back.
   @override
-  void disableAfterUncaught() => _enabled = false;
+  void disableAfterUncaught([Object? error, StackTrace? stack]) {
+    _enabled = false;
+    if (error != null) {
+      _state?.game.reportDisabledSystem(
+        runtimeType.toString(),
+        error.toString(),
+        stack?.toString() ?? '',
+      );
+    }
+  }
 
   late final SignalDispatcher<GameSystemLifecycleListener> mountEvent;
   late final SignalDispatcher<GameSystemLifecycleListener> unmountEvent;
