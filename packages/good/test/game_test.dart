@@ -8,6 +8,7 @@ import 'package:good/src/event/fixed_loop.dart';
 import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
+import 'package:good/src/random.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/struct.dart';
 import 'package:good/src/system.dart';
@@ -516,6 +517,56 @@ class _AnsweringMainGame extends _TestGame {
   }
 }
 
+/// Two independent streams and two systems, one drawing from each, so a test
+/// can disable one and watch the other (#125).
+class _DrawsFromA extends GameSystem with FixedTickable {
+  final List<int> drawn = <int>[];
+
+  @override
+  void onFixedUpdate() => drawn.add(_randomGame.a.nextInt(1000));
+}
+
+class _DrawsFromB extends GameSystem with FixedTickable {
+  final List<int> drawn = <int>[];
+
+  @override
+  void onFixedUpdate() => drawn.add(_randomGame.b.nextInt(1000));
+}
+
+late _DrawsFromA _drawsA;
+late _DrawsFromB _drawsB;
+late _RandomGame _randomGame;
+
+class _RandomState extends _FixtureState {
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    _drawsA = descriptor.has(_DrawsFromA());
+    _drawsB = descriptor.has(_DrawsFromB());
+  }
+}
+
+class _RandomGame extends _TestGame {
+  _RandomGame({this.randomSeed = 20260823});
+
+  @override
+  final int randomSeed;
+
+  late final RandomStream a;
+  late final RandomStream b;
+
+  @override
+  GameState createState() => _RandomState();
+
+  @override
+  void describeRandom(RandomDescriptor descriptor) {
+    super.describeRandom(descriptor);
+    _randomGame = this;
+    a = descriptor.has();
+    b = descriptor.has();
+  }
+}
+
 typedef _Nudge = ({Entity entity, double amount});
 
 /// A user command, to prove the dispatch table is not hardcoded to the
@@ -818,6 +869,127 @@ void main() {
   // #142 Stage 1. The constraint that pays for receipt delivery, and the
   // declaration-time refusal that keeps a caller from discovering it as a
   // hang.
+
+  // #125. A seeded stream is the raw material for replay and is not replay -
+  // see `RandomStream`'s doc for what else that needs.
+  group('seeded randomness', () {
+    test('the same seed draws the same sequence', () async {
+      final first = await _game(_RandomGame());
+      final drawn = <int>[for (var i = 0; i < 8; i++) first.a.nextInt(1000)];
+      await run.stop();
+      SceneRegistry.reset();
+      ArchetypeRegistry.reset();
+      ComponentTypeRegistry.reset();
+
+      final second = await _game(_RandomGame());
+      expect(
+        <int>[for (var i = 0; i < 8; i++) second.a.nextInt(1000)],
+        drawn,
+        reason:
+            'the whole point. The algorithm is written out in random.dart '
+            'rather than taken from dart:math precisely so this keeps '
+            'holding across an SDK upgrade.',
+      );
+      expect(
+        drawn.toSet().length,
+        greaterThan(1),
+        reason: 'and it has to actually vary, or equality proves nothing',
+      );
+    });
+
+    test('a different seed draws a different sequence', () async {
+      final first = await _game(_RandomGame(randomSeed: 1));
+      final drawn = <int>[for (var i = 0; i < 8; i++) first.a.nextInt(1000)];
+      await run.stop();
+      SceneRegistry.reset();
+      ArchetypeRegistry.reset();
+      ComponentTypeRegistry.reset();
+
+      final second = await _game(_RandomGame(randomSeed: 2));
+      expect(<int>[
+        for (var i = 0; i < 8; i++) second.a.nextInt(1000),
+      ], isNot(drawn));
+    });
+
+    // The #126 interaction, and the reason streams are declared separately
+    // rather than shared. A system that throws is disabled by the engine now,
+    // so "a system stopped drawing" is something that happens on its own.
+    test('disabling a system does not shift another stream', () async {
+      final game = await _game(_RandomGame());
+      _state(game).advance(_step * 4);
+      final withBoth = <int>[..._drawsB.drawn];
+      expect(withBoth, hasLength(4));
+      expect(_drawsA.drawn, hasLength(4));
+      await run.stop();
+      SceneRegistry.reset();
+      ArchetypeRegistry.reset();
+      ComponentTypeRegistry.reset();
+
+      final again = await _game(_RandomGame());
+      _state(again).disableSystem<_DrawsFromA>();
+      _state(again).advance(_step * 4);
+
+      expect(
+        _drawsA.drawn,
+        isEmpty,
+        reason: 'the disable has to have taken, or this proves nothing',
+      );
+      expect(
+        _drawsB.drawn,
+        withBoth,
+        reason:
+            'B never drew from A stream, so A not running cannot move it. '
+            'One shared stream would shift every one of these.',
+      );
+    });
+
+    // The case the hash exists to dissolve: a per-entity value is derived
+    // from the entity and the tick, so it has no position for a spawn to
+    // move.
+    test('a per-entity value does not depend on who was asked first', () async {
+      // The watched entity is spawned **first** in both runs, so it has the
+      // same identity either way, and asked **last**, after every neighbour.
+      // A hash of the entity and the tick does not care how many questions
+      // came before it. A stream drawn once per entity does: four neighbours
+      // would move it four places, and the watched entity would get a
+      // different number in the crowded run.
+      //
+      // Both halves matter. Spawning it first is what keeps the identity
+      // fixed; asking it last is what makes a stateful implementation fail.
+      Future<int> valueAskedAfter(int neighbours) async {
+        final game = await _game(_RandomGame());
+        final scene = _state(game).loadedScenes.single;
+        final level = (run.state as _FixtureState).level;
+        final watched = scene.addEntity(level.unit);
+        final others = <Entity>[
+          for (var i = 0; i < neighbours; i++) scene.addEntity(level.unit),
+        ];
+        _state(game).advance(_step);
+
+        for (final other in others) {
+          game.a.intFor(other, 1000);
+        }
+        final value = game.a.intFor(watched, 1000);
+
+        await run.stop();
+        SceneRegistry.reset();
+        ArchetypeRegistry.reset();
+        ComponentTypeRegistry.reset();
+        return value;
+      }
+
+      final alone = await valueAskedAfter(0);
+      final crowded = await valueAskedAfter(4);
+      expect(
+        crowded,
+        alone,
+        reason:
+            'same entity, same tick, same answer - whoever else was asked in '
+            'between. This is the scene load and unload case, and the hash '
+            'is why it needs no handling.',
+      );
+    });
+  });
   group('control-delivered commands', () {
     test('a control handler writing component data trips the guard', () async {
       final game = await _game(_BadControlGame());

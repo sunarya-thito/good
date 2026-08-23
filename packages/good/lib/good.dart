@@ -66,6 +66,7 @@ export 'src/data/hierarchy.dart';
 export 'src/event.dart' hide EventBinder;
 export 'src/event/fixed_loop.dart';
 export 'src/event/lifecycle.dart';
+export 'src/random.dart' hide RandomOwner;
 export 'src/event/state.dart';
 export 'src/event/tick_loop.dart';
 // `GameRuntime` is hidden rather than exported: it is one run's internals -

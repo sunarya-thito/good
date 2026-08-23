@@ -50,6 +50,53 @@ sorting. Several checks that used to let a mistake through now stop it.
 
 ### Added
 
+* **Seeded random streams.** The kernel had no randomness, so a game would
+  reach for `dart:math`'s `Random()` — seeded from the clock, invisible to the
+  engine, different on every machine, and impossible to retrofit once shipped
+  games depend on it (#125).
+
+  ```dart
+  late final RandomStream loot;
+
+  @override
+  void describeRandom(RandomDescriptor descriptor) {
+    super.describeRandom(descriptor);
+    loot = descriptor.has();
+  }
+  ```
+
+  Declared like every other handle and kept in a field — there are no stream
+  names and nothing to look up. Streams are independent, which matters more
+  than it sounds: with one shared stream a system that draws a different number
+  of times shifts every draw after it, and the engine now disables a system by
+  itself when one throws, so that happens without anyone editing the drawing
+  code.
+
+  `RandomStream.intFor(entity, max)` is the per-entity form, and it is a
+  **hash** of the seed, the stream, the tick and the entity rather than a draw.
+  So it does not depend on how many entities exist or who was asked first, and
+  a scene loading or unloading cannot shift it.
+
+  The seed is `Game.randomSeed`, an overridable member like `pageSize`. Back it
+  with a final field to supply a recorded one. It is part of a save: recording
+  inputs without it reproduces nothing.
+
+  **The algorithm is written out in the engine** rather than taken from
+  `dart:math`. `Random` gives no guarantee that a seed produces the same
+  sequence on a different Dart SDK, so a replay could stop matching after an
+  upgrade with nothing in the game having changed. SplitMix64's constants are
+  now part of the engine's contract, and changing one is a breaking change to
+  every recorded replay.
+
+  Only the simulating copy may draw. A draw on the handle the main isolate
+  holds throws, naming the copy.
+
+  **This is not deterministic replay, and does not deliver it.** A replay also
+  needs the player's input recorded per tick, the tick each command landed on,
+  and an answer for asset loads finishing at a different moment — and control
+  commands are explicitly unordered against tick-delivered ones, so their
+  arrival is not reproducible either. See #63.
+
 * **`pause`, `resume`, `setTimeScale` and `stepOnce` travel as commands.** They
   were four hand-rolled string tags on the control port; they are now ordinary
   receipt-delivered commands (#142). Nothing changes at the call site, and the

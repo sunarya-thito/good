@@ -15,6 +15,7 @@ import 'package:good/src/game_state.dart';
 import 'package:good/src/input.dart';
 import 'package:good/src/input/input_binding.dart';
 import 'package:good/src/input/input_key.dart';
+import 'package:good/src/random.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/struct.dart';
 import 'package:good/src/system.dart';
@@ -262,6 +263,56 @@ class _DyingGame extends Game {
 
   @override
   GameState createState() => _DyingState();
+}
+
+/// Draws on the game isolate and publishes what it got, so main can see that
+/// the simulating copy really is the one advancing the stream (#125).
+class _RandomReporter extends GameSystem with FixedTickable {
+  @override
+  void onFixedUpdate() {
+    final game = state.game as _RandomIsolateGame;
+    game.drawn.value = game.rolls.nextInt(1000000);
+  }
+}
+
+class _RandomIsolateState extends GameState<_RandomIsolateGame> {
+  @override
+  void onMounted() {}
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_RandomReporter());
+  }
+}
+
+class _RandomIsolateGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 5);
+
+  @override
+  int get randomSeed => 777;
+
+  late final RandomStream rolls;
+  late final StateChannel<int> drawn;
+
+  @override
+  GameState createState() => _RandomIsolateState();
+
+  @override
+  void describeRandom(RandomDescriptor descriptor) {
+    super.describeRandom(descriptor);
+    rolls = descriptor.has();
+  }
+
+  @override
+  void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
+    drawn = descriptor.hasInt32(-1);
+  }
 }
 
 class _IsolateGame extends Game {
@@ -1040,6 +1091,47 @@ void main() {
   // The existing #117 and #124 tests drive `GameState` directly, so they pin
   // the semantics but never touch the carrier. This one goes through the
   // main-isolate API a pause button would use.
+
+  // #125. Randomness is simulation state, so only the simulating copy may
+  // move it. Asserting that the game isolate draws correctly would pass on an
+  // implementation where *both* copies draw and quietly disagree - so the
+  // load-bearing half of this test is the refusal on main.
+  test('only the simulating copy advances a stream', () async {
+    final game = _RandomIsolateGame();
+    run = await Game.start(game);
+    addTearDown(() async {
+      if (run.isRunning) await run.stop();
+    });
+
+    expect(
+      await _waitUntil(run, () => game.drawn.value >= 0),
+      isTrue,
+      reason: 'the game isolate draws, and publishes what it got',
+    );
+
+    expect(
+      () => game.rolls.nextInt(1000),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('does not own the simulation'),
+        ),
+      ),
+      reason:
+          'this copy is the handle. A draw here would advance a stream the '
+          'game isolate knows nothing about, and the two would stop agreeing '
+          'about a sequence that is supposed to replay.',
+    );
+
+    expect(
+      () => game.rolls.intFor(const Entity(0), 10),
+      throwsA(isA<StateError>()),
+      reason:
+          'and the per-entity form too - it needs the tick, which this copy '
+          'does not have in any meaningful sense',
+    );
+  });
   test('pause and resume cross as commands, with the tick stopped', () async {
     final game = _IsolateGame();
     run = await Game.start(game);

@@ -26,6 +26,7 @@ import 'package:good/src/event.dart';
 import 'package:good/src/event/state.dart';
 import 'package:good/src/handoff_buffer.dart';
 import 'package:good/src/heap_object.dart';
+import 'package:good/src/random.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/widget/frame_meter.dart';
 import 'package:good/src/game_state.dart';
@@ -170,7 +171,7 @@ const String _msgUnloadAssets = 'unloadassets';
 /// time - so put the tick on the [GameState], a `SceneStruct` or a
 /// `GameSystem`. What `Game` does for Flutter it does through a plain method,
 /// [buildView]. See `GameEvent`'s doc.
-abstract class Game {
+abstract class Game implements RandomOwner {
   // --- configuration ----------------------------------------------------
 
   /// The simulation step. Wall-clock time accumulates and is spent in whole
@@ -591,6 +592,60 @@ abstract class Game {
   /// or renumber across sources.
   @mustCallSuper
   void describeState(StateDescriptor descriptor) {}
+
+  /// The seed every [RandomStream] this game declares is derived from.
+  ///
+  /// An overridable member like [pageSize] and [fixedTimeStep], and for the
+  /// same reason - it is configuration a game states once. Unlike those, it
+  /// often wants a *runtime* value, and a getter takes one without any extra
+  /// machinery: back it with a final field and a constructor argument.
+  ///
+  /// ```dart
+  /// class MyGame extends Game {
+  ///   MyGame({this.randomSeed = 0});
+  ///
+  ///   @override
+  ///   final int randomSeed;
+  /// }
+  /// ```
+  ///
+  /// That is what a replay needs: it supplies the seed it recorded. Reachable
+  /// before `start()` and carried to the game isolate with the rest of this
+  /// object, so both copies derive the same streams without anything being
+  /// sent.
+  ///
+  /// A seed is part of a save. Recording the inputs without it reproduces
+  /// nothing.
+  int get randomSeed => 0;
+
+  /// Declares this game's random streams - see [RandomStream].
+  ///
+  /// ```dart
+  /// late final RandomStream loot;
+  ///
+  /// @override
+  /// void describeRandom(RandomDescriptor descriptor) {
+  ///   super.describeRandom(descriptor);
+  ///   loot = descriptor.has();
+  /// }
+  /// ```
+  ///
+  /// Runs on main before the spawn, so the streams a game keeps in fields
+  /// cross to the game isolate already built. Declaration order is a stream's
+  /// identity, exactly as it is for a command.
+  @mustCallSuper
+  void describeRandom(RandomDescriptor descriptor) {}
+
+  @override
+  bool get randomDrawAllowed => runtimeOrNull?.state?.isSimulating ?? false;
+
+  @override
+  int get randomTick => runtimeOrNull?.state?.tick ?? 0;
+
+  @override
+  String get randomOwnerLabel => runtimeOrNull == null
+      ? 'a $runtimeType that has not been started'
+      : "the main isolate's copy of $runtimeType";
 
   /// Declares this game's **input actions**, and the default value every
   /// action of a given type falls back to.
@@ -1202,6 +1257,10 @@ abstract class Game {
     // dropped earlier for the neighbouring reason (loaded after boot, possibly
     // repeatedly). See [describeState].
     describeState(states);
+    // Beside describeState and for the same reason: this runs on main before
+    // the spawn, so the streams ride the object graph already built and both
+    // copies derive identically without a message.
+    describeRandom(RandomDescriptor(this, randomSeed));
 
     // Before describeBuffers, deliberately: a 2D renderer declares one frame
     // buffer *per declared view*, so the views have to exist by the time
