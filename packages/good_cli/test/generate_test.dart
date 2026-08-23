@@ -726,7 +726,7 @@ flutter:
 
     test('adds the dependency and both asset entries', () {
       final patched = patchedPubspecLines(flutterCreated, 'goo2d')!;
-      expect(patched[3], '  goo2d: ^0.1.0');
+      expect(patched[3], '  goo2d: $engineConstraint');
       expect(
         patched,
         containsAllInOrder(<String>['    - assets/', '    - assets/packed/']),
@@ -773,7 +773,7 @@ flutter:
         '  goo2d: ">=0.1.0 <0.2.0"',
       ]) {
         final edited = once
-            .map((line) => line == '  goo2d: ^0.1.0' ? edit : line)
+            .map((line) => line == '  goo2d: $engineConstraint' ? edit : line)
             .toList();
         expect(
           patchedPubspecLines(edited, 'goo2d'),
@@ -787,7 +787,8 @@ flutter:
       final once = patchedPubspecLines(flutterCreated, 'goo2d')!;
       final commented = <String>[
         for (final line in once) ...<String>[
-          if (line == '  goo2d: ^0.1.0') '  # pinned deliberately, see #123',
+          if (line == '  goo2d: $engineConstraint')
+            '  # pinned deliberately, see #123',
           line,
         ],
       ];

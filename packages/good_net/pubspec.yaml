@@ -3,7 +3,7 @@ description: >-
   Networking for the good game engine: declared messages built on good's
   record layer, sessions, reliable and unreliable channels, and the
   transport contract a backend implements.
-version: 0.1.1
+version: 0.2.0
 repository: https://github.com/sunarya-thito/good
 homepage: https://sunarya-thito.github.io/good/
 documentation: https://sunarya-thito.github.io/good/
@@ -24,7 +24,7 @@ dependencies:
   # wires, so the layout, the descriptor vocabulary and the pointer types all
   # come from the kernel rather than being written a second time here. See
   # good's `ParamBatch`.
-  good: ^0.1.0
+  good: ^0.2.0
   meta: ^1.15.0
 
 dev_dependencies:

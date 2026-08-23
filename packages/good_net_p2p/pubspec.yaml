@@ -3,7 +3,7 @@ description: >-
   Serverless peer-to-peer UDP backend for good_net: reliable and unreliable
   channels, LAN discovery, and join codes that carry the host address. No
   broker, relay or server to run.
-version: 0.1.1
+version: 0.2.0
 repository: https://github.com/sunarya-thito/good
 homepage: https://sunarya-thito.github.io/good/
 documentation: https://sunarya-thito.github.io/good/
@@ -14,12 +14,12 @@ environment:
   flutter: ">=3.47.0"
 
 dependencies:
-  good_net: ^0.1.0
+  good_net: ^0.2.0
 
 dev_dependencies:
   flutter_lints: ^6.0.0
   # Tests declare messages, which means naming ParamPointer/ParamDescriptor -
   # good_net re-exports neither, because a game gets them from goo2d already.
-  good: ^0.1.0
+  good: ^0.2.0
   flutter_test:
     sdk: flutter

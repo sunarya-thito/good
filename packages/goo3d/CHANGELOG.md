@@ -1,6 +1,11 @@
-## 0.1.0
+## 0.2.0
 
-Unreleased. The first landing of the 3D engine, on the same
+First published release, and it starts at 0.2.0 rather than 0.1.0 so the
+engine packages carry one version between them - `good create --3d` writes a
+single constraint for both dimensions, and a `goo3d` a minor behind it would
+not resolve.
+
+The first landing of the 3D engine, on the same
 [`good`](https://pub.dev/packages/good) kernel `goo2d` uses:
 
 * **`Transform3D`** — position, scale and a quaternion rotation, as ten

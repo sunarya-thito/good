@@ -1,4 +1,4 @@
-## Unreleased
+## 0.2.0
 
 Six changes stop a build that worked at 0.1.1. Each one turns something that
 used to fail quietly, or not at all, into something that fails while you are

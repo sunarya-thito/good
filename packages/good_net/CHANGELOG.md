@@ -1,4 +1,19 @@
-## Unreleased
+## 0.2.0
+
+### Breaking
+
+* **Peers built against 0.1.x can no longer connect.** The handshake hashes the
+  order commands are declared in, and `good` 0.2.0 declares four of its own
+  before anything a game declares — so the same game, rebuilt against this
+  version, computes a different schema hash and refuses an older peer.
+
+  Nothing in `good_net` changed to cause it and no wire format moved. The cause
+  is upstream, in `good`; the consequence is here, which is why it is written
+  down here.
+
+  There is no compatibility mode. **Update every peer together**, including
+  dedicated servers and any client you cannot ship an update to at the same
+  time. A staged rollout will partition your players by build.
 
 ### Fixed
 

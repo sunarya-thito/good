@@ -1,4 +1,4 @@
-## Unreleased
+## 0.2.0
 
 Two gaps 0.1.0 admitted are closed: a column can be declared by the field that
 holds it, and system order is worked out from the constraints instead of by

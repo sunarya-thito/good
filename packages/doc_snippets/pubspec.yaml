@@ -16,12 +16,12 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  good: ^0.1.0
-  goo2d: ^0.1.0
-  goo2d_physics_box2d: ^0.1.0
-  goo3d: ^0.1.0
-  good_net: ^0.1.0
-  good_net_p2p: ^0.1.0
+  good: ^0.2.0
+  goo2d: ^0.2.0
+  goo2d_physics_box2d: ^0.2.0
+  goo3d: ^0.2.0
+  good_net: ^0.2.0
+  good_net_p2p: ^0.2.0
   vector_math: ^2.2.0
 
 dev_dependencies:

@@ -105,7 +105,7 @@ flutter:
 /// outlive the 0.1.0 release, and `^0.0.1` does not allow 0.1.0 - so every
 /// project scaffolded in between failed `flutter pub get` on a machine without
 /// a path override, which is every machine but this repository's.
-const String engineConstraint = '^0.1.0';
+const String engineConstraint = '^0.2.0';
 
 /// [lines] with the good dependency and the asset entries added, or null if the
 /// pubspec is not a shape this can edit safely.

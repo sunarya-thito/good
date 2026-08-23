@@ -1,4 +1,4 @@
-## Unreleased
+## 0.2.0
 
 World space changed direction. Read the first entry before you upgrade a game
 that has any y in it.

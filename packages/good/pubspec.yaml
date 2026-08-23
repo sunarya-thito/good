@@ -3,7 +3,7 @@ description: >-
   Dimension-agnostic game engine kernel for Flutter: an ECS, native memory
   pools and ring buffers, scenes, a fixed-tick simulation isolate,
   hierarchy, assets and the GameView widget.
-version: 0.1.1
+version: 0.2.0
 repository: https://github.com/sunarya-thito/good
 homepage: https://sunarya-thito.github.io/good/
 documentation: https://sunarya-thito.github.io/good/
