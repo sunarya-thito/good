@@ -271,6 +271,47 @@ final class InputDevice {
     if (_setBit(key.id, false)) _publish();
   }
 
+  /// Releases everything at once - every key, every mouse button, every
+  /// gamepad bit - and publishes if that changed anything.
+  ///
+  /// An OS that takes focus away sends no key-up. The last thing this heard
+  /// was the press, and a latest-value block goes on saying so forever, so
+  /// backgrounding a game with a movement key held leaves the character
+  /// walking into a wall until the player thinks to press and release that
+  /// key themselves. `GameView` calls this when the app is hidden and when
+  /// the last view showing the game goes away, which is the rule
+  /// `GamepadCollector.detach` was already following on its own: what was
+  /// held down when the view went away is not held down any more, and
+  /// leaving those bits set strands whatever they were driving.
+  ///
+  /// # Nothing is re-asserted when the app comes back
+  ///
+  /// A key the player genuinely never let go of produces no fresh key-down
+  /// on the way back, because the OS never sent the up either - so it reads
+  /// released until they lift it and press it again. That is deliberate and
+  /// it is the right way round: a false "not held" corrects itself the next
+  /// time the key moves, while a false "held" corrects itself never. Knowing
+  /// the true state would mean polling the OS for the whole keyboard on
+  /// resume, and nothing here polls anything.
+  ///
+  /// A pad is the exception that needs no special case: it is a physical
+  /// device that keeps sending events, so the next one re-sets its own bits.
+  ///
+  /// # The pointer's position is deliberately untouched
+  ///
+  /// Where the cursor is is not something anyone is holding down, and zeroing
+  /// it would teleport it to the window's top-left corner - a real visible
+  /// jump for anything aiming at it, in exchange for nothing.
+  void releaseAll() {
+    var changed = false;
+    for (var i = 0; i < InputState.bitBlockBytes; i++) {
+      if (_mirror[i] == 0) continue;
+      _mirror[i] = 0;
+      changed = true;
+    }
+    if (changed) _publish();
+  }
+
   /// Whether [key] is held according to *this* copy's picture. The same
   /// answer `InputState.isDown` gives on the reading side one tick later;
   /// here so a caller writing synthetic input can check its own bookkeeping

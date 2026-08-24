@@ -1,5 +1,10 @@
 import 'package:flutter/gestures.dart'
-    show Offset, PointerDeviceKind, PointerHoverEvent;
+    show
+        Offset,
+        PointerDeviceKind,
+        PointerDownEvent,
+        PointerHoverEvent,
+        kPrimaryMouseButton;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vector_math/vector_math_64.dart' show Matrix4, Vector2;
 
@@ -1446,6 +1451,149 @@ void main() {
       );
       expect(binding.copyWith(), binding);
       expect(binding.hashCode, const MouseBinding().hashCode);
+    });
+  });
+
+  // #160. An OS that takes focus away sends no key-up, so the block goes on
+  // reporting the press for as long as the game runs. The seams that call
+  // this - the visibility observer and the last view going away - are pinned
+  // in game_widget_test.dart, because both need a widget tree; what is here
+  // is what `releaseAll` itself does to the block.
+  //
+  // Every test below asserts the held state *before* the release. One that
+  // checked only the released half would pass against a device nothing was
+  // ever pressed on, which is the whole failure it exists to catch.
+  group('releaseAll', () {
+    test('a key held across it stops being held', () async {
+      final game = await _boot(_InputGame());
+      final movement = run.state.getSystem<_PlayerSystem>().movement;
+      final device = game.inputDevice!;
+
+      _pressAndStep(game, [InputKey.w]);
+      expect(device.isDown(InputKey.w), isTrue);
+      expect(
+        movement.value,
+        Vector2(0, 1),
+        reason:
+            'the control - walking north has to be true first, or the '
+            'zero afterwards says nothing about anything being released',
+      );
+
+      device.releaseAll();
+      run.state.runFixedStep();
+
+      expect(device.isDown(InputKey.w), isFalse);
+      expect(
+        movement.value,
+        Vector2.zero(),
+        reason:
+            'and the game-side resolution follows, which is the half a '
+            'player would notice: the character stops walking',
+      );
+    });
+
+    test('a mouse button held across it stops being held', () async {
+      final game = await _boot(_MouseGame());
+      final click = run.state.getSystem<_CursorSystem>().click;
+      final device = game.inputDevice!;
+
+      // Through the real pointer path rather than `press`, so what is being
+      // cleared is a bit `handlePointerEvent` set from a button mask - the
+      // way it actually gets set with a finger on a real mouse.
+      device.handlePointerEvent(
+        const PointerDownEvent(
+          kind: PointerDeviceKind.mouse,
+          buttons: kPrimaryMouseButton,
+        ),
+      );
+      run.state.runFixedStep();
+      expect(click.value, isTrue);
+
+      device.releaseAll();
+      run.state.runFixedStep();
+
+      expect(click.value, isFalse);
+      expect(device.isDown(InputKey.leftMouseButton), isFalse);
+    });
+
+    test('a pad button goes too, aggregate slot and all', () async {
+      final game = await _boot(_InputGame());
+      final device = game.inputDevice!;
+
+      device.setGamepadButton(1, GamepadButton.a, true);
+      expect(
+        device.isDown(InputKey.padA),
+        isTrue,
+        reason:
+            'slot 0 is the OR of the real slots, so a press on seat one '
+            'shows up here - and it is the bit a single-player game binds',
+      );
+
+      device.releaseAll();
+
+      expect(device.isDown(InputKey.padA), isFalse);
+      expect(
+        device.isDown(InputKey.padA(1)),
+        isFalse,
+        reason:
+            'the seat itself, not just the aggregate - leaving the real '
+            'bit set would let the next unrelated pad event recompute the '
+            'OR back to held',
+      );
+    });
+
+    test('the cursor does not jump to the corner', () async {
+      final game = await _boot(_MouseGame());
+      final cursor = run.state.getSystem<_CursorSystem>().cursor;
+      final device = game.inputDevice!;
+
+      device.setViewSize(800, 600);
+      device.movePointer(screenX: 130, screenY: 240, viewX: 30, viewY: 40);
+      device.press(InputKey.leftMouseButton);
+      run.state.runFixedStep();
+      expect(cursor.value.screenSpace, Vector2(130, 240));
+
+      device.releaseAll();
+      run.state.runFixedStep();
+
+      expect(device.isDown(InputKey.leftMouseButton), isFalse);
+      expect(
+        cursor.value.screenSpace,
+        Vector2(130, 240),
+        reason:
+            'where the cursor is is not something anyone is holding '
+            'down, and zeroing it would teleport whatever is aiming at it '
+            'to the window corner - a visible jump bought for nothing',
+      );
+      expect(cursor.value.viewSize, Vector2(800, 600));
+    });
+
+    test('releasing nothing costs no publish', () async {
+      final game = await _boot(_MouseGame());
+      final device = game.inputDevice!;
+
+      final quiet = device.publishedAddress;
+      device.releaseAll();
+      expect(
+        device.publishedAddress,
+        quiet,
+        reason:
+            'the observer sees a hidden app twice on the way down, so a '
+            'release that always published would put two publishes on a '
+            'path where nothing changed',
+      );
+
+      device.press(InputKey.w);
+      final afterPress = device.publishedAddress;
+      device.releaseAll();
+      expect(
+        device.publishedAddress,
+        isNot(afterPress),
+        reason:
+            'and one that had something to clear still publishes - a '
+            'check that only proved nothing publishes would pass on a '
+            'releaseAll with no body at all',
+      );
     });
   });
 }

@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart' show StringCodec, SystemChannels;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -6,6 +7,7 @@ import 'package:good/src/archetype.dart';
 import 'package:good/src/camera_view.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
+import 'package:good/src/input/input_key.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/system.dart';
 import 'package:good/src/widget/game_view.dart';
@@ -74,6 +76,23 @@ class _SilentGame extends Game {
   @override
   GameState createState() => _BareState();
 }
+
+/// Drives the platform's own lifecycle channel, which is what the observer
+/// under test is registered against.
+///
+/// Not `WidgetsBinding.handleAppLifecycleStateChanged`: that one is
+/// `@protected`, so calling it is an analyzer warning, and it also skips the
+/// binding's transition generator - the thing that turns one `hidden` into
+/// the `inactive -> hidden` walk a real backgrounding produces. Going in
+/// through the channel means these tests exercise the same arrival the OS
+/// causes, doubled states and all.
+Future<void> _lifecycle(AppLifecycleState state) =>
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+          SystemChannels.lifecycle.name,
+          const StringCodec().encodeMessage(state.toString()),
+          (_) {},
+        );
 
 Future<T> _start<T extends Game>(T game) async {
   run = await Game.startInline(game);
@@ -221,6 +240,155 @@ void main() {
         reason:
             'and no *display* frames, because nothing is showing it - '
             'which is exactly why these are two numbers and not one',
+      );
+    });
+  });
+
+  // #160. The two seams that call `InputDevice.releaseAll` - what the app
+  // being hidden does, and what the last view going away does. The block
+  // arithmetic itself is pinned in game_input_test.dart; these are about
+  // whether anything ever pulls the lever.
+  //
+  // Each one asserts the key is held *first*. Checking only that it reads up
+  // afterwards would pass on a game nobody had pressed anything on, which is
+  // the exact test that would have let this bug ship.
+  group('releasing input', () {
+    testWidgets('backgrounding the app lets go of a held key', (tester) async {
+      await _start(_ViewGame());
+      await tester.pumpWidget(GameView.headless(game: run));
+      final device = run.inputDevice!;
+
+      // Resumed first, and it costs nothing when the binding is already
+      // there: the transition generator emits nothing for a state that has
+      // not changed, so this only fixes a starting point.
+      await _lifecycle(AppLifecycleState.resumed);
+      device.press(InputKey.w);
+      expect(
+        device.isDown(InputKey.w),
+        isTrue,
+        reason: 'the control - the character has to be walking first',
+      );
+
+      await _lifecycle(AppLifecycleState.hidden);
+
+      expect(
+        device.isDown(InputKey.w),
+        isFalse,
+        reason:
+            'the OS sent no key-up on the way out and never will, so if '
+            'the hide does not clear this nothing else ever does',
+      );
+    });
+
+    testWidgets('coming back does not put the key down again', (tester) async {
+      await _start(_ViewGame());
+      await tester.pumpWidget(GameView.headless(game: run));
+      final device = run.inputDevice!;
+
+      await _lifecycle(AppLifecycleState.resumed);
+      device.press(InputKey.w);
+      await _lifecycle(AppLifecycleState.hidden);
+      await _lifecycle(AppLifecycleState.resumed);
+
+      expect(
+        device.isDown(InputKey.w),
+        isFalse,
+        reason:
+            'the decided behaviour, and the reason it is written down on '
+            'releaseAll rather than left to be discovered: a key still '
+            'physically held sends no fresh down, so it reads up until the '
+            'player lifts it and presses again. A false "not held" fixes '
+            'itself on the next press; a false "held" never does',
+      );
+
+      device.press(InputKey.w);
+      expect(
+        device.isDown(InputKey.w),
+        isTrue,
+        reason:
+            'and that next press works normally - the hide cleared the '
+            'block, it did not wedge it',
+      );
+    });
+
+    testWidgets('a mouse button held into the background lets go', (
+      tester,
+    ) async {
+      await _start(_ViewGame());
+      await tester.pumpWidget(GameView.headless(game: run));
+      final device = run.inputDevice!;
+
+      await _lifecycle(AppLifecycleState.resumed);
+      device.press(InputKey.leftMouseButton);
+      expect(device.isDown(InputKey.leftMouseButton), isTrue);
+
+      await _lifecycle(AppLifecycleState.hidden);
+
+      expect(device.isDown(InputKey.leftMouseButton), isFalse);
+    });
+
+    testWidgets('the last view going away lets go', (tester) async {
+      await _start(_ViewGame());
+      await tester.pumpWidget(GameView.headless(game: run));
+      final device = run.inputDevice!;
+
+      device.press(InputKey.w);
+      expect(device.isDown(InputKey.w), isTrue);
+
+      // The widget goes; the game runs on. Nothing is forwarding key events
+      // any more, so the up that would have cleared this can no longer
+      // arrive from anywhere.
+      await tester.pumpWidget(const SizedBox.shrink());
+
+      expect(device.isDown(InputKey.w), isFalse);
+    });
+
+    testWidgets('the view that stays up keeps its keys', (tester) async {
+      await _start(_ViewGame());
+      await tester.pumpWidget(
+        Column(
+          children: <Widget>[
+            SizedBox(
+              width: 100,
+              height: 100,
+              child: GameView.headless(game: run, key: const Key('a')),
+            ),
+            SizedBox(
+              width: 100,
+              height: 100,
+              child: GameView.headless(game: run, key: const Key('b')),
+            ),
+          ],
+        ),
+      );
+      final device = run.inputDevice!;
+
+      device.press(InputKey.w);
+      expect(device.isDown(InputKey.w), isTrue);
+
+      // One of the two goes. The game is still on screen and still being
+      // played, which is why the release sits behind `detachView`'s refcount
+      // rather than in `_GameViewState.dispose`: doing it per widget would
+      // drop a key out from under whoever is still looking at it.
+      await tester.pumpWidget(
+        Column(
+          children: <Widget>[
+            SizedBox(
+              width: 100,
+              height: 100,
+              child: GameView.headless(game: run, key: const Key('a')),
+            ),
+          ],
+        ),
+      );
+
+      expect(device.isDown(InputKey.w), isTrue);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(
+        device.isDown(InputKey.w),
+        isFalse,
+        reason: 'and the second one going is what actually releases it',
       );
     });
   });

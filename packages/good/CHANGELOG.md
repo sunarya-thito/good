@@ -164,6 +164,13 @@
   that everything already queued is still sendable and no half-written record
   goes out to fail on the reading side.
 
+* **`InputDevice.releaseAll()`** puts every key, mouse button and gamepad bit
+  up in one write. `GameView` calls it for you when the app is hidden and when
+  the last view showing a game goes away; a host driving input itself - a
+  replay, a bot, a test - can call it to reset the block between runs. The
+  pointer's *position* is left alone, because nobody is holding the cursor
+  down (#160).
+
 ### Fixed
 
 * **A false claim in the 0.2.0 notes is corrected.** They said the four
@@ -173,6 +180,21 @@
   `describeCommands` declares on the `Game`. No behaviour changed, here or
   there. `good_net` 0.2.1 carries the same correction for the users it
   actually reached.
+
+* **A key held while the app is backgrounded no longer stays held forever.**
+  An OS that takes focus away sends no key-up, so the block went on reporting
+  the press for the rest of the run: background a game with a movement key
+  down and the character kept walking, through the hide and through the
+  return. Being hidden and losing the last view now both release everything
+  held. Mouse buttons had it too; gamepads never did, and the rule the rest of
+  the layer now follows was already written on `GamepadCollector.detach`
+  (#160).
+
+  **Nothing is re-asserted on the way back.** A key still physically held when
+  the player returns sends no fresh key-down, so it reads up until they lift
+  it and press again. That is the trade and it is the right way round: a false
+  "not held" corrects itself on the next press, a false "held" corrects itself
+  never.
 
 ## 0.2.0
 

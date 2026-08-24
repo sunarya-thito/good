@@ -1882,6 +1882,14 @@ abstract class Game implements RandomOwner {
     if (--_mountedViews > 0) return;
     _frames.disarm();
     _visibility.disarm();
+    // Nothing is holding a key down once there is no widget to hold it with,
+    // and the events that would have said so left with the view. Behind the
+    // refcount deliberately: two views on one game is a supported shape, and
+    // the one still up is still being played, so releasing on the first
+    // `dispose` would drop a key out from under it. `didUpdateWidget`
+    // attaches before it detaches for the same reason, so swapping which
+    // camera is on screen never reaches this line at all.
+    inputDevice?.releaseAll();
     onViewDetached();
   }
 
@@ -3777,6 +3785,24 @@ class _VisibilityObserver with WidgetsBindingObserver {
     final game = _game;
     if (game == null) return;
     final visible = visibleInLifecycleState(state);
+    // Released here rather than on the far side of the command, because the
+    // far side cannot do it: `InputDevice` is the Flutter-isolate write end
+    // and `Game.inputDevice` is null on the copy that runs the simulation.
+    // Same trigger, correct side of the boundary - and the block is published
+    // by the time the visibility command lands, so the first tick that knows
+    // the app went away already reads nothing held.
+    //
+    // Idempotent for the same reason `setVisible` has to be, and by the same
+    // mechanism: `releaseAll` publishes only when a bit actually moved, so
+    // the second "not visible" of a backgrounding walk costs nothing.
+    //
+    // This fires on `hidden`, `paused` and `detached`, not on `inactive` -
+    // this engine's definition of visible, which `visibleInLifecycleState`
+    // holds in one place, counts a window that merely lost focus as still
+    // being played. Whether losing focus strands a key the way being hidden
+    // does is a separate question about what the OS delivers, and it wants
+    // measuring rather than guessing at.
+    if (!visible) game.inputDevice?.releaseAll();
     // `GameState.setVisible` is idempotent, which it has to be: the walk down
     // is `inactive -> hidden -> paused` and the walk back up reverses it, so
     // "not visible" arrives twice around any real backgrounding.
