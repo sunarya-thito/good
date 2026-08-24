@@ -86,7 +86,7 @@ final class InputState {
   ///
   /// World coordinates are deliberately **not** here: they need the active
   /// camera, which is an entity on the game isolate, so they are resolved
-  /// there. See `MousePosition`.
+  /// there. See `CursorPosition`.
   static final int _pointerOffset = bitBlockBytes;
 
   /// Bytes in the whole block.

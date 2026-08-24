@@ -984,7 +984,7 @@ abstract class Game implements RandomOwner {
   /// **Not a camera viewport.** For projecting world to screen - or screen
   /// back to world - use `CameraView.viewportWidth`/`viewportHeight`, which
   /// belong to a specific view and are what `CameraProjection` centres on.
-  /// These two exist because `MousePosition` reports in one surface's
+  /// These two exist because `CursorPosition` reports in one surface's
   /// coordinates and a pointer is only ever in one surface at a time, which
   /// is a coherent single fact; a *viewport* is not, once there are two
   /// views.

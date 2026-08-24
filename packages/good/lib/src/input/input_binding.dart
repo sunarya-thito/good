@@ -255,7 +255,7 @@ Map<String, Object?> _map(Map<String, Object?> json, String field) {
 /// Where the pointer is, in every space the engine can answer for.
 ///
 /// One instance per declared action, mutated in place by [MouseBinding] each
-/// tick - so `Input<MousePosition>.value` is the same object for the life of
+/// tick - so `Input<CursorPosition>.value` is the same object for the life of
 /// the game and reading it allocates nothing (the no-allocation rule). Treat
 /// it, and the vectors it hands out, as read-only and do not hold either past
 /// the current tick.
@@ -274,10 +274,13 @@ Map<String, Object?> _map(Map<String, Object?> json, String field) {
 /// the dependency the `good`/`goo2d` split exists to avoid - the same reason
 /// `GameView` paints nothing and lets a declared render system do it. `goo2d`
 /// supplies the projection, against the camera it already resolves every
-/// frame; see its `MousePositionCamera` extension.
-final class MousePosition {
+/// frame: `MousePickingSystem` keeps the cursor's world position in
+/// `worldSpace` and its `CameraProjection` in `projection`, and its
+/// `MousePickingAccess` extension puts a `mousePicking` shortcut on every
+/// component so nothing has to spell out `getSystem<MousePickingSystem>()`.
+final class CursorPosition {
   @internal
-  MousePosition();
+  CursorPosition();
 
   /// The pointer in window coordinates, origin at the window's top-left.
   final Vector2 screenSpace = Vector2.zero();
@@ -303,14 +306,14 @@ final class MousePosition {
 
   @override
   String toString() =>
-      'MousePosition(view: ${viewSpace.x}, ${viewSpace.y} of '
+      'CursorPosition(view: ${viewSpace.x}, ${viewSpace.y} of '
       '${viewSize.x}x${viewSize.y})';
 }
 
 /// Binds an action to the pointer's position.
 ///
 /// ```dart
-/// cursor = input.has<MousePosition>(const MouseBinding());
+/// cursor = input.has<CursorPosition>(const MouseBinding());
 /// ```
 ///
 /// Nothing to configure and nothing to name: there is one pointer, so unlike
@@ -321,14 +324,14 @@ final class MousePosition {
 /// [isActuated] is always false: a position has no pressed/released edge, so
 /// `wasPressedThisFrame` and the `pressed`/`released` streams never fire for
 /// an action bound to one. Bind a button if you want the click.
-final class MouseBinding extends InputBinding<MousePosition> {
+final class MouseBinding extends InputBinding<CursorPosition> {
   const MouseBinding();
 
   @override
-  MousePosition createStorage() => MousePosition();
+  CursorPosition createStorage() => CursorPosition();
 
   @override
-  MousePosition resolve(InputState state, MousePosition storage) {
+  CursorPosition resolve(InputState state, CursorPosition storage) {
     storage.screenSpace.setValues(state.pointerScreenX, state.pointerScreenY);
     storage.viewSpace.setValues(state.pointerViewX, state.pointerViewY);
     storage.viewSize.setValues(state.viewWidth, state.viewHeight);

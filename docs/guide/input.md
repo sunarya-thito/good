@@ -10,7 +10,7 @@ late Input<bool> p1Jump;
 late Input<bool> p2Jump;
 late Input<double> throttle;
 late Input<Vector2> movement;
-late Input<MousePosition> pointer;
+late Input<CursorPosition> pointer;
 Vector2 _saved = Vector2.zero();
 
 void shoot() {}
@@ -176,10 +176,10 @@ movement = descriptor.has<Vector2>(
 ### `MouseBinding` — pointer position
 
 ```dart
-pointer = descriptor.has<MousePosition>(const MouseBinding());
+pointer = descriptor.has<CursorPosition>(const MouseBinding());
 ```
 
-`MousePosition` carries `screenSpace` (window coordinates), `viewSpace` (within
+`CursorPosition` carries `screenSpace` (window coordinates), `viewSpace` (within
 the `GameView`'s rect, which is the space to hit-test a HUD in) and the size of
 the view the pointer is currently over — carried alongside the position because
 with two views of different sizes on screen, "the view size" is only answerable

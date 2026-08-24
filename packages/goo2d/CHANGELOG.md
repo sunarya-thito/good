@@ -1,3 +1,14 @@
+## Unreleased
+
+### Breaking
+
+* **`MouseEvent.position` and `MousePickingSystem.cursor` carry a
+  `CursorPosition`**, which is `good`'s `MousePosition` under a new name - see
+  its changelog for why. Rename the type where you spell it out; the fields on
+  it, and `MouseBinding`, are unchanged. Nothing in `goo2d` is renamed:
+  `MousePickingSystem`, `MouseReceiver`, `MouseEvent` and `MouseListener` are
+  all as they were (#129).
+
 ## 0.2.0
 
 World space changed direction. Read the first entry before you upgrade a game

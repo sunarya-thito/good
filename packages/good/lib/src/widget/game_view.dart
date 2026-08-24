@@ -148,7 +148,7 @@ class _GameViewState extends State<GameView> {
     final camera = widget.camera;
     if (camera != null) {
       // The size of *this* view, refreshed as the pointer enters it, so
-      // `MousePosition.viewSize` describes the view the cursor is actually in
+      // `CursorPosition.viewSize` describes the view the cursor is actually in
       // rather than whichever `GameView` laid out last. Costs two float
       // comparisons while the pointer stays put - `setViewSize` publishes only
       // on change - and it is what makes the number mean something with two

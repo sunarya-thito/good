@@ -63,6 +63,24 @@
   extends `GameListenerBase`, which is every listener the engine ships, is
   unaffected.
 
+* **`MousePosition` is now `CursorPosition`.** Rename the type and you are
+  done: same fields, same one-instance-per-action contract, same
+  `MouseBinding` producing it. A pointer position is the one input a finger
+  can produce exactly as a mouse can, and calling the thing a mouse position
+  would have made touch either lie about itself or need a second type for the
+  same three numbers (#129).
+
+  ```dart
+  cursor = input.has<CursorPosition>(const MouseBinding());
+  ```
+
+  **`MouseBinding` keeps its name**, and that is the point of splitting the
+  two: the binding says which device produced the position, the position says
+  where the pointer is. So do `MousePickingSystem`, `MouseReceiver`,
+  `MouseEvent` and `MouseListener` in `goo2d` - `onMouseEnter`, `onMouseHover`
+  and `onMouseExit` have no meaning for a finger, which is either down on you
+  or absent, so renaming those is a design question and not a spelling one.
+
 ### Added
 
 * **A record field can hold a string or a list whose length is not declared up

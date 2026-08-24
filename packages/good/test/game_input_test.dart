@@ -203,13 +203,13 @@ class _SharedDescriptorState extends GameState<_SharedDescriptorGame> {
 /// of "the mouse", which are deliberately different kinds of thing: the
 /// button is one bit like any key, the position is not.
 class _CursorSystem extends GameSystem {
-  late final Input<MousePosition> cursor;
+  late final Input<CursorPosition> cursor;
   late final Input<bool> click;
 
   @override
   void describeInputs(InputDescriptor input) {
     super.describeInputs(input);
-    cursor = input.has<MousePosition>(const MouseBinding());
+    cursor = input.has<CursorPosition>(const MouseBinding());
     click = input.has<bool>(const TriggerBinding(.leftMouseButton));
 
     cursor.pressed += (event) => events.add('cursor pressed');
@@ -1281,7 +1281,7 @@ void main() {
         isTrue,
         reason:
             'reading a pointer sixty times a second must not allocate '
-            '(the no-allocation rule) - the action owns one MousePosition for its '
+            '(the no-allocation rule) - the action owns one CursorPosition for its '
             'whole life, the same way Input<Vector2> owns one vector',
       );
       expect(

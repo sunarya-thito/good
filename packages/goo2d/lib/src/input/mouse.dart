@@ -26,8 +26,8 @@ class MouseEvent {
   late Entity entity;
 
   /// Where the pointer is, in the spaces the kernel can answer for (screen
-  /// and view). The same instance `Input<MousePosition>.value` hands out.
-  final MousePosition position;
+  /// and view). The same instance `Input<CursorPosition>.value` hands out.
+  final CursorPosition position;
 
   /// Where the pointer is in **world** space - what [position] deliberately
   /// cannot carry, because projecting needs a `Camera` and cameras are a
@@ -128,7 +128,7 @@ class MousePickingSystem extends GameSystem with FixedTickable {
   /// The pointer position, screen and view space. Public because a system
   /// that wants the cursor should not have to declare a second binding for
   /// the same one physical mouse.
-  late final Input<MousePosition> cursor;
+  late final Input<CursorPosition> cursor;
 
   /// The button that drives [MouseListener.onMousePressed] /
   /// [MouseListener.onMouseReleased].
@@ -164,7 +164,7 @@ class MousePickingSystem extends GameSystem with FixedTickable {
   @override
   void describeInputs(InputDescriptor descriptor) {
     super.describeInputs(descriptor);
-    cursor = descriptor.has<MousePosition>(const MouseBinding());
+    cursor = descriptor.has<CursorPosition>(const MouseBinding());
     click = descriptor.has<bool>(const TriggerBinding(.leftMouseButton));
   }
 

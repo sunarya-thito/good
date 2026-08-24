@@ -437,7 +437,7 @@ void main() {
     expect(events, contains('enter'));
   });
 
-  // NOT COVERED: that `MousePosition.viewSize` follows the pointer between two
+  // NOT COVERED: that `CursorPosition.viewSize` follows the pointer between two
   // views of different sizes. **The wiring is not at fault** - the widget
   // ->device leg simply cannot be driven in this test binding.
   //

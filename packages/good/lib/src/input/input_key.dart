@@ -765,7 +765,7 @@ final class KeyboardKey extends InputKey {
 /// is a perfectly ordinary trigger - because from an action's point of view
 /// there is no difference: both are one bit that is either held or not. Mouse
 /// *position* is a different shape entirely and is a follow-up
-/// (`MouseBinding`/`MousePosition`), not something this type grows into.
+/// (`MouseBinding`/`CursorPosition`), not something this type grows into.
 final class MouseButtonKey extends InputKey {
   const MouseButtonKey._(super.id, super.name, this.buttonMask);
 
