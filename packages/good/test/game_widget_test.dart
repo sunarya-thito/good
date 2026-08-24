@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/archetype.dart';
 import 'package:good/src/camera_view.dart';
+import 'package:good/src/event/fixed_loop.dart';
+import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/input/input_key.dart';
@@ -75,6 +77,53 @@ class _SilentGame extends Game {
 
   @override
   GameState createState() => _BareState();
+}
+
+/// Records the visibility hooks and the fixed steps, so a test can tell
+/// "the command arrived" apart from "a tick ran and carried it".
+class _VisibilitySystem extends GameSystem
+    with AppVisibilityListener, FixedTickable {
+  int hidden = 0;
+  final List<Duration> shown = <Duration>[];
+  int steps = 0;
+
+  @override
+  void onAppHidden() => hidden++;
+
+  @override
+  void onAppShown(Duration gap) => shown.add(gap);
+
+  @override
+  void onFixedUpdate() => steps++;
+}
+
+/// The system of the live run, bound the same way [run] is and for the same
+/// reason: the declaration pass owns the instance, so a test cannot hold one
+/// it made itself.
+late _VisibilitySystem _visibility;
+
+class _VisibilityState extends GameState<Game> {
+  @override
+  void onMounted() {
+    loadScene(_BareScene());
+  }
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    _visibility = descriptor.has(_VisibilitySystem());
+  }
+}
+
+class _VisibilityGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 10);
+
+  @override
+  GameState createState() => _VisibilityState();
 }
 
 /// Drives the platform's own lifecycle channel, which is what the observer
@@ -389,6 +438,99 @@ void main() {
         device.isDown(InputKey.w),
         isFalse,
         reason: 'and the second one going is what actually releases it',
+      );
+    });
+  });
+
+  // #162. The carrier, not the semantics. `game_test.dart` drives
+  // `GameState.setVisible` directly, so its twelve visibility tests pin what
+  // hiding and showing *do* and never touch how the message got there. This
+  // one goes in through the platform's lifecycle channel and out through the
+  // command, which is the only path a real app uses.
+  //
+  // The show half is the one that matters. `_setVisibleCommand` is
+  // receipt-delivered because it can stop the fixed tick - `pauseWhenHidden`
+  // cancels the timer on the way down - so a tick-delivered "visible again"
+  // would be queued for a tick that hiding just took away. That is a game
+  // which can be hidden and never shown, and no assertion about what
+  // `setVisible` does can see it.
+  group('visibility over the control carrier', () {
+    testWidgets('showing arrives with no tick to carry it', (tester) async {
+      await _start(_VisibilityGame());
+      await tester.pumpWidget(GameView.headless(game: run));
+      await _lifecycle(AppLifecycleState.resumed);
+
+      await _lifecycle(AppLifecycleState.hidden);
+
+      // One step here on purpose, and it is what makes this test about the
+      // show half rather than the hide. A tick-delivered command would be
+      // pumped by this step, so the hide lands whichever carrier it took -
+      // which leaves everything after it answerable only by how the *second*
+      // message travelled.
+      //
+      // It doubles as the control: a game that cannot step at all would
+      // satisfy "no step ran" below for reasons that have nothing to do with
+      // the carrier.
+      run.advance(const Duration(milliseconds: 10));
+      expect(
+        _visibility.steps,
+        greaterThan(0),
+        reason: 'the fixed tick has to work here for its absence later to '
+            'mean anything',
+      );
+      expect(_visibility.hidden, 1);
+      expect(run.state.isVisible, isFalse);
+
+      // Nothing drives `advance` from here to the end of the test, which is
+      // the state `pauseWhenHidden` leaves a real game in: it cancels the
+      // timer, so there is no tick window left for a tick-delivered command
+      // to be pumped from.
+      final stepsWhileHidden = _visibility.steps;
+
+      await _lifecycle(AppLifecycleState.resumed);
+
+      expect(
+        run.state.isVisible,
+        isTrue,
+        reason: 'the whole point - the game came back with no tick running, '
+            'because the command is carried over the control port and run '
+            'from the port callback',
+      );
+      expect(
+        _visibility.shown,
+        hasLength(1),
+        reason: 'and it reached the game, not just the flag: onAppShown is '
+            'what restarts whatever a game stopped on the way out',
+      );
+      expect(
+        _visibility.steps,
+        stepsWhileHidden,
+        reason: 'and not one fixed step ran between the send and the '
+            'arrival. If this ever moves, a tick carried the message and '
+            'the two assertions above are passing for the wrong reason',
+      );
+    });
+
+    testWidgets('a backgrounding round trip is one hide and one show', (
+      tester,
+    ) async {
+      await _start(_VisibilityGame());
+      await tester.pumpWidget(GameView.headless(game: run));
+
+      // Straight down the platform's own walk: the binding's transition
+      // generator turns each of these into the doubled states a real
+      // backgrounding produces, so this sends far more than two messages.
+      await _lifecycle(AppLifecycleState.resumed);
+      await _lifecycle(AppLifecycleState.paused);
+      await _lifecycle(AppLifecycleState.resumed);
+
+      expect(_visibility.hidden, 1);
+      expect(_visibility.shown, hasLength(1));
+      expect(
+        run.state.isVisible,
+        isTrue,
+        reason: 'and it ends up back where it started, which is what the '
+            'idempotence in setVisible is for',
       );
     });
   });
