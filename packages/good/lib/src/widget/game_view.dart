@@ -13,12 +13,10 @@ import 'package:good/src/game.dart';
 /// surface (a `Texture` widget fed by a platform view), and something
 /// headless-with-a-HUD may want neither. Those have nothing in common except
 /// "a widget that shows a running game", which is exactly this class. So the
-/// widget lives here, dimension-agnostic, and the actual drawing is
-/// contributed by whatever systems the game declared: `buildWidget` fires a
-/// [BuildWidgetEvent] and each `BuildWidgetListener` system wraps what has
-/// been built so far. `goo2d`'s `RenderSystem2D` wraps it in a `CustomPaint`;
-/// a future `goo3d` would wrap it in something else entirely, and neither
-/// package needs its own `GameView`.
+/// widget lives here, dimension-agnostic, and the drawing comes from
+/// [Game.buildView] - which `Game2D` overrides with a `CustomPaint` fed by the
+/// draw buffer, and a future `goo3d` would override with a native surface.
+/// Neither package needs its own `GameView`.
 ///
 /// # Push-driven, not vsync-polling
 ///
@@ -28,10 +26,10 @@ import 'package:good/src/game.dart';
 /// scheduled from that and nothing polls. Note the rebuild here is of the
 /// *widget*; a renderer that only needs to repaint pixels (not rebuild the
 /// tree) should hang a `Listenable` off the same tick signal instead, which
-/// is what `RenderSystem2D` does - see its `repaint` wiring. This widget
+/// is what `Game2D`'s painter does - see its `repaint` wiring. This widget
 /// rebuilding per tick would defeat that, so it deliberately does **not**
-/// `setState` on every tick: it rebuilds only when the *set of contributed
-/// widgets* could have changed, which today means never automatically. The
+/// `setState` on every tick: it rebuilds only when what [Game.buildView]
+/// returns could have changed, which today means never automatically. The
 /// tick listener exists so a subclass or a future scene-change signal has
 /// somewhere to hook.
 class GameView extends StatefulWidget {
@@ -171,18 +169,16 @@ class _GameViewState extends State<GameView> {
     );
   }
 
-  /// Delegates the entire tree to the game's declared systems. If none of
-  /// them is a `BuildWidgetListener`, this is an empty box - the honest
-  /// answer for a game with no renderer declared, rather than a crash or a
-  /// blank-but-sized placeholder pretending something is there.
+  /// Delegates the entire tree to [Game.buildView]. A game that overrides
+  /// nothing gets a zero-sized box - the honest answer for a game with no
+  /// renderer, rather than a crash or a blank-but-sized placeholder
+  /// pretending something is there.
   ///
-  /// The [Listener] is how mouse *buttons* reach the game (keys come in
-  /// through `HardwareKeyboard`, which needs no widget). `translucent`, so
-  /// wrapping the game costs nothing in hit testing: whatever the systems
-  /// built still gets its own hits, and an empty game still reports button
-  /// state. Mouse *position* is deliberately not read here - that is a
-  /// follow-up (`MouseBinding`), and it needs a coordinate space this widget
-  /// does not currently define.
+  /// The [Listener] is how the mouse reaches the game, position as well as
+  /// buttons; keys come in through `HardwareKeyboard`, which needs no widget.
+  /// `translucent`, so wrapping the game costs nothing in hit testing:
+  /// whatever the game built still gets its own hits, and an empty game still
+  /// reports button state.
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {

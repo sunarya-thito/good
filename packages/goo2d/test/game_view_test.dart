@@ -205,12 +205,11 @@ void main() {
       run.state.advance(_step * 2);
       await tester.pump();
       expect(tester.takeException(), isNull);
-      // Stronger than "paints nothing": with rendering moved out of GameView
-      // and into a declared RenderSystem2D, a game that never declares one
-      // produces no CustomPaint in the tree whatsoever - GameView builds
-      // exactly what its systems contribute, which here is the empty box
-      // BuildWidgetEvent starts with. A HUD-only or headless-plus-Flutter
-      // setup is a first-class shape, not a degenerate case to tolerate.
+      // Stronger than "paints nothing": rendering lives in Game.buildView,
+      // and a game that does not override it produces no CustomPaint in the
+      // tree whatsoever - GameView lays out the zero-sized box it falls back
+      // to. A HUD-only or headless-plus-Flutter setup is a first-class shape,
+      // not a degenerate case to tolerate.
       expect(find.byType(CustomPaint), findsNothing);
     },
   );

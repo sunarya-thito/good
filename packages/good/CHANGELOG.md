@@ -191,6 +191,15 @@
 
 ### Fixed
 
+* **The two errors printed when a system is switched off name a method that
+  exists.** Both said `Game.enableSystem`, which moved to `GameState` and left
+  no forwarder; one of them is what `FlutterError.reportError` prints in a
+  release build, so it was the engine's one working diagnostic pointing at an
+  API a reader could not find. The assert now names
+  `GameState.enableSystem<T>()`, and the release report says what a
+  main-isolate reader can actually do about it, which is send a command whose
+  handler calls it (#166).
+
 * **A false claim in the 0.2.0 notes is corrected.** They said the four
   commands the engine now declares broke `good_net` peer compatibility. They
   did not: the handshake hash reads network messages, declared in

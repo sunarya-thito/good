@@ -156,12 +156,17 @@ class MemoryPool {
   /// the addresses that page published (see [MemoryPage.latestAddress] /
   /// [MemoryPage.slotAddresses]).
   ///
-  /// This is the pool half of the cross-isolate handoff `Game` performs:
-  /// pages are allocated lazily, by the writing isolate, long after the
-  /// spawn message has been copied - so a reader can't be handed the whole
-  /// pool up front. Instead the writer announces each new page as it
-  /// appears and the reader adopts it here, in the same order, so page
-  /// indices line up on both sides.
+  /// **Nothing in the engine calls this.** It was the pool half of a
+  /// cross-isolate handoff: pages are allocated lazily, by the writing
+  /// isolate, long after the spawn message has been copied, so a reader could
+  /// not be handed the whole pool up front - the writer announced each new
+  /// page as it appeared and the reader adopted it here, in the same order,
+  /// so page indices lined up on both sides. Main stopped reading component
+  /// data and the announcements went with it (see
+  /// `GameRuntime.releaseScenePages`). This method, `ArchetypeStorage`'s half
+  /// of it and `pool_test.dart`'s cover of both are what survives, and nobody
+  /// has decided yet whether a second reader is worth having again - #122
+  /// is where that gets settled.
   ///
   /// The returned page knows nothing about row occupancy - [MemoryPage]'s
   /// stride, high-water mark and free list are writer-local Dart state, not
@@ -286,10 +291,10 @@ class MemoryPage {
   /// for this page, or -1 if it was allocated without one.
   ///
   /// Not used for anything on the writing side - the archetype already knows
-  /// its own pages. It exists so a page announcement crossing to a reading
-  /// isolate can say *which* archetype's page list to append the adopted
-  /// view to, which is what keeps `Entity.pageIndex` resolving to the same
-  /// page on both sides.
+  /// its own pages. It existed so a page announcement crossing to a reading
+  /// isolate could say *which* archetype's page list to append the adopted
+  /// view to. Nothing announces pages any more; the field stays because
+  /// [MemoryPool.adoptPage] takes it.
   final int ownerArchetypeId;
 
   /// False for a page adopted from another isolate (see

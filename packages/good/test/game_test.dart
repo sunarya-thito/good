@@ -1120,7 +1120,7 @@ void main() {
         isFalse,
         reason:
             'taken out of circulation, the way a throwing coroutine is '
-            'removed. Game.enableSystem brings it back.',
+            'removed. GameState.enableSystem brings it back.',
       );
 
       // Three more ticks. In release this is simply what happens; here it is

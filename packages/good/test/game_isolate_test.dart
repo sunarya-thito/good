@@ -32,16 +32,14 @@ import 'package:vector_math/vector_math_64.dart' show Vector2;
 late Game run;
 
 // The real two-isolate bring-up: `Game.start()` hands the Game subclass
-// itself to Isolate.spawn, the copy on the other side builds its GameState
-// and runs the fixed-tick loop, and this isolate reads the resulting
-// component data straight out of shared memory (lane 1 -
-// MemoryPage.resolveRead from a non-writing isolate).
+// itself to Isolate.spawn, and the copy on the other side builds its GameState
+// and runs the fixed-tick loop.
 //
-// Both copies still run every declaration pass, which is what makes this
-// possible at all: the handle copy has its own GameState mirroring the same
-// scene, so archetype ids agree and the pages the game isolate announces have
-// a pool to be adopted into. What separates the copies is
-// GameState.isSimulating - only one of them ticks.
+// Every assertion about the world therefore comes through a StateChannel,
+// because that is the only way a number gets here: this isolate registers no
+// archetypes and holds no pages, so it cannot read a column even in principle.
+// That is not a testing workaround - it is the split these tests exist to
+// pin, and a system publishing what it saw is what a real game does too.
 //
 // Pacing is deliberate. `tool/ring_buffer_stress.dart` documents a real VM
 // crash from driving a tight cross-isolate FFI loop inside the test runner's

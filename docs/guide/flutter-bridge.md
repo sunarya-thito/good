@@ -41,14 +41,18 @@ Your UI is ordinary Flutter — widgets, `setState`, whatever state management y
 like — laid over a `GameView`. What is *not* ordinary is that the simulation is
 on another isolate, so a button cannot simply call a method on your game.
 
-Three lanes cross the boundary, and each exists because the others handle its
+Two lanes carry your traffic, and each exists because the other handles its
 case badly.
 
 | Lane | Direction | Shape | Use it for |
 |---|---|---|---|
 | [Commands](#commands) | both ways | bulk, per-tick | "Do this": spawn, damage, pause, save |
 | [State channels](#state-channels) | game → main | one small value | HUD numbers: score, health, timings |
-| [Entity reads](#reading-the-world-directly) | game → main | per-entity | Reading the world itself |
+
+A third, `describeBuffers`, is renderer plumbing rather than game code: a ring
+of records in shared memory, which is how `goo2d` gets a frame's draw list to
+the painter. Nothing crosses outside these — component data in particular does
+not, and [Reading the world](#reading-the-world) says why.
 
 ## Where your UI belongs
 
@@ -402,39 +406,48 @@ ValueListenableBuilder<int>(
 )
 ```
 
-### Who can declare one
+### Only the `Game` can declare one
 
-Exactly two hosts: **`Game`** and **`GameSystem`**. That is not arbitrary — a
-channel's storage is allocated on the main isolate *before the spawn*, and its
-identity across the boundary is its index in that one declaration pass. So only
-something main declares can own an index.
+Not arbitrary: a channel's storage is allocated on the main isolate *before the
+spawn*, and its identity across the boundary is its index in that one
+declaration pass. `describeState` is the only pass main runs that a game
+overrides, so it is the only place an index can come from.
 
-That rules out three things, each for its own reason:
+That rules out four hosts, each for its own reason:
 
 - **`GameState`** is built on the game isolate, after the allocation it would
-  have to be part of. Publish from the `Game` and write through
-  `state.game.score`.
+  have to be part of.
+- **`GameSystem`** goes with the systems to the game isolate for the same
+  reason. It used to have a `describeState` and lost it.
 - **`SceneStruct`** is loaded after boot, possibly several times, so it could
   never hold a stable index.
 - **`Component`** comes and goes with the scene, for the same reason.
 
-Publish scene-derived values from a `GameSystem`, which outlives the scene and
-is where the per-tick work already is.
+So a scene-derived value is declared on the `Game` and written from wherever
+the per-tick work is — usually a `GameSystem`, through `game.score`, as
+`ScoreSystem` above does.
 
 !!! warning "Publish from `Tickable`, not `FixedTickable`"
     Phase totals are only complete once the fixed step has returned. A system
     publishing from inside `onFixedUpdate` reports a half-accumulated figure —
     numbers that are wrong in a way that looks plausible.
 
-## Reading the world directly
+## Reading the world
 
-The Flutter-side copy of your `Game` runs the same declarations, so it has the
-identical archetype layout and adopts every page the game isolate allocates. An
-`Entity` therefore resolves and reads with **no message and no copy**.
+You cannot, from Flutter. The main-isolate copy registers no archetypes and
+holds no component pages, so `Entity.get` there throws and tells you to publish
+the value through a channel instead. Every read of a column happens on the
+game isolate.
 
-Getting the handle across is the only part that needs a command — an `Entity` is
-an `int`, so it fits in one parameter, and `hasEntity` is the field that says
-so:
+That is not a gap waiting to be filled. Main did once adopt each page the game
+isolate announced and resolve handles itself; what it cost was two page lists
+that had to stay in step and a handshake before any page could be freed, since
+main might still be reading it — and use-after-free on shared memory does not
+report, it returns plausible numbers. The reader went and all of that went with
+it.
+
+An `Entity` still crosses perfectly well as a *value*, which is what
+`hasEntity` is for:
 
 ```dart
 class WhoIsPlayer extends SupplierCommand<Entity> {
@@ -454,20 +467,12 @@ class WhoIsPlayer extends SupplierCommand<Entity> {
 }
 ```
 
-<!-- snippet: plain -->
-```dart
-final playerEntity = await game.whoIsPlayer();
-final transform = playerEntity.get<Transform2D>();
-final x = transform.transformOffsetX[playerEntity];
-```
-
-This is a read of the published snapshot, coherent per tick, and **read-only** —
-the game isolate is the only writer anywhere in the process.
-
-`hasEntity` is `hasInt64` with the handle type on it — same eight bytes on the
-wire, same cost — but a command declaring one cannot be handed a score by
-mistake, and a mix-up that did cross the boundary would look like eight
-perfectly ordinary bytes on the other side.
+It is `hasInt64` with the handle type on it — same eight bytes on the wire,
+same cost — but a command declaring one cannot be handed a score by mistake,
+and a mix-up that did cross would look like eight perfectly ordinary bytes on
+the other side. What main can do with the handle it gets back is name that
+entity in a later command. To *watch* one, publish its fields: see
+[debugging without an inspector](thinking-in-ecs.md#debugging-without-an-inspector).
 
 ## Frames and ticks
 

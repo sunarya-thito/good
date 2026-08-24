@@ -90,8 +90,8 @@ abstract base class _ListenerSet<L extends GameListener> {
   ///    should do when one system has a bad day. The disable is reported
   ///    to the main isolate via an engine command.
   ///
-  /// So the disable is release behaviour. `Game.enableSystem` brings a system
-  /// back if the throw was transient.
+  /// So the disable is release behaviour. `GameState.enableSystem` brings a
+  /// system back if the throw was transient.
   void _reportUncaught(L listener, Object error, StackTrace stack) {
     assert(false, '''
 ${listener.runtimeType} threw during an event dispatch and has been disabled.
@@ -100,8 +100,9 @@ $error
 $stack
 This assert stops the game isolate, and Game.start's error port carries it to
 the main isolate rather than losing it. In release there is no assert: the
-listener stays disabled and the game keeps running. Game.enableSystem<${listener.runtimeType}>()
-re-enables it if the throw was transient.''');
+listener stays disabled and the game keeps running.
+GameState.enableSystem<${listener.runtimeType}>() re-enables it if the throw was
+transient.''');
   }
 }
 

@@ -215,22 +215,20 @@ enum _ControlMessage {
 ///    the only writer of component data and state channels anywhere in the
 ///    process ([GameState.isSimulating] is true).
 ///  * The **main-isolate copy** - the one the caller still holds after
-///    `await game.start()` - is an inert *handle*. Its systems never tick;
-///    its state's scene holds no rows of its own. It exists to (a) send and
+///    `await game.start()` - is an inert *handle*. Its systems never tick, it
+///    registers no archetypes and it owns no pages. It exists to (a) send and
 ///    handle commands ([describeCommands]), (b) receive tick-complete
-///    notifications ([addTickListener]) and state-channel updates, (c) build
-///    widgets ([buildView]), and (d) resolve `Entity` handles for reading:
-///    it re-runs the same `describeScene` so it has the identical archetype
-///    layout, and adopts each page the game isolate announces, so
-///    `someEntity.get<Transform2D>().x[someEntity]` reads the game isolate's
-///    published snapshot directly out of shared memory with no copying.
+///    notifications ([addTickListener]) and state-channel updates, and (c)
+///    build widgets ([buildView]). It does **not** read component data: it
+///    used to adopt each page the game isolate announced and resolve `Entity`
+///    handles itself, and `Entity.get` there now throws saying so. See
+///    `GameRuntime.releaseScenePages` for what that reader cost.
 ///
 /// Calling a gameplay method on the handle copy does not reach the
 /// simulation. Anything that must cross goes through one of exactly two
 /// channels, split by volume: bulk, per-tick traffic through a shared
 /// `RingBuffer` ([describeCommands], [describeBuffers]), rare control signals
-/// through a `SendPort` ([enableSystem], [stop], page announcements, tick
-/// pings, state-channel addresses).
+/// through a `SendPort` ([stop], tick pings, state-channel addresses).
 ///
 /// The spawn message is why this class must hold no **unsendable** state when
 /// [start] hands it over - but that set is much smaller than it once looked,
@@ -508,8 +506,9 @@ abstract class Game implements RandomOwner {
         stack: stackTrace.isNotEmpty ? StackTrace.fromString(stackTrace) : null,
         library: 'good',
         context: ErrorDescription(
-          'which has been switched off. Game.enableSystem brings it back if '
-          'the throw was transient',
+          'which has been switched off. It stays off until something on the '
+          'game isolate calls GameState.enableSystem for it - a command '
+          'handler, if the throw was transient and you want it back',
         ),
       ),
     );
@@ -2223,13 +2222,18 @@ final class GameRuntime {
   /// Announces the finished frame to the main isolate.
   ///
   /// **Called after the presentation pass, not at the end of the fixed
-  /// tick.** That ordering is load-bearing. The tick ping is what a consumer
-  /// hangs its drain off - `RenderSystem2D` drains the draw ring on it - and
-  /// the draw ring is filled by `GameRenderer2D` during *presentation*,
-  /// which runs after `commitTick`. Firing this inside `runFixedStep` (where
-  /// it used to live, back when the renderer was a `FixedTickable`) would
-  /// signal "a frame is ready" before the frame had been written, so every
-  /// drain would come up one frame stale - and the very first one empty.
+  /// tick.** That ordering is load-bearing: a `Tickable` *is* presentation,
+  /// so anything a game publishes for main to see - a state channel, a draw
+  /// ring - is written after `commitTick` and before this. Firing inside
+  /// `runFixedStep` (where it used to live, back when the renderer was a
+  /// `FixedTickable`) would announce a frame that had not been written yet,
+  /// and everything reading on the signal would come up one frame stale, the
+  /// very first one empty.
+  ///
+  /// The main-isolate half is [_notifyTickListeners], which reconciles state
+  /// channels before it calls anyone. `goo2d` no longer listens: it samples
+  /// the newest published frame from a `SchedulerBinding` frame callback
+  /// instead, for the reason `GameRenderer2D._onFrame` gives.
   ///
   /// Split from [completeTick] rather than merged into it because the tick
   /// *counter* has to advance before presentation runs: the renderer stamps

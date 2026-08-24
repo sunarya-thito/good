@@ -65,11 +65,10 @@ import 'package:good/src/system.dart';
 ///
 /// # Isolate affinity
 ///
-/// `GameState` is a [GameListener] and deliberately **not** a
-/// `WidgetListener`: it lives where the tick loop does and there is no
-/// Flutter engine attached to that isolate. It can be `FixedTickable` and
-/// `LifecycleListener`; it cannot be `BuildWidgetListener`. See `GameEvent`'s
-/// doc.
+/// `GameState` is a [GameListener], and it lives where the tick loop does -
+/// an isolate with no Flutter engine attached. So it can be `FixedTickable`
+/// and `LifecycleListener`, and it builds no widgets: the whole Flutter-facing
+/// surface is `Game.buildView`, on the other copy. See `GameEvent`'s doc.
 abstract class GameState<T extends Game> extends GameListenerBase
     with EventBus, Coroutines {
   /// The simulation tick, dispatched once per fixed step to every declared

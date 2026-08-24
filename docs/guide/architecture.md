@@ -18,15 +18,16 @@ type, same overrides, different identity, different heap.
 ```mermaid
 flowchart LR
     subgraph FL["Flutter isolate"]
-        A["<b>MyGame</b> (handle)<br/>builds widgets<br/>sends commands<br/>reads channels<br/>resolves Entities"]
+        A["<b>MyGame</b> (handle)<br/>builds widgets<br/>sends commands<br/>reads channels"]
     end
     subgraph GA["game isolate"]
         B["<b>MyGame</b> (the real one)<br/>owns MemoryPool<br/>ticks systems<br/>writes components<br/>loads scenes"]
     end
     A -->|"Isolate.spawn"| B
     A <-->|"ring buffers"| B
-    A -.-> M(["shared native memory<br/>component pages, state channels"])
+    A -.-> M(["shared native memory<br/>state channels, draw buffers"])
     B -.-> M
+    B -.-> P(["shared native memory<br/>component pages"])
 ```
 
 From that moment the two copies do completely different jobs.
@@ -35,12 +36,11 @@ From that moment the two copies do completely different jobs.
 `MemoryPool`, the live scenes and the fixed-tick loop, and it is the only
 writer of component data and state channels anywhere in the process.
 
-**The main-isolate copy is an inert handle.** Its systems never tick. It exists
-to send and handle commands, receive tick notifications and state-channel
-updates, build widgets, and **resolve `Entity` handles for reading** — it
-re-runs the same declarations, so it has the identical archetype layout and can
-read the game isolate's published snapshot straight out of shared memory with
-no copying.
+**The main-isolate copy is an inert handle.** Its systems never tick, it
+registers no archetypes and it holds no component pages. It exists to send and
+handle commands, receive tick notifications and state-channel updates, and
+build widgets. Numbers it shows arrive through a state channel or a buffer; an
+`Entity` handed to it will not resolve, and says so.
 
 !!! danger "Calling a gameplay method on the handle copy does nothing"
     The `game` you still hold after `await Game.start(game)` is the handle. It
@@ -186,21 +186,17 @@ spawned run they throw, because there is no local state to reach.
 `Game.start` also boots inline automatically on the web (`kIsWeb`), since there
 is no isolate to spawn there — but the web is not otherwise a supported target.
 
-## Reading the world from Flutter
+## Component data does not cross
 
-Because the handle copy shares the archetype layout and adopts each page, an
-`Entity` obtained on the Flutter side resolves and reads directly:
+Every read of a column happens on the game isolate. Main gets a value by having
+the game isolate publish it — a [state channel](flutter-bridge.md#state-channels)
+for a number, a buffer for bulk per-frame data such as the 2D draw list.
 
-```dart
-// `playerEntity` is an Entity the game isolate sent over, e.g. as the result
-// of a SupplierCommand, or one main resolved itself.
-final transform = playerEntity.get<Transform2D>();
-final x = transform.transformOffsetX[playerEntity];   // published snapshot
-```
-
-This is a read of shared memory, not a message. It is coherent per tick and it
-is **read-only** — the game isolate is the only writer, and writing from main is
-a bug the assert layer will catch in debug.
+Main did once resolve `Entity` handles itself, off pages the game isolate
+announced as it allocated them. Sharing memory was never the problem; keeping
+two page lists in step was, and so was freeing a page main might still be
+reading. Both went away with the reader, and `Entity.get` on this copy now
+throws rather than reading a page list that will always be empty.
 
 ---
 

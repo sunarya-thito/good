@@ -418,15 +418,15 @@ class ArchetypeStorage {
   MemoryPage? pageAt(int index) => _pages[index];
 
   /// Appends a page this storage did **not** allocate - the mirror half of
-  /// [allocateRow]'s `pool.allocatePage()`, used by a reading isolate that
-  /// re-ran the same scene registration and now has to line its page list up
-  /// with the writer's (see `MemoryPool.adoptPage` and `Game`'s page
-  /// announcements).
+  /// [allocateRow]'s `pool.allocatePage()`, and, like `MemoryPool.adoptPage`,
+  /// **called from nowhere in the engine**. It served a reading isolate that
+  /// re-ran the same scene registration and had to line its page list up with
+  /// the writer's; there is no such reader any more.
   ///
-  /// Correctness rests on one thing: the writer announces its pages in
+  /// Correctness rested on one thing: the writer announced its pages in
   /// allocation order, one archetype at a time, and a `SendPort` preserves
-  /// message order - so appending here reproduces the writer's list index
-  /// for index, which is exactly what `Entity.pageIndex` addresses.
+  /// message order - so appending here reproduced the writer's list index for
+  /// index, which is exactly what `Entity.pageIndex` addresses.
   @internal
   void adoptPage(MemoryPage page) {
     // The same bound as the allocating side, for the same reason: this list

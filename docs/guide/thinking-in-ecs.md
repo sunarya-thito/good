@@ -21,13 +21,12 @@ class Mote extends EntityStruct with Transform2D, Renderable2D {
   final life = Field.float64(1);
 }
 
-class WhoIsPlayer extends SupplierCommand<Entity> {}
-
 class ArenaGame extends Game2D {
   late final StateChannel<int> wave;
   late final StateChannel<int> alive;
   late final StateChannel<int> score;
-  late final WhoIsPlayer whoIsPlayer;
+  late final StateChannel<double> watchedX;
+  late final StateChannel<int> watchedHp;
 }
 
 /// The reader's own structure, not an engine type.
@@ -1017,8 +1016,8 @@ handler. A button in your Flutter UI sends a
 
 Losing the inspector is the loss people feel most, and it is a real loss. There
 is no panel showing a live object with its fields, because there is no object.
-Four things replace it, and between them they cover more ground than the panel
-did.
+Four things replace it. None of them is an inspector, and between them they
+cover most of what you went to one for.
 
 **Put the numbers on screen.** This is the big one and the habit worth building
 first. A system publishes counters through
@@ -1043,20 +1042,35 @@ Publish from `Tickable`, not `FixedTickable`. Phase totals are only complete
 once the fixed step has returned, and a value published mid-step is wrong in a
 way that looks plausible.
 
-**Read the world from Flutter directly.** Both isolates run the same
-declarations and share the same pages, so an `Entity` resolves on the Flutter
-side with no message and no copy. Get the handle across once — it is an `int`,
-so it fits in a single command parameter — and a debug widget can then read any
-column on it live:
+**Publish the row you suspect.** A channel does not have to carry a game-level
+number. When it is one entity misbehaving, keep its handle on the state and let
+a throwaway system copy the columns you care about out of it every tick:
 
 ```dart
-final playerEntity = Entity(await game.whoIsPlayer());
-final transform = playerEntity.get<Transform2D>();
-final x = transform.transformOffsetX[playerEntity];   // published snapshot
+class WatchPlayer extends GameSystem with Tickable {
+  @override
+  void onTick(Duration delta) {
+    final player = getState<ArenaState>().playerEntity;
+    if (player == null) return;
+    getGame<ArenaGame>()
+      ..watchedX.value = player.get<Transform2D>().transformOffsetX[player]
+      ..watchedHp.value = player.get<Health>().hp[player];
+  }
+}
 ```
 
-That is the closest thing to an inspector here, and unlike an inspector you
-write it once and it shows exactly the fields you care about.
+`watchedX` and `watchedHp` are declared on the `Game` with `describeState`,
+beside the counters above. A system of its own is worth the extra class: when
+you are done, you delete the system and its two declarations and nothing else
+ever knew about them.
+
+Be clear about what this is not. A channel carries one fixed-width scalar —
+eleven formats, no strings, no label — so you name the field before you run,
+and watching a different one is an edit and a restart. It answers "what is that
+number doing", which is most of what an inspector gets used for; it does not
+let you browse. And there is no way round it from the Flutter side: that copy
+of your game registers no archetypes, so an `Entity` does not resolve there at
+all.
 
 **Bisect with systems, not with objects.** In an EC engine you find a
 misbehaving script by switching components off one at a time. Here you switch

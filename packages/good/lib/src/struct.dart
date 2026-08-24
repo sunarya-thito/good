@@ -282,7 +282,7 @@ abstract class EntityStruct extends GameListenerBase
 /// switching it off for one entity needs a bit in every row plus a query that
 /// consults it, which is a different feature entirely. Enable/disable that
 /// does exist works at the level where it means something: whole systems, via
-/// `Game.enableSystem`.
+/// `GameState.enableSystem`.
 abstract class ComponentDescriptor {
   void has<T extends Component>({Type? type});
 }

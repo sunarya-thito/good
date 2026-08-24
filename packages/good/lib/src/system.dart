@@ -60,10 +60,10 @@ abstract class GameSystem extends GameListenerBase
 
   /// Whether this system currently receives events.
   ///
-  /// This is what `Game.enableSystem`/`disableSystem` actually toggle, and it
-  /// is why a pre-collected dispatcher list is still correct: a disabled
-  /// system stays in every dispatcher it was collected into and simply
-  /// declines. Baking membership and reading enablement is the split - one is
+  /// This is what `GameState.enableSystem`/`disableSystem` actually toggle,
+  /// and it is why a pre-collected dispatcher list is still correct: a
+  /// disabled system stays in every dispatcher it was collected into and
+  /// simply declines. Baking membership and reading enablement is the split - one is
   /// fixed by type at declaration, the other is genuinely runtime state.
   @override
   bool get listensToEvents => _enabled;
@@ -74,7 +74,7 @@ abstract class GameSystem extends GameListenerBase
   /// A system is the one listener the engine can switch off and carry on, so
   /// this is where the base class's no-op is overridden - see
   /// `GameListener.disableAfterUncaught`. Same flag `disableSystem` sets, so
-  /// `Game.enableSystem` brings it back.
+  /// `GameState.enableSystem` brings it back.
   @override
   void disableAfterUncaught([Object? error, StackTrace? stack]) {
     _enabled = false;
