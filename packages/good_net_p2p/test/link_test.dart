@@ -4,6 +4,11 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:good_net/good_net.dart';
 import 'package:good_net_p2p/good_net_p2p.dart';
+// The link and its wire format are the package's own, not its API - and this
+// is a test about a bound inside the transport, which is the one place that
+// distinction should not stop a test from looking.
+import 'package:good_net_p2p/src/link.dart';
+import 'package:good_net_p2p/src/wire.dart';
 
 /// Records what a transport reports, so a test can say what arrived.
 class _Ear implements NetListener {
@@ -329,6 +334,112 @@ void main() {
         reason: 'the keepalives it is still sending are going unanswered, and '
             'unanswered past the deadline is what lost means',
       );
+    });
+
+    // #163. The transport's own lane, which #158 left out. A game's send is
+    // bounded by `maxMessageBytes` and refused where it was written;
+    // `sendSystem` built its bytes and went straight to the queue, so the
+    // only thing between it and a message cut into more pieces than the
+    // format can index was an `assert` - and an `assert` is not there in the
+    // build where a silently deleted roster update cannot be recovered from.
+    //
+    // Both of these send a body no caller sends today. That is the point: the
+    // callers carry a slot and a generation, so nothing can reach the ceiling
+    // now, and the whole risk is a later system message that carries
+    // something variable and inherits an unbounded path.
+    group('a system message has a ceiling of its own', () {
+      // A `peerJoined` body is a slot and a generation and then whatever
+      // padding a test wants: `_onSystemMessage` reads the first four bytes
+      // and ignores the rest, so one of these is a real roster update that
+      // happens to be as long as it is allowed to be.
+      Uint8List announce(int slot, int length) =>
+          Uint8List(length)
+            ..[0] = slot & 0xFF
+            ..[1] = slot >> 8;
+
+      const int newcomer = 7;
+
+      test('one byte over it is refused, and nothing goes out', () async {
+        final host = transport();
+        final client = transport();
+        final clientEar = _Ear();
+        final hosted = await host.host();
+        final joined = await client.join(hosted.id);
+        await run(const Duration(milliseconds: 200));
+
+        final link = hosted.connectionTo(joined.localPeer)! as P2PLink;
+        const limit = P2PLink.maxSystemMessageBytes;
+
+        // A block body, not an arrow, and matched on the text rather than on
+        // `StateError` alone: more than one guard on this path throws one, so
+        // a type-only assertion would be satisfied by the fragment count or
+        // by a link that had already ended and would stop meaning anything.
+        expect(
+          () {
+            // The message id is the first byte of the payload, so a body of
+            // exactly the limit is one byte over it.
+            link.sendSystem(
+              SystemMessage.peerJoined,
+              announce(newcomer, limit),
+            );
+          },
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              allOf(
+                contains('system message ${SystemMessage.peerJoined}'),
+                contains('${limit + 1} bytes'),
+                contains('carries at most $limit'),
+              ),
+            ),
+          ),
+          reason:
+              'the same answer a game gets for an oversized send, and for the '
+              'same reason: it can never arrive however long it is left, so '
+              'it is a different failure from a link that is momentarily busy '
+              'and the caller can do something about exactly one of them',
+        );
+
+        await run(const Duration(milliseconds: 200));
+        client.poll(clientEar);
+
+        expect(
+          clientEar.joined.map((peer) => peer.slot),
+          isNot(contains(newcomer)),
+          reason:
+              'and the refusal is where it stops. Without a bound here this '
+              'is cut into two fragments and delivered, which is the thing '
+              'that makes the ceiling worth stating rather than assuming',
+        );
+      });
+
+      test('a body of exactly the ceiling arrives whole', () async {
+        final host = transport();
+        final client = transport();
+        final clientEar = _Ear();
+        final hosted = await host.host();
+        final joined = await client.join(hosted.id);
+        await run(const Duration(milliseconds: 200));
+
+        final link = hosted.connectionTo(joined.localPeer)! as P2PLink;
+        link.sendSystem(
+          SystemMessage.peerJoined,
+          announce(newcomer, P2PLink.maxSystemMessageBytes - 1),
+        );
+
+        await run(const Duration(milliseconds: 400));
+        client.poll(clientEar);
+
+        expect(
+          clientEar.joined.map((peer) => peer.slot),
+          contains(newcomer),
+          reason:
+              'a ceiling the sender cannot reach is a bound on paper only. '
+              'Exactly the stated size is one frame and crosses intact, which '
+              'is what the number was chosen to mean',
+        );
+      });
     });
   });
 }

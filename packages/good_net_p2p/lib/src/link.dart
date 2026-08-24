@@ -257,11 +257,25 @@ class P2PLink implements NetConnection {
   /// Queues one of the transport's own messages - a roster update. Always
   /// reliable: a client that missed "player 3 left" has a wrong roster
   /// forever, and there is no later message that corrects it.
+  ///
+  /// Bounded by [maxSystemMessageBytes], which is **tighter** than what
+  /// [send] allows a game - see that constant for why.
   void sendSystem(int message, List<int> body) {
-    final bytes = Uint8List(1 + body.length);
+    final size = 1 + body.length;
+    if (size > maxSystemMessageBytes) {
+      throw StateError(
+        'system message $message is $size bytes and the $backendName '
+        'backend carries at most $maxSystemMessageBytes in one, so it will '
+        'never arrive however long it is left. A system message is the '
+        'transport talking to itself and is deliberately held to a single '
+        'datagram: say it in several messages that each stand alone, the '
+        'way a roster is sent as one update per peer.',
+      );
+    }
+    final bytes = Uint8List(size);
     bytes[0] = message;
-    bytes.setRange(1, bytes.length, body);
-    _enqueue(FrameKind.system, bytes, 0, bytes.length);
+    bytes.setRange(1, size, body);
+    _enqueue(FrameKind.system, bytes, 0, size);
   }
 
   @override
@@ -313,6 +327,28 @@ class P2PLink implements NetConnection {
     NetChannel.unreliable => maxFramePayload,
   };
 
+  /// What one of the transport's own messages may be - [sendSystem]'s
+  /// ceiling, and **one frame**, where a game's reliable message gets 255.
+  ///
+  /// The reliable ceiling is what a game needs and this is not a game. Every
+  /// system message is written by the transport out of fields it decided
+  /// itself: a slot, a generation, a reason index. Nothing a player types and
+  /// nothing that grows with the session reaches one, so the smallest ceiling
+  /// that fits the traffic is the honest one - and at six bytes for the
+  /// longest of them, this is still nearly two hundred times what is used.
+  ///
+  /// What the tighter number buys is that a system message never fragments.
+  /// A roster update is what everything else is correct *relative to*, so it
+  /// is the last thing that should be waiting on 254 more pieces or holding
+  /// the link's one reassembly buffer while a game message wants it. It also
+  /// makes the guard in [_enqueue] unreachable from here by construction
+  /// rather than by arithmetic that happens to work out.
+  ///
+  /// A future system message that will not fit says so at the send, and the
+  /// answer is the one the roster already uses: several messages that each
+  /// stand alone, not one the transport quietly cuts up.
+  static const int maxSystemMessageBytes = maxFramePayload;
+
   void _enqueue(int kind, Uint8List bytes, int offset, int length) {
     if (length <= maxFramePayload) {
       _append(kind, bytes, offset, length, 0, 0, 1);
@@ -320,13 +356,20 @@ class P2PLink implements NetConnection {
     }
     final fragments = (length + maxFramePayload - 1) ~/ maxFramePayload;
     if (fragments > maxFragments) {
-      assert(
-        false,
+      // Unreachable from either caller - `send` refuses over
+      // [maxMessageBytes] and `sendSystem` over [maxSystemMessageBytes], and
+      // both of those are this bound expressed in bytes. It throws anyway,
+      // and it is a throw rather than the `assert` it used to be because the
+      // alternative is deleting a message in release builds and saying
+      // nothing: a peer left holding a roster that will never be corrected,
+      // with no evidence anywhere of why. An invariant that cannot be reached
+      // costs nothing to state loudly, and the one build where a silent drop
+      // is unrecoverable is the build an `assert` is compiled out of.
+      throw StateError(
         'a single message of $length bytes needs $fragments fragments, and '
         'the fragment index is one byte. Split it in the game, where the '
         'meaning of the split is known.',
       );
-      return;
     }
     final group = _nextGroupId = (_nextGroupId + 1) & 0xFFFF;
     for (var i = 0; i < fragments; i++) {
