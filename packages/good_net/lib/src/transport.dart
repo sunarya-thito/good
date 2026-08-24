@@ -1,5 +1,6 @@
 import 'package:meta/meta.dart';
 
+import 'channel.dart';
 import 'listener.dart';
 import 'session.dart';
 
@@ -24,9 +25,83 @@ import 'session.dart';
 ///    datagrams as it can.
 ///  * **The schema hash is checked before a session forms.** See
 ///    [schemaHash].
+///  * **A message too big to carry is refused, not truncated or dropped.**
+///    See [maxMessageBytes].
 abstract class NetTransport {
   /// Identifies the backend in diagnostics - `'loopback'`, `'p2p'`.
   String get name;
+
+  /// The most bytes one [NetConnection.send] on [channel] can carry, so that
+  /// a game finds out from the backend rather than from a player.
+  ///
+  /// # Why a backend has to answer this
+  ///
+  /// A message field declared with `hasString()` or `hasBytes()` has no
+  /// capacity of its own: the size of a record is decided by the value
+  /// written into it, at run time. So the only bound left is the carrier's,
+  /// and the record layer cannot know what the carrier is. This is where it
+  /// says so, and `NetworkSystem` carries the number back to the write that
+  /// would exceed it.
+  ///
+  /// It is stated **per channel** because the two channels are bounded by
+  /// different things:
+  ///
+  ///  * [NetChannel.reliable] may be split across datagrams and put back
+  ///    together, so its ceiling is however many pieces the backend's
+  ///    reassembly can track - 255 of them for `good_net_p2p`, which is
+  ///    roughly 300 KB.
+  ///  * [NetChannel.unreliable] is **one datagram**, and deliberately.
+  ///    Splitting an unreliable message means losing it whenever any one of
+  ///    its pieces is lost, so an N-piece message multiplies the link's loss
+  ///    rate by N while the channel's own contract - "losing one costs a tick
+  ///    of smoothness" - quietly stops holding. There is also nothing to gain
+  ///    by it: this channel carries state that supersedes itself, so a value
+  ///    that does not fit today does not fit on the next tick either, and the
+  ///    failure repeats rather than being absorbed. A game with more state
+  ///    than that sends it reliably, or splits it into messages that each
+  ///    stand alone and each supersede on their own.
+  ///
+  /// A tick's worth of messages is **not** bounded by this. `NetworkSystem`
+  /// packs a frame's records into one batch and cuts that batch at record
+  /// boundaries, so what this bounds is one record - see
+  /// `ParamBatch.maxRecordBytes`.
+  ///
+  /// An in-process backend has no wire and therefore no bound of its own. It
+  /// states one anyway, at or below what a datagram backend manages, because
+  /// a backend that silently accepts what another refuses is a backend that
+  /// hides bugs - and loopback is what a game is developed against.
+  int maxMessageBytes(NetChannel channel);
+
+  /// What a backend's [NetConnection.send] throws when it is handed more than
+  /// [maxMessageBytes] allows.
+  ///
+  /// Here rather than in each backend so that the refusal reads the same
+  /// whichever one a game is running against, which is the whole point of
+  /// bounding loopback at all. It throws rather than asserting and dropping,
+  /// for the reason `CommandTransport.send` does: a send over the ceiling can
+  /// never succeed, however long it is left, so it is a different failure
+  /// from a link that is momentarily busy and the caller can do something
+  /// about exactly one of them.
+  static Never refuseOversized({
+    required String transport,
+    required NetChannel channel,
+    required int length,
+    required int limit,
+  }) {
+    final why = channel == NetChannel.unreliable
+        ? ' The unreliable channel is one datagram wide on purpose: a message '
+              'split across datagrams is lost whenever any one of them is, so '
+              'its loss rate is that of the link multiplied by the number of '
+              'pieces. Send it on the reliable channel if it has to arrive, '
+              'or split it into messages that each stand alone.'
+        : '';
+    throw StateError(
+      'this send is $length bytes and the $transport backend carries at most '
+      '$limit on the ${channel.name} channel, so it will never arrive however '
+      'long it is left.$why Send a shorter value, or split it in the game, '
+      'where the meaning of the split is known.',
+    );
+  }
 
   /// A hash of the sending side's message declarations, checked during the
   /// handshake and refused on mismatch.

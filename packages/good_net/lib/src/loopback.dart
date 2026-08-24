@@ -15,9 +15,10 @@ import 'transport.dart';
 /// what the conformance suite runs first: every rule the interface states -
 /// nothing delivered outside [poll], a roster both sides agree on, a peer id
 /// whose generation moves when its slot is reused, sends that queue before a
-/// session exists - is enforced here, where there is no packet loss to hide
-/// behind. A backend that passes over UDP but fails here has a bug in its
-/// session bookkeeping, not in its socket code.
+/// session exists, a ceiling on what one message may be - is enforced here,
+/// where there is no packet loss to hide behind. A backend that passes over
+/// UDP but fails here has a bug in its session bookkeeping, not in its socket
+/// code.
 ///
 /// It is also useful outside tests: two players in one process is how
 /// split-screen and "run a host and a client in one app while debugging"
@@ -30,9 +31,38 @@ import 'transport.dart';
 /// of an in-memory backend: crossing an isolate means serialising and going
 /// through a port, which is a transport of its own and not this one.
 class LoopbackNetTransport extends NetTransport {
+  /// [maxReliableBytes] and [maxUnreliableBytes] are what this backend claims
+  /// to be able to carry. They are knobs so a test can prove the ceiling
+  /// without building a 300 KB payload to do it; the defaults are what a game
+  /// should develop against.
+  LoopbackNetTransport({
+    this.maxReliableBytes = defaultMaxReliableBytes,
+    this.maxUnreliableBytes = defaultMaxUnreliableBytes,
+  });
+
+  /// What one unreliable message may be, by default.
+  ///
+  /// There is no wire here, so this is not measured - it is chosen, and it is
+  /// chosen **below** what a real datagram backend manages (`good_net_p2p`
+  /// fits 1178 bytes in one frame). That direction is the whole point: a
+  /// message this backend accepts is one a real one accepts too, so a game
+  /// developed and tested in-process does not first meet its ceiling in
+  /// somebody's session. See [NetTransport.maxMessageBytes].
+  static const int defaultMaxUnreliableBytes = 1024;
+
+  /// What one reliable message may be, by default: 255 datagrams' worth, which
+  /// is what a one-byte fragment index buys a backend of this shape - again
+  /// below `good_net_p2p`'s own 300,390.
+  static const int defaultMaxReliableBytes = defaultMaxUnreliableBytes * 255;
+
   /// Every open session in this isolate, by code. Hosting puts one in,
   /// joining looks one up, closing takes it out.
   static final Map<String, _Room> _rooms = <String, _Room>{};
+
+  /// This transport's own ceilings - see [maxMessageBytes], which reports
+  /// them, and the two defaults above for where the numbers come from.
+  final int maxReliableBytes;
+  final int maxUnreliableBytes;
 
   /// Ends every session in this isolate.
   ///
@@ -49,6 +79,12 @@ class LoopbackNetTransport extends NetTransport {
 
   @override
   String get name => 'loopback';
+
+  @override
+  int maxMessageBytes(NetChannel channel) => switch (channel) {
+    NetChannel.reliable => maxReliableBytes,
+    NetChannel.unreliable => maxUnreliableBytes,
+  };
 
   @override
   NetSession? get session => _session;
@@ -486,6 +522,19 @@ class _LoopbackConnection implements NetConnection {
     int offset = 0,
     int? length,
   ]) {
+    final size = length ?? bytes.length - offset;
+    // Checked before the liveness guard, and before anything is copied: a
+    // send over the ceiling is wrong about its own argument, which is true
+    // whether or not the peer is still there.
+    final limit = _from.transport.maxMessageBytes(channel);
+    if (size > limit) {
+      NetTransport.refuseOversized(
+        transport: _from.transport.name,
+        channel: channel,
+        length: size,
+        limit: limit,
+      );
+    }
     if (state != NetConnectionState.connected) {
       assert(
         false,
@@ -493,13 +542,7 @@ class _LoopbackConnection implements NetConnection {
       );
       return;
     }
-    _to.transport._deliverMessage(
-      _from.peer,
-      channel,
-      bytes,
-      offset,
-      length ?? bytes.length - offset,
-    );
+    _to.transport._deliverMessage(_from.peer, channel, bytes, offset, size);
   }
 
   @override

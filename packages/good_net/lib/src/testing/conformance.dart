@@ -257,6 +257,88 @@ void runNetTransportConformance(
       expect(host.received.single.bytes, big);
     });
 
+    test(
+      'a message the backend cannot carry is refused, not dropped',
+      () async {
+        final host = peer();
+        final client = peer();
+        final hosted = await host.transport.host();
+        final joined = await client.transport.join(hosted.id);
+        await pump(peers, () => joinedUp(host, 1));
+        final connection = joined.connectionTo(NetPeerId.host)!;
+
+        for (var c = 0; c < NetChannel.count; c++) {
+          final channel = NetChannel.values[c];
+          final limit = client.transport.maxMessageBytes(channel);
+          expect(
+            limit,
+            greaterThan(0),
+            reason:
+                'every backend states a ceiling, including one with no wire: a '
+                'backend that silently accepts what another refuses is what '
+                'lets a game pass every test and fail against a real peer',
+          );
+          // A block body, not an arrow: the matcher would otherwise be free to
+          // decide when the call happens relative to its own bookkeeping.
+          expect(
+            () {
+              connection.send(channel, Uint8List(limit + 1));
+            },
+            throwsA(
+              isA<StateError>().having(
+                (error) => error.message,
+                'message',
+                allOf(
+                  contains('${limit + 1} bytes'),
+                  contains('carries at most $limit'),
+                  contains(channel.name),
+                ),
+              ),
+            ),
+            reason:
+                'one byte over is over. Truncating loses a value the receiver '
+                'cannot tell from a short one, and dropping it silently is the '
+                'same bug with no evidence',
+          );
+        }
+
+        // Not waited for with `pump`: "nobody received anything" is never made
+        // true by a working backend, so it is one flush and one poll and then
+        // an assertion, exactly as in the test above this one.
+        client.transport.flush();
+        if (settle != null) await settle();
+        host.pump();
+        expect(
+          host.received,
+          isEmpty,
+          reason: 'a refused send puts nothing on the wire either',
+        );
+      },
+    );
+
+    test('a message of exactly the stated size still arrives', () async {
+      final host = peer();
+      final client = peer();
+      final hosted = await host.transport.host();
+      final joined = await client.transport.join(hosted.id);
+      await pump(peers, () => joinedUp(host, 1));
+
+      // The unreliable channel, because that is the one whose ceiling is a
+      // single datagram - so this is the boundary a fragmenting backend and a
+      // refusing one disagree about, measured from the useful side. A ceiling
+      // a backend cannot actually reach would be a bound on paper only.
+      final limit = client.transport.maxMessageBytes(NetChannel.unreliable);
+      final full = Uint8List(limit);
+      for (var i = 0; i < full.length; i++) {
+        full[i] = i & 0xFF;
+      }
+      joined.connectionTo(NetPeerId.host)!.send(NetChannel.unreliable, full);
+      await pump(peers, () => host.received.length == 1);
+
+      expect(host.received.length, 1);
+      expect(host.received.single.bytes, full);
+    });
+
     test('sendToAll reaches every client and not the sender', () async {
       final host = peer();
       final one = peer();

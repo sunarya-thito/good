@@ -129,6 +129,45 @@ that game netcode actually needs and every extra one costs a receiver-side
 reassembly structure that must be paid for whether or not a game uses it. It is
 the same split ENet, Steam Sockets and QUIC's stream/datagram divide use.
 
+### How big one message may be
+
+A field declared `hasString()` or `hasBytes()` has no capacity of its own — the
+size of a record is decided by the value written into it — so what bounds it is
+the backend, and the backend says so:
+
+| | `good_net_p2p` | `LoopbackNetTransport` |
+|---|---|---|
+| `reliable` | 300,390 bytes (255 datagrams, put back together) | 261,120 |
+| `unreliable` | 1,178 bytes (**one** datagram) | 1,024 |
+
+Writing more than that into one message throws, at the call that wrote it,
+naming the number. It throws in a game with nobody connected too — a message
+that only fails once somebody joins is a message that fails in front of a
+player.
+
+!!! info "A tick's worth of messages is not bounded by this"
+    A frame's messages are packed into one batch per channel, and a busy
+    frame's batch is regularly longer than any one message. That is cut at a
+    record boundary and sent in pieces, so a hundred position updates in one
+    tick cost a hundred records and not a refusal. Only a **single record**
+    over the ceiling has no answer of that shape.
+
+!!! danger "The unreliable channel does not fragment, and that is deliberate"
+    A message cut into N pieces with nothing retransmitting them is lost
+    whenever any one of the N is, so its loss rate is the link's multiplied by
+    N — and "losing one costs a tick of smoothness" stops being true. There is
+    nothing to gain by it either: this channel carries state that supersedes
+    itself, so a value that does not fit this tick will not fit on the next
+    one, and the failure repeats rather than being absorbed. Send it
+    `reliable` if it has to arrive, or split it into messages that each stand
+    alone and each supersede on their own.
+
+Loopback's ceilings are lower than any real backend's on purpose. It has no
+wire and therefore no bound of its own, and a backend that silently accepts
+what another refuses is a backend that hides bugs — so a message loopback takes
+is one a real backend takes too. Both are constructor arguments if a test wants
+a smaller one to aim at.
+
 ## Declaring messages
 
 ```dart

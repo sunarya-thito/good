@@ -22,6 +22,13 @@ import 'wire.dart';
 /// to have one by dropping packets at a fixed threshold would be worse than
 /// not having one - so it is named as missing rather than approximated.
 class P2PLink implements NetConnection {
+  /// What this backend calls itself in diagnostics.
+  ///
+  /// Here rather than beside `P2PNetTransport.name`, which reads it back,
+  /// because a link has to name the backend in the refusal it throws and has
+  /// deliberately no reference to the transport to ask.
+  static const String backendName = 'p2p';
+
   /// Built by `P2PNetTransport`, which is the only thing that can supply the
   /// four callbacks - they are how a link reaches the one socket, the one
   /// delivery queue and the one roster that the transport owns. A link that
@@ -178,6 +185,12 @@ class P2PLink implements NetConnection {
   /// Fragments of unreliable messages, by group id. Reliable fragments do not
   /// need this - they arrive in order by construction, so they accumulate in
   /// [_assembly] instead.
+  ///
+  /// Nothing here sends a fragmented unreliable message any more - the
+  /// unreliable ceiling is one frame, see [maxMessageBytes] - but a peer on a
+  /// build from before that still can, and refusing to reassemble what
+  /// arrives would break an upgrade rather than protect anything. Strictness
+  /// belongs on the sending side.
   final Map<int, _Assembly> _unreliableGroups = <int, _Assembly>{};
 
   _Assembly? _assembly;
@@ -209,6 +222,19 @@ class P2PLink implements NetConnection {
     int offset = 0,
     int? length,
   ]) {
+    final size = length ?? bytes.length - offset;
+    // Checked before the liveness guard, and before anything is copied: a
+    // send over the ceiling is wrong about its own argument, which is true
+    // whether or not the link is still up.
+    final limit = maxMessageBytes(channel);
+    if (size > limit) {
+      NetTransport.refuseOversized(
+        transport: backendName,
+        channel: channel,
+        length: size,
+        limit: limit,
+      );
+    }
     if (_state == NetConnectionState.disconnected) {
       assert(
         false,
@@ -224,7 +250,7 @@ class P2PLink implements NetConnection {
           : FrameKind.unreliable,
       bytes,
       offset,
-      length ?? bytes.length - offset,
+      size,
     );
   }
 
@@ -269,13 +295,31 @@ class P2PLink implements NetConnection {
   /// flags + messageId + groupId + index + count + length.
   static const int _maxFrameHeader = 1 + 2 + 2 + 1 + 1 + 2;
 
+  /// How many fragments one message may be cut into: the fragment index is
+  /// one byte, so 255 is the format's own answer rather than a policy.
+  static const int maxFragments = 255;
+
+  /// What one message may be on [channel] - the number
+  /// `P2PNetTransport.maxMessageBytes` reports, computed here because the
+  /// frame arithmetic that decides it is here.
+  ///
+  /// Reliable is 255 frames' worth, which is a little over 300 KB.
+  /// Unreliable is **one** frame, and does not fragment at all: see
+  /// [NetTransport.maxMessageBytes] for why a channel with no
+  /// retransmission is the wrong place to multiply a link's loss rate by the
+  /// number of pieces a message was cut into.
+  static int maxMessageBytes(NetChannel channel) => switch (channel) {
+    NetChannel.reliable => maxFramePayload * maxFragments,
+    NetChannel.unreliable => maxFramePayload,
+  };
+
   void _enqueue(int kind, Uint8List bytes, int offset, int length) {
     if (length <= maxFramePayload) {
       _append(kind, bytes, offset, length, 0, 0, 1);
       return;
     }
     final fragments = (length + maxFramePayload - 1) ~/ maxFramePayload;
-    if (fragments > 255) {
+    if (fragments > maxFragments) {
       assert(
         false,
         'a single message of $length bytes needs $fragments fragments, and '

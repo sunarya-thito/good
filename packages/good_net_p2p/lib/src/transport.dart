@@ -112,7 +112,10 @@ class P2PNetTransport extends NetTransport {
   static const Duration _handshakeInterval = Duration(milliseconds: 200);
 
   @override
-  String get name => 'p2p';
+  String get name => P2PLink.backendName;
+
+  @override
+  int maxMessageBytes(NetChannel channel) => P2PLink.maxMessageBytes(channel);
 
   @override
   NetSession? get session => _session;

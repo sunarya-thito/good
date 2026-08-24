@@ -31,6 +31,52 @@
   mix: the bound it does have is its carrier's ring or datagram, which is a
   local fact about one peer rather than something the two ends must agree on.
 
+* **A backend states what one message may be, and every backend enforces it —
+  loopback included.** `NetTransport.maxMessageBytes(channel)` is a new
+  abstract member: a backend outside this repo has to answer it. A send over
+  the ceiling throws a `StateError` naming the size, the bound and the fix,
+  where `LoopbackNetTransport` used to accept anything at all (#158).
+
+  What to change: implement `maxMessageBytes` if you have written a backend,
+  and stop sending more than it reports. `LoopbackNetTransport` defaults to
+  1,024 bytes on the unreliable channel and 261,120 on the reliable one, and
+  takes both as constructor arguments if a test wants a smaller ceiling to aim
+  at.
+
+  **Why.** Before #146 a message's stride was fixed at its declaration, so the
+  largest datagram a game could produce was visible where its messages were
+  written. `hasString()` and `hasBytes()` moved that decision to run time, and
+  the only bound left is the carrier's. `good_net_p2p` had one and said so;
+  loopback had none and handed the bytes over — so a game developed against
+  loopback, which is what tests and local play run on, could write half a
+  megabyte into a field, pass everything, and fail only against a real peer.
+  A backend that silently accepts what another refuses is a backend that hides
+  bugs. The conformance suite now pins the refusal, so it means the same thing
+  on every backend.
+
+* **The unreliable channel is one datagram wide and does not fragment.** Its
+  ceiling is a single datagram's payload — 1,178 bytes on `good_net_p2p`,
+  1,024 on loopback — where it previously fragmented an unreliable message the
+  same way a reliable one is fragmented. A single unreliable *record* over
+  that is now refused (#158).
+
+  What to change: nothing, unless one message of yours carries more than a
+  datagram on the unreliable channel. A tick's worth of unreliable messages is
+  unaffected however many there are — see the note below. If one message
+  really is that big, declare it `NetChannel.reliable`, or split it into
+  messages that each stand alone.
+
+  **Why.** A message split into N pieces with no retransmission behind it is
+  lost whenever any one of the N is, so its loss rate is the link's multiplied
+  by N — and "losing one costs a tick of smoothness", which is the whole case
+  for this channel, quietly stops being true. There is also nothing to gain:
+  this channel carries state that supersedes itself, so a value that does not
+  fit this tick does not fit on the next one either and the failure repeats
+  instead of being absorbed. Reassembly on the receiving side is kept, because
+  a peer on an older build still sends fragmented unreliable messages and
+  refusing to put those back together would break an upgrade rather than
+  protect anything.
+
 ### Added
 
 * **A message field can hold a string or a list whose length is not declared
@@ -38,6 +84,21 @@
   `hasFixedBytes(n)` beside them for the cases where a bound is real. This is
   `good`'s record layer, shared with commands — see its changelog for the
   layout and for the two rules that come with a variable-length field (#146).
+
+* **A tick's traffic is cut at record boundaries when it outgrows one
+  message.** `NetworkSystem` packs a frame's messages into one batch per
+  channel per destination, and a busy frame's batch can be longer than
+  anything the backend carries. It is now sent in pieces of whole records
+  rather than as one send the backend would refuse — every record begins with
+  the declaration index that gives its length, so a receiver walks a piece
+  exactly as it would have walked the whole (#158).
+
+  This is what keeps the unreliable ceiling affordable: a hundred position
+  updates in one tick still go, and a lost piece costs the records in it
+  instead of the tick's whole traffic. Only a **single record** over the
+  ceiling has no answer of this shape, and that one is refused at the write
+  that made it — including in a game with nobody connected, so that a message
+  which only fails once somebody joins is not a thing that can be written.
 
 ## 0.3.0
 

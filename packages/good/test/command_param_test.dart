@@ -845,10 +845,7 @@ void main() {
       descriptor.hasHandler(damage, (p) => 0);
 
       final batch = r.registry.createCommandBatch();
-      final note = publish.execute((
-        body: 'a',
-        blob: Uint8List(0),
-      ), batch);
+      final note = publish.execute((body: 'a', blob: Uint8List(0)), batch);
       final blow = damage.execute((amount: 4242, crit: true), batch);
 
       // The second record is already placed when the first one's result is
@@ -941,6 +938,115 @@ void main() {
         isEmpty,
         reason: 'and nothing partial was placed on the way to finding out',
       );
+    });
+
+    // #158. The ring is one carrier and a datagram is another, and a batch
+    // built for a carrier that bounds a single record says so at the write
+    // rather than at the send - which is the only place a game can be told
+    // which value was too big.
+    test('a record over the batch cap is refused at the write', () {
+      final r = _registry();
+      final publish = r.registry.declare(_Publish());
+      final batch = ParamBatch(maxRecordBytes: 200);
+      final call = batch.append(publish.index, publish.layout);
+
+      expect(
+        () {
+          publish.body[call] = 'x' * 500;
+        },
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('takes at most 200 in one record'),
+              contains('500 of them written into a variable-length field'),
+            ),
+          ),
+        ),
+        reason:
+            'the declaration has no capacity to overrun, so the number in the '
+            'error belongs to the carrier and has to be in it',
+      );
+      expect(
+        batch.callCount,
+        0,
+        reason:
+            'and the record it could not finish comes back off the batch: '
+            'half a record that went out anyway would fail on the reading '
+            'side, at a field nobody wrote',
+      );
+      expect(batch.length, 0);
+    });
+
+    test('a cap smaller than the fixed head is refused at the append', () {
+      final r = _registry();
+      final publish = r.registry.declare(_Publish());
+      final batch = ParamBatch(maxRecordBytes: 4);
+
+      expect(
+        () {
+          batch.append(publish.index, publish.layout);
+        },
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('takes at most 4 in one record'),
+          ),
+        ),
+        reason:
+            'a declaration whose head alone will not fit can never send one '
+            'record, and finding that out at the first send beats finding it '
+            'out at the first long value',
+      );
+      expect(batch.callCount, 0);
+    });
+
+    test('a refused record in the middle of a batch is left where it is', () {
+      final r = _registry();
+      final publish = r.registry.declare(_Publish());
+      final batch = ParamBatch(maxRecordBytes: 200);
+      final first = batch.append(publish.index, publish.layout);
+      final second = batch.append(publish.index, publish.layout);
+      publish.body[second] = 'behind';
+
+      expect(() {
+        publish.body[first] = 'x' * 500;
+      }, throwsStateError);
+      expect(
+        batch.callCount,
+        2,
+        reason:
+            'taking a record out of the middle would move every record behind '
+            'it along, which is the very thing the refusal is saying it will '
+            'not do',
+      );
+      expect(publish.body[second], 'behind');
+    });
+
+    test('startAt says where each record begins', () {
+      final r = _registry();
+      final publish = r.registry.declare(_Publish());
+      final damage = r.registry.declare(_Damage());
+      final batch = ParamBatch();
+      final note = batch.append(publish.index, publish.layout);
+      publish.body[note] = 'hello';
+      batch.append(damage.index, damage.layout);
+
+      expect(batch.startAt(0), batch.start);
+      expect(
+        batch.startAt(1) - batch.startAt(0),
+        ParamBatch.headerBytes +
+            ParamBuffer.maskBytesFor(publish.layout.fieldCount) +
+            publish.layout.strideBytes +
+            'hello'.length,
+        reason:
+            'a record is its header, its mask, its head and whatever its tail '
+            'grew to - which is what makes a batch cuttable at these '
+            'boundaries when its carrier cannot take the whole of it',
+      );
+      expect(batch.indexAt(1), damage.index);
     });
   });
 }

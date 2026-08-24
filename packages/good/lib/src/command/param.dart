@@ -158,7 +158,7 @@ final class ParamBuffer {
 /// [ParamDescriptor], which is where the difference between this and an
 /// archetype row is set out.
 class ParamBatch {
-  ParamBatch({int initialBytes = defaultBytes})
+  ParamBatch({int initialBytes = defaultBytes, this.maxRecordBytes = unbounded})
     // ignore: prefer_initializing_formals - _bytes is reassigned on
     // growth, so it cannot be a final initializing formal.
     : _bytes = Uint8List(initialBytes) {
@@ -167,6 +167,27 @@ class ParamBatch {
 
   /// What a batch starts out able to hold, before the first growth.
   static const int defaultBytes = 256;
+
+  /// [maxRecordBytes] for a batch nothing has told a bound to.
+  static const int unbounded = -1;
+
+  /// The largest one record of this batch may become - its header, its mask,
+  /// its head and its tail - or [unbounded].
+  ///
+  /// A variable-length field has no capacity of its own to overrun, so the
+  /// only thing bounding it is whatever carries the record, and a carrier is
+  /// not something the record layer can know about. Whatever does know - a
+  /// transport with an MTU, a ring with a capacity - says so here when it
+  /// builds the batch, and a write that would carry a record past it throws
+  /// at that write instead of at a send half a frame later.
+  ///
+  /// Per **record** rather than per batch, because a batch is splittable and
+  /// a record is not. Every record starts with the declaration index that
+  /// gives its length, so a carrier that cannot take a whole batch can take
+  /// it in pieces cut at record boundaries ([startAt] is where those are),
+  /// and the only thing no amount of cutting answers is a single record
+  /// bigger than one piece.
+  final int maxRecordBytes;
 
   Uint8List _bytes;
   late ByteData _data;
@@ -223,8 +244,13 @@ class ParamBatch {
   /// `callAt(i).maskOffset - headerBytes`: two places doing that arithmetic is
   /// two places to get it wrong when the header changes (the one-fact-one-place
   /// rule), and the header is this class's business anyway.
-  int indexAt(int index) =>
-      _data.getUint16(_calls[index].maskOffset - _headerBytes, Endian.little);
+  int indexAt(int index) => _data.getUint16(startAt(index), Endian.little);
+
+  /// Where the record at [index] starts in [bytes], its two header bytes
+  /// included - so `startAt(i)` up to `startAt(i + 1)` is exactly one record,
+  /// and a batch too big for its carrier can be cut at those boundaries
+  /// rather than refused. See [maxRecordBytes].
+  int startAt(int index) => _calls[index].maskOffset - _headerBytes;
 
   /// Empties this batch for reuse, keeping its buffer and its record handles.
   ///
@@ -238,6 +264,40 @@ class ParamBatch {
     _base = 0;
     _end = 0;
     _callCount = 0;
+  }
+
+  /// Whether a record of [recordBytes] is within [maxRecordBytes].
+  bool _fitsRecord(int recordBytes) =>
+      maxRecordBytes < 0 || recordBytes <= maxRecordBytes;
+
+  /// Refuses a record that has outgrown what carries this batch.
+  ///
+  /// [tailBytes] is how much of it a variable-length field put there, which is
+  /// zero when it is the fixed head alone that will not fit.
+  Never _refuseRecord(int declaration, int recordBytes, int tailBytes) {
+    final inTail = tailBytes == 0
+        ? ''
+        : ', $tailBytes of them written into a variable-length field';
+    throw StateError(
+      'one record of declaration #$declaration is $recordBytes bytes$inTail, '
+      'and what carries this batch takes at most $maxRecordBytes in one '
+      'record. A field with no declared length is bounded by its carrier '
+      'rather than by its declaration, and this is that bound: send a shorter '
+      'value, or split it across several records, where the meaning of the '
+      'split is known.',
+    );
+  }
+
+  /// Takes the last record back off this batch, handle and all.
+  ///
+  /// What a refused write leaves behind: the record cannot be completed, and
+  /// a half-written one that went out anyway would fail on the *reading*
+  /// side, at a field nobody wrote, one machine away from the mistake that
+  /// caused it. Everything already in the batch is still sendable.
+  void _dropLast() {
+    if (_callCount == 0) return;
+    _end = startAt(_callCount - 1);
+    _callCount--;
   }
 
   /// A handle for the record range just reserved - pooled, see [reset].
@@ -306,6 +366,16 @@ class ParamBatch {
     final slot = call.offset + call.layout.tailSlotByte;
     final tailBytes = _data.getUint32(slot, Endian.little);
     final at = call.tailAt + tailBytes;
+    final recordBytes = at + count - startAt(call.ordinal);
+    if (!_fitsRecord(recordBytes)) {
+      final declaration = indexAt(call.ordinal);
+      // Only when it is the last one. A record in the middle is a handler
+      // writing a variable-length *result* into a call that is not the last
+      // in its batch, and taking that one out would move every record behind
+      // it - which is the very thing this refusal is saying it cannot do.
+      if (call.ordinal == _callCount - 1) _dropLast();
+      _refuseRecord(declaration, recordBytes, tailBytes + count);
+    }
     _reserve(_end + count);
     // Backwards, because source and destination overlap.
     for (var i = _end - 1; i >= at; i--) {
@@ -332,6 +402,8 @@ class ParamBatch {
     final start = _end;
     final maskBytes = ParamBuffer.maskBytesFor(layout.fieldCount);
     final needed = start + _headerBytes + maskBytes + layout.strideBytes;
+    // Nothing to drop: this record does not exist yet.
+    if (!_fitsRecord(needed - start)) _refuseRecord(index, needed - start, 0);
     _reserve(needed);
     _data.setUint16(start, index, Endian.little);
     // The reserved range is not guaranteed clean - a grown buffer is, but a
@@ -340,7 +412,11 @@ class ParamBatch {
     // zero, which every variable-length write counts up from.
     _bytes.fillRange(start + _headerBytes, needed, 0);
     _end = needed;
-    return _record(start + _headerBytes, start + _headerBytes + maskBytes, layout);
+    return _record(
+      start + _headerBytes,
+      start + _headerBytes + maskBytes,
+      layout,
+    );
   }
 
   /// Two bytes of "which declaration is this", ahead of every record. The
@@ -663,8 +739,9 @@ abstract class ParamDescriptor {
   /// tail as they are written, so nothing has to be sized in advance and
   /// nothing is reserved for a value that never arrives. What bounds it is
   /// the carrier the record leaves through, not the declaration - see
-  /// `CommandTransport.send`, which refuses a batch the command ring could
-  /// never carry.
+  /// [ParamBatch.maxRecordBytes], which a carrier sets and which throws at
+  /// the write, and `CommandTransport.send`, which refuses a whole batch the
+  /// command ring could never carry.
   ///
   /// **Written once per record.** The tail is filled by appending, so a
   /// second value cannot take the first one's place without moving everything
@@ -1213,10 +1290,11 @@ abstract class _TailPointer<T> extends _Pointer<T> {
 
   /// Appends [payload] to this record's tail and records where it landed.
   ///
-  /// There is no capacity to overrun here, so there is nothing to refuse: the
-  /// batch grows to hold whatever is written. What can still fail is getting
-  /// the finished batch onto a carrier - `CommandTransport.send` refuses a
-  /// batch the command ring could never carry, rather than truncating it.
+  /// The declaration has no capacity to overrun, so what refuses an
+  /// oversized value is the carrier instead: a batch built with
+  /// [ParamBatch.maxRecordBytes] throws here, at the write, and
+  /// `CommandTransport.send` refuses a whole batch the command ring could
+  /// never carry. Neither one truncates.
   void _store(ParamBuffer call, List<int> payload) {
     if (call._isWritten(index)) {
       throw StateError(

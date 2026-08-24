@@ -1,3 +1,29 @@
+## Unreleased
+
+### Breaking
+
+* **One unreliable message may be one datagram, and no more.** 1,178 bytes,
+  which is `P2PNetTransport.maxMessageBytes(NetChannel.unreliable)`. An
+  unreliable message over that used to be cut into fragments and put back
+  together at the far end; it is now refused with a `StateError` naming the
+  size, the bound and the fix. The reliable ceiling is unchanged at 255
+  fragments — 300,390 bytes — and is now stated by the same method rather than
+  only enforced (#158).
+
+  What to change: nothing, unless a single unreliable message of yours carries
+  more than 1,178 bytes. A tick's worth of unreliable messages is unaffected
+  however many there are — `good_net`'s `NetworkSystem` cuts a long batch at
+  record boundaries. If one message really is that big, declare it
+  `NetChannel.reliable` or split it into messages that each stand alone.
+
+  Peers do not have to be upgraded together. The schema hash is untouched, an
+  upgraded peer never sends a fragmented unreliable message, and it still
+  reassembles one sent by a peer that has not upgraded.
+
+  **Why.** A message split into N pieces with no retransmission behind it is
+  lost whenever any one of the N is, so its loss rate is the link's multiplied
+  by N — see `good_net`'s notes for the whole argument.
+
 ## 0.3.0
 
 ### Breaking

@@ -251,9 +251,7 @@ class NetworkSystem extends GameSystem
 
   /// One outbound batch per channel for messages going to every client -
   /// written once, copied per connection when it is flushed.
-  final List<ParamBatch> _broadcast = <ParamBatch>[
-    for (var i = 0; i < NetChannel.count; i++) ParamBatch(),
-  ];
+  late final List<ParamBatch> _broadcast = _channelBatches();
 
   /// The batch a received datagram is read through. One instance for the life
   /// of the system: `adoptIncoming` re-points it at the transport's buffer
@@ -262,7 +260,31 @@ class NetworkSystem extends GameSystem
 
   /// Where a message sent to nobody gets written so that it can still be read
   /// back and handled locally. See [dispatchLocally].
-  final ParamBatch _local = ParamBatch();
+  ///
+  /// One per channel, even though none of it goes anywhere, so that a record
+  /// written here meets the ceiling it would have met on the wire. That is
+  /// what makes an oversized message a mistake a game finds while it is still
+  /// a game of one - the alternative is a `hasBytes()` field that works
+  /// perfectly until the day somebody joins.
+  late final List<ParamBatch> _local = _channelBatches();
+
+  /// A batch per channel, each capped at what the declared backend carries on
+  /// that channel.
+  ///
+  /// The cap is read once, here, and not again: a transport is declared in
+  /// `describeNetwork` and never swapped, and these are built lazily on first
+  /// use, which is after that pass has run.
+  List<ParamBatch> _channelBatches() => <ParamBatch>[
+    for (var i = 0; i < NetChannel.count; i++)
+      ParamBatch(maxRecordBytes: _carries(NetChannel.values[i])),
+  ];
+
+  /// What the declared backend can carry in one message on [channel], or
+  /// [ParamBatch.unbounded] when no backend has been declared - which is a
+  /// mistake the [transport] getter reports properly, and not one to fail a
+  /// local dispatch over.
+  int _carries(NetChannel channel) =>
+      registry.transport?.maxMessageBytes(channel) ?? ParamBatch.unbounded;
 
   @override
   int compareTo(GameSystem other) => other is NetworkSystem ? 0 : -1;
@@ -346,14 +368,10 @@ class NetworkSystem extends GameSystem
   void _flush(NetSession session) {
     for (var c = 0; c < NetChannel.count; c++) {
       final channel = NetChannel.values[c];
+      final limit = _carries(channel);
       final broadcast = _broadcast[c];
       if (broadcast.length > 0) {
-        session.sendToAll(
-          channel,
-          broadcast.bytes,
-          broadcast.start,
-          broadcast.length,
-        );
+        _sendInPieces(session, null, channel, broadcast, limit);
         broadcast.reset();
       }
       for (var slot = 0; slot < _perPeer.length; slot++) {
@@ -364,11 +382,58 @@ class NetworkSystem extends GameSystem
         // The generation is not carried here: a batch is filled and flushed
         // inside one frame, and a peer that left during that frame took its
         // connection with it, so the lookup simply finds nothing.
-        session
-            .connectionTo(_peerInSlot(session, slot))
-            ?.send(channel, batch.bytes, batch.start, batch.length);
+        final connection = session.connectionTo(_peerInSlot(session, slot));
+        if (connection != null) {
+          _sendInPieces(session, connection, channel, batch, limit);
+        }
         batch.reset();
       }
+    }
+  }
+
+  /// Hands [batch] to [connection], or to every peer when it is null, in as
+  /// few sends as [limit] allows.
+  ///
+  /// A tick's traffic is one batch, and a busy tick's batch can be longer
+  /// than any one message the backend carries. That is not a refusal: a batch
+  /// is a run of records that each begin with the declaration index giving
+  /// their length, so it can be cut at a record boundary and the receiving
+  /// side walks each piece exactly as it would have walked the whole. Only a
+  /// **single record** over the limit has no answer of this shape, and that
+  /// one is refused at the write that made it - see
+  /// [ParamBatch.maxRecordBytes], which every batch here is built with.
+  ///
+  /// Cutting rather than fragmenting is also what lets the unreliable channel
+  /// stay one datagram wide: a lost piece costs the records in it and not the
+  /// tick's whole traffic.
+  void _sendInPieces(
+    NetSession session,
+    NetConnection? connection,
+    NetChannel channel,
+    ParamBatch batch,
+    int limit,
+  ) {
+    final end = batch.start + batch.length;
+    var from = batch.start;
+    var record = 0;
+    while (record < batch.callCount) {
+      var to = from;
+      while (record < batch.callCount) {
+        final next = record + 1 < batch.callCount
+            ? batch.startAt(record + 1)
+            : end;
+        // `to > from` keeps a piece from being empty: one record that will
+        // not fit alone still goes, and the backend refuses it by name.
+        if (limit >= 0 && next - from > limit && to > from) break;
+        to = next;
+        record++;
+      }
+      if (connection == null) {
+        session.sendToAll(channel, batch.bytes, from, to - from);
+      } else {
+        connection.send(channel, batch.bytes, from, to - from);
+      }
+      from = to;
     }
   }
 
@@ -438,8 +503,8 @@ class NetworkSystem extends GameSystem
 
   @override
   ParamBuffer scratch(NetMessageBase message) {
-    _local.reset();
-    return _append(_local, message);
+    final local = _local[message.channel.index]..reset();
+    return _append(local, message);
   }
 
   @override
@@ -455,9 +520,7 @@ class NetworkSystem extends GameSystem
     }
     var batches = _perPeer[slot];
     if (batches == null) {
-      batches = <ParamBatch>[
-        for (var i = 0; i < NetChannel.count; i++) ParamBatch(),
-      ];
+      batches = _channelBatches();
       _perPeer[slot] = batches;
     }
     return batches[channel.index];

@@ -129,6 +129,26 @@ class _InlineKind extends NetMessage<({Uint8List value})> {
       (value: Uint8List.fromList(value[message]));
 }
 
+/// A per-tick snapshot on the unreliable channel, carrying a payload nobody
+/// sized. The channel is the point: unreliable is one datagram wide, so this
+/// is the declaration that meets a ceiling first.
+class _Snapshot extends NetMessage<({Uint8List state})> {
+  late final ParamPointer<Uint8List> state;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    state = descriptor.hasBytes();
+  }
+
+  @override
+  void bufferFromParams(ParamBuffer message, ({Uint8List state}) params) =>
+      state[message] = params.state;
+
+  @override
+  ({Uint8List state}) paramsFromBuffer(ParamBuffer message) =>
+      (state: Uint8List.fromList(state[message]));
+}
+
 /// The host's decision, run everywhere including on the host.
 class _RoundOver extends NetSignal {}
 
@@ -150,6 +170,7 @@ class _NetState extends GameState<_NetGame> with MultiplayerState<_NetGame> {
   late final _RoundOver roundOver;
   late final _Ready ready;
   late final _Post post;
+  late final _Snapshot snapshot;
 
   @override
   void describeNetwork(NetDescriptor descriptor) {
@@ -189,6 +210,16 @@ class _NetState extends GameState<_NetGame> with MultiplayerState<_NetGame> {
       post,
       (params, from) =>
           log.add('post ${params.text.length} ${params.blob.length}'),
+    );
+
+    snapshot = descriptor.has(
+      _Snapshot(),
+      id: 'snapshot',
+      channel: NetChannel.unreliable,
+    );
+    descriptor.hasHandler(
+      snapshot,
+      (params, from) => log.add('snap ${params.state.length}'),
     );
   }
 }
@@ -329,7 +360,6 @@ class _SkewedGame extends _NetGame {
   @override
   GameState createState() => _SkewedState();
 }
-
 
 const Duration _step = Duration(milliseconds: 16);
 
@@ -626,14 +656,154 @@ void main() {
     expect(stateOf(host).log, <String>['post 40000 70000']);
   });
 
+  // #158. A `hasBytes()` field's size is decided by the value written into
+  // it, at run time, so the only thing bounding it is the carrier - and until
+  // this landed the loopback carrier had no bound at all. A game could write
+  // half a megabyte, pass every test, and fail only against a real peer.
+  group('what a carrier will take', () {
+    test('an oversized unreliable record is refused at the write', () async {
+      final host = await boot(_NetGame());
+      final client = await boot(_NetGame());
+      await stateOf(host).network.host(SessionOptions(id: SessionId('EEEEEE')));
+      await stateOf(client).network.join(SessionId('EEEEEE'));
+      exchange([host, client]);
+      stateOf(host).log.clear();
+
+      final ceiling = LoopbackNetTransport.defaultMaxUnreliableBytes;
+      expect(
+        () {
+          stateOf(client).snapshot((state: Uint8List(ceiling * 4)));
+        },
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            allOf(
+              contains('variable-length field'),
+              contains('takes at most $ceiling in one record'),
+            ),
+          ),
+        ),
+        reason:
+            'the error has to arrive at the call that wrote the value, and '
+            'it has to name the number - the fix is to send less, and a '
+            'developer cannot aim at a bound nobody stated',
+      );
+
+      exchange([client, host]);
+      expect(
+        stateOf(host).log,
+        isEmpty,
+        reason:
+            'and the record it could not finish does not go out half '
+            'written: the peer would fail reading a field nobody wrote, a '
+            'machine away from the mistake',
+      );
+    });
+
+    test('the ceiling a record meets is its own channel', () async {
+      final game = await boot(_NetGame());
+      final state = stateOf(game);
+      final reliable = LoopbackNetTransport.defaultMaxReliableBytes;
+
+      // Comfortably over the unreliable ceiling and comfortably under the
+      // reliable one, so a single shared number could not pass both halves of
+      // this test.
+      state.post((
+        text: '',
+        blob: Uint8List(LoopbackNetTransport.defaultMaxUnreliableBytes * 4),
+      ));
+      expect(state.log.single, startsWith('post 0 '));
+
+      expect(
+        () {
+          state.snapshot((state: Uint8List(reliable + 1)));
+        },
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains(
+              'takes at most '
+              '${LoopbackNetTransport.defaultMaxUnreliableBytes} in one '
+              'record',
+            ),
+          ),
+        ),
+        reason:
+            'reliable may be split across datagrams and put back together; '
+            'unreliable is one datagram and refuses to, so the two ceilings '
+            'are different numbers and a record meets the one for the '
+            'channel it was declared on',
+      );
+    });
+
+    test('a game of one meets the same ceiling as a game of two', () async {
+      final game = await boot(_NetGame());
+
+      expect(
+        () {
+          stateOf(game).snapshot((
+            state: Uint8List(
+              LoopbackNetTransport.defaultMaxUnreliableBytes * 4,
+            ),
+          ));
+        },
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains('takes at most'),
+          ),
+        ),
+        reason:
+            'nobody is connected, so these bytes go nowhere - and that is '
+            'exactly when a game must still be told, because a message that '
+            'only fails once somebody joins fails in front of a player',
+      );
+    });
+
+    test('a tick that outgrows a datagram is cut, not refused', () async {
+      final host = await boot(_NetGame());
+      final client = await boot(_NetGame());
+      await stateOf(host).network.host(SessionOptions(id: SessionId('FFFFFF')));
+      await stateOf(client).network.join(SessionId('FFFFFF'));
+      exchange([host, client]);
+      stateOf(host).log.clear();
+
+      // Forty records of a hundred bytes each: every one of them fits a
+      // datagram on its own, and together they are several times one.
+      const int records = 40;
+      const int each = 100;
+      for (var i = 0; i < records; i++) {
+        stateOf(client).snapshot((state: Uint8List(each)));
+      }
+      expect(
+        records * each,
+        greaterThan(LoopbackNetTransport.defaultMaxUnreliableBytes),
+        reason: 'the control: a batch under the ceiling would prove nothing',
+      );
+      exchange([client, host]);
+
+      expect(
+        stateOf(host).log,
+        List<String>.filled(records, 'snap $each'),
+        reason:
+            'a tick of traffic is one batch, and a batch is a run of records '
+            'that each say how long they are - so a batch too big for one '
+            'message is cut at a record boundary rather than refused. Only a '
+            'single record over the ceiling has no answer of that shape',
+      );
+    });
+  });
+
   test('a length-free field is a different message from an inline one of the '
       'same width', () async {
     final tail = await boot(_OneMessageGame(_TailKind.new, 'kind'));
     final inline = await boot(_OneMessageGame(_InlineKind.new, 'kind'));
 
-    NetMessageBase firstMessageOf(Game game) => (game.state as MultiplayerState)
-        .getSystem<NetworkSystem>()
-        .registry[0];
+    NetMessageBase firstMessageOf(Game game) =>
+        (game.state as MultiplayerState).getSystem<NetworkSystem>().registry[0];
     int hashOf(Game game) => (game.state as MultiplayerState)
         .getSystem<NetworkSystem>()
         .registry

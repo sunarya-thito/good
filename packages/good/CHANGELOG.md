@@ -144,6 +144,26 @@
   bytes - on a character boundary, and a report that cannot be sent at all is
   dropped rather than allowed to end the tick that was already going wrong.
 
+* **A batch can be told what its carrier will take, and refuse a record over
+  it at the write.** `ParamBatch(maxRecordBytes: n)` bounds one record —
+  header, mask, head and tail — and a write that would carry a record past it
+  throws instead of growing, naming the declaration, the size and the bound.
+  `ParamBatch.startAt(i)` says where each record begins, which is what lets a
+  carrier cut a long batch at record boundaries instead of refusing it (#158).
+
+  Nothing changes for a batch built without it: `maxRecordBytes` defaults to
+  `ParamBatch.unbounded`, and the command ring still checks the whole batch at
+  `CommandTransport.send` as it did.
+
+  **Why.** A `hasString()` or `hasBytes()` field has no capacity of its own, so
+  the only bound left is the carrier's — and until this the record layer had no
+  way to be told one. The refusal has to happen at the write because that is
+  the only place the value that was too big is still in hand; a check at the
+  send says a batch is too long and cannot say which of forty records made it
+  so. A refused record is taken back off the batch when it is the last one, so
+  that everything already queued is still sendable and no half-written record
+  goes out to fail on the reading side.
+
 ### Fixed
 
 * **A false claim in the 0.2.0 notes is corrected.** They said the four
