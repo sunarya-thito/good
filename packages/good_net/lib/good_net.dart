@@ -29,7 +29,7 @@
 /// two implementations - `NetMessage` and `NetSignal` are spelled exactly
 /// like `SinkCommand` and `SignalCommand`, and the record layer underneath
 /// (`ParamDescriptor`, `ParamPointer`, `ParamBatch`, `ParamBuffer`) is
-/// `good`'s own, reused rather than reimplemented.
+/// `good`'s own, reused here as it stands.
 ///
 /// What networking adds is the two facts an isolate boundary does not have:
 /// **which machine** handles a message ([NetTarget]) and **how hard** the

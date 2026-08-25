@@ -11,7 +11,7 @@ import 'peer.dart';
 /// An extension type over `String`, so it costs nothing beyond the string
 /// itself while still refusing to be passed where a player name is expected.
 ///
-/// # Why a short code and not a UUID
+/// # Six characters, drawn from a 31-symbol alphabet
 ///
 /// This is the thing a human retypes. PeerJS hands out 36-character UUIDs
 /// because a browser pastes them through a link; a game hands them out at a
@@ -66,8 +66,8 @@ class SessionOptions {
 
   /// Total participants **including the host**, so `maxPeers: 4` is the host
   /// plus three others. This fixes the width of every per-peer array a
-  /// backend allocates when the session opens, which is why it cannot be
-  /// changed afterwards.
+  /// backend allocates when the session opens, so it cannot be changed once
+  /// the session is up.
   final int maxPeers;
 
   /// Whether the session answers discovery queries. A private match whose
@@ -85,7 +85,7 @@ class SessionOptions {
 /// screen lists.
 ///
 /// A plain value object allocated only on the discovery path - a menu, not a
-/// tick - so it holds strings and is immutable rather than pooled. It carries
+/// tick - so it holds strings and is immutable, never pooled. It carries
 /// no address: how a code resolves to a machine is the backend's business,
 /// and a LAN address in this class would mean nothing to a backend that
 /// resolves through a rendezvous instead.
@@ -133,8 +133,8 @@ class SessionInfo {
 /// different questions: it *knows about* every peer, because the host tells
 /// it who is there, and it can *reach* only the host. [connectionTo] returns
 /// null for the rest, and traffic between two clients is the host's game code
-/// choosing to forward something - deliberately explicit, because a transport
-/// that silently relayed would double the host's bandwidth bill without ever
+/// choosing to forward something. Forwarding is a line you write: a transport
+/// that relayed on its own would double the host's bandwidth bill without ever
 /// saying so.
 abstract class NetSession {
   /// The join code. Stable for the life of the session.
@@ -157,7 +157,7 @@ abstract class NetSession {
 
   /// The peer at [index] of the roster, `0 <= index < peerCount`.
   ///
-  /// Indexed access rather than a `List<NetPeerId>` getter, so that walking the
+  /// Indexed access, not a `List<NetPeerId>` getter, so that walking the
   /// roster every tick allocates neither a list nor an iterator (the no-closure
   /// rule). Roster order is unspecified and shifts as peers come and go; index
   /// into it within one tick only.

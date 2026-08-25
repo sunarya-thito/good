@@ -20,8 +20,8 @@ enum NetTarget {
   /// this", "I picked a colour". A client's *intent*, which the host is free
   /// to refuse.
   ///
-  /// Calling one **on the host** runs it locally rather than failing, and
-  /// that is what makes single-player, host and client one code path: the
+  /// Calling one **on the host** runs it locally, and that is what makes
+  /// single-player, host and client one code path: the
   /// firing code says `fire((angle: a))` and does not care which machine it
   /// is on.
   host,
@@ -36,31 +36,30 @@ enum NetTarget {
   /// Handled by every client **and** by the host. Only the host may send it.
   ///
   /// For a decision the host must also react to through the same code path -
-  /// a scoreboard update, a sound cue - so that host and client visibly agree
-  /// rather than agreeing by two implementations that drift.
+  /// a scoreboard update, a sound cue - so that host and client agree through
+  /// one path, never through two implementations that drift.
   everyone,
 }
 
 /// What every network message shape has in common: an identity on the wire, a
 /// record layout, a channel and a target.
 ///
-/// Not extended directly - pick the shape the message actually is:
+/// Not extended directly - pick the shape the message has:
 /// [NetMessage] (it carries parameters) or [NetSignal] (it does not). Both
 /// are spelled exactly like their command counterparts (`SinkCommand`,
 /// `SignalCommand`) and use the same record layer underneath - `ParamBatch`
 /// holds the bytes and `ParamPointer` reads them, whether the bytes are
 /// crossing an isolate or a socket.
 ///
-/// # There is no request/reply shape yet, on purpose
+/// # There is no request/reply shape
 ///
 /// `GameCommand<P, R>` can await a result because the other isolate answers
 /// in microseconds and cannot fail to. A machine on the other side of the
 /// internet answers in tens of milliseconds, may never answer at all, and may
-/// have left the session between the question and the answer - so an awaited
+/// have left the session between the question and the answer, so an awaited
 /// network result needs a timeout, a cancellation and a "peer left" path
-/// before it is honest. That belongs in its own landing rather than smuggled
-/// in as an overload here; until then, a reply is a second message going the
-/// other way, which is also what shipped netcode overwhelmingly does.
+/// before it means anything. Write a reply as a second message going the other
+/// way, which is also what shipped netcode overwhelmingly does.
 abstract class NetMessageBase {
   /// Declares this message's fields. Identical in shape and vocabulary to
   /// `GameCommandBase.describeParams` - same descriptor, same packing rule.
@@ -80,26 +79,28 @@ abstract class NetMessageBase {
   /// any variable-length tail.
   int get strideBytes => _layout.strideBytes;
 
+  /// How many fields [describeParams] declared.
   int get fieldCount => _layout.fieldCount;
 
-  /// How this message's record is laid out. Kept rather than copied fact by
+  /// How this message's record is laid out. Kept whole, not copied fact by
   /// fact: a batch needs the head stride, the field count and where the tail
   /// length lives, and the handshake hash needs what the fields *are*.
   @internal
   ParamLayout get layout => _layout;
 
   /// Empty until [bind] runs, so an undeclared message reports a zero stride
-  /// and no fields rather than failing on a half-built object.
+  /// and no fields; nothing fails on a half-built object.
   ParamLayout _layout = ParamLayout();
 
   /// This message's identity in the protocol, given at its declaration.
   ///
-  /// Part of the handshake hash, and the reason a Dart class name is not.
-  /// Two builds agree about what a message *is* because someone wrote the
-  /// same string in both, rather than because the class happens to still be
-  /// spelled the same way - so a rename is a refactor, and an obfuscated
-  /// build talks to a plain one. Measured: `--obfuscate` rewrites
-  /// `PlayerInputMessage` to `zl`, which moved the old hash.
+  /// Part of the handshake hash; the Dart class name is not. Two builds agree
+  /// about what a message *is* because someone wrote the same string in both,
+  /// and not because the class happens to still be spelled the same way - so
+  /// a rename is a refactor, and an obfuscated build talks to a plain one.
+  /// Measured: `--obfuscate` rewrites `PlayerInputMessage` to `zl`, so a hash
+  /// taken over class names differs between an obfuscated build and a plain
+  /// one.
   ///
   /// Change it when the wire format changes and you want old peers refused;
   /// leave it alone for anything a peer cannot observe. `'fire'` and

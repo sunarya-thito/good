@@ -9,7 +9,7 @@ import 'peer.dart';
 /// A game shows different UI for "they quit" and "they dropped", and a
 /// session decides differently too (a timeout may be worth holding the slot
 /// open for a reconnect; a clean leave never is), so the transport reports
-/// which it was rather than a single "gone".
+/// which it was and not a single "gone".
 enum NetDisconnectReason {
   /// This side called [NetConnection.disconnect] or left the session.
   localClose,
@@ -50,12 +50,12 @@ enum NetConnectionState {
 ///
 /// Obtained from a [NetSession] - never constructed. The session owns the
 /// connection objects and reuses them across peers occupying the same slot,
-/// which is why a stale reference reports [NetPeerId] mismatches rather than
-/// quietly addressing whoever holds the slot now.
+/// so a stale reference reports [NetPeerId] mismatches instead of quietly
+/// addressing whoever holds the slot now.
 ///
 /// # Sending allocates nothing
 ///
-/// [send] takes bytes plus an offset and a length rather than a `Uint8List`
+/// [send] takes bytes plus an offset and a length, and not a `Uint8List`
 /// sized to the message, so a caller can keep one scratch buffer for its
 /// lifetime and write successive messages into it (the no-allocation rule). The
 /// transport copies the bytes out before returning - it has to, since a
@@ -75,6 +75,7 @@ abstract class NetConnection {
   /// finished and its slot has been recycled.
   NetPeerId get peer;
 
+  /// Where this connection is in its lifecycle.
   NetConnectionState get state;
 
   /// Set exactly when [state] is [NetConnectionState.disconnected].
@@ -83,8 +84,8 @@ abstract class NetConnection {
   /// Smoothed round-trip time in microseconds, or -1 before enough packets
   /// have crossed to measure one.
   ///
-  /// Microseconds rather than a `Duration`: a `Duration` is a heap object,
-  /// and this is read every tick by anything doing lag compensation.
+  /// Microseconds and not a `Duration`: a `Duration` is a heap object, and
+  /// this is read every tick by anything doing lag compensation.
   int get roundTripMicros;
 
   /// Fraction of sent packets this side believes were lost, 0.0 to 1.0,

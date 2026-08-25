@@ -12,7 +12,7 @@
 /// replication lands, and written into packet headers, so it must cost
 /// nothing to hold (the no-allocation rule).
 ///
-/// # Why a slot and not a name
+/// # The slot is a dense index
 ///
 /// The slot is a small dense index (`0 <= slot < maxPeers`), which is the
 /// property replication needs later: per-peer state - last acked tick, interest
@@ -20,7 +20,7 @@
 /// ...>` searched per packet (the typed-handle rule). It is also the whole of
 /// what goes on the wire: one byte, not a UUID.
 ///
-/// # Why a generation beside it
+/// # The generation catches a recycled slot
 ///
 /// Slots are reused. A peer that times out frees slot 3, someone else joins
 /// and gets slot 3, and packets still in flight from the first one arrive
@@ -43,9 +43,9 @@ extension type const NetPeerId(int value) implements int {
   /// "No peer" - what a lookup that found nothing returns, and what a
   /// connection to a peer that has already gone away reports.
   ///
-  /// Unlike `Entity`, which deliberately has no null value, a peer id needs
-  /// one: peers come and go during a session and "the peer that sent this"
-  /// has to be answerable after that peer left.
+  /// `Entity` has no such value; a peer id needs one, because peers come and
+  /// go during a session and "the peer that sent this" still has to be
+  /// answerable after that peer has left.
   static const NetPeerId none = NetPeerId(-1);
 
   const NetPeerId.pack(int slot, int generation)

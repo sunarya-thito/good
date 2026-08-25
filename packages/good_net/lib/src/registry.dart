@@ -47,15 +47,15 @@ abstract class NetDescriptor {
   ///
   /// Exactly one per game. A game that wants a loopback backend in tests and
   /// a real one in a build passes a different instance here; nothing else in
-  /// the game changes, because messages are declared against the game rather
-  /// than against a backend.
+  /// the game changes, because messages are declared against the game and
+  /// never against a backend.
   T transport<T extends NetTransport>(T transport);
 
   /// Declares [message] and returns it, for the `late final` field to keep.
   ///
   /// [to] fixes who handles it and therefore who may send it; [channel] fixes
   /// how hard the transport tries to deliver it. Both are declaration-time
-  /// facts rather than arguments at the send site, so that reading the
+  /// facts, not arguments at the send site, so that reading the
   /// declaration tells you the whole contract - and so a message cannot be
   /// sent reliably in one place and unreliably in another, which is a
   /// desync waiting to be debugged.
@@ -95,7 +95,7 @@ final class NetRegistry implements ParamLayouts {
   NetTransport? _transport;
 
   /// The declared backend. Null only if `describeNetwork` never declared one,
-  /// which `NetworkSystem` reports at boot rather than at first send.
+  /// which `NetworkSystem` reports at boot and not at first send.
   NetTransport? get transport => _transport;
 
   int get length => _messages.length;
@@ -136,32 +136,30 @@ final class NetRegistry implements ParamLayouts {
   /// unreliable. Any of those and the peers refuse each other with a version
   /// error, instead of forming a session in which damage arrives as chat.
   ///
-  /// # Why the field kinds are in it and a declared capacity is not
+  /// # The field kinds are in it; a declared capacity is not
   ///
   /// #141's rule is that the hash carries the wire format and nothing else.
   /// The head stride and the field count are a *summary* of the wire format,
-  /// and they were enough while every field was a value in the head. They are
-  /// not enough now. A `hasString()` field keeps an offset and a length into
-  /// the record's tail in the four head bytes an `hasUint32()` would hold a
-  /// number in, and a peer that reads the wrong one of those does not misread
-  /// one field: it computes the wrong tail length, and every record behind it
-  /// in the batch is lost. The signature is what tells those two declarations
-  /// apart, and it closes an older hole of the same shape at the same time -
-  /// `hasInt32` against `hasFloat32` has always had an identical stride and
+  /// and a summary stops being enough as soon as a field can live in the
+  /// tail. A `hasString()` field keeps an offset and a length into the
+  /// record's tail in the four head bytes a `hasUint32()` would hold a number
+  /// in, and a peer that reads the wrong one of those does not misread one
+  /// field: it computes the wrong tail length, and every record behind it in
+  /// the batch is lost. The signature tells those two declarations apart, and
+  /// it separates `hasInt32` from `hasFloat32`, which share a stride and a
   /// field count.
   ///
   /// What does **not** go in is the capacity `hasFixedString(n)` declares.
   /// That one is already in the hash by way of the stride, because the bytes
   /// really are reserved in every record. There is nothing further to add,
   /// and nothing about a length-free field to add either: it has no declared
-  /// maximum, and the bound it does have is the carrier's, which is a local
-  /// fact about one peer's ring or datagram rather than something the two
-  /// ends have to agree on.
+  /// maximum, and the bound it does have is the carrier's - a local fact
+  /// about one peer's ring or datagram, and not something the two ends have
+  /// to agree on.
   ///
-  /// 32-bit FNV-1a rather than a cryptographic digest: this catches
-  /// *accidents* - two builds that drifted - and there is nothing to gain by
-  /// forging it, since a peer that wants to send nonsense can simply send
-  /// nonsense.
+  /// 32-bit FNV-1a, not a cryptographic digest: this catches *accidents* -
+  /// two builds that drifted - and there is nothing to gain by forging it,
+  /// since a peer that wants to send nonsense can simply send nonsense.
   void seal() {
     if (_sealed) return;
     _sealed = true;

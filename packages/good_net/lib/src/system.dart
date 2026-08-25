@@ -65,7 +65,7 @@ mixin NetSessionListener on GameListener {
 /// }
 /// ```
 ///
-/// # Why a mixin on the state and not a `Game` subclass
+/// # All of it lives on the game isolate
 ///
 /// `Game2D` is a superclass because rendering has a main-isolate half - a
 /// widget to build, native buffers to allocate before the spawn. Networking has
@@ -74,18 +74,17 @@ mixin NetSessionListener on GameListener {
 /// isolate-affinity rule). Nothing here needs the Flutter side to have heard of
 /// it, so nothing here is declared over there.
 ///
-/// [describeNetwork] is abstract rather than empty-by-default, on the same
-/// argument: a state that mixes this in and declares nothing has a transport
-/// it never uses and a system that polls nothing, which is a mistake worth a
-/// compile error rather than a silent no-op.
+/// [describeNetwork] is abstract, with no empty default. A state that mixes
+/// this in and declares nothing has a transport it never uses and a system
+/// that polls nothing, and that is worth a compile error instead of a silent
+/// no-op.
 mixin MultiplayerState<G extends Game> on GameState<G> {
   /// Declares this game's messages and its backend - see [NetDescriptor].
   ///
   /// Runs once, at boot, from [describeSystems] - and so on the simulating
   /// copy only, because that is the one place `describeSystems` is invoked.
   /// The main-isolate copy of the state never runs it and never builds a
-  /// transport, which is the whole point of the paragraph above: there is no
-  /// second socket to keep shut.
+  /// transport, so there is no second socket to keep shut.
   void describeNetwork(NetDescriptor descriptor);
 
   /// The system carrying this game's traffic - `network.host(...)`,
@@ -166,12 +165,12 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
 /// Inbound is drained in [onFixedUpdate], and this system asks to run
 /// **first**, on the same argument that puts `pumpCommands` before every
 /// system: what a message handler does is write component data, and every
-/// system on this tick should see it rather than picking it up next tick.
+/// system on this tick should see it, not pick it up next tick.
 ///
 /// `Box2DPhysicsSystem` also asks to run first, for its own good reason, so
-/// two libraries claim the same slot and one of them loses - deliberately not
-/// papered over with a priority number, because the outcome is *correct
-/// either way*: whichever runs second sees the other's writes on the next
+/// two libraries claim the same slot and one of them loses. No priority
+/// number papers over that, because the outcome is *correct either way*:
+/// whichever runs second sees the other's writes on the next
 /// tick instead of this one, which for traffic that already crossed the
 /// internet is a rounding error. Declaration order breaks the tie
 /// (`GameState.sortSystems` is deterministic about that), and
@@ -179,7 +178,7 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
 ///
 /// Outbound is flushed in [onTick] - the presentation pass, which runs once
 /// per *frame*, after however many fixed steps that frame afforded. So three
-/// catch-up steps produce one batch of datagrams rather than three, and a
+/// catch-up steps produce one batch of datagrams instead of three, and a
 /// message queued by the first step does not wait for the next frame.
 class NetworkSystem extends GameSystem
     with FixedTickable, Tickable, GameSystemLifecycleListener
@@ -195,7 +194,7 @@ class NetworkSystem extends GameSystem
   /// The declared backend.
   ///
   /// Throws if `describeNetwork` declared none - at boot, naming the pass,
-  /// rather than at the first send with a null error.
+  /// and not at the first send with a null error.
   NetTransport get transport {
     final transport = registry.transport;
     if (transport == null) {
@@ -216,11 +215,10 @@ class NetworkSystem extends GameSystem
   ///
   /// [NetPeerId.host] when there is no session, for the same reason [isHost]
   /// is true then: a game with nobody connected is a session of one, and this
-  /// is the peer at the middle of it. Answering [NetPeerId.none] instead
-  /// looked harmless and was not - this is what a handler is handed as the
-  /// sender, so an offline game saw every one of its own messages arrive from
-  /// slot 65535, and anything keying per-peer state by slot wrote it
-  /// somewhere no player would ever read.
+  /// is the peer at the middle of it. This value is what a handler is handed
+  /// as the sender, so [NetPeerId.none] here would make an offline game see
+  /// every one of its own messages arrive from slot 65535, and anything
+  /// keying per-peer state by slot would write it somewhere no player reads.
   @override
   NetPeerId get localPeer => session?.localPeer ?? NetPeerId.host;
 
@@ -255,7 +253,7 @@ class NetworkSystem extends GameSystem
 
   /// The batch a received datagram is read through. One instance for the life
   /// of the system: `adoptIncoming` re-points it at the transport's buffer
-  /// rather than copying, so parsing a message allocates nothing.
+  /// without copying, so parsing a message allocates nothing.
   final ParamBatch _inbound = ParamBatch();
 
   /// Where a message sent to nobody gets written so that it can still be read
@@ -264,8 +262,8 @@ class NetworkSystem extends GameSystem
   /// One per channel, even though none of it goes anywhere, so that a record
   /// written here meets the ceiling it would have met on the wire. That is
   /// what makes an oversized message a mistake a game finds while it is still
-  /// a game of one - the alternative is a `hasBytes()` field that works
-  /// perfectly until the day somebody joins.
+  /// a game of one. Without it, a `hasBytes()` field works perfectly until
+  /// the day somebody joins.
   late final List<ParamBatch> _local = _channelBatches();
 
   /// A batch per channel, each capped at what the declared backend carries on
@@ -403,7 +401,7 @@ class NetworkSystem extends GameSystem
   /// one is refused at the write that made it - see
   /// [ParamBatch.maxRecordBytes], which every batch here is built with.
   ///
-  /// Cutting rather than fragmenting is also what lets the unreliable channel
+  /// Cutting at record boundaries is also what lets the unreliable channel
   /// stay one datagram wide: a lost piece costs the records in it and not the
   /// tick's whole traffic.
   void _sendInPieces(
@@ -439,7 +437,7 @@ class NetworkSystem extends GameSystem
 
   /// The live peer id occupying [slot], or [NetPeerId.none].
   ///
-  /// A linear walk of the roster rather than a slot-indexed array, because
+  /// A linear walk of the roster, not a slot-indexed array, because
   /// the roster is the session's to own and it is at most a handful of
   /// entries - this runs once per slot per frame, not per message.
   NetPeerId _peerInSlot(NetSession session, int slot) {
@@ -561,7 +559,7 @@ class NetworkSystem extends GameSystem
   /// a `NetTarget.host` message is a client's request and only the host may
   /// receive one; a `clients`/`everyone` message is the host's decision and
   /// only the host may send one. A record that arrives the wrong way round is
-  /// **dropped and counted** ([rejectedMessages]) rather than asserted on,
+  /// **dropped and counted** ([rejectedMessages]), never asserted on,
   /// because the sender is another machine: a modified client is a thing that
   /// exists, and taking a host down in debug because someone sent it a
   /// malformed packet would be a denial of service with extra steps.

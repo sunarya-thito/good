@@ -10,7 +10,7 @@ import '../session.dart';
 import '../transport.dart';
 
 /// Every rule [NetTransport] states, as tests, so that a backend proves it
-/// rather than intending it.
+/// and does not merely intend it.
 ///
 /// ```dart
 /// void main() {
@@ -18,15 +18,15 @@ import '../transport.dart';
 /// }
 /// ```
 ///
-/// # Why this lives in `lib/` and not in `test/`
+/// # The suite ships as library code
 ///
 /// A conformance suite that only the package defining the interface can run
 /// is a suite that tests one implementation. Backends live in their own
 /// packages (`good_net_p2p`, and whatever comes after it), and a test
 /// directory is not importable across packages - so the suite ships as
 /// library code and each backend's test file is three lines calling it. The
-/// cost is a `flutter_test` dependency on this package, which is deliberate
-/// and is the whole reason it is here.
+/// cost is a `flutter_test` dependency on this package, and that is what buys
+/// the reuse.
 ///
 /// [create] must return a **fresh** transport each call; the suite builds
 /// several and expects them not to share state beyond the backend's
@@ -48,7 +48,7 @@ void runNetTransportConformance(
   /// A fixed round count is a race with anything slower than a function call.
   /// It suits an in-process backend, where a send has landed by the time it
   /// returns, and it loses to a socket the moment a reliable message needs a
-  /// retransmit - the test then fails on a timing accident rather than on the
+  /// retransmit - the test then fails on a timing accident instead of on the
   /// backend being wrong. Waiting for the condition costs the in-process case
   /// nothing, because its first round satisfies [arrived] and this returns
   /// without ever yielding, and it gives a socket the rounds it needs.

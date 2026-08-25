@@ -43,10 +43,10 @@ abstract class NetListener {
   ///
   /// **The buffer is the transport's own and is reused before the next
   /// poll.** Read what is needed inside this call; a listener that wants to
-  /// keep the payload copies it into storage it owns. Handing out a view
-  /// rather than a freshly allocated `Uint8List` per message is the whole
-  /// point - a 60 Hz snapshot stream would otherwise allocate 60 lists per
-  /// peer per second, on the tick path (the hot-path rules).
+  /// keep the payload copies it into storage it owns. A view costs nothing to
+  /// hand out; a freshly allocated `Uint8List` per message would put 60 lists
+  /// per peer per second on the tick path for a 60 Hz snapshot stream (the
+  /// hot-path rules).
   void onMessage(
     NetPeerId from,
     NetChannel channel,

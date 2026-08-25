@@ -4,7 +4,7 @@ import 'channel.dart';
 import 'listener.dart';
 import 'session.dart';
 
-/// A networking backend: what actually moves bytes between machines.
+/// A networking backend: the thing that moves bytes between machines.
 ///
 /// One of these is declared per game, in `describeNetwork`, and from then on
 /// nothing in game code names it again - messages are declared against the
@@ -31,10 +31,10 @@ abstract class NetTransport {
   /// Identifies the backend in diagnostics - `'loopback'`, `'p2p'`.
   String get name;
 
-  /// The most bytes one [NetConnection.send] on [channel] can carry, so that
-  /// a game finds out from the backend rather than from a player.
+  /// The most bytes one [NetConnection.send] on [channel] can carry, so the
+  /// limit reaches a game from the backend, not from a player.
   ///
-  /// # Why a backend has to answer this
+  /// # Where the bound comes from
   ///
   /// A message field declared with `hasString()` or `hasBytes()` has no
   /// capacity of its own: the size of a record is decided by the value
@@ -50,14 +50,14 @@ abstract class NetTransport {
   ///    together, so its ceiling is however many pieces the backend's
   ///    reassembly can track - 255 of them for `good_net_p2p`, which is
   ///    roughly 300 KB.
-  ///  * [NetChannel.unreliable] is **one datagram**, and deliberately.
-  ///    Splitting an unreliable message means losing it whenever any one of
-  ///    its pieces is lost, so an N-piece message multiplies the link's loss
-  ///    rate by N while the channel's own contract - "losing one costs a tick
-  ///    of smoothness" - quietly stops holding. There is also nothing to gain
-  ///    by it: this channel carries state that supersedes itself, so a value
-  ///    that does not fit today does not fit on the next tick either, and the
-  ///    failure repeats rather than being absorbed. A game with more state
+  ///  * [NetChannel.unreliable] is **one datagram** wide, and cannot be more
+  ///    than one. Splitting an unreliable message means losing it whenever any
+  ///    one of its pieces is lost, so an N-piece message multiplies the link's
+  ///    loss rate by N while the channel's own contract - "losing one costs a
+  ///    tick of smoothness" - quietly stops holding. There is also nothing to
+  ///    gain by it: this channel carries state that supersedes itself, so a
+  ///    value that does not fit today does not fit on the next tick either,
+  ///    and the failure repeats and is never absorbed. A game with more state
   ///    than that sends it reliably, or splits it into messages that each
   ///    stand alone and each supersede on their own.
   ///
@@ -75,13 +75,13 @@ abstract class NetTransport {
   /// What a backend's [NetConnection.send] throws when it is handed more than
   /// [maxMessageBytes] allows.
   ///
-  /// Here rather than in each backend so that the refusal reads the same
-  /// whichever one a game is running against, which is the whole point of
-  /// bounding loopback at all. It throws rather than asserting and dropping,
-  /// for the reason `CommandTransport.send` does: a send over the ceiling can
-  /// never succeed, however long it is left, so it is a different failure
-  /// from a link that is momentarily busy and the caller can do something
-  /// about exactly one of them.
+  /// Shared by every backend, so the refusal reads the same whichever one a
+  /// game is running against - the same reason loopback states a bound at all.
+  /// It throws instead of asserting and dropping, matching
+  /// `CommandTransport.send`: a send over the ceiling can never succeed,
+  /// however long it is left, so it is a different failure from a link that is
+  /// momentarily busy, and the caller can do something about exactly one of
+  /// them.
   static Never refuseOversized({
     required String transport,
     required NetChannel channel,
@@ -106,7 +106,7 @@ abstract class NetTransport {
   /// A hash of the sending side's message declarations, checked during the
   /// handshake and refused on mismatch.
   ///
-  /// # Why this exists at all
+  /// # A message is identified by position
   ///
   /// A message's identity on the wire is its **position** in `describeNetwork`
   /// (the same trick `describeCommands` uses across isolates), which is what
@@ -118,7 +118,7 @@ abstract class NetTransport {
   /// the worst failure mode available.
   ///
   /// So the handshake carries this, and a mismatch is a refused connection
-  /// with a version error rather than a session where damage arrives as chat.
+  /// with a version error, never a session where damage arrives as chat.
   int get schemaHash => _schemaHash;
   int _schemaHash = 0;
 
@@ -140,10 +140,10 @@ abstract class NetTransport {
 
   /// Joins the session with the code [id].
   ///
-  /// One entry point rather than a second `joinDiscovered(SessionInfo)`
-  /// overload: [discover] hands back codes, and how a code resolves to a
-  /// machine - a cached LAN address, a rendezvous lookup - is the backend's
-  /// own business (the no-specialised-variant rule, one way to do a thing).
+  /// A code is the only thing you need: [discover] hands back codes, and how
+  /// one resolves to a machine - a cached LAN address, a rendezvous lookup -
+  /// is the backend's own business (the no-specialised-variant rule, one way
+  /// to do a thing).
   ///
   /// Fails with a [NetException] if the code is unknown, the session is full,
   /// or the two ends disagree about [schemaHash].
@@ -180,10 +180,9 @@ abstract class NetTransport {
 /// What a backend throws when it cannot do what was asked: no such session,
 /// session full, version mismatch, no route to the host.
 ///
-/// A single exception type with a [reason] rather than a class per failure:
-/// the caller's realistic response to all of them is the same - show the
-/// player what went wrong and let them try again - and the string is what
-/// actually gets shown.
+/// One type carrying a [reason], covering every failure. Your realistic
+/// response to any of them is the same - show the player what went wrong and
+/// let them try again - and [reason] is the string you show.
 class NetException implements Exception {
   const NetException(this.reason, {this.transport});
 

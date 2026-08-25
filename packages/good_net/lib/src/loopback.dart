@@ -27,8 +27,8 @@ import 'transport.dart';
 /// # Scope: one isolate
 ///
 /// The switchboard is a `static`, and statics are per-isolate in Dart, so two
-/// isolates cannot find each other through this. That is the honest boundary
-/// of an in-memory backend: crossing an isolate means serialising and going
+/// isolates cannot find each other through this. That is the boundary of an
+/// in-memory backend: crossing an isolate means serialising and going
 /// through a port, which is a transport of its own and not this one.
 class LoopbackNetTransport extends NetTransport {
   /// [maxReliableBytes] and [maxUnreliableBytes] are what this backend claims
@@ -59,9 +59,12 @@ class LoopbackNetTransport extends NetTransport {
   /// joining looks one up, closing takes it out.
   static final Map<String, _Room> _rooms = <String, _Room>{};
 
-  /// This transport's own ceilings - see [maxMessageBytes], which reports
-  /// them, and the two defaults above for where the numbers come from.
+  /// What one reliable message may be on this transport, reported through
+  /// [maxMessageBytes]. Defaults to [defaultMaxReliableBytes].
   final int maxReliableBytes;
+
+  /// What one unreliable message may be on this transport, reported through
+  /// [maxMessageBytes]. Defaults to [defaultMaxUnreliableBytes].
   final int maxUnreliableBytes;
 
   /// Ends every session in this isolate.
@@ -288,7 +291,7 @@ class _Room {
   /// The host's, checked against every joiner's.
   final int schemaHash;
 
-  /// Everyone in the session, host first. One list rather than peers and
+  /// Everyone in the session, host first. One list, not peers and
   /// transports side by side: a peer's transport is a property of that peer
   /// (the one-fact-one-place rule).
   final List<_Member> members = <_Member>[];
@@ -483,7 +486,7 @@ class _View implements NetSession {
 
 /// One direction of one link: [_from] sending to [_to]. Two of these per
 /// link, one owned by each end, so that "who is sending" is a property of the
-/// object rather than something the session has to be told.
+/// object and never something the session has to be told.
 ///
 /// Loopback has no handshake and no loss, so most of [NetConnection] is a
 /// constant here.
