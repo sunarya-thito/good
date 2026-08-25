@@ -20,9 +20,9 @@
 /// What this does **not** yet do is cross the internet: a home router hands
 /// out a private address and drops unsolicited inbound packets, so getting
 /// through one needs a peer's public address (STUN) and a moment of
-/// coordination to punch a hole through it (a rendezvous). That is the next
-/// landing, and it is called out here rather than left for a player to
-/// discover.
+/// coordination to punch a hole through it (a rendezvous). Neither is in this
+/// package, so plan on a LAN, or on a host whose address is already reachable
+/// from outside.
 library;
 
 export 'src/code.dart' show EndpointCode;

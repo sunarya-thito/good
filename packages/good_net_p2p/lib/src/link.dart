@@ -13,20 +13,20 @@ import 'wire.dart';
 /// because that is the scope every one of those mechanisms actually has: two
 /// clients' packet loss has nothing to do with each other.
 ///
-/// # What is deliberately not here
+/// # What is not here
 ///
 /// Congestion control. This sends what the game asks it to, as fast as the
 /// game asks for it, and reports [packetLoss] so a game can decide to send
 /// less. A real congestion controller (a send-rate that backs off when loss
 /// rises) is a genuine piece of work with genuine failure modes, and pretending
 /// to have one by dropping packets at a fixed threshold would be worse than
-/// not having one - so it is named as missing rather than approximated.
+/// not having one. So it is named as missing, never approximated.
 class P2PLink implements NetConnection {
   /// What this backend calls itself in diagnostics.
   ///
-  /// Here rather than beside `P2PNetTransport.name`, which reads it back,
-  /// because a link has to name the backend in the refusal it throws and has
-  /// deliberately no reference to the transport to ask.
+  /// It lives here and `P2PNetTransport.name` reads it back: a link has to
+  /// name the backend in the refusal it throws, and it holds no reference to
+  /// the transport to ask.
   static const String backendName = 'p2p';
 
   /// Built by `P2PNetTransport`, which is the only thing that can supply the
@@ -59,7 +59,7 @@ class P2PLink implements NetConnection {
   final int port;
 
   /// [address]'s bytes, kept because every arriving datagram is matched
-  /// against every link - four byte comparisons rather than building and
+  /// against every link - four byte comparisons instead of building and
   /// comparing an address string per packet per link.
   final Uint8List _rawAddress;
 
@@ -123,11 +123,11 @@ class P2PLink implements NetConnection {
   /// a link going bad inside a second of play, slow enough that one dropped
   /// packet does not read as total loss.
   ///
-  /// The first version instead counted a packet lost when its record was
-  /// recycled, 64 packets later - which is correct and useless: an idle link
-  /// sends ten packets a second, so a link losing a third of everything read
-  /// as flawless for the first six seconds. Loss has to be measured against
-  /// the clock, not against how much has been sent since.
+  /// **Loss has to be measured against the clock, not against how much has
+  /// been sent since.** Counting a packet lost when its record is recycled,
+  /// 64 packets later, is correct and useless: an idle link sends ten packets
+  /// a second, so a link losing a third of everything reads as flawless for
+  /// its first six seconds.
   @override
   double get packetLoss => _packetLoss;
   double _packetLoss = 0;
@@ -186,11 +186,11 @@ class P2PLink implements NetConnection {
   /// need this - they arrive in order by construction, so they accumulate in
   /// [_assembly] instead.
   ///
-  /// Nothing here sends a fragmented unreliable message any more - the
-  /// unreliable ceiling is one frame, see [maxMessageBytes] - but a peer on a
-  /// build from before that still can, and refusing to reassemble what
-  /// arrives would break an upgrade rather than protect anything. Strictness
-  /// belongs on the sending side.
+  /// This side never sends a fragmented unreliable message - the unreliable
+  /// ceiling is one frame, see [maxMessageBytes] - but a peer on an older
+  /// build can, and refusing to reassemble what arrives would break an
+  /// upgrade without protecting anything. Strictness belongs on the sending
+  /// side.
   final Map<int, _Assembly> _unreliableGroups = <int, _Assembly>{};
 
   _Assembly? _assembly;
@@ -206,7 +206,7 @@ class P2PLink implements NetConnection {
   static const int keepaliveMicros = 100 * 1000;
 
   /// Silence longer than this and the link is gone - see
-  /// `P2PNetTransport.linkTimeout` for the default and why it is what it is.
+  /// `P2PNetTransport.linkTimeout` for the default.
   final int timeoutMicros;
 
   /// How long to wait for an ack before sending a reliable message again.
@@ -302,7 +302,7 @@ class P2PLink implements NetConnection {
 
   /// The most payload one frame can hold, after its own header. Sized for the
   /// worst case (a fragmented reliable frame), so one number covers every
-  /// frame shape rather than four that have to stay in step.
+  /// frame shape, and not four that have to stay in step.
   static const int maxFramePayload =
       maxDatagramPayload - prologueBytes - payloadHeaderBytes - _maxFrameHeader;
 
@@ -310,7 +310,7 @@ class P2PLink implements NetConnection {
   static const int _maxFrameHeader = 1 + 2 + 2 + 1 + 1 + 2;
 
   /// How many fragments one message may be cut into: the fragment index is
-  /// one byte, so 255 is the format's own answer rather than a policy.
+  /// one byte, so 255 comes from the format, not from a policy.
   static const int maxFragments = 255;
 
   /// What one message may be on [channel] - the number
@@ -334,19 +334,19 @@ class P2PLink implements NetConnection {
   /// system message is written by the transport out of fields it decided
   /// itself: a slot, a generation, a reason index. Nothing a player types and
   /// nothing that grows with the session reaches one, so the smallest ceiling
-  /// that fits the traffic is the honest one - and at six bytes for the
+  /// that fits the traffic is the right one - and at six bytes for the
   /// longest of them, this is still nearly two hundred times what is used.
   ///
   /// What the tighter number buys is that a system message never fragments.
   /// A roster update is what everything else is correct *relative to*, so it
   /// is the last thing that should be waiting on 254 more pieces or holding
   /// the link's one reassembly buffer while a game message wants it. It also
-  /// makes the guard in [_enqueue] unreachable from here by construction
-  /// rather than by arithmetic that happens to work out.
+  /// makes the guard in [_enqueue] unreachable from here by construction,
+  /// and not by arithmetic that happens to work out.
   ///
-  /// A future system message that will not fit says so at the send, and the
-  /// answer is the one the roster already uses: several messages that each
-  /// stand alone, not one the transport quietly cuts up.
+  /// A system message that will not fit says so at the send, and the answer
+  /// is the one the roster already uses: several messages that each stand
+  /// alone, not one the transport quietly cuts up.
   static const int maxSystemMessageBytes = maxFramePayload;
 
   void _enqueue(int kind, Uint8List bytes, int offset, int length) {
@@ -828,7 +828,7 @@ class _Assembly {
 
   /// Hands the assembled bytes over and starts again on a fresh buffer.
   ///
-  /// The buffer has to be given away rather than lent: a reassembled message
+  /// The buffer is given away, not lent: a reassembled message
   /// is queued as a *view* and read at the next poll, so an assembly that
   /// kept its buffer would be filling the bytes a queued message is still
   /// pointing at. One allocation per fragmented message, which is a message

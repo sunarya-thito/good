@@ -24,13 +24,12 @@ import 'wire.dart';
 /// nothing that can go down. On a LAN there is not even a code to type:
 /// [discover] lists the sessions announcing themselves.
 ///
-/// And the honest other half: a code carries the address it was minted from,
+/// The other half: a code carries the address it was minted from,
 /// so it reaches as far as that address does. Same machine and same LAN work
 /// now, today, with no setup. **Across the internet does not**, because a home
 /// router hands out a private address and drops unsolicited inbound packets -
 /// getting through that needs a peer's public address (STUN) and a moment of
-/// coordination to punch a hole (a rendezvous), which is a separate landing
-/// and is called out in the package README rather than implied by "P2P".
+/// coordination to punch a hole (a rendezvous). Neither is in this package.
 ///
 /// # Threading and the tick
 ///
@@ -39,12 +38,12 @@ import 'wire.dart';
 /// ordinary event loop, and datagrams arrive on it between ticks. What
 /// arrives is parsed immediately - acknowledgements have to be timely - and
 /// what it *means* is queued, so the game sees a burst of packets at one
-/// point in its tick rather than spread across the middle of one
+/// point in its tick instead of spread across the middle of one
 /// ([NetTransport.poll]).
 ///
-/// This is also why there is no third isolate: a network isolate would need
-/// its own copy of the message registry and a second producer on the command
-/// ring, to save a socket read that costs microseconds.
+/// There is no third isolate for the socket: one would need its own copy of
+/// the message registry and a second producer on the command ring, to save a
+/// socket read that costs microseconds.
 class P2PNetTransport extends NetTransport {
   P2PNetTransport({
     InternetAddress? bindAddress,
@@ -92,13 +91,13 @@ class P2PNetTransport extends NetTransport {
 
   /// Fraction of **outgoing** datagrams to throw away, 0 to 1.
   ///
-  /// A development tool, and it earns its place in the shipped class rather
-  /// than in a test helper: netcode that has only ever run over loopback has
+  /// A development tool, and it earns its place in the shipped class and not
+  /// in a test helper: netcode that has only ever run over loopback has
   /// never had a packet lost, so every retransmission path in it is untested
   /// code that first runs on a player's patchy hotel wifi. Turning this up is
   /// how you find out - the reliable channel should still deliver everything
   /// in order at 30%, and if it does not, that is a bug found on a desk
-  /// rather than in a review.
+  /// instead of in a review.
   ///
   /// Loss is applied when sending, so setting it on one peer models a bad
   /// uplink, and setting it on both models a bad link. It is settable while
@@ -170,11 +169,11 @@ class P2PNetTransport extends NetTransport {
   /// worse thing than losing it on the wire because nothing downstream can
   /// tell the difference and nothing upstream was asked.
   ///
-  /// Reliable traffic hid it: a retransmission covers a packet the socket
+  /// Reliable traffic hides it: a retransmission covers a packet the socket
   /// refused just as well as one a router dropped. What it does not cover is
   /// the two things sent exactly once - an unreliable message, and the
-  /// goodbye a leaving peer sends - and both of those were being thrown away
-  /// here at a rate of about one in a hundred (#177).
+  /// goodbye a leaving peer sends. Measured on Windows loopback: with no
+  /// queue here, about one in a hundred of those is thrown away (#177).
   final List<_Blocked> _blocked = <_Blocked>[];
 
   /// Drained [_Blocked]s with their buffers intact, to be filled again. The
@@ -185,10 +184,10 @@ class P2PNetTransport extends NetTransport {
   /// How many datagrams are held before the oldest is given up on.
   ///
   /// A block clears as soon as the socket drains, which is microseconds, so
-  /// reaching this at all means it has stopped draining rather than paused.
-  /// Holding more at that point does not get them sent, it just spends
-  /// memory on packets whose moment has passed - and the oldest is the one
-  /// whose moment passed first, which is why that is the end that goes.
+  /// reaching this at all means it has stopped draining, not paused. Holding
+  /// more at that point does not get them sent, it just spends memory on
+  /// packets whose moment has passed, and the oldest is the one whose moment
+  /// passed first, so the oldest is the end that goes.
   ///
   /// Public because a bound nothing can name is a bound nothing can check:
   /// a test that hard-codes the number instead is a second copy of it that
@@ -309,8 +308,7 @@ class P2PNetTransport extends NetTransport {
   /// Bound to one interface, that one. Bound to all of them, the first
   /// non-loopback IPv4 the machine has - which is the LAN address a peer in
   /// the same room can reach, and the best answer available without asking
-  /// something on the internet what our public address is (which is STUN, and
-  /// is the next landing).
+  /// something on the internet what our public address is (which is STUN).
   Future<InternetAddress> _advertisedAddress() async {
     if (bindAddress.type == InternetAddressType.IPv4 &&
         bindAddress != InternetAddress.anyIPv4) {
@@ -338,7 +336,7 @@ class P2PNetTransport extends NetTransport {
 
   /// Keepalives, retransmissions, timeouts and handshake retries.
   ///
-  /// On a timer rather than only in [flush], because all four have to keep
+  /// On a timer, not only in [flush], because all four have to keep
   /// happening when the game has nothing to say - a link that only retried
   /// when the game sent something would stall forever the moment it went
   /// quiet, which is exactly when a lost packet is least likely to be noticed.
@@ -438,7 +436,7 @@ class P2PNetTransport extends NetTransport {
   ///
   /// The one that matters is Windows': sending a datagram to a port nobody is
   /// listening on gets an ICMP "port unreachable" back, and Windows surfaces
-  /// that as an error on the *sending* socket rather than discarding it. So
+  /// that as an error on the *sending* socket instead of discarding it. So
   /// one peer quitting would raise an error on the host's socket, which -
   /// with no handler here - becomes an unhandled asynchronous error and takes
   /// the game isolate down. A peer that went away is exactly what the
@@ -535,10 +533,10 @@ class P2PNetTransport extends NetTransport {
   /// The one place a packet leaves this transport, so that [simulatedLoss]
   /// covers the whole protocol.
   ///
-  /// It used to sit in [_sendDatagram] alone, which meant the handshake and
-  /// the goodbye - the two exchanges with no game logic on top to notice
-  /// something went missing - were the only ones a loss knob could not break.
-  /// A join at `simulatedLoss: 1` still succeeded.
+  /// Handshake and goodbye packets leave through here too. They are the two
+  /// exchanges with no game logic on top to notice that something went
+  /// missing, so a loss knob that skipped them would let a join succeed at
+  /// `simulatedLoss: 1`.
   void _send(
     Uint8List datagram,
     int length,
@@ -565,8 +563,7 @@ class P2PNetTransport extends NetTransport {
   /// datagram is still ours to send.
   ///
   /// A closed transport reports true: there is no socket to be blocked on and
-  /// nothing to keep the packet for, which is the same nothing the old
-  /// `_socket?.send` did.
+  /// nothing to keep the packet for.
   bool _write(
     Uint8List datagram,
     int length,
@@ -950,8 +947,8 @@ class P2PNetTransport extends NetTransport {
 
   /// Announces this session to the LAN.
   ///
-  /// Hosts announce and clients listen, rather than clients asking and hosts
-  /// answering. Only one of those needs a well-known port to be *bound*, and
+  /// Hosts announce and clients listen; clients do not ask and hosts do not
+  /// answer. Only one of those needs a well-known port to be *bound*, and
   /// making it the listener's means several hosts can run on one machine -
   /// which is a normal thing to do while developing and impossible if every
   /// host has to own the same port.
@@ -1082,7 +1079,7 @@ class _Delivery {
 
 /// One datagram the socket would not take, held until it will.
 ///
-/// [bytes] outlives one send and is grown rather than replaced, so a run of
+/// [bytes] outlives one send and is grown, never replaced, so a run of
 /// backpressure settles on a buffer instead of allocating per packet.
 class _Blocked {
   Uint8List bytes = Uint8List(0);

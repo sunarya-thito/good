@@ -5,7 +5,7 @@ import 'package:good_net/good_net.dart';
 
 /// Turns a host's address and port into a [SessionId] and back.
 ///
-/// # Why the code *is* the address
+/// # The code carries the address
 ///
 /// PeerJS hands out a short id and a public broker turns it into an address.
 /// That broker is a server, and this package's whole promise is that there
@@ -13,12 +13,12 @@ import 'package:good_net/good_net.dart';
 /// six bytes and sending a packet to them, with nothing in between that
 /// anyone has to run, pay for, or keep alive.
 ///
-/// The cost is honest and worth stating: **a code minted this way is only
-/// reachable from where that address is reachable.** A LAN address works
-/// across the room and nowhere else. A public address works from anywhere,
-/// once the host's NAT has been persuaded to forward it - which is the part
-/// STUN and hole punching do, and which needs a rendezvous to arrange, and
-/// which is therefore the next landing rather than this one. Discovery
+/// The cost is worth stating: **a code minted this way is only reachable from
+/// where that address is reachable.** A LAN address works across the room and
+/// nowhere else. A public address works from anywhere, once the host's NAT
+/// has been persuaded to forward it - which is the part STUN and hole
+/// punching do, which needs a rendezvous to arrange, and which this package
+/// does not do. Discovery
 /// ([P2PNetTransport.discover]) is the other half of the same story: on a LAN
 /// nobody has to type anything at all.
 ///
@@ -31,10 +31,10 @@ import 'package:good_net/good_net.dart';
 /// what carrying the address instead of an index into someone's database
 /// costs.
 ///
-/// IPv4 only, deliberately: an IPv6 address is 128 bits and would make a
-/// 26-character code, which is not something a person retypes. A future
-/// rendezvous-minted code is short *and* v6-capable, because a short code is
-/// exactly what a directory buys you.
+/// IPv4 only: an IPv6 address is 128 bits, which comes out as a 26-character
+/// code, and nobody retypes one of those. A code minted by a directory could
+/// be short *and* v6-capable, since it would carry an index and not an
+/// address.
 abstract final class EndpointCode {
   /// How many characters an encoded endpoint takes.
   static const int length = 10;

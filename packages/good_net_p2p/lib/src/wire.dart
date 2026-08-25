@@ -28,7 +28,7 @@
 ///
 /// This is the scheme Glenn Fiedler's articles describe and ENet, QUIC and
 /// Steam Sockets all wear variations of. It is not novel and should not be:
-/// the failure modes are known, which is the point of picking it.
+/// the failure modes are known.
 ///
 /// # A frame
 ///
@@ -49,10 +49,14 @@
 ///  * `length` is the payload's, in bytes.
 library;
 
-/// `g`, `n` - and then a version, so that a future format change is a refused
-/// connection rather than a garbled one.
+/// `g` - the first of the two magic bytes every packet starts with.
 const int magic0 = 0x67;
+
+/// `n` - the second magic byte.
 const int magic1 = 0x6E;
+
+/// Follows the magic bytes, so that a format change is a refused connection
+/// instead of a garbled one.
 const int protocolVersion = 1;
 
 /// Bytes before any packet's own body.
@@ -68,8 +72,8 @@ const int payloadHeaderBytes = 9;
 
 /// What a datagram is for.
 ///
-/// Deliberately few. Everything that happens *during* a session is a frame
-/// inside [payload] rather than a packet type of its own, because a frame
+/// Few, and fixed. Everything that happens *during* a session is a frame
+/// inside [payload], never a packet type of its own, because a frame
 /// inherits the sequencing, acknowledgement and batching that the payload
 /// packet already has - a roster update that needed its own retransmission
 /// logic would be a second reliability implementation to keep correct
@@ -117,7 +121,7 @@ abstract final class FrameKind {
 }
 
 /// What a [PacketType.connectReject] carries, so that a joiner can say
-/// something true to the player rather than "connection failed".
+/// something true to the player, and not just "connection failed".
 abstract final class RejectReason {
   static const int sessionFull = 0;
   static const int schemaMismatch = 1;
@@ -151,7 +155,7 @@ abstract final class SystemMessage {
 
 /// The most payload bytes to put in one datagram.
 ///
-/// 1200 rather than the 1500 an Ethernet frame holds: every tunnel, VPN and
+/// 1200, and not the 1500 an Ethernet frame holds: every tunnel, VPN and
 /// PPPoE link on the way subtracts its own header from that, and a datagram
 /// that ends up one byte over is not shortened, it is **dropped** - silently,
 /// intermittently, and only for the players behind that one link. 1200 is the
