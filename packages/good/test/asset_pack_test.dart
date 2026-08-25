@@ -82,7 +82,7 @@ class _CountingBundle extends CachingAssetBundle {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  tearDown(AssetPack.uninstall);
+  tearDown(AssetMounts.clear);
 
   final chunk = plainChunk(<String, List<int>>{
     'assets/a.webp': utf8.encode('texture bytes'),
@@ -95,7 +95,7 @@ void main() {
       'assets/b.ogg': 'assets/chunk_root.dat',
     },
     key: const <int>[],
-    bundle: bundle,
+    chunkSource: BundleMount(bundle: bundle),
   );
 
   group('BundleSource', () {
@@ -121,7 +121,7 @@ void main() {
       final bundle = _CountingBundle(<String, Uint8List>{
         'assets/chunk_root.dat': chunk,
       });
-      AssetPack.install(packOf(bundle));
+      AssetMounts.mount(packOf(bundle));
 
       // The *same* source and the same logical path as the loose case - which
       // is the whole reason the path stayed logical rather than becoming a
@@ -138,7 +138,7 @@ void main() {
         'assets/chunk_root.dat': chunk,
         'assets/late.webp': Uint8List.fromList(utf8.encode('added later')),
       });
-      AssetPack.install(packOf(bundle));
+      AssetMounts.mount(packOf(bundle));
       // The bundle is named here because the fall-through path is exactly the
       // one that does *not* go through the pack, so it uses whatever bundle the
       // source itself carries - rootBundle in a real app.
@@ -155,7 +155,7 @@ void main() {
       final bundle = _CountingBundle(<String, Uint8List>{
         'assets/chunk_root.dat': chunk,
       });
-      AssetPack.install(packOf(bundle));
+      AssetMounts.mount(packOf(bundle));
 
       await const BundleSource('assets/a.webp').load();
       await const BundleSource('assets/b.ogg').load();
@@ -173,7 +173,7 @@ void main() {
       final bundle = _CountingBundle(<String, Uint8List>{
         'assets/chunk_root.dat': chunk,
       });
-      AssetPack.install(packOf(bundle));
+      AssetMounts.mount(packOf(bundle));
 
       // Started together, so both are in flight before either finishes - the
       // case an "is it already open" check alone would miss.
@@ -184,15 +184,15 @@ void main() {
       expect(bundle.loads['assets/chunk_root.dat'], 1);
     });
 
-    test('releaseChunks drops the cache, so the next read re-opens', () async {
+    test('release drops the cache, so the next read re-opens', () async {
       final bundle = _CountingBundle(<String, Uint8List>{
         'assets/chunk_root.dat': chunk,
       });
       final pack = packOf(bundle);
-      AssetPack.install(pack);
+      AssetMounts.mount(pack);
 
       await const BundleSource('assets/a.webp').load();
-      pack.releaseChunks();
+      pack.release();
       await const BundleSource('assets/a.webp').load();
 
       expect(
@@ -210,13 +210,13 @@ void main() {
       final bundle = _CountingBundle(<String, Uint8List>{
         'assets/chunk_root.dat': chunk,
       });
-      AssetPack.install(
+      AssetMounts.mount(
         AssetPack(
           mapping: const <String, String>{
             'assets/a.webp': 'assets/chunk_root.dat',
           },
           key: const <int>[],
-          bundle: bundle,
+          chunkSource: BundleMount(bundle: bundle),
           residentChunkBudget: 1,
         ),
       );
@@ -229,7 +229,7 @@ void main() {
 
   group('check', () {
     test('an asset the pack never received is unknown', () async {
-      AssetPack.install(
+      AssetMounts.mount(
         packOf(_CountingBundle(<String, Uint8List>{
           'assets/chunk_root.dat': chunk,
         })),
@@ -244,7 +244,7 @@ void main() {
     });
 
     test('an unopened chunk is unverifiable, not a false pass', () async {
-      AssetPack.install(
+      AssetMounts.mount(
         packOf(_CountingBundle(<String, Uint8List>{
           'assets/chunk_root.dat': chunk,
         })),
@@ -259,7 +259,7 @@ void main() {
     });
 
     test('once its chunk has opened, an asset reports present for free', () async {
-      AssetPack.install(
+      AssetMounts.mount(
         packOf(_CountingBundle(<String, Uint8List>{
           'assets/chunk_root.dat': chunk,
         })),
@@ -283,7 +283,7 @@ void main() {
           'assets/c.webp': 'assets/chunk_missing.dat',
         },
         key: const <int>[],
-        bundle: bundle,
+        chunkSource: BundleMount(bundle: bundle),
       );
       final failures = await pack.verifyChunks();
       expect(failures.keys, ['assets/chunk_missing.dat']);

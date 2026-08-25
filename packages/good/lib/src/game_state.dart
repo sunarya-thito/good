@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:meta/meta.dart';
 
 import 'package:good/src/asset.dart';
-import 'package:good/src/asset_pack.dart';
 import 'package:good/src/event.dart';
 import 'package:good/src/event/fixed_loop.dart';
 import 'package:good/src/event/lifecycle.dart';
@@ -694,8 +693,8 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // from. This is the one place that knows the burst is over, which is why
     // the pack does not try to guess it with a timer.
     //
-    // A no-op in a development build, where no pack is installed.
-    AssetPack.installed?.releaseChunks();
+    // A no-op in a development build, where nothing is mounted.
+    AssetMounts.release();
 
     // The terminal report, always sent, so a caller can hang "hide the
     // loading screen" off `progress == 1.0` without also having to handle

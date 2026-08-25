@@ -178,10 +178,16 @@ Future<void> ensureGameReady() async {
   // The pack first: everything below asks whether assets are *there*, and in a
   // release build that answer comes from the manifest rather than the bundle.
   // An empty mapping means a development build - assets are loose, and
-  // installing nothing is what makes BundleSource resolve straight through
+  // mounting nothing is what makes BundleSource resolve straight through
   // rootBundle.
+  //
+  // Mount anything else - a DLC directory, a downloaded patch - *after* this
+  // line: the mount table is ordered and the last mount to carry a logical
+  // path is the one that answers for it.
   if (assetMapping.isNotEmpty) {
-    AssetPack.install(AssetPack(mapping: assetMapping, key: assetKeyMaterial));
+    AssetMounts.mount(
+      AssetPack(mapping: assetMapping, key: assetKeyMaterial),
+    );
   }
 
   final missing = await findMissingAssets();

@@ -3,9 +3,7 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:cryptography/cryptography.dart';
-import 'package:flutter/services.dart' show AssetBundle, rootBundle;
 import 'package:good/src/asset.dart';
-import 'package:meta/meta.dart';
 
 /// A shipped asset pack: which chunk holds each asset, and the key to open one.
 ///
@@ -14,11 +12,19 @@ import 'package:meta/meta.dart';
 /// A release build does not ship its assets as files. `good assets pack`
 /// compresses them, seals them into a handful of encrypted chunks, and records
 /// which chunk holds what. This is the half that reads that back, and it is
-/// installed *once*, at startup, by the generated `ensureGameReady()`.
+/// mounted *once*, at startup, by the generated `ensureGameReady()`.
 ///
-/// A development build installs nothing, and every [BundleSource] then resolves
+/// A development build mounts nothing, and every [BundleSource] then resolves
 /// its logical path straight through the bundle - which is the whole reason the
 /// path stayed logical.
+///
+/// # A pack is one tier, not the whole story
+///
+/// It is an [AssetMount], so a game can mount two: the shipped pack, and a
+/// downloaded patch above it holding newer copies of some of the same logical
+/// paths. Whichever was mounted last answers, and game code cannot tell.
+/// [chunkSource] is itself a mount, which is what lets a patch keep its chunks
+/// in a directory while the shipped pack keeps its own in the app bundle.
 ///
 /// # Why the decryption lives here and not in a loader
 ///
@@ -27,16 +33,15 @@ import 'package:meta/meta.dart';
 /// business, and threading it through would put a decryption branch in every
 /// loader anyone ever writes. [AssetSource.load] hands back plaintext; that is
 /// the whole contract.
-class AssetPack {
+class AssetPack extends AssetMount {
   AssetPack({
     required Map<String, String> mapping,
     required List<int> key,
-    AssetBundle? bundle,
+    AssetMount? chunkSource,
     this.residentChunkBudget = 64 * 1024 * 1024,
   }) : _mapping = Map<String, String>.unmodifiable(mapping),
        _key = key,
-       // ignore: prefer_initializing_formals
-       _bundle = bundle {
+       chunkSource = chunkSource ?? const BundleMount() {
     // Empty is legitimate: `good assets pack --encryption=none` produces a
     // packed but unsealed build, and whether a given chunk is encrypted is a
     // flag on that chunk, not a property of the pack. So the only thing worth
@@ -55,9 +60,14 @@ class AssetPack {
 
   final Map<String, String> _mapping;
   final List<int> _key;
-  final AssetBundle? _bundle;
 
-  AssetBundle get _assets => _bundle ?? rootBundle;
+  /// Where this pack's `chunk_*.dat` files are read from.
+  ///
+  /// A mount rather than an `AssetBundle` so that a downloaded patch can keep
+  /// its chunks in a directory while the shipped pack keeps its own in the app
+  /// bundle. Defaults to the app bundle, which is where `good assets pack`
+  /// puts them.
+  final AssetMount chunkSource;
 
   /// How many bytes of opened chunks may stay resident.
   ///
@@ -65,9 +75,9 @@ class AssetPack {
   /// grouped so that loading a scene touches few of them, but a game that
   /// visits every scene would otherwise end up holding its entire pack -
   /// decompressed - in memory forever. Least-recently-opened chunks are
-  /// dropped once the total passes this, and [releaseChunks] drops all of them
-  /// at a scene boundary, which is where the engine knows a burst of loading
-  /// has ended.
+  /// dropped once the total passes this, and [release] drops all of them at a
+  /// scene boundary, which is where the engine knows a burst of loading has
+  /// ended.
   final int residentChunkBudget;
 
   /// Opened chunks, in insertion order so the oldest can be evicted first.
@@ -89,26 +99,6 @@ class AssetPack {
   final Map<String, Future<Map<String, Uint8List>>> _opening =
       <String, Future<Map<String, Uint8List>>>{};
 
-  /// The currently installed pack, or null in a development build.
-  static AssetPack? get installed => _installed;
-  static AssetPack? _installed;
-
-  /// Installs [pack] as the process's asset pack.
-  ///
-  /// Called by the generated `ensureGameReady()` when `assetMapping` is not
-  /// empty. A process-global rather than something threaded through, because
-  /// `BundleSource` is a `const` value object created anywhere a key is
-  /// declared - there is nothing to thread it through.
-  static void install(AssetPack pack) => _installed = pack;
-
-  /// Removes the installed pack. Test-only, and the reason a suite can run a
-  /// packed case and a loose one without leaking between them.
-  @visibleForTesting
-  static void uninstall() {
-    _installed?.releaseChunks();
-    _installed = null;
-  }
-
   /// Whether [logicalPath] is in this pack.
   bool contains(String logicalPath) => _mapping.containsKey(logicalPath);
 
@@ -118,17 +108,23 @@ class AssetPack {
   /// Every chunk this pack ships, deduplicated.
   Iterable<String> get chunks => _mapping.values.toSet();
 
-  /// The plaintext bytes of [logicalPath].
-  Future<Uint8List> read(String logicalPath) async {
+  @override
+  String get description =>
+      'an asset pack of ${chunks.length} chunk(s) in '
+      '${chunkSource.description}';
+
+  /// The plaintext bytes of [logicalPath], or null if this pack has no entry
+  /// for it.
+  ///
+  /// Null only ever means *the manifest does not name this*, which is what
+  /// lets a tier below answer instead - an asset added since the last pack is
+  /// a legitimate state, not an error. A manifest entry whose chunk turns out
+  /// not to hold it is corruption and throws, because falling through there
+  /// would serve a stale copy from underneath a broken pack.
+  @override
+  Future<Uint8List?> tryRead(String logicalPath) async {
     final chunk = _mapping[logicalPath];
-    if (chunk == null) {
-      throw StateError(
-        '"$logicalPath" is not in this asset pack. Either the pack was built '
-        'from a different set of declared assets, or the generated '
-        'asset_key.dart is out of date - re-run `good generate` and '
-        '`good assets pack`.',
-      );
-    }
+    if (chunk == null) return null;
     final members = await _openChunk(chunk);
     final bytes = members[logicalPath];
     if (bytes == null) {
@@ -136,6 +132,23 @@ class AssetPack {
         'The manifest says "$logicalPath" is in $chunk, but that chunk does '
         'not contain it. The manifest and the chunks were built from '
         'different runs; repack.',
+      );
+    }
+    return bytes;
+  }
+
+  /// The plaintext bytes of [logicalPath]. Throws if this pack has no entry.
+  ///
+  /// The pack's own spelling, for code that already knows the asset is packed.
+  /// [tryRead] is what the mount table walks.
+  Future<Uint8List> read(String logicalPath) async {
+    final bytes = await tryRead(logicalPath);
+    if (bytes == null) {
+      throw StateError(
+        '"$logicalPath" is not in this asset pack. Either the pack was built '
+        'from a different set of declared assets, or the generated '
+        'asset_key.dart is out of date - re-run `good generate` and '
+        '`good assets pack`.',
       );
     }
     return bytes;
@@ -160,6 +173,7 @@ class AssetPack {
   ///
   /// [verifyChunks] is the deliberate deep pass for a "verify game files"
   /// button, and costs one open per chunk rather than one per asset.
+  @override
   Future<AssetAvailability> check(String logicalPath) async {
     final chunk = _mapping[logicalPath];
     if (chunk == null) return AssetAvailability.unknown;
@@ -189,11 +203,12 @@ class AssetPack {
 
   /// Drops every opened chunk.
   ///
-  /// Called at a scene boundary by `GameState`: a scene load is a burst of
-  /// reads that all want the same few chunks, and the moment it finishes those
-  /// chunks are dead weight - the decoded `ui.Image` is what the game needs
-  /// from then on, not the compressed bytes it came from.
-  void releaseChunks() {
+  /// Called at a scene boundary through [AssetMounts.release]: a scene load is
+  /// a burst of reads that all want the same few chunks, and the moment it
+  /// finishes those chunks are dead weight - the decoded `ui.Image` is what
+  /// the game needs from then on, not the compressed bytes it came from.
+  @override
+  void release() {
     _open.clear();
     _openBytes.clear();
     _residentBytes = 0;
@@ -211,11 +226,14 @@ class AssetPack {
   }
 
   Future<Map<String, Uint8List>> _readChunk(String chunk) async {
-    final data = await _assets.load(chunk);
-    final sealed = data.buffer.asUint8List(
-      data.offsetInBytes,
-      data.lengthInBytes,
-    );
+    final sealed = await chunkSource.tryRead(chunk);
+    if (sealed == null) {
+      throw StateError(
+        'The manifest names $chunk but ${chunkSource.description} does not '
+        'carry it. The pack was built from a different run than the files '
+        'beside it, or the chunk was never shipped.',
+      );
+    }
     final members = readChunkBody(await openChunk(sealed: sealed, key: _key));
 
     var bytes = 0;

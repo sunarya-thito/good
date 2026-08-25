@@ -2,6 +2,50 @@
 
 ### Breaking
 
+* **The installed asset pack is now one tier of an ordered mount table.**
+  `AssetPack.install`, `AssetPack.installed` and `AssetPack.uninstall` are
+  gone; `AssetMounts.mount`, `AssetMounts.unmount` and `AssetMounts.clear`
+  replace them. The generated `ensureGameReady()` changes with them, so
+  re-running `good generate` picks the new spelling up (#108).
+
+  ```dart
+  // before
+  AssetPack.install(AssetPack(mapping: assetMapping, key: assetKeyMaterial));
+
+  // after
+  AssetMounts.mount(AssetPack(mapping: assetMapping, key: assetKeyMaterial));
+  ```
+
+  One behavioural difference to know about: `install` *replaced* the pack, and
+  `mount` **stacks**. Two mounts means two tiers, and the later one shadows
+  the earlier one for any logical path they both carry. That is the point —
+  see Added — but code that called `install` twice to swap packs must call
+  `unmount` on the first.
+
+* **`AssetPack` takes `chunkSource` instead of `bundle`.** The parameter is an
+  `AssetMount` rather than an `AssetBundle`, so a downloaded patch can keep
+  its chunks in a directory while the shipped pack keeps its own in the app
+  bundle. `BundleMount(bundle: b)` is the direct translation, and passing
+  nothing still reads `rootBundle` (#108).
+
+  ```dart
+  AssetPack(mapping: m, key: k, chunkSource: BundleMount(bundle: myBundle));
+  ```
+
+* **`AssetPack.releaseChunks()` is `AssetPack.release()`**, the name it
+  overrides on `AssetMount`. A scene boundary now releases every mounted tier
+  rather than the single installed pack, which is what stops a mounted DLC
+  pack from holding its chunks for the life of the process (#108).
+
+* **A manifest entry whose chunk file is absent throws a `StateError` naming
+  the mount, not the bundle's `FlutterError`.** The chunk is read through
+  `AssetPack.chunkSource` now, and a mount reports "I do not carry this" by
+  returning null rather than by throwing, so the pack is the one left to say
+  what went wrong. `verifyChunks` still records the failure per chunk; only
+  the message and the exception type change. A *missing asset* — nothing
+  mounted carries it and the app bundle has no such entry — still surfaces as
+  the bundle's own `FlutterError`, unchanged (#108).
+
 * **`ParamDescriptor.hasString(int maxBytes)` is now `hasFixedString`, and
   `hasString()` takes no capacity at all.** The unadorned name went to the
   kind you should reach for first: a string whose length nobody has to guess.
@@ -82,6 +126,37 @@
   or absent, so renaming those is a design question and not a spelling one.
 
 ### Added
+
+* **An ordered asset mount table: later shadows earlier.** `AssetMount` is one
+  tier — bytes named by a logical path, or null when that tier does not carry
+  it — and `AssetMounts` is the process's ordered list of them. A DLC
+  directory, a mod folder, a downloaded patch and the project's own source
+  tree are all expressible, and game code resolving `BundleSource('x.png')`
+  cannot tell which tier answered (#108).
+
+  ```dart
+  import 'package:good/io.dart';
+
+  AssetMounts.mount(AssetPack(mapping: assetMapping, key: assetKeyMaterial));
+  AssetMounts.mount(DirectoryMount('C:/games/mygame/dlc'));  // shadows the pack
+  ```
+
+  Three implementations ship: `AssetPack` itself, `BundleMount` for a Flutter
+  `AssetBundle`, and `DirectoryMount` for a folder on disk. The last one lives
+  in **`package:good/io.dart`**, a second entry point that exists so
+  `package:good/good.dart` stays free of `dart:io`.
+
+  The table has a floor it does not contain: when no mount carries a path,
+  `BundleSource` falls back to the app's own bundle. That is not a hedge, it
+  is Android — an asset there is a compressed zip entry with no filesystem
+  path, so what shipped inside the app is reachable through the bundle and
+  through nothing else. It can be shadowed; it cannot be unmounted.
+
+  `AssetSource.check` walks the same table. A mount that does not carry a path
+  says so and the walk continues; `AssetAvailability.unknown` — a pack whose
+  manifest does not list the asset — is remembered rather than returned, so a
+  higher tier that really does carry it still answers, and the finding is
+  reported only when nothing does.
 
 * **A record field can hold a string or a list whose length is not declared up
   front.** `hasString()` and `hasBytes()` size themselves from what is written

@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show FlutterError;
 import 'package:flutter/services.dart' show AssetBundle, rootBundle;
 import 'package:meta/meta.dart';
-import 'package:good/src/asset_pack.dart';
 import 'package:good/src/data.dart';
 
 // ---------------------------------------------------------------------------
@@ -76,6 +76,177 @@ enum AssetAvailability {
   /// source. Neither a pass nor a failure; a readiness report should say so
   /// rather than counting it either way.
   unverifiable,
+}
+
+// --- the mount table -------------------------------------------------------
+
+/// One tier of the mount table: bytes named by a logical asset path.
+///
+/// A mount answers for the paths it carries and returns `null` for the rest,
+/// which is what lets several of them stack. The table is ordered and **a
+/// later mount shadows an earlier one**, so the shipped content sits at the
+/// bottom and a DLC directory, a mod folder, a downloaded patch or the source
+/// tree during development go on top of it. Game code names one logical path
+/// and cannot tell which tier answered - the same reason [BundleSource] kept
+/// its path logical when packing arrived.
+///
+/// Unlike [AssetSource], a mount is **not** part of an asset's identity, so it
+/// needs no value equality: it is process configuration, mounted once at
+/// startup and removed by reference.
+abstract class AssetMount {
+  const AssetMount();
+
+  /// The plaintext bytes at [path], or `null` if this mount does not carry it.
+  ///
+  /// `null` means *ask the tier below*, and nothing else. A mount that carries
+  /// [path] and cannot produce it - a truncated file, a chunk that fails its
+  /// authentication tag - **throws**, because falling through would quietly
+  /// serve a stale copy from under a corrupt one and call that success.
+  Future<Uint8List?> tryRead(String path);
+
+  /// What can be said about [path] without reading it, or `null` if this mount
+  /// does not carry it and cannot claim to.
+  ///
+  /// [AssetAvailability.unknown] is the one answer that does not end the
+  /// search: it means *this mount has a manifest and [path] is not in it*,
+  /// which is a finding worth reporting but not a reason to stop asking the
+  /// tiers below. See [AssetMounts.check].
+  Future<AssetAvailability?> check(String path);
+
+  /// Drops whatever this mount is holding.
+  ///
+  /// Called at a scene boundary, where the engine knows a burst of loading has
+  /// ended. A no-op for a mount that caches nothing.
+  void release() {}
+
+  /// Diagnostics only - what a "nothing carries this asset" message lists.
+  /// Override with something that identifies the individual mount.
+  String get description => '$runtimeType';
+}
+
+/// The process's ordered mount table: **later shadows earlier**.
+///
+/// A process-global rather than something threaded through, for the same
+/// reason the installed asset pack was one before it: [BundleSource] is a
+/// `const` value object created wherever a key is declared, so there is
+/// nothing to thread a table through. Mount at startup, before the first asset
+/// load.
+///
+/// The table has a floor it does not contain. [BundleSource] falls back to the
+/// app's own [AssetBundle] when no mount answers, because on Android the
+/// bundle is the only thing that can be read at all - assets are compressed
+/// zip entries with no filesystem path - so what shipped inside the app can
+/// never be unmounted, only shadowed.
+abstract final class AssetMounts {
+  static final List<AssetMount> _mounts = <AssetMount>[];
+
+  /// The table, bottom tier first. A copy; mutate through [mount].
+  static List<AssetMount> get mounts => List<AssetMount>.unmodifiable(_mounts);
+
+  /// Adds [mount] on top, shadowing everything already mounted.
+  static void mount(AssetMount mount) => _mounts.add(mount);
+
+  /// Removes [mount] and releases it. Returns whether it was mounted.
+  static bool unmount(AssetMount mount) {
+    if (!_mounts.remove(mount)) return false;
+    mount.release();
+    return true;
+  }
+
+  /// Empties the table, releasing every mount.
+  static void clear() {
+    release();
+    _mounts.clear();
+  }
+
+  /// Releases every mount without unmounting any - the scene-boundary call.
+  ///
+  /// A scene load is a burst of reads that all want the same few chunks, and
+  /// the moment it ends those chunks are dead weight: what the game needs from
+  /// there on is the decoded `ui.Image`, not the compressed bytes it came
+  /// from. `GameState` is the one place that knows the burst is over, which is
+  /// why no mount tries to guess it with a timer.
+  static void release() {
+    for (final mount in _mounts) {
+      mount.release();
+    }
+  }
+
+  /// The bytes at [path] from the topmost mount that carries it, or `null`.
+  ///
+  /// Walked top down, so the last mount wins. This is a load-time path - once
+  /// per asset, behind [Assets.load]'s in-flight dedupe and followed by an
+  /// image or audio decode - so the walk is written for the shadowing rule to
+  /// be obvious rather than for the table to be traversed cheaply.
+  static Future<Uint8List?> tryRead(String path) async {
+    for (var i = _mounts.length - 1; i >= 0; i--) {
+      final bytes = await _mounts[i].tryRead(path);
+      if (bytes != null) return bytes;
+    }
+    return null;
+  }
+
+  /// What the table can say about [path] without reading it, or `null` if
+  /// nothing mounted carries it.
+  ///
+  /// Top down, and the first mount with a real answer ends it.
+  /// [AssetAvailability.unknown] is the exception: a mount that has a manifest
+  /// and does not list [path] has found something worth reporting, but a tier
+  /// below may still carry the asset - so the finding is remembered and the
+  /// walk continues, and it is the answer only if nothing else claims [path].
+  static Future<AssetAvailability?> check(String path) async {
+    AssetAvailability? unlisted;
+    for (var i = _mounts.length - 1; i >= 0; i--) {
+      final answer = await _mounts[i].check(path);
+      if (answer == null) continue;
+      if (answer == AssetAvailability.unknown) {
+        unlisted = answer;
+        continue;
+      }
+      return answer;
+    }
+    return unlisted;
+  }
+}
+
+/// A mount backed by a Flutter [AssetBundle] - what shipped inside the app.
+///
+/// Mounting one is only needed for a *second* bundle, or to give an
+/// `AssetPack` somewhere other than `rootBundle` to read its chunks from. The
+/// app's own bundle is already [BundleSource]'s floor and does not have to be
+/// mounted to be reachable.
+class BundleMount extends AssetMount {
+  const BundleMount({this.bundle});
+
+  /// The bundle to read from, or `null` for `rootBundle`.
+  final AssetBundle? bundle;
+
+  @override
+  Future<Uint8List?> tryRead(String path) async {
+    final ByteData data;
+    try {
+      data = await (bundle ?? rootBundle).load(path);
+    } on FlutterError {
+      // The only failure `AssetBundle` reports for a key it does not have, and
+      // the only one `load` can raise at all - it reads bytes, it does not
+      // decode them, so nothing here can be swallowing a real decode error.
+      return null;
+    }
+    // A view, not a copy: `ByteData.buffer` may be larger than the asset when
+    // the bundle packs several together, so the offset and length matter.
+    return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+  }
+
+  @override
+  Future<AssetAvailability?> check(String path) async {
+    // Never claims a path. A bundle entry cannot be stat-ed - `AssetBundle`
+    // exposes only `load`, and loading *is* reading - so the honest answer is
+    // that this tier cannot say, which leaves the tiers below free to.
+    return null;
+  }
+
+  @override
+  String get description => bundle == null ? 'the app bundle' : 'a bundle';
 }
 
 /// One loadable asset's **identity**: which asset this is, and nothing else.
@@ -780,30 +951,43 @@ mixin LocalEnumAssetKey<T> implements EnumAssetKey<T> {
 /// The path is not necessarily a file. In a loose development build it is the
 /// pubspec-declared bundle path and resolves straight through [AssetBundle].
 /// In a packed build the same path names a byte range inside an encrypted
-/// chunk, and resolution goes through the manifest a build installs at
-/// startup. Both cases are one `BundleSource('player.png')` in game code,
-/// which is exactly why the *path* is identity and the chunk assignment - build
-/// output that changes every pack - is not.
+/// chunk, and resolution goes through the manifest a build mounts at startup.
+/// With DLC or a mod folder mounted it is a file that was never in the app at
+/// all. Every case is one `BundleSource('player.png')` in game code, which is
+/// exactly why the *path* is identity and the chunk assignment - build output
+/// that changes every pack - is not.
+///
+/// Resolution walks [AssetMounts] top down and falls back to the app's own
+/// bundle, so the last mount carrying a path is the one that answers for it.
 class BundleSource extends AssetSource {
   const BundleSource(this.path, {this.bundle});
 
   /// The logical asset path, e.g. `assets/player.png`.
   final String path;
 
-  /// The bundle to read from, or `null` for `rootBundle`. Injectable purely so
-  /// a test (or a game shipping a second bundle) can supply its own.
+  /// Which bundle is the floor under the mount table, or `null` for
+  /// `rootBundle`. Injectable purely so a test (or a game shipping a second
+  /// bundle) can supply its own; it is part of this source's identity, so two
+  /// `BundleSource`s naming different bundles are different assets.
   final AssetBundle? bundle;
 
   @override
   Future<Uint8List> load() async {
-    // The pack first, the bundle second, and the *same* path either way -
-    // which is the whole reason this stayed a logical name. A release build
-    // installs a pack at startup and this resolves through the manifest; a
-    // development build installs nothing and the path is a bundle entry.
-    // Nothing above here changes between the two, including the key.
-    final pack = AssetPack.installed;
-    if (pack != null && pack.contains(path)) return pack.read(path);
+    // The mount table first, top down, and the app bundle underneath it - the
+    // *same* path either way, which is the whole reason this stayed a logical
+    // name. A release build mounts a pack at startup and this resolves through
+    // its manifest; a development build mounts nothing and the path is a
+    // bundle entry; a game with DLC mounts a directory on top and the same key
+    // now reads a file that was never in the app. Nothing above here changes
+    // between the three.
+    final mounted = await AssetMounts.tryRead(path);
+    if (mounted != null) return mounted;
 
+    // The floor. Not a mount, because it cannot be absent: on Android an asset
+    // is a compressed zip entry with no filesystem path, so whatever shipped
+    // inside the app is readable through the bundle and through nothing else.
+    // A missing asset surfaces as the bundle's own `FlutterError`, naming the
+    // path, which is what it did before there was a table at all.
     final data = await (bundle ?? rootBundle).load(path);
     // A view, not a copy: `ByteData.buffer` may be larger than the asset when
     // the bundle packs several together, so the offset and length matter.
@@ -812,18 +996,18 @@ class BundleSource extends AssetSource {
 
   @override
   Future<AssetAvailability> check() async {
-    final pack = AssetPack.installed;
-    // A packed build can at least say whether the pack has ever heard of this
-    // path, which catches the real failure - a build declaring an asset the
-    // pack was never given. See `AssetPack.check` for why it cannot do better
-    // than `unverifiable` for one it has, and `AssetPack.verifyChunks` for the
-    // deep pass that can.
-    if (pack != null) return pack.check(path);
+    // A mounted pack can at least say whether its manifest has ever heard of
+    // this path, which catches the real failure - a build declaring an asset
+    // the pack was never given. See `AssetPack.check` for why it cannot do
+    // better than `unverifiable` for one it has, and `AssetPack.verifyChunks`
+    // for the deep pass that can.
+    final mounted = await AssetMounts.check(path);
+    if (mounted != null) return mounted;
 
-    // A loose build has no manifest to consult and no way to stat a bundle
-    // entry - `AssetBundle` exposes only `load`, and loading is reading. So
-    // the only honest answer short of reading the asset is that this could not
-    // be checked.
+    // Nothing mounted carries it, and the floor has no manifest to consult and
+    // no way to stat a bundle entry - `AssetBundle` exposes only `load`, and
+    // loading is reading. So the only honest answer short of reading the asset
+    // is that this could not be checked.
     return AssetAvailability.unverifiable;
   }
 
