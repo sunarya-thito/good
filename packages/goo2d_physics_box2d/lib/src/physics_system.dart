@@ -86,9 +86,12 @@ class Box2DPhysicsSystem extends GameSystem
   /// and a joint anchor all mean here exactly what they mean in Box2D's
   /// documentation and samples.
   ///
-  /// The magnitude is 10 rather than 9.81 because Box2D uses 10; it is a game
-  /// engine, not a geodesy package.
+  /// The magnitude is 10 and not 9.81, matching Box2D; this is a game engine,
+  /// not a geodesy package.
   final double gravityX;
+
+  /// The Y component of world gravity, in metres per second squared. Negative
+  /// pulls down, since +y is up - see [gravityX].
   final double gravityY;
 
   /// Box2D's solver iteration count per step. 4 is upstream's recommended
@@ -131,9 +134,9 @@ class Box2DPhysicsSystem extends GameSystem
   /// Box2D's own guidance is that only performance cores help - efficiency
   /// cores and hyper-threading "provide little benefit and may even harm
   /// performance" - so more workers than physical cores usually costs time
-  /// rather than saving it. There is no auto-detection here on purpose: the
-  /// right number depends on what else the game is doing with those cores,
-  /// which this system cannot know.
+  /// instead of saving it. Nothing here picks a count for you: the right
+  /// number depends on what else the game is doing with those cores, which
+  /// this system cannot know.
   final int workerCount;
 
   /// Whether to dispatch `onCollisionStay2D`/`onTriggerStay2D`.
@@ -166,7 +169,7 @@ class Box2DPhysicsSystem extends GameSystem
 
   /// Position difference below which a body is considered not to have been
   /// moved by gameplay. Positions round-trip through `float32`, so the
-  /// error here is ordinary narrowing rather than an approximation.
+  /// error here is ordinary narrowing, not an approximation.
   static const double positionEpsilon = 1e-4;
 
   /// One Box2D world per loaded scene, by `Scene.slot`.
@@ -237,14 +240,14 @@ class Box2DPhysicsSystem extends GameSystem
   /// Which entity and which declared collider each Box2D shape belongs to,
   /// indexed by the shape handle's own dense slot.
   ///
-  /// **No `userData` is involved**, deliberately: Box2D's per-shape
-  /// `void* userData` is 4 bytes on 32-bit Android, and an `Entity` packs all
-  /// 64 bits, so stashing one there would truncate silently. The shape
+  /// **No `userData` is involved.** Box2D's per-shape `void* userData` is
+  /// 4 bytes on 32-bit Android, and an `Entity` packs all 64 bits, so
+  /// stashing one there would truncate silently. The shape
   /// handle's high 32 bits are `index1` (see `b2StoreShapeId`), which Box2D's
   /// id pool keeps dense and reuses - exactly the property an index into a
   /// flat list wants. Resolving a contact is then one indexed read.
   ///
-  /// One small object per shape rather than two parallel lists: it is allocated
+  /// One small object per shape, not two parallel lists: it is allocated
   /// once at shape creation, never on the hot path, and two lists that must
   /// agree by index is the coupling the one-fact-one-place rule describes.
   List<_ShapeOwner?> _shapeOwners = <_ShapeOwner?>[];
@@ -257,11 +260,11 @@ class Box2DPhysicsSystem extends GameSystem
   /// only transitions, so "still touching" has to be maintained here for
   /// `onCollisionStay2D`/`onTriggerStay2D` to exist at all.
   ///
-  /// Parallel `Int64List`s rather than a `Set` of packed pairs: two int64
-  /// handles do not pack into one int, and a `Set<int>` of a hash would have
-  /// to handle collisions. Removal is a linear scan plus swap-with-last,
-  /// which is fine at realistic contact counts and is the honest trade -
-  /// contacts are bounded by what is actually touching, not by body count.
+  /// Parallel `Int64List`s, not a `Set` of packed pairs: two int64 handles do
+  /// not pack into one int, and a `Set<int>` of a hash would have to handle
+  /// collisions. Removal is a linear scan plus swap-with-last, which is fine
+  /// at realistic contact counts - contacts are bounded by what is touching,
+  /// not by body count.
   Int64List _touchingA = Int64List(0);
   Int64List _touchingB = Int64List(0);
   Uint8List _touchingSensor = Uint8List(0);
@@ -274,11 +277,11 @@ class Box2DPhysicsSystem extends GameSystem
   ///
   /// The companion to a step time: a step time on its own cannot distinguish
   /// "a lot of bodies" from "a lot of bodies overlapping each other", and
-  /// Box2D's cost follows the contact graph rather than the population.
+  /// Box2D's cost follows the contact graph, not the population.
   int get touchingPairCount => _touchingCount;
 
-  /// Threads the **live world** is actually using, asked of Box2D rather than
-  /// read back off [workerCount].
+  /// Threads the **live world** is using, asked of Box2D and not read back
+  /// off [workerCount].
   ///
   /// Those two can disagree, and the difference is invisible in a step time.
   /// [workerCount] is what this object was constructed with; this is what the
@@ -355,10 +358,10 @@ class Box2DPhysicsSystem extends GameSystem
 
   /// Applies every declared effector, once, before the step.
   ///
-  /// Ordering between effectors is deliberately unspecified. Forces
-  /// accumulate, and addition is commutative, so two overlapping zones produce
-  /// the same total whichever runs first - which is what makes walking them in
-  /// archetype order rather than some declared sequence sound.
+  /// Ordering between effectors is unspecified, and safe to leave that way.
+  /// Forces accumulate, and addition is commutative, so two overlapping zones
+  /// produce the same total whichever runs first, which is what makes walking
+  /// them in archetype order sound.
   ///
   /// The region is resolved as an axis-aligned box around the entity's
   /// `Transform2D`, so a rotated effector zone acts through its bounding box.
@@ -527,7 +530,7 @@ class Box2DPhysicsSystem extends GameSystem
   /// tick the row reports 0 and nothing else knows the body exists.
   ///
   /// Cleared at the end of every fixed step, so it holds at most one tick's
-  /// worth of spawns rather than growing with the population.
+  /// worth of spawns and never grows with the population.
   final Map<Entity, int> _freshHandles = <Entity, int>{};
 
   @override
@@ -1169,7 +1172,7 @@ class Box2DPhysicsSystem extends GameSystem
   /// always wants.
   ///
   /// [length], [minLength] and [maxLength] left at 0 keep Box2D's own
-  /// defaults rather than meaning zero; a zero-length distance joint is
+  /// defaults, and do not mean zero; a zero-length distance joint is
   /// degenerate and Box2D only catches it with an assert, which is absent
   /// from a release build.
   ///
@@ -1180,7 +1183,7 @@ class Box2DPhysicsSystem extends GameSystem
   /// The same rule `ParentAccessor._sameScene` states for hierarchy edges, and
   /// for the same reason: whichever scene unloads first would leave the other
   /// holding a constraint into freed memory. It is spelled as a real throw
-  /// rather than an `assert`, which is where it differs. Hierarchy can repair a
+  /// and not an `assert`, which is where it differs. Hierarchy can repair a
   /// stray edge at unload; this cannot, because the bodies are in two separate
   /// `b2World`s and Box2D has no defined answer for jointing across them. What
   /// it does instead is not something to expose, so the refusal is ours and it
@@ -1261,10 +1264,10 @@ class Box2DPhysicsSystem extends GameSystem
   /// never published, a read falls through to the write slot and happens to
   /// see the fresh handle. As soon as rows are recycled that fall-through
   /// stops, and the same code silently produces no joints at all. The joints
-  /// demo hit exactly this - the first chain hung, and every chain rebuilt
-  /// afterwards fell apart.
+  /// demo shows it: the first chain hangs, and every chain rebuilt afterwards
+  /// falls apart.
   ///
-  /// It returns 0 rather than asserting because "not yet" is a legitimate
+  /// It returns 0 instead of asserting, because "not yet" is a legitimate
   /// state a caller can poll out of, but the asymmetry is worth knowing:
   /// nothing else in this class fails quietly.
   Joint createRevoluteJoint(
@@ -1312,7 +1315,7 @@ class Box2DPhysicsSystem extends GameSystem
   ///
   /// Lifts, sliding doors, pistons. ([axisX], [axisY]) is the free axis in
   /// **body A's local frame** and is normalised for you; a zero axis falls
-  /// back to horizontal rather than tripping an assert that is absent from a
+  /// back to horizontal, and does not trip an assert that is absent from a
   /// release build.
   Joint createPrismaticJoint(
     Entity a,
@@ -1490,17 +1493,17 @@ class Box2DPhysicsSystem extends GameSystem
   }
 
   /// Drags body [b] towards a **world-space** target - Unity's Target Joint
-  /// 2D. Mouse dragging, tractor beams, anything that pulls rather than pins.
+  /// 2D. Mouse dragging, tractor beams, anything that pulls instead of pins.
   ///
   /// [a] is a reference body Box2D needs but does not move; a static one is
   /// the usual choice. Move the target with `Joint.moveTarget`, which is the
   /// one joint parameter meant to change every frame.
   ///
-  /// Zero for [hertz], [dampingRatio] or [maxForce] keeps Box2D's default
-  /// rather than meaning zero - a zero-force drag would simply do nothing.
+  /// Zero for [hertz], [dampingRatio] or [maxForce] keeps Box2D's default,
+  /// and does not mean zero - a zero-force drag would simply do nothing.
   ///
   /// The joint **grabs the body where it is** and then aims at the target, so
-  /// it pulls rather than pinning a point that is already in place. That
+  /// it pulls, and does not pin a point that is already in place. That
   /// ordering is not cosmetic - creating it at the target instead anchors
   /// whichever part of the body is already there, and the joint then does
   /// nothing at all. The shim header has the measurements.
@@ -1582,12 +1585,11 @@ class Box2DPhysicsSystem extends GameSystem
   ///
   /// [layerMask] is a bitmask of layers to test against, defaulting to all.
   ///
-  /// [scene] says which world to cast in, and it is required on purpose.
+  /// [scene] says which world to cast in, and there is no default for it.
   /// Defaulting it to "the one loaded scene" would give a call that works for
   /// months and then queries the wrong world - or throws - the day a HUD scene
-  /// loads. That shape is what `getScene` became `singleScene` to remove, and
-  /// here the symptom would be a silently wrong answer instead of a clean
-  /// failure. A one-scene game passes the scene it has.
+  /// loads, and the symptom would be a silently wrong answer instead of a
+  /// clean failure. A one-scene game passes the scene it has.
   bool raycast(
     Scene scene,
     double x,
@@ -1636,10 +1638,9 @@ class Box2DPhysicsSystem extends GameSystem
   /// once the set is small.
   ///
   /// Results are valid until the next query. [maxResults] bounds the work;
-  /// anything beyond it is dropped rather than growing a buffer without limit.
+  /// anything beyond it is dropped, and no buffer grows without limit.
   /// [scene] says which world to search, and is required for the reason
-  /// [raycast] gives: one shared world used to return shapes from two scenes
-  /// interleaved, with `layerMask` the only way to tell them apart.
+  /// [raycast] gives.
   int overlapBox(
     Scene scene,
     double minX,
@@ -1721,7 +1722,7 @@ class Box2DPhysicsSystem extends GameSystem
   ///
   /// Box2D has no "still touching" event - it reports transitions only - so
   /// this is derived from the begin/end pairs tracked above. That is the one
-  /// part of `CollisionListener` that costs a data structure rather than a
+  /// part of `CollisionListener` that costs a data structure instead of a
   /// translation.
   void _dispatchStay() {
     for (var i = 0; i < _touchingCount; i++) {
@@ -1890,16 +1891,14 @@ class Box2DPhysicsSystem extends GameSystem
   /// Releases the Box2D world, its worker threads and the scratch buffers,
   /// when the game stops.
   ///
-  /// **Called automatically now.** `GameSystem.unmountEvent` had been declared
-  /// since the beginning and fired by nothing, so this used to say "call it
-  /// yourself after stopping" - and nothing ever did, which leaked a Box2D
-  /// world per run and, once threading was on, its worker threads with it.
-  /// `GameState.unmount` fires the signal after the scenes are down, which is
-  /// the only safe moment: releasing the world while entities still hold
-  /// bodies in it is a use-after-free, and that one is a native crash with no
-  /// Dart exception.
+  /// **You do not have to call it.** `GameState.unmount` fires
+  /// `GameSystem.unmountEvent` after the scenes are down, which is the only
+  /// safe moment: releasing the world while entities still hold bodies in it
+  /// is a use-after-free, and that one is a native crash with no Dart
+  /// exception. Left to a game to call, it goes uncalled, and a run leaks a
+  /// Box2D world and - with threading on - its worker threads too.
   ///
-  /// Still public and still idempotent, so a test or a harness that wants to
+  /// [dispose] is public and idempotent, so a test or a harness that wants to
   /// reclaim the world early can, and calling it twice is harmless.
   @override
   void onUnmounted() => dispose();
@@ -1956,11 +1955,12 @@ class Box2DPhysicsSystem extends GameSystem
 /// that entity's collision listener if it has one.
 ///
 /// [listener] is resolved **once, at shape creation**, and that is a real
-/// optimisation rather than tidiness. `entity.tryGet<CollisionListener>()`
-/// costs an archetype resolve and a subtype test, and dispatch calls it twice
-/// per touching pair per tick - a settled pile of 20 000 bodies is tens of
-/// thousands of contacts, so it was tens of thousands of resolves every single
-/// tick. The answer cannot change: `tryGet` returns the *prefab*, which is one
+/// optimisation, not tidiness. `entity.tryGet<CollisionListener>()` costs an
+/// archetype resolve and a subtype test, and dispatch calls it twice per
+/// touching pair per tick - a settled pile of 20 000 bodies is tens of
+/// thousands of contacts, so resolving on the fly is tens of thousands of
+/// resolves every tick. The answer cannot change: `tryGet` returns the
+/// *prefab*, which is one
 /// object per archetype, and a shape's entity never changes archetype.
 class _ShapeOwner {
   const _ShapeOwner(this.entity, this.body, this.listener);

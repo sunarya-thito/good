@@ -3,7 +3,7 @@ import 'package:meta/meta.dart';
 
 /// One declared effector: a region, and what it does to bodies inside it.
 ///
-/// # Why this exists alongside the functions in `effectors.dart`
+/// # Declared here, one-shot in `effectors.dart`
 ///
 /// Those functions are the primitive and stay the primitive - a one-shot
 /// explosion, or a region computed from gameplay state, has no entity to hang
@@ -33,7 +33,7 @@ sealed class Effector {
 
   /// The collider this effector acts through.
   ///
-  /// A plain object reference rather than a per-entity field: an archetype's
+  /// A plain object reference, not a per-entity field: an archetype's
   /// effector always acts through the same declared body, and it is that
   /// body's *fields* that vary per entity. Resizing the region for one entity
   /// is therefore `region.halfWidth[entity] = 30`, one write, shared with the
@@ -98,7 +98,7 @@ final class PointEffector extends Effector {
 /// Buoyancy Effector 2D.
 ///
 /// **The water line is the region's top edge**, derived from the collider
-/// rather than given as a number. That is the one place this abstraction fits
+/// instead of given as a number. That is the one place this abstraction fits
 /// worse than the function it wraps: a rotated region still has a horizontal
 /// surface, because a water line that tilts is not what anyone means by one.
 final class BuoyancyEffector extends Effector {

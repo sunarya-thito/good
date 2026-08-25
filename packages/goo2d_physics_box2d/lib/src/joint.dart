@@ -3,26 +3,25 @@ import 'dart:ffi';
 import 'package:ffi/ffi.dart';
 import 'package:goo2d_ffi_box2d/goo2d_ffi_box2d.dart';
 
-/// A joint, as a type rather than a bare `int`.
+/// A joint, as a type and not a bare `int`.
 ///
-/// # Why an extension type
+/// # An extension type over the handle
 ///
 /// It **is** an int at runtime - the packed `b2JointId` - so this costs
 /// nothing: no allocation, no wrapper object, no indirection, and it still
 /// travels through a `List<Joint>` as a tagged integer. What it buys is that
-/// a joint handle can no longer be passed where a body handle, an entity or a
-/// count was meant, which the previous `int` return type allowed silently.
+/// a joint handle cannot be passed where a body handle, an entity or a count
+/// was meant.
 ///
-/// The methods live here rather than on `Box2DPhysicsSystem` because none of
+/// The methods live here and not on `Box2DPhysicsSystem`, because none of
 /// them need the system: every shim entry point takes the handle and nothing
-/// else. `physics.destroyJoint(j)` was only ever a function looking for its
-/// receiver.
+/// else.
 ///
 /// # Lifetime
 ///
 /// **Box2D destroys a joint when either of its bodies is destroyed**, so a
 /// handle goes stale on its own without anything here being told. Every
-/// method is a no-op on a stale or [none] handle rather than a crash - which
+/// method is a no-op on a stale or [none] handle instead of a crash - which
 /// matters more than usual, because reaching into freed Box2D memory kills
 /// the process with no Dart exception at all.
 extension type const Joint(int handle) {
@@ -42,7 +41,7 @@ extension type const Joint(int handle) {
   /// spend reaching it.
   ///
   /// **A motor with zero [maxEffort] does nothing**, which looks exactly like
-  /// the joint being broken. There is no default for it on purpose.
+  /// the joint being broken. Zero is what it starts at, so name an effort.
   void setMotor({bool enable = true, double speed = 0, double maxEffort = 0}) =>
       box2d.gooJointSetMotor(handle, enable ? 1 : 0, speed, maxEffort);
 
@@ -58,7 +57,7 @@ extension type const Joint(int handle) {
   /// its own, so a game compares this against a threshold each tick and calls
   /// [destroy] when it is exceeded.
   ///
-  /// The force lands in static fields rather than a returned record because a
+  /// The force lands in static fields and not in a returned record, because a
   /// breakable joint reads this every tick for every joint it watches, and a
   /// record there would allocate on exactly that path (the no-allocation rule).
   /// They are valid only until the next call, which is the same contract the
@@ -71,8 +70,12 @@ extension type const Joint(int handle) {
     return torque;
   }
 
-  /// The force from the last [readReaction], in newtons.
+  /// The X component of the force from the last [readReaction], in newtons.
+  /// Valid only until the next call.
   static double forceX = 0;
+
+  /// The Y component of the force from the last [readReaction], in newtons.
+  /// Valid only until the next call.
   static double forceY = 0;
 
   /// Scratch for [readReaction]. One allocation for the whole process, not

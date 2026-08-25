@@ -79,25 +79,21 @@ enum BodyType2D {
 /// }
 /// ```
 ///
-/// This was a `RigidBody2DDescriptor` handed to a `describeRigidBody` hook,
-/// which is the shape `Collider2D` uses for a genuinely different job - a
+/// There is no `describeRigidBody` hook to go with `describeCollider`. A
 /// collider declares however many shapes the prefab has, and only the prefab
-/// knows how many. A body has none of that: the hook existed only to carry
-/// six values into six `has*` calls.
+/// knows how many; a body is six values, and a column default carries each of
+/// them.
 ///
 /// # How a body gets created
 ///
 /// Nothing here - `Box2DPhysicsSystem` mixes in `EntitySpawnListener` and
 /// creates the body itself. This mixin is pure data.
 ///
-/// It briefly was not: an earlier draft had this mixin implement
-/// `EntityLifecycleListener` and call the system by hand, because *lifecycle*
-/// events are scoped to their own prefab's composition and a `GameSystem`
-/// mixing one in is never offered to any prefab's dispatcher - it compiles and
-/// silently never fires. `EntitySpawnListener` is the world-observation
-/// counterpart added for exactly this, and it removed the workaround along
-/// with the `@mustCallSuper` obligation it imposed on every prefab that wanted
-/// to override `onEntityMounted`.
+/// `EntityLifecycleListener` cannot do this job. Lifecycle events are scoped
+/// to their own prefab's composition, and a `GameSystem` mixing one in is
+/// never offered to any prefab's dispatcher: it compiles and silently never
+/// fires. `EntitySpawnListener` is the world-observation counterpart, and it
+/// is the one a system mixes in.
 mixin RigidBody2D on Component {
   /// The packed Box2D body handle, or `0` before the system has created one.
   ///
@@ -105,8 +101,8 @@ mixin RigidBody2D on Component {
   /// natural `0` default already means the right thing - nothing has to
   /// initialise it.
   ///
-  /// Read-only from game code. It is `@internal`-in-spirit rather than in
-  /// annotation because a game legitimately wants it for a raycast filter or
+  /// Read-only from game code. It is internal in spirit and not in
+  /// annotation, because a game legitimately wants it for a raycast filter or
   /// a debug overlay.
   final bodyHandle = Field.int64();
 
@@ -132,11 +128,18 @@ mixin RigidBody2D on Component {
   /// on the next step. Use [setVelocity], [setAngularVelocity] or the force
   /// methods, which write straight through.
   ///
-  /// It was briefly an input, and that silently undid every impulse -
-  /// `applyImpulse` changed Box2D's velocity while the component still held
-  /// last tick's, and the push wrote the stale value back over it.
+  /// Treating them as an input would silently undo every impulse:
+  /// `applyImpulse` changes Box2D's velocity while the component still holds
+  /// last tick's, and the push would write the stale value back over it.
   final linearVelocityX = Field.float64();
+
+  /// The Y component of the solver's linear velocity. **Read-only** - see
+  /// [linearVelocityX].
   final linearVelocityY = Field.float64();
+
+  /// The solver's angular velocity in radians per second, refreshed every
+  /// tick. **Read-only** - see [linearVelocityX], and use
+  /// [setAngularVelocity] or [applyTorque] to change it.
   final angularVelocity = Field.float64();
 
   /// Multiplier on world gravity for this body alone. Defaults to 1 for the
@@ -144,15 +147,22 @@ mixin RigidBody2D on Component {
   /// that would silently make every body float, with nothing saying why.
   final gravityScale = Field.float64(1);
 
+  /// How fast this body loses linear speed with nothing acting on it. 0 is
+  /// no damping at all; a small value gives the drift of air resistance.
   final linearDamping = Field.float64();
+
+  /// The same, for spin.
   final angularDamping = Field.float64();
 
-  /// One bit each, with a `bool` on it. [isBullet] turns on continuous
-  /// collision detection, which is the fix for a fast body tunnelling
-  /// through a thin wall between two steps; it costs real solver time, so it
-  /// is off by default and belongs on projectiles rather than on everything
-  /// that happens to move quickly.
+  /// Whether the solver refuses to rotate this body. On for a character that
+  /// should stay upright whatever it walks into.
   final fixedRotation = Field.boolean();
+
+  /// Whether this body gets continuous collision detection, the fix for a
+  /// fast body tunnelling through a thin wall between two steps.
+  ///
+  /// It costs real solver time, so it is off by default and belongs on
+  /// projectiles instead of on everything that happens to move quickly.
   final isBullet = Field.boolean();
 
   // --- sync cache -----------------------------------------------------------
@@ -206,9 +216,7 @@ mixin RigidBody2D on Component {
   /// The default is never read, unlike the three NaNs above. `_fill` skips a
   /// row whose handle is still 0, and `_createBody` seeds this column through
   /// `_applyBodyType` on the way past - so by the time anything compares the
-  /// two, both hold what the shim was told. It used to track whatever
-  /// `describeRigidBody` set `bodyType` to; a prefab now moves `bodyType`'s
-  /// default on its own and this one stays put, which changes nothing.
+  /// two, both hold what the shim was told.
   @internal
   final syncedType = Field.enumOf(BodyType2D.values, BodyType2D.dynamicBody);
 

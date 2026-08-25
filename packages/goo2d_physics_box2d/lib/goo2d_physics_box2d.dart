@@ -27,7 +27,7 @@
 /// The shapes themselves are declared through `goo2d`'s existing
 /// `Collider2D`, not through anything here - a collider is a description of
 /// an entity's geometry whether or not it is ever simulated, so it belongs in
-/// the engine rather than in a backend package. This package adds the body
+/// the engine and not in a backend package. This package adds the body
 /// (mass, velocity, damping) and the system that steps them.
 ///
 /// ## Units
@@ -44,8 +44,7 @@
 /// Per body type, and it matters - see `RigidBody2D`'s class doc. Dart owns
 /// static and kinematic bodies; Box2D owns dynamic ones. Writing a dynamic
 /// body's `Transform2D` every tick fights the solver.
-library;
-
+///
 /// ## Joints and effectors
 ///
 /// All nine of Unity's 2D joints are here, on [Box2DPhysicsSystem]:
@@ -61,6 +60,8 @@ library;
 /// exposes the same four as one-shot calls for a region computed per tick.
 /// Area, Point, Buoyancy and Surface are there; Platform (one-way) is not, and
 /// `src/effectors.dart` says why.
+library;
+
 export 'src/effector.dart'
     show
         AreaEffector,

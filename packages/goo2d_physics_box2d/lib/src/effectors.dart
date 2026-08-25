@@ -20,16 +20,8 @@ import 'rigid_body.dart';
 /// field, and `Box2DPhysicsSystem` walks it before its own step - so the
 /// `compareTo` below stops being something each game has to get right.
 ///
-/// **An earlier version of this doc argued effectors could not be components,
-/// because Box2D has none and because walking them would need "a second
-/// scheduler". Both halves were wrong.** Box2D having no effectors argues
-/// against a *shim* feature, not against a declarative API - these are
-/// gameplay code either way. And the scheduler already exists: it is the
-/// physics system, which has a defined position relative to the step, so
-/// making them declarable removed a scheduling burden from every caller
-/// rather than adding one. The ordering worry that remained - two overlapping
-/// zones - dissolves on inspection, because forces accumulate and addition is
-/// commutative.
+/// Two overlapping zones need no ordering rule either way: forces accumulate,
+/// and addition is commutative.
 ///
 /// # Calling these directly: from a fixed step, before physics
 ///
@@ -62,14 +54,13 @@ import 'rigid_body.dart';
 /// | Surface Effector 2D | [Effectors2D.surfaceEffector] | `SurfaceEffector` |
 /// | Platform Effector 2D | **not here** - see below | - |
 ///
-/// **Platform Effector 2D is deliberately absent**, and reshaping the API
-/// changes nothing about why. A one-way platform has to reject a contact
-/// *during* the solve, based on which way the body is travelling, and Box2D v3
-/// resolves contacts inside `b2World_Step` with no callback out. Faking it
-/// from outside - disabling the shape when something approaches from below -
-/// changes behaviour a frame late and lets a fast body through. It needs shim
-/// support that does not exist yet, and a broken one-way platform is worse
-/// than an absent one.
+/// **Platform Effector 2D is not here.** A one-way platform has to reject a
+/// contact *during* the solve, based on which way the body is travelling, and
+/// Box2D v3 resolves contacts inside `b2World_Step` with no callback out.
+/// Faking it from outside - disabling the shape when something approaches
+/// from below - changes behaviour a frame late and lets a fast body through.
+/// It needs shim support that does not exist yet, and a broken one-way
+/// platform is worse than an absent one.
 extension Effectors2D on Box2DPhysicsSystem {
   /// A uniform force on every body overlapping a box - Unity's Area Effector
   /// 2D. Wind, currents, updraughts.
@@ -233,7 +224,7 @@ extension Effectors2D on Box2DPhysicsSystem {
   /// Drags bodies along a surface at a fixed speed - Unity's Surface Effector
   /// 2D. Conveyor belts, moving walkways, treadmills.
   ///
-  /// Implemented as a force towards [speed] rather than by setting velocity,
+  /// Implemented as a force towards [speed] and not by setting velocity,
   /// so a body can still be pushed against the belt, stack on other bodies,
   /// and be thrown off the end. Setting velocity directly would make the belt
   /// win every argument, which is the usual way this gets built and the usual
