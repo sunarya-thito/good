@@ -617,16 +617,24 @@ final class _QueryBuilder implements QueryBuilder {
 /// Concrete `Query`: matches archetypes against a compiled [QueryBuilder]
 /// and walks their live rows.
 ///
-/// Two iteration styles, both allocation-free per step:
+/// [groups] is the walk to reach for and its own doc says why. These two are
+/// what it is preferred over, and both are allocation-free per step:
 ///  * [run] - a lazy `Iterable<Entity>`, for a plain `for (final e in
-///    query.run())` loop (see `Transform2DSystem.onFixedUpdate`). The
-///    `Iterable`/`Iterator` themselves are the one allocation, made once
-///    per call to `run()`, not once per entity.
+///    query.run())` loop. It earns its place where the walk stops early
+///    rather than covering every row: `ActiveCameraResolver.resolve` in
+///    `goo2d` takes the first `Camera` occupying a view and breaks on the
+///    second, over a query that matches one or two entities. The early exit
+///    is the part to copy - its per-entity `get<Camera>()` is affordable
+///    only because of it, and that same line over a whole archetype is what
+///    `docs/guide/performance.md` calls the single most common cost in this
+///    engine. The `Iterable`/`Iterator` themselves are the one allocation,
+///    made once per call to `run()`, not once per entity.
 ///  * [runQuery] - invokes [runner] once per matching entity with an
 ///    internal "current entity" cursor, and [get]/[tryGet] read through
 ///    that cursor. No `Entity` is materialized as a loop variable at all;
-///    this is the path `SingleQuery.component` (see `GameRenderer2D`'s
-///    reference usage) is built on.
+///    this is the path `SingleQuery.component` is built on. Nothing in the
+///    tree walks this way, so the cursor group in `good`'s `query_test.dart`
+///    is the only worked example there is.
 class _ArchetypeQuery implements Query {
   _ArchetypeQuery(this._required, this._forbidden, this._anyGroups);
 
@@ -772,9 +780,8 @@ class _ArchetypeQuery implements Query {
 }
 
 /// [SingleQuery]: a [Query] pre-filtered to one required component, with
-/// [component] as sugar for `get<T>()` through the [runQuery] cursor - see
-/// `GameRenderer2D`'s reference usage (`renderable.runQuery(() { final r =
-/// renderable.component; ... })`).
+/// [component] as sugar for `get<T>()` through the [runQuery] cursor -
+/// `single.runQuery(() { final r = single.component; ... })`.
 final class _ArchetypeSingleQuery<T extends Component> extends _ArchetypeQuery
     implements SingleQuery<T> {
   _ArchetypeSingleQuery()
