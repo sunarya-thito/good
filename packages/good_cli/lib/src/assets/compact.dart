@@ -303,11 +303,20 @@ Future<CompactResult> runCompaction({
 
 /// The settings string a fingerprint carries, so a settings change
 /// invalidates.
+///
+/// For anything ffmpeg encodes this is the command line itself, with the two
+/// paths held constant so only the flags move it. A hand-written summary is a
+/// second copy of the same fact and it had already drifted: the pixel format
+/// is not a config value, so when #189 corrected it every existing journal
+/// would have gone on reporting "up to date" over the damaged files the fix
+/// exists to replace, until someone thought to pass `--force`.
 String _settingsFor(CompactStep step, GoodConfig config) => switch (step.kind) {
-  AssetKind.texture =>
-    'webp:${config.texture.format.name}:${config.texture.quality}',
-  AssetKind.audio =>
-    'audio:${config.audio.format.name}:${config.audio.quality}',
+  AssetKind.texture || AssetKind.audio => ffmpegArguments(
+    step: step,
+    config: config,
+    input: 'in',
+    output: 'out',
+  ).join(' '),
   AssetKind.other => 'copy',
 };
 
@@ -337,9 +346,21 @@ List<String> ffmpegArguments({
       if (config.texture.format == TextureFormat.webp) {
         arguments.addAll(<String>[
           '-c:v', 'libwebp',
-          // Alpha survives. The default would discard it for some inputs,
-          // which silently ruins every sprite that has any.
-          '-pix_fmt', 'yuva420p',
+          // Named rather than left to negotiation, because two of the three
+          // formats libwebp accepts throw something away before the encoder
+          // sees the image: yuv420p has no alpha at all, and yuva420p halves
+          // the chroma. bgra is the only one that hands over every channel at
+          // full resolution.
+          //
+          // yuva420p was here first, and it made `-lossless 1` a lie - ffmpeg
+          // subsampled the chroma and libwebp then stored the damage exactly.
+          // On a 64x32 fixture whose texel (x, y) is a function of x and y,
+          // yuva420p decoded back with 2960 of 8192 bytes changed and took
+          // 1254 bytes; bgra is byte-exact in 70. Below 100 the two land
+          // within a fraction of a percent of each other on size and error,
+          // and bgra reproduces a partial alpha exactly where yuva420p moves
+          // it by one - so it is right for both paths. (#189)
+          '-pix_fmt', 'bgra',
           '-quality', '${config.texture.quality}',
         ]);
         if (config.texture.quality >= 100) {

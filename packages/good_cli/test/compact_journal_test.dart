@@ -162,5 +162,29 @@ flutter:
       );
       expect(journal.existsSync(), isTrue);
     }, skip: _hasFfmpeg ? null : 'ffmpeg is not installed');
+
+    test('an entry carries the encoder flags, not a summary of them', () {
+      final dir = project();
+      expect('${compact(dir).stdout}', contains('1 written'));
+
+      final entry = CompactManifest.read(
+        compactJournal(dir),
+      ).entries['player.png'];
+      expect(entry, isNotNull);
+      expect(
+        entry,
+        contains('-pix_fmt bgra'),
+        reason:
+            'the pixel format is not a config value, so a summary built out '
+            'of config values cannot notice when it changes - which is how '
+            '#189 would have shipped a fix that never reached a project that '
+            'already had a journal',
+      );
+      expect(
+        '${compact(dir).stdout}',
+        contains('0 written, 1 up to date'),
+        reason: 'nothing changed, so the second run has to skip the encode',
+      );
+    }, skip: _hasFfmpeg ? null : 'ffmpeg is not installed');
   });
 }

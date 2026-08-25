@@ -223,7 +223,7 @@ class TextureConfig {
 
   final TextureFormat format;
 
-  /// 0-100. Ignored for a lossless format.
+  /// 0-100, where 100 encodes losslessly. Ignored for a lossless format.
   final int quality;
 }
 

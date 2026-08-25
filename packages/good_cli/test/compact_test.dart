@@ -174,13 +174,19 @@ void main() {
       expect(arguments, containsAllInOrder(['-c:v', 'libwebp']));
       expect(
         arguments,
-        containsAllInOrder(['-pix_fmt', 'yuva420p']),
+        containsAllInOrder(['-pix_fmt', 'bgra']),
         reason:
-            'the default pixel format discards alpha for some inputs, which '
-            'silently ruins every sprite that has any',
+            'bgra is the one format libwebp accepts that carries alpha and '
+            'full-resolution chroma; yuva420p halves the chroma before the '
+            'encoder sees it',
       );
     });
 
+    // Neither of the two flag assertions here is the guard. Both held while
+    // quality 100 was producing a damaged image, because the defect was in
+    // the pair - `-lossless 1` after a lossy `-pix_fmt`. What an encode
+    // decodes back to is asserted in compact_encode_test.dart, against a real
+    // ffmpeg; these two only pin the spelling so a change to it is deliberate.
     test('quality 100 asks for lossless', () {
       final arguments = ffmpegArguments(
         step: step,

@@ -2,6 +2,27 @@
 
 ### Fixed
 
+* **`texture: quality: 100` now produces a byte-exact WebP.** It emitted
+  `-lossless 1`, but after `-pix_fmt yuva420p`, so ffmpeg halved the chroma
+  and libwebp then stored the damaged image exactly. On a 64x32 fixture whose
+  texel `(x, y)` is a function of `x` and `y`, that decoded back with 2960 of
+  8192 bytes changed and took 1254 bytes on disk; through `-pix_fmt bgra` it
+  is identical to its source in 70 bytes. There is no lossy step left at 100,
+  and nothing to configure - the setting finally does what
+  `packages/good_cli/lib/src/config.dart` says it does.
+
+  `bgra` replaces `yuva420p` below 100 too. The flag was there to keep alpha
+  from being negotiated away, which `bgra` does equally, and measured against
+  each other the two are within noise on both size and error - except that
+  `bgra` reproduces a partially transparent sprite's alpha exactly where
+  `yuva420p` moved it by one.
+
+  Expect one slow `good assets compact` after upgrading: every texture
+  re-encodes, including the ones the journal called up to date. A journal
+  entry now records the ffmpeg flags themselves instead of a summary
+  assembled from config values, because the pixel format is not a config
+  value and a summary of config values cannot see it change.
+
 * **`good generate` no longer refuses a private column name that two libraries
   both declare.** A `_`-prefixed name is private to its library, so two
   component mixins in different files each declaring `final _dirty =
