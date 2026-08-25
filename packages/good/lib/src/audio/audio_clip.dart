@@ -16,9 +16,9 @@ import 'package:good/src/asset.dart';
 /// game starts.
 ///
 /// That split is not a shortcut. The pipeline is uniform over asset *kinds* -
-/// `Asset<T>` does not care what `T` is - so audio can
-/// travel the whole of it before anything can play a sound. When a backend
-/// lands it consumes [bytes]; nothing above this line changes.
+/// `Asset<T>` does not care what `T` is - so audio can travel the whole of it
+/// before anything can play a sound. When a backend lands it consumes [bytes];
+/// nothing above this line changes.
 class AudioClip {
   AudioClip(this.bytes, this.format);
 

@@ -245,9 +245,9 @@ enum _ControlMessage {
 /// Two things that are *not* about sendability still hold. **Statics do not
 /// cross at all** - they belong to no object graph - so the registries are
 /// captured onto this object and restored on arrival, in `_captureRegistries`.
-/// And a **cached typed-data view over native memory
-/// is copied by value**, silently detaching from the memory it viewed; never
-/// keep one in a field (see `_StateChannelBase.reattach`).
+/// And a **cached typed-data view over native memory is copied by value**,
+/// silently detaching from the memory it viewed; never keep one in a field (see
+/// `_StateChannelBase.reattach`).
 ///
 /// # Isolate affinity
 ///
@@ -2251,10 +2251,10 @@ final class GameRuntime {
   /// Internal, and public nowhere: the one engine consumer uses a
   /// `SchedulerBinding` frame callback instead, because a repaint scheduled
   /// when a port message happens to land waits most of a frame for the next
-  /// vsync. This is for tests and for anything that genuinely needs the
-  /// "the published snapshot moved" edge. A game that
-  /// wants a visible tick count publishes one with `describeState`, through
-  /// the lane that already exists for "a number main should see".
+  /// vsync. This is for tests and for anything that genuinely needs the "the
+  /// published snapshot moved" edge. A game that wants a visible tick count
+  /// publishes one with `describeState`, through the lane that already exists
+  /// for "a number main should see".
   void addTickListener(void Function(int tick) listener) {
     _tickListeners.add(listener);
   }
@@ -2312,15 +2312,14 @@ final class GameRuntime {
   /// Notifies the listeners of every declared channel whose value actually
   /// moved since this copy last looked.
   ///
-  /// This is the main isolate's half of `StateChannel`'s two-speed
-  /// notification (see that class's doc): the simulating copy notifies
-  /// synchronously inside the write, because the writer is right there; this
-  /// copy cannot know a write happened until the tick message lands, so it
-  /// reconciles here. Driven off the tick-completed path, not a timer of its
-  /// own: "the published snapshot moved" is exactly the
-  /// signal the tick ping already carries, and a channel checking on any other
-  /// schedule would report changes at a moment when the rest of the world a
-  /// listener can read is from a different tick.
+  /// This is the main isolate's half of `StateChannel`'s two-speed notification
+  /// (see that class's doc): the simulating copy notifies synchronously inside
+  /// the write, because the writer is right there; this copy cannot know a
+  /// write happened until the tick message lands, so it reconciles here. Driven
+  /// off the tick-completed path, not a timer of its own: "the published
+  /// snapshot moved" is exactly the signal the tick ping already carries, and a
+  /// channel checking on any other schedule would report changes at a moment
+  /// when the rest of the world a listener can read is from a different tick.
   ///
   /// Costs one null check per declared channel on a copy that declared none,
   /// which is the overwhelmingly common case.
@@ -2862,9 +2861,9 @@ final class GameRuntime {
 
 /// One in-flight [GameRuntime.requestAssetLoad], game-isolate side.
 ///
-/// One object, not parallel maps keyed by request id (the
-/// one-fact-one-place rule): the completer, the progress callback and the first
-/// failure all belong to the same request and are only ever used together.
+/// One object, not parallel maps keyed by request id (the one-fact-one-place
+/// rule): the completer, the progress callback and the first failure all belong
+/// to the same request and are only ever used together.
 final class _AssetLoadRequest {
   _AssetLoadRequest(this.onLoaded);
 
@@ -3124,10 +3123,10 @@ final class _BufferDescriptor implements BufferDescriptor {
 
 /// Everything `Game` needs from a state channel without knowing its `T`.
 ///
-/// A non-generic interface, not `_StateChannelBase<Object?>` in the list:
-/// the whole point of these operations is that they are
-/// type-erased plumbing (allocate, announce, adopt, poll, free), and none of
-/// them wants to expose or launder the channel's value type.
+/// A non-generic interface, not `_StateChannelBase<Object?>` in the list: the
+/// whole point of these operations is that they are type-erased plumbing
+/// (allocate, announce, adopt, poll, free), and none of them wants to expose or
+/// launder the channel's value type.
 abstract class _ChannelSlot {
   int get encodedBytes;
 

@@ -657,8 +657,8 @@ abstract interface class CommandSender {
 ///
 /// An interface, not a direct reference to the registry that owns the
 /// declarations: that registry lives a layer up, and pointing back down at it
-/// would be a cycle. `CommandRegistry` implements it for
-/// commands; `good_net`'s message registry implements it for messages.
+/// would be a cycle. `CommandRegistry` implements it for commands; `good_net`'s
+/// message registry implements it for messages.
 abstract interface class ParamLayouts {
   /// The layout of the declaration at [index].
   ///

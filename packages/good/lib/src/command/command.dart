@@ -503,9 +503,9 @@ abstract class CommandDescriptor {
   /// `data_layout.dart` catches it.
   ///
   /// **That assert has one hole**, and it is worth knowing before you trust
-  /// the guard: it stays silent while a page has never
-  /// published, which is scene bootstrap and nothing else. A running game is
-  /// covered; a control handler that writes during bring-up is not.
+  /// the guard: it stays silent while a page has never published, which is
+  /// scene bootstrap and nothing else. A running game is covered; a control
+  /// handler that writes during bring-up is not.
   ///
   /// **There is no ordering against tick-delivered commands.** They travel by
   /// different carriers, so two calls sent in order can run in either. That

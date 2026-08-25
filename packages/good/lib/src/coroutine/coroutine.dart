@@ -271,10 +271,10 @@ final class _Running {
 ///
 /// One per `GameState`, not one per owner: a single list is one deterministic
 /// order, and "stop everything this enemy started" is a filter over it instead
-/// of a second place for the same fact to live (the
-/// one-fact-one-place rule). Owners are compared by identity and never used for
-/// anything else, so a prefab, a system or a scene can all own coroutines
-/// without the scheduler knowing what any of them are.
+/// of a second place for the same fact to live (the one-fact-one-place rule).
+/// Owners are compared by identity and never used for anything else, so a
+/// prefab, a system or a scene can all own coroutines without the scheduler
+/// knowing what any of them are.
 final class CoroutineScheduler {
   final List<_Running> _running = <_Running>[];
 

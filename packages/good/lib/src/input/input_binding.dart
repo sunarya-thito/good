@@ -59,10 +59,10 @@ abstract class InputBinding<T> {
   ///
   /// Called **once**, at declare time (or the moment an action that was
   /// declared unbound is first bound) - never per tick. Its initial contents
-  /// are unspecified and are never observed: `Input.value`
-  /// returns the declared default until the first resolution overwrites this
-  /// wholesale. For a value type like `bool` there is nothing to own, and
-  /// this returns a placeholder [resolve] ignores.
+  /// are unspecified and are never observed: `Input.value` returns the declared
+  /// default until the first resolution overwrites this wholesale. For a value
+  /// type like `bool` there is nothing to own, and this returns a placeholder
+  /// [resolve] ignores.
   T createStorage();
 
   /// Computes this tick's value from [state], writing into [storage] and
