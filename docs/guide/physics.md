@@ -352,14 +352,14 @@ class WindZone extends EntityStruct with Transform2D, Collider2D, Effector2D {
   @override
   void describeEffector(EffectorDescriptor descriptor) {
     super.describeEffector(descriptor);
-    wind = descriptor.hasAreaEffector(region, forceY: -400);
+    wind = descriptor.hasAreaEffector(region, forceY: 400);
   }
 }
 ```
 
 It has no `RigidBody2D`, because a force field is not a thing that falls, and
 its collider is a trigger, so it pushes bodies without blocking them. Positive
-y points down, so a wind that lifts blows toward `-y`.
+y is up, so a wind that lifts blows toward `+y`.
 
 **You do not write a system for this, and you do not write a `compareTo`.** The
 physics system walks the declared effectors before its own step, so the
@@ -380,7 +380,7 @@ Every parameter is a column, so a zone can change while the game runs, and
 `layerMask` picks what it acts on:
 
 ```dart
-wind.forceY[entity] = -800;
+wind.forceY[entity] = 800;
 wind.enable[entity] = false;
 ```
 

@@ -3,10 +3,9 @@
 // Requires the native library:
 //   cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1
 //
-// **Positive y is DOWN**, matching goo2d's own projection into Flutter's
-// canvas - so a floor sits at a LARGER y than the bodies falling onto it,
-// and free fall increases y. Box2D's own examples are written y-up; this
-// engine is not, and `Box2DPhysicsSystem.gravityY` defaults accordingly.
+// **Positive y is UP** - so a floor sits at a SMALLER y than the bodies
+// falling onto it, and free fall decreases y. Box2D uses the same convention,
+// and `Box2DPhysicsSystem.gravityY` defaults to -10.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';

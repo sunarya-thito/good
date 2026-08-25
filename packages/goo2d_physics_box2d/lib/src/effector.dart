@@ -58,6 +58,9 @@ sealed class Effector {
 
 /// A uniform force on everything in the region - Unity's Area Effector 2D.
 /// Wind, currents, updraughts.
+///
+/// The force is in world space, where +y is up, so an updraught is a positive
+/// [forceY].
 final class AreaEffector extends Effector {
   AreaEffector({
     required super.region,
@@ -243,7 +246,7 @@ class EffectorDescriptor {
 ///   @override
 ///   void describeEffector(EffectorDescriptor descriptor) {
 ///     super.describeEffector(descriptor);
-///     wind = descriptor.hasAreaEffector(region, forceY: -30);
+///     wind = descriptor.hasAreaEffector(region, forceY: 30);
 ///   }
 /// }
 /// ```
@@ -253,7 +256,7 @@ class EffectorDescriptor {
 /// ```dart
 /// scene.updraught.wind
 ///   ..enable[entity] = false
-///   ..forceY[entity] = -45;
+///   ..forceY[entity] = 45;
 /// ```
 mixin Effector2D on MultiComponent {
   /// Populated automatically as each `has*Effector` call runs.

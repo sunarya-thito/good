@@ -4,7 +4,7 @@
 // Requires the native library:
 //   cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1
 //
-// **Positive y is DOWN**, so a wind that lifts blows toward -y.
+// **Positive y is UP**, so the zone's negative forceY blows its contents down.
 //
 // Every test asserts a body's **velocity**, never a field the test itself
 // wrote. Asserting `wind.forceY[entity] == -400` would pass whether or not the
