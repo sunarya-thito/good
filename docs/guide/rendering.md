@@ -395,12 +395,35 @@ the world, or hit tested in world coordinates. See
 
 ## Mouse picking
 
-`MouseReceiver` gives an entity pointer events, resolved against its world
-transform and sprite bounds by `MousePickingSystem`:
+`MouseReceiver` gives an entity pointer events, and `MousePickingSystem`
+resolves them against its **colliders**. It matches `MouseReceiver`,
+`Collider2D` and `WorldTransform2D` together, and tests the cursor against every
+enabled body in the entity's own local space — so a rotated, scaled entity
+hit-tests as the shape you can see:
 
 ```dart
 class Button extends EntityStruct
-    with Transform2D, WorldTransform2D, Renderable2D, MouseReceiver {
+    with
+        Transform2D,
+        WorldTransform2D,
+        Renderable2D,
+        Collider2D,
+        MouseReceiver {
+  late final Sprite sprite;
+  late final CircleBody hitArea;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    sprite = descriptor.has(width: 64, height: 64);
+  }
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    hitArea = descriptor.hasCircleCollider(radius: 32);
+  }
+
   @override
   void onMouseEnter(MouseEvent event) { }
   @override
@@ -414,8 +437,24 @@ class Button extends EntityStruct
 }
 ```
 
+**A receiver with no collider is never picked, and nothing says so** — it fails
+the query, so it is not a candidate at all. That is deliberate rather than an
+assert: `Renderable2D`'s bounds are the obvious fallback and the wrong one, since
+a sprite is a rectangle even when what it draws is a coin, and clicking the
+corner of a coin should miss. The button above carries both, and they disagree:
+the cursor 42 units out from the origin is inside the 64×64 sprite, outside the
+radius-32 circle, and picks nothing.
+
 Enter, hover, exit, pressed and released are separate phases, so hover feedback
 does not have to be reconstructed from raw positions.
+
+Each candidate gets a cheap reject before the exact test: a circle about the
+entity's **origin**, wide enough to reach the far side of every body it
+declared. Measured from the origin rather than from each body's own offset,
+because the origin is the point rotation turns about — a bound measured from
+anywhere else swings as the entity spins, and one that comes out too small
+drops a click the player aimed correctly. A hit zone hung far off the origin
+therefore costs you a looser reject, never a wrong answer.
 
 Picking is scoped the way drawing is: the pointer hits only entities in the
 scene the view's camera is in. A second scene resident behind the one on screen
