@@ -65,9 +65,14 @@ a field, or work in plain doubles.
 ### Hitting the sprite cap
 
 `maxSpritesPerTick` truncates the batch when exceeded, which **looks exactly
-like the renderer getting slower**. Put the emitted sprite count on your debug
-overlay next to your entity count; if the two diverge, you are clipped, not
-slow.
+like the renderer getting slower**. `GameRenderer2D.lastRecordsOverBudget` is
+how many records the last frame asked for and could not fit: zero while you are
+inside the budget, and the exact amount to raise it by when you are not. Put it
+on your debug overlay next to the emitted sprite count — nothing on screen tells
+"the scene is heavy" and "the scene is clipped" apart.
+
+It is not `lastWriteDropped`. That one means main had not collected the previous
+frame yet, and no budget would have helped.
 
 ### Physics: density, not count
 

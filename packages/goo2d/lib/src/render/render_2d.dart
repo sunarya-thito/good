@@ -1400,7 +1400,31 @@ class GameRenderer2D extends GameSystem
   /// dropping frames.
   int lastRecordCount = 0;
 
+  /// How many draw records the last [onTick] asked for and could not fit -
+  /// the shortfall against `maxSpritesPerTick`, counted in records.
+  ///
+  /// Zero on a frame that fit. Anything else means sprites are missing from
+  /// the picture, and on screen that looks like the renderer got slower
+  /// rather than like anything was dropped. Raising `maxSpritesPerTick` by at
+  /// least this much is the direct fix; drawing less is the other one.
+  ///
+  /// This is the *exact* shortfall and not a lower bound. Once the budget is
+  /// spent the fill pass keeps walking candidates purely to total what it is
+  /// turning away, so `lastRecordCount + lastRecordsOverBudget` is what the
+  /// scene asked for. That walk costs something and it costs it only on a
+  /// frame that is already over budget, which is the trade taken deliberately:
+  /// a reading of "at least 9" on a scene four thousand records over points
+  /// at the wrong fix.
+  ///
+  /// Not the same failure as [lastWriteDropped] and it does not imply it. That
+  /// one means main had not collected the previous frame yet and no budget
+  /// would have helped; this one means the scene outgrew its buffer.
+  int lastRecordsOverBudget = 0;
+
   /// True if the last [onTick] could not fit its batch in the ring.
+  ///
+  /// About the *handoff*, never about the budget - a batch that was built and
+  /// had nowhere to go. [lastRecordsOverBudget] is the budget one.
   bool lastWriteDropped = false;
 
   /// **Diagnostic only. Setting this draws the scene in the wrong order.**
@@ -1691,16 +1715,22 @@ class GameRenderer2D extends GameSystem
     // case) reports exactly what it used to.
     var sprites = 0;
     var records = 0;
+    var overBudget = 0;
     var dropped = false;
     final views = game.cameraViews;
     for (var i = 0; i < views.length; i++) {
       _renderView(views[i], framesFor(views[i]));
       sprites += lastSpriteCount;
       records += lastRecordCount;
+      // Summed rather than maxed, because each view spends its own budget
+      // against its own buffer: two views each 100 records short need 200 more
+      // records between them, not 100.
+      overBudget += lastRecordsOverBudget;
       dropped = dropped || lastWriteDropped;
     }
     lastSpriteCount = sprites;
     lastRecordCount = records;
+    lastRecordsOverBudget = overBudget;
     lastWriteDropped = dropped;
   }
 
@@ -1733,6 +1763,7 @@ class GameRenderer2D extends GameSystem
   void _renderView(CameraView cameraView, HandoffHandle handle) {
     lastSpriteCount = 0;
     lastRecordCount = 0;
+    lastRecordsOverBudget = 0;
     // Asked *before* any work is done, and that ordering is the point. Null
     // means main has not taken the last frame yet, so there is nowhere safe to
     // write - and rather than build a frame and throw it away, the whole pass
@@ -1779,7 +1810,13 @@ class GameRenderer2D extends GameSystem
     // through and overrun the byte scratch, which is sized from this same
     // number times the record stride. Counting records keeps the two honest
     // against each other whatever mix of sliced and plain sprites shows up.
-    final limit = _renderer.maxSpritesPerTick;
+    //
+    // Not final: the moment the budget is spent this drops to what is already
+    // queued, which is what closes the pass to every later candidate. See the
+    // over-budget branch below.
+    var limit = _renderer.maxSpritesPerTick;
+    // Records this pass turned away, reported as `lastRecordsOverBudget`.
+    var overBudget = 0;
     // This view draws the scene its camera is in and no other - the test is
     // `projection.shows` below. The global front scene that used to answer
     // that is deleted, because "which scene do I draw" is a question a *view*
@@ -1791,11 +1828,13 @@ class GameRenderer2D extends GameSystem
     // returned the same object for every row, and at 10k rows that showed up
     // in a profile.
     //
-    // The label sits on the **group** loop, not the entity loop: `break outer`
-    // below fires when the record budget is spent, and that has to stop the
-    // whole pass. Left on the inner loop it would only finish this archetype
-    // and start the next, quietly overrunning the budget once per group.
-    outer:
+    // No `break` out of these loops, and no label to break to. The budget
+    // check below closes `limit` instead, which makes every later candidate
+    // fail the same test - so the pass runs to the end counting what it
+    // cannot admit, and still queues nothing more. Closing the budget is also
+    // the stronger guarantee: a `break` only worked from the *group* loop,
+    // since one on the entity loop would have finished this archetype and
+    // started the next, overrunning the budget once per group.
     for (final group in _renderables.groups()) {
       final renderable = group.get<Renderable2D>();
       final sprites = renderable.sprites;
@@ -1824,7 +1863,25 @@ class GameRenderer2D extends GameSystem
           // Checked against this sprite's own cost, not against a fixed 1, so a
           // nine-sliced sprite is admitted only if all nine of its records fit.
           // Admitting it partially would write past the scratch.
-          if (queue.recordCount + records > limit) break outer;
+          if (queue.recordCount + records > limit) {
+            // Over budget. The walk carries on instead of breaking out, and
+            // the only thing it does from here is count: a game told "at
+            // least 9 records did not fit" when its tilemap is four thousand
+            // over has been pointed at the wrong fix. Finishing the walk is
+            // what makes `lastRecordsOverBudget` the real shortfall, and it
+            // is paid only on a frame that is already broken.
+            //
+            // Closing the budget is what keeps *what* gets dropped identical
+            // to the `break outer` this replaced. Left alone, `limit` would
+            // still admit a 1-record sprite behind a 9-record one that just
+            // failed - a different drop set, and #175 is about reporting the
+            // policy, not changing it. Setting it to what is queued makes
+            // this same test true for every later candidate, so the common
+            // path pays no extra branch for it.
+            overBudget += records;
+            limit = queue.recordCount;
+            continue;
+          }
           final slot = queue.add(
             entity,
             sprite,
@@ -1998,6 +2055,7 @@ class GameRenderer2D extends GameSystem
 
     lastSpriteCount = count;
     lastRecordCount = queue.recordCount;
+    lastRecordsOverBudget = overBudget;
     // One record for the whole tick - see draw_2d.dart's library doc for why
     // this is not one record per sprite.
     //

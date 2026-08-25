@@ -9,6 +9,19 @@
   `MousePickingSystem`, `MouseReceiver`, `MouseEvent` and `MouseListener` are
   all as they were (#129).
 
+### Added
+
+* **`GameRenderer2D.lastRecordsOverBudget`** reports how many draw records the
+  last tick asked for and could not fit under `maxSpritesPerTick`. Exceeding
+  the budget used to be silent: `lastWriteDropped` is about a busy handoff slot
+  and stayed false, so sprites vanished with no counter, flag or assert
+  anywhere. Zero means the frame fit; anything else is the amount to raise
+  `maxSpritesPerTick` by. It is the exact shortfall, not a lower bound - the
+  fill pass now finishes its walk to total what it turns away, which costs a
+  partial walk on frames that are already over budget and nothing on frames
+  that are not. What gets drawn is unchanged, including which sprites are the
+  ones dropped (#175).
+
 ## 0.2.0
 
 World space changed direction. Read the first entry before you upgrade a game
