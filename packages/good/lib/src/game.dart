@@ -219,10 +219,9 @@ enum _ControlMessage {
 ///    registers no archetypes and it owns no pages. It exists to (a) send and
 ///    handle commands ([describeCommands]), (b) receive tick-complete
 ///    notifications ([addTickListener]) and state-channel updates, and (c)
-///    build widgets ([buildView]). It does **not** read component data: it
-///    used to adopt each page the game isolate announced and resolve `Entity`
-///    handles itself, and `Entity.get` there now throws saying so. See
-///    `GameRuntime.releaseScenePages` for what that reader cost.
+///    build widgets ([buildView]). It does **not** read component data:
+///    `Entity.get` on this copy throws saying so. See
+///    `GameRuntime.releaseScenePages` for what a second reader would cost.
 ///
 /// Calling a gameplay method on the handle copy does not reach the
 /// simulation. Anything that must cross goes through one of exactly two
@@ -246,15 +245,15 @@ enum _ControlMessage {
 ///    worth knowing: it is how the asset-decode gate was found.
 ///
 /// Two things that are *not* about sendability still hold. **Statics do not
-/// cross at all** - they belong to no object graph - which is why the
-/// registries are captured onto this object and restored on arrival (see
+/// cross at all** - they belong to no object graph - so the registries are
+/// captured onto this object and restored on arrival (see
 /// `_captureRegistries`). And a **cached typed-data view over native memory
 /// is copied by value**, silently detaching from the memory it viewed; never
 /// keep one in a field (see `_StateChannelBase.reattach`).
 ///
 /// # Isolate affinity
 ///
-/// `Game` is deliberately **not** a `GameListener`: it lives where Flutter
+/// `Game` is **not** a `GameListener`: it lives where Flutter
 /// does, and every event in this engine happens on the game isolate. It
 /// cannot be `FixedTickable` - the `on GameListener` bound says so at compile
 /// time - so put the tick on the [GameState], a `SceneStruct` or a
@@ -276,7 +275,7 @@ abstract class Game implements RandomOwner {
   /// [fixedTimeStep] falls further behind on every frame, and the loop
   /// spends longer and longer catching up - the classic accumulator
   /// failure. Dropping time is the only stable answer: the simulation runs
-  /// slower than wall clock rather than locking up.
+  /// slower than wall clock instead of locking up.
   int get maxFixedStepsPerAdvance => 5;
 
   /// Stop the fixed tick while the app is hidden. Default true.
@@ -303,13 +302,13 @@ abstract class Game implements RandomOwner {
   /// down for a test, a headless server build, or a game whose archetypes are
   /// small enough that a full page would be mostly empty.
   ///
-  /// One pool per `Game` rather than per scene: a `SceneStruct` is a
+  /// One pool per `Game`, not per scene: a `SceneStruct` is a
   /// declaration that may back several loaded scenes at once, so it cannot own
   /// the storage they allocate out of. See `SceneStruct.pool`.
   int get pageSize => 64 * 1024 * 1024;
 
-  /// The most pages this game's pool will ever allocate. Exhausting it throws
-  /// rather than growing without bound, so a runaway spawn loop reports itself
+  /// The most pages this game's pool will ever allocate. The pool never grows
+  /// past it - exhausting it throws, so a runaway spawn loop reports itself
   /// instead of taking the machine down.
   int get maxPages => 128;
 
@@ -378,7 +377,7 @@ abstract class Game implements RandomOwner {
   ///
   /// Declaring a scene here **registers its archetypes and declares its
   /// assets, at boot** - before the game isolate is spawned, and before any
-  /// system's `describeQuery` runs (which is why this pass comes first).
+  /// system's `describeQuery` runs, so this pass comes first.
   /// `GameState.loadScene(game.mainScene)` then costs no registration at all:
   /// it allocates rows and mounts.
   ///
@@ -396,9 +395,19 @@ abstract class Game implements RandomOwner {
   /// components.
   ///
   /// Passing an *undeclared* scene to `loadScene` still works and still
-  /// registers lazily, so this pass is additive rather than a new obligation.
+  /// registers lazily, so this pass is additive, not a new obligation.
   @mustCallSuper
   void describeScenes(GameSceneDescriptor descriptor) {}
+
+  /// The engine's own control commands, declared so both copies agree about
+  /// them before a game declares anything of its own. See
+  /// [_SetVisibleCommand] for why the four that reach the tick are
+  /// receipt-delivered.
+  late final _SetVisibleCommand _setVisibleCommand;
+  late final _SetPausedCommand _setPausedCommand;
+  late final _SetTimeScaleCommand _setTimeScaleCommand;
+  late final _StepOnceCommand _stepOnceCommand;
+  late final _ReportDisabledSystemCommand _reportDisabledSystemCommand;
 
   /// Declares every command this game understands, and registers the handlers
   /// that run on the **Flutter** isolate.
@@ -448,19 +457,10 @@ abstract class Game implements RandomOwner {
   /// });
   /// ```
   ///
-  /// A built-in `spawnEntity(archetypeId)` used to sit here and was deleted: an
-  /// archetype id is a game-isolate identifier, so handing one to the Flutter
-  /// isolate made it name something it cannot see. Naming the *intent* leaves
-  /// the prefab lookup on the side that owns the memory.
-  /// The engine's own control commands, declared here so both copies agree
-  /// about them before a game declares anything of its own. See
-  /// [_SetVisibleCommand] for why all four are receipt-delivered.
-  late final _SetVisibleCommand _setVisibleCommand;
-  late final _SetPausedCommand _setPausedCommand;
-  late final _SetTimeScaleCommand _setTimeScaleCommand;
-  late final _StepOnceCommand _stepOnceCommand;
-  late final _ReportDisabledSystemCommand _reportDisabledSystemCommand;
-
+  /// The framework ships no `spawnEntity(archetypeId)` for this: an archetype
+  /// id is a game-isolate identifier, so handing one to the Flutter isolate
+  /// makes it name something that isolate cannot see. Naming the *intent*
+  /// leaves the prefab lookup on the side that owns the memory.
   @mustCallSuper
   void describeCommands(CommandDescriptor descriptor) {
     _setVisibleCommand = descriptor.has(_SetVisibleCommand());
@@ -484,7 +484,7 @@ abstract class Game implements RandomOwner {
   /// of an event dispatch and was switched off.
   ///
   /// The three strings are cut to fit the command that carried them, so a
-  /// long message or a deep stack arrives truncated rather than not at all.
+  /// long message or a deep stack arrives truncated instead of not at all.
   /// [systemName] is `runtimeType.toString()` and is for reading, not for
   /// looking anything up: nothing here resolves a system by its name.
   ///
@@ -497,8 +497,8 @@ abstract class Game implements RandomOwner {
   ///
   /// Under `Game.startInline` - a test, a headless host, and every web build
   /// - there is no second isolate, so this runs on the game's own stack
-  /// inside the dispatch guard. Throwing from here is caught and dropped
-  /// rather than allowed to end the tick; see `GameSystem.disableAfterUncaught`.
+  /// inside the dispatch guard. Throwing from here is caught and dropped, never
+  /// allowed to end the tick; see `GameSystem.disableAfterUncaught`.
   void onSystemDisabled(String systemName, String error, String stackTrace) {
     FlutterError.reportError(
       FlutterErrorDetails(
@@ -517,8 +517,8 @@ abstract class Game implements RandomOwner {
   /// Queues the game -> main report for a system the dispatch guard has just
   /// switched off.
   ///
-  /// Fire-and-forget, and deliberately: this is called from inside the guard,
-  /// on a tick that has already gone wrong, so it must not be able to fail.
+  /// Fire-and-forget: this is called from inside the guard, on a tick that has
+  /// already gone wrong, so it must not be able to fail.
   /// The three strings are cut to fit their fields by
   /// [_ReportDisabledSystemCommand.bufferFromParams] - one place, because an
   /// oversized write is refused and a throw from the reporting path would
@@ -539,9 +539,9 @@ abstract class Game implements RandomOwner {
   /// Registers the game-isolate handlers for the four commands [Game]
   /// declared above.
   ///
-  /// Here rather than in `GameState.describeCommands` because the commands
-  /// are private to this file, and they should stay that way - a game has no
-  /// reason to reach them, and `Game.pause` is the surface it uses instead.
+  /// Here and not in `GameState.describeCommands`: the commands are private to
+  /// this file and stay that way - a game has no reason to reach them, and
+  /// `Game.pause` is the surface it uses instead.
   ///
   /// All four are **receipt-delivered**. Every one can stop the fixed tick,
   /// and a tick-delivered handler is pumped from `runFixedStep` - so the
@@ -633,7 +633,7 @@ abstract class Game implements RandomOwner {
   ///
   /// A game that declares none draws nothing and is shown with
   /// `GameView.headless` - a HUD-only or headless-plus-Flutter setup, which
-  /// is a first-class shape here rather than a degenerate one.
+  /// is a first-class shape here, not a degenerate one.
   @mustCallSuper
   void describeCameras(CameraDescriptor descriptor) {}
 
@@ -659,21 +659,20 @@ abstract class Game implements RandomOwner {
   /// never on the game isolate. `AssetLoaders` is a per-isolate static map and
   /// the game isolate holds payload-free declarations, so a decoder there
   /// would answer for nothing; its own `StateError` says as much. That makes
-  /// this the one `describeX` pass that is deliberately not part of the shared
-  /// declaration sequence both copies run. It is called from [_bootMain],
+  /// this the one `describeX` pass outside the shared declaration sequence
+  /// both copies run. It is called from [_bootMain],
   /// which main runs before the spawn and which the game isolate never runs at
   /// all.
   ///
-  /// # Why a hook rather than a constructor
+  /// # Register here, not from a constructor
   ///
-  /// `Texture`'s decoder used to be registered by `DrawCanvas2D`'s
-  /// constructor, on the argument that a canvas is built only where Flutter is
-  /// attached and always before anything it draws is decoded. True for that
-  /// one type, and it generalises to nothing: construct no canvas and every
-  /// texture load failed at boot with an error naming the loader rather than
-  /// the cause, which is what left the example suite red for sixty commits
-  /// (#83). Audio has no canvas to hang on at all, so there was no second
-  /// place to put the same trick.
+  /// A decoder registered from some object's constructor exists only if that
+  /// object gets built, and when it does not, the asset load fails at boot
+  /// with an error naming the missing loader instead of the cause. `Texture`
+  /// was registered from `DrawCanvas2D`'s constructor - a canvas is built only
+  /// where Flutter is attached, and always before anything it draws is decoded
+  /// - and that left the example suite red for sixty commits (#83). Audio has
+  /// no canvas to hang on at all.
   @mustCallSuper
   void describeAssetLoaders(AssetLoaderRegistrar loaders) {
     // The kernel ships one payload type, so the kernel registers its decoder.
@@ -705,8 +704,8 @@ abstract class Game implements RandomOwner {
   /// }
   /// ```
   ///
-  /// This is the "one scalar value, read by the UI" lane, and it is
-  /// deliberately *not* any of the three that already exist:
+  /// This is the "one scalar value, read by the UI" lane, and it is *not* any
+  /// of the three that already exist:
   ///
   ///  * component data (lane 1) is per-entity and lives in the pool's pages;
   ///  * commands and their rings (lane 2) are bulk, and run both ways;
@@ -719,18 +718,11 @@ abstract class Game implements RandomOwner {
   /// `describeStruct`'s `DataPointer`s, `describeQuery`'s `Query`,
   /// and `describeBuffers`' `BufferHandle`.
   ///
-  /// # The two hosts, and why it is a plain override
+  /// # The two hosts
   ///
   /// Exactly two types declare state - this one and `GameSystem` - and both
   /// carry this method with an empty body, so declaring a channel is one
-  /// override and nothing else. There used to be a `Publisher` mixin with a
-  /// `Structured` marker interface as its bound, whose only job was to stop
-  /// the mixin landing somewhere it made no sense. Guarding a set of known
-  /// classes that each already have the method is ceremony that buys nothing,
-  /// and the marker leaked: anything that implemented `Structured` for
-  /// unrelated reasons - a `GameCommandBase`, of all things - silently became
-  /// a legal `Publisher` host, despite a command having no stable declaration
-  /// index for a channel to hang off.
+  /// override and nothing else.
   ///
   /// The set is two and not more for a hard reason: **a channel's storage is
   /// allocated on the main isolate, before the spawn**, and its identity
@@ -739,9 +731,8 @@ abstract class Game implements RandomOwner {
   /// each for its own reason:
   ///
   ///  * [GameState] is *built on the game isolate*, after the allocation it
-  ///    would have to be part of. It used to be a third host, back when main
-  ///    ran `createState()` too. Publish from the `Game` and write through
-  ///    `state.game.myChannel`.
+  ///    would have to be part of. Publish from the `Game` instead and write
+  ///    through `state.game.myChannel`.
   ///  * a `SceneStruct` is loaded after boot and possibly several times, so it
   ///    could never hold a stable index;
   ///  * a `Component` comes and goes with the scene, for the same reason.
@@ -844,8 +835,8 @@ abstract class Game implements RandomOwner {
   /// Raw key and mouse-button state is collected on the Flutter isolate (see
   /// `InputDevice`) and resolved on the game isolate, once per fixed tick.
   /// A game with no `GameView` in the widget tree has nothing feeding it, so
-  /// every action reads its default forever - correct rather than broken, and
-  /// spelled out in `InputDevice`'s doc.
+  /// every action reads its default forever - correct, not broken, and spelled
+  /// out in `InputDevice`'s doc.
   @mustCallSuper
   void describeInputs(InputDescriptor input) {
     input.hasDefaultValue<bool>(false);
@@ -980,8 +971,8 @@ abstract class Game implements RandomOwner {
   /// the view is (see `GameRenderer2D`'s camera handling), which is the one
   /// question about the view a simulation legitimately has.
   ///
-  /// Zero is the honest answer for a headless game rather than a guessed
-  /// resolution, and it is load-bearing: every consumer of these treats a
+  /// A headless game reads zero here, never a guessed resolution, and that is
+  /// load-bearing: every consumer of these treats a
   /// zero view as "no view", which is what makes a headless test and a real
   /// window agree about everything except the centring they cannot share.
   /// The surface the **pointer** is currently in: refreshed by the `GameView`
@@ -996,8 +987,7 @@ abstract class Game implements RandomOwner {
   /// is a coherent single fact; a *viewport* is not, once there are two
   /// views.
   ///
-  /// Zero is the honest answer for a headless game rather than a guessed
-  /// resolution.
+  /// A headless game reads zero here, never a guessed resolution.
   double get viewWidth => _inputs.state.viewWidth;
 
   double get viewHeight => _inputs.state.viewHeight;
@@ -1050,11 +1040,10 @@ abstract class Game implements RandomOwner {
   /// **One object, because there is one of everything.** An instance backs
   /// exactly one run for its whole life, so "the game" and "the run" name the
   /// same thing and splitting them across two objects the caller has to hold
-  /// bought nothing. This returned the run's handle until that rule was
-  /// settled; the handle is framework-facing now (a renderer receives one in
-  /// [buildView]) and no longer something an app obtains.
+  /// bought nothing. The run's handle is framework-facing - a renderer
+  /// receives one in [buildView] - and not something an app obtains.
   ///
-  /// Static rather than an instance method so the type flows: `G` binds from
+  /// Static, not an instance method, so the type flows: `G` binds from
   /// the argument, which is what makes `await Game.start(MyGame())` a `MyGame`
   /// with nothing spelled out. It also keeps "start" off the surface of a
   /// `Game` that has not been started, where every other lifetime member
@@ -1073,8 +1062,8 @@ abstract class Game implements RandomOwner {
   ///
   /// On the web this runs the single-isolate implementation, because there are
   /// no isolates in the shared-memory sense there - but it returns the same
-  /// type, so a web game gets the same surface as a native one rather than
-  /// depending on the state happening to be reachable.
+  /// type, so a web game gets the same surface as a native one and never
+  /// depends on the state happening to be reachable.
   ///
   /// With [autoTick] false nothing ticks until someone calls [advance] by hand
   /// - which is what makes the scheduler testable deterministically, with no
@@ -1171,6 +1160,13 @@ abstract class Game implements RandomOwner {
   /// something a caller has to reach for - it is what to reach for when the
   /// round trip is what costs. Fifty calls in one batch is one ring record,
   /// one wake-up and one reply; fifty sends are fifty of each.
+  ///
+  /// Every call in one batch has to be handled on the same isolate, since a
+  /// batch is one message with one reply; adding a call bound for the other
+  /// side throws at the line that adds it.
+  ///
+  /// Throws on a game that has not been started - there is no registry to
+  /// batch into yet.
   CommandBatch createCommandBatch() =>
       _requireRuntime('createCommandBatch').createCommandBatch();
 
@@ -1250,7 +1246,7 @@ abstract class Game implements RandomOwner {
       _requireInline('advance').state!.advance(elapsed);
 
   /// Runs exactly one fixed step, whatever the clock says. For a test that
-  /// wants a step rather than a duration.
+  /// wants a step, not a duration.
   ///
   /// **Inline runs only**; see [_requireInline].
   void runFixedStep() => _requireInline('runFixedStep').state!.runFixedStep();
@@ -1297,13 +1293,13 @@ abstract class Game implements RandomOwner {
   ///
   /// The guard is what keeps these callable on a `Game` that has not started:
   /// the commands are `late final`, declared during boot, so reaching one
-  /// before then would throw rather than no-op - and a pause button that
-  /// throws because the game has not finished starting is not an improvement
-  /// on one that does nothing.
+  /// before then would throw instead of no-op - and a pause button that throws
+  /// because the game has not finished starting is not an improvement on one
+  /// that does nothing.
   ///
-  /// The future is dropped deliberately. A control command completes when the
-  /// batch reaches the port, not when the handler has run, so there is
-  /// nothing here worth waiting for.
+  /// The future is dropped. A control command completes when the batch reaches
+  /// the port, not when the handler has run, so there is nothing here worth
+  /// waiting for.
   void _sendControl(Future<void> Function() send) {
     if (runtimeOrNull?.isRunning != true) return;
     unawaited(send());
@@ -1370,8 +1366,8 @@ abstract class Game implements RandomOwner {
   ///    `CameraView` are all backed by native memory that this copy allocates
   ///    and frees, and their identity on the wire is their index in one
   ///    declaration pass. Both facts point here: allocation cannot happen
-  ///    before the declaration, and the game isolate must inherit the numbering
-  ///    rather than re-derive it.
+  ///    before the declaration, and the game isolate must inherit the
+  ///    numbering instead of re-deriving it.
   ///  * the `GameState` carrying `describeSystems` is *built* here, by
   ///    [createState] - a `GameState` mixin has to be able to contribute a
   ///    system, which is what makes `extends Game2D` (and the `GameState2D` it
@@ -1463,13 +1459,12 @@ abstract class Game implements RandomOwner {
   ///
   ///  * [describeScenes] registers archetypes and component bits into
   ///    `ArchetypeRegistry`/`ComponentTypeRegistry`, which are *statics*.
-  ///    Statics belong to no object graph, so they do not ride the copy. They
-  ///    used to be hand-carried across in a snapshot precisely because this
-  ///    pass ran on main; running it here instead is what deleted that
-  ///    machinery, along with main's page adoption and the un-adopt handshake.
-  ///    One registrar means there is no second numbering to keep in agreement.
+  ///    Statics belong to no object graph, so they do not ride the copy.
+  ///    Running the pass here is what saves hand-carrying the registries
+  ///    across in a snapshot: one registrar means there is no second numbering
+  ///    to keep in agreement.
   ///  * `describeQuery` resolves against those archetypes, so it has to follow
-  ///    them - which is why it is not up in [_bootMain] with the rest of the
+  ///    them, so it is not up in [_bootMain] with the rest of the
   ///    per-system passes. Queries are read only by ticking systems, and only
   ///    this copy ticks.
   ///
@@ -1701,42 +1696,14 @@ abstract class Game implements RandomOwner {
   /// re-reads the raw device snapshot and updates every declared action from
   /// it.
   ///
-  /// **Before commands and before any system runs**, deliberately. A tick is
-  /// supposed to see one coherent picture of the world, and input is part of
-  /// that picture: resolving lazily on first read would let two systems in
-  /// the same tick disagree about whether a key was down, and resolving per
-  /// system would make `wasPressedThisFrame` mean "since this system last
-  /// ran" rather than "this tick".
+  /// **Before commands and before any system runs.** A tick is supposed to see
+  /// one coherent picture of the world, and input is part of that picture:
+  /// resolving lazily on first read would let two systems in the same tick
+  /// disagree about whether a key was down, and resolving per system would
+  /// make `wasPressedThisFrame` mean "since this system last ran" instead of
+  /// "this tick".
   @internal
   void resolveInputs() => _inputs.resolve();
-
-  // --- commands ---------------------------------------------------------
-
-  /// A batch to build several calls into, sent and answered as one message.
-  ///
-  /// ```dart
-  /// final batch = game.createCommandBatch();
-  /// final hit = batch.execute(game.damage, (amount: 25, crit: true));
-  /// batch.sink(game.log, 'first blood');
-  /// final results = await batch.send();
-  /// print(hit[results]);
-  /// ```
-  ///
-  /// A bare `await game.damage(...)` is a batch of one, so this is not
-  /// something a caller has to reach for - it is what to reach for when the
-  /// round trip is what costs. Fifty calls in one batch is one ring record,
-  /// one wake-up and one reply; fifty sends are fifty of each.
-  ///
-  /// Deliberately here rather than on a command: `damage.newBatch()` reads as
-  /// "a batch of damage commands", and a batch is nothing of the kind - it is
-  /// a mixed sequence, and mixing is most of the point. It comes from the
-  /// thing that owns the lane - which is the **run**, not the description, so
-  /// this is [createCommandBatch] - which throws on a game that has not been
-  /// started, since there is no registry to batch into yet.
-  ///
-  /// Every call in one batch has to be handled on the same isolate, since a
-  /// batch is one message with one reply; adding a call bound for the other
-  /// side throws at the line that adds it.
 
   // --- systems ----------------------------------------------------------
   //
@@ -1778,14 +1745,9 @@ abstract class Game implements RandomOwner {
 
   /// What a [GameView] shows. Null - the default - draws nothing.
   ///
-  /// This is the **entire** Flutter-facing surface of a game, and it is a
-  /// method rather than an event because there is exactly one thing that can
-  /// answer it. An earlier design fired a `BuildWidgetEvent` at every
-  /// declared system so each could wrap the tree; that was a dispatch
-  /// mechanism built for several contributors to a problem that has one, and
-  /// it forced `GameSystem` to straddle both isolates to be a listener at
-  /// all. Now systems live entirely on the game isolate and `Game` alone
-  /// builds.
+  /// This is the **entire** Flutter-facing surface of a game: a method, not an
+  /// event, because exactly one thing can answer it. Systems live entirely on
+  /// the game isolate and contribute nothing to the widget tree.
   ///
   /// Renderers arrive by *subclass*, not by declaration: `Game2D` (in
   /// `goo2d`) overrides this with a `CustomPaint` fed by the draw buffer, so
@@ -1793,14 +1755,15 @@ abstract class Game implements RandomOwner {
   /// overrides it with a native surface instead, and `GameView` never
   /// changes.
   ///
-  /// Null rather than an empty `SizedBox` so that "this game draws nothing"
-  /// is a state a caller can *see*: a headless game with a Flutter-side HUD
-  /// is a real configuration, and [GameView] lays out nothing at all for it
-  /// rather than an invisible box that still takes part in layout.
+  /// Return null, not an empty `SizedBox`, so that "this game draws nothing"
+  /// is a state a caller can *see*: a headless game with a Flutter-side HUD is
+  /// a real configuration, and [GameView] lays out nothing at all for it - no
+  /// invisible box still taking part in layout.
+  ///
   /// [camera] is the view being shown, or null when the game is displayed
-  /// through `GameView.headless` - a game that declares no cameras. A
-  /// renderer contributes nothing for a null rather than picking a view on
-  /// the caller's behalf.
+  /// through `GameView.headless` - a game that declares no cameras. Contribute
+  /// nothing for a null; never pick a view on the caller's behalf.
+  ///
   /// Whatever a renderer keeps per view - decoded frames, a scheduler
   /// registration - lives in its own fields, because an instance backs one run
   /// and there is nothing to disambiguate. [onStopped] is where it lets go.
@@ -1812,7 +1775,7 @@ abstract class Game implements RandomOwner {
 
   /// Whether anything is on screen showing this game.
   ///
-  /// Refcounted rather than a bool because two views on one game is a
+  /// Refcounted, not a bool, because two views on one game is a
   /// supported shape (two cameras, or one camera at two sizes), and disposing
   /// the second must not stop the first from painting.
   bool get hasView => _mountedViews > 0;
@@ -1934,8 +1897,8 @@ abstract class Game implements RandomOwner {
 
   /// The last [GameView] showing this game has been disposed.
   ///
-  /// Anything armed in [onViewAttached] must be disarmed here rather than left
-  /// to [onStopped]: the widget can go while the game runs on, and a
+  /// Anything armed in [onViewAttached] must be disarmed here, not left to
+  /// [onStopped]: the widget can go while the game runs on, and a
   /// self-rescheduling frame callback left behind keeps the scheduler awake
   /// forever - which a widget test reports as "an animation is still running
   /// even after the widget tree was disposed". [onStopped] is the other end,
@@ -1960,13 +1923,12 @@ abstract class Game implements RandomOwner {
 /// these for its whole life - see `Game._requireNotYetDescribed` for why - so
 /// this is not a multiplicity mechanism. It is a **separation** one.
 ///
-/// Everything here used to be a field on `Game`, and the cost of that was not
-/// hypothetical: with the roles, the ports, the ring buffers and the
-/// `GameState` all hanging off the description, "what does this object mean on
-/// the other isolate" had no single answer, and `_runOnIsolate` mutated the
-/// same object main was still holding. Splitting them makes each side's job
-/// nameable - the description is read-only after boot, the runtime is the only
-/// thing that changes and the only thing with two isolate-specific halves.
+/// Splitting this from the description makes each side's job nameable: the
+/// description is read-only after boot, and the runtime is the only thing that
+/// changes and the only thing with two isolate-specific halves. With the roles,
+/// the ports, the ring buffers and the `GameState` all hanging off the
+/// description, "what does this object mean on the other isolate" has no single
+/// answer.
 ///
 /// # This, not the `Game`, is the spawn message
 ///
@@ -2113,10 +2075,10 @@ final class GameRuntime {
   ///
   /// What may not be reachable from this object at spawn time is the genuinely
   /// unsendable: [_fromGame] is created after `_bootMain` and stored in a
-  /// field only *after* the spawn. A decoded asset (`dart:ui.Image`) used to
-  /// need a gate for the same reason; it does not any more, because nothing
-  /// decodes until a scene is loaded and no scene is loaded until `_bootGame`
-  /// runs on the far side. A `Pointer` is fine - see [Game]'s class doc.
+  /// field only *after* the spawn. A decoded asset (`dart:ui.Image`) needs no
+  /// gate of its own: nothing decodes until a scene is loaded, and no scene is
+  /// loaded until `_bootGame` runs on the far side. A `Pointer` is fine - see
+  /// [Game]'s class doc.
   Future<void> boot({
     required bool inline,
     required bool drivable,
@@ -2256,17 +2218,16 @@ final class GameRuntime {
   /// tick.** That ordering is load-bearing: a `Tickable` *is* presentation,
   /// so anything a game publishes for main to see - a state channel, a draw
   /// ring - is written after `commitTick` and before this. Firing inside
-  /// `runFixedStep` (where it used to live, back when the renderer was a
-  /// `FixedTickable`) would announce a frame that had not been written yet,
-  /// and everything reading on the signal would come up one frame stale, the
-  /// very first one empty.
+  /// `runFixedStep` would announce a frame that had not been written yet, and
+  /// everything reading on the signal would come up one frame stale, the very
+  /// first one empty.
   ///
   /// The main-isolate half is [_notifyTickListeners], which reconciles state
   /// channels before it calls anyone. `goo2d` no longer listens: it samples
   /// the newest published frame from a `SchedulerBinding` frame callback
   /// instead, for the reason `GameRenderer2D._onFrame` gives.
   ///
-  /// Split from [completeTick] rather than merged into it because the tick
+  /// Split from [completeTick] because the tick
   /// *counter* has to advance before presentation runs: the renderer stamps
   /// its batch with the tick, and that has to name the tick it depicts.
   void presentFrame() {
@@ -2291,11 +2252,11 @@ final class GameRuntime {
   /// Registers [listener] to be called on the **main** isolate once per
   /// completed fixed tick.
   ///
-  /// Internal, and deliberately no longer public anywhere: the one engine
-  /// consumer moved to a `SchedulerBinding` frame callback, because a repaint
-  /// scheduled when a port message happens to land waits most of a frame for
-  /// the next vsync. What survives is this, for tests and for anything that
-  /// genuinely needs the "the published snapshot moved" edge. A game that
+  /// Internal, and public nowhere: the one engine consumer uses a
+  /// `SchedulerBinding` frame callback instead, because a repaint scheduled
+  /// when a port message happens to land waits most of a frame for the next
+  /// vsync. This is for tests and for anything that genuinely needs the
+  /// "the published snapshot moved" edge. A game that
   /// wants a visible tick count publishes one with `describeState`, through
   /// the lane that already exists for "a number main should see".
   void addTickListener(void Function(int tick) listener) {
@@ -2311,8 +2272,8 @@ final class GameRuntime {
   /// Fed from [_notifyTickListeners], which is the one place both
   /// configurations converge: the spawned copy gets here from the tick ping,
   /// the inline one straight from [presentFrame]. Timestamped from this
-  /// runtime's own monotonic clock rather than the engine's, because these are
-  /// not engine frames and have no `FrameTiming` to borrow one from.
+  /// runtime's own monotonic clock, not the engine's: these are not engine
+  /// frames and have no `FrameTiming` to borrow one from.
   final FrameMeter simulationFrames = FrameMeter();
   final Stopwatch _clock = Stopwatch()..start();
 
@@ -2321,8 +2282,8 @@ final class GameRuntime {
   int _meteredTick = -1;
 
   /// [simulationFrames] read against the clock that feeds it, so a simulation
-  /// that has stopped publishing reads zero rather than the rate it used to
-  /// manage. See [FrameMeter.fpsAt].
+  /// that has stopped publishing reads zero, not its last healthy rate. See
+  /// [FrameMeter.fpsAt].
   double get simulationFps =>
       simulationFrames.fpsAt(_clock.elapsedMicroseconds);
 
@@ -2359,8 +2320,8 @@ final class GameRuntime {
   /// notification (see that class's doc): the simulating copy notifies
   /// synchronously inside the write, because the writer is right there; this
   /// copy cannot know a write happened until the tick message lands, so it
-  /// reconciles here. Driven off the tick-completed path rather than a timer
-  /// of its own, deliberately: "the published snapshot moved" is exactly the
+  /// reconciles here. Driven off the tick-completed path, not a timer of its
+  /// own: "the published snapshot moved" is exactly the
   /// signal the tick ping already carries, and a channel checking on any other
   /// schedule would report changes at a moment when the rest of the world a
   /// listener can read is from a different tick.
@@ -2376,18 +2337,14 @@ final class GameRuntime {
 
   /// Frees a scene's pages, immediately.
   ///
-  /// This used to be half of an un-adopt handshake: the pages were kept alive
-  /// across a `_msgPageGone`/`_msgPagesDropped` round trip so that main, which
-  /// held adopted read-only views of them, could let go before the writer
-  /// freed. Use-after-free is the one failure mode a shared-memory design
-  /// cannot report - it just returns wrong numbers - so the deferral was worth
-  /// its complexity while there was a second reader.
+  /// Immediate is safe only because there is one reader. Pages are allocated,
+  /// read and freed entirely on this isolate, and main never adopts one - it
+  /// holds no archetypes to adopt into and never resolves an `Entity`.
   ///
-  /// There is not one any more. Pages are allocated, read and freed entirely
-  /// on this isolate; main never adopts one, because it holds no archetypes to
-  /// adopt into and never resolves an `Entity`. So the handshake, the deferred
-  /// free set, and both messages are gone, and unloading is once again the
-  /// straight line it reads as.
+  /// Give main a second reader and this needs an un-adopt handshake back: the
+  /// pages have to stay alive across a round trip so the reader can let go
+  /// before the writer frees. Use-after-free is the one failure mode a
+  /// shared-memory design cannot report - it just returns wrong numbers.
   void releaseScenePages(int sceneSlot) {
     final pool = state?.pool;
     if (pool == null) return;
@@ -2415,7 +2372,7 @@ final class GameRuntime {
   /// told it got one. In that case this does not also rethrow: the awaiting
   /// caller is already being told, and throwing again would report one death
   /// twice. With no stop pending there is nobody to tell, so it rethrows on
-  /// this isolate rather than let the failure disappear.
+  /// this isolate instead of letting the failure disappear.
   void _handleIsolateDeath(dynamic message, Zone zone) {
     // Two strings, already stringified by the sending isolate - an error
     // object cannot cross a port, so this is what Dart's own error port
@@ -2447,7 +2404,7 @@ final class GameRuntime {
 
   /// Stops the simulation and releases the shared memory.
   ///
-  /// Two phases on purpose in the spawned configuration. The game isolate
+  /// Two phases in the spawned configuration. The game isolate
   /// stops ticking and reports `stopped`, which completes this future; only
   /// then does this copy tell it to free the pool and the ring buffer.
   /// Freeing in one step would race tick messages still in flight - the
@@ -2610,10 +2567,10 @@ final class GameRuntime {
   /// impossible to lose.
   ///
   /// What it *does* describe is [Game._bootGame]: the scenes, and therefore
-  /// the archetypes and component bits, which live in **statics** rather than
-  /// on any object and so could never have crossed. Main used to run that pass
-  /// too and hand the registries over in a snapshot; it does not any more, and
-  /// deleting that snapshot is what this whole arrangement bought.
+  /// the archetypes and component bits, which live in **statics** - they
+  /// belong to no object graph, so they could never have crossed. Running that
+  /// pass here is what removes the need for main to snapshot the registries
+  /// and hand them over.
   ///
   /// The other thing this copy does is take over the two roles main was
   /// holding open for it: it becomes the simulator, and it stops being the
@@ -2822,7 +2779,7 @@ final class GameRuntime {
   ///
   /// Returns immediately when there is no main to ask, which is the inline
   /// case: there, [decodesAssets] is true and the caller decodes in place
-  /// rather than calling this at all.
+  /// without calling this at all.
   Future<void> requestAssetLoad(
     List<int> addresses,
     List<AssetKey<Object?>> keys,
@@ -2847,10 +2804,9 @@ final class GameRuntime {
 
   /// Main's half: decode what was asked for, reporting each one back.
   ///
-  /// Sequential rather than concurrent, deliberately - it mirrors the local
-  /// path exactly, and a loading screen wants a progress sequence rather than
-  /// everything landing at once. `Assets.load` already collapses overlapping
-  /// requests for one key.
+  /// Sequential, not concurrent: it mirrors the local path exactly, and a
+  /// loading screen wants a progress sequence instead of everything landing at
+  /// once. `Assets.load` already collapses overlapping requests for one key.
   Future<void> _handleAssetLoadRequest(List parts) async {
     final id = parts[1] as int;
     final addresses = (parts[2] as List).cast<int>();
@@ -2910,7 +2866,7 @@ final class GameRuntime {
 
 /// One in-flight [GameRuntime.requestAssetLoad], game-isolate side.
 ///
-/// One object rather than parallel maps keyed by request id (the
+/// One object, not parallel maps keyed by request id (the
 /// one-fact-one-place rule): the completer, the progress callback and the first
 /// failure all belong to the same request and are only ever used together.
 final class _AssetLoadRequest {
@@ -2921,7 +2877,7 @@ final class _AssetLoadRequest {
 }
 
 /// The spawned isolate's entry point. Top-level (a closure would not be
-/// sendable) and deliberately trivial - all it does is hand control to the
+/// sendable) and trivial - all it does is hand control to the
 /// copied `GameRuntime`, which is what the spawn message actually is: the
 /// `Game` rides inside it, because a description has no isolate-specific half
 /// to hand over and a run has two.
@@ -2955,8 +2911,8 @@ abstract class BufferDescriptor {
   BufferHandle has({required int capacityBytes});
 
   /// Declares a **handoff** buffer of [slotBytes] per slot - shared memory for
-  /// a value where only the newest copy matters, rather than a queue where
-  /// every record does.
+  /// a value where only the newest copy matters, not a queue where every
+  /// record does.
   ///
   /// Use [has] for a stream (commands, events, anything where dropping the
   /// third of five is a bug). Use this for a value that is completely replaced
@@ -3068,11 +3024,6 @@ final class HandoffHandle {
   HandoffBuffer? get tryBuffer => _buffer;
 }
 
-/// Records declaration order, which *is* execution order - see the class doc
-/// on [Game]. Systems are keyed by `runtimeType` rather than by the type
-/// argument so `descriptor.has(Transform2DSystem())` and
-/// `getSystem<Transform2DSystem>()` agree without the caller having to spell
-/// the type argument twice.
 /// Registers a declared scene's archetypes and assets, once, at boot.
 final class _GameSceneDescriptor implements GameSceneDescriptor {
   _GameSceneDescriptor(this._runtime);
@@ -3108,6 +3059,11 @@ final class _GameSceneDescriptor implements GameSceneDescriptor {
 }
 
 /// Collects declared systems into the [GameState] that declares and runs them.
+///
+/// Records declaration order, which *is* execution order - see the class doc
+/// on [Game]. Systems are keyed by `runtimeType`, not by the type argument, so
+/// `descriptor.has(Transform2DSystem())` and `getSystem<Transform2DSystem>()`
+/// agree without the caller having to spell the type argument twice.
 final class _SystemDescriptor implements SystemDescriptor {
   _SystemDescriptor(this._state);
 
@@ -3130,7 +3086,7 @@ final class _SystemDescriptor implements SystemDescriptor {
 /// Forwards `Game.describeAssetLoaders` into the per-isolate registry.
 ///
 /// `const`, holding nothing: the registry it writes to is a static, and giving
-/// the hook an object to talk to rather than the static itself is what keeps
+/// the hook an object to talk to instead of the static itself is what keeps
 /// the pass a declaration - see [AssetLoaderRegistrar].
 final class _LoaderRegistrar implements AssetLoaderRegistrar {
   const _LoaderRegistrar();
@@ -3172,8 +3128,8 @@ final class _BufferDescriptor implements BufferDescriptor {
 
 /// Everything `Game` needs from a state channel without knowing its `T`.
 ///
-/// A non-generic interface rather than storing `_StateChannelBase<Object?>`
-/// in the list: the whole point of these operations is that they are
+/// A non-generic interface, not `_StateChannelBase<Object?>` in the list:
+/// the whole point of these operations is that they are
 /// type-erased plumbing (allocate, announce, adopt, poll, free), and none of
 /// them wants to expose or launder the channel's value type.
 abstract class _ChannelSlot {
@@ -3205,8 +3161,8 @@ abstract class _ChannelSlot {
   void release({required bool owned});
 }
 
-/// The fixed-width formats a [StateChannel] can carry - deliberately the same
-/// set `DataDescriptor` offers for component fields, for the same reason: a
+/// The fixed-width formats a [StateChannel] can carry - the same set
+/// `DataDescriptor` offers for component fields, for the same reason: a
 /// channel is a fixed number of bytes in shared memory, and a width is all
 /// the information needed to read and write it.
 enum _ChannelFormat {
@@ -3231,13 +3187,13 @@ enum _ChannelFormat {
 /// value), the cached `ByteData` views over the three slots, the read and
 /// write paths, and change notification.
 ///
-/// One class for both isolate roles rather than a read-only subclass and a
-/// writable one, because `StateChannel` now *has* a setter on both sides - the
-/// split is enforced by [owned] and an `assert` (the assert-not-print rule)
-/// rather than by the type system. That is a deliberate trade:
-/// `ValueListenable` requires one declared type usable from Flutter on the main
-/// isolate, and a write from there is a programmer error rather than something
-/// a caller should be handed two types to reason about.
+/// One class for both isolate roles, not a read-only subclass and a writable
+/// one: `StateChannel` has a setter on both sides, and the split is enforced
+/// by [owned] and an `assert` (the assert-not-print rule) instead of by the
+/// type system. That trade buys one declared type usable from Flutter on the
+/// main isolate, which is what `ValueListenable` requires. A write from there
+/// is a programmer error, not something a caller should be handed two types to
+/// reason about.
 abstract class _StateChannelBase<T>
     with ChangeNotifier
     implements StateChannel<T>, _ChannelSlot {
@@ -3258,9 +3214,9 @@ abstract class _StateChannelBase<T>
   final _ChannelFormat format;
   final T initialValue;
 
-  /// The **run** this channel's storage belongs to - held rather than two
-  /// booleans because the two questions it answers used to be the same
-  /// question and no longer are.
+  /// The **run** this channel's storage belongs to - held instead of two
+  /// booleans, because the two questions it answers (who owns the storage, who
+  /// may write) have different answers here.
   final GameRuntime _runtime;
 
   /// Whether this copy allocated the storage, and so must free it. Main, in
@@ -3539,7 +3495,7 @@ final class _DoubleStateChannel extends _StateChannelBase<double> {
   }
 }
 
-/// One byte, not one bit: a channel is its own allocation rather than a field
+/// One byte, not one bit: a channel is its own allocation, never a field
 /// packed into a shared row, so there is nothing to save by sub-byte packing
 /// and a whole byte to gain in read/write simplicity.
 final class _BoolStateChannel extends _StateChannelBase<bool> {
@@ -3820,8 +3776,7 @@ bool visibleInLifecycleState(AppLifecycleState state) => switch (state) {
 ///     where a game stops because you alt-tabbed to look something up.
 ///   * `hidden` is every view gone: minimised, or about to be paused. iOS and
 ///     Android synthesise it *before* `paused` specifically so cross-platform
-///     code needs only one handler, which is why this needs no per-platform
-///     branch.
+///     code needs only one handler, so this needs no per-platform branch.
 ///
 /// `detached` counts as hidden and gets no hook of its own. See
 /// [AppVisibilityListener] for why there is no "about to be killed" callback.

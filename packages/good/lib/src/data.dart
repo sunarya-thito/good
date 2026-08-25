@@ -62,7 +62,7 @@ abstract class DataDescriptor {
   /// score stop being assignable to each other.
   ///
   /// With no [defaultValue] a fresh row reads `Entity(0)`, and that is a
-  /// real handle rather than a "nothing here" marker - it packs archetype 0,
+  /// real handle and not a "nothing here" marker - it packs archetype 0,
   /// page 0, row offset 0, which is some scene's first entity. Give a default
   /// only when an entity genuinely is the right starting target; otherwise
   /// write the column before anything reads it. For a link that is allowed to
@@ -119,12 +119,12 @@ abstract class DataDescriptor {
 
   /// A column holding an [Entity] handle or `null` - [hasEntity]'s storage
   /// with a presence flag in front of it, so "no target" is a state of its
-  /// own rather than a handle that has to be reserved as a sentinel.
+  /// own, with no handle reserved as a sentinel.
   ///
   /// This is what a link between entities usually wants. [hasEntity]'s
   /// unwritten value is `Entity(0)`, a real address (archetype 0, page 0,
-  /// row 0) rather than a "nothing here"; here an unwritten column reads
-  /// `null`, and `Entity(0)` stored in it reads back as itself.
+  /// row 0) and not a "nothing here"; here an unwritten column reads `null`,
+  /// and `Entity(0)` stored in it reads back as itself.
   ///
   /// With no [defaultValue] a fresh row reads `null`. Pass one and every
   /// fresh row starts pointing at it.
@@ -177,8 +177,8 @@ abstract class DataDescriptor {
   /// error.
   ///
   /// `goo2d`'s `hasPolygonCollider(points: ...)` is the reference use: a
-  /// prefab whose outline is fixed states it where it declares the field
-  /// rather than writing every vertex from `onEntityMounted`.
+  /// prefab whose outline is fixed states it where it declares the field,
+  /// instead of writing every vertex from `onEntityMounted`.
   DataArrayPointer<double> hasFloat32ArrayOf(
     int length,
     List<double> defaultValues,
@@ -222,12 +222,12 @@ abstract class DataDescriptor {
   /// field's type is known - so a fourth kind of packed value costs nothing
   /// but its own representation, and no shared address space has to exist for
   /// the read path to find one. Pairing the two in the signature is also what
-  /// makes a mismatched field/representation a compile error rather than a
+  /// makes a mismatched field/representation a compile error instead of a
   /// read-time `StateError`.
   ///
   /// The field is [IntRepresentation.bitWidth] bits wide, so a representation
-  /// that only ever hands out a few hundred values costs a row a byte or two
-  /// rather than a fixed four.
+  /// that only ever hands out a few hundred values costs a row a byte or two,
+  /// not a fixed four.
   PackedPointer<T> hasPacked<T extends IntRepresentable>(
     IntRepresentation<T> repr,
     T defaultValue,
@@ -317,7 +317,7 @@ abstract class DataDescriptor {
 /// inside a layout. The engine's own code already says field (`declareField`,
 /// `registerField`, `_Field<T>`), so this is the term that was free.
 ///
-/// [boolean] rather than `bool` for a related reason, one level down: a
+/// [boolean] and not `bool` for a related reason, one level down: a
 /// member named `bool` hides the *type* `bool` inside this class body, so its
 /// own signature stops compiling.
 ///
@@ -330,21 +330,20 @@ abstract class DataDescriptor {
 /// the passes `SceneDescriptor.has` drives, in the order they already ran.
 ///
 /// A prefab that wants a *different* default for a column one of its mixins
-/// declared also uses `describeStruct`, but to move the default rather than
-/// to declare anything - see [DefaultPointer.defaultValue]. Declaring the
-/// name a second time would not do it.
+/// declared also uses `describeStruct`, but to move the default, not to
+/// declare anything - see [DefaultPointer.defaultValue]. Declaring the name a
+/// second time would not do it.
 ///
 /// # Two mixins declaring the same field name are silent here
 ///
-/// Components are mixins, so `speed` declared by two of them is an override
-/// rather than an error: the later one in the `with` clause wins. Written as
-/// `describeStruct` assignments that used to be caught by accident - both
-/// bodies assigned the same `late final` and the second throw a
-/// `LateInitializationError` before the game ran. An eager initialiser assigns
-/// nothing, so both columns are allocated, the row grows by both, and one of
-/// them is unreachable for the life of the process. Measured: 128 bits of row
-/// against 64, `speed[entity]` reading the second mixin's column, no error
-/// anywhere.
+/// Components are mixins, so `speed` declared by two of them is an override,
+/// not an error: the later one in the `with` clause wins. Written as
+/// `describeStruct` assignments it is caught by accident - both bodies assign
+/// the same `late final`, and the second throws a `LateInitializationError`
+/// before the game runs. An eager initialiser assigns nothing, so both columns
+/// are allocated, the row grows by both, and one of them is unreachable for the
+/// life of the process. Measured: 128 bits of row against 64, `speed[entity]`
+/// reading the second mixin's column, no error anywhere.
 ///
 /// Prefix a published component's columns the way `Transform2D` prefixes
 /// `transformOffsetX`. Catching it properly is a build-time check over the
@@ -583,7 +582,7 @@ abstract class DataPointer<T> {
 
   /// [operator []], but reading the slot this tick is **writing** instead of
   /// the last published one - so it sees writes made earlier in this same
-  /// tick, which an ordinary read deliberately cannot.
+  /// tick, which an ordinary read cannot.
   ///
   /// # This is for structural mutation, and nothing else
   ///
@@ -626,9 +625,9 @@ abstract class DataPointer<T> {
   /// Pairs this pointer with one [instance], so the result reads and writes
   /// that entity's value with no further arguments.
   ///
-  /// Implementers **extend** `DataPointer` rather than implementing it, purely
-  /// so this default is inherited instead of copied per implementation - one
-  /// home for the behaviour (the one-fact-one-place rule).
+  /// Implementers **extend** `DataPointer` instead of implementing it, purely
+  /// so this default is inherited and not copied per implementation - one home
+  /// for the behaviour (the one-fact-one-place rule).
   DataBinding<T> bind(Entity instance) => _DataBinding(this, instance);
 }
 
@@ -665,7 +664,7 @@ abstract class DataPointer<T> {
 /// Every column whose default is a plain stored value: the integer widths,
 /// the floats, `bool`, an enum member, an `Entity` handle, and the nullable
 /// form of each. Packed columns, heap-object columns and arrays are
-/// deliberately left out - see [defaultValue].
+/// left out - see [defaultValue].
 abstract class DefaultPointer<T> extends DataPointer<T> {
   const DefaultPointer();
 
@@ -674,7 +673,7 @@ abstract class DefaultPointer<T> extends DataPointer<T> {
   ///
   /// Reading it never throws. Writing it does once the archetype is sealed,
   /// which happens as soon as `describeStruct` has returned, and the pair is
-  /// deliberately asymmetric: a default is *stamped*, not consulted.
+  /// asymmetric: a default is *stamped*, not consulted.
   /// `ArchetypeStorage.seal` builds one prototype row holding every column's
   /// default and memcpy's it into each row allocated afterwards, and there
   /// is no `hasValue ? value : defaultValue` anywhere on the read path. So
@@ -683,7 +682,7 @@ abstract class DefaultPointer<T> extends DataPointer<T> {
   /// could no longer reach the prototype and would be a lie.
   ///
   /// Having both halves is what lets a prefab adjust an inherited default
-  /// rather than restate it:
+  /// instead of restating it:
   ///
   /// ```dart
   /// far.defaultValue *= 2;      // twice whatever Camera3D chose
@@ -759,9 +758,9 @@ class _DataBinding<T> implements DataBinding<T> {
 /// which this project is not willing to assume.
 ///
 /// Plain parameters have no such question mark: `get(entity, index)` passes
-/// two integers to a method on the one long-lived pointer object that
-/// already holds the layout. So the two-step subscript is dropped
-/// deliberately - this is not an unfinished API.
+/// two integers to a method on the one long-lived pointer object that already
+/// holds the layout. There is no two-step subscript here, and no plan for
+/// one.
 abstract class DataArrayPointer<T> {
   /// Number of elements per entity, fixed when the field is declared.
   int get length;
@@ -788,14 +787,12 @@ abstract class DataArrayPointer<T> {
 /// meaningful only against the [IntRepresentation] that produced the pairing,
 /// and that representation decides what it means.
 ///
-/// This was called `GlobalObject` with an `address` getter, and both halves of
-/// that name were wrong. Not *global*: an int is scoped to one
-/// representation, which was itself a correction of an earlier design where
-/// every such object shared one process-wide address space and "address 3"
-/// was unanswerable without knowing everything else registered. And not an
-/// *address*: a [SpriteFrame]-style value is packed into its int outright,
-/// with nothing stored anywhere and nothing to look up - which is exactly why
-/// the other half of the pair says `unpack` rather than `resolve`.
+/// The int is scoped to that one representation, never to a process-wide
+/// address space where "address 3" would be unanswerable without knowing
+/// everything else registered. Nor is it always an address: a
+/// [SpriteFrame]-style value packs into its int outright, with nothing stored
+/// anywhere and nothing to look up. That is why the other half of the pair
+/// says `unpack` and not `resolve`.
 abstract interface class IntRepresentable {
   /// This value as the [IntRepresentation.bitWidth]-bit integer a row holds.
   int pack();
@@ -813,9 +810,9 @@ abstract interface class IntRepresentable {
 /// and it does not matter, because an int is never unpacked except by the
 /// representation the field was declared against.
 ///
-/// Generic in the *class* rather than the method, so that a field and its
+/// Generic in the *class* and not the method, so a field and its
 /// representation are type-checked against each other at the declare site
-/// rather than blowing up at read time. A representation whose population is
+/// instead of blowing up at read time. A representation whose population is
 /// heterogeneous (an asset table holding `Asset<Texture>` and
 /// `Asset<AudioClip>`) vends a typed view per payload type instead of being
 /// one representation for all of them - see `Assets.of`.

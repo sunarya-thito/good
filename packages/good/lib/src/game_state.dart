@@ -45,18 +45,18 @@ import 'package:good/src/system.dart';
 ///
 /// resolve inputs -> `beginTick` -> drain and apply commands -> call
 /// `onFixedUpdate` on every enabled `FixedTickable` system **in declaration
-/// order** -> `commitTick` -> notify. Command application deliberately
-/// happens before any system runs and inside the tick window, so an entity
-/// spawned by a command is visible to every system on the very tick it
-/// arrives. Input resolution goes first for the same class of reason: every
-/// system in the tick, and every command applied during it, sees the same
-/// input snapshot rather than one that shifts underneath them (see `Input`).
+/// order** -> `commitTick` -> notify. Command application happens before any
+/// system runs and inside the tick window, so an entity spawned by a command
+/// is visible to every system on the very tick it arrives. Input resolution
+/// goes first for the same class of reason: every system in the tick, and
+/// every command applied during it, sees one input snapshot instead of one
+/// that shifts underneath them (see `Input`).
 ///
 /// Ordering starts from declaration order - the order the systems were
 /// declared in `Game.describeSystems` - and is then constrained by
 /// whatever `GameSystem.compareTo` states. "Run me after physics" is spelled
-/// there, as `other is PhysicsSystem ? 1 : 0`, and it is a constraint rather
-/// than a rank: [sortSystems] collects every pair's answer into a graph and
+/// there, as `other is PhysicsSystem ? 1 : 0`, and it is a constraint, not a
+/// rank: [sortSystems] collects every pair's answer into a graph and
 /// topologically sorts it, so one system's opinion cannot be outweighed by
 /// anyone else's and a set that cannot all hold is reported as a cycle instead
 /// of quietly resolved. Systems no constraint separates keep their declared
@@ -73,11 +73,9 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// The simulation tick, dispatched once per fixed step to every declared
   /// `FixedTickable` system.
   ///
-  /// Declared here rather than hand-rolled on `Game` because the tick is not
-  /// special: it is an event like any other, and it earns the same
-  /// resolved-at-boot listener list every other event gets. Before this it was
-  /// a bespoke pair of filtered lists - the right idea implemented once, for
-  /// one case, generalising to nothing.
+  /// Declared here and not hand-rolled on `Game`: the tick is not special. It
+  /// is an event like any other, and it earns the same resolved-at-boot
+  /// listener list every other event gets.
   late final SignalDispatcher<FixedTickable> fixedTickEvent;
 
   /// The presentation pass, dispatched once per *frame* - see
@@ -233,7 +231,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
 
   /// Every coroutine this game is running - see [CoroutineScheduler].
   ///
-  /// One per state rather than one per owner, and stepped from
+  /// One per state, not one per owner, and stepped from
   /// [runFixedStep] so a coroutine resumes inside the tick window. Reached
   /// through the [Coroutines] mixin from a prefab or a system; a `GameSystem`
   /// can also use `state.coroutines` directly.
@@ -311,12 +309,12 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// This game's page storage - **one pool, owned here**, not one per scene.
   ///
   /// Non-null from `bindGame` onwards, so from before any declaration pass
-  /// runs, which is why the tick loop no longer has to ask whether there is
-  /// storage to rotate: a game with no scene loaded has an empty pool rather
-  /// than no pool, and `beginTick`/`commitTick` over zero pages is free.
+  /// runs, so the tick loop never has to ask whether there is storage to
+  /// rotate: a game with no scene loaded has an empty pool, not no pool, and
+  /// `beginTick`/`commitTick` over zero pages is free.
   ///
-  /// It moved here from `SceneStruct` because a struct is a declaration that
-  /// can back several loaded scenes at once - see `SceneStruct.pool`.
+  /// It belongs here and not on `SceneStruct` because a struct is a declaration
+  /// that can back several loaded scenes at once - see `SceneStruct.pool`.
   MemoryPool get pool => _pool!;
 
   MemoryPool? _pool;
@@ -428,12 +426,11 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// Makes [next] the running scene, and returns a future that completes
   /// once it is fully ready to simulate.
   ///
-  /// There is deliberately no `createScene()` factory: a game does not
-  /// declare its starting world, it *loads* one, from `onMounted` like any
-  /// other scene transition. So the first load and the fiftieth go through
-  /// exactly one code path, and "no scene yet" is an ordinary state rather
-  /// than a special pre-boot case ([scene] is nullable for precisely this
-  /// reason).
+  /// There is no `createScene()` factory: a game does not declare its starting
+  /// world, it *loads* one, from `onMounted` like any other scene transition.
+  /// So the first load and the fiftieth go through exactly one code path, and
+  /// "no scene yet" is an ordinary state instead of a special pre-boot case
+  /// ([scene] is nullable for precisely this reason).
   ///
   /// ```dart
   /// class MyState extends GameState<MyGame> with LifecycleListener {
@@ -491,8 +488,8 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// a declaration, and a declaration that exists on one copy and not the
   /// other is exactly what would make one asset mean two different addresses.
   ///
-  /// The outgoing scene's *pages* are still deliberately not freed - see the
-  /// comment inside.
+  /// The outgoing scene's *pages* are not freed here - see the comment
+  /// inside.
   Future<Scene> loadScene(
     SceneStruct next, {
     void Function(SceneLoadProgress)? onProgress,
@@ -553,7 +550,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// generation counter on `Entity` to make that detectable per handle - it
   /// spends all 64 of its bits - so the detection is at page granularity
   /// instead: the freed pages' slots are tombstoned in `ArchetypeStorage`, and
-  /// resolving a handle into one reports the unload rather than reading
+  /// resolving a handle into one reports the unload instead of reading
   /// whatever a later scene put at that address. That is exactly why a scene's
   /// rows never share a page with another scene's.
   ///
@@ -707,7 +704,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   ///
   /// The counting half of [unloadScene]. An asset shared by two loaded scenes
   /// survives the first unload and is freed by the second - which is the whole
-  /// reason claims are counted rather than diffed.
+  /// reason claims are counted and not diffed.
   void _releaseAssetsOf(SceneStruct struct) {
     final declared = struct.declaredAssets;
     // Addresses freed on this copy, to be freed on the other one too. Captured
@@ -950,9 +947,9 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// 60Hz and the default cap of 5, a frame affords 5 steps however much
   /// scaled time it earned, and the rest is dropped. So scales past about 5
   /// run the game *slower* than asked instead of faster. Raise
-  /// `maxFixedStepsPerAdvance` if a game genuinely needs fast-forward; this
-  /// deliberately does not change that guard, which is what stops a slow
-  /// machine spiralling.
+  /// `maxFixedStepsPerAdvance` if a game genuinely needs fast-forward. This
+  /// leaves that guard alone, and the guard is what stops a slow machine
+  /// spiralling.
   double get timeScale => _timeScale;
 
   set timeScale(double value) {
@@ -1005,8 +1002,8 @@ abstract class GameState<T extends Game> extends GameListenerBase
   ///
   /// # Why the gap is discarded and not caught up
   ///
-  /// The accumulator is reset to zero rather than left holding the hidden
-  /// stretch. Left alone it would not run a step per hidden second - the
+  /// The accumulator is reset to zero, not left holding the hidden stretch.
+  /// Left alone it would not run a step per hidden second - the
   /// spiral guard in [advance] already caps a single advance at
   /// `Game.maxFixedStepsPerAdvance` and drops the rest - so the choice here is
   /// between **five** catch-up steps on the first frame back and **none**.
@@ -1061,7 +1058,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   ///
   /// Time left over stays in the accumulator for next time, so steps land at
   /// the right long-run rate even though no timer fires on schedule. Time
-  /// beyond the step cap is *discarded* rather than carried - see
+  /// beyond the step cap is *discarded*, never carried - see
   /// `Game.maxFixedStepsPerAdvance`; the leftover is reduced modulo the step
   /// so the sub-step phase survives and the very next [advance] isn't
   /// immediately capped again by a backlog it can never clear.
@@ -1134,13 +1131,12 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// [fixedTickEvent] runs before `pool.commitTick()`, so a tick that did not
   /// finish never publishes, and the next `pool.beginTick()` copies the last
   /// published state back over the write slot before anything runs. The
-  /// half-simulated frame is overwritten rather than shown.
+  /// half-simulated frame is overwritten, never shown.
   ///
   /// A throwing system is caught per listener and disabled - see
-  /// `GameListener.disableAfterUncaught`. A throwing *coroutine* has been
-  /// handled for longer and separately, in `CoroutineScheduler.step`, which
-  /// removes it and completes its handle with the error; this changed nothing
-  /// about that.
+  /// `GameListener.disableAfterUncaught`. A throwing *coroutine* is handled
+  /// separately, in `CoroutineScheduler.step`, which removes it and completes
+  /// its handle with the error.
   void runFixedStep() {
     _requireSimulating('runFixedStep');
     final game = this.game;
@@ -1294,9 +1290,8 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// `CritterSystem` its "-1 against `WorldTransformSystem`" - the spawner
   /// sorted *after* the pass that composes what it writes, so every entity it
   /// created was composed a tick late and drew one frame at the world origin
-  /// (#5). Asking both directions, which is what this used to do, does not
-  /// help: the comparator was already being consulted correctly and the sort
-  /// scrambled it anyway.
+  /// (#5). Asking both directions does not help: the comparator was already
+  /// being consulted correctly, and the sort scrambled it anyway.
   ///
   /// So each unordered pair is asked once, in declaration order, and the answer
   /// becomes an edge. Kahn's algorithm then emits the systems, always taking
@@ -1404,10 +1399,10 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// Resumes a system already declared in `Game.describeSystems` - a runtime
   /// pause/resume toggle, not registration.
   ///
-  /// **Synchronous, and no wire index.** This used to be `Game.enableSystem`,
-  /// returning a `Future` because it sent a control message to the isolate
-  /// that held the systems. This *is* that isolate. Main asks for a pause by
-  /// declaring a command that means one and calling this in the handler.
+  /// **Synchronous, and no wire index.** This runs on the isolate that holds
+  /// the systems, so there is no control message to send and nothing to await.
+  /// Main asks for a pause by declaring a command that means one and calling
+  /// this in the handler.
   void enableSystem<S extends GameSystem>() => setSystemEnabled(S, true);
 
   /// Pauses a system already declared in `Game.describeSystems` - it stops
@@ -1427,7 +1422,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   }
 
   /// The `Type`-taking form, for the plural spellings and for a caller holding
-  /// a `Type` rather than a type argument.
+  /// a `Type` instead of a type argument.
   void setSystemEnabled(Type type, bool enabled) {
     _systems[_requireSystemIndex(type)].enabled = enabled;
   }
@@ -1458,14 +1453,14 @@ abstract class GameState<T extends Game> extends GameListenerBase
 /// One progress report from [GameState.loadScene] - what is being brought up
 /// and how far along the transition as a whole is.
 ///
-/// Named for *scene loading*, not for assets, deliberately. Asset decoding is
-/// the only stage that reports today, but the later stages of bring-up
-/// (spawning a scene's initial entities, warming a render pipeline) are the
-/// same kind of "this transition is N% done" news to the same loading screen,
-/// and they will report through this type rather than through a second one
-/// that forces every consumer to handle both.
+/// Named for *scene loading*, not for assets. Asset decoding is the only stage
+/// that reports today, but the later stages of bring-up (spawning a scene's
+/// initial entities, warming a render pipeline) are the same kind of "this
+/// transition is N% done" news to the same loading screen, and they will report
+/// through this type instead of a second one that forces every consumer to
+/// handle both.
 ///
-/// Allocated once per reported step, at transition time. That is not a the
+/// Allocated once per reported step, at transition time. That is not a
 /// no-allocation rule concern: a scene transition is not the hot path, and
 /// there is nothing per-entity or per-tick anywhere near it.
 class SceneLoadProgress {

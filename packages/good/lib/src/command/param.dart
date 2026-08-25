@@ -6,18 +6,17 @@ import 'package:meta/meta.dart';
 import 'package:good/src/struct.dart';
 
 /// One field of one command's parameter block - the command-side twin of
-/// `DataPointer`, and deliberately the same shape: one pointer object per
-/// *field*, never per call, with the call passed in as the index.
+/// `DataPointer`, and the same shape: one pointer object per *field*, never
+/// per call, with the call passed in as the index.
 ///
 /// ```dart
 /// myCommand.hi[call] = 123;
 /// final back = myCommand.result[call];
 /// ```
 ///
-/// The index is a [ParamBuffer] rather than an `Entity` because that is
-/// what a command has instead of a row: a byte range inside a batch. Reading
-/// a field nobody wrote throws rather than reporting zero - see
-/// [ParamBuffer].
+/// The index is a [ParamBuffer], not an `Entity`: a byte range inside a batch
+/// is what a command has in place of a row. Reading a field nobody wrote
+/// throws instead of reporting zero - see [ParamBuffer].
 abstract class ParamPointer<T> {
   /// Reads this field out of [call].
   T operator [](ParamBuffer call);
@@ -126,18 +125,17 @@ final class ParamBuffer {
 
 /// Several records - calls, messages - packed back to back in one buffer.
 ///
-/// The shared record container, and deliberately *not* command-specific: a
-/// command batch crossing an isolate and a network message batch crossing a
-/// socket are the same bytes with the same self-describing walk, so they are
-/// the same class. `CommandBatch` adds the isolate transport's own facts (an
-/// id, a destination, a reply); `good_net`'s message batch adds none at all.
+/// The shared record container, and *not* command-specific: a command batch
+/// crossing an isolate and a network message batch crossing a socket are the
+/// same bytes with the same self-describing walk, so they are the same class.
+/// `CommandBatch` adds the isolate transport's own facts (an id, a destination,
+/// a reply); `good_net`'s message batch adds none at all.
 ///
-/// One call is a batch of one - a bare `await damage(...)` makes one - so
-/// there is a single path rather than a special case. Batching matters
-/// because the round trip, not the bytes, is what costs: fifty commands in
-/// one batch is one ring record, one wake-up and one reply, where fifty sends
-/// are fifty of each. Over a socket the same argument reads "one datagram
-/// instead of fifty".
+/// One call is a batch of one - a bare `await damage(...)` makes one - so there
+/// is a single path and no special case. Batching matters because the round
+/// trip, not the bytes, is what costs: fifty commands in one batch is one ring
+/// record, one wake-up and one reply, where fifty sends are fifty of each. Over
+/// a socket the same argument reads "one datagram instead of fifty".
 ///
 /// # Why the layout is not negotiable per batch
 ///
@@ -145,10 +143,10 @@ final class ParamBuffer {
 /// is a position in a declaration order both ends ran. That is what lets the
 /// receiver walk a buffer it did not build without a length prefix per
 /// record - and what makes a *disagreement* about that order detectable
-/// (see [adoptIncoming]) rather than silently misread. Across isolates the
-/// two copies run the same pass, so they cannot disagree; across machines
-/// they can, which is why `good_net` puts a hash of the declaration order in
-/// its handshake instead of trusting it.
+/// (see [adoptIncoming]) instead of silently misread. Across isolates the two
+/// copies run the same pass, so they cannot disagree; across machines they can,
+/// so `good_net` puts a hash of the declaration order in its handshake instead
+/// of trusting it.
 ///
 /// The head is the declaration's stride and is where every pointer resolves
 /// to. The tail is present only for a declaration that has a variable-length
@@ -181,7 +179,7 @@ class ParamBatch {
   /// builds the batch, and a write that would carry a record past it throws
   /// at that write instead of at a send half a frame later.
   ///
-  /// Per **record** rather than per batch, because a batch is splittable and
+  /// Per **record**, not per batch: a batch is splittable and
   /// a record is not. Every record starts with the declaration index that
   /// gives its length, so a carrier that cannot take a whole batch can take
   /// it in pieces cut at record boundaries ([startAt] is where those are),
@@ -240,7 +238,7 @@ class ParamBatch {
   /// front of it, which is what routes it back to the command or message that
   /// wrote it.
   ///
-  /// A method rather than something every consumer works out from
+  /// A method, not something every consumer works out from
   /// `callAt(i).maskOffset - headerBytes`: two places doing that arithmetic is
   /// two places to get it wrong when the header changes (the one-fact-one-place
   /// rule), and the header is this class's business anyway.
@@ -249,7 +247,7 @@ class ParamBatch {
   /// Where the record at [index] starts in [bytes], its two header bytes
   /// included - so `startAt(i)` up to `startAt(i + 1)` is exactly one record,
   /// and a batch too big for its carrier can be cut at those boundaries
-  /// rather than refused. See [maxRecordBytes].
+  /// instead of refused. See [maxRecordBytes].
   int startAt(int index) => _calls[index].maskOffset - _headerBytes;
 
   /// Empties this batch for reuse, keeping its buffer and its record handles.
@@ -349,11 +347,11 @@ class ParamBatch {
   /// Makes room for [count] bytes at the end of [call]'s tail, and answers
   /// where in [bytes] they start.
   ///
-  /// A record's tail sits directly behind its own head rather than in a pool
+  /// A record's tail sits directly behind its own head, not in a pool
   /// at the end of the batch, so that a record stays one contiguous run of
   /// bytes and [adoptIncoming] can keep walking forwards. The cost is that
   /// growing a record in the middle of a batch moves every record behind it.
-  /// That is a memmove and a handle fix-up rather than a refusal, because the
+  /// That is a memmove and a handle fix-up instead of a refusal, because the
   /// case it exists for is a handler writing a variable-length **result**
   /// into a call that is not the last one in its batch, and "send fewer calls
   /// per batch" is no kind of answer to that.
@@ -433,20 +431,19 @@ class ParamBatch {
   /// declaration that carries a tail keeps that tail's length in its own
   /// head. So the walk needs nothing the receiving side does not already
   /// have. It is also what makes a mismatched declaration list *detectable*
-  /// rather than silently misread - a record whose length does not add up
-  /// runs off the end of the buffer and says so.
+  /// instead of silently misread - a record whose length does not add up runs
+  /// off the end of the buffer and says so.
   ///
   /// Reads the records in `[offset, offset + length)` of [wire], defaulting
   /// to the whole of it.
   ///
   /// **Allocation-free on a repeat call**, which is what the network path
-  /// needs: [wire] is adopted rather than copied, the `ByteData` view over it
-  /// is kept when the same buffer comes back (a transport reuses one receive
-  /// buffer for the life of the session, so it always does), and the record
-  /// handles come from the pool [reset] maintains. A batch parsed this way is
-  /// a *view* - it is only valid until the transport reuses those bytes,
-  /// which is why every message handler reads what it needs inside the call
-  /// rather than keeping the record.
+  /// needs: [wire] is adopted, not copied, the `ByteData` view over it is kept
+  /// when the same buffer comes back (a transport reuses one receive buffer for
+  /// the life of the session, so it always does), and the record handles come
+  /// from the pool [reset] maintains. A batch parsed this way is a *view*, only
+  /// valid until the transport reuses those bytes, so read what you need inside
+  /// the call and never keep the record.
   void adoptIncoming(
     Uint8List wire,
     ParamLayouts layouts, [
@@ -618,7 +615,7 @@ final class CommandResults {
 /// declaration site is the answer, so there is no second thing to keep in
 /// sync with it.
 ///
-/// Lives here rather than beside the command shapes because it is transport
+/// Lives here and not beside the command shapes because it is transport
 /// vocabulary: a batch's [CommandBatch.destination] and a [CommandSender]'s
 /// routing decision are the only things that read it.
 @internal
@@ -658,14 +655,14 @@ abstract interface class CommandSender {
 /// What a batch needs to know about the declarations in it to walk received
 /// bytes: how wide each record is, and how many fields its mask covers.
 ///
-/// An interface rather than a direct reference to the registry that owns the
-/// declarations, because that registry lives a layer up and pointing back
-/// down at it would be a cycle. `CommandRegistry` implements it for
+/// An interface, not a direct reference to the registry that owns the
+/// declarations: that registry lives a layer up, and pointing back down at it
+/// would be a cycle. `CommandRegistry` implements it for
 /// commands; `good_net`'s message registry implements it for messages.
 abstract interface class ParamLayouts {
   /// The layout of the declaration at [index].
   ///
-  /// One method rather than a getter per fact. A walk needs the head stride,
+  /// One method, not a getter per fact. A walk needs the head stride,
   /// the field count and where the tail length is kept, and those three are
   /// one object's business already - handing back the [ParamLayout] keeps
   /// them where they are computed instead of copying each onto whatever
@@ -675,8 +672,8 @@ abstract interface class ParamLayouts {
 
 /// Declares one command's parameter and result fields.
 ///
-/// The vocabulary is `DataDescriptor`'s, on purpose: a game that knows how to
-/// lay out a component already knows how to lay out a command, and the two
+/// The vocabulary is `DataDescriptor`'s: a game that knows how to lay out a
+/// component already knows how to lay out a command, and the two
 /// really are the same problem - a bit-packed record.
 ///
 /// # Where it stops being the same problem
@@ -686,8 +683,8 @@ abstract interface class ParamLayouts {
 /// random access outright. A record is not reached that way. It is walked
 /// forwards from the front of a batch, and pre-built handles hold absolute
 /// offsets, so the stride is used as a record *length* and never as a
-/// multiplier. That is a weaker requirement, and this vocabulary used to
-/// answer the stronger one anyway.
+/// multiplier. That is the weaker requirement, and it is what lets a record
+/// carry a variable-length field where a row cannot.
 ///
 /// So a record has a fixed **head** and, if it declares a variable-length
 /// field, a **tail** behind it. [hasString] and [hasBytes] put an offset and
@@ -698,7 +695,7 @@ abstract interface class ParamLayouts {
 ///
 /// [hasFixedString] and [hasFixedBytes] are the other answer, kept because it
 /// is sometimes the right one: capacity reserved inline, no tail, and a value
-/// that does not fit is an error rather than a resize. Reach for them when
+/// that does not fit is an error instead of a resize. Reach for them when
 /// the field really does have a bound - a four-character country code, a
 /// 16-byte digest - and for anything else declare the length-free kind.
 abstract class ParamDescriptor {
@@ -745,7 +742,7 @@ abstract class ParamDescriptor {
   ///
   /// **Written once per record.** The tail is filled by appending, so a
   /// second value cannot take the first one's place without moving everything
-  /// declared behind it; a second write throws rather than silently
+  /// declared behind it; a second write throws instead of silently
   /// rearranging the record. Build the value, then write it.
   ParamPointer<String> hasString({Encoding encoding = utf8});
 
@@ -761,12 +758,11 @@ abstract class ParamDescriptor {
   /// Bytes of no declared length - the untyped twin of [hasString], and what
   /// a list of anything is packed into.
   ///
-  /// Reading one hands back a **view** onto the batch's own buffer rather
-  /// than a copy, which is what keeps a per-tick network message off the
-  /// allocator. A batch parsed off a wire is only valid until its transport
-  /// reuses those bytes, so read what you need inside the call rather than
-  /// keeping the list - the same rule `ParamBatch.adoptIncoming` states for
-  /// the record as a whole.
+  /// Reading one hands back a **view** onto the batch's own buffer, not a
+  /// copy, which is what keeps a per-tick network message off the allocator. A
+  /// batch parsed off a wire is only valid until its transport reuses those
+  /// bytes, so read what you need inside the call and never keep the list - the
+  /// same rule `ParamBatch.adoptIncoming` states for the record as a whole.
   ///
   /// **Written once per record**, for [hasString]'s reason.
   ParamPointer<Uint8List> hasBytes();
@@ -812,7 +808,7 @@ final class ParamLayout implements ParamDescriptor {
   /// little-endian uint32 - or -1 for a declaration with no variable-length
   /// field, which is what [hasTail] asks.
   ///
-  /// One number per record rather than a sum over the variable fields.
+  /// One number per record, not a sum over the variable fields.
   /// [ParamBatch.adoptIncoming] reads it to find where a record ends, and a
   /// walk that had to add fields up would first have to consult the
   /// written-mask to know which of them contributed anything.
@@ -860,8 +856,8 @@ final class ParamLayout implements ParamDescriptor {
   }
 
   /// The encoding's own name - `utf-8`, `iso-8859-1` - which is a value the
-  /// codec declares about itself rather than a Dart class name, so it is
-  /// stable under a rename and under `--obfuscate`. That is exactly the
+  /// codec declares about itself and not a Dart class name, so it is stable
+  /// under a rename and under `--obfuscate`. That is exactly the
   /// distinction #141 turned on.
   void _noteEncoding(Encoding encoding) {
     final name = encoding.name;
@@ -880,8 +876,8 @@ final class ParamLayout implements ParamDescriptor {
 
   /// Reserves a variable-length field's head - `[uint32 offset][uint32
   /// length]` - and answers where it starts. The offset is counted from the
-  /// start of the record's tail rather than from the batch, so it survives
-  /// the record being moved along by a neighbour that grew.
+  /// start of the record's tail, not from the batch, so it survives the record
+  /// being moved along by a neighbour that grew.
   int _declareTailSlots() {
     _declareTailSlot();
     final slot = _declare(32) >> 3;
@@ -1100,7 +1096,7 @@ final class _IntPointer extends _Pointer<int> {
 /// An `Entity` view over the `int64` field [ParamDescriptor.hasEntity]
 /// declares.
 ///
-/// Delegation rather than a fifth `_Pointer` subclass: the byte offset, the
+/// Delegation, not a fifth `_Pointer` subclass: the byte offset, the
 /// 64-bit load and store and the written-mask bookkeeping are already right
 /// in the [_IntPointer] this wraps, and a parallel implementation would be a
 /// second copy of them to keep in step (the one-fact-one-place rule). It is
@@ -1195,8 +1191,8 @@ abstract class _InlinePointer<T> extends _Pointer<T> {
 
   int _payloadAt(ParamBuffer call) => call.offset + lengthByte + 2;
 
-  /// Refuses a value the declaration cannot hold, rather than storing as much
-  /// of it as fits. A truncated string is a value the receiver has no way to
+  /// Refuses a value the declaration cannot hold instead of storing as much of
+  /// it as fits. A truncated string is a value the receiver has no way to
   /// tell from a short one, and it crosses an isolate or a socket before
   /// anyone finds out.
   void _store(ParamBuffer call, List<int> encoded, Object value) {

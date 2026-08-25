@@ -68,13 +68,13 @@ enum AssetAvailability {
   /// **Not a promise the bytes are intact.** Verifying that means reading and
   /// hashing everything, which is exactly what this check exists not to do.
   /// Corruption *within* a chunk surfaces at load: authenticated encryption
-  /// fails its tag rather than yielding garbage, and an unencrypted build
-  /// fails in the decoder.
+  /// fails its tag instead of yielding garbage, and an unencrypted build fails
+  /// in the decoder.
   present,
 
   /// Cannot be answered without I/O this check refuses to perform - a network
   /// source. Neither a pass nor a failure; a readiness report should say so
-  /// rather than counting it either way.
+  /// instead of counting it either way.
   unverifiable,
 }
 
@@ -126,11 +126,9 @@ abstract class AssetMount {
 
 /// The process's ordered mount table: **later shadows earlier**.
 ///
-/// A process-global rather than something threaded through, for the same
-/// reason the installed asset pack was one before it: [BundleSource] is a
-/// `const` value object created wherever a key is declared, so there is
-/// nothing to thread a table through. Mount at startup, before the first asset
-/// load.
+/// A process-global, not something threaded through: [BundleSource] is a
+/// `const` value object created wherever a key is declared, so there is nothing
+/// to thread a table through. Mount at startup, before the first asset load.
 ///
 /// The table has a floor it does not contain. [BundleSource] falls back to the
 /// app's own [AssetBundle] when no mount answers, because on Android the
@@ -177,7 +175,7 @@ abstract final class AssetMounts {
   /// Walked top down, so the last mount wins. This is a load-time path - once
   /// per asset, behind [Assets.load]'s in-flight dedupe and followed by an
   /// image or audio decode - so the walk is written for the shadowing rule to
-  /// be obvious rather than for the table to be traversed cheaply.
+  /// be obvious, not for the table to be traversed cheaply.
   static Future<Uint8List?> tryRead(String path) async {
     for (var i = _mounts.length - 1; i >= 0; i--) {
       final bytes = await _mounts[i].tryRead(path);
@@ -254,9 +252,8 @@ class BundleMount extends AssetMount {
 /// Identity is `(T, source)` - the payload type and where the bytes come from.
 /// Nothing about the *shape* or *value* of the decoded asset belongs here. An
 /// image's pixel size is discovered by decoding it ([AssetInfo]); how a sprite
-/// samples it is a property of the sprite. Both used to live on the key, and
-/// both were wrong: a build pipeline that repacks or recompresses an asset
-/// would have been rewriting its identity.
+/// samples it is a property of the sprite. Put either on the key and a build
+/// pipeline that repacks or recompresses an asset rewrites its identity.
 ///
 /// Plain, immutable, sendable data with a phantom type parameter - it makes
 /// nothing and fills nothing. That is what lets a key cross `Isolate.spawn`
@@ -276,8 +273,8 @@ class AssetKey<T> {
 
   /// The payload type this key names, as a runtime value.
   ///
-  /// Half of an asset's identity, and it has to come from the *instance*
-  /// rather than from a call site's type argument. A declared set is held as
+  /// Half of an asset's identity, and it has to come from the *instance*, not
+  /// from a call site's type argument. A declared set is held as
   /// `List<AssetKey<Object?>>` - one list, many payload types - so a
   /// `_identityOf<T>(key)` keyed on the static `T` would compute
   /// `(Object?, source)` there and `(Texture, source)` at the declare site,
@@ -287,8 +284,8 @@ class AssetKey<T> {
 
   /// Builds this key's handle at [address].
   ///
-  /// Lives here rather than in [Assets] for the same reason [payloadType]
-  /// does. `Assets.adoptAt` receives its key as `AssetKey<Object?>` - the
+  /// Lives here and not in [Assets] for the same reason [payloadType] does.
+  /// `Assets.adoptAt` receives its key as `AssetKey<Object?>` - the
   /// request that crossed the isolate boundary carries a heterogeneous list -
   /// so constructing `Asset<T>` there would bind `T` to `Object?` and produce
   /// a handle that `Assets.of<Texture>()` then refuses to unpack, because
@@ -317,9 +314,9 @@ class AssetKey<T> {
 
 /// Turns an [AssetKey]'s bytes into a [T], and releases it again.
 ///
-/// One per payload type, registered once with [AssetLoaders]. Everything that
-/// used to be per-key lives here instead, which is what leaves [AssetKey] as
-/// pure identity and lets a key be constructed without subclassing anything.
+/// One per payload type, registered once with [AssetLoaders]. Decoding lives
+/// here and not on the key, which is what leaves [AssetKey] as pure identity
+/// and lets a key be constructed without subclassing anything.
 ///
 /// Every member runs **only on the isolate that can decode** (the
 /// main/Flutter one), via [Assets.load]. A `dart:ui` call here is correct and
@@ -344,11 +341,10 @@ abstract class AssetLoader<T> {
   /// the ones that can never hold [value] itself**.
   ///
   /// This is how a fact discovered by decoding reaches an isolate that cannot
-  /// decode. An image's true pixel size is the reference case: it used to be
-  /// *declared* on the key and checked against the decode with an `assert`,
-  /// because the game isolate needed it and had no way to find out. Now it is
-  /// discovered on the copy that can and shipped to the copy that can't, so
-  /// there is no declaration left to be wrong.
+  /// decode. An image's true pixel size is the reference case: the game
+  /// isolate needs it and cannot find it out, so it is discovered on the copy
+  /// that can decode and shipped to the copy that cannot. Declare a size on the
+  /// key instead and you have a second copy of a fact that can be wrong.
   ///
   /// Null when nothing about the decoded asset is needed off-isolate.
   AssetInfo? describe(T value) => null;
@@ -369,7 +365,7 @@ abstract class AssetInfo {
 /// Register from library bring-up on the decoding isolate. Nothing on the
 /// declare path consults it - `declare` and `adoptAt` build an `Asset<T>`
 /// without a loader - so a game isolate that never registers anything is a
-/// supported configuration rather than a latent crash.
+/// supported configuration, not a latent crash.
 final class AssetLoaders {
   AssetLoaders._();
 
@@ -454,7 +450,7 @@ abstract interface class AssetLoaderRegistrar {
 /// but only *decoded* on the one with Flutter attached. The game isolate's
 /// copy holds the address and the key, forever, and that is exactly what it
 /// needs: it writes the address into component rows and never draws. Reading
-/// [value] there throws by name rather than null-dereferencing.
+/// [value] there throws by name instead of null-dereferencing.
 final class Asset<T> implements IntRepresentable {
   Asset._(this.key, this._address);
 
@@ -539,7 +535,7 @@ final class Asset<T> implements IntRepresentable {
 /// }
 /// ```
 ///
-/// The two types are deliberately distinct: `playerTexture` is an
+/// The two types are distinct: `playerTexture` is an
 /// `AssetKey<Texture>` (identity - which asset) and `texture` is an
 /// `Asset<Texture>` (the addressed handle a row can point at). So
 /// `sprite[e] = playerTexture` does not compile and `sprite[e] = texture`
@@ -584,14 +580,13 @@ final class Assets {
 
   /// Identity -> handle, for every currently declared asset.
   ///
-  /// Keyed on `(T, source)` rather than on the key *object*, and that is
-  /// load-bearing in two directions. It makes two separately-constructed keys
-  /// naming one file into one asset, which is what a bare
+  /// Keyed on `(T, source)`, not on the key *object*, and that is load-bearing
+  /// in two directions. It makes two separately-constructed keys naming one
+  /// file into one asset, which is what a bare
   /// `AssetKey<Texture>(BundleSource('x'))` written at two call sites needs.
   /// And it survives `Isolate.spawn`, which copies a key into an object equal
-  /// to nothing - the reason the old design had to make its adopt path
-  /// idempotent by address instead of by key. An enum key works here too, and
-  /// has to: Dart forbids an enum from overriding `==`.
+  /// to nothing. An enum key works here too, and has to: Dart forbids an enum
+  /// from overriding `==`.
   final Map<Object, Asset<Object?>> _byIdentity = <Object, Asset<Object?>>{};
 
   /// In-flight decodes, so two overlapping [load] calls for one asset await
@@ -603,7 +598,7 @@ final class Assets {
   /// not allocate a fresh view per field.
   final Map<Type, Object> _views = <Type, Object>{};
 
-  /// Non-generic on purpose - see [AssetKey.payloadType].
+  /// Non-generic - see [AssetKey.payloadType] for why.
   static Object _identityOf(AssetKey<Object?> key) =>
       (key.payloadType, key.source);
 
@@ -671,11 +666,10 @@ final class Assets {
   /// with the loaded handle. A no-op returning the same handle if it is
   /// already loaded.
   ///
-  /// Throws if [key] was never declared. That is deliberate rather than a
-  /// convenience lazy-declare: declaring here would assign an address on this
-  /// copy alone, and the two copies would silently disagree about every
-  /// address after it. Declare in a `describeAssets` pass, which both copies
-  /// run.
+  /// Throws if [key] was never declared, and does not lazily declare it for
+  /// you: declaring here would assign an address on this copy alone, and the
+  /// two copies would silently disagree about every address after it. Declare
+  /// in a `describeAssets` pass, which both copies run.
   ///
   /// Call this only on the isolate that can decode - `GameState.loadScene`
   /// already does exactly that for a scene's declared set.
@@ -718,7 +712,7 @@ final class Assets {
   /// [load], but naming the asset by its address instead of by its key - the
   /// form that crosses an isolate boundary.
   ///
-  /// Returns `null` if [address] names nothing declared, rather than throwing:
+  /// Returns `null` if [address] names nothing declared instead of throwing:
   /// the request crossed a boundary, so a stale address is a message-ordering
   /// question and the caller reports it back to the asker.
   @internal
@@ -738,8 +732,7 @@ final class Assets {
   ///
   /// [info] being null is meaningful and is *not* skipped: a loader that
   /// publishes nothing leaves [Asset.info] null, and re-loading an asset whose
-  /// loader stopped publishing should clear the stale value rather than keep
-  /// it.
+  /// loader stopped publishing clears the stale value instead of keeping it.
   ///
   @internal
   void adoptInfo(int address, AssetInfo? info) {
@@ -752,10 +745,10 @@ final class Assets {
   /// needs to supply it without standing up a second isolate and a real decode,
   /// and this is the same call the real arrangement makes.
   ///
-  /// A separate member rather than a second annotation on [adoptInfo], because
+  /// A separate member, not a second annotation on [adoptInfo]:
   /// `@visibleForTesting` there would forbid the one production call site that
-  /// exists (`GameRuntime`'s load-completion handler) - the two audiences need
-  /// two names.
+  /// exists (`GameRuntime`'s load-completion handler), so the two audiences
+  /// need two names.
   @visibleForTesting
   void publishInfoForTesting(int address, AssetInfo? info) =>
       adoptInfo(address, info);
@@ -778,7 +771,7 @@ final class Assets {
       _byIdentity[_identityOf(key)] as Asset<T>?;
 
   /// The handle at [address], or null - what a cross-isolate message resolves
-  /// against, since it carries an address rather than a key.
+  /// against, since it carries an address and not a key.
   Asset<Object?>? tryGetAt(int address) => _at(address);
 
   /// Unloads [key]: frees its address (any `DataPointer` row still holding it
@@ -1032,11 +1025,10 @@ class MemorySource extends AssetSource {
 
   /// What identifies this source, and what diagnostics call it.
   ///
-  /// **Identity is the name, not the bytes**, deliberately: an asset's
-  /// identity is consulted on every declare, and content-hashing a buffer
-  /// there would be a real cost for no benefit. Two `MemorySource`s with the
-  /// same name are the same asset even if their bytes differ - give them
-  /// distinct names.
+  /// **Identity is the name, not the bytes.** An asset's identity is consulted
+  /// on every declare, and content-hashing a buffer there would be a real cost
+  /// for no benefit. Two `MemorySource`s with the same name are the same asset
+  /// even if their bytes differ - give them distinct names.
   final String name;
 
   @override
