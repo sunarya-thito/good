@@ -1838,6 +1838,42 @@ void main() {
     // has returned. The error the test was checking for is now unreachable by
     // construction rather than diagnosed at runtime.
 
+    test('stopping fails a batch still queued for a tick window', () async {
+      final game = await _game(_TestGame());
+      // Sent and deliberately not advanced: a game-destination batch waits
+      // for the tick window whichever way the game was booted, so this is
+      // sitting in the transport's inbox holding the only completer that
+      // could answer it.
+      final pending = game.spawnUnit();
+      // Attached *before* stop(), so the error has a listener the moment it
+      // is delivered rather than being reported as unhandled.
+      final settled = pending.then<Object?>(
+        (entity) => entity,
+        onError: (Object error) => error,
+      );
+
+      await run.stop();
+
+      // Never a bare `await pending`. That is what hid this: an abandoned
+      // batch neither completes nor errors, so awaiting it hangs the suite
+      // for the whole test timeout instead of failing this line.
+      final outcome = await settled.timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => 'never completed',
+      );
+      expect(
+        outcome,
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('was run'),
+        ),
+        reason:
+            'a queued batch never ran, so it must be failed with that and '
+            'not with the in-flight message about a lost reply',
+      );
+    });
+
     test('a scene refuses a prefab another scene registered', () async {
       final game = await _game(_TestGame());
       final scene = _state(game).singleScene<_TestScene>();

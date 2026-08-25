@@ -333,7 +333,8 @@ final class CommandTransport implements CommandSender {
     return ring.tryWrite(recordType, Uint8List.sublistView(scratch, 0, needed));
   }
 
-  /// Drops the rings and fails everything still in flight.
+  /// Drops the rings and fails every batch still waiting - queued to run on
+  /// this copy, or in flight to the other one.
   ///
   /// Called from `Game.stop()`. A batch whose answer was going to arrive over
   /// memory that has just been freed is never going to arrive, and an
@@ -342,7 +343,31 @@ final class CommandTransport implements CommandSender {
     _shutdown = true;
     outbound = null;
     inbound = null;
+    // The queue goes first, in the order a caller would have been answered
+    // in. A batch sitting here was waiting for a tick window that is not
+    // coming, and on an inline run - every web build, every test, every
+    // headless host - a game-destination batch waits here holding the only
+    // completer that could ever answer it. Clearing the list without failing
+    // them left an `await` that hung forever, which is the thing this method
+    // exists to rule out.
+    //
+    // A batch that arrived over a ring has no local completer: its caller is
+    // the other copy, waiting in *its* `_pending`, and the route back is the
+    // ring this just dropped. That copy's own shutdown is what fails it.
+    final queued = _inbox.toList(growable: false);
     _inbox.clear();
+    for (var i = 0; i < queued.length; i++) {
+      // A distinct message from the in-flight one below, because it says
+      // something different: this batch never ran, so nothing it asked for
+      // happened. An in-flight one may well have run on the other side with
+      // only the reply lost.
+      queued[i].local?.completeError(
+        StateError(
+          'the game stopped before command batch #${queued[i].batch.id} '
+          'was run.',
+        ),
+      );
+    }
     if (_pending.isEmpty) return;
     final abandoned = _pending.values.toList(growable: false);
     _pending.clear();

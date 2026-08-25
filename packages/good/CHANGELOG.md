@@ -191,6 +191,15 @@
 
 ### Fixed
 
+* **`Game.stop()` fails a command batch that was still queued, instead of
+  dropping it.** A game-destination batch waits for the next tick window, so
+  one sent and not yet ticked sits in the transport's inbox — and stopping
+  cleared that list without telling anyone. The `await` on such a batch never
+  returned and never threw, which on an inline run is every web build, every
+  test and every headless host. It now completes with a `StateError` saying
+  the batch never ran, distinct from the one an in-flight batch gets, which
+  says its reply was lost (#167).
+
 * **The two errors printed when a system is switched off name a method that
   exists.** Both said `Game.enableSystem`, which moved to `GameState` and left
   no forwarder; one of them is what `FlutterError.reportError` prints in a
