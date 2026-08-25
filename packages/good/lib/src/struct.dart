@@ -379,10 +379,6 @@ extension type const Entity(int value) implements int {
   ///
   /// See [Accessor], which is what this returns and where a component's
   /// helpers live.
-  ///
-  /// `call` rather than `operator []`: an operator cannot be generic, and an
-  /// operator's return type cannot depend on its argument, so
-  /// `entity[Transform3D]` could only ever be typed `Null`.
   @pragma('vm:prefer-inline')
   Accessor<T> call<T extends Component>() => Accessor<T>(this);
 }

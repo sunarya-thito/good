@@ -252,9 +252,6 @@ enemy<Health>().damage(25);
 if (enemy<Health>().isDead) enemy.destroy();
 ```
 
-That is a call and not an index, because an operator cannot be generic:
-`enemy[Health]` could only ever be typed `Null`.
-
 The convention is the whole of it — name the extension `<Component>Accessor`
 and hang it on `Accessor<YourComponent>`.
 

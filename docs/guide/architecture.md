@@ -197,11 +197,10 @@ Every read of a column happens on the game isolate. Main gets a value by having
 the game isolate publish it — a [state channel](flutter-bridge.md#state-channels)
 for a number, a buffer for bulk per-frame data such as the 2D draw list.
 
-Main did once resolve `Entity` handles itself, off pages the game isolate
-announced as it allocated them. Sharing memory was never the problem; keeping
-two page lists in step was, and so was freeing a page main might still be
-reading. Both went away with the reader, and `Entity.get` on this copy now
-throws rather than reading a page list that will always be empty.
+Sharing the memory is not the hard part. Keeping a second page list on main in
+step with the game isolate's is, and so is freeing a page main might still be
+reading. `Entity.get` on this copy throws instead of reading a page list that
+will always be empty.
 
 ---
 

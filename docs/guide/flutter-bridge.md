@@ -357,10 +357,9 @@ two drains 16 ms apart, which is what `commandBufferBytes` (64 KiB by default)
 sizes.
 
 !!! note "There is no built-in spawn command"
-    `SpawnEntityCommand` was deleted instead of shipped: it named a prefab by
-    `archetypeId`, which is a game-isolate identifier the Flutter isolate has no
-    way to see. Declare your own, in terms that mean something on both sides —
-    an enum of spawnable kinds, say.
+    One would have to name a prefab by `archetypeId`, which is a game-isolate
+    identifier the Flutter isolate has no way to see. Declare your own, in terms
+    that mean something on both sides — an enum of spawnable kinds, say.
 
 ## State channels
 
@@ -418,7 +417,7 @@ That rules out four hosts, each for its own reason:
 - **`GameState`** is built on the game isolate, after the allocation it would
   have to be part of.
 - **`GameSystem`** goes with the systems to the game isolate for the same
-  reason. It used to have a `describeState` and lost it.
+  reason.
 - **`SceneStruct`** is loaded after boot, possibly several times, so it could
   never hold a stable index.
 - **`Component`** comes and goes with the scene, for the same reason.
@@ -439,12 +438,10 @@ holds no component pages, so `Entity.get` there throws and tells you to publish
 the value through a channel instead. Every read of a column happens on the
 game isolate.
 
-That is not a gap waiting to be filled. Main did once adopt each page the game
-isolate announced and resolve handles itself; what it cost was two page lists
-that had to stay in step and a handshake before any page could be freed, since
-main might still be reading it — and use-after-free on shared memory does not
-report, it returns plausible numbers. The reader went and all of that went with
-it.
+That is not a gap waiting to be filled. Resolving handles on main costs a second
+page list to keep in step with the game isolate's, and a handshake before any
+page can be freed, since main might still be reading it — and use-after-free on
+shared memory does not report, it returns plausible numbers.
 
 An `Entity` still crosses perfectly well as a *value*, which is what
 `hasEntity` is for:
