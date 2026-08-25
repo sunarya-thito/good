@@ -1,10 +1,12 @@
 import 'package:meta/meta.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector2;
 
+import 'package:good/src/input/input_axis.dart';
 import 'package:good/src/input/input_key.dart';
 import 'package:good/src/input/input_state.dart';
 
-/// How raw held-or-not key bits become one action's value.
+/// How the raw device state - held-or-not key bits, and the axis floats
+/// beside them - becomes one action's value.
 ///
 /// A binding is an **immutable value type**: `const`-constructible, `==` by
 /// content, `copyWith`-able and serializable. That is what makes a keybinding
@@ -238,16 +240,170 @@ final class Vec2Binding extends InputBinding<Vector2> {
       'right: ${right.name})';
 }
 
-// TODO: PressureBinding extends InputBinding<double>
+/// One axis, one double: how far [axis] is displaced this tick.
+///
+/// ```dart
+/// throttle = input.has<double>(const AxisBinding(.padRightTrigger), 0.0);
+/// ```
+///
+/// The analog counterpart of [TriggerBinding], and the difference between them
+/// is the whole point: a trigger bound as a bit is pulled or not, and a trigger
+/// bound as an axis is pulled *this far*. Both readings of the same physical
+/// control are available at once, because the collector writes both.
+///
+/// # What it produces
+///
+/// -1..1 with **0 at rest** for a stick axis, 0..1 for a trigger, and whatever
+/// the device reported in between - no deadzone, no curve, no clamp. A resting
+/// stick with a little drift therefore reads a little off zero, which is a
+/// real fact about the hardware rather than something to hide here: shaping is
+/// the game's, and `GamepadCollector.stickDeadzone` still shapes the *bit*
+/// reading it always did.
+///
+/// # There is no default for `double`
+///
+/// `Game.describeInputs` registers a type-level default for `bool` and
+/// `Vector2` and not for `double`, so an action bound to this needs one of its
+/// own - the `0.0` above - or a `hasDefaultValue<double>(0)` beside it.
+/// Reading one that has neither throws, which is the engine refusing to guess
+/// rather than an omission: for a game, zero is a real value.
+final class AxisBinding extends InputBinding<double> {
+  const AxisBinding(this.axis);
 
-/// Pulls a nested key map out of a decoded JSON object with a diagnostic that
-/// names the field, rather than letting a bare cast fail with the type alone.
+  final InputAxis axis;
+
+  @override
+  double createStorage() => 0;
+
+  @override
+  double resolve(InputState state, double storage) => state.axis(axis);
+
+  /// Held whenever the axis is off rest at all - so `pressed` fires when the
+  /// player starts pulling and `released` when they let go.
+  ///
+  /// "At all" and not "past some threshold" because the threshold is the open
+  /// question in #192 and this is not the place to answer it. It has a real
+  /// consequence worth knowing: on a pad whose stick rests a hair off centre,
+  /// an action bound to a stick axis reads as held forever. Bind the
+  /// thresholded `*Stick*` key, or a button, when it is the edge you want.
+  @override
+  bool isActuated(InputState state) => state.axis(axis) != 0;
+
+  AxisBinding copyWith({InputAxis? axis}) => AxisBinding(axis ?? this.axis);
+
+  @override
+  Map<String, Object?> toJson() => <String, Object?>{'axis': axis.toJson()};
+
+  static AxisBinding fromJson(Map<String, Object?> json) =>
+      AxisBinding(InputAxis.fromJson(_map(json, 'axis')));
+
+  @override
+  bool operator ==(Object other) => other is AxisBinding && other.axis == axis;
+
+  @override
+  int get hashCode => Object.hash(AxisBinding, axis.id);
+
+  @override
+  String toString() => 'AxisBinding(${axis.name})';
+}
+
+/// Two axes composed into one vector: a stick, read the way a stick actually
+/// moves.
+///
+/// ```dart
+/// move = input.has<Vector2>(
+///   const StickBinding(x: .padLeftStickX, y: .padLeftStickY),
+/// );
+/// ```
+///
+/// The analog counterpart of [Vec2Binding], and what #192 exists to add. That
+/// one composes four held-or-not keys, so a stick half-pushed reads exactly
+/// like a stick slammed; this one reads the two floats the device actually
+/// reported, so a stick half-pushed reads about half. Both remain available on
+/// the same physical stick - the collector writes the thresholded bits and the
+/// axes from one event - and a game picks its reading by picking its binding.
+///
+/// # What it produces
+///
+/// Each component is its axis, unshaped: -1..1 with **0 at rest**, +1 up and
+/// +1 right, which is the convention [Vec2Binding] already follows and the one
+/// the world uses, so `transformOffsetY += move.value.y * speed` moves the
+/// thing the way the player pushed.
+///
+/// Not normalized, for the reason [Vec2Binding] is not: a corner-pushed stick
+/// on hardware with a square gate is longer than 1, a top-down walker wants
+/// that clamped and a twin-stick shooter feeding an acceleration does not, and
+/// the game is the one that knows which.
+///
+/// # It does not care what moved it
+///
+/// An [InputAxis] is a float in the raw block, and a widget writing through
+/// `InputDevice.setVirtualAxis` fills one in exactly as `GamepadCollector`
+/// does for a pad. So the on-screen joystick of #191 and a real thumbstick
+/// reach this the same way, and swapping one for the other is a change of
+/// which axes the binding names.
+final class StickBinding extends InputBinding<Vector2> {
+  const StickBinding({required this.x, required this.y});
+
+  final InputAxis x;
+  final InputAxis y;
+
+  @override
+  Vector2 createStorage() => Vector2.zero();
+
+  @override
+  Vector2 resolve(InputState state, Vector2 storage) {
+    // In place, into the action's own vector, for the reason Vec2Binding does
+    // it: a fresh Vector2 here is one heap object per action per tick.
+    storage.setValues(state.axis(x), state.axis(y));
+    return storage;
+  }
+
+  /// Held whenever *either* axis is off rest - so `pressed` fires when the
+  /// player starts pushing and `released` when the stick comes back to centre,
+  /// not on every change of direction, which is the edge [Vec2Binding] gives
+  /// for the same reason.
+  ///
+  /// The caveat on [AxisBinding.isActuated] applies here too: with no
+  /// threshold, a stick that rests a hair off centre reads as held forever.
+  @override
+  bool isActuated(InputState state) => state.axis(x) != 0 || state.axis(y) != 0;
+
+  StickBinding copyWith({InputAxis? x, InputAxis? y}) =>
+      StickBinding(x: x ?? this.x, y: y ?? this.y);
+
+  @override
+  Map<String, Object?> toJson() => <String, Object?>{
+    'x': x.toJson(),
+    'y': y.toJson(),
+  };
+
+  static StickBinding fromJson(Map<String, Object?> json) => StickBinding(
+    x: InputAxis.fromJson(_map(json, 'x')),
+    y: InputAxis.fromJson(_map(json, 'y')),
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is StickBinding && other.x == x && other.y == y;
+
+  @override
+  int get hashCode => Object.hash(StickBinding, x.id, y.id);
+
+  @override
+  String toString() => 'StickBinding(x: ${x.name}, y: ${y.name})';
+}
+
+/// Pulls a nested key or axis map out of a decoded JSON object with a
+/// diagnostic that names the field, rather than letting a bare cast fail with
+/// the type alone.
 Map<String, Object?> _map(Map<String, Object?> json, String field) {
   final value = json[field];
   if (value is Map<String, Object?>) return value;
   if (value is Map) return value.cast<String, Object?>();
   throw FormatException(
-    'expected "$field" to hold a serialized InputKey object, found $value',
+    'expected "$field" to hold a serialized InputKey or InputAxis object, '
+    'found $value',
     json,
   );
 }

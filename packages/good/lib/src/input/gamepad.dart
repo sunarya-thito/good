@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:gamepads/gamepads.dart' as pads;
 import 'package:meta/meta.dart';
 
+import 'package:good/src/input/input_axis.dart';
 import 'package:good/src/input/input_key.dart';
 import 'package:good/src/input/input_state.dart';
 
@@ -35,13 +36,19 @@ import 'package:good/src/input/input_state.dart';
 /// the plugin cannot normalise are dropped by the plugin before this sees
 /// them.
 ///
-/// # Analog is thresholded, not carried
+/// # Analog is carried *and* thresholded
 ///
-/// A stick becomes four bits and a trigger becomes one, at [stickDeadzone] /
-/// [triggerThreshold]. That is lossy on purpose: the whole binding vocabulary
-/// is held/not-held, so this is what lets `Vec2Binding(up: .padLeftStickUp,
-/// ...)` work at all. A game that wants proportional movement needs an analog
-/// binding type, which does not exist yet.
+/// Every axis event writes twice: the value itself, into the axis block
+/// ([InputAxis]), and the held/not-held bits derived from it at
+/// [stickDeadzone] / [triggerThreshold]. Neither reading is the real one -
+/// `StickBinding(x: .padLeftStickX, y: .padLeftStickY)` reads a stick
+/// proportionally, `Vec2Binding(up: .padLeftStickUp, ...)` reads the same
+/// stick as a d-pad, and the game says which it wants by which binding it
+/// declares.
+///
+/// The deadzone applies to the bits only. What reaches the axis block is what
+/// the device reported, unshaped, because which shape an analog value wants is
+/// the game's question and not this class's.
 final class GamepadCollector {
   @internal
   GamepadCollector(this._device);
@@ -145,14 +152,20 @@ final class GamepadCollector {
   /// controller" and then show which one answered.
   int? slotOf(String gamepadId) => _slots[gamepadId];
 
-  /// Clears every bit [slot] owns, and forgets whichever pad held it.
+  /// Clears every bit [slot] owns, returns every axis it owns to rest, and
+  /// forgets whichever pad held it.
   ///
   /// The disconnect path: the platform stream reports no disconnect events,
   /// so a game that cares polls `Gamepads.list()` and calls this. Without it
-  /// a pad unplugged mid-jump leaves the jump button held forever.
+  /// a pad unplugged mid-jump leaves the jump button held forever - and a pad
+  /// unplugged mid-push leaves its stick pushed forever, which is the same
+  /// bug wearing the analog hat.
   void releaseSlot(int slot) {
     for (var i = 0; i < GamepadButton.values.length; i++) {
       _device.setGamepadButton(slot, GamepadButton.values[i], false);
+    }
+    for (var i = 0; i < GamepadAnalog.values.length; i++) {
+      _device.setGamepadAxis(slot, GamepadAnalog.values[i], 0);
     }
     _slots.removeWhere((_, value) => value == slot);
   }
@@ -160,6 +173,7 @@ final class GamepadCollector {
   void _applyAxis(int slot, pads.GamepadAxis axis, double value) {
     switch (axis) {
       case pads.GamepadAxis.leftStickX:
+        _device.setGamepadAxis(slot, GamepadAnalog.leftStickX, value);
         _applyStick(
           slot,
           value,
@@ -168,9 +182,11 @@ final class GamepadCollector {
         );
       case pads.GamepadAxis.leftStickY:
         // The plugin reports +1 as up, and so does this vocabulary - and so,
-        // now, does the world. Which of the two bits carries which axis sign
-        // is still a `Vec2Binding` question and not this one; all this does
-        // is name the bit.
+        // now, does the world. So the value goes into the axis block with its
+        // sign untouched, and `StickBinding(y: .padLeftStickY)` moves a thing
+        // the way the stick was pushed. Which of the two *bits* carries which
+        // sign is still a `Vec2Binding` question and not this one.
+        _device.setGamepadAxis(slot, GamepadAnalog.leftStickY, value);
         _applyStick(
           slot,
           value,
@@ -178,6 +194,7 @@ final class GamepadCollector {
           GamepadButton.leftStickUp,
         );
       case pads.GamepadAxis.rightStickX:
+        _device.setGamepadAxis(slot, GamepadAnalog.rightStickX, value);
         _applyStick(
           slot,
           value,
@@ -185,6 +202,7 @@ final class GamepadCollector {
           GamepadButton.rightStickRight,
         );
       case pads.GamepadAxis.rightStickY:
+        _device.setGamepadAxis(slot, GamepadAnalog.rightStickY, value);
         _applyStick(
           slot,
           value,
@@ -192,12 +210,14 @@ final class GamepadCollector {
           GamepadButton.rightStickUp,
         );
       case pads.GamepadAxis.leftTrigger:
+        _device.setGamepadAxis(slot, GamepadAnalog.leftTrigger, value);
         _device.setGamepadButton(
           slot,
           GamepadButton.leftTrigger,
           value >= triggerThreshold,
         );
       case pads.GamepadAxis.rightTrigger:
+        _device.setGamepadAxis(slot, GamepadAnalog.rightTrigger, value);
         _device.setGamepadButton(
           slot,
           GamepadButton.rightTrigger,

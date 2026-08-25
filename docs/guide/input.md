@@ -167,11 +167,47 @@ movement = descriptor.has<Vector2>(
     player the way the key is named. A game working in a y-down space swaps the
     two keys in the binding.
 
-!!! note "Analog sticks are thresholded"
+!!! note "Analog sticks are thresholded here"
     The `*Stick*` directions are not buttons on any real pad — they are analog
     axes thresholded into held/not-held bits by the gamepad collector, which is
     what lets a `Vec2Binding` compose them at all. A stick half-pushed reads
-    like a stick slammed.
+    like a stick slammed. Bind the stick's *axes* instead when you want the
+    displacement — `StickBinding`, below.
+
+### `StickBinding` — two axes composed into a vector
+
+```dart
+movement = descriptor.has<Vector2>(
+  const StickBinding(x: InputAxis.padLeftStickX, y: InputAxis.padLeftStickY),
+);
+```
+
+The proportional reading of the same stick: a stick half-pushed gives a vector
+half as long, where `Vec2Binding` over the `*Stick*` keys gives a full one.
+Components run −1..1 with **0 at rest**, `+1` up and `+1` right, the same
+convention `Vec2Binding` follows.
+
+Both readings of one physical stick are live at once — the collector writes the
+axes and the thresholded bits from a single event — so which one a game gets is
+which binding it declares. Nothing is normalized and no deadzone is applied:
+`GamepadCollector.stickDeadzone` shapes the bits and leaves the axes alone,
+because how an analog value should be shaped is the game's question.
+
+### `AxisBinding` — one axis as a `double`
+
+```dart
+throttle = descriptor.has<double>(const AxisBinding(InputAxis.padRightTrigger), 0.0);
+```
+
+A trigger bound as a `TriggerBinding` is pulled or not; bound as an axis it is
+pulled *this far*, 0..1. The default is spelled out because there is no
+type-level default for `double` — see [Defaults](#defaults).
+
+!!! warning "There is no threshold in either analog binding"
+    Both are *actuated*, and so fire `pressed`/`released`, whenever the value
+    is off rest at all. On a pad whose stick rests a hair off centre that is
+    always. Bind the thresholded `*Stick*` key, or a button, when the edge is
+    what you want.
 
 ### `MouseBinding` — pointer position
 
@@ -207,6 +243,25 @@ relative to a pointer.
     The cost: `InputKey.q.name` describes the US-layout label,
     so a rebinding screen showing it to an AZERTY user names the key their
     keyboard prints "a" on.
+
+## Axes
+
+`InputAxis` is the second vocabulary, over the same block: a key is a bit and an
+axis is a `float32`, so nothing that indexes bits could carry a half-pushed
+stick. It carries every axis as a `const`, and slots work exactly as they do for
+keys:
+
+- gamepad: `padLeftStickX`, `padLeftStickY`, `padRightStickX`, `padRightStickY`,
+  `padLeftTrigger`, `padRightTrigger` — and per-slot by calling one,
+  `InputAxis.padLeftStickX(2)`. Slot 0 is "any connected pad", and for an axis
+  that means whichever seat is pushed furthest from rest.
+- on-screen: `virtualLeftStickX`, `virtualLeftStickY`, `virtualRightStickX`,
+  `virtualRightStickY`, which nothing in the engine writes.
+
+A widget drives the virtual ones through `InputDevice.setVirtualAxis`, and a
+binding cannot tell which kind of source filled a float in. So an on-screen
+joystick and a real thumbstick reach a `StickBinding` the same way, and swapping
+one for the other is a change of which axes it names.
 
 ## Defaults
 

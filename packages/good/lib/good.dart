@@ -99,6 +99,7 @@ export 'package:vector_math/vector_math_64.dart' show Vector2;
 // reason to name it.
 export 'src/input.dart' hide InputRegistry;
 export 'src/input/gamepad.dart';
+export 'src/input/input_axis.dart';
 export 'src/input/input_binding.dart';
 export 'src/input/input_key.dart';
 export 'src/input/input_state.dart';

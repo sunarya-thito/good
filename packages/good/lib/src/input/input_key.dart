@@ -44,10 +44,11 @@ import 'package:flutter/services.dart' show PhysicalKeyboardKey;
 /// Gamepads landed exactly as this doc predicted they would: a [GamepadKey]
 /// subclass, its values appended to [all] after the mouse buttons. No
 /// existing id moved, no binding type changed, and `InputBinding.isActuated`
-/// still asks nothing but "is this key down". Analog *axes* remain a
-/// different shape (they are not a held/not-held bit); the sticks reach this
-/// vocabulary through a deadzone rather than by being modelled honestly -
-/// see [GamepadButton].
+/// still asks nothing but "is this key down". Analog *axes* are a different
+/// shape - they are not a held/not-held bit - so they did not widen this
+/// class either: they are `InputAxis`, a second vocabulary over the float
+/// section of the same block. A stick reaches both, through a deadzone here
+/// (see [GamepadButton]) and unshaped there.
 sealed class InputKey {
   const InputKey(this.id, this.name);
 
@@ -796,8 +797,14 @@ final class MouseButtonKey extends InputKey {
 /// `Vec2Binding(up: .padLeftStickUp, ...)` work at all - a `Vec2Binding`
 /// composes four bits, and an analog axis is not a bit. It is a deliberate
 /// simplification and a lossy one: a stick half-pushed reads exactly like a
-/// stick slammed, so a game that wants real analog movement needs an analog
-/// binding type, which is a follow-up and not this.
+/// stick slammed.
+///
+/// It is no longer the only reading available. The same events also write the
+/// axis themselves, in the `InputAxis` vocabulary beside this one, and
+/// `StickBinding(x: .padLeftStickX, y: .padLeftStickY)` reads a stick
+/// proportionally. These bits stay exactly as they were - a d-pad is what a
+/// lot of games want out of a stick, and nothing that binds them has to
+/// change.
 ///
 /// The order here is the id order within a slot - see [GamepadKey].
 /// A class rather than an `enum`, for one concrete reason: [GamepadKey]

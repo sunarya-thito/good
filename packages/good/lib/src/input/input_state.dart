@@ -8,6 +8,7 @@ import 'package:flutter/services.dart'
 import 'package:meta/meta.dart';
 
 import 'package:good/src/camera_view.dart';
+import 'package:good/src/input/input_axis.dart';
 import 'package:good/src/input/input_key.dart';
 import 'package:good/src/triple_buffer.dart';
 
@@ -42,10 +43,11 @@ import 'package:good/src/triple_buffer.dart';
 /// asking for a torn read: a key spuriously up for one tick, or a pointer X
 /// from one event paired with a Y from the next.
 ///
-/// The copy is 40 bytes - 16 of key bits plus six `float32`s - so the window
-/// in which the writer could interfere shrinks from a whole tick to a couple
-/// of dozen loads. It also makes the coherence promise above actually
-/// *guaranteed*, rather than true only while the margin happens to hold.
+/// The copy is 156 bytes - 16 of key bits, seven `float32`s of pointer, and
+/// one more per [InputAxis] - so the window in which the writer could
+/// interfere shrinks from a whole tick to a hundred-odd loads. It also makes
+/// the coherence promise above actually *guaranteed*, rather than true only
+/// while the margin happens to hold.
 ///
 /// [isDown] is a bounds-free index, a shift and a mask against a plain
 /// `Uint8List`: no allocation, no map, nothing per call (the no-allocation,
@@ -64,6 +66,11 @@ final class InputState {
   /// arrays have no aliasing to reason about and nothing that a deep copy
   /// across `Isolate.spawn` could reattach to the wrong storage.
   final Float32List _floats = Float32List(7);
+
+  /// This tick's axis block - one `float32` per [InputAxis], copied by
+  /// [attach] alongside the other two. Its own array for the same reason
+  /// [_floats] is: nothing here aliases anything else.
+  final Float32List _axes = Float32List(InputAxis.count);
 
   /// Whether anything has ever been published - false on a game with no
   /// widget attached, or for the handful of ticks before the first device
@@ -89,8 +96,18 @@ final class InputState {
   /// there. See `CursorPosition`.
   static final int _pointerOffset = bitBlockBytes;
 
+  /// Where the axis block starts - immediately after the pointer's seven
+  /// floats, one `float32` per [InputAxis].
+  ///
+  /// Analog values live here rather than among the bits because that is the
+  /// whole point: a bit cannot carry a stick half-pushed. The section costs
+  /// [InputAxis.count] floats whether anything is plugged in or not, for the
+  /// same reason a gamepad slot costs its bits either way - the block is a
+  /// fixed layout both isolates agree on, not a message.
+  static final int _axisOffset = bitBlockBytes + 28;
+
   /// Bytes in the whole block.
-  static final int byteLength = bitBlockBytes + 28;
+  static final int byteLength = _axisOffset + InputAxis.count * 4;
 
   /// Whether [key] is currently held.
   bool isDown(InputKey key) {
@@ -98,6 +115,19 @@ final class InputState {
     final id = key.id;
     return _bits[id >> 3] & (1 << (id & 7)) != 0;
   }
+
+  /// How far [axis] is displaced, -1..1 with **0 at rest** (0..1 for a
+  /// trigger, which has no negative half).
+  ///
+  /// The counterpart of [isDown], and the whole reason the axis block exists:
+  /// a stick half-pushed reads about a half here, where the thresholded
+  /// `*Stick*` bits read exactly the same as a stick slammed.
+  ///
+  /// Unshaped - whatever the device reported, with no deadzone applied. Zero
+  /// before anything has been published, which is right for the same reason
+  /// every key reads up: nothing is being pushed, because there is nothing to
+  /// push it with.
+  double axis(InputAxis axis) => _attached ? _axes[axis.id] : 0;
 
   double _float(int index) => _attached ? _floats[index] : 0;
 
@@ -151,6 +181,10 @@ final class InputState {
     final floats = (slot + _pointerOffset).cast<Float>();
     for (var i = 0; i < _floats.length; i++) {
       _floats[i] = floats[i];
+    }
+    final axes = (slot + _axisOffset).cast<Float>();
+    for (var i = 0; i < _axes.length; i++) {
+      _axes[i] = axes[i];
     }
     _attached = true;
   }
@@ -232,6 +266,14 @@ final class InputDevice {
     7,
   );
 
+  /// The axis block of [_mirror], typed - a view over the same bytes for the
+  /// same reason [_mirrorFloats] is one.
+  late final Float32List _mirrorAxes = Float32List.view(
+    _mirror.buffer,
+    InputState._axisOffset,
+    InputAxis.count,
+  );
+
   // One cached view per slot, built once. `Pointer.asTypedList` allocates,
   // so doing it per publish would be a heap object per keystroke - the same
   // reason `_StateChannelBase` caches its slot views.
@@ -272,7 +314,8 @@ final class InputDevice {
   }
 
   /// Releases everything at once - every key, every mouse button, every
-  /// gamepad bit - and publishes if that changed anything.
+  /// gamepad bit, every axis back to rest - and publishes if that changed
+  /// anything.
   ///
   /// An OS that takes focus away sends no key-up. The last thing this heard
   /// was the press, and a latest-value block goes on saying so forever, so
@@ -308,6 +351,13 @@ final class InputDevice {
       if (_mirror[i] == 0) continue;
       _mirror[i] = 0;
       changed = true;
+    }
+    // Every axis back to rest, by the same argument the bits go up by: a
+    // stick that was pushed when the window went away is not being pushed any
+    // more, and a latest-value block goes on saying it is forever. This is
+    // the *hold* half of the block, unlike the pointer below.
+    for (var i = 0; i < _mirrorAxes.length; i++) {
+      if (_setAxis(i, 0)) changed = true;
     }
     if (changed) _publish();
   }
@@ -409,6 +459,63 @@ final class InputDevice {
 
   bool _isBitSet(int id) => _mirror[id >> 3] & (1 << (id & 7)) != 0;
 
+  /// Sets one analog control on one player slot, and publishes if that changed
+  /// anything.
+  ///
+  /// The axis counterpart of [setGamepadButton], down to maintaining slot 0:
+  /// for a bit that is the OR of every real slot, and for an axis it is
+  /// whichever slot is furthest from rest, which is the same idea for a value
+  /// that has a magnitude. Recomputed from the other slots rather than
+  /// accumulated, so a slot cleared by `GamepadCollector.releaseSlot`
+  /// correctly stops holding the aggregate off centre.
+  ///
+  /// [slot] is 1-based here, for the same reason [setGamepadButton]'s is:
+  /// writing to slot 0 directly would fight the aggregate on the next real
+  /// event. It takes a [GamepadAnalog] and a slot rather than the
+  /// [GamepadAxis] the two identify, because `InputAxis.padLeftStickX(2)`
+  /// builds one - and an axis event arrives hundreds of times a second, which
+  /// is not a place to allocate (the no-allocation rule, and the same reason
+  /// [setGamepadButton] takes a [GamepadButton]).
+  ///
+  /// [value] goes in unshaped. `GamepadCollector` applies its deadzone to the
+  /// *bits* it derives from the same event and not to this, which is what
+  /// makes the analog path proportional and is the whole reason it is a
+  /// separate path.
+  void setGamepadAxis(int slot, GamepadAnalog axis, double value) {
+    assert(
+      slot >= 1 && slot < GamepadKey.slotCount,
+      'slot 0 is the "any pad" aggregate and is derived, not written - pass '
+      'the seat the pad actually holds (1..${GamepadKey.slotCount - 1}), not '
+      '$slot',
+    );
+    final base = GamepadAxis.firstId + axis.index;
+    var changed = _setAxis(base + slot * GamepadAxis.axisCount, value);
+    var furthest = 0.0;
+    for (var i = 1; i < GamepadKey.slotCount; i++) {
+      final other = _mirrorAxes[base + i * GamepadAxis.axisCount];
+      if (other.abs() > furthest.abs()) furthest = other;
+    }
+    if (_setAxis(base, furthest)) changed = true;
+    if (changed) _publish();
+  }
+
+  /// Sets one on-screen axis, and publishes if that changed anything.
+  ///
+  /// What an on-screen joystick writes through, and the reason a game reading
+  /// a [StickBinding] cannot tell a thumb from a thumbstick: both end up as
+  /// floats in the same block, named by the same vocabulary. There is no slot
+  /// and no aggregate to maintain - whoever is holding the device is the one
+  /// touching the screen.
+  void setVirtualAxis(VirtualAxis axis, double value) {
+    if (_setAxis(axis.id, value)) _publish();
+  }
+
+  /// What the axis reads according to *this* copy's picture - the same answer
+  /// `InputState.axis` gives on the reading side one tick later. Here for the
+  /// reason [isDown] is: a caller writing synthetic input can check its own
+  /// bookkeeping without reaching into shared memory.
+  double axisOf(InputAxis axis) => _mirrorAxes[axis.id];
+
   /// Moves the pointer, and publishes if that changed anything.
   ///
   /// The [press]/[release] of positions: the same single write path
@@ -464,14 +571,19 @@ final class InputDevice {
         _setFloat(6, (viewAddress + 1).toDouble());
   }
 
-  bool _setFloat(int index, double value) {
+  bool _setFloat(int index, double value) =>
+      _setFloatIn(_mirrorFloats, index, value);
+
+  bool _setAxis(int id, double value) => _setFloatIn(_mirrorAxes, id, value);
+
+  bool _setFloatIn(Float32List floats, int index, double value) {
     // Compared after the float32 round-trip the mirror already stores, so a
     // value that cannot change the published bytes does not count as a
     // change and does not trigger a publish.
-    final rounded = _mirrorFloats[index];
+    final rounded = floats[index];
     if (rounded == value) return false;
-    _mirrorFloats[index] = value;
-    return _mirrorFloats[index] != rounded;
+    floats[index] = value;
+    return floats[index] != rounded;
   }
 
   bool _setBit(int id, bool down) {

@@ -258,11 +258,62 @@
   goes out to fail on the reading side.
 
 * **`InputDevice.releaseAll()`** puts every key, mouse button and gamepad bit
-  up in one write. `GameView` calls it for you when the app is hidden and when
-  the last view showing a game goes away; a host driving input itself - a
-  replay, a bot, a test - can call it to reset the block between runs. The
-  pointer's *position* is left alone, because nobody is holding the cursor
-  down (#160).
+  up in one write, and every analog axis back to rest. `GameView` calls it for
+  you when the app is hidden and when the last view showing a game goes away;
+  a host driving input itself - a replay, a bot, a test - can call it to reset
+  the block between runs. The pointer's *position* is left alone, because
+  nobody is holding the cursor down (#160).
+
+* **An analog path: `InputAxis`, `StickBinding` and `AxisBinding`.** A stick
+  half-pushed now reads about half. Until this, a stick reached a game as four
+  thresholded bits composed by a `Vec2Binding`, so pushing it a third of the
+  way and slamming it produced the same vector - which is what
+  `input_key.dart` had been saying about itself, and what every real gamepad
+  was losing (#192).
+
+  ```dart
+  move  = input.has<Vector2>(
+    const StickBinding(x: .padLeftStickX, y: .padLeftStickY),
+  );
+  aim   = input.has<Vector2>(
+    StickBinding(x: InputAxis.padRightStickX(2), y: InputAxis.padRightStickY(2)),
+  );
+  brake = input.has<double>(const AxisBinding(.padLeftTrigger), 0.0);
+  ```
+
+  `InputAxis` is a second vocabulary beside `InputKey` - a key is a bit in the
+  raw block and an axis is a `float32` in it - carrying the four stick axes and
+  two triggers per gamepad slot, plus four axes for on-screen controls that
+  nothing in the engine writes. Slots work as they do for keys, `call` and all,
+  and slot 0 is "any connected pad": for a bit that is the OR of every seat, and
+  for an axis it is whichever seat is furthest from rest.
+
+  Values run -1..1 with 0 at rest (0..1 for a trigger), `+1` up and `+1` right
+  to match `Vec2Binding` and the world, and they are **unshaped** - no deadzone,
+  no curve, no normalization. `GamepadCollector` writes the axes and the
+  thresholded bits from the same event, so both readings of one physical stick
+  are live at once and a game picks by picking a binding.
+
+  Nothing existing changes. `padLeftStickUp` and the rest of the `*Stick*` keys
+  are still there and still mean what they meant, `GamepadCollector.stickDeadzone`
+  still shapes those bits and only those, and `Vec2Binding` is untouched.
+  Whether the thresholded keys should eventually go, and who should own the
+  deadzone, are open questions on #192 that this deliberately does not answer.
+
+  Two things to know. Both bindings count as *actuated* whenever the value is
+  off rest at all - there is no threshold in them, so a pad whose stick rests a
+  hair off centre reads as held forever and `pressed`/`released` are not the
+  edge to use there. And `double` has no type-level default, so an action bound
+  with `AxisBinding` needs one of its own, as above.
+
+  This is also what #51 asked for: an analog input declared and read as a
+  `double`, allocating nothing per tick.
+
+* **`InputDevice.setVirtualAxis`**, for an on-screen control to write an axis,
+  and **`InputDevice.setGamepadAxis`** for a pad. A widget drawing a joystick
+  writes `InputAxis.virtualLeftStickX` and a binding reading it cannot tell a
+  thumb from a thumbstick, which is what lets a touch build and a controller
+  build share one declaration (#192).
 
 ### Fixed
 
