@@ -15,8 +15,8 @@ import 'package:good/src/triple_buffer.dart';
 /// The **raw device state** for one moment: one bit per [InputKey], nothing
 /// else.
 ///
-/// This is what crosses the isolate boundary, and it is deliberately *not*
-/// the resolved `Input<T>` values. Two reasons, both structural:
+/// This is what crosses the isolate boundary, and it is *not* the resolved
+/// `Input<T>` values. Two reasons, both structural:
 ///
 ///  * resolution needs the bindings, and bindings are mutable at runtime
 ///    (`triggerSkill.binding = ...`) on whichever copy the game logic runs
@@ -33,9 +33,9 @@ import 'package:good/src/triple_buffer.dart';
 /// *coherent* - two systems in one tick cannot disagree about whether a key
 /// was down.
 ///
-/// It used to keep the slot `Pointer` and read shared memory directly, which
-/// was a real hazard rather than an optimisation. `TripleBuffer` rotates its
-/// slots blindly: a reader gets two publishes of grace before the writer comes
+/// Keeping the slot `Pointer` and reading shared memory directly is a hazard,
+/// not an optimisation. `TripleBuffer` rotates its slots blindly: a reader gets
+/// two publishes of grace before the writer comes
 /// back around and overwrites the slot it is holding. The writer here is
 /// `InputDevice` on the Flutter isolate, publishing on **every change** -
 /// including every pointer move, several of which can arrive inside one
@@ -46,14 +46,14 @@ import 'package:good/src/triple_buffer.dart';
 /// The copy is 156 bytes - 16 of key bits, seven `float32`s of pointer, and
 /// one more per [InputAxis] - so the window in which the writer could
 /// interfere shrinks from a whole tick to a hundred-odd loads. It also makes
-/// the coherence promise above actually *guaranteed*, rather than true only
-/// while the margin happens to hold.
+/// the coherence promise above an actual guarantee, instead of something true
+/// only while the margin happens to hold.
 ///
 /// [isDown] is a bounds-free index, a shift and a mask against a plain
 /// `Uint8List`: no allocation, no map, nothing per call (the no-allocation,
 /// hot-event and no-closure rules). [attach] allocates nothing either - it is
-/// an indexed copy, deliberately not `Pointer.asTypedList`, which builds a view
-/// object per call.
+/// an indexed copy and not `Pointer.asTypedList`, which builds a view object
+/// per call.
 final class InputState {
   @internal
   InputState();
@@ -61,7 +61,7 @@ final class InputState {
   /// This tick's key bits, copied from the published slot by [attach].
   final Uint8List _bits = Uint8List(bitBlockBytes);
 
-  /// This tick's pointer block, likewise. A separate array rather than a
+  /// This tick's pointer block, likewise. A separate array, not a
   /// `Float32List.view` over [_bits]' buffer: two independent plain-Dart
   /// arrays have no aliasing to reason about and nothing that a deep copy
   /// across `Isolate.spawn` could reattach to the wrong storage.
@@ -87,11 +87,11 @@ final class InputState {
   /// Six `float32`s: the pointer in window coordinates, the pointer in the
   /// view's own coordinates, and the view's size. All three are known on the
   /// Flutter isolate at the moment the event arrives, so all three are
-  /// *captured* rather than derived - deriving view coordinates on the game
-  /// isolate would mean shipping the view's origin as well and doing the
-  /// subtraction a `RenderBox` already did.
+  /// *captured*, never derived - deriving view coordinates on the game isolate
+  /// would mean shipping the view's origin as well and doing the subtraction a
+  /// `RenderBox` already did.
   ///
-  /// World coordinates are deliberately **not** here: they need the active
+  /// World coordinates are **not** here: they need the active
   /// camera, which is an entity on the game isolate, so they are resolved
   /// there. See `CursorPosition`.
   static final int _pointerOffset = bitBlockBytes;
@@ -99,8 +99,8 @@ final class InputState {
   /// Where the axis block starts - immediately after the pointer's seven
   /// floats, one `float32` per [InputAxis].
   ///
-  /// Analog values live here rather than among the bits because that is the
-  /// whole point: a bit cannot carry a stick half-pushed. The section costs
+  /// Analog values live here and not among the bits, because that is the whole
+  /// point: a bit cannot carry a stick half-pushed. The section costs
   /// [InputAxis.count] floats whether anything is plugged in or not, for the
   /// same reason a gamepad slot costs its bits either way - the block is a
   /// fixed layout both isolates agree on, not a message.
@@ -153,7 +153,7 @@ final class InputState {
   ///
   /// Stored **one-based** - 0 means "no view", 1 means view 0 - so that the
   /// zero-filled block a fresh `calloc` hands back already reads as "over
-  /// nothing" rather than as "over the first declared view". Getting that
+  /// nothing" instead of "over the first declared view". Getting that
   /// backwards makes a headless game, and every game before its first pointer
   /// event, silently claim the pointer is over view 0.
   ///
@@ -165,7 +165,7 @@ final class InputState {
   /// Copies the newest published snapshot into this state. Called exactly
   /// once per fixed tick - see the class doc on why it copies.
   ///
-  /// An indexed loop rather than `Pointer.asTypedList` + `setAll`:
+  /// An indexed loop, not `Pointer.asTypedList` + `setAll`:
   /// `asTypedList` builds a view object per call, which on a per-tick path is a
   /// heap allocation per tick (the no-allocation rule). Forty-odd loads is
   /// cheaper than the object would be, never mind the collection.
@@ -331,8 +331,8 @@ final class InputDevice {
   ///
   /// A key the player genuinely never let go of produces no fresh key-down
   /// on the way back, because the OS never sent the up either - so it reads
-  /// released until they lift it and press it again. That is deliberate and
-  /// it is the right way round: a false "not held" corrects itself the next
+  /// released until they lift it and press it again. That is the right way
+  /// round: a false "not held" corrects itself the next
   /// time the key moves, while a false "held" corrects itself never. Knowing
   /// the true state would mean polling the OS for the whole keyboard on
   /// resume, and nothing here polls anything.
@@ -340,7 +340,7 @@ final class InputDevice {
   /// A pad is the exception that needs no special case: it is a physical
   /// device that keeps sending events, so the next one re-sets its own bits.
   ///
-  /// # The pointer's position is deliberately untouched
+  /// # The pointer's position is left alone
   ///
   /// Where the cursor is is not something anyone is holding down, and zeroing
   /// it would teleport it to the window's top-left corner - a real visible
@@ -391,7 +391,7 @@ final class InputDevice {
   /// Translates one Flutter pointer event's *button mask*.
   ///
   /// The whole mouse's state comes off `PointerEvent.buttons` in one go
-  /// rather than being inferred from which event class arrived, because
+  /// instead of being inferred from which event class arrived, because
   /// Flutter reports a second button pressed mid-drag as a move with a wider
   /// mask, not as a second down event. Reading the mask covers every case
   /// with one code path.
@@ -465,13 +465,13 @@ final class InputDevice {
   /// The axis counterpart of [setGamepadButton], down to maintaining slot 0:
   /// for a bit that is the OR of every real slot, and for an axis it is
   /// whichever slot is furthest from rest, which is the same idea for a value
-  /// that has a magnitude. Recomputed from the other slots rather than
-  /// accumulated, so a slot cleared by `GamepadCollector.releaseSlot`
+  /// that has a magnitude. Recomputed from the other slots, never accumulated,
+  /// so a slot cleared by `GamepadCollector.releaseSlot`
   /// correctly stops holding the aggregate off centre.
   ///
   /// [slot] is 1-based here, for the same reason [setGamepadButton]'s is:
   /// writing to slot 0 directly would fight the aggregate on the next real
-  /// event. It takes a [GamepadAnalog] and a slot rather than the
+  /// event. It takes a [GamepadAnalog] and a slot instead of the
   /// [GamepadAxis] the two identify, because `InputAxis.padLeftStickX(2)`
   /// builds one - and an axis event arrives hundreds of times a second, which
   /// is not a place to allocate (the no-allocation rule, and the same reason
@@ -548,7 +548,7 @@ final class InputDevice {
   /// Records the `GameView`'s current size, so the game isolate can resolve a
   /// pointer against the view without knowing anything about the widget tree.
   ///
-  /// Called on layout rather than per event: the size changes when the window
+  /// Called on layout, not per event: the size changes when the window
   /// resizes, which is orders of magnitude rarer than the pointer moving.
   void setViewSize(double width, double height) {
     if (_setFloat(4, width) | _setFloat(5, height)) _publish();

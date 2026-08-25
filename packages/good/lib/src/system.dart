@@ -26,16 +26,15 @@ mixin GameSystemLifecycleListener on GameListener {
 /// is a constraint, not a rank: `GameState.sortSystems` builds a graph out of
 /// them and topologically sorts it, so a targeted opinion is honoured no
 /// matter what any other system claims, and constraints that cannot all hold
-/// are rejected as a cycle rather than silently resolved. An unconditional
+/// are rejected as a cycle, never silently resolved. An unconditional
 /// `-1` or `1` is legal and means "before/after everything", but two systems
 /// that both claim the same end contradict each other, and the tie between
 /// those two falls back to declaration order.
 ///
-/// This used to be a `List.sort` over the same answers, and that is a
-/// different thing: a partial order is not a comparator, and `List.sort`
-/// given one does not confine the damage to the pair that disagrees - it
-/// permutes the list, so an unrelated and perfectly consistent constraint
-/// elsewhere is dropped. That is what #5 was.
+/// Do not reduce this to a `List.sort` over the same answers. A partial order
+/// is not a comparator, and `List.sort` given one does not confine the damage
+/// to the pair that disagrees - it permutes the list, so an unrelated and
+/// perfectly consistent constraint elsewhere is dropped. That is what #5 was.
 ///
 /// # One isolate, and no mirror
 ///
@@ -58,11 +57,10 @@ mixin GameSystemLifecycleListener on GameListener {
 /// number reads a `StateChannel` off the `Game`, which declared it on both
 /// copies for exactly that reason.
 ///
-/// Systems used to straddle both isolates, receiving a `WidgetEvent` on the
-/// main side so each could contribute to the widget tree. That is gone: there
-/// is exactly one object that builds widgets and it is `Game.buildView`, which
-/// says so with a method instead of a dispatch mechanism built for several
-/// contributors to a problem that has one. See `GameEvent`'s doc.
+/// No system contributes to the widget tree, on either side. Exactly one
+/// object builds widgets and it is `Game.buildView` - a method, not a dispatch
+/// mechanism built for several contributors to a problem that has one. See
+/// `GameEvent`'s doc.
 abstract class GameSystem extends GameListenerBase
     with EventBus, Coroutines
     implements Comparable<GameSystem> {
@@ -363,7 +361,7 @@ abstract class Query {
   /// comes back walk only rows belonging to [scene], with no argument to
   /// remember at each call site.
   ///
-  /// The view is a small object, so hoist it into a field rather than calling
+  /// The view is a small object, so hoist it into a field instead of calling
   /// this per tick - a system's scope is settled when it learns which scene it
   /// belongs to, not once per frame. [get], [tryGet] and the cursor behind
   /// them are shared with the query this was made from: scoping changes which
@@ -414,8 +412,8 @@ abstract class QueryDescriptor {
 /// per call (`clauses.any((c) => ...)`) on the hottest path there is -
 /// the no-allocation, hot-event and no-closure rules.
 ///
-/// Components are named as bare `Type` objects rather than type arguments
-/// (`withAll(Transform2D)`, not `With<Transform2D>()`) so one flat call can
+/// Components are named as bare `Type` objects, not type arguments
+/// (`withAll(Transform2D)`, not `With<Transform2D>()`), so one flat call can
 /// name any number of them. The cost, stated plainly: the analyzer no
 /// longer checks that what you pass is a `Component`, so `withAll(String)`
 /// compiles. `_QueryBuilder._add` asserts against that in debug builds,
@@ -526,9 +524,9 @@ final class _QueryBuilder implements QueryBuilder {
     return ComponentTypeRegistry.bitFor(type);
   }
 
-  /// ORs every non-null argument's bit together. Ten explicit parameters
-  /// rather than a `List<Type>` at each call site: Dart has no varargs, and
-  /// this keeps `withAll(A, B)` from allocating a list per call.
+  /// ORs every non-null argument's bit together. Ten explicit parameters, not
+  /// a `List<Type>` at each call site: Dart has no varargs, and this keeps
+  /// `withAll(A, B)` from allocating a list per call.
   static int _mask(
     Type a,
     Type? b,
@@ -637,7 +635,7 @@ final class _QueryBuilder implements QueryBuilder {
 /// what it is preferred over, and both are allocation-free per step:
 ///  * [run] - a lazy `Iterable<Entity>`, for a plain `for (final e in
 ///    query.run())` loop. It earns its place where the walk stops early
-///    rather than covering every row: `ActiveCameraResolver.resolve` in
+///    instead of covering every row: `ActiveCameraResolver.resolve` in
 ///    `goo2d` takes the first `Camera` occupying a view and breaks on the
 ///    second, over a query that matches one or two entities. The early exit
 ///    is the part to copy - its per-entity `get<Camera>()` is affordable
@@ -707,7 +705,7 @@ class _ArchetypeQuery implements Query {
   /// Rebuilt only when the archetype set changes - i.e. when a scene loads.
   ///
   /// A `Query` outlives every tick, so the groups do too: iterating this costs
-  /// one list iterator per tick rather than the per-archetype allocation a
+  /// one list iterator per tick, not the per-archetype allocation a
   /// freshly-built list would.
   final List<QueryGroup> _groups = <QueryGroup>[];
 
@@ -715,9 +713,9 @@ class _ArchetypeQuery implements Query {
   /// slot is reused, so a map keyed by the handle would grow one dead entry
   /// per load for the life of the process, while slots are bounded by how
   /// many scenes are ever resident at once. Each entry remembers which load
-  /// built it, so a reused slot rebuilds rather than serving the previous
-  /// scene's groups - the groups themselves carry the handle, and iterating
-  /// one built for a dead load would throw rather than answer.
+  /// built it, so a reused slot rebuilds instead of serving the previous
+  /// scene's groups - the groups themselves carry the handle, and iterating one
+  /// built for a dead load throws.
   final Map<int, _ScopedGroups> _scopedGroups = <int, _ScopedGroups>{};
   int _groupsBuiltFor = -1;
 

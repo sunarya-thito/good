@@ -47,10 +47,10 @@ import 'package:good/src/triple_buffer.dart';
 /// [pressed] and [released] are for everything else: code that should run
 /// *because* the player did something, once, at the moment they did it.
 ///
-/// They are two streams rather than one "changed" callback deliberately. A
-/// single stream would hand every listener the job of working out which edge
-/// it just saw - and a `Vec2Binding` changes value constantly while held
-/// without either edge happening, so "changed" is not even a useful proxy.
+/// They are two streams and not one "changed" callback. A single stream would
+/// hand every listener the job of working out which edge it just saw - and a
+/// `Vec2Binding` changes value constantly while held without either edge
+/// happening, so "changed" is not even a useful proxy.
 ///
 /// # When any of this updates
 ///
@@ -74,9 +74,9 @@ import 'package:good/src/triple_buffer.dart';
 ///
 /// Edges are computed by diffing the raw device state against the previous
 /// resolution, so a key that goes down *and* back up between two fixed ticks
-/// is never seen. At a 60Hz tick that is a press shorter than ~16ms, which no
-/// human produces deliberately; a synthetic input source that can produce one
-/// (a replay, a bot) should hold the key for at least a tick.
+/// is never seen. At a 60Hz tick that is a press shorter than ~16ms, which is
+/// shorter than a human press; a synthetic input source that can produce one (a
+/// replay, a bot) should hold the key for at least a tick.
 abstract class Input<T> {
   /// This action's value as of the most recent resolution.
   ///
@@ -122,8 +122,8 @@ abstract class Input<T> {
   /// next resolution (unless the new binding happens to be held too), so
   /// every [pressed] stays paired. Unbinding entirely does not: an unbound
   /// action fires nothing, by definition, so a [pressed] outstanding at that
-  /// moment goes unanswered. Stated rather than papered over - if that
-  /// matters, unbind from the `released` handler.
+  /// moment goes unanswered. If that matters, unbind from the `released`
+  /// handler.
   set binding(InputBinding<T>? binding);
 
   /// Fires on the resolution where this action becomes held.
@@ -252,14 +252,13 @@ abstract class InputDescriptor {
   /// [binding] is optional - an action declared without one is *unbound*: it
   /// reads its default and fires nothing until something assigns
   /// `action.binding`. That is the shape of an action whose key the player
-  /// has not chosen yet, and it is a normal state rather than a
-  /// half-declaration.
+  /// has not chosen yet, and it is a normal state, not a half-declaration.
   ///
   /// [defaultValue] is this action's own fallback, and takes precedence over
   /// the type-level one from [hasDefaultValue]. If neither exists, reading
   /// [Input.value] before the action has ever resolved throws a [StateError]
-  /// naming the action. The engine deliberately does **not** infer a default
-  /// from [T]: zero and false are real, meaningful values to a game, and
+  /// naming the action. The engine does **not** infer a default from [T]:
+  /// zero and false are real, meaningful values to a game, and
   /// inventing one turns a forgotten declaration into a number that is
   /// quietly wrong instead of an error that says so.
   Input<T> has<T>([InputBinding<T>? binding, T? defaultValue]);
@@ -299,7 +298,7 @@ final class InputRegistry implements InputDescriptor {
 
   /// The snapshot every action resolves through. Exposed for the two facts
   /// on it that are not input actions and that nothing binds to - the view's
-  /// size (see `Game.viewWidth`) - rather than copying them into a second
+  /// size (see `Game.viewWidth`) - so nothing has to copy them into a second
   /// place that could disagree with this one.
   InputState get state => _state;
 
@@ -309,8 +308,8 @@ final class InputRegistry implements InputDescriptor {
   bool _sealed = false;
 
   /// Whose `describeInputs` is currently running, for diagnostics. Set by
-  /// `Game._boot` before each call; a plain label rather than the object,
-  /// because that is all an error message wants.
+  /// `Game._boot` before each call; a plain label, not the object, because
+  /// that is all an error message wants.
   String _source = 'Game';
 
   int get actionCount => _actions.length;

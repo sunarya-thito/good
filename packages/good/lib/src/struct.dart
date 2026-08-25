@@ -18,9 +18,9 @@ abstract interface class Component {
   /// handle in a field - the third declare-time pass, chained through mixins
   /// with `@mustCallSuper` exactly like [describeType] and [describeStruct].
   ///
-  /// Runs between the other two rather than after them, deliberately: a
-  /// declared [GameAssetInstance] is already addressed by the time it
-  /// returns, so [describeStruct] can use it as a row default
+  /// Runs between the other two, not after them: a declared
+  /// [GameAssetInstance] is already addressed by the time it returns, so
+  /// [describeStruct] can use it as a row default
   /// (`data.hasObject(playerTexture)`) without a second pass or a late
   /// patch-up.
   ///
@@ -184,7 +184,7 @@ abstract class EntityStruct extends GameListenerBase
   /// spawn - hence the `assert(_requireBound())` spelling at both call
   /// sites. Whether a prefab reached `descriptor.has` is decided by
   /// `describeScene` and cannot change afterwards, so it is a question about
-  /// the code rather than about the running game. A release build that
+  /// the code, not about the running game. A release build that
   /// somehow got here still fails, on the `late` fields this guards, just
   /// without the sentence explaining what to do about it.
   bool _requireBound() {
@@ -274,14 +274,12 @@ abstract class EntityStruct extends GameListenerBase
 /// type, each ORing that type's bit into the archetype's signature, which is
 /// the whole of what a query matches on.
 ///
-/// Returns nothing. It used to hand back a `ComponentType<T>` carrying an
-/// `isEnabled` toggle, and that was deleted: nothing ever read it, and the
-/// toggle it implemented was **archetype-wide**, which is not a coherent
-/// thing to want. An archetype *is* its component set - switching a component
-/// off across the whole archetype just describes a different archetype, and
-/// switching it off for one entity needs a bit in every row plus a query that
-/// consults it, which is a different feature entirely. Enable/disable that
-/// does exist works at the level where it means something: whole systems, via
+/// Returns nothing, and there is no per-component enable toggle to reach for.
+/// An archetype *is* its component set: switching a component off across the
+/// whole archetype just describes a different archetype, and switching it off
+/// for one entity needs a bit in every row plus a query that consults it, which
+/// is a different feature entirely. The enable/disable that does exist works at
+/// the level where it means something: whole systems, via
 /// `GameState.enableSystem`.
 abstract class ComponentDescriptor {
   void has<T extends Component>({Type? type});

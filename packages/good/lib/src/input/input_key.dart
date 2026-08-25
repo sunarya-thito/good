@@ -25,16 +25,16 @@ import 'package:flutter/services.dart' show PhysicalKeyboardKey;
 /// member of this class. And a binding is a `const` value type (see
 /// [InputBinding]), which means the keys it holds must be `const` too. Every
 /// constructor is private, so the declared values below are the only ones a
-/// caller can name - with one deliberate exception, [GamepadKey.call], which
-/// builds a key for a player slot known at runtime and is therefore the one
-/// place `==` rather than `identical` is doing the work.
+/// caller can name - with one exception, [GamepadKey.call], which builds a key
+/// for a player slot known at runtime and is therefore the one place `==` and
+/// not `identical` is doing the work.
 ///
 /// # [id] is a build-local bit index, not a wire format
 ///
 /// [id] is this key's bit position in the raw device-state block (see
 /// `InputState`), assigned by hand below and checked by
-/// `game_input_test.dart`. It is deliberately **not** what serialization uses:
-/// both isolate copies run the same build so they always agree on ids, but a
+/// `game_input_test.dart`. It is **not** what serialization uses: both isolate
+/// copies run the same build so they always agree on ids, but a
 /// *saved keybinding file* outlives the build it was written by. So [toJson]
 /// writes [name] and inserting a new key in the middle of the table below
 /// costs nothing but a recompile.
@@ -57,8 +57,8 @@ sealed class InputKey {
   final int id;
 
   /// The identifier this key is spelled with in Dart (`InputKey.arrowLeft`)
-  /// and in JSON. The two are the same string on purpose: a keybinding file
-  /// is readable, and a typo in one is greppable against the other.
+  /// and in JSON. One string for both: a keybinding file is readable, and a
+  /// typo in one is greppable against the other.
   final String name;
 
   /// Which device this key belongs to - the JSON discriminator, and what
@@ -75,7 +75,7 @@ sealed class InputKey {
   /// This is the one place a `switch` over the sealed hierarchy is needed,
   /// and it is not the "registry" the design rules out: it is closed
   /// (`sealed` means the analyzer fails this switch when a device is added,
-  /// rather than a lookup silently missing an entry) and it resolves nothing
+  /// instead of a lookup silently missing an entry) and it resolves nothing
   /// the caller could have told us instead - a JSON map genuinely does not
   /// know its own Dart type.
   static InputKey fromJson(Map<String, Object?> json) {
@@ -669,7 +669,7 @@ sealed class InputKey {
   /// Public because a rebinding screen legitimately needs to enumerate what
   /// can be bound; nothing in the resolution path walks it.
   ///
-  /// The gamepad tail is generated rather than written out: it is every
+  /// The gamepad tail is generated, not written out: it is every
   /// button on every slot, which is [GamepadKey.slotCount] times as many
   /// entries as there are buttons, and hand-writing four near-identical
   /// blocks is exactly the kind of table a typo hides in. The generation
@@ -682,7 +682,7 @@ sealed class InputKey {
   ];
 
   /// The keys whose ids are written by hand above - everything that is one
-  /// physical control rather than one control times a slot.
+  /// physical control, not one control times a slot.
   static const List<InputKey> _fixed = <InputKey>[
     a, b, c, d, e, f, g, h, i, j, k, l, m, //
     n, o, p, q, r, s, t, u, v, w, x, y, z,
@@ -722,7 +722,7 @@ sealed class InputKey {
   int get hashCode => id;
 }
 
-/// A key on the keyboard, named by **physical position** rather than by the
+/// A key on the keyboard, named by **physical position** and not by the
 /// character it produces.
 ///
 /// [physicalKey] is what the collector matches `KeyEvent.physicalKey`
@@ -807,7 +807,7 @@ final class MouseButtonKey extends InputKey {
 /// change.
 ///
 /// The order here is the id order within a slot - see [GamepadKey].
-/// A class rather than an `enum`, for one concrete reason: [GamepadKey]
+/// A class instead of an `enum`, for one concrete reason: [GamepadKey]
 /// computes its own [InputKey.id] from [index] inside a `const` constructor,
 /// and Dart does not allow `someEnumValue.index` in a constant expression -
 /// while a final field of a `const` object is fine. The cost is writing
@@ -815,8 +815,8 @@ final class MouseButtonKey extends InputKey {
 /// separately at every [GamepadKey] declaration, which is the same table with
 /// an extra chance to get it wrong.
 ///
-/// [name] is here rather than derived, for the reason [InputKey.name] exists:
-/// it goes into a save file, so it has to survive a Dart rename.
+/// [name] is here, not derived, for the reason [InputKey.name] exists: it goes
+/// into a save file, so it has to survive a Dart rename.
 final class GamepadButton {
   const GamepadButton._(this.index, this.name);
 
@@ -915,7 +915,7 @@ final class GamepadButton {
   String toString() => 'GamepadButton.$name';
 }
 
-/// A button on a gamepad, on a **player slot** rather than on a particular
+/// A button on a gamepad, on a **player slot** and not on a particular
 /// physical device.
 ///
 /// ```dart
@@ -978,7 +978,7 @@ final class GamepadKey extends InputKey {
   /// How many slots exist, slot 0 (the aggregate "any pad") included - so
   /// three real seats plus "any". Every slot costs [GamepadButton] bits in
   /// the raw block whether a pad is connected to it or not, which is the
-  /// reason this is a small number rather than a generous one.
+  /// reason this is a small number and not a generous one.
   static const int slotCount = 4;
 
   /// How many bits one slot occupies - `GamepadButton.values.length`,
@@ -1003,10 +1003,10 @@ final class GamepadKey extends InputKey {
   @override
   String get kind => kindName;
 
-  /// Carries the slot as its own field rather than folding it into the name,
-  /// so a saved binding stays readable and a slot can be *remapped* on load
-  /// (a settings screen moving player 2 to another seat) without rewriting
-  /// the button.
+  /// Carries the slot as its own field instead of folding it into the name, so
+  /// a saved binding stays readable and a slot can be *remapped* on load (a
+  /// settings screen moving player 2 to another seat) without rewriting the
+  /// button.
   @override
   Map<String, Object?> toJson() => <String, Object?>{
     'kind': kind,
@@ -1028,7 +1028,7 @@ final class GamepadKey extends InputKey {
   }
 
   /// Every button's name, indexed by [GamepadButton.index]. Written out
-  /// rather than taken from the enum's own `name`, for the same reason
+  /// instead of taken from the enum's own `name`, for the same reason
   /// [InputKey.name] exists at all: this string goes into a save file, so it
   /// has to survive an enum member being renamed in Dart.
   static const List<String> _names = <String>[
@@ -1045,8 +1045,8 @@ final class GamepadKey extends InputKey {
   ];
 
   /// Slot-0 keys by name - the slot is restored separately, from its own
-  /// field, so this table holds one entry per button rather than one per
-  /// button per slot.
+  /// field, so this table holds one entry per button, not one per button per
+  /// slot.
   static final Map<String, InputKey> _byName = <String, InputKey>{
     for (final button in GamepadButton.values)
       button.name: GamepadKey._at(button, 0),

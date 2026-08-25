@@ -3,8 +3,8 @@ import 'package:good/src/input/input_key.dart';
 /// One thing a human can push **part way**: a stick's displacement along one
 /// direction, a trigger's pull, an on-screen joystick's offset.
 ///
-/// The analog half of the input vocabulary, and deliberately a second
-/// vocabulary rather than a widening of [InputKey]. A key is one *bit* in the
+/// The analog half of the input vocabulary, and a second vocabulary rather
+/// than a widening of [InputKey]. A key is one *bit* in the
 /// raw device-state block and an axis is one `float32` in it, so nothing that
 /// indexes bits could ever carry a half-pushed stick - which is the whole
 /// reason [GamepadButton.leftStickUp] and friends exist and are lossy. A
@@ -85,7 +85,7 @@ sealed class InputAxis {
   /// Rebuilds an axis from [toJson]'s output.
   ///
   /// Closed over the sealed hierarchy, so adding a device is a compile error
-  /// here rather than a lookup that silently misses - the same switch
+  /// here instead of a lookup that silently misses - the same switch
   /// [InputKey.fromJson] makes, and not the name-resolved registry the design
   /// rules forbid: a JSON map genuinely does not know its own Dart type.
   static InputAxis fromJson(Map<String, Object?> json) {
@@ -220,7 +220,7 @@ sealed class InputAxis {
   int get hashCode => id;
 }
 
-/// An axis driven by something on screen rather than by hardware - an
+/// An axis driven by something on screen instead of by hardware - an
 /// on-screen joystick, a slider, a drag area.
 ///
 /// Nothing in the engine writes these: they exist so a widget can, through
@@ -251,14 +251,13 @@ final class VirtualAxis extends InputAxis {
 
 /// Which analog control on a pad, independent of which pad.
 ///
-/// The axis counterpart of [GamepadButton], and a class rather than an `enum`
+/// The axis counterpart of [GamepadButton], and a class instead of an `enum`
 /// for the same concrete reason: [GamepadAxis] computes its [InputAxis.id]
 /// from [index] inside a `const` constructor, and `someEnumValue.index` is not
 /// a constant expression in Dart while a final field of a `const` object is.
 ///
-/// [name] is written out rather than derived, for the reason [InputAxis.name]
-/// exists at all: it goes into a save file, so it has to survive a Dart
-/// rename.
+/// [name] is written out, not derived, for the reason [InputAxis.name] exists
+/// at all: it goes into a save file, so it has to survive a Dart rename.
 final class GamepadAnalog {
   const GamepadAnalog._(this.index, this.name);
 
@@ -295,8 +294,8 @@ final class GamepadAnalog {
   String toString() => 'GamepadAnalog.$name';
 }
 
-/// One analog control on a pad, on a **player slot** rather than on a
-/// particular physical device.
+/// One analog control on a pad, on a **player slot** and not on a particular
+/// physical device.
 ///
 /// ```dart
 /// aim   = input.has<Vector2>(const StickBinding(x: .padRightStickX, y: .padRightStickY));
@@ -306,7 +305,7 @@ final class GamepadAnalog {
 /// ```
 ///
 /// Slots work exactly as they do for buttons, and are the same seats - this
-/// reads [GamepadKey.slotCount] rather than declaring its own, because how
+/// reads [GamepadKey.slotCount] instead of declaring its own, because how
 /// many players a game seats is one fact. **Slot 0 means "any connected
 /// pad"**: for a bit that is the OR of every real slot, and for an axis it is
 /// the one furthest from rest, which is the same idea for a value that has a
@@ -365,8 +364,8 @@ final class GamepadAxis extends InputAxis {
   @override
   String get kind => kindName;
 
-  /// Carries the slot as its own field rather than folding it into the name,
-  /// so a saved binding stays readable and a slot can be *remapped* on load
+  /// Carries the slot as its own field instead of folding it into the name, so
+  /// a saved binding stays readable and a slot can be *remapped* on load
   /// without rewriting the axis.
   @override
   Map<String, Object?> toJson() => <String, Object?>{
@@ -390,8 +389,8 @@ final class GamepadAxis extends InputAxis {
   }
 
   /// Slot-0 axes by name - the slot is restored separately, from its own
-  /// field, so this table holds one entry per control rather than one per
-  /// control per slot.
+  /// field, so this table holds one entry per control, not one per control per
+  /// slot.
   static final Map<String, InputAxis> _byName = <String, InputAxis>{
     for (final analog in GamepadAnalog.values)
       analog.name: GamepadAxis._at(analog, 0),

@@ -21,7 +21,7 @@ abstract class SceneStruct extends GameListenerBase
     with EventBus, SceneLifecycleListener, Coroutines {
   /// An instance of **this** scene was loaded.
   ///
-  /// Declared here rather than on `GameState`, and that placement is the whole
+  /// Declared here and not on `GameState`, and that placement is the whole
   /// point of scoping: the collect pass fills this from *this scene's*
   /// composition - itself and its prefabs - so a prefab of some other scene
   /// cannot be in the list and cannot be told. Declared one level up it would
@@ -60,7 +60,7 @@ abstract class SceneStruct extends GameListenerBase
 
   /// Every prefab [describeScene] registered, in declaration order.
   ///
-  /// Typed as [EventBus] rather than `EntityStruct` because that is exactly the
+  /// Typed as [EventBus], not `EntityStruct`, because that is exactly the
   /// capability this list exists to serve: the prefabs in it are collected as
   /// listeners and get their own `describeEvents` pass. Nothing here needs them
   /// to be entity structs specifically.
@@ -78,7 +78,7 @@ abstract class SceneStruct extends GameListenerBase
   /// The explicit half of the composition walk - the event API does not know a
   /// scene has prefabs, so the scene says so. See `EventBus.collectListeners`.
   ///
-  /// Delegates to each prefab's own `collectListeners` rather than offering it
+  /// Delegates to each prefab's own `collectListeners` instead of offering it
   /// directly, so the walk stays uniform all the way down: a prefab that ever
   /// composes listeners of its own gets to say so in the same way a scene does.
   @override
@@ -95,9 +95,9 @@ abstract class SceneStruct extends GameListenerBase
   /// handed over at [initializeScene] exactly as [pool] is.
   ///
   /// A headless fixture that brings a scene up without a `Game` gets its own,
-  /// which is why this is not simply `game.assets`: `initializeScene` is
-  /// public precisely so a test can use it, and asset *declaration* is
-  /// meaningful with no game at all.
+  /// so this is not simply `game.assets`: `initializeScene` is public precisely
+  /// so a test can use it, and asset *declaration* is meaningful with no game
+  /// at all.
   Assets get assets => _assets ??= Assets();
 
   CameraViewTable? _cameraViews;
@@ -114,16 +114,15 @@ abstract class SceneStruct extends GameListenerBase
   /// The pool this scene's archetypes allocate their pages from - **the
   /// `Game`'s**, handed over at [initializeScene].
   ///
-  /// It used to be constructed and owned per scene. It is not any more, and
-  /// that move is what makes several scenes possible at once: a `SceneStruct`
-  /// is a *declaration* that may back many loaded [Scene]s, so it cannot own
-  /// the storage those instances allocate out of. One pool per `Game` also
-  /// makes pool identity stop meaning scene identity, which is what
-  /// [addToSceneById] used to rely on - see the check inside it.
+  /// Owned by the `Game` and not by the scene, which is what makes several
+  /// scenes possible at once: a `SceneStruct` is a *declaration* that may back
+  /// many loaded [Scene]s, so it cannot own the storage those instances
+  /// allocate out of. Pool identity therefore says nothing about scene
+  /// identity - see the check inside [addToSceneById].
   ///
   /// Still injectable, just one level up: `Game.pageSize`/`Game.maxPages`
   /// configure it, and a test or headless harness that brings a scene up by
-  /// hand passes its own to [initializeScene] rather than paying for the
+  /// hand passes its own to [initializeScene] instead of paying for the
   /// 64 MiB-per-page default (a page costs 3x its size, one slot per
   /// triple-buffer state).
   MemoryPool get pool {
@@ -147,12 +146,12 @@ abstract class SceneStruct extends GameListenerBase
   /// `EntityStruct.bindArchetype` gets its own scene reference at registration
   /// time.
   ///
-  /// **A `GameState`, not a `Game`** (the isolate-affinity rule): a scene only ever
-  /// exists on the copy that simulates, so the object it holds is the one that
-  /// simulates too. It used to hold a `Game` and reach the state through it,
-  /// which is a hop that compiles on the presentation isolate and finds
-  /// nothing there. Lets a prefab's `getSystem<T>()` (`Component.getSystem`,
-  /// struct.dart) reach a system without its own direct reference.
+  /// **A `GameState`, not a `Game`** (the isolate-affinity rule): a scene only
+  /// ever exists on the copy that simulates, so the object it holds is the one
+  /// that simulates too. Holding a `Game` and hopping to the state through it
+  /// compiles on the presentation isolate and finds nothing there. This is what
+  /// lets a prefab's `getSystem<T>()` (`Component.getSystem`, struct.dart)
+  /// reach a system without its own direct reference.
   GameState get state {
     final s = _state;
     if (s == null) {
@@ -185,7 +184,7 @@ abstract class SceneStruct extends GameListenerBase
   void bindState(GameState state) => _state = state;
 
   /// [state], or null - for `Component.getSystem`, which wants to report
-  /// "no simulation yet" itself rather than catch a `StateError`.
+  /// "no simulation yet" itself instead of catching a `StateError`.
   @internal
   GameState? get stateOrNull => _state;
 
@@ -212,7 +211,7 @@ abstract class SceneStruct extends GameListenerBase
   /// texture contribute one entry, because they share one handle and one
   /// address.
   ///
-  /// Handles rather than keys, because everything downstream wants one: a
+  /// Handles, not keys, because everything downstream wants one: a
   /// scene transition needs each asset's address to send across the isolate
   /// boundary and its loaded state to decide whether to bother, and both hang
   /// off the handle. The key is still reachable as `asset.key` for the one
@@ -317,13 +316,13 @@ abstract class SceneStruct extends GameListenerBase
   /// stamped with its declared field defaults - and optionally attaches it
   /// under [parent] via `Parent.addChild`.
   ///
-  /// Usually reached through the handle rather than here: `Scene.addEntity`
-  /// is the spelling a caller holding a [Scene] uses, and it lands on this.
+  /// Usually reached through the handle: `Scene.addEntity` is the spelling a
+  /// caller holding a [Scene] uses, and it lands on this.
   /// The two are the same method; a scene's own code (inside `onSceneMounted`)
   /// already has `this` and does not need to resolve a handle to reach it.
   ///
-  /// [parent]'s bound is `T extends EntityStruct` rather than
-  /// `T extends Child`: Dart cannot express "extends `EntityStruct` *and*
+  /// [parent]'s bound is `T extends EntityStruct` and not `T extends Child`:
+  /// Dart cannot express "extends `EntityStruct` *and*
   /// mixes in Child" as a single bound, and `.archetype`/`.scene` (needed to
   /// create the row at all) only exist on `EntityStruct`. So it checks
   /// `prefab is Child` at runtime instead - the same trade `Parent.addChild`
@@ -513,7 +512,7 @@ abstract class SceneStruct extends GameListenerBase
   /// Frees the `HeapObjectRegistry` slots every row of [sceneSlot] owns.
   ///
   /// The unload counterpart of the same call `destroy()` makes: an unloading
-  /// scene frees its pages wholesale rather than row by row, so without this
+  /// scene frees its pages wholesale and not row by row, so without this
   /// pass every heap-object field in it leaks its slot (#49). Both entrances
   /// have to do it, and this is the one that covers stopping the game, since
   /// `GameState` tears every loaded scene down through here.
@@ -668,10 +667,10 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
   /// The whole graph is known here and nowhere else, so the check belongs
   /// here.
   ///
-  /// Classes rather than instances, and pushed *before* the constructor runs
-  /// rather than after: the recursion happens inside `create()`, so a check
-  /// against the object it returns is a check that never runs. `T` is reified
-  /// and is what the tear-off pins, so it is available in time.
+  /// Classes, not instances, and pushed *before* the constructor runs, not
+  /// after: the recursion happens inside `create()`, so a check against the
+  /// object it returns is a check that never runs. `T` is reified and is what
+  /// the tear-off pins, so it is available in time.
   final List<Type> _open = <Type>[];
 
   /// One list per open registration, holding the children declared into it so
@@ -885,13 +884,13 @@ extension EntityLifetime on Entity {
   ///
   /// An entity belongs to exactly one scene and carries which one: its row
   /// sits on a `MemoryPage` tagged with `ownerSceneSlot`, so this is read off
-  /// the entity itself rather than fetched from anything more general. That is
+  /// the entity itself and not fetched from anything more general. That is
   /// the difference between `entity.scene.addEntity(...)` - spawn where *this*
   /// one lives - and reaching for a scene from the state and assuming it is
   /// the right one.
   ///
-  /// Throws when that scene has been **unloaded**, rather than answering with
-  /// a handle into whatever loaded into its slot afterwards - the same
+  /// Throws when that scene has been **unloaded** instead of answering with a
+  /// handle into whatever loaded into its slot afterwards - the same
   /// discipline `Scene.get` applies to a stale handle.
   ///
   /// It cannot tell you the entity itself is still alive, and does not

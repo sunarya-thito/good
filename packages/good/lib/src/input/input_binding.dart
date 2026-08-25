@@ -10,13 +10,13 @@ import 'package:good/src/input/input_state.dart';
 ///
 /// A binding is an **immutable value type**: `const`-constructible, `==` by
 /// content, `copyWith`-able and serializable. That is what makes a keybinding
-/// a piece of data a game can save, load, diff and hand to a rebinding screen,
-/// rather than behaviour compiled into a system. Nothing here holds a
+/// a piece of data a game can save, load, diff and hand to a rebinding screen
+/// instead of behaviour compiled into a system. Nothing here holds a
 /// reference to the action it is bound to, so one binding value can be shared
 /// by any number of actions and swapped in and out freely
 /// (`triggerSkill.binding = const TriggerBinding(.enter)`).
 ///
-/// # `copyWith` and `fromJson` are per concrete type, deliberately
+/// # `copyWith` and `fromJson` are per concrete type
 ///
 /// Neither is declared here. `copyWith`'s parameters differ per binding
 /// (a trigger has one key, a vector has four), and `fromJson` is a static -
@@ -59,7 +59,7 @@ abstract class InputBinding<T> {
   ///
   /// Called **once**, at declare time (or the moment an action that was
   /// declared unbound is first bound) - never per tick. Its initial contents
-  /// are deliberately unspecified and are never observed: `Input.value`
+  /// are unspecified and are never observed: `Input.value`
   /// returns the declared default until the first resolution overwrites this
   /// wholesale. For a value type like `bool` there is nothing to own, and
   /// this returns a placeholder [resolve] ignores.
@@ -69,8 +69,8 @@ abstract class InputBinding<T> {
   /// returning it.
   ///
   /// The return-what-you-were-given shape is what keeps `Input<Vector2>.value`
-  /// a single object the action owns for its whole life rather than a fresh
-  /// `Vector2` sixty times a second.
+  /// a single object the action owns for its whole life, not a fresh `Vector2`
+  /// sixty times a second.
   T resolve(InputState state, T storage);
 
   /// Whether this binding counts as *held* right now - the single bit
@@ -135,8 +135,8 @@ final class TriggerBinding extends InputBinding<bool> {
 /// # What it produces
 ///
 /// Each axis is the difference of its two keys, so opposing keys cancel to
-/// exactly zero (holding `a` and `d` together stands still, rather than
-/// picking whichever was pressed last). The result is **not normalized**:
+/// exactly zero (holding `a` and `d` together stands still instead of picking
+/// whichever was pressed last). The result is **not normalized**:
 /// holding up and right gives (1, 1), whose length is √2, not 1. Normalizing
 /// here would be a silent policy decision - a top-down walker wants it, a
 /// twin-stick shooter feeding an acceleration does not - and it is one call
@@ -256,7 +256,7 @@ final class Vec2Binding extends InputBinding<Vector2> {
 /// -1..1 with **0 at rest** for a stick axis, 0..1 for a trigger, and whatever
 /// the device reported in between - no deadzone, no curve, no clamp. A resting
 /// stick with a little drift therefore reads a little off zero, which is a
-/// real fact about the hardware rather than something to hide here: shaping is
+/// real fact about the hardware and not something to hide here: shaping is
 /// the game's, and `GamepadCollector.stickDeadzone` still shapes the *bit*
 /// reading it always did.
 ///
@@ -265,8 +265,8 @@ final class Vec2Binding extends InputBinding<Vector2> {
 /// `Game.describeInputs` registers a type-level default for `bool` and
 /// `Vector2` and not for `double`, so an action bound to this needs one of its
 /// own - the `0.0` above - or a `hasDefaultValue<double>(0)` beside it.
-/// Reading one that has neither throws, which is the engine refusing to guess
-/// rather than an omission: for a game, zero is a real value.
+/// Reading one that has neither throws. That is the engine refusing to guess,
+/// not an omission: for a game, zero is a real value.
 final class AxisBinding extends InputBinding<double> {
   const AxisBinding(this.axis);
 
@@ -395,7 +395,7 @@ final class StickBinding extends InputBinding<Vector2> {
 }
 
 /// Pulls a nested key or axis map out of a decoded JSON object with a
-/// diagnostic that names the field, rather than letting a bare cast fail with
+/// diagnostic that names the field, instead of letting a bare cast fail with
 /// the type alone.
 Map<String, Object?> _map(Map<String, Object?> json, String field) {
   final value = json[field];
@@ -423,8 +423,8 @@ Map<String, Object?> _map(Map<String, Object?> json, String field) {
 /// position within the `GameView`'s own rect. Both cross the wire as plain
 /// numbers.
 ///
-/// **World space is deliberately absent**, and that is a layering fact rather
-/// than an omission: projecting a pointer into the world needs the active
+/// **World space is absent**, and that is a layering fact and not an
+/// omission: projecting a pointer into the world needs the active
 /// camera, `Camera` is a `goo2d` component, and this is `good`. A kernel that
 /// knew how to project would have to know what a camera is, which is exactly
 /// the dependency the `good`/`goo2d` split exists to avoid - the same reason
@@ -450,7 +450,7 @@ final class CursorPosition {
   /// over**, or zero before anything has laid out (or on a game with no widget
   /// at all - see `InputDevice`).
   ///
-  /// Per view rather than per game: with two views on screen of different
+  /// Per view, not per game: with two views on screen of different
   /// sizes, "the view size" is only answerable relative to a pointer, and the
   /// widget that received the event is what supplies it.
   ///
@@ -503,7 +503,7 @@ final class MouseBinding extends InputBinding<CursorPosition> {
   Map<String, Object?> toJson() => const <String, Object?>{};
 
   /// Round-trips, trivially - there is no state to restore. Present so a
-  /// rebinding screen can serialize every binding uniformly rather than
+  /// rebinding screen can serialize every binding uniformly without
   /// special-casing this one.
   static MouseBinding fromJson(Map<String, Object?> json) =>
       const MouseBinding();

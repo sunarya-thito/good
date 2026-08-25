@@ -76,8 +76,8 @@ final class GamepadCollector {
   ///
   /// Called by `GameView` when it mounts, for the same reason it registers
   /// the keyboard handler there: a game with no widget on screen has no
-  /// business holding an OS subscription open. Calling it twice is a no-op
-  /// rather than a second subscription.
+  /// business holding an OS subscription open. Calling it twice is a no-op,
+  /// never a second subscription.
   void attach() {
     if (_subscription != null) return;
     _subscription = pads.Gamepads.normalizedEvents.listen(handleEvent);
@@ -243,7 +243,7 @@ final class GamepadCollector {
   /// The plugin's button vocabulary translated into this one, indexed by the
   /// plugin's own enum index.
   ///
-  /// A `List` rather than a `Map` because the plugin's enum is dense and this
+  /// A `List` and not a `Map`, because the plugin's enum is dense and this
   /// runs per event; `null` means "no bit for that button here", which is not
   /// an error - the two vocabularies are allowed to differ, and dropping a
   /// button nothing can bind beats inventing a key for it.

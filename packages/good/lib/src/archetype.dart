@@ -28,7 +28,7 @@ abstract final class ComponentTypeRegistry {
   /// to a 2-word (or `Uint64List`-backed) signature is a mechanical
   /// follow-up - every consumer goes through [bitFor] and
   /// [ArchetypeStorage.componentSignature] - but it costs the "match is one
-  /// AND" property above, so it is deliberately not attempted now.
+  /// AND" property above, so it has not been attempted.
   static const int maxComponentTypes = 64;
 
   static final Map<Type, int> _indices = <Type, int>{};
@@ -86,7 +86,7 @@ abstract final class ComponentTypeRegistry {
 /// Process-global table of every [ArchetypeStorage], indexed by its
 /// `archetypeId`.
 ///
-/// Global rather than per-`SceneStruct` on purpose: an `Entity` is a bare
+/// Global, not per-`SceneStruct`: an `Entity` is a bare
 /// `int` (see `Entity` in struct.dart) with the archetype id packed into
 /// its top bits and *no* captured reference to the scene, storage, or
 /// prefab that produced it. That is what lets an entity handle be copied
@@ -109,8 +109,8 @@ abstract final class ArchetypeRegistry {
   ///
   /// A limit on **churn**, not on volume. A 64 MiB page at a 128-byte stride
   /// holds around half a million rows, so this is tens of billions of
-  /// entities - unreachable. But page indices are deliberately never recycled
-  /// (a live `Entity` keeps addressing the right page, see [_pages]), and
+  /// entities - unreachable. But page indices are never recycled (a live
+  /// `Entity` keeps addressing the right page, see [_pages]), and
   /// every scene load takes a fresh page per archetype it uses. So a game that
   /// streams rooms for long enough reaches it by loading and unloading, and
   /// the failure without a guard is silent: the index wraps and an `Entity`
@@ -192,8 +192,8 @@ abstract final class ArchetypeRegistry {
 /// `Player` and `Enemy` in the render example are both
 /// `with Transform2D, Child` and therefore have byte-identical layouts, yet
 /// they get two archetypes, two signatures, and two disjoint sets of pages.
-/// That is deliberate Phase 1 scope: it keeps registration a single
-/// one-time pass with no structural hashing, and it keeps `Entity.get<T>()`
+/// That is Phase 1 scope: it keeps registration a single one-time pass with
+/// no structural hashing, and it keeps `Entity.get<T>()`
 /// able to hand back *the* prefab instance for a row (the one holding the
 /// `DataPointer` fields the mixins wrote into their `late final`s), which a
 /// deduplicated archetype could not do unambiguously. Structural archetype
@@ -367,7 +367,7 @@ class ArchetypeStorage {
 
   /// Every page this archetype has ever been given, by index - and
   /// **nullable**, because unloading a scene frees its pages and nulls their
-  /// slots rather than removing them. `Entity.pageIndex` is an index into this
+  /// slots instead of removing them. `Entity.pageIndex` is an index into this
   /// list, so compacting it would silently repoint every handle after the
   /// hole; a tombstone instead makes a stale handle resolve to nothing and say
   /// so. Indices are never reused.
@@ -378,8 +378,8 @@ class ArchetypeStorage {
   /// One cursor per scene instance, not one per archetype, and that is what
   /// makes a scene individually unloadable: rows belonging to two loaded
   /// instances of the same `SceneStruct` never share a page, so unloading one
-  /// is "free the pages tagged with its slot" rather than a row-by-row
-  /// reclamation that `Entity` has no spare bits to make safe.
+  /// is "free the pages tagged with its slot" and not a row-by-row reclamation
+  /// that `Entity` has no spare bits to make safe.
   final Map<int, int> _currentPageBySlot = <int, int>{};
 
   /// A prototype row holding every field's declared default, built once at
@@ -485,8 +485,8 @@ class ArchetypeStorage {
   /// this engine targets (x64, ARM64), at worst a small penalty when a
   /// value straddles a cache line. Revisit with alignment padding if
   /// profiling ever shows it; do not assume it is required for
-  /// correctness. (`test/data_layout_test.dart` round-trips a
-  /// deliberately-misaligned float64 to keep this honest.)
+  /// correctness. (`test/data_layout_test.dart` round-trips a misaligned
+  /// float64, so the claim stays tested.)
   ///
   /// Rounding up records the bits it skipped in [_strandedBits], which is
   /// where [declareFlagBit] gets them from. That is a side effect of calling
@@ -610,13 +610,13 @@ class ArchetypeStorage {
 
   /// Allocates one row and returns the packed handle addressing it.
   ///
-  /// Returns an `Entity` rather than the `(pageIndex, rowOffset)` record
-  /// the caller might expect: `Entity` is an extension type over `int`, so
+  /// Returns an `Entity`, not the `(pageIndex, rowOffset)` record the caller
+  /// might expect: `Entity` is an extension type over `int`, so
   /// this is a plain integer return with no heap traffic, whereas a record
   /// allocates. Spawning happens inside `onFixedUpdate`/game events, which
   /// the hot-path rules classifies as hot path, so a per-spawn allocation is
   /// exactly what rule 1 forbids. The storage already knows its own
-  /// [archetypeId], so packing here rather than at the call site costs
+  /// [archetypeId], so packing here instead of at the call site costs
   /// nothing.
   ///
   /// Grows by asking [pool] for a fresh page only when *no* page belonging to
@@ -768,17 +768,17 @@ class ArchetypeStorage {
 
 /// A field that knows how to stamp its declared default into a raw row.
 ///
-/// Declared here rather than in the data-layout implementation so
+/// Declared here and not in the data-layout implementation, so
 /// [ArchetypeStorage] can hold the field list without depending on the
 /// `DataDescriptor` implementation (the dependency runs the other way).
 /// A field that owns something outside its row and must be told when the row
 /// stops being an entity.
 ///
 /// Implemented only by the heap-object field kinds, whose value is an index
-/// into the process-global `HeapObjectRegistry` rather than bytes in the page.
+/// into the process-global `HeapObjectRegistry` and not bytes in the page.
 /// Freeing the row reclaims the bytes; only this reclaims the slot.
 ///
-/// Separate from [ArchetypeField] rather than a no-op method on it, so that
+/// Separate from [ArchetypeField], not a no-op method on it, so that
 /// `ArchetypeStorage` can collect the few fields that need teardown at declare
 /// time and skip the walk entirely for the archetypes - all of the engine's
 /// own - that have none.
@@ -794,10 +794,10 @@ abstract interface class HeapArchetypeField {
 
 abstract interface class ArchetypeField {
   /// Stamps this field's default into the row at **address** [row]. An `int`
-  /// rather than a `Pointer<Uint8>` to match the read/write path - see
+  /// and not a `Pointer<Uint8>`, to match the read/write path - see
   /// `ArchetypeStorage`'s row-cache fields for why addresses beat pointers
   /// here. This particular call is cold (once per archetype, in [seal]); it
   /// takes an address purely so field implementations have one row-addressing
-  /// convention rather than two.
+  /// convention instead of two.
   void writeDefault(int row);
 }
