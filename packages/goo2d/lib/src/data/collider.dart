@@ -61,14 +61,16 @@ sealed class ColliderBody {
   /// Bounciness, `0` (inelastic) to `1` (no energy lost).
   final DataPointer<double> restitution;
 
-  /// `0`/`1`. A disabled body still exists (its fields are still declared,
-  /// still readable/writable) but should be skipped by anything that walks
-  /// colliders looking for hits - the same "exists but inert" shape
-  /// `Renderable2D.renderVisible` already uses for sprites.
+  /// Whether this body takes part in collision. Set it false and the body
+  /// stays where it is - its fields are still declared, still readable and
+  /// writable - while every pass that walks colliders looking for hits steps
+  /// over it. `Sprite.visible` is the same "exists but inert" shape for
+  /// sprites.
   final DataPointer<bool> enable;
 
-  /// `0`/`1`. No physical response when set - only enter/exit/stay events,
-  /// same body shape either way.
+  /// Whether this body passes through what it touches. A trigger keeps the
+  /// shape it was given and reports the same enter/exit/stay events; what it
+  /// drops is the physical response.
   final DataPointer<bool> isTrigger;
 
   /// Bit index into a layer mask - which layer this body belongs to.

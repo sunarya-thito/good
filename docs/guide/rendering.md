@@ -276,7 +276,7 @@ class Eye() extends EntityStruct with Transform2D, WorldTransform2D, Camera;
 
 | Column | Meaning |
 |---|---|
-| `zoom` | World units per screen pixel. `1` is 1:1, `2` zooms in, `0.5` out |
+| `zoom` | Screen pixels per world unit. `1` is 1:1, `2` zooms in, `0.5` out |
 | `view` | Which declared `CameraView` this camera fills, or null for none |
 
 <!-- snippet: plain -->

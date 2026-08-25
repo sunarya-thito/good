@@ -25,7 +25,7 @@ import 'package:goo2d/src/data/world_transform.dart';
 /// }
 /// ```
 mixin Camera on Component {
-  /// World units per screen pixel. `1` (the default) means one world unit
+  /// Screen pixels per world unit. `1` (the default) means one world unit
   /// draws as one pixel; `2` zooms in (things draw twice as large), `0.5`
   /// zooms out.
   final zoom = Field.float64(1);

@@ -491,10 +491,10 @@ class Sprite {
   /// [GameRenderer2D]'s ordering section.
   final DataPointer<int> zIndex;
 
-  /// `0`/`1`. A hidden sprite produces no draw record at all - not a
-  /// transparent one. `DataPointer<int>` and not `DataPointer<bool>` because
-  /// this engine has no boolean field kind; a `uint1` is the standing
-  /// convention (see `ColliderBody.enable`).
+  /// Whether this sprite draws. Set it false and the sprite produces no draw
+  /// record at all - not a transparent one - so it costs the one branch that
+  /// skips it and nothing downstream: no sort slot, no budget, no bytes on
+  /// the ring.
   final DataPointer<bool> visible;
 
   /// Where the transform origin sits *within this sprite's own bounds*,
@@ -1528,17 +1528,23 @@ class GameRenderer2D extends GameSystem
   @override
   void describeQuery(QueryDescriptor descriptor) {
     super.describeQuery(descriptor);
-    // No `Child` clause at all any more, in either direction. A child entity
-    // needs rendering exactly as much as a root does - the stub this replaced
-    // forbade `Child` and so silently excluded every hierarchy child from
-    // ever being drawn - and what used to be special about one (its transform
-    // needing its ancestors composed in first) is no longer this system's
-    // problem: `WorldTransformSystem` did that during the tick, and
-    // `WorldTransform2D` is where the answer already is.
+    // `Transform2D` is the entry condition: an entity is drawable when it has
+    // somewhere to be drawn. There is no `Child` clause in either direction,
+    // because a hierarchy child needs drawing exactly as much as a root does.
     //
-    // Requiring `WorldTransform2D` rather than `Transform2D` is therefore the
-    // real entry condition now: an entity is drawable when it has a resolved
-    // world position, whether it got one as a root or through a parent chain.
+    // `WorldTransform2D` is optional here because it is optional on the
+    // entity. [_sourceOf] binds the five transform fields once per archetype -
+    // to the world component where an archetype carries it, to the local one
+    // where it does not - so both kinds of renderable go through this one
+    // query and one write pass. See [Renderable2D] and [_TransformSource].
+    //
+    // A child's corners mean nothing until its ancestors are composed in, and
+    // `WorldTransformSystem` finishes that during the fixed tick this pass
+    // reads after. So a child carrying `WorldTransform2D` arrives with its
+    // world position already resolved. A child *without* it is composed by
+    // nothing - `WorldTransformSystem`'s own query requires the component - so
+    // it draws at its offset from its parent, treated as a world position.
+    // Parent a renderable and it wants the mixin.
     _renderables = descriptor
         .query()
         .withAll(Renderable2D, Transform2D)
