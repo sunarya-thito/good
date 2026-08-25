@@ -191,6 +191,24 @@
 
 ### Fixed
 
+* **`Game.simulationFps` counts frames the simulation published, not frame
+  callbacks.** The meter was fed from the per-frame tick notification, which
+  fires on every frame including one that ran zero fixed steps — so a paused
+  game reported a healthy sixty while its tick sat still and nothing new
+  reached the screen. It now counts only a frame whose tick moved, which is
+  the same test `DrawCanvas2D.ingestFrame` applies before it will draw a
+  batch, and `simulationFrameCount` stops climbing with it.
+
+  It also reads **zero** once the simulation stops publishing, rather than
+  freezing at the rate it last managed: the rate is now taken as of the moment
+  it is asked, so the silence since the last published frame is part of the
+  interval it is over. `Game.fps` is unchanged — the display half has no clock
+  of its own to ask (#167).
+
+  `worstSimulationIntervalMillis` still stamps on the main isolate when the
+  tick message arrives, so on a spawned run a busy main isolate can inflate
+  it. That is unchanged and now says so in its doc.
+
 * **`Game.stop()` fails a command batch that was still queued, instead of
   dropping it.** A game-destination batch waits for the next tick window, so
   one sent and not yet ticked sits in the transport's inbox — and stopping

@@ -1841,14 +1841,32 @@ abstract class Game implements RandomOwner {
   ///
   /// When this is the lower of the two, the simulation is the bottleneck and
   /// `frameMillis` will look healthy while the game feels bad.
-  double get simulationFps => _runtime?.simulationFrames.fps ?? 0;
+  ///
+  /// **Zero when the simulation is not publishing.** A paused game, a
+  /// `timeScale` of zero and a tick that has stopped for any other reason all
+  /// read zero here, and they read it while [fps] goes on reporting whatever
+  /// the display is managing - which is the whole point of two numbers.
+  double get simulationFps => _runtime?.simulationFps ?? 0;
 
   /// Simulation frames published since the run started - the counter behind
   /// [simulationFps], in the same sense [frameCount] is behind [fps].
+  ///
+  /// A *published* frame, not a presented one: a frame on which the tick did
+  /// not move puts nothing new on screen and is not counted.
   int get simulationFrameCount => _runtime?.simulationFrames.frameCount ?? 0;
 
   /// The longest the simulation went without publishing a new picture, in
   /// milliseconds. The [worstFrameIntervalMillis] of the other half.
+  ///
+  /// **On a spawned run this is stamped on the main isolate, when the tick
+  /// message arrives.** So a main isolate busy enough to leave a tick ping
+  /// sitting in its port queue inflates this, and a stall it reports may
+  /// belong to either half. Being a maximum is what makes that bite: one late
+  /// arrival stays in the window until it rolls out, where the averaging that
+  /// [simulationFps] does absorbs the same jitter. An inline run has nothing
+  /// to conflate: the notification is a direct call on the isolate that
+  /// published. Moving the stamp to the producer means the per-tick ping
+  /// carrying one, which is a wire change this has not made (#167).
   double get worstSimulationIntervalMillis =>
       _runtime?.simulationFrames.worstIntervalMillis ?? 0;
 
@@ -2285,8 +2303,33 @@ final class GameRuntime {
   final FrameMeter simulationFrames = FrameMeter();
   final Stopwatch _clock = Stopwatch()..start();
 
+  /// The tick of the last frame [simulationFrames] counted, so a frame that
+  /// published nothing is not counted twice over.
+  int _meteredTick = -1;
+
+  /// [simulationFrames] read against the clock that feeds it, so a simulation
+  /// that has stopped publishing reads zero rather than the rate it used to
+  /// manage. See [FrameMeter.fpsAt].
+  double get simulationFps =>
+      simulationFrames.fpsAt(_clock.elapsedMicroseconds);
+
   void _notifyTickListeners(int tick) {
-    simulationFrames.record(_clock.elapsedMicroseconds);
+    // Only a tick that moved is a new picture. [presentFrame] runs once per
+    // *frame*, including a frame that afforded zero fixed steps, and a paused
+    // game goes on presenting - so counting every one of these measured frame
+    // callbacks rather than published frames, and reported a healthy sixty
+    // for a simulation running nothing. The renderer already reads it this
+    // way: `DrawCanvas2D.ingestFrame` rejects a batch whose tick stamp is not
+    // newer, so a frame that did not move the tick puts nothing new on screen
+    // either.
+    //
+    // Compared rather than ordered, because a run that is reused starts its
+    // tick over and the next frame is a new picture whichever way the number
+    // went.
+    if (tick != _meteredTick) {
+      _meteredTick = tick;
+      simulationFrames.record(_clock.elapsedMicroseconds);
+    }
     // Before the listeners, not after: a widget repaints off one of these
     // callbacks, and it must see state already reconciled for this tick
     // rather than a value one tick behind whatever it is about to draw.

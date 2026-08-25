@@ -189,4 +189,70 @@ void main() {
       expect(meter.worstIntervalMillis, closeTo(50.0, 0.1));
     });
   });
+
+  group('a rate read from a clock the producer shares', () {
+    /// Sixty frames a second, the last of them at 2000000us.
+    FrameMeter steady() {
+      final meter = FrameMeter();
+      for (var i = 0; i < 60; i++) {
+        meter.record(2000000 - (59 - i) * 16667);
+      }
+      return meter;
+    }
+
+    test('as of the newest frame it is the plain window rate', () {
+      final meter = steady();
+      expect(meter.fpsAt(2000000), closeTo(60.0, 0.01));
+      expect(
+        meter.fps,
+        closeTo(60.0, 0.01),
+        reason:
+            'the getter is this asked at the newest frame, so the two must '
+            'be the same number rather than two answers to one question',
+      );
+    });
+
+    test('a producer that stopped is not still running at its old rate', () {
+      final meter = steady();
+      // Half a second of silence. The window it averages has not moved and
+      // never will again, so `fps` still says sixty; the whole point of
+      // naming an instant is that this one does not.
+      expect(meter.fps, closeTo(60.0, 0.01));
+      expect(
+        meter.fpsAt(2500000),
+        lessThan(45.0),
+        reason: 'the trailing gap is part of the interval the rate is over',
+      );
+      expect(meter.fpsAt(2500000), greaterThan(0.0));
+    });
+
+    test('silence for the length of the window reads zero, not a memory', () {
+      final meter = steady();
+      // The window spans 59 frame periods, 983ms. One microsecond short of
+      // that much silence still describes a producer that might come back.
+      expect(meter.fpsAt(2000000 + 59 * 16667 - 1), greaterThan(0.0));
+      expect(meter.fpsAt(2000000 + 59 * 16667), 0);
+      expect(
+        meter.fpsAt(9000000),
+        0,
+        reason: 'and it stays zero rather than decaying forever',
+      );
+    });
+
+    test('the threshold scales with what the producer was doing', () {
+      // Five a second: 200ms between frames, 11.8s across the window. A slow
+      // producer is not stalled just because a second went by with nothing.
+      final slow = FrameMeter();
+      for (var i = 0; i < 60; i++) {
+        slow.record(2000000 - (59 - i) * 200000);
+      }
+      expect(slow.fpsAt(2000000), closeTo(5.0, 0.01));
+      expect(
+        slow.fpsAt(3000000),
+        greaterThan(0.0),
+        reason: 'a second of silence is five frames to this one, not sixty',
+      );
+      expect(slow.fpsAt(2000000 + 59 * 200000), 0);
+    });
+  });
 }

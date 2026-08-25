@@ -291,6 +291,58 @@ void main() {
             'which is exactly why these are two numbers and not one',
       );
     });
+
+    // A plain `test`, not `testWidgets`: the meter reads a real monotonic
+    // clock, and inside a widget test `Future.delayed` elapses fake time
+    // while that clock does not move at all.
+    test('a paused simulation publishes nothing, and says so', () async {
+      await _start(_ViewGame());
+
+      // Frames spread over real time, because a rate is over an interval and
+      // five advances back to back do not span one.
+      final burst = Stopwatch()..start();
+      for (var i = 0; i < 5; i++) {
+        run.advance(const Duration(milliseconds: 10));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      burst.stop();
+
+      expect(run.simulationFrameCount, 5);
+      final running = run.simulationFps;
+      expect(
+        running,
+        greaterThan(0.0),
+        reason:
+            'the meter has to be fed for the paused half below to mean '
+            'anything - asserting only the zero would pass against a meter '
+            'nothing ever recorded',
+      );
+
+      run.state.paused = true;
+      // The frame loop keeps running while paused, which is the whole
+      // defect: `presentFrame` fires on every one of these and each used to
+      // be counted as a published picture.
+      for (var i = 0; i < 5; i++) {
+        run.advance(const Duration(milliseconds: 10));
+      }
+      expect(
+        run.simulationFrameCount,
+        5,
+        reason: 'five more frames and no new picture - the tick did not move',
+      );
+
+      // Silence for longer than the window the meter averages. Measured on
+      // this machine rather than guessed: the staleness threshold scales
+      // with what the producer was doing, so the wait has to as well.
+      await Future<void>.delayed(burst.elapsed * 2);
+      expect(
+        run.simulationFps,
+        0,
+        reason:
+            'a simulation running zero steps is not running at $running '
+            'frames a second',
+      );
+    });
   });
 
   // #160. The two seams that call `InputDevice.releaseAll` - what the app

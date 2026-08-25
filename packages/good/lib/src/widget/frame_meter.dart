@@ -123,18 +123,49 @@ final class FrameMeter {
     _total++;
   }
 
-  /// Frames presented per second: how many frames were counted in the window,
-  /// divided by the wall clock between the first and the last of them.
+  /// Frames presented per second **as of the newest frame this has seen**:
+  /// how many frames were counted in the window, divided by the wall clock
+  /// between the first and the last of them.
   ///
   /// Zero until two frames have been seen - a rate needs an interval, and
   /// guessing one from a single frame would report a number before there is
   /// one. Zero is also what a game nobody is looking at reports, which is the
   /// honest answer rather than a stale last-known value.
-  double get fps {
+  ///
+  /// This is the vantage point the *display* half has to read from: its
+  /// timestamps come from the engine's frame timings, and nothing on this
+  /// isolate can name a later instant in that clock domain. A producer with a
+  /// clock of its own reads [fpsAt] instead, which is the same arithmetic
+  /// asked at a moment the producer can name.
+  double get fps =>
+      _count == 0 ? 0 : fpsAt(_at[(_next - 1 + _window) % _window]);
+
+  /// Frames presented per second as of [nowMicros], in the same clock domain
+  /// the recorded timestamps are in.
+  ///
+  /// The trailing gap counts. [fps] is a rate over the frames it holds, so it
+  /// stops changing the moment the producer stops: a simulation that
+  /// published sixty a second and then stopped goes on reporting sixty for as
+  /// long as the game runs, because the numbers it averages never move again.
+  /// A caller that can say what time it is now gets told what is happening
+  /// rather than what used to.
+  ///
+  /// So the rate is taken over `nowMicros - oldest` rather than
+  /// `newest - oldest`, and it reads **zero** once nothing has arrived for as
+  /// long as the whole window took to fill. That threshold scales itself: a
+  /// producer publishing at sixty needs a second of silence to read zero, one
+  /// publishing at five needs twelve, and neither has a constant in it.
+  ///
+  /// Asked as of the newest frame - what [fps] does - the trailing gap is
+  /// zero and this is the plain window rate.
+  double fpsAt(int nowMicros) {
     if (_count < 2) return 0;
     final oldest = _at[_count < _window ? 0 : _next];
     final newest = _at[(_next - 1 + _window) % _window];
-    final elapsed = newest - oldest;
+    final span = newest - oldest;
+    if (span <= 0) return 0;
+    if (nowMicros - newest >= span) return 0;
+    final elapsed = nowMicros - oldest;
     if (elapsed <= 0) return 0;
     return (_count - 1) * 1000000.0 / elapsed;
   }
