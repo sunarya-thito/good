@@ -99,13 +99,8 @@ mixin Parent on Component {
 ///
 /// Inside an accessor extension `this` **is** the entity (`Accessor<T>`
 /// implements `Entity`), so a column indexes with `this` directly and
-/// [Accessor.component] hands back the `Parent` it belongs to. That is why
-/// neither method takes the parent as an argument any more: they used to,
-/// with a comment claiming a `DataPointer` field is shared across the
-/// archetype and so "there is no implicit *this entity* the way there would
-/// be on a per-instance object". The fields are still shared - one prefab
-/// describes one archetype - but `Accessor<Parent>` is exactly that implicit
-/// this-entity, and it has existed since `a462113`.
+/// [Accessor.component] hands back the `Parent` it belongs to. Neither
+/// method takes the parent as an argument: the parent is the receiver.
 ///
 /// `SceneStruct.addEntity(..., parent: ...)` is the usual caller; reach for
 /// these directly only when attaching an *already-existing* entity, since

@@ -126,14 +126,13 @@ class MemoryPool {
   MemoryPage? getPage(int page) => _pages[page];
 
   /// Always allocates a brand-new page (up to [maxPages]) - never searches
-  /// for an existing non-full one. Deliberately dumb: since every page gets
-  /// stride-locked to whichever archetype's row size calls `allocate()` on
-  /// it first, "any non-full page" isn't a safe answer to "give me space
-  /// for archetype X's rows" - a page some other archetype already
-  /// stride-locked would just reject a mismatched size. Reusing space
-  /// across an archetype's *own* pages is `ArchetypeStorage`'s job (see
-  /// archetype.dart) - it keeps its own page list and only calls this when
-  /// none of its own pages have room.
+  /// for an existing non-full one. Every page gets stride-locked to whichever
+  /// archetype's row size calls `allocate()` on it first, so "any non-full
+  /// page" isn't a safe answer to "give me space for archetype X's rows" - a
+  /// page some other archetype already stride-locked would just reject a
+  /// mismatched size. Reusing space across an archetype's *own* pages is
+  /// `ArchetypeStorage`'s job (see archetype.dart) - it keeps its own page
+  /// list and only calls this when none of its own pages have room.
   ///
   /// [ownerArchetypeId] is carried purely so the page can be announced to a
   /// reading isolate later (see [MemoryPage.ownerArchetypeId]); this pool

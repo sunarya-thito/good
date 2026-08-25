@@ -178,12 +178,11 @@ typedef InputListener<T> = void Function(InputEvent<T> event);
 
 /// The subscribable half of [Input.pressed]/[Input.released].
 ///
-/// Deliberately not a `Stream`: a broadcast stream allocates per event and
-/// schedules a microtask per listener, which is the wrong shape for something
-/// dispatched from inside a fixed tick - and it would deliver the callback
-/// *after* the tick that produced it had already finished. This is a plain
-/// listener list called synchronously, the same trade `Game.addTickListener`
-/// makes.
+/// Not a `Stream`: a broadcast stream allocates per event and schedules a
+/// microtask per listener, which is the wrong shape for something dispatched
+/// from inside a fixed tick - and it would deliver the callback *after* the
+/// tick that produced it had already finished. This is a plain listener list
+/// called synchronously, the same trade `Game.addTickListener` makes.
 final class InputEventStream<T> {
   InputEventStream._();
 
@@ -402,10 +401,10 @@ final class InputRegistry implements InputDescriptor {
 
   // --- storage ------------------------------------------------------------
 
-  /// Simulating copy: allocate the raw device-state block. Deliberately not
-  /// seeded with a published snapshot here - the *writer* does that when the
-  /// device is created, and until then an unpublished buffer reads as "every
-  /// key up", which is the truth.
+  /// Simulating copy: allocate the raw device-state block. Nothing is seeded
+  /// with a published snapshot here - the *writer* does that when the device
+  /// is created, and until then an unpublished buffer reads as "every key
+  /// up", which is the truth.
   void allocate() {
     _buffer = TripleBuffer(InputState.byteLength);
   }

@@ -663,11 +663,10 @@ class _ArchetypeQuery implements Query {
 
   /// Whether an archetype with this signature satisfies every constraint.
   ///
-  /// Two masked compares, then one per `withAny` group. Deliberately an indexed
-  /// `for` and not `_anyGroups.every(...)`: this runs once per archetype per
-  /// query per tick, and a closure here is exactly the hot-path allocation the
-  /// no-allocation, hot-event and no-closure rules forbid - the shape that was
-  /// wrong in the sum-of-products version this replaced.
+  /// Two masked compares, then one per `withAny` group. The loop is an
+  /// indexed `for` and not `_anyGroups.every(...)`: this runs once per
+  /// archetype per query per tick, and a closure here is exactly the hot-path
+  /// allocation the no-allocation, hot-event and no-closure rules forbid.
   @override
   bool matches(int signature) {
     if (signature & _required != _required) return false;

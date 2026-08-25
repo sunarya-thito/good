@@ -287,12 +287,11 @@ abstract class GameState<T extends Game> extends GameListenerBase
 
   /// The declaration of **the** loaded scene, when there is exactly one.
   ///
-  /// Throws when several are resident, and that is the point: this used to
-  /// answer with the *first* one, which is a guess dressed as an accessor. A
-  /// game with more than one scene loaded has to say which it means, through
-  /// [loadedScenes] or the handle `loadScene` returned it. Null still means
-  /// none loaded, which is a legitimate state - a game booted to a menu, a
-  /// headless host that only runs systems, a state between transitions.
+  /// Throws when several are resident: a game with more than one scene loaded
+  /// has to say which it means, through [loadedScenes] or the handle
+  /// `loadScene` returned it. Null still means none loaded, which is a
+  /// legitimate state - a game booted to a menu, a headless host that only
+  /// runs systems, a state between transitions.
   SceneStruct? get scene {
     if (_loaded.isEmpty) return null;
     if (_loaded.length > 1) {

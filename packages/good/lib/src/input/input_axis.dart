@@ -50,8 +50,7 @@ import 'package:good/src/input/input_key.dart';
 /// through Dart's dot shorthand against the context type, and so a binding
 /// holding one stays `const`. Every constructor is private, so the values
 /// below are the only axes a caller can name. [GamepadAxis.call] is the one
-/// deliberate exception - it builds an axis for a player slot known at
-/// runtime.
+/// exception - it builds an axis for a player slot known at runtime.
 ///
 /// # [id] is a build-local float index, not a wire format
 ///

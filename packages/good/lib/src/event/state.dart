@@ -45,7 +45,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 /// different design (the game isolate would have to poll it inside the tick
 /// window, and two writers on one `TripleBuffer` is not what that primitive
 /// is), and main -> game already has a purpose-built lane in `GameCommand`/
-/// the command ring. Deliberately out of scope here.
+/// the command ring.
 ///
 /// # Why the value types are fixed-width and few
 ///

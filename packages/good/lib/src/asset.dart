@@ -20,7 +20,7 @@ import 'package:good/src/data.dart';
 // ---------------------------------------------------------------------------
 
 /// Where an asset's bytes come from - a bundle path, a packed chunk, an
-/// in-memory blob in a test. Deliberately knows nothing about what the bytes
+/// in-memory blob in a test. A source knows nothing about what the bytes
 /// mean; decoding is [AssetLoader]'s job, and decryption or decompression
 /// happen *here*, below [load], so a loader never learns the game shipped
 /// encrypted.
