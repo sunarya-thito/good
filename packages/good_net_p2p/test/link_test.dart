@@ -14,13 +14,16 @@ import 'package:good_net_p2p/src/wire.dart';
 class _Ear implements NetListener {
   final List<Uint8List> received = <Uint8List>[];
   final List<NetPeerId> joined = <NetPeerId>[];
+  final List<(NetPeerId, NetDisconnectReason)> left =
+      <(NetPeerId, NetDisconnectReason)>[];
   NetDisconnectReason? closed;
 
   @override
   void onPeerJoined(NetPeerId peer) => joined.add(peer);
 
   @override
-  void onPeerLeft(NetPeerId peer, NetDisconnectReason reason) {}
+  void onPeerLeft(NetPeerId peer, NetDisconnectReason reason) =>
+      left.add((peer, reason));
 
   @override
   void onMessage(
@@ -253,8 +256,14 @@ void main() {
       final connection = joined.connectionTo(NetPeerId.host)!;
       connection.send(NetChannel.unreliable, Uint8List.fromList(<int>[1]));
       connection.send(NetChannel.reliable, Uint8List.fromList(<int>[2]));
-      await run(const Duration(milliseconds: 400));
-      host.poll(hostEar);
+      // Waiting for the two messages rather than for 400ms. `poll` is what
+      // moves them into the ear, so it is part of the condition - and the
+      // wait is capped, so a pair that never arrives fails the `expect`
+      // below instead of hanging the runner.
+      await runUntil(() {
+        host.poll(hostEar);
+        return hostEar.received.length >= 2;
+      });
 
       expect(hostEar.received.length, 2);
       expect(hostEar.received.map((bytes) => bytes.single).toSet(), <int>{
@@ -268,6 +277,212 @@ void main() {
       await run(const Duration(milliseconds: 600));
       host.poll(hostEar);
       expect(hostEar.received, isEmpty);
+    });
+
+    // #177. `RawDatagramSocket.send` answering 0 means "would block, ask
+    // again", not "sent", and the transport read it as sent. A reliable
+    // message hid that completely - a retransmission covers a packet the
+    // socket refused exactly as well as one a router ate - so the whole cost
+    // landed on the two things sent exactly once: an unreliable message, and
+    // the goodbye a leaving peer says. About one send in a hundred on Windows
+    // loopback, which is a rerun rather than a bug report, which is why it
+    // sat here.
+    //
+    // Every test below needs `simulatedBackpressure`, and that is the point
+    // rather than an inconvenience: a refusal is too rare to catch and too
+    // common to ignore, so the branch that handles it was code nothing had
+    // ever run. None of this can be written on the reliable channel - it
+    // passes against the broken transport.
+    group('a socket that will not take a datagram', () {
+      test('holds an unreliable message rather than dropping it', () async {
+        final host = transport();
+        final client = transport();
+        final hostEar = _Ear();
+        final hosted = await host.host();
+        final joined = await client.join(hosted.id);
+        await run(const Duration(milliseconds: 200));
+
+        final connection = joined.connectionTo(NetPeerId.host)!;
+        client.simulatedBackpressure = 1;
+        connection.send(NetChannel.unreliable, Uint8List.fromList(<int>[9]));
+        await run(const Duration(milliseconds: 150));
+        host.poll(hostEar);
+        expect(
+          hostEar.received,
+          isEmpty,
+          reason:
+              'the socket has been handed nothing, so nothing can have '
+              'arrived. If this is not empty the knob is doing nothing and '
+              'the half below cannot fail',
+        );
+
+        client.simulatedBackpressure = 0;
+        await runUntil(() {
+          host.poll(hostEar);
+          return hostEar.received.isNotEmpty;
+        }, limit: const Duration(seconds: 2));
+
+        expect(
+          hostEar.received.map((bytes) => bytes.single),
+          contains(9),
+          reason:
+              'kept while the socket was busy and sent once it was not. An '
+              'unreliable message has no second copy to fall back on, so a '
+              'transport that drops it here looks downstream exactly like '
+              'the wire losing it - which is why nobody found this',
+        );
+      });
+
+      test('says a goodbye it could not say at the time', () async {
+        final host = transport();
+        final client = transport();
+        final hostEar = _Ear();
+        final hosted = await host.host();
+        final joined = await client.join(hosted.id);
+        await run(const Duration(milliseconds: 200));
+
+        // The other exactly-once packet, and the more expensive one to lose:
+        // there is no link left to retransmit a disconnect on, so a host that
+        // misses it waits out the whole link timeout before it notices, and
+        // holds the slot for the duration.
+        client.simulatedBackpressure = 1;
+        await joined.leave();
+        await run(const Duration(milliseconds: 100));
+        host.poll(hostEar);
+        expect(
+          hostEar.left,
+          isEmpty,
+          reason: 'the goodbye is still in hand, so the host cannot know yet',
+        );
+
+        client.simulatedBackpressure = 0;
+        await runUntil(() {
+          host.poll(hostEar);
+          return hostEar.left.isNotEmpty;
+        }, limit: const Duration(seconds: 2));
+
+        expect(
+          hostEar.left.map((departure) => departure.$2),
+          contains(NetDisconnectReason.remoteClose),
+          reason:
+              'said late is the whole difference between a peer that left '
+              'and a peer the host has to wait out a link timeout to give up '
+              'on, holding the slot the while',
+        );
+      });
+
+      test('sends what it held in the order it held it', () async {
+        final host = transport();
+        final client = transport();
+        final hostEar = _Ear();
+        final hosted = await host.host();
+        final joined = await client.join(hosted.id);
+        await run(const Duration(milliseconds: 200));
+
+        final connection = joined.connectionTo(NetPeerId.host)!;
+        client.simulatedBackpressure = 1;
+        // A flush per message, so these are eight datagrams rather than one
+        // packet carrying eight frames - there is nothing to reorder inside a
+        // single datagram. The loop is synchronous, so no keepalive gets in
+        // among them either.
+        for (var i = 0; i < 8; i++) {
+          connection.send(NetChannel.unreliable, Uint8List.fromList(<int>[i]));
+          client.flush();
+        }
+
+        client.simulatedBackpressure = 0;
+        await runUntil(() {
+          host.poll(hostEar);
+          return hostEar.received.length >= 8;
+        });
+
+        expect(
+          hostEar.received.map((bytes) => bytes.single),
+          orderedEquals(<int>[0, 1, 2, 3, 4, 5, 6, 7]),
+          reason:
+              'a sequence number is written when a packet is built, so a '
+              'fresh datagram overtaking the held ones puts the link out of '
+              'step with its own numbering. Loopback is what makes that '
+              'visible here: the channel promises no ordering, but nothing '
+              'between these two sockets can reorder them except this queue',
+        );
+      });
+
+      test('gives up the oldest when there is no room for another', () async {
+        final host = transport();
+        final client = transport();
+        final hostEar = _Ear();
+        final hosted = await host.host();
+        final joined = await client.join(hosted.id);
+        await run(const Duration(milliseconds: 200));
+
+        final connection = joined.connectionTo(NetPeerId.host)!;
+        const int over = 6;
+        const int count = P2PNetTransport.maxHeldDatagrams + over;
+        client.simulatedBackpressure = 1;
+        for (var i = 0; i < count; i++) {
+          connection.send(NetChannel.unreliable, Uint8List.fromList(<int>[i]));
+          client.flush();
+        }
+
+        client.simulatedBackpressure = 0;
+        await runUntil(() {
+          host.poll(hostEar);
+          return hostEar.received.length >= P2PNetTransport.maxHeldDatagrams;
+        });
+
+        final arrived = hostEar.received
+            .map((bytes) => bytes.single)
+            .toList(growable: false);
+        expect(
+          arrived.length,
+          lessThanOrEqualTo(P2PNetTransport.maxHeldDatagrams),
+          reason:
+              'a queue with no ceiling would have kept all $count of them, '
+              'which is what the bound is for: a socket that has stopped '
+              'draining is not a reason to grow a buffer until the game runs '
+              'out of memory',
+        );
+        expect(
+          arrived.first,
+          over,
+          reason:
+              'and it is the oldest that goes, because its moment passed '
+              'first - the newest datagram is the one still worth sending. '
+              'Asserted on the value rather than on the count, so that a '
+              'stray loopback drop mid-burst cannot decide this',
+        );
+        expect(
+          arrived.last,
+          count - 1,
+          reason:
+              'the newest survived, which is the other half of the same '
+              'decision',
+        );
+      });
+
+      test('closing over one that never drains gives up, not hangs', () async {
+        final host = transport();
+        final client = transport();
+        final hosted = await host.host();
+        await client.join(hosted.id);
+        await run(const Duration(milliseconds: 200));
+
+        // A goodbye gets a bounded wait on the way out, because closing is
+        // the last chance it will ever get. *Bounded* is the word under test:
+        // a socket that has stopped draining altogether must not be able to
+        // hold a game's shutdown open, and the only way to know it cannot is
+        // to close over one that never will.
+        client.simulatedBackpressure = 1;
+        await expectLater(
+          client.close().timeout(const Duration(seconds: 2)),
+          completes,
+          reason:
+              'the timeout is the assertion. With no cap on the wait this '
+              'never completes, and a bare await there would hang the runner '
+              'with nothing to read rather than fail with something to fix',
+        );
+      });
     });
 
     test(

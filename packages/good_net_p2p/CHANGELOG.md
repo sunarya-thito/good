@@ -1,5 +1,45 @@
 ## Unreleased
 
+### Fixed
+
+* **A datagram the socket refused is now kept and sent, not thrown away.**
+  `RawDatagramSocket.send` returns `0` to say the send would have blocked and
+  should be tried again; it is not a short write, and there is no partial
+  datagram. The transport ignored that return value, so a refused packet was
+  discarded inside `P2PNetTransport` — indistinguishable, from anywhere else,
+  from the wire losing it. It now goes to a queue of at most
+  `P2PNetTransport.maxHeldDatagrams` and leaves on the next drain, ahead of
+  anything sent after it (#177).
+
+  What to change: nothing. This only turns packets that used to vanish into
+  packets that arrive, a fraction of a millisecond later.
+
+  **Why it was invisible.** Reliable traffic covered it completely — a
+  retransmission replaces a packet the socket refused just as well as one a
+  router dropped. Everything landed on the two things sent exactly once: an
+  unreliable message, and the goodbye a leaving peer says. Measured on Windows
+  loopback, three of three hundred payload sends on an idle link came back `0`,
+  which showed up as one p2p test failing about one run in a hundred and
+  passing on the rerun. A lost goodbye costs the peer a whole `linkTimeout`,
+  and the slot, before it notices.
+
+  `close()` now also gives a refused goodbye a short bounded wait — at most
+  20ms, and only when something is actually held — rather than closing the
+  socket over the top of it.
+
+### Added
+
+* **`P2PNetTransport.simulatedBackpressure`**, the other half of
+  `simulatedLoss`: the fraction of sends the socket is told to refuse. Loss is
+  the wire eating a datagram that did leave; backpressure is the socket
+  declining to take one, which means it never left and the transport still has
+  it. A real refusal is too rare to hit on a desk and too common to ignore, so
+  the branch handling it was untested code — this is what tests it (#177).
+
+* **`P2PNetTransport.maxHeldDatagrams`**, how many refused datagrams are held
+  before the oldest is given up on. Public so the bound can be asserted against
+  rather than copied into a test as a number (#177).
+
 ### Breaking
 
 * **One unreliable message may be one datagram, and no more.** 1,178 bytes,

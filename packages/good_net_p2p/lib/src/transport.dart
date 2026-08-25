@@ -53,6 +53,7 @@ class P2PNetTransport extends NetTransport {
     this.handshakeTimeout = const Duration(seconds: 5),
     this.linkTimeout = const Duration(seconds: 5),
     this.simulatedLoss = 0,
+    this.simulatedBackpressure = 0,
     Random? random,
   }) : bindAddress = bindAddress ?? InternetAddress.anyIPv4,
        _random = random ?? Random();
@@ -105,6 +106,21 @@ class P2PNetTransport extends NetTransport {
   /// a link that was fine and then was not.
   double simulatedLoss;
 
+  /// Fraction of sends the socket is told to refuse, 0 to 1.
+  ///
+  /// The other half of [simulatedLoss], and a different thing: loss is the
+  /// wire eating a datagram that did leave, and backpressure is the socket
+  /// declining to take it in the first place, which means it never left and
+  /// this transport still has it. `RawDatagramSocket.send` says so by
+  /// returning 0, and its own documentation calls that a "try again".
+  ///
+  /// It is here for the same reason [simulatedLoss] is: a real 0 is rare
+  /// enough to look like nothing on a desk and frequent enough to be a bug
+  /// report, so the path that handles it is untested code unless something
+  /// can force it. Measured on Windows loopback while #177 was being read,
+  /// three of three hundred idle-link payload sends came back 0.
+  double simulatedBackpressure;
+
   final Random _random;
 
   static const Duration _beaconInterval = Duration(seconds: 1);
@@ -145,6 +161,39 @@ class P2PNetTransport extends NetTransport {
   /// What has arrived and is waiting for [poll].
   final List<_Delivery> _queue = <_Delivery>[];
   final List<_Delivery> _spare = <_Delivery>[];
+
+  /// Datagrams the socket would not take, oldest first.
+  ///
+  /// `RawDatagramSocket.send` returns 0 to mean "this would have blocked, ask
+  /// again"; it is not a short write and there is no partial datagram. Taking
+  /// it for a send discards the packet *inside* this transport, which is a
+  /// worse thing than losing it on the wire because nothing downstream can
+  /// tell the difference and nothing upstream was asked.
+  ///
+  /// Reliable traffic hid it: a retransmission covers a packet the socket
+  /// refused just as well as one a router dropped. What it does not cover is
+  /// the two things sent exactly once - an unreliable message, and the
+  /// goodbye a leaving peer sends - and both of those were being thrown away
+  /// here at a rate of about one in a hundred (#177).
+  final List<_Blocked> _blocked = <_Blocked>[];
+
+  /// Drained [_Blocked]s with their buffers intact, to be filled again. The
+  /// no-allocation rule reaches here: backpressure arrives in bursts, and a
+  /// burst is the moment to not be making garbage.
+  final List<_Blocked> _blockedSpare = <_Blocked>[];
+
+  /// How many datagrams are held before the oldest is given up on.
+  ///
+  /// A block clears as soon as the socket drains, which is microseconds, so
+  /// reaching this at all means it has stopped draining rather than paused.
+  /// Holding more at that point does not get them sent, it just spends
+  /// memory on packets whose moment has passed - and the oldest is the one
+  /// whose moment passed first, which is why that is the end that goes.
+  ///
+  /// Public because a bound nothing can name is a bound nothing can check:
+  /// a test that hard-codes the number instead is a second copy of it that
+  /// only breaks once someone has already changed the first.
+  static const int maxHeldDatagrams = 64;
 
   /// The join in progress, if any.
   _Handshake? _handshake;
@@ -317,6 +366,7 @@ class P2PNetTransport extends NetTransport {
 
   @override
   void flush() {
+    if (_blocked.isNotEmpty) _drainBlocked();
     final now = _now;
     // Backwards: a link that times out removes itself from this list.
     for (var i = _links.length - 1; i >= 0; i--) {
@@ -361,6 +411,15 @@ class P2PNetTransport extends NetTransport {
     if (_closed) return;
     _closed = true;
     await _session?.leave();
+    // The goodbye is sent once and this is the last chance it will get, so a
+    // socket that refused it a moment ago is worth waiting on rather than
+    // closing over the top of. Bounded, because a socket that never drains
+    // must not be able to hold up a game's shutdown - and skipped entirely
+    // when nothing is held, which is almost always.
+    for (var attempt = 0; attempt < 10 && _blocked.isNotEmpty; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 2));
+      _drainBlocked();
+    }
     _ticker?.cancel();
     _beacon?.cancel();
     _ticker = null;
@@ -369,6 +428,8 @@ class P2PNetTransport extends NetTransport {
     _socket = null;
     _links.clear();
     _queue.clear();
+    _blocked.clear();
+    _blockedSpare.clear();
   }
 
   // --- receiving ----------------------------------------------------------
@@ -386,6 +447,10 @@ class P2PNetTransport extends NetTransport {
   void _onSocketError(Object error, StackTrace stackTrace) {}
 
   void _onSocketEvent(RawSocketEvent event) {
+    if (event == RawSocketEvent.write) {
+      _drainBlocked();
+      return;
+    }
     if (event != RawSocketEvent.read) return;
     final socket = _socket;
     if (socket == null) return;
@@ -481,7 +546,100 @@ class P2PNetTransport extends NetTransport {
     int port,
   ) {
     if (simulatedLoss > 0 && _random.nextDouble() < simulatedLoss) return;
-    _socket?.send(Uint8List.sublistView(datagram, 0, length), address, port);
+    // Anything already waiting goes first. A fresh datagram that jumped the
+    // queue would reorder the link's stream against itself, which is the one
+    // thing the sequence numbers assume the socket does not do.
+    if (_blocked.isNotEmpty) {
+      _drainBlocked();
+      if (_blocked.isNotEmpty) {
+        _hold(datagram, length, address, port);
+        return;
+      }
+    }
+    if (!_write(datagram, length, address, port)) {
+      _hold(datagram, length, address, port);
+    }
+  }
+
+  /// One attempt at the socket. False means it would have blocked and the
+  /// datagram is still ours to send.
+  ///
+  /// A closed transport reports true: there is no socket to be blocked on and
+  /// nothing to keep the packet for, which is the same nothing the old
+  /// `_socket?.send` did.
+  bool _write(
+    Uint8List datagram,
+    int length,
+    InternetAddress address,
+    int port,
+  ) {
+    final socket = _socket;
+    if (socket == null) return true;
+    if (simulatedBackpressure > 0 &&
+        _random.nextDouble() < simulatedBackpressure) {
+      return false;
+    }
+    // Either `length` or zero - `send` never writes part of a datagram.
+    return socket.send(
+          Uint8List.sublistView(datagram, 0, length),
+          address,
+          port,
+        ) !=
+        0;
+  }
+
+  /// Keeps a datagram the socket refused, and asks to be told when it drains.
+  void _hold(
+    Uint8List datagram,
+    int length,
+    InternetAddress address,
+    int port,
+  ) {
+    final socket = _socket;
+    if (socket == null) return;
+    if (_blocked.length >= maxHeldDatagrams) {
+      _blockedSpare.add(_blocked.removeAt(0));
+    }
+    final held = _blockedSpare.isEmpty
+        ? _Blocked()
+        : _blockedSpare.removeLast();
+    // Copied: every caller here hands over `_scratch`, which is the next
+    // packet's buffer as soon as this one returns.
+    if (held.bytes.length < length) held.bytes = Uint8List(length);
+    held.bytes.setRange(0, length, datagram);
+    held.length = length;
+    held.address = address;
+    held.port = port;
+    _blocked.add(held);
+    // One-shot, so it is re-armed on every hold rather than once at bind.
+    socket.writeEventsEnabled = true;
+  }
+
+  /// Sends as much of [_blocked] as the socket will now take, oldest first.
+  ///
+  /// Called from the write event, and from [flush] as well because the event
+  /// is the socket's to deliver and this transport already has a 25ms tick of
+  /// its own. Waiting only on the event would make a missed one permanent.
+  ///
+  /// **It does not re-arm the write event.** Only [_hold] does, and only
+  /// where a send has just been refused. Re-arming from here on a queue that
+  /// is still not empty spins: the socket answers a write event immediately
+  /// whenever it is writable, so anything that refuses a datagram for a
+  /// reason the socket does not share - [simulatedBackpressure] is one, and a
+  /// peer whose address the OS rejects would be another - gets an unbroken
+  /// storm of events and the isolate never runs anything else. Draining short
+  /// costs at most one tick, which is the backstop that exists anyway.
+  void _drainBlocked() {
+    var sent = 0;
+    while (sent < _blocked.length) {
+      final held = _blocked[sent];
+      if (!_write(held.bytes, held.length, held.address, held.port)) break;
+      sent++;
+    }
+    for (var i = 0; i < sent; i++) {
+      _blockedSpare.add(_blocked[i]);
+    }
+    if (sent > 0) _blocked.removeRange(0, sent);
   }
 
   void _queueMessage(
@@ -920,6 +1078,17 @@ class _Delivery {
   Uint8List bytes = Uint8List(0);
   int offset = 0;
   int length = 0;
+}
+
+/// One datagram the socket would not take, held until it will.
+///
+/// [bytes] outlives one send and is grown rather than replaced, so a run of
+/// backpressure settles on a buffer instead of allocating per packet.
+class _Blocked {
+  Uint8List bytes = Uint8List(0);
+  int length = 0;
+  InternetAddress address = InternetAddress.loopbackIPv4;
+  int port = 0;
 }
 
 /// This peer's view of the session it is in.
