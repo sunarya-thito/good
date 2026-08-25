@@ -8,8 +8,44 @@
   it, and `MouseBinding`, are unchanged. Nothing in `goo2d` is renamed:
   `MousePickingSystem`, `MouseReceiver`, `MouseEvent` and `MouseListener` are
   all as they were (#129).
+* **A sprite outside the camera's viewport is no longer drawn.**
+  `GameRenderer2D` tested only which scene an entity belonged to; the frustum
+  half was never written, so every sprite in a loaded scene was queued,
+  transformed, sorted and written every tick however far from the camera it
+  sat. It is now rejected before it is queued, and `lastRecordCount` follows
+  the size of the view rather than the size of the world: 20,000 sprites
+  spread across 100,000 world units come out as 17 records, and stay at 17 as
+  the camera pans.
+
+  **The picture is unchanged** if you show the game through
+  `Game2D.buildView`. That has always wrapped the canvas in a `ClipRect` at
+  the view's own bounds, and what is dropped now is what that rect was already
+  throwing away. Two other things do change. `lastSpriteCount`,
+  `lastRecordCount` and `lastRecordsOverBudget` count only what the camera can
+  see, so a test asserting on any of them needs its numbers read again - and a
+  scene that was over `maxSpritesPerTick` because of sprites nobody could see
+  now fits. And a game that drains `framesFor(view)` itself and paints the
+  batch onto something larger than the size it reported through
+  `CameraView.setViewport` will find the edges missing: report the size you
+  paint at, or report zero, which means "the size is not known" and culls
+  nothing.
+
+  The bound is a circle around the sprite's pivot with the radius of its
+  furthest corner, so it holds under rotation (the pivot is the point rotation
+  turns about, so the radius cannot depend on the angle), an off-centre pivot,
+  a negative scale and zoom. It over-covers rather than clips: a sprite one
+  pixel on screen is kept. A nine-sliced sprite is culled as one sprite, since
+  its nine cells tile exactly the rectangle a single quad would have (#23).
 
 ### Added
+
+* **`CameraProjection.showsCircle`**, and the `viewLeft`/`viewTop`/
+  `viewRight`/`viewBottom` rectangle it tests against - the viewport-culling
+  test, kept beside the projection that defines the view so the renderer and
+  anything else that needs it cannot drift apart. The rectangle is infinite on
+  all four sides whenever the view reports no size, which is what a headless
+  run, a view no `GameView` is showing, and the frames before the first layout
+  all report (#23).
 
 * **`GameRenderer2D.lastRecordsOverBudget`** reports how many draw records the
   last tick asked for and could not fit under `maxSpritesPerTick`. Exceeding

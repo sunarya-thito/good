@@ -383,6 +383,134 @@ void main() {
       expect(projection.halfViewHeight, 300);
       expect(projection.sceneSlot, -1);
     });
+
+    test('resolve takes the culling rectangle off the viewport', () async {
+      final scene = _scene();
+      final query = await _query(scene);
+      final game = run as _CamGame;
+      game.view.setViewport(800, 600);
+
+      final projection = CameraProjection()..resolve(query, game.view);
+
+      expect(projection.viewLeft, 0);
+      expect(projection.viewTop, 0);
+      expect(projection.viewRight, 800);
+      expect(projection.viewBottom, 600);
+    });
+
+    test('a view nobody laid out culls nothing', () async {
+      final scene = _scene();
+      final query = await _query(scene);
+      final game = run as _CamGame;
+      // Deliberately no setViewport: a headless run, and the first tick of
+      // every real game before its GameView has laid out once.
+
+      final projection = CameraProjection()..resolve(query, game.view);
+
+      expect(projection.viewLeft, double.negativeInfinity);
+      expect(projection.viewTop, double.negativeInfinity);
+      expect(projection.viewRight, double.infinity);
+      expect(projection.viewBottom, double.infinity);
+      expect(
+        projection.showsCircle(1e9, -1e9, 0),
+        isTrue,
+        reason:
+            'zero is not a small viewport, it is an unknown one - culling '
+            'against it would hide the whole world from every test that '
+            'never built a widget',
+      );
+    });
+
+    test('a view that loses its size stops culling', () async {
+      final scene = _scene();
+      final query = await _query(scene);
+      final game = run as _CamGame;
+      game.view.setViewport(800, 600);
+      final projection = CameraProjection()..resolve(query, game.view);
+      expect(projection.viewRight, 800);
+
+      // A GameView that goes away, or a resize that passes through zero.
+      // The rectangle has to come back off the view every tick rather than
+      // being latched, or the last size a view had would keep culling for a
+      // view nothing is showing.
+      game.view.setViewport(0, 0);
+      projection.resolve(query, game.view);
+
+      expect(projection.viewRight, double.infinity);
+      expect(projection.showsCircle(1e9, 1e9, 0), isTrue);
+    });
+
+    test('one axis without the other is still an unknown viewport', () async {
+      final scene = _scene();
+      final query = await _query(scene);
+      final game = run as _CamGame;
+      // Mid-layout: a width has arrived and a height has not. Half a
+      // rectangle is not a rectangle, and treating it as a 800x0 one would
+      // cull the entire scene for that frame.
+      game.view.setViewport(800, 0);
+
+      final projection = CameraProjection()..resolve(query, game.view);
+
+      expect(projection.viewRight, double.infinity);
+      expect(projection.showsCircle(4000, 4000, 0), isTrue);
+    });
+
+    test('showsCircle accepts anything that reaches the rectangle', () {
+      final projection = CameraProjection()
+        ..viewLeft = 0
+        ..viewTop = 0
+        ..viewRight = 800
+        ..viewBottom = 600;
+
+      // Inside, with no extent at all.
+      expect(projection.showsCircle(400, 300, 0), isTrue);
+      // Outside each edge by 10, with a radius of 20 (squared: 400).
+      expect(projection.showsCircle(-10, 300, 400), isTrue);
+      expect(projection.showsCircle(810, 300, 400), isTrue);
+      expect(projection.showsCircle(400, -10, 400), isTrue);
+      expect(projection.showsCircle(400, 610, 400), isTrue);
+      // Exactly touching a corner counts. `<=`, not `<`: a sprite whose edge
+      // lands on the border is on screen, and half a pixel of rounding must
+      // not be what decides it.
+      expect(projection.showsCircle(-3, -4, 25), isTrue);
+    });
+
+    test('showsCircle rejects only what clears the rectangle', () {
+      final projection = CameraProjection()
+        ..viewLeft = 0
+        ..viewTop = 0
+        ..viewRight = 800
+        ..viewBottom = 600;
+
+      // Outside each edge by 30, radius 20 (squared: 400 < 900).
+      expect(projection.showsCircle(-30, 300, 400), isFalse);
+      expect(projection.showsCircle(830, 300, 400), isFalse);
+      expect(projection.showsCircle(400, -30, 400), isFalse);
+      expect(projection.showsCircle(400, 630, 400), isFalse);
+
+      // Diagonally clear of the top-left corner. 30 out on each axis is 1800
+      // squared away, so a radius of 40 (1600) does not reach - even though
+      // 40 clears 30 on either axis taken alone. Testing the corner rather
+      // than two independent slabs is what makes this a rejection.
+      expect(projection.showsCircle(-30, -30, 1600), isFalse);
+      expect(projection.showsCircle(-30, -30, 1801), isTrue);
+    });
+
+    test('showsCircle keeps a sprite whose transform has gone wrong', () {
+      final projection = CameraProjection()
+        ..viewLeft = 0
+        ..viewTop = 0
+        ..viewRight = 800
+        ..viewBottom = 600;
+
+      // NaN loses every comparison, so the distance comes out zero and the
+      // circle is treated as sitting on the view. Drawing something wrong in
+      // an obvious place beats making it disappear, which reads as a culling
+      // bug rather than as the transform bug it is.
+      expect(projection.showsCircle(double.nan, 300, 0), isTrue);
+      expect(projection.showsCircle(400, double.nan, 0), isTrue);
+      expect(projection.showsCircle(400, 300, double.nan), isTrue);
+    });
   });
 }
 

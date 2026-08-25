@@ -1243,10 +1243,28 @@ final class _SpriteDrawQueue {
 /// closure, and stability by construction rather than by trusting a library
 /// sort's unspecified behaviour.
 ///
-/// There is still no culling. A view-frustum test needs a viewport size,
-/// which is the same thing the alignment section below is missing, and it is
-/// additive when that arrives (a camera rect tested against each quad's
-/// bounds, between the queue fill and the write loop).
+/// # Culling
+///
+/// A sprite the camera cannot see is dropped in the fill pass, before it is
+/// queued, sorted, budgeted or written - so what a frame costs tracks the
+/// size of the view rather than the size of the world.
+///
+/// The test is a circle around the sprite's pivot against the viewport
+/// rectangle (`CameraProjection.showsCircle`), and it is deliberately a
+/// circle: the pivot is the point rotation turns about, so a radius measured
+/// from it is the one bound that does not have to be recomputed per angle.
+/// It over-covers: a sprite whose circle reaches the view while the sprite
+/// itself does not quite is kept. That is the direction to be wrong in, since
+/// a quad nobody sees costs a record and a sprite wrongly dropped is a hole in
+/// the picture.
+///
+/// **A view with no size culls nothing.** A headless run and a view no
+/// `GameView` is showing both report zero, and zero is not a small viewport -
+/// see `CameraProjection.viewLeft`.
+///
+/// What is *not* here is the other half of #23: a dirty-flag skip that stops
+/// re-transforming a static subtree at all (#25). This pass still visits every
+/// renderable every tick and decides one at a time.
 ///
 /// # Camera
 ///
@@ -1296,12 +1314,14 @@ final class _SpriteDrawQueue {
 /// resolves the address and builds the shader on the main isolate, which is
 /// the whole reason the addressing scheme exists.
 ///
-/// # Not yet: nine-slice
+/// # Nine-slice
 ///
-/// The `border*` insets are declared and stored, and this system reads none of
-/// them. Every sprite emits one quad whether or not the border is non-empty;
-/// generating a nine-slice's nine quads (each with its own sub-rectangle of
-/// the UV square this writes whole) is the follow-up task.
+/// A sprite whose destination insets are non-zero and which has a texture
+/// emits nine records instead of one, each with its own sub-rectangle of the
+/// UV square - see [_writeNineSlice], and [NineSliceBorder] for why the
+/// source cut is a fraction and the destination corner is not. The nine cells
+/// tile exactly the rectangle the single quad would have covered, which is
+/// what lets culling and the record budget treat the sprite as one thing.
 class GameRenderer2D extends GameSystem
     with Tickable, GameSystemLifecycleListener {
   /// Runs in the presentation phase, after the fixed tick commits, and after
@@ -1859,6 +1879,80 @@ class GameRenderer2D extends GameSystem
           final width = sprite.width[entity];
           final height = sprite.height[entity];
           if (width == 0 || height == 0) continue;
+
+          // The pivot is a point inside the sprite's own `width x height`
+          // bounds, measured from its top-left: `fraction * size + offset`. The
+          // transform origin sits on it, so the sprite's local extents run from
+          // `-pivot` to `size - pivot`. The default (fraction 0.5, offset 0)
+          // gives exactly `-size/2 .. +size/2`.
+          final pivotX =
+              sprite.pivotFractionX[entity] * width +
+              sprite.pivotOffsetX[entity];
+          final pivotY =
+              sprite.pivotFractionY[entity] * height +
+              sprite.pivotOffsetY[entity];
+          // Zoom folds into the scale for the same reason it folds into
+          // `tx`/`ty`: one multiply here beats a second pass over four corners.
+          final scaleX = source.scaleX[entity] * zoom;
+          final scaleY = source.scaleY[entity] * zoom;
+          final lx0 = -pivotX * scaleX;
+          final lx1 = (width - pivotX) * scaleX;
+          final ly0 = -pivotY * scaleY;
+          final ly1 = (height - pivotY) * scaleY;
+          final tx = projection.worldToViewX(source.x[entity]);
+          final ty = projection.worldToViewY(source.y[entity]);
+
+          // Viewport culling, and it comes *before* the budget: a record the
+          // camera cannot see must not spend a place another sprite needs.
+          // That is also what makes `lastRecordsOverBudget` mean "the scene
+          // asked for more than it can draw" rather than "the world is large".
+          //
+          // The bound is a circle centred on the pivot, because the pivot is
+          // the point the transform origin sits on and therefore the point
+          // rotation turns about. Rotation moves every corner along a circle
+          // centred there, so the distance from the pivot to the furthest
+          // corner does not depend on `rotation` at all - which is why this
+          // can be decided before the angle is even read. A bound taken from
+          // width and height alone is not merely a tighter answer, it is the
+          // wrong shape: it is blind to the rotation, so it clips a long
+          // sprite that is on screen only because it is turned.
+          //
+          // The four corners are `(lx0|lx1, ly0|ly1)`, so the furthest sits at
+          // `sqrt(max(lx0^2, lx1^2) + max(ly0^2, ly1^2))` - and the squares
+          // are the whole computation, because `showsCircle` compares against
+          // the square and there is no root to take. The pivot is in those
+          // four numbers already, so a sprite hung well off its own origin is
+          // bounded by a circle large enough to reach it.
+          //
+          // Scale is in there too, sign included: a negative scale flips the
+          // sprite about the pivot, and squaring is blind to which side of it
+          // the corner ended up on. Zoom enters twice and consistently - it
+          // shrinks the sprite through `scaleX`/`scaleY` and pulls the pivot
+          // towards the middle of the view through the projection - which is
+          // what brings a sprite that missed the view at zoom 1 back onto it
+          // at zoom 0.5.
+          //
+          // Nine-slice needs nothing of its own. Its grid lines are
+          // `(0 | left | width - right | width) - pivot` scaled, so the
+          // outermost two *are* `lx0` and `lx1`, and the nine cells tile
+          // exactly the rectangle one quad would have covered. The sprite is
+          // therefore culled whole, never a cell at a time. (The interior
+          // lines fall between the outer two for any non-negative inset,
+          // which is the only kind a nine-slice has - a negative one is a
+          // corner drawn outside the sprite's declared bounds, and nothing
+          // downstream expects that either.)
+          final sx0 = lx0 * lx0;
+          final sx1 = lx1 * lx1;
+          final sy0 = ly0 * ly0;
+          final sy1 = ly1 * ly1;
+          if (!projection.showsCircle(
+            tx,
+            ty,
+            (sx0 > sx1 ? sx0 : sx1) + (sy0 > sy1 ? sy0 : sy1),
+          )) {
+            continue;
+          }
+
           final records = _isNineSliced(entity, sprite) ? 9 : 1;
           // Checked against this sprite's own cost, not against a fixed 1, so a
           // nine-sliced sprite is admitted only if all nine of its records fit.
@@ -1924,27 +2018,6 @@ class GameRenderer2D extends GameSystem
             // counter-clockwise on screen`.
             sin = -math.sin(rotation);
           }
-          final tx = projection.worldToViewX(source.x[entity]);
-          final ty = projection.worldToViewY(source.y[entity]);
-          // The pivot is a point inside the sprite's own `width x height`
-          // bounds, measured from its top-left: `fraction * size + offset`. The
-          // transform origin sits on it, so the sprite's local extents run from
-          // `-pivot` to `size - pivot`. The default (fraction 0.5, offset 0)
-          // gives exactly `-size/2 .. +size/2`.
-          final pivotX =
-              sprite.pivotFractionX[entity] * width +
-              sprite.pivotOffsetX[entity];
-          final pivotY =
-              sprite.pivotFractionY[entity] * height +
-              sprite.pivotOffsetY[entity];
-          // Zoom folds into the scale for the same reason it folds into
-          // `tx`/`ty`: one multiply here beats a second pass over four corners.
-          final scaleX = source.scaleX[entity] * zoom;
-          final scaleY = source.scaleY[entity] * zoom;
-          final lx0 = -pivotX * scaleX;
-          final lx1 = (width - pivotX) * scaleX;
-          final ly0 = -pivotY * scaleY;
-          final ly1 = (height - pivotY) * scaleY;
           // Rotating the four local corners and translating. Eight products
           // for four corners, because each corner reuses one of two x-terms and
           // one of two y-terms.

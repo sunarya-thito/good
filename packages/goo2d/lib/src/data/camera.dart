@@ -157,8 +157,8 @@ class ActiveCameraResolver {
 ///
 /// Holds no query of its own for the same reason [ActiveCameraResolver]
 /// does not - the consumer knows what else it needs the camera to satisfy.
-/// One instance per system, reused every tick: [resolve] only writes three
-/// doubles, so nothing here allocates (the no-allocation rule).
+/// One instance per system, reused every tick: [resolve] only writes fields
+/// it already owns, so nothing here allocates (the no-allocation rule).
 class CameraProjection {
   final ActiveCameraResolver _resolver = ActiveCameraResolver();
 
@@ -173,6 +173,24 @@ class CameraProjection {
   /// middle. Zero on a game with no widget.
   double halfViewWidth = 0;
   double halfViewHeight = 0;
+
+  /// The rectangle [showsCircle] tests against, in view-space pixels: the
+  /// whole viewport, `(0, 0)` to `(viewportWidth, viewportHeight)`.
+  ///
+  /// **Infinite on all four sides when the view has no size**, which is what
+  /// a headless run and a view no `GameView` is showing both report. Zero is
+  /// not a degenerate rectangle to cull against - it is "nobody has said how
+  /// big this is", and treating it as a rectangle would hide the entire world
+  /// from every test that never built a widget, and from the first tick of
+  /// every real game, before layout has run once.
+  ///
+  /// Infinities rather than a `bool` the test branches on: they make "no size
+  /// means nothing is culled" a property of the rectangle itself, so there is
+  /// no second rule for a caller to forget and no branch on the frame path.
+  double viewLeft = double.negativeInfinity;
+  double viewTop = double.negativeInfinity;
+  double viewRight = double.infinity;
+  double viewBottom = double.infinity;
 
   /// The camera [resolve] last found, or `null` if there was none.
   Entity? camera;
@@ -198,6 +216,53 @@ class CameraProjection {
   @pragma('vm:prefer-inline')
   bool shows(Entity entity) => sceneSlot < 0 || entity.sceneSlot == sceneSlot;
 
+  /// Whether a circle centred at view-space ([viewX], [viewY]) reaches this
+  /// view at all - the viewport-culling test.
+  ///
+  /// Separate from [shows] and not folded into it, because the two answer
+  /// different questions about different things: [shows] is about an entity's
+  /// *scene*, this is about one drawable's *geometry*, and an entity with
+  /// several sprites gets one answer from the first and one per sprite from
+  /// the second.
+  ///
+  /// [radiusSquared], not the radius. The caller derives the bound from
+  /// squares it already has, and taking a square root here only to square it
+  /// back would be one per sprite per tick on the frame path.
+  ///
+  /// # It is conservative, in the one direction that matters
+  ///
+  /// A false keep costs a quad nobody sees. A false reject is a sprite
+  /// missing from the picture, which is a bug a player notices and a test
+  /// suite that only checks "the far-away one vanished" does not. So
+  /// everything here rounds towards keeping:
+  ///
+  ///  * The caller's circle encloses the drawn shape rather than tracing it.
+  ///  * Touching counts - a sprite whose edge lands exactly on the viewport
+  ///    border is kept.
+  ///  * NaN in any of the three arguments keeps the sprite. That is why the
+  ///    last line rejects on `> radiusSquared` and negates, rather than
+  ///    accepting on `<=`: the two differ only for NaN, where every
+  ///    comparison is false and only the negated form comes out as "keep". A
+  ///    transform that has gone wrong should be visibly wrong, not invisible.
+  @pragma('vm:prefer-inline')
+  bool showsCircle(double viewX, double viewY, double radiusSquared) {
+    // Distance from the point to the rectangle, per axis: zero while the
+    // point is inside the slab, and how far out it is otherwise. Squared and
+    // summed, this is the closest approach of the rectangle to the circle's
+    // centre, so the whole test is that against the radius.
+    final dx = viewX < viewLeft
+        ? viewLeft - viewX
+        : viewX > viewRight
+        ? viewX - viewRight
+        : 0.0;
+    final dy = viewY < viewTop
+        ? viewTop - viewY
+        : viewY > viewBottom
+        ? viewY - viewBottom
+        : 0.0;
+    return !(dx * dx + dy * dy > radiusSquared);
+  }
+
   /// Re-reads the active camera out of [cameras] - typically
   /// `descriptor.query().withAll(Camera, WorldTransform2D).build()` - and
   /// the view size, typically `game.viewWidth`/`game.viewHeight`.
@@ -209,8 +274,24 @@ class CameraProjection {
     // Off the view, not off the game: two `GameView`s of different sizes
     // cannot share one number, which is why this stopped being
     // `Game.viewWidth`.
-    halfViewWidth = view.viewportWidth / 2;
-    halfViewHeight = view.viewportHeight / 2;
+    final viewportWidth = view.viewportWidth;
+    final viewportHeight = view.viewportHeight;
+    halfViewWidth = viewportWidth / 2;
+    halfViewHeight = viewportHeight / 2;
+    // Both axes together, not one each: half a rectangle is not a rectangle,
+    // and a view reporting a width but no height yet is mid-layout rather
+    // than a one-pixel-tall thing to cull against.
+    if (viewportWidth > 0 && viewportHeight > 0) {
+      viewLeft = 0;
+      viewTop = 0;
+      viewRight = viewportWidth;
+      viewBottom = viewportHeight;
+    } else {
+      viewLeft = double.negativeInfinity;
+      viewTop = double.negativeInfinity;
+      viewRight = double.infinity;
+      viewBottom = double.infinity;
+    }
     final entity = _resolver.resolve(cameras, view);
     camera = entity;
     if (entity == null) {

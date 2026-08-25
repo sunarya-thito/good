@@ -44,7 +44,10 @@ Deferred, and documented in place instead of left as silent gaps.
 ### Engine
 
 - **Array-typed `DataDescriptor` fields** in the codegen path
-- **Z-ordering and culling** beyond declaration order and the `zIndex` sort
+- **Z-ordering** beyond declaration order and the `zIndex` sort
+- **Skipping work for a subtree nothing moved.** A sprite outside the camera's
+  viewport is now dropped before it is queued, but a static subtree is still
+  re-composed and re-tested every tick
 - **Dependency-based system ordering** — `compareTo` is the mechanism today
 - **`goo2d`'s transform helpers are still on the mixin.** `Transform2D.lookAt`,
   `distanceTo` and the rest take the entity as an argument
