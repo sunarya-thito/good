@@ -1,3 +1,22 @@
+## Unreleased
+
+### Fixed
+
+* **`good generate` no longer refuses a private column name that two libraries
+  both declare.** A `_`-prefixed name is private to its library, so two
+  component mixins in different files each declaring `final _dirty =
+  Field.boolean()` declare two independent members - both columns reachable,
+  both wanted. The shadowed-field check compared bare names, called that a
+  collision and threw before writing anything, which stopped `good generate`,
+  `good build` and `good create` alike on correct code. Its advice did not
+  help either: a private name has no cross-library collision to prefix away.
+
+  A private name that collides inside one library is still reported, and the
+  library is the language's and not the file: `part` splits one library across
+  several files, and two parts of it declaring `_dirty` do collide. That comes
+  off the `part` directives of files the scan already parses, so nothing about
+  it costs a resolution.
+
 ## 0.2.0
 
 Six changes stop a build that worked at 0.1.1. Each one turns something that

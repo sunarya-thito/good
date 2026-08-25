@@ -287,6 +287,165 @@ class Player extends EntityStruct with Velocity, Fast {}
     expect(scanStructRules(dir).shadowed, isEmpty);
   });
 
+  // --- #178: a private name belongs to its library, not to every file ------
+  //
+  // A `_`-prefixed name is library-private, so two libraries each declaring
+  // `_dirty` declare two independent members: both columns are reachable, both
+  // are wanted, and the row is legitimately the sum of them. Reported as a
+  // collision, that stopped `good generate`, `good build` and `good create` on
+  // correct code, and the message's advice - prefix it - cannot help a name
+  // that has no cross-library collision to prefix away.
+  //
+  // The other half is what makes this narrow rather than a skip: a private
+  // name *can* collide, when one library is split across files with `part`.
+  // Dropping every `_` name would pass the first case here and lose that one.
+
+  group('a private column name is private to its library', () {
+    test('two libraries declaring one are independent', () {
+      final dir = _project(<String, String>{
+        'health.dart': '''
+mixin Health on Component {
+  final healthHp = Field.int32(100);
+  final _dirty = Field.boolean();
+}
+''',
+        'shield.dart': '''
+mixin Shield on Component {
+  final shieldCharge = Field.int32(50);
+  final _dirty = Field.boolean();
+}
+''',
+        'player.dart': '''
+class Player extends EntityStruct with Health, Shield {}
+''',
+      });
+
+      final scan = scanStructRules(dir);
+      expect(
+        scan.shadowed,
+        isEmpty,
+        reason:
+            'neither _dirty is visible to the other library, so both columns '
+            'are reachable and nothing is hidden',
+      );
+      expect(scan.unresolved, isEmpty);
+    });
+
+    test('two declarations in one library still collide', () {
+      final dir = _project(<String, String>{
+        'game.dart': '''
+mixin Health on Component {
+  final _dirty = Field.boolean();
+}
+mixin Shield on Component {
+  final _dirty = Field.boolean();
+}
+class Player extends EntityStruct with Health, Shield {}
+''',
+      });
+
+      final scan = scanStructRules(dir);
+      expect(scan.shadowed, hasLength(1));
+      expect(scan.shadowed.single.field, '_dirty');
+      expect(scan.shadowed.single.winner, 'Shield');
+      expect(scan.shadowed.single.loser, 'Health');
+    });
+
+    test('two parts of one library collide across their files', () {
+      // The case that makes the file a proxy and not the answer. `part` puts
+      // both declarations in one library, where a private name is one member,
+      // so this is a real collision between two files.
+      //
+      // One part sits in a subdirectory, because the `part` URI is written
+      // with forward slashes whatever the platform and has to come back as a
+      // path that matches the one the scan walked to.
+      final dir = _project(<String, String>{
+        'game.dart': '''
+part 'health.dart';
+part 'parts/shield.dart';
+
+class Player extends EntityStruct with Health, Shield {}
+''',
+        'health.dart': '''
+part of 'game.dart';
+
+mixin Health on Component {
+  final _dirty = Field.boolean();
+}
+''',
+        'parts/shield.dart': '''
+part of '../game.dart';
+
+mixin Shield on Component {
+  final _dirty = Field.boolean();
+}
+''',
+      });
+
+      final scan = scanStructRules(dir);
+      expect(scan.shadowed.map((s) => '${s.winner}.${s.field}'), <String>[
+        'Shield._dirty',
+      ]);
+      expect(scan.shadowed.single.winnerFile, endsWith('shield.dart'));
+      expect(scan.shadowed.single.loserFile, endsWith('health.dart'));
+    });
+
+    test('a third declaration is compared against its own library', () {
+      // Health and Armour are one library, Shield another, applied in that
+      // order. Health._dirty and Armour._dirty are one member and the second
+      // hides the first; Shield._dirty is a different member and hides
+      // neither. A check that compared each name against whichever
+      // declaration claimed it last would have Shield in hand by the time
+      // Armour is read, see two libraries, and let the real collision through.
+      final dir = _project(<String, String>{
+        'health.dart': '''
+mixin Health on Component {
+  final _dirty = Field.boolean();
+}
+mixin Armour on Component {
+  final _dirty = Field.boolean();
+}
+''',
+        'shield.dart': '''
+mixin Shield on Component {
+  final _dirty = Field.boolean();
+}
+''',
+        'player.dart': '''
+class Player extends EntityStruct with Health, Shield, Armour {}
+''',
+      });
+
+      final scan = scanStructRules(dir);
+      expect(scan.shadowed.map((s) => '${s.winner}.${s.field}'), <String>[
+        'Armour._dirty',
+      ]);
+      expect(scan.shadowed.single.loser, 'Health');
+    });
+
+    test('a public name still collides across libraries', () {
+      // The line this fix must not move: `speed` in two files is one member
+      // and one of the two columns is unreachable.
+      final dir = _project(<String, String>{
+        'velocity.dart': '''
+mixin Velocity on Component {
+  final speed = Field.float64();
+}
+''',
+        'momentum.dart': '''
+mixin Momentum on Component {
+  final speed = Field.float64();
+}
+''',
+        'player.dart': '''
+class Player extends EntityStruct with Velocity, Momentum {}
+''',
+      });
+
+      expect(scanStructRules(dir).shadowed, hasLength(1));
+    });
+  });
+
   test('two plain fields colliding are not this check\'s business', () {
     final dir = _project(<String, String>{
       'game.dart': '''

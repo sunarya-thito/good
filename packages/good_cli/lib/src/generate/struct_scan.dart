@@ -133,6 +133,11 @@ StructScan scanStructRules(Directory projectDir) {
   // second run and from 563ms to 136ms warm, against 1-7ms for everything
   // `good generate` did before this check existed.
   final byName = <String, List<_Owner>>{};
+
+  // Which library file each part file belongs to, taken from the `part`
+  // directives of the units below. Collected here and applied afterwards,
+  // because a part is read before its library as often as not.
+  final partOwner = <String, String>{};
   for (final root in roots) {
     for (final file in Directory(root).listSync(recursive: true)) {
       if (file is! File || !file.path.endsWith('.dart')) continue;
@@ -148,6 +153,7 @@ StructScan scanStructRules(Directory projectDir) {
         // as unresolved on the structs that mention them.
         continue;
       }
+      _readParts(unit, file.path, partOwner);
       final visitor = _OwnerVisitor(file.path);
       unit.accept(visitor);
       for (final owner in visitor.owners) {
@@ -156,6 +162,7 @@ StructScan scanStructRules(Directory projectDir) {
     }
   }
 
+  _markLibraries(byName, partOwner);
   _markStructs(byName);
   _markComponentMixins(byName);
 
@@ -175,6 +182,66 @@ StructScan scanStructRules(Directory projectDir) {
     missingSuper: missingSuper,
     unresolved: unresolved,
   );
+}
+
+/// Records each file [unit] claims as a part of itself, keyed by the part.
+///
+/// The `part` side is read and the `part of` side is not, because only one of
+/// them is always a path. `part of` still allows the old dotted library name,
+/// which cannot be turned back into a file without resolving; `part` is a URI
+/// relative to the file holding it, every time. A `package:` or `dart:` URI is
+/// skipped - a part is a file beside its library, and matching one to a scan
+/// root would mean resolving package URIs this pass deliberately does not.
+///
+/// What that leaves out is a part whose library is not itself scanned, which
+/// keeps the part's own path as its library. That needs a `part` pointing out
+/// of the directory the library lives in, and the roots here are whole `lib/`
+/// trees, so the library is in the scan whenever the part is.
+void _readParts(
+  CompilationUnit unit,
+  String file,
+  Map<String, String> partOwner,
+) {
+  for (final directive in unit.directives) {
+    if (directive is! PartDirective) continue;
+    final uri = directive.uri.stringValue;
+    if (uri == null || uri.contains(':')) continue;
+    partOwner[p.normalize(p.join(p.dirname(file), uri))] = p.normalize(file);
+  }
+}
+
+/// Points every declaration at the library it belongs to, rather than the file
+/// it is written in.
+///
+/// The two differ exactly when `part` splits one library across several files,
+/// and the difference decides a private name: `_dirty` in two libraries is two
+/// independent members, `_dirty` in two parts of one library is a genuine
+/// collision. [_check] keys on the answer.
+///
+/// This is the library the language means and not a proxy for it. It comes off
+/// the directives of units this pass has already parsed, so it costs a walk
+/// over a handful of tokens per file - the element model would give the same
+/// answer for the seconds of resolution [scanStructRules] exists to avoid.
+void _markLibraries(
+  Map<String, List<_Owner>> byName,
+  Map<String, String> partOwner,
+) {
+  if (partOwner.isEmpty) return;
+  for (final owners in byName.values) {
+    for (final owner in owners) {
+      // Walked rather than looked up once, because a part may itself have
+      // parts. The seen set is for a source that makes a cycle: Dart rejects
+      // that, but nothing here resolves, so this has to terminate on its own.
+      final seen = <String>{owner.library};
+      for (
+        var next = partOwner[owner.library];
+        next != null && seen.add(next);
+        next = partOwner[owner.library]
+      ) {
+        owner.library = next;
+      }
+    }
+  }
 }
 
 /// Decides which classes are laid out as entity rows, so the rest are skipped.
@@ -339,11 +406,23 @@ void _check(
   final applied = <_Owner>[];
   _linearize(struct, byName, applied, <String>{}, unresolved, struct.name);
 
-  // name -> the declaration that most recently claimed it.
+  // member -> the declaration that most recently claimed it.
+  //
+  // Keyed by what the name resolves *as*, which for a `_`-prefixed one is the
+  // name together with its library: `Health._dirty` and `Shield._dirty` in two
+  // libraries are two independent members, both reachable, and neither hides
+  // the other. Dart gives that answer and so must this, or correct code stops
+  // a build (#178).
+  //
+  // Qualifying the key beats testing the two libraries once a collision is
+  // found. With `_dirty` declared by A and C in one library and by B in
+  // another, applied A, B, C, a name-keyed map holds B by the time C is read,
+  // the libraries differ, and the real A/C collision goes unreported.
   final claimed = <String, _Owner>{};
   for (final part in applied) {
     for (final field in part.fields) {
-      final previous = claimed[field.name];
+      final member = _member(part, field.name);
+      final previous = claimed[member];
       if (previous != null && previous != part) {
         // At least one side has to be a column for the row to grow, which is
         // the harm this reports. Two plain fields colliding is ordinary Dart
@@ -360,10 +439,15 @@ void _check(
           );
         }
       }
-      claimed[field.name] = part;
+      claimed[member] = part;
     }
   }
 }
+
+/// What a field name resolves as: a private one only within its library, a
+/// public one anywhere.
+String _member(_Owner owner, String name) =>
+    name.startsWith('_') ? '${owner.library}::$name' : name;
 
 /// Appends [owner]'s parts in applied order, base first.
 void _linearize(
@@ -539,10 +623,15 @@ extension on List<_Field> {
 
 /// One class or mixin that can contribute fields to a struct.
 class _Owner {
-  _Owner(this.name, this.file);
+  _Owner(this.name, this.file) : library = p.normalize(file);
 
   final String name;
   final String file;
+
+  /// The file of the library this declaration is in - its own, unless some
+  /// other file claims it with `part`. Set by [_markLibraries], which is also
+  /// where the difference between this and [file] matters.
+  String library;
 
   /// Whether entities are laid out from this - a class whose own applied order
   /// is worth checking. Set by [_markStructs] once every file has been read,
