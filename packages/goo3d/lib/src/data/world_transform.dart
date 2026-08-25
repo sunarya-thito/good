@@ -8,11 +8,11 @@ import 'package:goo3d/src/data/transform.dart';
 /// and never reparented has world == local by construction and does not need
 /// the extra fields.
 ///
-/// **Leaving it off is the cheaper choice for a static prop, and deliberately
-/// so.** In 2D, requiring the world columns meant `WorldTransformSystem`
-/// copied local to world for every sprite on every fixed step, and at 20k flat
-/// sprites that copy was a third of the step. A prefab that is never parented
-/// pays nothing here for the same reason.
+/// **Leaving it off is the cheaper choice for a static prop.** In 2D,
+/// requiring the world columns makes `WorldTransformSystem` copy local to
+/// world for every sprite on every fixed step; measured at 20k flat sprites,
+/// that copy is a third of the step. A prefab that is never parented pays
+/// nothing here.
 ///
 /// Fields are read-only from every other system's perspective - only
 /// [WorldTransform3DSystem] ever writes them, once per `FixedTickEvent`, the
@@ -198,8 +198,8 @@ class WorldTransform3DSystem extends GameSystem
   /// Runs after the main pass and overwrites what it produced for these few
   /// entities - the pass composed them from a stale row, or never reached
   /// them at all, and could not have known better either way. Doing it here
-  /// rather than branching inside the pass keeps the per-entity hot path
-  /// exactly as it was: this costs nothing in a tick where nothing spawned.
+  /// instead of branching inside the pass keeps the per-entity hot path clear
+  /// of a test: this costs nothing in a tick where nothing spawned.
   ///
   /// [DataPointer.readPending] is the write slot - the value the spawner just
   /// wrote. It is normally forbidden for a system to read uncommitted state,
@@ -552,8 +552,8 @@ class WorldTransform3DSystem extends GameSystem
   /// need not have any of them.
   ///
   ///  * No [Transform3D]: a bare grouping node - Child/Parent links and
-  ///    nothing else. It contributes identity and the walk steps over it,
-  ///    rather than aborting and stranding its whole subtree at the origin.
+  ///    nothing else. It contributes identity and the walk steps over it; it
+  ///    does not abort and strand its whole subtree at the origin.
   ///  * No [WorldTransform3D]: nothing to cache into, but its descendants may
   ///    still opt in, so the composed transform is threaded straight through
   ///    to them.

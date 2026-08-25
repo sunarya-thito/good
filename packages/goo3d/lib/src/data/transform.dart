@@ -10,7 +10,7 @@ import 'package:good/good.dart';
 /// date by whoever writes any one of them, and a system that only wants a
 /// position would read a whole matrix row to get it.
 ///
-/// Rotation is a quaternion in four columns rather than three Euler angles.
+/// Rotation is a quaternion in four columns, not three Euler angles.
 /// Three angles gimbal-lock, and combining rotations is exactly what a
 /// parent-child hierarchy does on every tick. Nothing here asks the game to
 /// think in quaternions: [Transform3DAccessor.setEuler] and [Transform3DAccessor.lookAt]
@@ -50,14 +50,14 @@ mixin Transform3D on Component {
   }
 }
 
-/// What a game does with a [Transform3D], on the **entity** rather than on
-/// the component: `entity<Transform3D>().setEuler(yaw: 0.5)`.
+/// What a game does with a [Transform3D], on the **entity** and not on the
+/// component: `entity<Transform3D>().setEuler(yaw: 0.5)`.
 ///
 /// These read and write *local* values - what the raw columns hold. The
 /// world-space equivalent, with every ancestor applied, is
 /// `WorldTransform3D`'s own columns (world_transform.dart).
 ///
-/// # Why these are not methods on the mixin
+/// # The receiver is the entity
 ///
 /// A helper on the mixin has to take the entity as an argument, and then
 /// nothing in the signature says whether the receiver is meant to be *that*
@@ -66,12 +66,11 @@ mixin Transform3D on Component {
 /// both. Here the receiver is the entity, and each entity's component is
 /// resolved from it, so a helper cannot be pointed at the wrong archetype's
 /// row layout at all. `Accessor<T>` erases to `Entity` erases to `int`, and
-/// implements `Entity`, so the view costs nothing and is still an entity -
-/// which is why the bodies below index columns with `this` (see `Accessor` in
-/// the kernel).
+/// implements `Entity`, so the view costs nothing and is still an entity, and
+/// the bodies below index columns with `this` (see `Accessor` in the kernel).
 ///
 /// Nothing here allocates. The quaternion arithmetic is written out in local
-/// doubles rather than through a vector type, because this is called from
+/// doubles instead of through a vector type, because this is called from
 /// gameplay code that runs every tick.
 extension Transform3DAccessor on Accessor<Transform3D> {
   /// Local-space (no ancestors, no `WorldTransform3D`) distance between this
@@ -181,8 +180,8 @@ extension Transform3DAccessor on Accessor<Transform3D> {
   /// forward. That is why a camera parented to nothing and rotated by nothing
   /// looks down -Z.
   ///
-  /// Two cases have no single answer and are resolved rather than left to
-  /// produce NaN:
+  /// Two cases have no single answer, and each gets a defined result instead
+  /// of a NaN:
   ///
   ///  * The target *is* the entity's own position. There is no direction to
   ///    face, so the rotation is left exactly as it was - fabricating an
@@ -247,8 +246,8 @@ extension Transform3DAccessor on Accessor<Transform3D> {
   /// The unit direction the current local rotation faces: this entity's own
   /// -Z axis, in the space its offsets are measured in.
   ///
-  /// Three scalar getters rather than one returning a vector, matching this
-  /// codebase's standing zero-allocation-per-tick stance.
+  /// Three scalar getters, not one returning a vector, so that reading a
+  /// direction every tick allocates nothing.
   double get forwardX {
     final t = component;
     return -2 *
@@ -256,6 +255,7 @@ extension Transform3DAccessor on Accessor<Transform3D> {
             t.transformRotationW[this] * t.transformRotationY[this]);
   }
 
+  /// The Y component of the forward direction. See [forwardX].
   double get forwardY {
     final t = component;
     return -2 *
@@ -263,6 +263,7 @@ extension Transform3DAccessor on Accessor<Transform3D> {
             t.transformRotationW[this] * t.transformRotationX[this]);
   }
 
+  /// The Z component of the forward direction. See [forwardX].
   double get forwardZ {
     final t = component;
     final x = t.transformRotationX[this];
@@ -279,6 +280,7 @@ extension Transform3DAccessor on Accessor<Transform3D> {
     return 1 - 2 * (y * y + z * z);
   }
 
+  /// The Y component of the right direction. See [rightX].
   double get rightY {
     final t = component;
     return 2 *
@@ -286,6 +288,7 @@ extension Transform3DAccessor on Accessor<Transform3D> {
             t.transformRotationW[this] * t.transformRotationZ[this]);
   }
 
+  /// The Z component of the right direction. See [rightX].
   double get rightZ {
     final t = component;
     return 2 *
@@ -302,6 +305,7 @@ extension Transform3DAccessor on Accessor<Transform3D> {
             t.transformRotationW[this] * t.transformRotationZ[this]);
   }
 
+  /// The Y component of the up direction. See [upX].
   double get upY {
     final t = component;
     final x = t.transformRotationX[this];
@@ -309,6 +313,7 @@ extension Transform3DAccessor on Accessor<Transform3D> {
     return 1 - 2 * (x * x + z * z);
   }
 
+  /// The Z component of the up direction. See [upX].
   double get upZ {
     final t = component;
     return 2 *
@@ -339,7 +344,7 @@ double _clampUnit(double value) => value < -1
 /// three axes given, into [t]'s rotation columns for [entity].
 ///
 /// Shepperd's method: pick whichever of the four components is largest and
-/// derive the other three from it, rather than always taking the one the
+/// derive the other three from it, instead of always taking the one the
 /// trace gives. The obvious single-formula version divides by something that
 /// goes to zero for a half-turn, which is not an exotic rotation - it is
 /// "facing the other way".

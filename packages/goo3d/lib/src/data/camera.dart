@@ -24,24 +24,22 @@ import 'package:good/good.dart';
 ///   }
 /// }
 /// ```
-///
-/// That used to be a `Camera3DDescriptor` handed to a `describeCamera` hook,
-/// which existed only to carry three numbers into `hasFloat64`. `goo2d`'s
-/// `Camera` never had one and now does not need one either.
 mixin Camera3D on Component {
-  /// Vertical field of view, in **degrees**. Degrees rather than radians
-  /// because this is a number a person types into a prefab, and 60 is a
-  /// choice while 1.0471975511965976 is a transcription.
+  /// Vertical field of view, in **degrees**, not radians: this is a number
+  /// you type into a prefab, and 60 is a choice while 1.0471975511965976 is a
+  /// transcription.
   final fieldOfView = Field.float64(60);
 
-  /// The near and far clip distances, in world units, measured along the
-  /// camera's forward axis.
+  /// The near clip distance, in world units, measured along the camera's
+  /// forward axis. A positive distance in front of the camera.
   ///
-  /// Both are positive distances in front of the camera. A near plane very
-  /// close to zero is not free - the depth buffer's precision is spent
+  /// Very close to zero is not free - the depth buffer's precision is spent
   /// mostly between `near` and a small multiple of it, so a `near` of 0.001
   /// buys detail nobody can see at the cost of z-fighting everywhere else.
   final near = Field.float64(0.1);
+
+  /// The far clip distance, in world units, measured along the camera's
+  /// forward axis. Nothing past it is drawn.
   final far = Field.float64(1000);
 
   /// Which declared view this camera fills, or null for a camera that is not
@@ -53,17 +51,16 @@ mixin Camera3D on Component {
   /// eye.camera.view[entity] = game.mainCamera;
   /// ```
   ///
-  /// Typed rather than an int, which is the payoff of `CameraView` being a
-  /// `GlobalObject`: a stray integer does not compile here.
+  /// Typed, not an int: `CameraView` is a `GlobalObject`, so a stray integer
+  /// does not compile here.
   ///
-  /// The one field here that still needs [describeStruct]: the view table it
-  /// is declared against comes from `getScene`, an instance method a field
+  /// The one field here that needs [describeStruct]: the view table it is
+  /// declared against comes from `getScene`, an instance method a field
   /// initialiser cannot reach.
   ///
-  /// More than one camera on one view has no meaning, because a view has one
-  /// origin, and it is the renderer that will have to say so. That renderer
-  /// is not written yet; `goo2d`'s `ActiveCameraResolver` is the shape the
-  /// check takes there.
+  /// More than one camera on one view has no meaning - a view has one origin
+  /// - and nothing here checks for it. `goo2d` makes that check in
+  /// `ActiveCameraResolver`.
   late final DataPointer<CameraView?> view;
 
   @override

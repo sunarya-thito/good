@@ -3,9 +3,8 @@
 /// **One dependency, one import.** Adding `goo3d` to a pubspec and importing
 /// this library gives you the kernel (ECS, scenes, the tick loop,
 /// `Game`/`GameState`, `GameView`) *and* the 3D layer. The kernel is
-/// re-exported below rather than left as a second dependency the user has to
-/// add and keep version-matched by hand, which is the arrangement `goo2d`
-/// already uses.
+/// re-exported below, so it is not a second dependency you add and keep
+/// version-matched by hand. `goo2d` is arranged the same way.
 ///
 /// **There is no renderer here yet.** This library is transforms, hierarchy
 /// composition and the camera - the maths and columns everything above them
