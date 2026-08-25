@@ -24,3 +24,4 @@ export 'src/render/draw/draw_2d.dart';
 export 'src/render/render_2d.dart';
 export 'src/render/game_2d.dart';
 export 'src/render/texture.dart';
+export 'src/render/sprite_widget.dart';

@@ -57,6 +57,39 @@
 
 ### Added
 
+* **`SpriteWidget`** draws a texture, or one frame of a sprite sheet, as an
+  ordinary Flutter widget - so a menu, a HUD or an inventory can show the art
+  the game already loaded. It takes the `TextureAsset` a `describeAssets` pass
+  returned, the same handle a `Sprite` points at, plus an optional
+  `SpriteFrame` and `TextureFilter`. `SpriteFrame`'s fractions become source
+  pixels inside the widget, off the decoded image - which is why this works on
+  the main isolate and could not work on the game one.
+
+  **It costs no extra memory, and the thing it replaces costs 100%.**
+  `Image.asset` on a file the engine has already decoded decodes a *second*
+  copy into Flutter's `imageCache` while the engine keeps holding the first;
+  measured at 512 KiB for a 256x256 image rather than 256, on a cache whose
+  default cap is 100 MiB and which evicts and re-decodes under pressure.
+  Drawing the handle adds nothing to `imageCache` at all - 0 bytes, 0 entries,
+  0 live images after a pump, against 8192 for the same 64x32 bytes through
+  `MemoryImage` in the same harness.
+
+  **An unloaded handle draws nothing rather than throwing.** Same call
+  `DrawCanvas2D` already made for the renderer, for the reason written there: a
+  declared-but-still-decoding texture is the ordinary state of the first frames
+  of a run, and throwing on it took the whole app down. Such a widget also
+  reports no preferred size, so it occupies nothing rather than a blank box.
+
+  **Nothing in the signature is named `Texture`**, which is deliberate:
+  `Texture` is also a widget in `package:flutter/widgets.dart`, so a file
+  importing both `material.dart` and `goo2d.dart` gets `ambiguous_import` the
+  moment it spells that name. `TextureAsset`, `SpriteFrame` and
+  `TextureFilter` are all clear, so user widget code needs no `hide` clause.
+
+  **What it does not do yet**: no preload helper, no nine-slice, no animation,
+  and no way to name a texture that belongs to no prefab or scene. Loading is
+  the caller's, and the handle has to come from a `describeAssets` pass (#120).
+
 * **`ColliderBody.boundCovers`** answers whether a local point that far from
   the entity's origin could be inside a body at all - the cheap, conservative
   half of `containsLocalPoint`, and the reason `MousePickingSystem` no longer

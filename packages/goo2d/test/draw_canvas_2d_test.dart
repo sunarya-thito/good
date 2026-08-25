@@ -1,10 +1,10 @@
-import 'dart:convert';
-import 'dart:io' show zlib;
 import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';
+
+import 'png_fixture.dart';
 
 // DrawCanvas2D, the main-isolate replay side: does one frame become the right
 // drawVertices calls with the geometry the producer wrote, does texture
@@ -147,120 +147,6 @@ RingBufferRecord _record(int tick, List<_Q> quads) => RingBufferRecord(
 const List<double> _unitQuad = [0, 0, 10, 0, 10, 10, 0, 10];
 const List<double> _otherQuad = [20, 20, 30, 20, 30, 30, 20, 30];
 
-/// A 2x1 PNG whose left pixel is opaque red and right pixel opaque blue - the
-/// smallest image that can tell a correct UV mapping from a mirrored one, and
-/// the same fixture `texture_test.dart` decodes.
-final Uint8List _png2x1 = base64Decode(
-  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAADklEQVR42mP4z8AAQv8BD/kD'
-  '/Zh51wAAAAAASUVORK5CYII=',
-);
-
-/// A texel's colour as the `0xRRGGBBAA` the raster readback hands back for it,
-/// which is also the order [_rgbaPng] writes its bytes in - so a fixture and
-/// the expectation against it are the *same function*, and neither can drift
-/// from the other.
-typedef _Texel = int Function(int x, int y);
-
-/// Texel `(x, y)` of the wide sheet: red carries the column, green the row,
-/// blue is constant.
-///
-/// Every texel is a different colour, and `r` and `g` between them say which
-/// one it was - so a sample landing on the wrong texel reports where it
-/// actually landed rather than just "not what I wanted".
-int _wideTexel(int x, int y) =>
-    (x * 4) << 24 | (y * 8) << 16 | 0x20 << 8 | 0xFF;
-
-/// Texel `(x, y)` of the small sheet, and **disjoint from [_wideTexel]'s
-/// range**: this one's red is always `0x20` and its blue is always `8 mod 16`,
-/// while the wide sheet's blue is always `0x20`. No colour can come out of
-/// both images, so reading the wrong *texture* is as visible as reading the
-/// wrong texel of the right one.
-int _smallTexel(int x, int y) =>
-    0x20 << 24 | (8 + x * 16) << 16 | (8 + y * 16) << 8 | 0xFF;
-
-/// 64x32, every texel a different colour - see [_wideTexel].
-final Uint8List _png64x32 = _rgbaPng(64, 32, _wideTexel);
-
-/// 16x16, every texel a different colour, none of them a colour the 64x32
-/// sheet can produce - see [_smallTexel].
-final Uint8List _png16x16 = _rgbaPng(16, 16, _smallTexel);
-
-/// An 8-bit RGBA PNG of [width] x [height] whose texel `(x, y)` is
-/// `rgba(x, y)`, written out uncompressed-filtered and zlib'd.
-///
-/// Generated rather than checked in as base64 because the point of these
-/// fixtures is that *each texel is identifiable*, and a 2048-texel image
-/// spelled as a base64 blob states nothing a reader can check the assertions
-/// against. Here the content is the function, and the function is what the
-/// expectations are written in terms of.
-Uint8List _rgbaPng(int width, int height, _Texel rgba) {
-  // One filter byte per scanline, then RGBA per texel. Filter 0 (none) the
-  // whole way down: this is a fixture, not a packer.
-  final raw = Uint8List(height * (1 + width * 4));
-  var i = 0;
-  for (var y = 0; y < height; y++) {
-    raw[i++] = 0;
-    for (var x = 0; x < width; x++) {
-      final c = rgba(x, y);
-      raw[i++] = (c >>> 24) & 0xFF;
-      raw[i++] = (c >>> 16) & 0xFF;
-      raw[i++] = (c >>> 8) & 0xFF;
-      raw[i++] = c & 0xFF;
-    }
-  }
-  final header = Uint8List(13);
-  final headerView = ByteData.sublistView(header);
-  headerView.setUint32(0, width);
-  headerView.setUint32(4, height);
-  header[8] = 8; // bits per channel
-  header[9] = 6; // colour type: truecolour with alpha
-  // 10, 11 and 12 stay zero: deflate, adaptive filtering, no interlacing.
-  final out = BytesBuilder();
-  out.add(const <int>[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
-  _pngChunk(out, 'IHDR', header);
-  _pngChunk(out, 'IDAT', Uint8List.fromList(zlib.encode(raw)));
-  _pngChunk(out, 'IEND', Uint8List(0));
-  return out.toBytes();
-}
-
-/// One length-type-payload-CRC PNG chunk.
-void _pngChunk(BytesBuilder out, String type, Uint8List payload) {
-  final head = Uint8List(8);
-  ByteData.sublistView(head).setUint32(0, payload.length);
-  for (var i = 0; i < 4; i++) {
-    head[4 + i] = type.codeUnitAt(i);
-  }
-  final crc = Uint8List(4);
-  // The CRC covers the type and the payload, not the length.
-  ByteData.sublistView(crc).setUint32(0, _crc32(head.sublist(4), payload));
-  out
-    ..add(head)
-    ..add(payload)
-    ..add(crc);
-}
-
-final Uint32List _crcTable = () {
-  final table = Uint32List(256);
-  for (var n = 0; n < 256; n++) {
-    var c = n;
-    for (var k = 0; k < 8; k++) {
-      c = (c & 1) != 0 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
-    }
-    table[n] = c;
-  }
-  return table;
-}();
-
-int _crc32(Uint8List type, Uint8List payload) {
-  var c = 0xFFFFFFFF;
-  for (final part in <Uint8List>[type, payload]) {
-    for (var i = 0; i < part.length; i++) {
-      c = _crcTable[(c ^ part[i]) & 0xFF] ^ (c >>> 8);
-    }
-  }
-  return c ^ 0xFFFFFFFF;
-}
-
 /// Declares (and therefore addresses) some textures the way a scene does -
 /// `initializeScene` is the one supported way to run a `describeAssets` pass
 /// outside a full `Game` boot.
@@ -294,7 +180,7 @@ class _TextureScene extends SceneStruct {
 /// is texture *identity*. [_texturesOf] is the same thing for the tests that
 /// need the images to differ.
 Future<List<TextureAsset>> _textures(int count) =>
-    _texturesOf(List<Uint8List>.filled(count, _png2x1));
+    _texturesOf(List<Uint8List>.filled(count, png2x1));
 
 /// The declared-and-decoded handles for [images], in order.
 Future<List<TextureAsset>> _texturesOf(List<Uint8List> images) async {
@@ -313,8 +199,8 @@ Future<List<TextureAsset>> _texturesOf(List<Uint8List> images) async {
 }
 
 /// Replays the held frame into a [width] x [height] image and hands back a
-/// reader over its pixels, as the same `0xRRGGBBAA` a [_Texel] returns.
-Future<_Texel> _rasterize(DrawCanvas2D canvas, int width, int height) async {
+/// reader over its pixels, as the same `0xRRGGBBAA` a [Texel] returns.
+Future<Texel> _rasterize(DrawCanvas2D canvas, int width, int height) async {
   final recorder = PictureRecorder();
   canvas.replay(Canvas(recorder));
   final picture = recorder.endRecording();
@@ -323,40 +209,6 @@ Future<_Texel> _rasterize(DrawCanvas2D canvas, int width, int height) async {
   addTearDown(image.dispose);
   final pixels = (await image.toByteData(format: ImageByteFormat.rawRgba))!;
   return (int x, int y) => pixels.getUint32((y * width + x) * 4);
-}
-
-/// Every device pixel of the [width] x [height] rectangle at ([left], [top])
-/// must be [expected] for its position *within that rectangle*.
-///
-/// The whole rectangle rather than a handful of sample points: with a
-/// different colour per texel, a sweep says where every sample landed, and a
-/// mapping that is right in the middle and wrong at an edge has nowhere to
-/// hide. Only the first few mismatches are reported - a wrong shader matrix
-/// misses thousands, and a thousand-line diff says nothing the first four do
-/// not.
-void _expectRegion(
-  _Texel raster, {
-  required int left,
-  required int top,
-  required int width,
-  required int height,
-  required _Texel expected,
-  required String reason,
-}) {
-  String hex(int argb) => '0x${argb.toRadixString(16).padLeft(8, '0')}';
-  final wrong = <String>[];
-  for (var y = 0; y < height; y++) {
-    for (var x = 0; x < width; x++) {
-      final got = raster(left + x, top + y);
-      final want = expected(x, y);
-      if (got != want) wrong.add('($x, $y) is ${hex(got)}, want ${hex(want)}');
-    }
-  }
-  expect(
-    wrong.take(4).toList(),
-    isEmpty,
-    reason: '$reason\n${wrong.length} of ${width * height} texels are wrong',
-  );
 }
 
 /// [frame]'s corner UVs, read back the way the renderer reads them - off the
@@ -876,7 +728,7 @@ void main() {
       // Declared, so the address resolves - but never loaded, which is the
       // permanent state of every Texture on the game isolate and the state of
       // a main-isolate one before loadScene finishes.
-      final key = TextureKey(MemorySource(_png2x1, name: 'undecoded.png'));
+      final key = TextureKey(MemorySource(png2x1, name: 'undecoded.png'));
       final scene = _TextureScene(<TextureKey>[key])
         ..initializeScene(MemoryPool(pageSize: 4096), assets: assets);
       scene.handle = SceneRegistry.register(scene);
@@ -1058,7 +910,7 @@ void main() {
     // texture's dimensions is indistinguishable from the right one.
 
     test('each samples its own texels, drawn side by side', () async {
-      final textures = await _texturesOf(<Uint8List>[_png64x32, _png16x16]);
+      final textures = await _texturesOf(<Uint8List>[png64x32, png16x16]);
       final wide = textures[0];
       final small = textures[1];
       expect(wide.value.width, 64);
@@ -1093,26 +945,26 @@ void main() {
       ]);
       final raster = await _rasterize(canvas, 80, 32);
 
-      _expectRegion(
+      expectRegion(
         raster,
         left: 0,
         top: 0,
         width: 64,
         height: 32,
-        expected: _wideTexel,
+        expected: wideTexel,
         reason:
             'the 64x32 sheet, sampled through its own dimensions. Built from '
             'the 16x16 sheet\'s instead, u = (x + 0.5) / 64 would address '
             'image column (x + 0.5) / 4 and this reads back the top-left '
             'sixteenth stretched over the whole quad',
       );
-      _expectRegion(
+      expectRegion(
         raster,
         left: 64,
         top: 0,
         width: 16,
         height: 16,
-        expected: _smallTexel,
+        expected: smallTexel,
         reason:
             'and the 16x16 sheet through its own. Built from the 64x32 '
             'sheet\'s, u = (x + 0.5) / 16 would address image column '
@@ -1166,7 +1018,7 @@ void main() {
             'wide one, so nothing but the sampled colour says it is wrong',
       );
 
-      final textures = await _texturesOf(<Uint8List>[_png64x32, _png16x16]);
+      final textures = await _texturesOf(<Uint8List>[png64x32, png16x16]);
       final wide = textures[0];
       final small = textures[1];
       final canvas = DrawCanvas2D(assets: assets);
@@ -1191,25 +1043,25 @@ void main() {
       ]);
       final raster = await _rasterize(canvas, 16, 8);
 
-      _expectRegion(
+      expectRegion(
         raster,
         left: 0,
         top: 0,
         width: 8,
         height: 8,
-        expected: (x, y) => _wideTexel(rectX + x, rectY + y),
+        expected: (x, y) => wideTexel(rectX + x, rectY + y),
         reason:
             'the 8x8 pixel region at (8, 8) of the 64x32 sheet. Computed '
             'against 16x16 the frame would be (0.5, 0.5, 0.5, 0.5) and this '
             "would read the sheet's bottom-right quadrant instead",
       );
-      _expectRegion(
+      expectRegion(
         raster,
         left: 8,
         top: 0,
         width: 8,
         height: 8,
-        expected: (x, y) => _smallTexel(rectX + x, rectY + y),
+        expected: (x, y) => smallTexel(rectX + x, rectY + y),
         reason:
             'and the same rectangle on the 16x16 sheet, which is a quarter '
             'of it rather than a sixteenth',
@@ -1222,7 +1074,7 @@ void main() {
       // cannot decode. Nothing in production reads it yet (#127), so this is
       // as far as it can be followed here: the two sizes are produced, and
       // they are the two different right ones rather than one twice.
-      final textures = await _texturesOf(<Uint8List>[_png64x32, _png16x16]);
+      final textures = await _texturesOf(<Uint8List>[png64x32, png16x16]);
       expect(
         textures[0].info,
         isA<TextureInfo>()
