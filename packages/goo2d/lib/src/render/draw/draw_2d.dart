@@ -10,17 +10,17 @@
 /// coordinates - there is no `Canvas.save`/`restore`/`translate`/`rotate`
 /// call anywhere in this pipeline, per the draw-batch rule.
 ///
-/// # Two shapes this file deliberately does *not* have
+/// # Two shapes this file does *not* have
 ///
-/// **No object per drawn thing.** The original sketch here had
-/// `DrawData2D.draw(Canvas)` - one instance per sprite, each drawing itself.
-/// That loses twice: it allocates one object per sprite per frame on a 60 Hz
-/// path (the no-allocation rule), and it forces one `Canvas` call per sprite, which
-/// is exactly the per-draw overhead batching exists to avoid. So [DrawData2D]
-/// here is one instance per *kind* of record - a codec, effectively a
-/// singleton - and the per-sprite data never becomes a Dart object at all: it
-/// goes bytes -> [VertexBatch2D]'s typed lists -> one `drawVertices` per
-/// contiguous run of sprites sharing a texture (see [DrawCanvas2D]).
+/// **No object per drawn thing.** A `DrawData2D.draw(Canvas)` - one instance
+/// per sprite, each drawing itself - loses twice: it allocates one object per
+/// sprite per frame on a 60 Hz path (the no-allocation rule), and it forces
+/// one `Canvas` call per sprite, which is exactly the per-draw overhead
+/// batching exists to avoid. So [DrawData2D] here is one instance per *kind*
+/// of record - a codec, effectively a singleton - and the per-sprite data
+/// never becomes a Dart object at all: it goes bytes -> [VertexBatch2D]'s
+/// typed lists -> one `drawVertices` per contiguous run of sprites sharing a
+/// texture (see [DrawCanvas2D]).
 ///
 /// **No record per drawn thing either.** One `RingBuffer` record per sprite
 /// would make `RingBuffer.drainInto` allocate a `RingBufferRecord` *and* a
@@ -28,7 +28,7 @@
 /// down. Instead each tick writes **one record per draw-data type**, whose
 /// payload is a tick stamp followed by a packed array of that type's
 /// fixed-size items. Two things fall out of that for free: the drain cost is
-/// O(record types) rather than O(sprites), and a tick stamp on every record
+/// O(record types) and not O(sprites), and a tick stamp on every record
 /// lets the consumer identify the newest complete frame and skip stale ones
 /// when the main isolate has fallen behind the simulation (see
 /// [DrawCanvas2D.ingest]).
@@ -95,10 +95,9 @@ abstract class DrawData2D {
 /// 72 .. 75   int32   texture filter                [TextureFilter] index
 /// ```
 ///
-/// The colour keeps byte 32 and the corners keep bytes 0..31 on purpose: the
-/// textured fields are strictly appended, so every existing hand-decoder that
-/// reads a corner or a colour by offset stays correct and only the stride
-/// moved.
+/// The colour keeps byte 32 and the corners keep bytes 0..31: the textured
+/// fields are strictly appended, so a hand-decoder reading a corner or a
+/// colour by offset stays correct and only the stride moves.
 ///
 /// **The texture is an address, never a `ui.Image`.** The producer runs on the
 /// game isolate, which has no Flutter engine and whose `Texture` copies are
@@ -124,10 +123,10 @@ final class DrawSpriteData2D extends DrawData2D {
   /// from a plain append-only list starting at zero, so `0` is the address of
   /// whichever asset a process declared first - a perfectly ordinary,
   /// resolvable texture. Using it as "none" would make the first texture ever
-  /// declared invisible, and the failure would look like an asset bug rather
-  /// than an encoding one. `-1` is never handed out (the registry only ever
-  /// appends), which is why the field is a signed `int32` rather than the
-  /// `uint32` a bare address would need.
+  /// declared invisible, and the failure would look like an asset bug and not
+  /// an encoding one. `-1` is never handed out (the registry only ever
+  /// appends), so the field is a signed `int32`, not the `uint32` a bare
+  /// address would need.
   static const int noTexture = -1;
 
   /// 4 corners x (float32 x, float32 y) + uint32 ARGB + int32 texture address
@@ -144,9 +143,9 @@ final class DrawSpriteData2D extends DrawData2D {
   /// The UV defaults spell the whole-texture case - `(0,0) (1,0) (1,1) (0,1)`
   /// - which is what a plain textured sprite wants and what an untextured one
   /// harmlessly carries; the atlas/nine-slice cases pass their own. Named
-  /// optional parameters rather than a value object holding eight doubles,
-  /// because this is called once per sprite per tick and an argument object
-  /// there is exactly the per-sprite heap allocation the no-allocation rule forbids
+  /// optional parameters, and not a value object holding eight doubles: this
+  /// is called once per sprite per tick, and an argument object there is
+  /// exactly the per-sprite heap allocation the no-allocation rule forbids
   /// (named arguments on a statically-resolved call allocate nothing).
   static int writeQuad(
     ByteData batch,
@@ -162,7 +161,7 @@ final class DrawSpriteData2D extends DrawData2D {
     int argb, {
     int textureAddress = noTexture,
 
-    /// A [TextureFilter] index. An `int` rather than the enum because this is
+    /// A [TextureFilter] index. An `int` and not the enum, because this is
     /// the wire format: the producer already holds the index (it read one out
     /// of a row) and only [DrawCanvas2D] ever turns it back into a
     /// `FilterQuality`, once per run.
@@ -251,7 +250,7 @@ final class DrawSpriteData2D extends DrawData2D {
 
 /// Maps a drained record's type tag back to the codec that understands it.
 ///
-/// Third parties deliberately cannot add draw-data types: every type has to
+/// Third parties cannot add draw-data types: every type has to
 /// agree byte-for-byte across the isolate boundary and share the one
 /// `drawVertices` batch, so the set is closed and small. [standard] is the
 /// only registry anything currently needs; the class exists so a second
@@ -289,8 +288,8 @@ final class DrawRegistry2D {
 ///
 /// Lives across frames and is only ever refilled, so a steady-state frame
 /// allocates nothing here at all - the typed lists grow to the high-water mark
-/// of the scene and stay there. That is the whole reason geometry is built into
-/// this rather than into a fresh list per frame (the no-allocation rule).
+/// of the scene and stay there. That is the whole reason geometry is built
+/// into this instead of into a fresh list per frame (the no-allocation rule).
 ///
 /// # Runs, and why they are not a group-by
 ///
@@ -302,11 +301,11 @@ final class DrawRegistry2D {
 /// texture merge into one run only when they are already adjacent in draw
 /// order.
 ///
-/// The cost of that is real and deliberate: a scene whose textures alternate
-/// A-B-A-B produces one run - and therefore one `drawVertices` - per quad. The
-/// alternative (one run per distinct texture across the whole frame) would cut
-/// that to two calls and silently reorder overlapping sprites, turning a
-/// batching optimisation into a rendering bug. Anything that wants both has to
+/// The cost of that is real: a scene whose textures alternate A-B-A-B
+/// produces one run - and therefore one `drawVertices` - per quad. One run
+/// per distinct texture across the whole frame would cut that to two calls
+/// and silently reorder overlapping sprites, turning a batching optimisation
+/// into a rendering bug. Anything that wants both has to
 /// fix it upstream where the information is - a texture atlas, so the sprites
 /// genuinely share a texture, or a z assignment that keeps same-texture sprites
 /// adjacent - not here, where reordering is unobservably wrong.
@@ -331,7 +330,7 @@ final class VertexBatch2D {
   int _vertexCount = 0;
 
   /// Texture address per run, and the exclusive vertex index each run ends at.
-  /// Parallel arrays rather than a list of run objects, for the reason every
+  /// Parallel arrays, and not a list of run objects, for the reason every
   /// other buffer here is: one object per run per frame is a per-frame heap
   /// allocation proportional to the scene.
   Int32List _runTextures;
@@ -392,7 +391,7 @@ final class VertexBatch2D {
   ///
   /// Extends the open run when [textureAddress] matches the previous quad's
   /// and opens a new one when it does not - see the class doc on why that is
-  /// a run boundary rather than a group-by.
+  /// a run boundary and not a group-by.
   void addQuad(
     double x0,
     double y0,
@@ -489,7 +488,7 @@ final class VertexBatch2D {
   /// slice. Both are per *frame*, not per paint - [DrawCanvas2D] holds the
   /// built meshes and only rebuilds when a new frame has been ingested.
   ///
-  /// An untextured run is built without texture coordinates at all rather than
+  /// An untextured run is built without texture coordinates at all, never
   /// with ignored ones: the paint that draws it has no shader, so coordinates
   /// would be dead weight crossing into the engine on every frame.
   Vertices buildRun(int run) {
@@ -526,7 +525,7 @@ final class VertexBatch2D {
 ///
 /// Never mutates game state, never runs a query, never touches an `Entity` -
 /// everything it needs is in the bytes the game isolate published. The two
-/// halves run at different rates on purpose:
+/// halves run at different rates:
 ///
 ///  * [ingest] runs once per tick notification (see `GameView`), decodes the
 ///    newest complete frame into the persistent [VertexBatch2D], and reports
@@ -534,8 +533,8 @@ final class VertexBatch2D {
 ///  * [replay] runs once per paint and does exactly two things: build the
 ///    `Vertices` if the frame moved since last time, and issue one
 ///    `drawVertices` **per texture run** (see below). No `save`, `restore`,
-///    `translate`, `rotate` or `drawImage` - the draw-batch rule, enforced by a spy
-///    `Canvas` in `test/draw_canvas_2d_test.dart` rather than only promised
+///    `translate`, `rotate` or `drawImage` - the draw-batch rule, enforced
+///    by a spy `Canvas` in `test/draw_canvas_2d_test.dart`, not only promised
 ///    here.
 ///
 /// # How a texture gets sampled without `drawImage`
@@ -566,26 +565,20 @@ final class VertexBatch2D {
 /// # Why batching does not reorder anything
 ///
 /// The quads arrive z-sorted and the painter's algorithm makes draw order the
-/// depth, so [VertexBatch2D] cuts a new run wherever the texture changes rather
-/// than grouping the frame by texture. See its class doc for the trade that
-/// buys and the alternating-texture case that pays for it.
+/// depth, so [VertexBatch2D] cuts a new run wherever the texture changes
+/// instead of grouping the frame by texture. See its class doc for the trade
+/// that buys and the alternating-texture case that pays for it.
 final class DrawCanvas2D {
-  // No loader registration here any more.
+  // No loader registration here: `Renderer2D.describeAssetLoaders` registers
+  // `Texture`'s, from `Game._bootMain`, which runs on the decoding isolate
+  // before anything is loaded and never on the game isolate.
   //
-  // It used to register `Texture`'s, on the argument that a canvas is
-  // constructed only on the isolate with Flutter attached and always before
-  // anything it draws is decoded - "the one place that is both necessary and
-  // sufficient". Necessary and sufficient it was, for a game that builds a
-  // canvas. It was neither for one that does not: construct no canvas and
-  // every texture load failed at boot with a `StateError` naming the missing
-  // loader instead of the cause, which is what kept the example suite red for
-  // sixty commits (#83). And the argument generalised to nothing - audio has
-  // no canvas, so `AudioClip`'s loader had nowhere to copy the trick to and
-  // was simply never registered at all (#123).
-  //
-  // `Renderer2D.describeAssetLoaders` registers it now, from `Game._bootMain`,
-  // which runs on the decoding isolate before anything is loaded and never on
-  // the game isolate.
+  // Registering it in this constructor instead covers only a game that builds
+  // a canvas. Build none and every texture load fails at boot with a
+  // `StateError` naming the missing loader instead of the cause, which is
+  // what kept the example suite red for sixty commits (#83). The argument for
+  // it also generalises to nothing - audio has no canvas, so `AudioClip`'s
+  // loader had nowhere to copy the trick to (#123).
   DrawCanvas2D({required this.assets, DrawRegistry2D? registry})
     : registry = registry ?? DrawRegistry2D.standard;
 
@@ -596,8 +589,8 @@ final class DrawCanvas2D {
   /// This is the main-isolate end of the asset architecture: the game isolate
   /// holds payload-free declarations and emits draw records naming an
   /// *address*, and this side owns the decoded `ui.Image` and resolves the
-  /// address at draw time. It is passed in rather than reached statically
-  /// because the table is instance state on the `Game` now, which is also what
+  /// address at draw time. It is passed in, and not reached statically,
+  /// because the table is instance state on the `Game`, which is also what
   /// lets it cross `Isolate.spawn` with the rest of the object graph.
   final Assets assets;
 
@@ -642,6 +635,8 @@ final class DrawCanvas2D {
   /// no way to read it), so this is the only way anything - a test, a debug
   /// overlay - can see what [replay] is about to draw.
   Float32List get positions => _batch.positions;
+
+  /// One packed ARGB per vertex of the held frame. See [positions].
   Int32List get colors => _batch.colors;
 
   /// `u, v` per vertex, normalised 0..1. Vertices belonging to an untextured
@@ -685,8 +680,8 @@ final class DrawCanvas2D {
     return true;
   }
 
-  /// [ingest], for a frame that arrived through a `HandoffBuffer` rather than
-  /// a ring drain: one batch, already known to be the newest complete one.
+  /// [ingest], for a frame that arrived through a `HandoffBuffer` and not a
+  /// ring drain: one batch, already known to be the newest complete one.
   ///
   /// [byteLength] is what the writer published as used, not the slot's
   /// capacity - decoding the whole slot would walk whatever the previous,
@@ -695,8 +690,8 @@ final class DrawCanvas2D {
   /// **One batch of one codec per slot.** The ring form above could carry a
   /// drain holding several record types; a slot holds exactly what fits, and
   /// it is sized for sprites. A second codec (particles, lines) wants its own
-  /// handoff buffer rather than a section header in this one - separate
-  /// producers, separate rates, no reason to couple them.
+  /// handoff buffer, not a section header in this one - separate producers,
+  /// separate rates, no reason to couple them.
   bool ingestFrame(ByteData batch, int byteLength) {
     final tick = DrawData2D.batchTick(batch);
     // Older or equal means the reader sampled faster than the writer
@@ -783,10 +778,10 @@ final class DrawCanvas2D {
   /// run. The simulation starts producing batches as soon as its scene mounts,
   /// while the bytes are decoded over here on main and arrive a few frames
   /// later, so a batch naming a texture main has not finished with is expected
-  /// and transient. Throwing on it took the whole app down the moment a case
-  /// had entities on its very first frame - which switching cases in the demo
-  /// menu did every time, and which read as "stuck on loading" because the
-  /// exception escaped from a painter rather than from the load.
+  /// and transient. Throwing on it takes the whole app down the moment a
+  /// scene has entities on its very first frame, and it reads as "stuck on
+  /// loading", because the exception escapes from a painter and not from the
+  /// load.
   ///
   /// Skipping the run means those frames draw without that texture and the
   /// next one draws normally. Nothing is silently wrong: the asset either
@@ -795,9 +790,9 @@ final class DrawCanvas2D {
   Paint? _paintFor(int address, int filter) {
     // Keyed by texture *and* filter: the filter lives on the `Paint`, so one
     // texture drawn crisply in one sprite and smoothly in another needs two.
-    // Packed into one int rather than a record key because this is a map
-    // lookup on the paint path - once per run, not per quad, but a record key
-    // would allocate there for nothing. Three bits is room for every
+    // Packed into one int, not a record key: this is a map lookup on the
+    // paint path - once per run, not per quad, but a record key would
+    // allocate there for nothing. Three bits is room for every
     // `TextureFilter` there will be; an asset address never approaches 2^28.
     final key = (address << 3) | filter;
     final cached = _texturePaints[key];
@@ -816,9 +811,9 @@ final class DrawCanvas2D {
     // because a sprite is routinely drawn much smaller than its source image.
     // Omitting it defaults to nearest sampling, and a minified sprite then
     // *shimmers* as it moves, because which texel gets picked changes with
-    // sub-pixel position. That reads as "the art is low resolution" rather
-    // than as a filtering setting - which is exactly why it is declared per
-    // texture now instead of left to a default nobody can see.
+    // sub-pixel position. That reads as "the art is low resolution" and not
+    // as a filtering setting, so it is declared per texture instead of left
+    // to a default nobody can see.
     final paint = Paint()
       ..shader = ImageShader(
         image,
