@@ -551,12 +551,28 @@ class Sprite {
   /// [SpriteFrame].
   void setFrame(Entity entity, SpriteFrame value) => frame[entity] = value;
 
-  /// Writes all four border insets at once. See [setPivot].
+  /// Writes the whole nine-slice at once - both the four source cuts and the
+  /// four destination insets. See [setPivot].
+  ///
+  /// Both halves, and from the same fields [SpriteDescriptor.has] reads,
+  /// because the insets are what decide whether the sprite is sliced at all
+  /// (see [NineSliceBorder.isEmpty]). Writing only the cuts could neither
+  /// turn slicing on for a sprite declared plain nor turn it off for one
+  /// declared sliced; [NineSliceBorder.none] does the latter.
+  ///
+  /// Whatever conversion the two halves need from the numbers an artist
+  /// actually has happens once, in [NineSliceBorder.pixels] and
+  /// [NineSliceBorder.all], so declaring a border and setting one at run time
+  /// cannot disagree about it.
   void setNineSliceBorder(Entity entity, NineSliceBorder border) {
     borderLeft[entity] = border.left;
     borderTop[entity] = border.top;
     borderRight[entity] = border.right;
     borderBottom[entity] = border.bottom;
+    insetLeft[entity] = border.insetLeft;
+    insetTop[entity] = border.insetTop;
+    insetRight[entity] = border.insetRight;
+    insetBottom[entity] = border.insetBottom;
   }
 }
 

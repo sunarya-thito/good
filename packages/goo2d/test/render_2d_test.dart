@@ -291,6 +291,36 @@ class _UnsizedPanel extends EntityStruct
   }
 }
 
+/// The panel with **no border declared** - identical to [_Panel] in every
+/// other respect, so a border set on it at run time can be compared cell for
+/// cell against one declared through `has()`.
+///
+/// Exists because "the setter works" is only observable on a sprite that did
+/// not already slice: on [_Panel] the record count is nine before the setter
+/// is called and nine after.
+class _PlainPanel extends EntityStruct
+    with Transform2D, WorldTransform2D, Renderable2D {
+  late final TextureAsset skin;
+  late final Sprite frame;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    skin = descriptor.has(_Panel.asset);
+  }
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    frame = descriptor.has(
+      texture: skin,
+      width: _Panel.drawSize,
+      height: _Panel.drawSize,
+      pivot: RelativeOffset2D.zero,
+    );
+  }
+}
+
 /// Insets declared, no texture. Slicing subdivides image space, so with no
 /// image there is nothing to subdivide.
 class _BorderedUntextured extends EntityStruct
@@ -367,6 +397,7 @@ class _SpriteScene extends SceneStruct {
   late final _UnsizedPanel unsizedPanel;
   late final _BorderedUntextured borderedUntextured;
   late final _PivotBody pivotBody;
+  late final _PlainPanel plainPanel;
 
   @override
   void describeScene(SceneDescriptor descriptor) {
@@ -385,6 +416,7 @@ class _SpriteScene extends SceneStruct {
     borderedUntextured = descriptor.has(_BorderedUntextured.new);
     flat = descriptor.has(_Flat.new);
     pivotBody = descriptor.has(_PivotBody.new);
+    plainPanel = descriptor.has(_PlainPanel.new);
   }
 }
 
@@ -1344,7 +1376,7 @@ void main() {
       expect(scene.twoSprite.body.width[entity], 10);
     });
 
-    test('a runtime setter writes all four fields of a group at once', () async {
+    test('a runtime setter writes every field of its group at once', () async {
       await _game();
       final scene = run.state.singleScene<_SpriteScene>();
       final entity = scene.addEntity(scene.twoSprite);
@@ -1358,7 +1390,16 @@ void main() {
       );
       scene.twoSprite.body.setNineSliceBorder(
         entity,
-        const NineSliceBorder(left: 1, top: 2, right: 3, bottom: 4),
+        const NineSliceBorder(
+          left: 1,
+          top: 2,
+          right: 3,
+          bottom: 4,
+          insetLeft: 5,
+          insetTop: 6,
+          insetRight: 7,
+          insetBottom: 8,
+        ),
       );
       expect(scene.twoSprite.body.pivotFractionX[entity], 0.25);
       expect(
@@ -1374,6 +1415,18 @@ void main() {
       expect(scene.twoSprite.body.borderTop[entity], 2);
       expect(scene.twoSprite.body.borderRight[entity], 3);
       expect(scene.twoSprite.body.borderBottom[entity], 4);
+      expect(scene.twoSprite.body.insetLeft[entity], 5);
+      expect(scene.twoSprite.body.insetTop[entity], 6);
+      expect(scene.twoSprite.body.insetRight[entity], 7);
+      expect(
+        scene.twoSprite.body.insetBottom[entity],
+        8,
+        reason:
+            'a nine-slice is eight fields, not four: the cuts say where to '
+            'divide the source and the insets say how big the corner is '
+            'drawn, and only the insets decide whether the sprite slices at '
+            'all',
+      );
     });
   });
 
@@ -2462,6 +2515,98 @@ void main() {
             'four corners, four edges and a centre - the whole reason '
             'the border insets exist. A plain sprite is one quad, so this '
             'is the clearest single signal that slicing engaged at all.',
+      );
+    });
+
+    test('a sprite declared plain slices once a border is set', () async {
+      // The whole of #176. `setNineSliceBorder` wrote the four source cuts
+      // and none of the four destination insets, and it is the insets
+      // `_isNineSliced` branches on - so this sprite stayed one quad forever
+      // however many times the setter was called, silently, with the border
+      // fields dutifully holding what was written. Counting records is what
+      // separates "the setter wrote something" from "the setter did
+      // something".
+      final game = await _game();
+      final scene = run.state.singleScene<_SpriteScene>();
+      final entity = scene.addEntity(scene.plainPanel);
+      final sprite = scene.plainPanel.frame;
+
+      run.state.advance(_step);
+      expect(
+        _drainFrames(game).single.quads,
+        hasLength(1),
+        reason: 'declared with no border at all, so it starts a plain quad',
+      );
+
+      // Between ticks, so the write lands in an open tick rather than in a
+      // slot the next beginTick would copy over - see data_layout.dart's
+      // assertion, and the visibility test above.
+      final pool = run.state.scene!.pool;
+      pool.beginTick();
+      sprite.setNineSliceBorder(
+        entity,
+        const NineSliceBorder.all(_Panel.inset, sourceSize: 16),
+      );
+      pool.commitTick();
+
+      run.state.advance(_step);
+      final quads = _drainFrames(game).single.quads;
+
+      expect(
+        quads,
+        hasLength(9),
+        reason:
+            'a panel that starts plain and gains a frame later is the case '
+            'the setter exists for',
+      );
+      // And it is the same nine a declared border produces - both halves of
+      // the value object arrived, not just the half that turns slicing on.
+      for (var row = 0; row < 3; row++) {
+        for (var col = 0; col < 3; col++) {
+          final q = quads[row * 3 + col];
+          expect(q.x, [cuts[col], cuts[col + 1], cuts[col + 1], cuts[col]]);
+          expect(q.y, [cuts[row], cuts[row], cuts[row + 1], cuts[row + 1]]);
+          expect(
+            q.u,
+            [uvCuts[col], uvCuts[col + 1], uvCuts[col + 1], uvCuts[col]],
+            reason:
+                'the source cut came along with the inset - writing only the '
+                'insets would slice the destination and sample the whole '
+                'image into every cell',
+          );
+        }
+      }
+    });
+
+    test('clearing the border at run time goes back to one quad', () async {
+      // The reverse, and it fails the same way for the same reason: with the
+      // insets left alone, a sprite declared nine-sliced could never stop.
+      final game = await _game();
+      final scene = run.state.singleScene<_SpriteScene>();
+      final entity = scene.addEntity(scene.panel);
+
+      run.state.advance(_step);
+      expect(_drainFrames(game).single.quads, hasLength(9));
+
+      final pool = run.state.scene!.pool;
+      pool.beginTick();
+      scene.panel.frame.setNineSliceBorder(entity, NineSliceBorder.none);
+      pool.commitTick();
+
+      run.state.advance(_step);
+      final quads = _drainFrames(game).single.quads;
+
+      expect(
+        quads,
+        hasLength(1),
+        reason: 'NineSliceBorder.none is how a sliced sprite is made plain',
+      );
+      expect(
+        quads.single.u,
+        [0.0, 1.0, 1.0, 0.0],
+        reason:
+            'and it samples the whole image again, so the cuts were cleared '
+            'too rather than left behind for the next border to inherit',
       );
     });
 

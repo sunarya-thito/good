@@ -2,6 +2,24 @@
 
 ### Breaking
 
+* **`Sprite.setNineSliceBorder` now writes the four destination insets as
+  well as the four source cuts**, which is what makes it do anything at all.
+  It wrote `borderLeft`/`borderTop`/`borderRight`/`borderBottom` and nothing
+  else, and it is the insets `GameRenderer2D` branches on to decide whether a
+  sprite draws as nine rectangles - so a sprite declared plain could not be
+  sliced at run time and one declared sliced could not be unsliced. The only
+  way to get a nine-slice was `has(nineSliceBorder: ...)`.
+
+  **What to check if you already call it.** The setter writes the whole value
+  object, so an inset you do not name is written as zero, exactly the way an
+  unnamed pivot component already is. `NineSliceBorder(left: 0.25, top: 0.25,
+  right: 0.25, bottom: 0.25)` leaves all four insets at their default `0`, and
+  passing that to a sprite declared nine-sliced used to change only where the
+  source was cut - now it clears the insets too and the sprite goes back to a
+  single quad. Build the border with `NineSliceBorder.pixels` or
+  `NineSliceBorder.all`, which set both halves from the numbers an artist
+  has, or name the insets on the general constructor. `NineSliceBorder.none`
+  is now how a sprite stops being nine-sliced (#176).
 * **`MouseEvent.position` and `MousePickingSystem.cursor` carry a
   `CursorPosition`**, which is `good`'s `MousePosition` under a new name - see
   its changelog for why. Rename the type where you spell it out; the fields on
