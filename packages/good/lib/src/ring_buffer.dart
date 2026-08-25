@@ -143,7 +143,7 @@ class RingBuffer {
   /// this - typically once per tick (or once per completed frame, for the
   /// draw-command direction).
   ///
-  /// Takes the destination rather than returning one so a per-tick consumer
+  /// Takes the destination instead of returning one, so a per-tick consumer
   /// (`Game`'s command drain) can keep reusing a single list instead of
   /// allocating one per tick for what is usually zero records - no heap
   /// allocation on the hot path, and this is a loop that runs 60 times a

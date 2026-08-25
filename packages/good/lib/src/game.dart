@@ -230,14 +230,12 @@ enum _ControlMessage {
 /// through a `SendPort` ([stop], tick pings, state-channel addresses).
 ///
 /// The spawn message is why this class must hold no **unsendable** state when
-/// [start] hands it over - but that set is much smaller than it once looked,
-/// and getting it wrong in the cautious direction shaped the old design.
+/// [start] hands it over - and that set is small:
 ///
 ///  * A `Pointer` **is** sendable, and arrives at the *same address*. Shared
 ///    native memory crosses for free, which is precisely what lets this class
 ///    be fully described before the spawn and inherited by the copy. Proven
-///    by `tool/spawn_pointer_spike.dart`; an earlier version of this doc
-///    claimed the opposite and was wrong.
+///    by `tool/spawn_pointer_spike.dart`.
 ///  * `Type` objects and **closures** are sendable too
 ///    (`tool/spawn_registry_spike.dart`).
 ///  * A `ReceivePort`, a `Completer`, and any native handle (`dart:ui.Image`)
@@ -2223,9 +2221,9 @@ final class GameRuntime {
   /// first one empty.
   ///
   /// The main-isolate half is [_notifyTickListeners], which reconciles state
-  /// channels before it calls anyone. `goo2d` no longer listens: it samples
-  /// the newest published frame from a `SchedulerBinding` frame callback
-  /// instead, for the reason `GameRenderer2D._onFrame` gives.
+  /// channels before it calls anyone. `goo2d` does not listen: it samples the
+  /// newest published frame from a `SchedulerBinding` frame callback instead,
+  /// for the reason `GameRenderer2D._onFrame` gives.
   ///
   /// Split from [completeTick] because the tick
   /// *counter* has to advance before presentation runs: the renderer stamps

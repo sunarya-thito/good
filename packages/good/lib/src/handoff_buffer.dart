@@ -19,8 +19,8 @@ import 'package:ffi/ffi.dart';
 /// 0, 1, 2, 0, ... with no idea where the reader is. That gives the reader
 /// two publishes of grace and then reuses its slot underneath it. Safe only
 /// while the reader is reliably faster than two of the writer's frames, which
-/// is an assumption about scheduling rather than a guarantee - and when it
-/// breaks, it breaks silently, as wrong pixels.
+/// is an assumption about scheduling and not a guarantee - and when it breaks,
+/// it breaks silently, as wrong pixels.
 ///
 /// # The handoff
 ///
@@ -77,7 +77,7 @@ import 'package:ffi/ffi.dart';
 /// *not* here is an explicit fence: [publish] writes the payload, then the
 /// used length, then `ready` last, and correctness relies on those retiring in
 /// order as seen from the other isolate. That holds on the strongly-ordered
-/// targets this engine runs on (x64/ARM64). Flagged rather than assumed away -
+/// targets this engine runs on (x64/ARM64). Flagged, not assumed away -
 /// revisit with a real release-store if a weak-memory target ever matters.
 class HandoffBuffer {
   /// Three: one being read, one complete and waiting, one to write into. See
@@ -137,7 +137,7 @@ class HandoffBuffer {
   ///
   /// With three slots at most two are excluded, so this always finds one and
   /// **the writer never waits on a reader**. The null return exists only so a
-  /// mis-sized buffer fails visibly rather than corrupting; it is unreachable
+  /// mis-sized buffer fails visibly instead of corrupting; it is unreachable
   /// at [slotCount] 3.
   Pointer<Uint8>? beginWrite() {
     final ready = _control[_readyWord];
@@ -153,7 +153,7 @@ class HandoffBuffer {
   /// Marks the slot from the last [beginWrite] complete and readable.
   ///
   /// [usedBytes] is how much of the slot the frame actually occupies, so the
-  /// reader copies that rather than the whole capacity. It matters more than
+  /// reader copies that and not the whole capacity. It matters more than
   /// it looks: a fixed-size read against a variable-size write is a race that
   /// gets *worse* as the scene empties, because the writer finishes sooner
   /// while the reader still moves the full slot.
@@ -178,8 +178,8 @@ class HandoffBuffer {
   /// Holding it is what keeps the writer out; the hold lasts until the next
   /// call, so a reader may take as long as it likes over the bytes. The writer
   /// carries on regardless, replacing its own unread frames, so the slot
-  /// returned here is always the newest complete one rather than the oldest
-  /// since the last read.
+  /// returned here is always the newest complete one, never the oldest since
+  /// the last read.
   Pointer<Uint8>? beginRead() {
     var ready = _control[_readyWord];
     if (ready < 0) return null;

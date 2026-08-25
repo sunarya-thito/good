@@ -24,7 +24,7 @@ enum WrapMode {
 /// One instant of one animation: which clip, and how far into it.
 ///
 /// **An `extension type` over `int`**, so producing one allocates nothing.
-/// That is the whole reason sampling is shaped this way rather than as an
+/// That is the whole reason sampling is shaped this way and not as an
 /// animation *object* that owns state and gets ticked: a system samples this
 /// per entity per frame, which is squarely rule 1 and rule 2 territory. A
 /// sample is derived from the clock and thrown away.
@@ -69,7 +69,7 @@ final class Track<T> {
 
   /// Keys per clip, indexed by `TimelineSample.clipId`. Grown as clips declare
   /// against this track; a clip that never mentions it leaves an empty list,
-  /// which is what makes the default-value fallback free rather than a lookup.
+  /// which is what makes the default-value fallback free instead of a lookup.
   final List<List<_Key<T>>> _clips = <List<_Key<T>>>[];
 
   List<_Key<T>> _keysFor(int clipId) {
@@ -177,7 +177,7 @@ final class TimelineAnimation {
   int _lengthMicros = 0;
 
   /// How long the clip runs, in seconds: the furthest keyframe on any of its
-  /// tracks. Derived rather than declared, so adding a key to one track cannot
+  /// tracks. Derived, not declared, so adding a key to one track cannot
   /// leave a separately-stated duration wrong (rule 10).
   double get length => _lengthMicros / 1000000.0;
 
@@ -185,7 +185,7 @@ final class TimelineAnimation {
   ///
   /// Called once per track per clip at declare time. Keying the same track
   /// twice in one clip would produce two overlapping key lists with no
-  /// defensible blend, so it throws rather than picking one.
+  /// defensible blend, so it throws instead of picking one.
   TrackAnimator<T> track<T>(Track<T> track) {
     final keys = track._keysFor(clipId);
     if (keys.isNotEmpty) {

@@ -36,7 +36,7 @@ abstract interface class RandomOwner {
 ///
 /// # Why more than one stream
 ///
-/// Streams are independent, and that is the point rather than a convenience.
+/// Streams are independent, and that is the point, not a convenience.
 /// With one shared stream, a system that draws a different number of times
 /// than it did yesterday shifts every draw after it, so adding a particle
 /// effect changes the loot table. Two things make that happen without anyone
@@ -108,12 +108,12 @@ final class RandomStream {
 
   /// A value for [entity] on this tick, **without advancing the stream**.
   ///
-  /// This is the per-entity form, and it is a hash rather than a draw for a
-  /// reason worth stating: a stream drawn once per entity is sensitive to how
+  /// This is the per-entity form, and it is a hash and not a draw for a reason
+  /// worth stating: a stream drawn once per entity is sensitive to how
   /// many entities there are and in what order, so loading or unloading a
   /// scene shifts every value after it. A hash of the seed, the stream, the
   /// tick and the entity has no position to shift, so that whole failure mode
-  /// does not exist rather than having to be managed.
+  /// cannot arise at all.
   ///
   /// The same entity asked twice on the same tick gets the same answer. On the
   /// next tick it gets a different one.

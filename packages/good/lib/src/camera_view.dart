@@ -87,8 +87,8 @@ final class CameraView implements IntRepresentable {
   /// Viewport size in logical pixels: what the `GameView` showing this view
   /// gives it, and what the camera projection centres on.
   ///
-  /// **Getters over shared memory, never fields**, and that is load-bearing
-  /// rather than stylistic. A `CameraView` reaches the game isolate through
+  /// **Getters over shared memory, never fields**, and that is load-bearing,
+  /// not stylistic. A `CameraView` reaches the game isolate through
   /// the `Isolate.spawn` deep copy, so the two isolates hold two *separate*
   /// objects: a plain field written by the widget on layout would update
   /// main's copy while the renderer read a value frozen at spawn time, with
@@ -120,8 +120,8 @@ final class CameraView implements IntRepresentable {
   /// showing it, on layout.
   ///
   /// Writes only on change, so a rebuild at the same size costs two float
-  /// comparisons rather than two stores plus whatever the game isolate makes
-  /// of them.
+  /// comparisons instead of two stores plus whatever the game isolate makes of
+  /// them.
   ///
   /// Public for the same reason `SceneRegistry.register` and
   /// `SceneStruct.initializeScene` are: a test or a headless harness has no
@@ -176,7 +176,7 @@ final class CameraViewTable implements IntRepresentation<CameraView> {
   /// `describeCameras` and they are counted on the fingers of one hand - a
   /// split-screen four-player game has four - so a `DataPointer<CameraView>`
   /// costs a row one byte instead of four. [declare] enforces the ceiling
-  /// rather than letting the 257th view silently alias the first.
+  /// instead of letting the 257th view silently alias the first.
   @override
   int get bitWidth => 8;
 

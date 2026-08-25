@@ -27,8 +27,8 @@ import 'package:good/src/game.dart';
 /// *widget*; a renderer that only needs to repaint pixels (not rebuild the
 /// tree) should hang a `Listenable` off the same tick signal instead, which
 /// is what `Game2D`'s painter does - see its `repaint` wiring. This widget
-/// rebuilding per tick would defeat that, so it deliberately does **not**
-/// `setState` on every tick: it rebuilds only when what [Game.buildView]
+/// rebuilding per tick would defeat that, so it does **not** `setState` on
+/// every tick: it rebuilds only when what [Game.buildView]
 /// returns could have changed, which today means never automatically. The
 /// tick listener exists so a subclass or a future scene-change signal has
 /// somewhere to hook.
@@ -50,7 +50,7 @@ class GameView extends StatefulWidget {
   /// pointer input, and paints nothing.
   ///
   /// A headless-plus-HUD game is a first-class shape here and has no camera to
-  /// name, so it says so rather than passing a null camera and hoping. This is
+  /// name, so it says so instead of passing a null camera and hoping. This is
   /// the one case that has to name the game directly, because there is no
   /// camera to have named it. Neither constructor can express a mismatch: this
   /// one takes no camera, the other takes no game.
@@ -116,9 +116,9 @@ class _GameViewState extends State<GameView> {
   /// Forwards every key event to the game's [InputDevice], and reports it
   /// **unhandled** so nothing else in the app stops receiving keys.
   ///
-  /// Registered on `HardwareKeyboard` rather than through a `Focus` node
-  /// wrapping the child, deliberately: a game is not a text field, and
-  /// requiring the view to hold focus would mean WASD silently dying the
+  /// Registered on `HardwareKeyboard` and not through a `Focus` node wrapping
+  /// the child: a game is not a text field, and requiring the view to hold
+  /// focus would mean WASD silently dying the
   /// moment any button or overlay took it. The cost is that a `GameView`
   /// which is on screen but "not in front" still sees keys - and two
   /// `GameView`s on one game both forward the same event, which is harmless
@@ -172,8 +172,8 @@ class _GameViewState extends State<GameView> {
 
   /// Delegates the entire tree to [Game.buildView]. A game that overrides
   /// nothing gets a zero-sized box - the honest answer for a game with no
-  /// renderer, rather than a crash or a blank-but-sized placeholder
-  /// pretending something is there.
+  /// renderer, instead of a crash or a blank-but-sized placeholder pretending
+  /// something is there.
   ///
   /// The [Listener] is how the mouse reaches the game, position as well as
   /// buttons; keys come in through `HardwareKeyboard`, which needs no widget.

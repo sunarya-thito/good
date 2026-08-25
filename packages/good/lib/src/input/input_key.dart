@@ -795,11 +795,10 @@ final class MouseButtonKey extends InputKey {
 /// pad: they are the analog sticks, thresholded into held/not-held bits by
 /// the collector (see `GamepadCollector.stickDeadzone`). That is what lets
 /// `Vec2Binding(up: .padLeftStickUp, ...)` work at all - a `Vec2Binding`
-/// composes four bits, and an analog axis is not a bit. It is a deliberate
-/// simplification and a lossy one: a stick half-pushed reads exactly like a
-/// stick slammed.
+/// composes four bits, and an analog axis is not a bit. It is a lossy
+/// simplification: a stick half-pushed reads exactly like a stick slammed.
 ///
-/// It is no longer the only reading available. The same events also write the
+/// It is not the only reading available. The same events also write the
 /// axis themselves, in the `InputAxis` vocabulary beside this one, and
 /// `StickBinding(x: .padLeftStickX, y: .padLeftStickY)` reads a stick
 /// proportionally. These bits stay exactly as they were - a d-pad is what a

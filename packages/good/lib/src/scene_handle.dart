@@ -27,7 +27,7 @@ import 'package:good/src/struct.dart';
 /// values, so half of it pays for the thing `Entity` cannot afford: a slot
 /// that has been unloaded and reused does not silently answer for its
 /// successor. A handle to an unloaded scene reports [isLoaded] false and
-/// throws from [get] with a diagnostic, rather than resolving to whatever was
+/// throws from [get] with a diagnostic instead of resolving to whatever was
 /// loaded into that slot afterwards.
 extension type const Scene(int value) {
   static const int _generationShift = 32;
@@ -51,10 +51,9 @@ extension type const Scene(int value) {
   /// The [SceneStruct] this handle names, as [T].
   ///
   /// One list index and a generation compare - the same shape and the same
-  /// cost as `Entity.get<T>()`. Throws for an unloaded scene rather than
-  /// returning null, so a stale handle is a diagnostic rather than a
-  /// null-check every caller has to remember; use [tryGet] where absence is
-  /// expected.
+  /// cost as `Entity.get<T>()`. Throws for an unloaded scene instead of
+  /// returning null, so a stale handle is a diagnostic and not a null-check
+  /// every caller has to remember; use [tryGet] where absence is expected.
   T get<T extends SceneStruct>() {
     final scene = SceneRegistry.tryResolve(this);
     if (scene == null) {
@@ -154,8 +153,8 @@ abstract final class SceneRegistry {
   /// Supplies the generation half of a handle to a caller that only has the
   /// slot - which is every caller that got there from an entity, since a
   /// `MemoryPage` records `ownerSceneSlot` and nothing more. Reconstructed
-  /// rather than remembered, so it cannot go stale: an unloaded slot answers
-  /// null instead of a handle into whatever loaded next.
+  /// on demand and not remembered, so it cannot go stale: an unloaded slot
+  /// answers null instead of a handle into whatever loaded next.
   @internal
   static Scene? handleAt(int slot) {
     if (slot < 0 || slot >= _loaded.length) return null;

@@ -39,7 +39,7 @@ abstract class AssetSource {
   /// The plaintext bytes. Reads, decrypts and decompresses as needed.
   Future<Uint8List> load();
 
-  /// Pre-flight: is this asset actually going to be there?
+  /// Pre-flight: whether the bytes for this asset are there to be read.
   ///
   /// Never reads asset bytes and never decodes - this is what a startup
   /// readiness check calls over every declared asset, and it has to stay

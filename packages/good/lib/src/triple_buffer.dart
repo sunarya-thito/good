@@ -40,7 +40,7 @@ import 'package:ffi/ffi.dart';
 /// currently targets (x64/ARM64) but isn't spec-guaranteed the way a real
 /// atomic release-store would be. Revisit with an explicit fence (or a
 /// native mutex) if profiling on a weak-memory target ever surfaces
-/// tearing - flagged here rather than silently assumed away.
+/// tearing - flagged here, not silently assumed away.
 ///
 /// **Load-bearing assumption:** the "2 publish cycle" grace period above is
 /// counted in *publishes*, not wall-clock time - it only holds if a reader
@@ -205,7 +205,7 @@ class TripleBuffer {
   /// [publish], which clears it. Between `beginWrite` and `publish` - the whole
   /// tick window - the published snapshot is by definition fixed.
   ///
-  /// A `bool` plus a non-nullable field rather than a nullable one: reading a
+  /// A `bool` plus a non-nullable field, not a nullable one: reading a
   /// `Pointer<T>?` and branching costs 3.39ns against 1.43ns for a plain field
   /// (`tool/field_access_bench.dart`). Smaller than the 9x a nullable *return*
   /// costs, but this is read once per field access and the flag is free.
@@ -223,8 +223,8 @@ class TripleBuffer {
   ///
   /// The fallback is the pre-publish case, which is real: a scene writes its
   /// starting rows before anything has been published, and those writes have to
-  /// be readable back. See `_readRow`, which used to spell this as
-  /// `resolveRead(o) ?? resolveWrite(o)` and paid the box every time.
+  /// be readable back. Spelling it `resolveRead(o) ?? resolveWrite(o)` in
+  /// `_readRow` pays the box on every read.
   @pragma('vm:prefer-inline')
   Pointer<Uint8> get readView {
     if (_hasReadBase) return _readBase;
@@ -234,8 +234,8 @@ class TripleBuffer {
 
   /// The newest published snapshot, or null if nothing has been published.
   ///
-  /// Called **once per field access** on the read path, which is why the cache
-  /// above exists: without it this is a load from native memory plus a
+  /// Called **once per field access** on the read path, and the cache above
+  /// exists for it: without that, this is a load from native memory plus a
   /// bounds-checked list index, paid per field, per entity, per tick. A system
   /// touching 20 fields across 10k entities pays it 200,000 times a frame.
   Pointer<Uint8>? latestView() {

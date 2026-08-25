@@ -15,8 +15,8 @@ import 'package:good/src/asset.dart';
 /// a texture, and a readiness check can tell you it is missing before the
 /// game starts.
 ///
-/// That split is deliberate rather than a shortcut. The pipeline is uniform
-/// over asset *kinds* - `Asset<T>` does not care what `T` is - so audio can
+/// That split is not a shortcut. The pipeline is uniform over asset *kinds* -
+/// `Asset<T>` does not care what `T` is - so audio can
 /// travel the whole of it before anything can play a sound. When a backend
 /// lands it consumes [bytes]; nothing above this line changes.
 class AudioClip {
@@ -28,8 +28,8 @@ class AudioClip {
 
   /// The container the bytes are in, from the source path's extension.
   ///
-  /// Carried rather than re-sniffed, because the loader already knows it and a
-  /// backend would otherwise have to guess from a header.
+  /// Carried, never re-sniffed: the loader already knows it, and a backend
+  /// would otherwise have to guess from a header.
   final AudioContainer format;
 
   /// How many bytes the clip occupies. The one thing that can be answered
@@ -82,8 +82,8 @@ class AudioInfo extends AssetInfo {
 
 /// Reads an audio file's bytes.
 ///
-/// Does no decoding, which is why it is the one loader with nothing
-/// platform-specific in it: it hands back what the source gave it. That also
+/// Does no decoding, so it is the one loader with nothing platform-specific
+/// in it: it hands back what the source gave it. That also
 /// means it works on the game isolate in principle - though nothing asks it
 /// to, because loading still happens on the copy that can do I/O.
 class AudioLoader extends AssetLoader<AudioClip> {

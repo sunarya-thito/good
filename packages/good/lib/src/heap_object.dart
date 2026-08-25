@@ -6,7 +6,6 @@ import 'package:meta/meta.dart';
 /// Dart heap pointer (the no-allocation rule) - can refer to it as a `Uint32`.
 ///
 /// The sibling of an `ObjectTable` such as `GameAssets` (asset.dart), and
-/// deliberately
 /// *not* the same table, for two reasons:
 ///
 ///  * **No `GlobalObject` requirement.** Entries here are ordinary objects -
@@ -52,7 +51,7 @@ import 'package:meta/meta.dart';
 /// one is a real trade and is documented on `_HeapObjectField`; a destroyed
 /// entity releases whatever address its row holds at the end.
 abstract final class HeapObjectRegistry {
-  /// Marks a slot that is on the free list. A dedicated sentinel rather than
+  /// Marks a slot that is on the free list. A dedicated sentinel and not
   /// `null`, because `null` is a value a caller may legitimately register -
   /// without this, "registered null" and "freed" would be indistinguishable
   /// and [unregister] could push the same address onto the free list twice,
@@ -92,8 +91,8 @@ abstract final class HeapObjectRegistry {
   /// Frees [address] for reuse and drops the strong reference held here.
   ///
   /// Idempotent and bounds-tolerant: unregistering an out-of-range or
-  /// already-freed address does nothing, rather than corrupting the free
-  /// list with a duplicate entry.
+  /// already-freed address does nothing and never corrupts the free list with
+  /// a duplicate entry.
   static void unregister(int address) {
     if (address < 0 || address >= _byAddress.length) return;
     if (identical(_byAddress[address], _free)) return;
@@ -115,7 +114,7 @@ abstract final class HeapObjectRegistry {
   /// `GameAssets.resolve`: a row holding a stale or
   /// never-registered address is a real bug worth failing loudly on.
   ///
-  /// Written as an explicit `is!` test rather than `tryResolve(...) == null`
+  /// Written as an explicit `is!` test, not `tryResolve(...) == null`,
   /// so that registering a legitimate `null` under a nullable [T] resolves
   /// to `null` instead of throwing.
   static T resolve<T>(int address) {

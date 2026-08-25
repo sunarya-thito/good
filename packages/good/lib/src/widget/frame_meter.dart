@@ -7,8 +7,8 @@ import 'package:meta/meta.dart';
 ///
 /// # Why this is not derived from the tick counter
 ///
-/// `Game.tick` counts *simulation* steps, and those are deliberately decoupled
-/// from frames: the fixed step runs at `fixedTimeStep` whatever the display is
+/// `Game.tick` counts *simulation* steps, and those are decoupled from frames:
+/// the fixed step runs at `fixedTimeStep` whatever the display is
 /// managing, which is the whole point of a fixed timestep. A game whose
 /// renderer is drowning still ticks 60 times a second and would report a
 /// perfect 60 "fps" from its tick count, right up until it stopped drawing
@@ -47,7 +47,7 @@ import 'package:meta/meta.dart';
 final class FrameMeter {
   /// Timestamps of the last [_window] frames, in microseconds.
   ///
-  /// A fixed-size ring rather than a growing list: this is fed by the engine
+  /// A fixed-size ring, not a growing list: this is fed by the engine
   /// once per frame forever, and anything that allocates per frame here would
   /// be measuring its own overhead (the hot-path rules).
   static const int _window = 60;
@@ -68,7 +68,7 @@ final class FrameMeter {
   }
 
   /// Stops listening and forgets the window, so a game that comes back on
-  /// screen reports what it is doing *now* rather than blending in what it was
+  /// screen reports what it is doing *now* and does not blend in what it was
   /// doing before it went away.
   void disarm() {
     if (!_armed) return;
@@ -92,7 +92,7 @@ final class FrameMeter {
   /// not simulated, so a test that pumps three frames sees zero here. That is
   /// a limitation of the harness, not of the wiring, and it would leave the
   /// counting and rate arithmetic below completely uncovered. So the seam is
-  /// here rather than nowhere.
+  /// here instead of nowhere.
   @visibleForTesting
   void reportTimings(List<FrameTiming> timings) => _onTimings(timings);
 
@@ -130,7 +130,7 @@ final class FrameMeter {
   /// Zero until two frames have been seen - a rate needs an interval, and
   /// guessing one from a single frame would report a number before there is
   /// one. Zero is also what a game nobody is looking at reports, which is the
-  /// honest answer rather than a stale last-known value.
+  /// honest answer, not a stale last-known value.
   ///
   /// This is the vantage point the *display* half has to read from: its
   /// timestamps come from the engine's frame timings, and nothing on this
@@ -148,9 +148,9 @@ final class FrameMeter {
   /// published sixty a second and then stopped goes on reporting sixty for as
   /// long as the game runs, because the numbers it averages never move again.
   /// A caller that can say what time it is now gets told what is happening
-  /// rather than what used to.
+  /// right now.
   ///
-  /// So the rate is taken over `nowMicros - oldest` rather than
+  /// So the rate is taken over `nowMicros - oldest` and not
   /// `newest - oldest`, and it reads **zero** once nothing has arrived for as
   /// long as the whole window took to fill. That threshold scales itself: a
   /// producer publishing at sixty needs a second of silence to read zero, one

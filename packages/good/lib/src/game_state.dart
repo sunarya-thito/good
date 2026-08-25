@@ -271,8 +271,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// declaration passes - so that archetype ids agree across the boundary and
   /// announced pages have a pool to be adopted into - and never ticks.
   ///
-  /// This replaced the old `Game.isOnIsolate`/`supportsIsolate` pair: there
-  /// is no longer any notion of a platform that "doesn't support isolates",
+  /// There is no notion here of a platform that "doesn't support isolates",
   /// only of which copy simulates. Native spawns, web runs inline, and both
   /// answer this question the same way.
   bool get isSimulating => _simulating;

@@ -63,7 +63,7 @@ class AssetPack extends AssetMount {
 
   /// Where this pack's `chunk_*.dat` files are read from.
   ///
-  /// A mount rather than an `AssetBundle` so that a downloaded patch can keep
+  /// A mount and not an `AssetBundle`, so a downloaded patch can keep
   /// its chunks in a directory while the shipped pack keeps its own in the app
   /// bundle. Defaults to the app bundle, which is where `good assets pack`
   /// puts them.
@@ -171,8 +171,8 @@ class AssetPack extends AssetMount {
   ///  * in the manifest, chunk not yet opened -> [AssetAvailability.
   ///    unverifiable], because confirming it means decrypting a chunk.
   ///
-  /// [verifyChunks] is the deliberate deep pass for a "verify game files"
-  /// button, and costs one open per chunk rather than one per asset.
+  /// [verifyChunks] is the deep pass for a "verify game files" button, and
+  /// costs one open per chunk instead of one per asset.
   @override
   Future<AssetAvailability> check(String logicalPath) async {
     final chunk = _mapping[logicalPath];
@@ -185,7 +185,7 @@ class AssetPack extends AssetMount {
   ///
   /// The expensive check, and the only one that can actually catch a corrupt
   /// install: GCM authenticates, so a chunk whose bytes were altered fails its
-  /// tag here rather than yielding garbage to a decoder later.
+  /// tag here instead of yielding garbage to a decoder later.
   ///
   /// One open per *chunk*, so a pack of two hundred assets in six chunks costs
   /// six decrypts.
@@ -341,9 +341,9 @@ Future<Uint8List> openChunk({
 /// payloads, concatenated; offsets are relative to the payload section
 /// ```
 ///
-/// The index is *inside* the sealed body deliberately. A per-asset scheme
-/// would need it outside the ciphertext, and an index of every offset and
-/// length is a map of the pack in plaintext.
+/// The index is *inside* the sealed body. A per-asset scheme would need it
+/// outside the ciphertext, and an index of every offset and length is a map of
+/// the pack in plaintext.
 Map<String, Uint8List> readChunkBody(Uint8List body) {
   final view = ByteData.sublistView(body);
   final count = view.getUint32(0, Endian.little);

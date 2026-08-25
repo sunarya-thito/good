@@ -44,15 +44,15 @@ import 'package:good/src/coroutine/coroutine.dart';
 /// [TimelineAnimation.animate], which allocates nothing.
 ///
 /// The alternative - an animation *instance* per playing entity, ticked by the
-/// engine - is what most engines do and what this deliberately does not. It
-/// would mean a heap object per animating entity, a list to walk, and update
+/// engine - is what most engines do and what this does not. It would mean a
+/// heap object per animating entity, a list to walk, and update
 /// order mattering. Sampling has none of those: a system reads the value it
 /// wants, when it wants it, and two systems sampling the same track in one tick
 /// agree by construction.
 mixin Animations on Coroutines {
   /// Declares this struct's timelines. Runs once, at registration.
   ///
-  /// Empty by default rather than abstract, which is what lets `EntityStruct`
+  /// Empty by default and not abstract, which is what lets `EntityStruct`
   /// mix this in for everyone: an abstract member here would make every prefab
   /// in every game implement it, including the overwhelming majority that
   /// animate nothing.
@@ -68,7 +68,7 @@ mixin Animations on Coroutines {
   /// than a flag to check every tick.
   ///
   /// Costs a coroutine and a `TrackBinding` per bound track, so it is for the
-  /// occasional event rather than the per-entity update loop. Reach for
+  /// occasional event, not the per-entity update loop. Reach for
   /// [TimelineAnimation.animate] there; it costs nothing.
   ///
   /// Runs on the coroutine scheduler, so writes land inside the tick window -
