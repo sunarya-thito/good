@@ -244,8 +244,8 @@ enum _ControlMessage {
 ///
 /// Two things that are *not* about sendability still hold. **Statics do not
 /// cross at all** - they belong to no object graph - so the registries are
-/// captured onto this object and restored on arrival (see
-/// `_captureRegistries`). And a **cached typed-data view over native memory
+/// captured onto this object and restored on arrival, in `_captureRegistries`.
+/// And a **cached typed-data view over native memory
 /// is copied by value**, silently detaching from the memory it viewed; never
 /// keep one in a field (see `_StateChannelBase.reattach`).
 ///
@@ -657,10 +657,9 @@ abstract class Game implements RandomOwner {
   /// never on the game isolate. `AssetLoaders` is a per-isolate static map and
   /// the game isolate holds payload-free declarations, so a decoder there
   /// would answer for nothing; its own `StateError` says as much. That makes
-  /// this the one `describeX` pass outside the shared declaration sequence
-  /// both copies run. It is called from [_bootMain],
-  /// which main runs before the spawn and which the game isolate never runs at
-  /// all.
+  /// this the one `describeX` pass outside the shared declaration sequence both
+  /// copies run. It is called from [_bootMain], which main runs before the
+  /// spawn and which the game isolate never runs at all.
   ///
   /// # Register here, not from a constructor
   ///
@@ -969,25 +968,24 @@ abstract class Game implements RandomOwner {
   /// the view is (see `GameRenderer2D`'s camera handling), which is the one
   /// question about the view a simulation legitimately has.
   ///
-  /// A headless game reads zero here, never a guessed resolution, and that is
-  /// load-bearing: every consumer of these treats a
-  /// zero view as "no view", which is what makes a headless test and a real
-  /// window agree about everything except the centring they cannot share.
-  /// The surface the **pointer** is currently in: refreshed by the `GameView`
-  /// the cursor is over, and falling back to whichever view last laid out
-  /// before any pointer has moved.
+  /// This is the surface the **pointer** is currently in: refreshed by the
+  /// `GameView` the cursor is over, and falling back to whichever view last
+  /// laid out before any pointer has moved.
   ///
   /// **Not a camera viewport.** For projecting world to screen - or screen
   /// back to world - use `CameraView.viewportWidth`/`viewportHeight`, which
   /// belong to a specific view and are what `CameraProjection` centres on.
   /// These two exist because `CursorPosition` reports in one surface's
-  /// coordinates and a pointer is only ever in one surface at a time, which
-  /// is a coherent single fact; a *viewport* is not, once there are two
-  /// views.
+  /// coordinates and a pointer is only ever in one surface at a time, which is
+  /// a coherent single fact; a *viewport* is not, once there are two views.
   ///
-  /// A headless game reads zero here, never a guessed resolution.
+  /// A headless game reads zero here, never a guessed resolution, and that is
+  /// load-bearing: every consumer of these treats a zero view as "no view",
+  /// which is what makes a headless test and a real window agree about
+  /// everything except the centring they cannot share.
   double get viewWidth => _inputs.state.viewWidth;
 
+  /// [viewWidth]'s other half, with the same rules.
   double get viewHeight => _inputs.state.viewHeight;
 
   /// The [CameraView] the pointer is currently over, or null when it is over
