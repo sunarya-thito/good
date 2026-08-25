@@ -155,7 +155,21 @@ void main() {
             Uint8List.fromList(<int>[i, 0xAB]),
           );
         }
-        await run(const Duration(seconds: 2));
+        // Waiting for the thirtieth rather than for two seconds. `poll` is
+        // what moves a message into the ear, so it belongs in the condition,
+        // and the wait is capped, so a message that never arrives fails the
+        // `expect` below instead of hanging the runner.
+        await runUntil(() {
+          host.poll(hostEar);
+          return hostEar.received.length >= 30;
+        });
+        // The count is two claims in one, and only the first can be waited
+        // for: that all thirty arrived is a condition, and that no
+        // thirty-first did is the absence of an event. So the second half
+        // gets a fixed window - a dozen or so retransmission rounds at the
+        // 30ms floor the clamp puts on a loopback round trip - for a message
+        // whose ack was lost to be said again and refused as a duplicate.
+        await run(const Duration(milliseconds: 400));
         host.poll(hostEar);
 
         expect(
@@ -503,8 +517,14 @@ void main() {
         // and nothing explains why, which is the case a timeout exists for.
         host.simulatedLoss = 1;
 
-        await run(const Duration(milliseconds: 800));
-        client.poll(clientEar);
+        // Waiting for the client to give up rather than for twice the link
+        // timeout. `poll` is what reports the closure, so it is part of the
+        // condition, and the wait is capped, so a link that never gives up
+        // fails the `expect` below rather than hanging the runner.
+        await runUntil(() {
+          client.poll(clientEar);
+          return clientEar.closed != null;
+        });
 
         expect(clientEar.closed, NetDisconnectReason.timeout);
         expect(client.session, isNull);
@@ -643,8 +663,14 @@ void main() {
           announce(newcomer, P2PLink.maxSystemMessageBytes - 1),
         );
 
-        await run(const Duration(milliseconds: 400));
-        client.poll(clientEar);
+        // Waiting for the roster update rather than for 400ms, and on the
+        // slot the `expect` names rather than on the list being non-empty,
+        // so the condition and the assertion are the same claim. Capped, so
+        // a body that never crosses fails the `expect` below.
+        await runUntil(() {
+          client.poll(clientEar);
+          return clientEar.joined.any((peer) => peer.slot == newcomer);
+        });
 
         expect(
           clientEar.joined.map((peer) => peer.slot),
