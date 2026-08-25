@@ -101,7 +101,15 @@ class WorldTransform3DSystem extends GameSystem
   /// A row that is new cannot be detected through a published read - any flag
   /// you might check has the same staleness as the data - so the system has
   /// to be told out of band, which is what `EntitySpawnListener` is for.
-  final List<Entity> _spawned = <Entity>[];
+  ///
+  /// A set, and [_composeSpawned] still gets the spawn order it depends on: a
+  /// `Set` literal is a `LinkedHashSet`, which iterates in insertion order. As
+  /// a `List` it did keep that order, but [onEntityDespawned] then removed
+  /// from it by scanning, for *every* despawn in the game - so a tick that
+  /// spawned and destroyed the same thousands of parented entities, an
+  /// explosion clearing a squad or a level unloading, was quadratic in how
+  /// many.
+  final Set<Entity> _spawned = <Entity>{};
 
   @override
   void onEntitySpawned(Entity entity) {
@@ -113,7 +121,12 @@ class WorldTransform3DSystem extends GameSystem
   @override
   void onEntityDespawned(Entity entity) {
     // Spawned and destroyed within one tick - composing it afterwards would
-    // write through a freed row.
+    // write through a freed row. Unlike [onEntitySpawned] this does not
+    // filter on [WorldTransform3D] first: with a constant-time removal, the
+    // `tryGet` would cost more than the removal it guards. The emptiness test
+    // is what a scene with no [WorldTransform3D] in it pays, which is every
+    // despawn in such a game, and it is cheaper than hashing a handle that
+    // cannot be in here.
     if (_spawned.isNotEmpty) _spawned.remove(entity);
   }
 
@@ -202,9 +215,9 @@ class WorldTransform3DSystem extends GameSystem
     // Spawn order, and that is load-bearing: a parent necessarily exists
     // before a child can name it, so a spawned parent always precedes its
     // spawned children here and has its own world transform written by the
-    // time [_pendingWorldOf] reads it back below.
-    for (var i = 0; i < _spawned.length; i++) {
-      final entity = _spawned[i];
+    // time [_pendingWorldOf] reads it back below. A `Set` literal is a
+    // `LinkedHashSet`, which iterates in insertion order, so that holds.
+    for (final entity in _spawned) {
       final world = entity.tryGet<WorldTransform3D>();
       if (world == null) continue;
       _pendingWorldOf(entity, 0);
