@@ -76,6 +76,20 @@
   that are not. What gets drawn is unchanged, including which sprites are the
   ones dropped (#175).
 
+### Fixed
+
+* **A tick that destroys thousands of parented entities is linear in how many
+  again.** `WorldTransformSystem` holds every entity spawned since the last
+  fixed step, so it can compose those from what their spawner wrote rather
+  than from a stale row, and it took a destroyed entity back out of that
+  collection with a linear scan. So spawning and destroying N entities
+  carrying `WorldTransform2D` inside one tick - an explosion clearing a
+  squad, a level unloading - cost O(N^2). Measured over a 4x step in
+  entities, it went from 11.6x to 2.7x. Nothing to do, and nothing about the
+  composed transforms changes: the collection is a `Set` now, which iterates
+  in the same spawn order it did as a `List`, and a scene with no
+  `WorldTransform2D` in it never paid this and still does not (#180).
+
 ## 0.2.0
 
 World space changed direction. Read the first entry before you upgrade a game

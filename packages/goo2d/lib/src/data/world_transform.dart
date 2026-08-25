@@ -88,7 +88,7 @@ class WorldTransformSystem extends GameSystem
 
   /// Entities spawned since the last step.
   ///
-  /// # Why this list exists at all
+  /// # Why this set exists at all
   ///
   /// A spawner writes an entity's transform during the tick it creates it.
   /// Every read in the pass below serves the last **published** snapshot, so
@@ -107,7 +107,17 @@ class WorldTransformSystem extends GameSystem
   /// has to be *told*, out of band, which is what `EntitySpawnListener` is
   /// for. This is the same shape that fixed body creation in the Box2D
   /// backend, for the same underlying reason.
-  final List<Entity> _spawned = <Entity>[];
+  ///
+  /// # Why a set, when [_composeSpawned] needs spawn order
+  ///
+  /// It is both. A `Set` literal is a `LinkedHashSet`, which iterates in
+  /// insertion order, so the ordering [_composeSpawned] depends on survives
+  /// the change - and [onEntityDespawned] removes in constant time instead of
+  /// scanning. As a `List` it did scan, for *every* despawn in the game, so a
+  /// tick that spawned and destroyed the same thousands of parented entities
+  /// - an explosion clearing a squad, a level unloading - was quadratic in
+  /// the number of them.
+  final Set<Entity> _spawned = <Entity>{};
 
   @override
   void onEntitySpawned(Entity entity) {
@@ -119,7 +129,9 @@ class WorldTransformSystem extends GameSystem
   @override
   void onEntityDespawned(Entity entity) {
     // Spawned and destroyed within one tick - composing it afterwards would
-    // write through a freed row.
+    // write through a freed row. The emptiness test is what a scene with no
+    // [WorldTransform2D] in it pays, which is every despawn in such a game:
+    // cheaper than hashing a handle that cannot be in here.
     if (_spawned.isNotEmpty) _spawned.remove(entity);
   }
 
@@ -224,9 +236,9 @@ class WorldTransformSystem extends GameSystem
     // Spawn order, and that is load-bearing: a parent necessarily exists
     // before a child can name it, so a spawned parent always precedes its
     // spawned children here and has its own world transform written by the
-    // time [_pendingWorldOf] reads it back below.
-    for (var i = 0; i < _spawned.length; i++) {
-      final entity = _spawned[i];
+    // time [_pendingWorldOf] reads it back below. A `Set` literal is a
+    // `LinkedHashSet`, which iterates in insertion order, so that holds.
+    for (final entity in _spawned) {
       final world = entity.tryGet<WorldTransform2D>();
       if (world == null) continue;
       _pendingWorldOf(entity, 0);

@@ -24,6 +24,12 @@ class _Node extends EntityStruct
 /// nothing here is exercised by [_Node] at all.
 class _Leaf extends EntityStruct with Transform2D, WorldTransform2D, Child {}
 
+/// [_Node] without [WorldTransform2D] - a hierarchy `WorldTransformSystem`
+/// composes nothing in. The control for the churn timing below: the system
+/// hears every spawn and despawn in the game whether or not it has anything
+/// to do with them, so this measures what a scene that never opted in pays.
+class _Plain extends EntityStruct with Transform2D, Child, Parent {}
+
 class _Scene extends SceneStruct {
   @override
   void onSceneMounted(Scene scene) => handle = scene;
@@ -40,12 +46,50 @@ class _Scene extends SceneStruct {
 
   late final _Node node;
   late final _Leaf leaf;
+  late final _Plain plain;
 
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
     node = descriptor.has(_Node.new);
     leaf = descriptor.has(_Leaf.new);
+    plain = descriptor.has(_Plain.new);
+  }
+}
+
+/// Spawns a parent and a child from *inside* the fixed tick, once, on the
+/// first tick after [armed] is set.
+///
+/// The churn timing at the bottom of this file stresses the set
+/// `WorldTransformSystem` keeps of entities spawned since the last step, and
+/// is worth nothing if that set is never populated. Nothing a test can read
+/// from the outside settles that on its own: an entity created *between*
+/// ticks is published before the pass runs, so the pass composes it and the
+/// set makes no difference to the answer. Spawning from inside the tick is
+/// the case where it does - the splice into the parent's chain is still in
+/// the write slot, so the top-down pass cannot reach the child at all, and
+/// the set is the only thing that composes it.
+class _Spawner extends GameSystem with FixedTickable {
+  bool armed = false;
+
+  /// The child spawned on the armed tick.
+  Entity? child;
+
+  /// Ahead of `WorldTransformSystem`, which is where a spawner belongs: it
+  /// writes the local transforms that pass then composes.
+  @override
+  int compareTo(GameSystem other) => other is WorldTransformSystem ? -1 : 0;
+
+  @override
+  void onFixedUpdate() {
+    if (!armed) return;
+    armed = false;
+    final scene = run.state.singleScene<_Scene>();
+    final parent = scene.addEntity(scene.node);
+    scene.node.transformOffsetX[parent] = 100;
+    final spawned = scene.addEntity(scene.node, parent: parent);
+    scene.node.transformOffsetX[spawned] = 10;
+    child = spawned;
   }
 }
 
@@ -55,16 +99,26 @@ class _GameState extends GameState<_Game> {
     loadScene(_Scene());
   }
 
+  /// Inert in every test that does not arm it.
+  final _Spawner spawner = _Spawner();
+
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
     descriptor.has(WorldTransformSystem());
+    descriptor.has(spawner);
   }
 }
 
 class _Game extends Game {
+  _Game({this.pageSize = 4096});
+
+  /// A field rather than a constant, for the churn tests at the bottom: the
+  /// pool is capped at 128 pages and a freed row is not handed back out
+  /// again, so tens of thousands of rows through one fixture needs a page
+  /// big enough that they fit. Every other test here spawns a handful.
   @override
-  int get pageSize => 4096;
+  final int pageSize;
 
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
@@ -73,8 +127,8 @@ class _Game extends Game {
   GameState createState() => _GameState();
 }
 
-Future<_Game> _game() async {
-  final game = _Game();
+Future<_Game> _game({int pageSize = 4096}) async {
+  final game = _Game(pageSize: pageSize);
   run = await Game.startInline(game);
   addTearDown(() async {
     if (run.isRunning) await run.stop();
@@ -83,6 +137,51 @@ Future<_Game> _game() async {
 }
 
 const Duration _step = Duration(milliseconds: 10);
+
+/// Spawns [n] children under one parent and destroys all [n] again inside the
+/// same tick, returning how long the destruction alone took in microseconds.
+///
+/// Creation is outside the stopwatch: it is linear in [n] whatever
+/// `WorldTransformSystem` does with it, and including it would only dilute
+/// the thing being measured.
+///
+/// The destroy loop runs in reverse creation order. That is the ordinary LIFO
+/// teardown, and it is also the worst case for the defect this pins - the
+/// entity being taken out of the system's spawned-this-tick set is at the far
+/// end of it, so a linear scan pays its full length every time.
+int _churnMicros(_Scene scene, EntityStruct prefab, int n) {
+  // One tick, opened by hand: spawning and destroying within a single tick is
+  // the whole case. Nothing calls `advance` in between, so the system is
+  // still holding every one of these when the destroy loop starts.
+  run.state.pool.beginTick();
+  final root = scene.addEntity(prefab);
+  final spawned = List<Entity>.generate(
+    n,
+    (_) => scene.addEntity(prefab, parent: root),
+  );
+  final watch = Stopwatch()..start();
+  for (var i = n - 1; i >= 0; i--) {
+    spawned[i].destroy();
+  }
+  watch.stop();
+  root.destroy();
+  run.state.pool.commitTick();
+  return watch.elapsedMicroseconds;
+}
+
+/// [_churnMicros] three times over, keeping the fastest.
+///
+/// The minimum rather than the mean, because every source of noise here - GC,
+/// the scheduler, JIT still deciding what to optimise - only ever adds time.
+int _fastestChurnMicros(_Scene scene, EntityStruct prefab, int n) {
+  var best = _churnMicros(scene, prefab, n);
+  for (var attempt = 1; attempt < 3; attempt++) {
+    run.state.advance(_step);
+    final micros = _churnMicros(scene, prefab, n);
+    if (micros < best) best = micros;
+  }
+  return best;
+}
 
 void main() {
   tearDown(() {
@@ -373,5 +472,118 @@ void main() {
             'or this reads back a world transform that was never composed',
       );
     });
+  });
+
+  // `WorldTransformSystem` is told about every spawn and every despawn in the
+  // game, and holds the spawns it would compose until the next fixed step
+  // reaches them. A despawn has to take an entity back out of that set, and
+  // for as long as the set was a `List` that removal was a scan plus a shift -
+  // so spawning and destroying N parented entities inside one tick cost
+  // O(N^2). An explosion clearing a squad, or a level unloading, is exactly
+  // that shape.
+  //
+  // # What these two numbers are worth
+  //
+  // They are **JIT** timings: `dart compile exe` cannot build anything that
+  // imports `package:good/good.dart` (#154), so there is no AOT number to be
+  // had here, and the microseconds themselves mean nothing. What survives the
+  // constant factor is the *shape* - the ratio between two sizes - which is
+  // the only thing asserted. Over a 4x step, linear is 4x and quadratic 16x,
+  // and the bound is 6x.
+  //
+  // Both sides of that bound were measured rather than assumed. Put the
+  // `List` back and this reads 11.6x; with the set it reads 2.7x, which is
+  // *below* linear because a fixed per-run cost still shows at the smaller
+  // size. Sizes are what make the two separate: at 1500 against 6000 the
+  // defect measured 7.2x and would have passed a bound of 8.
+
+  group('churn inside one tick', () {
+    // The timings below are two flat numbers, and a flat number is also what
+    // a set nothing is ever put into produces. This is what says the set is
+    // populated at all, and it is a value rather than a duration.
+    test('an entity spawned inside the tick is composed out of the set, not '
+        'by the pass', () async {
+      await _game();
+      final scene = run.state.singleScene<_Scene>();
+
+      // The page has to have published first, or this proves nothing: a read
+      // of a row on a page that never published falls through to the write
+      // slot, so on a fresh page the pass sees the pending splice after all
+      // and composes the child whether or not the set holds it.
+      scene.addEntity(scene.node);
+      run.state.advance(_step);
+      run.state.advance(_step);
+
+      final state = run.state as _GameState;
+      state.spawner.armed = true;
+      run.state.advance(_step);
+
+      expect(
+        scene.node.worldX[state.spawner.child!],
+        110,
+        reason:
+            'the pass walks `Parent.firstChild` through published reads and '
+            'the splice that put this child there is still in the write '
+            'slot, so nothing but the spawned-this-tick set can have '
+            'composed it - a 0 here means that set stayed empty, and the '
+            'timings below would be measuring nothing',
+      );
+    });
+
+    test('destroying many parented entities in one tick is linear in how '
+        'many, not quadratic', () async {
+      await _game(pageSize: 1 << 18);
+      final scene = run.state.singleScene<_Scene>();
+
+      _churnMicros(scene, scene.node, 400); // warm the JIT
+      run.state.advance(_step);
+
+      const int small = 4000;
+      const int large = small * 4;
+      final smallMicros = _fastestChurnMicros(scene, scene.node, small);
+      run.state.advance(_step);
+      final largeMicros = _fastestChurnMicros(scene, scene.node, large);
+
+      expect(
+        largeMicros / math.max(smallMicros, 1),
+        lessThan(6.0),
+        reason:
+            'destroying ${large}x parented entities took ${largeMicros}us '
+            'against ${smallMicros}us for $small - a 4x step. Linear is 4x '
+            'and quadratic is 16x, so this is the per-despawn cost growing '
+            'with how many entities are already waiting to be composed',
+      );
+    });
+
+    test(
+      'the same churn with no WorldTransform2D in the scene stays flat',
+      () async {
+        await _game(pageSize: 1 << 18);
+        final scene = run.state.singleScene<_Scene>();
+
+        _churnMicros(scene, scene.plain, 400); // warm the JIT
+        run.state.advance(_step);
+
+        const int small = 4000;
+        const int large = small * 4;
+        final smallMicros = _fastestChurnMicros(scene, scene.plain, small);
+        run.state.advance(_step);
+        final largeMicros = _fastestChurnMicros(scene, scene.plain, large);
+
+        // This one was linear before the fix too - nothing here has
+        // `WorldTransform2D`, so the set is empty and the despawn hook returns
+        // at its emptiness test. That is the point of running it: it is the
+        // same harness, and it stays flat either way, so the test above going
+        // red is about the set and not about the harness.
+        expect(
+          largeMicros / math.max(smallMicros, 1),
+          lessThan(6.0),
+          reason:
+              'no entity in this scene has WorldTransform2D, so a despawn has '
+              'nothing to do at all: ${largeMicros}us for $large against '
+              '${smallMicros}us for $small',
+        );
+      },
+    );
   });
 }
