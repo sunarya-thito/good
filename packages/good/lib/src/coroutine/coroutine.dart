@@ -40,20 +40,19 @@ import 'package:good/src/game_state.dart';
 ///
 ///  * `null` - resume on the next fixed step.
 ///  * a `num` - resume after that many **simulated** seconds, accumulated from
-///    `Game.fixedTimeStep`. Simulated rather than wall-clock, so a coroutine
-///    replays identically; `Future.delayed` would not.
+///    `Game.fixedTimeStep`. Simulated, not wall-clock, so a coroutine replays
+///    identically; `Future.delayed` would not.
 ///  * a [YieldInstruction] - resume when it says so, polled once per step.
 ///  * another `Iterable` - run it to completion first, then carry on. Nesting
 ///    is a plain stack, so a coroutine can be composed of coroutines without
 ///    either knowing about the other.
 ///
-/// Anything else is a programming error and throws, rather than being silently
+/// Anything else is a programming error and throws instead of being silently
 /// treated as "next frame".
 ///
-/// The element type is left off deliberately. A coroutine yields a mixed bag by
-/// design - a null, a number, an instruction, another coroutine - so there is
-/// no element type worth writing, and `Iterable` is both shorter and more
-/// honest than pinning it to `Object?`.
+/// The element type is left off. A coroutine yields a mixed bag - a null, a
+/// number, an instruction, another coroutine - so there is no element type
+/// worth writing, and `Iterable` says more than `Object?` would.
 typedef Coroutine = Iterable Function();
 
 /// A [Coroutine] that takes one argument, so a caller can start the same body
@@ -62,8 +61,8 @@ typedef CoroutineWithParam<T> = Iterable Function(T param);
 
 /// Something a coroutine waits on, polled once per fixed step.
 ///
-/// Polled rather than callback-driven, and that follows from the same
-/// constraint as `sync*`: resumption has to happen inside the tick window, so
+/// Polled, not callback-driven, and that follows from the same constraint as
+/// `sync*`: resumption has to happen inside the tick window, so
 /// "tell me when you are ready" cannot be a `Future.then` that fires whenever
 /// it likes. Once per step, on the simulation's own clock, is the only shape
 /// that keeps a coroutine's writes legal.
@@ -84,7 +83,7 @@ final class WaitUntil implements YieldInstruction {
 }
 
 /// Waits while [condition] keeps returning true - the mirror of [WaitUntil],
-/// spelled out rather than left to the caller to negate, because
+/// spelled out instead of left to the caller to negate, because
 /// `WaitUntil(() => !busy)` reads worse than `WaitWhile(() => busy)`.
 final class WaitWhile implements YieldInstruction {
   WaitWhile(this.condition);
@@ -140,8 +139,8 @@ final class WaitForFuture implements YieldInstruction {
 /// error when the body throws, which is what stops a bug inside a coroutine
 /// from being swallowed by the scheduler.
 ///
-/// [stop] completes it normally rather than with an error: cancelling
-/// something is not a failure, and a caller who awaited it wants to carry on.
+/// [stop] completes it normally, not with an error: cancelling something is
+/// not a failure, and a caller who awaited it wants to carry on.
 final class CoroutineFuture implements Future<void> {
   @internal
   CoroutineFuture(this._scheduler);
@@ -270,9 +269,9 @@ final class _Running {
 
 /// Runs every live coroutine, once per fixed step, inside the tick window.
 ///
-/// One per `GameState` rather than one per owner: a single list is one
-/// deterministic order, and "stop everything this enemy started" is a filter
-/// over it rather than a second place for the same fact to live (the
+/// One per `GameState`, not one per owner: a single list is one deterministic
+/// order, and "stop everything this enemy started" is a filter over it instead
+/// of a second place for the same fact to live (the
 /// one-fact-one-place rule). Owners are compared by identity and never used for
 /// anything else, so a prefab, a system or a scene can all own coroutines
 /// without the scheduler knowing what any of them are.

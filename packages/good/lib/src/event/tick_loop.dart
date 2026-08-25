@@ -15,13 +15,13 @@ import 'package:good/src/event.dart';
 /// `Tickable` is *presentation*: it runs after `commitTick()`, so its reads
 /// see the snapshot the tick just published - including everything the
 /// simulation derived during it. A renderer, an audio positioner, anything
-/// that consumes what the simulation computed rather than contributing to it,
+/// that consumes what the simulation computed instead of contributing to it,
 /// belongs here.
 ///
 /// This is the same split Unity DOTS draws between `SimulationSystemGroup` and
 /// `PresentationSystemGroup`, and for the same reason: a consumer of derived
-/// data is ordered into a later phase rather than given a sharper way to read
-/// the current one. See the no-specialised-variant rule - it is why no system
+/// data is ordered into a later phase, not given a sharper way to read the
+/// current one. See the no-specialised-variant rule - it is why no system
 /// is handed a "read this tick's uncommitted value" accessor to consume derived
 /// data with.
 ///
@@ -48,7 +48,7 @@ mixin Tickable on GameListener {
   ///
   /// Unlike `onFixedUpdate`, this is a *variable* delta: the presentation
   /// phase is paced independently of the simulation, so a slow frame gives a
-  /// bigger delta rather than being made up by running the pass twice.
+  /// bigger delta, never a pass run twice to make it up.
   void onTick(Duration delta);
 }
 

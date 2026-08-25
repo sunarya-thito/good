@@ -64,9 +64,9 @@ mixin GameLifecycleListener on GameListener {
 /// Narrow, always. The only dispatchers that deliver it are that struct's own
 /// `SceneStruct.mountedEvent`/`unmountedEvent`, and those collect the struct
 /// and the prefabs it declared - nothing else. Every `SceneStruct` mixes this
-/// in, which is why a scene spawns its starting entities in [onSceneMounted]
-/// rather than through a separate virtual, and a prefab may mix it in to hear
-/// the scene it belongs to.
+/// in, so a scene spawns its starting entities in [onSceneMounted] and needs
+/// no separate virtual, and a prefab may mix it in to hear the scene it
+/// belongs to.
 ///
 /// **On a `GameSystem` this never fires.** `GameState` declares no
 /// `SceneLifecycleListener` dispatcher, and no scene offers a system to its
@@ -74,11 +74,11 @@ mixin GameLifecycleListener on GameListener {
 /// wants to react to scene transitions wants [SceneLoadListener], the
 /// world-observation counterpart `GameState` does declare. (A struct can still
 /// let one system in, by offering it from `collectListeners` - that is the
-/// struct widening its own audience on purpose, not a game-wide hook.)
+/// struct widening its own audience, not a game-wide hook.)
 ///
 /// A `SceneStruct` that also mixes in [SceneLoadListener] hears its own mount
-/// twice, which is correct rather than a quirk: `GameState` collects the
-/// scenes, so it asked to hear every scene load and its own is one of them.
+/// twice, and that is correct: `GameState` collects the scenes, so it asked to
+/// hear every scene load and its own is one of them.
 mixin SceneLifecycleListener on GameListener {
   /// [scene] has been loaded. The struct's own [onSceneMounted] runs before
   /// any of its prefabs', so a prefab hearing the mount finds the starting
@@ -109,11 +109,9 @@ mixin SceneLifecycleListener on GameListener {
 /// and no others.)
 ///
 /// Firing this costs nothing whether or not anything is listening: the payload
-/// is passed as an argument rather than wrapped in an event object, so the
-/// spawn path allocates nothing at all (the hot-path rules). It used to
-/// build an `EntityMountedEvent` per entity, which is why the dispatch sites
-/// carried a `listenerCount > 0` guard - that guard is gone with the
-/// allocation it was avoiding.
+/// is passed as an argument, never wrapped in an event object, so the spawn
+/// path allocates nothing at all (the hot-path rules) and the dispatch sites
+/// need no `listenerCount > 0` guard.
 mixin EntityLifecycleListener on GameListener {
   /// [entity] has been created and its declared field defaults are already
   /// stamped into the row - by the storage layer at creation, not by a write
@@ -131,7 +129,7 @@ mixin EntityLifecycleListener on GameListener {
   /// afterwards. Rows **are** recycled: after a destroy the next entity of the
   /// same archetype can be handed that row, and `Entity` has no generation
   /// counter, so a handle kept past this point silently starts naming
-  /// something else rather than reading as dead.
+  /// something else instead of reading as dead.
   void onEntityUnmounted(Entity entity) {}
 }
 
@@ -230,24 +228,24 @@ mixin SceneLoadListener on GameListener {
 /// two. `resumed` and `inactive` both count as visible; `hidden`, `paused` and
 /// `detached` all count as hidden.
 ///
-/// `inactive` deliberately does **not** hide. It is a window losing focus, a
+/// `inactive` does **not** hide. It is a window losing focus, a
 /// phone call arriving, the notification shade coming down, an app sitting in
 /// the switcher - the app is still on screen. Pausing there is why some games
 /// stop when you alt-tab to a browser. A game that genuinely wants focus can
 /// read it from Flutter directly.
 ///
-/// # There is no "about to be killed" hook, deliberately
+/// # There is no "about to be killed" hook
 ///
 /// [onAppHidden] is the last moment worth writing a save in, and it is a
 /// reliable one: iOS and Android both synthesise `hidden` *before* `paused`
 /// exactly so cross-platform code has one place to handle it.
 ///
-/// `detached` is not that place, which is why nothing here fires on it. It is
-/// also the state an app is in *before* it starts, a process killed while
+/// `detached` is not that place, and nothing here fires on it. It is also the
+/// state an app is in *before* it starts, a process killed while
 /// hidden never sends it at all, and no platform promises time to act on it.
 /// A hook that returned a future for the engine to await would be describing
-/// an intention rather than a behaviour - so a save belongs in [onAppHidden],
-/// and a process killed after that has already had its chance.
+/// an intention, not a behaviour - so a save belongs in [onAppHidden], and a
+/// process killed after that has already had its chance.
 mixin AppVisibilityListener on GameListener {
   /// The app is no longer visible.
   ///

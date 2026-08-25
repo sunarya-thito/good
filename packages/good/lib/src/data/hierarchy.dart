@@ -53,7 +53,7 @@ mixin Child on Component {
   /// another's, and nothing stops an entity of this prefab being `addChild`ed
   /// to a parent of some unrelated archetype - it mixes in [Child], which is
   /// all `addChild` asks. So every use of [declaredIn] checks this first;
-  /// without it the mismatch is an out-of-bounds read rather than an error.
+  /// without it the mismatch is an out-of-bounds read instead of an error.
   @internal
   int get declaredInArchetype => _declaredInArchetype;
 
@@ -84,8 +84,8 @@ mixin Parent on Component {
   /// Internal: user code holds the prefabs `EntityStruct.of` gave it, never
   /// this.
   ///
-  /// Here rather than on `EntityStruct` because holding children is what
-  /// `Parent` is. A prefab with no hierarchy keeps no list.
+  /// Here and not on `EntityStruct`, because holding children is what `Parent`
+  /// is. A prefab with no hierarchy keeps no list.
   @internal
   List<EntityStruct> get declaredChildren => _declaredChildren;
 }
@@ -111,11 +111,10 @@ mixin Parent on Component {
 /// these directly only when attaching an *already-existing* entity, since
 /// `addEntity` both creates the child and links it.
 ///
-/// The four operations are deliberately separate, because they answer
-/// different questions and used to be spelled with two: [addChild] attaches
-/// something unparented, [adopt] moves something that already has a parent,
-/// [removeChild] destroys, and `ChildAccessor.detach` unlinks and keeps the
-/// entity alive.
+/// The four operations are separate because they answer different questions:
+/// [addChild] attaches something unparented, [adopt] moves something that
+/// already has a parent, [removeChild] destroys, and `ChildAccessor.detach`
+/// unlinks and keeps the entity alive.
 ///
 /// All of them stay inside one scene - see [_sameScene] for why an edge that
 /// crosses one cannot be unloaded correctly, and `unmountEntitiesOf` for what
@@ -138,15 +137,15 @@ extension ParentAccessor on Accessor<Parent> {
   /// side. Read-only - the link is written once, when the parent mounts, and
   /// nothing else may point it somewhere else.
   ///
-  /// [child] is a [Child] rather than an `EntityStruct`, which makes "you can
-  /// only ask for something that could have been declared as a child" a
+  /// [child] is a [Child] and not an `EntityStruct`, which makes "you can only
+  /// ask for something that could have been declared as a child" a
   /// compile-time fact. No type parameter is involved, so the restriction
   /// that stopped `entity[Transform3D]` (an operator's return type cannot
   /// depend on its argument) does not apply.
   ///
   /// Reads the **pending** slot, like the hierarchy's own links do. A child
   /// is allocated and written mid-tick, and a row recycled from a destroyed
-  /// entity publishes its declared defaults rather than this tick's writes
+  /// entity publishes its declared defaults instead of this tick's writes
   /// (issue #5) - so an ordinary read on a turret's own mount tick would hand
   /// back `Entity(0)`, a real handle naming somebody else's row. See
   /// [DataPointer.readPending] and [addChild], which reads `lastChild` the
@@ -168,11 +167,10 @@ extension ParentAccessor on Accessor<Parent> {
   /// splice through `firstChild`/`lastChild` and `child`'s own
   /// `nextSibling`/`prevSibling`.
   ///
-  /// [child] must be **unparented**. It used to splice unconditionally, which
-  /// meant attaching an already-attached entity left it in two chains: its old
-  /// parent still named it, its old siblings still pointed at it, and the
-  /// corruption was silent. There is no legitimate caller for that now that
-  /// [adopt] exists, so it is an error.
+  /// [child] must be **unparented**, and passing an attached entity is an
+  /// error. Splicing unconditionally would leave it in two chains - its old
+  /// parent still naming it, its old siblings still pointing at it - and the
+  /// corruption is silent. Use [adopt] to move something that has a parent.
   ///
   /// [child] must mix in [Child] - checked at runtime (`tryGet<Child>()`)
   /// since the type system has no way to require "some component that
@@ -207,13 +205,12 @@ extension ParentAccessor on Accessor<Parent> {
   /// Moves [child] here from wherever it is, keeping it and its subtree alive
   /// - the reparent operation.
   ///
-  /// Remove-then-add used to be the way to do this, and stopped being one
-  /// when [removeChild] became destructive. Unlinks [child] from its current
-  /// parent's chain, if it has one, and appends it here; an already-unparented
-  /// [child] makes this [addChild].
+  /// Unlinks [child] from its current parent's chain, if it has one, and
+  /// appends it here; an already-unparented [child] makes this [addChild].
+  /// Remove-then-add is not the spelling for this - [removeChild] destroys.
   ///
   /// Adopting into the parent it already has moves it to the end of that
-  /// chain rather than doing nothing, because that is what the same two steps
+  /// chain instead of doing nothing, because that is what the same two steps
   /// spelled out by hand would do.
   void adopt(Entity child) {
     final childComponent = _requireChild(child);
@@ -357,8 +354,8 @@ extension ParentAccessor on Accessor<Parent> {
   /// into the freed page.
   ///
   /// Which scene an entity is in is decided when its row is allocated and
-  /// never changes, so this is a fact about the calling code rather than
-  /// something that can start being true in a shipped build - an assert, and
+  /// never changes, so this is a fact about the calling code and not something
+  /// that can start being true in a shipped build - an assert, and
   /// `SceneStruct.addEntityIn` puts it on the spawn path.
   ///
   /// What holds the release build together is not this line but

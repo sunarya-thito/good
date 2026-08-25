@@ -27,8 +27,8 @@ abstract interface class PrefabRegistrar {
 /// scope - it is an initialiser, so it cannot see `this`, let alone an
 /// argument some later method would have been handed. So the framework puts
 /// the descriptor here first and constructs the object second:
-/// `SceneDescriptor.has` takes `Mote.new` rather than `Mote()` for exactly
-/// that reason.
+/// `SceneDescriptor.has` takes `Mote.new` and not `Mote()` for exactly that
+/// reason.
 ///
 /// # Why a stack
 ///

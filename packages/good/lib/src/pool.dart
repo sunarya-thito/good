@@ -76,7 +76,7 @@ class MemoryPool {
   final int pageSize;
   final int maxPages;
 
-  /// Allocated pages by index, **tombstoned rather than removed** when one is
+  /// Allocated pages by index, **tombstoned and not removed** when one is
   /// freed.
   ///
   /// The index is an identity, not a position: `Game._announceNewPages` walks
@@ -318,11 +318,11 @@ class MemoryPage {
   /// changes must therefore be held back.
   ///
   /// A latch cleared by [flushPending], **not** a scope counter, and that is
-  /// forced rather than chosen: a `for-in` abandoned by `break` never resumes
-  /// the `sync*` body, so a `finally` in [rowOffsets] would not run and a
-  /// decrement would be lost forever. `ActiveCameraResolver` breaks out of a
-  /// query on purpose, so that is a live path, not a hypothetical - it would
-  /// have stranded the page in a permanently-deferring state.
+  /// forced, not chosen: a `for-in` abandoned by `break` never resumes the
+  /// `sync*` body, so a `finally` in [rowOffsets] would not run and a decrement
+  /// would be lost forever. `ActiveCameraResolver` breaks out of a query, so
+  /// that is a live path and not a hypothetical - it would strand the page in a
+  /// permanently-deferring state.
   ///
   /// Time-driven works because the tick boundary is the one moment no walk
   /// can be in progress.
@@ -365,13 +365,13 @@ class MemoryPage {
   ///
   /// # A row created during a walk is never seen by that walk
   ///
-  /// This used to read [_writeOffset] and [_freeOffsets] live, which made
-  /// "was the new entity included?" depend on where its row happened to land:
-  /// a bump-allocated row above the cursor was yielded, a row recycled from
-  /// [free] below the cursor was not. Same call, two behaviours, decided by
-  /// allocation history.
+  /// Reading [_writeOffset] and [_freeOffsets] live would make "was the new
+  /// entity included?" depend on where its row happened to land: a
+  /// bump-allocated row above the cursor yielded, a row recycled from [free]
+  /// below the cursor not. Same call, two behaviours, decided by allocation
+  /// history.
   ///
-  /// The rule now is the one that does not depend on the answer: a row
+  /// The rule is the one that does not depend on the answer: a row
   /// created during a walk is skipped by **every** walk in progress, and
   /// appears to the next one. "Append it to the end instead" cannot be
   /// honoured in general - the row may land in a page already stepped past,
@@ -381,10 +381,10 @@ class MemoryPage {
   /// The limit is snapshotted for the same reason, and freeing is deferred so
   /// a row stays readable for the rest of the walk that is being told about
   /// it. That also removes a real `ConcurrentModificationError`: freeing a row
-  /// used to mutate the very `Set` this loop consults.
+  /// otherwise mutates the very `Set` this loop consults.
   ///
-  /// The deferral lasts until the next tick boundary rather than until this
-  /// iterator finishes - see [_deferring] for why scope cannot be used here.
+  /// The deferral lasts until the next tick boundary, not until this iterator
+  /// finishes - see [_deferring] for why scope cannot be used here.
   /// So the rule as a user sees it is: **a structural change made once a
   /// query has run this tick takes effect next tick**, which is the same
   /// rule field writes already follow (a value written this tick is not
@@ -432,7 +432,7 @@ class MemoryPage {
   ///
   /// `isEmpty` before `contains`: a page with no holes - every page in a game
   /// that only ever spawns - answers with a length check instead of two hash
-  /// lookups. Checked per row rather than hoisted, because [_pendingOffsets]
+  /// lookups. Checked per row and not hoisted, because [_pendingOffsets]
   /// **can grow during the walk**; that is the entire reason it exists.
   @internal
   @pragma('vm:prefer-inline')
@@ -509,7 +509,7 @@ class MemoryPage {
   ///
   /// A page belongs to one archetype and an archetype has one row size, so
   /// two different sizes reaching one page is a wiring mistake in the
-  /// allocator rather than anything the running game can produce.
+  /// allocator, not anything the running game can produce.
   bool _wrongStride(int size) => throw ArgumentError(
     'MemoryPage is locked to a $_strideBytes byte stride (set by its '
     'first allocate() call); got $size. Each page stores rows for one '
@@ -551,7 +551,7 @@ class MemoryPage {
   /// The row at [offset], readable - the published snapshot, or the write slot
   /// when nothing has been published yet.
   ///
-  /// Non-nullable on purpose; see [TripleBuffer.readView] for the measurement.
+  /// Non-nullable; see [TripleBuffer.readView] for the measurement.
   /// This is the hot path - one call per field read per entity per tick - and
   /// [resolveRead] below stays nullable for the callers that genuinely want to
   /// distinguish "nothing published" from "here it is".

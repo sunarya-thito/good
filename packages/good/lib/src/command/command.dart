@@ -56,7 +56,7 @@ abstract class GameCommandBase {
   /// variable-length tail.
   int get strideBytes => _layout.strideBytes;
 
-  /// How this command's record is laid out. Kept rather than copied field by
+  /// How this command's record is laid out. Held whole, not copied field by
   /// field: a batch needs the head stride, the field count and where the tail
   /// length lives, and three copies of one object's facts is three things to
   /// keep in step.
@@ -64,7 +64,7 @@ abstract class GameCommandBase {
   ParamLayout get layout => _layout;
 
   /// Empty until [bind] runs, so an undeclared command reports a zero stride
-  /// and no fields rather than failing on a half-built object.
+  /// and no fields instead of failing on a half-built object.
   ParamLayout _layout = ParamLayout();
 
   CommandSender? _sender;
@@ -78,7 +78,7 @@ abstract class GameCommandBase {
   HandlerDelivery _handlerDelivery = HandlerDelivery.tick;
 
   /// Whether this command is carried over the control port and run on
-  /// arrival, rather than pumped inside the tick window.
+  /// arrival instead of being pumped inside the tick window.
   bool get isControlDelivered => _handlerDelivery == HandlerDelivery.receipt;
   Function? _handler;
 
@@ -136,8 +136,8 @@ abstract class GameCommandBase {
   ///
   /// Framework-internal: a command's own code never reserves anything, it
   /// only marshals. The batch-less form is what a bare `await damage(...)`
-  /// uses - one call is a batch of one, so there is a single path rather than
-  /// a special case - and it is deliberately not a way to *get* a batch; see
+  /// uses - one call is a batch of one, so there is a single path and no
+  /// special case. It is not a way to *get* a batch; see
   /// [CommandRegistry.createCommandBatch] for why that does not live here.
   ///
   /// [_requireSender] runs even when a batch was supplied: "is this command
@@ -257,8 +257,8 @@ abstract class GameCommand<P, R> extends GameCommandBase {
 
   /// Sends one call and waits for its result. Provided, not overridden.
   ///
-  /// The batch is made here rather than reached through `buffer.batch`,
-  /// because a [ParamBuffer] belongs to the shared record layer and that
+  /// The batch is made here and not reached through `buffer.batch`, because a
+  /// [ParamBuffer] belongs to the shared record layer and that
   /// layer has no transport in it - a batch of *records* is a buffer, and
   /// only a [CommandBatch] is a channel. Same shape in all four commands.
   Future<R> call(P params) async {
@@ -394,8 +394,8 @@ final class CommandKey<R> {
 
 /// Building calls into a batch - one message, whatever mix of commands.
 ///
-/// An extension rather than methods on `CommandBatch` itself because the
-/// batch lives a layer down, in the record format, and knows nothing about
+/// An extension, not methods on `CommandBatch` itself: the batch lives a
+/// layer down, in the record format, and knows nothing about
 /// command shapes. The call sites read the same either way.
 extension CommandBatchCalls on CommandBatch {
   /// Adds a [GameCommand] call, and returns the key its result will arrive
@@ -455,7 +455,7 @@ abstract class CommandDescriptor {
   /// descriptor.hasHandler(damage, (p) => p.amount * (p.crit ? 2 : 1));
   /// ```
   ///
-  /// One method per shape rather than one method for all four, because Dart
+  /// One method per shape, not one method for all four, because Dart
   /// will not let a handler type ride on the command's own type (a type
   /// parameter cannot appear contravariantly in a superinterface, which
   /// `GameCommandBase<R Function(P)>` would need). Four names is the price of
@@ -473,7 +473,7 @@ abstract class CommandDescriptor {
   void hasSignal(SignalCommand command, void Function() handler);
 
   /// Registers a [SinkCommand]'s handler to run **when the message arrives**
-  /// rather than inside the next tick window.
+  /// instead of inside the next tick window.
   ///
   /// This is what a control signal needs. A tick-delivered command is pumped
   /// from `GameState.runFixedStep`, so it arrives only if the tick runs -
@@ -502,15 +502,14 @@ abstract class CommandDescriptor {
   /// erased by the next tick with nothing said. A debug assert in
   /// `data_layout.dart` catches it.
   ///
-  /// **That assert has one hole**, and it is worth knowing rather than
-  /// trusting the guard blindly: it stays silent while a page has never
+  /// **That assert has one hole**, and it is worth knowing before you trust
+  /// the guard: it stays silent while a page has never
   /// published, which is scene bootstrap and nothing else. A running game is
   /// covered; a control handler that writes during bring-up is not.
   ///
   /// **There is no ordering against tick-delivered commands.** They travel by
   /// different carriers, so two calls sent in order can run in either. That
-  /// is inherent to working while the tick is stopped rather than a defect,
-  /// and it was equally true of the control messages this replaces.
+  /// is inherent to working while the tick is stopped, not a defect.
   void hasControlSink<P>(SinkCommand<P> command, void Function(P) handler);
 
   /// [hasControlSink] for a [SignalCommand] - takes and returns nothing.
@@ -518,7 +517,7 @@ abstract class CommandDescriptor {
 
   /// Always throws. A receipt-delivered command **cannot answer**.
   ///
-  /// It exists so the name someone reaches for explains itself rather than
+  /// It exists so the name someone reaches for explains itself instead of
   /// being absent. A control command completes when it reaches the port, and
   /// its handler runs with no tick and no reply leg - so there is nowhere for
   /// an `R` to come from. Use [hasHandler], which is tick-delivered and does
@@ -597,10 +596,10 @@ final class CommandRegistry implements ParamLayouts {
 
   /// A batch to build calls into.
   ///
-  /// Deliberately here rather than on a command: `damage.newBatch()` reads as
-  /// "a batch of damage commands", and a batch is nothing of the kind - it is
-  /// a mixed sequence, and mixing is most of the point. It comes from the
-  /// thing that owns the channel, which is the game, and is exposed as
+  /// Here and not on a command: `damage.newBatch()` reads as "a batch of
+  /// damage commands", and a batch is nothing of the kind - it is a mixed
+  /// sequence, and mixing is most of the point. It comes from the thing that
+  /// owns the channel, which is the game, and is exposed as
   /// `Game.createCommandBatch()`.
   CommandBatch createCommandBatch() => sender.newBatch();
 

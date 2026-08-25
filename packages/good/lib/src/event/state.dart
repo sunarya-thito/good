@@ -15,8 +15,8 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 /// ValueListenableBuilder(valueListenable: game.myState, builder: ...)
 /// ```
 ///
-/// Both isolates can listen, and the *timing* differs by side, which is
-/// inherent rather than incidental:
+/// Both isolates can listen, and the *timing* differs by side. That is
+/// inherent, not incidental:
 ///
 ///  * On the **game isolate**, a write notifies that copy's listeners
 ///    synchronously, inside the same call - the writer is right there.
@@ -24,8 +24,8 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 ///    the game isolate's tick-completed message lands. So its listeners fire
 ///    on the next tick notification, reconciled *before* `addTickListener`'s
 ///    own callbacks run - a widget repainting off a tick sees this channel
-///    already up to date for the tick it is about to draw, rather than one
-///    tick behind.
+///    already up to date for the tick it is about to draw, never one tick
+///    behind.
 ///
 /// # Writing
 ///
@@ -64,7 +64,7 @@ abstract class StateChannel<T> implements ValueListenable<T> {
   /// value is published the moment the channel's backing storage is
   /// allocated, before the first tick and before `start()`'s future
   /// completes, so a reader that beats the first real write sees the initial
-  /// value rather than the `TripleBuffer`'s pre-publish state.
+  /// value and not the `TripleBuffer`'s pre-publish state.
   @override
   T get value;
 
@@ -78,8 +78,8 @@ abstract class StateChannel<T> implements ValueListenable<T> {
 
 /// Declares published state - see `Game.describeState`. Same one-pass
 /// declarative shape as `SystemDescriptor`/`BufferDescriptor`/
-/// `CommandDescriptor`/`SceneDescriptor`, and deliberately the same *width*
-/// vocabulary as `DataDescriptor`: a state channel is a fixed-width slot in
+/// `CommandDescriptor`/`SceneDescriptor`, and the same *width* vocabulary as
+/// `DataDescriptor`: a state channel is a fixed-width slot in
 /// shared memory exactly as a component field is a fixed-width slice of a
 /// row, so it is declared the same way and needs no codec.
 ///

@@ -75,7 +75,7 @@ final class CommandTransport implements CommandSender {
   RingBuffer? inbound;
 
   /// Carries a receipt-delivered batch to the other copy, or null when there
-  /// is no other copy. A callback rather than a `SendPort` so this layer
+  /// is no other copy. A callback and not a `SendPort`, so this layer
   /// never learns the control port's message vocabulary - `GameRuntime`
   /// wraps these bytes in whatever shape it already speaks.
   void Function(Uint8List bytes)? controlSend;
@@ -397,6 +397,6 @@ final class _Inbound {
   final CommandBatch batch;
 
   /// Non-null when the batch never left this isolate - there is a caller to
-  /// complete directly rather than a reply to write.
+  /// complete directly instead of a reply to write.
   final Completer<void>? local;
 }

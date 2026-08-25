@@ -20,7 +20,7 @@ abstract interface class GameListener {
   /// Stops this listener receiving events, after it threw out of one.
   ///
   /// Called by the dispatcher that caught it. A requirement stated on the
-  /// interface rather than an `is GameSystem` test inside the dispatcher: the
+  /// interface, not an `is GameSystem` test inside the dispatcher: the
   /// four hosts differ in whether they can be switched off at all, and letting
   /// each answer for itself is what the no-dispatch-on-`is` rule asks for.
   void disableAfterUncaught([Object? error, StackTrace? stack]);
@@ -75,9 +75,8 @@ abstract base class _ListenerSet<L extends GameListener> {
   /// Reports a listener that threw out of a dispatch, and takes it out of
   /// circulation.
   ///
-  /// **Debug and release differ here, deliberately, and the difference is
-  /// surprising enough to state.** The `assert` below fires in debug and
-  /// nowhere else:
+  /// **Debug and release differ here, and the difference is surprising enough
+  /// to state.** The `assert` below fires in debug and nowhere else:
   ///
   ///  * **In debug** the assert throws, which stops the game isolate. That is
   ///    the loud answer a developer wants, and it is no longer a silent stall:
@@ -108,13 +107,12 @@ transient.''');
 
 /// A pre-resolved set of listeners for one event type.
 ///
-/// This is the whole point of the event system, and the thing the old one got
-/// wrong. Dispatch used to *walk* - from object to object at runtime, type
-/// testing each candidate, so a class that could never accept an event was
-/// still visited and still checked, every time. Here the walk happens **once,
-/// at boot**: [EventDescriptor.has] creates the dispatcher and the collect
-/// pass fills it, so by the time an event is dispatched the receivers are
-/// already known and [dispatch] is an indexed loop over a plain list.
+/// This is the whole point of the event system. Dispatch does not *walk* - it
+/// does not go from object to object at runtime type testing each candidate,
+/// visiting classes that could never accept the event. The walk happens
+/// **once, at boot**: [EventDescriptor.has] creates the dispatcher and the
+/// collect pass fills it, so by the time an event is dispatched the receivers
+/// are already known and [dispatch] is an indexed loop over a plain list.
 ///
 /// # Scope is the declaring owner
 ///
@@ -128,8 +126,8 @@ transient.''');
 ///
 /// # There is no event object
 ///
-/// Delivery is a closure captured once, at declare time, rather than a method
-/// on an event class:
+/// Delivery is a closure captured once, at declare time, and not a method on
+/// an event class:
 ///
 /// ```dart
 /// late final EventDispatcher<EntityLifecycleListener, Entity> entityMounted;
@@ -167,8 +165,7 @@ final class EventDispatcher<L extends GameListener, E> extends _ListenerSet<L> {
   /// it composes - so tear-down has to run inside-out or a listener would
   /// be told the world is going away *after* its owner had already taken
   /// it apart. One collect pass fills both dispatchers, so the two orders
-  /// are the same list read two ways rather than two lists to keep in
-  /// agreement.
+  /// are the same list read two ways, not two lists to keep in agreement.
   final bool reverse;
 
   /// Delivers [payload] to every collected listener that is currently
@@ -211,7 +208,7 @@ final class EventDispatcher<L extends GameListener, E> extends _ListenerSet<L> {
 /// An [EventDispatcher] for an event that carries nothing.
 ///
 /// The fixed tick is the case: it happens, and that is the whole message.
-/// Separate from [EventDispatcher] rather than `EventDispatcher<L, void>`,
+/// Separate from [EventDispatcher] instead of `EventDispatcher<L, void>`,
 /// which would force every dispatch site to write `call(null)`. Same split,
 /// and the same names, as `SignalCommand` beside `SinkCommand<P>`.
 final class SignalDispatcher<L extends GameListener> extends _ListenerSet<L> {
@@ -283,11 +280,11 @@ abstract class EventDescriptor {
 
 /// One owner's dispatchers, and the collector that fills them.
 ///
-/// The same object plays both roles on purpose: a dispatcher is only ever
-/// offered candidates by the owner that declared it, which is precisely what
-/// makes an event's reach the owner's own composition and nothing wider.
+/// One object plays both roles: a dispatcher is only ever offered candidates
+/// by the owner that declared it, which is precisely what makes an event's
+/// reach the owner's own composition and nothing wider.
 ///
-/// Lives here rather than inside `Game` because two things bind events: the
+/// Lives here and not inside `Game` because two things bind events: the
 /// boot pass, for the `GameState` and its systems, and
 /// `SceneStruct.initializeScene`, for a scene and the prefabs it just
 /// registered. A scene brought up headlessly never sees a `Game`, and its
