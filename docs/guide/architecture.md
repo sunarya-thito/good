@@ -36,7 +36,7 @@ From that moment the two copies do completely different jobs.
 `MemoryPool`, the live scenes and the fixed-tick loop, and it is the only
 writer of component data and state channels anywhere in the process.
 
-**The main-isolate copy is an inert handle.** Its systems never tick, it
+**The main-isolate copy is an inert handle.** It has no systems at all, it
 registers no archetypes and it holds no component pages. It exists to send and
 handle commands, receive tick notifications and state-channel updates, and
 build widgets. Numbers it shows arrive through a state channel or a buffer; an
@@ -49,20 +49,25 @@ build widgets. Numbers it shows arrive through a state channel or a buffer; an
 
 ### How both copies agree without negotiating
 
-Both copies run `createState()`, `describeScenes`, `describeCommands` and the
-rest, in the same order. That is how the two sides agree on every id
-**without negotiating one**:
+Both copies run `createState()`, `describeState`, `describeBuffers`,
+`describeCameras` and `describeCommands`, in the same order. That is how the two
+sides agree on every id **without negotiating one**:
 
-- archetype ids are assigned in first-registration order, so the same code
-  registering the same prefabs in the same order assigns the same ids on both
-  sides;
 - a command's index is its position in the declaration pass;
-- a state channel's identity is its index in that one pass.
+- a state channel's identity is its index in that one pass;
+- so is a buffer's, and a camera view's.
 
-This is why declaration passes must be **pure and order-stable**. A pass that
-branches on `Platform.isWindows`, or registers in a `Set`'s iteration order,
-breaks the agreement and produces entity handles that resolve to the wrong
-archetype on one side.
+This is why those passes must be **pure and order-stable**. A pass that branches
+on `Platform.isWindows`, or registers in a `Set`'s iteration order, breaks the
+agreement, and the two sides then disagree about what index 3 means with nothing
+to catch it.
+
+**Two passes are deliberately not on that list.** `describeScenes` registers
+archetypes and component bits into statics, which do not survive `Isolate.spawn`
+— so it runs on the game isolate only, and there is one registrar rather than
+two numberings to keep level. `describeSystems` follows it there: systems are
+constructed on the copy that ticks them and nowhere else, so the main-isolate
+copy holds no system, no query and no network transport.
 
 ## The four lanes across the boundary
 

@@ -437,11 +437,12 @@ and the channel split is exactly the primitive it needs.
 
 ## A note on isolates
 
-`describeNetwork` runs once per copy of the state, at boot, inside
-`describeSystems` — including on the main-isolate copy, exactly as every other
-declaration pass re-runs there. The transport built on that copy **never opens a
-socket**: nothing calls `host` or `join` on it, because a system only ticks on
-the copy that simulates.
+`describeNetwork` runs once, at boot, inside `describeSystems` — and so on the
+**simulating copy only**. Most declaration passes do re-run on the main-isolate
+copy, because an index has to mean the same thing on both sides of the boundary;
+`describeSystems` is the exception, and networking rides it. There is no
+main-isolate `NetworkSystem`, no second transport, and nothing over there to call
+`host` or `join` on by mistake.
 
 `NetworkSystem` drains what arrived at the top of each fixed tick and puts what
 was queued on the wire once per frame, so message delivery is as deterministic

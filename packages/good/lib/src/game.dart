@@ -598,11 +598,18 @@ abstract class Game implements RandomOwner {
   /// (see the class doc's "Two copies of one object"); which end does what
   /// is a convention between the two halves of whoever declared it.
   ///
-  /// Runs on both copies, like every other `describe*` pass, so both agree
+  /// Runs on both copies, before the spawn and again after it, so both agree
   /// on the declared set *and on its order* - which is the handle's identity
-  /// on the wire. Systems may declare buffers too - see
-  /// `GameSystem.describeBuffers`; declaring a system is then all a user has
-  /// to do to get that system's channel wired up.
+  /// on the wire.
+  ///
+  /// **A system cannot declare one**, and there is no
+  /// `GameSystem.describeBuffers` to reach for. Systems are constructed on the
+  /// game isolate only, which is after this pass and after the allocation it
+  /// feeds, so a buffer declared there would have an index on one copy and
+  /// none on the other. A library that ships a system and needs a buffer
+  /// ships a `Game` mixin to declare it - `Renderer2D` does exactly that, one
+  /// handoff per camera view - and the system reads the handle off the
+  /// `Game`.
   @mustCallSuper
   void describeBuffers(BufferDescriptor descriptor) {}
 
@@ -896,9 +903,10 @@ abstract class Game implements RandomOwner {
   // resolve against. Unlike the buffers and channels above, an action's index
   // is *not* a wire identity - what crosses the boundary is the fixed-size
   // block of raw key bits, which is the same 16 bytes whatever a game
-  // declares. Both copies still run the same passes, because a system's
-  // main-isolate twin has to hold the same handles its game-isolate twin
-  // does. Empty at spawn time like every other field here.
+  // declares. Which is why the two copies are allowed to disagree about what
+  // is in here: main runs `Game.describeInputs` and stops, while the
+  // simulating copy also runs every system's and then seals. Empty at spawn
+  // time like every other field here.
   final InputRegistry _inputs = InputRegistry();
 
   /// This game's assets - **instance state, not a global static**.
@@ -1364,12 +1372,14 @@ abstract class Game implements RandomOwner {
   ///    declaration pass. Both facts point here: allocation cannot happen
   ///    before the declaration, and the game isolate must inherit the numbering
   ///    rather than re-derive it.
-  ///  * `describeSystems` is declared here too - a `Game` *mixin* has to be
-  ///    able to contribute one, which is what makes `extends Game2D` the whole
-  ///    opt-in for 2D rendering - but it is **invoked** from [_bootGame], so
-  ///    the system objects only ever come into being on the copy that ticks
-  ///    them. Declaring on one side and running on the other is exactly the
-  ///    split this method's name describes.
+  ///  * the `GameState` carrying `describeSystems` is *built* here, by
+  ///    [createState] - a `GameState` mixin has to be able to contribute a
+  ///    system, which is what makes `extends Game2D` (and the `GameState2D` it
+  ///    forces out of `createState`) the whole opt-in for 2D rendering. But
+  ///    the pass itself is **invoked** from [_bootGame] and only there, so the
+  ///    system objects only ever come into being on the copy that ticks them.
+  ///    Building the declarer on one side and running its pass on the other is
+  ///    exactly the split this method's name describes.
   ///
   /// What that leaves on the game isolate is [_bootGame]: the things that
   /// register into **process-global statics** (archetypes, component bits) and
@@ -1389,10 +1399,12 @@ abstract class Game implements RandomOwner {
 
     // Constructed here, and *only* constructed: its `onMounted` - the pass
     // that loads scenes and so spawns a world - runs in [_bootGame], on the
-    // other copy. This one is a declaration mirror, exactly like a
-    // `GameSystem`'s main-side twin: it exists so that `describeCommands`
-    // below can register the same command handlers in the same order on both
-    // copies, and it never simulates, never mounts and never holds a scene.
+    // other copy. This one is a declaration mirror: it exists so that
+    // `describeCommands` below can register the same command handlers in the
+    // same order on both copies, and it never simulates, never mounts and
+    // never holds a scene. It also never gets its systems - `describeSystems`
+    // is called from [_bootGame], so a `GameSystem` is one thing the mirror
+    // has no counterpart for.
     final state = createState();
     runtime.state = state;
     state.bindRuntime(runtime, simulating: runtime.simulates);
@@ -1505,8 +1517,9 @@ abstract class Game implements RandomOwner {
     //
     // Runs after the scenes and systems are declared, because those are what
     // there is to collect - and on this copy only, because dispatching an
-    // event is a simulation act. Main's `GameState` and system twins keep
-    // their dispatchers unbound and never fire one.
+    // event is a simulation act. Main's `GameState` keeps its dispatchers
+    // unbound and never fires one, and has no systems to collect into them
+    // anyway.
     _bindEvents(runtime);
 
     // The world itself. `onMounted` is where a game calls `loadScene`, so this

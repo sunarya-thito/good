@@ -81,11 +81,11 @@ mixin NetSessionListener on GameListener {
 mixin MultiplayerState<G extends Game> on GameState<G> {
   /// Declares this game's messages and its backend - see [NetDescriptor].
   ///
-  /// Runs once per copy of the state, at boot, in [describeSystems]. The
-  /// main-isolate copy runs it too, exactly as it re-runs every other
-  /// declaration pass, and the transport it builds there never opens a
-  /// socket: nothing calls [NetworkSystem.host] or [NetworkSystem.join] on
-  /// that copy, because a system only ticks on the one that simulates.
+  /// Runs once, at boot, from [describeSystems] - and so on the simulating
+  /// copy only, because that is the one place `describeSystems` is invoked.
+  /// The main-isolate copy of the state never runs it and never builds a
+  /// transport, which is the whole point of the paragraph above: there is no
+  /// second socket to keep shut.
   void describeNetwork(NetDescriptor descriptor);
 
   /// The system carrying this game's traffic - `network.host(...)`,

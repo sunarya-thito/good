@@ -61,12 +61,14 @@ import 'package:good/src/triple_buffer.dart';
 /// there too - on the game isolate, inside the tick window, synchronously.
 ///
 /// That also means the resolution *only happens on the copy that simulates*.
-/// A `GameSystem`'s main-isolate twin holds its own `Input` objects (both
-/// copies run the same declaration passes) and they never resolve: they read
-/// their default forever, and assigning a binding through the twin changes
-/// nothing in the simulation. Rebind on the simulating side - from a system's
-/// tick, a `GameCommand`, or the `GameState` - like every other gameplay
-/// mutation.
+/// An action declared by a `GameSystem` is only ever reachable from there -
+/// systems are constructed on that copy and nowhere else - but an action
+/// declared in `Game.describeInputs` is a different matter: that pass runs on
+/// both copies, so main holds its own `Input` object for it. Main's never
+/// resolves. It reads its default forever, and assigning a binding through it
+/// changes nothing in the simulation. Rebind on the simulating side - from a
+/// system's tick, a `GameCommand`, or the `GameState` - like every other
+/// gameplay mutation.
 ///
 /// # Sub-tick presses are not captured
 ///

@@ -37,14 +37,26 @@ mixin GameSystemLifecycleListener on GameListener {
 /// permutes the list, so an unrelated and perfectly consistent constraint
 /// elsewhere is dropped. That is what #5 was.
 ///
-/// # One isolate, and a mirror
+/// # One isolate, and no mirror
 ///
 /// A `GameSystem` is a [GameListener] and nothing else: it lives where the
-/// tick loop does. Both copies of the `Game` run the same `describeSystems`,
-/// so every declared system has a twin on the main isolate, but that twin is
-/// a *declaration mirror* - it holds the same handles (buffers, channels,
-/// inputs, queries) so that indices agree across the boundary, and it never
-/// ticks.
+/// tick loop does, and only there. `GameState.describeSystems` is *declared*
+/// on both copies - the state object itself is built on each, so `Game2D`'s
+/// `Renderer2DState` can contribute the two systems 2D rendering needs - but
+/// it is **invoked** from exactly one place, the boot phase that runs on the
+/// copy that ticks. Main never calls it, so no system object is ever
+/// constructed there. There is no twin to hold anything.
+///
+/// Most declaration passes do run on both copies, and that is what makes an
+/// index a wire identity: `describeState`, `describeBuffers`,
+/// `describeCameras` and `describeCommands` all run on main before the spawn
+/// and again on the other side, so a channel or a buffer is the same index to
+/// both. Systems are the exception, and they can be because a system declares
+/// no shared memory of its own: [describeQuery], [describeInputs] and
+/// [describeEvents] are the three passes it has, and none of them allocates
+/// anything main has to address by index. A system that wants to publish a
+/// number reads a `StateChannel` off the `Game`, which declared it on both
+/// copies for exactly that reason.
 ///
 /// Systems used to straddle both isolates, receiving a `WidgetEvent` on the
 /// main side so each could contribute to the widget tree. That is gone: there
@@ -231,8 +243,12 @@ abstract class GameSystem extends GameListenerBase
   /// framework's own actions - so the `super` call carries only whatever
   /// mixins a system was assembled from.
   ///
-  /// Both isolate twins of this system run this pass, and only the simulating
-  /// one's actions ever resolve - see `Input`'s doc.
+  /// Runs on the simulating copy only, because that is the only copy a system
+  /// exists on at all. Main's `InputRegistry` therefore holds just the
+  /// `Game`'s own actions and is never sealed, which is harmless: an action's
+  /// index is not a wire identity - what crosses the boundary is the raw
+  /// device block, the same 16 bytes whatever anyone declared. See `Input`'s
+  /// doc for what resolution is and when it happens.
   @mustCallSuper
   void describeInputs(InputDescriptor descriptor) {}
 

@@ -160,8 +160,9 @@ class _GameViewState extends State<GameView> {
     if (widget.game.isRunning) return;
     throw StateError(
       'GameView was given a ${widget.game.runtimeType} run that has not '
-      'started yet. Await Game.start() before building a GameView: a system\'s '
-      'main-isolate twin only exists once the boot pass has run, so there is '
+      'started yet. Await Game.start() before building a GameView: the '
+      'main-isolate half a game paints from - its camera views and their frame '
+      'buffers - is declared and allocated by the boot pass, so there is '
       'nothing to build a widget from until then. It is also what keeps a '
       'closure over this State - and so over the whole widget tree - out of '
       'the object Game.start hands to Isolate.spawn, which would make the '

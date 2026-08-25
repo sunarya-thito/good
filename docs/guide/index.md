@@ -44,8 +44,8 @@ step. Nothing between those declarations allocates.
 
 | Term | What it is |
 |---|---|
-| `Game` | Main-isolate declarations: systems' host, commands, cameras, published state, timing |
-| `GameState` | Game-isolate simulation: owns the memory pool, the loaded scenes, the tick |
+| `Game` | Main-isolate declarations: commands, cameras, published state, timing |
+| `GameState` | Game-isolate simulation: declares the systems, owns the memory pool, the loaded scenes, the tick |
 | `SceneStruct` | A *declaration* of a scene — which prefabs exist in it, what spawns on load |
 | `Scene` | One **loaded instance** of a `SceneStruct`; an `extension type` over an int |
 | `EntityStruct` | A *declaration* of one kind of entity — the row layout shared by all of them |

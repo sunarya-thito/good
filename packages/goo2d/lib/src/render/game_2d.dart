@@ -23,7 +23,7 @@ import 'package:goo2d/src/render/texture.dart';
 /// }
 /// ```
 ///
-/// That is the whole opt-in - [Renderer2D.describeSystems] brings
+/// That is the whole opt-in - [Renderer2DState.describeSystems] brings
 /// `WorldTransformSystem` and `GameRenderer2D` with it, so there is no
 /// second thing to remember and no way to end up with a `Game2D` that
 /// silently paints nothing.
@@ -117,10 +117,10 @@ mixin Renderer2D on Game {
   /// The view a 2D game draws into when it declares none of its own -
   /// `GameView(camera: game.defaultCamera)` is the zero-configuration path.
   ///
-  /// Declared for the same reason [describeSystems] declares the renderer:
-  /// `extends Game2D` is meant to be the whole opt-in, and a game that had to
-  /// remember a second declaration before anything appeared would hit exactly
-  /// the black screen that arrangement exists to prevent.
+  /// Declared for the same reason [Renderer2DState.describeSystems] declares
+  /// the renderer: `extends Game2D` is meant to be the whole opt-in, and a
+  /// game that had to remember a second declaration before anything appeared
+  /// would hit exactly the black screen that arrangement exists to prevent.
   ///
   /// A game wanting several views declares them itself and calls
   /// `super.describeCameras(descriptor)`, so this one keeps address 0.

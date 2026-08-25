@@ -415,11 +415,11 @@ class _PingGame extends Game {
 
 // --- state channel fixtures ----------------------------------------------
 
-/// Bumps a channel every tick on the game isolate. The main isolate never
-/// sees this object's twin do anything - it only ever reads the channel.
+/// Bumps a channel every tick on the game isolate. This object does not exist
+/// on the main isolate at all - main only ever reads the channel.
 class _CounterSystem extends GameSystem with FixedTickable {
   /// Declared on the `Game` and written here. The channel is the only thing
-  /// main can see of this system at all - it holds no twin of it.
+  /// main can see of this system at all - it holds no copy of it.
   StateChannel<int> get ticks => (game as _ChannelGame).ticks;
   StateChannel<bool> get alive => (game as _ChannelGame).alive;
 
