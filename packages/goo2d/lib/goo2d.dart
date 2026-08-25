@@ -6,10 +6,9 @@
 /// camera, colliders, rendering). The kernel is re-exported below, so it is
 /// not a second dependency you add and keep version-matched by hand.
 ///
-/// Opt-in packages stay separate, because they carry weight not
-/// every game wants: `goo2d_physics_box2d` (native Box2D) and
-/// `good_net`/`good_net_p2p` (networking). Those you add
-/// explicitly and declare their systems yourself.
+/// Opt-in packages stay separate, because they carry weight not every game
+/// wants: `goo2d_physics_box2d` (native Box2D) and `good_net`/`good_net_p2p`
+/// (networking). Those you add explicitly and declare their systems yourself.
 library;
 
 export 'package:good/good.dart';

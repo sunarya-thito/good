@@ -14,9 +14,7 @@ import 'package:meta/meta.dart';
 /// the compiler.
 ///
 /// `enable`/`isTrigger` are `DataPointer<bool>`, stored as a `uint1` - see
-/// `DataDescriptor.hasBool`. They were `DataPointer<int>` written 1/0 until
-/// the engine grew a `bool` view over that same bit; the storage is
-/// unchanged, only the spelling at the call site.
+/// `DataDescriptor.hasBool`.
 sealed class ColliderBody {
   ColliderBody({
     required this.offsetX,
@@ -30,16 +28,19 @@ sealed class ColliderBody {
     required this.restitution,
   });
 
-  /// Local offset from the entity's `WorldTransform2D` origin.
+  /// Local x offset from the entity's `WorldTransform2D` origin.
   final DataPointer<double> offsetX;
+
+  /// Local y offset from the entity's `WorldTransform2D` origin. Positive is
+  /// up - see [containsLocalPoint].
   final DataPointer<double> offsetY;
 
   // --- surface material ---------------------------------------------------
   //
-  // On the base rather than per shape because every shape has all three, and
-  // a physics backend needs all three for any of them. They live here rather
-  // than on a `RigidBody2D` because they are properties of a *shape*, not of
-  // a body: a compound collider can legitimately have a low-friction ramp
+  // On the base, not per shape, because every shape has all three, and a
+  // physics backend needs all three for any of them. They live here and not
+  // on a `RigidBody2D` because they are properties of a *shape*, not of a
+  // body: a compound collider can legitimately have a low-friction ramp
   // and a high-friction pad on one entity.
   //
   // These are read by `goo2d_physics_box2d`, but they are declared here
@@ -84,26 +85,25 @@ sealed class ColliderBody {
   /// That space is **y-up**, like world space: an [offsetY] of +5 puts the
   /// body 5 units *above* the entity's origin.
   ///
-  /// A `Sprite`'s pivot agrees with it, and this comment used to say it did
-  /// not. The pivot's *fraction* is measured from the texture's top-left,
-  /// because that is where a texture's own coordinates start - but moving a
-  /// pivot down the texture lifts the drawn sprite off it, so a pivot
-  /// `offsetY` of +5 and an [offsetY] of +5 each move their own side 5 units
-  /// up. A collider covering an off-centre sprite takes the same sign, and
-  /// the same number when the pivot was nudged with an offset. See
-  /// `docs/guide/rendering.md` for the worked version.
+  /// A `Sprite`'s pivot agrees with it. The pivot's *fraction* is measured
+  /// from the texture's top-left, because that is where a texture's own
+  /// coordinates start - but moving a pivot down the texture lifts the drawn
+  /// sprite off it, so a pivot `offsetY` of +5 and an [offsetY] of +5 each
+  /// move their own side 5 units up. A collider covering an off-centre sprite
+  /// takes the same sign, and the same number when the pivot was nudged with
+  /// an offset. See `docs/guide/rendering.md` for the worked version.
   ///
-  /// Local rather than world on purpose: undoing the transform is one
-  /// trig-and-divide per *entity*, while a shape test is one per *body*, and
-  /// an entity can carry several bodies. Taking a world point here would
-  /// redo that work once per body and make each shape test carry a copy of
-  /// the same inverse. `MousePickingSystem` is the worked example - it
-  /// inverts once, then calls this for every body the entity declared.
+  /// Local, and not world: undoing the transform is one trig-and-divide per
+  /// *entity*, while a shape test is one per *body*, and an entity can carry
+  /// several bodies. Taking a world point here would redo that work once per
+  /// body and make each shape test carry a copy of the same inverse.
+  /// `MousePickingSystem` is the worked example - it inverts once, then calls
+  /// this for every body the entity declared.
   ///
-  /// [enable] is deliberately *not* checked here: this answers a question
-  /// about geometry, and whether a disabled body should be skipped is a
-  /// policy its caller owns (picking skips them; a debug overlay drawing
-  /// every declared shape would not).
+  /// [enable] is *not* checked here: this answers a question about geometry,
+  /// and whether a disabled body should be skipped is a policy its caller
+  /// owns (picking skips them; a debug overlay drawing every declared shape
+  /// would not).
   bool containsLocalPoint(Entity entity, double x, double y);
 
   /// Whether a local point that far from the entity's origin could be inside
@@ -111,7 +111,7 @@ sealed class ColliderBody {
   /// [containsLocalPoint].
   ///
   /// [distanceSquared] is a **squared** distance from local `(0, 0)`, and it
-  /// may be a lower bound rather than the exact one: a caller holding the
+  /// may be a lower bound and not the exact one: a caller holding the
   /// cursor in world space can divide its squared world distance by the
   /// square of the entity's largest scale factor and pass that, which is
   /// what `MousePickingSystem._pick` does. Rotation does not change a length
@@ -130,29 +130,29 @@ sealed class ColliderBody {
   /// point of the body stays the same distance from it however the entity is
   /// turned. A radius measured from there is therefore right at every angle
   /// and needs no angle to compute - the same reason `GameRenderer2D` culls
-  /// sprites on a circle about the pivot rather than on a rectangle. A bound
+  /// sprites on a circle about the pivot instead of on a rectangle. A bound
   /// measured from the body's own [offsetX]/[offsetY] would be tighter and
   /// wrong: a body hung well off the origin swings a long way as the entity
   /// rotates, and a bound blind to that clips it.
   ///
-  /// # It over-covers, deliberately
+  /// # It over-covers
   ///
   /// A circle around a box reaches past its corners, and `|offset| + reach`
-  /// measures to the far side of the body rather than to the far side of the
+  /// measures to the far side of the body, not to the far side of the
   /// *union* - both round outwards. Answering `true` too often costs the
   /// caller the exact test it was going to do anyway. Answering `false` too
   /// often would stop picking something the player clicked on, which reads as
-  /// "the click did nothing" rather than as a failure. So everything here
+  /// "the click did nothing" and not as a failure. So everything here
   /// rounds towards `true`, `NaN` included: each shape rejects on `>` and
   /// negates, so a `NaN` field - which loses every comparison - comes out as
   /// keep.
   ///
-  /// A degenerate or negatively-sized body answers rather than throwing: the
+  /// A degenerate or negatively-sized body answers instead of throwing: the
   /// shape tests square their extents, so a negative radius already behaves
   /// as its magnitude, and a bound tighter than what [containsLocalPoint]
   /// accepts is the one thing this must never be.
   ///
-  /// Returns a `bool` rather than the radius itself, and that is a cost
+  /// Returns a `bool` and not the radius itself, and that is a cost
   /// decision as much as an API one. This is called per body per candidate
   /// per tick through a virtual dispatch, and a `double` coming back out of
   /// one of those is a boxed `double` - an allocation on the tick path (the
@@ -163,10 +163,10 @@ sealed class ColliderBody {
   /// How far an ([x], [y]) offset puts a body from the entity's origin - the
   /// first term of every [boundCovers].
   ///
-  /// `static`, taking two doubles, rather than an instance method reading
+  /// `static`, taking two doubles, and not an instance method reading
   /// [offsetX]/[offsetY] itself. That is measurable: as an instance method it
-  /// did not inline into the four overrides even under this pragma, and
-  /// walking 20,000 receivers cost 5 ns each for the call. The zero case is
+  /// does not inline into the four overrides even under this pragma, and
+  /// walking 20,000 receivers costs 5 ns each for the call. The zero case is
   /// carved out because it is the common one - a body declared with no offset
   /// at all - and a `sqrt` per body per tick is worth not taking when the
   /// answer is already known.
@@ -174,12 +174,12 @@ sealed class ColliderBody {
   static double originDistance(double x, double y) =>
       x == 0 && y == 0 ? 0.0 : math.sqrt(x * x + y * y);
 
-  // getContacts/getContactColliders (Unity's Collider2D surface) are
-  // deliberately not declared here yet: they need a real broad/narrow-phase
-  // structure to answer "what is this touching right now", which is Phase 2
-  // (Box2D) scope. Declaring them now with an UnimplementedError body would
-  // just be API surface that looks finished and isn't; they land with the
-  // physics system that can actually back them.
+  // getContacts/getContactColliders (Unity's Collider2D surface) are not
+  // declared here yet: they need a real broad/narrow-phase structure to
+  // answer "what is this touching right now", which is Phase 2 (Box2D)
+  // scope. Declaring them now with an UnimplementedError body would just be
+  // API surface that looks finished and isn't; they land with the physics
+  // system that can actually back them.
 }
 
 final class CircleBody extends ColliderBody {
@@ -265,11 +265,11 @@ final class BoxBody extends ColliderBody {
 ///
 /// [halfHeight] is half the *total* height, caps included - Unity's own
 /// `CapsuleCollider2D.size` semantics, where the size is the capsule's
-/// bounding box rather than the length of the straight section. So the
-/// straight section runs `-(halfHeight - radius) .. +(halfHeight - radius)`,
-/// and a capsule whose `halfHeight` is at most its `radius` is simply a
-/// circle rather than an error - the degenerate case has an obvious right
-/// answer, so it gets it instead of an assert.
+/// bounding box, not the length of the straight section. So the straight
+/// section runs `-(halfHeight - radius) .. +(halfHeight - radius)`, and a
+/// capsule whose `halfHeight` is at most its `radius` is simply a circle and
+/// not an error - the degenerate case has an obvious right answer, so it gets
+/// it instead of an assert.
 final class CapsuleBody extends ColliderBody {
   CapsuleBody({
     required super.offsetX,
@@ -295,7 +295,7 @@ final class CapsuleBody extends ColliderBody {
     final r = radius[entity];
     // The straight section's half-length. Negative when the capsule is
     // shorter than it is wide, which is the circle case - clamped to zero
-    // rather than special-cased, since a segment of length zero *is* a
+    // instead of special-cased, since a segment of length zero *is* a
     // point and the test below then reads as a circle by itself.
     final half = halfHeight[entity] - r;
     final segment = half > 0 ? half : 0.0;
@@ -316,10 +316,10 @@ final class CapsuleBody extends ColliderBody {
   /// centre.
   ///
   /// `halfHeight - radius` is spelled the same way [containsLocalPoint]
-  /// spells it, on purpose - the two have to agree about where the caps sit,
-  /// and a sign nobody expected (a negative [radius] pushes the caps *apart*)
-  /// then moves both together instead of only the exact one. No `sqrt`: the
-  /// capsule's axis is the y axis, so the furthest point is on it.
+  /// spells it, and it has to be: the two have to agree about where the caps
+  /// sit, and a sign nobody expected (a negative [radius] pushes the caps
+  /// *apart*) then moves both together instead of only the exact one. No
+  /// `sqrt`: the capsule's axis is the y axis, so the furthest point is on it.
   @override
   bool boundCovers(Entity entity, double distanceSquared) {
     final r = radius[entity];
@@ -341,8 +341,8 @@ final class CapsuleBody extends ColliderBody {
 /// Points are two parallel `DataArrayPointer<double>` arrays (x, then y),
 /// not a single array of some `Vector2`-shaped element - `goo2d` has no
 /// vector-math dependency, matching `Transform2D`'s own established
-/// convention of separate x/y `double` fields throughout this engine rather
-/// than a point/vector type.
+/// convention of separate x/y `double` fields throughout this engine, never
+/// a point/vector type.
 final class PolygonBody extends ColliderBody {
   PolygonBody({
     required super.offsetX,
@@ -391,9 +391,10 @@ final class PolygonBody extends ColliderBody {
     for (var i = 0; i < count; i++) {
       final ix = pointsX.get(entity, i);
       final iy = pointsY.get(entity, i);
-      // Does this edge straddle the horizontal ray, and if so, does it cross
-      // it to the right of the point? The asymmetric `>` / `<=` pair is what
-      // makes a vertex exactly on the ray count once rather than twice.
+      // Whether this edge straddles the horizontal ray and, if it does,
+      // whether it crosses to the right of the point. The asymmetric `>` /
+      // `<=` pair is what makes a vertex exactly on the ray count once and
+      // not twice.
       if ((iy > py) != (jy > py) &&
           px < (jx - ix) * (py - iy) / (jy - iy) + ix) {
         inside = !inside;
@@ -406,7 +407,7 @@ final class PolygonBody extends ColliderBody {
 
   /// The offset out, then the vertex furthest from the outline's own centre.
   ///
-  /// One `sqrt` for the whole outline rather than one per vertex, by keeping
+  /// One `sqrt` for the whole outline instead of one per vertex, by keeping
   /// the running maximum squared - the vertex furthest in square is the
   /// vertex furthest.
   ///
@@ -426,8 +427,8 @@ final class PolygonBody extends ColliderBody {
       final squared = px * px + py * py;
       // Negated, not `squared > furthest`: the two differ only for `NaN`,
       // where every comparison is false and only this form lets it through
-      // to poison the bound. A vertex that has gone wrong must keep the body
-      // rather than quietly shrink the circle around it.
+      // to poison the bound. A vertex that has gone wrong must keep the body,
+      // not quietly shrink the circle around it.
       if (!(squared <= furthest)) furthest = squared;
     }
     final away = ColliderBody.originDistance(offsetX[entity], offsetY[entity]);
@@ -649,6 +650,7 @@ mixin Collider2D on MultiComponent {
 /// fields, or skip the cast entirely when the listener already knows the
 /// concrete type of the body it declared (see `describeCollider`'s own
 /// `late final BoxBody boxCollider` style fields).
+///
 /// **A single instance is reused for every dispatch.** A physics step can
 /// produce hundreds of contacts, and every framework event is hot path
 /// (the hot-path rules), so allocating one of these per contact is
@@ -671,10 +673,14 @@ class Collision2DEvent {
 
   /// The collider this event is being reported *to*.
   late ColliderBody source;
+
+  /// The entity [source] belongs to.
   late Entity sourceEntity;
 
   /// The other side.
   late ColliderBody target;
+
+  /// The entity [target] belongs to.
   late Entity targetEntity;
 
   /// Repoints this instance at one collision. Called by the physics backend

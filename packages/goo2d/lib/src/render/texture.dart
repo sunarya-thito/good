@@ -66,8 +66,8 @@ typedef TextureKey = AssetKey<Texture>;
 /// engine's signatures and its component rows stay clear of third-party types:
 /// the row stores this index, and only `DrawCanvas2D` ever translates it.
 enum TextureFilter {
-  /// Pick one texel. What pixel art wants, and what it *needs* -
-  /// pair it with an integer sprite size or it shimmers as the sprite moves.
+  /// Pick one texel. What pixel art wants, and what it *needs* - pair it with
+  /// an integer sprite size or it shimmers as the sprite moves.
   nearest,
 
   /// Blend the neighbouring texels. Fine when the sprite is drawn at roughly

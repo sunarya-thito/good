@@ -67,17 +67,18 @@ mixin WorldTransform2D on Component {
 /// Ordering: any system reading `WorldTransform2D` should extend its own
 /// `compareTo` to run after this one (`other is WorldTransformSystem ? 1 :
 /// 0`), and any system *writing* a `Transform2D` this pass then composes
-/// should declare -1 against it. This system states no opinion of its own,
-/// deliberately: a system with no view about ordering should not be forced
-/// behind this one just because this one has a view about everyone.
+/// should declare -1 against it. This system states no opinion of its own: a
+/// system with no view about ordering should not be forced behind this one
+/// just because this one has a view about everyone.
 ///
 /// That the constraint is one-sided is fine - `GameState.sortSystems` asks
 /// both directions and treats the answer as a graph edge, so a single -1 from
-/// the other side is honoured. It was not always: under the old `List.sort`,
-/// `CritterSystem`'s -1 was lost to unrelated systems' contradictory opinions
-/// and this pass ran *before* its spawner, composing every new entity a tick
-/// late. That was #5, the one-frame sprite at the world origin, and
-/// `goo2d/example/test/swarm_origin_flash_test.dart` is what pins it.
+/// the other side is honoured. Sort the systems with `List.sort` instead and
+/// it is not: `CritterSystem`'s -1 goes missing among unrelated systems'
+/// contradictory opinions, this pass runs *before* its spawner, and every new
+/// entity is composed a tick late. That was #5, the one-frame sprite at the
+/// world origin, and `goo2d/example/test/swarm_origin_flash_test.dart` pins
+/// it.
 class WorldTransformSystem extends GameSystem
     with FixedTickable, EntitySpawnListener {
   /// Guards against a cycle in the parent chain, matching
@@ -111,12 +112,11 @@ class WorldTransformSystem extends GameSystem
   /// # Why a set, when [_composeSpawned] needs spawn order
   ///
   /// It is both. A `Set` literal is a `LinkedHashSet`, which iterates in
-  /// insertion order, so the ordering [_composeSpawned] depends on survives
-  /// the change - and [onEntityDespawned] removes in constant time instead of
-  /// scanning. As a `List` it did scan, for *every* despawn in the game, so a
-  /// tick that spawned and destroyed the same thousands of parented entities
-  /// - an explosion clearing a squad, a level unloading - was quadratic in
-  /// the number of them.
+  /// insertion order, so [_composeSpawned] still gets spawn order - and
+  /// [onEntityDespawned] removes in constant time. A `List` scans instead,
+  /// for *every* despawn in the game, so a tick that spawns and destroys the
+  /// same thousands of parented entities - an explosion clearing a squad, a
+  /// level unloading - is quadratic in the number of them.
   final Set<Entity> _spawned = <Entity>{};
 
   @override
@@ -149,21 +149,21 @@ class WorldTransformSystem extends GameSystem
 
   @override
   void onFixedUpdate() {
-    // Grouped rather than `run()`, and **all four components resolved per
-    // group rather than per entity**. A component belongs to an archetype, so
-    // `entity.tryGet<Child>()` returned the same object for every row in the
-    // group - and `tryGet` is a registry lookup plus an `is T` against a type
-    // *variable*, which is a runtime subtype test rather than a compare. Four
-    // of those per entity, on the system that owns two thirds of the fixed
-    // step at 20k entities, was the single largest thing in it that produced
-    // no answer.
+    // Grouped, not `run()`, and **all four components resolved per group,
+    // not per entity**. A component belongs to an archetype, so
+    // `entity.tryGet<Child>()` hands back the same object for every row in
+    // the group - and `tryGet` is a registry lookup plus an `is T` against a
+    // type *variable*, which is a runtime subtype test and not a compare.
+    // Four of those per entity, on the system that owns two thirds of the
+    // fixed step at 20k entities, is the single largest thing in it that
+    // produces no answer.
     //
     // The recursion below still resolves per entity, and has to: a child may
     // be a different archetype entirely. That is the right split - a flat
-    // scene, which is the overwhelmingly common one, now pays nothing for the
+    // scene, which is the overwhelmingly common one, pays nothing for the
     // hierarchy case it is not using.
     for (final group in _roots.groups()) {
-      // Guaranteed by the query's `withAll`, so `get` rather than `tryGet`.
+      // Guaranteed by the query's `withAll`, so `get` and not `tryGet`.
       final local = group.get<Transform2D>();
       final world = group.get<WorldTransform2D>();
       final childLink = group.tryGet<Child>();
@@ -204,9 +204,9 @@ class WorldTransformSystem extends GameSystem
   ///
   /// Runs after the main pass and overwrites what it produced for these few
   /// entities - the pass composed them from a stale row, or never reached them
-  /// at all, and could not have known better either way. Doing it here rather
-  /// than branching inside the pass keeps the per-entity hot path exactly as it
-  /// was: this costs nothing at all in a tick where nothing spawned.
+  /// at all, and could not have known better either way. Doing it here instead
+  /// of branching inside the pass leaves the per-entity hot path untouched:
+  /// this costs nothing at all in a tick where nothing spawned.
   ///
   /// [DataPointer.readPending] is the write slot - the value the spawner just
   /// wrote. It is normally forbidden for a system to read uncommitted state,
@@ -215,22 +215,21 @@ class WorldTransformSystem extends GameSystem
   ///
   /// # Why a spawned *child* needs this just as much as a root
   ///
-  /// A first version of this composed roots only, on the reasoning that a
-  /// child would be picked up by the main pass. It is not: the pass descends
-  /// through `Parent.firstChild`, an ordinary published read, and the splice
-  /// that put this entity into its parent's child list happened *this* tick.
-  /// So a spawned child is not visited at all on its spawn tick, and its world
-  /// row publishes holding whatever it held before - the defaults `(0, 0)` for
-  /// a row never used, which is the sprite at the world origin.
+  /// The main pass does not reach a spawned child. It descends through
+  /// `Parent.firstChild`, an ordinary published read, and the splice that put
+  /// this entity into its parent's child list happened *this* tick. So a
+  /// spawned child is not visited at all on its spawn tick, and its world row
+  /// publishes holding whatever it held before - the defaults `(0, 0)` for a
+  /// row never used, which is the sprite at the world origin.
   ///
-  /// That is what the "one yellow ball at the centre" report in the swarm demo
-  /// actually was, and why it looked so erratic: a *recycled* row holds the
-  /// previous occupant's position, which is somewhere plausible in the swarm
-  /// and invisible, and a row on a page that has never published reads through
-  /// to the write slot and is simply correct. Only the third case - a new row
-  /// on a page that *has* published - shows anything, and that case only comes
-  /// up while the population is growing onto fresh rows. Hence: never at the
-  /// start, never once it settles, and at no repeatable point in between.
+  /// Which of three row states a spawn lands in decides whether you see that
+  /// at all, so without this it is maddening to reproduce. A *recycled* row
+  /// holds the previous occupant's position, which is somewhere plausible in
+  /// the swarm and invisible. A row on a page that has never published reads
+  /// through to the write slot and is simply correct. Only a new row on a
+  /// page that *has* published shows anything, and that comes up only while
+  /// the population is growing onto fresh rows: never at the start, never
+  /// once it settles, and at no repeatable point in between.
   void _composeSpawned() {
     if (_spawned.isEmpty) return;
     // Spawn order, and that is load-bearing: a parent necessarily exists
@@ -252,10 +251,10 @@ class WorldTransformSystem extends GameSystem
     _spawned.clear();
   }
 
-  // [_pendingWorldOf]'s result. Instance scratch rather than a returned record
-  // for the reason `GameRenderer2D` uses the same technique - five doubles out
-  // of a method called per spawned entity is five allocations a tick otherwise
-  // (rule 1). Not read anywhere outside that method and its caller.
+  // [_pendingWorldOf]'s result. Instance scratch, and not a returned record,
+  // the same technique `GameRenderer2D` uses: five doubles out of a method
+  // called per spawned entity would be five allocations a tick (rule 1). Not
+  // read anywhere outside that method and its caller.
   double _pendingX = 0;
   double _pendingY = 0;
   double _pendingRotation = 0;
@@ -376,7 +375,7 @@ class WorldTransformSystem extends GameSystem
     WorldTransform2D world,
     Child? childLink,
   ) {
-    // Two loops rather than one with the null check inside: `childLink` is
+    // Two loops, not one with the null check inside: `childLink` is
     // fixed for the whole group, and an archetype that never mixes in `Child`
     // needs neither the root test nor the cache invalidation.
     if (childLink == null) {
@@ -407,14 +406,14 @@ class WorldTransformSystem extends GameSystem
   /// Resolves [entity] and recurses into its children.
   ///
   /// [local], [world], [childLink] and [parentComp] are [entity]'s archetype's
-  /// components, resolved by the caller. Passed in rather than looked up here
+  /// components, resolved by the caller. Passed in, and not looked up here,
   /// because the caller usually already knows them for a whole group of rows
   /// at once - see [onFixedUpdate]. Each may be null: the recursion walks
   /// *every* child in the hierarchy, and a child need not have any of them.
   ///
   ///  * No [Transform2D]: a bare grouping node - Child/Parent links and
   ///    nothing else. It contributes identity and the walk steps over it,
-  ///    rather than aborting and stranding its whole subtree at the origin.
+  ///    instead of aborting and stranding its whole subtree at the origin.
   ///  * No [WorldTransform2D]: nothing to cache into, but its descendants may
   ///    still opt in, so the composed transform is threaded straight through
   ///    to them.
@@ -434,7 +433,7 @@ class WorldTransformSystem extends GameSystem
   /// return last tick's stale value instead. Carrying the just-computed
   /// numbers down as parameters (mirroring `GameRenderer2D`'s own instance-
   /// scratch-field technique, just parameterized per recursion level instead
-  /// of flat fields, since this walks top-down rather than root-ward) sidesteps
+  /// of flat fields, since this walks top-down and not root-ward) sidesteps
   /// the whole problem: nothing this method just wrote is ever read back
   /// within the same call tree.
   void _resolve(
@@ -547,7 +546,7 @@ class WorldTransformSystem extends GameSystem
 
     // No `Parent` on this archetype means no entity in it has children, so
     // there is nothing below to walk - and for a flat scene that is every
-    // entity, which is why this is the one early return worth having here.
+    // entity, so this is the one early return worth having here.
     if (parentComp == null) return;
     var next = parentComp.firstChild[entity];
     while (next != null) {

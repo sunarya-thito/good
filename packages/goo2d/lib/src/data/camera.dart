@@ -10,8 +10,7 @@ import 'package:goo2d/src/data/world_transform.dart';
 /// A camera occupies a [CameraView] - one of the places the game declared it
 /// can be drawn - and at most one camera should occupy a given view at a time.
 /// [ActiveCameraResolver] finds the camera for a view and warns (not throws)
-/// if a second claims it, instead of silently picking one with no
-/// explanation.
+/// if a second claims it, instead of silently picking one with no explanation.
 ///
 /// A prefab that wants to start zoomed in overrides the column default in
 /// its own `describeStruct`:

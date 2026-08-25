@@ -236,12 +236,12 @@ class MousePickingSystem extends GameSystem with FixedTickable {
   ///
   /// **A bound before the exact test.** Inverting a transform is a `cos`, a
   /// `sin` and two divides, and testing every body of every candidate exactly
-  /// pays that for the whole scene on every tick.
-  /// [ColliderBody.boundCovers] answers "is the cursor anywhere near this"
-  /// from one squared distance first, and it is a circle about the entity's
-  /// origin because that is the bound that does not need the angle. So the
-  /// trig and the exact tests are paid once per entity the cursor is actually
-  /// close to, and not at all for the rest.
+  /// pays that for the whole scene on every tick. [ColliderBody.boundCovers]
+  /// answers "is the cursor anywhere near this" from one squared distance
+  /// first, and it is a circle about the entity's origin because that is the
+  /// bound that does not need the angle. So the trig and the exact tests are
+  /// paid once per entity the cursor is actually close to, and not at all for
+  /// the rest.
   Entity? _pick(double x, double y) {
     Entity? best;
     var bestZ = 0;
