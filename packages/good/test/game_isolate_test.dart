@@ -1531,6 +1531,16 @@ void main() {
       counter.ticks.addListener(listener);
       addTearDown(() => counter.ticks.removeListener(listener));
 
+      // `alive` is written `true` on every one of those same ticks, so it is
+      // the witness for "a notification means the published value moved": it
+      // moves once, false -> true, and every write after that publishes the
+      // value already there. However many ticks land, at most one
+      // notification may come out of it.
+      final aliveSeen = <bool>[];
+      void aliveListener() => aliveSeen.add(counter.alive.value);
+      counter.alive.addListener(aliveListener);
+      addTearDown(() => counter.alive.removeListener(aliveListener));
+
       await observed.future.timeout(const Duration(seconds: 20));
       expect(
         counter.ticks.value,
@@ -1545,13 +1555,40 @@ void main() {
         isNotEmpty,
         reason: 'and a ValueListenable listener on this isolate was told',
       );
+      // Non-decreasing, not strictly increasing, and the difference is the
+      // whole of #182. A listener is handed no value: it reads `value`, which
+      // is a live read of shared memory the game isolate is still writing. So
+      // the read can land a tick or two ahead of the value that triggered the
+      // notification, and the *next* notification - fired against the value
+      // the poll saw, not the one this listener read - can then read back the
+      // same number. Asserting a strict rise here asserted that the reader
+      // never overtakes the notifier, which nothing promises; it held under a
+      // quiet machine and failed about half the full-suite runs. What a live
+      // read does promise is that it never goes backwards.
       for (var i = 1; i < seen.length; i++) {
         expect(
           seen[i],
-          greaterThan(seen[i - 1]),
-          reason: 'each notification carries a value that actually moved',
+          greaterThanOrEqualTo(seen[i - 1]),
+          reason: 'a published counter is never seen to run backwards',
         );
       }
+      // "Every notification was backed by a move", stated so that it does not
+      // race: no listener can run between these two reads, and the counter
+      // rises by at least one per notification, so it must have reached at
+      // least the number of notifications delivered.
+      expect(
+        counter.ticks.value,
+        greaterThanOrEqualTo(seen.length),
+        reason: 'each notification carries a value that actually moved',
+      );
+      expect(
+        aliveSeen.length,
+        lessThanOrEqualTo(1),
+        reason:
+            'and a channel rewritten with the value it already holds, every '
+            'tick, notifies nobody',
+      );
+      expect(aliveSeen, isNot(contains(false)));
 
       // Writing from the copy that does not own the memory is a programmer
       // error, not a silent no-op that "works" until someone wonders why the
