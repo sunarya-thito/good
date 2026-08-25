@@ -3,11 +3,10 @@
 /// **One dependency, one import.** Adding `goo2d` to a pubspec and importing
 /// this library gives you the whole engine - the kernel (ECS, scenes, the
 /// tick loop, `Game`/`GameState`, `GameView`) *and* the 2D layer (transforms,
-/// camera, colliders, rendering). The kernel is re-exported below rather than
-/// left as a second dependency the user has to add and keep version-matched
-/// by hand.
+/// camera, colliders, rendering). The kernel is re-exported below, so it is
+/// not a second dependency you add and keep version-matched by hand.
 ///
-/// Opt-in packages stay separate on purpose, because they carry weight not
+/// Opt-in packages stay separate, because they carry weight not
 /// every game wants: `goo2d_physics_box2d` (native Box2D) and
 /// `good_net`/`good_net_p2p` (networking). Those you add
 /// explicitly and declare their systems yourself.

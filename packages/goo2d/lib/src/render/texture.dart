@@ -17,19 +17,19 @@ class Texture {
 
   final ui.Image _image;
 
-  /// Pixel dimensions of the decoded image.
+  /// The decoded image's width in pixels.
   ///
-  /// These used to be *declared* on the key (`TextureAsset.pixelWidth`) and
-  /// checked against the decode with an `assert`, because the game isolate
-  /// nine-slices with them and could not decode to find out. They are
-  /// discovered here now and published to that isolate via [TextureInfo], so
-  /// there is no declaration left to be wrong.
+  /// Discovered by the decode, never declared. The game isolate nine-slices
+  /// with these and cannot decode to find out, so it reads them from
+  /// [TextureInfo] instead - which leaves no declaration anywhere that a
+  /// repack could make wrong.
   int get width => _image.width;
+
+  /// The decoded image's height in pixels. See [width].
   int get height => _image.height;
 
-  /// The decoded image. Only reachable through `Asset.value`, which already
-  /// refused on a copy that never loaded - so there is no per-payload
-  /// `requireLoaded` guard to write any more.
+  /// The decoded image. Reachable only through `Asset.value`, which throws on
+  /// a copy that never loaded, so there is no per-payload guard here.
   ui.Image get image => _image;
 
   /// Releases the engine-side pixels. Called by [TextureLoader.unload]; a
@@ -46,9 +46,8 @@ typedef TextureAsset = Asset<Texture>;
 ///
 /// Nothing about the image's shape or how a sprite samples it lives here -
 /// the pixel size is discovered at load ([TextureInfo]) and the filter is a
-/// property of the sprite. Both used to be on this key, and a build pipeline
-/// that repacked or recompressed an asset would have been rewriting its
-/// identity.
+/// property of the sprite. Neither belongs here: a build pipeline that
+/// repacks or recompresses an asset would be rewriting the asset's identity.
 ///
 /// ```dart
 /// static const playerTexture = TextureKey(BundleSource('player.png'));
@@ -57,18 +56,17 @@ typedef TextureKey = AssetKey<Texture>;
 
 /// How a sprite samples the texture it draws.
 ///
-/// **A property of the sprite, not of the texture.** It used to be declared on
-/// the texture key, which made it part of an asset's identity - so a build
-/// pipeline that repacked an image would have been rewriting it, and one
-/// texture could not be drawn crisply in one place and smoothly in another.
-/// Per sprite is strictly wider: a game can still give every sprite sharing an
-/// image the same filter, and can now also mix them.
+/// **A property of the sprite, not of the texture.** On the key it would be
+/// part of the asset's identity, so a build pipeline that repacked an image
+/// would be rewriting it, and one texture could not be drawn crisply in one
+/// place and smoothly in another. Per sprite you can still give every sprite
+/// sharing an image the same filter, and you can also mix them.
 ///
-/// goo2d's own enum rather than `dart:ui`'s `FilterQuality`, so the engine's
-/// signatures and its component rows stay clear of third-party types - the row
-/// stores this index, and only `DrawCanvas2D` ever translates it.
+/// This is goo2d's own enum and not `dart:ui`'s `FilterQuality`, so the
+/// engine's signatures and its component rows stay clear of third-party types:
+/// the row stores this index, and only `DrawCanvas2D` ever translates it.
 enum TextureFilter {
-  /// Pick one texel. What deliberate pixel art wants, and what it *needs* -
+  /// Pick one texel. What pixel art wants, and what it *needs* -
   /// pair it with an integer sprite size or it shimmers as the sprite moves.
   nearest,
 
@@ -105,19 +103,19 @@ class TextureInfo extends AssetInfo {
 
 /// Turns a texture's bytes into a [Texture].
 ///
-/// One of these for the payload type, registered once, rather than one per
-/// asset - which is what leaves [TextureKey] as pure identity and lets a key
-/// be written inline with no subclass.
+/// One of these for the payload type, registered once - never one per asset.
+/// That is what leaves [TextureKey] as pure identity and lets a key be written
+/// inline with no subclass.
 ///
 /// Runs only on the isolate that can decode; a codec is engine-side state that
 /// does not exist on the game isolate.
 class TextureLoader extends AssetLoader<Texture> {
   const TextureLoader();
 
-  /// Decodes the first frame only. A `Texture` is one image; an animated GIF
-  /// or APNG through here yields its first frame and nothing else, which is
-  /// honest rather than silently half-supported - animation is sprite-sheet
-  /// work in this engine (see `SpriteFrame`), not a codec feature.
+  /// Decodes the first frame only. A `Texture` is one image, so an animated
+  /// GIF or APNG through here yields its first frame and nothing else.
+  /// Animation is sprite-sheet work in this engine (see `SpriteFrame`), not a
+  /// codec feature.
   @override
   Future<Texture> load(AssetKey<Texture> key) async {
     final bytes = await key.source.load();

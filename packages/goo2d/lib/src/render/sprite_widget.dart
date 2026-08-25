@@ -34,8 +34,8 @@ import 'package:goo2d/src/render/texture.dart';
 ///
 /// The alternative is `Image.asset` with a hand-written path, which decodes a
 /// **second** copy into Flutter's `imageCache` and leaves the engine's copy
-/// held: measured, a 256x256 image through both paths is 512 KiB rather than
-/// 256. This widget adds nothing to `imageCache` at all.
+/// held: measured, a 256x256 image through both paths is 512 KiB, not 256.
+/// This widget adds nothing to `imageCache` at all.
 ///
 /// # Loading is the caller's, and an unloaded handle draws nothing
 ///
@@ -112,7 +112,7 @@ class _SpritePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Draw nothing rather than throw - see [SpriteWidget]. `Asset.value` is
+    // Draw nothing instead of throwing - see [SpriteWidget]. `Asset.value` is
     // what would throw, so this guard has to come before it.
     if (!texture.isLoaded) return;
     final source = texture.value;
@@ -120,7 +120,7 @@ class _SpritePainter extends CustomPainter {
       source.image,
       // The fractions become pixels here, on main, where the decoded image is
       // the one thing that knows its own size. The game isolate cannot do this
-      // conversion at all, which is why `SpriteFrame` stores fractions.
+      // conversion at all, so `SpriteFrame` stores fractions.
       Rect.fromLTWH(
         frame.u * source.width,
         frame.v * source.height,

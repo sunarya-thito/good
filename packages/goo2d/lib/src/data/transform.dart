@@ -29,15 +29,14 @@ mixin Transform2D on Component {
   // WorldTransform2D's fields instead (world_transform.dart).
   //
   // Every helper resolves each Entity argument's own Transform2D instance
-  // fresh via Entity.get<Transform2D>(), rather than reading through `this`
-  // (the receiver) for anything but the entity it was actually called
-  // through - `this` is bound to whichever *concrete* archetype's
-  // Transform2D declared it, and a second Entity argument may well belong
-  // to a different archetype (a different prefab class) with a different
-  // row layout entirely. Resolving fresh per-argument is correct regardless
-  // of whether the two entities happen to share an archetype; reading a
-  // foreign entity through the wrong archetype's DataPointer would silently
-  // address the wrong storage.
+  // fresh via Entity.get<Transform2D>(), and never reads a second entity
+  // through `this` (the receiver). `this` is bound to whichever *concrete*
+  // archetype's Transform2D declared it, and a second Entity argument may
+  // well belong to a different archetype (a different prefab class) with a
+  // different row layout entirely. Resolving fresh per-argument is correct
+  // whether or not the two entities share an archetype; reading a foreign
+  // entity through the wrong archetype's DataPointer would silently address
+  // the wrong storage.
 
   /// Local-space (no ancestors, no `WorldTransform2D`) distance between
   /// [a]'s and [b]'s offsets.
@@ -66,10 +65,8 @@ mixin Transform2D on Component {
   }
 
   /// The unit direction [entity]'s current local rotation points, as two
-  /// separate scalar getters rather than a returned record/tuple - matching
-  /// this codebase's standing zero-per-tick-heap-allocation stance (see
-  /// `data.dart`'s note on why `DataPointer<Matrix4>` was removed) rather
-  /// than betting on Dart record unboxing.
+  /// separate scalar getters and not one record: the engine allocates nothing
+  /// per tick, and a record here would be betting on Dart to unbox it.
   double forwardX(Entity entity) =>
       math.cos(entity.get<Transform2D>().transformRotation[entity]);
   double forwardY(Entity entity) =>

@@ -10,7 +10,7 @@ import 'package:goo2d/src/data/world_transform.dart';
 /// A camera occupies a [CameraView] - one of the places the game declared it
 /// can be drawn - and at most one camera should occupy a given view at a time.
 /// [ActiveCameraResolver] finds the camera for a view and warns (not throws)
-/// if a second claims it, rather than silently picking one with no
+/// if a second claims it, instead of silently picking one with no
 /// explanation.
 ///
 /// A prefab that wants to start zoomed in overrides the column default in
@@ -40,8 +40,8 @@ mixin Camera on Component {
   /// player.camera.view[entity] = game.mainCamera;
   /// ```
   ///
-  /// Typed rather than an int, which is the payoff of `CameraView` being a
-  /// `GlobalObject`: a stray integer does not compile here.
+  /// Typed, and not an int: `CameraView` is a `GlobalObject`, so a stray
+  /// integer does not compile here.
   ///
   /// The one field here that still needs [describeStruct]: the view table it
   /// is declared against comes from `getScene`, an instance method a field
@@ -66,7 +66,7 @@ mixin Camera on Component {
 /// Finds "the" active camera each time [resolve] is called - whichever
 /// `Camera`-mixing entity a query returns first. Shared by every consumer
 /// that needs to know where the camera is, so "use the active one, complain
-/// about a second" is implemented once rather than once per consumer.
+/// about a second" is implemented once instead of once per consumer.
 ///
 /// Not a `GameSystem` itself and declares no query of its own - a consuming
 /// system builds the query (typically
@@ -76,12 +76,11 @@ mixin Camera on Component {
 class ActiveCameraResolver {
   /// Returns the `Camera` entity occupying [view], or `null` if none does.
   ///
-  /// More than one enabled camera trips a debug-only `assert` rather than a
-  /// `print`, which is swallowed in release and invisible in a test runner's
-  /// captured output. In a release build the assert
-  /// compiles out and the first camera found is used, so a second camera is
-  /// never fatal in production - it is a development-time mistake that
-  /// should stop a debug run, not a runtime condition to tolerate silently.
+  /// More than one enabled camera trips a debug-only `assert`. In a release
+  /// build the assert compiles out and the first camera found is used, so a
+  /// second camera is never fatal in production - it is a development-time
+  /// mistake that should stop a debug run, not a runtime condition to
+  /// tolerate silently.
   Entity? resolve(Query cameras, CameraView view) {
     Entity? first;
     Entity? second;
@@ -136,8 +135,8 @@ class ActiveCameraResolver {
 /// `view = (world - cameraOrigin) * zoom + viewSize / 2`, y negated. The
 /// camera's world position is the *centre* of what you can see, which is
 /// what Unity, Godot, Unreal and every other engine mean by a camera
-/// position, and it is why a follow camera needs no half-a-screen fudge
-/// factor to put its subject in the middle.
+/// position, so a follow camera needs no half-a-screen fudge factor to put
+/// its subject in the middle.
 ///
 /// With **no camera** the implicit one is at world (0, 0), so the world
 /// origin is the middle of the view - the same rule, not a second one.
@@ -162,20 +161,25 @@ class ActiveCameraResolver {
 class CameraProjection {
   final ActiveCameraResolver _resolver = ActiveCameraResolver();
 
-  /// The camera's world position, or `(0, 0)` when no camera is active.
+  /// The camera's world x, or `0` when no camera is active.
   double originX = 0;
+
+  /// The camera's world y, or `0` when no camera is active.
   double originY = 0;
 
   /// The camera's zoom, or `1` when no camera is active.
   double zoom = 1;
 
-  /// Half the view, precomputed - the term that puts the camera in the
-  /// middle. Zero on a game with no widget.
+  /// Half the view's width, precomputed - the term that puts the camera in
+  /// the middle of it. Zero on a game with no widget.
   double halfViewWidth = 0;
+
+  /// Half the view's height. See [halfViewWidth].
   double halfViewHeight = 0;
 
-  /// The rectangle [showsCircle] tests against, in view-space pixels: the
-  /// whole viewport, `(0, 0)` to `(viewportWidth, viewportHeight)`.
+  /// The left edge of the rectangle [showsCircle] tests against, in
+  /// view-space pixels. The rectangle is the whole viewport, `(0, 0)` to
+  /// `(viewportWidth, viewportHeight)`.
   ///
   /// **Infinite on all four sides when the view has no size**, which is what
   /// a headless run and a view no `GameView` is showing both report. Zero is
@@ -184,35 +188,39 @@ class CameraProjection {
   /// from every test that never built a widget, and from the first tick of
   /// every real game, before layout has run once.
   ///
-  /// Infinities rather than a `bool` the test branches on: they make "no size
+  /// Infinities, and not a `bool` the test branches on: they make "no size
   /// means nothing is culled" a property of the rectangle itself, so there is
   /// no second rule for a caller to forget and no branch on the frame path.
   double viewLeft = double.negativeInfinity;
+
+  /// The top edge of [viewLeft]'s rectangle.
   double viewTop = double.negativeInfinity;
+
+  /// The right edge of [viewLeft]'s rectangle.
   double viewRight = double.infinity;
+
+  /// The bottom edge of [viewLeft]'s rectangle.
   double viewBottom = double.infinity;
 
   /// The camera [resolve] last found, or `null` if there was none.
   Entity? camera;
 
   /// Which loaded scene that camera belongs to, or -1 when there is no
-  /// camera. A view draws the scene its camera is in, which is what replaced
-  /// the deleted global "front scene": each view answers it for itself, and
-  /// two views can be looking at different scenes at the same instant.
+  /// camera. A view draws the scene its camera is in - each view answers that
+  /// for itself, and two views can be looking at different scenes at the same
+  /// instant. There is no global front scene.
   ///
-  /// -1 means "no camera, so no scoping" - the whole world draws, which is
-  /// exactly what an unconfigured game already did and keeps a game that has
-  /// not placed a camera yet from showing a black screen.
+  /// -1 means "no camera, so no scoping" - the whole world draws, which keeps
+  /// a game that has not placed a camera yet from showing a black screen.
   int sceneSlot = -1;
 
   /// Whether this view shows [entity] at all - it is in the scene the view's
   /// camera is in, or there is no camera and nothing is scoped out.
   ///
-  /// The rule lives here rather than at each call site because there are two
-  /// call sites and they have to agree: `GameRenderer2D` decides what to draw
-  /// with it and `MousePickingSystem` decides what is clickable with it. When
-  /// only the renderer had it, a click landed on an entity that was never
-  /// drawn.
+  /// The rule lives here, not at each call site, because there are two call
+  /// sites and they have to agree: `GameRenderer2D` decides what to draw with
+  /// it and `MousePickingSystem` decides what is clickable with it. Split the
+  /// rule between them and a click lands on an entity that was never drawn.
   @pragma('vm:prefer-inline')
   bool shows(Entity entity) => sceneSlot < 0 || entity.sceneSlot == sceneSlot;
 
@@ -236,12 +244,12 @@ class CameraProjection {
   /// suite that only checks "the far-away one vanished" does not. So
   /// everything here rounds towards keeping:
   ///
-  ///  * The caller's circle encloses the drawn shape rather than tracing it.
+  ///  * The caller's circle encloses the drawn shape instead of tracing it.
   ///  * Touching counts - a sprite whose edge lands exactly on the viewport
   ///    border is kept.
   ///  * NaN in any of the three arguments keeps the sprite. That is why the
-  ///    last line rejects on `> radiusSquared` and negates, rather than
-  ///    accepting on `<=`: the two differ only for NaN, where every
+  ///    last line rejects on `> radiusSquared` and negates, and does not
+  ///    accept on `<=`: the two differ only for NaN, where every
   ///    comparison is false and only the negated form comes out as "keep". A
   ///    transform that has gone wrong should be visibly wrong, not invisible.
   @pragma('vm:prefer-inline')
@@ -267,20 +275,19 @@ class CameraProjection {
   /// `descriptor.query().withAll(Camera, WorldTransform2D).build()` - and
   /// the view size, typically `game.viewWidth`/`game.viewHeight`.
   ///
-  /// No camera resets to the identity rather than keeping the last one:
-  /// a camera that was removed should stop moving the view, not freeze it
+  /// No camera resets to the identity and does not keep the last one: a
+  /// camera that was removed should stop moving the view, not freeze it
   /// wherever it happened to be.
   void resolve(Query cameras, CameraView view) {
     // Off the view, not off the game: two `GameView`s of different sizes
-    // cannot share one number, which is why this stopped being
-    // `Game.viewWidth`.
+    // cannot share one number, and this is what the projection centres on.
     final viewportWidth = view.viewportWidth;
     final viewportHeight = view.viewportHeight;
     halfViewWidth = viewportWidth / 2;
     halfViewHeight = viewportHeight / 2;
     // Both axes together, not one each: half a rectangle is not a rectangle,
-    // and a view reporting a width but no height yet is mid-layout rather
-    // than a one-pixel-tall thing to cull against.
+    // and a view reporting a width but no height yet is mid-layout, not a
+    // one-pixel-tall thing to cull against.
     if (viewportWidth > 0 && viewportHeight > 0) {
       viewLeft = 0;
       viewTop = 0;
@@ -311,8 +318,8 @@ class CameraProjection {
   /// View-space (a `GameView` pixel, origin at its top-left) to world space.
   ///
   /// A zoom of zero maps the whole world onto one pixel, so the inverse has
-  /// no answer; it reports the camera's own origin rather than an infinity
-  /// that would poison every downstream comparison silently.
+  /// no answer; it reports the camera's own origin, because an infinity would
+  /// silently poison every downstream comparison.
   double viewToWorldX(double viewX) =>
       zoom == 0 ? originX : (viewX - halfViewWidth) / zoom + originX;
 
@@ -325,7 +332,7 @@ class CameraProjection {
   /// World space to view space - the mapping the renderer applies (it goes
   /// through this very method), exposed so a system placing something *at* a
   /// screen position (a tooltip, a world-space marker for a HUD) uses the
-  /// same one rather than its own.
+  /// same one and not its own.
   double worldToViewX(double worldX) =>
       (worldX - originX) * zoom + halfViewWidth;
 

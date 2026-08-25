@@ -13,26 +13,28 @@ import 'package:goo2d/src/render/render_2d.dart';
 /// re-points it before each callback, so a handler that stores the event (or
 /// any of the objects hanging off it) is storing something that will describe
 /// a different entity a millisecond later. Read what you need inside the
-/// callback. The alternative - a fresh event per hover, per entity, per tick -
-/// is a heap object on a path that runs every tick forever (the no-allocation and hot-event rules), which is the same reason `Input<Vector2>.value` hands back a vector
-/// it owns.
+/// callback.
+///
+/// A fresh event per hover, per entity, per tick would be a heap object on a
+/// path that runs every tick forever (the no-allocation and hot-event rules).
+/// `Input<Vector2>.value` hands back a vector it owns for the same reason.
 class MouseEvent {
   MouseEvent._(this.position, this.worldSpace);
 
   /// Which entity this event is about. Components are shared per archetype
-  /// rather than instantiated per entity, so `this` inside a handler is the
-  /// whole archetype's component - this is the only thing that says which
-  /// entity was clicked, the same reason `onEntityMounted` takes one.
+  /// and not instantiated per entity, so `this` inside a handler is the whole
+  /// archetype's component - this is the only thing that says which entity
+  /// was clicked, the same reason `onEntityMounted` takes one.
   late Entity entity;
 
   /// Where the pointer is, in the spaces the kernel can answer for (screen
   /// and view). The same instance `Input<CursorPosition>.value` hands out.
   final CursorPosition position;
 
-  /// Where the pointer is in **world** space - what [position] deliberately
-  /// cannot carry, because projecting needs a `Camera` and cameras are a
-  /// `goo2d` concept. Useful for the "grab the thing at the offset I grabbed
-  /// it by" case: subtract the entity's own world position from this.
+  /// Where the pointer is in **world** space - what [position] cannot carry,
+  /// because projecting needs a `Camera` and cameras are a `goo2d` concept.
+  /// Useful for the "grab the thing at the offset I grabbed it by" case:
+  /// subtract the entity's own world position from this.
   final Vector2 worldSpace;
 }
 
@@ -54,10 +56,10 @@ abstract interface class MouseListener {
 ///
 /// An entity is a candidate when it has this **and** `Collider2D` **and**
 /// `WorldTransform2D` - the shapes are what get hit-tested, so a receiver
-/// with no collider is silently never picked. That is deliberate rather than
-/// an assert: `Renderable2D`'s bounds would be the obvious fallback, and it
-/// is the wrong one - a sprite is a rectangle even when the thing it draws is
-/// a coin, and clicking the corner of a coin should miss.
+/// with no collider is silently never picked. Nothing asserts on that, and
+/// nothing falls back to `Renderable2D`'s bounds: a sprite is a rectangle
+/// even when the thing it draws is a coin, and clicking the corner of a coin
+/// should miss.
 mixin MouseReceiver on Component implements MouseListener {
   @override
   void onMouseEnter(MouseEvent event) {}
@@ -93,8 +95,8 @@ mixin MouseReceiver on Component implements MouseListener {
 ///
 /// Every enabled `ColliderBody` on a candidate, tested against the cursor in
 /// that entity's own local space - so a rotated, scaled entity hit-tests as
-/// the shape you see, and a circle collider is a circle rather than its
-/// bounding box.
+/// the shape you see, and a circle collider is a circle, not its bounding
+/// box.
 ///
 /// Where several entities overlap, the topmost wins: the highest `zIndex`
 /// among that entity's visible sprites, with later query order breaking a
@@ -111,13 +113,11 @@ mixin MouseReceiver on Component implements MouseListener {
 ///
 /// # Why it is fixed-rate
 ///
-/// The plan called for the render rate, on the reasoning that input
-/// resolution runs there. It does not: resolution is the first thing
-/// `GameState.runFixedStep` does, and `wasPressedThisFrame` lives for exactly
-/// one fixed step. A presentation-phase picker would therefore *miss clicks* -
-/// a frame containing two fixed steps clears the edge in the second before
-/// presentation ever sees it. Running here means every resolution is seen
-/// exactly once.
+/// Input resolution is the first thing `GameState.runFixedStep` does, and
+/// `wasPressedThisFrame` lives for exactly one fixed step. A picker in the
+/// presentation phase would therefore *miss clicks* - a frame containing two
+/// fixed steps clears the edge in the second before presentation ever sees
+/// it. Running here means every resolution is seen exactly once.
 ///
 /// The cost is that the world transforms it reads are one tick behind what
 /// was last drawn (a fixed-phase read sees the last published snapshot, while
@@ -228,20 +228,20 @@ class MousePickingSystem extends GameSystem with FixedTickable {
   /// # Two things keep this off the profile
   ///
   /// **Grouped.** A component instance belongs to an archetype, so
-  /// `entity.get<WorldTransform2D>()` returned the same object for every row -
-  /// a registry lookup per candidate for an answer that changes once per
-  /// archetype. `groups()` is the shape `docs/guide/performance.md` names as
-  /// the fix for the single most common cost in this engine, and this loop
-  /// was the example of the mistake.
+  /// `entity.get<WorldTransform2D>()` hands back the same object for every
+  /// row - a registry lookup per candidate for an answer that changes once
+  /// per archetype. `groups()` resolves it once per archetype instead, which
+  /// is what `docs/guide/performance.md` names as the fix for the single most
+  /// common cost in this engine.
   ///
-  /// **A bound before the exact test.** Every candidate in the scene used to
-  /// have its transform inverted - a `cos`, a `sin` and two divides - and
-  /// then every one of its bodies hit-tested exactly, before anything asked
-  /// whether the cursor was anywhere near it. [ColliderBody.boundCovers]
-  /// answers that from one squared distance, and it is a circle about the
-  /// entity's origin because that is the bound that does not need the angle.
-  /// So the trig and the exact tests are now paid once per entity the cursor
-  /// is actually close to, and not at all for the rest.
+  /// **A bound before the exact test.** Inverting a transform is a `cos`, a
+  /// `sin` and two divides, and testing every body of every candidate exactly
+  /// pays that for the whole scene on every tick.
+  /// [ColliderBody.boundCovers] answers "is the cursor anywhere near this"
+  /// from one squared distance first, and it is a circle about the entity's
+  /// origin because that is the bound that does not need the angle. So the
+  /// trig and the exact tests are paid once per entity the cursor is actually
+  /// close to, and not at all for the rest.
   Entity? _pick(double x, double y) {
     Entity? best;
     var bestZ = 0;
@@ -255,14 +255,14 @@ class MousePickingSystem extends GameSystem with FixedTickable {
       final bodies = group.get<Collider2D>().bodies;
       // Not in the query - an invisible click zone is a receiver with no
       // sprites at all - so `tryGet`, once, and `_depthOf` is told the answer
-      // rather than asking per hit.
+      // instead of asking per hit.
       final renderable = group.tryGet<Renderable2D>();
       for (final entity in group) {
         // Only what the view under the pointer draws is clickable, and
         // `projection.shows` is the same call `GameRenderer2D` skips entities
         // with - off a projection resolved for the same view, so the two
-        // cannot disagree about which scene that is. They did once, and a
-        // click landed on an entity that was never drawn.
+        // cannot disagree about which scene that is. Let them disagree and a
+        // click lands on an entity that was never drawn.
         if (!projection.shows(entity)) continue;
         final scaleX = world.worldScaleX[entity];
         final scaleY = world.worldScaleY[entity];
@@ -339,8 +339,8 @@ class MousePickingSystem extends GameSystem with FixedTickable {
   /// How high up an entity is: the largest `zIndex` among its visible
   /// sprites, or zero if it draws nothing at all.
   ///
-  /// The largest rather than the first, because an entity with a body sprite
-  /// at 0 and a hat at 10 is, as far as anything looking at the screen is
+  /// The largest, not the first, because an entity with a body sprite at 0
+  /// and a hat at 10 is, as far as anything looking at the screen is
   /// concerned, at 10.
   ///
   /// [renderable] is this entity's archetype's, resolved by the caller once
@@ -376,9 +376,9 @@ class MousePickingSystem extends GameSystem with FixedTickable {
   }
 }
 
-/// Which callback [MousePickingSystem._dispatch] is about to make. An enum
-/// rather than passing the method itself, because a tear-off of an instance
-/// method is an allocation and this happens several times a tick.
+/// Which callback [MousePickingSystem._dispatch] is about to make. An enum,
+/// and not the method itself: a tear-off of an instance method is an
+/// allocation, and this happens several times a tick.
 enum _Phase { enter, hover, exit, pressed, released }
 
 /// The prebuilt shortcut for the picking system, so a component never spells
@@ -388,6 +388,7 @@ extension MousePickingAccess on Component {
   MousePickingSystem get mousePicking => getSystem<MousePickingSystem>();
 }
 
+/// [MousePickingAccess], for a system instead of a component.
 extension MousePickingAccessForSystems on GameSystem {
   MousePickingSystem get mousePicking => getSystem<MousePickingSystem>();
 }
