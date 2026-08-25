@@ -341,22 +341,6 @@ class WorldTransformSystem extends GameSystem
     _pendingScaleY = parentScaleY * scaleY;
   }
 
-  /// Resolves [entity] and recurses into its children.
-  ///
-  /// **Why the parent's world transform is passed in as plain arguments,
-  /// not read back from `parentWorld.worldX[parent]` after writing it a few
-  /// lines above**: this storage layer's reads always see the *last
-  /// published* snapshot, never a write made earlier in the same tick (see
-  /// `data_layout.dart`'s `_readRow` doc - the same reason a read-modify-
-  /// write in `onEntityMounted` is unsafe). A parent resolved earlier in this
-  /// top-down pass, this same tick, has a fresh value in the write slot that
-  /// a same-tick read cannot see yet - reading it back would silently
-  /// return last tick's stale value instead. Carrying the just-computed
-  /// numbers down as parameters (mirroring `GameRenderer2D`'s own instance-
-  /// scratch-field technique, just parameterized per recursion level instead
-  /// of flat fields, since this walks top-down rather than root-ward) sidesteps
-  /// the whole problem: nothing this method just wrote is ever read back
-  /// within the same call tree.
   /// The whole pass for an archetype that has no [Parent] - so no entity in it
   /// can ever have a child, and its roots are the entire subtree they belong
   /// to. A flat field of sprites is exactly this, and so is every particle,
@@ -420,6 +404,8 @@ class WorldTransformSystem extends GameSystem
     world.worldScaleY[entity] = local.transformScaleY[entity];
   }
 
+  /// Resolves [entity] and recurses into its children.
+  ///
   /// [local], [world], [childLink] and [parentComp] are [entity]'s archetype's
   /// components, resolved by the caller. Passed in rather than looked up here
   /// because the caller usually already knows them for a whole group of rows
@@ -436,6 +422,21 @@ class WorldTransformSystem extends GameSystem
   /// The query only guarantees these for the *roots* it yields; from there on
   /// the parent/child links decide who gets visited, and they know nothing
   /// about component makeup.
+  ///
+  /// **Why the parent's world transform is passed in as plain arguments,
+  /// not read back from `parentWorld.worldX[parent]` after writing it a few
+  /// lines above**: this storage layer's reads always see the *last
+  /// published* snapshot, never a write made earlier in the same tick (see
+  /// `data_layout.dart`'s `_readRow` doc - the same reason a read-modify-
+  /// write in `onEntityMounted` is unsafe). A parent resolved earlier in this
+  /// top-down pass, this same tick, has a fresh value in the write slot that
+  /// a same-tick read cannot see yet - reading it back would silently
+  /// return last tick's stale value instead. Carrying the just-computed
+  /// numbers down as parameters (mirroring `GameRenderer2D`'s own instance-
+  /// scratch-field technique, just parameterized per recursion level instead
+  /// of flat fields, since this walks top-down rather than root-ward) sidesteps
+  /// the whole problem: nothing this method just wrote is ever read back
+  /// within the same call tree.
   void _resolve(
     Entity entity,
     Transform2D? local,
