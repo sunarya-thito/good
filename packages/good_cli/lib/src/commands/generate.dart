@@ -15,7 +15,7 @@ import 'package:good_cli/src/verbosable.dart';
 ///  * `good.dart` - the startup readiness check. Rewritten every run.
 ///  * `asset_key.dart` - the encryption keys. **Written once**, then left
 ///    alone, because rewriting the keys orphans every asset pack already built
-///    with the old ones. [rotateKeys] is the deliberate way to change them.
+///    with the old ones. [rotateKeys] is the flag that replaces them.
 ///
 /// The struct-layout half of codegen the README describes - scanning
 /// `Component`/`EntityStruct` with `package:analyzer` to hoist good's runtime

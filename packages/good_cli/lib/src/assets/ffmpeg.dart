@@ -7,9 +7,9 @@ import 'package:meta/meta.dart';
 
 /// Where a usable ffmpeg came from.
 ///
-/// Reported rather than kept private, because "which ffmpeg am I actually
-/// running" is the first question when a transcode produces something
-/// unexpected, and the answer differs per machine.
+/// Reported and not kept private, because "which ffmpeg is this" is the
+/// first question when a transcode produces something unexpected, and the
+/// answer differs per machine.
 enum FfmpegOrigin {
   /// `$GOOD_FFMPEG` named it. First in the order so a project can pin a
   /// specific build - a CI image with a known ffmpeg, or a local one being
@@ -36,7 +36,7 @@ class Ffmpeg {
 
 /// Raised when no ffmpeg could be found or fetched.
 ///
-/// A distinct type rather than a generic failure: the caller wants to say
+/// A type of its own, not a generic failure: the caller wants to say
 /// *why* transcoding cannot happen, and the three reasons - not installed,
 /// download refused, download failed - lead to three different next steps.
 class FfmpegUnavailable implements Exception {
@@ -66,9 +66,9 @@ class FfmpegUnavailable implements Exception {
 /// touching the real cache - which is the only way a test of "prefers PATH
 /// over download" means anything. `test/ffmpeg_test.dart` covers the order.
 ///
-/// The real fetch is deliberately *not* in the suite: it pulls a hundred
-/// megabytes over the network, and a suite that does that on every run is one
-/// people stop running. `test/_ffmpeg_download_probe.dart` exercises it by
+/// The real fetch is *not* in the suite. It pulls a hundred megabytes over
+/// the network, and a suite that does that on every run is one people stop
+/// running. `test/_ffmpeg_download_probe.dart` exercises it by
 /// hand, which is what to reach for when [FfmpegDownload]'s archive layout
 /// might have shifted under it.
 class FfmpegResolver {
@@ -177,7 +177,7 @@ class FfmpegResolver {
 
   /// An ffmpeg a previous run left in the cache, or null.
   ///
-  /// Searched rather than assumed at a fixed path, because each platform's
+  /// Searched for, never assumed at a fixed path, because each platform's
   /// archive unpacks to its own directory name and version.
   String? _cachedExecutable() {
     final dir = cacheDir;
@@ -200,7 +200,7 @@ String _home(Map<String, String> environment) =>
 
 /// Can [executable] be run at all?
 ///
-/// `-version` rather than a bare invocation: ffmpeg with no arguments exits
+/// `-version`, not a bare invocation: ffmpeg with no arguments exits
 /// non-zero, so "did it run" and "did it succeed" would disagree.
 bool runsSuccessfully(String executable) {
   try {
@@ -227,9 +227,8 @@ class FfmpegDownload {
   ///
   /// These are the long-standing community static-build hosts; good does not
   /// mirror them. That is a real supply-chain dependency and is worth knowing
-  /// about deliberately, which is why [FfmpegResolver] prints the URL rather
-  /// than fetching quietly - and why `$GOOD_FFMPEG` exists for anyone who would
-  /// rather vendor their own.
+  /// about, so [FfmpegResolver] prints the URL instead of fetching quietly,
+  /// and `$GOOD_FFMPEG` is there for anyone who would sooner vendor their own.
   static FfmpegDownload? forHost() {
     if (Platform.isWindows) {
       return const FfmpegDownload(

@@ -27,7 +27,7 @@ class CompactStep {
   final AssetKind kind;
 
   /// True when the source is already in the canonical format, so this is a
-  /// copy rather than a transcode.
+  /// copy and not a transcode.
   ///
   /// Worth distinguishing: re-encoding a WebP to WebP is lossy generation
   /// loss, and running ffmpeg over a file that is already right is time spent
@@ -54,13 +54,13 @@ class CompactPlan {
 /// Works out which source files become which canonical files.
 ///
 /// Pure: it reads a directory listing and returns a plan, and runs no ffmpeg.
-/// That is what lets "does a .jpg become a .webp" be a test rather than a
+/// That is what lets "does a .jpg become a .webp" be a test instead of a
 /// claim, on a machine with no ffmpeg at all.
 ///
 /// The source tree's shape is preserved - `ui/button.jpg` becomes
 /// `ui/button.webp`, not `button.webp` - because the output path is what
 /// `good generate` turns into an identifier, and flattening would create
-/// collisions that the source tree deliberately avoided.
+/// collisions the source tree does not have.
 CompactPlan planCompaction({
   required Directory sourceDir,
   required GoodConfig config,
@@ -119,8 +119,8 @@ CompactPlan planCompaction({
 /// re-encoded.
 ///
 /// Keyed by source path, holding a hash of the *source bytes* plus the
-/// settings that produced the output. A hash rather than a timestamp because
-/// checking out a branch rewrites mtimes wholesale, and re-encoding an
+/// settings that produced the output. A hash, not a timestamp: checking out
+/// a branch rewrites mtimes wholesale, and re-encoding an
 /// untouched library because git touched it is exactly the cost this avoids.
 class CompactManifest {
   CompactManifest(this.entries);
@@ -157,7 +157,7 @@ class CompactManifest {
 
   /// The fingerprint of a source file under a given set of settings.
   ///
-  /// The settings are in it deliberately: changing the WebP quality has to
+  /// The settings are part of it, because changing the WebP quality has to
   /// invalidate every texture even though not one source byte moved.
   static String fingerprint(File source, String settings) {
     final digest = sha256.convert(source.readAsBytesSync());

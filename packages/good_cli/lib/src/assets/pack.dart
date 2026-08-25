@@ -102,7 +102,7 @@ class PackResult {
 /// The bytes of one chunk, before compression and encryption.
 ///
 /// An index followed by the payloads it points into. The index is *inside* the
-/// chunk, which is the whole reason encryption is per-chunk rather than
+/// chunk, which is the whole reason encryption is per-chunk and not
 /// per-asset: a per-asset scheme needs an index outside the ciphertext saying
 /// where each asset starts and how long it is, and that index is a map of the
 /// pack in plaintext. Here there is nothing outside the ciphertext but a
@@ -173,15 +173,21 @@ Map<String, Uint8List> readChunkBody(Uint8List body) {
   };
 }
 
-/// Magic and version, so a runtime reading a chunk from a future good says so
-/// rather than decrypting nonsense.
+/// The four bytes every chunk starts with, so a runtime reading a chunk from
+/// a future good says so instead of decrypting nonsense.
 const List<int> chunkMagic = <int>[0x47, 0x4F, 0x4F, 0x43]; // 'GOOC'
+
+/// The chunk format this build writes, checked beside [chunkMagic].
 const int chunkVersion = 1;
 
-/// Header flags. A byte rather than two booleans in the code, because the
-/// runtime reads this and every combination has to be expressible - notably
+/// Header flag: this chunk's payload is compressed.
+///
+/// The flags are one byte, not two booleans in the code, because the runtime
+/// reads this and every combination has to be expressible - notably
 /// `--asset-encryption=none`, which is packed and compressed but not sealed.
 const int chunkFlagCompressed = 1 << 0;
+
+/// Header flag: this chunk's payload is encrypted. See [chunkFlagCompressed].
 const int chunkFlagEncrypted = 1 << 1;
 
 /// Compresses, then encrypts, one chunk body.

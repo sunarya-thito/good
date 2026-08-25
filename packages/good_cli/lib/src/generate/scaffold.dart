@@ -4,13 +4,14 @@ import 'package:yaml/yaml.dart';
 ///
 /// Never named on the command line - `--2d` and `--3d` choose it. The names
 /// here exist because a Dart enum value cannot begin with a digit, and that is
-/// this file's problem rather than the user's.
+/// this file's problem and not the user's.
 ///
-/// It lives beside the templates rather than beside the command, because what
+/// It lives beside the templates, not beside the command, because what
 /// it selects *is* a set of templates: the package to import, the components a
 /// prefab is made of, and what `main.dart` can honestly claim will appear on
 /// screen.
 enum GoodEngine {
+  /// Sprites, colliders and the 2D renderer.
   twoD('goo2d'),
 
   /// Transforms, hierarchy and the camera. No renderer - see [scaffoldFiles].
@@ -23,7 +24,7 @@ enum GoodEngine {
 
 /// What a good project consists of, as a map of relative path to content.
 ///
-/// A pure function on purpose. Deciding *what a starting project is* is the
+/// A pure function. Deciding *what a starting project is* is the
 /// interesting and reviewable part of `good create`; running `flutter create`
 /// and writing bytes is not. Keeping them apart means the templates can be
 /// tested - that they compile against the real API, that they name the right
@@ -39,7 +40,7 @@ enum GoodEngine {
 /// A 2D project draws a sprite on its first run. A 3D one cannot: `goo3d` is
 /// transforms, hierarchy composition and the camera, and the draw path -
 /// meshes, materials, lights - is issue #43. So the 3D templates scaffold what
-/// is actually there (a spinning entity, a composed world transform, a camera
+/// is there (a spinning entity, a composed world transform, a camera
 /// entity occupying a declared view) and say in their own comments that
 /// nothing turns it into pixels yet. Emitting a `Renderable3D` that does not
 /// exist would scaffold a project that does not compile; emitting a blank
@@ -110,11 +111,11 @@ const String engineConstraint = '^0.2.0';
 /// [lines] with the good dependency and the asset entries added, or null if the
 /// pubspec is not a shape this can edit safely.
 ///
-/// Null rather than a best guess: the caller prints [pubspecPatch] instead, and
+/// Null, not a best guess: the caller prints [pubspecPatch] instead, and
 /// a wrong edit to someone's pubspec is worse than an instruction to make the
 /// right one by hand.
 ///
-/// Textual rather than a YAML round-trip, which would re-emit the file and
+/// Textual, and not a YAML round-trip, which would re-emit the file and
 /// strip every comment `flutter create` wrote - and those comments are most of
 /// what a new project has to read. Both anchors are lines `flutter create`
 /// always writes. The dependency goes directly under `dependencies:`: order
@@ -124,13 +125,13 @@ const String engineConstraint = '^0.2.0';
 /// # What is already there is read from the parse, not from the text
 ///
 /// The two additions are independent, and each is made only if the key it
-/// would add is absent. Asking the *document* rather than searching for the
-/// line this once wrote is the whole of it: the old check matched
-/// `  goo2d: ^0.0.1` exactly, so a dependency someone had edited - pinned,
-/// widened, moved under a comment, or simply written by an older version of
-/// this command - did not look present, and re-running appended a second
-/// `goo2d:` and a second `assets:`. Two of either key is not a bad merge, it is
-/// a pubspec every `flutter` command refuses to read at all.
+/// would add is absent, and absence is answered by the *document*, never by
+/// searching the text for a line this once wrote. A check that matches
+/// `  goo2d: ^0.0.1` exactly misses a dependency someone has edited - pinned,
+/// widened, moved under a comment, or written by an older version of this
+/// command - and re-running then appends a second `goo2d:` and a second
+/// `assets:`. Two of either key is not a bad merge, it is a pubspec every
+/// `flutter` command refuses to read at all.
 List<String>? patchedPubspecLines(List<String> lines, String package) {
   final YamlNode doc;
   try {
@@ -700,9 +701,9 @@ class SpinSystem extends GameSystem with FixedTickable {
 /// `test/widget_test.dart` - the one `flutter create` wrote, replaced.
 ///
 /// Its version builds `MyApp`, which stops existing the moment `main.dart` is
-/// the good one, so a fresh project came with a test that did not compile
-/// (#30). Replacing it rather than deleting it: `flutter test` on a new project
-/// should do something, and what is worth checking is exactly what a new
+/// the good one, so a fresh project would come with a test that does not
+/// compile (#30). It is replaced and not deleted: `flutter test` on a new
+/// project should do something, and what is worth checking is what a new
 /// project is most likely to get wrong - that the game is *started* before a
 /// `GameView` is built from it.
 String _widgetTest(String projectName, String className, String package) =>

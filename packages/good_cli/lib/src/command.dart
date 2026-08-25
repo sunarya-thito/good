@@ -4,7 +4,7 @@ import 'package:meta/meta.dart';
 
 /// One command, declared the way everything in this engine is declared: a
 /// `describe*` pass that hands back typed handles the command keeps in
-/// `late final` fields, rather than a name to quote again later.
+/// `late final` fields, and never a name to quote again later.
 ///
 /// ```dart
 /// class BuildCommand extends Command {
@@ -80,7 +80,7 @@ abstract class Command {
   ///
   /// How a subcommand reaches a flag its parent declared: `--verbose` on
   /// `good compile` is one declaration, and `good compile windows` reads it
-  /// through here rather than redeclaring its own.
+  /// through here instead of redeclaring its own.
   T findAncestor<T extends Command>() {
     for (CommandBinding? at = _bound; at != null; at = at.parent) {
       final command = at.command;
@@ -111,7 +111,7 @@ abstract class Command {
 
 /// One run's parsed values, keyed by the declaration that produced them.
 ///
-/// Handed to [Arg]s rather than baked into them, so a declaration is a
+/// Handed to [Arg]s, not baked into them, so a declaration is a
 /// description of an argument and not a slot holding one run's answer.
 abstract class CommandSession {
   /// The values [arg] was given, already parsed. Empty when it was absent and
@@ -287,7 +287,7 @@ typedef ArgumentParser<T> = T Function(String value);
 /// A malformed command line, as opposed to a command that ran and failed.
 ///
 /// Carries the command it happened in, so [CommandRunner] can print that
-/// command's usage rather than the root's - `good compile windows --nope`
+/// command's usage and not the root's - `good compile windows --nope`
 /// should show the windows usage.
 /// A command that ran, understood its input, and could not finish.
 ///

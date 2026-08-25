@@ -146,13 +146,13 @@ abstract class BuildSubCommand extends Command with Verbose {
 
   /// Runs compaction and reports what it produced, or null if it failed.
   ///
-  /// The plan comes back rather than just a success flag because it is the only
+  /// The plan comes back, and not just a success flag, because it is the only
   /// record of *which* files in the output directory good generated - and
   /// therefore which ones a release build may delete once they are inside a
   /// chunk. See [_stripLoose].
   ///
-  /// An empty plan when the project has no source directory is deliberate and
-  /// not an error: a project that keeps its art already-canonical in the output
+  /// An empty plan when the project has no source directory is not an error:
+  /// a project that keeps its art already-canonical in the output
   /// directory is a legitimate setup, and it also means nothing there is
   /// regenerable, so nothing gets stripped.
   Future<CompactPlan?> _compact(Directory project, GoodConfig config) async {
@@ -373,7 +373,7 @@ abstract class BuildSubCommand extends Command with Verbose {
 
   /// Hands off to Flutter.
   ///
-  /// Inherited output rather than captured: `flutter build` prints progress
+  /// Output is inherited, not captured: `flutter build` prints progress
   /// over minutes, and swallowing it to re-print at the end would make the
   /// slowest step of the build look like a hang.
   bool _flutterBuild(Directory project) {

@@ -1,13 +1,12 @@
 import 'dart:io';
 
-/// Parsers turn one command-line token into a typed value, and are the only
-/// thing that knows what a bad value *means*.
+/// A file that must already exist.
 ///
-/// Which is why they throw [ArgumentError] with a written-out message rather
-/// than returning null: the runner catches it and shows the message as-is, so
-/// "File not found: ./nope" reaches the user instead of a generic "invalid
-/// value for --input-dir".
-
+/// Parsers turn one command-line token into a typed value, and are the only
+/// thing that knows what a bad value *means*, so they throw [ArgumentError]
+/// with a written-out message instead of returning null: the runner catches
+/// it and shows the message as-is, so "File not found: ./nope" reaches the
+/// user instead of a generic "invalid value for --input-dir".
 File parseFile(String path) {
   final file = File(path);
   if (!file.existsSync()) {
@@ -43,7 +42,7 @@ Directory parseOutputDirectory(String path) => Directory(path);
 ///
 /// Both constraints at once, because the name becomes both: lowercase with
 /// underscores, no leading digit. Checked here so `good create 2Fast` fails on
-/// the command line rather than three steps into scaffolding.
+/// the command line instead of three steps into scaffolding.
 String parsePackageName(String name) {
   if (!RegExp(r'^[a-z][a-z0-9_]*$').hasMatch(name)) {
     throw ArgumentError(

@@ -1,6 +1,6 @@
 /// How assets are prepared for a build.
 ///
-/// Shared by `good build` and `good assets pack` rather than owned by either:
+/// Shared by `good build` and `good assets pack`, and owned by neither:
 /// the build passes them through to the pack, and a value that lives in one
 /// command's file is one the other has to import across the tree.
 library;
@@ -19,6 +19,9 @@ enum AssetMode {
   release,
 }
 
+/// Whether a packed bundle's chunks are encrypted, and with what.
 enum AssetEncryption { none, aes }
 
+/// How hard the packer works to make a chunk smaller. `best` costs build time
+/// and nothing at run time.
 enum AssetCompressionLevel { none, fast, normal, best }

@@ -9,10 +9,10 @@ import 'package:good_cli/src/verbosable.dart';
 
 /// `good create <name>` - a Flutter app wired up to good.
 ///
-/// Two halves, deliberately separable: [scaffoldFiles] decides *what files a
-/// good project consists of* and is a pure function, and this command runs
-/// `flutter create` and writes them. The split is what lets the interesting
-/// half be tested without a Flutter SDK on the machine.
+/// Two separable halves: [scaffoldFiles] decides *what files a good project
+/// consists of* and is a pure function, and this command runs `flutter
+/// create` and writes them. The split is what lets the interesting half be
+/// tested without a Flutter SDK on the machine.
 class CreateCommand extends Command with Verbose {
   late final Arg<String> name;
   late final Arg<Directory> parentDir;
@@ -200,10 +200,10 @@ class CreateCommand extends Command with Verbose {
 
   /// Adds the good dependency and the asset entries to the project's pubspec.
   ///
-  /// Applied rather than only printed, because the alternative is what this
-  /// command used to do: scaffold a `main.dart` importing a package the
-  /// pubspec does not depend on, then print "flutter run" underneath it. A new
-  /// project's first experience should not be a compile error.
+  /// Applied, and not merely printed. Printing alone leaves a `main.dart`
+  /// importing a package the pubspec does not depend on, under a "flutter
+  /// run" the user is about to type. A new project's first experience should
+  /// not be a compile error.
   ///
   /// A pubspec whose shape the patcher does not recognise - anything but the
   /// one `flutter create` just wrote, which is the `--no-flutter-create` case -

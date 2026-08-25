@@ -24,10 +24,14 @@ class ShadowedField {
   /// The declaration whose member the name resolves to - the one later in the
   /// applied order.
   final String winner;
+
+  /// The file [winner] is declared in.
   final String winnerFile;
 
-  /// The declaration whose member is now unreachable under [field].
+  /// The declaration whose member is unreachable under [field].
   final String loser;
+
+  /// The file [loser] is declared in.
   final String loserFile;
 }
 
@@ -94,9 +98,9 @@ class StructScan {
 /// the result, so `data_layout.dart` tracks no names at all - two mixins each
 /// declaring `final x = Field.float64()` reach the engine as two anonymous
 /// registrations, which is exactly what two legitimately different columns look
-/// like. The name exists in the source and nowhere else, which is why this is a
-/// source scan and why it can say `Velocity.x shadows Transform2D.x` with both
-/// files when a throw could only ever have said that a row was bigger than
+/// like. The name exists in the source and nowhere else, so this is a source
+/// scan, and it can say `Velocity.x shadows Transform2D.x` with both files
+/// where a throw could only ever have said that a row was bigger than
 /// expected.
 ///
 /// # What it reads
@@ -191,7 +195,7 @@ StructScan scanStructRules(Directory projectDir) {
 /// which cannot be turned back into a file without resolving; `part` is a URI
 /// relative to the file holding it, every time. A `package:` or `dart:` URI is
 /// skipped - a part is a file beside its library, and matching one to a scan
-/// root would mean resolving package URIs this pass deliberately does not.
+/// root would mean resolving package URIs, which this pass does not do.
 ///
 /// What that leaves out is a part whose library is not itself scanned, which
 /// keeps the part's own path as its library. That needs a `part` pointing out
@@ -210,7 +214,7 @@ void _readParts(
   }
 }
 
-/// Points every declaration at the library it belongs to, rather than the file
+/// Points every declaration at the library it belongs to, and not at the file
 /// it is written in.
 ///
 /// The two differ exactly when `part` splits one library across several files,

@@ -19,7 +19,7 @@ class SceneUsage {
   /// `descriptor.has(...)` calls whose argument could not be read statically,
   /// as `where -> what it looked like`.
   ///
-  /// Reported rather than ignored, and the reason matters: an asset this pass
+  /// Reported and never ignored, and the reason matters: an asset this pass
   /// cannot attribute must land in the shared chunk, never be dropped. A
   /// grouping that silently loses an asset produces a build that fails to load
   /// it, which is far worse than one that reads an extra chunk.
@@ -106,7 +106,7 @@ SceneUsage scanScenes(Directory projectDir, AssetScan assets) {
 /// Walks a declarer and everything it registers, gathering asset paths.
 ///
 /// [seen] guards against a prefab that registers itself, directly or through a
-/// cycle - which would otherwise be an infinite descent rather than a build
+/// cycle, which would otherwise be an infinite descent instead of a build
 /// error.
 void _collect(
   _Declarer declarer,
@@ -132,7 +132,7 @@ class _Declarer {
 
   final String name;
 
-  /// Whether this is a scene rather than a prefab or a plain mixin.
+  /// Whether this is a scene, as opposed to a prefab or a plain mixin.
   ///
   /// Decided syntactically - `extends SceneStruct`, `on SceneStruct`, or a
   /// mixin the class applies - because a parsed unit has no element model. A
@@ -270,14 +270,14 @@ class _HasVisitor extends RecursiveAstVisitor<void> {
 /// needed for this spelling. A prefab with constructor arguments is wrapped
 /// in a closure, `() => Bullet(speed: 5)`, and that is unwrapped here too.
 ///
-/// `Player()` and `new Player()` are still read even though neither compiles
-/// against `SceneDescriptor.has` any more: this scanner runs over whatever
-/// source it is pointed at, and an unmigrated file should still contribute
-/// its prefab to the chunking rather than land in `unresolved`. `Player()`
+/// `Player()` and `new Player()` are read too, even though neither compiles
+/// against `SceneDescriptor.has`: this scanner runs over whatever source it
+/// is pointed at, and an unmigrated file should still contribute its prefab
+/// to the chunking instead of landing in `unresolved`. `Player()`
 /// arrives as a `MethodInvocation` because a parsed unit has no resolution to
 /// tell a constructor from a function, so the initial capital is what
 /// distinguishes them - Dart's own lints enforce that convention, and a false
-/// negative here costs one asset a place in the shared chunk rather than
+/// negative here costs one asset a place in the shared chunk, and never
 /// correctness.
 String? _constructedTypeName(Expression argument) {
   if (argument is PrefixedIdentifier && argument.identifier.name == 'new') {

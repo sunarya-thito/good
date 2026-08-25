@@ -47,10 +47,10 @@ abstract class VerboseOutput {
 
   /// [format] with each `%s` replaced by the next of [args], in order.
   ///
-  /// Deliberately the one substitution and nothing else: a build tool's
-  /// messages are assembled from paths and counts, and a fuller `printf` would
-  /// be a formatting language to specify, implement and test for no reader's
-  /// benefit. A leftover `%s` with no argument is left as written rather than
+  /// That one substitution is all there is: a build tool's messages are
+  /// assembled from paths and counts, and a fuller `printf` would be a
+  /// formatting language to specify, implement and test for no reader's
+  /// benefit. A leftover `%s` with no argument is left as written, never
   /// silently dropped, so the bug is visible in the output.
   void printf(String format, List<Object?> args);
 }
@@ -73,7 +73,7 @@ class _SinkOutput implements VerboseOutput {
 
 /// What [Verbose.debug] is without `--verbose`: every call is a no-op.
 ///
-/// A null object rather than an `if` at each call site, so a debug line costs
+/// A null object, not an `if` at each call site, so a debug line costs
 /// its argument evaluation and one virtual call, and reads the same whether it
 /// is switched on or not.
 class _SilentOutput implements VerboseOutput {

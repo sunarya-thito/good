@@ -62,14 +62,14 @@ class GoodConfig {
 
   /// Where packed chunks are written, under the project root.
   ///
-  /// Separate from [assetOutput] deliberately: chunks have to be bundled by
+  /// Kept apart from [assetOutput]: chunks have to be bundled by
   /// Flutter, so they must live somewhere `flutter: assets:` lists - but they
   /// are not *assets* in the sense the rest of the pipeline means. Written
   /// into the asset directory itself they get re-scanned on the next run, and
   /// a chunk containing a chunk is not a useful thing to build.
   ///
-  /// A subdirectory of [assetOutput] by default, which is fine and is why the
-  /// scan skips it by name rather than by extension. Flutter's directory
+  /// A subdirectory of [assetOutput] by default, which is fine because the
+  /// scan skips it by name and not by extension. Flutter's directory
   /// entries bundle files and not subdirectories, so the two never overlap.
   final String packOutput;
 
@@ -144,7 +144,7 @@ class GoodConfig {
 
   /// A directory setting, always ending in `/`.
   ///
-  /// Normalised here rather than at each use: `assets` and `assets/` mean the
+  /// Normalised here, not at each use: `assets` and `assets/` mean the
   /// same thing to a person writing the pubspec, and a missing slash otherwise
   /// turns into a path like `assetsfoo.png` three layers away.
   static String _dir(Object? map, String key, String fallback) {

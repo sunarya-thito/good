@@ -13,7 +13,7 @@ import 'dart:io';
 
 /// The 32 bytes of key material, assembled from the four parts.
 ///
-/// Parsed out of generated Dart rather than kept in a second file. That is a
+/// Parsed out of generated Dart, not kept in a second file. That is a
 /// regex over source, which is normally a bad idea - it is acceptable only
 /// because good wrote the file itself, in a format it controls, and because the
 /// alternative is a second copy of the keys on disk for the packer to read,
@@ -65,7 +65,7 @@ List<int> readKeyMaterial(File assetKeyFile) {
 /// Replaces the `assetMapping` literal, leaving everything else untouched.
 ///
 /// Returns false when the file has no mapping to replace, so the caller can
-/// say so rather than silently producing a pack nothing can find.
+/// say so instead of silently producing a pack nothing can find.
 bool writeAssetMapping(File assetKeyFile, Map<String, String> mapping) {
   if (!assetKeyFile.existsSync()) return false;
   final source = assetKeyFile.readAsStringSync();

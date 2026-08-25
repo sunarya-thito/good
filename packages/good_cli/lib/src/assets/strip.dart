@@ -10,18 +10,18 @@ import 'dart:io';
 /// legible, once inside an encrypted chunk. That is double the download, and it
 /// hands back in plaintext exactly what packing was for.
 ///
-/// # What comes out, and why it is that set
+/// # What comes out
 ///
 /// [packed] is the logical paths the pack step wrote into a chunk, so the bytes
 /// of every file removed here are in one. Nothing else in [assetDir] is
 /// touched: a file no chunk carries is still the only copy of itself, and
 /// emptying the directory would destroy it for nothing.
 ///
-/// This used to remove the *compaction outputs* instead, which is a different
-/// set in both directions. A file placed in [assetDir] by hand is packed and
-/// was never a compaction output, so it survived and shipped a second time in
+/// Keying on the *compaction outputs* instead would be wrong in both
+/// directions. A file placed in [assetDir] by hand is packed and was never a
+/// compaction output, so it would survive and ship a second time in
 /// plaintext. A compaction output the pubspec does not declare is not packed,
-/// and was deleted anyway.
+/// and would be deleted anyway.
 ///
 /// Compaction rebuilds anything it generated, so removing one of those costs a
 /// re-encode at worst. A hand-placed original has nowhere to come back from,

@@ -6,10 +6,10 @@ import 'package:good_cli/src/commands/build/windows.dart';
 
 /// `good build <platform>`.
 ///
-/// Renamed from `good compile`: what this does is produce a build, and every
-/// other tool a user is coming from spells that `build`.
+/// This is the command that was `good compile`; a script still typing
+/// `compile` gets no such command.
 ///
-/// One command per platform rather than one command with a `--platform`
+/// One command per platform, not one command with a `--platform`
 /// option, because they are genuinely different: each will grow its own
 /// signing, bundling and packaging options, and an option that applies to one
 /// target is one every other target's help has to explain away.

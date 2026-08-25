@@ -9,10 +9,10 @@ import 'package:good_cli/src/command.dart';
 /// `&&` or any other script can read: [UsageException] is 64, `ArgumentError`
 /// 65, [CommandFailure] 70.
 ///
-/// [args] is what `main` was handed. It is **not** optional in practice:
-/// `Platform.executableArguments` - which this used to fall back to - is the
-/// Dart VM's own arguments (`--enable-asserts` and friends), never the
-/// script's, so the fallback silently parsed the wrong list.
+/// [args] is what `main` was handed, and there is no falling back to
+/// `Platform.executableArguments`: those are the Dart VM's own arguments
+/// (`--enable-asserts` and friends), never the script's, so a fallback to
+/// them parses the wrong list without saying so.
 Future<int> runCommand(
   Command command,
   List<String> args, {
@@ -126,11 +126,11 @@ class CommandRunner {
   /// after. So options are read by the command that declared them, wherever on
   /// the line they were written.
   ///
-  /// **Spec-aware, deliberately.** `good compile --input-dir windows` must pass
+  /// **It reads the spec.** `good compile --input-dir windows` must pass
   /// `windows` to `--input-dir`, not descend into a `windows` subcommand.
   /// Deciding that needs to know whether the preceding option takes a value,
   /// which is exactly what the declaration pass already established - so
-  /// dispatch consults it rather than guessing from the token's shape.
+  /// dispatch consults it instead of guessing from the token's shape.
   _Node _dispatch(_Node node, List<String> args) {
     final own = <String>[];
     for (var i = 0; i < args.length; i++) {
@@ -511,8 +511,8 @@ class _Spec<T> {
 
   /// How a default reads in help.
   ///
-  /// An enum shows its name rather than `TargetPlatform.windows`, and a path
-  /// shows the path rather than `File: '.'` - `toString` on those types is
+  /// An enum shows its name, not `TargetPlatform.windows`, and a path shows
+  /// the path, not `File: '.'` - `toString` on those types is
   /// built for a debugger, and help is read by someone deciding what to type.
   static String _show(Object? value) => switch (value) {
     Enum() => value.name,

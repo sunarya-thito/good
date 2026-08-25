@@ -3,6 +3,7 @@
 /// good's runtime DataDescriptor layout algorithm to build time), and
 /// platform build/packaging orchestration.
 ///
-/// Placeholder - lands in Phase 4 of the project root plan. See `bin/good.dart`
-/// for the command-line entry point.
+/// Nothing is exported yet. Use the package through its command line:
+/// `dart pub global activate good_cli`, then `good --help`. The entry point
+/// is `bin/good.dart`.
 library;

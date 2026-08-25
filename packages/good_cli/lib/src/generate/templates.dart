@@ -56,9 +56,9 @@ String emitAudios(
 /// `Texture` is a `goo2d` type: it is what its loader produces, and it is a
 /// `ui.Image` behind a handle, which is only meaningful to something that can
 /// draw one. `goo3d` has no renderer until #43, so a 3D project has nothing
-/// for a texture key to be typed to. Naming the 2D type anyway is what this
-/// used to do, and it emitted four `Texture isn't a type` errors into the
-/// first `flutter analyze` a 3D project ever ran.
+/// for a texture key to be typed to. Naming the 2D type anyway puts four
+/// `Texture isn't a type` errors into the first `flutter analyze` a 3D
+/// project runs.
 ///
 /// `Object?` and not a refusal to generate: the keys still compile, `.values`
 /// still walks them for the readiness check, and nothing claims a payload type
@@ -203,16 +203,16 @@ Future<void> ensureGameReady() async {
 
 /// `good.generated/asset_key.dart` - the per-project encryption keys.
 ///
-/// Written **once** and never rewritten, which is why it is separate from the
-/// other two: the keys decrypt assets that were already packed with them, so
+/// Written **once** and never rewritten, so it is separate from the other
+/// two: the keys decrypt assets that were already packed with them, and
 /// regenerating on every run would orphan every shipped build. See
-/// `GenerateCommand` for the flag that rotates them deliberately.
+/// `GenerateCommand` for the flag that replaces them.
 ///
-/// Not `const`, on purpose. A `const` list is folded into the binary's
+/// Not `const`. A `const` list is folded into the binary's
 /// constant pool where `strings` finds it; a `final` one is assembled at run
 /// time. Neither stops someone with a debugger - the key has to exist in
 /// memory for the game to draw anything - and the README is honest that this
-/// deters casual extraction rather than defeating reverse engineering.
+/// deters casual extraction and does not defeat reverse engineering.
 String emitAssetKeys({required String command, required Random random}) {
   String line(String name) {
     final bytes = <String>[

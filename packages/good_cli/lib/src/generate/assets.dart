@@ -19,15 +19,14 @@ class DiscoveredAsset {
   /// The **bundle path**, exactly as the pubspec declares it and exactly what
   /// `BundleSource` hands to `rootBundle` - `assets/plane_player_blue.png`.
   ///
-  /// The full path including the extension, deliberately. The hand-written
-  /// generated file this replaces used a bare `plane_player_blue`, which
-  /// nothing could have loaded: in a loose development build `BundleSource`
-  /// goes straight to `rootBundle`, and the bundle knows the pubspec's path or
-  /// nothing at all. A packed build translates this same string through the
-  /// manifest, which is why it stays the *logical* path and never a chunk
-  /// offset.
+  /// The full path, extension included. A bare `plane_player_blue` loads
+  /// nothing: in a loose development build `BundleSource` goes straight to
+  /// `rootBundle`, and the bundle knows the pubspec's path or nothing at all.
+  /// A packed build translates this same string through the manifest, so it
+  /// stays the *logical* path and never a chunk offset.
   final String path;
 
+  /// Which pipeline this asset goes through - texture, audio, or raw bytes.
   final AssetKind kind;
 
   @override
@@ -391,7 +390,7 @@ String enginePackageOf(Directory projectDir) {
 ///
 /// Exposed on its own because two very different things need it: the scan
 /// above turns them into generated code, and `good assets compact` checks that
-/// the directories it just wrote into are actually among them.
+/// the directories it just wrote into are among them.
 List<String> declaredAssetEntries(Directory projectDir) {
   final pubspec = File('${projectDir.path}/pubspec.yaml');
   if (!pubspec.existsSync()) return const <String>[];
