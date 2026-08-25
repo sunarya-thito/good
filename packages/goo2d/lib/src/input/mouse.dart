@@ -224,55 +224,113 @@ class MousePickingSystem extends GameSystem with FixedTickable {
   }
 
   /// The topmost entity whose shapes cover ([x], [y]) in world space.
+  ///
+  /// # Two things keep this off the profile
+  ///
+  /// **Grouped.** A component instance belongs to an archetype, so
+  /// `entity.get<WorldTransform2D>()` returned the same object for every row -
+  /// a registry lookup per candidate for an answer that changes once per
+  /// archetype. `groups()` is the shape `docs/guide/performance.md` names as
+  /// the fix for the single most common cost in this engine, and this loop
+  /// was the example of the mistake.
+  ///
+  /// **A bound before the exact test.** Every candidate in the scene used to
+  /// have its transform inverted - a `cos`, a `sin` and two divides - and
+  /// then every one of its bodies hit-tested exactly, before anything asked
+  /// whether the cursor was anywhere near it. [ColliderBody.boundCovers]
+  /// answers that from one squared distance, and it is a circle about the
+  /// entity's origin because that is the bound that does not need the angle.
+  /// So the trig and the exact tests are now paid once per entity the cursor
+  /// is actually close to, and not at all for the rest.
   Entity? _pick(double x, double y) {
     Entity? best;
     var bestZ = 0;
-    for (final entity in _receivers.run()) {
-      // Only what the view under the pointer draws is clickable, and
-      // `projection.shows` is the same call `GameRenderer2D` skips entities
-      // with - off a projection resolved for the same view, so the two cannot
-      // disagree about which scene that is. They did once, and a click landed
-      // on an entity that was never drawn.
-      if (!projection.shows(entity)) continue;
-      final world = entity.get<WorldTransform2D>();
-      final scaleX = world.worldScaleX[entity];
-      final scaleY = world.worldScaleY[entity];
-      // A collapsed entity has no area to hit, and dividing by its scale
-      // below would hand every shape test an infinity.
-      if (scaleX == 0 || scaleY == 0) continue;
+    // Grouped, so `WorldTransform2D`, `Collider2D`, its body list and
+    // `Renderable2D` are resolved once per archetype instead of once per row.
+    // Group order is archetype registration order, the same order `run()`
+    // walked and the same order `GameRenderer2D` draws in - which is what the
+    // equal-z tie-break below leans on.
+    for (final group in _receivers.groups()) {
+      final world = group.get<WorldTransform2D>();
+      final bodies = group.get<Collider2D>().bodies;
+      // Not in the query - an invisible click zone is a receiver with no
+      // sprites at all - so `tryGet`, once, and `_depthOf` is told the answer
+      // rather than asking per hit.
+      final renderable = group.tryGet<Renderable2D>();
+      for (final entity in group) {
+        // Only what the view under the pointer draws is clickable, and
+        // `projection.shows` is the same call `GameRenderer2D` skips entities
+        // with - off a projection resolved for the same view, so the two
+        // cannot disagree about which scene that is. They did once, and a
+        // click landed on an entity that was never drawn.
+        if (!projection.shows(entity)) continue;
+        final scaleX = world.worldScaleX[entity];
+        final scaleY = world.worldScaleY[entity];
+        // A collapsed entity has no area to hit, and dividing by its scale
+        // below would hand every shape test an infinity.
+        if (scaleX == 0 || scaleY == 0) continue;
 
-      // World -> local: undo the translation, then the rotation, then the
-      // scale. Once per entity, however many bodies it declared - see
-      // `ColliderBody.containsLocalPoint`.
-      final dx = x - world.worldX[entity];
-      final dy = y - world.worldY[entity];
-      final rotation = world.worldRotation[entity];
-      final cos = math.cos(rotation);
-      final sin = math.sin(rotation);
-      final localX = (dx * cos + dy * sin) / scaleX;
-      final localY = (dy * cos - dx * sin) / scaleY;
+        final dx = x - world.worldX[entity];
+        final dy = y - world.worldY[entity];
+        // How far the cursor is from the entity's origin, squared, in the
+        // entity's **local** space - or rather, a number that cannot exceed
+        // it. A local point `p` lands at `rotate(scale(p))` in world space;
+        // rotation does not change a length and scaling stretches one by at
+        // most the larger of the two factors, so dividing the squared world
+        // distance by the larger factor squared can only come out short.
+        // Short is the safe direction: `boundCovers` fed too small a distance
+        // keeps a body it could have dropped. Taking the larger of the two
+        // factors is what makes this hold on a squashed entity as well as a
+        // stretched one, and the signs drop out because it is squared.
+        final larger = scaleX * scaleX > scaleY * scaleY
+            ? scaleX * scaleX
+            : scaleY * scaleY;
+        final localDistanceSquared = (dx * dx + dy * dy) / larger;
 
-      final bodies = entity.get<Collider2D>().bodies;
-      var hit = false;
-      // Indexed, not `for (final body in bodies)`: an iterator per entity per
-      // tick is a heap object (the no-allocation and no-closure rules).
-      for (var i = 0; i < bodies.length; i++) {
-        final body = bodies[i];
-        if (!body.enable[entity]) continue;
-        if (body.containsLocalPoint(entity, localX, localY)) {
-          hit = true;
-          break;
+        // Deferred until a body survives its bound, which is the whole point:
+        // the cursor is near nothing almost every tick, and an entity it is
+        // near nothing of never reads its rotation at all.
+        var inverted = false;
+        var localX = 0.0;
+        var localY = 0.0;
+
+        var hit = false;
+        // Indexed, not `for (final body in bodies)`: an iterator per entity
+        // per tick is a heap object (the no-allocation and no-closure rules).
+        for (var i = 0; i < bodies.length; i++) {
+          final body = bodies[i];
+          // The bound before `enable`, which is the other way round from how
+          // it reads. `enable` only ever removes a body, so testing it second
+          // gives the same answer - and it is a column read, which the bound
+          // spares almost every body in the scene.
+          if (!body.boundCovers(entity, localDistanceSquared)) continue;
+          if (!body.enable[entity]) continue;
+          if (!inverted) {
+            // World -> local: undo the translation, then the rotation, then
+            // the scale. Once per entity, however many bodies it declared -
+            // see `ColliderBody.containsLocalPoint`.
+            final rotation = world.worldRotation[entity];
+            final cos = math.cos(rotation);
+            final sin = math.sin(rotation);
+            localX = (dx * cos + dy * sin) / scaleX;
+            localY = (dy * cos - dx * sin) / scaleY;
+            inverted = true;
+          }
+          if (body.containsLocalPoint(entity, localX, localY)) {
+            hit = true;
+            break;
+          }
         }
-      }
-      if (!hit) continue;
+        if (!hit) continue;
 
-      final z = _depthOf(entity);
-      // `>=`, so a later entity wins an equal-z tie. That is not arbitrary:
-      // the renderer's sort is stable over query order, so of two things at
-      // the same depth the later one is drawn second, i.e. on top.
-      if (best == null || z >= bestZ) {
-        best = entity;
-        bestZ = z;
+        final z = _depthOf(renderable, entity);
+        // `>=`, so a later entity wins an equal-z tie. That is not arbitrary:
+        // the renderer's sort is stable over query order, so of two things at
+        // the same depth the later one is drawn second, i.e. on top.
+        if (best == null || z >= bestZ) {
+          best = entity;
+          bestZ = z;
+        }
       }
     }
     return best;
@@ -284,8 +342,10 @@ class MousePickingSystem extends GameSystem with FixedTickable {
   /// The largest rather than the first, because an entity with a body sprite
   /// at 0 and a hat at 10 is, as far as anything looking at the screen is
   /// concerned, at 10.
-  int _depthOf(Entity entity) {
-    final renderable = entity.tryGet<Renderable2D>();
+  ///
+  /// [renderable] is this entity's archetype's, resolved by the caller once
+  /// per group, and `null` for a receiver that declares no sprites.
+  int _depthOf(Renderable2D? renderable, Entity entity) {
     if (renderable == null) return 0;
     final sprites = renderable.sprites;
     var z = 0;

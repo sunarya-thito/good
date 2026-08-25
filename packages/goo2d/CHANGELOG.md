@@ -57,6 +57,30 @@
 
 ### Added
 
+* **`ColliderBody.boundCovers`** answers whether a local point that far from
+  the entity's origin could be inside a body at all - the cheap, conservative
+  half of `containsLocalPoint`, and the reason `MousePickingSystem` no longer
+  inverts the transform of every receiver in the scene. The distance is
+  squared and measured from local `(0, 0)` rather than from the body's own
+  `offsetX`/`offsetY`, because the origin is the point rotation turns about,
+  so one radius holds at every angle and the test never reads the angle. It
+  may be passed a distance smaller than the real one, which is what lets a
+  caller holding a world-space point divide by the entity's largest scale
+  factor instead of rotating: too small can only answer `true` too often, and
+  the exact test decides after it. `ColliderBody.originDistance` is the
+  shared first term.
+
+  **Nothing about what gets picked changes.** The bound is only ever wider
+  than the shape, `containsLocalPoint` still decides every hit, and a `NaN`
+  in any field keeps the body rather than dropping it. What changes is the
+  cost: picking 20,000 receivers went from 123 to 58 ns per receiver per
+  fixed tick, which puts it back under the fill pass's 88.8. Most of that is
+  not this bound - about 49 ns of it is the walk moving to `groups()`, so a
+  component resolves once per archetype instead of once per row, and the
+  bound is the remaining 16. Both figures are JIT: #154 rules out an AOT
+  build of anything holding a `Query`, so they are ratios between legs in one
+  VM rather than device numbers (#184).
+
 * **`CameraProjection.showsCircle`**, and the `viewLeft`/`viewTop`/
   `viewRight`/`viewBottom` rectangle it tests against - the viewport-culling
   test, kept beside the projection that defines the view so the renderer and

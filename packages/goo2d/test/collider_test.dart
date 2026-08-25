@@ -591,4 +591,175 @@ void main() {
       );
     });
   });
+
+  group('boundCovers', () {
+    // Only one thing about a bound can hurt anybody, and it is not
+    // tightness. A bound that drops a point `containsLocalPoint` would have
+    // accepted stops picking something the player clicked on, and that reads
+    // as "the click did nothing" rather than as a failure - #23 recorded a
+    // bound shrunk to a quarter failing ten correctness cases while a
+    // count-only assertion still passed.
+    //
+    // So these sweep points and check the implication *inside ==> covered*,
+    // rather than asking the implementation what radius it chose and
+    // agreeing with it. The last case is what keeps the sweep honest: a
+    // `boundCovers` that returned `true` unconditionally would satisfy every
+    // implication above and fail that one.
+    void expectCoversEverythingItContains(
+      ColliderBody body,
+      Entity entity, {
+      double extent = 200,
+    }) {
+      final step = extent / 60;
+      var checked = 0;
+      for (var x = -extent; x <= extent; x += step) {
+        for (var y = -extent; y <= extent; y += step) {
+          if (!body.containsLocalPoint(entity, x, y)) continue;
+          checked++;
+          expect(
+            body.boundCovers(entity, x * x + y * y),
+            isTrue,
+            reason:
+                '($x, $y) is inside the shape and outside its own bound, '
+                'so a caller rejecting on the bound would never hit-test it',
+          );
+        }
+      }
+      expect(
+        checked,
+        greaterThan(0),
+        reason:
+            'the sweep found no point inside the shape at all, so it '
+            'proved nothing - a bench, and a test, must be able to fail',
+      );
+    }
+
+    test('a circle, centred and offset', () {
+      final scene = _scene();
+      scene.pool.beginTick();
+      final player = scene.addEntity(scene.player);
+      scene.pool.commitTick();
+
+      expectCoversEverythingItContains(scene.player.hurtbox, player);
+
+      scene.pool.beginTick();
+      scene.player.hurtbox
+        ..offsetX[player] = 90
+        ..offsetY[player] = -40;
+      scene.pool.commitTick();
+      expectCoversEverythingItContains(scene.player.hurtbox, player);
+    });
+
+    test('a box, including its corners and an offset', () {
+      final scene = _scene();
+      scene.pool.beginTick();
+      final player = scene.addEntity(scene.player);
+      scene.pool.commitTick();
+
+      expectCoversEverythingItContains(scene.player.box, player);
+
+      scene.pool.beginTick();
+      scene.player.box
+        ..offsetX[player] = -70
+        ..offsetY[player] = 110;
+      scene.pool.commitTick();
+      expectCoversEverythingItContains(scene.player.box, player);
+    });
+
+    test('a capsule, tall and squashed', () {
+      final scene = _scene();
+      scene.pool.beginTick();
+      final entity = scene.addEntity(scene.capsule);
+      scene.pool.commitTick();
+
+      // The tall one reaches `halfHeight` and the squashed one is a circle
+      // of `radius` - two different expressions for where the caps sit, and
+      // the bound has to follow the same one the shape test does.
+      expectCoversEverythingItContains(scene.capsule.pill, entity);
+      expectCoversEverythingItContains(scene.capsule.squashed, entity);
+
+      scene.pool.beginTick();
+      scene.capsule.pill.offsetY[entity] = 120;
+      scene.pool.commitTick();
+      expectCoversEverythingItContains(scene.capsule.pill, entity);
+    });
+
+    test('a polygon, convex and concave', () {
+      final scene = _scene();
+      scene.pool.beginTick();
+      final triangle = scene.addEntity(scene.polygon);
+      final arrow = scene.addEntity(scene.concave);
+      scene.pool.commitTick();
+
+      expectCoversEverythingItContains(scene.polygon.triangle, triangle);
+      expectCoversEverythingItContains(scene.concave.arrow, arrow);
+    });
+
+    test('a body grown past its declared default is still covered', () {
+      final scene = _scene();
+      scene.pool.beginTick();
+      final player = scene.addEntity(scene.player);
+      scene.pool.commitTick();
+
+      // The declared radius is 20. Nothing anywhere caches that, and this is
+      // why: a bare column write is all it takes to make a bound taken from
+      // the declaration wrong, with no error and no dropped frame - only a
+      // click that stops working.
+      scene.pool.beginTick();
+      scene.player.hurtbox.radius[player] = 150;
+      scene.pool.commitTick();
+      expectCoversEverythingItContains(scene.player.hurtbox, player);
+    });
+
+    test('an empty polygon covers nothing', () {
+      final scene = _scene();
+      scene.pool.beginTick();
+      final triangle = scene.addEntity(scene.polygon);
+      scene.pool.commitTick();
+
+      scene.pool.beginTick();
+      scene.polygon.triangle.pointCount[triangle] = 0;
+      scene.pool.commitTick();
+
+      expect(scene.polygon.triangle.boundCovers(triangle, 0), isFalse);
+    });
+
+    test('the bound is a bound, not a yes', () {
+      final scene = _scene();
+      scene.pool.beginTick();
+      final player = scene.addEntity(scene.player);
+      final entity = scene.addEntity(scene.capsule);
+      final triangle = scene.addEntity(scene.polygon);
+      scene.pool.commitTick();
+
+      // Far outside every one of these, so anything that answered `true`
+      // unconditionally - which would pass every implication above - fails
+      // here.
+      const farAway = 1e6;
+      expect(scene.player.hurtbox.boundCovers(player, farAway), isFalse);
+      expect(scene.player.box.boundCovers(player, farAway), isFalse);
+      expect(scene.capsule.pill.boundCovers(entity, farAway), isFalse);
+      expect(scene.polygon.triangle.boundCovers(triangle, farAway), isFalse);
+    });
+
+    test('a NaN field keeps the body rather than dropping it', () {
+      final scene = _scene();
+      scene.pool.beginTick();
+      final player = scene.addEntity(scene.player);
+      scene.pool.commitTick();
+
+      scene.pool.beginTick();
+      scene.player.hurtbox.radius[player] = double.nan;
+      scene.pool.commitTick();
+
+      expect(
+        scene.player.hurtbox.boundCovers(player, 1e12),
+        isTrue,
+        reason:
+            'a transform or a body that has gone wrong should be visibly '
+            'wrong, not invisible - the same direction CameraProjection.'
+            'showsCircle rounds a NaN',
+      );
+    });
+  });
 }

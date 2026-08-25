@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:good/good.dart';
 import 'package:meta/meta.dart';
 
@@ -104,6 +106,74 @@ sealed class ColliderBody {
   /// every declared shape would not).
   bool containsLocalPoint(Entity entity, double x, double y);
 
+  /// Whether a local point that far from the entity's origin could be inside
+  /// this body at all - the cheap, conservative half of
+  /// [containsLocalPoint].
+  ///
+  /// [distanceSquared] is a **squared** distance from local `(0, 0)`, and it
+  /// may be a lower bound rather than the exact one: a caller holding the
+  /// cursor in world space can divide its squared world distance by the
+  /// square of the entity's largest scale factor and pass that, which is
+  /// what `MousePickingSystem._pick` does. Rotation does not change a length
+  /// and scaling stretches one by at most the larger factor, so that number
+  /// never exceeds the real local distance - and a bound test fed something
+  /// too small can only answer `true` too often.
+  ///
+  /// The point of it is what the caller does *not* have to do first: the
+  /// exact test needs the cursor in local space, and getting it there costs a
+  /// `cos` and a `sin`. This needs a subtraction, so a scene of receivers the
+  /// cursor is nowhere near pays no trig at all.
+  ///
+  /// # Why a distance from the origin, and not from the body
+  ///
+  /// The origin is the point the entity's rotation turns about, so every
+  /// point of the body stays the same distance from it however the entity is
+  /// turned. A radius measured from there is therefore right at every angle
+  /// and needs no angle to compute - the same reason `GameRenderer2D` culls
+  /// sprites on a circle about the pivot rather than on a rectangle. A bound
+  /// measured from the body's own [offsetX]/[offsetY] would be tighter and
+  /// wrong: a body hung well off the origin swings a long way as the entity
+  /// rotates, and a bound blind to that clips it.
+  ///
+  /// # It over-covers, deliberately
+  ///
+  /// A circle around a box reaches past its corners, and `|offset| + reach`
+  /// measures to the far side of the body rather than to the far side of the
+  /// *union* - both round outwards. Answering `true` too often costs the
+  /// caller the exact test it was going to do anyway. Answering `false` too
+  /// often would stop picking something the player clicked on, which reads as
+  /// "the click did nothing" rather than as a failure. So everything here
+  /// rounds towards `true`, `NaN` included: each shape rejects on `>` and
+  /// negates, so a `NaN` field - which loses every comparison - comes out as
+  /// keep.
+  ///
+  /// A degenerate or negatively-sized body answers rather than throwing: the
+  /// shape tests square their extents, so a negative radius already behaves
+  /// as its magnitude, and a bound tighter than what [containsLocalPoint]
+  /// accepts is the one thing this must never be.
+  ///
+  /// Returns a `bool` rather than the radius itself, and that is a cost
+  /// decision as much as an API one. This is called per body per candidate
+  /// per tick through a virtual dispatch, and a `double` coming back out of
+  /// one of those is a boxed `double` - an allocation on the tick path (the
+  /// no-allocation rule), which measured as more than the trig the whole
+  /// thing exists to skip.
+  bool boundCovers(Entity entity, double distanceSquared);
+
+  /// How far an ([x], [y]) offset puts a body from the entity's origin - the
+  /// first term of every [boundCovers].
+  ///
+  /// `static`, taking two doubles, rather than an instance method reading
+  /// [offsetX]/[offsetY] itself. That is measurable: as an instance method it
+  /// did not inline into the four overrides even under this pragma, and
+  /// walking 20,000 receivers cost 5 ns each for the call. The zero case is
+  /// carved out because it is the common one - a body declared with no offset
+  /// at all - and a `sqrt` per body per tick is worth not taking when the
+  /// answer is already known.
+  @pragma('vm:prefer-inline')
+  static double originDistance(double x, double y) =>
+      x == 0 && y == 0 ? 0.0 : math.sqrt(x * x + y * y);
+
   // getContacts/getContactColliders (Unity's Collider2D surface) are
   // deliberately not declared here yet: they need a real broad/narrow-phase
   // structure to answer "what is this touching right now", which is Phase 2
@@ -136,6 +206,16 @@ final class CircleBody extends ColliderBody {
     // Squared, so no sqrt on what is a per-body, per-tick test.
     return dx * dx + dy * dy <= r * r;
   }
+
+  /// The offset out, then the circle itself. `abs`, because the test above
+  /// squares [radius] and so already treats a negative one as its magnitude.
+  @override
+  bool boundCovers(Entity entity, double distanceSquared) {
+    final r = radius[entity];
+    final away = ColliderBody.originDistance(offsetX[entity], offsetY[entity]);
+    final reach = away + (r < 0 ? -r : r);
+    return !(distanceSquared > reach * reach);
+  }
 }
 
 final class BoxBody extends ColliderBody {
@@ -162,6 +242,21 @@ final class BoxBody extends ColliderBody {
     if (dx < -halfWidth[entity] || dx > halfWidth[entity]) return false;
     final dy = y - offsetY[entity];
     return dy >= -halfHeight[entity] && dy <= halfHeight[entity];
+  }
+
+  /// The offset out, then the half-diagonal - the corner is the furthest
+  /// point of a rectangle from its own centre, whichever way it is turned.
+  ///
+  /// No `abs` on the halves: they are squared before the root, and a
+  /// negative half makes [containsLocalPoint] reject everything, so a bound
+  /// taken from the magnitude only over-covers.
+  @override
+  bool boundCovers(Entity entity, double distanceSquared) {
+    final hw = halfWidth[entity];
+    final hh = halfHeight[entity];
+    final away = ColliderBody.originDistance(offsetX[entity], offsetY[entity]);
+    final reach = away + math.sqrt(hw * hw + hh * hh);
+    return !(distanceSquared > reach * reach);
   }
 }
 
@@ -214,6 +309,25 @@ final class CapsuleBody extends ColliderBody {
       dy = 0;
     }
     return dx * dx + dy * dy <= r * r;
+  }
+
+  /// The offset out, then the far cap: the straight section's half-length
+  /// plus one radius, which is the furthest a capsule reaches from its own
+  /// centre.
+  ///
+  /// `halfHeight - radius` is spelled the same way [containsLocalPoint]
+  /// spells it, on purpose - the two have to agree about where the caps sit,
+  /// and a sign nobody expected (a negative [radius] pushes the caps *apart*)
+  /// then moves both together instead of only the exact one. No `sqrt`: the
+  /// capsule's axis is the y axis, so the furthest point is on it.
+  @override
+  bool boundCovers(Entity entity, double distanceSquared) {
+    final r = radius[entity];
+    final half = halfHeight[entity] - r;
+    final segment = half > 0 ? half : 0.0;
+    final away = ColliderBody.originDistance(offsetX[entity], offsetY[entity]);
+    final reach = away + segment + (r < 0 ? -r : r);
+    return !(distanceSquared > reach * reach);
   }
 }
 
@@ -288,6 +402,37 @@ final class PolygonBody extends ColliderBody {
       jy = iy;
     }
     return inside;
+  }
+
+  /// The offset out, then the vertex furthest from the outline's own centre.
+  ///
+  /// One `sqrt` for the whole outline rather than one per vertex, by keeping
+  /// the running maximum squared - the vertex furthest in square is the
+  /// vertex furthest.
+  ///
+  /// An outline of fewer than three points encloses no area, so nothing is
+  /// near enough to be covered by it. This is the one shape whose bound costs
+  /// the same order as its exact test, since both walk every vertex; what it
+  /// saves is still the `cos`/`sin` the caller would otherwise have taken
+  /// first.
+  @override
+  bool boundCovers(Entity entity, double distanceSquared) {
+    final count = pointCount[entity];
+    if (count < 3) return false;
+    var furthest = 0.0;
+    for (var i = 0; i < count; i++) {
+      final px = pointsX.get(entity, i);
+      final py = pointsY.get(entity, i);
+      final squared = px * px + py * py;
+      // Negated, not `squared > furthest`: the two differ only for `NaN`,
+      // where every comparison is false and only this form lets it through
+      // to poison the bound. A vertex that has gone wrong must keep the body
+      // rather than quietly shrink the circle around it.
+      if (!(squared <= furthest)) furthest = squared;
+    }
+    final away = ColliderBody.originDistance(offsetX[entity], offsetY[entity]);
+    final reach = away + math.sqrt(furthest);
+    return !(distanceSquared > reach * reach);
   }
 }
 

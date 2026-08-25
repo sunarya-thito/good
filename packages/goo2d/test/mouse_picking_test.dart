@@ -122,6 +122,41 @@ class _Naked extends EntityStruct
   void onMouseEnter(MouseEvent event) => events.add('naked enter');
 }
 
+/// A small box held 100 units out from the entity's own origin. The shape
+/// most of the coarse reject's failure modes show up on: the cursor is
+/// nowhere near the origin when it is on the box, and rotating the entity
+/// swings the box a long way without changing its distance from the origin.
+class _Satellite extends EntityStruct
+    with Transform2D, WorldTransform2D, Collider2D, MouseReceiver {
+  late final BoxBody hitArea;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    hitArea = descriptor.hasBoxCollider(
+      halfWidth: 10,
+      halfHeight: 10,
+      offsetX: 100,
+    );
+  }
+}
+
+/// Two circles, far apart, on one entity - so a bound taken from the first
+/// body it happens to walk, or from one bound shared by the whole entity,
+/// answers differently from a bound per body.
+class _Compound extends EntityStruct
+    with Transform2D, WorldTransform2D, Collider2D, MouseReceiver {
+  late final CircleBody near;
+  late final CircleBody far;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    near = descriptor.hasCircleCollider(radius: 5);
+    far = descriptor.hasCircleCollider(radius: 5, offsetY: 150);
+  }
+}
+
 class _Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
 
 class _Scene extends SceneStruct {
@@ -143,6 +178,8 @@ class _Scene extends SceneStruct {
   late final _Zone zone;
   late final _Naked naked;
   late final _Eye eye;
+  late final _Satellite satellite;
+  late final _Compound compound;
 
   @override
   void describeScene(SceneDescriptor descriptor) {
@@ -152,6 +189,10 @@ class _Scene extends SceneStruct {
     zone = descriptor.has(_Zone.new);
     naked = descriptor.has(_Naked.new);
     eye = descriptor.has(_Eye.new);
+    // Declared last, so the archetype registration order the z tie-break
+    // cases above lean on is the order they were written for.
+    satellite = descriptor.has(_Satellite.new);
+    compound = descriptor.has(_Compound.new);
   }
 }
 
@@ -427,6 +468,197 @@ void main() {
         reason:
             'disabling what the cursor was over is a real exit - the '
             'entity stopped being under the cursor, however it happened',
+      );
+    });
+  });
+
+  // Picking rejects a candidate on a cheap bound before it inverts the
+  // entity's transform, and the way that goes wrong is silent. A bound too
+  // tight does not throw and does not look like anything: the entity is
+  // simply never hit-tested, and the click reads as landing on nothing. So
+  // every case here puts the cursor somewhere a hit is *expected* and
+  // demands it, and pairs it with the nearby miss that a bound stretched to
+  // infinity would get wrong.
+  group('the reject before the hit test', () {
+    test('just inside the shape hits, just outside misses', () async {
+      final game = await _boot();
+      final scene = run.state.singleScene<_Scene>();
+      final button = scene.addEntity(scene.button);
+      _settle(game);
+
+      _moveTo(game, 19.9, 0);
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        button,
+        reason:
+            'a hair inside a radius-20 circle. Shrink the bound the '
+            'reject uses and this is what stops working - with no error, '
+            'no dropped frame and nothing on screen to see',
+      );
+      _moveTo(game, 20.1, 0);
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        isNull,
+        reason:
+            'and a hair outside it, so a bound widened to infinity does '
+            'not pass this group by accident',
+      );
+    });
+
+    test('a collider held out from the origin is picked where it is', () async {
+      final game = await _boot();
+      final scene = run.state.singleScene<_Scene>();
+      final satellite = scene.addEntity(scene.satellite);
+      _settle(game);
+
+      _moveTo(game, 100, 0);
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        satellite,
+        reason:
+            'the body is a 20x20 box 100 units out. A bound measured '
+            'from the body rather than from the entity origin would be '
+            'right here and wrong the moment the entity turns',
+      );
+      _moveTo(game, 0, 0);
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        isNull,
+        reason: 'the origin itself is empty - the collider moved off it',
+      );
+      _moveTo(game, 111, 0);
+      expect(run.state.getSystem<MousePickingSystem>().hovered, isNull);
+    });
+
+    test('rotation swings that collider, and the bound follows', () async {
+      final game = await _boot();
+      final scene = run.state.singleScene<_Scene>();
+      final satellite = scene.addEntity(scene.satellite);
+      scene.pool.beginTick();
+      scene.satellite.transformRotation[satellite] = math.pi / 2;
+      scene.pool.commitTick();
+      _settle(game);
+
+      // Screen y runs down and world y runs up, so world (0, 100) is
+      // -100 here - the same inversion `CameraProjection.viewToWorldY` has.
+      _moveTo(game, 0, -100);
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        satellite,
+        reason:
+            'a quarter turn puts the box at world (0, 100). The bound is a '
+            'circle about the origin precisely so that it does not have '
+            'to know that - rotation does not change a distance from the '
+            'point it turns about, so the same radius holds at every '
+            'angle and the reject never reads the angle at all',
+      );
+      _moveTo(game, 100, 0);
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        isNull,
+        reason: 'and the box is no longer where it was',
+      );
+    });
+
+    test('scale stretches how far the collider reaches', () async {
+      final game = await _boot();
+      final scene = run.state.singleScene<_Scene>();
+      final satellite = scene.addEntity(scene.satellite);
+      scene.pool.beginTick();
+      scene.satellite.transformScaleX[satellite] = 2;
+      scene.pool.commitTick();
+      _settle(game);
+
+      _moveTo(game, 200, 0);
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        satellite,
+        reason:
+            'the offset scales with everything else, so the box is now '
+            '200 out - twice as far as the unscaled bound allows for',
+      );
+      _moveTo(game, 219, 0);
+      expect(run.state.getSystem<MousePickingSystem>().hovered, satellite);
+      _moveTo(game, 221, 0);
+      expect(run.state.getSystem<MousePickingSystem>().hovered, isNull);
+    });
+
+    test('a non-uniform scale is bounded by its larger axis', () async {
+      final game = await _boot();
+      final scene = run.state.singleScene<_Scene>();
+      final button = scene.addEntity(scene.button);
+      scene.pool.beginTick();
+      scene.button.transformScaleY[button] = 4;
+      scene.pool.commitTick();
+      _settle(game);
+
+      _moveTo(game, 0, 79);
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        button,
+        reason:
+            'a radius-20 circle stretched 4x vertically reaches 80 up. '
+            'The bound divides the world distance by the *larger* scale '
+            'factor - taking the smaller one would put this at 79 local '
+            'units against a radius of 20 and drop it',
+      );
+      _moveTo(game, 0, 81);
+      expect(run.state.getSystem<MousePickingSystem>().hovered, isNull);
+      _moveTo(game, 21, 0);
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        isNull,
+        reason:
+            'the bound over-covers on the short axis, and the exact '
+            'test is what decides - the reject is allowed to be generous, '
+            'never mean',
+      );
+    });
+
+    test('each body on a compound collider gets its own bound', () async {
+      final game = await _boot();
+      final scene = run.state.singleScene<_Scene>();
+      final compound = scene.addEntity(scene.compound);
+      _settle(game);
+
+      _moveTo(game, 0, 0);
+      expect(run.state.getSystem<MousePickingSystem>().hovered, compound);
+      // World (0, 150): screen y runs the other way.
+      _moveTo(game, 0, -150);
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        compound,
+        reason:
+            'the second body is 150 units up and radius 5. A bound '
+            'taken from the first body it walks, or one bound shared by '
+            'the whole entity and stopped at the first that fails, would '
+            'never reach it',
+      );
+      _moveTo(game, 0, -75);
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        isNull,
+        reason: 'and the gap between the two is still a gap',
+      );
+    });
+
+    test('a body grown after it was declared is still picked', () async {
+      final game = await _boot();
+      final scene = run.state.singleScene<_Scene>();
+      final button = scene.addEntity(scene.button);
+      scene.pool.beginTick();
+      scene.button.hitArea.radius[button] = 300;
+      scene.pool.commitTick();
+      _settle(game);
+
+      _moveTo(game, 290, 0);
+      expect(
+        run.state.getSystem<MousePickingSystem>().hovered,
+        button,
+        reason:
+            'the bound is read from the row every tick, not cached from '
+            'the declaration. A per-archetype maximum would have been '
+            'cheaper and would be wrong here, silently',
       );
     });
   });
