@@ -88,10 +88,19 @@ Sprite has({
 | `zIndex` | Draw order. Higher draws later, on top |
 | `visible` | Per-entity on/off, tested before a draw record is ever built |
 | `pivot` | Where the sprite's origin sits within itself |
-| `alignment` | Offset relative to the entity's transform |
+| `alignment` | Stored on the row and read by nothing — see the warning below |
 | `frame` | The sub-rectangle of the texture to draw — atlases and sprite sheets |
 | `nineSliceBorder` | Stretchable borders for panels and bars |
 | `filter` | Sampling: `mipmap`, and the crisp option for pixel art |
+
+!!! warning "`alignment` does not move a sprite"
+    It is declared, defaulted, stored and writable through `setAlignment`, and
+    the renderer never reads it: two sprites differing only in `alignment` emit
+    byte-identical geometry. An alignment is resolved against the size of the
+    thing a sprite is anchored to, and a sprite has no such thing yet — so
+    what the fraction would be a fraction of is still undecided. Use `pivot`
+    for anything within the sprite's own bounds, and a `Transform2D` offset for
+    anything else.
 
 The values you pass to `has` are **defaults for every new row**, not fixed
 values:

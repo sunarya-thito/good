@@ -495,9 +495,11 @@ class Sprite {
   ///
   /// Distinct from the pivot, and the two compose: the pivot picks a point on
   /// the sprite, the alignment picks the point in the container that point is
-  /// placed at. Declared and stored but **not yet applied** by
-  /// [GameRenderer2D] - see that class's "Alignment" section for exactly what
-  /// is missing and what would consume it.
+  /// placed at. **Which container** - the parent or the viewport - was never
+  /// settled, so these are declared and stored and [GameRenderer2D] applies
+  /// none of them: two sprites differing only here emit identical geometry.
+  /// See that class's "Alignment" section, and #171, which decides between
+  /// applying them and deleting them.
   final DataPointer<double> alignFractionX;
   final DataPointer<double> alignFractionY;
   final DataPointer<double> alignOffsetX;
@@ -1261,12 +1263,24 @@ final class _SpriteDrawQueue {
 /// system does **not** apply them. Stating that plainly rather than leaving it
 /// to be discovered: an alignment is resolved against the size of the thing
 /// the sprite is anchored to - its parent's bounds, or the viewport's - and
-/// neither number exists here. The viewport size is a main-isolate quantity
-/// (`GameView` learns it from a `CustomPaint`'s `Size`, on the other side of
-/// the ring), and a parent's bounds are its own sprites' extents, which no
-/// system currently resolves and publishes. Whichever of those two lands
-/// first is what will consume these fields; until then they round-trip
-/// through storage and change nothing about the geometry.
+/// *which of those two* was never settled, so there is no arithmetic here to
+/// write yet (#171).
+///
+/// A parent's bounds are its own sprites' extents, and no system resolves or
+/// publishes them; nothing in `goo2d` has a bounds concept at all. The
+/// viewport, on the other hand, **is** reachable now and this doc used to
+/// claim otherwise: `CameraView.viewportWidth`/`viewportHeight` are two floats
+/// of shared memory the widget writes and this isolate reads, and the pass
+/// below already reads them every tick through
+/// `CameraProjection.halfViewWidth`. So the blocker is the missing decision,
+/// not a missing number.
+///
+/// Anchoring to the view is designed in #132, and it anchors through a
+/// `ScreenTransform2D` component and its own anchor enum rather than through
+/// these fields - a screen-space sprite must ignore zoom, which a world-space
+/// sprite carrying a viewport-fraction term cannot do. Until #171 picks
+/// between applying them and deleting them, they round-trip through storage
+/// and change nothing about the geometry.
 ///
 /// # Textures
 ///
