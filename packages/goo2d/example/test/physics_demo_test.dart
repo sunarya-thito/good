@@ -376,4 +376,81 @@ void main() {
     }
     expect(state.spawnedCount, 0);
   });
+
+  test('the physics figure is the step, not the gap after it', () async {
+    // #187. `_PhysicsPhaseStart` stamps the clock, `_PhysicsPhaseEnd` reads
+    // it, and the difference is what the overlay shows as `physics` and what
+    // `bench_physics.dart` puts in its `physics` column. That difference is
+    // the physics step only if the start probe really does sort ahead of
+    // `Box2DPhysicsSystem` - and for a long time it did not.
+    // `Box2DPhysicsSystem.compareTo` answers -1 for everything that is not
+    // itself, `sortSystems` asks the earlier-declared system of a pair first
+    // and takes the first non-zero answer, and physics was declared first.
+    // The probe's own "before physics" was never read, the stamp landed
+    // *after* the step, and the number on screen was the gap between two
+    // adjacent no-op systems.
+    //
+    // **This asserts the number, not the sorted list.** Asserting the order
+    // restates the fix and passes just as happily against a probe pair that
+    // brackets nothing - which is exactly what the broken version did. The
+    // claim made here is that the figure is a real share of the fixed step
+    // it sits inside, expressed as a ratio rather than a microsecond
+    // threshold so it means the same thing on a fast machine and a slow one.
+    // Correct, that ratio is around 0.6; with the declaration order put back
+    // it is around 0.01.
+    final demo = PhysicsDemo();
+    final run = await Game.startInline(demo.create());
+    addTearDown(() async {
+      if (run.isRunning) await run.stop();
+    });
+
+    final state = run.state as PhysicsState;
+
+    void advance(int steps) {
+      for (var i = 0; i < steps; i++) {
+        run.state.advance(const Duration(microseconds: 16667));
+      }
+    }
+
+    const target = 200;
+    state.targetPopulation = target;
+    advance(400);
+    // The measurement is only worth reading if there was something to
+    // measure. An empty world would report a small physics cost honestly,
+    // and this test would then be passing or failing on nothing.
+    expect(
+      state.spawnedCount,
+      target,
+      reason: 'nothing was simulating, so the timing below means nothing',
+    );
+
+    // Per-frame ratios rather than a ratio of aggregates, so the numerator
+    // and the denominator always come from the same step. The median rejects
+    // the frames where the machine preempted the isolate - wall clock only
+    // ever runs long, never short.
+    final ratios = <double>[];
+    for (var i = 0; i < 60; i++) {
+      run.state.advance(const Duration(microseconds: 16667));
+      // `_FixedPhaseStart` and `_FixedPhaseEnd` bracket the whole fixed
+      // dispatch, so this span is every system the step ran, physics
+      // included.
+      final step = state.profile.stepEndedAt - state.profile.stepStartedAt;
+      if (step <= 0) continue;
+      ratios.add(state.physicsMicros / step);
+    }
+    expect(ratios.length, greaterThan(30), reason: 'too few steps sampled');
+    ratios.sort();
+    final median = ratios[ratios.length ~/ 2];
+
+    expect(
+      median,
+      greaterThan(0.25),
+      reason:
+          'physics should be most of a fixed step that is simulating $target '
+          'bodies. A figure near zero means the probe pair is bracketing '
+          'something other than the physics system - check that '
+          '_PhysicsPhaseStart is still declared ahead of Box2DPhysicsSystem, '
+          'because its "before physics" constraint is discarded if it is not',
+    );
+  });
 }
