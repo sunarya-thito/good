@@ -7,9 +7,9 @@ import 'package:goo2d/src/data/camera.dart';
 import 'package:goo2d/src/data/world_transform.dart';
 import 'package:goo2d/src/data/transform.dart';
 import 'package:goo2d/src/render/draw/draw_2d.dart';
-// Mutual with this file, and deliberately so: `Renderer2D` and
-// `GameRenderer2D` are the two isolate-halves of one feature. The Game mixin
-// declares and drains the frame buffers; this system fills them.
+// Mutual with this file: `Renderer2D` and `GameRenderer2D` are the two
+// isolate-halves of one feature. The Game mixin declares and drains the frame
+// buffers; this system fills them.
 import 'package:goo2d/src/render/game_2d.dart';
 import 'package:goo2d/src/render/texture.dart';
 import 'package:meta/meta.dart';
@@ -17,15 +17,14 @@ import 'package:meta/meta.dart';
 /// A position expressed as a fraction of some size *plus* an absolute offset,
 /// evaluated as `fraction * size + offset`.
 ///
-/// Both halves at once, deliberately. "Half way across, and then 200 units
-/// further" is a single sentence in every UI system worth copying (CSS
-/// `calc(50% + 200px)`, Unity's `RectTransform` anchor + `anchoredPosition`,
-/// Flutter's `FractionalOffset` alongside `Offset`), and a type that offered
-/// only one of the two would force every caller that needs both to bake the
-/// size into a constant at declare time - which is exactly the number that is
-/// not known at declare time. So [fractionX]/[fractionY] scale with the size
-/// this is resolved against and [offsetX]/[offsetY] do not, and the resolved
-/// answer is the sum.
+/// Both halves at once. "Half way across, and then 200 units further" is a
+/// single sentence in every UI system worth copying (CSS `calc(50% + 200px)`,
+/// Unity's `RectTransform` anchor + `anchoredPosition`, Flutter's
+/// `FractionalOffset` alongside `Offset`), and a type offering only one of
+/// the two would force every caller that needs both to bake the size into a
+/// constant at declare time - which is exactly the number that is not known
+/// then. So [fractionX]/[fractionY] scale with the size this is resolved
+/// against and [offsetX]/[offsetY] do not, and the resolved answer is the sum.
 ///
 /// # This is a parameter type, never a storage type
 ///
@@ -37,7 +36,8 @@ import 'package:meta/meta.dart';
 /// underneath is always four separate `DataPointer<double>` fields, and a
 /// *read* returns those four fields individually. There is no
 /// `getPivot(entity)` returning one of these, and there should not be:
-/// building one per read is a heap allocation on the hot path, which the no-allocation rule forbids outright.
+/// building one per read is a heap allocation on the hot path, which the
+/// no-allocation rule forbids outright.
 class RelativeOffset2D {
   const RelativeOffset2D({
     this.fractionX = 0,
@@ -46,12 +46,16 @@ class RelativeOffset2D {
     this.offsetY = 0,
   });
 
-  /// Multiplied by the size this is resolved against.
+  /// Multiplied by the width this is resolved against.
   final double fractionX;
+
+  /// Multiplied by the height this is resolved against.
   final double fractionY;
 
   /// Added afterwards, in world units, independent of that size.
   final double offsetX;
+
+  /// Added afterwards, in world units, independent of that size.
   final double offsetY;
 
   /// The middle of whatever this is resolved against - a sprite's own bounds,
@@ -87,9 +91,8 @@ class RelativeOffset2D {
 ///
 /// A component row holds the 64-bit integer [pack] produces, four `u16`s of
 /// it, and a `SpriteFrame` object exists only at the authoring boundary. The
-/// renderer reads the raw integer through [PackedPointer.packedAt] and does the
-/// shifts itself, so drawing 20,000 framed sprites allocates nothing - see
-/// `data.dart`'s note on why `DataPointer<Matrix4>` was removed.
+/// renderer reads the raw integer through [PackedPointer.packedAt] and does
+/// the shifts itself, so drawing 20,000 framed sprites allocates nothing.
 ///
 /// `u16` quantisation is 1/65535 of the texture: 1/16th of a pixel on a 4096px
 /// sheet, and finer on anything smaller. Every atlas packer already pads
@@ -136,12 +139,16 @@ class SpriteFrame implements IntRepresentable {
        width = width / sheetWidth,
        height = height / sheetHeight;
 
-  /// Top-left corner of the region, as a fraction of the texture.
+  /// Left edge of the region, as a fraction of the texture's width.
   final double u;
+
+  /// Top edge of the region, as a fraction of the texture's height.
   final double v;
 
-  /// Extent of the region, as a fraction of the texture.
+  /// Width of the region, as a fraction of the texture's width.
   final double width;
+
+  /// Height of the region, as a fraction of the texture's height.
   final double height;
 
   /// The whole texture - the default, and what an untextured sprite carries
@@ -149,7 +156,7 @@ class SpriteFrame implements IntRepresentable {
   static const SpriteFrame full = SpriteFrame(u: 0, v: 0, width: 1, height: 1);
 
   /// True when this frame is the whole texture, i.e. there is nothing to
-  /// offset. Named rather than four inline comparisons, matching
+  /// offset. Named, and not four inline comparisons, matching
   /// [NineSliceBorder.isEmpty].
   bool get isFull => u == 0 && v == 0 && width == 1 && height == 1;
 
@@ -179,7 +186,7 @@ class SpriteFrame implements IntRepresentable {
   /// Four `u16` lanes, holding the frame's **edges** - `u0, v0, u1, v1` - not
   /// its origin and extent.
   ///
-  /// Edges rather than `(u, v, width, height)` because quantising the two
+  /// Edges, and not `(u, v, width, height)`, because quantising the two
   /// independently lets their sum drift past the region: at `u = 0.5` and
   /// `width = 0.5` both round *up*, and `u + width` comes back as
   /// `1.0000152...` - a right edge outside the texture. Storing the edge
@@ -188,7 +195,7 @@ class SpriteFrame implements IntRepresentable {
   ///
   /// The top lane occupies bits 48..63, so this returns a **negative** `int`
   /// whenever `v1 > 0.5` - Dart's `int` is signed. Harmless as long as nothing
-  /// sign-extends on the way back, which is why [unpackLane] shifts with `>>>`.
+  /// sign-extends on the way back, so [unpackLane] shifts with `>>>`.
   /// `Entity.pack` carries the same hazard for the same reason; see
   /// `data.dart`'s note on 64-bit fields.
   @override
@@ -233,16 +240,15 @@ class SpriteFrame implements IntRepresentable {
 /// and why a frame can be computed at run time - a scrolling UV, an animation
 /// stepping `index`, anything - with no declaration at all.
 ///
-/// The alternative shape, for the record: a table of declared regions with the
-/// integer as an index into it. That buys exact float precision and a 2-byte
-/// field instead of 8, at the cost of a declare step and losing
-/// runtime-computed frames. Because the encoding sits entirely behind this
-/// class, swapping to it later touches this file and `bitWidth` - not `Sprite`,
+/// The encoding sits entirely behind this class. Swapping it for a table of
+/// declared regions indexed by the integer - which buys exact float precision
+/// and a 2-byte field instead of 8, at the cost of a declare step and of
+/// runtime-computed frames - touches this file and `bitWidth`, not `Sprite`,
 /// not the renderer, not any authoring code.
 final class SpriteFrames implements IntRepresentation<SpriteFrame> {
   const SpriteFrames();
 
-  /// Four `u16` lanes. See [SpriteFrame.pack] for why 64 rather than 32: at
+  /// Four `u16` lanes. See [SpriteFrame.pack] for why 64 and not 32: at
   /// `u8` per lane the quantisation step is 16px on a 4096px sheet, which is
   /// useless for a packed atlas.
   @override
@@ -262,12 +268,12 @@ final class SpriteFrames implements IntRepresentation<SpriteFrame> {
 /// middle region starts.
 ///
 /// All-zero (the default, [none]) means there is nothing to slice and the
-/// sprite is a single quad - which is why [isEmpty] exists as a named
-/// question rather than as four inline comparisons at each call site.
+/// sprite is a single quad - so [isEmpty] exists as a named question instead
+/// of four inline comparisons at each call site.
+///
 /// # The source cut is relative; the destination inset is not
 ///
-/// A nine-slice is two separate statements about the same four edges, and they
-/// were one set of numbers here for a long time:
+/// A nine-slice is two separate statements about the same four edges:
 ///
 ///  * **where to cut the source** - a position *inside* the image, so it is
 ///    naturally a fraction of it. [left] and friends.
@@ -277,14 +283,13 @@ final class SpriteFrames implements IntRepresentation<SpriteFrame> {
 ///    corner scales with it, which is a plain stretch and not a nine-slice at
 ///    all. [insetLeft] and friends, in the sprite's own units.
 ///
-/// The old single set did double duty and silently assumed one sprite unit
-/// equalled one source pixel. That assumption is now [pixels]'s
-/// `unitsPerPixel`, stated rather than implied, and defaulting to the `1` the
-/// old code hardcoded.
+/// One set of numbers doing both jobs has to assume that one sprite unit is
+/// one source pixel. [pixels]'s `unitsPerPixel` states that instead of
+/// implying it, and defaults to the `1` that assumption amounts to.
 ///
 /// Making the cut relative is what frees nine-slicing from needing the image's
-/// pixel size: the game isolate, which never decodes, can now slice with
-/// nothing loaded and no `TextureInfo` at all. Fractions are of the sprite's
+/// pixel size: the game isolate, which never decodes, can slice with nothing
+/// loaded and no `TextureInfo` at all. Fractions are of the sprite's
 /// [SpriteFrame] when it has one, so a panel packed into an atlas slices inside
 /// its own region - see `GameRenderer2D`'s nine-slice pass.
 @immutable
@@ -311,8 +316,8 @@ class NineSliceBorder {
   /// unitsPerPixel`. Nothing at draw time needs the source size, which is the
   /// whole point.
   ///
-  /// [unitsPerPixel] converts source pixels to the sprite's own units. `1`
-  /// reproduces exactly what the previous single-number form did implicitly.
+  /// [unitsPerPixel] converts source pixels to the sprite's own units, and
+  /// defaults to `1`.
   const NineSliceBorder.pixels({
     double left = 0,
     double top = 0,
@@ -345,17 +350,30 @@ class NineSliceBorder {
        insetRight = inset * unitsPerPixel,
        insetBottom = inset * unitsPerPixel;
 
-  /// Where to cut the source, as a fraction `0..1` of the sprite's frame.
+  /// Where to cut the source on the left, as a fraction `0..1` of the
+  /// sprite's frame.
   final double left;
+
+  /// Where to cut the source at the top. See [left].
   final double top;
+
+  /// Where to cut the source on the right. See [left].
   final double right;
+
+  /// Where to cut the source at the bottom. See [left].
   final double bottom;
 
-  /// How wide the corner is drawn, in the sprite's own units. Fixed under
-  /// resize - that is what a nine-slice *is*.
+  /// How wide the left corner is drawn, in the sprite's own units. Fixed
+  /// under resize - that is what a nine-slice *is*.
   final double insetLeft;
+
+  /// How tall the top corner is drawn. See [insetLeft].
   final double insetTop;
+
+  /// How wide the right corner is drawn. See [insetLeft].
   final double insetRight;
+
+  /// How tall the bottom corner is drawn. See [insetLeft].
   final double insetBottom;
 
   /// No slicing - a plain single quad.
@@ -365,8 +383,8 @@ class NineSliceBorder {
   ///
   /// Tests the **destination** insets, because those are what decide whether
   /// there are nine rectangles to draw: a source cut with no corner to put it
-  /// in produces nothing. The renderer branches on the *stored* fields rather
-  /// than on an instance of this class; see [Sprite.insetLeft].
+  /// in produces nothing. The renderer branches on the *stored* fields, not
+  /// on an instance of this class; see [Sprite.insetLeft].
   bool get isEmpty =>
       insetLeft == 0 && insetTop == 0 && insetRight == 0 && insetBottom == 0;
 }
@@ -378,7 +396,7 @@ class NineSliceBorder {
 /// `has()` calls, two independent sets of row fields, and two draw records.
 /// That is the whole reason [Renderable2D] is a `MultiComponent` and these
 /// fields do not live on the mixin itself - Dart cannot mix a mixin in twice,
-/// so a second sprite has to come from a second `has()` rather than from a
+/// so a second sprite has to come from a second `has()` and not from a
 /// second `with Renderable2D` (see `MultiComponent`'s own doc in `good`, and
 /// `Collider2D`/`ColliderBody`, which are the same shape for the same
 /// reason).
@@ -424,10 +442,10 @@ class Sprite {
   /// The image this sprite samples, or `null` for "no texture - draw the flat
   /// [color]".
   ///
-  /// Nullable rather than "a 1x1 white texture everyone falls back to",
-  /// because the untextured case is not a degenerate texture: it is the whole
-  /// of what the pipeline draws today, and a null here is one branch rather
-  /// than an asset every game is forced to declare.
+  /// Nullable, and not "a 1x1 white texture everyone falls back to": the
+  /// untextured case is not a degenerate texture, it is the whole of what the
+  /// pipeline draws today, and a null here is one branch instead of an asset
+  /// every game is forced to declare.
   ///
   /// Stored as the asset's address (`optPacked`), which is the same
   /// integer on both isolates - see `Texture`'s own doc on why the game
@@ -436,12 +454,11 @@ class Sprite {
 
   /// How this sprite samples [texture] - a [TextureFilter] index.
   ///
-  /// Per sprite, not per texture, and not per game. It used to be declared on
-  /// the texture key, which made sampling part of an asset's *identity*: a
-  /// build step that repacked an image would have been rewriting it, and one
-  /// image could not be drawn crisply in one place and smoothly in another.
-  /// This is strictly wider - a game can still give every sprite sharing an
-  /// image the same filter.
+  /// Per sprite, not per texture, and not per game. On the texture key,
+  /// sampling would be part of an asset's *identity*: a build step that
+  /// repacked an image would be rewriting it, and one image could not be drawn
+  /// crisply in one place and smoothly in another. Per sprite is strictly
+  /// wider - you can still give every sprite sharing an image the same filter.
   ///
   /// Two bits, because there are three [TextureFilter] values and a row pays
   /// for every one of them per entity.
@@ -455,16 +472,18 @@ class Sprite {
   final PackedPointer<SpriteFrame> frame;
 
   /// Packed ARGB, the same encoding `Color.value` and `Vertices.raw`'s colour
-  /// list use. A plain `uint32` rather than a `Color` object for the obvious
-  /// reason - a component row never holds a Dart heap reference.
+  /// list use. A plain `uint32`, never a `Color` object - a component row
+  /// holds no Dart heap reference.
   ///
   /// With a [texture] set this is the tint; with none it is the fill.
   final DataPointer<int> color;
 
-  /// Extent in world units, before the transform's scale. Zero on either axis
+  /// Width in world units, before the transform's scale. Zero on either axis
   /// (the declared default) means "nothing to draw" and is skipped, so a
   /// declared-but-unsized sprite costs one branch per tick.
   final DataPointer<double> width;
+
+  /// Height in world units, before the transform's scale. See [width].
   final DataPointer<double> height;
 
   /// Painter's-algorithm depth. Lower draws first (further back), higher
@@ -486,8 +505,15 @@ class Sprite {
   /// origin on the top-left corner, so the sprite extends right and down from
   /// the entity's position.
   final DataPointer<double> pivotFractionX;
+
+  /// The pivot's y fraction. See [pivotFractionX].
   final DataPointer<double> pivotFractionY;
+
+  /// The pivot's absolute x offset, added after the fraction. See
+  /// [pivotFractionX].
   final DataPointer<double> pivotOffsetX;
+
+  /// The pivot's absolute y offset. See [pivotFractionX].
   final DataPointer<double> pivotOffsetY;
 
   /// Where this sprite is anchored *relative to its parent or the viewport*,
@@ -501,8 +527,14 @@ class Sprite {
   /// See that class's "Alignment" section, and #171, which decides between
   /// applying them and deleting them.
   final DataPointer<double> alignFractionX;
+
+  /// The alignment's y fraction. See [alignFractionX].
   final DataPointer<double> alignFractionY;
+
+  /// The alignment's absolute x offset. See [alignFractionX].
   final DataPointer<double> alignOffsetX;
+
+  /// The alignment's absolute y offset. See [alignFractionX].
   final DataPointer<double> alignOffsetY;
 
   /// Where the nine-slice cuts the **source**, as a fraction `0..1` of this
@@ -513,20 +545,32 @@ class Sprite {
   /// every sprite row. See [NineSliceBorder] for why the cut is relative and
   /// the inset below is not.
   final DataPointer<double> borderLeft;
+
+  /// Where the nine-slice cuts the source at the top. See [borderLeft].
   final DataPointer<double> borderTop;
+
+  /// Where the nine-slice cuts the source on the right. See [borderLeft].
   final DataPointer<double> borderRight;
+
+  /// Where the nine-slice cuts the source at the bottom. See [borderLeft].
   final DataPointer<double> borderBottom;
 
   /// How wide the nine-slice corners are drawn, in this sprite's own units.
   /// All zero by default, which means "plain single quad".
   ///
-  /// Absolute rather than relative on purpose: a fraction of the sprite would
-  /// scale the corners with it, which is a stretch and not a nine-slice.
+  /// Absolute, never relative: a fraction of the sprite would scale the
+  /// corners with it, which is a stretch and not a nine-slice.
   /// [GameRenderer2D] branches on these to decide whether there are nine
   /// rectangles to draw at all.
   final DataPointer<double> insetLeft;
+
+  /// How tall the top nine-slice corner is drawn. See [insetLeft].
   final DataPointer<double> insetTop;
+
+  /// How wide the right nine-slice corner is drawn. See [insetLeft].
   final DataPointer<double> insetRight;
+
+  /// How tall the bottom nine-slice corner is drawn. See [insetLeft].
   final DataPointer<double> insetBottom;
 
   /// Writes all four pivot fields at once. The declared default (from
@@ -590,7 +634,7 @@ class SpriteDescriptor {
   final DataDescriptor _data;
 
   /// The table [Sprite.texture] resolves through. Threaded in from
-  /// `Renderable2D.describeStruct` rather than assumed, because an object
+  /// `Renderable2D.describeStruct` and not assumed, because an object
   /// field's address only means anything against the table that issued it -
   /// there is no shared registry to fall back on.
   final IntRepresentation<TextureAsset> _assets;
@@ -689,20 +733,20 @@ class _TransformSource {
 ///
 /// An entity mixing this in **must** also mix in `Transform2D` - there is no
 /// meaningful place to draw something that has no position, and requiring it
-/// in the query (rather than defaulting to the origin) turns "I forgot the
-/// transform" into an entity that visibly never appears rather than a pile of
+/// in the query, instead of defaulting to the origin, turns "I forgot the
+/// transform" into an entity that visibly never appears and not a pile of
 /// quads stacked at 0,0.
 ///
 /// `WorldTransform2D` is **optional**, and that is the point of it being a
 /// separate mixin. A renderable that has it is drawn from its composed world
 /// transform; one that does not is drawn from its local `Transform2D`
 /// directly, which for an entity that is never parented is the same answer -
-/// exactly as `WorldTransform2D`'s own doc promises. Requiring it here used to
-/// make that promise false: every drawable had to carry the mixin, so
-/// `WorldTransformSystem` copied local to world for every sprite in the game
-/// every fixed step, and this pass then read the copy. At 20k flat sprites
-/// that copy was a third of the fixed step, spent to arrive back at the
-/// numbers it started from.
+/// exactly as `WorldTransform2D`'s own doc promises. Requiring it here would
+/// make that promise false: every drawable would have to carry the mixin, so
+/// `WorldTransformSystem` would copy local to world for every sprite in the
+/// game every fixed step, and this pass would read the copy. At 20k flat
+/// sprites that copy is a third of the fixed step, spent to arrive back at
+/// the numbers it started from.
 ///
 /// A `MultiComponent`, because one entity commonly draws as several
 /// rectangles (a body and a hat, a panel and its icon) that move together but
@@ -720,9 +764,6 @@ mixin Renderable2D on MultiComponent {
   /// names, exactly as `Collider2D.bodies` is for colliders.
   final List<Sprite> sprites = [];
 
-  /// A handle to this component's type, so a prefab can enable/disable the
-  /// whole of its rendering without touching individual sprites.
-
   /// Implemented by the concrete prefab - declares this entity type's sprites
   /// via the [SpriteDescriptor] passed in.
   @mustCallSuper
@@ -730,11 +771,10 @@ mixin Renderable2D on MultiComponent {
 
   // Registering the type here is not optional bookkeeping - it is what sets
   // this component's bit in the archetype signature, and therefore the only
-  // reason `withAll(Renderable2D)` matches anything at all. Omitting it (as
-  // this mixin originally did, and as `Child`/`Parent` in good once did) leaves
+  // reason `withAll(Renderable2D)` matches anything at all. Omitting it leaves
   // a query silently matching *every* archetype instead of failing loudly.
-  // `test/render_2d_test.dart` checks the signature bit directly rather than
-  // trusting inspection.
+  // `test/render_2d_test.dart` checks the signature bit directly, and does not
+  // trust inspection.
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
@@ -759,22 +799,22 @@ mixin Renderable2D on MultiComponent {
 ///
 /// Lives across ticks and is only ever refilled - the arrays grow to the
 /// high-water mark of the scene and stay there, so a steady-state tick
-/// allocates nothing here at all. The growth policy is [VertexBatch2D]'s,
-/// deliberately: capacity doubles until it fits and the filled prefix is
-/// copied across, which is the same amortised-growth arrangement that already
-/// keeps the vertex buffers allocation-free (the no-allocation rule).
+/// allocates nothing here at all. The growth policy is [VertexBatch2D]'s:
+/// capacity doubles until it fits and the filled prefix is copied across,
+/// which is the same amortised-growth arrangement that already keeps the
+/// vertex buffers allocation-free (the no-allocation rule).
 ///
 /// The parallel-arrays-plus-an-index-permutation shape is what lets the sort
-/// move a single `int` per swap rather than an entity, a sprite reference and
+/// move a single `int` per swap instead of an entity, a sprite reference and
 /// a key. It is also why there is no `_Candidate` class: one object per drawn
 /// sprite per tick is precisely the allocation this exists to avoid.
 ///
 /// # Why the finished geometry lives here
 ///
 /// [_corners] and [_colorAddress] hold each plain sprite's
-/// *already-transformed* quad, computed by the fill pass rather than by the
-/// write pass. That split is the whole point of this class now, and it was
-/// measured into existence.
+/// *already-transformed* quad, computed by the fill pass and not by the write
+/// pass. That split is the whole point of this class, and the numbers below
+/// are why.
 ///
 /// The fill pass visits rows in page order; the write pass visits the same rows
 /// in z-sorted order, which for any scene that layers by distance is close to a
@@ -786,13 +826,13 @@ mixin Renderable2D on MultiComponent {
 /// ms, i.e. nothing: the arithmetic was executing inside the memory stalls for
 /// free.
 ///
-/// So the rows are now read once, sequentially, by the pass that was already
-/// walking them, and what the permutation shuffles is 40 dense bytes per sprite
-/// instead of a 250-byte row scattered across pages - ~800 KB at 20,000
-/// sprites rather than ~5 MB, which is the difference between fitting in that
-/// cache and not.
+/// So the rows are read once, sequentially, by the pass that is already
+/// walking them, and what the permutation shuffles is 40 dense bytes per
+/// sprite instead of a 250-byte row scattered across pages - ~800 KB at
+/// 20,000 sprites against ~5 MB, which is the difference between fitting in
+/// that cache and not.
 ///
-/// Note this deliberately *moves* cost rather than removing it: the fill pass
+/// Note this *moves* cost instead of removing it: the fill pass
 /// gets slower and the write pass much faster. `present` is the number that
 /// went down; `walk` on its own will read higher than before.
 final class _SpriteDrawQueue {
@@ -821,7 +861,7 @@ final class _SpriteDrawQueue {
   List<Sprite?> _sprites;
 
   /// Where the queued entity's transform is read from, carried from the fill
-  /// pass rather than re-derived in the write pass.
+  /// pass and never re-derived in the write pass.
   ///
   /// It is a per-*archetype* answer, so the fill pass knows it once per group;
   /// the write pass walks in z order across every archetype at once and would
@@ -834,13 +874,13 @@ final class _SpriteDrawQueue {
   /// How many draw records this pair will write: 1 for a plain sprite, 9 for a
   /// nine-sliced one.
   ///
-  /// Decided during the fill pass and *stored* rather than re-derived in the
+  /// Decided during the fill pass and *stored*, not re-derived in the
   /// write pass, because the fill pass is what spends the record budget
   /// against it. Two passes each deciding "is this sliced?" from the same rows
   /// would agree today - presentation runs after the tick commits, so nothing
   /// mutates underneath them - but the byte scratch is sized from the budget
   /// the first pass computed, so any future disagreement would be a buffer
-  /// overrun rather than a wrong picture. One `int` per queued sprite removes
+  /// overrun and not a wrong picture. One `int` per queued sprite removes
   /// the question.
   Int32List _records;
 
@@ -848,7 +888,7 @@ final class _SpriteDrawQueue {
   /// is the identity permutation, i.e. encounter order.
   Int32List _order;
 
-  /// The sort's second buffer. Swapped with [_order] rather than copied back -
+  /// The sort's second buffer. Swapped with [_order] instead of copied back -
   /// both are owned scratch of identical length, so the swap is two field
   /// writes. Used by both sorts.
   Int32List _merge;
@@ -857,12 +897,12 @@ final class _SpriteDrawQueue {
   /// order - see the class doc for why the geometry is computed by the fill
   /// pass and parked here.
   ///
-  /// `Float32List`, not `Float64List`, and that is exact rather than lossy:
-  /// the wire format's corners are `float32`, so the old code computed in
-  /// double and narrowed once at `setFloat32`. Narrowing here instead puts the
-  /// single rounding step in a different place and produces the identical bits,
-  /// because reading a `float32` back out widens exactly. It also halves what
-  /// the permutation has to drag through the cache, which is the entire point.
+  /// `Float32List`, not `Float64List`, and that is exact, not lossy: the wire
+  /// format's corners are `float32`, so the value is narrowed once whatever
+  /// happens. Narrowing here puts that single rounding step in a different
+  /// place and produces the identical bits, because reading a `float32` back
+  /// out widens exactly. It also halves what the permutation has to drag
+  /// through the cache, which is the entire point.
   ///
   /// **Only written for sprites that draw as one quad.** A nine-sliced sprite
   /// has nine records with their own per-cell UVs and cannot be reduced to four
@@ -874,7 +914,7 @@ final class _SpriteDrawQueue {
   /// which sprites these are filled for.
   Int32List _colorAddress;
 
-  /// Packed [SpriteFrame] per queued sprite. Its own `Int64List` rather than
+  /// Packed [SpriteFrame] per queued sprite. Its own `Int64List`, and not
   /// two lanes of [_colorAddress], because a frame is 64 bits and splitting it
   /// across two `int32` slots would cost a shift-and-or per sprite in both the
   /// fill and the write pass to no purpose.
@@ -891,8 +931,8 @@ final class _SpriteDrawQueue {
   /// counting sort is affordable.
   ///
   /// Only meaningful while `_count > 0`; [add] seeds both from the first key
-  /// rather than starting from the int extremes, so a scene whose z values are
-  /// all equal reports a range of 1 rather than the whole int64 line.
+  /// and not from the int extremes, so a scene whose z values are all equal
+  /// reports a range of 1, not the whole int64 line.
   int _zMin = 0;
   int _zMax = 0;
 
@@ -919,7 +959,7 @@ final class _SpriteDrawQueue {
   /// costing [records] draw records, and returns its **slot** - the index the
   /// parallel arrays store it at, which is also its encounter position.
   ///
-  /// The slot is what [setQuad] takes. It is deliberately not the draw
+  /// The slot is what [setQuad] takes. It is not the draw
   /// position: nothing knows that until [sortByZ] has run, and the fill pass
   /// has to be able to write a sprite's geometry the moment it computes it.
   int add(
@@ -930,8 +970,8 @@ final class _SpriteDrawQueue {
     int records,
   ) {
     _ensure(_count + 1);
-    // Seeded from the first key rather than from the int extremes, so an empty
-    // range is 1 and not the whole number line - see [_zMin].
+    // Seeded from the first key, not the int extremes, so an empty range is
+    // 1 and not the whole number line - see [_zMin].
     if (_count == 0) {
       _zMin = zIndex;
       _zMax = zIndex;
@@ -996,10 +1036,9 @@ final class _SpriteDrawQueue {
   /// class doc for the measurement that made this the shape it is.
   ///
   /// The UVs come from the queued [SpriteFrame], unpacked lane by lane off the
-  /// raw integer rather than through a `SpriteFrame` object - one per sprite
+  /// raw integer instead of through a `SpriteFrame` object - one per sprite
   /// per frame would be exactly the hot-path allocation the no-allocation rule
-  /// forbids. A full frame yields `(0,0) (1,0) (1,1) (0,1)`, which is what this
-  /// path used to pass as a constant.
+  /// forbids. A full frame yields `(0,0) (1,0) (1,1) (0,1)`.
   int writeQuadAt(ByteData view, int offset, int i) {
     final slot = _order[i];
     final c = slot * _cornerStride;
@@ -1055,7 +1094,7 @@ final class _SpriteDrawQueue {
   /// by *memory* instead: 65,536 buckets is a 256 KiB `Int32List` held for the
   /// life of the run, which is already generous scratch for a renderer. Beyond
   /// it the merge sort is used, so a game that spreads `zIndex` across the
-  /// whole `int32` range is never worse off than it was.
+  /// whole `int32` range is never worse off.
   static const int _maxCountingRange = 1 << 16;
 
   /// Sorts the queued pairs by `zIndex` ascending, keeping equal-`zIndex`
@@ -1074,17 +1113,16 @@ final class _SpriteDrawQueue {
   /// exceeds [_maxCountingRange]. A game is free to use `zIndex` as a sparse
   /// sort key (timestamps, hashes, ids) and bucketing that would allocate
   /// megabytes to sort a handful of sprites. Picking on the measured range
-  /// rather than on a declared mode means neither case has to be configured.
+  /// instead of on a declared mode means neither case has to be configured.
   ///
-  /// # Both are stable, by construction rather than by luck
+  /// # Both are stable, by construction and not by luck
   ///
   /// Equal-`zIndex` sprites must keep encounter order - archetype registration
   /// order, then page order, then row order, then declaration order within a
-  /// prefab - because that is the ordering this system had before `zIndex`
-  /// existed and scenes depend on it. The merge takes from the *left* run on a
-  /// tie (`<=`), and the left run is always the earlier-encountered one. The
-  /// counting sort walks the input in encounter order and appends within each
-  /// bucket, which is the same guarantee arrived at differently.
+  /// prefab - because scenes depend on it. The merge takes from the *left* run
+  /// on a tie (`<=`), and the left run is always the earlier-encountered one.
+  /// The counting sort walks the input in encounter order and appends within
+  /// each bucket, which is the same guarantee arrived at differently.
   ///
   /// # Why neither is `List.sort`
   ///
@@ -1102,8 +1140,8 @@ final class _SpriteDrawQueue {
     final n = _count;
     if (n < 2) return;
     // `_zMin`/`_zMax` are plain Dart ints, which are 64-bit, so this
-    // subtraction cannot overflow even for two `int32` extremes - the reason
-    // the range is computed here rather than tracked incrementally as an int32.
+    // subtraction cannot overflow even for two `int32` extremes, so the range
+    // is computed here and not tracked incrementally as an int32.
     final range = _zMax - _zMin + 1;
     if (range <= _maxCountingRange) {
       _countingSortByZ(n, range);
@@ -1135,7 +1173,7 @@ final class _SpriteDrawQueue {
       running += c;
     }
     // Walking `src` forward and appending within each bucket is what makes
-    // this stable - see [sortByZ]. Reading through `src` rather than assuming
+    // this stable - see [sortByZ]. Reading through `src` instead of assuming
     // the identity permutation costs one load and keeps this correct whatever
     // state a previous tick's buffer swap left `_order` in.
     final dst = _merge;
@@ -1188,7 +1226,7 @@ final class _SpriteDrawQueue {
       dst = swap;
     }
     // An odd number of passes leaves the result in `_merge`; adopt it as the
-    // order rather than copying it back.
+    // order instead of copying it back.
     if (!identical(src, _order)) {
       _merge = _order;
       _order = src;
@@ -1225,7 +1263,7 @@ final class _SpriteDrawQueue {
 ///
 /// This system is the *only* producer of draw records. It runs in the
 /// presentation phase - after the fixed tick has committed - so everything it
-/// reads is final for that tick by construction, rather than by a convention
+/// reads is final for that tick by construction, and not by a convention
 /// about where it is declared. See [compareTo].
 ///
 /// It draws nothing itself and is handed no `Canvas`. It cannot be: it lives
@@ -1243,31 +1281,31 @@ final class _SpriteDrawQueue {
 /// re-reads a component row.
 ///
 /// **The transform maths is plain doubles, not a `Matrix4`.** A matrix object
-/// per entity per tick is precisely the per-entity heap allocation the no-allocation rule forbids, and a 2D affine is six numbers.
+/// per entity per tick is precisely the per-entity heap allocation the
+/// no-allocation rule forbids, and a 2D affine is six numbers.
 ///
 /// # Ordering
 ///
 /// One draw record per visible, sized [Sprite] - not one per entity - and
 /// draw order is `zIndex` ascending with a **stable** tie-break on encounter
 /// order (archetype registration order, then page order, then row order, then
-/// the order sprites were declared within a prefab). So equal-`zIndex`
-/// sprites keep exactly the order this system produced before `zIndex`
-/// existed, and a scene that never sets `zIndex` draws identically to before.
+/// the order sprites were declared within a prefab). So a scene that never
+/// sets `zIndex` draws in encounter order.
 ///
 /// The sort is a prefix merge sort over a reusable index permutation (see
 /// [_SpriteDrawQueue.sortByZ]) - no per-tick allocation, no comparator
-/// closure, and stability by construction rather than by trusting a library
-/// sort's unspecified behaviour.
+/// closure, and stability by construction, not by trusting a library sort's
+/// unspecified behaviour.
 ///
 /// # Culling
 ///
 /// A sprite the camera cannot see is dropped in the fill pass, before it is
 /// queued, sorted, budgeted or written - so what a frame costs tracks the
-/// size of the view rather than the size of the world.
+/// size of the view, not the size of the world.
 ///
 /// The test is a circle around the sprite's pivot against the viewport
-/// rectangle (`CameraProjection.showsCircle`), and it is deliberately a
-/// circle: the pivot is the point rotation turns about, so a radius measured
+/// rectangle (`CameraProjection.showsCircle`), and a circle is what it has to
+/// be: the pivot is the point rotation turns about, so a radius measured
 /// from it is the one bound that does not have to be recomputed per angle.
 /// It over-covers: a sprite whose circle reaches the view while the sprite
 /// itself does not quite is kept. That is the direction to be wrong in, since
@@ -1288,13 +1326,13 @@ final class _SpriteDrawQueue {
 /// its world position and `zoom` are folded into every quad's final
 /// coordinates: `screen = (world - cameraOrigin) * zoom`. With no camera in
 /// the scene the origin is `(0, 0)` and the zoom is `1`, which is the
-/// identity - so a game that declares no camera gets byte-for-byte the output
-/// this system produced before cameras existed.
+/// identity - so a game that declares no camera draws in plain world
+/// coordinates.
 ///
 /// # Alignment
 ///
 /// [Sprite]'s `align*` fields are declared, defaulted and stored, and this
-/// system does **not** apply them. Stating that plainly rather than leaving it
+/// system does **not** apply them. Stating that plainly, and not leaving it
 /// to be discovered: an alignment is resolved against the size of the thing
 /// the sprite is anchored to - its parent's bounds, or the viewport's - and
 /// *which of those two* was never settled, so there is no arithmetic here to
@@ -1302,15 +1340,15 @@ final class _SpriteDrawQueue {
 ///
 /// A parent's bounds are its own sprites' extents, and no system resolves or
 /// publishes them; nothing in `goo2d` has a bounds concept at all. The
-/// viewport, on the other hand, **is** reachable now and this doc used to
-/// claim otherwise: `CameraView.viewportWidth`/`viewportHeight` are two floats
-/// of shared memory the widget writes and this isolate reads, and the pass
-/// below already reads them every tick through
+/// viewport, on the other hand, **is** reachable:
+/// `CameraView.viewportWidth`/`viewportHeight` are two floats of shared memory
+/// the widget writes and this isolate reads, and the pass below already reads
+/// them every tick through
 /// `CameraProjection.halfViewWidth`. So the blocker is the missing decision,
 /// not a missing number.
 ///
 /// Anchoring to the view is designed in #132, and it anchors through a
-/// `ScreenTransform2D` component and its own anchor enum rather than through
+/// `ScreenTransform2D` component and its own anchor enum, not through
 /// these fields - a screen-space sprite must ignore zoom, which a world-space
 /// sprite carrying a viewport-fraction term cannot do. Until #171 picks
 /// between applying them and deleting them, they round-trip through storage
@@ -1322,8 +1360,8 @@ final class _SpriteDrawQueue {
 /// `GlobalObject` **address** - the integer both isolate copies agree on
 /// because both ran the same `describeAssets` pass - alongside four UV pairs
 /// covering the whole image. A null texture writes
-/// [DrawSpriteData2D.noTexture] and the quad draws as its flat colour exactly
-/// as it always did; there is no placeholder image and no second code path.
+/// [DrawSpriteData2D.noTexture] and the quad draws as its flat colour; there
+/// is no placeholder image and no second code path.
 ///
 /// This system never touches a `ui.Image`, and cannot: it runs on an isolate
 /// whose `Texture` instances are addressed but never decoded. `DrawCanvas2D`
@@ -1343,17 +1381,19 @@ class GameRenderer2D extends GameSystem
   /// Runs in the presentation phase, after the fixed tick commits, and after
   /// `WorldTransformSystem` within it.
   ///
-  /// Both halves of that are load-bearing. Being a [Tickable] rather than a
+  /// Both halves of that are load-bearing. Being a [Tickable] and not a
   /// `FixedTickable` is what lets it *read* `WorldTransform2D` instead of
   /// recomposing the hierarchy itself: a presentation pass sees the snapshot
   /// the tick just published, so the transforms the simulation derived are
   /// visible to it. Inside the tick they would not be - reads there see the
-  /// *previous* tick's snapshot - which is why this system used to carry its
-  /// own copy of the composition math. That duplication was a symptom of
-  /// being in the wrong phase, not of a missing accessor; see the no-specialised-variant rule, and Unity DOTS's `SimulationSystemGroup`/`PresentationSystemGroup`
-  /// split, which resolves the identical problem the identical way.
+  /// *previous* tick's snapshot, and a pass in that phase ends up carrying its
+  /// own copy of the composition math to work around it. That duplication is a
+  /// symptom of being in the wrong phase, not of a missing accessor; see the
+  /// no-specialised-variant rule, and Unity DOTS's
+  /// `SimulationSystemGroup`/`PresentationSystemGroup` split, which resolves
+  /// the identical problem the identical way.
   ///
-  /// Latency is unchanged by the move. Composing from published
+  /// Latency is the same either way. Composing from published
   /// `Transform2D` inside tick N and reading `WorldTransform2D` published
   /// *by* tick N both depict the world as of the end of tick N-1.
   @override
@@ -1365,12 +1405,12 @@ class GameRenderer2D extends GameSystem
   /// memory of its own: allocation happens on main, before the spawn, on the
   /// copy that owns and frees it. So the storage this system writes into is
   /// declared by the `Game` mixin that also *reads* it, and this system is
-  /// handed the handle rather than owning it.
+  /// handed the handle instead of owning it.
   ///
   /// The cast is what a `GameSystem` pays for reaching a `Game`-side
   /// capability. It cannot be static: `GameSystem.game` is a plain `Game`, and
   /// a renderer declared into a game with no `Renderer2D` is a real
-  /// configuration mistake worth naming rather than a type error to design
+  /// configuration mistake worth naming, not a type error to design
   /// around.
   Renderer2D get _renderer {
     final game = this.game;
@@ -1395,21 +1435,19 @@ class GameRenderer2D extends GameSystem
   /// from the `Game`, which sized the buffers from the same number.
   int get spriteBatchBytes => _renderer.spriteBatchBytes;
 
-  // There is no ring capacity to configure any more. This used to be a
-  // `RingBuffer` sized to four batches, on the theory that a main isolate
-  // missing a couple of ticks should still find its frame waiting - which had
-  // it exactly backwards. A queue keeps the *oldest* frames, and an old frame
-  // is the one thing a renderer never wants; overflow then dropped the newest,
-  // which is the wrong end. A `HandoffBuffer` holds one complete frame and the
-  // one being built, so "behind" simply means the reader gets the newest
-  // instead of a backlog. See `BufferDescriptor.hasHandoff`.
+  // There is no ring capacity to configure. A queue sized to a few batches
+  // keeps the *oldest* frames, and an old frame is the one thing a renderer
+  // never wants; overflow then drops the newest, which is the wrong end. A
+  // `HandoffBuffer` holds one complete frame and the one being built, so
+  // "behind" simply means the reader gets the newest instead of a backlog.
+  // See `BufferDescriptor.hasHandoff`.
 
   late final Query _renderables;
   late final Query _cameras;
 
   /// One projection for the lifetime of the system - re-resolved each tick,
   /// never rebuilt, because building one per tick would be an allocation on
-  /// the hot path for no reason. Shared logic rather than a local
+  /// the hot path for no reason. Shared logic, not a local
   /// reimplementation, so "where is the camera, and where does that put a
   /// world point on screen" means exactly the same thing here as it does to
   /// `MousePickingSystem`.
@@ -1440,15 +1478,15 @@ class GameRenderer2D extends GameSystem
   /// the shortfall against `maxSpritesPerTick`, counted in records.
   ///
   /// Zero on a frame that fit. Anything else means sprites are missing from
-  /// the picture, and on screen that looks like the renderer got slower
-  /// rather than like anything was dropped. Raising `maxSpritesPerTick` by at
+  /// the picture, and on screen that looks like the renderer got slower and
+  /// not like anything was dropped. Raising `maxSpritesPerTick` by at
   /// least this much is the direct fix; drawing less is the other one.
   ///
   /// This is the *exact* shortfall and not a lower bound. Once the budget is
   /// spent the fill pass keeps walking candidates purely to total what it is
   /// turning away, so `lastRecordCount + lastRecordsOverBudget` is what the
   /// scene asked for. That walk costs something and it costs it only on a
-  /// frame that is already over budget, which is the trade taken deliberately:
+  /// frame that is already over budget, which is the trade taken:
   /// a reading of "at least 9" on a scene four thousand records over points
   /// at the wrong fix.
   ///
@@ -1480,7 +1518,7 @@ class GameRenderer2D extends GameSystem
   /// permutation costs in cache misses.
   ///
   /// One bool read per view per frame, so leaving it here costs a shipped
-  /// build nothing measurable. The matching trig ablation deliberately needs
+  /// build nothing measurable. The matching trig ablation needs
   /// no flag at all: writing zero into every entity's rotation makes the
   /// unrotated fast path in the write loop skip both `math.cos`/`math.sin`
   /// calls, which is the same experiment with no diagnostic code in the hot
@@ -1521,26 +1559,8 @@ class GameRenderer2D extends GameSystem
   // `GameView`, which is where the plan's own sorting rule puts a declaration:
   // with whoever holds the handle.
 
-  /// Whether [sprite] on [entity] draws as nine quads rather than one.
-  ///
-  /// Three conditions, and all three are load-bearing:
-  ///
-  ///  * **Some inset is non-zero.** All-zero is the default and means "plain
-  ///    quad" - the overwhelmingly common case, and the first thing checked so
-  ///    it costs four field reads and nothing else.
-  ///  * **There is a texture.** Slicing subdivides *image* space; with nothing
-  ///    to sample, nine flat-coloured rectangles are indistinguishable from
-  ///    the one they tile, so the insets are ignored rather than honoured
-  ///    pointlessly.
-  ///  * **That texture declared its pixel size.** The UV split needs it (see
-  ///    `Texture.sourceWidth`), and it is only there if the `TextureAsset`
-  ///    stated it. An undeclared size falls back to a single quad rather than
-  ///    dividing by zero or guessing.
-  ///
-  /// Called once per candidate sprite in the fill pass and never again - the
-  /// answer is stored in the queue, because the byte scratch is sized from it.
   // Scratch for one nine-sliced sprite's grid lines: four in each axis, reused
-  // across sprites and ticks. Fields rather than locals so no array is
+  // across sprites and ticks. Fields, not locals, so no array is
   // allocated per sprite (the no-allocation rule) - `onTick` may hit this once
   // per sprite per frame.
   //
@@ -1572,16 +1592,16 @@ class GameRenderer2D extends GameSystem
   ///
   /// If `left + right` exceeds the draw width, the two are scaled down
   /// proportionally until they exactly fill it, collapsing the middle column
-  /// to zero width; the same independently for the vertical axis. Proportional
-  /// rather than clamped-in-order because clamping would let whichever inset
+  /// to zero width; the same independently for the vertical axis. Proportional,
+  /// and not clamped-in-order, because clamping would let whichever inset
   /// was written first eat the whole axis and shrink the other to nothing,
-  /// which reads as an asymmetric frame rather than as a small one. It is also
+  /// which reads as an asymmetric frame and not as a small one. It is also
   /// what CSS `border-image` does, so the behaviour is not novel.
   ///
   /// Nothing ever inverts: every cell's extent is clamped at zero, and a
-  /// zero-area cell is skipped rather than emitted, because a degenerate quad
+  /// zero-area cell is skipped instead of emitted, because a degenerate quad
   /// costs a record and six vertices to rasterise nothing. **The UV split is
-  /// deliberately not scaled with it** - the source image is sliced where it
+  /// not scaled with it** - the source image is sliced where it
   /// is sliced regardless of how small the destination got, so the corners
   /// keep sampling the right pixels and only the destination compresses.
   ///
@@ -1649,8 +1669,9 @@ class GameRenderer2D extends GameSystem
     // The matching cuts in texture space. **No pixel dimension anywhere**, and
     // therefore no decoded image and no `TextureInfo`: the cuts are fractions,
     // so this arithmetic is available on the isolate that cannot decode, which
-    // is the isolate that runs. Nine-slicing used to need a *declared* source
-    // size for exactly this line, and getting it wrong mis-sliced every panel.
+    // is the isolate that runs. Slicing off a *declared* source size instead
+    // would put a number here that a repack can make wrong, and getting it
+    // wrong mis-slices every panel.
     //
     // Note these use the border's own fractions, not the fitted destination
     // insets above: squeezing the destination must not re-slice the source.
@@ -1748,7 +1769,7 @@ class GameRenderer2D extends GameSystem
     // the same scene from different places, in the same tick.
     //
     // Totals across views, so a one-view game (the overwhelmingly common
-    // case) reports exactly what it used to.
+    // case) reports its own numbers unchanged.
     var sprites = 0;
     var records = 0;
     var overBudget = 0;
@@ -1758,7 +1779,7 @@ class GameRenderer2D extends GameSystem
       _renderView(views[i], framesFor(views[i]));
       sprites += lastSpriteCount;
       records += lastRecordCount;
-      // Summed rather than maxed, because each view spends its own budget
+      // Summed, not maxed, because each view spends its own budget
       // against its own buffer: two views each 100 records short need 200 more
       // records between them, not 100.
       overBudget += lastRecordsOverBudget;
@@ -1802,10 +1823,11 @@ class GameRenderer2D extends GameSystem
     lastRecordsOverBudget = 0;
     // Asked *before* any work is done, and that ordering is the point. Null
     // means main has not taken the last frame yet, so there is nowhere safe to
-    // write - and rather than build a frame and throw it away, the whole pass
-    // is skipped. The simulation is unaffected; only the drawing stops, and
-    // only while nobody is looking. This is what stops a 200Hz tick building
-    // and discarding two frames out of every three against a 60Hz display.
+    // write - and instead of building a frame and throwing it away, the whole
+    // pass is skipped. The simulation is unaffected; only the drawing stops,
+    // and only while nobody is looking. This is what stops a 200Hz tick
+    // building and discarding two frames out of every three against a 60Hz
+    // display.
     final frames = handle.tryBuffer;
     if (frames == null) return;
     final target = frames.beginWrite();
@@ -1814,7 +1836,7 @@ class GameRenderer2D extends GameSystem
       return;
     }
 
-    // The scratch is built on first use rather than at bind time: only the
+    // The scratch is built on first use and not at bind time: only the
     // simulating copy ever gets here, and the handle copy would otherwise
     // carry a megabyte of bytes it never touches.
     final scratch = _scratch ??= Uint8List(spriteBatchBytes);
@@ -1830,7 +1852,7 @@ class GameRenderer2D extends GameSystem
     // be backing several.
     DrawData2D.writeBatchTick(view, state.tick);
 
-    // Through `CameraProjection` rather than reading the camera's fields
+    // Through `CameraProjection`, not by reading the camera's fields
     // here, so this and `MousePickingSystem` cannot end up applying two
     // slightly different mappings - picking that disagreed with drawing by a
     // constant would mean clicking next to what you can see. No camera is
@@ -1854,14 +1876,14 @@ class GameRenderer2D extends GameSystem
     // Records this pass turned away, reported as `lastRecordsOverBudget`.
     var overBudget = 0;
     // This view draws the scene its camera is in and no other - the test is
-    // `projection.shows` below. The global front scene that used to answer
-    // that is deleted, because "which scene do I draw" is a question a *view*
-    // answers and there can be several views; a view with no camera at all
-    // scopes nothing out and draws the whole world.
+    // `projection.shows` below. There is no global front scene: "which scene
+    // do I draw" is a question a *view* answers and there can be several
+    // views; a view with no camera at all scopes nothing out and draws the
+    // whole world.
     //
     // Grouped, so the component and its sprite list are resolved once per
     // archetype instead of once per entity - `entity.get<Renderable2D>()`
-    // returned the same object for every row, and at 10k rows that showed up
+    // hands back the same object for every row, and at 10k rows that shows up
     // in a profile.
     //
     // No `break` out of these loops, and no label to break to. The budget
@@ -1889,7 +1911,7 @@ class GameRenderer2D extends GameSystem
           // six vertices and a share of the batch limit, and would still
           // occlude nothing while pretending to be drawn.
           if (!sprite.visible[entity]) continue;
-          // Read into locals rather than compared in place: the geometry below
+          // Read into locals, not compared in place: the geometry below
           // needs both, and this row is only cheap to touch while the walk is
           // still on it.
           final width = sprite.width[entity];
@@ -1921,14 +1943,14 @@ class GameRenderer2D extends GameSystem
           // Viewport culling, and it comes *before* the budget: a record the
           // camera cannot see must not spend a place another sprite needs.
           // That is also what makes `lastRecordsOverBudget` mean "the scene
-          // asked for more than it can draw" rather than "the world is large".
+          // asked for more than it can draw" and not "the world is large".
           //
           // The bound is a circle centred on the pivot, because the pivot is
           // the point the transform origin sits on and therefore the point
           // rotation turns about. Rotation moves every corner along a circle
           // centred there, so the distance from the pivot to the furthest
-          // corner does not depend on `rotation` at all - which is why this
-          // can be decided before the angle is even read. A bound taken from
+          // corner does not depend on `rotation` at all, so this can be
+          // decided before the angle is even read. A bound taken from
           // width and height alone is not merely a tighter answer, it is the
           // wrong shape: it is blind to the rotation, so it clips a long
           // sprite that is on screen only because it is turned.
@@ -2001,11 +2023,11 @@ class GameRenderer2D extends GameSystem
           );
           // A nine-sliced sprite cannot be reduced to four corners, so it keeps
           // reading its row in the write pass. That is the rare path and it is
-          // left alone deliberately; what follows is for the plain quad, which
+          // left alone; what follows is for the plain quad, which
           // is almost everything almost always.
           if (records != 1) continue;
 
-          // The geometry, computed here rather than in the write pass, and
+          // The geometry, computed here and not in the write pass, and
           // this placement is the entire optimisation - see
           // `_SpriteDrawQueue`'s class doc. Every read below lands on the row
           // this loop is already standing on, in page order. The write pass
@@ -2084,7 +2106,7 @@ class GameRenderer2D extends GameSystem
         continue;
       }
 
-      // The nine-slice path, deliberately left reading rows in z order. It is
+      // The nine-slice path, left reading rows in z order. It is
       // rare - a sliced sprite is a UI frame, not a particle - and it cannot
       // use the precomputed corners, because nine cells each need their own
       // sub-rectangle of the UV square. Paying a cache miss per sliced sprite
@@ -2149,25 +2171,23 @@ class GameRenderer2D extends GameSystem
     // this is not one record per sprite.
     //
     // The allocation ledger for this method, in full: this `sublistView`, and
-    // one iterator per `Query.run()` call (two of them now - renderables and
-    // cameras - where there used to be one). Both are per *tick* and constant
-    // in the number of entities and sprites; the same trade `Game.dispatch
-    // Command` already makes. Nothing in either loop above allocates: the
-    // queue reuses its arrays, the sort has no comparator object, the corner
-    // maths is all local doubles, and `Entity.get` is a list index plus an
-    // `is` test. The texture read has that same shape - an optional-field bit
-    // test, then an asset-table list index and an `is` test handing
-    // back the instance that already exists - and `writeQuad`'s named
-    // arguments are statically resolved, so they compile to positional ones
-    // and build no argument object.
+    // one iterator per `Query.run()` call (two of them - renderables and
+    // cameras). Both are per *tick* and constant in the number of entities and
+    // sprites; the same trade `Game.dispatchCommand` already makes. Nothing
+    // in either loop above allocates: the queue reuses its arrays, the sort
+    // has no comparator object, the corner maths is all local doubles, and
+    // `Entity.get` is a list index plus an `is` test. The texture read has
+    // that same shape - an optional-field bit test, then an asset-table list
+    // index and an `is` test handing back the instance that already exists -
+    // and `writeQuad`'s named arguments are statically resolved, so they
+    // compile to positional ones and build no argument object.
     // Into the slot the handoff already handed over, then published. The copy
-    // is the same one `RingBuffer.tryWrite` used to make, so this is not a new
-    // cost - and the `asTypedList` view is one object per *frame*, matching the
-    // `sublistView` it replaces. Writing the geometry straight into the slot
-    // and skipping the scratch entirely is possible and is the obvious next
-    // step; it needs the per-slot views cached, which needs care about the
-    // spawn (a typed-data view of native memory is deep-copied by value), so
-    // it is deliberately not smuggled in here.
+    // is one a `RingBuffer.tryWrite` would make too, so it is not a new cost -
+    // and the `asTypedList` view is one object per *frame*. Writing the
+    // geometry straight into the slot and skipping the scratch entirely is
+    // possible and is the obvious next step; it needs the per-slot views
+    // cached, which needs care about the spawn (a typed-data view of native
+    // memory is deep-copied by value), so it is not smuggled in here.
     target.asTypedList(spriteBatchBytes).setRange(0, offset, scratch);
     frames.publish(offset);
     lastWriteDropped = false;
