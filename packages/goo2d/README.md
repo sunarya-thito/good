@@ -36,13 +36,7 @@ A system queries for the entities it cares about and writes to their columns:
 
 ```dart
 class PlayerSystem extends GameSystem with FixedTickable {
-  late final Query players;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    players = descriptor.query().withAll(Transform2D, Player).build();
-  }
+  final players = Query.all(Transform2D, Player);
 
   @override
   void onFixedUpdate() {

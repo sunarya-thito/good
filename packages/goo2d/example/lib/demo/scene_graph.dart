@@ -168,19 +168,12 @@ class Swarm extends SceneStruct {
 /// Moves **only** bodies and the hub. Limbs follow because they are parented,
 /// which is the point.
 class CritterSystem extends GameSystem with FixedTickable {
-  late final Query critters;
-  late final Query hubs;
+  final critters = Query.all(Transform2D, Critter);
+  final hubs = Query.all(Transform2D, Hub);
 
   final Stopwatch _clock = Stopwatch();
 
   double _time = 0;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    critters = descriptor.query().withAll(Transform2D, Critter).build();
-    hubs = descriptor.query().withAll(Transform2D, Hub).build();
-  }
 
   /// After `WorldTransformSystem` would be wrong and before it is required:
   /// this writes the *local* transforms that pass then composes, so it has to

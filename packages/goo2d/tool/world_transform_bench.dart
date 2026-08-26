@@ -99,18 +99,12 @@ class _Field extends SceneStruct {
 /// accesses and two trig calls per entity, group-iterated. It is the control -
 /// a loop over the same rows whose per-entity cost is known to stay flat.
 class _DriftSystem extends GameSystem with FixedTickable {
-  late final Query motes;
+  final motes = Query.all(Transform2D, WorldTransform2D);
 
   final Stopwatch _clock = Stopwatch();
 
   /// Microseconds this system spent on the tick that just ran.
   int lastMicros = 0;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    motes = descriptor.query().withAll(Transform2D, WorldTransform2D).build();
-  }
 
   @override
   void onFixedUpdate() {

@@ -187,17 +187,11 @@ class Galaxy extends SceneStruct {
 /// also runs the renderer's presentation pass and bundling the two would make
 /// "the simulation is slow" and "the renderer is slow" the same number.
 class SwirlSystem extends GameSystem with FixedTickable {
-  late final Query motes;
+  final motes = Query.all(Transform2D, Mote);
 
   final Stopwatch _clock = Stopwatch();
 
   double _time = 0;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    motes = descriptor.query().withAll(Transform2D, Mote).build();
-  }
 
   /// A cap on how many can arrive in one step. Without it, dragging the
   /// slider from 0 to 20k would spend one whole step allocating and read as a

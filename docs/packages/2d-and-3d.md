@@ -86,13 +86,7 @@ live against the kernel, not against `goo2d`:
 import 'package:good/good.dart';        // not goo2d
 
 class InventorySystem extends GameSystem with FixedTickable {
-  late final Query holders;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    holders = descriptor.query().withAll(Inventory).build();
-  }
+  final holders = Query.all(Inventory);
 }
 ```
 

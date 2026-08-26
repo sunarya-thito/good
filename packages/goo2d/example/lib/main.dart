@@ -198,13 +198,7 @@ class MainScene extends SceneStruct {
 /// `Child.parent` on every entity every tick - which would tear down the
 /// hierarchy this example exists to exercise before the first frame.
 class SpinSystem extends GameSystem with FixedTickable {
-  late final Query spinnable;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    spinnable = descriptor.query().withAll(Transform2D, Renderable2D).build();
-  }
+  final spinnable = Query.all(Transform2D, Renderable2D);
 
   @override
   void onFixedUpdate() {

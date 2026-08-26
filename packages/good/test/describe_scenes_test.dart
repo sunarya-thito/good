@@ -54,14 +54,8 @@ class _Bare extends EntityStruct {}
 /// Counts what a query sees, to prove a declared-but-unloaded scene's
 /// archetypes are registered without any entities in them.
 class _CensusSystem extends GameSystem with FixedTickable {
-  late final Query query;
+  final query = Query.all(_Marked);
   int seen = 0;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    query = descriptor.query().withAll(_Marked).build();
-  }
 
   @override
   void onFixedUpdate() {
@@ -261,9 +255,10 @@ void main() {
   });
 
   test('scenes are declared before systems build their queries', () async {
-    // _CensusSystem.describeQuery resolves against registered archetypes. If
-    // describeScenes ran after describeSystems the query would be built
-    // against an empty registry and match nothing forever.
+    // _CensusSystem's query is built in a field initialiser, so it exists
+    // the moment describeSystems constructs the system - before any of this
+    // scene's rows do. It counts them anyway: groups() resolves archetypes on
+    // the first walk and rebuilds whenever the registry grows.
     final game = await _boot(_DeclaringGame());
     await run.state.loadScene(game.level);
     run.state.loadedScenes.single.addEntity(game.level.unit);

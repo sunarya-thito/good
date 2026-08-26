@@ -103,7 +103,7 @@ class _MoverScene extends SceneStruct {
 }
 
 class _MoverSystem extends GameSystem with FixedTickable {
-  late final Query query;
+  final query = Query.all(_Moving);
 
   /// What this system tells the main isolate.
   ///
@@ -116,12 +116,6 @@ class _MoverSystem extends GameSystem with FixedTickable {
   StateChannel<double> get firstX => _own.firstX;
   StateChannel<int> get population => _own.population;
   StateChannel<int> get firstMarker => _own.firstMarker;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    query = descriptor.query().withAll(_Moving).build();
-  }
 
   @override
   void onFixedUpdate() {
@@ -654,17 +648,11 @@ class _TexturedScene extends SceneStruct {
 /// Not in `onMounted`: the whole point is to sample *after* the transition
 /// finished, so "still not loaded" means "never loads", not "not yet".
 class _TexturedSystem extends GameSystem with FixedTickable {
-  late final Query query;
+  final query = Query.all(_Textured);
 
   _TexturedGame get _own => game as _TexturedGame;
   StateChannel<int> get reportedAddress => _own.reportedAddress;
   StateChannel<int> get reportedLoaded => _own.reportedLoaded;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    query = descriptor.query().withAll(_Textured).build();
-  }
 
   @override
   void onFixedUpdate() {

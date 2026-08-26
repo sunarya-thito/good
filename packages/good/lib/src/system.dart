@@ -305,6 +305,69 @@ abstract class GameSystem extends GameListenerBase
 ///    both outlive the call that made them, and the scene under one can be
 ///    unloaded in between.
 abstract class Query {
+  /// Declares a query on the field that holds it, requiring every listed
+  /// component:
+  ///
+  /// ```dart
+  /// class SwirlSystem extends GameSystem with FixedTickable {
+  ///   final motes = Query.all(Transform2D, Mote);
+  /// }
+  /// ```
+  ///
+  /// Same query `descriptor.query().withAll(...).build()` builds in a
+  /// `GameSystem.describeQuery` body, declared where it is read instead of
+  /// four lines away in a hook. Ten positional types, for the reason
+  /// `_QueryBuilder._mask` gives: Dart has no varargs, and a `List<Type>`
+  /// per call site is an allocation for nothing.
+  ///
+  /// Nothing here needs a live declaration pass. A query holds masks and
+  /// resolves archetypes lazily in [groups], which rebuilds whenever
+  /// `ArchetypeRegistry.count` moves, so one built during a system's
+  /// construction picks up every archetype a scene registers afterwards.
+  /// That is also why the initialiser must be eager - `late final motes =
+  /// Query.all(...)` compiles and defers the call to the first read, and the
+  /// engine's declaration rules forbid that shape everywhere.
+  ///
+  /// [GameSystem.describeQuery] still works and is not going anywhere;
+  /// the two forms coexist.
+  static Query all(
+    Type a, [
+    Type? b,
+    Type? c,
+    Type? d,
+    Type? e,
+    Type? f,
+    Type? g,
+    Type? h,
+    Type? i,
+    Type? j,
+  ]) => _ArchetypeQuery(
+    _QueryBuilder._mask(a, b, c, d, e, f, g, h, i, j),
+    0,
+    const <int>[],
+  );
+
+  /// A query requiring exactly [T], named once - the field form of
+  /// [QueryDescriptor.has].
+  static SingleQuery<T> has<T extends Component>() =>
+      _ArchetypeSingleQuery<T>();
+
+  /// Opens a [QueryBuilder] for the constraints [all] does not cover -
+  /// [QueryBuilder.withNone], [QueryBuilder.withAny],
+  /// [QueryBuilder.withOptional] - and finish it with
+  /// [QueryBuilder.build]:
+  ///
+  /// ```dart
+  /// final roots = Query.where()
+  ///     .withAll(WorldTransform2D, Transform2D)
+  ///     .withOptional(Child)
+  ///     .build();
+  /// ```
+  ///
+  /// The same builder [QueryDescriptor.query] hands out, reached without a
+  /// descriptor.
+  static QueryBuilder where() => _QueryBuilder(_ArchetypeQuery.new);
+
   /// Whether an archetype with this signature (see
   /// `ArchetypeStorage.componentSignature`) satisfies this query. What
   /// [run]/[groups] filter archetypes with before walking any rows -

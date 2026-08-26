@@ -36,13 +36,7 @@ care about and walk those columns:
 
 ```dart
 class PlayerSystem extends GameSystem with FixedTickable {
-  late final Query players;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    players = descriptor.query().withAll(Player).build();
-  }
+  final players = Query.all(Player);
 
   @override
   void onFixedUpdate() { /* ... */ }

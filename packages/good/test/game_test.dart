@@ -362,14 +362,8 @@ class _OrderingGame extends _TestGame {
 /// Counts what the query sees *this* tick, to prove a command-spawned
 /// entity is visible to systems on the tick the command lands.
 class _CensusSystem extends GameSystem with FixedTickable {
-  late final Query query;
+  final query = Query.all(_Counter);
   final List<int> seen = <int>[];
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    query = descriptor.query().withAll(_Counter).build();
-  }
 
   @override
   void onFixedUpdate() {

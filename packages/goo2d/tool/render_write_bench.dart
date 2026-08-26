@@ -137,17 +137,10 @@ class _Galaxy extends SceneStruct {
   void onSceneMounted(Scene scene) => handle = scene;
 }
 
-/// Exists only to own a query the ablation can borrow: a `Query` is built by a
-/// `QueryDescriptor`, and the only place one is handed out is `describeQuery`.
-/// Declares no tick phase, so it costs the timed ticks nothing.
+/// Exists only to own a query the ablation borrows. Declares no tick phase,
+/// so it costs the timed ticks nothing.
 class _Probe extends GameSystem {
-  late final Query renderables;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    renderables = descriptor.query().withAll(Renderable2D, Transform2D).build();
-  }
+  final renderables = Query.all(Renderable2D, Transform2D);
 }
 
 class _BenchState extends GameState2D<_Bench> {

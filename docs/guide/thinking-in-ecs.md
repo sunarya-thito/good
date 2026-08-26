@@ -135,13 +135,7 @@ The `Update` becomes a system:
 
 ```dart
 class OrcMovementSystem extends GameSystem with FixedTickable {
-  late final Query orcs;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    orcs = descriptor.query().withAll(Transform2D, Orc).build();
-  }
+  final orcs = Query.all(Transform2D, Orc);
 
   @override
   void onFixedUpdate() {

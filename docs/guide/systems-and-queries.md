@@ -26,16 +26,10 @@ walks the matching rows every step.
 
 ```dart
 class MovementSystem extends GameSystem with FixedTickable {
-  late final Query movers;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    movers = descriptor.query()
-        .withAll(Transform2D, Velocity)
-        .withNone(Child)          // roots only; parented movers follow theirs
-        .build();
-  }
+  final movers = Query.where()
+      .withAll(Transform2D, Velocity)
+      .withNone(Child)            // roots only; parented movers follow theirs
+      .build();
 
   @override
   void onFixedUpdate() {

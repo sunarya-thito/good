@@ -526,13 +526,7 @@ Future<Query> _query(_Scene scene) async {
 }
 
 class _CameraQuerySystem extends GameSystem {
-  late final Query cameras;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    cameras = descriptor.query().withAll(Camera).build();
-  }
+  final cameras = Query.all(Camera);
 }
 
 class _CamState extends GameState<_CamGame> {
