@@ -2,6 +2,29 @@
 
 ### Breaking
 
+* **`NetDescriptor.has` takes a constructor, not an instance.**
+  `descriptor.has(Fire(), id: 'fire')` becomes
+  `descriptor.has(Fire.new, id: 'fire')`. `id`, `to` and `channel` stay on the
+  call: they are facts about the declaration, not fields in the record, and a
+  field initialiser has no way to supply them (#91).
+
+  ```dart
+  // before
+  fire = descriptor.has(Fire(), id: 'fire', channel: NetChannel.unreliable);
+
+  // after
+  fire = descriptor.has(Fire.new, id: 'fire', channel: NetChannel.unreliable);
+  ```
+
+  **Why.** `good`'s `Param` declares a message's fields on the fields
+  themselves, and a `Param.*` initialiser runs at construction — so the record
+  layout has to be open before the message exists, which means the framework
+  constructs it. A message and a command are the same record on two different
+  wires, so they move together or the two vocabularies drift apart.
+
+  The wire format does not change and neither does the handshake hash. This is
+  a source break only.
+
 * **The handshake hash now covers what each field *is*, not just how wide the
   record is.** Two builds that were compatible under 0.3.0 will refuse each
   other, so peers have to be upgraded together — for any game declaring at
@@ -78,6 +101,34 @@
   protect anything.
 
 ### Added
+
+* **A message field is declared on the field that holds it**, through `good`'s
+  new `Param` statics (#91).
+
+  ```dart
+  // before
+  class Fire extends NetMessage<({double angle, int weapon})> {
+    late final ParamPointer<double> angle;
+    late final ParamPointer<int> weapon;
+
+    @override
+    void describeParams(ParamDescriptor descriptor) {
+      angle = descriptor.hasFloat32();
+      weapon = descriptor.hasUint4();
+    }
+  }
+
+  // after
+  class Fire extends NetMessage<({double angle, int weapon})> {
+    final angle = Param.float32();
+    final weapon = Param.uint4();
+  }
+  ```
+
+  `NetMessageBase.describeParams` is no longer abstract, so a message with no
+  hook body needs none. Both forms coexist, and a test now pins them to one
+  wire format: the same record declared each way produces the same schema
+  hash.
 
 * **A message field can hold a string or a list whose length is not declared
   up front.** `hasString()` and `hasBytes()`, with `hasFixedString(n)` and

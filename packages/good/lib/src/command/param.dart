@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
 
+import 'package:good/src/declare.dart';
 import 'package:good/src/struct.dart';
 
 /// One field of one command's parameter block - the command-side twin of
@@ -773,6 +774,113 @@ abstract class ParamDescriptor {
   ParamPointer<Uint8List> hasFixedBytes(int maxBytes);
 }
 
+/// Declares a command's or a message's parameter on the field that holds it:
+///
+/// ```dart
+/// class SpawnEnemy extends SinkCommand<int> {
+///   final flags = Param.uint2();
+///
+///   @override
+///   void bufferFromParams(ParamBuffer call, int params) =>
+///       flags[call] = params;
+///
+///   @override
+///   int paramsFromBuffer(ParamBuffer call) => flags[call];
+/// }
+/// ```
+///
+/// One name per [ParamDescriptor] method, minus the `has` that only ever
+/// read as noise once the declaration moved to the field - the same trade
+/// `Field` made for a component column.
+///
+/// # Why the framework has to construct the command
+///
+/// A [ParamLayout] is a bit cursor. Every field takes its offset from where
+/// the one before it stopped, so the layout has to be *open* before the
+/// first initialiser runs - and an initialiser cannot see `this`, let alone
+/// an argument a later method would have been handed. So the layout goes on
+/// [DeclarationContext] first and the object is built second, which is why
+/// `CommandDescriptor.has` and `NetDescriptor.has` take `SpawnEnemy.new`
+/// and not `SpawnEnemy()`.
+///
+/// # Eager, always
+///
+/// `late final flags = Param.uint2()` compiles and is wrong twice over. The
+/// call runs on the first *read*, so the bit offsets follow whatever order
+/// something happened to touch the fields; two builds that touch them
+/// differently lay the record out differently and the two ends disagree
+/// about where a parameter is, silently, on bytes that still parse. It is
+/// also outside the window the framework opened, so it throws - see
+/// [DeclarationContext.params] and [ParamLayout.seal], which catch the two
+/// halves of it.
+///
+/// `describeParams` is not going anywhere; a command may declare through
+/// either, and one that declares through both gets its fields first and its
+/// hook's second.
+abstract final class Param {
+  /// See [ParamDescriptor.hasUint1].
+  static ParamPointer<int> uint1() => DeclarationContext.params.hasUint1();
+
+  /// See [ParamDescriptor.hasUint2].
+  static ParamPointer<int> uint2() => DeclarationContext.params.hasUint2();
+
+  /// See [ParamDescriptor.hasUint4].
+  static ParamPointer<int> uint4() => DeclarationContext.params.hasUint4();
+
+  /// See [ParamDescriptor.hasUint8].
+  static ParamPointer<int> uint8() => DeclarationContext.params.hasUint8();
+
+  /// See [ParamDescriptor.hasUint16].
+  static ParamPointer<int> uint16() => DeclarationContext.params.hasUint16();
+
+  /// See [ParamDescriptor.hasUint32].
+  static ParamPointer<int> uint32() => DeclarationContext.params.hasUint32();
+
+  /// See [ParamDescriptor.hasInt8].
+  static ParamPointer<int> int8() => DeclarationContext.params.hasInt8();
+
+  /// See [ParamDescriptor.hasInt16].
+  static ParamPointer<int> int16() => DeclarationContext.params.hasInt16();
+
+  /// See [ParamDescriptor.hasInt32].
+  static ParamPointer<int> int32() => DeclarationContext.params.hasInt32();
+
+  /// See [ParamDescriptor.hasInt64].
+  static ParamPointer<int> int64() => DeclarationContext.params.hasInt64();
+
+  /// See [ParamDescriptor.hasFloat32].
+  static ParamPointer<double> float32() =>
+      DeclarationContext.params.hasFloat32();
+
+  /// See [ParamDescriptor.hasFloat64].
+  static ParamPointer<double> float64() =>
+      DeclarationContext.params.hasFloat64();
+
+  /// See [ParamDescriptor.hasEntity], including its warning that a stored
+  /// handle outlives the entity it names.
+  static ParamPointer<Entity> entity() => DeclarationContext.params.hasEntity();
+
+  /// See [ParamDescriptor.hasString], including its rule that a record's
+  /// tail is written once.
+  static ParamPointer<String> string({Encoding encoding = utf8}) =>
+      DeclarationContext.params.hasString(encoding: encoding);
+
+  /// See [ParamDescriptor.hasFixedString].
+  static ParamPointer<String> fixedString(
+    int maxBytes, {
+    Encoding encoding = utf8,
+  }) => DeclarationContext.params.hasFixedString(maxBytes, encoding: encoding);
+
+  /// See [ParamDescriptor.hasBytes], including its rule that reading one
+  /// hands back a view onto the batch's own buffer.
+  static ParamPointer<Uint8List> bytes() =>
+      DeclarationContext.params.hasBytes();
+
+  /// See [ParamDescriptor.hasFixedBytes].
+  static ParamPointer<Uint8List> fixedBytes(int maxBytes) =>
+      DeclarationContext.params.hasFixedBytes(maxBytes);
+}
+
 /// Builds one command's layout, then serves as the accessor for it.
 ///
 /// Sealed off behind [ParamDescriptor] for the same reason
@@ -845,6 +953,27 @@ final class ParamLayout implements ParamDescriptor {
     if (_sealed) return;
     _sealed = true;
     _signatureBytes = Uint8List.fromList(_signature);
+  }
+
+  /// Builds [create]'s object with this layout open, so the `Param.*` calls
+  /// in its field initialisers declare into it, and hands the object back.
+  ///
+  /// The one place the window is opened. `CommandRegistry.declare` and
+  /// `good_net`'s `NetRegistry.declare` both come through here rather than
+  /// touching [DeclarationContext] themselves - a command crossing an
+  /// isolate and a message crossing a socket are the same record, and two
+  /// copies of "when is a layout open" is exactly the drift this file's
+  /// one-packing-rule note is about.
+  ///
+  /// The pop is in a `finally`: a constructor that throws must not leave the
+  /// next declaration writing into a layout nobody owns.
+  T open<T>(T Function() create) {
+    DeclarationContext.pushParams(this);
+    try {
+      return create();
+    } finally {
+      DeclarationContext.popParams();
+    }
   }
 
   /// Records what the field just declared is, for [signature].

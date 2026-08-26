@@ -7,12 +7,7 @@ import 'package:goo2d/goo2d.dart';
 /// letting expiries take it down. One command shared by every case, because
 /// "hold this many" is the same request in all of them.
 class SetPopulation extends SinkCommand<int> {
-  late final ParamPointer<int> count;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    count = descriptor.hasUint16();
-  }
+  final count = Param.uint16();
 
   @override
   void bufferFromParams(ParamBuffer call, int params) => count[call] = params;
@@ -111,7 +106,7 @@ abstract class DemoGame extends Game2D {
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
-    setPopulation = descriptor.has(SetPopulation());
+    setPopulation = descriptor.has(SetPopulation.new);
   }
 
   @override

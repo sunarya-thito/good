@@ -23,12 +23,7 @@ class SetAblations extends SinkCommand<int> {
   /// unrotated fast path skip both trig calls.
   static const int noRotation = 2;
 
-  late final ParamPointer<int> flags;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    flags = descriptor.hasUint2();
-  }
+  final flags = Param.uint2();
 
   @override
   void bufferFromParams(ParamBuffer call, int params) => flags[call] = params;
@@ -324,7 +319,7 @@ class ParticlesGame extends DemoGame {
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
-    setAblations = descriptor.has(SetAblations());
+    setAblations = descriptor.has(SetAblations.new);
   }
 
   @override

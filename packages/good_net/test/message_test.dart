@@ -6,14 +6,8 @@ import 'package:good_net/good_net.dart';
 
 /// A client's request: "I fired, at this angle, with this weapon".
 class _Fire extends NetMessage<({double angle, int weapon})> {
-  late final ParamPointer<double> angle;
-  late final ParamPointer<int> weapon;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    angle = descriptor.hasFloat32();
-    weapon = descriptor.hasUint4();
-  }
+  final angle = Param.float32();
+  final weapon = Param.uint4();
 
   @override
   void bufferFromParams(
@@ -31,12 +25,7 @@ class _Fire extends NetMessage<({double angle, int weapon})> {
 
 /// The host's decision, sent to the clients and not run on the host.
 class _Score extends NetMessage<({int score})> {
-  late final ParamPointer<int> score;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    score = descriptor.hasUint16();
-  }
+  final score = Param.uint16();
 
   @override
   void bufferFromParams(ParamBuffer message, ({int score}) params) =>
@@ -50,12 +39,7 @@ class _Score extends NetMessage<({int score})> {
 /// A client's request on the reliable channel, so that ordering is actually
 /// promised for it.
 class _Chat extends NetMessage<({String text})> {
-  late final ParamPointer<String> text;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    text = descriptor.hasFixedString(32);
-  }
+  final text = Param.fixedString(32);
 
   @override
   void bufferFromParams(ParamBuffer message, ({String text}) params) =>
@@ -69,14 +53,8 @@ class _Chat extends NetMessage<({String text})> {
 /// A client's request whose payload has no declared length at all - the
 /// message that could not have been declared before #146.
 class _Post extends NetMessage<({String text, Uint8List blob})> {
-  late final ParamPointer<String> text;
-  late final ParamPointer<Uint8List> blob;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    text = descriptor.hasString();
-    blob = descriptor.hasBytes();
-  }
+  final text = Param.string();
+  final blob = Param.bytes();
 
   @override
   void bufferFromParams(
@@ -96,12 +74,7 @@ class _Post extends NetMessage<({String text, Uint8List blob})> {
 /// kinds went into it: a length-free string and a ten-byte inline field are
 /// both twelve bytes of head and one field. See [_TailKindState].
 class _TailKind extends NetMessage<({String value})> {
-  late final ParamPointer<String> value;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    value = descriptor.hasString();
-  }
+  final value = Param.string();
 
   @override
   void bufferFromParams(ParamBuffer message, ({String value}) params) =>
@@ -113,12 +86,7 @@ class _TailKind extends NetMessage<({String value})> {
 }
 
 class _InlineKind extends NetMessage<({Uint8List value})> {
-  late final ParamPointer<Uint8List> value;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    value = descriptor.hasFixedBytes(10);
-  }
+  final value = Param.fixedBytes(10);
 
   @override
   void bufferFromParams(ParamBuffer message, ({Uint8List value}) params) =>
@@ -133,12 +101,7 @@ class _InlineKind extends NetMessage<({Uint8List value})> {
 /// sized. The channel is the point: unreliable is one datagram wide, so this
 /// is the declaration that meets a ceiling first.
 class _Snapshot extends NetMessage<({Uint8List state})> {
-  late final ParamPointer<Uint8List> state;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    state = descriptor.hasBytes();
-  }
+  final state = Param.bytes();
 
   @override
   void bufferFromParams(ParamBuffer message, ({Uint8List state}) params) =>
@@ -176,36 +139,40 @@ class _NetState extends GameState<_NetGame> with MultiplayerState<_NetGame> {
   void describeNetwork(NetDescriptor descriptor) {
     descriptor.transport(LoopbackNetTransport());
 
-    fire = descriptor.has(_Fire(), id: 'fire', channel: NetChannel.unreliable);
+    fire = descriptor.has(
+      _Fire.new,
+      id: 'fire',
+      channel: NetChannel.unreliable,
+    );
     descriptor.hasHandler(
       fire,
       (params, from) =>
           log.add('fire ${params.angle} w${params.weapon} <- ${from.slot}'),
     );
 
-    chat = descriptor.has(_Chat(), id: 'chat');
+    chat = descriptor.has(_Chat.new, id: 'chat');
     descriptor.hasHandler(
       chat,
       (params, from) => log.add('say ${params.text}'),
     );
 
-    score = descriptor.has(_Score(), id: 'score', to: NetTarget.clients);
+    score = descriptor.has(_Score.new, id: 'score', to: NetTarget.clients);
     descriptor.hasHandler(
       score,
       (params, from) => log.add('score ${params.score}'),
     );
 
     roundOver = descriptor.has(
-      _RoundOver(),
+      _RoundOver.new,
       id: 'roundOver',
       to: NetTarget.everyone,
     );
     descriptor.hasSignal(roundOver, (from) => log.add('over <- ${from.slot}'));
 
-    ready = descriptor.has(_Ready(), id: 'ready');
+    ready = descriptor.has(_Ready.new, id: 'ready');
     descriptor.hasSignal(ready, (from) => log.add('ready <- ${from.slot}'));
 
-    post = descriptor.has(_Post(), id: 'post');
+    post = descriptor.has(_Post.new, id: 'post');
     descriptor.hasHandler(
       post,
       (params, from) =>
@@ -213,7 +180,7 @@ class _NetState extends GameState<_NetGame> with MultiplayerState<_NetGame> {
     );
 
     snapshot = descriptor.has(
-      _Snapshot(),
+      _Snapshot.new,
       id: 'snapshot',
       channel: NetChannel.unreliable,
     );
@@ -247,6 +214,28 @@ class _Watcher extends GameSystem with NetPeerListener, NetSessionListener {
 /// Byte-for-byte identical to [_Fire] apart from the class name - the rename
 /// this issue is about (#141).
 class _FireRenamed extends NetMessage<({double angle, int weapon})> {
+  final angle = Param.float32();
+  final weapon = Param.uint4();
+
+  @override
+  void bufferFromParams(
+    ParamBuffer message,
+    ({double angle, int weapon}) params,
+  ) {
+    angle[message] = params.angle;
+    weapon[message] = params.weapon;
+  }
+
+  @override
+  ({double angle, int weapon}) paramsFromBuffer(ParamBuffer message) =>
+      (angle: angle[message], weapon: weapon[message]);
+}
+
+/// The same record as [_Fire], declared through the hook instead of on the
+/// fields. Both forms exist and both have to reach the same bytes, or a peer
+/// on one build and a peer on the other would disagree about the wire while
+/// the handshake said they agreed.
+class _FireByHook extends NetMessage<({double angle, int weapon})> {
   late final ParamPointer<double> angle;
   late final ParamPointer<int> weapon;
 
@@ -284,7 +273,7 @@ class _OneMessageState extends GameState<_NetGame>
   @override
   void describeNetwork(NetDescriptor descriptor) {
     descriptor.transport(LoopbackNetTransport());
-    final message = descriptor.has(_make(), id: _id);
+    final message = descriptor.has(_make, id: _id);
     if (message is NetMessage<({double angle, int weapon})>) {
       descriptor.hasHandler(message, (params, from) {});
     }
@@ -316,8 +305,8 @@ class _CollidingState extends GameState<_NetGame>
   @override
   void describeNetwork(NetDescriptor descriptor) {
     descriptor.transport(LoopbackNetTransport());
-    descriptor.has(_Fire(), id: 'same');
-    descriptor.has(_FireRenamed(), id: 'same');
+    descriptor.has(_Fire.new, id: 'same');
+    descriptor.has(_FireRenamed.new, id: 'same');
   }
 }
 
@@ -350,7 +339,7 @@ class _SkewedState extends _NetState {
 
   @override
   void describeNetwork(NetDescriptor descriptor) {
-    emote = descriptor.has(_Emote(), id: 'emote');
+    emote = descriptor.has(_Emote.new, id: 'emote');
     descriptor.hasSignal(emote, (from) => log.add('emote <- ${from.slot}'));
     super.describeNetwork(descriptor);
   }
@@ -406,6 +395,21 @@ void main() {
             'same id, same layout, same target and channel - only the Dart '
             'class name differs, and a rename is a refactor rather than a '
             'protocol change. This is the whole of #141.',
+      );
+    });
+
+    test('declaring on the field or in the hook is one wire format', () async {
+      final onFields = await boot(_OneMessageGame(_Fire.new, 'fire'));
+      final inHook = await boot(_OneMessageGame(_FireByHook.new, 'fire'));
+
+      expect(
+        hashOf(inHook),
+        hashOf(onFields),
+        reason:
+            'the hash covers the head stride, the field count and what each '
+            'field is, so two declarations that agree on all three are the '
+            'same protocol however they were written. Both forms coexist, and '
+            'this is what says they have to mean the same thing.',
       );
     });
 

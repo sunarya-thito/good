@@ -19,14 +19,14 @@ import 'transport.dart';
 ///     descriptor.transport(P2PNetTransport());
 ///
 ///     fire = descriptor.has(
-///       Fire(),
+///       Fire.new,
 ///       id: 'fire',
 ///       to: NetTarget.host,
 ///       channel: NetChannel.unreliable,
 ///     );
 ///     descriptor.hasHandler(fire, _onFire);
 ///
-///     ready = descriptor.has(Ready(), id: 'ready');
+///     ready = descriptor.has(Ready.new, id: 'ready');
 ///     descriptor.hasSignal(ready, _onReady);
 ///   }
 /// }
@@ -51,7 +51,15 @@ abstract class NetDescriptor {
   /// never against a backend.
   T transport<T extends NetTransport>(T transport);
 
-  /// Declares [message] and returns it, for the `late final` field to keep.
+  /// Builds one message with [create], declares it, and returns it for the
+  /// field to keep.
+  ///
+  /// A tear-off - `descriptor.has(Fire.new, id: 'fire')` - and not an
+  /// instance, for `CommandDescriptor.has`'s reason: a `Param.*` field
+  /// initialiser runs at construction and the record layout has to be open
+  /// before it does. [id], [to] and [channel] stay here rather than moving
+  /// to a field, because they are facts about the *declaration* and not
+  /// about a field in the record.
   ///
   /// [to] fixes who handles it and therefore who may send it; [channel] fixes
   /// how hard the transport tries to deliver it. Both are declaration-time
@@ -60,7 +68,7 @@ abstract class NetDescriptor {
   /// sent reliably in one place and unreliably in another, which is a
   /// desync waiting to be debugged.
   T has<T extends NetMessageBase>(
-    T message, {
+    T Function() create, {
     required String id,
     NetTarget to = NetTarget.host,
     NetChannel channel = NetChannel.reliable,
@@ -193,7 +201,7 @@ final class NetRegistry implements ParamLayouts {
   }
 
   T declare<T extends NetMessageBase>(
-    T message,
+    T Function() create,
     String protocolId,
     NetTarget target,
     NetChannel channel,
@@ -209,6 +217,11 @@ final class NetRegistry implements ParamLayouts {
             'it look like the same message.',
       );
     }
+    // Built before the duplicate checks for `CommandRegistry.declare`'s
+    // reason: they read `runtimeType`, which a tear-off's static type
+    // argument does not pin down.
+    final layout = ParamLayout();
+    final message = layout.open(create);
     for (var i = 0; i < _messages.length; i++) {
       if (_messages[i].runtimeType == message.runtimeType) {
         throw StateError(
@@ -228,14 +241,7 @@ final class NetRegistry implements ParamLayouts {
         );
       }
     }
-    message.bind(
-      _messages.length,
-      protocolId,
-      ParamLayout(),
-      target,
-      channel,
-      sender,
-    );
+    message.bind(_messages.length, protocolId, layout, target, channel, sender);
     _messages.add(message);
     return message;
   }
@@ -299,11 +305,11 @@ final class NetBinder implements NetDescriptor {
 
   @override
   T has<T extends NetMessageBase>(
-    T message, {
+    T Function() create, {
     required String id,
     NetTarget to = NetTarget.host,
     NetChannel channel = NetChannel.reliable,
-  }) => _registry.declare(message, id, to, channel, _sender);
+  }) => _registry.declare(create, id, to, channel, _sender);
 
   @override
   void hasHandler<P>(

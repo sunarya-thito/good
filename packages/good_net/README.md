@@ -9,7 +9,7 @@ and `goo3d` games share the same session and messaging plumbing.
 identified on the wire by its position in that declaration, handed to a
 handler registered where it runs. So they are not two implementations:
 `NetMessage` and `NetSignal` are spelled exactly like `SinkCommand` and
-`SignalCommand`, and the record layer underneath (`ParamDescriptor`,
+`SignalCommand`, and the record layer underneath (`Param`, `ParamDescriptor`,
 `ParamPointer`, `ParamBatch`, `ParamBuffer`) is `good`'s own, reused instead of
 reimplementing it here.
 
@@ -20,7 +20,7 @@ class MyState extends GameState2D<MyGame> with MultiplayerState<MyGame> {
   @override
   void describeNetwork(NetDescriptor descriptor) {
     descriptor.transport(P2PNetTransport());
-    fire = descriptor.has(Fire(), channel: NetChannel.unreliable);
+    fire = descriptor.has(Fire.new, id: 'fire', channel: NetChannel.unreliable);
     descriptor.hasHandler(fire, _onFire);
   }
 

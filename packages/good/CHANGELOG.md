@@ -2,6 +2,31 @@
 
 ### Breaking
 
+* **`CommandDescriptor.has` takes a constructor, not an instance.**
+  `descriptor.has(Damage())` becomes `descriptor.has(Damage.new)`, at every
+  command declaration. The old spelling does not quietly keep working: an
+  instance where a `T Function()` is wanted is an implicit tear-off of the
+  command's own `call`, and that is a compile error at the declaration line
+  (#91).
+
+  ```dart
+  // before
+  damage = descriptor.has(Damage());
+
+  // after
+  damage = descriptor.has(Damage.new);
+  ```
+
+  **Why.** A parameter declared on the field that holds it — see Added — runs
+  its `Param.*` initialiser at construction, and the record layout has to be
+  open before it does. An initialiser cannot see `this`, so the framework has
+  to be the one constructing. This is the same trade `SceneDescriptor.has` and
+  `descriptor.has(Mote.new)` made for a struct's columns in #57.
+
+  Building a command by hand now throws instead of returning a half-declared
+  object: its pointers would name offsets in a layout nothing owns. A command
+  that declares no fields still constructs fine.
+
 * **The installed asset pack is now one tier of an ordered mount table.**
   `AssetPack.install`, `AssetPack.installed` and `AssetPack.uninstall` are
   gone; `AssetMounts.mount`, `AssetMounts.unmount` and `AssetMounts.clear`
@@ -157,6 +182,42 @@
   or absent, so renaming those is a design question and not a spelling one.
 
 ### Added
+
+* **A command parameter is declared on the field that holds it.** `Param` has
+  one static per `ParamDescriptor` method — `uint1` through `float64`,
+  `entity`, `string`, `fixedString`, `bytes`, `fixedBytes` — so a command says
+  what it carries where the reader is already looking (#91).
+
+  ```dart
+  // before
+  class SpawnEnemy extends SinkCommand<int> {
+    late final ParamPointer<int> flags;
+
+    @override
+    void describeParams(ParamDescriptor descriptor) {
+      flags = descriptor.hasUint2();
+    }
+  }
+
+  // after
+  class SpawnEnemy extends SinkCommand<int> {
+    final flags = Param.uint2();
+  }
+  ```
+
+  `describeParams` is not retired, and it is no longer abstract: a command
+  declaring only through fields has nothing to put in it. Override it for a
+  declaration a field initialiser cannot reach. The two forms compose — the
+  fields declare during the constructor and the hook runs straight after, so
+  the fields take the lower bit offsets — and both reach the same record,
+  which is what `good_net`'s handshake hash is now tested against.
+
+  The initialiser has to be eager. A `ParamLayout` is a bit cursor, so
+  `late final flags = Param.uint2()` would take its offset from whatever order
+  something happened to read the fields in, and two builds that read them
+  differently would lay the record out differently while still parsing each
+  other's bytes. It throws instead: the layout the framework opens is closed
+  by the time a lazy initialiser runs.
 
 * **A query is declared on the field that holds it.** `Query.all`,
   `Query.has<T>` and `Query.where` build a query with no descriptor in hand,

@@ -52,6 +52,7 @@ export 'src/command/param.dart'
     show
         CommandBatch,
         CommandResults,
+        Param,
         ParamBatch,
         ParamBuffer,
         ParamDescriptor,

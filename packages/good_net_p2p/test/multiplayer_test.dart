@@ -7,14 +7,8 @@ import 'package:good_net_p2p/good_net_p2p.dart';
 
 /// What a game actually writes: a message class, a declaration, a handler.
 class Fire extends NetMessage<({double angle, int weapon})> {
-  late final ParamPointer<double> angle;
-  late final ParamPointer<int> weapon;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    angle = descriptor.hasFloat32();
-    weapon = descriptor.hasUint4();
-  }
+  final angle = Param.float32();
+  final weapon = Param.uint4();
 
   @override
   void bufferFromParams(
@@ -32,14 +26,8 @@ class Fire extends NetMessage<({double angle, int weapon})> {
 
 /// The host's answer, going the other way.
 class Hit extends NetMessage<({int slot, int damage})> {
-  late final ParamPointer<int> slot;
-  late final ParamPointer<int> damage;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    slot = descriptor.hasUint16();
-    damage = descriptor.hasUint8();
-  }
+  final slot = Param.uint16();
+  final damage = Param.uint8();
 
   @override
   void bufferFromParams(ParamBuffer message, ({int slot, int damage}) params) {
@@ -74,13 +62,13 @@ class ShooterState extends GameState<ShooterGame>
     );
 
     fire = descriptor.has(
-      fireMessage(),
+      fireMessage,
       id: 'fire',
       channel: NetChannel.unreliable,
     );
     descriptor.hasHandler(fire, _onFire);
 
-    hit = descriptor.has(Hit(), id: 'hit', to: NetTarget.everyone);
+    hit = descriptor.has(Hit.new, id: 'hit', to: NetTarget.everyone);
     descriptor.hasHandler(hit, _onHit);
   }
 

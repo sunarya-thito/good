@@ -124,12 +124,7 @@ buffer — not a `SendPort` message per call.
 
 ```dart
 class SetPopulation extends SinkCommand<int> {
-  late final ParamPointer<int> count;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    count = descriptor.hasUint16();
-  }
+  final count = Param.uint16();
 
   @override
   void bufferFromParams(ParamBuffer call, int params) => count[call] = params;
@@ -148,7 +143,7 @@ class MyGame extends Game2D {
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
-    setPopulation = descriptor.has(SetPopulation());
+    setPopulation = descriptor.has(SetPopulation.new);
   }
 }
 
@@ -201,16 +196,9 @@ handled it.
 typedef Blow = ({int amount, bool crit});
 
 class Damage extends GameCommand<Blow, int> {
-  late final ParamPointer<int> amount;
-  late final ParamPointer<int> crit;
-  late final ParamPointer<int> dealt;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    amount = descriptor.hasUint16();
-    crit = descriptor.hasUint1();      // (1)!
-    dealt = descriptor.hasUint16();    // (2)!
-  }
+  final amount = Param.uint16();
+  final crit = Param.uint1();      // (1)!
+  final dealt = Param.uint16();    // (2)!
 
   @override
   void bufferFromParams(ParamBuffer call, Blow params) {
@@ -274,47 +262,37 @@ descriptor.hasHandler(game.damage, (Blow params) {
 
 ### The field schema
 
-`ParamDescriptor` mirrors `DataDescriptor`, with the same widths and the same
-packing:
+`Param` mirrors `Field`, with the same widths and the same packing — a
+command parameter is declared on the field that holds it, exactly like a
+component column:
 
 <!-- snippet: in Damage -->
-<!-- snippet-setup
-late ParamPointer<double> x;
-late ParamPointer<double> y;
-late ParamPointer<int> kind;
-late ParamPointer<Entity> target;
-late ParamPointer<String> name;
-late ParamPointer<String> code;
--->
 ```dart
-@override
-void describeParams(ParamDescriptor descriptor) {
-  x = descriptor.hasFloat32();
-  y = descriptor.hasFloat32();
-  kind = descriptor.hasUint4();          // 16 kinds in half a byte
-  target = descriptor.hasEntity();       // a handle, not a bare int64
-  name = descriptor.hasString();         // any length, kept in the tail
-  code = descriptor.hasFixedString(2);   // reserved inline, because 2 is real
-}
+final x = Param.float32();
+final y = Param.float32();
+final kind = Param.uint4();          // 16 kinds in half a byte
+final target = Param.entity();       // a handle, not a bare int64
+final name = Param.string();         // any length, kept in the tail
+final code = Param.fixedString(2);   // reserved inline, because 2 is real
 ```
 
 A record has a fixed **head** — every numeric field, and the offset and length
 of every variable-length one — and, if it declares any variable-length field, a
 **tail** behind the head holding their bytes. Three things follow:
 
-- **A string does not need a maximum.** `hasString()` and `hasBytes()` size
-  themselves from what you write. `hasFixedString(n)` and `hasFixedBytes(n)`
-  reserve `n` bytes in *every* record whether they are used or not, so reach for
-  them when the bound is real — a two-letter country code, a 16-byte digest —
-  and use the length-free kind for everything else.
+- **A string does not need a maximum.** `Param.string()` and `Param.bytes()`
+  size themselves from what you write. `Param.fixedString(n)` and
+  `Param.fixedBytes(n)` reserve `n` bytes in *every* record whether they are
+  used or not, so reach for them when the bound is real — a two-letter country
+  code, a 16-byte digest — and use the length-free kind for everything else.
 - **The carrier is what bounds a record, not the declaration.** A batch grows to
   hold whatever is written into it, but it still has to fit in one ring-buffer
   record on the way across. A batch too big for that ring is refused at
   `send()`, naming the bound and `Game.commandBufferBytes`. It is never
   truncated.
-- **Field widths are bandwidth.** `hasUint1()` for a flag and `hasUint4()` for a
-  small enum are not micro-optimisation here — a batch of a few hundred commands
-  per frame pays for every byte.
+- **Field widths are bandwidth.** `Param.uint1()` for a flag and
+  `Param.uint4()` for a small enum are not micro-optimisation here — a batch of
+  a few hundred commands per frame pays for every byte.
 
 The schema is separate from `P`: `P` is what your *code* passes, and
 the schema is what crosses the wire. `bufferFromParams` and `paramsFromBuffer`
@@ -334,7 +312,7 @@ late SaveGame save;
 @override
 void describeCommands(CommandDescriptor descriptor) {
   super.describeCommands(descriptor);
-  save = descriptor.has(SaveGame());
+  save = descriptor.has(SaveGame.new);
   descriptor.hasSink(save, _writeSaveFile);   // handled here, not on the game isolate
 }
 ```
@@ -444,16 +422,11 @@ page can be freed, since main might still be reading it — and use-after-free o
 shared memory does not report, it returns plausible numbers.
 
 An `Entity` still crosses perfectly well as a *value*, which is what
-`hasEntity` is for:
+`Param.entity()` is for:
 
 ```dart
 class WhoIsPlayer extends SupplierCommand<Entity> {
-  late final ParamPointer<Entity> entity;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    entity = descriptor.hasEntity();
-  }
+  final entity = Param.entity();
 
   @override
   void bufferFromResult(ParamBuffer call, Entity result) =>
@@ -464,7 +437,7 @@ class WhoIsPlayer extends SupplierCommand<Entity> {
 }
 ```
 
-It is `hasInt64` with the handle type on it — same eight bytes on the wire,
+It is `Param.int64()` with the handle type on it — same eight bytes on the wire,
 same cost — but a command declaring one cannot be handed a score by mistake,
 and a mix-up that did cross would look like eight perfectly ordinary bytes on
 the other side. What main can do with the handle it gets back is name that

@@ -238,12 +238,7 @@ class SpinSystem extends GameSystem with FixedTickable {
 /// live here and was removed for exactly that reason - it made the UI name an
 /// identifier belonging to the other isolate.
 class SpawnEnemy extends SupplierCommand<Entity> {
-  late final ParamPointer<Entity> spawned;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    spawned = descriptor.hasEntity();
-  }
+  final spawned = Param.entity();
 
   @override
   void bufferFromResult(ParamBuffer call, Entity result) =>
@@ -304,7 +299,7 @@ class MyAwesomeGame extends Game2D {
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
-    spawnEnemy = descriptor.has(SpawnEnemy());
+    spawnEnemy = descriptor.has(SpawnEnemy.new);
   }
 }
 
