@@ -39,7 +39,7 @@ vendored source itself:
 |---|---|
 | Windows, Linux | `<platform>/CMakeLists.txt` → `src/CMakeLists.txt` |
 | Android | `android/build.gradle` → NDK CMake → `src/CMakeLists.txt` |
-| macOS, iOS | CocoaPods podspec (compiles sources directly, links statically) |
+| macOS, iOS | `<platform>/goo2d_ffi_box2d.podspec` → `<platform>/Classes` → `src` |
 
 A Flutter app gets all of this automatically. Outside one — `flutter test`,
 `dart run`, `tool/` scripts — nothing builds plugins, so build it once by hand.
@@ -75,10 +75,18 @@ NMake Makefiles and stops with `CMAKE_C_COMPILER not set`. Running under
 
 ### macOS and iOS hosts
 
-There is no route. The podspec links the shim into the application binary, so
-there is no library file to open and `lib/src/library.dart` reads the symbols
-out of the process instead. Outside an app nothing has linked them, and the
-first call fails on a missing symbol.
+There is no route. CocoaPods builds the shim into a framework the application
+loads at launch, so its symbols are in the process and there is no library file
+to open - `lib/src/library.dart` reads them out of the process instead. Outside
+an app nothing has loaded that framework, and the first call fails on a missing
+symbol.
+
+The podspecs cannot name `src` directly: CocoaPods matches `source_files`
+against the files under the pod directory, so `ios/Classes` and `macos/Classes`
+hold files that `#include` the sources out of `src`. `test/apple_forwarders_test.dart`
+compares that list against the directory `src/CMakeLists.txt` globs, and the
+`apple` job in `.github/workflows/test.yml` builds an application against both
+podspecs and reads the shim's symbols back out of the bundle.
 
 ### Finding the result
 

@@ -63,9 +63,10 @@ DynamicLibrary _openLibrary() {
     return DynamicLibrary.open(override);
   }
 
-  // Apple platforms link the shim statically into the application binary
-  // (see macos/goo2d_ffi_box2d.podspec), so there is no separate library
-  // file to open - the symbols are already in this process.
+  // On Apple platforms CocoaPods builds the shim into a framework the
+  // application loads at launch (see macos/goo2d_ffi_box2d.podspec), so its
+  // symbols are already in this process and there is no library file to
+  // open.
   //
   // Outside an application there is nothing to have linked them, so the
   // handle resolves and the first lookup in `_load` fails instead. Apple
