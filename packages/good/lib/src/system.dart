@@ -298,19 +298,16 @@ abstract class GameSystem extends GameListenerBase
 /// The check is `Scene.get`, the same resolve `scene.addEntity` does, and it
 /// runs twice:
 ///
-///  * when the scope is applied - [run], [groups], [runQuery], [inScene] and
+///  * when the scope is applied - [run], [groups], [inScene] and
 ///    [QueryGroup.inScene] all throw at the call, including [run], whose body
 ///    is a generator and would otherwise not run until the first `moveNext`;
 ///  * and again when a walk starts, because a [QueryGroup] and a lazy [run]
 ///    both outlive the call that made them, and the scene under one can be
 ///    unloaded in between.
 abstract class Query {
-  T get<T extends Component>();
-  T? tryGet<T extends Component>();
-
   /// Whether an archetype with this signature (see
   /// `ArchetypeStorage.componentSignature`) satisfies this query. What
-  /// [run]/[runQuery] filter archetypes with before walking any rows -
+  /// [run]/[groups] filter archetypes with before walking any rows -
   /// public because it is the whole of a query's matching semantics, and
   /// testing it directly beats inferring it from iteration results.
   bool matches(int signature);
@@ -344,45 +341,32 @@ abstract class Query {
   /// scene* on [Query].
   Iterable<QueryGroup> groups([Scene? scene]);
 
-  /// Invokes [runner] once per matching entity with an internal "current
-  /// entity" cursor, and [get]/[tryGet] read through that cursor.
-  ///
-  /// [scene] scopes the walk to one loaded scene - see *Scoping to one loaded
-  /// scene* on [Query].
-  void runQuery(void Function() runner, [Scene? scene]);
-
   /// A lazy `Iterable<Entity>` of matching entities.
   ///
   /// [scene] scopes the walk to one loaded scene - see *Scoping to one loaded
   /// scene* on [Query].
   Iterable<Entity> run([Scene? scene]);
 
-  /// This query, scoped to [scene]: [groups], [run] and [runQuery] on what
-  /// comes back walk only rows belonging to [scene], with no argument to
-  /// remember at each call site.
+  /// This query, scoped to [scene]: [groups] and [run] on what comes back
+  /// walk only rows belonging to [scene], with no argument to remember at
+  /// each call site.
   ///
   /// The view is a small object, so hoist it into a field instead of calling
   /// this per tick - a system's scope is settled when it learns which scene it
-  /// belongs to, not once per frame. [get], [tryGet] and the cursor behind
-  /// them are shared with the query this was made from: scoping changes which
-  /// rows are walked, nothing else.
+  /// belongs to, not once per frame. Scoping changes which rows are walked,
+  /// nothing else.
   Query inScene(Scene scene);
 }
 
 /// A query over exactly one component type, from [QueryDescriptor.has].
 abstract class SingleQuery<T extends Component> implements Query {
-  /// The matched component, for the entity under the cursor.
-  ///
-  /// Sugar for `get<T>()`, and it carries that method's rule: a cursor only
-  /// exists inside a [runQuery] callback, so reading this anywhere else
-  /// throws.
-  T get component;
-
   @override
   SingleQuery<T> inScene(Scene scene);
 }
 
 abstract class QueryDescriptor {
+  /// A query requiring exactly [T] - `query().withAll(T).build()` with the
+  /// component named once. Walk it with [Query.groups] or [Query.run].
   SingleQuery<T> has<T extends Component>();
 
   /// Opens a query. Chain [QueryBuilder.withAll]/[QueryBuilder.withNone]/
@@ -631,8 +615,8 @@ final class _QueryBuilder implements QueryBuilder {
 /// Concrete `Query`: matches archetypes against a compiled [QueryBuilder]
 /// and walks their live rows.
 ///
-/// [groups] is the walk to reach for and its own doc says why. These two are
-/// what it is preferred over, and both are allocation-free per step:
+/// [groups] is the walk to reach for and its own doc says why. [run] is what
+/// it is preferred over, and both are allocation-free per step:
 ///  * [run] - a lazy `Iterable<Entity>`, for a plain `for (final e in
 ///    query.run())` loop. It earns its place where the walk stops early
 ///    instead of covering every row: `ActiveCameraResolver.resolve` in
@@ -643,12 +627,6 @@ final class _QueryBuilder implements QueryBuilder {
 ///    `docs/guide/performance.md` calls the single most common cost in this
 ///    engine. The `Iterable`/`Iterator` themselves are the one allocation,
 ///    made once per call to `run()`, not once per entity.
-///  * [runQuery] - invokes [runner] once per matching entity with an
-///    internal "current entity" cursor, and [get]/[tryGet] read through
-///    that cursor. No `Entity` is materialized as a loop variable at all;
-///    this is the path `SingleQuery.component` is built on. Nothing in the
-///    tree walks this way, so the cursor group in `good`'s `query_test.dart`
-///    is the only worked example there is.
 class _ArchetypeQuery implements Query {
   _ArchetypeQuery(this._required, this._forbidden, this._anyGroups);
 
@@ -658,8 +636,6 @@ class _ArchetypeQuery implements Query {
   /// One mask per `withAny` group; empty in every query the engine itself
   /// currently writes, so [matches] usually never enters the loop at all.
   final List<int> _anyGroups;
-
-  Entity? _cursor;
 
   /// Whether an archetype with this signature satisfies every constraint.
   ///
@@ -675,30 +651,6 @@ class _ArchetypeQuery implements Query {
       if (signature & _anyGroups[i] == 0) return false;
     }
     return true;
-  }
-
-  @override
-  T get<T extends Component>() {
-    final cursor = _cursor;
-    if (cursor == null) {
-      throw StateError(
-        'Query.get<$T>() called outside a runQuery() callback - there is no '
-        'current entity.',
-      );
-    }
-    return cursor.get<T>();
-  }
-
-  @override
-  T? tryGet<T extends Component>() => _cursor?.tryGet<T>();
-
-  @override
-  void runQuery(void Function() runner, [Scene? scene]) {
-    for (final entity in run(scene)) {
-      _cursor = entity;
-      runner();
-    }
-    _cursor = null;
   }
 
   /// Rebuilt only when the archetype set changes - i.e. when a scene loads.
@@ -792,16 +744,13 @@ class _ArchetypeQuery implements Query {
   }
 }
 
-/// [SingleQuery]: a [Query] pre-filtered to one required component, with
-/// [component] as sugar for `get<T>()` through the [runQuery] cursor -
-/// `single.runQuery(() { final r = single.component; ... })`.
+/// [SingleQuery]: a [Query] pre-filtered to one required component, so
+/// `descriptor.has<T>()` is `descriptor.query().withAll(T).build()` with the
+/// component named once.
 final class _ArchetypeSingleQuery<T extends Component> extends _ArchetypeQuery
     implements SingleQuery<T> {
   _ArchetypeSingleQuery()
     : super(ComponentTypeRegistry.bitFor(T), 0, const <int>[]);
-
-  @override
-  T get component => get<T>();
 
   @override
   SingleQuery<T> inScene(Scene scene) {
@@ -829,21 +778,11 @@ class _ScopedQuery implements Query {
   bool matches(int signature) => _query.matches(signature);
 
   @override
-  T get<T extends Component>() => _query.get<T>();
-
-  @override
-  T? tryGet<T extends Component>() => _query.tryGet<T>();
-
-  @override
   Iterable<QueryGroup> groups([Scene? scene]) =>
       _query.groups(scene ?? _scene);
 
   @override
   Iterable<Entity> run([Scene? scene]) => _query.run(scene ?? _scene);
-
-  @override
-  void runQuery(void Function() runner, [Scene? scene]) =>
-      _query.runQuery(runner, scene ?? _scene);
 
   @override
   Query inScene(Scene scene) {
@@ -855,9 +794,6 @@ class _ScopedQuery implements Query {
 final class _ScopedSingleQuery<T extends Component> extends _ScopedQuery
     implements SingleQuery<T> {
   _ScopedSingleQuery(super.query, super.scene);
-
-  @override
-  T get component => get<T>();
 
   @override
   SingleQuery<T> inScene(Scene scene) {
