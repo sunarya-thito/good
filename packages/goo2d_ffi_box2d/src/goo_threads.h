@@ -6,11 +6,11 @@
 //
 // Box2D does not create threads. It calls `enqueueTask`/`finishTask` and
 // expects a `workerIndex` in [0, workerCount) to identify who is running.
-// Three properties of how it actually calls them drive this design, and
-// getting any of them wrong is a hang rather than a slowdown:
+// Four properties of how it actually calls them drive this design, and
+// getting any of them wrong is a hang, not a slowdown:
 //
 //  1. **Several tasks are in flight at once.** `solver.c` enqueues
-//     `workerCount - 1` solver tasks in a loop and only afterwards finishes
+//     `workerCount` solver tasks in a loop and only afterwards finishes
 //     them. A single-task-at-a-time pool would deadlock there.
 //
 //  2. **Those solver tasks synchronise with each other.** They are not
@@ -36,10 +36,6 @@
 //
 // Sizing it at `workerCount - 1` and letting the caller run one slice - the
 // usual parallel-for arrangement - is wrong here for property 4.
-//
-// **Opt in.** `gooWorldCreate` still makes a single-threaded world and is
-// byte-for-byte the behaviour every existing test measures; threading is
-// reached only through `gooWorldCreateThreaded`.
 
 #ifndef GOO_THREADS_H
 #define GOO_THREADS_H
@@ -53,15 +49,16 @@ extern "C" {
 /// Opaque handle to a pool of worker threads.
 typedef struct GooThreadPool GooThreadPool;
 
-/// Starts a pool that can run `workerCount` workers, counting the calling
-/// thread as worker 0 - so it creates `workerCount - 1` threads. Returns NULL
-/// for a workerCount of 1 or less, which means "no pool, run serially".
+/// Starts a pool of `workerCount` threads - one per worker, none of them the
+/// calling thread, which only dispatches and waits (property 4 above).
+/// Returns NULL for a workerCount of 1 or less, meaning "no pool, run
+/// serially".
 GooThreadPool* gooThreadPoolCreate( int32_t workerCount );
 
 /// Stops every thread and frees the pool. Safe on NULL.
 void gooThreadPoolDestroy( GooThreadPool* pool );
 
-/// How many workers this pool represents, including the calling thread.
+/// How many workers this pool runs. 1 for a NULL pool, the serial case.
 int32_t gooThreadPoolWorkerCount( const GooThreadPool* pool );
 
 /// The `b2EnqueueTaskCallback` / `b2FinishTaskCallback` pair, matching

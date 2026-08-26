@@ -68,10 +68,9 @@ class Box2DBindings {
   /// `enqueueTask`/`finishTask`. A [workerCount] of 1 or less is exactly
   /// [gooWorldCreate] - no pool, no threads, no behavioural difference.
   ///
-  /// **The pool belongs to the world and is destroyed with it**, so a caller
-  /// has one lifetime to think about rather than two. That is why this is a
-  /// separate constructor instead of a setter: a world cannot change its
-  /// worker count, and a pool cannot outlive its world.
+  /// **The pool belongs to the world and is destroyed with it**, so you have
+  /// one lifetime to think about. A world's worker count is fixed at
+  /// creation - there is no setter - and its pool cannot outlive it.
   ///
   /// Box2D warns that only performance cores help - efficiency cores and
   /// hyper-threading "provide little benefit and may even harm performance"
@@ -459,9 +458,9 @@ class Box2DBindings {
 
   /// --- shapes ------------------------------------------------------------
   ///
-  /// One entry point per goo2d ColliderBody subtype. They share a trailing
-  /// material/filter parameter block rather than a struct, because a struct
-  /// is exactly what this header exists to avoid.
+  /// One entry point per goo2d ColliderBody subtype. Each ends with the same
+  /// material/filter block, spelled out as separate parameters so nothing
+  /// here maps to a Dart `Struct`.
   ///
   /// `category` and `mask` are Box2D's b2Filter bits, which are uint64_t in
   /// v3.1.1 - wide enough for goo2d's `layer` (a bit index) across all 64
@@ -562,8 +561,8 @@ class Box2DBindings {
   /// `halfHeight` is half the TOTAL height, caps included (Unity's
   /// CapsuleCollider2D.size semantics), so the straight section runs
   /// +/- (halfHeight - radius). A capsule shorter than it is wide
-  /// degenerates to a circle rather than erroring - the same choice
-  /// CapsuleBody.containsLocalPoint already makes.
+  /// degenerates to a circle, not an error - the same answer
+  /// CapsuleBody.containsLocalPoint gives.
   int gooShapeAddCapsule(
     int body,
     double cx,
@@ -611,9 +610,9 @@ class Box2DBindings {
           int, int, int)>();
 
   /// `pointsXy` is `count` interleaved x,y pairs (2 * count floats) in
-  /// body-local space, already offset by the caller. Returns 0 if Box2D's
-  /// hull builder rejects the points (fewer than 3, collinear, or beyond
-  /// B2_MAX_POLYGON_VERTICES) rather than creating a degenerate shape.
+  /// body-local space, already offset by the caller. Returns 0 and creates
+  /// no shape if Box2D's hull builder rejects the points: fewer than 3,
+  /// collinear, or beyond B2_MAX_POLYGON_VERTICES.
   int gooShapeAddPolygon(
     int body,
     ffi.Pointer<ffi.Float> pointsXy,
@@ -684,13 +683,14 @@ class Box2DBindings {
   late final _gooShapeDestroy =
       _gooShapeDestroyPtr.asFunction<void Function(int, int)>();
 
-  /// Box2D v3 has no per-shape enable flag, so goo2d's
-  /// `ColliderBody.enable` is expressed as a filter change: a zero mask
-  /// collides with nothing. Dart passes both bits every time rather than
-  /// this shim remembering a "real" mask to restore - the authoritative
-  /// `layer`/`excludeLayers` already live in component storage, and
-  /// caching a second copy here is the drift the one-fact-one-place rule
-  /// describes.
+  /// Sets a shape's collision filter. Box2D v3 has no per-shape enable
+  /// flag, so goo2d's `ColliderBody.enable` is expressed here too: a zero
+  /// mask collides with nothing.
+  ///
+  /// Pass both bits on every call. This shim holds no "real" mask to
+  /// restore - the authoritative `layer`/`excludeLayers` live in component
+  /// storage, and a second copy here is the drift the one-fact-one-place
+  /// rule describes.
   void gooShapeSetFilter(
     int shape,
     int category,
@@ -773,7 +773,7 @@ class Box2DBindings {
 
   /// The reverse: reads `count` transforms out into `outXya` (3 floats
   /// per body). A skipped body leaves its 3 slots untouched, so the
-  /// caller's previous values survive rather than becoming zeros.
+  /// caller's previous values survive and are not zeroed.
   void gooBodiesPullTransforms(
     ffi.Pointer<ffi.Int64> bodies,
     ffi.Pointer<ffi.Float> outXya,
@@ -836,8 +836,8 @@ class Box2DBindings {
   /// Drains this step's contact (non-sensor) touch transitions.
   ///
   /// `shapeA`/`shapeB` are packed shape handles. Events beyond `maxEvents`
-  /// are **dropped**, and the caller is expected to size its buffer from
-  /// the previous tick's return value rather than have this grow one.
+  /// are **dropped**; this never grows a buffer. Size yours from the
+  /// previous tick's return value.
   int gooWorldDrainContacts(
     int world,
     ffi.Pointer<ffi.Int64> out,
@@ -880,8 +880,8 @@ class Box2DBindings {
       .asFunction<int Function(int, ffi.Pointer<ffi.Int64>, int)>();
 
   /// How many contact and sensor records the last step produced, whether or
-  /// not they fitted in the buffer. Lets a caller resize *after* a drain
-  /// that overflowed rather than guessing up front.
+  /// not they fitted in the buffer. Lets you resize *after* a drain
+  /// overflowed instead of guessing up front.
   int gooWorldContactEventCount(
     int world,
   ) {
@@ -1280,8 +1280,8 @@ class Box2DBindings {
   /// Creates a mouse joint - drags body B towards a world-space target.
   /// Unity calls this a Target Joint 2D. Mouse dragging, tractor beams.
   ///
-  /// The target is world space, not body-local, because that is the whole
-  /// point: it is where you want the body to go, not a point on it.
+  /// `(targetX, targetY)` is in world space, not body-local: it is where you
+  /// want the body to go, not a point on it.
   ///
   /// # It grabs the body, then aims - and that ordering is the whole trick
   ///
@@ -1456,9 +1456,9 @@ class Box2DBindings {
   ///
   /// [ bodies, shapes, contacts, joints, islands ]
   ///
-  /// Flattened into a caller's array rather than returned as `b2Counters`,
-  /// which is a struct by value - the one thing this shim exists to keep out
-  /// of the Dart bindings.
+  /// Flattened into a caller's array. Box2D's own `b2Counters` is a struct
+  /// returned by value, and ffigen maps that to an allocating Dart
+  /// `Struct`.
   ///
   /// **Contacts here are potential (broad-phase) pairs**, not the touching
   /// pairs the event API reports. A pile whose contact count climbs far
@@ -1537,7 +1537,8 @@ class Box2DBindings {
   /// overlap. It is what you want for "roughly what is in this region";
   /// callers needing exactness re-test the survivors themselves.
   ///
-  /// Results beyond `maxShapes` are dropped rather than growing anything.
+  /// Results beyond `maxShapes` are dropped, and `outShapes` is never
+  /// reallocated.
   int gooWorldOverlapAABB(
     int world,
     double minX,

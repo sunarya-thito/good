@@ -4,9 +4,9 @@
 // b2Vec2, b2Rot, b2BodyId, b2Transform, b2WorldDef and friends. ffigen maps
 // each of those to a Dart `Struct`, which is a heap object, so binding
 // Box2D directly would allocate on every call on the hottest path in the
-// engine. That is the cost this codebase already measured and removed once
-// (a `Pointer` field cost 14.63ns/access against 2.25ns for a plain `int`),
-// and the no-allocation hot-path rule forbids re-introducing it.
+// engine. That cost is measured: a `Pointer` field costs 14.63ns/access
+// against 2.25ns for a plain `int`, and the no-allocation hot-path rule
+// forbids re-introducing it.
 //
 // So every parameter and return below is `int64_t`, `int32_t`, `uint64_t`,
 // `float`, or a pointer to an array of those. Nothing here maps to a Dart
@@ -32,12 +32,11 @@
 // single `transformRotation` double and a two-field rotor would have to be
 // derived and re-normalised on both sides.
 //
-// NO userData, DELIBERATELY. The obvious way to get from a contact event
-// back to a goo2d Entity is to stash the packed Entity in Box2D's
-// per-shape `void* userData`. That is a 64-bit truncation bug waiting on
-// 32-bit Android (armeabi-v7a is still in Flutter's default ABI set):
-// `void*` is 4 bytes there, an Entity packs 16 archetype + 16 page + 32 row
-// = all 64. So no userData crosses this boundary at all. Instead the Dart
+// NO userData. Stashing a packed Entity in Box2D's per-shape
+// `void* userData` truncates on 32-bit Android (armeabi-v7a is still in
+// Flutter's default ABI set): `void*` is 4 bytes there, and an Entity packs
+// 16 archetype + 16 page + 32 row = all 64. So no userData crosses this
+// boundary at all. To get from a contact event back to an Entity, the Dart
 // side keeps an Int64List of Entities indexed by the shape handle's OWN
 // dense slot - `index1`, the high 32 bits of the packed id (see
 // b2StoreShapeId in id.h). Box2D's id pool keeps that index dense and
@@ -81,10 +80,9 @@ extern "C"
 	/// `enqueueTask`/`finishTask`. A [workerCount] of 1 or less is exactly
 	/// [gooWorldCreate] - no pool, no threads, no behavioural difference.
 	///
-	/// **The pool belongs to the world and is destroyed with it**, so a caller
-	/// has one lifetime to think about rather than two. That is why this is a
-	/// separate constructor instead of a setter: a world cannot change its
-	/// worker count, and a pool cannot outlive its world.
+	/// **The pool belongs to the world and is destroyed with it**, so you have
+	/// one lifetime to think about. A world's worker count is fixed at
+	/// creation - there is no setter - and its pool cannot outlive it.
 	///
 	/// Box2D warns that only performance cores help - efficiency cores and
 	/// hyper-threading "provide little benefit and may even harm performance"
@@ -143,9 +141,9 @@ extern "C"
 
 	// --- shapes ------------------------------------------------------------
 	//
-	// One entry point per goo2d ColliderBody subtype. They share a trailing
-	// material/filter parameter block rather than a struct, because a struct
-	// is exactly what this header exists to avoid.
+	// One entry point per goo2d ColliderBody subtype. Each ends with the same
+	// material/filter block, spelled out as separate parameters so nothing
+	// here maps to a Dart `Struct`.
 	//
 	// `category` and `mask` are Box2D's b2Filter bits, which are uint64_t in
 	// v3.1.1 - wide enough for goo2d's `layer` (a bit index) across all 64
@@ -164,17 +162,17 @@ extern "C"
 	/// `halfHeight` is half the TOTAL height, caps included (Unity's
 	/// CapsuleCollider2D.size semantics), so the straight section runs
 	/// +/- (halfHeight - radius). A capsule shorter than it is wide
-	/// degenerates to a circle rather than erroring - the same choice
-	/// CapsuleBody.containsLocalPoint already makes.
+	/// degenerates to a circle, not an error - the same answer
+	/// CapsuleBody.containsLocalPoint gives.
 	GOO_API int64_t gooShapeAddCapsule( int64_t body, float cx, float cy, float radius,
 										float halfHeight, float density, float friction,
 										float restitution, uint64_t category, uint64_t mask,
 										int32_t isSensor );
 
 	/// `pointsXy` is `count` interleaved x,y pairs (2 * count floats) in
-	/// body-local space, already offset by the caller. Returns 0 if Box2D's
-	/// hull builder rejects the points (fewer than 3, collinear, or beyond
-	/// B2_MAX_POLYGON_VERTICES) rather than creating a degenerate shape.
+	/// body-local space, already offset by the caller. Returns 0 and creates
+	/// no shape if Box2D's hull builder rejects the points: fewer than 3,
+	/// collinear, or beyond B2_MAX_POLYGON_VERTICES.
 	GOO_API int64_t gooShapeAddPolygon( int64_t body, const float* pointsXy, int32_t count,
 										float density, float friction, float restitution,
 										uint64_t category, uint64_t mask, int32_t isSensor );
@@ -183,13 +181,14 @@ extern "C"
 
 	GOO_API void gooShapeDestroy( int64_t shape, int32_t updateBodyMass );
 
-	/// Box2D v3 has no per-shape enable flag, so goo2d's
-	/// `ColliderBody.enable` is expressed as a filter change: a zero mask
-	/// collides with nothing. Dart passes both bits every time rather than
-	/// this shim remembering a "real" mask to restore - the authoritative
-	/// `layer`/`excludeLayers` already live in component storage, and
-	/// caching a second copy here is the drift the one-fact-one-place rule
-	/// describes.
+	/// Sets a shape's collision filter. Box2D v3 has no per-shape enable
+	/// flag, so goo2d's `ColliderBody.enable` is expressed here too: a zero
+	/// mask collides with nothing.
+	///
+	/// Pass both bits on every call. This shim holds no "real" mask to
+	/// restore - the authoritative `layer`/`excludeLayers` live in component
+	/// storage, and a second copy here is the drift the one-fact-one-place
+	/// rule describes.
 	GOO_API void gooShapeSetFilter( int64_t shape, uint64_t category, uint64_t mask );
 
 	/// Turns a shape's event reporting off again - every shape this shim
@@ -207,11 +206,10 @@ extern "C"
 	// cost 2N calls per tick to push gameplay-authored transforms in and
 	// pull simulated ones back out. These do it in two, regardless of N.
 	//
-	// The buffers are plain caller-owned arrays - this shim deliberately
-	// knows NOTHING about good's memory pool. The pool is bit-packed by
+	// The buffers are plain caller-owned arrays. This shim knows NOTHING
+	// about good's memory pool, and must not: the pool is bit-packed by
 	// DataDescriptor's cursor, so a C struct mirroring a row would be a
-	// second copy of that layout which has to agree with data_layout.dart by
-	// hand, and the one-fact-one-place rule exists precisely to stop that.
+	// second copy of that layout, kept in step with data_layout.dart by hand.
 
 	/// Pushes `count` transforms into the world. `bodies` is `count` packed
 	/// handles; `xya` is 3 floats per body. A zero or stale handle is
@@ -221,7 +219,7 @@ extern "C"
 
 	/// The reverse: reads `count` transforms out into `outXya` (3 floats
 	/// per body). A skipped body leaves its 3 slots untouched, so the
-	/// caller's previous values survive rather than becoming zeros.
+	/// caller's previous values survive and are not zeroed.
 	GOO_API void gooBodiesPullTransforms( const int64_t* bodies, float* outXya, int32_t count );
 
 	/// Velocities alongside the transforms, same skipping rules, 3 floats
@@ -231,13 +229,12 @@ extern "C"
 
 	// --- contact and sensor events -----------------------------------------
 	//
-	// This is why Box2D **v3** was chosen over v2. v3 accumulates touch
-	// transitions into flat arrays that you poll once after each step
-	// (b2World_GetContactEvents / b2World_GetSensorEvents) rather than
-	// calling you back mid-solve. Polling suits an FFI boundary; a callback
-	// would mean a C function pointer re-entering Dart from inside the
-	// solver, on the hot path, with no good answer for what may be touched
-	// while Box2D is mid-step.
+	// Box2D v3 accumulates touch transitions into flat arrays you poll once
+	// after each step (b2World_GetContactEvents / b2World_GetSensorEvents).
+	// Nothing calls you back mid-solve, and nothing here should: a callback
+	// puts a C function pointer re-entering Dart from inside the solver, on
+	// the hot path, with no good answer for what may be touched while Box2D
+	// is mid-step.
 	//
 	// Both drains write fixed-stride records of 3 int64 each:
 	//
@@ -257,8 +254,8 @@ extern "C"
 	/// Drains this step's contact (non-sensor) touch transitions.
 	///
 	/// `shapeA`/`shapeB` are packed shape handles. Events beyond `maxEvents`
-	/// are **dropped**, and the caller is expected to size its buffer from
-	/// the previous tick's return value rather than have this grow one.
+	/// are **dropped**; this never grows a buffer. Size yours from the
+	/// previous tick's return value.
 	GOO_API int32_t gooWorldDrainContacts( int64_t world, int64_t* out, int32_t maxEvents );
 
 	/// Drains this step's sensor touch transitions. `shapeA` is the sensor,
@@ -267,8 +264,8 @@ extern "C"
 	GOO_API int32_t gooWorldDrainSensors( int64_t world, int64_t* out, int32_t maxEvents );
 
 	/// How many contact and sensor records the last step produced, whether or
-	/// not they fitted in the buffer. Lets a caller resize *after* a drain
-	/// that overflowed rather than guessing up front.
+	/// not they fitted in the buffer. Lets you resize *after* a drain
+	/// overflowed instead of guessing up front.
 	GOO_API int32_t gooWorldContactEventCount( int64_t world );
 	GOO_API int32_t gooWorldSensorEventCount( int64_t world );
 
@@ -280,8 +277,8 @@ extern "C"
 	// who moved a body first would get a joint attached somewhere it did not
 	// intend with nothing to indicate it.
 	//
-	// Flags are int32 0/1 rather than bool - the shim exposes no C `bool`, so
-	// nothing here depends on `_Bool` having the same width as Dart expects.
+	// Flags are int32 0/1. No C `bool` crosses this boundary, so nothing here
+	// depends on `_Bool` having the width Dart expects.
 	//
 	// A joint is destroyed automatically when either of its bodies is, so a
 	// handle held across a body's destruction goes stale; `gooJointIsValid`
@@ -345,8 +342,8 @@ extern "C"
 	/// Creates a mouse joint - drags body B towards a world-space target.
 	/// Unity calls this a Target Joint 2D. Mouse dragging, tractor beams.
 	///
-	/// The target is world space, not body-local, because that is the whole
-	/// point: it is where you want the body to go, not a point on it.
+	/// `(targetX, targetY)` is in world space, not body-local: it is where you
+	/// want the body to go, not a point on it.
 	///
 	/// # It grabs the body, then aims - and that ordering is the whole trick
 	///
@@ -408,9 +405,9 @@ extern "C"
 	///
 	///     [ bodies, shapes, contacts, joints, islands ]
 	///
-	/// Flattened into a caller's array rather than returned as `b2Counters`,
-	/// which is a struct by value - the one thing this shim exists to keep out
-	/// of the Dart bindings.
+	/// Flattened into a caller's array. Box2D's own `b2Counters` is a struct
+	/// returned by value, and ffigen maps that to an allocating Dart
+	/// `Struct`.
 	///
 	/// **Contacts here are potential (broad-phase) pairs**, not the touching
 	/// pairs the event API reports. A pile whose contact count climbs far
@@ -448,7 +445,8 @@ extern "C"
 	/// overlap. It is what you want for "roughly what is in this region";
 	/// callers needing exactness re-test the survivors themselves.
 	///
-	/// Results beyond `maxShapes` are dropped rather than growing anything.
+	/// Results beyond `maxShapes` are dropped, and `outShapes` is never
+	/// reallocated.
 	GOO_API int32_t gooWorldOverlapAABB( int64_t world, float minX, float minY, float maxX,
 										 float maxY, uint64_t category, uint64_t mask,
 										 int64_t* outShapes, int32_t maxShapes );

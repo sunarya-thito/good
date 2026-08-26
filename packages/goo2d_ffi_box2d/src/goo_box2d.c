@@ -3,10 +3,10 @@
 //
 // Every function here is a thin translation: unpack integer handles into
 // Box2D's id structs, convert radians to/from b2Rot, call Box2D, pack the
-// result back. There is no state in this file - no caches, no tables, no
-// registries. That is deliberate: anything remembered here would be a
-// second copy of something the Dart side already owns, and it would have to
-// be kept in step by hand (the one-fact-one-place rule).
+// result back. Nothing is cached, tabled or registered - anything remembered
+// here would be a second copy of something the Dart side already owns, kept
+// in step by hand (the one-fact-one-place rule). The one exception is the
+// thread-pool array below, which is native state with no Dart counterpart.
 
 #include "goo_box2d.h"
 #include "goo_threads.h"
@@ -20,16 +20,16 @@
 #include <string.h>
 
 // The Dart side sends body types as plain ints. If Box2D ever renumbers
-// b2BodyType these fire at compile time, rather than silently turning every
-// dynamic body static at runtime - the kind of failure that looks like a
-// physics bug and is not one.
+// b2BodyType these fire at compile time. Without them a renumbering turns
+// every dynamic body static at run time, silently - the kind of failure that
+// looks like a physics bug and is not one.
 _Static_assert( b2_staticBody == 0, "b2_staticBody must be 0" );
 _Static_assert( b2_kinematicBody == 1, "b2_kinematicBody must be 1" );
 _Static_assert( b2_dynamicBody == 2, "b2_dynamicBody must be 2" );
 
 // goo2d's PolygonBody declares up to 8 points because Box2D caps a convex
-// polygon there. If upstream raises the cap, hasPolygonCollider's default
-// should be revisited alongside it rather than silently diverging.
+// polygon there. Raise the cap upstream and this assert fires; revisit
+// hasPolygonCollider's default alongside it.
 _Static_assert( B2_MAX_POLYGON_VERTICES == 8, "goo2d assumes an 8-vertex polygon cap" );
 
 // --- handle helpers ---------------------------------------------------------
@@ -64,15 +64,13 @@ int32_t gooB2Version( void )
 
 // Thread pools, by world index.
 //
-// **The one piece of state in this file, and it is here on purpose.** The
-// header above says the shim remembers nothing, because anything remembered
-// would be a second copy of something Dart already owns. A thread pool is not
-// that: it is native state with no Dart counterpart, and it has to be owned
-// somewhere so `gooWorldDestroy` can shut the threads down. A `b2WorldId`
-// carries a dense `index1`, so a flat array is the whole lookup.
+// **The one piece of state in this file.** A pool is native state with no
+// Dart counterpart, so nothing on the Dart side can own it, and something
+// must so `gooWorldDestroy` can shut the threads down. A `b2WorldId` carries
+// a dense `index1`, so a flat array is the whole lookup.
 //
-// 128 is Box2D's own `B2_MAX_WORLDS` (`src/constants.h`), which is why the
-// bound is what it is rather than a number picked here.
+// 128 is Box2D's own `B2_MAX_WORLDS` (`src/constants.h`), not a bound picked
+// here.
 #define GOO_MAX_WORLDS 128
 static GooThreadPool* gooWorldPools[GOO_MAX_WORLDS];
 
@@ -322,7 +320,7 @@ int64_t gooShapeAddCapsule( int64_t body, float cx, float cy, float radius, floa
 	// end. A capsule shorter than it is wide has no straight section at
 	// all; clamping to zero collapses both cap centres onto the origin,
 	// which IS a circle - the same degenerate answer
-	// CapsuleBody.containsLocalPoint gives, rather than an error.
+	// CapsuleBody.containsLocalPoint gives, and not an error.
 	float segment = halfHeight - radius;
 	if ( segment < 0.0f )
 	{
@@ -382,7 +380,7 @@ void gooShapeDestroy( int64_t shape, int32_t updateBodyMass )
 void gooShapeSetFilter( int64_t shape, uint64_t category, uint64_t mask )
 {
 	b2ShapeId id = unpackShape( shape );
-	// Read-modify-write rather than a fresh b2Filter, so groupIndex (which
+	// Read-modify-write instead of a fresh b2Filter, so groupIndex (which
 	// this shim does not expose) keeps whatever it was set to.
 	b2Filter filter = b2Shape_GetFilter( id );
 	filter.categoryBits = category;
@@ -511,10 +509,10 @@ int32_t gooWorldDrainContacts( int64_t world, int64_t* out, int32_t maxEvents )
 		record[1] = (int64_t)b2StoreShapeId( events.endEvents[i].shapeIdA );
 		record[2] = (int64_t)b2StoreShapeId( events.endEvents[i].shapeIdB );
 	}
-	// Hit events (b2ContactHitEvent) are deliberately not drained: they carry
-	// an impact point and speed and only fire above a threshold, which is a
-	// different feature from touch tracking. Adding them here would mean a
-	// wider record for every caller to serve a case none of them asked for.
+	// Hit events (b2ContactHitEvent) are not drained. They carry an impact
+	// point and speed and only fire above a threshold, so they are a separate
+	// feature from touch tracking; draining them here would widen the record
+	// for every caller.
 	return written;
 }
 
@@ -559,8 +557,8 @@ static inline b2JointId unpackJoint( int64_t h )
 	return b2LoadJointId( (uint64_t)h );
 }
 
-/// Both creators need the same two checks, and a joint between a dead body
-/// and a live one is a crash rather than a no-op inside Box2D.
+/// Both creators need the same two checks. Inside Box2D a joint between a
+/// dead body and a live one crashes; it does not quietly no-op.
 static int jointBodiesValid( int64_t bodyA, int64_t bodyB )
 {
 	if ( bodyA == 0 || bodyB == 0 )
@@ -586,8 +584,8 @@ int64_t gooJointCreateDistance( int64_t bodyA, int64_t bodyB, float ax, float ay
 	def.bodyIdB = unpackBody( bodyB );
 	def.localAnchorA = ( b2Vec2 ){ ax, ay };
 	def.localAnchorB = ( b2Vec2 ){ bx, by };
-	// **Zero means "keep Box2D's default"** for the three lengths, rather than
-	// meaning zero. Box2D asserts a positive length and a positive minLength,
+	// **Zero means "keep Box2D's default"** for the three lengths; it is not a
+	// literal zero. Box2D asserts a positive length and a positive minLength,
 	// and those asserts compile out of a release build - so passing a literal
 	// zero through would work in a debug test and quietly produce a degenerate
 	// joint in the shipped game. Leaving the default in place is the only
@@ -611,9 +609,9 @@ int64_t gooJointCreateDistance( int64_t bodyA, int64_t bodyB, float ax, float ay
 	}
 	def.collideConnected = collideConnected != 0;
 
-	// The world is read back off the body rather than passed in: a body id
-	// already names its world, and a separate world argument is a second copy
-	// of that fact for a caller to get wrong.
+	// The world comes off the body: a body id already names its world, and a
+	// separate world argument would be a second copy of that fact for a caller
+	// to get wrong.
 	return (int64_t)b2StoreJointId( b2CreateDistanceJoint( b2Body_GetWorld( a ), &def ) );
 }
 
@@ -661,8 +659,8 @@ int64_t gooJointCreatePrismatic( int64_t bodyA, int64_t bodyB, float ax, float a
 	def.localAnchorA = ( b2Vec2 ){ ax, ay };
 	def.localAnchorB = ( b2Vec2 ){ bx, by };
 	// A zero axis is degenerate and Box2D only catches it with an assert,
-	// which is absent from a release build - so it falls back to horizontal
-	// rather than producing a joint that behaves differently once shipped.
+	// which is absent from a release build. Falling back to horizontal keeps
+	// debug and shipped builds behaving the same.
 	def.localAxisA = ( axisX == 0.0f && axisY == 0.0f ) ? ( b2Vec2 ){ 1.0f, 0.0f }
 													   : b2Normalize( ( b2Vec2 ){ axisX, axisY } );
 	def.referenceAngle = referenceAngle;
@@ -858,10 +856,9 @@ void gooJointSetMotor( int64_t joint, int32_t enable, float speed, float maxEffo
 		return;
 	}
 
-	// Box2D's motor setters are per joint type rather than on the base, so
-	// the dispatch has to happen somewhere. Here is the right place: it keeps
-	// one Dart-side entry point for "drive this joint", which is what a
-	// caller actually wants, instead of exporting six near-identical ones.
+	// Box2D's motor setters are per joint type, not on the base, so the
+	// dispatch has to happen somewhere. Doing it here keeps one Dart-side
+	// entry point for "drive this joint" in place of six near-identical ones.
 	switch ( b2Joint_GetType( id ) )
 	{
 		case b2_revoluteJoint:

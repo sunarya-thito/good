@@ -309,8 +309,8 @@ void* gooThreadPoolEnqueue( void* taskFn, int32_t itemCount, int32_t minRange, v
 	{
 		// Every thread is occupied. Running inline is correct for a
 		// parallel-for and is the one case that is NOT correct for a solver
-		// task - which is why the pool holds a thread per worker, so the
-		// solver's simultaneous enqueues always find one.
+		// task. The pool holds a thread per worker so the solver's
+		// simultaneous enqueues always find one, keeping this path off it.
 		fn( 0, itemCount, 0, taskContext );
 		return NULL;
 	}
@@ -359,8 +359,8 @@ void gooThreadPoolFinish( void* userTask, void* userContext )
 	{
 		return;
 	}
-	// Spun rather than blocked: these waits are microseconds inside a step,
-	// and a condition variable per finish costs more than it saves.
+	// Spinning instead of blocking: these waits are microseconds inside a
+	// step, and a condition variable per finish costs more than it saves.
 	while ( task->remaining > 0 )
 	{
 		gooYield();

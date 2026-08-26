@@ -15,6 +15,16 @@ Documentation and build tooling. No code changes.
 * No comment names `RULES.md`, which is not in the repository. The two rules
   cited were the no-allocation hot-path rule and one fact, one place, both on
   the docs site.
+* Every doc comment on `Box2DBindings` now leads with what the call does and
+  what you have to get right, in place of arguing the design against
+  alternatives you cannot see. Signatures and symbols are unchanged; the text
+  on pub.dev is new.
+* `gooThreadPoolCreate` said it starts `workerCount - 1` threads. It starts
+  `workerCount`, and the calling thread never runs a slice. `goo_threads.h`
+  also said Box2D's solver enqueues `workerCount - 1` tasks; it enqueues
+  `workerCount`.
+* `goo_box2d.c` said the shim holds no state, three lines above the thread-pool
+  array it holds.
 
 ## 0.1.1
 
