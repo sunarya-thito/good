@@ -24,6 +24,10 @@ exported symbol is what it was.
 * `test/apple_forwarders_test.dart` compares the Apple source list against the
   directory `src/CMakeLists.txt` globs, so the two descriptions of this build
   cannot drift apart unnoticed.
+* The README, the docs and `library.dart` said the podspec links the shim into
+  the application binary. CocoaPods builds it into a framework the application
+  loads at launch. `DynamicLibrary.process()` is right either way, and it is
+  the reason it is right that changes.
 
 * `ffigen.yaml`'s function filter matched none of the shim's 60 symbols, so
   `dart run ffigen --config ffigen.yaml` emptied `lib/src/box2d.g.dart` instead

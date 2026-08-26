@@ -115,7 +115,7 @@ means "no body yet".
 |---|---|
 | Windows, Linux | `<platform>/CMakeLists.txt` → `src/CMakeLists.txt` |
 | Android | `android/build.gradle` → NDK CMake → `src/CMakeLists.txt` |
-| macOS, iOS | CocoaPods podspec, compiled directly and linked statically |
+| macOS, iOS | CocoaPods podspec → `<platform>/Classes` → `src` |
 
 A Flutter app gets all of this automatically. Outside one, build it by hand
 once, from the repository root:
