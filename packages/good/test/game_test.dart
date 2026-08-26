@@ -384,12 +384,7 @@ class _CensusSystem extends GameSystem with FixedTickable {
 /// it has no way to see, which is why the built-in was deleted rather than
 /// kept.
 class _SpawnUnit extends SupplierCommand<Entity> {
-  late final ParamPointer<Entity> spawned;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    spawned = descriptor.hasEntity();
-  }
+  final spawned = Param.entity();
 
   @override
   void bufferFromResult(ParamBuffer call, Entity result) =>
@@ -449,7 +444,7 @@ class _TestGame extends Game {
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
-    spawnUnit = descriptor.has(_SpawnUnit());
+    spawnUnit = descriptor.has(_SpawnUnit.new);
   }
 }
 
@@ -487,19 +482,14 @@ class _BadControlGame extends _TestGame {
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
-    writeOutsideTick = descriptor.has(_WriteOutsideTick());
+    writeOutsideTick = descriptor.has(_WriteOutsideTick.new);
   }
 }
 
 /// Registers a command that *returns* something as a control handler, which
 /// has to fail where it is written rather than hang where it is called.
 class _Answering extends SupplierCommand<int> {
-  late final ParamPointer<int> value;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    value = descriptor.hasInt32();
-  }
+  final value = Param.int32();
 
   @override
   void bufferFromResult(ParamBuffer call, int result) => value[call] = result;
@@ -525,7 +515,7 @@ class _AnsweringGame extends _TestGame {
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
-    answering = descriptor.has(_Answering());
+    answering = descriptor.has(_Answering.new);
   }
 }
 
@@ -538,7 +528,7 @@ class _AnsweringMainGame extends _TestGame {
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
-    answeringMain = descriptor.has(_Answering());
+    answeringMain = descriptor.has(_Answering.new);
     descriptor.hasControlSupplier(answeringMain, () => 1);
   }
 }
@@ -598,14 +588,8 @@ typedef _Nudge = ({Entity entity, double amount});
 /// A user command, to prove the dispatch table is not hardcoded to the
 /// framework's own spawn. Sets [x] on an entity it is handed by value.
 class _NudgeCommand extends SinkCommand<_Nudge> {
-  late final ParamPointer<Entity> entity;
-  late final ParamPointer<double> amount;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    entity = descriptor.hasEntity();
-    amount = descriptor.hasFloat64();
-  }
+  final entity = Param.entity();
+  final amount = Param.float64();
 
   @override
   void bufferFromParams(ParamBuffer call, _Nudge params) {
@@ -630,7 +614,7 @@ class _CommandGame extends _TestGame {
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
-    nudge = descriptor.has(_NudgeCommand());
+    nudge = descriptor.has(_NudgeCommand.new);
   }
 }
 
@@ -657,7 +641,7 @@ class _BadCommandState extends _TestState {
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
-    descriptor.has(_NudgeCommand());
+    descriptor.has(_NudgeCommand.new);
   }
 }
 
@@ -1214,9 +1198,9 @@ void main() {
         ..throwOnTick = 1
         // Longer than the 1024-byte error field, and not ASCII: a cut through
         // the middle of a multi-byte character has to come back inside the
-        // cap, not one replacement character over it. `hasString` refuses an
-        // oversized write, and a throw from inside the reporting path would
-        // take out the report of the throw.
+        // cap, not one replacement character over it. `Param.fixedString`
+        // refuses an oversized write, and a throw from inside the reporting
+        // path would take out the report of the throw.
         ..throwMessage = 'é' * 4000;
       addTearDown(() => _thrower.throwMessage = 'system boom');
 

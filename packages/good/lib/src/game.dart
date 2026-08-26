@@ -417,7 +417,7 @@ abstract class Game implements RandomOwner {
   /// @override
   /// void describeCommands(CommandDescriptor descriptor) {
   ///   super.describeCommands(descriptor);
-  ///   damage = descriptor.has(Damage());   // handled on the game isolate
+  ///   damage = descriptor.has(Damage.new);   // handled on the game isolate
   ///   save = descriptor.has(SaveGame());
   ///   descriptor.hasSink(save, _writeSaveFile);  // ...but this one here
   /// }
@@ -461,12 +461,12 @@ abstract class Game implements RandomOwner {
   /// leaves the prefab lookup on the side that owns the memory.
   @mustCallSuper
   void describeCommands(CommandDescriptor descriptor) {
-    _setVisibleCommand = descriptor.has(_SetVisibleCommand());
-    _setPausedCommand = descriptor.has(_SetPausedCommand());
-    _setTimeScaleCommand = descriptor.has(_SetTimeScaleCommand());
-    _stepOnceCommand = descriptor.has(_StepOnceCommand());
+    _setVisibleCommand = descriptor.has(_SetVisibleCommand.new);
+    _setPausedCommand = descriptor.has(_SetPausedCommand.new);
+    _setTimeScaleCommand = descriptor.has(_SetTimeScaleCommand.new);
+    _stepOnceCommand = descriptor.has(_StepOnceCommand.new);
     _reportDisabledSystemCommand = descriptor.has(
-      _ReportDisabledSystemCommand(),
+      _ReportDisabledSystemCommand.new,
     );
     descriptor.hasSink(
       _reportDisabledSystemCommand,
@@ -3617,12 +3617,7 @@ final class _StateDescriptor implements StateDescriptor {
 // agree the way they do for a game's own commands.
 
 final class _SetVisibleCommand extends SinkCommand<bool> {
-  late final ParamPointer<int> visible;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    visible = descriptor.hasUint1();
-  }
+  final visible = Param.uint1();
 
   @override
   void bufferFromParams(ParamBuffer call, bool params) =>
@@ -3633,12 +3628,7 @@ final class _SetVisibleCommand extends SinkCommand<bool> {
 }
 
 final class _SetPausedCommand extends SinkCommand<bool> {
-  late final ParamPointer<int> paused;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    paused = descriptor.hasUint1();
-  }
+  final paused = Param.uint1();
 
   @override
   void bufferFromParams(ParamBuffer call, bool params) =>
@@ -3649,12 +3639,7 @@ final class _SetPausedCommand extends SinkCommand<bool> {
 }
 
 final class _SetTimeScaleCommand extends SinkCommand<double> {
-  late final ParamPointer<double> scale;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    scale = descriptor.hasFloat64();
-  }
+  final scale = Param.float64();
 
   @override
   void bufferFromParams(ParamBuffer call, double params) =>
@@ -3678,23 +3663,16 @@ final class _ReportDisabledSystemCommand
   static const int maxErrorBytes = 1024;
   static const int maxStackTraceBytes = 2048;
 
-  late final ParamPointer<String> systemName;
-  late final ParamPointer<String> error;
-  late final ParamPointer<String> stackTrace;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    // Capped on purpose, and one of the few places where that is the right
-    // answer rather than the only one available. This command reports a system
-    // that threw, so it travels while the game is already in trouble: a
-    // length-free hasString() would put an unbounded stack trace on the
-    // command ring, and a batch too big for the ring throws at the send -
-    // inside the path reporting somebody else's throw. See
-    // [_truncateToUtf8Bytes].
-    systemName = descriptor.hasFixedString(maxSystemNameBytes);
-    error = descriptor.hasFixedString(maxErrorBytes);
-    stackTrace = descriptor.hasFixedString(maxStackTraceBytes);
-  }
+  // Capped on purpose, and one of the few places where that is the right
+  // answer rather than the only one available. This command reports a system
+  // that threw, so it travels while the game is already in trouble: a
+  // length-free Param.string() would put an unbounded stack trace on the
+  // command ring, and a batch too big for the ring throws at the send -
+  // inside the path reporting somebody else's throw. See
+  // [_truncateToUtf8Bytes].
+  final systemName = Param.fixedString(maxSystemNameBytes);
+  final error = Param.fixedString(maxErrorBytes);
+  final stackTrace = Param.fixedString(maxStackTraceBytes);
 
   @override
   void bufferFromParams(ParamBuffer call, _DisabledSystemReport params) {
@@ -3720,8 +3698,8 @@ final class _ReportDisabledSystemCommand
 /// [text] cut to at most [maxBytes] **bytes** of UTF-8, on a character
 /// boundary.
 ///
-/// The boundary matters. `hasFixedString` reserves a byte count and refuses a
-/// write that does not fit, so a cut through the middle of a multi-byte
+/// The boundary matters. `Param.fixedString` reserves a byte count and refuses
+/// a write that does not fit, so a cut through the middle of a multi-byte
 /// character cannot simply be decoded with `allowMalformed`: the malformed
 /// tail comes back as U+FFFD, which re-encodes to three bytes and can push
 /// the result back over the cap - and the throw would land inside the path

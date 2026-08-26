@@ -145,12 +145,7 @@ class _MoverSystem extends GameSystem with FixedTickable {
 /// Main names the intent; the handler, over on the game isolate, is what turns
 /// that into a prefab. Nothing about an archetype id crosses the boundary.
 class _SpawnMover extends SupplierCommand<Entity> {
-  late final ParamPointer<Entity> spawned;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    spawned = descriptor.hasEntity();
-  }
+  final spawned = Param.entity();
 
   @override
   void bufferFromResult(ParamBuffer call, Entity result) =>
@@ -174,12 +169,7 @@ class _ResumeByControl extends SignalCommand {}
 class _ResumeByTick extends SignalCommand {}
 
 class _PauseMover extends SinkCommand<bool> {
-  late final ParamPointer<int> paused;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    paused = descriptor.hasUint1();
-  }
+  final paused = Param.uint1();
 
   @override
   void bufferFromParams(ParamBuffer call, bool params) =>
@@ -343,10 +333,10 @@ class _IsolateGame extends Game {
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
-    spawnMover = descriptor.has(_SpawnMover());
-    pauseMover = descriptor.has(_PauseMover());
-    resumeByControl = descriptor.has(_ResumeByControl());
-    resumeByTick = descriptor.has(_ResumeByTick());
+    spawnMover = descriptor.has(_SpawnMover.new);
+    pauseMover = descriptor.has(_PauseMover.new);
+    resumeByControl = descriptor.has(_ResumeByControl.new);
+    resumeByTick = descriptor.has(_ResumeByTick.new);
   }
 }
 
@@ -827,8 +817,8 @@ class _LateGame extends Game {
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
-    loadLate = descriptor.has(_LoadLate());
-    unloadLate = descriptor.has(_UnloadLate());
+    loadLate = descriptor.has(_LoadLate.new);
+    unloadLate = descriptor.has(_UnloadLate.new);
   }
 }
 
@@ -886,7 +876,7 @@ class _UnloadGame extends Game {
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
-    dropScene = descriptor.has(_DropScene());
+    dropScene = descriptor.has(_DropScene.new);
   }
 }
 

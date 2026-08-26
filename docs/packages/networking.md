@@ -34,7 +34,7 @@ class MyState extends GameState2D<MyGame> with MultiplayerState<MyGame> {
   @override
   void describeNetwork(NetDescriptor descriptor) {
     descriptor.transport(LoopbackNetTransport());
-    fire = descriptor.has(Fire(), id: 'fire', channel: NetChannel.unreliable);
+    fire = descriptor.has(Fire.new, id: 'fire', channel: NetChannel.unreliable);
     descriptor.hasHandler(fire, _onFire);
   }
 
@@ -110,8 +110,8 @@ implementations that drift.
 final descriptor = given<NetDescriptor>();
 -->
 ```dart
-descriptor.has(PlayerMoved(), id: 'playerMoved', channel: NetChannel.unreliable);
-descriptor.has(RoundEnded(), id: 'roundEnded', channel: NetChannel.reliable);
+descriptor.has(PlayerMoved.new, id: 'playerMoved', channel: NetChannel.unreliable);
+descriptor.has(RoundEnded.new, id: 'roundEnded', channel: NetChannel.reliable);
 ```
 
 | Channel | Guarantee | For |
@@ -127,16 +127,9 @@ it takes is a tick number travelling with the state:
 
 ```dart
 class Moved extends NetMessage<({int tick, double x, double y})> {
-  late final ParamPointer<int> tick;
-  late final ParamPointer<double> x;
-  late final ParamPointer<double> y;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    tick = descriptor.hasUint32();
-    x = descriptor.hasFloat32();
-    y = descriptor.hasFloat32();
-  }
+  final tick = Param.uint32();
+  final x = Param.float32();
+  final y = Param.float32();
 
   @override
   void bufferFromParams(
@@ -226,12 +219,7 @@ a smaller one to aim at.
 
 ```dart
 class Fire extends NetMessage<({double angle})> {
-  late final ParamPointer<double> angle;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    angle = descriptor.hasFloat32();
-  }
+  final angle = Param.float32();
 
   @override
   void bufferFromParams(ParamBuffer message, ({double angle}) params) {
@@ -245,8 +233,8 @@ class Fire extends NetMessage<({double angle})> {
 }
 ```
 
-Identical in shape and vocabulary to a `GameCommand` — same `ParamDescriptor`,
-same packing rules, same "keep the handle in a `late final` field", and the same
+Identical in shape and vocabulary to a `GameCommand` — same `Param`, same
+packing rules, same "keep the handle in a `late final` field", and the same
 answer for **more than one parameter**: `P` is a single type, so several values
 travel as a **Dart record**.
 
@@ -277,7 +265,7 @@ void _onRoundEnded(NetPeerId from) {}
 class RoundEnded() extends NetSignal;
 
 // declared
-roundEnded = descriptor.has(RoundEnded(), id: 'roundEnded', to: NetTarget.everyone);
+roundEnded = descriptor.has(RoundEnded.new, id: 'roundEnded', to: NetTarget.everyone);
 descriptor.hasSignal(roundEnded, _onRoundEnded);
 
 // sent

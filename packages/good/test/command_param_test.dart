@@ -19,18 +19,10 @@ typedef _Blow = ({int amount, bool crit});
 /// The reference command: typed parameters in, a typed result out, and every
 /// pointer confined to the four symmetric marshalling methods.
 class _Damage extends GameCommand<_Blow, int> {
-  late final ParamPointer<int> amount;
-  late final ParamPointer<int> crit;
-  late final ParamPointer<int> dealt;
-  late final ParamPointer<int> overkill;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    amount = descriptor.hasUint16();
-    crit = descriptor.hasUint1();
-    dealt = descriptor.hasUint16();
-    overkill = descriptor.hasUint1();
-  }
+  final amount = Param.uint16();
+  final crit = Param.uint1();
+  final dealt = Param.uint16();
+  final overkill = Param.uint1();
 
   @override
   void bufferFromParams(ParamBuffer call, _Blow params) {
@@ -55,12 +47,7 @@ class _Damage extends GameCommand<_Blow, int> {
 class _Ping extends SignalCommand {}
 
 class _NextId extends SupplierCommand<int> {
-  late final ParamPointer<int> id;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    id = descriptor.hasUint32();
-  }
+  final id = Param.uint32();
 
   @override
   void bufferFromResult(ParamBuffer call, int result) => id[call] = result;
@@ -70,12 +57,7 @@ class _NextId extends SupplierCommand<int> {
 }
 
 class _Log extends SinkCommand<String> {
-  late final ParamPointer<String> message;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    message = descriptor.hasFixedString(32);
-  }
+  final message = Param.fixedString(32);
 
   @override
   void bufferFromParams(ParamBuffer call, String params) =>
@@ -87,36 +69,19 @@ class _Log extends SinkCommand<String> {
 
 /// Every field kind, to pin the packing down.
 class _Wide extends GameCommand<int, int> {
-  late final ParamPointer<int> flag;
-  late final ParamPointer<int> pair;
-  late final ParamPointer<int> nibble;
-  late final ParamPointer<int> u8;
-  late final ParamPointer<int> i8;
-  late final ParamPointer<int> u16;
-  late final ParamPointer<int> i16;
-  late final ParamPointer<int> u32;
-  late final ParamPointer<int> i32;
-  late final ParamPointer<int> i64;
-  late final ParamPointer<double> f32;
-  late final ParamPointer<double> f64;
-  late final ParamPointer<String> name;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    flag = descriptor.hasUint1();
-    pair = descriptor.hasUint2();
-    nibble = descriptor.hasUint4();
-    u8 = descriptor.hasUint8();
-    i8 = descriptor.hasInt8();
-    u16 = descriptor.hasUint16();
-    i16 = descriptor.hasInt16();
-    u32 = descriptor.hasUint32();
-    i32 = descriptor.hasInt32();
-    i64 = descriptor.hasInt64();
-    f32 = descriptor.hasFloat32();
-    f64 = descriptor.hasFloat64();
-    name = descriptor.hasFixedString(16);
-  }
+  final flag = Param.uint1();
+  final pair = Param.uint2();
+  final nibble = Param.uint4();
+  final u8 = Param.uint8();
+  final i8 = Param.int8();
+  final u16 = Param.uint16();
+  final i16 = Param.int16();
+  final u32 = Param.uint32();
+  final i32 = Param.int32();
+  final i64 = Param.int64();
+  final f32 = Param.float32();
+  final f64 = Param.float64();
+  final name = Param.fixedString(16);
 
   @override
   void bufferFromParams(ParamBuffer call, int params) => u8[call] = params;
@@ -138,16 +103,9 @@ typedef _Order = ({Entity unit, int waypoint});
 /// `waypoint` beside it is the number: both are 64 bits of payload, and only
 /// the declaration tells them apart.
 class _OrderUnit extends GameCommand<_Order, Entity> {
-  late final ParamPointer<Entity> unit;
-  late final ParamPointer<int> waypoint;
-  late final ParamPointer<Entity> escort;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    unit = descriptor.hasEntity();
-    waypoint = descriptor.hasInt64();
-    escort = descriptor.hasEntity();
-  }
+  final unit = Param.entity();
+  final waypoint = Param.int64();
+  final escort = Param.entity();
 
   @override
   void bufferFromParams(ParamBuffer call, _Order params) {
@@ -175,20 +133,11 @@ typedef _Note = ({String body, Uint8List blob});
 /// and a variable-length *result*, which is the case that makes a record grow
 /// after the records behind it have already been placed.
 class _Publish extends GameCommand<_Note, String> {
-  late final ParamPointer<int> topic;
-  late final ParamPointer<String> body;
-  late final ParamPointer<Uint8List> blob;
-  late final ParamPointer<int> stamp;
-  late final ParamPointer<String> receipt;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    topic = descriptor.hasUint16();
-    body = descriptor.hasString();
-    blob = descriptor.hasBytes();
-    stamp = descriptor.hasInt64();
-    receipt = descriptor.hasString();
-  }
+  final topic = Param.uint16();
+  final body = Param.string();
+  final blob = Param.bytes();
+  final stamp = Param.int64();
+  final receipt = Param.string();
 
   @override
   void bufferFromParams(ParamBuffer call, _Note params) {
@@ -249,6 +198,62 @@ final class _Loopback implements CommandSender {
   }
 }
 
+/// Two fields on the class and a third in the hook, in that order - which is
+/// the order the record has to come out in. See [_ThreeInHook], the same
+/// three fields written the other way.
+class _TwoOnFieldsOneInHook extends SinkCommand<int> {
+  final head = Param.uint16();
+  final flag = Param.uint1();
+
+  late final ParamPointer<int> tail;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    tail = descriptor.hasUint32();
+  }
+
+  @override
+  void bufferFromParams(ParamBuffer call, int params) => head[call] = params;
+
+  @override
+  int paramsFromBuffer(ParamBuffer call) => head[call];
+}
+
+class _ThreeInHook extends SinkCommand<int> {
+  late final ParamPointer<int> head;
+  late final ParamPointer<int> flag;
+  late final ParamPointer<int> tail;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    head = descriptor.hasUint16();
+    flag = descriptor.hasUint1();
+    tail = descriptor.hasUint32();
+  }
+
+  @override
+  void bufferFromParams(ParamBuffer call, int params) => head[call] = params;
+
+  @override
+  int paramsFromBuffer(ParamBuffer call) => head[call];
+}
+
+/// The shape the declaration rules forbid: a `late` initialiser runs on the
+/// first read, so its bit offset would come from whatever order something
+/// happened to touch the fields. It has to be loud, not silently last.
+class _LateParam extends SinkCommand<int> {
+  final eager = Param.uint8();
+
+  // ignore: unused_field, it is read by the test that this must throw
+  late final lazy = Param.uint8();
+
+  @override
+  void bufferFromParams(ParamBuffer call, int params) => eager[call] = params;
+
+  @override
+  int paramsFromBuffer(ParamBuffer call) => eager[call];
+}
+
 ({CommandRegistry registry, _Loopback sender}) _registry({
   bool simulating = true,
 }) {
@@ -262,8 +267,8 @@ void main() {
   group('declaration', () {
     test('a command gets its index from declaration order', () {
       final r = _registry().registry;
-      final damage = r.declare(_Damage());
-      final ping = r.declare(_Ping());
+      final damage = r.declare(_Damage.new);
+      final ping = r.declare(_Ping.new);
 
       expect(damage.index, 0);
       expect(ping.index, 1);
@@ -279,23 +284,23 @@ void main() {
 
     test('declaring the same command twice is refused', () {
       final r = _registry().registry;
-      r.declare(_Damage());
-      expect(() => r.declare(_Damage()), throwsStateError);
+      r.declare(_Damage.new);
+      expect(() => r.declare(_Damage.new), throwsStateError);
     });
 
     test('declaring after boot is refused', () {
       final r = _registry().registry;
       r.seal();
-      expect(() => r.declare(_Damage()), throwsStateError);
+      expect(() => r.declare(_Damage.new), throwsStateError);
     });
 
     test('the state descriptor cannot declare, only handle', () {
       final r = _registry().registry;
-      final damage = r.declare(_Damage());
+      final damage = r.declare(_Damage.new);
       final descriptor = GameCommandDescriptor(r);
 
       expect(
-        () => descriptor.has(_Ping()),
+        () => descriptor.has(_Ping.new),
         throwsStateError,
         reason:
             'a command declared on the GameState would have an index on '
@@ -308,7 +313,7 @@ void main() {
 
     test('a command can only have one handler', () {
       final r = _registry().registry;
-      final damage = r.declare(_Damage());
+      final damage = r.declare(_Damage.new);
       MainCommandDescriptor(r).hasHandler(damage, (p) => 0);
       expect(
         () => GameCommandDescriptor(r).hasHandler(damage, (p) => 0),
@@ -321,15 +326,66 @@ void main() {
 
     test('handling an undeclared command is refused', () {
       final r = _registry().registry;
+      // _Ping declares no fields, so building one outside a declaration pass
+      // succeeds - which is what leaves the refusal to declareHandler rather
+      // than to a Param.* initialiser finding no layout open.
       expect(
-        () => MainCommandDescriptor(r).hasHandler(_Damage(), (p) => 0),
+        () => MainCommandDescriptor(r).hasSignal(_Ping(), () {}),
         throwsStateError,
+      );
+    });
+
+    test('a field and a hook declare one record', () {
+      final onFields = _registry().registry.declare(_TwoOnFieldsOneInHook.new);
+      final inHook = _registry().registry.declare(_ThreeInHook.new);
+
+      expect(onFields.layout.signature, inHook.layout.signature);
+      expect(onFields.layout.strideBytes, inHook.layout.strideBytes);
+      expect(
+        onFields.layout.fieldCount,
+        3,
+        reason:
+            'the fields are declared during the constructor and the hook runs '
+            'straight after it, so the two forms compose in the order they '
+            'are written and a command may use both',
+      );
+    });
+
+    test('a command built by hand has nothing to declare into', () {
+      expect(
+        _Damage.new,
+        throwsStateError,
+        reason:
+            'Param.* reads the layout the framework opens around the '
+            'constructor call, which is why has() takes a tear-off. Building '
+            'one directly - in a fixture, or to read a field off it - has to '
+            'say so rather than hand back an object whose pointers name '
+            'offsets in nothing.',
+      );
+    });
+
+    test('a late Param initialiser throws instead of taking a late offset', () {
+      final command = _registry().registry.declare(_LateParam.new);
+
+      expect(
+        command.layout.fieldCount,
+        1,
+        reason: 'only the eager field made it into the record',
+      );
+      expect(
+        () => command.lazy,
+        throwsStateError,
+        reason:
+            'a late initialiser runs on the first read, so the offset it '
+            'takes depends on what touched it first and two builds can lay '
+            'the same command out differently. The declaration window is '
+            'shut by then, and that is what catches it.',
       );
     });
 
     test('a handler is the function its command claims to be', () {
       final r = _registry().registry;
-      final damage = r.declare(_Damage());
+      final damage = r.declare(_Damage.new);
       // `p` is a _Blow and the return is an int, both inferred - there is no
       // buffer in this signature and no pointer in this body, which is what
       // makes a handler testable as the plain function it is.
@@ -342,7 +398,7 @@ void main() {
   group('calling', () {
     test('call sites carry no pointers at all', () async {
       final r = _registry();
-      final damage = r.registry.declare(_Damage());
+      final damage = r.registry.declare(_Damage.new);
       GameCommandDescriptor(r.registry)
           .hasHandler(damage, (p) => p.amount * (p.crit ? 2 : 1));
 
@@ -357,7 +413,7 @@ void main() {
 
     test('a signal is a class body away from nothing', () async {
       final r = _registry();
-      final ping = r.registry.declare(_Ping());
+      final ping = r.registry.declare(_Ping.new);
       var pinged = 0;
       GameCommandDescriptor(r.registry).hasSignal(ping, () => pinged++);
 
@@ -374,7 +430,7 @@ void main() {
 
     test('a supplier asks and gets an answer', () async {
       final r = _registry();
-      final nextId = r.registry.declare(_NextId());
+      final nextId = r.registry.declare(_NextId.new);
       var counter = 41;
       GameCommandDescriptor(r.registry).hasSupplier(nextId, () => ++counter);
 
@@ -384,7 +440,7 @@ void main() {
 
     test('a sink carries a payload and still tells you it ran', () async {
       final r = _registry();
-      final log = r.registry.declare(_Log());
+      final log = r.registry.declare(_Log.new);
       final lines = <String>[];
       GameCommandDescriptor(r.registry).hasSink(log, lines.add);
 
@@ -400,7 +456,7 @@ void main() {
 
     test('reading a result the handler never wrote throws', () async {
       final r = _registry();
-      final damage = r.registry.declare(_Damage());
+      final damage = r.registry.declare(_Damage.new);
       GameCommandDescriptor(r.registry).hasHandler(damage, (p) => 5);
 
       final batch = r.registry.createCommandBatch();
@@ -419,7 +475,7 @@ void main() {
 
     test('reading a parameter nobody wrote throws', () {
       final r = _registry();
-      final wide = r.registry.declare(_Wide());
+      final wide = r.registry.declare(_Wide.new);
       GameCommandDescriptor(r.registry).hasHandler(wide, (p) => p);
 
       final call = wide.execute(7);
@@ -437,7 +493,7 @@ void main() {
       'sending a command with no handler anywhere throws at the sender',
       () async {
         final r = _registry();
-        final unhandled = r.registry.declare(_Unhandled());
+        final unhandled = r.registry.declare(_Unhandled.new);
 
         expect(
           unhandled.call,
@@ -465,7 +521,7 @@ void main() {
   group('batching', () {
     test('several calls travel as one message, in order', () async {
       final r = _registry();
-      final damage = r.registry.declare(_Damage());
+      final damage = r.registry.declare(_Damage.new);
       final order = <int>[];
       GameCommandDescriptor(r.registry).hasHandler(damage, (p) {
         order.add(p.amount);
@@ -501,8 +557,8 @@ void main() {
 
     test('one batch can hold several different commands', () async {
       final r = _registry();
-      final damage = r.registry.declare(_Damage());
-      final log = r.registry.declare(_Log());
+      final damage = r.registry.declare(_Damage.new);
+      final log = r.registry.declare(_Log.new);
       final descriptor = GameCommandDescriptor(r.registry);
       final lines = <String>[];
       descriptor.hasHandler(damage, (p) => 7);
@@ -531,7 +587,7 @@ void main() {
 
     test('a batch grows past its initial guess without losing calls', () async {
       final r = _registry();
-      final wide = r.registry.declare(_Wide());
+      final wide = r.registry.declare(_Wide.new);
       GameCommandDescriptor(r.registry).hasHandler(wide, (p) => p + 1);
 
       final batch = CommandBatch(1, sender: r.sender, initialBytes: 8);
@@ -554,7 +610,7 @@ void main() {
 
     test('a key cannot read another batch\'s results', () async {
       final r = _registry();
-      final wide = r.registry.declare(_Wide());
+      final wide = r.registry.declare(_Wide.new);
       GameCommandDescriptor(r.registry).hasHandler(wide, (p) => p);
 
       final first = r.registry.createCommandBatch();
@@ -587,7 +643,7 @@ void main() {
   group('the record layout', () {
     test('every field kind round-trips', () async {
       final r = _registry();
-      final wide = r.registry.declare(_Wide());
+      final wide = r.registry.declare(_Wide.new);
       GameCommandDescriptor(r.registry).hasHandler(wide, (p) => p);
 
       final batch = r.registry.createCommandBatch();
@@ -623,7 +679,7 @@ void main() {
 
     test('sub-byte fields share a byte without disturbing each other', () {
       final r = _registry();
-      final wide = r.registry.declare(_Wide());
+      final wide = r.registry.declare(_Wide.new);
       GameCommandDescriptor(r.registry).hasHandler(wide, (p) => p);
 
       final call = wide.execute(0);
@@ -638,7 +694,7 @@ void main() {
 
     test('a string longer than its declared capacity is refused', () {
       final r = _registry();
-      final log = r.registry.declare(_Log());
+      final log = r.registry.declare(_Log.new);
       GameCommandDescriptor(r.registry).hasSink(log, (p) {});
 
       expect(
@@ -653,7 +709,7 @@ void main() {
 
     test('an entity parameter arrives at the handler as an Entity', () async {
       final r = _registry();
-      final order = r.registry.declare(_OrderUnit());
+      final order = r.registry.declare(_OrderUnit.new);
       late _Order seen;
       GameCommandDescriptor(r.registry).hasHandler(order, (p) {
         seen = p;
@@ -685,7 +741,7 @@ void main() {
 
     test('an entity field is the int64 path, not a parallel one', () {
       final r = _registry();
-      final order = r.registry.declare(_OrderUnit());
+      final order = r.registry.declare(_OrderUnit.new);
       GameCommandDescriptor(r.registry).hasHandler(order, (p) => p.unit);
 
       final call = order.execute((unit: Entity(1), waypoint: 2));
@@ -701,7 +757,7 @@ void main() {
 
     test('a declaration with no variable-length field carries no tail', () {
       final r = _registry();
-      final damage = r.registry.declare(_Damage());
+      final damage = r.registry.declare(_Damage.new);
       GameCommandDescriptor(r.registry).hasHandler(damage, (p) => 0);
 
       expect(damage.layout.hasTail, isFalse);
@@ -723,7 +779,7 @@ void main() {
 
     test('two calls of one command do not share bytes', () {
       final r = _registry();
-      final damage = r.registry.declare(_Damage());
+      final damage = r.registry.declare(_Damage.new);
       GameCommandDescriptor(r.registry).hasHandler(damage, (p) => 0);
 
       final batch = r.registry.createCommandBatch();
@@ -744,7 +800,7 @@ void main() {
   group('variable-length fields', () {
     test('a string no fixed field could have held round-trips', () async {
       final r = _registry();
-      final publish = r.registry.declare(_Publish());
+      final publish = r.registry.declare(_Publish.new);
       late _Note seen;
       GameCommandDescriptor(r.registry).hasHandler(publish, (p) {
         seen = p;
@@ -783,7 +839,7 @@ void main() {
 
     test('an empty value is a written value, not an absent one', () async {
       final r = _registry();
-      final publish = r.registry.declare(_Publish());
+      final publish = r.registry.declare(_Publish.new);
       late _Note seen;
       GameCommandDescriptor(r.registry).hasHandler(publish, (p) {
         seen = p;
@@ -804,7 +860,7 @@ void main() {
 
     test('reading a variable-length field nobody wrote throws', () {
       final r = _registry();
-      final publish = r.registry.declare(_Publish());
+      final publish = r.registry.declare(_Publish.new);
       GameCommandDescriptor(r.registry).hasHandler(publish, (p) => 'x');
 
       final call = publish.execute((body: 'hi', blob: Uint8List(0)));
@@ -819,7 +875,7 @@ void main() {
 
     test('a variable-length field is written once', () {
       final r = _registry();
-      final publish = r.registry.declare(_Publish());
+      final publish = r.registry.declare(_Publish.new);
       GameCommandDescriptor(r.registry).hasHandler(publish, (p) => 'x');
 
       final call = publish.execute((body: 'first', blob: Uint8List(0)));
@@ -838,8 +894,8 @@ void main() {
 
     test('growing a record re-points the handles behind it', () {
       final r = _registry();
-      final publish = r.registry.declare(_Publish());
-      final damage = r.registry.declare(_Damage());
+      final publish = r.registry.declare(_Publish.new);
+      final damage = r.registry.declare(_Damage.new);
       final descriptor = GameCommandDescriptor(r.registry);
       descriptor.hasHandler(publish, (p) => 'x');
       descriptor.hasHandler(damage, (p) => 0);
@@ -868,8 +924,8 @@ void main() {
 
     test('a record that grows moves the records behind it', () async {
       final r = _registry();
-      final publish = r.registry.declare(_Publish());
-      final damage = r.registry.declare(_Damage());
+      final publish = r.registry.declare(_Publish.new);
+      final damage = r.registry.declare(_Damage.new);
       final descriptor = GameCommandDescriptor(r.registry);
       descriptor.hasHandler(publish, (p) => 'z' * 50000);
       descriptor.hasHandler(damage, (p) => p.amount * 10);
@@ -902,7 +958,7 @@ void main() {
       final transport = CommandTransport();
       final registry = CommandRegistry(transport, simulating: false);
       transport.registry = registry;
-      final publish = registry.declare(_Publish());
+      final publish = registry.declare(_Publish.new);
       // Handled on the game isolate, which this copy is not, so the batch has
       // to leave through the ring.
       GameCommandDescriptor(registry).hasHandler(publish, (p) => 'x');
@@ -946,7 +1002,7 @@ void main() {
     // which value was too big.
     test('a record over the batch cap is refused at the write', () {
       final r = _registry();
-      final publish = r.registry.declare(_Publish());
+      final publish = r.registry.declare(_Publish.new);
       final batch = ParamBatch(maxRecordBytes: 200);
       final call = batch.append(publish.index, publish.layout);
 
@@ -981,7 +1037,7 @@ void main() {
 
     test('a cap smaller than the fixed head is refused at the append', () {
       final r = _registry();
-      final publish = r.registry.declare(_Publish());
+      final publish = r.registry.declare(_Publish.new);
       final batch = ParamBatch(maxRecordBytes: 4);
 
       expect(
@@ -1005,7 +1061,7 @@ void main() {
 
     test('a refused record in the middle of a batch is left where it is', () {
       final r = _registry();
-      final publish = r.registry.declare(_Publish());
+      final publish = r.registry.declare(_Publish.new);
       final batch = ParamBatch(maxRecordBytes: 200);
       final first = batch.append(publish.index, publish.layout);
       final second = batch.append(publish.index, publish.layout);
@@ -1027,8 +1083,8 @@ void main() {
 
     test('startAt says where each record begins', () {
       final r = _registry();
-      final publish = r.registry.declare(_Publish());
-      final damage = r.registry.declare(_Damage());
+      final publish = r.registry.declare(_Publish.new);
+      final damage = r.registry.declare(_Damage.new);
       final batch = ParamBatch();
       final note = batch.append(publish.index, publish.layout);
       publish.body[note] = 'hello';

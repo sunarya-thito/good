@@ -62,8 +62,14 @@ enum NetTarget {
 /// way, which is also what shipped netcode overwhelmingly does.
 abstract class NetMessageBase {
   /// Declares this message's fields. Identical in shape and vocabulary to
-  /// `GameCommandBase.describeParams` - same descriptor, same packing rule.
-  void describeParams(ParamDescriptor descriptor);
+  /// `GameCommandBase.describeParams` - same descriptor, same packing rule,
+  /// and the same relationship to `Param.*`: a field declares first, this
+  /// appends behind it, and a message may use either or both.
+  ///
+  /// Empty by default, for the same reason it is on a command - a message
+  /// whose fields are `final angle = Param.float32();` has nothing to put
+  /// here.
+  void describeParams(ParamDescriptor descriptor) {}
 
   /// Position in `describeNetwork`'s declaration order - the two bytes that
   /// head this message's record and route it back to this object on the
@@ -79,7 +85,8 @@ abstract class NetMessageBase {
   /// any variable-length tail.
   int get strideBytes => _layout.strideBytes;
 
-  /// How many fields [describeParams] declared.
+  /// How many fields this message declared, through `Param.*` fields,
+  /// [describeParams], or both.
   int get fieldCount => _layout.fieldCount;
 
   /// How this message's record is laid out. Kept whole, not copied fact by
@@ -158,6 +165,9 @@ abstract class NetMessageBase {
     _target = target;
     _channel = channel;
     _layout = layout;
+    // [layout] arrives holding whatever this message's `Param.*` field
+    // initialisers put in it - `NetRegistry.declare` opened it around the
+    // constructor - so [describeParams] appends behind them.
     describeParams(layout);
     layout.seal();
     _sender = sender;
@@ -179,7 +189,7 @@ abstract class NetMessageBase {
     if (sender == null) {
       throw StateError(
         '$runtimeType was never declared. Add it to describeNetwork - '
-        '`myMessage = descriptor.has($runtimeType(), id: ...)` - and keep the handle '
+        '`myMessage = descriptor.has($runtimeType.new, id: ...)` - and keep the handle '
         'it returns; a message built with `new` has no index, no layout and '
         'no transport to leave through.',
       );
@@ -209,14 +219,8 @@ abstract class NetMessageBase {
 ///
 /// ```dart
 /// class Fire extends NetMessage<({double angle, int weapon})> {
-///   late final ParamPointer<double> angle;
-///   late final ParamPointer<int> weapon;
-///
-///   @override
-///   void describeParams(ParamDescriptor d) {
-///     angle = d.hasFloat32();
-///     weapon = d.hasUint4();
-///   }
+///   final angle = Param.float32();
+///   final weapon = Param.uint4();
 ///
 ///   @override
 ///   void bufferFromParams(ParamBuffer m, ({double angle, int weapon}) p) {
@@ -233,7 +237,7 @@ abstract class NetMessageBase {
 /// Declared and handled in one pass, and sent by calling it:
 ///
 /// ```dart
-/// fire = d.has(Fire(), id: 'fire', to: NetTarget.host, channel: NetChannel.reliable);
+/// fire = d.has(Fire.new, id: 'fire', to: NetTarget.host, channel: NetChannel.reliable);
 /// d.hasHandler(fire, _onFire);
 ///
 /// void _onFire(({double angle, int weapon}) p, NetPeerId from) { ... }
@@ -319,7 +323,7 @@ abstract class NetMessage<P> extends NetMessageBase {
 /// ```dart
 /// class Ready extends NetSignal {}
 ///
-/// ready = d.has(Ready(), id: 'ready');
+/// ready = d.has(Ready.new, id: 'ready');
 /// d.hasSignal(ready, (from) => _readyPeers.add(from));
 ///
 /// ready();

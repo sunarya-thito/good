@@ -1,5 +1,6 @@
 import 'package:meta/meta.dart';
 
+import 'package:good/src/command/param.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/struct.dart';
 
@@ -120,5 +121,45 @@ abstract final class DeclarationContext {
       );
     }
     return _prefabs.last;
+  }
+
+  /// The open parameter layouts, innermost last - the third level of the
+  /// stack, and the one `Param.*` declares against.
+  ///
+  /// A list rather than a slot for [_data]'s reason, though the nesting it
+  /// guards against is thinner here: a command's fields are pointers into a
+  /// record and a record holds no other record, so in practice this is
+  /// either empty or one deep. Keeping it a stack costs nothing and means
+  /// "empty" is the same question at every level.
+  static final List<ParamLayout> _params = <ParamLayout>[];
+
+  /// Opens a layout for the duration of one constructor call. Paired with
+  /// [popParams] in a `finally` - see [ParamLayout.open], which is the only
+  /// caller and exists so that both `good`'s command registry and
+  /// `good_net`'s message registry open one the same way.
+  static void pushParams(ParamLayout layout) => _params.add(layout);
+
+  static void popParams() => _params.removeLast();
+
+  /// The innermost open layout, or a `StateError` naming the two ways to get
+  /// here: constructing the command yourself, and reaching a `Param.*` call
+  /// lazily.
+  static ParamLayout get params {
+    if (_params.isEmpty) {
+      throw StateError(
+        'A Param was declared with no command or message being constructed. '
+        'Param.* reads the layout the framework opens around a constructor '
+        'call, so the framework has to be the one constructing:\n'
+        '  descriptor.has(SpawnEnemy.new)   // not SpawnEnemy()\n'
+        'A `late final` initialiser lands here too, and that is the point: '
+        'it runs on first read, long after the declaration pass closed, so a '
+        'parameter declared that way would take its bit offset from whatever '
+        'order something happened to touch it. Field initialisers here are '
+        'eager, always. A describeParams body is the other way in: it runs '
+        'after the constructor, so it declares through the ParamDescriptor it '
+        'is handed rather than through Param.*.',
+      );
+    }
+    return _params.last;
   }
 }
