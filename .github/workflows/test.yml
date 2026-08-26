@@ -145,3 +145,102 @@ jobs:
           sudo ln -sf "$(ls /usr/lib/llvm-*/lib/libclang.so | tail -1)" /usr/lib/libclang.so
           (cd packages/goo2d_ffi_box2d && dart run ffigen --config ffigen.yaml)
           git diff --exit-code -- packages/goo2d_ffi_box2d/lib/src/box2d.g.dart
+
+  # Builds the Box2D shim for macOS and iOS. Nothing else here does: the Apple
+  # platforms compile through the two podspecs instead of src/CMakeLists.txt,
+  # and lib/src/library.dart calls DynamicLibrary.process() on Apple, so no
+  # `flutter test` run can reach those symbols. Only an application build links
+  # them, which is what this job is.
+  #
+  # It is a job of its own, so an Xcode build does not sit in front of the
+  # signal everyone else waits on, and it runs on every push with no path
+  # filter: a filter that stops matching takes the coverage with it and says
+  # nothing, which is the shape of the defect this job was written for.
+  #
+  # The nm step is the one that matters. Before #208 both podspecs named their
+  # sources with patterns that reach outside the pod root, CocoaPods matched
+  # none of them, and the pod compiled nothing at all - and the application
+  # still built, green, with no shim inside it. A build that succeeds is not
+  # evidence here; the symbols in the bundle are.
+  apple:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.0'
+          channel: stable
+          cache: true
+
+      # packages/goo2d/example has no macos target and the repository holds no
+      # Apple application, so the harness is generated here and thrown away.
+      # Debug, because the question is whether the pod compiles and links, and
+      # a release build only adds Dart AOT time to the answer.
+      - name: Build an application against the plugin
+        run: |
+          set -e
+          HARNESS="$RUNNER_TEMP/apple_harness"
+          flutter create --platforms=macos,ios --project-name apple_harness "$HARNESS"
+          cd "$HARNESS"
+          flutter pub add "goo2d_ffi_box2d:{\"path\":\"$GITHUB_WORKSPACE/packages/goo2d_ffi_box2d\"}"
+          echo "::group::flutter build macos"
+          flutter build macos --debug
+          echo "::endgroup::"
+          echo "::group::flutter build ios"
+          flutter build ios --debug --no-codesign
+          echo "::endgroup::"
+
+      - name: Check the shim reached the application
+        run: |
+          set -e
+          HARNESS="$RUNNER_TEMP/apple_harness"
+          status=0
+          for platform in macos ios; do
+            case "$platform" in
+              macos) app="$HARNESS/build/macos/Build/Products/Debug/apple_harness.app" ;;
+              ios)   app="$HARNESS/build/ios/iphoneos/Runner.app" ;;
+            esac
+
+            test -d "$app" || {
+              echo "::error::$platform: $app was not built"
+              exit 1
+            }
+
+            # -exec ... + and not xargs: the bundle holds enough files to
+            # overrun the argument limit, and xargs answers that by dropping
+            # the ones it could not fit. An incomplete scan reports the same
+            # absence as a missing symbol.
+            #
+            # `exit 0` because the loop's status is grep's answer about the
+            # last file it saw, find passes that on, and under `set -e` an
+            # ordinary non-Mach-O file at the end of the bundle would end the
+            # step with nothing printed.
+            binaries=$(find "$app" -type f -exec sh -c '
+              for file; do
+                file -b "$file" | grep -q Mach-O && echo "$file"
+              done
+              exit 0' _ {} +)
+            symbols=$(echo "$binaries" | while IFS= read -r file; do
+              nm -gU "$file" 2>/dev/null || true
+            done | awk '{print $NF}' | sort -u)
+
+            echo "$platform: $(echo "$binaries" | wc -l) Mach-O files, $(echo "$symbols" | wc -l) symbols defined"
+            echo "$binaries" | while IFS= read -r file; do
+              nm -gU "$file" 2>/dev/null | grep -q ' _gooB2Version$'                 && echo "$platform: the shim is in ${file#"$app"/}"
+            done || true
+
+            # _main is the control. It is in the application binary whatever
+            # the plugin does, so its absence means the scan read nothing and
+            # the two results below are worth nothing either.
+            for symbol in _main _gooB2Version; do
+              if echo "$symbols" | grep -qx "$symbol"; then
+                echo "$platform: $symbol defined"
+              else
+                echo "::error::$platform: $symbol is not defined in the application bundle"
+                status=1
+              fi
+            done
+          done
+          exit $status

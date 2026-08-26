@@ -1,7 +1,29 @@
 ## Unreleased
 
-Documentation and build tooling. No API change: one message string differs,
-and every signature and symbol is what it was.
+macOS and iOS build for the first time; the rest is documentation and build
+tooling. One C signature changes and one message string differs. Every
+exported symbol is what it was.
+
+* The macOS and iOS podspecs named their sources with patterns that climb out
+  of the pod directory. CocoaPods matches `source_files` against the files
+  under the pod root, so every one of those patterns matched nothing and the
+  pod compiled no sources at all. An application built against it succeeded,
+  bundled no shim, and threw `Failed to lookup symbol` at the first physics
+  call. `ios/Classes` and `macos/Classes` now hold files that `#include` the
+  sources out of `src`, which is what a podspec can reach.
+* `gooThreadPoolEnqueue` takes a `GooTaskFn*` where it took a `void*`. Box2D's
+  `b2WorldDef.enqueueTask` holds a function pointer, and assigning a `void*`
+  function to it is a warning under GCC and MSVC and an error under Clang 16
+  and newer, so `gooWorldCreateThreaded` compiled on no Apple toolchain. The
+  Dart bindings come from `goo_box2d.h` alone and do not change.
+* `goo_threads.h` said its two callbacks match Box2D's signatures exactly. One
+  of them did not, which is the line above.
+* `.github/workflows/test.yml` builds an application against both podspecs on
+  a macOS runner and reads the shim's symbols back out of the bundle. Neither
+  Apple platform had been built anywhere.
+* `test/apple_forwarders_test.dart` compares the Apple source list against the
+  directory `src/CMakeLists.txt` globs, so the two descriptions of this build
+  cannot drift apart unnoticed.
 
 * `ffigen.yaml`'s function filter matched none of the shim's 60 symbols, so
   `dart run ffigen --config ffigen.yaml` emptied `lib/src/box2d.g.dart` instead
