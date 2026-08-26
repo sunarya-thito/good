@@ -6,6 +6,7 @@ import 'package:good/src/archetype.dart';
 import 'package:good/src/command/command.dart';
 import 'package:good/src/command/param.dart';
 import 'package:good/src/data.dart';
+import 'package:good/src/event.dart';
 import 'package:good/src/event/fixed_loop.dart';
 import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/game.dart';
@@ -1956,7 +1957,14 @@ void main() {
       () {
         // A GameState that was never marked as owning the simulation is exactly
         // what the main isolate's handle copy holds after start().
-        final handle = _TestState();
+        //
+        // Through `EventBinder.open` because `_TestState()` on its own now
+        // throws out of its own field initialisers - `GameState` declares its
+        // dispatchers there and they need a binder open around the call, which
+        // `Game._bootMain` is what normally provides. Constructing it bare
+        // would still throw a StateError and this test would still pass, off
+        // the wrong guard entirely.
+        final handle = EventBinder.open(_TestState.new);
         expect(() => handle.advance(_step), throwsStateError);
         expect(handle.runFixedStep, throwsStateError);
       },

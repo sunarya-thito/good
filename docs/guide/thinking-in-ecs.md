@@ -806,9 +806,10 @@ The same split exists for scenes — `SceneLifecycleListener` for your own,
 `SceneLoadListener` for all of them — and `GameLifecycleListener` covers the
 game coming up and going down.
 
-For an event of your own — "wave cleared", "player levelled up" — you declare a
-dispatcher in `describeEvents`, put it on the owner whose reach you want, and
-write a listener mixin bound `on GameListener` that anything can apply. It is
+For an event of your own — "wave cleared", "player levelled up" — you hold a
+dispatcher in a field on the owner whose reach you want, declare it there with
+`Event.of`, and write a listener mixin bound `on GameListener` that anything
+can apply. It is
 the same three-piece shape every built-in event above is built from, and
 [Events and listeners](events.md) walks one through end to end.
 

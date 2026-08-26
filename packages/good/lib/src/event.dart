@@ -1,5 +1,7 @@
 import 'package:meta/meta.dart';
 
+import 'package:good/src/declare.dart';
+
 /// Names the set of framework types that can receive events.
 ///
 /// A pure marker - no members of its own. What it carries is *membership*, and
@@ -278,6 +280,77 @@ abstract class EventDescriptor {
   });
 }
 
+/// Declares an event on the field that holds it:
+///
+/// ```dart
+/// class Orc extends EntityStruct {
+///   final wounded = Event.of<WoundListener, int>(
+///     (listener, damage) => listener.onWounded(damage),
+///   );
+/// }
+/// ```
+///
+/// Two statics, one per [EventDescriptor] method, minus the `has` that only
+/// read as noise once the declaration moved onto the field - the same trade
+/// `Field`, `Query` and `Param` made before it. [of] carries a payload,
+/// [signal] carries nothing.
+///
+/// # The type arguments are not optional here
+///
+/// `descriptor.has(...)` reads `L` and `E` off the field it is assigned to.
+/// An initialiser has no such context, so the dispatcher's listener type and
+/// payload type are written at the call - which is the whole of what the
+/// separate `late final EventDispatcher<L, E>` declaration used to say.
+///
+/// # Who can declare this way, and who cannot yet
+///
+/// A [GameState] and an [EntityStruct]. Both are built by the framework -
+/// `Game.createState` for one, `SceneDescriptor.has(Mote.new)` or
+/// `EntityStruct.of(Barrel.new)` for the other - so there is a constructor
+/// call for the binder to be open around.
+///
+/// The struct half has a hole in it, and it is the same hole `Field.*` has:
+/// `SceneDescriptor.has` takes a closure, and a closure is free to return an
+/// object built earlier (`descriptor.has(() => _prefab)`). Nothing was open
+/// around *that* construction, so a prefab handed over that way cannot
+/// declare on its fields and gets the error below instead. Build the prefab
+/// inside the closure - `descriptor.has(() => Bullet(speed: 5))` - or pass
+/// the constructor itself.
+///
+/// A [SceneStruct] and a [GameSystem] are still constructed by the caller
+/// (`final level = MainScene();`, `descriptor.has(SpinSystem())`), so no
+/// binder is open while their fields initialise and `Event.*` in one throws
+/// out of [DeclarationContext.events]. Both keep declaring in
+/// `describeEvents`, which is not going anywhere for anyone: an owner may
+/// declare through either, and one that declares through both gets its
+/// fields' dispatchers and its hook's, in that order.
+///
+/// # Eager, always
+///
+/// `late final wounded = Event.of(...)` compiles and is wrong. The call runs
+/// on the first *read*, by which time the binder is closed and the collect
+/// pass has already been and gone - so the dispatcher would exist, hold an
+/// empty list, and deliver to nobody, every time, silently. It does not get
+/// that far: [DeclarationContext.events] throws instead.
+abstract final class Event {
+  /// A dispatcher delivering a payload of type [E] to listeners of type [L],
+  /// via [deliver] - the field form of [EventDescriptor.has].
+  ///
+  /// Pass `reverse: true` for a teardown event, so listeners are told
+  /// inside-out; see [EventDispatcher.reverse].
+  static EventDispatcher<L, E> of<L extends GameListener, E>(
+    void Function(L listener, E payload) deliver, {
+    bool reverse = false,
+  }) => DeclarationContext.events.has<L, E>(deliver, reverse: reverse);
+
+  /// A dispatcher for an event that carries nothing - the field form of
+  /// [EventDescriptor.hasSignal].
+  static SignalDispatcher<L> signal<L extends GameListener>(
+    void Function(L listener) deliver, {
+    bool reverse = false,
+  }) => DeclarationContext.events.hasSignal<L>(deliver, reverse: reverse);
+}
+
 /// One owner's dispatchers, and the collector that fills them.
 ///
 /// One object plays both roles: a dispatcher is only ever offered candidates
@@ -302,10 +375,58 @@ final class EventBinder implements EventDescriptor, ListenerCollector {
   final List<void Function(GameListener)> _offers =
       <void Function(GameListener)>[];
 
+  /// Builds [create]'s object with a binder open, so the `Event.*` calls in
+  /// its field initialisers declare into it, hangs that binder on the object
+  /// and hands the object back.
+  ///
+  /// The binder has to outlive the constructor, which is why it goes in a
+  /// field rather than staying the local it was: field declarations happen at
+  /// construction and the collect pass happens at boot, and between those two
+  /// moments sits a scene registration or an `Isolate.spawn`. [bind] picks up
+  /// the same binder later and appends whatever `describeEvents` declares.
+  ///
+  /// The pop is in a `finally`: a constructor that throws must not leave the
+  /// next declaration writing into a binder nobody owns.
+  static T open<T extends EventBus>(T Function() create) {
+    final binder = EventBinder();
+    DeclarationContext.pushEvents(binder);
+    final T bus;
+    try {
+      bus = create();
+    } finally {
+      DeclarationContext.popEvents();
+    }
+    bus._binder = binder;
+    return bus;
+  }
+
   /// Runs both passes over [bus] - declare, then collect - which is the whole
   /// of binding one owner's events.
+  ///
+  /// The declare pass appends to whatever [open] already filled, so a field
+  /// declaration and a `describeEvents` body end up in one binder. Which
+  /// order they went in does not change delivery: an entry in [_offers] is a
+  /// dispatcher deciding for itself whether a candidate fits, and the order
+  /// listeners arrive in is the order [offer] is called, which is the collect
+  /// walk and not this list.
+  ///
+  /// Binding twice is an error, and has to stay one. It was caught by the
+  /// `late final` dispatchers this replaced - assigning one twice throws -
+  /// and nothing about a `final` field would notice: the second pass would
+  /// offer every candidate to the same dispatchers again and each listener
+  /// would receive every event twice. `SceneStruct.bindEvents` guards its own
+  /// three entry points against reaching here twice.
   static void bind(EventBus bus) {
-    final binder = EventBinder();
+    if (bus._didBind) {
+      throw StateError(
+        '${bus.runtimeType} has already had its events bound. A second '
+        'collect pass would offer every candidate to the dispatchers the '
+        'first one filled, and each listener would then receive every event '
+        'twice.',
+      );
+    }
+    bus._didBind = true;
+    final binder = bus._binder ??= EventBinder();
     bus.describeEvents(binder);
     bus.collectListeners(binder);
   }
@@ -381,6 +502,19 @@ abstract class ListenerCollector {
 /// That is what makes an event declared high up reach everything below it
 /// while one declared on a prefab reaches only that prefab.
 mixin EventBus on GameListener {
+  /// The binder this owner's field declarations landed in, or null for an
+  /// owner the framework did not construct.
+  ///
+  /// Set by `EventBinder.open` after the constructor returns, and read by
+  /// `EventBinder.bind` however much later. Not an initialiser: a mixin's
+  /// fields initialise *after* the subclass's, so a binder created here would
+  /// arrive too late for the very declarations it exists to catch.
+  EventBinder? _binder;
+
+  /// Whether `EventBinder.bind` has run over this owner - see its note on why
+  /// a second pass has to throw rather than quietly double every list.
+  bool _didBind = false;
+
   /// Declares this owner's dispatchers. Runs once, at boot, before
   /// [collectListeners].
   @mustCallSuper

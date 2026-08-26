@@ -744,6 +744,11 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
     // into it - `final hp = Field.int32(100)` has no descriptor to reach
     // except the one open around the call. It carries no prefab until the
     // line after; nothing reads one in between.
+    //
+    // An event binder is open around the same call, for the same reason and
+    // through `EventBinder.open`: `final wounded = Event.of(...)` on a prefab
+    // is a declaration too, and it has to reach the binder [bindEvents] will
+    // hand the collect pass however much later.
     final storage = ArchetypeRegistry.reserve(_scene.pool);
     final T object;
     final children = <EntityStruct>[];
@@ -753,7 +758,7 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
     DeclarationContext.pushData(ArchetypeDataDescriptor(storage));
     DeclarationContext.pushPrefabs(this);
     try {
-      object = create();
+      object = EventBinder.open(create);
     } finally {
       DeclarationContext.popPrefabs();
       DeclarationContext.popData();

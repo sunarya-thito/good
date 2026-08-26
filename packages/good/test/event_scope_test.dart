@@ -53,13 +53,9 @@ class _PingUnit extends EntityStruct with _Ping {}
 /// A prefab that declares a dispatcher of its own. Its dispatcher collects
 /// from its own composition only, which is one object: itself.
 class _SelfishUnit extends EntityStruct with _Ping {
-  late final SignalDispatcher<_Ping> ping;
-
-  @override
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    ping = descriptor.hasSignal((listener) => listener.onPing());
-  }
+  // On the field, which works because `_PingScene` registers this one with
+  // `descriptor.has(_SelfishUnit.new)` - a constructor the framework calls.
+  final ping = Event.signal<_Ping>((listener) => listener.onPing());
 }
 
 class _PingScene extends SceneStruct with _Ping {
@@ -75,13 +71,7 @@ class _PingScene extends SceneStruct with _Ping {
 }
 
 class _PingState extends GameState<_PingGame> with _Ping {
-  late final SignalDispatcher<_Ping> ping;
-
-  @override
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    ping = descriptor.hasSignal((listener) => listener.onPing());
-  }
+  final ping = Event.signal<_Ping>((listener) => listener.onPing());
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
