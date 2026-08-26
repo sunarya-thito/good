@@ -7,13 +7,13 @@ import 'package:meta/meta.dart';
 /// `late final` fields, and never a name to quote again later.
 ///
 /// ```dart
-/// class BuildCommand extends Command {
-///   late final Arg<File> outputDir;
+/// class ExportCommand extends Command {
+///   late final Arg<Directory> outputDir;
 ///
 ///   @override
 ///   void describeCommand(CommandDescriptor descriptor) {
 ///     super.describeCommand(descriptor);
-///     outputDir = descriptor.describeArg<File>(
+///     outputDir = descriptor.describeArg<Directory>(
 ///       name: 'output-dir',
 ///       description: 'Where the build lands.',
 ///       parser: parseDirectory,
@@ -28,7 +28,7 @@ import 'package:meta/meta.dart';
 ///
 /// [describeCommand] runs exactly once per instance, before any parsing, for
 /// **every** command in the tree - not just the selected one. That is what
-/// lets `good compile --help` describe a subcommand this run is not going to
+/// lets `good build --help` describe a subcommand this run is not going to
 /// execute.
 abstract class Command {
   /// Bound by [CommandRunner] during its declaration pass. Every member below
@@ -54,9 +54,10 @@ abstract class Command {
 
   /// Whether *this* command is the one the arguments selected.
   ///
-  /// False for a command that merely sits on the path to the selected one, so
-  /// a parent can tell "the user ran me" from "the user ran my child" - see
-  /// `CompileCommand.execute`.
+  /// Exactly one command in the tree answers `true`. A command that merely
+  /// sits on the path to it answers `false`, and so does a sibling nobody
+  /// named. The question is total, so a `BuildCommand` asking
+  /// `windows.selected` is an ordinary thing to do and never throws.
   bool get selected => _bound.selected;
 
   /// The command that declared this one as a subcommand.
@@ -79,8 +80,8 @@ abstract class Command {
   /// The nearest enclosing command of type [T], this command included.
   ///
   /// How a subcommand reaches a flag its parent declared: `--verbose` on
-  /// `good compile` is one declaration, and `good compile windows` reads it
-  /// through here instead of redeclaring its own.
+  /// `my_command compile` is one declaration, and `my_command compile
+  /// windows` reads it through here instead of redeclaring its own.
   T findAncestor<T extends Command>() {
     for (CommandBinding? at = _bound; at != null; at = at.parent) {
       final command = at.command;
@@ -118,7 +119,7 @@ abstract class CommandSession {
   /// had no default.
   List<T> valuesOf<T>(Arg<T> arg);
 
-  /// The command path that was selected, root first - `['good', 'compile',
+  /// The command path that was selected, root first - `['good', 'build',
   /// 'windows']`. Diagnostics and help.
   List<String> get path;
 }
@@ -287,7 +288,7 @@ typedef ArgumentParser<T> = T Function(String value);
 /// A malformed command line, as opposed to a command that ran and failed.
 ///
 /// Carries the command it happened in, so [CommandRunner] can print that
-/// command's usage and not the root's - `good compile windows --nope`
+/// command's usage and not the root's - `good build windows --nope`
 /// should show the windows usage.
 /// A command that ran, understood its input, and could not finish.
 ///

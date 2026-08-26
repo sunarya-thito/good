@@ -3,8 +3,9 @@ import 'dart:typed_data';
 import 'channel.dart';
 import 'peer.dart';
 
-/// Why a connection ended - reported to [NetListener.onPeerDisconnected] and
-/// readable on a [NetConnection] afterwards.
+/// Why a connection ended - reported to [NetListener.onPeerLeft] for one peer
+/// and [NetListener.onSessionClosed] for the whole session, and readable
+/// afterwards on [NetConnection.disconnectReason].
 ///
 /// A game shows different UI for "they quit" and "they dropped", and a
 /// session decides differently too (a timeout may be worth holding the slot

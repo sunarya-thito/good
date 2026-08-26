@@ -469,7 +469,7 @@ void main() {
         isFalse,
         reason:
             'a command on the path to the selected one has not itself been '
-            'selected - and asking must not throw, because `good compile` '
+            'selected - and asking must not throw, because `good build` '
             'checking `windows.selected` is an ordinary thing to do',
       );
       expect(t.root.args.selected, isFalse, reason: 'an untouched sibling');

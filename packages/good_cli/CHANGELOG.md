@@ -38,6 +38,16 @@
   off the `part` directives of files the scan already parses, so nothing about
   it costs a resolution.
 
+* **The API documentation no longer teaches `good compile`.** The worked
+  examples on `Command`, `CommandRunner` and `BuildCommand` all named it, and
+  no published release has had such a command: it was `goo compile` in the
+  pre-release `goo_cli`, became `build` before 0.1.0, and 0.1.0 shipped
+  `good build windows|linux|android|ios`. Copying one of those examples gets
+  `Unexpected argument "compile"` and a usage block listing the four commands
+  there are. Examples that want a real command now say `good build`; the ones
+  showing only the shape of a command tree say `my_command`, so nothing on the
+  page reads as a `good` invocation that is not one.
+
 ## 0.2.0
 
 Six changes stop a build that worked at 0.1.1. Each one turns something that

@@ -1,8 +1,7 @@
-// Entry point for the `good` CLI - see the project root plan, Phase 4.
+// Entry point for the `good` CLI.
 //
-// The command *framework* is implemented; the pipelines it drives (codegen,
-// asset packing, platform packaging) are not. `good` and `good compile --help`
-// work and describe what will exist.
+// `runCommand` owns the exit codes and the error reporting; what each command
+// does lives in `lib/src/commands/`.
 import 'dart:io';
 
 import 'package:good_cli/src/commands/good.dart';

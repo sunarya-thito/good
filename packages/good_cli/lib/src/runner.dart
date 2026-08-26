@@ -58,7 +58,7 @@ Future<int> runCommand(
 /// # Two passes, and the first one is total
 ///
 /// Declaration runs over the **whole** tree up front, not just the branch the
-/// arguments happen to select. That is what makes `good compile --help` able to
+/// arguments happen to select. That is what makes `good build --help` able to
 /// describe `windows`, and it is the same reason the engine's `describeStruct`
 /// pass is total: a declaration that only runs when it is used is a
 /// declaration you cannot inspect, print, or check for collisions.
@@ -80,8 +80,8 @@ class CommandRunner {
     // Help wins, and is checked **before** parsing. Someone typing `--help` is
     // asking what the arguments are; answering "missing required argument
     // <input>" would be refusing the question with the very information they
-    // asked for. Checked along the whole path, so `good --help compile` works
-    // as well as `good compile --help`.
+    // asked for. Checked along the whole path, so `good --help build` works
+    // as well as `good build --help`.
     for (_Node? at = leaf; at != null; at = at.parent) {
       if (at.pending.contains('--help') || at.pending.contains('-h')) {
         leaf.printUsage();
@@ -90,8 +90,8 @@ class CommandRunner {
     }
 
     // Every node on the path parses its **own** slice, not just the leaf. That
-    // is what makes `good --verbose compile windows` put `--verbose` on the
-    // root where it was declared, and it is why a parent's arguments are
+    // is what makes `my_command --verbose compile windows` put `--verbose` on
+    // the root where it was declared, and it is why a parent's arguments are
     // readable through `findAncestor` while a child executes: they were
     // genuinely parsed, not inherited.
     for (_Node? at = leaf; at != null; at = at.parent) {
@@ -99,7 +99,7 @@ class CommandRunner {
     }
     // The **whole tree** is bound, not just the selected path, so `selected`
     // is a total question: a sibling that was not chosen answers `false`
-    // rather than throwing. `good compile` asking `windows.selected` is an
+    // rather than throwing. `good build` asking `windows.selected` is an
     // ordinary thing to do and must not be an error. Reading a *value* off an
     // unselected command still fails loudly, because there genuinely is none.
     _root.bindTree();
@@ -126,8 +126,9 @@ class CommandRunner {
   /// after. So options are read by the command that declared them, wherever on
   /// the line they were written.
   ///
-  /// **It reads the spec.** `good compile --input-dir windows` must pass
-  /// `windows` to `--input-dir`, not descend into a `windows` subcommand.
+  /// **It reads the spec.** `my_command compile --input-dir windows` must
+  /// pass `windows` to `--input-dir`, not descend into a `windows`
+  /// subcommand.
   /// Deciding that needs to know whether the preceding option takes a value,
   /// which is exactly what the declaration pass already established - so
   /// dispatch consults it instead of guessing from the token's shape.
