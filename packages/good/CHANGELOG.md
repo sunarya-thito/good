@@ -158,6 +158,48 @@
 
 ### Added
 
+* **A query is declared on the field that holds it.** `Query.all`,
+  `Query.has<T>` and `Query.where` build a query with no descriptor in hand,
+  so a system says what it walks where the reader is already looking (#91).
+
+  ```dart
+  // before
+  class SwirlSystem extends GameSystem with FixedTickable {
+    late final Query motes;
+
+    @override
+    void describeQuery(QueryDescriptor descriptor) {
+      super.describeQuery(descriptor);
+      motes = descriptor.query().withAll(Transform2D, Mote).build();
+    }
+  }
+
+  // after
+  class SwirlSystem extends GameSystem with FixedTickable {
+    final motes = Query.all(Transform2D, Mote);
+  }
+  ```
+
+  `Query.where()` opens the same `QueryBuilder` `descriptor.query()` hands
+  out, for the constraints `all` does not cover:
+
+  ```dart
+  final roots = Query.where()
+      .withAll(WorldTransform2D, Transform2D)
+      .withOptional(Child)
+      .build();
+  ```
+
+  The initialiser has to be eager. `late final motes = Query.all(...)`
+  compiles and runs on the first read instead of at construction, which is the
+  access-order hazard the engine's declaration rules exist to keep out.
+
+  Nothing here needs a live declaration pass, and none of it retires
+  `describeQuery`: a query holds masks, and `groups()` resolves archetypes on
+  the first walk and rebuilds whenever the registry grows, so one built during
+  a system's construction picks up every archetype a scene registers
+  afterwards. The hook still works and both forms coexist.
+
 * **An ordered asset mount table: later shadows earlier.** `AssetMount` is one
   tier — bytes named by a logical path, or null when that tier does not carry
   it — and `AssetMounts` is the process's ordered list of them. A DLC

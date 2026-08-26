@@ -86,7 +86,12 @@ class WorldTransform3DSystem extends GameSystem
   /// Guards against a cycle in the parent chain.
   static const int maxHierarchyDepth = 64;
 
-  late final Query _roots;
+  // withOptional(Child) because an entity is a root whether it never mixes
+  // in Child at all, or mixes it in but happens to be unparented.
+  final _roots = Query.where()
+      .withAll(WorldTransform3D, Transform3D)
+      .withOptional(Child)
+      .build();
 
   /// Entities spawned since the last step.
   ///
@@ -128,18 +133,6 @@ class WorldTransform3DSystem extends GameSystem
     // despawn in such a game, and it is cheaper than hashing a handle that
     // cannot be in here.
     if (_spawned.isNotEmpty) _spawned.remove(entity);
-  }
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    // withOptional(Child) because an entity is a root whether it never mixes
-    // in Child at all, or mixes it in but happens to be unparented.
-    _roots = descriptor
-        .query()
-        .withAll(WorldTransform3D, Transform3D)
-        .withOptional(Child)
-        .build();
   }
 
   @override

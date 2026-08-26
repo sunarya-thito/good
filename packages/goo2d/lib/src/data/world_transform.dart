@@ -85,7 +85,12 @@ class WorldTransformSystem extends GameSystem
   /// `GameRenderer2D.maxHierarchyDepth`'s reasoning.
   static const int maxHierarchyDepth = 64;
 
-  late final Query _roots;
+  // withOptional(Child) because an entity is a root whether it never mixes
+  // in Child at all, or mixes it in but happens to be unparented.
+  final _roots = Query.where()
+      .withAll(WorldTransform2D, Transform2D)
+      .withOptional(Child)
+      .build();
 
   /// Entities spawned since the last step.
   ///
@@ -133,18 +138,6 @@ class WorldTransformSystem extends GameSystem
     // [WorldTransform2D] in it pays, which is every despawn in such a game:
     // cheaper than hashing a handle that cannot be in here.
     if (_spawned.isNotEmpty) _spawned.remove(entity);
-  }
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    // withOptional(Child) because an entity is a root whether it never mixes
-    // in Child at all, or mixes it in but happens to be unparented.
-    _roots = descriptor
-        .query()
-        .withAll(WorldTransform2D, Transform2D)
-        .withOptional(Child)
-        .build();
   }
 
   @override

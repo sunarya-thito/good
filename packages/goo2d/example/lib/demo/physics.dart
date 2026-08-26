@@ -568,7 +568,7 @@ class SandboxSystem extends GameSystem with FixedTickable {
   /// Every simulated body. Public so a test can check *where* they ended up
   /// rather than only how many there are - the population alone is happy with
   /// a world where every body sits at the origin.
-  late final Query bodies;
+  final bodies = Query.all(RigidBody2D, Transform2D);
 
   int _spawnCount = 0;
 
@@ -587,12 +587,6 @@ class SandboxSystem extends GameSystem with FixedTickable {
   /// than creating one with its shapes, and because dragging the slider *down*
   /// should feel like an answer rather than a wait.
   static const int _maxDespawnPerTick = 256;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    bodies = descriptor.query().withAll(RigidBody2D, Transform2D).build();
-  }
 
   /// After the physics system, so a flash set by a collision this tick is
   /// aged starting next tick rather than immediately.

@@ -1444,8 +1444,34 @@ class GameRenderer2D extends GameSystem
   // "behind" simply means the reader gets the newest instead of a backlog.
   // See `BufferDescriptor.hasHandoff`.
 
-  late final Query _renderables;
-  late final Query _cameras;
+  // `Transform2D` is the entry condition: an entity is drawable when it has
+  // somewhere to be drawn. There is no `Child` clause in either direction,
+  // because a hierarchy child needs drawing exactly as much as a root does.
+  //
+  // `WorldTransform2D` is optional here because it is optional on the
+  // entity. [_sourceOf] binds the five transform fields once per archetype -
+  // to the world component where an archetype carries it, to the local one
+  // where it does not - so both kinds of renderable go through this one
+  // query and one write pass. See [Renderable2D] and [_TransformSource].
+  //
+  // A child's corners mean nothing until its ancestors are composed in, and
+  // `WorldTransformSystem` finishes that during the fixed tick this pass
+  // reads after. So a child carrying `WorldTransform2D` arrives with its
+  // world position already resolved. A child *without* it is composed by
+  // nothing - `WorldTransformSystem`'s own query requires the component - so
+  // it draws at its offset from its parent, treated as a world position.
+  // Parent a renderable and it wants the mixin.
+  final _renderables = Query.where()
+      .withAll(Renderable2D, Transform2D)
+      .withOptional(WorldTransform2D)
+      .build();
+
+  // The camera is queried, not configured on this system: "where the view
+  // is" is a property of an entity in the scene that the simulation can move
+  // like any other, not a field a presentation system owns. Requiring
+  // `WorldTransform2D` on it as well means a camera parented to the player
+  // works with no special case here.
+  final _cameras = Query.all(Camera, WorldTransform2D);
 
   /// One projection for the lifetime of the system - re-resolved each tick,
   /// never rebuilt, because building one per tick would be an allocation on
@@ -1526,39 +1552,6 @@ class GameRenderer2D extends GameSystem
   /// calls, which is the same experiment with no diagnostic code in the hot
   /// loop.
   bool debugSkipZSort = false;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    // `Transform2D` is the entry condition: an entity is drawable when it has
-    // somewhere to be drawn. There is no `Child` clause in either direction,
-    // because a hierarchy child needs drawing exactly as much as a root does.
-    //
-    // `WorldTransform2D` is optional here because it is optional on the
-    // entity. [_sourceOf] binds the five transform fields once per archetype -
-    // to the world component where an archetype carries it, to the local one
-    // where it does not - so both kinds of renderable go through this one
-    // query and one write pass. See [Renderable2D] and [_TransformSource].
-    //
-    // A child's corners mean nothing until its ancestors are composed in, and
-    // `WorldTransformSystem` finishes that during the fixed tick this pass
-    // reads after. So a child carrying `WorldTransform2D` arrives with its
-    // world position already resolved. A child *without* it is composed by
-    // nothing - `WorldTransformSystem`'s own query requires the component - so
-    // it draws at its offset from its parent, treated as a world position.
-    // Parent a renderable and it wants the mixin.
-    _renderables = descriptor
-        .query()
-        .withAll(Renderable2D, Transform2D)
-        .withOptional(WorldTransform2D)
-        .build();
-    // The camera is queried, not configured on this system: "where the view
-    // is" is a property of an entity in the scene that the simulation can move
-    // like any other, not a field a presentation system owns. Requiring
-    // `WorldTransform2D` on it as well means a camera parented to the player
-    // works with no special case here.
-    _cameras = descriptor.query().withAll(Camera, WorldTransform2D).build();
-  }
 
   // There is no `describeBuffers` here, and there cannot be: a `GameSystem` is
   // declared and run on the game isolate, while shared memory is allocated on

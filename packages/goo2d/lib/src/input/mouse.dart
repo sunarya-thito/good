@@ -156,8 +156,8 @@ class MousePickingSystem extends GameSystem with FixedTickable {
   Entity? get hovered => _hovered;
   Entity? _hovered;
 
-  late final Query _receivers;
-  late final Query _cameras;
+  final _receivers = Query.all(MouseReceiver, Collider2D, WorldTransform2D);
+  final _cameras = Query.all(Camera, WorldTransform2D);
 
   late final MouseEvent _event = MouseEvent._(cursor.value, worldSpace);
 
@@ -166,16 +166,6 @@ class MousePickingSystem extends GameSystem with FixedTickable {
     super.describeInputs(descriptor);
     cursor = descriptor.has<CursorPosition>(const MouseBinding());
     click = descriptor.has<bool>(const TriggerBinding(.leftMouseButton));
-  }
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    _receivers = descriptor
-        .query()
-        .withAll(MouseReceiver, Collider2D, WorldTransform2D)
-        .build();
-    _cameras = descriptor.query().withAll(Camera, WorldTransform2D).build();
   }
 
   /// After the transforms it hit-tests against - the same declaration

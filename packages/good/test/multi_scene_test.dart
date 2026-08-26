@@ -63,14 +63,8 @@ class _Level extends SceneStruct {
 }
 
 class _Census extends GameSystem with FixedTickable {
-  late final Query query;
+  final query = Query.all(_Marked);
   int seen = 0;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    query = descriptor.query().withAll(_Marked).build();
-  }
 
   @override
   void onFixedUpdate() {

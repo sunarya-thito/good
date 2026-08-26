@@ -667,15 +667,9 @@ import '../prefabs/player.dart';
 /// real; the only missing step is something that turns the result into pixels
 /// (issue #43).
 class SpinSystem extends GameSystem with FixedTickable {
-  late final Query _players;
+  final _players = Query.all(Transform3D, Player);
 
   double _elapsed = 0;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    _players = descriptor.query().withAll(Transform3D, Player).build();
-  }
 
   /// Before `WorldTransform3DSystem`, and it has to be: this writes the local
   /// rotation that pass composes, so running after it would leave every

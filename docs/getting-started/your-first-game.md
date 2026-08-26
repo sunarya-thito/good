@@ -52,13 +52,7 @@ import 'package:goo2d/goo2d.dart';
 import '../prefabs/player.dart';
 
 class PlayerSystem extends GameSystem with FixedTickable {
-  late final Query players;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    players = descriptor.query().withAll(Transform2D, Player).build();  // (1)!
-  }
+  final players = Query.all(Transform2D, Player);   // (1)!
 
   @override
   void onFixedUpdate() {
@@ -112,7 +106,7 @@ handle. A system can declare its own:
 
 ```dart title="lib/game/systems/player_system.dart" hl_lines="2 6 7 8 9 10 11 12 13 14 15"
 class PlayerSystem extends GameSystem with FixedTickable {
-  late final Query players;
+  final players = Query.all(Transform2D, Player);
   late final Input<Vector2> movement;
 
   // ...

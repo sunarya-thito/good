@@ -56,7 +56,7 @@ const Duration _step = Duration(microseconds: 16667);
 /// Records any entity drawn at the world origin that has no business being
 /// there, along with the tick it happened on.
 class _OriginProbe extends GameSystem with Tickable {
-  late final Query _renderables;
+  final _renderables = Query.all(WorldTransform2D, Transform2D);
 
   final List<String> sightings = <String>[];
 
@@ -65,15 +65,6 @@ class _OriginProbe extends GameSystem with Tickable {
   final Map<int, int> perTick = <int, int>{};
 
   int _tick = 0;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    _renderables = descriptor
-        .query()
-        .withAll(WorldTransform2D, Transform2D)
-        .build();
-  }
 
   @override
   void onTick(Duration delta) {

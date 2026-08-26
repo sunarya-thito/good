@@ -297,6 +297,82 @@ void main() {
     });
   });
 
+  group('Query statics', () {
+    test('Query.all matches what query().withAll(...).build() matches', () {
+      final level = _level();
+      final declared = Query.all(_Position, _Health);
+      final built = ArchetypeQueryDescriptor()
+          .query()
+          .withAll(_Position, _Health)
+          .build();
+
+      for (final signature in <int>[
+        level.player.archetype.componentSignature,
+        level.rock.archetype.componentSignature,
+        level.trigger.archetype.componentSignature,
+      ]) {
+        expect(declared.matches(signature), built.matches(signature));
+      }
+      expect(
+        declared.matches(level.player.archetype.componentSignature),
+        isTrue,
+      );
+      expect(
+        declared.matches(level.rock.archetype.componentSignature),
+        isFalse,
+      );
+    });
+
+    test('Query.has<T> is the same query as descriptor.has<T>', () {
+      final level = _level();
+      level.pool.beginTick();
+      final p = level.addEntity(level.player);
+      final r = level.addEntity(level.rock);
+      level.addEntity(level.trigger);
+      level.pool.commitTick();
+
+      final SingleQuery<_Position> declared = Query.has<_Position>();
+      expect(
+        declared.run().toSet(),
+        ArchetypeQueryDescriptor().has<_Position>().run().toSet(),
+      );
+      expect(declared.run().toSet(), {p, r});
+    });
+
+    test('Query.where opens the builder the descriptor hands out', () {
+      final level = _level();
+      final roots = Query.where().withAll(_Position).withNone(Child).build();
+
+      expect(
+        roots.matches(level.rock.archetype.componentSignature),
+        isTrue,
+        reason: 'rock has _Position and no Child',
+      );
+      expect(
+        roots.matches(level.player.archetype.componentSignature),
+        isFalse,
+        reason: 'player mixes in Child',
+      );
+    });
+
+    // What the field form rests on: a system's initialiser runs before the
+    // scene it will walk has registered anything, and `groups()` rebuilds
+    // whenever `ArchetypeRegistry.count` moves.
+    test('a query built before any archetype exists still finds them', () {
+      expect(ArchetypeRegistry.count, 0);
+      final motes = Query.all(_Position);
+      expect(motes.groups(), isEmpty);
+
+      final level = _level();
+      level.pool.beginTick();
+      final p = level.addEntity(level.player);
+      final r = level.addEntity(level.rock);
+      level.pool.commitTick();
+
+      expect(motes.run().toSet(), {p, r});
+    });
+  });
+
   group('Query.groups()', () {
     test('yields exactly what run() does, across archetypes and pages', () {
       final level = _level(pageSize: 64); // small, forces multiple pages

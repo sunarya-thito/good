@@ -187,7 +187,13 @@ class Box2DPhysicsSystem extends GameSystem
   /// scene that declares no body never makes one.
   final Map<int, int> _worlds = <int, int>{};
 
-  late final Query _bodies;
+  // Transform2D is required, not optional: a body with no transform has
+  // nowhere to report its position, and silently skipping such an entity
+  // would look exactly like physics not working.
+  final _bodies = Query.where()
+      .withAll(RigidBody2D, Transform2D)
+      .withOptional(Collider2D)
+      .build();
 
   // Scratch buffers for the bulk transfer. Allocated once, grown only when
   // the population outgrows them - never per tick (the no-allocation rule).
@@ -335,26 +341,9 @@ class Box2DPhysicsSystem extends GameSystem
 
   Pointer<Int32>? _countersOut;
 
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    // Transform2D is required, not optional: a body with no transform has
-    // nowhere to report its position, and silently skipping such an entity
-    // would look exactly like physics not working.
-    _bodies = descriptor
-        .query()
-        .withAll(RigidBody2D, Transform2D)
-        .withOptional(Collider2D)
-        .build();
-    // Effector entities are a different population from bodies: a wind zone
-    // has a region and a transform and usually no RigidBody2D at all.
-    _effectorZones = descriptor
-        .query()
-        .withAll(Effector2D, Transform2D)
-        .build();
-  }
-
-  late final Query _effectorZones;
+  // Effector entities are a different population from bodies: a wind zone
+  // has a region and a transform and usually no RigidBody2D at all.
+  final _effectorZones = Query.all(Effector2D, Transform2D);
 
   /// Applies every declared effector, once, before the step.
   ///

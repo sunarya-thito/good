@@ -1,5 +1,12 @@
 ## Unreleased
 
+### Changed
+
+* **`good create` scaffolds its system's query as a field.** The generated
+  `SpinSystem` writes `final _players = Query.all(Transform3D, Player);`
+  instead of a `describeQuery` override, matching the field form `good` now
+  offers (#91).
+
 ### Fixed
 
 * **`good build` no longer deletes files from `assets/` when `strip-originals`

@@ -70,7 +70,7 @@ cross-entity references and the rest — read
 | `gameObject.SetActive(false)` | Turn off its parts, or `entity.destroy()` if it is really gone |
 | `rigidbody.isKinematic = true` | `body.bodyType[entity] = BodyType2D.kinematicBody` |
 | Attach a script at run time | Declare the system once; `state.disableSystem<S>()` when it should not run |
-| `FindObjectsOfType<Enemy>()` | A `Query` declared once in `describeQuery` |
+| `FindObjectsOfType<Enemy>()` | `final enemies = Query.all(Enemy);`, declared once |
 | A tag component added to mark state | A `bool`/`uint1` field on the entity, tested in the loop |
 | `Instantiate(prefab)` | `scene.addEntity(prefab)` |
 | `Destroy(gameObject)` | `entity.destroy()` — takes its whole subtree with it |

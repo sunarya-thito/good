@@ -74,13 +74,7 @@ mixin Transform2D on Component {
 }
 
 class Transform2DSystem extends GameSystem with FixedTickable {
-  late final Query query;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    query = descriptor.query().withAll(Transform2D).withOptional(Child).build();
-  }
+  final query = Query.where().withAll(Transform2D).withOptional(Child).build();
 
   @override
   void onFixedUpdate() {
