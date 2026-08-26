@@ -4,27 +4,26 @@
 /// `goo2d_physics_box2d` for the ECS-facing API (`RigidBody2D`,
 /// `Box2DPhysicsSystem`) built on top of this.
 ///
-/// Box2D **v3** specifically, not v2, because v3 exposes contacts and
-/// sensors as flat event arrays polled once per step
-/// (`b2World_GetContactEvents`/`GetSensorEvents`) rather than through
-/// callbacks. Polling suits an FFI boundary; callbacks would mean a C
-/// function pointer calling back into Dart on the hot path, which is both
-/// slow and awkward to get right across isolates.
+/// Box2D **v3** specifically, and not v2: v3 exposes contacts and sensors as
+/// flat event arrays polled once per step
+/// (`b2World_GetContactEvents`/`GetSensorEvents`), never through callbacks.
+/// Polling suits an FFI boundary; a callback is a C function pointer calling
+/// back into Dart on the hot path, which is both slow and awkward to get
+/// right across isolates.
 ///
-/// ## Why a shim rather than binding Box2D directly
+/// ## The shim exposes nothing but primitives
 ///
 /// Box2D's C API passes small structs by value - `b2Vec2`, `b2BodyId`,
 /// `b2Transform`, `b2WorldDef`. ffigen maps each of those to a Dart
-/// `Struct`, which is a heap object, so a direct binding would allocate on
-/// every call on the engine's hottest path. This codebase has already
-/// measured that class of cost once and removed it (a `Pointer` held in a
-/// field cost 14.63 ns per access against 2.25 ns for a plain `int`), and
-/// the no-allocation rule forbids reintroducing it.
+/// `Struct`, which is a heap object, so binding Box2D directly allocates on
+/// every call on the engine's hottest path. A `Pointer` held in a field
+/// costs 14.63 ns per access against 2.25 ns for a plain `int`; that is the
+/// measurement the no-allocation rule rests on here.
 ///
 /// So `src/goo_box2d.h` exposes only `int64_t`, `int32_t`, `uint64_t`,
 /// `float`, and pointers to arrays of those. The generated bindings contain
-/// **no** `Struct` subclasses at all, which is the property worth
-/// protecting if this header is ever extended.
+/// **no** `Struct` subclasses at all, and that is the property to protect if
+/// you ever extend this header.
 ///
 /// The shim also carries the bulk entry points
 /// (`gooBodiesPushTransforms`/`gooBodiesPullTransforms`), which turn what

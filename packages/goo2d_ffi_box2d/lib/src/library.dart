@@ -3,42 +3,39 @@ import 'dart:io';
 
 import 'box2d.g.dart';
 
-/// The loaded native library, or `null` until something asks for it.
-///
-/// **This is a library-private static, and that is load-bearing.** A
-/// `DynamicLibrary` is a native handle, and native handles are not sendable
-/// through `Isolate.spawn` - the same category as `ReceivePort` and
-/// `dart:ui.Image`. `good` boots on the main isolate and hands the whole
-/// `Game` object graph to the game isolate by deep copy, so a
-/// `DynamicLibrary` stored in a field of a `GameSystem` (or anything else
-/// reachable from `Game`) would make that spawn fail.
-///
-/// Worse, it would fail *intermittently*: the field is `late`, so the spawn
-/// only breaks once something has actually touched the library first. A
-/// headless test that never steps physics would pass, and the real game
-/// would not. Statics do not participate in the copy at all, so each
-/// isolate resolves its own - which is exactly right, since each isolate
-/// needs its own anyway.
-///
-/// Same reasoning already applied elsewhere in this engine: `Game`'s asset
-/// decode gate is a library-private static for this precise reason.
+/// The loaded native library, or `null` until something asks for it. Read it
+/// through [box2d], whose doc says why it lives here and not on an object.
 Box2DBindings? _bindings;
 
-/// Overrides the search for the native library. Only for tests and tools
-/// that run outside a Flutter app, where the plugin's normal bundling has
-/// not happened - see [box2d]'s doc for why that case exists at all.
+/// The path to open instead of searching for the native library.
 ///
-/// Setting this after the library has already been resolved does nothing,
-/// so set it before the first physics call.
+/// For tests and tools that run outside a Flutter app. A Flutter build
+/// bundles the shim beside the executable and the search finds it there;
+/// `flutter test`, `dart run` and `tool/` scripts build no plugins, so there
+/// is nothing beside the executable to find.
+///
+/// Set it before the first physics call - once the library has resolved,
+/// setting it does nothing.
 String? nativeLibraryPathOverride;
 
 /// The generated Box2D shim bindings, resolved on first use.
 ///
-/// Every caller goes through here rather than holding the result in a
-/// field; see [_bindings] for why a field would be a spawn-breaking bug.
-/// The null check is one predictable branch, and the alternative - a
-/// `late final` on some object - is the very thing that cannot cross an
-/// isolate.
+/// **Read it on every use. Never copy the result into a field.** These
+/// bindings hold the `DynamicLibrary`'s `lookup` tear-off, so they carry the
+/// native handle with them, and a native handle is not sendable through
+/// `Isolate.spawn` - the same category as `ReceivePort` and `dart:ui.Image`.
+/// `good` boots on the main isolate and hands the whole `Game` object graph
+/// to the game isolate by deep copy, so bindings in a field of a
+/// `GameSystem`, or of anything else `Game` can reach, make that spawn
+/// fail.
+///
+/// It fails *intermittently*. A `late final` field holds nothing until
+/// something has touched the library, so a headless test that never steps
+/// physics passes and the real game does not. The bindings live on a
+/// library-private static instead, which no isolate copy touches: each
+/// isolate resolves its own, which is what each isolate needs anyway.
+///
+/// The null check here is one predictable branch.
 Box2DBindings get box2d => _bindings ??= _load();
 
 Box2DBindings _load() {
@@ -112,12 +109,12 @@ DynamicLibrary _openLibrary() {
 /// Walks up from the current directory looking for this package's
 /// development build output.
 ///
-/// Walks *up* rather than resolving relative to `Platform.script` because a
-/// test runner's script path is a generated temporary file whose location
-/// says nothing useful about the repository. The working directory during
+/// Walks *up*, and does not resolve relative to `Platform.script`: a test
+/// runner's script path is a generated temporary file whose location says
+/// nothing useful about the repository. The working directory during
 /// `flutter test` is the package under test, which is always somewhere
 /// beneath the repository root, so climbing until `packages/` appears finds
-/// it from `goo2d_ffi_box2d`, from `goo2d_physics_box2d`, or from the
+/// the build from `goo2d_ffi_box2d`, from `goo2d_physics_box2d`, or from the
 /// example app equally well.
 String? _findDevelopmentBuild(String fileName) {
   // tool/build_native.ps1 writes into build/<host os>, so a developer who
