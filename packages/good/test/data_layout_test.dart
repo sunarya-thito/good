@@ -905,8 +905,8 @@ void main() {
       h.pool.commitTick();
       expect(x[e], 10.0);
 
-      // The Transform2DSystem pattern: read-modify-write in place, once per
-      // tick, resolving the same row through its stable offset every time.
+      // Read-modify-write in place, once per tick, resolving the same row
+      // through its stable offset every time.
       for (var tick = 0; tick < 5; tick++) {
         h.pool.beginTick();
         x[e] += 1.0;

@@ -3057,8 +3057,9 @@ final class _GameSceneDescriptor implements GameSceneDescriptor {
 ///
 /// Records declaration order, which *is* execution order - see the class doc
 /// on [Game]. Systems are keyed by `runtimeType`, not by the type argument, so
-/// `descriptor.has(Transform2DSystem())` and `getSystem<Transform2DSystem>()`
-/// agree without the caller having to spell the type argument twice.
+/// `descriptor.has(WorldTransformSystem())` and
+/// `getSystem<WorldTransformSystem>()` agree without the caller having to
+/// spell the type argument twice.
 final class _SystemDescriptor implements SystemDescriptor {
   _SystemDescriptor(this._state);
 

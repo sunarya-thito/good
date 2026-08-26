@@ -119,7 +119,7 @@ void main() {
       },
     );
 
-    test('the Transform2DSystem inner loop runs unchanged', () {
+    test('three archetypes each accumulate one transform step per tick', () {
       final scene = _scene();
       scene.pool.beginTick();
       final entities = <Entity>[
@@ -129,7 +129,8 @@ void main() {
       ];
       scene.pool.commitTick();
 
-      // Verbatim from Transform2DSystem.onFixedUpdate.
+      // Read-modify-write both offsets, and clear the parent wherever the
+      // optional Child is there to clear.
       for (var tick = 0; tick < 3; tick++) {
         scene.pool.beginTick();
         for (final instance in entities) {

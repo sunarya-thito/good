@@ -2,6 +2,18 @@
 
 ### Breaking
 
+* **`Transform2DSystem` is removed.** Its `onFixedUpdate` opened with the
+  comment `// just example` and did two things every fixed step: added 1 to
+  `transformOffsetX` and `transformOffsetY` on every `Transform2D`, and set
+  `Child.parent` to null on every entity carrying a `Child`. A scene that
+  declared it drifted a unit diagonally per tick and had its hierarchy
+  cleared by the end of the first one.
+
+  **There is nothing to call instead.** A game that declared this system was
+  already broken and wants the declaration deleted; a game that did not is
+  unaffected either way. For a per-tick transform step, write a
+  `FixedTickable` system over a `withAll(Transform2D)` query - the `goo2d`
+  example's `SpinSystem` is one (#185).
 * **`Sprite.setNineSliceBorder` now writes the four destination insets as
   well as the four source cuts**, which is what makes it do anything at all.
   It wrote `borderLeft`/`borderTop`/`borderRight`/`borderBottom` and nothing
