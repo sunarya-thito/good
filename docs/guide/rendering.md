@@ -324,9 +324,12 @@ scene its own camera is in** — so two views can be looking at different scenes
 at the same instant.
 
 !!! warning "One camera per view"
-    Two enabled cameras pointing at the same view trips a debug assert. A camera
+    Two cameras pointing at the same view trips a debug assert. A camera
     defines that view's origin, so a second one has no meaning. In release the
     first in query order wins.
+
+    There is no switch that turns a camera off. Setting its `view` to null is
+    what takes one out of play.
 
 ### No camera at all
 

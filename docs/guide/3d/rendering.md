@@ -75,9 +75,10 @@ Those are row defaults for this archetype, not writes to any entity, so a
 camera whose lens never changes needs nothing at mount time.
 
 !!! warning "One camera per view"
-    More than one enabled camera on the same view trips a debug assert. In a
-    release build the first one found is used, so a second camera is a
-    development mistake rather than a crash in someone's hands.
+    A view has one origin, so a second camera on the same view has no meaning.
+    Nothing in `goo3d` checks for it — `goo2d` makes that check in its
+    `ActiveCameraResolver`. Setting a camera's `view` to null is what takes one
+    out of play; there is no switch that turns a camera off.
 
 ## What the renderer does each frame
 
