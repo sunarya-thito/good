@@ -684,12 +684,13 @@ class Box2DBindings {
   late final _gooShapeDestroy =
       _gooShapeDestroyPtr.asFunction<void Function(int, int)>();
 
-  /// Box2D v3 has no per-shape enable flag, so goo2d's `ColliderBody.enable` is
-  /// expressed as a filter change: a zero mask collides with nothing. Dart
-  /// passes both bits every time rather than this shim remembering a "real"
-  /// mask to restore - the authoritative `layer`/`excludeLayers` already live
-  /// in component storage, and caching a second copy here is the drift the
-  /// one-fact-one-place rule describes.
+  /// Box2D v3 has no per-shape enable flag, so goo2d's
+  /// `ColliderBody.enable` is expressed as a filter change: a zero mask
+  /// collides with nothing. Dart passes both bits every time rather than
+  /// this shim remembering a "real" mask to restore - the authoritative
+  /// `layer`/`excludeLayers` already live in component storage, and
+  /// caching a second copy here is the drift the one-fact-one-place rule
+  /// describes.
   void gooShapeSetFilter(
     int shape,
     int category,
@@ -709,8 +710,12 @@ class Box2DBindings {
   late final _gooShapeSetFilter =
       _gooShapeSetFilterPtr.asFunction<void Function(int, int, int)>();
 
-  /// Landing 4 needs these on to receive anything from
-  /// b2World_GetContactEvents / GetSensorEvents.
+  /// Turns a shape's event reporting off again - every shape this shim
+  /// creates has both on already. Reporting is per shape in Box2D v3,
+  /// and the two flags differ: a contact pair is reported if EITHER
+  /// shape has contact events on (`contact.c:253`), while a sensor
+  /// overlap needs the flag on both the sensor and the visitor
+  /// (`sensor.c:66`, `sensor.c:158`).
   void gooShapeEnableContactEvents(
     int shape,
     int flag,
@@ -1277,6 +1282,25 @@ class Box2DBindings {
   ///
   /// The target is world space, not body-local, because that is the whole
   /// point: it is where you want the body to go, not a point on it.
+  ///
+  /// # It grabs the body, then aims - and that ordering is the whole trick
+  ///
+  /// `b2CreateMouseJoint` anchors **whichever point of the body is currently
+  /// at `def.target`**: `mouse_joint.c` derives `anchorB` from
+  /// `localOriginAnchorB` and sets `deltaCenter = center - targetA`. Handing
+  /// it a distant target therefore means "hold the point 6 m from your
+  /// centre at a spot 6 m away", which is already true - separation solves
+  /// to zero and the joint does nothing at all.
+  ///
+  /// That is not hypothetical; it is what this shipped as. With no gravity
+  /// the body never moved, and with gravity it drifted to wherever the fall
+  /// happened to leave it, which looked like a weak spring and survived a
+  /// stiffness sweep unchanged.
+  ///
+  /// So this creates the joint at the body's own position - grabbing its
+  /// centre, as Box2D's samples grab under the cursor - and then sets the
+  /// real target immediately. Measured after the fix, a ball dragged to
+  /// (6, 4) under gravity lands at (6.00, 4.00).
   int gooJointCreateMouse(
     int bodyA,
     int bodyB,

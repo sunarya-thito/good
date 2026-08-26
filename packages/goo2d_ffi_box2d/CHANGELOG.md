@@ -1,11 +1,20 @@
 ## Unreleased
 
-Build tooling. No code changes.
+Documentation and build tooling. No code changes.
 
 * `ffigen.yaml`'s function filter matched none of the shim's 60 symbols, so
   `dart run ffigen --config ffigen.yaml` emptied `lib/src/box2d.g.dart` instead
   of regenerating it. The checked-in bindings were always correct; regenerating
   from them was not.
+* `gooJointCreateMouse` now documents the anchor-ordering trap and its
+  measurement. That section was in the C header and had never reached the
+  generated file, so it was absent from the published API docs.
+* `gooShapeEnableContactEvents` and `gooShapeEnableSensorEvents` say what the
+  flags do and how contacts and sensors differ, in place of a reference to a
+  plan that no longer exists.
+* No comment names `RULES.md`, which is not in the repository. The two rules
+  cited were the no-allocation hot-path rule and one fact, one place, both on
+  the docs site.
 
 ## 0.1.1
 

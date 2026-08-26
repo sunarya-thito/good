@@ -6,7 +6,7 @@
 // Box2D directly would allocate on every call on the hottest path in the
 // engine. That is the cost this codebase already measured and removed once
 // (a `Pointer` field cost 14.63ns/access against 2.25ns for a plain `int`),
-// and RULES.md rule 1 forbids re-introducing it.
+// and the no-allocation hot-path rule forbids re-introducing it.
 //
 // So every parameter and return below is `int64_t`, `int32_t`, `uint64_t`,
 // `float`, or a pointer to an array of those. Nothing here maps to a Dart
@@ -188,11 +188,16 @@ extern "C"
 	/// collides with nothing. Dart passes both bits every time rather than
 	/// this shim remembering a "real" mask to restore - the authoritative
 	/// `layer`/`excludeLayers` already live in component storage, and
-	/// caching a second copy here is the drift RULES.md rule 10 describes.
+	/// caching a second copy here is the drift the one-fact-one-place rule
+	/// describes.
 	GOO_API void gooShapeSetFilter( int64_t shape, uint64_t category, uint64_t mask );
 
-	/// Landing 4 needs these on to receive anything from
-	/// b2World_GetContactEvents / GetSensorEvents.
+	/// Turns a shape's event reporting off again - every shape this shim
+	/// creates has both on already. Reporting is per shape in Box2D v3,
+	/// and the two flags differ: a contact pair is reported if EITHER
+	/// shape has contact events on (`contact.c:253`), while a sensor
+	/// overlap needs the flag on both the sensor and the visitor
+	/// (`sensor.c:66`, `sensor.c:158`).
 	GOO_API void gooShapeEnableContactEvents( int64_t shape, int32_t flag );
 	GOO_API void gooShapeEnableSensorEvents( int64_t shape, int32_t flag );
 
@@ -206,7 +211,7 @@ extern "C"
 	// knows NOTHING about good's memory pool. The pool is bit-packed by
 	// DataDescriptor's cursor, so a C struct mirroring a row would be a
 	// second copy of that layout which has to agree with data_layout.dart by
-	// hand, and RULES.md rule 10 exists precisely to stop that.
+	// hand, and the one-fact-one-place rule exists precisely to stop that.
 
 	/// Pushes `count` transforms into the world. `bodies` is `count` packed
 	/// handles; `xya` is 3 floats per body. A zero or stale handle is

@@ -6,7 +6,7 @@
 // result back. There is no state in this file - no caches, no tables, no
 // registries. That is deliberate: anything remembered here would be a
 // second copy of something the Dart side already owns, and it would have to
-// be kept in step by hand (RULES.md rule 10).
+// be kept in step by hand (the one-fact-one-place rule).
 
 #include "goo_box2d.h"
 #include "goo_threads.h"
