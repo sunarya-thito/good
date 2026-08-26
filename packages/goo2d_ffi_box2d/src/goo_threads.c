@@ -15,8 +15,6 @@
 // solver task per worker plus the tree/sensor/bullet tasks that overlap them.
 #define GOO_MAX_TASKS 128
 
-typedef void b2TaskFn( int startIndex, int endIndex, uint32_t workerIndex, void* taskContext );
-
 typedef struct GooTask
 {
 	// Slices not yet finished. The task is complete at zero. Only ever
@@ -29,7 +27,7 @@ typedef struct GooTask
 typedef struct GooWorker
 {
 	int32_t index;
-	b2TaskFn* fn;
+	GooTaskFn* fn;
 	void* context;
 	int32_t start;
 	int32_t end;
@@ -259,11 +257,10 @@ static GooTask* gooClaimTask( GooThreadPool* pool )
 	return NULL;
 }
 
-void* gooThreadPoolEnqueue( void* taskFn, int32_t itemCount, int32_t minRange, void* taskContext,
+void* gooThreadPoolEnqueue( GooTaskFn* fn, int32_t itemCount, int32_t minRange, void* taskContext,
 							void* userContext )
 {
 	GooThreadPool* pool = (GooThreadPool*)userContext;
-	b2TaskFn* fn = (b2TaskFn*)taskFn;
 
 	if ( pool == NULL || itemCount <= 0 )
 	{

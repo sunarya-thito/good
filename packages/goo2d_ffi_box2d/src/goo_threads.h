@@ -61,9 +61,17 @@ void gooThreadPoolDestroy( GooThreadPool* pool );
 /// How many workers this pool runs. 1 for a NULL pool, the serial case.
 int32_t gooThreadPoolWorkerCount( const GooThreadPool* pool );
 
-/// The `b2EnqueueTaskCallback` / `b2FinishTaskCallback` pair, matching
-/// Box2D's signatures exactly. `userContext` is the pool.
-void* gooThreadPoolEnqueue( void* task, int32_t itemCount, int32_t minRange, void* taskContext,
+/// Box2D's `b2TaskCallback`, restated here so this header does not pull in
+/// Box2D's. A worker calls it with the slice of the range it owns.
+///
+/// `int`, not `int32_t`, because the point of this typedef is to be the same
+/// type as Box2D's. A `void*` in its place compiles under GCC and MSVC and is
+/// an error under Clang 16 and newer, which is every Apple toolchain.
+typedef void GooTaskFn( int startIndex, int endIndex, uint32_t workerIndex, void* taskContext );
+
+/// The `b2EnqueueTaskCallback` / `b2FinishTaskCallback` pair, assignable to
+/// `b2WorldDef`'s fields without a cast. `userContext` is the pool.
+void* gooThreadPoolEnqueue( GooTaskFn* task, int32_t itemCount, int32_t minRange, void* taskContext,
 							void* userContext );
 void gooThreadPoolFinish( void* userTask, void* userContext );
 
