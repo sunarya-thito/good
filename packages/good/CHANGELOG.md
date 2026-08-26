@@ -94,10 +94,41 @@
   every animation one host had started, which is nobody's idea of a group.
 
 * **`Query` and `SingleQuery` gained members.** They are exported, so a class
-  outside the engine that `implements Query` no longer satisfies it: `run`,
-  `groups` and `runQuery` each take a trailing optional `Scene`, and `inScene`
-  is new. Widen the three signatures and add `inScene`. Nothing that only
-  *calls* a query is affected.
+  outside the engine that `implements Query` no longer satisfies it: `run` and
+  `groups` each take a trailing optional `Scene`, and `inScene` is new. Widen
+  the two signatures and add `inScene`. Nothing that only *calls* a query is
+  affected.
+
+* **`Query.runQuery`, `Query.get`, `Query.tryGet` and `SingleQuery.component`
+  are gone.** Walk a query with `groups()` or `run()` and read through the
+  `Entity` those hand you (#155).
+
+  ```dart
+  // before
+  query.runQuery(() { ... });
+
+  // after - one component resolve per archetype, which is the point
+  for (final group in query.groups()) {
+    final transform = group.get<Transform2D>();
+    for (final entity in group) {
+      transform.transformOffsetX[entity] += 1;
+    }
+  }
+
+  // or, where the walk stops early
+  for (final entity in query.run()) {
+    entity.get<Transform2D>().transformOffsetX[entity] += 1;
+  }
+  ```
+
+  `runQuery` set an internal cursor that `get`/`tryGet` read through, and the
+  callback took no argument, so there was no way to obtain the `Entity` every
+  component field is indexed by. It could name the archetype's component and
+  read no row data at all.
+
+  `SingleQuery` itself stays, and so does `QueryDescriptor.has<T>()` that
+  builds one: it is `query().withAll(T).build()` with the component named
+  once, and `groups()`, `run()` and `inScene()` work on it as on any query.
 
 * **`GameListener.disableAfterUncaught` takes the error and stack.** Both are
   optional positional, so a call site needs no change - but a class outside
@@ -203,9 +234,9 @@
   wrote - stop it mid-fade and the sprite stays half faded. Nothing is reset
   or restored.
 
-* **A query can be scoped to one loaded scene.** `Query.run`, `Query.groups`
-  and `Query.runQuery` take an optional `Scene`; `Query.inScene(scene)` binds
-  one once, for a system that always works in the same scene; and
+* **A query can be scoped to one loaded scene.** `Query.run` and
+  `Query.groups` take an optional `Scene`; `Query.inScene(scene)` binds one
+  once, for a system that always works in the same scene; and
   `QueryGroup.inScene(scene)` narrows a single archetype's group. The scope
   skips at the *page* level - a `MemoryPage` records the scene it was
   allocated for - so another scene's rows are rejected without being

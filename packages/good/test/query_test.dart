@@ -273,79 +273,27 @@ void main() {
     });
   });
 
-  group('runQuery / get / tryGet cursor', () {
-    test('get<T>() and tryGet<T>() read through the current entity', () {
+  group('QueryDescriptor.has<T>()', () {
+    test('matches exactly what query().withAll(T).build() matches', () {
       final level = _level();
       level.pool.beginTick();
       final p = level.addEntity(level.player);
-      level.player.x[p] = 5;
-      level.pool.commitTick();
-
-      final descriptor = ArchetypeQueryDescriptor();
-      final query = descriptor
-          .query()
-          .withAll(_Position)
-          .withOptional(Child)
-          .build();
-      var ran = false;
-      query.runQuery(() {
-        ran = true;
-        expect(query.get<_Position>().x[p], 5);
-        expect(
-          query.tryGet<Child>(),
-          isNotNull,
-          reason: '_Player mixes in Child',
-        );
-        expect(
-          query.tryGet<_Health>(),
-          isNotNull,
-          reason: '_Player mixes in _Health too',
-        );
-      });
-      expect(ran, isTrue);
-    });
-
-    test('tryGet<T>() is null for a component the matched entity lacks', () {
-      final level = _level();
-      level.addEntity(level.rock); // no Child, no _Health
-
-      final descriptor = ArchetypeQueryDescriptor();
-      final query = descriptor.query().withAll(_Position).build();
-      var ran = false;
-      query.runQuery(() {
-        ran = true;
-        expect(query.tryGet<Child>(), isNull);
-        expect(query.tryGet<_Health>(), isNull);
-        expect(() => query.get<Child>(), throwsStateError);
-      });
-      expect(ran, isTrue);
-    });
-
-    test(
-      'get<T>() outside runQuery throws instead of returning stale data',
-      () {
-        final descriptor = ArchetypeQueryDescriptor();
-        final query = descriptor.query().withAll(_Position).build();
-        expect(() => query.get<_Position>(), throwsStateError);
-        expect(query.tryGet<_Position>(), isNull);
-      },
-    );
-
-    test('SingleQuery<T>.component is get<T>() sugar through the cursor', () {
-      final level = _level();
-      level.pool.beginTick();
-      final p = level.addEntity(level.player);
+      final r = level.addEntity(level.rock);
+      level.addEntity(level.trigger); // _Health only, no _Position
       level.player.x[p] = 42;
+      level.rock.x[r] = 7;
       level.pool.commitTick();
 
       final descriptor = ArchetypeQueryDescriptor();
       final single = descriptor.has<_Position>();
-      var ran = false;
-      single.runQuery(() {
-        ran = true;
-        expect(single.component.x[p], 42);
-      });
-      expect(ran, isTrue);
+      final built = descriptor.query().withAll(_Position).build();
+
+      expect(single.run().toSet(), built.run().toSet());
+      expect(single.run().toSet(), {p, r});
+      expect(
+        {for (final e in single.run()) e.get<_Position>().x[e]},
+        {42.0, 7.0},
+      );
     });
   });
 
@@ -501,7 +449,7 @@ void main() {
       expect(groupedB, {...playersB, ...rocksB});
     });
 
-    test('Query.runQuery(runner, scene) drives the cursor over that scene', () {
+    test('Query.run(scene) separates two loads sharing every archetype', () {
       // One SceneStruct, two loaded instances of it, so both scenes share
       // every archetype and the page-level `ownerSceneSlot` skip is the only
       // thing that can separate them.
@@ -523,41 +471,31 @@ void main() {
       final descriptor = ArchetypeQueryDescriptor();
       final query = descriptor.query().withAll(_Position).build();
 
-      // The cursor is observable only through get/tryGet, and both resolve
-      // against the archetype of the entity *under the cursor*. So a tally of
-      // which components the callback could reach reports two things at once:
-      // that the cursor moved from row to row, and which scene's rows it
-      // moved over. A cursor that was never set makes `get` throw; one set
-      // once and left there gives the wrong tally.
-      var runs = 0;
-      var health = 0;
-      query.runQuery(() {
-        runs++;
-        expect(
-          query.get<_Position>(),
-          anyOf(same(level.player), same(level.rock)),
-          reason: 'get<T>() throws when there is no cursor, and returns '
-              'the prefab of the archetype under it when there is one',
-        );
-        if (query.tryGet<_Health>() != null) health++;
-      }, handleA);
-      expect(runs, 5, reason: 'scene A holds 2 players and 3 rocks');
-      expect(health, 2, reason: 'only the players carry _Health');
+      // A tally by archetype, not a row count: both scenes hold rows of both
+      // archetypes, so a walk that skipped the wrong pages - or none at all -
+      // can still land on the right total.
+      var runsA = 0;
+      var healthA = 0;
+      for (final entity in query.run(handleA)) {
+        runsA++;
+        if (entity.tryGet<_Health>() != null) healthA++;
+      }
+      expect(runsA, 5, reason: 'scene A holds 2 players and 3 rocks');
+      expect(healthA, 2, reason: 'only the players carry _Health');
 
-      runs = 0;
-      health = 0;
-      query.runQuery(() {
-        runs++;
-        if (query.tryGet<_Health>() != null) health++;
-      }, handleB);
-      expect(runs, 6, reason: 'scene B holds 5 players and 1 rock');
-      expect(health, 5);
+      var runsB = 0;
+      var healthB = 0;
+      for (final entity in query.run(handleB)) {
+        runsB++;
+        if (entity.tryGet<_Health>() != null) healthB++;
+      }
+      expect(runsB, 6, reason: 'scene B holds 5 players and 1 rock');
+      expect(healthB, 5);
 
-      // And the cursor is cleared on the way out, scoped or not.
-      expect(() => query.get<_Position>(), throwsStateError);
+      expect(query.run().length, 11, reason: 'unscoped walks both loads');
     });
 
-    test('SingleQuery.inScene(scene) and component work with scene scoping', () {
+    test('SingleQuery.inScene(scene) walks only that scene', () {
       final levelA = _level();
       final levelB = _level();
 
@@ -575,12 +513,9 @@ void main() {
       final single = descriptor.has<_Position>();
       final scopedA = single.inScene(levelA.handle);
 
-      var countA = 0;
-      scopedA.runQuery(() {
-        countA++;
-        expect(scopedA.component.x[pA], 99);
-      });
-      expect(countA, 1);
+      expect(scopedA.run().toSet(), {pA});
+      expect(scopedA.run().single.get<_Position>().x[pA], 99);
+      expect(single.run().toSet(), {pA, pB});
     });
 
     test('Query.inScene(scene) returns a view matching run(scene) / groups(scene)', () {
@@ -648,9 +583,6 @@ void main() {
       }, throwsStateError);
       expect(() {
         query.groups(handle);
-      }, throwsStateError);
-      expect(() {
-        query.runQuery(() {}, handle);
       }, throwsStateError);
       expect(() {
         query.inScene(handle);
