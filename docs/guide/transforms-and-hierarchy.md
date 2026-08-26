@@ -243,6 +243,11 @@ The camera's own local transform stays at the origin, and `WorldTransformSystem`
 puts it wherever the player is. For a lagging or smoothed camera, write its
 transform from a system that runs after movement instead.
 
+The rotation does not carry over. A turning player swings a camera hung at an
+offset around itself, because that is the *position* composing, but the
+`worldRotation` the camera picks up is read by nothing and the view never
+tilts — see the warning in [Rendering and cameras](rendering.md#cameras).
+
 ---
 
 ## Next

@@ -3,9 +3,17 @@ import 'package:good/good.dart';
 import 'package:goo2d/src/data/world_transform.dart';
 
 /// Marks an entity as a camera - a view origin and zoom level, nothing
-/// more. Position/rotation are whatever its own `WorldTransform2D` already
-/// resolves to (an entity with `Camera` must also mix in `Transform2D`/
-/// `WorldTransform2D`), so there is no separate transform to keep in sync.
+/// more. An entity with `Camera` must also mix in `Transform2D`/
+/// `WorldTransform2D`, and the view centres on the position that resolves
+/// to, so there is no separate transform to keep in sync.
+///
+/// **A camera's rotation is ignored.** [CameraProjection] reads the camera's
+/// world x, its world y and [zoom], and nothing else: the same scene drawn
+/// through a camera at rotation 0 and through one at rotation pi/2 gives
+/// identical geometry. A camera parented to something that turns inherits
+/// the turn into its `worldRotation` and still draws upright. A view that
+/// banks, or that locks to a subject's facing, has nothing here to build on
+/// (#172).
 ///
 /// A camera occupies a [CameraView] - one of the places the game declared it
 /// can be drawn - and at most one camera should occupy a given view at a time.
@@ -115,6 +123,10 @@ class ActiveCameraResolver {
 /// here once, next to the camera it belongs to, and both directions come
 /// off the same three numbers.
 ///
+/// Those three numbers are [originX], [originY] and [zoom]. **The camera's
+/// own rotation is not among them** - see [Camera] - so each axis here maps
+/// independently of the other: a view x comes from a world x alone.
+///
 /// # Which way is up
 ///
 /// **World +y is up.** A larger world y draws *higher* on the screen, the
@@ -125,9 +137,10 @@ class ActiveCameraResolver {
 /// (picking, HUD markers, the renderer's own quads) goes through these four
 /// methods and inherits it.
 ///
-/// The one thing that does *not* come for free is rotation: composing a quad
-/// in view space after the flip turns a positive world rotation the wrong
-/// way round, which `GameRenderer2D` compensates for where it takes the sine.
+/// The one thing that does *not* come for free is a drawable's own rotation:
+/// composing a quad in view space after the flip turns a positive world
+/// rotation the wrong way round, which `GameRenderer2D` compensates for where
+/// it takes the sine.
 ///
 /// # The camera sits in the middle of the view
 ///
