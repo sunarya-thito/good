@@ -40,8 +40,10 @@ jobs:
       # Without ffmpeg, two compaction tests skip themselves and the asset
       # pipeline goes untested here. A skip is how coverage disappears quietly,
       # so install it rather than letting the suite report green over a gap.
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # libclang is what ffigen parses the Box2D shim header with, for the
+      # bindings check at the end of this job.
+      - name: Install ffmpeg and libclang
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg libclang-dev
 
       # Resolution is worth its own step. Every package depends on its siblings
       # by hosted `^0.1.0` constraint with a local path override in
@@ -64,6 +66,12 @@ jobs:
           echo "::endgroup::"
           echo "::group::flutter pub get doc_snippets"
           (cd packages/doc_snippets && flutter pub get)
+          echo "::endgroup::"
+          # Not for its tests, which need the native library. `dart run ffigen`
+          # reads this package's own package config, so the bindings check
+          # needs it resolved.
+          echo "::group::flutter pub get goo2d_ffi_box2d"
+          (cd packages/goo2d_ffi_box2d && flutter pub get)
           echo "::endgroup::"
 
       # The fenced dart blocks in docs/, compiled against the real packages, so
@@ -112,3 +120,22 @@ jobs:
           echo "::group::dart test good_cli"
           (cd packages/good_cli && dart test)
           echo "::endgroup::"
+
+      # ffigen's function filter is a regex nothing re-runs, so it can stop
+      # matching with nothing going red. `good.*` matched none of the shim's 60
+      # symbols, and regenerating produced 19 lines - three constants, no
+      # `Box2DBindings` class (#201). A test that loads the bindings passes
+      # through all of that, because the checked-in file is the correct one.
+      # Regenerating is the only thing that sees it.
+      #
+      # This step is last because ffigen writes over lib/src/box2d.g.dart, which
+      # is fine in a throwaway checkout only if no later step reads it.
+      - name: Check box2d.g.dart is what ffigen generates
+        run: |
+          set -e
+          # ffigen searches LLVM's own install paths for libclang and its Linux
+          # list ends at llvm-15, while libclang-dev on the runner is newer.
+          # /usr/lib is on that list, so link whatever apt installed into it.
+          sudo ln -sf "$(ls /usr/lib/llvm-*/lib/libclang.so | tail -1)" /usr/lib/libclang.so
+          (cd packages/goo2d_ffi_box2d && dart run ffigen --config ffigen.yaml)
+          git diff --exit-code -- packages/goo2d_ffi_box2d/lib/src/box2d.g.dart
