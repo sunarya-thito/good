@@ -1,3 +1,12 @@
+## Unreleased
+
+Build tooling. No code changes.
+
+* `ffigen.yaml`'s function filter matched none of the shim's 60 symbols, so
+  `dart run ffigen --config ffigen.yaml` emptied `lib/src/box2d.g.dart` instead
+  of regenerating it. The checked-in bindings were always correct; regenerating
+  from them was not.
+
 ## 0.1.1
 
 Documentation only. No code changes.

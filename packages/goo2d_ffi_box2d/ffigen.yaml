@@ -29,7 +29,7 @@ headers:
 
 functions:
   include:
-    - 'good.*'
+    - 'goo.*'
 
 preamble: |
   // GENERATED FILE - DO NOT EDIT.
