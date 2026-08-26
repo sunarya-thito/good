@@ -1,7 +1,7 @@
 // The physics demo case, headless.
 //
-// Requires the native library:
-//   cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1
+// Requires the native library. packages/goo2d_ffi_box2d/README.md has the
+// build for each platform.
 
 // Tagged `box2d` because these cases need the native library. CI builds it
 // and runs them; the tag names them for `--exclude-tags box2d` in a checkout

@@ -2,8 +2,8 @@
 // RigidBody2D actually simulates through the real Box2D, and that the
 // transform-authority rules hold.
 //
-// Requires the native library:
-//   cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1
+// Requires the native library. packages/goo2d_ffi_box2d/README.md has the
+// build for each platform.
 //
 // **Positive y is UP** - so a floor sits at a SMALLER y than the bodies
 // falling onto it, and free fall decreases y. Box2D uses the same convention,

@@ -42,15 +42,49 @@ vendored source itself:
 | macOS, iOS | CocoaPods podspec (compiles sources directly, links statically) |
 
 A Flutter app gets all of this automatically. Outside one — `flutter test`,
-`dart run`, `tool/` scripts — nothing builds plugins, so build it once by hand:
+`dart run`, `tool/` scripts — nothing builds plugins, so build it once by hand.
 
-```powershell
-cd packages/goo2d_ffi_box2d
-powershell -File tool/build_native.ps1
+### Linux hosts
+
+`src/CMakeLists.txt` is a build root of its own, so two commands from the
+repository root do it:
+
+```sh
+cmake -S packages/goo2d_ffi_box2d/src \
+      -B packages/goo2d_ffi_box2d/build/linux -DCMAKE_BUILD_TYPE=Release
+cmake --build packages/goo2d_ffi_box2d/build/linux --parallel
 ```
 
-`lib/src/library.dart` finds that artifact by walking up from the working
-directory, so tests in sibling packages pick it up without configuration.
+The output directory is load-bearing. `lib/src/library.dart` searches for
+`packages/goo2d_ffi_box2d/build/<operating system>`, so a build written to a
+generic `build/` succeeds and is then never found — a failure that looks like
+a build that never ran.
+
+### Windows hosts
+
+```powershell
+powershell -File packages/goo2d_ffi_box2d/tool/build_native.ps1
+```
+
+The script runs the same two cmake commands against `build/windows`, inside a
+Visual Studio environment. That environment is what Windows needs and the two
+bare commands do not have: CMake chooses its generator from the Visual Studio
+version it finds, and for a version newer than it knows about it falls back to
+NMake Makefiles and stops with `CMAKE_C_COMPILER not set`. Running under
+`vcvars64` puts `cl.exe` on `PATH`, which makes that generator work.
+
+### macOS and iOS hosts
+
+There is no route. The podspec links the shim into the application binary, so
+there is no library file to open and `lib/src/library.dart` reads the symbols
+out of the process instead. Outside an app nothing has linked them, and the
+first call fails on a missing symbol.
+
+### Finding the result
+
+`lib/src/library.dart` walks up from the working directory, so a build made
+once is picked up by tests in sibling packages — `goo2d_physics_box2d` and
+`goo2d/example` — with no configuration.
 
 ## Regenerating the bindings
 

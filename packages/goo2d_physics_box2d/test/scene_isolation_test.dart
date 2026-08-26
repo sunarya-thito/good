@@ -1,7 +1,7 @@
 // #106: one Box2D world per loaded scene.
 //
-// Requires the native library:
-//   cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1
+// Requires the native library. packages/goo2d_ffi_box2d/README.md has the
+// build for each platform.
 //
 // Physics was the last subsystem treating something per-scene as global. One
 // world for the whole game meant a dynamic body in one scene rested on static

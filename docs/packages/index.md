@@ -118,12 +118,25 @@ means "no body yet".
 | macOS, iOS | CocoaPods podspec, compiled directly and linked statically |
 
 A Flutter app gets all of this automatically. Outside one, build it by hand
-once:
+once, from the repository root:
 
-```powershell
-cd packages/goo2d_ffi_box2d
-powershell -File tool/build_native.ps1
-```
+=== "Windows"
+
+    ```powershell
+    powershell -File packages/goo2d_ffi_box2d/tool/build_native.ps1
+    ```
+
+=== "Linux"
+
+    ```sh
+    cmake -S packages/goo2d_ffi_box2d/src \
+          -B packages/goo2d_ffi_box2d/build/linux -DCMAKE_BUILD_TYPE=Release
+    cmake --build packages/goo2d_ffi_box2d/build/linux --parallel
+    ```
+
+The build has to land in `build/<operating system>`, which is where the loader
+looks. [Installation](../getting-started/installation.md#platform-toolchains)
+has the detail, including why macOS and iOS have no route outside an app.
 
 ### Regenerating the bindings
 

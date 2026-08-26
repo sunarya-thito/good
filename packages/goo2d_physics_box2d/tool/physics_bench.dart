@@ -16,8 +16,8 @@
 // cannot make faster anyway. The ECS overhead on top is what the demo's own
 // `caseMicros` readout measures, on the device, where it matters.
 //
-// Requires the native library:
-//   cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1
+// Requires the native library. packages/goo2d_ffi_box2d/README.md has the
+// build for each platform.
 
 import 'dart:ffi';
 import 'dart:io';

@@ -2,8 +2,8 @@
 // generated bindings and the loader work as one chain, before any ECS API
 // is built on top of them.
 //
-// Requires the native library. Build it once with:
-//   cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1
+// Requires the native library. packages/goo2d_ffi_box2d/README.md has the
+// build for each platform.
 //
 // These are deliberately assertions about *physics*, not just about calls
 // returning. A test that only checked "gooWorldCreate returned nonzero"
