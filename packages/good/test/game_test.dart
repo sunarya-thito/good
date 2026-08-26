@@ -869,6 +869,18 @@ void main() {
       expect(visibleInLifecycleState(AppLifecycleState.detached), isFalse);
     });
 
+    test('losing focus is losing input', () {
+      // #161, and the other half of the distinction above. The two
+      // predicates agree on `resumed` and on everything below `inactive`,
+      // and `inactive` is the one state where they part: still on screen,
+      // and no longer receiving key events.
+      expect(focusedInLifecycleState(AppLifecycleState.resumed), isTrue);
+      expect(focusedInLifecycleState(AppLifecycleState.inactive), isFalse);
+      expect(focusedInLifecycleState(AppLifecycleState.hidden), isFalse);
+      expect(focusedInLifecycleState(AppLifecycleState.paused), isFalse);
+      expect(focusedInLifecycleState(AppLifecycleState.detached), isFalse);
+    });
+
     test('the same state twice is not two events', () async {
       final game = await _game(_VisibilityGame());
       final state = _state(game);
