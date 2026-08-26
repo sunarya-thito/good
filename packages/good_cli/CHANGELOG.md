@@ -2,6 +2,14 @@
 
 ### Fixed
 
+* **`good build` no longer deletes files from `assets/` when `strip-originals`
+  is not set.** The default (`strip-originals: false`) now leaves every file in
+  the asset output directory untouched. Assets declared with
+  `Image.asset('assets/...')` in Flutter widgets survive the release build and
+  resolve correctly at run time. Set `strip-originals: true` in `good: assets:`
+  to keep the old behaviour of removing loose copies once they are inside a
+  chunk.
+
 * **`texture: quality: 100` now produces a byte-exact WebP.** It emitted
   `-lossless 1`, but after `-pix_fmt yuva420p`, so ffmpeg halved the chroma
   and libwebp then stored the damaged image exactly. On a 64x32 fixture whose
