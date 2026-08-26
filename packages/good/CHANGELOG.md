@@ -361,6 +361,27 @@
   there. `good_net` 0.2.1 carries the same correction for the users it
   actually reached.
 
+* **A key held when the window loses focus is released too, not only when the
+  app is hidden.** #160 hung the release off this engine's definition of
+  visible, which counts `inactive` - a window still on screen with nothing
+  focused - as being played, so alt-tabbing mid-strafe left the character
+  strafing. Measured on Windows 11 against a desktop build before changing
+  anything: an unfocused window reports `inactive` and from that moment
+  receives no key events at all, so the up for the held key is delivered to
+  whoever took the focus and never arrives. Losing focus now releases every
+  held key, mouse button and analog axis (#161).
+
+  **The game keeps drawing and keeps stepping through all of it.** The same
+  measurement counted frames across the unfocused stretch and they came at
+  the rate they had before, so `inactive` stays on the visible side of
+  `visibleInLifecycleState` and only the release moved. Alt-tabbing does not
+  pause the game; it empties the keyboard.
+
+  A pad is the one device this costs anything. Windows and Linux report pad
+  state to an unfocused window, so a button held straight through the focus
+  loss now reads released until it is let go and pressed again - the trade
+  the keyboard already takes, on a device that was not obliged to take it.
+
 * **A key held while the app is backgrounded no longer stays held forever.**
   An OS that takes focus away sends no key-up, so the block went on reporting
   the press for the rest of the run: background a game with a movement key

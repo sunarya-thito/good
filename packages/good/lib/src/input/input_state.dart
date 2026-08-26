@@ -319,13 +319,15 @@ final class InputDevice {
   ///
   /// An OS that takes focus away sends no key-up. The last thing this heard
   /// was the press, and a latest-value block goes on saying so forever, so
-  /// backgrounding a game with a movement key held leaves the character
+  /// alt-tabbing out of a game with a movement key held leaves the character
   /// walking into a wall until the player thinks to press and release that
-  /// key themselves. `GameView` calls this when the app is hidden and when
-  /// the last view showing the game goes away, which is the rule
-  /// `GamepadCollector.detach` was already following on its own: what was
-  /// held down when the view went away is not held down any more, and
-  /// leaving those bits set strands whatever they were driving.
+  /// key themselves. `GameView` calls this the moment the app stops being
+  /// the focused one - `focusedInLifecycleState` carries the measurement of
+  /// what an unfocused window stops receiving - and again when the last view
+  /// showing the game goes away, which is the rule `GamepadCollector.detach`
+  /// was already following on its own: what was held down when the view went
+  /// away is not held down any more, and leaving those bits set strands
+  /// whatever they were driving.
   ///
   /// # Nothing is re-asserted when the app comes back
   ///
@@ -337,8 +339,14 @@ final class InputDevice {
   /// the true state would mean polling the OS for the whole keyboard on
   /// resume, and nothing here polls anything.
   ///
-  /// A pad is the exception that needs no special case: it is a physical
-  /// device that keeps sending events, so the next one re-sets its own bits.
+  /// A pad re-sets its own bits and so needs no special case, though not as
+  /// promptly as it looks. Windows and Linux deliver pad state to an
+  /// unfocused window - `gamepads_windows` polls GameInput on a thread of its
+  /// own and emits the difference, with no window in the picture at all - so
+  /// an analog control re-syncs on its next reading and a button held
+  /// straight through the focus loss reads released until it is let go and
+  /// pressed again. That is the keyboard's trade, taken by a device the OS
+  /// never stopped talking to.
   ///
   /// # The pointer's position is left alone
   ///

@@ -3757,6 +3757,32 @@ bool visibleInLifecycleState(AppLifecycleState state) => switch (state) {
   AppLifecycleState.detached => false,
 };
 
+/// Whether [state] means input can still reach the app.
+///
+/// Only `resumed` does. Flutter defines `inactive` as at least one view
+/// visible with **none of them focused**, and a keyboard event goes to the
+/// focused window alone on every platform this runs on - so from `inactive`
+/// down, the up that would say a key was let go is delivered somewhere else
+/// and never arrives.
+///
+/// Measured on Windows 11 against a real desktop build, because a widget test
+/// synthesises lifecycle transitions with no window manager behind them and
+/// cannot answer what the OS delivers. Taking focus away from the window
+/// reports `inactive`, and from that moment the app sees no key events of any
+/// kind: not the up for the key that was held, not the down or the up of a
+/// key pressed while unfocused. The key it last heard a down for stays in
+/// `HardwareKeyboard.physicalKeysPressed` through the refocus and for the
+/// rest of the run.
+///
+/// The line this draws and the one [visibleInLifecycleState] draws fall in
+/// different places, which is why there are two predicates. The same
+/// measurement counted frames across the unfocused stretch and they kept
+/// coming at the rate they had before: `inactive` is drawn and stepping, and
+/// only unreachable.
+@internal
+bool focusedInLifecycleState(AppLifecycleState state) =>
+    state == AppLifecycleState.resumed;
+
 /// Watches `AppLifecycleState` on the main isolate and forwards **visibility**
 /// to the simulating copy.
 ///
@@ -3806,13 +3832,13 @@ class _VisibilityObserver with WidgetsBindingObserver {
     // mechanism: `releaseAll` publishes only when a bit actually moved, so
     // the second "not visible" of a backgrounding walk costs nothing.
     //
-    // This fires on `hidden`, `paused` and `detached`, not on `inactive` -
-    // this engine's definition of visible, which `visibleInLifecycleState`
-    // holds in one place, counts a window that merely lost focus as still
-    // being played. Whether losing focus strands a key the way being hidden
-    // does is a separate question about what the OS delivers, and it wants
-    // measuring rather than guessing at.
-    if (!visible) game.inputDevice?.releaseAll();
+    // Hung off focus and not off visibility, which is the one place these
+    // two questions want different answers: `inactive` is a window still on
+    // screen and still being drawn, and it is also a window the OS has
+    // stopped delivering key events to, so the up for whatever was held goes
+    // to whoever took the focus. See `focusedInLifecycleState` for the
+    // measurement.
+    if (!focusedInLifecycleState(state)) game.inputDevice?.releaseAll();
     // `GameState.setVisible` is idempotent, which it has to be: the walk down
     // is `inactive -> hidden -> paused` and the walk back up reverses it, so
     // "not visible" arrives twice around any real backgrounding.

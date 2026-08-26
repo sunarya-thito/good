@@ -9,6 +9,7 @@ import 'package:good/src/event/fixed_loop.dart';
 import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
+import 'package:good/src/input/input_axis.dart';
 import 'package:good/src/input/input_key.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/system.dart';
@@ -442,6 +443,94 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
 
       expect(device.isDown(InputKey.w), isFalse);
+    });
+
+    // #161. The case #160 left alone: `inactive`, where the window is still
+    // on screen. Every other test in this group drives `hidden`, and the
+    // binding's transition generator walks `resumed -> inactive -> hidden`
+    // to get there - so a test that only asserts the released state after a
+    // hide cannot tell which of the two states released it, and would pass
+    // unchanged against the old behaviour.
+    //
+    // These stop at `inactive` and assert both halves: released, *and* still
+    // visible. The visible half is what makes it #161 and not #160, and it
+    // is checked against a run that goes on to `hidden` afterwards, so the
+    // `isTrue` cannot be a flag nobody ever moved.
+    testWidgets('losing focus lets go of a held key, and keeps drawing', (
+      tester,
+    ) async {
+      await _start(_VisibilityGame());
+      await tester.pumpWidget(GameView.headless(game: run));
+      final device = run.inputDevice!;
+
+      await _lifecycle(AppLifecycleState.resumed);
+      device.press(InputKey.w);
+      expect(
+        device.isDown(InputKey.w),
+        isTrue,
+        reason: 'the control - the character has to be walking first',
+      );
+
+      await _lifecycle(AppLifecycleState.inactive);
+
+      expect(
+        device.isDown(InputKey.w),
+        isFalse,
+        reason:
+            'an unfocused window receives no key events at all, measured on '
+            'Windows - not the up for this key, not anything else - so if '
+            'the focus loss does not clear it nothing ever will',
+      );
+      expect(
+        run.state.isVisible,
+        isTrue,
+        reason:
+            'and the window is still on screen, which is the whole '
+            'difference from #160: alt-tabbing must not pause the game',
+      );
+      expect(
+        _visibility.hidden,
+        0,
+        reason: 'nothing told the game it had gone away, because it has not',
+      );
+
+      await _lifecycle(AppLifecycleState.hidden);
+
+      expect(
+        run.state.isVisible,
+        isFalse,
+        reason:
+            'the control for the visible assertion above - the flag does '
+            'move, so reading true at `inactive` was an observation and not '
+            'a default nobody had touched',
+      );
+      expect(_visibility.hidden, 1);
+    });
+
+    testWidgets('losing focus returns a pushed stick to rest', (tester) async {
+      await _start(_VisibilityGame());
+      await tester.pumpWidget(GameView.headless(game: run));
+      final device = run.inputDevice!;
+
+      await _lifecycle(AppLifecycleState.resumed);
+      device.setGamepadAxis(1, GamepadAnalog.leftStickY, -1);
+      expect(
+        device.axisOf(InputAxis.padLeftStickY(1)),
+        -1.0,
+        reason: 'the control - the stick has to be pushed first',
+      );
+
+      await _lifecycle(AppLifecycleState.inactive);
+
+      expect(
+        device.axisOf(InputAxis.padLeftStickY(1)),
+        0.0,
+        reason:
+            'the hold half of the block goes back to rest with the bits, '
+            'and an axis left pushed strands whatever it was driving the '
+            'same way a key left down does',
+      );
+      expect(run.state.isVisible, isTrue);
     });
 
     testWidgets('the view that stays up keeps its keys', (tester) async {
