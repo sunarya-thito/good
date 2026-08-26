@@ -183,19 +183,25 @@ class _GameViewState extends State<GameView> {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      // The pointer surface size, for a game with **no camera view** to
-      // hold one. With a camera it is written by [_onPointerEvent]
-      // instead, from the view the event arrived on - and it has to be
-      // exactly one of the two, not both: every `GameView` on screen runs
-      // this builder on every rebuild, so a layout-time write would let
-      // whichever laid out last overwrite whichever the pointer is
+      // The pointer surface size. For a game with **no camera view** this
+      // builder is the only writer, so it writes on every layout. With a
+      // camera it is [_onPointerEvent] that writes, from the view the event
+      // arrived on - and it has to be that one, because every `GameView` on
+      // screen runs this builder on every rebuild, so a plain write here
+      // would let whichever laid out last overwrite whichever the pointer is
       // actually in. That is a real bug, and it is what made the first
       // attempt at per-view `viewSize` report the wrong number.
+      //
+      // `seedViewSize` is the layout-time write that cannot cause it: it
+      // does nothing once a pointer event has claimed the size. Until one
+      // does, there is no view to overwrite - and on a game played with a
+      // keyboard or a pad, where none ever will, it is the only writer there
+      // is, so resizes keep landing instead of leaving a stale first frame.
+      final device = widget.game.inputDevice;
       if (widget.camera == null) {
-        widget.game.inputDevice?.setViewSize(
-          constraints.maxWidth,
-          constraints.maxHeight,
-        );
+        device?.setViewSize(constraints.maxWidth, constraints.maxHeight);
+      } else {
+        device?.seedViewSize(constraints.maxWidth, constraints.maxHeight);
       }
       // The size of the view being shown, which is what its camera
       // projection centres on. Per view rather than per game: two

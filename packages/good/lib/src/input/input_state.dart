@@ -558,7 +558,32 @@ final class InputDevice {
   ///
   /// Called on layout, not per event: the size changes when the window
   /// resizes, which is orders of magnitude rarer than the pointer moving.
+  ///
+  /// This is the authoritative write, and it claims the size away from
+  /// [seedViewSize] for good.
   void setViewSize(double width, double height) {
+    _viewSizeClaimed = true;
+    if (_setFloat(4, width) | _setFloat(5, height)) _publish();
+  }
+
+  /// Whether a [setViewSize] call has landed. Until one has, nothing has said
+  /// which surface the pointer is in, so [seedViewSize] is free to answer.
+  bool _viewSizeClaimed = false;
+
+  /// Writes the size the way [setViewSize] does, but stands down for good
+  /// once a [setViewSize] call has claimed the slot.
+  ///
+  /// For a `GameView` showing a camera, where the pointer event is the
+  /// authoritative writer because it names the view the cursor is in. Layout
+  /// cannot name it: every view on screen lays out on every rebuild, so a
+  /// plain [setViewSize] there would let whichever laid out last overwrite
+  /// whichever the pointer is actually in. Before the first pointer event
+  /// there is nothing to overwrite, and a game played on a keyboard or a pad
+  /// never sends one at all - the layout size is the only answer it will ever
+  /// get, and this way it keeps up with resizes.
+  @internal
+  void seedViewSize(double width, double height) {
+    if (_viewSizeClaimed) return;
     if (_setFloat(4, width) | _setFloat(5, height)) _publish();
   }
 
