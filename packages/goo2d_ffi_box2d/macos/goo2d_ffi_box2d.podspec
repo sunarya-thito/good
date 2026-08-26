@@ -1,13 +1,17 @@
-# CocoaPods spec for macOS. Unlike Windows/Linux/Android, Apple platforms do
-# not go through ../src/CMakeLists.txt - CocoaPods compiles the sources
-# itself, so the source list and flags are restated here. That is the one
-# place in this package where the build is described twice; it is forced by
-# the toolchains, not chosen.
+# CocoaPods spec for macOS. Apple platforms do not go through
+# ../src/CMakeLists.txt - CocoaPods compiles the sources itself - so the source
+# list and the compile flags are stated a second time here. Two things keep
+# that second statement honest: Classes/box2d.c names the vendored sources one
+# per line where test/apple_forwarders_test.dart can compare them against what
+# CMakeLists globs, and the apple job in .github/workflows/test.yml builds an
+# application against this podspec and reads the shim's symbols back out of it.
+# Neither existed until #208, and until then nothing here had ever been built.
 #
-# Note this produces a STATICALLY linked blob inside the app binary, not a
-# .dylib beside it. The Dart loader therefore uses DynamicLibrary.process()
-# on Apple platforms rather than DynamicLibrary.open() - see
-# lib/src/library.dart, which is the only place that distinction shows.
+# The pod becomes a framework the application loads at launch, so the shim's
+# symbols are in the process without a file to open. That is why the Dart
+# loader calls DynamicLibrary.process() on Apple and DynamicLibrary.open()
+# everywhere else - see lib/src/library.dart, the only place the distinction
+# shows.
 
 Pod::Spec.new do |s|
   s.name             = 'goo2d_ffi_box2d'
@@ -21,9 +25,13 @@ Vendored Box2D v3.1.1 plus the goo2d primitives-only C shim.
   s.author           = { 'goo2d' => 'goo2d@example.com' }
   s.source           = { :path => '.' }
 
-  s.source_files = 'Classes/**/*', '../src/goo_box2d.c', '../src/goo_box2d.h',
-                   '../src/box2d/src/*.c', '../src/box2d/src/*.h',
-                   '../src/box2d/include/box2d/*.h'
+  # Classes/ holds two files that #include the real sources out of ../src.
+  # CocoaPods expands source_files against the files it finds under the pod
+  # root - here, the macos directory - so '../src/*.c' matches nothing and
+  # produces a pod that compiles no sources at all (#208). The headers those
+  # sources include are reached through HEADER_SEARCH_PATHS below, which is an
+  # xcconfig path and not a glob, and does climb out of the root.
+  s.source_files = 'Classes/**/*.c'
 
   s.dependency 'FlutterMacOS'
   s.platform = :osx, '10.14'

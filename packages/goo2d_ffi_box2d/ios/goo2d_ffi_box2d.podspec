@@ -15,9 +15,13 @@ Vendored Box2D v3.1.1 plus the goo2d primitives-only C shim.
   s.author           = { 'goo2d' => 'goo2d@example.com' }
   s.source           = { :path => '.' }
 
-  s.source_files = 'Classes/**/*', '../src/goo_box2d.c', '../src/goo_box2d.h',
-                   '../src/box2d/src/*.c', '../src/box2d/src/*.h',
-                   '../src/box2d/include/box2d/*.h'
+  # Classes/ holds two files that #include the real sources out of ../src.
+  # CocoaPods expands source_files against the files it finds under the pod
+  # root - here, the ios directory - so '../src/*.c' matches nothing and
+  # produces a pod that compiles no sources at all (#208). The headers those
+  # sources include are reached through HEADER_SEARCH_PATHS below, which is an
+  # xcconfig path and not a glob, and does climb out of the root.
+  s.source_files = 'Classes/**/*.c'
 
   s.dependency 'Flutter'
   s.platform = :ios, '12.0'
