@@ -1324,10 +1324,12 @@ final class _SpriteDrawQueue {
 ///
 /// A second query finds the active camera through [ActiveCameraResolver], and
 /// its world position and `zoom` are folded into every quad's final
-/// coordinates: `screen = (world - cameraOrigin) * zoom`. With no camera in
-/// the scene the origin is `(0, 0)` and the zoom is `1`, which is the
-/// identity - so a game that declares no camera draws in plain world
-/// coordinates.
+/// coordinates: `view = (world - cameraOrigin) * zoom + viewSize / 2`, with y
+/// negated - the passes below place every pivot through
+/// `CameraProjection.worldToViewX`/`worldToViewY`, where that mapping is
+/// written out in full. With no camera in the scene the origin is
+/// `(0, 0)` and the zoom is `1`, so the world origin lands in the middle of
+/// the view and one world unit draws as one pixel.
 ///
 /// # Alignment
 ///

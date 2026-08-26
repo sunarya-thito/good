@@ -17,8 +17,15 @@ import 'package:goo2d/src/data/world_transform.dart';
 ///
 /// A camera occupies a [CameraView] - one of the places the game declared it
 /// can be drawn - and at most one camera should occupy a given view at a time.
-/// [ActiveCameraResolver] finds the camera for a view and warns (not throws)
-/// if a second claims it, instead of silently picking one with no explanation.
+/// [ActiveCameraResolver] finds the camera for a view, and a second one
+/// claiming that view trips a debug-only `assert`: a debug run stops there,
+/// and a release build compiles the check out and draws through whichever
+/// camera the query returned first.
+///
+/// Setting [view] to null takes a camera out of play - there is no other
+/// switch that turns one off. A camera pointing at no view is resolved for no
+/// view, and a view left with no camera draws through an implicit one at the
+/// world origin with zoom 1.
 ///
 /// A prefab that wants to start zoomed in overrides the column default in
 /// its own `describeStruct`:
@@ -83,7 +90,7 @@ mixin Camera on Component {
 class ActiveCameraResolver {
   /// Returns the `Camera` entity occupying [view], or `null` if none does.
   ///
-  /// More than one enabled camera trips a debug-only `assert`. In a release
+  /// More than one camera on [view] trips a debug-only `assert`. In a release
   /// build the assert compiles out and the first camera found is used, so a
   /// second camera is never fatal in production - it is a development-time
   /// mistake that should stop a debug run, not a runtime condition to
