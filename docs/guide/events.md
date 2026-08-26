@@ -13,6 +13,14 @@ class MusicSystem extends GameSystem {}
 late EventDispatcher<EntityLifecycleListener, Entity> mountedEvent;
 late EventDispatcher<WaveListener, int> waveCleared;
 int wave = 1;
+
+mixin WoundListener on GameListener {
+  void onWounded(int damage) {}
+}
+
+mixin ChirpListener on GameListener {
+  void onChirp() {}
+}
 -->
 
 !!! abstract "Layer: kernel (`good`)"
@@ -29,25 +37,32 @@ your own.
 
 ## A dispatcher is a field
 
-An event is an `EventDispatcher<L, E>` held in a `late final` field. `L` is the
-listener type it delivers to; `E` is the payload it carries. You declare it in
-`describeEvents`, which runs once, and you fire it by calling it.
+An event is an `EventDispatcher<L, E>` held in a field. `L` is the listener
+type it delivers to, `E` is the payload it carries, and you fire it by calling
+it.
 
-This is the declaration behind `onEntityMounted` — `EntityStruct` holds it, and
-your prefab receives the event because it mixes in the listener type:
+On a `GameState` or an `EntityStruct` the declaration goes in the field's own
+initialiser. Both are built by the framework — `Game.createState` for one,
+`descriptor.has(Orc.new)` for the other — so there is a constructor call for
+the declaration to happen inside:
 
 <!-- snippet: in EntityStruct -->
 ```dart
-late final EventDispatcher<EntityLifecycleListener, Entity> mountedEvent;
-
-@override
-void describeEvents(EventDescriptor descriptor) {
-  super.describeEvents(descriptor);
-  mountedEvent = descriptor.has(
-    (listener, entity) => listener.onEntityMounted(entity),
-  );
-}
+final wounded = Event.of<WoundListener, int>(
+  (listener, damage) => listener.onWounded(damage),
+);
 ```
+
+Write the type arguments out. `descriptor.has(...)` reads `L` and `E` off the
+field it is assigned to; an initialiser has no such context, so the listener
+type and the payload type are stated at the call — which is all the separate
+`late final EventDispatcher<L, E>` line used to say.
+
+The initialiser is eager, and `late final wounded = Event.of(...)` is the one
+way to get this wrong. A `late` initialiser runs on the first *read*, by which
+time the collect pass has been and gone: the dispatcher would exist, hold an
+empty list, and deliver to nobody, every time. It throws rather than do that
+quietly.
 
 Firing it is one call, and the dispatcher is named `call` so the parentheses
 work directly:
@@ -56,34 +71,68 @@ work directly:
 mountedEvent(entity);       // same as mountedEvent.call(entity)
 ```
 
-The closure handed to `has` is the whole of delivery, and it is built once,
-during the declaration pass. Nothing is constructed per dispatch: the payload
-travels as an argument, so there is no event object at all and firing an event
-allocates nothing whatever the payload is. That matters most for the tick,
-which fires sixty times a second forever.
+The closure is the whole of delivery, and it is built once, at declaration.
+Nothing is constructed per dispatch: the payload travels as an argument, so
+there is no event object at all and firing an event allocates nothing whatever
+the payload is. That matters most for the tick, which fires sixty times a
+second forever.
 
-For an event that carries nothing, use `hasSignal` and hold a
+For an event that carries nothing, use `Event.signal` and hold a
 `SignalDispatcher<L>`. The fixed tick is the case — it happened, and that is
-the entire message:
+the entire message, and `GameState.fixedTickEvent` is this declaration with a
+different name on it:
 
-<!-- snippet-setup
-final descriptor = given<EventDescriptor>();
--->
+<!-- snippet: in EntityStruct -->
 ```dart
-late final SignalDispatcher<FixedTickable> fixedTickEvent;
-
-fixedTickEvent = descriptor.hasSignal((listener) => listener.onFixedUpdate());
+final chirped = Event.signal<ChirpListener>((listener) => listener.onChirp());
 ```
 
-Keep the handle the descriptor returns. Nothing is addressable by name, so
-there is nothing to look up later — the same shape every other `describe*` pass
-uses.
+### The hook, and who still needs it
+
+A `SceneStruct` and a `GameSystem` are constructed by you, not by the
+framework — `final level = MainScene();`, `descriptor.has(SpinSystem())` — so
+nothing is open while their fields initialise. They declare in
+`describeEvents`, which runs once at boot and is handed a descriptor to declare
+into:
+
+<!-- snippet: in GameSystem -->
+```dart
+late final EventDispatcher<WaveListener, int> waveSpotted;
+
+@override
+void describeEvents(EventDescriptor descriptor) {
+  super.describeEvents(descriptor);
+  waveSpotted = descriptor.has(
+    (listener, wave) => listener.onWaveCleared(wave),
+  );
+}
+```
+
+`late final` with no initialiser is right here and only here: the field is
+assigned from the hook, which runs after the constructor.
+
+`EntityStruct`'s own `mountedEvent` and `unmountedEvent` are declared this way
+too, for a narrower reason. `SceneDescriptor.has` takes a closure, and a
+closure may hand back a prefab that was built earlier — nothing was open
+around *that* construction. A pair on the base class is inherited by every
+struct however it was built, so it cannot assume a binder; a pair you declare
+on your own struct can, as long as you let the framework build it.
+
+The hook works on all four owners and is not going anywhere. An owner may use
+both forms at once: its fields' dispatchers are declared first, its hook's
+second, and one collect pass fills them all.
+
+Keep the handle, whichever way you declared it. Nothing is addressable by name,
+so there is nothing to look up later — the same shape every other `describe*`
+pass uses.
 
 ## Who can declare one
 
 Anything that mixes in `EventBus`, whose bound is `on GameListener`. Four
 framework types qualify — `GameState`, `SceneStruct`, `EntityStruct` and
 `GameSystem` — and they are exactly the four that live on the game isolate.
+`GameState` and `EntityStruct` declare on a field; `SceneStruct` and
+`GameSystem` declare in `describeEvents`, for the construction reason above.
 
 `Game` is not a `GameListener`, so it cannot declare or receive an event. Every
 event in the engine happens on the simulating isolate; traffic to Flutter goes
@@ -113,7 +162,8 @@ the same way.
 
 Two passes run over each owner at boot, in this order:
 
-1. **`describeEvents`** creates every dispatcher that owner declares.
+1. **The declaration pass** creates every dispatcher that owner declares — the
+   ones in its field initialisers first, then the ones in `describeEvents`.
 2. **`collectListeners`** walks that owner's composition and offers each
    candidate to every dispatcher it just created. A dispatcher accepts a
    candidate when it is an `L`, and ignores it otherwise.
@@ -194,8 +244,10 @@ unmountEvent = descriptor.hasSignal(
 );
 ```
 
-That is `GameSystem`'s own teardown signal. `GameState.sceneUnloadedEvent` does
-the same with a payload. The rule for your own events: forward for anything
+That is `GameSystem`'s own teardown signal, declared in the hook because a
+system is one of the two owners that has to. On a field it is the same
+argument in the same place — `Event.signal(..., reverse: true)`, which is how
+`GameState.sceneUnloadedEvent` does it with a payload. The rule for your own events: forward for anything
 meaning "this now exists", reverse for anything meaning "this is going away".
 
 ## Declaring an event of your own
@@ -221,17 +273,11 @@ whose walk reaches everything:
 
 ```dart
 class ArenaState extends GameState2D<ArenaGame> {
-  late final EventDispatcher<WaveListener, int> waveCleared;
+  final waveCleared = Event.of<WaveListener, int>(
+    (listener, wave) => listener.onWaveCleared(wave),
+  );
 
   int wave = 1;
-
-  @override
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    waveCleared = descriptor.has(
-      (listener, wave) => listener.onWaveCleared(wave),
-    );
-  }
 
   void clearWave() {
     waveCleared(wave);
@@ -273,7 +319,9 @@ Carrying more than one value means a record, exactly as
 ```dart
 typedef WaveResult = ({int wave, int survivors});
 
-late final EventDispatcher<WaveListener, WaveResult> waveFinished;
+final waveFinished = Event.of<WaveListener, WaveResult>(
+  (listener, result) => listener.onWaveCleared(result.wave),
+);
 
 waveFinished((wave: 3, survivors: 12));
 ```

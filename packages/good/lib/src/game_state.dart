@@ -76,23 +76,35 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// Declared here and not hand-rolled on `Game`: the tick is not special. It
   /// is an event like any other, and it earns the same resolved-at-boot
   /// listener list every other event gets.
-  late final SignalDispatcher<FixedTickable> fixedTickEvent;
+  final fixedTickEvent = Event.signal<FixedTickable>(
+    (listener) => listener.onFixedUpdate(),
+  );
 
   /// The presentation pass, dispatched once per *frame* - see
   /// [runPresentation].
-  late final EventDispatcher<Tickable, Duration> tickEvent;
+  final tickEvent = Event.of<Tickable, Duration>(
+    (listener, delta) => listener.onTick(delta),
+  );
 
   /// The game has come up, on the simulating copy, with its scenes mounted.
-  late final SignalDispatcher<GameLifecycleListener> gameMountedEvent;
+  final gameMountedEvent = Event.signal<GameLifecycleListener>(
+    (listener) => listener.onGameMounted(),
+  );
 
   /// The game is going down, dispatched before anything is torn down.
-  late final SignalDispatcher<GameLifecycleListener> gameUnmountedEvent;
+  final gameUnmountedEvent = Event.signal<GameLifecycleListener>(
+    (listener) => listener.onGameUnmounted(),
+  );
 
   /// The app is no longer visible - see [AppVisibilityListener].
-  late final SignalDispatcher<AppVisibilityListener> appHiddenEvent;
+  final appHiddenEvent = Event.signal<AppVisibilityListener>(
+    (listener) => listener.onAppHidden(),
+  );
 
   /// The app is visible again, carrying the wall clock spent hidden.
-  late final EventDispatcher<AppVisibilityListener, Duration> appShownEvent;
+  final appShownEvent = Event.of<AppVisibilityListener, Duration>(
+    (listener, gap) => listener.onAppShown(gap),
+  );
 
   // Scene and entity *lifecycle* are **not** declared here. They belong to the
   // scene and the prefab respectively (`SceneStruct.mountedEvent`,
@@ -109,49 +121,27 @@ abstract class GameState<T extends Game> extends GameListenerBase
   // whole world and expects to filter. See `event/lifecycle.dart`'s note.
 
   /// Any entity, anywhere, has spawned.
-  late final EventDispatcher<EntitySpawnListener, Entity> entitySpawnedEvent;
+  final entitySpawnedEvent = Event.of<EntitySpawnListener, Entity>(
+    (listener, entity) => listener.onEntitySpawned(entity),
+  );
 
   /// Any entity, anywhere, is about to go away. Its row is still readable.
-  late final EventDispatcher<EntitySpawnListener, Entity> entityDespawnedEvent;
+  final entityDespawnedEvent = Event.of<EntitySpawnListener, Entity>(
+    (listener, entity) => listener.onEntityDespawned(entity),
+  );
 
   /// Any scene has finished loading, its starting entities already spawned.
-  late final EventDispatcher<SceneLoadListener, Scene> sceneLoadedEvent;
+  final sceneLoadedEvent = Event.of<SceneLoadListener, Scene>(
+    (listener, scene) => listener.onSceneLoaded(scene),
+  );
 
   /// Any scene is about to unload. Its entities are still readable.
-  late final EventDispatcher<SceneLoadListener, Scene> sceneUnloadedEvent;
-
-  @override
-  @mustCallSuper
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    fixedTickEvent = descriptor.hasSignal(
-      (listener) => listener.onFixedUpdate(),
-    );
-    tickEvent = descriptor.has((listener, delta) => listener.onTick(delta));
-    gameMountedEvent = descriptor.hasSignal(
-      (listener) => listener.onGameMounted(),
-    );
-    gameUnmountedEvent = descriptor.hasSignal(
-      (listener) => listener.onGameUnmounted(),
-    );
-    appHiddenEvent = descriptor.hasSignal((listener) => listener.onAppHidden());
-    appShownEvent = descriptor.has((listener, gap) => listener.onAppShown(gap));
-    entitySpawnedEvent = descriptor.has(
-      (listener, entity) => listener.onEntitySpawned(entity),
-    );
-    entityDespawnedEvent = descriptor.has(
-      (listener, entity) => listener.onEntityDespawned(entity),
-    );
-    sceneLoadedEvent = descriptor.has(
-      (listener, scene) => listener.onSceneLoaded(scene),
-    );
-    // Reverse, matching SceneStruct.unmountedEvent: a listener told late can
-    // still read what earlier ones have been warned about.
-    sceneUnloadedEvent = descriptor.has(
-      (listener, scene) => listener.onSceneUnloaded(scene),
-      reverse: true,
-    );
-  }
+  // Reverse, matching SceneStruct.unmountedEvent: a listener told late can
+  // still read what earlier ones have been warned about.
+  final sceneUnloadedEvent = Event.of<SceneLoadListener, Scene>(
+    (listener, scene) => listener.onSceneUnloaded(scene),
+    reverse: true,
+  );
 
   /// Offers every declared system to this state's dispatchers.
   ///

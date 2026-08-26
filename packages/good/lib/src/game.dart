@@ -1398,7 +1398,11 @@ abstract class Game implements RandomOwner {
     // never holds a scene. It also never gets its systems - `describeSystems`
     // is called from [_bootGame], so a `GameSystem` is one thing the mirror
     // has no counterpart for.
-    final state = createState();
+    // Through `EventBinder.open`, so a dispatcher declared on a field of the
+    // state - `final waveCleared = Event.of(...)` - has a binder to land in.
+    // The binder rides along on the state and `_bindEvents` picks it up on
+    // the far side; see `EventBinder.open`.
+    final state = EventBinder.open(createState);
     runtime.state = state;
     state.bindRuntime(runtime, simulating: runtime.simulates);
 

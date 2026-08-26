@@ -2,6 +2,7 @@ import 'package:meta/meta.dart';
 
 import 'package:good/src/command/param.dart';
 import 'package:good/src/data.dart';
+import 'package:good/src/event.dart';
 import 'package:good/src/struct.dart';
 
 /// What `EntityStruct.of` declares against: whoever is registering prefabs
@@ -161,5 +162,47 @@ abstract final class DeclarationContext {
       );
     }
     return _params.last;
+  }
+
+  /// The open event binders, innermost last - the fourth level of the stack,
+  /// and the one `Event.*` declares against.
+  ///
+  /// A stack because the nesting is real, not for symmetry with the levels
+  /// above: `EntityStruct.of(Barrel.new)` builds a child prefab from inside
+  /// its parent's field initialisers, so the parent's binder is open while
+  /// the child is being constructed and the child's dispatchers have to land
+  /// on the child. No barrier entry - the describe passes that need one run
+  /// after the constructor returns and this level is already empty by then.
+  static final List<EventBinder> _events = <EventBinder>[];
+
+  /// Opens a binder for the duration of one constructor call. Paired with
+  /// [popEvents] in a `finally` - see [EventBinder.open], the only caller.
+  static void pushEvents(EventBinder binder) => _events.add(binder);
+
+  static void popEvents() => _events.removeLast();
+
+  /// The innermost open binder, or a `StateError` naming the two ways to get
+  /// here: constructing the owner yourself, and reaching an `Event.*` call
+  /// lazily.
+  static EventBinder get events {
+    if (_events.isEmpty) {
+      throw StateError(
+        'An Event was declared with no event owner being constructed. '
+        'Event.of and Event.signal read the binder the framework opens '
+        'around a constructor call, so the framework has to be the one '
+        'constructing. It is for a GameState, which Game.createState hands '
+        'back, and for an EntityStruct, which a scene declares:'
+        '\n  descriptor.has(Mote.new)   // not Mote()\n'
+        'A `late final` initialiser lands here too, and that is the point: '
+        'it runs on first read, long after the binder was closed, so a '
+        'dispatcher declared that way would never be offered a listener and '
+        'would deliver to nobody. Field initialisers here are eager, always. '
+        'A describeEvents body is the other way in: it runs after the '
+        'constructor, so it declares through the EventDescriptor it is '
+        'handed rather than through Event.*. A SceneStruct and a GameSystem '
+        'are both still constructed by the caller, so both declare there.',
+      );
+    }
+    return _events.last;
   }
 }

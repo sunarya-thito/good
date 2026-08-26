@@ -183,6 +183,64 @@
 
 ### Added
 
+* **An event is declared on the field that holds it.** `Event.of` carries a
+  payload and `Event.signal` carries nothing, so a `GameState` or an
+  `EntityStruct` says what it dispatches where the reader is already
+  looking (#91).
+
+  ```dart
+  // before
+  class ArenaState extends GameState<ArenaGame> {
+    late final EventDispatcher<WaveListener, int> waveCleared;
+
+    @override
+    void describeEvents(EventDescriptor descriptor) {
+      super.describeEvents(descriptor);
+      waveCleared = descriptor.has(
+        (listener, wave) => listener.onWaveCleared(wave),
+      );
+    }
+  }
+
+  // after
+  class ArenaState extends GameState<ArenaGame> {
+    final waveCleared = Event.of<WaveListener, int>(
+      (listener, wave) => listener.onWaveCleared(wave),
+    );
+  }
+  ```
+
+  Write the type arguments. `descriptor.has(...)` reads them off the field it
+  is assigned to and an initialiser has no such context, so `L` and `E` are
+  stated at the call — which is what the separate `late final` line used to
+  say.
+
+  Those two owners and no others, because those two are the ones the framework
+  builds: `Game.createState` and `descriptor.has(Mote.new)`. A `SceneStruct`
+  is a field of the state (`final level = MainScene();`) and a `GameSystem` is
+  declared from an instance (`descriptor.has(SpinSystem())`), so nothing is
+  open while their fields initialise and both keep declaring in
+  `describeEvents`. The struct half has a hole worth knowing about:
+  `SceneDescriptor.has` takes a closure, and `descriptor.has(() => builtEarlier)`
+  hands back an object nothing was open around. Build the prefab inside the
+  closure, or pass the constructor.
+
+  `describeEvents` is not retired. An owner may declare through either or
+  both; the fields' dispatchers are created during the constructor and the
+  hook's straight after, and one collect pass fills them all. Which order they
+  were created in does not reach delivery — a listener's position in a
+  dispatcher is the order `collectListeners` offered it.
+
+  The initialiser has to be eager. `late final waveCleared = Event.of(...)`
+  runs on the first read, long after the collect pass: the dispatcher would
+  exist, hold an empty list, and deliver to nobody, silently and forever. It
+  throws instead.
+
+  `EventBinder.bind` now refuses a second pass over the same owner. The
+  `late final` dispatchers this replaces threw when assigned twice; a `final`
+  field would not have noticed, and every listener would have received every
+  event twice.
+
 * **A command parameter is declared on the field that holds it.** `Param` has
   one static per `ParamDescriptor` method — `uint1` through `float64`,
   `entity`, `string`, `fixedString`, `bytes`, `fixedBytes` — so a command says
