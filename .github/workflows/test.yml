@@ -5,11 +5,11 @@
 # integration test the repository has. It sat in nobody's baseline and rotted to
 # sixteen red tests before anyone noticed (#83), which is what this is for.
 #
-# The box2d packages have no test job here. Their tests need the Box2D shared library
-# compiled from vendored source first, and the build script is PowerShell against
-# a local toolchain. That is issue #7's follow-up; 55 of the 867 tests are in
-# those two packages, and a green run covering the other 812 is worth more than a
-# red one covering everything.
+# The box2d packages are analyzed but not tested here. Their tests need the Box2D
+# shared library compiled from vendored source first, and the build script is
+# PowerShell against a local toolchain. That is issue #7's follow-up; 94 of the
+# 1504 tests are in those two packages, and a green run covering the other 1410 is
+# worth more than a red one covering everything.
 name: test
 
 on:
@@ -67,20 +67,21 @@ jobs:
           echo "::group::flutter pub get doc_snippets"
           (cd packages/doc_snippets && flutter pub get)
           echo "::endgroup::"
-          # Not for its tests, which need the native library. `dart run ffigen`
-          # reads this package's own package config, so the bindings check
-          # needs it resolved.
-          echo "::group::flutter pub get goo2d_ffi_box2d"
-          (cd packages/goo2d_ffi_box2d && flutter pub get)
-          echo "::endgroup::"
+          # Not for their tests, which need the native library. They are here
+          # for the Analyze step, and goo2d_ffi_box2d additionally because
+          # `dart run ffigen` reads that package's own package config and the
+          # bindings check at the end of this job runs it.
+          for p in goo2d_ffi_box2d goo2d_physics_box2d; do
+            echo "::group::flutter pub get $p"
+            (cd "packages/$p" && flutter pub get)
+            echo "::endgroup::"
+          done
 
       # The fenced dart blocks in docs/, compiled against the real packages, so
       # a rename breaks here rather than being found by a person reading the
       # guide a month later. Extraction writes packages/doc_snippets/lib/pages,
       # which is git-ignored - the check runs on what docs/ says right now, not
-      # on a copy that could go stale. The box2d packages are analyzed here even
-      # though their tests are not run: analysis needs their Dart source, not
-      # the native library.
+      # on a copy that could go stale.
       - name: Compile the doc snippets
         run: |
           set -e
@@ -91,6 +92,14 @@ jobs:
         run: |
           set -e
           for p in good goo2d goo3d good_net good_net_p2p; do
+            echo "::group::flutter analyze $p"
+            (cd "packages/$p" && flutter analyze --no-pub)
+            echo "::endgroup::"
+          done
+          # The box2d packages, whose suites the Test step below cannot run.
+          # The analyzer reads their Dart source and never loads the native
+          # library, so this half of their coverage costs nothing here.
+          for p in goo2d_ffi_box2d goo2d_physics_box2d; do
             echo "::group::flutter analyze $p"
             (cd "packages/$p" && flutter analyze --no-pub)
             echo "::endgroup::"
