@@ -1,7 +1,7 @@
 // Unity's Effector 2D family, which Box2D does not have.
 //
-// Requires the native library:
-//   cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1
+// Requires the native library. packages/goo2d_ffi_box2d/README.md has the
+// build for each platform.
 //
 // **Positive y is UP.** A buoyancy surface is above the water it floats
 // things in, so "submerged" means a SMALLER y than the surface.

@@ -1,6 +1,7 @@
 ## Unreleased
 
-Documentation and build tooling. No code changes.
+Documentation and build tooling. No API change: one message string differs,
+and every signature and symbol is what it was.
 
 * `ffigen.yaml`'s function filter matched none of the shim's 60 symbols, so
   `dart run ffigen --config ffigen.yaml` emptied `lib/src/box2d.g.dart` instead
@@ -25,6 +26,12 @@ Documentation and build tooling. No code changes.
   `workerCount`.
 * `goo_box2d.c` said the shim holds no state, three lines above the thread-pool
   array it holds.
+* The missing-library `StateError` now prints a command the host platform can
+  run. It told every reader to run `powershell -File tool/build_native.ps1`,
+  which is not a command on Linux. Off Windows it gives the two cmake commands
+  against `src/CMakeLists.txt`, and it names the `build/<operating system>`
+  directory it just searched, because a build written anywhere else succeeds
+  without being found.
 
 ## 0.1.1
 

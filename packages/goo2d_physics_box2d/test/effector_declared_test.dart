@@ -1,8 +1,8 @@
 // Declared effectors - the `describeEffector` half of the API, where
 // `effectors_test.dart` covers the `Effectors2D` functions underneath.
 //
-// Requires the native library:
-//   cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1
+// Requires the native library. packages/goo2d_ffi_box2d/README.md has the
+// build for each platform.
 //
 // **Positive y is UP**, so the zone's negative forceY blows its contents down.
 //

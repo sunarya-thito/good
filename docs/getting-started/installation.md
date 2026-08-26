@@ -52,15 +52,46 @@ native toolchain — the same one Flutter already requires for that platform.
 
 A Flutter app builds all of this automatically. Outside one — `flutter test`,
 `dart run`, a `tool/` script — nothing builds plugins, so build the native
-library once by hand:
+library once by hand, from the repository root:
 
-```powershell
-cd packages/goo2d_ffi_box2d
-powershell -File tool/build_native.ps1
-```
+=== "Windows"
 
-`goo2d_ffi_box2d` finds that artifact by walking up from the working directory,
-so tests in sibling packages pick it up with no configuration.
+    ```powershell
+    powershell -File packages/goo2d_ffi_box2d/tool/build_native.ps1
+    ```
+
+    The script runs the two cmake commands in the Linux tab against
+    `build/windows`, inside a Visual Studio environment. Windows needs that
+    environment and the bare commands do not have it: CMake picks its
+    generator from the Visual Studio version it finds, and for a version
+    newer than it knows about it falls back to NMake Makefiles and stops with
+    `CMAKE_C_COMPILER not set`.
+
+=== "Linux"
+
+    ```sh
+    cmake -S packages/goo2d_ffi_box2d/src \
+          -B packages/goo2d_ffi_box2d/build/linux -DCMAKE_BUILD_TYPE=Release
+    cmake --build packages/goo2d_ffi_box2d/build/linux --parallel
+    ```
+
+    `src/CMakeLists.txt` is a build root of its own, so no wrapper is
+    involved. This is what CI runs.
+
+=== "macOS / iOS"
+
+    There is no route. The podspec links the shim into the application
+    binary, so there is no library file to open and `goo2d_ffi_box2d` reads
+    the symbols out of the process instead. Outside an app nothing has linked
+    them, and the first call fails on a missing symbol.
+
+The output directory is load-bearing. `goo2d_ffi_box2d` searches for
+`packages/goo2d_ffi_box2d/build/<operating system>`, so a build written to a
+generic `build/` succeeds and is then never found — a failure that looks like
+a build that never ran.
+
+It finds the artifact by walking up from the working directory, so tests in
+sibling packages pick up one build with no configuration.
 
 ### ffmpeg (optional, fetched on demand)
 

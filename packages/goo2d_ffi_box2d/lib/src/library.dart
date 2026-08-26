@@ -66,6 +66,11 @@ DynamicLibrary _openLibrary() {
   // Apple platforms link the shim statically into the application binary
   // (see macos/goo2d_ffi_box2d.podspec), so there is no separate library
   // file to open - the symbols are already in this process.
+  //
+  // Outside an application there is nothing to have linked them, so the
+  // handle resolves and the first lookup in `_load` fails instead. Apple
+  // therefore has no `flutter test` route to the shim, and never reaches
+  // the search or the error below.
   if (Platform.isIOS || Platform.isMacOS) {
     return DynamicLibrary.process();
   }
@@ -84,23 +89,40 @@ DynamicLibrary _openLibrary() {
   }
 
   // `flutter test` and `dart run` do not build plugins, so nothing has put
-  // the library anywhere the loader can see. Rather than making every test
-  // set an override by hand, look for the artifact tool/build_native.ps1
-  // produces. This path is a development convenience only - it is never
-  // reached in a built application, where the branch above succeeds.
+  // the library anywhere the loader can see. Look for a build made by hand
+  // instead, so that every test does not have to set an override. This path
+  // is a development convenience only - it is never reached in a built
+  // application, where the branch above succeeds.
   final found = _findDevelopmentBuild(fileName);
   if (found != null) {
     return DynamicLibrary.open(found);
   }
+
+  final buildDir = 'packages/goo2d_ffi_box2d/build/${Platform.operatingSystem}';
+
+  // Windows gets the wrapper and not the two commands. CMake chooses its
+  // generator from the Visual Studio version it finds, and for a version
+  // newer than it knows about it falls back to NMake Makefiles, which then
+  // fails with CMAKE_C_COMPILER not set. tool/build_native.ps1 runs the same
+  // two commands inside vcvars64, where cl.exe is on PATH.
+  final build = Platform.isWindows
+      ? '  powershell -File packages/goo2d_ffi_box2d/tool/build_native.ps1'
+      : '  cmake -S packages/goo2d_ffi_box2d/src -B $buildDir '
+            '-DCMAKE_BUILD_TYPE=Release\n'
+            '  cmake --build $buildDir --parallel';
 
   throw StateError(
     'Could not load the goo2d Box2D native library ($fileName).\n'
     '\n'
     'In a Flutter application this is built and bundled automatically by '
     'the goo2d_ffi_box2d plugin. Outside one - `flutter test`, `dart run`, '
-    'a tool/ script - it has to be built first:\n'
+    'a tool/ script - build it first, from the repository root:\n'
     '\n'
-    '  cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1\n'
+    '$build\n'
+    '\n'
+    'The result has to land in $buildDir. That is the directory searched '
+    'just now, and a build written anywhere else succeeds without being '
+    'found.\n'
     '\n'
     'Alternatively set nativeLibraryPathOverride to an existing build.',
   );
@@ -117,9 +139,10 @@ DynamicLibrary _openLibrary() {
 /// the build from `goo2d_ffi_box2d`, from `goo2d_physics_box2d`, or from the
 /// example app equally well.
 String? _findDevelopmentBuild(String fileName) {
-  // tool/build_native.ps1 writes into build/<host os>, so a developer who
-  // works on two platforms out of one checkout does not have them
-  // overwriting each other's artifacts.
+  // The build goes in build/<host os>, so a developer who works on two
+  // platforms out of one checkout does not have them overwriting each
+  // other's artifacts. Both routes that produce it - the two cmake commands
+  // `_openLibrary`'s error prints, and tool/build_native.ps1 - write there.
   final relative = [
     'packages',
     'goo2d_ffi_box2d',

@@ -1,7 +1,7 @@
 // Landing 5: raycast and overlap queries.
 //
-// Requires the native library:
-//   cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1
+// Requires the native library. packages/goo2d_ffi_box2d/README.md has the
+// build for each platform.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goo2d/goo2d.dart';

@@ -37,11 +37,22 @@
 /// gets all of this automatically.
 ///
 /// Outside an app - `flutter test`, `dart run`, `tool/` scripts - nothing
-/// builds plugins, so the library must be built once by hand:
+/// builds plugins, so the library must be built once by hand. On Linux, from
+/// the repository root:
 ///
 /// ```
-/// cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1
+/// cmake -S packages/goo2d_ffi_box2d/src \
+///       -B packages/goo2d_ffi_box2d/build/linux -DCMAKE_BUILD_TYPE=Release
+/// cmake --build packages/goo2d_ffi_box2d/build/linux --parallel
 /// ```
+///
+/// `build/<operating system>` is the directory `src/library.dart` searches,
+/// so a build written anywhere else succeeds without being found.
+///
+/// On Windows run `tool/build_native.ps1` instead, which runs those two
+/// commands inside a Visual Studio environment. macOS and iOS have no route
+/// outside an app: the shim links into the application binary, so there is
+/// no library file for the loader to open.
 library;
 
 export 'src/box2d.g.dart' show Box2DBindings;

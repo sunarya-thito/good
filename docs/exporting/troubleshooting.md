@@ -339,12 +339,27 @@ next.
 ### Box2D fails to link
 
 Nothing builds plugins outside a Flutter app. For `flutter test`, `dart run` or
-a `tool/` script, build the native library once by hand:
+a `tool/` script, build the native library once by hand, from the repository
+root:
 
-```powershell
-cd packages/goo2d_ffi_box2d
-powershell -File tool/build_native.ps1
-```
+=== "Windows"
+
+    ```powershell
+    powershell -File packages/goo2d_ffi_box2d/tool/build_native.ps1
+    ```
+
+=== "Linux"
+
+    ```sh
+    cmake -S packages/goo2d_ffi_box2d/src \
+          -B packages/goo2d_ffi_box2d/build/linux -DCMAKE_BUILD_TYPE=Release
+    cmake --build packages/goo2d_ffi_box2d/build/linux --parallel
+    ```
+
+The build has to land in `packages/goo2d_ffi_box2d/build/<operating system>`,
+which is where the loader looks. A generic `build/` succeeds and is then never
+found. [Installation](../getting-started/installation.md#platform-toolchains) has
+the rest, including why macOS and iOS have no route outside an app.
 
 ### The `.exe` runs on my machine but nowhere else
 

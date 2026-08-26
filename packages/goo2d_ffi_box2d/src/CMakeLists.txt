@@ -6,9 +6,13 @@
 # header is), and shipping two artifacts would mean two things for every
 # platform's bundling step to find.
 #
-# This file is included by each platform wrapper (../windows, ../linux,
-# ../android) rather than being a build root itself, so the source list and
-# compile flags are stated once.
+# Each platform wrapper (../windows, ../linux, ../android) reaches this file
+# through add_subdirectory, so the source list and compile flags are stated
+# once between them.
+#
+# It is also a build root on its own, which is what `cmake -S src -B
+# build/<operating system>` configures. That is how CI and
+# tool/build_native.ps1 produce the library `flutter test` loads.
 
 cmake_minimum_required(VERSION 3.15)
 project(goo2d_box2d LANGUAGES C)

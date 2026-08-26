@@ -1,7 +1,7 @@
 // The joints case, headless.
 //
-// Requires the native library:
-//   cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1
+// Requires the native library. packages/goo2d_ffi_box2d/README.md has the
+// build for each platform.
 //
 // **Positive y is UP**, so a chain hangs towards a smaller y and its anchor
 // sits at a larger one. 34c8556 flipped the case and left this file behind;

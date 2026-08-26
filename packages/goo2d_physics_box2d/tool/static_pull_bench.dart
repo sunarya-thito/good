@@ -10,9 +10,8 @@
 // possible because `goo2d_ffi_box2d`'s Dart is `dart:ffi` and `dart:io` only -
 // `nativeLibraryPathOverride` exists for tools that run outside a Flutter app.
 //
-// Needs the native library. Either build it:
-//   cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1
-// or point GOO_BOX2D_LIB at an existing one.
+// Needs the native library. Either build it - packages/goo2d_ffi_box2d/README.md
+// has the build for each platform - or point GOO_BOX2D_LIB at an existing one.
 //
 // # The question
 //

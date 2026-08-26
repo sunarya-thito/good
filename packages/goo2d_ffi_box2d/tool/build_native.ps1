@@ -6,6 +6,10 @@
 # runner and standalone scripts do not build plugins, so without this there
 # is no library for lib/src/library.dart to find.
 #
+# Windows only. Everything here beyond two cmake commands is Visual Studio
+# setup, so on Linux those two commands are the whole build and there is no
+# script - README.md gives them.
+#
 # Precedent for a tool/ script that has to be run by hand before certain
 # tests: good/tool/ring_buffer_stress.dart.
 #
