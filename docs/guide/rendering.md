@@ -288,6 +288,14 @@ eye.zoom[camera] = 2;
 
 `view` is typed, not an integer — a stray int does not compile there.
 
+!!! warning "A camera's rotation is ignored"
+    The projection reads the camera's world x, its world y and `zoom`, and
+    nothing else. The same scene through a camera at rotation 0 and through
+    one at rotation π/2 draws identically, and a camera parented to something
+    that turns inherits the turn and still draws upright. A banking view, or
+    one locked to a subject's facing, has nothing here to build on
+    ([#172](https://github.com/sunarya-thito/good/issues/172)).
+
 ### Views
 
 A **view** is a surface a camera can fill. `Game2D` declares one for you:
