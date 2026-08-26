@@ -969,8 +969,9 @@ abstract class Game implements RandomOwner {
   /// question about the view a simulation legitimately has.
   ///
   /// This is the surface the **pointer** is currently in: refreshed by the
-  /// `GameView` the cursor is over, and falling back to whichever view last
-  /// laid out before any pointer has moved.
+  /// `GameView` the cursor is over. A game no cursor has entered yet - and a
+  /// game played on a keyboard or a pad, where none ever will - reads the
+  /// size its view laid out at instead, resizes included.
   ///
   /// **Not a camera viewport.** For projecting world to screen - or screen
   /// back to world - use `CameraView.viewportWidth`/`viewportHeight`, which
