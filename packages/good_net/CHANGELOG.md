@@ -100,6 +100,22 @@
   that made it — including in a game with nobody connected, so that a message
   which only fails once somebody joins is not a thing that can be written.
 
+### Fixed
+
+* **The unreliable channel never discarded a stale message, and its
+  documentation said it did.** `NetChannel.unreliable` promised that an older
+  message arriving after a newer one was dropped before delivery. Nothing
+  dropped it. An unreliable frame carries no message id, so the only number a
+  link has to compare is the packet sequence, which every message type on the
+  link shares — dropping on that would make two unrelated messages suppress
+  each other, which is worse than the missing feature. The channel now
+  documents what it does, and `docs/packages/networking.md` shows the tick
+  comparison a game writes in its handler (#159).
+
+  No behaviour changed. A game that read the old sentence and left newest-wins
+  to the transport has been applying stale positions over fresh ones all
+  along.
+
 ## 0.3.0
 
 ### Breaking

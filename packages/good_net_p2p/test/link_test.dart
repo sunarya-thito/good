@@ -683,4 +683,69 @@ void main() {
       });
     });
   });
+
+  group('an unreliable message that arrives out of order', () {
+    /// One payload packet carrying one whole unreliable frame, whose body is
+    /// the single byte [mark].
+    ///
+    /// Built here and handed straight to the link, because the reordering
+    /// this is about is one a loopback socket never performs: two datagrams
+    /// sent in order over 127.0.0.1 arrive in order, so a test that sends
+    /// them and hopes would assert nothing.
+    Uint8List packet(int sequence, int mark) {
+      final bytes = Uint8List(prologueBytes + payloadHeaderBytes + 4);
+      final view = ByteData.sublistView(bytes);
+      bytes[0] = magic0;
+      bytes[1] = magic1;
+      bytes[2] = protocolVersion;
+      bytes[3] = PacketType.payload;
+      view.setUint16(4, sequence, Endian.little);
+      // This side has heard nothing back, which is what the zero says - an
+      // ack of packet 0 from a peer that has received nothing is the bug the
+      // flag byte exists for.
+      bytes[12] = 0;
+      var at = prologueBytes + payloadHeaderBytes;
+      // No message id: an unreliable frame carries none, which is the whole
+      // reason the link has nothing to compare a late one against.
+      bytes[at++] = FrameKind.unreliable;
+      view.setUint16(at, 1, Endian.little);
+      at += 2;
+      bytes[at] = mark;
+      return bytes;
+    }
+
+    test('is handed up behind the newer one, not dropped as stale', () {
+      final delivered = <int>[];
+      final link = P2PLink(
+        address: InternetAddress.loopbackIPv4,
+        port: 51999,
+        peer: NetPeerId.host,
+        nowMicros: 0,
+        timeoutMicros: const Duration(seconds: 5).inMicroseconds,
+        send: (link, datagram, length) {},
+        deliver: (link, channel, bytes, offset, length) {
+          expect(channel, NetChannel.unreliable);
+          delivered.add(bytes[offset]);
+        },
+        deliverSystem: (link, message, bytes) {},
+        lost: (link, reason) {},
+      );
+
+      link.onPayload(packet(41, 41), prologueBytes + payloadHeaderBytes + 4, 0);
+      link.onPayload(packet(40, 40), prologueBytes + payloadHeaderBytes + 4, 0);
+
+      expect(
+        delivered,
+        <int>[41, 40],
+        reason:
+            'the transport hands up what arrives, in the order it arrives. '
+            'Newest-wins belongs to the handler: an unreliable frame carries '
+            'no message id, so the only number the link could compare is '
+            'the packet sequence, which every message type on the link '
+            'shares - dropping on it would make two unrelated messages '
+            'suppress each other. docs/packages/networking.md says so, and '
+            'shows the tick comparison a game writes instead',
+      );
+    });
+  });
 }

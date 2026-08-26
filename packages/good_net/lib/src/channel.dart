@@ -10,12 +10,15 @@
 ///    the price - one lost packet stalls everything queued behind it on this
 ///    channel until it is resent, so transforms must not use it.
 ///
-///  * [unreliable] - sent once, may be dropped, may arrive out of order, and
-///    an *older* one arriving after a newer one is discarded, not
-///    delivered. For state that supersedes itself: position and rotation
-///    snapshots, input samples, anything sent every tick where only the
-///    newest value matters. Losing one costs a tick of smoothness; waiting
-///    for its retransmission would cost far more than that.
+///  * [unreliable] - sent once, may be dropped, and may arrive after a
+///    message that was sent later. A late one is handed up like any other:
+///    nothing here compares it against what has already been delivered, so a
+///    handler that needs the newest value carries a tick or sequence number
+///    in the message and drops what is behind the one it has. For state that
+///    supersedes itself: position and rotation snapshots, input samples,
+///    anything sent every tick where only the newest value matters. Losing
+///    one costs a tick of smoothness; waiting for its retransmission would
+///    cost far more than that.
 ///
 /// The split matches ENet, Steam Sockets and QUIC's stream/datagram divide -
 /// it is the standard shape, and the backends here implement it directly on
@@ -24,7 +27,7 @@ enum NetChannel {
   /// Reliable and ordered. See the enum doc.
   reliable,
 
-  /// Unreliable and unordered, with stale-drop. See the enum doc.
+  /// Unreliable and unordered. See the enum doc.
   unreliable;
 
   /// How many channels there are, for sizing per-channel arrays without
