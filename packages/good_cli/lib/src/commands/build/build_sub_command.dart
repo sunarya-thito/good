@@ -239,45 +239,6 @@ abstract class BuildSubCommand extends Command with Verbose {
       return false;
     }
 
-    // Checked before anything is written, for the same reason as the guard
-    // above and a heavier one: what it prevents cannot be undone.
-    //
-    // Packing takes every declared asset, and stripping then removes the loose
-    // copy of everything packed. For a compaction output that costs a re-encode
-    // and nothing else. For a file someone put in the asset directory by hand
-    // there is no source to build it from, so the strip is the last anyone sees
-    // of it. The two mistakes are not the same size, so the safe one is the
-    // default and the project says when it wants the other.
-    if (assetMode.value == AssetMode.release && !config.stripOriginals) {
-      final generated = <String>{
-        for (final step in compacted.steps)
-          '${config.assetOutput}${step.output}',
-      };
-      final originals = paths.where((p) => !generated.contains(p)).toList()
-        ..sort();
-      if (originals.isNotEmpty) {
-        err.printf(
-          '%s packed asset(s) cannot be rebuilt if the build strips them:\n',
-          [originals.length],
-        );
-        for (final path in originals) {
-          err.printf('    %s\n', [path]);
-        }
-        err.printf(
-          'Compaction did not produce these, so deleting the loose copy '
-          'destroys the only one. Leaving it in place ships a legible copy '
-          'beside the encrypted chunk.\n'
-          '\n'
-          'Choose one:\n'
-          '  - move them into %s so compaction owns them, or\n'
-          '  - add `strip-originals: true` under `good: assets:` in '
-          'pubspec.yaml to accept the deletion.\n',
-          [config.assetSource],
-        );
-        return false;
-      }
-    }
-
     Directory(
       '${project.path}/${config.packOutput}',
     ).createSync(recursive: true);
@@ -316,7 +277,7 @@ abstract class BuildSubCommand extends Command with Verbose {
       );
       return false;
     }
-    if (result.mapping.isNotEmpty) {
+    if (result.mapping.isNotEmpty && config.stripOriginals) {
       _stripLoose(project, config, compacted, result.mapping.keys);
     }
     return true;
@@ -324,16 +285,14 @@ abstract class BuildSubCommand extends Command with Verbose {
 
   /// Removes the loose copies of everything that is now inside a chunk.
   ///
-  /// [packed] is what the chunks carry, which is not what compaction produced.
-  /// A file placed in the asset directory by hand is packed like any other, and
-  /// leaving it loose ships it twice with one of the copies legible. See
-  /// [stripLoose].
+  /// Only called when the project has set `strip-originals: true`. The default
+  /// leaves every file in [assetOutput] untouched so that hand-placed assets
+  /// (those not produced by compaction) survive for `Image.asset` to resolve
+  /// from the Flutter bundle.
   ///
-  /// [compacted] is still read, for one thing: it says which of the removed
-  /// files `good assets compact` can build again. Reaching here with any of the
-  /// others in [packed] means the project set `strip-originals: true`, so they
-  /// are named as they go - an opt-in is a reason to say what it cost, not a
-  /// reason to go quiet.
+  /// [compacted] says which of the removed files compaction can rebuild. Files
+  /// that are not in that set are originals the project opted to delete, and
+  /// they are named as they go - an opt-in is a reason to say what it cost.
   void _stripLoose(
     Directory project,
     GoodConfig config,
