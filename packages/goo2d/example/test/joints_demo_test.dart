@@ -7,9 +7,9 @@
 // sits at a larger one. 34c8556 flipped the case and left this file behind;
 // the sign of every y assertion below is the mirror of what it used to be.
 
-// Tagged `box2d` so CI can leave it out: the workflow does not build the
-// native library, and a suite that cannot run is better skipped by name than
-// red for a reason that has nothing to do with the demo.
+// Tagged `box2d` because these cases need the native library. CI builds it
+// and runs them; the tag names them for `--exclude-tags box2d` in a checkout
+// where it has not been built.
 @Tags(['box2d'])
 library;
 

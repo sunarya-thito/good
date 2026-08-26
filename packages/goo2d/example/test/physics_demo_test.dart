@@ -3,9 +3,9 @@
 // Requires the native library:
 //   cd packages/goo2d_ffi_box2d && powershell -File tool/build_native.ps1
 
-// Tagged `box2d` so CI can leave it out: the workflow does not build the
-// native library, and a suite that cannot run is better skipped by name than
-// red for a reason that has nothing to do with the demo.
+// Tagged `box2d` because these cases need the native library. CI builds it
+// and runs them; the tag names them for `--exclude-tags box2d` in a checkout
+// where it has not been built.
 @Tags(['box2d'])
 library;
 
