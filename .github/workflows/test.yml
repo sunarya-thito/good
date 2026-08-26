@@ -5,11 +5,10 @@
 # integration test the repository has. It sat in nobody's baseline and rotted to
 # sixteen red tests before anyone noticed (#83), which is what this is for.
 #
-# The box2d packages are analyzed but not tested here. Their tests need the Box2D
-# shared library compiled from vendored source first, and the build script is
-# PowerShell against a local toolchain. That is issue #7's follow-up; 94 of the
-# 1504 tests are in those two packages, and a green run covering the other 1410 is
-# worth more than a red one covering everything.
+# The box2d packages reach Box2D through a shared library built from the
+# vendored source in packages/goo2d_ffi_box2d/src. The Build the Box2D shim
+# step below compiles it, which is what lets their suites and the example's
+# `box2d` tag run here (#202).
 name: test
 
 on:
@@ -45,6 +44,25 @@ jobs:
       - name: Install ffmpeg and libclang
         run: sudo apt-get update && sudo apt-get install -y ffmpeg libclang-dev
 
+      # goo2d_ffi_box2d, goo2d_physics_box2d and the example's `box2d` tag all
+      # open this library through dart:ffi. lib/src/library.dart climbs from
+      # the working directory looking for
+      # packages/goo2d_ffi_box2d/build/<operating system>, so the build tree
+      # goes at build/linux and all three find it from their own package
+      # directories. tool/build_native.ps1 runs the same two cmake commands
+      # inside a Visual Studio environment for build/windows.
+      - name: Build the Box2D shim
+        run: |
+          set -e
+          cmake -S packages/goo2d_ffi_box2d/src \
+                -B packages/goo2d_ffi_box2d/build/linux \
+                -DCMAKE_BUILD_TYPE=Release
+          cmake --build packages/goo2d_ffi_box2d/build/linux --parallel
+          # cmake reports success for a build that produced the library under
+          # another name; the suites would then fail on a missing library with
+          # nothing pointing back here.
+          ls -l packages/goo2d_ffi_box2d/build/linux/libgoo2d_box2d.so
+
       # Resolution is worth its own step. Every package depends on its siblings
       # by hosted `^0.1.0` constraint with a local path override in
       # pubspec_overrides.yaml, and each override has to list the full transitive
@@ -53,7 +71,7 @@ jobs:
       - name: Resolve
         run: |
           set -e
-          for p in good goo2d goo3d good_net good_net_p2p; do
+          for p in good goo2d goo3d good_net good_net_p2p goo2d_ffi_box2d goo2d_physics_box2d; do
             echo "::group::flutter pub get $p"
             (cd "packages/$p" && flutter pub get)
             echo "::endgroup::"
@@ -67,15 +85,6 @@ jobs:
           echo "::group::flutter pub get doc_snippets"
           (cd packages/doc_snippets && flutter pub get)
           echo "::endgroup::"
-          # Not for their tests, which need the native library. They are here
-          # for the Analyze step, and goo2d_ffi_box2d additionally because
-          # `dart run ffigen` reads that package's own package config and the
-          # bindings check at the end of this job runs it.
-          for p in goo2d_ffi_box2d goo2d_physics_box2d; do
-            echo "::group::flutter pub get $p"
-            (cd "packages/$p" && flutter pub get)
-            echo "::endgroup::"
-          done
 
       # The fenced dart blocks in docs/, compiled against the real packages, so
       # a rename breaks here rather than being found by a person reading the
@@ -91,15 +100,7 @@ jobs:
       - name: Analyze
         run: |
           set -e
-          for p in good goo2d goo3d good_net good_net_p2p; do
-            echo "::group::flutter analyze $p"
-            (cd "packages/$p" && flutter analyze --no-pub)
-            echo "::endgroup::"
-          done
-          # The box2d packages, whose suites the Test step below cannot run.
-          # The analyzer reads their Dart source and never loads the native
-          # library, so this half of their coverage costs nothing here.
-          for p in goo2d_ffi_box2d goo2d_physics_box2d; do
+          for p in good goo2d goo3d good_net good_net_p2p goo2d_ffi_box2d goo2d_physics_box2d; do
             echo "::group::flutter analyze $p"
             (cd "packages/$p" && flutter analyze --no-pub)
             echo "::endgroup::"
@@ -114,17 +115,13 @@ jobs:
       - name: Test
         run: |
           set -e
-          for p in good goo2d goo3d good_net good_net_p2p; do
+          for p in good goo2d goo3d good_net good_net_p2p goo2d_ffi_box2d goo2d_physics_box2d; do
             echo "::group::flutter test $p"
             (cd "packages/$p" && flutter test --no-pub)
             echo "::endgroup::"
           done
-          # Minus the `box2d` tag, for the reason at the top of this file: the
-          # joints and physics cases drive the native library nothing here
-          # builds. A tag rather than a list of filenames, so a test file added
-          # later is run by default and only opts out deliberately.
           echo "::group::flutter test goo2d/example"
-          (cd packages/goo2d/example && flutter test --no-pub --exclude-tags box2d)
+          (cd packages/goo2d/example && flutter test --no-pub)
           echo "::endgroup::"
           echo "::group::dart test good_cli"
           (cd packages/good_cli && dart test)
