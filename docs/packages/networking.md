@@ -12,6 +12,8 @@ class PlayerMoved extends NetMessage<({double x, double y})> {
 class RoundEnded() extends NetSignal;
 
 void spawnBullet(NetPeerId from, double angle) {}
+
+void applyPosition(NetPeerId from, double x, double y) {}
 -->
 
 !!! abstract "Layer: kernel-side (`good_net`)"
@@ -115,7 +117,59 @@ descriptor.has(RoundEnded(), id: 'roundEnded', channel: NetChannel.reliable);
 | Channel | Guarantee | For |
 |---|---|---|
 | `reliable` | Arrives exactly once, in order, however many retransmissions it takes | Anything a game cannot resolve by waiting: "player joined", "you took 12 damage", chat, the initial snapshot |
-| `unreliable` | Sent once, may be dropped or reordered; an *older* one arriving after a newer one is **discarded** | State that supersedes itself: transforms, input samples — anything sent every tick where only the newest value matters |
+| `unreliable` | Sent once, may be dropped, and may arrive after a message that was sent later | State that supersedes itself: transforms, input samples — anything sent every tick where only the newest value matters |
+
+**A late unreliable message still reaches the handler.** Nothing on the link
+compares what arrives against what it has already delivered, so a position sent
+on tick 40 that overtakes one sent on tick 41 is applied second and the entity
+snaps backwards for a frame. Newest-wins is the handler's to enforce, and what
+it takes is a tick number travelling with the state:
+
+```dart
+class Moved extends NetMessage<({int tick, double x, double y})> {
+  late final ParamPointer<int> tick;
+  late final ParamPointer<double> x;
+  late final ParamPointer<double> y;
+
+  @override
+  void describeParams(ParamDescriptor descriptor) {
+    tick = descriptor.hasUint32();
+    x = descriptor.hasFloat32();
+    y = descriptor.hasFloat32();
+  }
+
+  @override
+  void bufferFromParams(
+    ParamBuffer message,
+    ({int tick, double x, double y}) params,
+  ) {
+    tick[message] = params.tick;
+    x[message] = params.x;
+    y[message] = params.y;
+  }
+
+  @override
+  ({int tick, double x, double y}) paramsFromBuffer(ParamBuffer message) =>
+      (tick: tick[message], x: x[message], y: y[message]);
+}
+```
+
+and a comparison against the newest one already applied:
+
+<!-- snippet: in MyState with MultiplayerState<MyGame> -->
+```dart
+final _newestTick = <NetPeerId, int>{};
+
+void _onMoved(({int tick, double x, double y}) params, NetPeerId from) {
+  final newest = _newestTick[from];
+  if (newest != null && params.tick <= newest) return;
+  _newestTick[from] = params.tick;
+  applyPosition(from, params.x, params.y);
+}
+```
+
+One counter per sender: two peers number their own ticks, and a peer that
+joins mid-match starts wherever its clock is.
 
 !!! danger "Do not send transforms reliably"
     Head-of-line blocking is reliable delivery's price: one lost packet stalls
