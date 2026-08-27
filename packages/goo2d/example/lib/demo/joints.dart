@@ -569,22 +569,14 @@ class _JointStats extends GameSystem with Tickable {
 }
 
 class JointGame extends DemoGame {
-  late final StateChannel<int> intactJoints;
-  late final StateChannel<int> brokenJoints;
+  final intactJoints = Channel.int32();
+  final brokenJoints = Channel.int32();
 
   /// The largest constraint force seen in the loaded chain **since the case
   /// started**, in newtons - not the current one, which drops to zero the
   /// instant the last joint gives way. Watching this climb towards the break
   /// threshold is what makes the mechanism legible rather than magical.
-  late final StateChannel<int> peakJointForce;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    intactJoints = descriptor.hasInt32();
-    brokenJoints = descriptor.hasInt32();
-    peakJointForce = descriptor.hasInt32();
-  }
+  final peakJointForce = Channel.int32();
 
   @override
   JointState createState() => JointState();

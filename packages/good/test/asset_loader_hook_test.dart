@@ -85,8 +85,9 @@ class _UserGame extends _EngineGame {
   }
 }
 
-Future<G> _boot<G extends Game>(G game) async {
-  final run = await Game.startInline(game);
+Future<G> _boot<G extends Game>(G Function() create) async {
+  final run = await Game.startInline(create);
+  final game = run;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });
@@ -105,7 +106,7 @@ void main() {
     'a declared loader is registered by the time the game is running',
     () async {
       expect(AssetLoaders.isRegistered<_Payload>(), isFalse);
-      await _boot(_EngineGame());
+      await _boot(_EngineGame.new);
       expect(AssetLoaders.isRegistered<_Payload>(), isTrue);
       expect(
         (AssetLoaders.of<_Payload>() as _MarkLoader).mark,
@@ -116,7 +117,7 @@ void main() {
   );
 
   test('a game that declares none registers none', () async {
-    await _boot(_BareGame());
+    await _boot(_BareGame.new);
     expect(
       AssetLoaders.isRegistered<_Payload>(),
       isFalse,
@@ -130,7 +131,7 @@ void main() {
     // The ordering rule stated on AssetLoaders.register: later wins. It is
     // what lets a game substitute its own decoder for one the engine ships,
     // and it only reads that way because every layer calls super first.
-    await _boot(_UserGame());
+    await _boot(_UserGame.new);
     expect(
       (AssetLoaders.of<_Payload>() as _MarkLoader).mark,
       'game',
@@ -149,14 +150,14 @@ void main() {
     // and every game gets audio loading without declaring anything. That is
     // what lets a 3D project load a sound (#93); goo3d declares no loaders at
     // all.
-    await _boot(_BareGame());
+    await _boot(_BareGame.new);
     expect(AssetLoaders.isRegistered<AudioClip>(), isTrue);
   });
 
   test(
     'a game that overrides the hook still inherits the kernel decoder',
     () async {
-      await _boot(_UserGame());
+      await _boot(_UserGame.new);
       expect(
         AssetLoaders.isRegistered<AudioClip>(),
         isTrue,
@@ -169,7 +170,7 @@ void main() {
     // The failure this guards is a subclass that overrides the hook and forgets
     // super - which #64's checker now fails the build over, and which this
     // asserts the consequence of.
-    await _boot(_UserGame());
+    await _boot(_UserGame.new);
     expect(AssetLoaders.isRegistered<_Payload>(), isTrue);
     expect(AssetLoaders.isRegistered<_Other>(), isTrue);
   });

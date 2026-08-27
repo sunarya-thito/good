@@ -259,25 +259,32 @@ class ${className}Surface extends StatefulWidget {
 }
 
 class _${className}SurfaceState extends State<${className}Surface> {
+  /// The in-flight start. `Game.start` is what *builds* the game, so there is
+  /// nothing to hold until this completes - and `dispose` stops it through
+  /// here rather than through [_game], which is still null if the widget goes
+  /// away mid-start.
+  late final Future<$gameClass> _starting;
+
   $gameClass? _game;
 
   @override
   void initState() {
     super.initState();
-    _start();
+    _starting = _start();
   }
 
-  Future<void> _start() async {
-    final game = $gameClass();
-    await Game.start(game);
+  Future<$gameClass> _start() async {
+    final game = await Game.start($gameClass.new);
     if (mounted) setState(() => _game = game);
+    return game;
   }
 
   @override
   void dispose() {
     // The game owns native memory and an isolate; neither is reclaimed by the
-    // widget going away.
-    _game?.stop();
+    // widget going away. Hung off the future because both orderings have to
+    // work: already booted stops now, still booting stops the moment it does.
+    _starting.then((game) => game.stop());
     super.dispose();
   }
 

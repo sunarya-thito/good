@@ -240,8 +240,9 @@ class _MouseGame extends Game {
 
 // --- helpers --------------------------------------------------------------
 
-Future<T> _boot<T extends Game>(T game) async {
-  run = await Game.startInline(game);
+Future<T> _boot<T extends Game>(T Function() create) async {
+  final game = await Game.startInline(create);
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });
@@ -411,7 +412,7 @@ void main() {
 
   group('Vec2Binding composition', () {
     test('each key drives its own axis, with up as +y', () async {
-      final game = await _boot(_InputGame());
+      final game = await _boot(_InputGame.new);
       final movement = run.state.getSystem<_PlayerSystem>().movement;
 
       _pressAndStep(game, [InputKey.d]);
@@ -439,7 +440,7 @@ void main() {
     });
 
     test('diagonals add, and are deliberately not normalized', () async {
-      final game = await _boot(_InputGame());
+      final game = await _boot(_InputGame.new);
       final movement = run.state.getSystem<_PlayerSystem>().movement;
 
       _pressAndStep(game, [InputKey.w, InputKey.d]);
@@ -454,7 +455,7 @@ void main() {
     });
 
     test('opposing keys cancel to exactly zero', () async {
-      final game = await _boot(_InputGame());
+      final game = await _boot(_InputGame.new);
       final movement = run.state.getSystem<_PlayerSystem>().movement;
 
       _pressAndStep(game, [InputKey.a, InputKey.d]);
@@ -478,7 +479,7 @@ void main() {
     test(
       'the value is one Vector2 the action owns, mutated in place',
       () async {
-        final game = await _boot(_InputGame());
+        final game = await _boot(_InputGame.new);
         final movement = run.state.getSystem<_PlayerSystem>().movement;
 
         _pressAndStep(game, [InputKey.d]);
@@ -508,7 +509,7 @@ void main() {
 
   group('edge detection', () {
     test('wasPressedThisFrame is true on exactly one resolution', () async {
-      final game = await _boot(_InputGame());
+      final game = await _boot(_InputGame.new);
       final skill = run.state.getSystem<_PlayerSystem>().triggerSkill;
 
       expect(
@@ -538,7 +539,7 @@ void main() {
     });
 
     test('wasReleasedThisFrame mirrors it on the way up', () async {
-      final game = await _boot(_InputGame());
+      final game = await _boot(_InputGame.new);
       final skill = run.state.getSystem<_PlayerSystem>().triggerSkill;
 
       _pressAndStep(game, [InputKey.spacebar]);
@@ -563,7 +564,7 @@ void main() {
     test(
       'a press and a release inside one resolution collapse to nothing',
       () async {
-        final game = await _boot(_InputGame());
+        final game = await _boot(_InputGame.new);
         final skill = run.state.getSystem<_PlayerSystem>().triggerSkill;
 
         game.inputDevice!
@@ -589,7 +590,7 @@ void main() {
     test(
       'each fires on its own edge and never both on one resolution',
       () async {
-        final game = await _boot(_InputGame());
+        final game = await _boot(_InputGame.new);
 
         _pressAndStep(game, [InputKey.spacebar]);
         expect(events, [
@@ -620,7 +621,7 @@ void main() {
     test(
       'a vector action fires on actuation, not on every value change',
       () async {
-        final game = await _boot(_InputGame());
+        final game = await _boot(_InputGame.new);
 
         _pressAndStep(game, [InputKey.d]);
         expect(events, ['move pressed 1,0']);
@@ -646,7 +647,7 @@ void main() {
     );
 
     test('an unbound action fires nothing at all', () async {
-      final game = await _boot(_InputGame());
+      final game = await _boot(_InputGame.new);
       final system = run.state.getSystem<_PlayerSystem>();
 
       // Every key on the keyboard, held for two resolutions.
@@ -669,7 +670,7 @@ void main() {
     });
 
     test('a listener can be removed with -=', () async {
-      final game = await _boot(_InputGame());
+      final game = await _boot(_InputGame.new);
       final skill = run.state.getSystem<_PlayerSystem>().triggerSkill;
       void extra(InputEvent<bool> event) => events.add('extra');
       skill.pressed += extra;
@@ -689,7 +690,7 @@ void main() {
     });
 
     test('assigning some other stream is a programmer error', () async {
-      await _boot(_InputGame());
+      await _boot(_InputGame.new);
       final system = run.state.getSystem<_PlayerSystem>();
       expect(
         () => system.triggerSkill.pressed = system.ping.pressed,
@@ -703,7 +704,7 @@ void main() {
 
   group('rebinding', () {
     test('direct assignment takes effect on the next resolution', () async {
-      final game = await _boot(_InputGame());
+      final game = await _boot(_InputGame.new);
       final skill = run.state.getSystem<_PlayerSystem>().triggerSkill;
 
       skill.binding = const TriggerBinding(.enter);
@@ -722,7 +723,7 @@ void main() {
     });
 
     test('copyWith tweaks one axis and leaves the rest alone', () async {
-      final game = await _boot(_InputGame());
+      final game = await _boot(_InputGame.new);
       final movement = run.state.getSystem<_PlayerSystem>().movement;
 
       // `movement.binding` is statically an InputBinding<Vector2>, so the
@@ -750,7 +751,7 @@ void main() {
     });
 
     test('rebinding while held releases on the next resolution', () async {
-      final game = await _boot(_InputGame());
+      final game = await _boot(_InputGame.new);
       final skill = run.state.getSystem<_PlayerSystem>().triggerSkill;
 
       _pressAndStep(game, [InputKey.spacebar]);
@@ -768,7 +769,7 @@ void main() {
     });
 
     test('an action declared unbound can be bound at runtime', () async {
-      final game = await _boot(_InputGame());
+      final game = await _boot(_InputGame.new);
       final system = run.state.getSystem<_PlayerSystem>();
 
       system.ping.binding = const TriggerBinding(.f5);
@@ -807,7 +808,7 @@ void main() {
     });
 
     test('unbinding stops it dead and fires nothing', () async {
-      final game = await _boot(_InputGame());
+      final game = await _boot(_InputGame.new);
       final skill = run.state.getSystem<_PlayerSystem>().triggerSkill;
 
       _pressAndStep(game, [InputKey.spacebar]);
@@ -828,7 +829,7 @@ void main() {
 
   group('default values', () {
     test('the Game ships defaults for bool and Vector2', () async {
-      await _boot(_InputGame());
+      await _boot(_InputGame.new);
       final system = run.state.getSystem<_PlayerSystem>();
 
       expect(
@@ -846,7 +847,7 @@ void main() {
     });
 
     test('an action with no default anywhere throws, naming itself', () async {
-      final game = await _boot(_NoSuperGame());
+      final game = await _boot(_NoSuperGame.new);
 
       Object? thrown;
       try {
@@ -878,7 +879,7 @@ void main() {
     });
 
     test('a per-action default is enough on its own', () async {
-      final game = await _boot(_NoSuperGame());
+      final game = await _boot(_NoSuperGame.new);
       expect(
         game.ownDefault.value,
         isTrue,
@@ -891,7 +892,7 @@ void main() {
     test(
       'forgetting super.describeInputs loses the shipped defaults',
       () async {
-        final game = await _boot(_NoSuperGame());
+        final game = await _boot(_NoSuperGame.new);
         expect(
           () => game.orphan.value,
           throwsStateError,
@@ -904,7 +905,7 @@ void main() {
     );
 
     test('a per-action default wins over the type-level one', () async {
-      final game = await _boot(_PrecedenceGame());
+      final game = await _boot(_PrecedenceGame.new);
       expect(game.loud.value, isTrue, reason: 'its own default');
       expect(
         game.quiet.value,
@@ -915,7 +916,7 @@ void main() {
 
     test('one descriptor is shared, so a system can register a type default '
         'an earlier declaration uses', () async {
-      final game = await _boot(_SharedDescriptorGame());
+      final game = await _boot(_SharedDescriptorGame.new);
       expect(
         game.throttle.value,
         0.25,
@@ -927,9 +928,8 @@ void main() {
     });
 
     test('registering a type default twice fails at declare time', () async {
-      final game = _DuplicateDefaultGame();
       await expectLater(
-        Game.startInline(game),
+        Game.startInline(_DuplicateDefaultGame.new),
         throwsStateError,
         reason:
             'two sources each setting the fallback for one type disagree, '
@@ -941,7 +941,7 @@ void main() {
 
   group('resolution', () {
     test('runs before any system, so a tick sees this tick\'s input', () async {
-      final game = await _boot(_InputGame());
+      final game = await _boot(_InputGame.new);
       final system = run.state.getSystem<_PlayerSystem>();
 
       _pressAndStep(game, [InputKey.d, InputKey.spacebar]);
@@ -966,7 +966,7 @@ void main() {
     test(
       'a write landing mid-tick cannot change what the tick resolved',
       () async {
-        final game = await _boot(_InputGame());
+        final game = await _boot(_InputGame.new);
         final device = game.inputDevice!;
 
         device.setViewSize(800, 600);
@@ -1009,7 +1009,7 @@ void main() {
     test(
       'a game whose device nobody writes to reads defaults forever',
       () async {
-        await _boot(_InputGame());
+        await _boot(_InputGame.new);
         final system = run.state.getSystem<_PlayerSystem>();
 
         for (var i = 0; i < 5; i++) {
@@ -1028,7 +1028,7 @@ void main() {
     );
 
     test('the device is on the copy Flutter runs on', () async {
-      final game = await _boot(_InputGame());
+      final game = await _boot(_InputGame.new);
       expect(
         game.inputDevice,
         isNotNull,
@@ -1043,8 +1043,8 @@ void main() {
     });
 
     test('the write end goes away with the storage at stop()', () async {
-      final game = _InputGame();
-      run = await Game.startInline(game);
+      final game = await Game.startInline(_InputGame.new);
+      run = game;
       expect(game.inputDevice, isNotNull);
       await run.stop();
       expect(
@@ -1059,7 +1059,7 @@ void main() {
 
   group('declaration window', () {
     test('declaring an input after boot is refused', () async {
-      final game = await _boot(_InputGame());
+      final game = await _boot(_InputGame.new);
       // The *real* descriptor, kept from the boot pass.
       final descriptor = game.capturedDescriptor!;
       expect(() => descriptor.has<bool>(), throwsStateError);
@@ -1139,7 +1139,7 @@ void main() {
     });
 
     test('a restored binding is assignable straight onto an action', () async {
-      final game = await _boot(_InputGame());
+      final game = await _boot(_InputGame.new);
       final skill = run.state.getSystem<_PlayerSystem>().triggerSkill;
       // The whole save/restore story, as a user writes it: their own JSON,
       // their own key, no framework-owned format and nothing to register.
@@ -1186,7 +1186,7 @@ void main() {
 
   group('pointer position', () {
     test('screen and view coordinates cross independently', () async {
-      final game = await _boot(_MouseGame());
+      final game = await _boot(_MouseGame.new);
       final cursor = run.state.getSystem<_CursorSystem>().cursor;
       final device = game.inputDevice!;
 
@@ -1215,7 +1215,7 @@ void main() {
     });
 
     test('a real hover event fills both spaces from one event', () async {
-      final game = await _boot(_MouseGame());
+      final game = await _boot(_MouseGame.new);
       final cursor = run.state.getSystem<_CursorSystem>().cursor;
 
       // How Flutter itself produces a local position: the event is
@@ -1246,7 +1246,7 @@ void main() {
     });
 
     test('a touch event moves nothing', () async {
-      final game = await _boot(_MouseGame());
+      final game = await _boot(_MouseGame.new);
       final cursor = run.state.getSystem<_CursorSystem>().cursor;
 
       game.inputDevice!.handlePointerEvent(
@@ -1265,7 +1265,7 @@ void main() {
     });
 
     test('the position is one instance, mutated in place', () async {
-      final game = await _boot(_MouseGame());
+      final game = await _boot(_MouseGame.new);
       final cursor = run.state.getSystem<_CursorSystem>().cursor;
 
       game.inputDevice!.movePointer(screenX: 1, screenY: 2);
@@ -1299,7 +1299,7 @@ void main() {
     });
 
     test('an unmoved pointer holds its last position', () async {
-      final game = await _boot(_MouseGame());
+      final game = await _boot(_MouseGame.new);
       final cursor = run.state.getSystem<_CursorSystem>().cursor;
 
       game.inputDevice!.movePointer(screenX: 9, screenY: 9, viewX: 5, viewY: 5);
@@ -1317,7 +1317,7 @@ void main() {
     });
 
     test('moving fires no press or release edge', () async {
-      final game = await _boot(_MouseGame());
+      final game = await _boot(_MouseGame.new);
 
       game.inputDevice!.movePointer(screenX: 1, screenY: 1);
       run.state.runFixedStep();
@@ -1341,7 +1341,7 @@ void main() {
     });
 
     test('a button on the same mouse is an ordinary trigger', () async {
-      final game = await _boot(_MouseGame());
+      final game = await _boot(_MouseGame.new);
       final click = run.state.getSystem<_CursorSystem>().click;
 
       game.inputDevice!.press(InputKey.leftMouseButton);
@@ -1362,7 +1362,7 @@ void main() {
     });
 
     test('before any pointer event everything reads zero', () async {
-      await _boot(_MouseGame());
+      await _boot(_MouseGame.new);
       run.state.runFixedStep();
 
       final position = run.state.getSystem<_CursorSystem>().cursor.value;
@@ -1380,7 +1380,7 @@ void main() {
     });
 
     test('the view size publishes only when it actually changes', () async {
-      final game = await _boot(_MouseGame());
+      final game = await _boot(_MouseGame.new);
       final cursor = run.state.getSystem<_CursorSystem>().cursor;
       final device = game.inputDevice!;
 
@@ -1425,7 +1425,7 @@ void main() {
     test(
       'a size that survives the float32 round-trip still publishes',
       () async {
-        final game = await _boot(_MouseGame());
+        final game = await _boot(_MouseGame.new);
         final cursor = run.state.getSystem<_CursorSystem>().cursor;
 
         // 0.1 is not representable in float32, so the mirror stores something
@@ -1465,7 +1465,7 @@ void main() {
   // ever pressed on, which is the whole failure it exists to catch.
   group('releaseAll', () {
     test('a key held across it stops being held', () async {
-      final game = await _boot(_InputGame());
+      final game = await _boot(_InputGame.new);
       final movement = run.state.getSystem<_PlayerSystem>().movement;
       final device = game.inputDevice!;
 
@@ -1493,7 +1493,7 @@ void main() {
     });
 
     test('a mouse button held across it stops being held', () async {
-      final game = await _boot(_MouseGame());
+      final game = await _boot(_MouseGame.new);
       final click = run.state.getSystem<_CursorSystem>().click;
       final device = game.inputDevice!;
 
@@ -1517,7 +1517,7 @@ void main() {
     });
 
     test('a pad button goes too, aggregate slot and all', () async {
-      final game = await _boot(_InputGame());
+      final game = await _boot(_InputGame.new);
       final device = game.inputDevice!;
 
       device.setGamepadButton(1, GamepadButton.a, true);
@@ -1543,7 +1543,7 @@ void main() {
     });
 
     test('the cursor does not jump to the corner', () async {
-      final game = await _boot(_MouseGame());
+      final game = await _boot(_MouseGame.new);
       final cursor = run.state.getSystem<_CursorSystem>().cursor;
       final device = game.inputDevice!;
 
@@ -1569,7 +1569,7 @@ void main() {
     });
 
     test('releasing nothing costs no publish', () async {
-      final game = await _boot(_MouseGame());
+      final game = await _boot(_MouseGame.new);
       final device = game.inputDevice!;
 
       final quiet = device.publishedAddress;

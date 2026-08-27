@@ -10,8 +10,8 @@ downstream follows from it.
 
 ## Two copies of one object
 
-`Game.start(game)` hands **your `Game` instance itself** to `Isolate.spawn` as
-the spawn message. Dart deep-copies a plain object graph across that boundary,
+`Game.start(MyGame.new)` builds your game and hands **that instance itself**
+to `Isolate.spawn` as the spawn message. Dart deep-copies a plain object graph across that boundary,
 so what runs on the game isolate is a *second* instance of your class — same
 type, same overrides, different identity, different heap.
 
@@ -43,15 +43,16 @@ build widgets. Numbers it shows arrive through a state channel or a buffer; an
 `Entity` handed to it will not resolve, and says so.
 
 !!! danger "Calling a gameplay method on the handle copy does nothing"
-    The `game` you still hold after `await Game.start(game)` is the handle. It
+    The `game` that `await Game.start(MyGame.new)` hands back is the handle. It
     does not reach the simulation. Anything that must cross goes through one of
     the channels below.
 
 ### How both copies agree without negotiating
 
-Both copies run `createState()`, `describeState`, `describeBuffers`,
-`describeCameras` and `describeCommands`, in the same order. That is how the two
-sides agree on every id **without negotiating one**:
+Main runs `createState()`, `describeState`, `describeBuffers`, `describeCameras`
+and `describeCommands` before the spawn, and the game isolate inherits the
+result in the deep copy rather than re-deriving it. That is how the two sides
+agree on every id **without negotiating one**:
 
 - a command's index is its position in the declaration pass;
 - a state channel's identity is its index in that one pass;
@@ -60,7 +61,10 @@ sides agree on every id **without negotiating one**:
 This is why those passes must be **pure and order-stable**. A pass that branches
 on `Platform.isWindows`, or registers in a `Set`'s iteration order, breaks the
 agreement, and the two sides then disagree about what index 3 means with nothing
-to catch it.
+to catch it. It is also why a declaration on a field — `final score =
+Channel.int32()` — is an eager `final` and never a `late final`: a `late`
+initialiser runs on first *read*, so the order would be whatever order
+something happened to touch the fields in.
 
 **Two passes are deliberately not on that list.** `describeScenes` registers
 archetypes and component bits into statics, which do not survive `Isolate.spawn`
@@ -176,12 +180,12 @@ small scene; override it down freely.
 
 ## Inline mode
 
-`Game.startInline(game)` runs the simulation on the **calling isolate** with no
-spawn and no ring buffers. It exists for tests and headless tools, where a
-second isolate makes assertions awkward and buys nothing:
+`Game.startInline(MyGame.new)` runs the simulation on the **calling isolate**
+with no spawn and no ring buffers. It exists for tests and headless tools,
+where a second isolate makes assertions awkward and buys nothing:
 
 ```dart
-final game = await Game.startInline(MyGame());   // autoTick: false by default
+final game = await Game.startInline(MyGame.new); // autoTick: false by default
 game.runFixedStep();                             // drive it yourself
 ```
 

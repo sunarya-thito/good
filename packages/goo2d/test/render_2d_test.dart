@@ -535,8 +535,8 @@ List<_Frame> _drainFrames(_RenderGame game) {
 }
 
 Future<_RenderGame> _game() async {
-  final game = _RenderGame();
-  run = await Game.startInline(game);
+  final game = await Game.startInline(_RenderGame.new);
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });

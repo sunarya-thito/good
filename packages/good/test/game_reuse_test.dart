@@ -75,21 +75,21 @@ void main() {
   test(
     'starting one instance twice is refused, and says what to do instead',
     () async {
-      final game = _Reuse();
-      final run = await Game.startInline(game);
+      final game = await Game.startInline(_Reuse.new);
+      final run = game;
       addTearDown(() async {
         if (run.isRunning) await run.stop();
       });
 
       expect(
-        () => Game.startInline(game),
+        () => Game.startInline(() => game),
         throwsA(
           isA<StateError>().having(
             (e) => e.message,
             'message',
             allOf(
               contains('has already been started'),
-              contains('Construct a second instance'),
+              contains('Start a second one for a second run'),
             ),
           ),
         ),
@@ -102,14 +102,14 @@ void main() {
   );
 
   test('the refusal comes before anything is declared a second time', () async {
-    final game = _Reuse();
-    final run = await Game.startInline(game);
+    final game = await Game.startInline(_Reuse.new);
+    final run = game;
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
 
     expect(game.stateChannelCount, 1);
-    await expectLater(Game.startInline(game), throwsStateError);
+    await expectLater(Game.startInline(() => game), throwsStateError);
 
     // Why this is guarded in `start` rather than left to the declaration pass
     // to throw: `describeState` appends to the declared list *before* it
@@ -127,7 +127,7 @@ void main() {
   test(
     'a game started inline is drivable; that is what start() withholds',
     () async {
-      final game = await Game.startInline(_Reuse());
+      final game = await Game.startInline(_Reuse.new);
       addTearDown(() async {
         if (game.isRunning) await game.stop();
       });
@@ -139,7 +139,7 @@ void main() {
   );
 
   test('reaching the world on a game started with start() is refused', () async {
-    final game = await Game.start(_Reuse());
+    final game = await Game.start(_Reuse.new);
     addTearDown(() async {
       if (game.isRunning) await game.stop();
     });
@@ -176,8 +176,8 @@ void main() {
   }, timeout: const Timeout(Duration(seconds: 60)));
 
   test('stopping does not hand the instance back for reuse', () async {
-    final game = _Reuse();
-    final run = await Game.startInline(game);
+    final game = await Game.startInline(_Reuse.new);
+    final run = game;
     await run.stop();
 
     // Sequential reuse looks like the easy half - the first run's storage is
@@ -186,6 +186,6 @@ void main() {
     // binding are one pass, so a second run cannot re-bind the surviving
     // declarations without re-running the user's `describeX`, and re-running
     // those is precisely what a `late final` forbids.
-    expect(() => Game.startInline(game), throwsStateError);
+    expect(() => Game.startInline(() => game), throwsStateError);
   });
 }

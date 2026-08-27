@@ -859,7 +859,7 @@ class PhysicsGame extends DemoGame {
   /// dispatch together - was 0.8. What says which of those a frame is in is
   /// [awakeBodies] and [broadPhasePairs] against the population; a solver cost
   /// follows the contact graph, and the Dart side follows body count.
-  late final StateChannel<int> physicsMicros;
+  final physicsMicros = Channel.int32();
 
   /// What the world *contains*, which is what a solve time cannot say on its
   /// own.
@@ -882,30 +882,18 @@ class PhysicsGame extends DemoGame {
   /// time: `physicsWorkerCount` is a top-level, and **top-level state does not
   /// cross `Isolate.spawn`** - so if the physics system is constructed on the
   /// game isolate it reads the default, whatever main was told.
-  late final StateChannel<int> solverThreads;
+  final solverThreads = Channel.int32();
 
-  late final StateChannel<int> physicsBodies;
+  final physicsBodies = Channel.int32();
 
   /// Bodies that have ever left the box and been recycled, cumulatively. A
   /// number that keeps climbing means the population is capped by escapes
   /// rather than by the slider, and every reading taken above that cap is
   /// describing a smaller world than its label says.
-  late final StateChannel<int> escapedBodies;
-  late final StateChannel<int> awakeBodies;
-  late final StateChannel<int> touchingPairs;
-  late final StateChannel<int> broadPhasePairs;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    physicsMicros = descriptor.hasInt32();
-    solverThreads = descriptor.hasInt32();
-    physicsBodies = descriptor.hasInt32();
-    escapedBodies = descriptor.hasInt32();
-    awakeBodies = descriptor.hasInt32();
-    touchingPairs = descriptor.hasInt32();
-    broadPhasePairs = descriptor.hasInt32();
-  }
+  final escapedBodies = Channel.int32();
+  final awakeBodies = Channel.int32();
+  final touchingPairs = Channel.int32();
+  final broadPhasePairs = Channel.int32();
 
   @override
   PhysicsState createState() => PhysicsState();

@@ -92,8 +92,7 @@ class _DemoAppState extends State<DemoApp> {
         await previous.game.stop();
       }
       final demo = widget.demos[index]();
-      final game = demo.create();
-      await Game.start(game);
+      final game = await Game.start(demo.create);
       if (!mounted) {
         await game.stop();
         return;

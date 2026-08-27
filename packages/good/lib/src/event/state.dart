@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 
+import 'package:good/src/declare.dart';
+
 // --- published cross-isolate state ---------------------------------------
 
 /// A typed, cross-isolate published value: **written by the game isolate,
@@ -88,6 +90,7 @@ abstract class StateChannel<T> implements ValueListenable<T> {
 /// before the first tick and before `start()` completes - so no reader on
 /// either copy ever observes an unpublished channel.
 abstract class StateDescriptor {
+  /// See [Channel.uint8].
   StateChannel<int> hasUint8([int initial = 0]);
   StateChannel<int> hasInt8([int initial = 0]);
   StateChannel<int> hasUint16([int initial = 0]);
@@ -99,4 +102,102 @@ abstract class StateDescriptor {
   StateChannel<double> hasFloat32([double initial = 0]);
   StateChannel<double> hasFloat64([double initial = 0]);
   StateChannel<bool> hasBool([bool initial = false]);
+}
+
+/// Declares a published state channel on the field that holds it:
+///
+/// ```dart
+/// class MyGame extends Game {
+///   final score = Channel.int32();
+///   final alive = Channel.boolean(true);
+/// }
+/// ```
+///
+/// One static per [StateDescriptor] method, minus the `has` that only read as
+/// noise once the declaration moved onto the field - the same trade `Field`,
+/// `Query`, `Param`, `Event` and `Input.of` made before it. Each takes the
+/// same initial value its `has` counterpart does.
+///
+/// The name is `Channel` and not `State`, which is the obvious first guess:
+/// `State` is `package:flutter/material.dart`'s, and every file putting a
+/// `GameView` in a layout imports that. This one pairs with [StateChannel],
+/// which is the type it hands back.
+///
+/// # A Game, and nothing else
+///
+/// `Game.start` and `Game.startInline` take a constructor -
+/// `Game.start(MyGame.new)` - so the framework builds the game and there is a
+/// call for the descriptor to be open around.
+///
+/// Nothing else may declare a channel, and that is older than this shape: a
+/// channel's storage is allocated on **main, before the spawn**, and its
+/// identity across the boundary is its index in that one declaration pass. A
+/// `GameState` and a `GameSystem` are both built on the game isolate, after
+/// that allocation, and a `SceneStruct` is loaded after boot and possibly
+/// more than once. Publish from the `Game` and write through
+/// `state.game.myChannel`, which is what `GameSystem.describeState` was
+/// deleted in favour of.
+///
+/// # Collect, then resolve
+///
+/// A channel declared here comes back with no storage, no index and no run
+/// behind it, because none of those exist yet - the `Game` this field belongs
+/// to is still being constructed, and a `GameRuntime` needs the finished
+/// object. It is appended to a list and nothing else happens, which is what
+/// makes a declaration unable to fail. `Game.start` numbers the collected
+/// channels and binds them to the run a step later, and the storage is
+/// allocated a step after that, where it always was.
+///
+/// # Eager, always
+///
+/// `late final score = Channel.int32()` compiles and is wrong. The call runs
+/// on the first *read*, by which point the descriptor is sealed and the
+/// storage allocated, so the channel would have no buffer to publish into and
+/// no index for the other isolate to know it by. It does not get that far:
+/// `DeclarationContext.channels` throws first, naming the shape.
+abstract final class Channel {
+  /// See [StateDescriptor.hasUint8].
+  static StateChannel<int> uint8([int initial = 0]) =>
+      DeclarationContext.channels.hasUint8(initial);
+
+  /// See [StateDescriptor.hasInt8].
+  static StateChannel<int> int8([int initial = 0]) =>
+      DeclarationContext.channels.hasInt8(initial);
+
+  /// See [StateDescriptor.hasUint16].
+  static StateChannel<int> uint16([int initial = 0]) =>
+      DeclarationContext.channels.hasUint16(initial);
+
+  /// See [StateDescriptor.hasInt16].
+  static StateChannel<int> int16([int initial = 0]) =>
+      DeclarationContext.channels.hasInt16(initial);
+
+  /// See [StateDescriptor.hasUint32].
+  static StateChannel<int> uint32([int initial = 0]) =>
+      DeclarationContext.channels.hasUint32(initial);
+
+  /// See [StateDescriptor.hasInt32].
+  static StateChannel<int> int32([int initial = 0]) =>
+      DeclarationContext.channels.hasInt32(initial);
+
+  /// See [StateDescriptor.hasUint64].
+  static StateChannel<int> uint64([int initial = 0]) =>
+      DeclarationContext.channels.hasUint64(initial);
+
+  /// See [StateDescriptor.hasInt64].
+  static StateChannel<int> int64([int initial = 0]) =>
+      DeclarationContext.channels.hasInt64(initial);
+
+  /// See [StateDescriptor.hasFloat32].
+  static StateChannel<double> float32([double initial = 0]) =>
+      DeclarationContext.channels.hasFloat32(initial);
+
+  /// See [StateDescriptor.hasFloat64].
+  static StateChannel<double> float64([double initial = 0]) =>
+      DeclarationContext.channels.hasFloat64(initial);
+
+  /// See [StateDescriptor.hasBool]. Named for the width and not the Dart
+  /// type, the way `Field.boolean` is.
+  static StateChannel<bool> boolean([bool initial = false]) =>
+      DeclarationContext.channels.hasBool(initial);
 }

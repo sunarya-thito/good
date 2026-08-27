@@ -24,7 +24,7 @@ void main() {
 
   test('the sandbox fills to its target and the bodies settle', () async {
     final demo = PhysicsDemo();
-    final run = await Game.startInline(demo.create());
+    final run = await Game.startInline(demo.create);
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
@@ -82,7 +82,7 @@ void main() {
     // and two ticks is not long enough for the solver to throw any of them
     // clear - so that extreme stays near zero.
     final demo = PhysicsDemo();
-    final run = await Game.startInline(demo.create());
+    final run = await Game.startInline(demo.create);
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
@@ -127,7 +127,7 @@ void main() {
     // presents as the engine being unable to recover from a spike rather than
     // as the case ignoring the control.
     final demo = PhysicsDemo();
-    final run = await Game.startInline(demo.create());
+    final run = await Game.startInline(demo.create);
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
@@ -160,7 +160,7 @@ void main() {
     // it cost 36 ms a step at 4000 bodies against 0.94 ms at 1000. The box
     // has to grow with what it is asked to hold.
     final demo = PhysicsDemo();
-    final run = await Game.startInline(demo.create());
+    final run = await Game.startInline(demo.create);
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
@@ -219,8 +219,8 @@ void main() {
     // because a never-published page reads back its own same-tick writes and
     // the bug only bites on recycled rows.
     final demo = PhysicsDemo();
-    final game = demo.create() as PhysicsGame;
-    final run = await Game.startInline(game);
+    final game = await Game.startInline(() => demo.create() as PhysicsGame);
+    final run = game;
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
@@ -271,8 +271,8 @@ void main() {
     // Driven through a fill *and* a shed, because the leak only shows on the
     // way down.
     final demo = PhysicsDemo();
-    final game = demo.create() as PhysicsGame;
-    final run = await Game.startInline(game);
+    final game = await Game.startInline(() => demo.create() as PhysicsGame);
+    final run = game;
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
@@ -327,8 +327,8 @@ void main() {
     // together to catch a body on its creation tick, which is what changing
     // the target every single tick does.
     final demo = PhysicsDemo();
-    final game = demo.create() as PhysicsGame;
-    final run = await Game.startInline(game);
+    final game = await Game.startInline(() => demo.create() as PhysicsGame);
+    final run = game;
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
@@ -364,7 +364,7 @@ void main() {
     // The empty world still steps; it must not divide by a population of
     // nothing or skip the step entirely.
     final demo = PhysicsDemo();
-    final run = await Game.startInline(demo.create());
+    final run = await Game.startInline(demo.create);
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
@@ -399,7 +399,7 @@ void main() {
     // Correct, that ratio is around 0.6; with the declaration order put back
     // it is around 0.01.
     final demo = PhysicsDemo();
-    final run = await Game.startInline(demo.create());
+    final run = await Game.startInline(demo.create);
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });

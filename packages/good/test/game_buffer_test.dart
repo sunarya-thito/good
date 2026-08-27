@@ -141,8 +141,9 @@ class _BareGame extends Game {
   GameState createState() => _BareState();
 }
 
-Future<T> _start<T extends Game>(T game) async {
-  run = await Game.startInline(game);
+Future<T> _start<T extends Game>(T Function() create) async {
+  final game = await Game.startInline(create);
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });
@@ -169,7 +170,7 @@ void main() {
 
   group('declaration', () {
     test('one source declares them all, in declaration order', () async {
-      final game = await _start(_BufferGame());
+      final game = await _start(_BufferGame.new);
       expect(game.bufferCount, 2);
       expect(game.gameBuffer.index, 0);
       // The system reads its buffer back off the Game rather than declaring
@@ -181,7 +182,7 @@ void main() {
     test(
       'a declared buffer is a real RingBuffer at the declared capacity',
       () async {
-        final game = await _start(_BufferGame());
+        final game = await _start(_BufferGame.new);
         final pings = run.state.getSystem<_PingSystem>().pings;
         expect(game.gameBuffer.capacityBytes, 1024);
         expect(game.gameBuffer.ring.capacityBytes, 1024);
@@ -191,12 +192,12 @@ void main() {
     );
 
     test('declaring nothing costs nothing', () async {
-      final game = await _start(_BareGame());
+      final game = await _start(_BareGame.new);
       expect(game.bufferCount, 0);
     });
 
     test('two declarations are two buffers, not a collision', () async {
-      final game = await _start(_TwoBufferGame());
+      final game = await _start(_TwoBufferGame.new);
       expect(game.bufferCount, 3);
       expect(
         game.second.index,
@@ -210,7 +211,7 @@ void main() {
     });
 
     test('a capacity with no room for a payload is rejected', () {
-      expect(Game.startInline(_TinyBufferGame()), throwsArgumentError);
+      expect(Game.startInline(_TinyBufferGame.new), throwsArgumentError);
     });
   });
 
@@ -227,7 +228,7 @@ void main() {
     test(
       'a system holds its own handle, over the same memory the game sees',
       () async {
-        final game = await _start(_BufferGame());
+        final game = await _start(_BufferGame.new);
         final system = run.state.getSystem<_PingSystem>();
         expect(system.pings.isConnected, isTrue);
         expect(
@@ -242,7 +243,7 @@ void main() {
     test(
       'a system writing every tick is drained in order by the consumer',
       () async {
-        await _start(_BufferGame());
+        await _start(_BufferGame.new);
         final ring = run.state.getSystem<_PingSystem>().pings.ring;
 
         expect(_drainTicks(ring), isEmpty, reason: 'nothing has ticked yet');
@@ -259,7 +260,7 @@ void main() {
     );
 
     test('the buffer survives a tick in which nothing else happens', () async {
-      final game = await _start(_BufferGame());
+      final game = await _start(_BufferGame.new);
       run.state.advance(_step * 2);
       expect(
         game.gameBuffer.ring.drain(),
@@ -269,7 +270,7 @@ void main() {
     });
 
     test('records accumulate across ticks until someone drains', () async {
-      await _start(_BufferGame());
+      await _start(_BufferGame.new);
       // 100 records x 16 bytes - well short of the ring's 4096, so this is
       // testing accumulation, not the overflow policy. One advance per step
       // rather than one big one, because advance() caps itself at
@@ -286,7 +287,7 @@ void main() {
 
   group('shutdown', () {
     test('stop() releases the buffers this copy allocated', () async {
-      final game = await _start(_BufferGame());
+      final game = await _start(_BufferGame.new);
       final pings = run.state.getSystem<_PingSystem>().pings;
       run.state.advance(_step);
       await run.stop();

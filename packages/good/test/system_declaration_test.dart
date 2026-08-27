@@ -253,8 +253,8 @@ abstract class _BareGame extends Game {
   int get pageSize => 4096;
 }
 
-Future<Game> _boot(Game game) async {
-  final run = await Game.startInline(game);
+Future<Game> _boot(Game Function() create) async {
+  final run = await Game.startInline(create);
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });
@@ -273,7 +273,7 @@ void main() {
 
   group('an event on a system field', () {
     test('collects the system composition and not the state one', () async {
-      final run = await _boot(_FieldEventGame());
+      final run = await _boot(_FieldEventGame.new);
       final source =
           (run.state as _EventState<_FieldEventGame>).source as _FieldSystem;
 
@@ -290,7 +290,7 @@ void main() {
     });
 
     test('delivery is identical to the hook form, both directions', () async {
-      final fieldRun = await _boot(_FieldEventGame());
+      final fieldRun = await _boot(_FieldEventGame.new);
       final fieldSource =
           (fieldRun.state as _EventState<_FieldEventGame>).source
               as _FieldSystem;
@@ -302,7 +302,7 @@ void main() {
       _reset();
       _Noted.log.clear();
 
-      final hookRun = await _boot(_HookEventGame());
+      final hookRun = await _boot(_HookEventGame.new);
       final hookSource =
           (hookRun.state as _EventState<_HookEventGame>).source as _HookSystem;
       hookSource.alpha('alpha');
@@ -325,7 +325,7 @@ void main() {
     });
 
     test('one system can use both forms at once', () async {
-      final run = await _boot(_MixedEventGame());
+      final run = await _boot(_MixedEventGame.new);
       final source =
           (run.state as _EventState<_MixedEventGame>).source as _MixedSystem;
 
@@ -342,7 +342,7 @@ void main() {
 
   group('an input on a system field', () {
     test('declares the same actions the hook declares', () async {
-      final fieldRun = await _boot(_FieldInputGame());
+      final fieldRun = await _boot(_FieldInputGame.new);
       final fieldCount = fieldRun.inputActionCount;
       final fieldSource =
           (fieldRun.state as _InputState<_FieldInputGame>).source
@@ -356,7 +356,7 @@ void main() {
       await fieldRun.stop();
       _reset();
 
-      final hookRun = await _boot(_HookInputGame());
+      final hookRun = await _boot(_HookInputGame.new);
       final hookSource =
           (hookRun.state as _InputState<_HookInputGame>).source
               as _HookInputSystem;
@@ -387,7 +387,7 @@ void main() {
     });
 
     test('an unbound field action still reads its default', () async {
-      final run = await _boot(_FieldInputGame());
+      final run = await _boot(_FieldInputGame.new);
       final source =
           (run.state as _InputState<_FieldInputGame>).source
               as _FieldInputSystem;
@@ -403,7 +403,7 @@ void main() {
     });
 
     test('a field and a hook compose on one system', () async {
-      final run = await _boot(_MixedInputGame());
+      final run = await _boot(_MixedInputGame.new);
       final source =
           (run.state as _InputState<_MixedInputGame>).source
               as _MixedInputSystem;
@@ -422,7 +422,7 @@ void main() {
 
   group('the initialisers are eager', () {
     test('a late event is missing from the collected list', () async {
-      final run = await _boot(_LateGame());
+      final run = await _boot(_LateGame.new);
       final source = (run.state as _LateState).source;
 
       expect(
@@ -450,7 +450,7 @@ void main() {
     });
 
     test('a late input is missing from the declared actions', () async {
-      final run = await _boot(_LateGame());
+      final run = await _boot(_LateGame.new);
       final source = (run.state as _LateState).source;
       final declared = run.inputActionCount;
 
@@ -468,7 +468,7 @@ void main() {
           isA<StateError>().having(
             (e) => e.message,
             'message',
-            contains('no system being constructed'),
+            contains('no game or system being constructed'),
           ),
         ),
       );

@@ -148,8 +148,8 @@ class _BudgetGame extends Game2D {
 }
 
 Future<_BudgetGame> _game() async {
-  final game = _BudgetGame();
-  run = await Game.startInline(game);
+  final game = await Game.startInline(_BudgetGame.new);
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });

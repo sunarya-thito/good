@@ -28,8 +28,8 @@ void main() {
     ComponentTypeRegistry.reset();
   });
 
-  Future<G> boot<G extends DemoGame>(G game) async {
-    await Game.startInline(game);
+  Future<G> boot<G extends DemoGame>(G Function() create) async {
+    final game = await Game.startInline(create);
     addTearDown(() async {
       if (game.isRunning) await game.stop();
     });
@@ -56,7 +56,7 @@ void main() {
 
   group('the shared readout', () {
     test('every channel the overlay reads is published', () async {
-      final game = await boot(ParticlesGame());
+      final game = await boot(ParticlesGame.new);
       await populate(game, 64);
       game.state.advance(_step);
 
@@ -86,7 +86,7 @@ void main() {
 
   group('Galaxy', () {
     test('the population churns and holds near its target', () async {
-      final game = await boot(ParticlesGame());
+      final game = await boot(ParticlesGame.new);
       await populate(game, 200, ticks: 60);
       final settled = game.spawnedCount.value;
       expect(settled, closeTo(200, 60));
@@ -111,7 +111,7 @@ void main() {
     });
 
     test('motes are flat - no world transform pass touches them', () async {
-      final game = await boot(ParticlesGame());
+      final game = await boot(ParticlesGame.new);
       await populate(game, 16);
 
       final state = game.state as ParticlesState;
@@ -127,7 +127,7 @@ void main() {
     });
 
     test('the swirl actually moves them', () async {
-      final game = await boot(ParticlesGame());
+      final game = await boot(ParticlesGame.new);
       await populate(game, 4);
       final state = game.state as ParticlesState;
       final mote = state.galaxy.mote;
@@ -143,7 +143,7 @@ void main() {
 
   group('Swarm', () {
     test('a critter keeps every limb spawned in the same tick', () async {
-      final game = await boot(SceneGraphGame());
+      final game = await boot(SceneGraphGame.new);
       await populate(game, 1);
       game.state.advance(_step);
 
@@ -165,7 +165,7 @@ void main() {
     });
 
     test('a freshly spawned critter does not snap on its second frame', () async {
-      final game = await boot(SceneGraphGame());
+      final game = await boot(SceneGraphGame.new);
       await populate(game, 1);
 
       final state = game.state as SceneGraphState;
@@ -195,7 +195,7 @@ void main() {
       );
     });
     test('limbs are composed, never animated', () async {
-      final game = await boot(SceneGraphGame());
+      final game = await boot(SceneGraphGame.new);
       await populate(game, 1);
       game.state.advance(_step);
 
@@ -225,7 +225,7 @@ void main() {
     });
 
     test('rotating the hub alone moves every limb', () async {
-      final game = await boot(SceneGraphGame());
+      final game = await boot(SceneGraphGame.new);
       await populate(game, 3);
       game.state.advance(_step);
 
@@ -262,8 +262,7 @@ void main() {
         SceneGraphGame.new,
         ParticlesGame.new,
       ]) {
-        final game = make();
-        await Game.startInline(game);
+        final game = await Game.startInline(() => make());
         await populate(game, 24);
         // Reading a sprite's texture is what failed: it resolves an address
         // through the asset table of the run that declared it.
@@ -284,9 +283,8 @@ void main() {
         SceneGraphGame.new,
         ParticlesGame.new,
       ]) {
-        final game = make();
         // The hang is here: the third `start` never completes.
-        await Game.start(game);
+        final game = await Game.start(() => make());
         expect(game.isRunning, isTrue);
         await game.stop();
       }

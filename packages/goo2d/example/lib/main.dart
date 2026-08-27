@@ -331,7 +331,7 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _boot() async {
-    final started = await Game.start(MyAwesomeGame());
+    final started = await Game.start(MyAwesomeGame.new);
     if (!mounted) {
       // Disposed while the isolate was spawning. Nothing else will ever stop
       // this run, so it has to happen here.

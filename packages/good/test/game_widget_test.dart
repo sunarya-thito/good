@@ -144,8 +144,9 @@ Future<void> _lifecycle(AppLifecycleState state) =>
           (_) {},
         );
 
-Future<T> _start<T extends Game>(T game) async {
-  run = await Game.startInline(game);
+Future<T> _start<T extends Game>(T Function() create) async {
+  final game = await Game.startInline(create);
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });
@@ -161,13 +162,13 @@ void main() {
 
   group('buildView', () {
     testWidgets('what the game returns is what the view shows', (tester) async {
-      await _start(_ViewGame());
+      await _start(_ViewGame.new);
       await tester.pumpWidget(GameView.headless(game: run));
       expect(find.text('game'), findsOneWidget);
     });
 
     testWidgets('a game that draws nothing is not an error', (tester) async {
-      await _start(_SilentGame());
+      await _start(_SilentGame.new);
       await tester.pumpWidget(GameView.headless(game: run));
       expect(
         tester.takeException(),
@@ -183,7 +184,7 @@ void main() {
     testWidgets('null and a widget are both honoured on rebuild', (
       tester,
     ) async {
-      final game = await _start(_ViewGame());
+      final game = await _start(_ViewGame.new);
       await tester.pumpWidget(GameView.headless(game: run));
       expect(find.text('game'), findsOneWidget);
 
@@ -204,7 +205,7 @@ void main() {
     testWidgets('the context is the real one from the element tree', (
       tester,
     ) async {
-      final game = await _start(_ViewGame());
+      final game = await _start(_ViewGame.new);
       await tester.pumpWidget(GameView.headless(game: run));
       expect(game.seen, isNotNull);
       expect(
@@ -233,7 +234,7 @@ void main() {
     testWidgets('a game nobody is looking at reports no frames', (
       tester,
     ) async {
-      await _start(_ViewGame());
+      await _start(_ViewGame.new);
       expect(run.frameCount, 0);
       expect(
         run.fps,
@@ -247,7 +248,7 @@ void main() {
     testWidgets('attaching and detaching a view arms and disarms cleanly', (
       tester,
     ) async {
-      await _start(_ViewGame());
+      await _start(_ViewGame.new);
       await tester.pumpWidget(GameView.headless(game: run));
       await tester.pump();
 
@@ -266,7 +267,7 @@ void main() {
     testWidgets('published pictures are counted, and are not display frames', (
       tester,
     ) async {
-      await _start(_ViewGame());
+      await _start(_ViewGame.new);
       expect(run.simulationFrameCount, 0);
 
       // Each `advance` that gets a presentation pass publishes one picture.
@@ -297,7 +298,7 @@ void main() {
     // clock, and inside a widget test `Future.delayed` elapses fake time
     // while that clock does not move at all.
     test('a paused simulation publishes nothing, and says so', () async {
-      await _start(_ViewGame());
+      await _start(_ViewGame.new);
 
       // Frames spread over real time, because a rate is over an interval and
       // five advances back to back do not span one.
@@ -356,7 +357,7 @@ void main() {
   // the exact test that would have let this bug ship.
   group('releasing input', () {
     testWidgets('backgrounding the app lets go of a held key', (tester) async {
-      await _start(_ViewGame());
+      await _start(_ViewGame.new);
       await tester.pumpWidget(GameView.headless(game: run));
       final device = run.inputDevice!;
 
@@ -383,7 +384,7 @@ void main() {
     });
 
     testWidgets('coming back does not put the key down again', (tester) async {
-      await _start(_ViewGame());
+      await _start(_ViewGame.new);
       await tester.pumpWidget(GameView.headless(game: run));
       final device = run.inputDevice!;
 
@@ -416,7 +417,7 @@ void main() {
     testWidgets('a mouse button held into the background lets go', (
       tester,
     ) async {
-      await _start(_ViewGame());
+      await _start(_ViewGame.new);
       await tester.pumpWidget(GameView.headless(game: run));
       final device = run.inputDevice!;
 
@@ -430,7 +431,7 @@ void main() {
     });
 
     testWidgets('the last view going away lets go', (tester) async {
-      await _start(_ViewGame());
+      await _start(_ViewGame.new);
       await tester.pumpWidget(GameView.headless(game: run));
       final device = run.inputDevice!;
 
@@ -459,7 +460,7 @@ void main() {
     testWidgets('losing focus lets go of a held key, and keeps drawing', (
       tester,
     ) async {
-      await _start(_VisibilityGame());
+      await _start(_VisibilityGame.new);
       await tester.pumpWidget(GameView.headless(game: run));
       final device = run.inputDevice!;
 
@@ -508,7 +509,7 @@ void main() {
     });
 
     testWidgets('losing focus returns a pushed stick to rest', (tester) async {
-      await _start(_VisibilityGame());
+      await _start(_VisibilityGame.new);
       await tester.pumpWidget(GameView.headless(game: run));
       final device = run.inputDevice!;
 
@@ -534,7 +535,7 @@ void main() {
     });
 
     testWidgets('the view that stays up keeps its keys', (tester) async {
-      await _start(_ViewGame());
+      await _start(_ViewGame.new);
       await tester.pumpWidget(
         Column(
           children: <Widget>[
@@ -597,7 +598,7 @@ void main() {
   // `setVisible` does can see it.
   group('visibility over the control carrier', () {
     testWidgets('showing arrives with no tick to carry it', (tester) async {
-      await _start(_VisibilityGame());
+      await _start(_VisibilityGame.new);
       await tester.pumpWidget(GameView.headless(game: run));
       await _lifecycle(AppLifecycleState.resumed);
 
@@ -655,7 +656,7 @@ void main() {
     testWidgets('a backgrounding round trip is one hide and one show', (
       tester,
     ) async {
-      await _start(_VisibilityGame());
+      await _start(_VisibilityGame.new);
       await tester.pumpWidget(GameView.headless(game: run));
 
       // Straight down the platform's own walk: the binding's transition

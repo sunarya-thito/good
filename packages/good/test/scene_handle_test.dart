@@ -69,8 +69,8 @@ class _LevelGame extends Game {
 }
 
 Future<_LevelGame> _boot() async {
-  final game = _LevelGame();
-  run = await Game.startInline(game);
+  final game = await Game.startInline(_LevelGame.new);
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });

@@ -180,16 +180,10 @@ enum _ControlMessage {
 ///
 /// ```dart
 /// class MyGame extends Game {                      // main isolate
-///   late final StateChannel<int> score;            // declared here
+///   final score = Channel.int32();                 // declared here
 ///
 ///   @override
 ///   MyGameState createState() => MyGameState();
-///
-///   @override
-///   void describeState(StateDescriptor d) {
-///     super.describeState(d);
-///     score = d.hasInt32();
-///   }
 /// }
 ///
 /// class MyGameState extends GameState<MyGame> {    // game isolate
@@ -205,7 +199,8 @@ enum _ControlMessage {
 /// This is the one genuinely unusual thing here, and everything below depends
 /// on understanding it.
 ///
-/// [start] hands **this instance** to `Isolate.spawn` as the spawn message.
+/// [start] hands **the instance it built** to `Isolate.spawn` as the spawn
+/// message.
 /// Dart deep-copies a plain object graph across that boundary, so what runs
 /// on the game isolate is a *second* `MyGame` - same class, same overrides,
 /// different identity, different heap. From that moment there are two copies
@@ -259,6 +254,20 @@ enum _ControlMessage {
 /// `GameSystem`. What `Game` does for Flutter it does through a plain method,
 /// [buildView]. See `GameEvent`'s doc.
 abstract class Game implements RandomOwner {
+  /// A body, on a class that wanted no constructor at all, for one reason:
+  /// this is the moment a `Game` has finished being built, and it is the only
+  /// moment from which the two windows `Game.start` opens can be told apart
+  /// from windows opened for somebody else.
+  ///
+  /// A subclass's field initialisers run before this - that is what lets
+  /// `final score = Channel.int32()` work - and a `Game` constructed inside
+  /// another object's field initialiser runs this before the object that
+  /// owns the window does. So a count is enough: see
+  /// [DeclarationContext.gamesConstructed], and the two places that read it.
+  Game() {
+    DeclarationContext.noteGameConstructed();
+  }
+
   // --- configuration ----------------------------------------------------
 
   /// The simulation step. Wall-clock time accumulates and is spent in whole
@@ -690,6 +699,18 @@ abstract class Game implements RandomOwner {
   /// game isolate writes and the main isolate reads straight out of shared
   /// memory.
   ///
+  /// Reach for [Channel] first - a game is framework-built, so a channel goes
+  /// on the field that holds it:
+  ///
+  /// ```dart
+  /// class MyGame extends Game {
+  ///   final score = Channel.int32();
+  /// }
+  /// ```
+  ///
+  /// This hook is the other way, and it stays. Both compose: a game's field
+  /// declarations are numbered first, its hook's second.
+  ///
   /// ```dart
   /// class MyGame extends Game {
   ///   late final StateChannel<int> score;
@@ -711,22 +732,20 @@ abstract class Game implements RandomOwner {
   ///    to ticks.
   ///
   /// Published state is one value, coherent per tick, with no per-read message
-  /// and no string-keyed lookup: the descriptor hands back a typed
-  /// [StateChannel] you keep in a `late final` field, exactly like
-  /// `describeStruct`'s `DataPointer`s, `describeQuery`'s `Query`,
-  /// and `describeBuffers`' `BufferHandle`.
+  /// and no string-keyed lookup: what comes back is a typed [StateChannel] you
+  /// keep in a field, exactly like `describeStruct`'s `DataPointer`s,
+  /// `describeQuery`'s `Query`, and `describeBuffers`' `BufferHandle`. A
+  /// channel from [Channel] is a plain `final`, and must be; one assigned
+  /// from this hook is `late final`, because the hook runs after the
+  /// constructor.
   ///
-  /// # The two hosts
+  /// # The one host
   ///
-  /// Exactly two types declare state - this one and `GameSystem` - and both
-  /// carry this method with an empty body, so declaring a channel is one
-  /// override and nothing else.
-  ///
-  /// The set is two and not more for a hard reason: **a channel's storage is
-  /// allocated on the main isolate, before the spawn**, and its identity
-  /// across the boundary *is* its declaration index in that one pass. So only
-  /// something main declares can own an index. That rules out three things,
-  /// each for its own reason:
+  /// This type declares state and nothing else does, for a hard reason: **a
+  /// channel's storage is allocated on the main isolate, before the spawn**,
+  /// and its identity across the boundary *is* its declaration index in that
+  /// one pass. So only something main declares can own an index. That rules
+  /// out three things, each for its own reason:
   ///
   ///  * [GameState] is *built on the game isolate*, after the allocation it
   ///    would have to be part of. Publish from the `Game` instead and write
@@ -740,9 +759,9 @@ abstract class Game implements RandomOwner {
   ///
   /// Runs **once**, on main, during [start], before the spawn - so the game
   /// isolate inherits the channels already numbered and already backed, and
-  /// there is no second run for an index to disagree with. Both sources share
-  /// **one** descriptor (see [bootStateDescriptor]), so indices never collide
-  /// or renumber across sources.
+  /// there is no second run for an index to disagree with. This hook and the
+  /// fields share **one** descriptor, so indices never collide or renumber
+  /// between the two ways in.
   @mustCallSuper
   void describeState(StateDescriptor descriptor) {}
 
@@ -802,6 +821,21 @@ abstract class Game implements RandomOwner {
 
   /// Declares this game's **input actions**, and the default value every
   /// action of a given type falls back to.
+  ///
+  /// Reach for [Input.of] first - a game is framework-built, so an action
+  /// goes on the field that holds it:
+  ///
+  /// ```dart
+  /// class MyGame extends Game {
+  ///   final pause = Input.of(const TriggerBinding(.escape));
+  /// }
+  /// ```
+  ///
+  /// This hook is the other way, and it stays: it is what
+  /// [InputDescriptor.hasDefaultValue] needs, since that hands nothing back
+  /// and so has no field to live on. The framework's own two defaults are
+  /// registered here for exactly that reason. Both forms compose, fields
+  /// first and hook second.
   ///
   /// Runs first in the boot pass's `describeInputs` sequence, before every
   /// declared system's (see `GameSystem.describeInputs`), and all of them
@@ -882,10 +916,25 @@ abstract class Game implements RandomOwner {
   // versus a value where only the newest does.
   final List<HandoffHandle> _handoffHandles = <HandoffHandle>[];
 
-  // Every channel declared through a `describeState` pass this
-  // boot, in declaration order across both declaring sources (see
-  // [bootStateDescriptor]). Same index-is-identity story as the buffers.
+  // Every channel this game declared, in declaration order - fields first,
+  // then whatever `describeState` added. Same index-is-identity story as the
+  // buffers. Filled in one go by `_StateDescriptor.resolveInto`, from
+  // [_bootMain]; empty until then, because a channel collected from a field
+  // initialiser has no index to take yet.
   final List<_ChannelSlot> _stateChannels = <_ChannelSlot>[];
+
+  // Where `Channel.*` on a field of this game landed, and where
+  // `describeState` adds to it. **Not final**, and not created here either:
+  // a subclass's field initialisers run *before* this class's, so at the
+  // moment `final score = Channel.int32()` runs there is no `Game` yet to
+  // hold anything. `Game.start` opens a descriptor ahead of the constructor
+  // call and puts it here afterwards - the same move `EventBinder.open`
+  // makes with the binder it hangs on the bus it just built.
+  //
+  // The one created here is what a `Game` constructed some other way gets:
+  // empty, and the game will not boot anyway, because `start` is the only
+  // thing that boots one.
+  _StateDescriptor _states = _StateDescriptor();
 
   // Every input action declared through a describeInputs pass this boot, plus
   // the type-level defaults and the one raw device-state buffer they all
@@ -896,7 +945,12 @@ abstract class Game implements RandomOwner {
   // is in here: main runs `Game.describeInputs` and stops, while the
   // simulating copy also runs every system's and then seals. Empty at spawn
   // time like every other field here.
-  final InputRegistry _inputs = InputRegistry();
+  //
+  // **Not final**, for [_states]'s reason and replaced at the same moment: an
+  // `Input.of` on a field of this game runs before this class's own
+  // initialisers do, so it declares into a registry `Game.start` opened ahead
+  // of the constructor and put here once the object existed.
+  InputRegistry _inputs = InputRegistry();
 
   /// This game's assets - **instance state, not a global static**.
   ///
@@ -1026,14 +1080,28 @@ abstract class Game implements RandomOwner {
 
   // --- bring-up ---------------------------------------------------------
 
-  /// Brings [game] up and hands it straight back, running.
+  /// Builds [create]'s game, brings it up, and hands it back running.
   ///
   /// ```dart
-  /// final game = await Game.start(MyGame());
+  /// final game = await Game.start(MyGame.new);
   /// game.spawnEnemy();          // a command
   /// final score = game.score;   // a StateChannel, for a widget
   /// await game.stop();
   /// ```
+  ///
+  /// A **constructor**, not an instance: `Game.start(MyGame.new)`. The
+  /// framework builds the game so that the declaration windows a field
+  /// initialiser needs are open while it does - `Channel.*` and [Input.of]
+  /// both read a context that exists only for the duration of this call. A
+  /// game built anywhere else has neither open, which is what those two throw
+  /// about.
+  ///
+  /// A game taking constructor arguments goes through a closure:
+  /// `Game.start(() => MyGame(seed: 7))`. The windows are open while the
+  /// closure runs, so that shape declares on fields too. What does *not* work
+  /// is a closure handing back an object built earlier -
+  /// `Game.start(() => _game)` - because nothing was open around **that**
+  /// construction. Keep what this returns instead.
   ///
   /// **One object, because there is one of everything.** An instance backs
   /// exactly one run for its whole life, so "the game" and "the run" name the
@@ -1041,8 +1109,8 @@ abstract class Game implements RandomOwner {
   /// bought nothing. The run's handle is framework-facing - a renderer
   /// receives one in [buildView] - and not something an app obtains.
   ///
-  /// Static, not an instance method, so the type flows: `G` binds from
-  /// the argument, which is what makes `await Game.start(MyGame())` a `MyGame`
+  /// Static, not an instance method, so the type flows: `G` binds from the
+  /// argument, which is what makes `await Game.start(MyGame.new)` a `MyGame`
   /// with nothing spelled out. It also keeps "start" off the surface of a
   /// `Game` that has not been started, where every other lifetime member
   /// throws.
@@ -1052,8 +1120,9 @@ abstract class Game implements RandomOwner {
   /// on another heap. [startInline] is what a test or a headless host uses to
   /// get one it can drive.
   ///
-  /// **One instance, one run.** Starting the same `game` twice throws, and so
-  /// does starting it again after [stop]; two games means two instances. The
+  /// **One instance, one run.** Handing back the same game twice - from a
+  /// closure that closes over one - throws, and so does starting one again
+  /// after [stop]; two games means two constructor calls. The
   /// reason is that a declaration is one-shot and holds its run's storage
   /// directly - see [_requireNotYetDescribed], which says it in full at the
   /// point it refuses.
@@ -1069,8 +1138,11 @@ abstract class Game implements RandomOwner {
   /// the only code that *could* drive it by hand runs on the game isolate, so
   /// `autoTick: false` here is a game that never ticks; the knob is really for
   /// [startInline].
-  static Future<G> start<G extends Game>(G game, {bool autoTick = true}) async {
-    game._requireNotYetDescribed();
+  static Future<G> start<G extends Game>(
+    G Function() create, {
+    bool autoTick = true,
+  }) async {
+    final game = _construct(create);
     final runtime = GameRuntime(game);
     // `drivable: false` even on the web, where this boots inline. The
     // mechanism is the platform's business; the surface is the caller's, and
@@ -1080,8 +1152,12 @@ abstract class Game implements RandomOwner {
     return game;
   }
 
-  /// Brings [game] up **on the calling isolate** - one copy doing both jobs -
-  /// and hands back a handle that can reach the simulation.
+  /// Builds [create]'s game **on the calling isolate** - one copy doing both
+  /// jobs - and hands back a game that can reach the simulation.
+  ///
+  /// A constructor, not an instance, for [start]'s reason and with the same
+  /// closure escape hatch: `Game.startInline(MyGame.new)`, or
+  /// `Game.startInline(() => MyGame(seed: 7))`.
   ///
   /// For tests, headless hosts, replays and tools. `autoTick: false` (the
   /// default here) leaves the clock entirely to [advance], which is what makes
@@ -1100,12 +1176,85 @@ abstract class Game implements RandomOwner {
   /// need [start], which gives each one its own isolate and so its own
   /// registries - and are therefore not available on the web.
   static Future<G> startInline<G extends Game>(
-    G game, {
+    G Function() create, {
     bool autoTick = false,
   }) async {
-    game._requireNotYetDescribed();
+    final game = _construct(create);
     final runtime = GameRuntime(game);
     await runtime.boot(inline: true, drivable: true, autoTick: autoTick);
+    return game;
+  }
+
+  /// Builds [create]'s game with the two declaration windows a `Game` field
+  /// initialiser needs open, and hangs both on the object afterwards.
+  ///
+  /// The windows are a `_StateDescriptor`, which `Channel.*` reads, and an
+  /// `InputRegistry`, which `Input.of` reads. Neither can be the game's own
+  /// field, and that is not a choice: a subclass's field initialisers run
+  /// *before* `Game`'s, so at the moment `final score = Channel.int32()` runs
+  /// there is no `Game` object at all. So the framework makes both first,
+  /// pushes them, constructs, and then puts them on the game it got back -
+  /// the same move `EventBinder.open` makes with its binder.
+  ///
+  /// The `Game`'s own fields overwrite nothing: they run during `create()`
+  /// and are simply replaced here, both of them empty and untouched.
+  ///
+  /// `InputRegistry.source` is set from `G`, the tear-off's static type,
+  /// because there is no object to ask for a `runtimeType` yet. That is the
+  /// type at the call site, which is what a diagnostic naming the declaring
+  /// source wants. `_bootMain` sets it again from `runtimeType` before
+  /// `describeInputs`.
+  ///
+  /// The pops are in a `finally`: a constructor that throws must not leave
+  /// the next declaration writing into a window nobody owns.
+  ///
+  /// [_requireNotYetDescribed] is checked here, between the call and the two
+  /// assignments, and that position is load-bearing. A closure may hand back
+  /// a game that is already running, and putting two empty windows on it
+  /// would throw away the registry the running game's actions live in - the
+  /// refusal has to land before anything is written.
+  static G _construct<G extends Game>(G Function() create) {
+    final states = _StateDescriptor();
+    final inputs = InputRegistry()..source = '$G';
+    final restoreCount = DeclarationContext.gamesConstructed;
+    DeclarationContext.gamesConstructed = 0;
+    DeclarationContext.pushChannels(states);
+    DeclarationContext.pushInputs(inputs);
+    final G game;
+    final int built;
+    try {
+      game = create();
+    } finally {
+      DeclarationContext.popInputs();
+      DeclarationContext.popChannels();
+      built = DeclarationContext.gamesConstructed;
+      DeclarationContext.gamesConstructed = restoreCount;
+    }
+    // Exactly one Game may finish constructing inside these windows, and the
+    // count is the only way to know. Zero is fine and is what a closure
+    // handing back an object built earlier produces - that game declared
+    // nothing here and its own fields would have thrown at the time. Two or
+    // more is a Game built inside another Game's field initialisers, which
+    // reads windows it does not own: measured before this refused, the outer
+    // game came out holding 2 channels and 1 action and the inner one holding
+    // none of either, booting and running with the inner game's handles
+    // pointing into storage that belongs to the outer.
+    if (built > 1) {
+      throw StateError(
+        '$built games finished constructing while ${game.runtimeType} was '
+        'being built. A Game constructed inside another Game - held as a '
+        'field, or built in one of its field initialisers - declares its '
+        'channels and actions into the windows the outer game opened, '
+        'because those are the ones open at that moment. Nothing about the '
+        'result looks wrong: it boots, it ticks, and the inner handles read '
+        'storage the outer game owns.\n'
+        'A Game is not a component of another Game. Two games are two '
+        'Game.start calls, each with its own isolate and its own registries.',
+      );
+    }
+    game._requireNotYetDescribed();
+    game._states = states;
+    game._inputs = inputs;
     return game;
   }
 
@@ -1126,8 +1275,8 @@ abstract class Game implements RandomOwner {
     if (runtime != null) return runtime;
     throw StateError(
       '$runtimeType.$member was called on a game that has not been started. '
-      '`await Game.start($runtimeType())` starts one, and hands back the same '
-      'instance, running.',
+      '`await Game.start($runtimeType.new)` starts one, and hands back the '
+      'instance it built, running.',
     );
   }
 
@@ -1340,9 +1489,9 @@ abstract class Game implements RandomOwner {
       'game and backs one run of it, for its whole life - starting it again, '
       'including after stop(), is not supported.\n'
       '\n'
-      'Construct a second instance for a second run:\n'
-      '  final run1 = await Game.start(MyGame());\n'
-      '  final run2 = await Game.start(MyGame());\n'
+      'Start a second one for a second run - each call builds its own:\n'
+      '  final run1 = await Game.start(MyGame.new);\n'
+      '  final run2 = await Game.start(MyGame.new);\n'
       '\n'
       'The reason is that a declaration is one-shot and *is* its storage: '
       '`score = descriptor.hasInt32()` fills a `late final`, and the '
@@ -1385,12 +1534,6 @@ abstract class Game implements RandomOwner {
   /// whose anchor spanned the adjacent line. Re-read the phase you touched, in
   /// full, after touching it.
   void _bootMain(GameRuntime runtime) {
-    // One StateDescriptor for the whole pass, and a local rather than a field:
-    // exactly one pass can declare a channel (its storage is allocated here,
-    // before the spawn), so nothing outside this method has any business
-    // reaching it, and a local cannot outlive the window it is valid in.
-    final states = _StateDescriptor(runtime);
-
     // Constructed here, and *only* constructed: its `onMounted` - the pass
     // that loads scenes and so spawns a world - runs in [_bootGame], on the
     // other copy. This one is a declaration mirror: it exists so that
@@ -1415,7 +1558,7 @@ abstract class Game implements RandomOwner {
     // --- describeState, the only call site --------------------------------
     //
     // Declaration order here *is* channel-index order, and an index is what
-    // crosses the wire, so it is observable. There is exactly one source, and
+    // crosses the wire, so it is observable. There is exactly one *owner*, and
     // the constraint that makes it one is sharper than "exists for the whole
     // run": a channel's storage is allocated here, on main, before the spawn,
     // so only something this pass runs can own an index. The `GameState` and
@@ -1423,7 +1566,18 @@ abstract class Game implements RandomOwner {
     // isolate, which is after this allocation. Scenes and their prefabs were
     // dropped earlier for the neighbouring reason (loaded after boot, possibly
     // repeatedly). See [describeState].
-    describeState(states);
+    //
+    // The owner has two ways in, and `_states` already holds the first: a
+    // `Channel.*` on a field of this game collected into it while the
+    // constructor ran, back in `Game.start`. This adds the hook's to the same
+    // list, after them.
+    describeState(_states);
+    // Resolve, and the second half of what the two-step buys. Every channel
+    // from either source now takes its index and its run in one pass, in
+    // declaration order, and only after both sources have finished. Before
+    // this line a channel is a declaration with nothing behind it; after it,
+    // `_bootAllocate` has a numbered list to allocate storage for.
+    _states.resolveInto(this, runtime);
     // Beside describeState and for the same reason: this runs on main before
     // the spawn, so the streams ride the object graph already built and both
     // copies derive identically without a message.
@@ -1451,7 +1605,7 @@ abstract class Game implements RandomOwner {
     _described = true;
 
     if (runtime.owns) _bootAllocate(runtime);
-    _bootFinalize(runtime, states);
+    _bootFinalize(runtime);
   }
 
   /// Everything the **game isolate** declares, after the spawn.
@@ -1588,7 +1742,7 @@ abstract class Game implements RandomOwner {
   }
 
   /// Phase 3: commands, event binding, and closing the declaration window.
-  void _bootFinalize(GameRuntime runtime, _StateDescriptor states) {
+  void _bootFinalize(GameRuntime runtime) {
     final state = runtime.state!;
 
     // --- describeCommands, both call sites ------------------------------
@@ -1630,7 +1784,7 @@ abstract class Game implements RandomOwner {
     // descriptor past this point is trying to declare a channel at runtime,
     // which cannot work - its storage would exist on neither copy and its
     // index would not match the other side's.
-    states._seal();
+    _states._seal();
     // `_inputs.seal()` is deliberately *not* here: a system may still declare
     // an action, and systems are declared on the game isolate. It closes at
     // the end of [_bootGame] instead.
@@ -3102,14 +3256,36 @@ final class _SystemDescriptor implements SystemDescriptor {
     // site, which is what a diagnostic naming the declaring source wants.
     final inputs = _state.game._inputs;
     final restore = inputs.currentSource;
+    final restoreCount = DeclarationContext.gamesConstructed;
+    DeclarationContext.gamesConstructed = 0;
     inputs.source = '$T';
     final T system;
+    final int games;
     DeclarationContext.pushInputs(inputs);
     try {
       system = EventBinder.open(create);
     } finally {
       DeclarationContext.popInputs();
       inputs.source = restore;
+      games = DeclarationContext.gamesConstructed;
+      DeclarationContext.gamesConstructed = restoreCount;
+    }
+    // A Game built in here reads this system's registry, because that is what
+    // is open, and `Input.of` on one of its fields lands on the host game
+    // instead. Measured: a Game holding one action, constructed in a system
+    // constructor, put that action on the host and kept none of its own, and
+    // the run booted. Nothing in the input path notices - an action is a
+    // handle read straight off the object, and the object it came from is not
+    // recorded anywhere.
+    if (games > 0) {
+      throw StateError(
+        'a Game was constructed while $T was being built. The declaration '
+        'windows open here belong to the system, so an Input.of on a field '
+        'of that Game declares an action on '
+        '${_state.game.runtimeType} rather than on itself - and the run '
+        'boots and ticks with the action attached to the wrong owner.\n'
+        'A Game is started, not constructed: Game.start(MyGame.new).',
+      );
     }
     // After the build, not before: the check is on `runtimeType`, and a
     // tear-off's type argument is the static type - `descriptor.has(() =>
@@ -3181,6 +3357,16 @@ final class _BufferDescriptor implements BufferDescriptor {
 abstract class _ChannelSlot {
   int get encodedBytes;
 
+  /// Gives this channel its declaration index and the run its storage belongs
+  /// to - the resolve half of the collect-then-resolve split.
+  ///
+  /// A channel is created by a field initialiser, which runs while the `Game`
+  /// that owns it is still being constructed: there is no runtime to bind to
+  /// and no list to be numbered in yet. So creation appends and nothing else,
+  /// and this is where the two facts arrive. Called once, from
+  /// `_StateDescriptor.resolveInto`, before anything allocates.
+  void resolve(GameRuntime runtime, int index);
+
   /// The live storage, non-null on the simulating copy from `_boot()`
   /// onwards - what [Game._announceStateChannels] reads addresses off.
   TripleBuffer? get liveBuffer;
@@ -3243,31 +3429,50 @@ enum _ChannelFormat {
 abstract class _StateChannelBase<T>
     with ChangeNotifier
     implements StateChannel<T>, _ChannelSlot {
-  _StateChannelBase({
-    required this.index,
-    required this.format,
-    required this.initialValue,
-    required GameRuntime runtime,
-    // A named parameter cannot start with an underscore, so `this._runtime` is
-    // not spellable and the lint's suggestion does not compile.
-    // ignore: prefer_initializing_formals
-  }) : _runtime = runtime,
-       _lastSeen = initialValue;
+  _StateChannelBase({required this.format, required this.initialValue})
+    : _lastSeen = initialValue;
 
   /// Position in the shared declaration order - this channel's identity on
   /// the wire, and what diagnostics name it by.
-  final int index;
+  ///
+  /// `-1` until [resolve], which is not a state a caller can observe: a
+  /// channel is numbered in `Game._bootMain`, before the storage exists and
+  /// so before any read or write can succeed.
+  int index = -1;
   final _ChannelFormat format;
   final T initialValue;
 
   /// The **run** this channel's storage belongs to - held instead of two
   /// booleans, because the two questions it answers (who owns the storage, who
   /// may write) have different answers here.
-  final GameRuntime _runtime;
+  ///
+  /// Null between the field initialiser that created this channel and
+  /// [resolve]. It cannot be `final`, because the object that owns the run
+  /// does not exist yet while its own fields are initialising - which is the
+  /// whole reason declaration and resolution are two steps here.
+  GameRuntime? _runtime;
+
+  @override
+  void resolve(GameRuntime runtime, int index) {
+    _runtime = runtime;
+    this.index = index;
+  }
+
+  GameRuntime get _run {
+    final runtime = _runtime;
+    if (runtime != null) return runtime;
+    throw StateError(
+      'a state channel was reached before the game that declared it '
+      'started. Channel.* hands back a declaration, and it becomes a live '
+      'channel when Game.start (or Game.startInline) binds it to a run and '
+      'allocates its storage - so `await` the start before reading or '
+      'writing one.',
+    );
+  }
 
   /// Whether this copy allocated the storage, and so must free it. Main, in
   /// the spawned configuration.
-  bool get owned => _runtime.owns;
+  bool get owned => _run.owns;
 
   /// Whether this copy may *write*. The simulating one - which after the boot
   /// inversion is a different copy from the one that owns the memory.
@@ -3275,7 +3480,7 @@ abstract class _StateChannelBase<T>
   /// A `TripleBuffer` requires one writer, not a particular isolate, so
   /// allocate-here/write-there is legal; `InputDevice` has always been the
   /// mirror image of it.
-  bool get _mayWrite => _runtime.simulates;
+  bool get _mayWrite => _run.simulates;
 
   TripleBuffer? _buffer;
 
@@ -3476,12 +3681,7 @@ abstract class _StateChannelBase<T>
 /// Every integer width, in one class: the format is a field, so a channel of
 /// each width is one object and not one class per width.
 final class _IntStateChannel extends _StateChannelBase<int> {
-  _IntStateChannel({
-    required super.index,
-    required super.format,
-    required super.initialValue,
-    required super.runtime,
-  });
+  _IntStateChannel({required super.format, required super.initialValue});
 
   @override
   int readFrom(ByteData view) => switch (format) {
@@ -3519,12 +3719,7 @@ final class _IntStateChannel extends _StateChannelBase<int> {
 }
 
 final class _DoubleStateChannel extends _StateChannelBase<double> {
-  _DoubleStateChannel({
-    required super.index,
-    required super.format,
-    required super.initialValue,
-    required super.runtime,
-  });
+  _DoubleStateChannel({required super.format, required super.initialValue});
 
   @override
   double readFrom(ByteData view) => format == _ChannelFormat.float32
@@ -3545,11 +3740,8 @@ final class _DoubleStateChannel extends _StateChannelBase<double> {
 /// packed into a shared row, so there is nothing to save by sub-byte packing
 /// and a whole byte to gain in read/write simplicity.
 final class _BoolStateChannel extends _StateChannelBase<bool> {
-  _BoolStateChannel({
-    required super.index,
-    required super.initialValue,
-    required super.runtime,
-  }) : super(format: _ChannelFormat.boolean);
+  _BoolStateChannel({required super.initialValue})
+    : super(format: _ChannelFormat.boolean);
 
   @override
   bool readFrom(ByteData view) => view.getUint8(0) != 0;
@@ -3558,47 +3750,66 @@ final class _BoolStateChannel extends _StateChannelBase<bool> {
   void writeTo(ByteData view, bool value) => view.setUint8(0, value ? 1 : 0);
 }
 
+/// Collects a game's state channels, from both the fields that declare one
+/// and the `describeState` body that does.
+///
+/// **Collect only.** Every method here creates a channel with no index, no
+/// run and no storage and appends it to [_collected]; [resolveInto] numbers
+/// the lot afterwards and hands them to the game, and `_bootAllocate`
+/// allocates a step after that. That split is not tidiness - a field
+/// initialiser runs while the `Game` is still being constructed, so at the
+/// moment `Channel.int32()` is called there is no game to be numbered in and
+/// no `GameRuntime` to bind to. Making declaration a list-append means a
+/// declaration cannot fail, whichever way in it came.
+///
+/// One descriptor per game, not one per source, because a channel's identity
+/// across the isolate boundary is its index in a single order. Fields first
+/// and the hook second, which is the order they run in.
 final class _StateDescriptor implements StateDescriptor {
-  _StateDescriptor(this._runtime);
+  final List<_ChannelSlot> _collected = <_ChannelSlot>[];
 
-  final GameRuntime _runtime;
-  Game get _game => _runtime.game;
+  /// The game this descriptor collected for, from [resolveInto] onwards. Only
+  /// a diagnostic reads it - the descriptor is created before the game is.
+  Game? _game;
   bool _sealed = false;
+
+  /// Numbers every collected channel, binds it to [runtime] and hands it to
+  /// [game], in declaration order. Called once, from `Game._bootMain`, after
+  /// both declaring sources have spoken and before anything allocates.
+  void resolveInto(Game game, GameRuntime runtime) {
+    _game = game;
+    final channels = game._stateChannels;
+    for (var i = 0; i < _collected.length; i++) {
+      final channel = _collected[i];
+      channel.resolve(runtime, channels.length);
+      channels.add(channel);
+    }
+  }
 
   void _seal() => _sealed = true;
 
   void _checkOpen() {
-    if (_sealed) {
-      throw StateError(
-        'a state channel was declared after ${_game.runtimeType}\'s boot '
-        'finished. State channels are declared once, up front, in '
-        'describeState - their storage is allocated and announced at '
-        'bring-up, and their index has to match the other isolate copy\'s.',
-      );
-    }
+    if (!_sealed) return;
+    final owner = _game?.runtimeType.toString() ?? 'this game';
+    throw StateError(
+      'a state channel was declared after $owner\'s boot finished. State '
+      'channels are declared once, up front - on a field of the Game, or in '
+      'describeState - because their storage is allocated and announced at '
+      'bring-up and their index has to match the other isolate copy\'s.',
+    );
   }
 
   StateChannel<int> _int(_ChannelFormat format, int initial) {
     _checkOpen();
-    final channel = _IntStateChannel(
-      index: _game._stateChannels.length,
-      format: format,
-      initialValue: initial,
-      runtime: _runtime,
-    );
-    _game._stateChannels.add(channel);
+    final channel = _IntStateChannel(format: format, initialValue: initial);
+    _collected.add(channel);
     return channel;
   }
 
   StateChannel<double> _float(_ChannelFormat format, double initial) {
     _checkOpen();
-    final channel = _DoubleStateChannel(
-      index: _game._stateChannels.length,
-      format: format,
-      initialValue: initial,
-      runtime: _runtime,
-    );
-    _game._stateChannels.add(channel);
+    final channel = _DoubleStateChannel(format: format, initialValue: initial);
+    _collected.add(channel);
     return channel;
   }
 
@@ -3645,12 +3856,8 @@ final class _StateDescriptor implements StateDescriptor {
   @override
   StateChannel<bool> hasBool([bool initial = false]) {
     _checkOpen();
-    final channel = _BoolStateChannel(
-      index: _game._stateChannels.length,
-      initialValue: initial,
-      runtime: _runtime,
-    );
-    _game._stateChannels.add(channel);
+    final channel = _BoolStateChannel(initialValue: initial);
+    _collected.add(channel);
     return channel;
   }
 }

@@ -96,7 +96,7 @@ void _settle() {
 }
 
 Future<_Scene> _boot() async {
-  run = await Game.startInline(_Game());
+  run = await Game.startInline(_Game.new);
   addTearDown(() async {
     if (run.isRunning) await run.stop();
     physics.dispose();

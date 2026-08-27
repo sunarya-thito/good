@@ -355,8 +355,8 @@ const Duration _step = Duration(milliseconds: 16);
 void main() {
   final running = <Game>[];
 
-  Future<T> boot<T extends Game>(T game) async {
-    await Game.startInline(game);
+  Future<T> boot<T extends Game>(T Function() create) async {
+    final game = await Game.startInline(create);
     running.add(game);
     return game;
   }
@@ -385,8 +385,10 @@ void main() {
         .schemaHash;
 
     test('renaming a message class does not change the hash', () async {
-      final original = await boot(_OneMessageGame(_Fire.new, 'fire'));
-      final renamed = await boot(_OneMessageGame(_FireRenamed.new, 'fire'));
+      final original = await boot(() => _OneMessageGame(_Fire.new, 'fire'));
+      final renamed = await boot(
+        () => _OneMessageGame(_FireRenamed.new, 'fire'),
+      );
 
       expect(
         hashOf(renamed),
@@ -399,8 +401,8 @@ void main() {
     });
 
     test('declaring on the field or in the hook is one wire format', () async {
-      final onFields = await boot(_OneMessageGame(_Fire.new, 'fire'));
-      final inHook = await boot(_OneMessageGame(_FireByHook.new, 'fire'));
+      final onFields = await boot(() => _OneMessageGame(_Fire.new, 'fire'));
+      final inHook = await boot(() => _OneMessageGame(_FireByHook.new, 'fire'));
 
       expect(
         hashOf(inHook),
@@ -414,8 +416,8 @@ void main() {
     });
 
     test('a different id does change the hash', () async {
-      final fire = await boot(_OneMessageGame(_Fire.new, 'fire'));
-      final renamedId = await boot(_OneMessageGame(_Fire.new, 'fire.v2'));
+      final fire = await boot(() => _OneMessageGame(_Fire.new, 'fire'));
+      final renamedId = await boot(() => _OneMessageGame(_Fire.new, 'fire.v2'));
 
       expect(
         hashOf(renamedId),
@@ -429,7 +431,7 @@ void main() {
 
     test('two messages cannot share an id', () async {
       await expectLater(
-        boot(_CollidingGame()),
+        boot(_CollidingGame.new),
         throwsA(
           isA<StateError>().having(
             (e) => e.message,
@@ -446,7 +448,7 @@ void main() {
 
     test('an id cannot be empty', () async {
       await expectLater(
-        boot(_OneMessageGame(_Fire.new, '')),
+        boot(() => _OneMessageGame(_Fire.new, '')),
         throwsA(isA<ArgumentError>()),
         reason:
             'an empty id is a forgotten id, and every message that forgot '
@@ -465,7 +467,7 @@ void main() {
   test(
     'offline, a host-targeted message runs on the machine that sent it',
     () async {
-      final game = await boot(_NetGame());
+      final game = await boot(_NetGame.new);
       final state = stateOf(game);
 
       state.fire((angle: 0.5, weapon: 3));
@@ -481,8 +483,8 @@ void main() {
   );
 
   test('a client request runs on the host and nowhere else', () async {
-    final host = await boot(_NetGame());
-    final client = await boot(_NetGame());
+    final host = await boot(_NetGame.new);
+    final client = await boot(_NetGame.new);
     await stateOf(host).network.host(SessionOptions(id: SessionId('AAAAAA')));
     await stateOf(client).network.join(SessionId('AAAAAA'));
     exchange(<Game>[host, client]);
@@ -500,8 +502,8 @@ void main() {
   });
 
   test('a host decision runs on the clients and not on the host', () async {
-    final host = await boot(_NetGame());
-    final client = await boot(_NetGame());
+    final host = await boot(_NetGame.new);
+    final client = await boot(_NetGame.new);
     await stateOf(host).network.host(SessionOptions(id: SessionId('BBBBBB')));
     await stateOf(client).network.join(SessionId('BBBBBB'));
     exchange(<Game>[host, client]);
@@ -516,8 +518,8 @@ void main() {
   test(
     'an everyone message runs on the host too, through the same bytes',
     () async {
-      final host = await boot(_NetGame());
-      final client = await boot(_NetGame());
+      final host = await boot(_NetGame.new);
+      final client = await boot(_NetGame.new);
       await stateOf(host).network.host(SessionOptions(id: SessionId('CCCCCC')));
       await stateOf(client).network.join(SessionId('CCCCCC'));
       exchange(<Game>[host, client]);
@@ -531,8 +533,8 @@ void main() {
   );
 
   test('a client may not send what only the host may send', () async {
-    final host = await boot(_NetGame());
-    final client = await boot(_NetGame());
+    final host = await boot(_NetGame.new);
+    final client = await boot(_NetGame.new);
     await stateOf(host).network.host(SessionOptions(id: SessionId('DDDDDD')));
     await stateOf(client).network.join(SessionId('DDDDDD'));
     exchange(<Game>[host, client]);
@@ -547,8 +549,8 @@ void main() {
   });
 
   test('messages sent in one tick keep their order on their channel', () async {
-    final host = await boot(_NetGame());
-    final client = await boot(_NetGame());
+    final host = await boot(_NetGame.new);
+    final client = await boot(_NetGame.new);
     await stateOf(host).network.host(SessionOptions(id: SessionId('EEEEEE')));
     await stateOf(client).network.join(SessionId('EEEEEE'));
     exchange(<Game>[host, client]);
@@ -564,8 +566,8 @@ void main() {
   test(
     'a channel orders against itself and not against the other one',
     () async {
-      final host = await boot(_NetGame());
-      final client = await boot(_NetGame());
+      final host = await boot(_NetGame.new);
+      final client = await boot(_NetGame.new);
       await stateOf(host).network.host(SessionOptions(id: SessionId('PPPPPP')));
       await stateOf(client).network.join(SessionId('PPPPPP'));
       exchange(<Game>[host, client]);
@@ -593,9 +595,9 @@ void main() {
   );
 
   test('sendTo reaches one client and not the others', () async {
-    final host = await boot(_NetGame());
-    final one = await boot(_NetGame());
-    final two = await boot(_NetGame());
+    final host = await boot(_NetGame.new);
+    final one = await boot(_NetGame.new);
+    final two = await boot(_NetGame.new);
     await stateOf(host).network.host(SessionOptions(id: SessionId('FFFFFF')));
     await stateOf(one).network.join(SessionId('FFFFFF'));
     await stateOf(two).network.join(SessionId('FFFFFF'));
@@ -610,8 +612,8 @@ void main() {
   });
 
   test('the roster reaches an ordinary listener on both machines', () async {
-    final host = await boot(_WatchedGame());
-    final client = await boot(_WatchedGame());
+    final host = await boot(_WatchedGame.new);
+    final client = await boot(_WatchedGame.new);
     await stateOf(host).network.host(SessionOptions(id: SessionId('GGGGGG')));
     exchange(<Game>[host]);
     await stateOf(client).network.join(SessionId('GGGGGG'));
@@ -638,8 +640,8 @@ void main() {
   });
 
   test('a message carries a payload no declaration could have sized', () async {
-    final host = await boot(_NetGame());
-    final client = await boot(_NetGame());
+    final host = await boot(_NetGame.new);
+    final client = await boot(_NetGame.new);
     await stateOf(host).network.host(SessionOptions(id: SessionId('DDDDDD')));
     await stateOf(client).network.join(SessionId('DDDDDD'));
     exchange([host, client]);
@@ -666,8 +668,8 @@ void main() {
   // half a megabyte, pass every test, and fail only against a real peer.
   group('what a carrier will take', () {
     test('an oversized unreliable record is refused at the write', () async {
-      final host = await boot(_NetGame());
-      final client = await boot(_NetGame());
+      final host = await boot(_NetGame.new);
+      final client = await boot(_NetGame.new);
       await stateOf(host).network.host(SessionOptions(id: SessionId('EEEEEE')));
       await stateOf(client).network.join(SessionId('EEEEEE'));
       exchange([host, client]);
@@ -706,7 +708,7 @@ void main() {
     });
 
     test('the ceiling a record meets is its own channel', () async {
-      final game = await boot(_NetGame());
+      final game = await boot(_NetGame.new);
       final state = stateOf(game);
       final reliable = LoopbackNetTransport.defaultMaxReliableBytes;
 
@@ -743,7 +745,7 @@ void main() {
     });
 
     test('a game of one meets the same ceiling as a game of two', () async {
-      final game = await boot(_NetGame());
+      final game = await boot(_NetGame.new);
 
       expect(
         () {
@@ -768,8 +770,8 @@ void main() {
     });
 
     test('a tick that outgrows a datagram is cut, not refused', () async {
-      final host = await boot(_NetGame());
-      final client = await boot(_NetGame());
+      final host = await boot(_NetGame.new);
+      final client = await boot(_NetGame.new);
       await stateOf(host).network.host(SessionOptions(id: SessionId('FFFFFF')));
       await stateOf(client).network.join(SessionId('FFFFFF'));
       exchange([host, client]);
@@ -803,8 +805,8 @@ void main() {
 
   test('a length-free field is a different message from an inline one of the '
       'same width', () async {
-    final tail = await boot(_OneMessageGame(_TailKind.new, 'kind'));
-    final inline = await boot(_OneMessageGame(_InlineKind.new, 'kind'));
+    final tail = await boot(() => _OneMessageGame(_TailKind.new, 'kind'));
+    final inline = await boot(() => _OneMessageGame(_InlineKind.new, 'kind'));
 
     NetMessageBase firstMessageOf(Game game) =>
         (game.state as MultiplayerState).getSystem<NetworkSystem>().registry[0];
@@ -839,9 +841,9 @@ void main() {
   });
 
   test('the schema hash tracks the message declarations and nothing else', () async {
-    final plain = await boot(_NetGame());
-    final watched = await boot(_WatchedGame());
-    final skewed = await boot(_SkewedGame());
+    final plain = await boot(_NetGame.new);
+    final watched = await boot(_WatchedGame.new);
+    final skewed = await boot(_SkewedGame.new);
 
     expect(
       stateOf(watched).network.registry.schemaHash,

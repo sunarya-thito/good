@@ -59,26 +59,32 @@ reads it) or on the **`Game`** (for actions several systems share). All sources
 share one descriptor, so a type-level default registered anywhere is visible
 everywhere.
 
-`Input.of` is for a system and nothing else. `SystemDescriptor.has` takes a
-constructor, so the framework builds a system and the registry is open while
-its fields initialise; a `Game` is built by you and handed to `Game.start`, and
-its pass runs on both isolate copies. A `Game`'s actions stay in the hook:
+`Input.of` works on both, and for the same reason: `SystemDescriptor.has` and
+`Game.start` each take a constructor, so the framework does the building and
+the registry is open while the fields initialise.
+
+The hook survives on both as well, and there is one thing that needs it:
+`hasDefaultValue` hands nothing back, so it has no field to live on. Either
+owner may use both forms at once — its fields declare first, its hook second:
 
 ```dart
 class MyGame extends Game {
-  late final Input<bool> openMenu;
+  final openMenu = Input.of(const TriggerBinding(InputKey.escape));
+
+  late final Input<double> throttle;
 
   @override
   void describeInputs(InputDescriptor input) {
     super.describeInputs(input);
-    openMenu = input.has<bool>(const TriggerBinding(InputKey.escape));
+    input.hasDefaultValue<double>(0);
+    throttle = input.has<double>();
   }
 }
 ```
 
-The hook survives on a system too, and there is one thing that needs it:
-`hasDefaultValue` hands nothing back, so it has no field to live on. A system
-may use both forms at once — its fields declare first, its hook second.
+That game starts as `Game.start(MyGame.new)` — a constructor, not an instance.
+Building it yourself leaves `Input.of` with no registry to declare into, and it
+says so rather than declaring into nothing.
 
 ## Where values come from
 

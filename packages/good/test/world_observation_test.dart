@@ -111,7 +111,7 @@ class _Game extends Game {
 }
 
 Future<(Game, _Scene)> _boot() async {
-  final run = await Game.startInline(_Game());
+  final run = await Game.startInline(_Game.new);
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });

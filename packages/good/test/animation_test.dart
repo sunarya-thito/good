@@ -116,7 +116,7 @@ void _tick(int steps) {
 }
 
 Future<_Game> _boot() async {
-  final game = await Game.startInline(_Game());
+  final game = await Game.startInline(_Game.new);
   addTearDown(() async {
     if (game.isRunning) await game.stop();
   });

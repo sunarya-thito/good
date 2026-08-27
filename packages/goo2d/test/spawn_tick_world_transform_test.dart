@@ -155,7 +155,7 @@ void main() {
     // The happy case, and the reason the broken one hid for so long. Nothing
     // on this page has published yet, so the read falls through to the write
     // slot and the system sees the position the spawner just wrote.
-    final run = await Game.startInline(_Game());
+    final run = await Game.startInline(_Game.new);
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
@@ -182,7 +182,7 @@ void main() {
     // check is as stale as the data itself. The per-entity hot path is
     // untouched; the extra pass costs nothing in a tick where nothing
     // spawned.
-    final run = await Game.startInline(_Game());
+    final run = await Game.startInline(_Game.new);
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
@@ -235,7 +235,7 @@ void main() {
     // slider: it needs a *new row on an already-published page*, and a
     // recycled row instead shows the previous occupant's position, which is
     // somewhere plausible in the swarm and invisible.
-    final run = await Game.startInline(_Game());
+    final run = await Game.startInline(_Game.new);
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
@@ -272,7 +272,7 @@ void main() {
     // against a transform written moments earlier in this same pass - which
     // works because `_spawned` is in spawn order and a parent necessarily
     // precedes the children that name it.
-    final run = await Game.startInline(_Game());
+    final run = await Game.startInline(_Game.new);
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });

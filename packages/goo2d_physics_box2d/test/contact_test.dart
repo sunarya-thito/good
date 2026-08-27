@@ -142,7 +142,7 @@ class _Game extends Game {
 const Duration _step = Duration(microseconds: 16667);
 
 Future<_Scene> _boot() async {
-  run = await Game.startInline(_Game());
+  run = await Game.startInline(_Game.new);
   addTearDown(() async {
     if (run.isRunning) await run.stop();
     physics.dispose();

@@ -665,8 +665,9 @@ class _DuplicateSystemGame extends _TestGame {
   GameState createState() => _DuplicateSystemState();
 }
 
-Future<T> _game<T extends Game>(T game) async {
-  run = await Game.startInline(game);
+Future<T> _game<T extends Game>(T Function() create) async {
+  final game = await Game.startInline(create);
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });
@@ -689,7 +690,7 @@ void main() {
 
   group('accumulator', () {
     test('runs one step per whole fixedTimeStep of elapsed time', () async {
-      final game = await _game(_TestGame());
+      final game = await _game(_TestGame.new);
       expect(_state(game).advance(_step * 3), 3);
       expect(run.tick, 3);
     });
@@ -697,7 +698,7 @@ void main() {
     test(
       'a partial step accumulates instead of being lost or rounded up',
       () async {
-        final game = await _game(_TestGame());
+        final game = await _game(_TestGame.new);
         final state = _state(game);
         expect(state.advance(const Duration(milliseconds: 6)), 0);
         expect(
@@ -716,13 +717,13 @@ void main() {
     );
 
     test('zero elapsed time runs nothing', () async {
-      final game = await _game(_TestGame());
+      final game = await _game(_TestGame.new);
       expect(_state(game).advance(Duration.zero), 0);
       expect(run.tick, 0);
     });
 
     test('a long stall is capped at maxFixedStepsPerAdvance', () async {
-      final game = await _game(_TestGame());
+      final game = await _game(_TestGame.new);
       // 100 steps' worth of wall clock in one go.
       expect(_state(game).advance(_step * 100), game.maxFixedStepsPerAdvance);
       expect(run.tick, game.maxFixedStepsPerAdvance);
@@ -731,7 +732,7 @@ void main() {
     test(
       'the backlog past the cap is dropped, not carried into next frame',
       () async {
-        final game = await _game(_TestGame());
+        final game = await _game(_TestGame.new);
         _state(game).advance(_step * 100);
         // If the remaining ~95 steps had been kept in the accumulator, this
         // would immediately run another full capped batch - the spiral.
@@ -740,7 +741,7 @@ void main() {
     );
 
     test('sub-step phase survives the drop', () async {
-      final game = await _game(_TestGame());
+      final game = await _game(_TestGame.new);
       // 100 steps + 3ms. After capping, the 3ms remainder must still be
       // there, so 7ms more is enough for the next step.
       _state(game).advance(_step * 100 + const Duration(milliseconds: 3));
@@ -753,7 +754,7 @@ void main() {
   // discarded instead of spent on the way back in.
   group('app visibility', () {
     test('hiding stops the fixed tick and showing starts it again', () async {
-      final game = await _game(_VisibilityGame());
+      final game = await _game(_VisibilityGame.new);
       final state = _state(game);
       state.startTimer();
       addTearDown(state.stopTimer);
@@ -790,7 +791,7 @@ void main() {
     });
 
     test('showing discards the time left over from before hiding', () async {
-      final game = await _game(_VisibilityGame());
+      final game = await _game(_VisibilityGame.new);
       final state = _state(game);
       // The state 'sub-step phase survives the drop' pins: the batch is
       // capped and dropped, and 3ms of phase stays in the accumulator. Seven
@@ -813,7 +814,7 @@ void main() {
     });
 
     test('a game can opt out and keep ticking while hidden', () async {
-      final game = await _game(_AlwaysTickingGame());
+      final game = await _game(_AlwaysTickingGame.new);
       final state = _state(game);
       state.startTimer();
       addTearDown(state.stopTimer);
@@ -861,7 +862,7 @@ void main() {
     });
 
     test('the same state twice is not two events', () async {
-      final game = await _game(_VisibilityGame());
+      final game = await _game(_VisibilityGame.new);
       final state = _state(game);
       // Flutter walks inactive -> hidden -> paused on the way down and back
       // up again, so "not visible" arrives more than once around any real
@@ -897,14 +898,14 @@ void main() {
   // see `RandomStream`'s doc for what else that needs.
   group('seeded randomness', () {
     test('the same seed draws the same sequence', () async {
-      final first = await _game(_RandomGame());
+      final first = await _game(_RandomGame.new);
       final drawn = <int>[for (var i = 0; i < 8; i++) first.a.nextInt(1000)];
       await run.stop();
       SceneRegistry.reset();
       ArchetypeRegistry.reset();
       ComponentTypeRegistry.reset();
 
-      final second = await _game(_RandomGame());
+      final second = await _game(_RandomGame.new);
       expect(
         <int>[for (var i = 0; i < 8; i++) second.a.nextInt(1000)],
         drawn,
@@ -921,14 +922,14 @@ void main() {
     });
 
     test('a different seed draws a different sequence', () async {
-      final first = await _game(_RandomGame(randomSeed: 1));
+      final first = await _game(() => _RandomGame(randomSeed: 1));
       final drawn = <int>[for (var i = 0; i < 8; i++) first.a.nextInt(1000)];
       await run.stop();
       SceneRegistry.reset();
       ArchetypeRegistry.reset();
       ComponentTypeRegistry.reset();
 
-      final second = await _game(_RandomGame(randomSeed: 2));
+      final second = await _game(() => _RandomGame(randomSeed: 2));
       expect(<int>[
         for (var i = 0; i < 8; i++) second.a.nextInt(1000),
       ], isNot(drawn));
@@ -938,7 +939,7 @@ void main() {
     // rather than shared. A system that throws is disabled by the engine now,
     // so "a system stopped drawing" is something that happens on its own.
     test('disabling a system does not shift another stream', () async {
-      final game = await _game(_RandomGame());
+      final game = await _game(_RandomGame.new);
       _state(game).advance(_step * 4);
       final withBoth = <int>[..._drawsB.drawn];
       expect(withBoth, hasLength(4));
@@ -948,7 +949,7 @@ void main() {
       ArchetypeRegistry.reset();
       ComponentTypeRegistry.reset();
 
-      final again = await _game(_RandomGame());
+      final again = await _game(_RandomGame.new);
       _state(again).disableSystem<_DrawsFromA>();
       _state(again).advance(_step * 4);
 
@@ -980,7 +981,7 @@ void main() {
       // Both halves matter. Spawning it first is what keeps the identity
       // fixed; asking it last is what makes a stateful implementation fail.
       Future<int> valueAskedAfter(int neighbours) async {
-        final game = await _game(_RandomGame());
+        final game = await _game(_RandomGame.new);
         final scene = _state(game).loadedScenes.single;
         final level = (run.state as _FixtureState).level;
         final watched = scene.addEntity(level.unit);
@@ -1015,7 +1016,7 @@ void main() {
   });
   group('control-delivered commands', () {
     test('a control handler writing component data trips the guard', () async {
-      final game = await _game(_BadControlGame());
+      final game = await _game(_BadControlGame.new);
       final state = _state(game) as _BadControlState;
       state.victim = state.loadedScenes.single.addEntity(state.level.unit);
       // One committed tick, so the page has published - the assert stays
@@ -1041,7 +1042,7 @@ void main() {
 
     test('a command that answers cannot be control-delivered', () async {
       expect(
-        () => _game(_AnsweringGame()),
+        () => _game(_AnsweringGame.new),
         throwsA(
           isA<StateError>().having(
             (e) => e.message,
@@ -1059,7 +1060,7 @@ void main() {
 
     test('the refusal holds on the main descriptor too', () async {
       expect(
-        () => _game(_AnsweringMainGame()),
+        () => _game(_AnsweringMainGame.new),
         throwsA(
           isA<StateError>().having(
             (e) => e.message,
@@ -1076,7 +1077,7 @@ void main() {
   });
   group('a system that throws', () {
     test('does not stop the listeners declared after it', () async {
-      final game = await _game(_ThrowGame());
+      final game = await _game(_ThrowGame.new);
       _thrower
         ..ran = 0
         ..throwOnTick = 1;
@@ -1098,7 +1099,7 @@ void main() {
     });
 
     test('is disabled, and the rest of the game keeps ticking', () async {
-      final game = await _game(_ThrowGame());
+      final game = await _game(_ThrowGame.new);
       final state = _state(game);
       _thrower
         ..ran = 0
@@ -1136,7 +1137,7 @@ void main() {
       FlutterError.onError = (details) => reportedToFlutter = details;
       addTearDown(() => FlutterError.onError = previousOnError);
 
-      final game = await _game(_ReportingThrowGame());
+      final game = await _game(_ReportingThrowGame.new);
       final state = _state(game);
       _thrower
         ..ran = 0
@@ -1192,7 +1193,7 @@ void main() {
       FlutterError.onError = (_) {};
       addTearDown(() => FlutterError.onError = previousOnError);
 
-      final game = await _game(_ReportingThrowGame());
+      final game = await _game(_ReportingThrowGame.new);
       final state = _state(game);
       _thrower
         ..ran = 0
@@ -1224,7 +1225,7 @@ void main() {
     });
 
     test('a report that cannot be sent does not take the tick with it', () async {
-      final game = await _game(_BadReportGame());
+      final game = await _game(_BadReportGame.new);
       final state = _state(game);
       _thrower
         ..ran = 0
@@ -1252,7 +1253,7 @@ void main() {
       // Coroutines were already guarded, in CoroutineScheduler.step, and this
       // change did not touch them. Pinned so a later edit to one guard does
       // not quietly assume it owns both.
-      final game = await _game(_TestGame());
+      final game = await _game(_TestGame.new);
       final state = _state(game);
       Object? landed;
       Iterable<Object?> boom() sync* {
@@ -1277,7 +1278,7 @@ void main() {
   });
   group('time scale and pause', () {
     test('a scale of zero runs no fixed ticks at all', () async {
-      final game = await _game(_TestGame());
+      final game = await _game(_TestGame.new);
       final state = _state(game);
       state.timeScale = 0;
 
@@ -1293,7 +1294,7 @@ void main() {
     });
 
     test('a half scale runs half as many ticks', () async {
-      final game = await _game(_TestGame());
+      final game = await _game(_TestGame.new);
       final state = _state(game);
       state.timeScale = 0.5;
 
@@ -1309,7 +1310,7 @@ void main() {
     test(
       'pausing stops the fixed tick and leaves presentation running',
       () async {
-        await _game(_PhaseGame());
+        await _game(_PhaseGame.new);
         run.state.advance(_step * 2);
         final simmed = log.where((e) => e == 'sim').length;
         final presented = log.where((e) => e == 'present').length;
@@ -1336,7 +1337,7 @@ void main() {
     test(
       'stepOnce advances one step and leaves the accumulator alone',
       () async {
-        final game = await _game(_TestGame());
+        final game = await _game(_TestGame.new);
         final state = _state(game);
         state.paused = true;
         // Three milliseconds of phase, short of the ten a step costs.
@@ -1362,7 +1363,7 @@ void main() {
     );
 
     test('unpausing returns to the scale it was paused at', () async {
-      final game = await _game(_TestGame());
+      final game = await _game(_TestGame.new);
       final state = _state(game);
       state.timeScale = 0.5;
       state.paused = true;
@@ -1380,7 +1381,7 @@ void main() {
     });
 
     test('a negative scale is refused', () async {
-      final game = await _game(_TestGame());
+      final game = await _game(_TestGame.new);
       expect(
         () => _state(game).timeScale = -1,
         throwsA(isA<AssertionError>()),
@@ -1395,7 +1396,7 @@ void main() {
     test(
       'a game paused by the game stays paused across hide and show',
       () async {
-        final game = await _game(_VisibilityGame());
+        final game = await _game(_VisibilityGame.new);
         final state = _state(game);
         state.paused = true;
 
@@ -1416,7 +1417,7 @@ void main() {
   });
   group('presentation phase (Tickable)', () {
     test('runs once per frame, not once per simulation step', () async {
-      await _game(_PhaseGame());
+      await _game(_PhaseGame.new);
       // One advance worth three whole fixed steps.
       expect(run.state.advance(_step * 3), 3);
       expect(
@@ -1435,7 +1436,7 @@ void main() {
     });
 
     test('runs even on a frame that afforded no simulation step', () async {
-      await _game(_PhaseGame());
+      await _game(_PhaseGame.new);
       expect(
         run.state.advance(const Duration(milliseconds: 4)),
         0,
@@ -1452,7 +1453,7 @@ void main() {
     });
 
     test('presentation runs after simulation within one frame', () async {
-      await _game(_PhaseGame());
+      await _game(_PhaseGame.new);
       run.state.advance(_step);
       // Not just "both ran" - the ordering is the entire contract. A
       // Tickable reads what the tick published, so it must come after.
@@ -1462,7 +1463,7 @@ void main() {
     test(
       'the delta is the frame\'s elapsed time, not the fixed step',
       () async {
-        await _game(_PhaseGame());
+        await _game(_PhaseGame.new);
         const frame = Duration(milliseconds: 35); // 3 steps + 5ms remainder
         run.state.advance(frame);
         expect(
@@ -1478,7 +1479,7 @@ void main() {
     test(
       'a Tickable-only system never receives a fixed tick, and vice versa',
       () async {
-        await _game(_PhaseGame());
+        await _game(_PhaseGame.new);
         run.state.advance(_step);
         // _PresentSystem is Tickable and not FixedTickable: it logs 'P' once
         // (presentation) and never participates in the simulation pass.
@@ -1490,7 +1491,7 @@ void main() {
 
   group('system execution', () {
     test('systems tick in declaration order, every step', () async {
-      final game = await _game(_TestGame());
+      final game = await _game(_TestGame.new);
       _state(game).advance(_step * 2);
       expect(log, ['A', 'B', 'A', 'B']);
     });
@@ -1498,7 +1499,7 @@ void main() {
     test(
       'a declared system that is not FixedTickable is simply skipped',
       () async {
-        final game = await _game(_TestGame());
+        final game = await _game(_TestGame.new);
         _state(game).advance(_step);
         expect(log, ['A', 'B']);
         expect(run.state.getSystem<_InertSystem>(), isA<_InertSystem>());
@@ -1508,7 +1509,7 @@ void main() {
     test(
       'disableSystem stops a system ticking; enableSystem resumes it',
       () async {
-        final game = await _game(_TestGame());
+        final game = await _game(_TestGame.new);
         _state(game).advance(_step);
         expect(log, ['A', 'B']);
 
@@ -1526,7 +1527,7 @@ void main() {
     );
 
     test('disableSystems/enableSystems take a set of types', () async {
-      final game = await _game(_TestGame());
+      final game = await _game(_TestGame.new);
       run.state.disableSystems([_SystemA, _SystemB]);
       _state(game).advance(_step);
       expect(log, isEmpty);
@@ -1536,7 +1537,7 @@ void main() {
     });
 
     test('an undeclared system cannot be toggled or fetched', () async {
-      await _game(_TestGame());
+      await _game(_TestGame.new);
       expect(() => run.state.getSystem<_CensusSystem>(), returnsNormally);
       expect(
         () => run.state.disableSystem<_UndeclaredSystem>(),
@@ -1557,12 +1558,12 @@ void main() {
     test(
       'declaring the same system twice is an error, not a silent duplicate',
       () {
-        expect(Game.startInline(_DuplicateSystemGame()), throwsStateError);
+        expect(Game.startInline(_DuplicateSystemGame.new), throwsStateError);
       },
     );
 
     test('a system reaches its siblings and its scene', () async {
-      final game = await _game(_TestGame());
+      final game = await _game(_TestGame.new);
       final census = run.state.getSystem<_CensusSystem>();
       expect(
         census.getSystem<_SystemA>(),
@@ -1577,7 +1578,7 @@ void main() {
     test(
       'a system that sorts itself first runs first, despite declaring last',
       () async {
-        final game = await _game(_OrderingGame());
+        final game = await _game(_OrderingGame.new);
         _state(game).advance(_step);
         expect(
           log.first,
@@ -1593,7 +1594,7 @@ void main() {
     test(
       'systems with no opinion keep declaration order (sort stability)',
       () async {
-        final game = await _game(_OrderingGame());
+        final game = await _game(_OrderingGame.new);
         _state(game).advance(_step);
         final i1 = log.indexOf('1');
         final i2 = log.indexOf('2');
@@ -1611,7 +1612,7 @@ void main() {
     test(
       'full order matches declaration order with only C moved to the front',
       () async {
-        final game = await _game(_OrderingGame());
+        final game = await _game(_OrderingGame.new);
         _state(game).advance(_step);
         expect(
           log,
@@ -1630,7 +1631,7 @@ void main() {
     test(
       'a targeted constraint survives two systems that both claim to be first',
       () async {
-        final game = await _game(_OrderingGame());
+        final game = await _game(_OrderingGame.new);
         _state(game).advance(_step);
         expect(
           log.indexOf('spawn'),
@@ -1646,7 +1647,7 @@ void main() {
 
     test('systems whose stated positions form a cycle are rejected', () async {
       await expectLater(
-        Game.startInline(_CyclicGame()),
+        Game.startInline(_CyclicGame.new),
         throwsA(
           isA<StateError>().having(
             (e) => e.message,
@@ -1665,7 +1666,7 @@ void main() {
 
   group('tick phases', () {
     test('each dispatcher resolves its listeners at boot, by type', () async {
-      final game = await _game(_PhaseGame());
+      final game = await _game(_PhaseGame.new);
       final state = _state(game);
 
       // The point of the whole event design: by the time anything is
@@ -1685,7 +1686,7 @@ void main() {
     });
 
     test('a disabled system stays collected and declines', () async {
-      final game = await _game(_PhaseGame());
+      final game = await _game(_PhaseGame.new);
       final state = _state(game);
       state.advance(_step);
       expect(log, ['sim', 'P', 'present']);
@@ -1714,7 +1715,7 @@ void main() {
     test(
       'a spawn command round-trips to a real entity with onMounted run',
       () async {
-        final game = await _game(_TestGame());
+        final game = await _game(_TestGame.new);
         final scene = _state(game).singleScene<_TestScene>();
         final archetypeId = scene.unit.archetypeId;
 
@@ -1746,7 +1747,7 @@ void main() {
     test(
       'a command lands before systems run, on the very tick it arrives',
       () async {
-        final game = await _game(_TestGame());
+        final game = await _game(_TestGame.new);
         final census = run.state.getSystem<_CensusSystem>();
 
         _state(game).advance(_step); // tick 1: nothing exists
@@ -1766,7 +1767,7 @@ void main() {
     test(
       'a burst of commands travels as one batch and lands on one tick',
       () async {
-        final game = await _game(_TestGame());
+        final game = await _game(_TestGame.new);
         final scene = _state(game).singleScene<_TestScene>();
         final id = scene.unit.archetypeId;
 
@@ -1795,7 +1796,7 @@ void main() {
     test(
       'a user-declared command runs its handler on the game isolate',
       () async {
-        final game = await _game(_CommandGame());
+        final game = await _game(_CommandGame.new);
         final scene = _state(game).singleScene<_TestScene>();
         final entity = _state(game).loadedScenes.single.addEntity(scene.unit);
         _state(game).advance(_step);
@@ -1808,7 +1809,7 @@ void main() {
     );
 
     test('a command nothing handles is refused at the sender', () async {
-      await _game(_TestGame());
+      await _game(_TestGame.new);
       expect(
         () => _NudgeCommand()((entity: const Entity(0), amount: 1)),
         throwsStateError,
@@ -1819,7 +1820,7 @@ void main() {
     });
 
     test('a command declared on the GameState is refused at boot', () {
-      expect(Game.startInline(_BadCommandGame()), throwsStateError);
+      expect(Game.startInline(_BadCommandGame.new), throwsStateError);
     });
 
     // "reaching the command channel before start throws" was asserted here
@@ -1830,7 +1831,7 @@ void main() {
     // construction rather than diagnosed at runtime.
 
     test('stopping fails a batch still queued for a tick window', () async {
-      final game = await _game(_TestGame());
+      final game = await _game(_TestGame.new);
       // Sent and deliberately not advanced: a game-destination batch waits
       // for the tick window whichever way the game was booted, so this is
       // sitting in the transport's inbox holding the only completer that
@@ -1866,7 +1867,7 @@ void main() {
     });
 
     test('a scene refuses a prefab another scene registered', () async {
-      final game = await _game(_TestGame());
+      final game = await _game(_TestGame.new);
       final scene = _state(game).singleScene<_TestScene>();
       // Deliberately brought up on the *same* pool the loaded scene uses.
       // That is the case a pool-identity check could not see: ownership used
@@ -1893,7 +1894,7 @@ void main() {
 
   group('tick notification', () {
     test('fires once per presented frame, with the tick it depicts', () async {
-      final game = await _game(_TestGame());
+      final game = await _game(_TestGame.new);
       final ticks = <int>[];
       void listener(int tick) => ticks.add(tick);
 
@@ -1916,7 +1917,7 @@ void main() {
     });
 
     test('the pool has committed by the time a listener runs', () async {
-      final game = await _game(_TestGame());
+      final game = await _game(_TestGame.new);
       final scene = _state(game).singleScene<_TestScene>();
       final entity = _state(game).loadedScenes.single.addEntity(scene.unit);
       run.runtimeOrNull!.addTickListener((_) {
@@ -1933,7 +1934,7 @@ void main() {
     // is carried by the type rather than by a test.
 
     test('the inline copy is the one that simulates', () async {
-      final game = await _game(_TestGame());
+      final game = await _game(_TestGame.new);
       expect(
         run.state.isSimulating,
         isTrue,
@@ -1948,8 +1949,8 @@ void main() {
     });
 
     test('starting twice is an error', () async {
-      final game = await _game(_TestGame());
-      expect(Game.startInline(game), throwsStateError);
+      final game = await _game(_TestGame.new);
+      expect(Game.startInline(() => game), throwsStateError);
     });
 
     test(
@@ -1971,7 +1972,7 @@ void main() {
     );
 
     test('a GameState with no scene is legitimate, and still ticks', () async {
-      final game = await _game(_ScenelessGame());
+      final game = await _game(_ScenelessGame.new);
       expect(
         run.state.scene,
         isNull,
@@ -2006,7 +2007,7 @@ void main() {
     test(
       'loadScene is a GameState method, and refuses a mirror copy',
       () async {
-        await _game(_TestGame());
+        await _game(_TestGame.new);
         // Inline, so this copy does simulate and the call is legal - the point
         // is that the method is reached through the state at all.
         expect(run.state.isSimulating, isTrue);
@@ -2026,7 +2027,7 @@ void main() {
   // itself is below.
   group('lastStepCount', () {
     test('reports the steps the last advance ran', () async {
-      await _game(_TestGame());
+      await _game(_TestGame.new);
       // Two spellings of the same number, and they have to agree: a host
       // driving the loop reads the return value, while anything asking after
       // the fact - a HUD dividing a per-advance total to get a per-step one -
@@ -2036,7 +2037,7 @@ void main() {
     });
 
     test('is zero on a frame the accumulator could not fill', () async {
-      await _game(_TestGame());
+      await _game(_TestGame.new);
       expect(run.advance(const Duration(milliseconds: 1)), 0);
       expect(
         run.state.lastStepCount,

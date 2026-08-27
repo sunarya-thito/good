@@ -3,6 +3,7 @@ import 'package:meta/meta.dart';
 import 'package:good/src/command/param.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/event.dart';
+import 'package:good/src/event/state.dart';
 import 'package:good/src/input.dart';
 import 'package:good/src/struct.dart';
 
@@ -213,39 +214,112 @@ abstract final class DeclarationContext {
   /// stack, and the one `Input.of` declares against.
   ///
   /// A stack for the same reason the levels above it are, though nothing
-  /// nests here today: a system's constructor is the only thing that opens
-  /// one, and a system does not build another system. Keeping the shape means
+  /// nests here today: a game's constructor and a system's constructor each
+  /// open one, and neither runs inside the other - a system is built on the
+  /// game isolate, long after the game itself was. Keeping the shape means
   /// "empty" is the same question at every level.
   static final List<InputDescriptor> _inputs = <InputDescriptor>[];
 
-  /// Opens a registry for the duration of one system's constructor. Paired
-  /// with [popInputs] in a `finally` - `SystemDescriptor.has` is the only
-  /// caller.
+  /// Opens a registry for the duration of one constructor call. Paired with
+  /// [popInputs] in a `finally` - `Game.start` and `SystemDescriptor.has`
+  /// are the callers.
   static void pushInputs(InputDescriptor registry) => _inputs.add(registry);
 
   static void popInputs() => _inputs.removeLast();
 
   /// The innermost open registry, or a `StateError` naming the two ways to
-  /// get here: constructing the system yourself, and reaching an `Input.of`
+  /// get here: constructing the owner yourself, and reaching an `Input.of`
   /// call lazily.
   static InputDescriptor get inputs {
     if (_inputs.isEmpty) {
       throw StateError(
-        'An Input was declared with no system being constructed. Input.of '
-        'reads the registry the framework opens around a constructor call, '
-        'so the framework has to be the one constructing:\n'
+        'An Input was declared with no game or system being constructed. '
+        'Input.of reads the registry the framework opens around a '
+        'constructor call, so the framework has to be the one '
+        'constructing:\n'
+        '  Game.start(MyGame.new)             // not Game.start(MyGame())\n'
         '  descriptor.has(PlayerSystem.new)   // not PlayerSystem()\n'
         'A `late final` initialiser lands here too, and that is the point: '
         'it runs on first read, long after boot sealed the registry, so an '
         'action declared that way is refused outright by the seal. Field '
         'initialisers here are eager, always. A describeInputs body is the '
         'other way in: it runs after the constructor, so it declares through '
-        'the InputDescriptor it is handed rather than through Input.of. A '
-        'Game declares there and only there - it is built by the caller, and '
-        'its pass runs on both isolate copies rather than only the one that '
-        'ticks.',
+        'the InputDescriptor it is handed rather than through Input.of - '
+        'which is where InputDescriptor.hasDefaultValue still has to go, on '
+        'a Game as much as on a system, because it hands nothing back for a '
+        'field to hold.',
       );
     }
     return _inputs.last;
+  }
+
+  /// How many `Game`s have finished constructing since whoever is watching
+  /// last zeroed this.
+  ///
+  /// Not a level of the stack - a count, and the only thing here that is not
+  /// a descriptor. It exists because the two windows a `Game` opens can be
+  /// read by the wrong object and there is no other way to notice. A `Game`
+  /// built inside another `Game`'s field initialiser declares into the outer
+  /// game's descriptor and registry, and the result boots and runs: measured
+  /// before the guard existed, the outer game held 2 channels and 1 action
+  /// and the inner one held none of either, with the inner game's own handle
+  /// reading a live value out of storage belonging to a game it is not. A
+  /// `Game` built inside a `GameSystem`'s constructor does the same to that
+  /// system's registry - 1 action on the host, 0 on the game.
+  ///
+  /// Neither is visible from inside the field initialiser. What *is* visible
+  /// is that a second `Game` finished constructing before the first did, and
+  /// counting is all it takes to see it. `Game`'s constructor body is the
+  /// only caller; `Game.start` and `SystemDescriptor.has` save, zero and
+  /// restore it around the constructor call they make.
+  static int gamesConstructed = 0;
+
+  /// Called from `Game`'s constructor body, on every `Game` ever built.
+  static void noteGameConstructed() => gamesConstructed++;
+
+  /// The open state descriptors, innermost last - the sixth level of the
+  /// stack, and the one `Channel.*` declares against.
+  ///
+  /// This one is the outermost level in practice: a `Game` is the only thing
+  /// that declares a channel, and a `Game` is the first object the framework
+  /// builds. Nothing nests inside it that declares another channel, so the
+  /// list is either empty or one deep - kept a stack anyway, so that "empty"
+  /// is the same question at every level.
+  static final List<StateDescriptor> _channels = <StateDescriptor>[];
+
+  /// Opens a descriptor for the duration of one game's constructor. Paired
+  /// with [popChannels] in a `finally` - `Game.start` and `Game.startInline`
+  /// are the only callers.
+  static void pushChannels(StateDescriptor descriptor) =>
+      _channels.add(descriptor);
+
+  static void popChannels() => _channels.removeLast();
+
+  /// The innermost open descriptor, or a `StateError` naming the two ways to
+  /// get here: constructing the game yourself, and reaching a `Channel.*`
+  /// call lazily.
+  static StateDescriptor get channels {
+    if (_channels.isEmpty) {
+      throw StateError(
+        'A Channel was declared with no game being constructed. Channel.* '
+        'reads the descriptor the framework opens around a constructor call, '
+        'so the framework has to be the one constructing:\n'
+        '  Game.start(MyGame.new)   // not Game.start(MyGame())\n'
+        'A `late final` initialiser lands here too, and that is the point: '
+        'it runs on first read, long after the descriptor was sealed and the '
+        'storage allocated, so a channel declared that way would have no '
+        'triple buffer and no index to be known by on the other isolate. '
+        'Field initialisers here are eager, always. A describeState body is '
+        'the other way in: it runs after the constructor, so it declares '
+        'through the StateDescriptor it is handed rather than through '
+        'Channel.*.\n'
+        'A Game is the only thing that declares a channel at all - its '
+        'storage is allocated on main before the spawn, so only a pass that '
+        'runs there can own an index. A GameState and a GameSystem are both '
+        'built on the game isolate, after that allocation; publish from the '
+        'Game and write through `state.game.myChannel`.',
+      );
+    }
+    return _channels.last;
   }
 }
