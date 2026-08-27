@@ -183,8 +183,8 @@ class _Pair extends GameListenerBase with EventBus, _Noted {
   final eager = Event.signal<_Noted>((listener) => listener.onNoted('eager'));
 }
 
-Future<Game> _boot(_NotedGame game) async {
-  final run = await Game.startInline(game);
+Future<T> _boot<T extends _NotedGame>(T Function() create) async {
+  final run = await Game.startInline(create);
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });
@@ -202,7 +202,7 @@ void main() {
 
   group('a field and a hook declare the same thing', () {
     test('the collected lists are the same size', () async {
-      final run = await _boot(_FieldGame());
+      final run = await _boot(_FieldGame.new);
       final state = run.state as _FieldState;
 
       expect(
@@ -217,7 +217,7 @@ void main() {
     });
 
     test('delivery order is identical, forward and reverse', () async {
-      final fieldRun = await _boot(_FieldGame());
+      final fieldRun = await _boot(_FieldGame.new);
       (fieldRun.state as _FieldState).alpha('alpha');
       (fieldRun.state as _FieldState).beta('beta');
       final fromFields = List<String>.of(_Noted.log);
@@ -228,7 +228,7 @@ void main() {
       ComponentTypeRegistry.reset();
       _Noted.log.clear();
 
-      final hookRun = await _boot(_HookGame());
+      final hookRun = await _boot(_HookGame.new);
       (hookRun.state as _HookState).alpha('alpha');
       (hookRun.state as _HookState).beta('beta');
 
@@ -251,7 +251,7 @@ void main() {
     });
 
     test('one owner can use both forms at once', () async {
-      final run = await _boot(_MixedGame());
+      final run = await _boot(_MixedGame.new);
       final state = run.state as _MixedState;
 
       expect(
@@ -275,8 +275,7 @@ void main() {
     });
 
     test('a prefab declares on its own field too', () async {
-      final game = _FieldGame();
-      await _boot(game);
+      final game = await _boot(_FieldGame.new);
 
       expect(
         game.level.b.own.listenerCount,

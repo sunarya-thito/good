@@ -117,13 +117,6 @@ Things that work but will catch you out:
   line slips past it and you get two `goo2d:` entries and two `assets:` blocks.
 - **`test/widget_test.dart`** from `flutter create` references `MyApp`, which no
   longer exists once `main.dart` is the good one.
-- **The scaffolded `main.dart` leaks the game if the widget is disposed during
-  startup.** It assigns a nullable `_game` *after* `await Game.start(...)` and
-  calls `_game?.stop()` in `dispose`, so a dispose that lands mid-start stops
-  nothing and the isolate outlives the widget. `stop()` is also a no-op on a run
-  that has not finished booting, so both halves need fixing — see
-  [Lifecycle in a widget](../guide/flutter-bridge.md#lifecycle-in-a-widget) for
-  the shape the docs prescribe.
 
 ## Contributing to this page
 

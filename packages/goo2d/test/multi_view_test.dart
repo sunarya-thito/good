@@ -147,8 +147,8 @@ class _MultiGame extends Game2D {
 const Duration _step = Duration(milliseconds: 10);
 
 Future<_MultiGame> _start() async {
-  final game = _MultiGame();
-  run = await Game.startInline(game);
+  final game = await Game.startInline(_MultiGame.new);
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });

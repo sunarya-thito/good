@@ -510,16 +510,24 @@ flutter:
       final main = files['lib/main.dart']!;
       expect(
         main,
-        contains('await Game.start('),
+        contains('await Game.start(DemoGame.new)'),
         reason:
             'GameView needs a camera from a *running* game - this template '
-            'shipped broken until it was compiled against the real API',
+            'shipped broken until it was compiled against the real API. The '
+            'constructor and not an instance: Game.start builds the game so '
+            'that a Channel.* or Input.of on one of its fields has a window '
+            'to declare into, and a substring check for Game.start alone '
+            'would pass on the retired spelling',
       );
       expect(main, contains('GameView(camera:'));
       expect(
         main,
-        contains('_game?.stop()'),
-        reason: 'the game owns an isolate and native memory',
+        contains('_starting.then((game) => game.stop())'),
+        reason:
+            'the game owns an isolate and native memory, and Game.start is '
+            'what builds it - so there is no instance to stop until the '
+            'future completes, and a widget disposed mid-start has to stop '
+            'it through the future or leak the isolate',
       );
     });
 

@@ -139,7 +139,7 @@ void main() {
   });
 
   test('a constant population does not get slower as it churns', () async {
-    final run = await Game.startInline(_Game());
+    final run = await Game.startInline(_Game.new);
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });

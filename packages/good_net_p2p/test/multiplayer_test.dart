@@ -91,8 +91,7 @@ void main() {
   final running = <Game>[];
 
   Future<ShooterState> boot([ShooterGame? game]) async {
-    final booted = game ?? ShooterGame();
-    await Game.startInline(booted);
+    final booted = await Game.startInline(() => game ?? ShooterGame());
     running.add(booted);
     return booted.state as ShooterState;
   }

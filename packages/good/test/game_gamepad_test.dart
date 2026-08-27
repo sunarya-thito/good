@@ -93,8 +93,8 @@ class _PadGame extends Game {
 }
 
 Future<_PadGame> _boot() async {
-  final game = _PadGame();
-  run = await Game.startInline(game);
+  final game = await Game.startInline(_PadGame.new);
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });
@@ -444,10 +444,17 @@ void main() {
 
   group('lifetime', () {
     test('there is a collector exactly when there is a device', () async {
-      final game = _PadGame();
-      expect(game.gamepads, isNull, reason: 'nothing exists before start()');
+      // Hand-constructed and never started, which is the only way to hold a
+      // game before its bring-up now that `startInline` is the thing that
+      // builds it.
+      expect(
+        _PadGame().gamepads,
+        isNull,
+        reason: 'nothing exists before start()',
+      );
 
-      run = await Game.startInline(game);
+      final game = await Game.startInline(_PadGame.new);
+      run = game;
       expect(game.gamepads, isNotNull);
       expect(
         game.gamepads!.isAttached,

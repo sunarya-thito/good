@@ -11,7 +11,7 @@ class SaveGame extends SinkCommand<String> {}
 class WhoIsPlayer extends SupplierCommand<Entity> {}
 
 class DocGame extends Game2D {
-  late final StateChannel<int> score;
+  final score = Channel.int32();
   late final SetPopulation setPopulation;
   late final SpawnEnemy spawnEnemy;
   late final Damage damage;
@@ -347,19 +347,17 @@ isolate reads **straight out of shared memory**, coherent per tick.
 
 ```dart
 class MyGame extends Game2D {
-  late final StateChannel<int> score;
-  late final StateChannel<double> health;
-  late final StateChannel<bool> paused;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    score = descriptor.hasInt32();
-    health = descriptor.hasFloat32(100);
-    paused = descriptor.hasBool();
-  }
+  final score = Channel.int32();
+  final health = Channel.float32(100);
+  final paused = Channel.boolean();
 }
 ```
+
+`Channel.*` runs while the game is being constructed, which is why
+`Game.start` takes a constructor rather than an instance:
+`Game.start(MyGame.new)`. The `describeState` hook still works and still
+composes with the fields — a game may use both, and the fields are numbered
+first.
 
 Write from the game isolate:
 
@@ -387,8 +385,8 @@ ValueListenableBuilder<int>(
 
 Not arbitrary: a channel's storage is allocated on the main isolate *before the
 spawn*, and its identity across the boundary is its index in that one
-declaration pass. `describeState` is the only pass main runs that a game
-overrides, so it is the only place an index can come from.
+declaration pass. A `Game` is the only thing main builds and describes, so it
+is the only place an index can come from.
 
 That rules out four hosts, each for its own reason:
 
@@ -488,13 +486,11 @@ class MyGame extends Game2D {
 
 ```dart
 class _GameSurfaceState extends State<GameSurface> {
-  /// Constructed **synchronously**, so there is always something to stop.
-  final MyGame _game = MyGame();
+  /// The in-flight start, and the only thing there is to hold until it
+  /// completes: `Game.start` is what **builds** the game.
+  late final Future<MyGame> _starting;
 
-  /// The in-flight start. `dispose` waits on it before stopping.
-  late final Future<void> _starting;
-
-  bool _ready = false;
+  MyGame? _game;
 
   @override
   void initState() {
@@ -502,30 +498,31 @@ class _GameSurfaceState extends State<GameSurface> {
     _starting = _start();
   }
 
-  Future<void> _start() async {
+  Future<MyGame> _start() async {
     await ensureGameReady();          // check assets before anything decodes
-    await Game.start(_game);
-    if (!mounted) return;             // disposed mid-start; dispose stops it
-    setState(() => _ready = true);
+    final game = await Game.start(MyGame.new);
+    if (mounted) setState(() => _game = game);
+    return game;                      // disposed mid-start; dispose stops it
   }
 
   @override
   void dispose() {
     // `dispose` cannot await, so the teardown is hung off the start future.
     // Already-complete: stops now. Still in flight: stops the moment it boots.
-    _starting.whenComplete(_game.stop);
+    _starting.then((game) => game.stop());
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_ready) return const Center(child: CircularProgressIndicator());
-    return GameView(camera: _game.defaultCamera);
+    final game = _game;
+    if (game == null) return const Center(child: CircularProgressIndicator());
+    return GameView(camera: game.defaultCamera);
   }
 }
 ```
 
-!!! danger "Do not stop through a nullable field assigned after the await"
+!!! danger "Do not stop through the nullable field alone"
     This is the shape to avoid, and it leaks silently:
 
     <!-- snippet: in State<GameSurface> -->
@@ -533,8 +530,7 @@ class _GameSurfaceState extends State<GameSurface> {
     MyGame? _game;
 
     Future<void> _start() async {
-      final game = MyGame();
-      await Game.start(game);         // (1) widget can be disposed during this
+      final game = await Game.start(MyGame.new);  // (1) can be disposed here
       if (mounted) setState(() => _game = game);
     }
 
@@ -551,17 +547,18 @@ class _GameSurfaceState extends State<GameSurface> {
     its isolate alive and its native memory held — attached to a widget that no
     longer exists. Nothing reports it.
 
-    Constructing the game synchronously fixes half of it. The other half is that
-    `stop()` returns immediately when the run has not finished booting, so
-    stopping *during* start is also a no-op — which is why `dispose` hands the
-    teardown to the start future instead of calling `stop()` directly.
+    There is no way to fix it by holding the game earlier, because the game
+    does not exist until the start completes — `Game.start(MyGame.new)` is what
+    builds it. Hold the **future** and hand the teardown to that: it stops a
+    booted run now and a booting one the moment it comes up.
 
 `stop()` is not optional. The game owns native memory and an isolate, and
 neither is reclaimed by the widget going away.
 
 !!! danger "One `Game` instance backs one run"
     A `Game` that has been started cannot be started again — its declarations
-    are sealed. Build a fresh instance for a fresh run.
+    are sealed. Call `Game.start(MyGame.new)` again for a fresh run; each call
+    builds its own.
 
 ---
 

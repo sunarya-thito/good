@@ -124,8 +124,7 @@ void main() {
       // position - somewhere plausible in the swarm, and invisible - so the
       // sighting count alone under-reports it, but it is the same one-tick lag
       // and it is covered by running well past the fill.
-      final game = _ProbedGame();
-      await Game.startInline(game);
+      final game = await Game.startInline(_ProbedGame.new);
       addTearDown(() async {
         if (game.isRunning) await game.stop();
       });

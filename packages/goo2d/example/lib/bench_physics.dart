@@ -114,19 +114,21 @@ class _BenchAppState extends State<_BenchApp> {
   }
 
   Future<void> _run() async {
-    final game = PhysicsGame();
-    // **Before `Game.start`, and on the Game rather than a top-level.**
-    // `Game.start` deep-copies this object to the game isolate, so a field set
-    // here arrives; a top-level does not, and the first version of this used
-    // one - the world was built with 1 worker however many were asked for, and
-    // the bench reported that threading did nothing.
+    // **Inside the constructor call, and on the Game rather than a
+    // top-level.** `Game.start` deep-copies this object to the game isolate,
+    // so a field set here arrives; a top-level does not, and the first
+    // version of this used one - the world was built with 1 worker however
+    // many were asked for, and the bench reported that threading did nothing.
     //
     // Left untouched at 0, so an unqualified run measures the case as it
     // ships rather than a configuration only the bench ever produces.
-    if (_workers > 0) {
-      game.solverWorkerCount = _workers;
-    }
-    await Game.start(game);
+    final game = await Game.start(() {
+      final game = PhysicsGame();
+      if (_workers > 0) {
+        game.solverWorkerCount = _workers;
+      }
+      return game;
+    });
     if (!mounted) {
       await game.stop();
       return;

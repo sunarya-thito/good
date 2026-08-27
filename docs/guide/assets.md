@@ -135,10 +135,10 @@ game is the single best-value line in `main.dart`:
 <!-- snippet: plain -->
 ```dart
 await ensureGameReady();
-await Game.start(_game);      // (1)!
+final game = await Game.start(MyGame.new);      // (1)!
 ```
 
-1. Held in a field, constructed synchronously — see
+1. Keep the future this returns, not just the game — see
    [Lifecycle in a widget](flutter-bridge.md#lifecycle-in-a-widget) for why
    that matters when the widget can be disposed mid-start.
 

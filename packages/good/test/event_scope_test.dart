@@ -104,8 +104,8 @@ class _PingGame extends Game {
 }
 
 Future<_PingGame> _boot() async {
-  final game = _PingGame();
-  run = await Game.startInline(game);
+  final game = await Game.startInline(_PingGame.new);
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });

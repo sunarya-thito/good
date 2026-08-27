@@ -171,8 +171,9 @@ class _OrphanScene extends SceneStruct {
   }
 }
 
-Future<T> _boot<T extends Game>(T game) async {
-  run = await Game.startInline(game);
+Future<T> _boot<T extends Game>(T Function() create) async {
+  final game = await Game.startInline(create);
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });
@@ -196,14 +197,14 @@ void main() {
 
   group('declaration', () {
     test('both sources declare into one descriptor, indices unique', () async {
-      final game = await _boot(_StateGame());
+      final game = await _boot(_StateGame.new);
       // Game(2) then system(4) - one shared numbering. Six, not "2 + 4
       // restarted at zero twice".
       expect(game.stateChannelCount, 6);
     });
 
     test('a channel from every source is readable before any write', () async {
-      final game = await _boot(_StateGame());
+      final game = await _boot(_StateGame.new);
       final scene = _scene(game);
       final system = run.state.getSystem<_StateSystem>();
       // The declared initial value, published the moment storage was
@@ -226,7 +227,7 @@ void main() {
     });
 
     test('two channels from different sources get distinct storage', () async {
-      final game = await _boot(_StateGame());
+      final game = await _boot(_StateGame.new);
       final system = run.state.getSystem<_StateSystem>();
 
       // Same declared width (4 bytes), different sources. If they shared a
@@ -245,7 +246,7 @@ void main() {
     });
 
     test('declaring after boot is refused', () async {
-      final game = await _boot(_StateGame());
+      final game = await _boot(_StateGame.new);
       // The *real* descriptor, kept from the boot pass. It is sealed at the
       // end of _boot(); a declaration now would have storage on neither copy
       // and an index matching nothing on the other side.
@@ -270,7 +271,7 @@ void main() {
 
   group('width vocabulary', () {
     test('every integer width round-trips its own range', () async {
-      final game = await _boot(_WidthGame());
+      final game = await _boot(_WidthGame.new);
       game.u8.value = 255;
       game.i8.value = -128;
       game.u16.value = 65535;
@@ -291,7 +292,7 @@ void main() {
     });
 
     test('float32 is genuinely 32 bits wide, float64 is not', () async {
-      final game = await _boot(_WidthGame());
+      final game = await _boot(_WidthGame.new);
       game.f32.value = 0.1;
       game.f64.value = 0.1;
       expect(
@@ -308,7 +309,7 @@ void main() {
     test(
       'bool is a real bool, and its declared initial value survives',
       () async {
-        final game = await _boot(_WidthGame());
+        final game = await _boot(_WidthGame.new);
         expect(game.flag.value, isTrue, reason: 'declared hasBool(true)');
         game.flag.value = false;
         expect(game.flag.value, isFalse);
@@ -318,7 +319,7 @@ void main() {
     );
 
     test('successive writes rotate slots without losing the value', () async {
-      final game = await _boot(_StateGame());
+      final game = await _boot(_StateGame.new);
       final system = run.state.getSystem<_StateSystem>();
       // More than three, so the triple buffer's round-robin wraps and the
       // cached per-slot ByteData views are all exercised.
@@ -334,7 +335,7 @@ void main() {
     test(
       'a channel is one, so ValueListenableBuilder takes it directly',
       () async {
-        final game = await _boot(_StateGame());
+        final game = await _boot(_StateGame.new);
         expect(game.gameCount, isA<ValueListenable<int>>());
         expect(
           run.state.getSystem<_StateSystem>().mana,
@@ -348,7 +349,7 @@ void main() {
     );
 
     test('a write on the owning copy notifies synchronously', () async {
-      final game = await _boot(_StateGame());
+      final game = await _boot(_StateGame.new);
       _watch('gameCount', game.gameCount);
 
       game.gameCount.value = 42;
@@ -362,7 +363,7 @@ void main() {
     });
 
     test('fires once per actual change, not once per write', () async {
-      final game = await _boot(_StateGame());
+      final game = await _boot(_StateGame.new);
       final system = run.state.getSystem<_StateSystem>();
       _watch('gameCount', game.gameCount);
 
@@ -382,7 +383,7 @@ void main() {
     });
 
     test('does not fire on a tick where nothing was written', () async {
-      await _boot(_StateGame());
+      await _boot(_StateGame.new);
       final system = run.state.getSystem<_StateSystem>();
       _watch('health', system.health);
 
@@ -405,7 +406,7 @@ void main() {
     });
 
     test('a channel nobody listens to simply never notifies', () async {
-      await _boot(_StateGame());
+      await _boot(_StateGame.new);
       final system = run.state.getSystem<_StateSystem>();
       system.nextProbeCount = 5;
       run.state.runFixedStep();
@@ -416,7 +417,7 @@ void main() {
     test(
       'a listener added late compares against the value at that moment',
       () async {
-        final game = await _boot(_StateGame());
+        final game = await _boot(_StateGame.new);
         game.gameCount.value = 3;
         _watch('gameCount', game.gameCount);
         expect(changes, isEmpty, reason: 'adding a listener is not a change');
@@ -428,7 +429,7 @@ void main() {
     );
 
     test('removeListener stops it', () async {
-      final game = await _boot(_StateGame());
+      final game = await _boot(_StateGame.new);
       void listener() => changes.add('tick');
       game.gameCount.addListener(listener);
       game.gameCount.value = 1;
@@ -453,8 +454,8 @@ void main() {
     });
 
     test('reading a channel after stop() reports disconnection', () async {
-      final game = _StateGame();
-      run = await Game.startInline(game);
+      final game = await Game.startInline(_StateGame.new);
+      run = game;
       await run.stop();
       expect(() => game.gameCount.value, throwsStateError);
     });

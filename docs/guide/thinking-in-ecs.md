@@ -22,11 +22,11 @@ class Mote extends EntityStruct with Transform2D, Renderable2D {
 }
 
 class ArenaGame extends Game2D {
-  late final StateChannel<int> wave;
-  late final StateChannel<int> alive;
-  late final StateChannel<int> score;
-  late final StateChannel<double> watchedX;
-  late final StateChannel<int> watchedHp;
+  final wave = Channel.int32();
+  final alive = Channel.int32();
+  final score = Channel.int32();
+  final watchedX = Channel.float64();
+  final watchedHp = Channel.int32();
 }
 
 /// The reader's own structure, not an engine type.
@@ -1054,8 +1054,8 @@ class WatchPlayer extends GameSystem with Tickable {
 }
 ```
 
-`watchedX` and `watchedHp` are declared on the `Game` with `describeState`,
-beside the counters above. A system of its own is worth the extra class: when
+`watchedX` and `watchedHp` are declared on the `Game`, on the fields that hold
+them, beside the counters above. A system of its own is worth the extra class: when
 you are done, you delete the system and its two declarations and nothing else
 ever knew about them.
 

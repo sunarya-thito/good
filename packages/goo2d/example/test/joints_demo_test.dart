@@ -36,8 +36,8 @@ void main() {
 
   Future<(Game, JointState, JointGame)> boot() async {
     final demo = JointsDemo();
-    final game = demo.create() as JointGame;
-    final run = await Game.startInline(game);
+    final game = await Game.startInline(() => demo.create() as JointGame);
+    final run = game;
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });

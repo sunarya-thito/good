@@ -128,8 +128,8 @@ class _Game extends Game {
 }
 
 Future<_Game> _game({int pageSize = 4096}) async {
-  final game = _Game(pageSize: pageSize);
-  run = await Game.startInline(game);
+  final game = await Game.startInline(() => _Game(pageSize: pageSize));
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });

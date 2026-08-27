@@ -46,8 +46,8 @@ class _Game extends Game {
 }
 
 Future<_Game> _boot() async {
-  final game = _Game();
-  final run = await Game.startInline(game);
+  final game = await Game.startInline(_Game.new);
+  final run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });

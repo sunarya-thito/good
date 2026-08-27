@@ -209,10 +209,10 @@ asynchronous, and `GameView` needs a camera from a game that is already running:
 
 <!-- snippet: in State<StatefulWidget> -->
 ```dart
-/// Constructed synchronously, so there is always something to stop.
-final MyGameGame _game = MyGameGame();
-late final Future<void> _starting;
-bool _ready = false;
+/// The in-flight start. `Game.start` is what builds the game, so this is the
+/// only thing there is to hold until it completes.
+late final Future<MyGameGame> _starting;
+MyGameGame? _game;
 
 @override
 void initState() {
@@ -220,38 +220,41 @@ void initState() {
   _starting = _start();
 }
 
-Future<void> _start() async {
-  await Game.start(_game);
-  if (!mounted) return;
-  setState(() => _ready = true);
+Future<MyGameGame> _start() async {
+  final game = await Game.start(MyGameGame.new);
+  if (mounted) setState(() => _game = game);
+  return game;
 }
 
 @override
 void dispose() {
   // `dispose` cannot await, so the teardown hangs off the start future.
-  _starting.whenComplete(_game.stop);
+  _starting.then((game) => game.stop());
   super.dispose();
 }
 
 @override
 Widget build(BuildContext context) {
-  if (!_ready) return const Center(child: CircularProgressIndicator());
-  return GameView(camera: _game.defaultCamera);
+  final game = _game;
+  if (game == null) return const Center(child: CircularProgressIndicator());
+  return GameView(camera: game.defaultCamera);
 }
 ```
 
 `stop()` is not optional — the game owns native memory and an isolate, and
 neither is reclaimed by the widget going away.
 
-!!! danger "Why the game is built synchronously, and stopped through the future"
+!!! danger "Why the game is stopped through the future"
     The obvious shape leaks. A nullable `_game` assigned *after* `await
     Game.start(...)` is still null if the widget is disposed while the start is
     in flight, so `_game?.stop()` does nothing — and the start then completes
     into a dead widget with the isolate still running.
 
-    Building it in a field fixes half. The other half is that `stop()` returns
+    There is nothing to hold earlier, either: `Game.start(MyGameGame.new)` takes
+    a constructor and builds the game itself, which is what lets a
+    `Channel.int32()` on one of its fields declare at all. And `stop()` returns
     immediately on a run that has not finished booting, so stopping *during* the
-    start is also a silent no-op. Hanging the teardown off `_starting` covers
+    start is a silent no-op too. Hanging the teardown off `_starting` covers
     both orderings. See
     [Lifecycle in a widget](../guide/flutter-bridge.md#lifecycle-in-a-widget).
 

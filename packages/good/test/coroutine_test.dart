@@ -55,7 +55,7 @@ class _Game extends Game {
 const Duration _step = Duration(milliseconds: 100);
 
 Future<_Game> _boot() async {
-  final game = await Game.startInline(_Game());
+  final game = await Game.startInline(_Game.new);
   addTearDown(() async {
     if (game.isRunning) await game.stop();
   });

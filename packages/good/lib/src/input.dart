@@ -162,24 +162,28 @@ abstract class Input<T> {
   /// }
   /// ```
   ///
-  /// The same action [InputDescriptor.has] declares in a
-  /// `GameSystem.describeInputs` body, said where it is read. The arguments
-  /// are that method's, positionally and with the same meaning: [binding] is
-  /// optional and an action without one is *unbound* until something assigns
-  /// `action.binding`; [defaultValue] is this action's own fallback and beats
-  /// the type-level one from [InputDescriptor.hasDefaultValue].
+  /// The same action [InputDescriptor.has] declares in a `describeInputs`
+  /// body - on a `Game` or on a `GameSystem` - said where it is read. The
+  /// arguments are that method's, positionally and with the same meaning:
+  /// [binding] is optional and an action without one is *unbound* until
+  /// something assigns `action.binding`; [defaultValue] is this action's own
+  /// fallback and beats the type-level one from
+  /// [InputDescriptor.hasDefaultValue].
   ///
   /// `V` is inferred from [binding]. An unbound action has nothing to infer
   /// from, so it is written: `Input.of<bool>()`.
   ///
-  /// # A GameSystem, and nothing else
+  /// # A Game or a GameSystem
   ///
-  /// `SystemDescriptor.has` takes a constructor, so the framework builds a
-  /// system and there is a call for the registry to be open around. A `Game`
-  /// is not built that way - the caller constructs it and hands it to
-  /// `Game.start` - and its `describeInputs` runs on both isolate copies
-  /// rather than only the one that ticks. An action a `Game` declares stays
-  /// in that hook.
+  /// Both are framework-built - `Game.start(MyGame.new)` and
+  /// `descriptor.has(PlayerSystem.new)` - so in both there is a constructor
+  /// call for the registry to be open around. They declare into the same
+  /// registry in the end, but not at the same moment or on the same isolate:
+  /// a game's actions are declared on main, before the spawn, and ride the
+  /// copy; a system's are declared on the copy that ticks. Nothing depends on
+  /// the resulting numbering, which is why the two copies are allowed to
+  /// disagree about it - what crosses the boundary is the fixed-size block of
+  /// raw key bits, the same 16 bytes whatever a game declares.
   ///
   /// [InputDescriptor.hasDefaultValue] has no field form anywhere. It hands
   /// nothing back, so there is no field to put it on; declare it in

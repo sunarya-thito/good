@@ -169,8 +169,8 @@ const double _viewWidth = 800;
 const double _viewHeight = 600;
 
 Future<_CullGame> _game({bool laidOut = true}) async {
-  final game = _CullGame();
-  run = await Game.startInline(game);
+  final game = await Game.startInline(_CullGame.new);
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });

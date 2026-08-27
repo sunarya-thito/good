@@ -1018,7 +1018,7 @@ void main() {
     late Game game;
 
     await runZonedGuarded(() async {
-          game = await Game.start(_DyingGame());
+          game = await Game.start(_DyingGame.new);
           final deadline = DateTime.now().add(const Duration(seconds: 10));
           while (game.isRunning &&
               errors.isEmpty &&
@@ -1078,8 +1078,8 @@ void main() {
   // implementation where *both* copies draw and quietly disagree - so the
   // load-bearing half of this test is the refusal on main.
   test('only the simulating copy advances a stream', () async {
-    final game = _RandomIsolateGame();
-    run = await Game.start(game);
+    final game = await Game.start(_RandomIsolateGame.new);
+    run = game;
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
@@ -1114,8 +1114,8 @@ void main() {
     );
   });
   test('pause and resume cross as commands, with the tick stopped', () async {
-    final game = _IsolateGame();
-    run = await Game.start(game);
+    final game = await Game.start(_IsolateGame.new);
+    run = game;
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
@@ -1147,8 +1147,8 @@ void main() {
   // stops the tick exactly as pause does, so restoring it has the same
   // problem to solve, and stepOnce only means anything while stopped.
   test('time scale and stepOnce cross as commands too', () async {
-    final game = _IsolateGame();
-    run = await Game.start(game);
+    final game = await Game.start(_IsolateGame.new);
+    run = game;
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
@@ -1180,8 +1180,8 @@ void main() {
     );
   });
   test('a control command reaches a game whose tick is stopped', () async {
-    final game = _IsolateGame();
-    run = await Game.start(game);
+    final game = await Game.start(_IsolateGame.new);
+    run = game;
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });
@@ -1213,8 +1213,8 @@ void main() {
   });
 
   test('a tick command does not reach a game whose tick is stopped', () async {
-    final game = _IsolateGame();
-    run = await Game.start(game);
+    final game = await Game.start(_IsolateGame.new);
+    run = game;
     addTearDown(() async {
       if (run.isRunning) await run.stop();
       // The batch never ran, so its future never completes - dropped rather
@@ -1263,8 +1263,8 @@ void main() {
   test(
     'a Game subclass survives Isolate.spawn and ticks on the other side',
     () async {
-      final game = _IsolateGame();
-      run = await Game.start(game);
+      final game = await Game.start(_IsolateGame.new);
+      run = game;
       addTearDown(() async {
         if (run.isRunning) await run.stop();
       });
@@ -1375,8 +1375,8 @@ void main() {
   test(
     'a command from the main isolate stops the game isolate ticking a system',
     () async {
-      final game = _IsolateGame();
-      run = await Game.start(game);
+      final game = await Game.start(_IsolateGame.new);
+      run = game;
       addTearDown(() async {
         if (run.isRunning) await run.stop();
       });
@@ -1414,8 +1414,8 @@ void main() {
     'an auxiliary buffer is announced across the isolate boundary before the '
     'first tick writes to it',
     () async {
-      final game = _PingGame();
-      run = await Game.start(game);
+      final game = await Game.start(_PingGame.new);
+      run = game;
       addTearDown(() async {
         if (run.isRunning) await run.stop();
       });
@@ -1483,8 +1483,8 @@ void main() {
   test(
     'a state channel written on the game isolate is observed on the main one',
     () async {
-      final game = _ChannelGame();
-      run = await Game.start(game);
+      final game = await Game.start(_ChannelGame.new);
+      run = game;
       addTearDown(() async {
         if (run.isRunning) await run.stop();
       });
@@ -1582,8 +1582,8 @@ void main() {
   test(
     'raw input written on the main isolate reaches the game isolate\'s tick',
     () async {
-      final game = _InputProbeGame();
-      run = await Game.start(game);
+      final game = await Game.start(_InputProbeGame.new);
+      run = game;
       addTearDown(() async {
         if (run.isRunning) await run.stop();
       });
@@ -1682,8 +1682,8 @@ void main() {
   test(
     'a scene loaded at runtime from the game isolate gets its assets decoded',
     () async {
-      final game = _LateGame();
-      run = await Game.start(game);
+      final game = await Game.start(_LateGame.new);
+      run = game;
       addTearDown(() async {
         if (run.isRunning) await run.stop();
       });
@@ -1760,8 +1760,8 @@ void main() {
   test(
     'the game isolate assigns the asset address; main adopts it and decodes',
     () async {
-      final game = _TexturedGame();
-      run = await Game.start(game);
+      final game = await Game.start(_TexturedGame.new);
+      run = game;
       addTearDown(() async {
         if (run.isRunning) await run.stop();
       });
@@ -1823,8 +1823,8 @@ void main() {
   );
 
   test('the game isolate registers no asset decoder, and main does', () async {
-    final game = _RegistrarGame();
-    run = await Game.start(game);
+    final game = await Game.start(_RegistrarGame.new);
+    run = game;
     addTearDown(() async {
       if (run.isRunning) await run.stop();
     });

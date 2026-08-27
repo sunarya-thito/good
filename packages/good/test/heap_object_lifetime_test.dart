@@ -148,8 +148,8 @@ class _HeapGame extends Game {
 }
 
 Future<_HeapGame> _boot() async {
-  final game = _HeapGame();
-  run = await Game.startInline(game);
+  final game = await Game.startInline(_HeapGame.new);
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });

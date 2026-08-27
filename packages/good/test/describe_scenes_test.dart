@@ -106,8 +106,9 @@ class _DoubleDeclaringGame extends _DeclaringGame {
   }
 }
 
-Future<T> _boot<T extends Game>(T game) async {
-  run = await Game.startInline(game);
+Future<T> _boot<T extends Game>(T Function() create) async {
+  final game = await Game.startInline(create);
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });
@@ -124,7 +125,7 @@ void main() {
   test(
     'a declared scene is registered at boot, before anything is loaded',
     () async {
-      final game = await _boot(_DeclaringGame());
+      final game = await _boot(_DeclaringGame.new);
 
       expect(
         game.level.isInitialized,
@@ -145,7 +146,7 @@ void main() {
   test(
     'declaring registers archetypes without creating any entities',
     () async {
-      await _boot(_DeclaringGame());
+      await _boot(_DeclaringGame.new);
       run.state.advance(const Duration(milliseconds: 10));
 
       expect(
@@ -159,7 +160,7 @@ void main() {
   );
 
   test('a declared scene loads without re-registering', () async {
-    final game = await _boot(_DeclaringGame());
+    final game = await _boot(_DeclaringGame.new);
     final before = ArchetypeRegistry.count;
 
     final scene = await run.state.loadScene(game.level);
@@ -176,7 +177,7 @@ void main() {
   });
 
   test('one declaration backs several loads', () async {
-    final game = await _boot(_DeclaringGame());
+    final game = await _boot(_DeclaringGame.new);
     final before = ArchetypeRegistry.count;
 
     final first = await run.state.loadScene(game.level);
@@ -194,11 +195,11 @@ void main() {
   });
 
   test('declaring the same scene type twice is refused', () {
-    expect(Game.startInline(_DoubleDeclaringGame()), throwsStateError);
+    expect(Game.startInline(_DoubleDeclaringGame.new), throwsStateError);
   });
 
   test('an undeclared scene still loads, registering lazily', () async {
-    final game = await _boot(_DeclaringGame());
+    final game = await _boot(_DeclaringGame.new);
     final before = ArchetypeRegistry.count;
 
     final scene = await run.state.loadScene(_Level());
@@ -214,7 +215,7 @@ void main() {
   });
 
   test('a declared scene shares the game\'s pool and asset table', () async {
-    final game = await _boot(_DeclaringGame());
+    final game = await _boot(_DeclaringGame.new);
 
     expect(
       game.level.pool,
@@ -259,7 +260,7 @@ void main() {
     // the moment describeSystems constructs the system - before any of this
     // scene's rows do. It counts them anyway: groups() resolves archetypes on
     // the first walk and rebuilds whenever the registry grows.
-    final game = await _boot(_DeclaringGame());
+    final game = await _boot(_DeclaringGame.new);
     await run.state.loadScene(game.level);
     run.state.loadedScenes.single.addEntity(game.level.unit);
     run.state.advance(const Duration(milliseconds: 10));

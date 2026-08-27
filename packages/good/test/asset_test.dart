@@ -732,7 +732,9 @@ void main() {
       final music = _FakeAsset('music');
       final prop = _FakeAsset('prop');
       final unused = _FakeAsset('unused');
-      await _boot(_DiffGame(() => _PropScene([_Prop(prop)], sceneKey: music)));
+      await _boot(
+        () => _DiffGame(() => _PropScene([_Prop(prop)], sceneKey: music)),
+      );
 
       expect(music.decodes, 1, reason: "the scene's own prefab-less asset");
       expect(prop.decodes, 1, reason: 'and every registered prefab\'s');
@@ -752,7 +754,7 @@ void main() {
       final onlyB = _FakeAsset('only-b');
 
       await _boot(
-        _DiffGame(() => _PropScene([_Prop(onlyA)], sceneKey: shared)),
+        () => _DiffGame(() => _PropScene([_Prop(onlyA)], sceneKey: shared)),
       );
       expect(shared.decodes, 1);
       expect(onlyA.decodes, 1);
@@ -788,7 +790,7 @@ void main() {
       final onlyA = _FakeAsset('only-a');
       final onlyB = _FakeAsset('only-b');
       await _boot(
-        _DiffGame(() => _PropScene([_Prop(onlyA)], sceneKey: shared)),
+        () => _DiffGame(() => _PropScene([_Prop(onlyA)], sceneKey: shared)),
       );
       final first = run.state.loadedScenes.single;
       final second = await run.state.loadScene(
@@ -829,7 +831,7 @@ void main() {
       final keys = <_FakeAsset>[
         for (var i = 0; i < 4; i++) _FakeAsset('step$i'),
       ];
-      await _boot(_DiffGame(() => GameSceneStub()));
+      await _boot(() => _DiffGame(() => GameSceneStub()));
 
       final reports = <SceneLoadProgress>[];
       await run.state.loadScene(
@@ -867,7 +869,7 @@ void main() {
       'a transition needing no decodes still reports a single 1.0',
       () async {
         final shared = _FakeAsset('shared');
-        await _boot(_DiffGame(() => _PropScene([], sceneKey: shared)));
+        await _boot(() => _DiffGame(() => _PropScene([], sceneKey: shared)));
 
         final reports = <SceneLoadProgress>[];
         await run.state.loadScene(
@@ -891,7 +893,7 @@ void main() {
       'loading one declaration twice gives two scenes sharing its assets',
       () async {
         final key = _FakeAsset('same-scene');
-        await _boot(_DiffGame(() => _PropScene([_Prop(key)])));
+        await _boot(() => _DiffGame(() => _PropScene([_Prop(key)])));
         final struct = run.state.scene!;
         final first = run.state.loadedScenes.single;
 
@@ -914,7 +916,6 @@ void main() {
     );
 
     test('the world layout exists before the bring-up future completes', () {
-      final game = _DiffGame(() => _PropScene([_Prop(_FakeAsset('sync'))]));
       expect(ArchetypeRegistry.count, 0, reason: 'nothing registered yet');
 
       // Deliberately not awaited. The claim is that `loadScene`'s registering
@@ -922,7 +923,9 @@ void main() {
       // instant bring-up has been called - only the content is still arriving.
       // An async function runs synchronously up to its own first await, which
       // is what makes that observable at all.
-      final starting = Game.startInline(game);
+      final starting = Game.startInline(
+        () => _DiffGame(() => _PropScene([_Prop(_FakeAsset('sync'))])),
+      );
 
       // Asserted through the archetype registry rather than through the state.
       // The run is what owns the state now, and the run does not exist until
@@ -996,8 +999,9 @@ class _DiffState extends GameState<_DiffGame> {
   }
 }
 
-Future<T> _boot<T extends Game>(T game) async {
-  run = await Game.startInline(game);
+Future<T> _boot<T extends Game>(T Function() create) async {
+  final game = await Game.startInline(create);
+  run = game;
   // A booted Game owns its own table, so the fixture's handle points at that
   // one from here on - these tests are asserting about the assets the game
   // actually declared and loaded, not about a table nothing is using.

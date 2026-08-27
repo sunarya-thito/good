@@ -137,8 +137,8 @@ void main() {
     for (final count in _counts) {
       test('$count receivers, spread $spread', () async {
         _colliderOffset = 0;
-        final game = _BenchGame();
-        final run = await Game.startInline(game);
+        final game = await Game.startInline(_BenchGame.new);
+        final run = game;
         addTearDown(() async {
           if (run.isRunning) await run.stop();
           // Each cell runs its own game in the same process, so the

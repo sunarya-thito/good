@@ -210,8 +210,8 @@ int _workers = 1;
 
 Future<_Scene> _boot({int workers = 1}) async {
   _workers = workers;
-  final game = _Game();
-  run = await Game.startInline(game);
+  final game = await Game.startInline(_Game.new);
+  run = game;
   addTearDown(() async {
     // Stop FIRST, then dispose. Stopping unloads the scenes, which unmounts
     // every entity and destroys its Box2D body - so disposing first would

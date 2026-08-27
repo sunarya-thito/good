@@ -2,6 +2,20 @@
 
 ### Changed
 
+* **`good create` starts its game with a constructor.** The generated
+  `main.dart` writes `await Game.start(MyGameGame.new)` rather than building
+  the game and handing over the instance, following `good`'s `Game.start`
+  (#91). Re-run `good create` for the new spelling; an existing project
+  updates at its one start call.
+
+* **The scaffolded `main.dart` no longer leaks the game when the widget is
+  disposed mid-start.** It held a nullable field assigned *after* the await
+  and called `_game?.stop()` in `dispose`, so a dispose landing during
+  bring-up stopped nothing and the isolate outlived the widget. The teardown
+  now hangs off the start future, which covers both orderings - and it has to,
+  because `Game.start` is what builds the game and there is nothing to hold
+  until it completes.
+
 * **`good create` declares its systems with a constructor.** The generated
   `describeSystems` writes `descriptor.has(SpinSystem.new)` rather than
   `descriptor.has(SpinSystem())`, following `good`'s `SystemDescriptor.has`

@@ -57,8 +57,9 @@ class _Mixed extends Game with Renderer2D {
   GameState createState() => _MixedState();
 }
 
-Future<G> _boot<G extends Game>(G game) async {
-  final run = await Game.startInline(game);
+Future<G> _boot<G extends Game>(G Function() create) async {
+  final run = await Game.startInline(create);
+  final game = run;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });
@@ -79,7 +80,7 @@ void main() {
       expect(AssetLoaders.isRegistered<Texture>(), isFalse);
       expect(AssetLoaders.isRegistered<AudioClip>(), isFalse);
 
-      await _boot(_Game());
+      await _boot(_Game.new);
 
       expect(
         AssetLoaders.isRegistered<Texture>(),
@@ -97,7 +98,7 @@ void main() {
   );
 
   test('an audio clip loads instead of throwing', () async {
-    await _boot(_Game());
+    await _boot(_Game.new);
 
     final key = AudioKey(MemorySource(_oggish, name: 'shot.ogg'));
     final clip = await AssetLoaders.of<AudioClip>().load(key);
@@ -111,7 +112,7 @@ void main() {
   });
 
   test('mixing in Renderer2D is enough to get the texture decoder', () async {
-    await _boot(_Mixed());
+    await _boot(_Mixed.new);
     expect(
       AssetLoaders.isRegistered<Texture>(),
       isTrue,

@@ -2,6 +2,56 @@
 
 ### Breaking
 
+* **`Game.start` and `Game.startInline` take a constructor, not an instance.**
+  `Game.start(MyGame())` becomes `Game.start(MyGame.new)`, and the same for
+  `startInline`. A game taking constructor arguments goes through a closure:
+  `Game.start(() => MyGame(seed: 7))`. The old spelling does not quietly keep
+  working - a `Game` has no `call`, so an instance where a `G Function()` is
+  wanted is a compile error at the start line (#91).
+
+  ```dart
+  // before
+  final game = MyGame();
+  await Game.start(game);
+
+  // after
+  final game = await Game.start(MyGame.new);
+  ```
+
+  **Why.** A channel or an input declared on the field that holds it - see
+  Added - runs its initialiser during the constructor, and the descriptor and
+  the registry have to be open before it does. An initialiser cannot see
+  `this`, so the framework has to be the one constructing. Same trade
+  `SystemDescriptor.has` made above, `CommandDescriptor.has` in #231 and
+  `SceneDescriptor.has` in #57.
+
+  **A widget can no longer hold the game before it starts.** The shape that
+  built it in a field so `dispose` always had something to stop is gone,
+  because the game does not exist until the start completes. Hold the
+  **future** instead and hang the teardown off that - it covers a run that has
+  booted and one still booting, which the field never did. The scaffolded
+  `main.dart` and the Flutter-bridge guide both move to it.
+
+  **A closure may hand back a game built earlier, and should not.**
+  `Game.start(() => _game)` compiles. Nothing was open around *that*
+  construction, so `Channel.*` and `Input.of` on its fields threw when it was
+  built; a game with neither boots correctly. Starting an already-started one
+  is refused before anything is written to it.
+
+* **A `Game` constructed while another declaration window is open is
+  refused.** Two shapes, both of which used to boot and run wrong, and neither
+  visible from the field initialiser that caused it (#91):
+
+  - a `Game` built inside another `Game`'s field initialisers declared its
+    channels and actions into the outer game's windows. Measured: the outer
+    game held 2 channels and 1 action, all of them the inner game's, and the
+    inner game held none while its own handle read the outer game's storage.
+  - a `Game` built inside a `GameSystem`'s constructor declared its actions
+    into that system's registry. Measured: the host game held the 1 action and
+    the game held 0.
+
+  Both now throw at bring-up, naming the count and the shape.
+
 * **`SystemDescriptor.has` takes a constructor, not an instance.**
   `descriptor.has(SpinSystem())` becomes `descriptor.has(SpinSystem.new)`, at
   every system declaration. A system taking constructor arguments goes through
@@ -213,6 +263,57 @@
   or absent, so renaming those is a design question and not a spelling one.
 
 ### Added
+
+* **`Channel.*` declares a published state channel on the field that holds
+  it.** A `Game` is framework-built as of the change above, so the state
+  descriptor is open while its fields initialise (#91).
+
+  ```dart
+  class MyGame extends Game {
+    final score = Channel.int32();
+    final health = Channel.float64(100);
+    final alive = Channel.boolean(true);
+  }
+  ```
+
+  One static per `StateDescriptor` method, taking the same initial value.
+  `Channel` and not `State`: `State` is `package:flutter/material.dart`'s, and
+  every file putting a `GameView` in a layout imports that. The name pairs
+  with `StateChannel`, which is what comes back.
+
+  The initialiser must be eager - `late final` runs on first read, long after
+  the descriptor sealed and the storage was allocated, and throws out of
+  `DeclarationContext.channels` rather than declaring anything.
+
+  A `Game` and nothing else, which is not new: a channel's storage is
+  allocated on main before the spawn and its identity across the boundary is
+  its index in that one pass. `describeState` still works, and both forms
+  compose - fields first, hook second, one numbering.
+
+  **Declaration and resolution are two steps now.** `Channel.int32()` makes a
+  channel with no index, no run and no storage and appends it to a list, which
+  is all it does and all it can fail at; `Game.start` numbers the collected
+  set and binds it to the run once both sources have spoken, and
+  `_bootAllocate` allocates a step after that, where it always did. The
+  circularity that made this necessary is that a channel wants a `GameRuntime`
+  that wants the `Game` whose own fields are still initialising.
+
+* **`Input.of` now works on a `Game` field.** The static landed for a
+  `GameSystem` above; a `Game` was excluded because it was constructed by the
+  caller, and `Game.start` taking a constructor is what lifts that (#91).
+
+  ```dart
+  class MyGame extends Game {
+    final pause = Input.of(const TriggerBinding(.escape));
+  }
+  ```
+
+  `InputDescriptor.hasDefaultValue` still has no field form anywhere - it
+  hands nothing back, so there is no field to put it on - and
+  `Game.describeInputs` survives for it, on the framework's own `Game` as much
+  as on yours. Both forms compose on one game: fields first, hook second, and
+  a type-level default the hook registers still reaches an action a field
+  declared, because defaults are matched at `seal()`.
 
 * **`Input.of` declares an input action on the field that holds it.** A
   `GameSystem` is framework-built as of the change above, so the registry is

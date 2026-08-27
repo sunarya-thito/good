@@ -124,8 +124,8 @@ class _AnalogGame extends Game {
 }
 
 Future<_AnalogGame> _boot() async {
-  final game = _AnalogGame();
-  run = await Game.startInline(game);
+  final game = await Game.startInline(_AnalogGame.new);
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });

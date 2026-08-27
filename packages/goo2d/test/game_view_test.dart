@@ -129,8 +129,9 @@ _SpyCanvas _paintThrough(WidgetTester tester) {
   return spy;
 }
 
-Future<T> _start<T extends Game>(T game) async {
-  run = await Game.startInline(game);
+Future<T> _start<T extends Game>(T Function() create) async {
+  final game = await Game.startInline(create);
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });
@@ -147,7 +148,7 @@ void main() {
   testWidgets('paints nothing until a tick has produced a frame', (
     tester,
   ) async {
-    final game = await _start(_ViewGame());
+    final game = await _start(_ViewGame.new);
     final scene = run.state.singleScene<_Scene>();
     final entity = scene.addEntity(scene.sprite);
     scene.sprite.quad
@@ -168,7 +169,7 @@ void main() {
   testWidgets('a tick drains, ingests and repaints - end to end', (
     tester,
   ) async {
-    final game = await _start(_ViewGame());
+    final game = await _start(_ViewGame.new);
     final scene = run.state.singleScene<_Scene>();
     final entity = scene.addEntity(scene.sprite);
     scene.sprite.quad
@@ -200,7 +201,7 @@ void main() {
   testWidgets(
     'a game with no renderer declared contributes no painter at all',
     (tester) async {
-      await _start(_RendererlessGame());
+      await _start(_RendererlessGame.new);
       await tester.pumpWidget(GameView.headless(game: run));
       run.state.advance(_step * 2);
       await tester.pump();
@@ -215,7 +216,7 @@ void main() {
   );
 
   testWidgets('the frame callback is disarmed on dispose', (tester) async {
-    final game = await _start(_ViewGame());
+    final game = await _start(_ViewGame.new);
     await tester.pumpWidget(GameView(camera: game.defaultCamera));
     run.state.advance(_step);
     await tester.pump();
@@ -235,7 +236,7 @@ void main() {
   testWidgets('stopping while the view is still mounted disarms the renderer', (
     tester,
   ) async {
-    final game = await _start(_ViewGame());
+    final game = await _start(_ViewGame.new);
     final scene = run.state.singleScene<_Scene>();
     scene.addEntity(scene.sprite);
 

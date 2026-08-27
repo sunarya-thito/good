@@ -42,8 +42,9 @@ class _NoCameraGame extends Game {
 
 class _State extends GameState<Game> {}
 
-Future<T> _start<T extends Game>(T game) async {
-  run = await Game.startInline(game);
+Future<T> _start<T extends Game>(T Function() create) async {
+  final game = await Game.startInline(create);
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });
@@ -59,7 +60,7 @@ void main() {
 
   group('declaring', () {
     test('each view gets its own address, in declaration order', () async {
-      final game = await _start(_TwoCameraGame());
+      final game = await _start(_TwoCameraGame.new);
 
       expect(game.cameraViews.length, 2);
       expect(game.main.pack(), 0);
@@ -68,7 +69,7 @@ void main() {
     });
 
     test('a view carries the game that declared it', () async {
-      final game = await _start(_TwoCameraGame());
+      final game = await _start(_TwoCameraGame.new);
 
       expect(game.main.game, same(game));
       // Which is the whole reason `GameView` takes no game: there is only one
@@ -77,12 +78,12 @@ void main() {
     });
 
     test('a game may declare none at all', () async {
-      final game = await _start(_NoCameraGame());
+      final game = await _start(_NoCameraGame.new);
       expect(game.cameraViews.length, 0);
     });
 
     test('the table resolves its own addresses and refuses others', () async {
-      final game = await _start(_TwoCameraGame());
+      final game = await _start(_TwoCameraGame.new);
 
       expect(game.cameraViews.unpack(1), same(game.minimap));
       expect(game.cameraViews.tryUnpack(2), isNull);
@@ -98,7 +99,7 @@ void main() {
     test(
       'addresses may collide with another table, and that is fine',
       () async {
-        final game = await _start(_TwoCameraGame());
+        final game = await _start(_TwoCameraGame.new);
 
         // The point of `IntRepresentation`: two populations number themselves
         // from zero independently, so 0 is a meaningful int in both and means
@@ -121,7 +122,7 @@ void main() {
 
   group('the viewport crosses through shared memory', () {
     test('it is zero until something is showing the view', () async {
-      final game = await _start(_TwoCameraGame());
+      final game = await _start(_TwoCameraGame.new);
 
       expect(game.main.viewportWidth, 0);
       expect(game.main.viewportHeight, 0);
@@ -131,7 +132,7 @@ void main() {
     });
 
     test('a write is visible through a *different* Dart object', () async {
-      final game = await _start(_TwoCameraGame());
+      final game = await _start(_TwoCameraGame.new);
       game.main.setViewport(800, 600);
 
       // This is the test that matters. `CameraView` reaches the game isolate
@@ -145,7 +146,7 @@ void main() {
     });
 
     test('each view has its own, so two sizes do not collide', () async {
-      final game = await _start(_TwoCameraGame());
+      final game = await _start(_TwoCameraGame.new);
 
       game.main.setViewport(1920, 1080);
       game.minimap.setViewport(200, 200);
@@ -157,7 +158,7 @@ void main() {
     });
 
     test('it is released with the game, and reads zero afterwards', () async {
-      final game = await _start(_TwoCameraGame());
+      final game = await _start(_TwoCameraGame.new);
       game.main.setViewport(640, 480);
       expect(game.main.viewportWidth, 640);
 
@@ -181,7 +182,7 @@ void main() {
   });
 
   test('a view cannot be forged - only the descriptor makes one', () async {
-    final game = await _start(_TwoCameraGame());
+    final game = await _start(_TwoCameraGame.new);
     // `CameraView` has only a private constructor, so the sole way to obtain
     // one is the declare pass. This asserts the pass is the only producer by
     // showing the table grows only through it.

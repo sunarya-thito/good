@@ -27,7 +27,7 @@ abstract class DemoGame extends Game2D {
   /// Microseconds the case's *own* systems spent in the last fixed step -
   /// whatever it chose to time, and nothing else. Published by [DemoStats]
   /// from [DemoState.caseMicros].
-  late final StateChannel<int> caseMicros;
+  final caseMicros = Channel.int32();
 
   /// Time inside `FixedTickable` systems, the whole fixed step, the
   /// presentation pass, one `advance` end to end, and the gap between two of
@@ -40,12 +40,12 @@ abstract class DemoGame extends Game2D {
   /// numbers. Read [DemoProfile] for what each one can and cannot see from
   /// out here - two of them are bounded slightly tighter than the engine's
   /// were, and the doc says exactly where the missing slice went.
-  late final StateChannel<int> systemMicros;
-  late final StateChannel<int> bestSystemMicros;
-  late final StateChannel<int> stepMicros;
-  late final StateChannel<int> presentMicros;
-  late final StateChannel<int> advanceMicros;
-  late final StateChannel<int> intervalMicros;
+  final systemMicros = Channel.int32();
+  final bestSystemMicros = Channel.int32();
+  final stepMicros = Channel.int32();
+  final presentMicros = Channel.int32();
+  final advanceMicros = Channel.int32();
+  final intervalMicros = Channel.int32();
 
   /// The `GameRenderer2D` share of [presentMicros] - what drawing costs, as
   /// opposed to everything else presenting.
@@ -53,7 +53,7 @@ abstract class DemoGame extends Game2D {
   /// The two together are what direct a fix: presentation being expensive
   /// while this is small means the cost is in some other `Tickable`, and no
   /// amount of work on the renderer will move it.
-  late final StateChannel<int> renderMicros;
+  final renderMicros = Channel.int32();
 
   /// How many **fixed steps** the last `advance` ran, and the number without
   /// which none of the timings above are comparable.
@@ -65,16 +65,16 @@ abstract class DemoGame extends Game2D {
   /// more than one step's wall clock, those stop sharing a denominator - a
   /// recording once read as a catastrophic super-linear blowup and was
   /// entirely this. Divide by it before comparing anything.
-  late final StateChannel<int> stepsPerAdvance;
+  final stepsPerAdvance = Channel.int32();
 
   /// What the case actually has, counted by the simulation rather than by the
   /// button that asked - so a batch that was refused is visible.
-  late final StateChannel<int> spawnedCount;
+  final spawnedCount = Channel.int32();
 
   /// Sprites the renderer emitted last frame, which is not always what exists:
   /// `maxSpritesPerTick` caps the batch, and hitting the cap looks exactly
   /// like the renderer getting slower unless you can see it.
-  late final StateChannel<int> spritesDrawn;
+  final spritesDrawn = Channel.int32();
 
   late final SetPopulation setPopulation;
 
@@ -86,22 +86,6 @@ abstract class DemoGame extends Game2D {
 
   @override
   int get maxSpritesPerTick => 24000;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    caseMicros = descriptor.hasInt32();
-    systemMicros = descriptor.hasInt32();
-    bestSystemMicros = descriptor.hasInt32();
-    stepMicros = descriptor.hasInt32();
-    presentMicros = descriptor.hasInt32();
-    advanceMicros = descriptor.hasInt32();
-    intervalMicros = descriptor.hasInt32();
-    renderMicros = descriptor.hasInt32();
-    stepsPerAdvance = descriptor.hasInt32();
-    spawnedCount = descriptor.hasInt32();
-    spritesDrawn = descriptor.hasInt32();
-  }
 
   @override
   void describeCommands(CommandDescriptor descriptor) {

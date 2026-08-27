@@ -101,8 +101,8 @@ void _step([int times = 1]) {
 }
 
 Future<Scene> _boot() async {
-  final game = _Game();
-  run = await Game.startInline(game);
+  final game = await Game.startInline(_Game.new);
+  run = game;
   _declaration = game.arena;
   addTearDown(() async {
     if (run.isRunning) await run.stop();

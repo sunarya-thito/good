@@ -42,8 +42,9 @@ class _CameraGame extends Game {
 
 class _State extends GameState<Game> {}
 
-Future<T> _start<T extends Game>(T game) async {
-  run = await Game.startInline(game);
+Future<T> _start<T extends Game>(T Function() create) async {
+  final game = await Game.startInline(create);
+  run = game;
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });
@@ -86,7 +87,7 @@ void main() {
     'viewWidth and viewHeight are the layout size with a camera and no '
     'pointer event',
     (tester) async {
-      final game = await _start(_CameraGame());
+      final game = await _start(_CameraGame.new);
 
       await _layout(tester, game.main, width: 320, height: 240);
 
@@ -106,7 +107,7 @@ void main() {
   testWidgets('a resize with a camera and no pointer event is picked up', (
     tester,
   ) async {
-    final game = await _start(_CameraGame());
+    final game = await _start(_CameraGame.new);
 
     await _layout(tester, game.main, width: 320, height: 240);
     run.state.runFixedStep();
