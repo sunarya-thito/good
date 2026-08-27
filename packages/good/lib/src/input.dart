@@ -1,5 +1,6 @@
 import 'package:meta/meta.dart';
 
+import 'package:good/src/declare.dart';
 import 'package:good/src/input/gamepad.dart';
 import 'package:good/src/input/input_binding.dart';
 import 'package:good/src/input/input_state.dart';
@@ -149,6 +150,49 @@ abstract class Input<T> {
 
   /// See [pressed]'s setter.
   set released(InputEventStream<T> stream);
+
+  /// Declares an action on the field that holds it:
+  ///
+  /// ```dart
+  /// class PlayerSystem extends GameSystem with FixedTickable {
+  ///   final fire = Input.of(const TriggerBinding(.spacebar));
+  ///   final movement = Input.of(
+  ///     const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
+  ///   );
+  /// }
+  /// ```
+  ///
+  /// The same action [InputDescriptor.has] declares in a
+  /// `GameSystem.describeInputs` body, said where it is read. The arguments
+  /// are that method's, positionally and with the same meaning: [binding] is
+  /// optional and an action without one is *unbound* until something assigns
+  /// `action.binding`; [defaultValue] is this action's own fallback and beats
+  /// the type-level one from [InputDescriptor.hasDefaultValue].
+  ///
+  /// `V` is inferred from [binding]. An unbound action has nothing to infer
+  /// from, so it is written: `Input.of<bool>()`.
+  ///
+  /// # A GameSystem, and nothing else
+  ///
+  /// `SystemDescriptor.has` takes a constructor, so the framework builds a
+  /// system and there is a call for the registry to be open around. A `Game`
+  /// is not built that way - the caller constructs it and hands it to
+  /// `Game.start` - and its `describeInputs` runs on both isolate copies
+  /// rather than only the one that ticks. An action a `Game` declares stays
+  /// in that hook.
+  ///
+  /// [InputDescriptor.hasDefaultValue] has no field form anywhere. It hands
+  /// nothing back, so there is no field to put it on; declare it in
+  /// `describeInputs`, from the `Game` or from a system.
+  ///
+  /// # Eager, always
+  ///
+  /// `late final fire = Input.of(...)` compiles and is wrong. The call runs
+  /// on the first *read*, by which point boot has sealed the registry and the
+  /// action is refused outright. It does not get that far:
+  /// `DeclarationContext.inputs` throws first, naming the shape.
+  static Input<V> of<V>([InputBinding<V>? binding, V? defaultValue]) =>
+      DeclarationContext.inputs.has<V>(binding, defaultValue);
 }
 
 /// What a [pressed]/[released] listener is handed: the action's value at the
@@ -327,6 +371,13 @@ final class InputRegistry implements InputDescriptor {
   TripleBuffer? get buffer => _buffer;
 
   set source(String source) => _source = source;
+
+  /// What [source] currently reads, so `SystemDescriptor.has` can put it back
+  /// after a system's constructor has run. Without the restore, a field
+  /// declaration would leave the label pointing at a system that has finished
+  /// declaring, and the `describeInputs` pass that follows would attribute
+  /// its actions to the wrong one.
+  String get currentSource => _source;
 
   // --- declaration --------------------------------------------------------
 

@@ -86,7 +86,7 @@ class _FieldState extends GameState<_FieldGame> with _Noted {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_NotedSystem());
+    descriptor.has(_NotedSystem.new);
   }
 }
 
@@ -111,7 +111,7 @@ class _HookState extends GameState<_HookGame> with _Noted {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_NotedSystem());
+    descriptor.has(_NotedSystem.new);
   }
 }
 
@@ -135,7 +135,7 @@ class _MixedState extends GameState<_MixedGame> with _Noted {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_NotedSystem());
+    descriptor.has(_NotedSystem.new);
   }
 }
 

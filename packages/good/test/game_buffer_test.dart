@@ -71,7 +71,7 @@ class _BufferState extends GameState<_BufferGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_PingSystem());
+    descriptor.has(_PingSystem.new);
   }
 }
 

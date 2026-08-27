@@ -89,7 +89,7 @@ class _InputGameState extends GameState<_InputGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_PlayerSystem());
+    descriptor.has(_PlayerSystem.new);
   }
 }
 
@@ -193,7 +193,7 @@ class _SharedDescriptorState extends GameState<_SharedDescriptorGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_LateDefaultSystem());
+    descriptor.has(_LateDefaultSystem.new);
   }
 }
 
@@ -223,7 +223,7 @@ class _MouseGameState extends GameState<_MouseGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_CursorSystem());
+    descriptor.has(_CursorSystem.new);
   }
 }
 

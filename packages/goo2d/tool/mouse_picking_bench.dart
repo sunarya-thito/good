@@ -105,8 +105,8 @@ class _BenchState extends GameState<_BenchGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(WorldTransformSystem());
-    descriptor.has(MousePickingSystem());
+    descriptor.has(WorldTransformSystem.new);
+    descriptor.has(MousePickingSystem.new);
   }
 }
 

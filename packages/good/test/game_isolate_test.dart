@@ -210,7 +210,7 @@ class _IsolateState extends GameState<_IsolateGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_MoverSystem());
+    descriptor.has(_MoverSystem.new);
   }
 }
 
@@ -233,7 +233,7 @@ class _DyingState extends GameState<_DyingGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_DyingSystem());
+    descriptor.has(_DyingSystem.new);
   }
 }
 
@@ -265,7 +265,7 @@ class _RandomIsolateState extends GameState<_RandomIsolateGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_RandomReporter());
+    descriptor.has(_RandomReporter.new);
   }
 }
 
@@ -372,7 +372,7 @@ class _PingState extends GameState<_PingGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_PingSystem());
+    descriptor.has(_PingSystem.new);
   }
 }
 
@@ -423,7 +423,7 @@ class _ChannelState extends GameState<_ChannelGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_CounterSystem());
+    descriptor.has(_CounterSystem.new);
   }
 }
 
@@ -501,7 +501,7 @@ class _InputProbeState extends GameState<_InputProbeGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_InputProbeSystem());
+    descriptor.has(_InputProbeSystem.new);
   }
 }
 
@@ -669,7 +669,7 @@ class _TexturedState extends GameState<_TexturedGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_TexturedSystem());
+    descriptor.has(_TexturedSystem.new);
   }
 }
 
@@ -857,7 +857,7 @@ class _UnloadState extends GameState<_UnloadGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_MoverSystem());
+    descriptor.has(_MoverSystem.new);
   }
 }
 
@@ -960,7 +960,7 @@ class _RegistrarState extends GameState<_RegistrarGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_RegistrarSystem());
+    descriptor.has(_RegistrarSystem.new);
   }
 }
 

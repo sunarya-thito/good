@@ -85,8 +85,8 @@ mixin Renderer2DState<G extends Game2D> on GameState<G> {
   @mustCallSuper
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(WorldTransformSystem());
-    descriptor.has(createRenderer());
+    descriptor.has(WorldTransformSystem.new);
+    descriptor.has(createRenderer);
   }
 
   /// The renderer to declare. Override to return a `GameRenderer2D` subclass

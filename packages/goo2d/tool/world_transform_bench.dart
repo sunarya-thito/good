@@ -162,7 +162,7 @@ class _PhaseEnd extends GameSystem with FixedTickable {
 
 class _BenchState extends GameState<_Bench> {
   final _Field field = _Field();
-  final _DriftSystem drift = _DriftSystem();
+  late final _DriftSystem drift;
 
   /// Free-running, never reset - both stamps below are readings of it and only
   /// their difference is ever used.
@@ -181,10 +181,10 @@ class _BenchState extends GameState<_Bench> {
     // The probes have no opinion about `drift` and it has none about them, so
     // the ties between them break on declaration order - which is why the
     // control system is still declared first.
-    descriptor.has(drift);
-    descriptor.has(_PhaseStart());
-    descriptor.has(WorldTransformSystem());
-    descriptor.has(_PhaseEnd());
+    drift = descriptor.has(_DriftSystem.new);
+    descriptor.has(_PhaseStart.new);
+    descriptor.has(WorldTransformSystem.new);
+    descriptor.has(_PhaseEnd.new);
   }
 }
 

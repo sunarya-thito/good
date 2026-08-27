@@ -85,7 +85,7 @@ mixin MouseReceiver on Component implements MouseListener {
 
 /// Answers "what is the cursor over, and what just happened to it".
 ///
-/// Declare it like any other system (`descriptor.has(MousePickingSystem())`)
+/// Declare it like any other system (`descriptor.has(MousePickingSystem.new)`)
 /// and every `MouseReceiver` entity in the scene starts receiving events. It
 /// also publishes the world-space cursor ([worldSpace]) for anything that
 /// wants the position without the picking - placing a build ghost, aiming a
@@ -128,7 +128,7 @@ class MousePickingSystem extends GameSystem with FixedTickable {
   /// The pointer position, screen and view space. Public because a system
   /// that wants the cursor should not have to declare a second binding for
   /// the same one physical mouse.
-  late final Input<CursorPosition> cursor;
+  final cursor = Input.of<CursorPosition>(const MouseBinding());
 
   /// The button that drives [MouseListener.onMousePressed] /
   /// [MouseListener.onMouseReleased].
@@ -137,7 +137,7 @@ class MousePickingSystem extends GameSystem with FixedTickable {
   /// TriggerBinding(.rightMouseButton)`), which is what a left-handed
   /// settings screen needs - the picking has no opinion about which physical
   /// button it is.
-  late final Input<bool> click;
+  final click = Input.of(const TriggerBinding(.leftMouseButton));
 
   /// The camera mapping this system inverts. Exposed so a caller can project
   /// its own points without resolving a second camera - it is refreshed at
@@ -160,13 +160,6 @@ class MousePickingSystem extends GameSystem with FixedTickable {
   final _cameras = Query.all(Camera, WorldTransform2D);
 
   late final MouseEvent _event = MouseEvent._(cursor.value, worldSpace);
-
-  @override
-  void describeInputs(InputDescriptor descriptor) {
-    super.describeInputs(descriptor);
-    cursor = descriptor.has<CursorPosition>(const MouseBinding());
-    click = descriptor.has<bool>(const TriggerBinding(.leftMouseButton));
-  }
 
   /// After the transforms it hit-tests against - the same declaration
   /// `GameRenderer2D` makes, for the same reason.

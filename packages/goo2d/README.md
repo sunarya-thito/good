@@ -58,7 +58,7 @@ class MyGameState extends GameState2D<MyGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(PlayerSystem());
+    descriptor.has(PlayerSystem.new);
   }
 
   @override

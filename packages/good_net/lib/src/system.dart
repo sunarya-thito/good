@@ -54,7 +54,7 @@ mixin NetSessionListener on GameListener {
 ///   @override
 ///   void describeNetwork(NetDescriptor descriptor) {
 ///     descriptor.transport(P2PNetTransport());
-///     fire = descriptor.has(Fire(), id: 'fire', channel: NetChannel.unreliable);
+///     fire = descriptor.has(Fire.new, id: 'fire', channel: NetChannel.unreliable);
 ///     descriptor.hasHandler(fire, _onFire);
 ///   }
 ///
@@ -134,22 +134,29 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
     );
   }
 
-  /// Builds the system, runs [describeNetwork] into it, and declares it.
+  /// Declares the system, runs [describeNetwork] into it, and seals what that
+  /// declared.
   ///
   /// The order matters and is the reason this is not two passes: a message
   /// binds to the thing that will send it at declare time, so the system has
   /// to exist before the pass runs - and the pass has to have run before the
   /// registry can be sealed and hashed.
   ///
+  /// The declaration is what builds it, which is why it comes first here and
+  /// did not used to. `SystemDescriptor.has` opens the event binder and the
+  /// input registry around the constructor call, and a `NetworkSystem` built
+  /// beside it and handed over afterwards would have had neither - so its
+  /// four dispatchers could not move onto their fields. Everything after this
+  /// line reads `network` back off the handle rather than off a local.
+  ///
   /// Declared **before** `super.describeSystems`, so that in the absence of
   /// any `compareTo` opinion it is also first in declaration order.
   @override
   @mustCallSuper
   void describeSystems(SystemDescriptor descriptor) {
-    network = NetworkSystem();
+    network = descriptor.has(NetworkSystem.new);
     describeNetwork(NetBinder(network.registry, network));
     network.registry.seal();
-    descriptor.has(network);
     super.describeSystems(descriptor);
   }
 }

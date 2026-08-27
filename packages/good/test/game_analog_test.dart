@@ -108,7 +108,7 @@ class _AnalogGameState extends GameState<_AnalogGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_AnalogSystem());
+    descriptor.has(_AnalogSystem.new);
   }
 }
 

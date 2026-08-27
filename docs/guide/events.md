@@ -89,13 +89,12 @@ final chirped = Event.signal<ChirpListener>((listener) => listener.onChirp());
 
 ### The hook, and who still needs it
 
-A `SceneStruct` and a `GameSystem` are constructed by you, not by the
-framework — `final level = MainScene();`, `descriptor.has(SpinSystem())` — so
-nothing is open while their fields initialise. They declare in
+A `SceneStruct` is constructed by you, not by the framework — `final level =
+MainScene();` — so nothing is open while its fields initialise. It declares in
 `describeEvents`, which runs once at boot and is handed a descriptor to declare
 into:
 
-<!-- snippet: in GameSystem -->
+<!-- snippet: in SceneStruct -->
 ```dart
 late final EventDispatcher<WaveListener, int> waveSpotted;
 
@@ -111,12 +110,37 @@ void describeEvents(EventDescriptor descriptor) {
 `late final` with no initialiser is right here and only here: the field is
 assigned from the hook, which runs after the constructor.
 
-`EntityStruct`'s own `mountedEvent` and `unmountedEvent` are declared this way
-too, for a narrower reason. `SceneDescriptor.has` takes a closure, and a
-closure may hand back a prefab that was built earlier — nothing was open
-around *that* construction. A pair on the base class is inherited by every
-struct however it was built, so it cannot assume a binder; a pair you declare
-on your own struct can, as long as you let the framework build it.
+Two base-class pairs are declared this way too, for a narrower reason.
+`EntityStruct`'s `mountedEvent`/`unmountedEvent` and `GameSystem`'s
+`mountEvent`/`unmountEvent` are inherited by every struct and every system
+however it was built, so neither can assume a binder of its own. A pair you
+declare on your own struct or your own system can, as long as you let the
+framework build it.
+
+That caveat is worth reading twice for a system, because the failure is quiet.
+Every `has` takes a `T Function()`, and a closure may hand back an object that
+already existed:
+
+<!-- snippet: skip the wrong half of a before/after, and deliberately so -->
+```dart
+final _spawner = Spawner();                 // built here, in a state field
+// ...
+descriptor.has(() => _spawner);             // handed over, not built
+```
+
+A prefab handed over that way throws, because nothing was open above it. A
+system does not: a `GameState` is itself framework-built, so *its* binder is
+open while its fields initialise, and the system's dispatcher is created
+against the state. It then reaches the state's entire composition — every
+sibling system, every scene, every prefab — rather than the system's own
+listeners. Build inside the closure, or pass the constructor:
+
+<!-- snippet: skip two fragments of one class body, not a class -->
+```dart
+late final Spawner spawner;
+// ...
+spawner = descriptor.has(Spawner.new);
+```
 
 The hook works on all four owners and is not going anywhere. An owner may use
 both forms at once: its fields' dispatchers are declared first, its hook's
@@ -131,8 +155,8 @@ pass uses.
 Anything that mixes in `EventBus`, whose bound is `on GameListener`. Four
 framework types qualify — `GameState`, `SceneStruct`, `EntityStruct` and
 `GameSystem` — and they are exactly the four that live on the game isolate.
-`GameState` and `EntityStruct` declare on a field; `SceneStruct` and
-`GameSystem` declare in `describeEvents`, for the construction reason above.
+`GameState`, `EntityStruct` and `GameSystem` declare on a field; `SceneStruct`
+declares in `describeEvents`, for the construction reason above.
 
 `Game` is not a `GameListener`, so it cannot declare or receive an event. Every
 event in the engine happens on the simulating isolate; traffic to Flutter goes

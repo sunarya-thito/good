@@ -470,8 +470,8 @@ class ${className}State extends GameState<$gameClass> {
     // its `WorldTransform3D`, once per tick. Without it a child never moves
     // with its parent - and again, `Game2D` declares the 2D twin of this for
     // you while nothing declares this one.
-    descriptor.has(WorldTransform3DSystem());
-    descriptor.has(SpinSystem());
+    descriptor.has(WorldTransform3DSystem.new);
+    descriptor.has(SpinSystem.new);
   }
 
   @override

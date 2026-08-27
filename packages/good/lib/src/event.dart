@@ -304,26 +304,40 @@ abstract class EventDescriptor {
 ///
 /// # Who can declare this way, and who cannot yet
 ///
-/// A [GameState] and an [EntityStruct]. Both are built by the framework -
-/// `Game.createState` for one, `SceneDescriptor.has(Mote.new)` or
-/// `EntityStruct.of(Barrel.new)` for the other - so there is a constructor
-/// call for the binder to be open around.
+/// A [GameState], an [EntityStruct] and a [GameSystem]. All three are built
+/// by the framework - `Game.createState` for the first,
+/// `SceneDescriptor.has(Mote.new)` or `EntityStruct.of(Barrel.new)` for the
+/// second, `SystemDescriptor.has(SpinSystem.new)` for the third - so there is
+/// a constructor call for the binder to be open around.
 ///
-/// The struct half has a hole in it, and it is the same hole `Field.*` has:
-/// `SceneDescriptor.has` takes a closure, and a closure is free to return an
-/// object built earlier (`descriptor.has(() => _prefab)`). Nothing was open
-/// around *that* construction, so a prefab handed over that way cannot
-/// declare on its fields and gets the error below instead. Build the prefab
-/// inside the closure - `descriptor.has(() => Bullet(speed: 5))` - or pass
-/// the constructor itself.
+/// A [SceneStruct] is the one that is still constructed by the caller
+/// (`final level = MainScene();`), so no binder is open while its fields
+/// initialise and `Event.*` in one throws out of
+/// [DeclarationContext.events]. It keeps declaring in `describeEvents`, which
+/// is not going anywhere for anyone: an owner may declare through either, and
+/// one that declares through both gets its fields' dispatchers and its
+/// hook's, in that order.
 ///
-/// A [SceneStruct] and a [GameSystem] are still constructed by the caller
-/// (`final level = MainScene();`, `descriptor.has(SpinSystem())`), so no
-/// binder is open while their fields initialise and `Event.*` in one throws
-/// out of [DeclarationContext.events]. Both keep declaring in
-/// `describeEvents`, which is not going anywhere for anyone: an owner may
-/// declare through either, and one that declares through both gets its
-/// fields' dispatchers and its hook's, in that order.
+/// # Let the framework build it, and mean it
+///
+/// All three descriptors take a `T Function()`, and a closure is free to
+/// return an object built earlier - `descriptor.has(() => _prefab)`. Nothing
+/// was open around *that* construction, so a field declaration on it does not
+/// declare what it looks like it declares. Build inside the closure -
+/// `descriptor.has(() => Bullet(speed: 5))` - or pass the constructor itself.
+///
+/// What happens when you do not differs by owner, and the system case is the
+/// dangerous one. A prefab built with nothing above it throws, because the
+/// stack is empty. A system built in a `GameState`'s **field initialiser**
+/// does not: the state's own binder is open at that moment, so the system's
+/// dispatcher is created against the state and silently collects the state's
+/// whole composition - every sibling system, every scene, every prefab -
+/// instead of the system's own listeners. It boots, it runs, and the event
+/// reaches an audience nobody asked for.
+///
+/// That asymmetry is why [GameSystem]'s own `mountEvent` and `unmountEvent`
+/// stay in the hook while a subclass's events move onto fields. See
+/// `GameSystem.describeEvents`.
 ///
 /// # Eager, always
 ///

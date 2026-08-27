@@ -152,7 +152,7 @@ class _BenchState extends GameState2D<_Bench> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_Probe());
+    descriptor.has(_Probe.new);
   }
 }
 

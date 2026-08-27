@@ -83,7 +83,7 @@ class MyGameState extends GameState2D<MyGameGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(PlayerSystem());
+    descriptor.has(PlayerSystem.new);
   }
 
   @override
@@ -107,22 +107,16 @@ handle. A system can declare its own:
 ```dart title="lib/game/systems/player_system.dart" hl_lines="2 6 7 8 9 10 11 12 13 14 15"
 class PlayerSystem extends GameSystem with FixedTickable {
   final players = Query.all(Transform2D, Player);
-  late final Input<Vector2> movement;
+  final movement = Input.of(
+    const Vec2Binding(
+      up: InputKey.w,
+      down: InputKey.s,
+      left: InputKey.a,
+      right: InputKey.d,
+    ),
+  );
 
   // ...
-
-  @override
-  void describeInputs(InputDescriptor descriptor) {
-    super.describeInputs(descriptor);
-    movement = descriptor.has<Vector2>(
-      const Vec2Binding(
-        up: InputKey.w,
-        down: InputKey.s,
-        left: InputKey.a,
-        right: InputKey.d,
-      ),
-    );
-  }
 }
 ```
 

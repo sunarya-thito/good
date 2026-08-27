@@ -293,7 +293,7 @@ class ParticlesState extends DemoState<ParticlesGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(SwirlSystem());
+    descriptor.has(SwirlSystem.new);
   }
 
   @override

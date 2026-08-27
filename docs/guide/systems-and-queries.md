@@ -57,7 +57,7 @@ class MyState extends GameState2D<MyGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(MovementSystem());
+    descriptor.has(MovementSystem.new);
   }
 }
 ```
@@ -247,24 +247,18 @@ state channels, commands and events:
 
 ```dart
 class PlayerSystem extends GameSystem with FixedTickable {
-  late final Input<Vector2> movement;
-  late final Input<bool> fire;
-
-  @override
-  void describeInputs(InputDescriptor descriptor) {
-    super.describeInputs(descriptor);
-    movement = descriptor.has<Vector2>(
-      const Vec2Binding(up: InputKey.w, down: InputKey.s,
-                        left: InputKey.a, right: InputKey.d),
-    );
-    fire = descriptor.has<bool>(const TriggerBinding(InputKey.spacebar));
-  }
+  final movement = Input.of(
+    const Vec2Binding(up: InputKey.w, down: InputKey.s,
+                      left: InputKey.a, right: InputKey.d),
+  );
+  final fire = Input.of(const TriggerBinding(InputKey.spacebar));
 }
 ```
 
 Keeping the action beside the loop that reads it is usually better than
 declaring every input on the `Game` — the declaration and its only consumer stay
-in one file.
+in one file. See [input](input.md) for when the `describeInputs` hook is still
+the answer.
 
 ## Lifecycle
 

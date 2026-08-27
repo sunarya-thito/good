@@ -28,6 +28,7 @@ import 'package:good/src/audio/audio_clip.dart';
 import 'package:good/src/camera_view.dart';
 import 'package:good/src/command/command.dart';
 import 'package:good/src/command/param.dart';
+import 'package:good/src/declare.dart';
 import 'package:good/src/command/transport.dart';
 import 'package:good/src/event.dart';
 import 'package:good/src/event/state.dart';
@@ -2898,8 +2899,25 @@ abstract class GameSceneDescriptor {
   T has<T extends SceneStruct>(T scene);
 }
 
+/// Declares the systems a game runs, in the order it runs them - see
+/// `GameState.describeSystems`.
 abstract class SystemDescriptor {
-  T has<T extends GameSystem>(T system);
+  /// Builds [create]'s system, declares it, and returns it.
+  ///
+  /// A **constructor**, not an instance: `descriptor.has(SpinSystem.new)`.
+  /// The framework builds the system so that the declaration windows a field
+  /// initialiser needs are open while it does - `Event.of`, `Event.signal`
+  /// and `Input.of` all read a context that only exists for the duration of
+  /// this call. A system built anywhere else has none of them open, which is
+  /// what those three throw about.
+  ///
+  /// A system taking constructor arguments goes through a closure:
+  /// `descriptor.has(() => Box2DPhysicsSystem(gravityY: -10))`. The window is
+  /// open while the closure runs, so that shape declares on fields too. What
+  /// does *not* work is a closure handing back an object built earlier -
+  /// `descriptor.has(() => _spawner)` - because nothing was open around
+  /// **that** construction. Keep the handle this returns instead.
+  T has<T extends GameSystem>(T Function() create);
 }
 
 /// Declares the auxiliary ring buffers a game (or one of its systems) needs
@@ -3070,12 +3088,40 @@ final class _SystemDescriptor implements SystemDescriptor {
   final GameState _state;
 
   @override
-  T has<T extends GameSystem>(T system) {
+  T has<T extends GameSystem>(T Function() create) {
+    // Two windows around the one constructor call, and a system's field
+    // initialisers may use both. The inner one is the event binder, which
+    // outlives the call - `EventBinder.open` hangs it on the system so that
+    // `_bindEvents` picks up the same one later. The outer one is the input
+    // registry, which does not: an action is appended to a list here and
+    // read back off the returned handle, so the registry only has to be
+    // reachable while the initialisers run.
+    //
+    // `source` is the static type argument rather than `runtimeType`, since
+    // there is no object to ask yet. That is the type at the declaration
+    // site, which is what a diagnostic naming the declaring source wants.
+    final inputs = _state.game._inputs;
+    final restore = inputs.currentSource;
+    inputs.source = '$T';
+    final T system;
+    DeclarationContext.pushInputs(inputs);
+    try {
+      system = EventBinder.open(create);
+    } finally {
+      DeclarationContext.popInputs();
+      inputs.source = restore;
+    }
+    // After the build, not before: the check is on `runtimeType`, and a
+    // tear-off's type argument is the static type - `descriptor.has(() =>
+    // pickSystem())` would sail past a check written against `T`. The cost
+    // of building first is that a duplicate's declarations are already in
+    // the registries when this throws, and that costs nothing: the throw
+    // aborts boot.
     final type = system.runtimeType;
     if (_state.systemIndexOf(type) != null) {
       throw StateError(
         '$type is declared twice in ${_state.game.runtimeType}'
-        '.describeSystems. One instance describes one system; declaration '
+        '.describeSystems. One declaration is one system; declaration '
         'order is execution order, so a duplicate has no meaningful position.',
       );
     }

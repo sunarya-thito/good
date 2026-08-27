@@ -142,12 +142,12 @@ abstract class DemoState<G extends DemoGame> extends GameState2D<G> {
     // each other, so the tie between them breaks on the order they were
     // declared in. Every other probe states its position outright.
     descriptor
-      ..has(_FixedPhaseStart())
-      ..has(_FixedPhaseEnd())
-      ..has(_PresentPhaseStart())
-      ..has(_RenderPhaseStart())
-      ..has(_RenderPhaseEnd())
-      ..has(DemoStats());
+      ..has(_FixedPhaseStart.new)
+      ..has(_FixedPhaseEnd.new)
+      ..has(_PresentPhaseStart.new)
+      ..has(_RenderPhaseStart.new)
+      ..has(_RenderPhaseEnd.new)
+      ..has(DemoStats.new);
   }
 
   @override

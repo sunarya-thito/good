@@ -73,8 +73,8 @@ class _GameState extends GameState<_Game> {
   @override
   void describeSystems(SystemDescriptor d) {
     super.describeSystems(d);
-    physics = d.has(Box2DPhysicsSystem());
-    _turner = d.has(_Turner());
+    physics = d.has(Box2DPhysicsSystem.new);
+    _turner = d.has(_Turner.new);
   }
 }
 

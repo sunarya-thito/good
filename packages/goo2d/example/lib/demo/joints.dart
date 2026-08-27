@@ -549,9 +549,9 @@ class JointState extends DemoState<JointGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(Box2DPhysicsSystem());
-    descriptor.has(JointSystem());
-    descriptor.has(_JointStats());
+    descriptor.has(Box2DPhysicsSystem.new);
+    descriptor.has(JointSystem.new);
+    descriptor.has(_JointStats.new);
   }
 }
 

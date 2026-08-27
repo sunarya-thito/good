@@ -267,7 +267,7 @@ class MyGameState extends GameState2D<MyAwesomeGame> {
     // compareTo puts it after WorldTransformSystem wherever either is
     // declared.
     super.describeSystems(descriptor);
-    descriptor.has(SpinSystem());
+    descriptor.has(SpinSystem.new);
   }
 
   @override

@@ -76,7 +76,7 @@ Declare the system on the state:
 @override
 void describeSystems(SystemDescriptor descriptor) {
   super.describeSystems(descriptor);
-  descriptor.has(Box2DPhysicsSystem(gravityY: -10));
+  descriptor.has(() => Box2DPhysicsSystem(gravityY: -10));
 }
 ```
 

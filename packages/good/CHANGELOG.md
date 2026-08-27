@@ -2,6 +2,37 @@
 
 ### Breaking
 
+* **`SystemDescriptor.has` takes a constructor, not an instance.**
+  `descriptor.has(SpinSystem())` becomes `descriptor.has(SpinSystem.new)`, at
+  every system declaration. A system taking constructor arguments goes through
+  a closure: `descriptor.has(() => Box2DPhysicsSystem(gravityY: -10))`. The old
+  spelling does not quietly keep working - a `GameSystem` has no `call`, so an
+  instance where a `T Function()` is wanted is a compile error at the
+  declaration line (#91).
+
+  ```dart
+  // before
+  descriptor.has(SpinSystem());
+
+  // after
+  descriptor.has(SpinSystem.new);
+  ```
+
+  **Why.** An event or an input declared on the field that holds it - see
+  Added - runs its initialiser during the constructor, and the binder and the
+  input registry have to be open before it does. An initialiser cannot see
+  `this`, so the framework has to be the one constructing. Same trade
+  `CommandDescriptor.has` made in #231 and `SceneDescriptor.has` in #57.
+
+  **A closure may hand back a system built earlier, and should not.**
+  `descriptor.has(() => _spawner)` compiles and runs, because a closure is
+  free to return anything. Nothing was open around *that* construction, so a
+  field declaration on it does not declare what it appears to. Where the
+  system was built in a `GameState` field initialiser the failure is silent
+  rather than loud: the state's own binder is open at that moment, so the
+  dispatcher is created against the state and reaches the state's whole
+  composition. Keep the handle `has` returns instead.
+
 * **`CommandDescriptor.has` takes a constructor, not an instance.**
   `descriptor.has(Damage())` becomes `descriptor.has(Damage.new)`, at every
   command declaration. The old spelling does not quietly keep working: an
@@ -182,6 +213,41 @@
   or absent, so renaming those is a design question and not a spelling one.
 
 ### Added
+
+* **`Input.of` declares an input action on the field that holds it.** A
+  `GameSystem` is framework-built as of the change above, so the registry is
+  open while its fields initialise (#91).
+
+  ```dart
+  class PlayerSystem extends GameSystem with FixedTickable {
+    final fire = Input.of(const TriggerBinding(.spacebar));
+    final movement = Input.of(
+      const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
+    );
+  }
+  ```
+
+  `V` comes off the binding. An unbound action has nothing to infer from and
+  says so: `Input.of<bool>()`. The initialiser must be eager - `late final`
+  runs on first read, long after boot sealed the registry, and throws out of
+  `DeclarationContext.inputs` rather than declaring anything.
+
+  A system only. A `Game` is constructed by the caller and its
+  `describeInputs` runs on both isolate copies, so a `Game`'s actions stay in
+  the hook. `InputDescriptor.hasDefaultValue` has no field form anywhere - it
+  hands nothing back, so there is no field to put it on - and `describeInputs`
+  survives for it. Both forms compose on one system: fields first, hook
+  second.
+
+* **`Event.of` and `Event.signal` now work on a `GameSystem` field.** Both
+  statics landed for a `GameState` and an `EntityStruct` below; a system was
+  excluded because it was constructed by the caller, and the change above is
+  what removes that (#91).
+
+  `GameSystem`'s own `mountEvent` and `unmountEvent` stay in `describeEvents`,
+  the way `EntityStruct`'s pair does. A base-class pair is inherited by every
+  system however it was built, and a system handed over pre-built through a
+  closure declares into whatever binder happens to be open above it.
 
 * **An event is declared on the field that holds it.** `Event.of` carries a
   payload and `Event.signal` carries nothing, so a `GameState` or an

@@ -3,6 +3,7 @@ import 'package:meta/meta.dart';
 import 'package:good/src/command/param.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/event.dart';
+import 'package:good/src/input.dart';
 import 'package:good/src/struct.dart';
 
 /// What `EntityStruct.of` declares against: whoever is registering prefabs
@@ -191,18 +192,60 @@ abstract final class DeclarationContext {
         'Event.of and Event.signal read the binder the framework opens '
         'around a constructor call, so the framework has to be the one '
         'constructing. It is for a GameState, which Game.createState hands '
-        'back, and for an EntityStruct, which a scene declares:'
-        '\n  descriptor.has(Mote.new)   // not Mote()\n'
+        'back, for an EntityStruct, which a scene declares, and for a '
+        'GameSystem, which describeSystems declares:'
+        '\n  descriptor.has(Mote.new)        // not Mote()'
+        '\n  descriptor.has(SpinSystem.new)  // not SpinSystem()\n'
         'A `late final` initialiser lands here too, and that is the point: '
         'it runs on first read, long after the binder was closed, so a '
         'dispatcher declared that way would never be offered a listener and '
         'would deliver to nobody. Field initialisers here are eager, always. '
         'A describeEvents body is the other way in: it runs after the '
         'constructor, so it declares through the EventDescriptor it is '
-        'handed rather than through Event.*. A SceneStruct and a GameSystem '
-        'are both still constructed by the caller, so both declare there.',
+        'handed rather than through Event.*. A SceneStruct is still '
+        'constructed by the caller, so it declares there.',
       );
     }
     return _events.last;
+  }
+
+  /// The open input registries, innermost last - the fifth level of the
+  /// stack, and the one `Input.of` declares against.
+  ///
+  /// A stack for the same reason the levels above it are, though nothing
+  /// nests here today: a system's constructor is the only thing that opens
+  /// one, and a system does not build another system. Keeping the shape means
+  /// "empty" is the same question at every level.
+  static final List<InputDescriptor> _inputs = <InputDescriptor>[];
+
+  /// Opens a registry for the duration of one system's constructor. Paired
+  /// with [popInputs] in a `finally` - `SystemDescriptor.has` is the only
+  /// caller.
+  static void pushInputs(InputDescriptor registry) => _inputs.add(registry);
+
+  static void popInputs() => _inputs.removeLast();
+
+  /// The innermost open registry, or a `StateError` naming the two ways to
+  /// get here: constructing the system yourself, and reaching an `Input.of`
+  /// call lazily.
+  static InputDescriptor get inputs {
+    if (_inputs.isEmpty) {
+      throw StateError(
+        'An Input was declared with no system being constructed. Input.of '
+        'reads the registry the framework opens around a constructor call, '
+        'so the framework has to be the one constructing:\n'
+        '  descriptor.has(PlayerSystem.new)   // not PlayerSystem()\n'
+        'A `late final` initialiser lands here too, and that is the point: '
+        'it runs on first read, long after boot sealed the registry, so an '
+        'action declared that way is refused outright by the seal. Field '
+        'initialisers here are eager, always. A describeInputs body is the '
+        'other way in: it runs after the constructor, so it declares through '
+        'the InputDescriptor it is handed rather than through Input.of. A '
+        'Game declares there and only there - it is built by the caller, and '
+        'its pass runs on both isolate copies rather than only the one that '
+        'ticks.',
+      );
+    }
+    return _inputs.last;
   }
 }

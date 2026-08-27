@@ -316,12 +316,12 @@ class _CollidingGame extends _NetGame {
 }
 
 class _WatchedState extends _NetState {
-  final _Watcher watcher = _Watcher();
+  late final _Watcher watcher;
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(watcher);
+    watcher = descriptor.has(_Watcher.new);
   }
 }
 
