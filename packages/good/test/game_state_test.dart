@@ -107,7 +107,7 @@ class _StateGameState extends GameState<_StateGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_StateSystem());
+    descriptor.has(_StateSystem.new);
   }
 }
 

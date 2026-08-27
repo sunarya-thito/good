@@ -80,7 +80,7 @@ class _MultiState extends GameState<_MultiGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_Census());
+    descriptor.has(_Census.new);
   }
 }
 

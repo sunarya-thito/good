@@ -71,7 +71,7 @@ class _DeclaringState extends GameState<_DeclaringGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_CensusSystem());
+    descriptor.has(_CensusSystem.new);
   }
 }
 

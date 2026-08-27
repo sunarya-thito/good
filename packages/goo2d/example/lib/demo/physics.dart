@@ -802,7 +802,7 @@ class PhysicsState extends DemoState<PhysicsGame> {
     // agree, so it lands after the step from either side. It is declared
     // before `SandboxSystem` because those two have no opinion about each
     // other and the tie breaks on declaration order.
-    descriptor.has(_PhysicsPhaseStart());
+    descriptor.has(_PhysicsPhaseStart.new);
     // Gravity in metres per second squared, and heavier than the -10 default
     // so a big pile settles while you watch it. Negative is down; see
     // Box2DPhysicsSystem.gravityY.
@@ -814,11 +814,14 @@ class PhysicsState extends DemoState<PhysicsGame> {
     // changed nothing. A field on the `Game` travels with the copied object
     // graph and arrives.
     descriptor.has(
-      Box2DPhysicsSystem(gravityY: -18, workerCount: game.solverWorkerCount),
+      () => Box2DPhysicsSystem(
+        gravityY: -18,
+        workerCount: game.solverWorkerCount,
+      ),
     );
     descriptor
-      ..has(_PhysicsPhaseEnd())
-      ..has(SandboxSystem());
+      ..has(_PhysicsPhaseEnd.new)
+      ..has(SandboxSystem.new);
   }
 }
 

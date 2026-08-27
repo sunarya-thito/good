@@ -37,7 +37,7 @@ class _BareState extends GameState<Game> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_TickingSystem());
+    descriptor.has(_TickingSystem.new);
   }
 }
 
@@ -112,7 +112,7 @@ class _VisibilityState extends GameState<Game> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    _visibility = descriptor.has(_VisibilitySystem());
+    _visibility = descriptor.has(_VisibilitySystem.new);
   }
 }
 

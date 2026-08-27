@@ -118,6 +118,30 @@ abstract class GameSystem extends GameListenerBase
   late final SignalDispatcher<GameSystemLifecycleListener> mountEvent;
   late final SignalDispatcher<GameSystemLifecycleListener> unmountEvent;
 
+  // These two stay in the hook while a subclass's events move onto their
+  // fields, and the reason is sharper than the matching one on `EntityStruct`
+  // (struct.dart:95-129).
+  //
+  // `SystemDescriptor.has` takes a `T Function()`, and a closure may hand
+  // back a system that already existed - `descriptor.has(() => _spawner)`,
+  // where `_spawner` is a field of the `GameState`. For a prefab that shape
+  // throws, because nothing is open above it and `DeclarationContext.events`
+  // finds an empty stack. For a system it does not throw: a `GameState` is
+  // itself framework-constructed now, so its *own* binder is open while its
+  // field initialisers run, and a dispatcher declared by a system built there
+  // is created against the state. It then collects the state's entire
+  // composition - every sibling system, every scene, every prefab - where the
+  // system's own binder would have offered it only the system.
+  //
+  // A pair on this base class is inherited by every system however it was
+  // built, so it cannot assume a binder of its own. Measured, not reasoned:
+  // a system holding `Event.signal` on a field, built in a `GameState` field
+  // initialiser and handed over through a closure, collected two listeners
+  // that belonged to two unrelated systems and none of its own.
+  //
+  // A system the framework *does* build - `descriptor.has(SpinSystem.new)`,
+  // or a closure that constructs inside itself - has its own binder open, so
+  // `Event.*` on a subclass field works and is the shape to reach for.
   @override
   @mustCallSuper
   void describeEvents(EventDescriptor descriptor) {
@@ -223,23 +247,41 @@ abstract class GameSystem extends GameListenerBase
   /// resolved against that block by the copy that ticks - which is this one.
   /// Main writes the block and never reads an action.
   ///
+  /// Reach for [Input.of] first - a system is framework-built, so an action
+  /// goes on the field that holds it:
+  ///
   /// ```dart
-  /// late final Input<Vector2> movement;
-  /// late final Input<bool> triggerSkill;
+  /// final movement = Input.of(
+  ///   const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
+  /// );
+  /// final triggerSkill = Input.of(const TriggerBinding(.spacebar));
+  /// ```
+  ///
+  /// This hook is the other way, and it stays: it is what
+  /// [InputDescriptor.hasDefaultValue] needs, since that hands nothing back
+  /// and so has no field to live on.
+  ///
+  /// ```dart
+  /// late final Input<double> throttle;
   ///
   /// @override
   /// void describeInputs(InputDescriptor input) {
   ///   super.describeInputs(input);
-  ///   movement = input.has<Vector2>(const Vec2Binding(up: .w, down: .s, left: .a, right: .d));
-  ///   triggerSkill = input.has<bool>(const TriggerBinding(.spacebar));
+  ///   input.hasDefaultValue<double>(0);
+  ///   throttle = input.has<double>();
   /// }
   /// ```
   ///
-  /// Keep the returned [Input] in a `late final` field; there is no
-  /// `getAction(name)` to look one up by (the typed-handle rule). The base
-  /// here declares nothing - unlike `Game.describeInputs`, which declares the
-  /// framework's own actions - so the `super` call carries only whatever
-  /// mixins a system was assembled from.
+  /// Keep the returned [Input] in a field either way; there is no
+  /// `getAction(name)` to look one up by (the typed-handle rule). A field
+  /// assigned from this hook is `late final` because the hook runs after the
+  /// constructor; one initialised by [Input.of] is a plain `final`, and must
+  /// be - see [Input.of] on why `late` is wrong there.
+  ///
+  /// The base here declares nothing - unlike `Game.describeInputs`, which
+  /// declares the framework's own actions - so the `super` call carries only
+  /// whatever mixins a system was assembled from. Both forms compose: a
+  /// system's field declarations land first, its hook's second.
   ///
   /// Runs on the simulating copy only, because that is the only copy a system
   /// exists on at all. Main's `InputRegistry` therefore holds just the

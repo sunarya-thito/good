@@ -76,8 +76,8 @@ class _PingState extends GameState<_PingGame> with _Ping {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_PingSystem());
-    descriptor.has(_DeafSystem());
+    descriptor.has(_PingSystem.new);
+    descriptor.has(_DeafSystem.new);
   }
 }
 

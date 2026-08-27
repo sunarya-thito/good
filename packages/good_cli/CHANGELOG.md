@@ -2,6 +2,12 @@
 
 ### Changed
 
+* **`good create` declares its systems with a constructor.** The generated
+  `describeSystems` writes `descriptor.has(SpinSystem.new)` rather than
+  `descriptor.has(SpinSystem())`, following `good`'s `SystemDescriptor.has`
+  (#91). Re-run `good create` for the new spelling; an existing project
+  updates by hand at each system declaration.
+
 * **`good create` scaffolds its system's query as a field.** The generated
   `SpinSystem` writes `final _players = Query.all(Transform3D, Player);`
   instead of a `describeQuery` override, matching the field form `good` now

@@ -1,5 +1,12 @@
 ## Unreleased
 
+### Changed
+
+* **`MousePickingSystem` declares `cursor` and `click` on their fields.** Both
+  were `late final` assigned from a `describeInputs` override, which the
+  system no longer has; they are plain `final` initialised by `Input.of`
+  (#91). The fields are read exactly as before.
+
 ### Breaking
 
 * **`Sprite.setNineSliceBorder` now writes the four destination insets as

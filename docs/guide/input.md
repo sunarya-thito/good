@@ -27,20 +27,13 @@ is what makes rebinding a one-line assignment, not a rewrite.
 
 ```dart
 class PlayerSystem extends GameSystem with FixedTickable {
-  late final Input<Vector2> movement;
-  late final Input<bool> fire;
-
-  @override
-  void describeInputs(InputDescriptor descriptor) {
-    super.describeInputs(descriptor);
-    movement = descriptor.has<Vector2>(
-      const Vec2Binding(
-        up: InputKey.w, down: InputKey.s,
-        left: InputKey.a, right: InputKey.d,
-      ),
-    );
-    fire = descriptor.has<bool>(const TriggerBinding(InputKey.spacebar));
-  }
+  final movement = Input.of(
+    const Vec2Binding(
+      up: InputKey.w, down: InputKey.s,
+      left: InputKey.a, right: InputKey.d,
+    ),
+  );
+  final fire = Input.of(const TriggerBinding(InputKey.spacebar));
 
   @override
   void onFixedUpdate() {
@@ -51,10 +44,41 @@ class PlayerSystem extends GameSystem with FixedTickable {
 }
 ```
 
+`Input.of` declares the action on the field that holds it. `V` comes off the
+binding, so `movement` is an `Input<Vector2>` and `fire` an `Input<bool>`
+without either being written out. An action nothing binds yet has nothing to
+infer from, so that one says so: `Input.of<bool>()`.
+
+The initialiser is a plain `final`, and has to be. `late final fire =
+Input.of(...)` compiles and runs on the first *read* — long after boot sealed
+the registry — so the action would be refused outright. It throws at the
+declaration instead, naming the shape.
+
 Declare inputs on a **`GameSystem`** (keeping the action beside the loop that
 reads it) or on the **`Game`** (for actions several systems share). All sources
 share one descriptor, so a type-level default registered anywhere is visible
 everywhere.
+
+`Input.of` is for a system and nothing else. `SystemDescriptor.has` takes a
+constructor, so the framework builds a system and the registry is open while
+its fields initialise; a `Game` is built by you and handed to `Game.start`, and
+its pass runs on both isolate copies. A `Game`'s actions stay in the hook:
+
+```dart
+class MyGame extends Game {
+  late final Input<bool> openMenu;
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    openMenu = input.has<bool>(const TriggerBinding(InputKey.escape));
+  }
+}
+```
+
+The hook survives on a system too, and there is one thing that needs it:
+`hasDefaultValue` hands nothing back, so it has no field to live on. A system
+may use both forms at once — its fields declare first, its hook second.
 
 ## Where values come from
 

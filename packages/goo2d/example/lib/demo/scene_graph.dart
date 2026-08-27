@@ -257,7 +257,7 @@ class SceneGraphState extends DemoState<SceneGraphGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(CritterSystem());
+    descriptor.has(CritterSystem.new);
   }
 
   /// One critter and its three limbs, **all in the same tick**.

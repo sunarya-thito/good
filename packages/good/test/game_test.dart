@@ -106,8 +106,8 @@ class _PhaseState extends _FixtureState {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_PresentSystem());
-    descriptor.has(_BothPhases());
+    descriptor.has(_PresentSystem.new);
+    descriptor.has(_BothPhases.new);
   }
 }
 
@@ -145,8 +145,8 @@ class _ThrowState extends _FixtureState {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    _thrower = descriptor.has(_ThrowingSystem());
-    _afterThrower = descriptor.has(_AfterThrowerSystem());
+    _thrower = descriptor.has(_ThrowingSystem.new);
+    _afterThrower = descriptor.has(_AfterThrowerSystem.new);
   }
 }
 
@@ -202,7 +202,7 @@ class _VisibilityState extends _FixtureState {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    _visibility = descriptor.has(_VisibilitySystem());
+    _visibility = descriptor.has(_VisibilitySystem.new);
   }
 }
 
@@ -306,12 +306,12 @@ class _OrderingState extends _TestState {
     // Declaration order: A, InertSystem, B, CensusSystem, Indifferent1,
     // Indifferent2, SortsFirst, AlsoSortsFirst, Composer, Spawner.
     super.describeSystems(descriptor);
-    descriptor.has(_Indifferent1());
-    descriptor.has(_Indifferent2());
-    descriptor.has(_SortsFirst());
-    descriptor.has(_AlsoSortsFirst());
-    descriptor.has(_Composer());
-    descriptor.has(_Spawner());
+    descriptor.has(_Indifferent1.new);
+    descriptor.has(_Indifferent2.new);
+    descriptor.has(_SortsFirst.new);
+    descriptor.has(_AlsoSortsFirst.new);
+    descriptor.has(_Composer.new);
+    descriptor.has(_Spawner.new);
   }
 }
 
@@ -344,9 +344,9 @@ class _CyclicState extends _FixtureState {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_CycleA());
-    descriptor.has(_CycleB());
-    descriptor.has(_CycleC());
+    descriptor.has(_CycleA.new);
+    descriptor.has(_CycleB.new);
+    descriptor.has(_CycleC.new);
   }
 }
 
@@ -423,10 +423,10 @@ class _TestState extends _FixtureState {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_SystemA());
-    descriptor.has(_InertSystem());
-    descriptor.has(_SystemB());
-    descriptor.has(_CensusSystem());
+    descriptor.has(_SystemA.new);
+    descriptor.has(_InertSystem.new);
+    descriptor.has(_SystemB.new);
+    descriptor.has(_CensusSystem.new);
   }
 }
 
@@ -558,8 +558,8 @@ class _RandomState extends _FixtureState {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    _drawsA = descriptor.has(_DrawsFromA());
-    _drawsB = descriptor.has(_DrawsFromB());
+    _drawsA = descriptor.has(_DrawsFromA.new);
+    _drawsB = descriptor.has(_DrawsFromB.new);
   }
 }
 
@@ -656,7 +656,7 @@ class _DuplicateSystemState extends _TestState {
   void describeSystems(SystemDescriptor descriptor) {
     // `_TestState` already declared a `_SystemA`; this is the second.
     super.describeSystems(descriptor);
-    descriptor.has(_SystemA());
+    descriptor.has(_SystemA.new);
   }
 }
 
@@ -2054,7 +2054,7 @@ class _ScenelessState extends GameState<_ScenelessGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_SystemA());
+    descriptor.has(_SystemA.new);
   }
 }
 

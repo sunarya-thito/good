@@ -254,10 +254,10 @@ class _LifecycleState extends GameState<_LifecycleGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_Watcher());
-    descriptor.has(_Census());
-    descriptor.has(_Bystander());
-    descriptor.has(_Deaf());
+    descriptor.has(_Watcher.new);
+    descriptor.has(_Census.new);
+    descriptor.has(_Bystander.new);
+    descriptor.has(_Deaf.new);
   }
 }
 

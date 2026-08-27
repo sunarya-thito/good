@@ -77,7 +77,7 @@ class _PadGameState extends GameState<_PadGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_PadSystem());
+    descriptor.has(_PadSystem.new);
   }
 }
 

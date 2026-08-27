@@ -1,5 +1,14 @@
 ## Unreleased
 
+### Changed
+
+* **`MultiplayerState` declares its `NetworkSystem` before describing it.**
+  `describeSystems` used to build the system, run `describeNetwork` into it
+  and hand the finished object to `descriptor.has`. `SystemDescriptor.has`
+  now takes a constructor and is what builds it, so the declaration comes
+  first and the two passes after it read `network` back off the returned
+  handle (#91). Nothing about a game's own `describeNetwork` changes.
+
 ### Breaking
 
 * **`NetDescriptor.has` takes a constructor, not an instance.**

@@ -119,7 +119,7 @@ class _MultiState extends GameState2D<_MultiGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(MousePickingSystem());
+    descriptor.has(MousePickingSystem.new);
   }
 }
 

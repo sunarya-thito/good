@@ -53,7 +53,7 @@ Then declare the system once, and that is the whole opt-in:
 @override
 void describeSystems(SystemDescriptor descriptor) {
   super.describeSystems(descriptor);
-  descriptor.has(Physics3DSystem(gravityY: -9.81));
+  descriptor.has(() => Physics3DSystem(gravityY: -9.81));
 }
 ```
 

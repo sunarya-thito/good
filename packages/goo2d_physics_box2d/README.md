@@ -55,7 +55,7 @@ entities spawn and go away as they despawn:
 @override
 void describeSystems(SystemDescriptor descriptor) {
   super.describeSystems(descriptor);
-  descriptor.has(Box2DPhysicsSystem(gravityY: 10));
+  descriptor.has(() => Box2DPhysicsSystem(gravityY: 10));
 }
 ```
 

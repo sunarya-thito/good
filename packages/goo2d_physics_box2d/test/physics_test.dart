@@ -181,8 +181,8 @@ class _GameState extends GameState<_Game> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_GameplaySystem());
-    physics = descriptor.has(Box2DPhysicsSystem(workerCount: _workers));
+    descriptor.has(_GameplaySystem.new);
+    physics = descriptor.has(() => Box2DPhysicsSystem(workerCount: _workers));
   }
 }
 
