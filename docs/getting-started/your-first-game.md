@@ -211,12 +211,12 @@ Then generate the bindings:
 
 ```console
 $ good generate
-Wrote ./lib/good.generated/textures.dart
+Wrote ./my_game_bundle/lib/textures.dart
 1 texture(s), 0 audio file(s).
 ```
 
 <!-- snippet: skip generated output, elided -->
-```dart title="lib/good.generated/textures.dart"
+```dart title="my_game_bundle/lib/textures.dart"
 enum Textures with LocalEnumAssetKey<Texture> {
   spritesPlayer('assets/sprites/player.webp');
   // ...
@@ -232,7 +232,7 @@ Declare the asset on the prefab and hand it to the sprite:
 ```dart title="lib/game/prefabs/player.dart" hl_lines="4 10 11 12 13 14 20"
 import 'package:goo2d/goo2d.dart';
 
-import '../../good.generated/textures.dart';
+import 'package:my_game_bundle/textures.dart';
 
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {

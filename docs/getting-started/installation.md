@@ -189,7 +189,8 @@ Usage: good <command> [options]
 
 Commands:
   create    Scaffold a new Flutter project wired up to good.
-  generate  Write lib/good.generated/ from the assets the pubspec declares.
+  generate  Write the generated bundle package from the assets the pubspec
+            declares.
   assets    Convert and pack the assets a project ships.
   build     Build and package a game for a target platform.
 

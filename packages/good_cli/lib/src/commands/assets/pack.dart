@@ -6,6 +6,7 @@ import 'package:good_cli/src/assets/pack.dart' as impl;
 import 'package:good_cli/src/command.dart';
 import 'package:good_cli/src/config.dart';
 import 'package:good_cli/src/generate/assets.dart';
+import 'package:good_cli/src/generate/bundle.dart';
 import 'package:good_cli/src/generate/scene_scan.dart';
 import 'package:good_cli/src/parsers.dart';
 import 'package:good_cli/src/verbosable.dart';
@@ -160,7 +161,10 @@ class PackCommand extends Command with Verbose {
     // every `flutter run` until its first release build.
     chunkDir.createSync(recursive: true);
 
-    final keyFile = File('${project.path}/lib/good.generated/asset_key.dart');
+    // Through the bundle package, which is where every generated file lives
+    // now. Resolving it also proves the directory is good's before the mapping
+    // below is written back into a file inside it.
+    final keyFile = resolveBundle(project).assetKeyFile;
     List<int> key = const <int>[];
     if (mode.value == AssetMode.release &&
         encryption.value == AssetEncryption.aes) {

@@ -101,7 +101,7 @@ void main() {
       _image('${dir.path}/assets_src/player.png');
       // Step 4 runs the stub flutter from _cli.dart, which fails at once.
       expect(
-        _run(<String>['build', 'windows', '--project-dir', dir.path]),
+        _run(<String>['build', 'windows', '--project-dir', dir.path, '--no-pub-get']),
         exSoftware,
       );
     }, skip: needsFfmpeg);
@@ -110,7 +110,7 @@ void main() {
       final dir = _project();
       _notAnImage('${dir.path}/assets_src/broken.png');
       expect(
-        _run(<String>['build', 'windows', '--project-dir', dir.path]),
+        _run(<String>['build', 'windows', '--project-dir', dir.path, '--no-pub-get']),
         exSoftware,
       );
     }, skip: needsFfmpeg);
@@ -121,7 +121,7 @@ void main() {
       final dir = _project(packedDeclared: false);
       _image('${dir.path}/assets_src/player.png');
       expect(
-        _run(<String>['build', 'windows', '--project-dir', dir.path]),
+        _run(<String>['build', 'windows', '--project-dir', dir.path, '--no-pub-get']),
         exSoftware,
       );
     }, skip: needsFfmpeg);
@@ -203,8 +203,8 @@ void main() {
 
   group('good assets pack', () {
     test('exits 70 when the key material is missing', () {
-      // Release plus AES needs lib/good.generated/asset_key.dart, and nothing
-      // has generated one.
+      // Release plus AES needs the bundle package's asset_key.dart, and
+      // nothing has generated one.
       final dir = _project();
       File('${dir.path}/assets/player.webp').writeAsStringSync('bytes');
       expect(
@@ -304,13 +304,13 @@ void main() {
       File('${dir.path}/assets/ui/button.webp')
         ..parent.createSync(recursive: true)
         ..writeAsStringSync('bytes');
-      expect(_run(<String>['generate', '--project-dir', dir.path]), exDataErr);
+      expect(_run(<String>['generate', '--project-dir', dir.path, '--no-pub-get']), exDataErr);
     });
 
     test('a command that finishes is 0', () {
       final dir = _project();
       File('${dir.path}/assets/player.webp').writeAsStringSync('bytes');
-      expect(_run(<String>['generate', '--project-dir', dir.path]), ok);
+      expect(_run(<String>['generate', '--project-dir', dir.path, '--no-pub-get']), ok);
     });
   });
 }

@@ -11,7 +11,7 @@ whole reason the command exists:
 
 ```
 [1/4] compacting assets     source art  ->  one canonical format per kind
-[2/4] generating bindings   canonical   ->  lib/good.generated/
+[2/4] generating bindings   canonical   ->  my_game_bundle/lib/
 [3/4] packing assets        canonical   ->  compressed, encrypted chunks
 [4/4] flutter build windows everything on disk  ->  an application
 ```
@@ -38,7 +38,7 @@ good build windows
 [1/4] compacting assets
 0 written, 1 up to date, 0 failed.
 [2/4] generating bindings
-Wrote ./lib/good.generated/textures.dart
+Wrote ./my_game_bundle/lib/textures.dart
 1 texture(s), 0 audio file(s).
 [3/4] packing assets
   1 asset(s) in 1 chunk(s), grouped by scene (1 scene(s); 0 asset(s) shared or unattributed)
@@ -107,9 +107,9 @@ with loose assets, for a debugging build you intend to poke at.
 ## Before you ship
 
 - [ ] `flutter analyze` is clean.
-- [ ] `lib/good.generated/asset_key.dart` is **committed** — it is the only
-      record of your encryption keys, and losing it orphans every pack already
-      shipped.
+- [ ] The bundle package is **committed** — `asset_key.dart` inside it is the
+      only record of your encryption keys, and losing it orphans every pack
+      already shipped.
 - [ ] Both `assets/` and `assets/packed/` are listed under `flutter: assets:`.
 - [ ] `ensureGameReady()` is called before `Game.start` — it catches a missing
       asset before the first frame instead of mid-scene.

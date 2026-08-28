@@ -6,7 +6,7 @@ Three stages turn the art you edit into the bytes you ship.
 flowchart LR
     SRC["<b>assets_src/</b><br/>sprites/player.png<br/>sfx/hit.wav"]
     CAN["<b>assets/</b><br/>sprites/player.webp<br/>sfx/hit.ogg"]
-    GEN["<b>lib/good.generated/</b><br/>textures.dart<br/>audios.dart"]
+    GEN["<b>my_game_bundle/lib/</b><br/>textures.dart<br/>audios.dart"]
     PACK["<b>assets/packed/</b><br/>chunk_main.dat<br/>chunk_shared.dat"]
     SRC -->|"good assets compact<br/>ffmpeg, one format per kind"| CAN
     CAN -->|"good generate"| GEN
@@ -124,9 +124,10 @@ Scans what the pubspec declares under `flutter: assets:` and writes four files.
 
 ```console
 $ good generate
-Wrote ./lib/good.generated/textures.dart
-Wrote ./lib/good.generated/audios.dart
-Wrote ./lib/good.generated/good.dart
+Wrote ./my_game_bundle/pubspec.yaml
+Wrote ./my_game_bundle/lib/textures.dart
+Wrote ./my_game_bundle/lib/audios.dart
+Wrote ./my_game_bundle/lib/good.dart
 1 texture(s), 0 audio file(s).
 ```
 

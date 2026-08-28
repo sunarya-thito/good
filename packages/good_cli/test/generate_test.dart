@@ -942,6 +942,7 @@ flutter:
           command: 'good generate',
           out: _quiet,
           verbose: _quiet,
+          pubGet: false,
         ),
         throwsA(
           isA<ArgumentError>().having(
@@ -952,7 +953,7 @@ flutter:
         ),
       );
       expect(
-        Directory('${dir.path}/lib/good.generated').existsSync(),
+        Directory('${dir.path}/demo_bundle').existsSync(),
         isFalse,
         reason: 'it stops before writing an enum that is missing a value',
       );
@@ -981,6 +982,7 @@ class Player extends EntityStruct with Velocity, Momentum {}
           command: 'good generate',
           out: _quiet,
           verbose: _quiet,
+          pubGet: false,
         ),
         throwsA(
           isA<ArgumentError>().having(
@@ -994,7 +996,7 @@ class Player extends EntityStruct with Velocity, Momentum {}
         ),
       );
       expect(
-        Directory('${dir.path}/lib/good.generated').existsSync(),
+        Directory('${dir.path}/demo_bundle').existsSync(),
         isFalse,
         reason: 'it stops before writing anything',
       );
@@ -1023,6 +1025,7 @@ mixin Velocity on Component {
           command: 'good generate',
           out: _quiet,
           verbose: _quiet,
+          pubGet: false,
         ),
         throwsA(
           isA<ArgumentError>().having(
@@ -1039,7 +1042,7 @@ mixin Velocity on Component {
         ),
       );
       expect(
-        Directory('${dir.path}/lib/good.generated').existsSync(),
+        Directory('${dir.path}/demo_bundle').existsSync(),
         isFalse,
         reason: 'it stops before writing anything',
       );
@@ -1061,9 +1064,10 @@ flutter:
         command: 'good generate',
         out: _quiet,
         verbose: _quiet,
+        pubGet: false,
       );
       final textures = File(
-        '${dir.path}/lib/good.generated/textures.dart',
+        '${dir.path}/demo_bundle/lib/textures.dart',
       ).readAsStringSync();
       expect(textures, contains("uiButton('assets/ui/button.png')"));
     });

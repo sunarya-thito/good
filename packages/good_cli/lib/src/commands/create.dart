@@ -13,7 +13,7 @@ import 'package:good_cli/src/verbosable.dart';
 /// consists of* and is a pure function, and this command runs `flutter
 /// create` and writes them. The split is what lets the interesting half be
 /// tested without a Flutter SDK on the machine.
-class CreateCommand extends Command with Verbose {
+class CreateCommand extends Command with Verbose, Resolving {
   late final Arg<String> name;
   late final Arg<Directory> parentDir;
   late final Arg<bool> twoD;
@@ -158,9 +158,9 @@ class CreateCommand extends Command with Verbose {
     _patchPubspec(root, engine.package);
 
     // Generate straight away rather than telling them to. A fresh project's
-    // lib/good.generated/ is otherwise missing, so `main.dart` does not compile
-    // until a second command has been run - which makes "it does not build" a
-    // new project's first experience.
+    // bundle package is otherwise missing, so the pubspec's path dependency
+    // points at nothing and `flutter pub get` fails outright - which makes "it
+    // does not build" a new project's first experience.
     //
     // Driven directly rather than by re-entering the runner: `generate` is a
     // command, but it is also just this work, and spawning a second parse of a
@@ -172,9 +172,18 @@ class CreateCommand extends Command with Verbose {
       command: '${session.path.first} generate',
       out: info,
       verbose: debug,
+      pubGet: pubGet,
     );
     info
-      ..printf('Generated %s file(s) in lib/good.generated/.\n', [generated])
+      ..printf('Generated %s file(s) in %s/.\n', [
+        generated.fileCount,
+        generated.bundle.name,
+      ])
+      ..printf(
+        "%s/ is good's, and lib/ is yours. The bindings import as "
+        '`package:%s/textures.dart`.\n',
+        [generated.bundle.name, generated.bundle.name],
+      )
       ..println('');
     if (engine == GoodEngine.threeD) {
       // Said here as well as in the scaffolded code's own comments, because
@@ -193,8 +202,11 @@ class CreateCommand extends Command with Verbose {
     }
     info
       ..printf('Created %s. Next:\n', [projectName])
+      // No `flutter pub get` here any more. Generating the bundle package
+      // resolves the project itself, because a path dependency that has never
+      // been resolved is the one failure Flutter reports by shipping nothing
+      // rather than by stopping.
       ..printf('  cd %s\n', [projectName])
-      ..println('  flutter pub get')
       ..println('  flutter run');
   }
 

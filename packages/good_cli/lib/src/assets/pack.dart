@@ -343,7 +343,8 @@ Future<PackResult> packAssets({
   if (encryption == AssetEncryption.aes && key.length != 32) {
     throw ArgumentError(
       'AES-256 needs a 32-byte key; got ${key.length}. The key comes from '
-      'lib/good.generated/asset_key.dart - run `good generate` if it is missing.',
+      "the generated bundle package's asset_key.dart - generate it if it is "
+      'missing.',
     );
   }
 

@@ -53,6 +53,9 @@ void main() {
       'demo',
       '--directory=${parent.path}',
       '--no-flutter-create',
+      // These projects are two files in a temp directory, not something
+      // `flutter pub get` could resolve.
+      '--no-pub-get',
     ]);
 
     expect(
@@ -71,6 +74,9 @@ void main() {
       'demo',
       '--directory=${parent.path}',
       '--no-flutter-create',
+      // These projects are two files in a temp directory, not something
+      // `flutter pub get` could resolve.
+      '--no-pub-get',
     ]);
 
     expect(File('${parent.path}/demo/lib/main.dart').existsSync(), isTrue);

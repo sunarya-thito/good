@@ -65,7 +65,7 @@ decode.
 
 `good generate` writes one enum value per shipped file:
 
-```dart title="lib/good.generated/textures.dart"
+```dart title="my_game_bundle/lib/textures.dart"
 enum Textures with LocalEnumAssetKey<Texture> {
   spritesPlayer('assets/sprites/player.webp'),
   uiButton('assets/ui/button.webp');
