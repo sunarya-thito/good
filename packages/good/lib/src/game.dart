@@ -2365,6 +2365,20 @@ final class GameRuntime {
   /// its own schedule (each tick notification), where nothing is tick-bound.
   void pumpCommands() => commandTransport?.pump();
 
+  /// Adopts whatever replies the other copy has written, and runs nothing -
+  /// see `CommandTransport.adoptReplies`.
+  ///
+  /// Called from `GameState.advance` once per frame, after the presentation
+  /// pass and before [presentFrame]. [pumpCommands] cannot cover this: it is
+  /// reachable only from inside a fixed step, so a game whose tick is stopped
+  /// adopted no replies at all and a caller on this side waited out the pause
+  /// for an answer main had already computed and already written (#165).
+  ///
+  /// Only replies. Running a handler here would put user code outside the
+  /// tick window, which is what makes the whole-pump version unsafe in this
+  /// position.
+  void adoptCommandReplies() => commandTransport?.adoptReplies();
+
   /// Called by [GameState.runFixedStep] once a fixed step is fully committed.
   void completeTick() => tick++;
 
