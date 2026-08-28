@@ -9,6 +9,28 @@
 
 ### Breaking
 
+* **`Sprite.alignment` is deleted**, along with the `alignFractionX`,
+  `alignFractionY`, `alignOffsetX` and `alignOffsetY` row fields, the
+  `alignment:` parameter on `SpriteDescriptor.has`, and the `setAlignment`
+  setter. Nothing in `GameRenderer2D` ever read them: two sprites differing
+  only in their alignment emitted byte-identical geometry, so a game that set
+  one saw no sprite move. What they were meant to do was never settled -
+  an alignment resolves against the size of the container a sprite is
+  anchored to, and neither candidate container exists. A parent's bounds
+  would need a system publishing per-entity extents, and `goo2d` has no
+  bounds concept at all; anchoring to the view is designed in #132, through a
+  per-entity `ScreenTransform2D` and its own anchor enum, not through these
+  fields (#171).
+
+  **What to do about a call site.** Nothing, for the behaviour: deleting a
+  field the geometry path never named cannot move a pixel. Delete the
+  `alignment:` argument and the `setAlignment` call - the compiler finds
+  every one of them. If you wanted to pin a sprite to a corner of the screen,
+  that is #132 and it is not here yet; a `Transform2D` offset is the way to
+  place a sprite until it lands, and `pivot` still covers anything inside the
+  sprite's own bounds. The four columns were 32 bytes on every sprite row -
+  21% of a sprite's 150, measured through `ArchetypeStorage.strideBytes` -
+  which every game now gets back.
 * **`Sprite.setNineSliceBorder` now writes the four destination insets as
   well as the four source cuts**, which is what makes it do anything at all.
   It wrote `borderLeft`/`borderTop`/`borderRight`/`borderBottom` and nothing

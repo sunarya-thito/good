@@ -76,7 +76,6 @@ class _TwoSprite extends EntityStruct
       // Fraction *and* offset together: "centred, then 6 further up" cannot
       // be said with a fraction of the hat's own 2-unit height alone.
       pivot: const RelativeOffset2D(fractionX: 0.5, fractionY: 0.5, offsetY: 6),
-      alignment: const RelativeOffset2D(fractionX: 1, offsetX: 3),
       nineSliceBorder: const NineSliceBorder.all(2, sourceSize: 16),
       visible: true,
     );
@@ -668,10 +667,6 @@ void main() {
         );
         expect(quad.pivotOffsetX[entity], 0);
         expect(quad.pivotOffsetY[entity], 0);
-        expect(quad.alignFractionX[entity], 0);
-        expect(quad.alignFractionY[entity], 0);
-        expect(quad.alignOffsetX[entity], 0);
-        expect(quad.alignOffsetY[entity], 0);
         expect(quad.borderLeft[entity], 0);
         expect(quad.borderTop[entity], 0);
         expect(quad.borderRight[entity], 0);
@@ -1350,8 +1345,6 @@ void main() {
             'separate float64 fields at declare time - a row cannot store a '
             'value object, so this is the only shape available',
       );
-      expect(hat.alignFractionX[entity], 1);
-      expect(hat.alignOffsetX[entity], 3);
       // A border unpacks into *two* sets of four: the relative source cut and
       // the absolute destination corner. `all(2, sourceSize: 16)` means "cut
       // 2px in on a 16px source" - so 2/16 of the image, and 2 sprite units of

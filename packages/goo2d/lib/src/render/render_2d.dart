@@ -66,8 +66,8 @@ class RelativeOffset2D {
     fractionY: 0.5,
   );
 
-  /// Top-left, with no offset - the default alignment, and the pivot that
-  /// puts the transform origin on the sprite's own top-left corner.
+  /// Top-left, with no offset - the pivot that puts the transform origin on
+  /// the sprite's own top-left corner.
   static const RelativeOffset2D zero = RelativeOffset2D();
 }
 
@@ -405,10 +405,10 @@ class NineSliceBorder {
 ///
 /// [pivotFractionX]/[pivotFractionY]/[pivotOffsetX]/[pivotOffsetY] are one
 /// conceptual [RelativeOffset2D] stored as four `DataPointer<double>`s, and
-/// the alignment and border groups likewise. That is forced, not stylistic: a
+/// the border group likewise. That is forced, not stylistic: a
 /// `DataPointer<T>` stores a `num` or a `GlobalObject` and cannot hold a value
-/// object of any kind. [setPivot]/[setAlignment]/[setNineSliceBorder] hide the
-/// unpacking for writes; reads are the four fields, by design (see
+/// object of any kind. [setPivot] and [setNineSliceBorder] hide the unpacking
+/// for writes; reads are the four fields, by design (see
 /// [RelativeOffset2D]'s doc - a read that returned a fresh value object would
 /// allocate per read, on the hot path).
 class Sprite {
@@ -425,10 +425,6 @@ class Sprite {
     required this.pivotFractionY,
     required this.pivotOffsetX,
     required this.pivotOffsetY,
-    required this.alignFractionX,
-    required this.alignFractionY,
-    required this.alignOffsetX,
-    required this.alignOffsetY,
     required this.borderLeft,
     required this.borderTop,
     required this.borderRight,
@@ -516,27 +512,6 @@ class Sprite {
   /// The pivot's absolute y offset. See [pivotFractionX].
   final DataPointer<double> pivotOffsetY;
 
-  /// Where this sprite is anchored *relative to its parent or the viewport*,
-  /// resolved against that container's size as `fraction * size + offset`.
-  ///
-  /// Distinct from the pivot, and the two compose: the pivot picks a point on
-  /// the sprite, the alignment picks the point in the container that point is
-  /// placed at. **Which container** - the parent or the viewport - was never
-  /// settled, so these are declared and stored and [GameRenderer2D] applies
-  /// none of them: two sprites differing only here emit identical geometry.
-  /// See that class's "Alignment" section, and #171, which decides between
-  /// applying them and deleting them.
-  final DataPointer<double> alignFractionX;
-
-  /// The alignment's y fraction. See [alignFractionX].
-  final DataPointer<double> alignFractionY;
-
-  /// The alignment's absolute x offset. See [alignFractionX].
-  final DataPointer<double> alignOffsetX;
-
-  /// The alignment's absolute y offset. See [alignFractionX].
-  final DataPointer<double> alignOffsetY;
-
   /// Where the nine-slice cuts the **source**, as a fraction `0..1` of this
   /// sprite's [frame]. All zero by default.
   ///
@@ -581,14 +556,6 @@ class Sprite {
     pivotFractionY[entity] = pivot.fractionY;
     pivotOffsetX[entity] = pivot.offsetX;
     pivotOffsetY[entity] = pivot.offsetY;
-  }
-
-  /// Writes all four alignment fields at once. See [setPivot].
-  void setAlignment(Entity entity, RelativeOffset2D alignment) {
-    alignFractionX[entity] = alignment.fractionX;
-    alignFractionY[entity] = alignment.fractionY;
-    alignOffsetX[entity] = alignment.offsetX;
-    alignOffsetY[entity] = alignment.offsetY;
   }
 
   /// Writes the sampled region. The value object never reaches a row - see
@@ -643,10 +610,10 @@ class SpriteDescriptor {
   /// Declares one sprite and returns the handle to keep in a field
   /// (the typed-handle rule - never a name to quote again later).
   ///
-  /// [pivot], [alignment] and [nineSliceBorder] arrive as value objects
-  /// purely for readability at the call site; each is unpacked into its own
-  /// separate `DataPointer<double>` fields here, because a row cannot store a
-  /// value object (see [Sprite]'s doc). That unpacking happens once, during
+  /// [pivot] and [nineSliceBorder] arrive as value objects purely for
+  /// readability at the call site; each is unpacked into its own separate
+  /// `DataPointer<double>` fields here, because a row cannot store a value
+  /// object (see [Sprite]'s doc). That unpacking happens once, during
   /// the declare-time `describeStruct` pass, so the value objects never touch
   /// a hot path.
   Sprite has({
@@ -659,7 +626,6 @@ class SpriteDescriptor {
     int zIndex = 0,
     bool visible = true,
     RelativeOffset2D pivot = RelativeOffset2D.center,
-    RelativeOffset2D alignment = RelativeOffset2D.zero,
     NineSliceBorder nineSliceBorder = NineSliceBorder.none,
   }) {
     final sprite = Sprite(
@@ -675,10 +641,6 @@ class SpriteDescriptor {
       pivotFractionY: _data.hasFloat64(pivot.fractionY),
       pivotOffsetX: _data.hasFloat64(pivot.offsetX),
       pivotOffsetY: _data.hasFloat64(pivot.offsetY),
-      alignFractionX: _data.hasFloat64(alignment.fractionX),
-      alignFractionY: _data.hasFloat64(alignment.fractionY),
-      alignOffsetX: _data.hasFloat64(alignment.offsetX),
-      alignOffsetY: _data.hasFloat64(alignment.offsetY),
       borderLeft: _data.hasFloat32(nineSliceBorder.left),
       borderTop: _data.hasFloat32(nineSliceBorder.top),
       borderRight: _data.hasFloat32(nineSliceBorder.right),
@@ -1331,30 +1293,22 @@ final class _SpriteDrawQueue {
 /// `(0, 0)` and the zoom is `1`, so the world origin lands in the middle of
 /// the view and one world unit draws as one pixel.
 ///
-/// # Alignment
+/// # No sprite-level anchoring
 ///
-/// [Sprite]'s `align*` fields are declared, defaulted and stored, and this
-/// system does **not** apply them. Stating that plainly, and not leaving it
-/// to be discovered: an alignment is resolved against the size of the thing
-/// the sprite is anchored to - its parent's bounds, or the viewport's - and
-/// *which of those two* was never settled, so there is no arithmetic here to
-/// write yet (#171).
+/// A sprite is placed by its transform and its [Sprite.pivotFractionX] group,
+/// and by nothing else. [Sprite] used to carry an `align*` group for
+/// anchoring a sprite to its parent or to the viewport; it was stored, never
+/// read, and deleted in #171. Anchoring to the view is designed in #132, and
+/// it anchors through a `ScreenTransform2D` component and its own anchor
+/// enum, per entity - not per sprite. That is the shape it has to have: a
+/// screen-space sprite must ignore zoom, and zoom is folded into both the
+/// scale and the projection on the world path this system walks, so a
+/// world-space sprite carrying a viewport-fraction term could not opt out of
+/// it without a branch on every row.
 ///
-/// A parent's bounds are its own sprites' extents, and no system resolves or
-/// publishes them; nothing in `goo2d` has a bounds concept at all. The
-/// viewport, on the other hand, **is** reachable:
-/// `CameraView.viewportWidth`/`viewportHeight` are two floats of shared memory
-/// the widget writes and this isolate reads, and the pass below already reads
-/// them every tick through
-/// `CameraProjection.halfViewWidth`. So the blocker is the missing decision,
-/// not a missing number.
-///
-/// Anchoring to the view is designed in #132, and it anchors through a
-/// `ScreenTransform2D` component and its own anchor enum, not through
-/// these fields - a screen-space sprite must ignore zoom, which a world-space
-/// sprite carrying a viewport-fraction term cannot do. Until #171 picks
-/// between applying them and deleting them, they round-trip through storage
-/// and change nothing about the geometry.
+/// Anchoring to a *parent* stays unavailable for a different reason - it
+/// needs the parent's bounds, and no system in `goo2d` resolves or publishes
+/// extents at all.
 ///
 /// # Textures
 ///
