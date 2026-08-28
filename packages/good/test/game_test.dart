@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:good/src/scene_handle.dart';
@@ -531,6 +532,133 @@ class _AnsweringMainGame extends _TestGame {
     super.describeCommands(descriptor);
     answeringMain = descriptor.has(_Answering.new);
     descriptor.hasControlSupplier(answeringMain, () => 1);
+  }
+}
+
+// --- #165: the read-only command lane --------------------------------------
+//
+// Inline, and `advance` driven by hand, so "the tick did not move" and "the
+// other lane is still waiting" are exact rather than raced. The cross-isolate
+// version of the same three assertions is in game_isolate_test.dart, where the
+// batch has a real ring to cross.
+
+/// Read-only and game-handled. Reports the tick it ran on and whether the
+/// simulation was stopped while it ran, which is the only way a caller learns
+/// a fact the other copy holds.
+class _Inspect extends SupplierCommand<({int tick, bool stopped})> {
+  final atTick = Param.int32();
+  final wasStopped = Param.uint1();
+
+  @override
+  void bufferFromResult(ParamBuffer call, ({int tick, bool stopped}) result) {
+    atTick[call] = result.tick;
+    wasStopped[call] = result.stopped ? 1 : 0;
+  }
+
+  @override
+  ({int tick, bool stopped}) resultFromBuffer(ParamBuffer call) =>
+      (tick: atTick[call], stopped: wasStopped[call] == 1);
+}
+
+/// Read-only, and answers with the ordinal of its own arrival - so a caller
+/// can see what order the lane ran things in.
+class _Arrival extends SupplierCommand<int> {
+  final ordinal = Param.int32();
+
+  @override
+  void bufferFromResult(ParamBuffer call, int result) => ordinal[call] = result;
+
+  @override
+  int resultFromBuffer(ParamBuffer call) => ordinal[call];
+}
+
+/// Tick-delivered and game-handled: the discriminator. It genuinely needs a
+/// fixed step, so while the tick is stopped it has to stay pending - which is
+/// what a "fix" that quietly ran a step would fail.
+class _TickBound extends SignalCommand {}
+
+class _ReadOnlyState extends _FixtureState {
+  int arrivals = 0;
+  int tickBoundRuns = 0;
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    final game = this.game as _ReadOnlyGame;
+    descriptor
+      ..hasReadOnlySupplier(
+        game.inspect,
+        () => (tick: game.tick, stopped: paused || timeScale == 0),
+      )
+      ..hasReadOnlySupplier(game.arrival, () => ++arrivals)
+      ..hasSignal(game.tickBound, () => tickBoundRuns++);
+  }
+}
+
+class _ReadOnlyGame extends _TestGame {
+  late final _Inspect inspect;
+  late final _Arrival arrival;
+  late final _TickBound tickBound;
+
+  @override
+  GameState createState() => _ReadOnlyState();
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    inspect = descriptor.has(_Inspect.new);
+    arrival = descriptor.has(_Arrival.new);
+    tickBound = descriptor.has(_TickBound.new);
+  }
+}
+
+/// A shape that answers with nothing, registered on the lane whose handlers
+/// promise not to write - so it would have no effect at all, and has to fail
+/// where it is written.
+class _Mute extends SignalCommand {}
+
+class _MuteReadOnlyState extends _FixtureState {
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    descriptor.hasReadOnlySignal((game as _MuteReadOnlyGame).mute, () {});
+  }
+}
+
+class _MuteReadOnlyGame extends _TestGame {
+  late final _Mute mute;
+
+  @override
+  GameState createState() => _MuteReadOnlyState();
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    mute = descriptor.has(_Mute.new);
+  }
+}
+
+/// The same refusal asked of the **main** descriptor, and through the sink
+/// spelling rather than the signal one - two methods and two descriptors, so
+/// the shared message function is proved wired on both sides.
+class _MuteSink extends SinkCommand<int> {
+  final value = Param.int32();
+
+  @override
+  void bufferFromParams(ParamBuffer call, int params) => value[call] = params;
+
+  @override
+  int paramsFromBuffer(ParamBuffer call) => value[call];
+}
+
+class _MuteReadOnlyMainGame extends _TestGame {
+  late final _MuteSink muteSink;
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    muteSink = descriptor.has(_MuteSink.new);
+    descriptor.hasReadOnlySink(muteSink, (_) {});
   }
 }
 
@@ -1072,6 +1200,177 @@ void main() {
             'the two descriptors share one message function, and sharing is '
             'not the same as both calling it - this is the side the '
             'game-side test does not reach',
+      );
+    });
+  });
+  group('the read-only command lane', () {
+    // #165. Three assertions, and the third is the one that discriminates: a
+    // fix that quietly ran a fixed step to serve the ask - which is exactly
+    // what stepOnce does - would pass the first two and fail this.
+    test('answers while the game is paused, and runs no step', () async {
+      final game = await _game(_ReadOnlyGame.new);
+      final state = _state(game) as _ReadOnlyState;
+      expect(state.advance(_step * 2), 2);
+
+      game.pause();
+
+      // Queued *first*, so one arrival-ordered inbox drained per frame would
+      // run this one ahead of the read-only ask rather than leave it waiting.
+      var tickBoundDone = false;
+      final tickBound = game.tickBound();
+      unawaited(tickBound.then((_) => tickBoundDone = true));
+
+      final answer = game.inspect();
+      expect(
+        state.advance(_step * 3),
+        0,
+        reason: 'the point of the fixture: this frame affords no fixed step',
+      );
+
+      expect(
+        await answer.timeout(const Duration(seconds: 5)),
+        (tick: 2, stopped: true),
+        reason:
+            'the handler ran on a frame that ran no step, and reported from '
+            'the game side that the simulation was stopped while it did',
+      );
+      expect(run.tick, 2, reason: 'and the tick did not move to serve it');
+
+      // A turn of the microtask queue, so a completion that was going to
+      // happen has happened before this is read.
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        tickBoundDone,
+        isFalse,
+        reason:
+            'a tick-delivered command queued at the same moment still needs a '
+            'fixed step, so it has to still be pending - without this the '
+            'test passes against a fix that quietly runs one',
+      );
+      expect(state.tickBoundRuns, 0);
+
+      game.resume();
+      expect(state.advance(_step), 1);
+      await tickBound.timeout(const Duration(seconds: 5));
+      expect(
+        state.tickBoundRuns,
+        1,
+        reason: 'and it is delivered on resume, exactly as it was before',
+      );
+    });
+
+    test('and at a time scale of zero, which stops the tick the other '
+        'way', () async {
+      final game = await _game(_ReadOnlyGame.new);
+      final state = _state(game) as _ReadOnlyState;
+      expect(state.advance(_step * 2), 2);
+
+      game.setTimeScale(0);
+
+      var tickBoundDone = false;
+      final tickBound = game.tickBound();
+      unawaited(tickBound.then((_) => tickBoundDone = true));
+
+      final answer = game.inspect();
+      expect(state.advance(_step * 3), 0);
+
+      expect(await answer.timeout(const Duration(seconds: 5)), (
+        tick: 2,
+        stopped: true,
+      ));
+      expect(run.tick, 2);
+      await Future<void>.delayed(Duration.zero);
+      expect(tickBoundDone, isFalse);
+
+      game.setTimeScale(1);
+      expect(state.advance(_step), 1);
+      await tickBound.timeout(const Duration(seconds: 5));
+      expect(state.tickBoundRuns, 1);
+    });
+
+    test('answers in the order it was asked', () async {
+      final game = await _game(_ReadOnlyGame.new);
+      final state = _state(game) as _ReadOnlyState;
+      game.pause();
+
+      final first = game.arrival();
+      final second = game.arrival();
+      final third = game.arrival();
+      expect(state.advance(_step * 3), 0);
+
+      expect(
+        await Future.wait(<Future<int>>[
+          first,
+          second,
+          third,
+        ]).timeout(const Duration(seconds: 5)),
+        <int>[1, 2, 3],
+        reason:
+            'one queue fed in arrival order and drained from the front, so '
+            'the lane keeps order within itself the way tick delivery does '
+            'within its own',
+      );
+      expect(state.arrivals, 3, reason: 'and each ran exactly once');
+    });
+
+    test('a running game answers it after the step, not inside it', () async {
+      final game = await _game(_ReadOnlyGame.new);
+      final state = _state(game) as _ReadOnlyState;
+
+      final answer = game.inspect();
+      final tickBound = game.tickBound();
+      expect(state.advance(_step), 1);
+
+      expect(
+        await answer.timeout(const Duration(seconds: 5)),
+        (tick: 1, stopped: false),
+        reason:
+            'the drain is on the frame, after the step and after the '
+            'presentation pass, so the handler reads the snapshot this frame '
+            'published. Draining it from the tick window as well would have '
+            'answered from the top of the step, at tick 0 - one lane with two '
+            'answers depending on whether the game happened to be moving',
+      );
+      await tickBound.timeout(const Duration(seconds: 5));
+      expect(
+        state.tickBoundRuns,
+        1,
+        reason: 'and the tick lane is untouched by any of this',
+      );
+      expect(run.tick, 1);
+    });
+
+    test('a command that answers with nothing cannot be read-only', () async {
+      expect(
+        () => _game(_MuteReadOnlyGame.new),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('returns nothing'), contains('hasControlSignal')),
+          ),
+        ),
+        reason:
+            'the lane promises not to write and the shape has no answer to '
+            'send back, so between the two there is nothing left for the '
+            'handler to do. Failing at the declaration is the point',
+      );
+    });
+
+    test('the refusal holds on the main descriptor, and on the sink '
+        'spelling', () async {
+      expect(
+        () => _game(_MuteReadOnlyMainGame.new),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('returns nothing'), contains('hasControlSink')),
+          ),
+        ),
+        reason:
+            'two descriptors and two methods share one message function, and '
+            'sharing is not the same as all four calling it',
       );
     });
   });

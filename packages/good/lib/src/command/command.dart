@@ -95,6 +95,14 @@ abstract class GameCommandBase {
   /// Whether this command is carried over the control port and run on
   /// arrival instead of being pumped inside the tick window.
   bool get isControlDelivered => _handlerDelivery == HandlerDelivery.receipt;
+
+  /// Whether this command rides the command ring but is run once per frame,
+  /// outside the tick window, so it answers while the fixed tick is stopped.
+  ///
+  /// Read by the transport to pick which inbox an arriving batch joins, which
+  /// is the whole of the routing: the two lanes share a ring and differ only
+  /// in what drains them. See `CommandDescriptor.hasReadOnlyHandler`.
+  bool get isReadOnlyDelivered => _handlerDelivery == HandlerDelivery.frame;
   Function? _handler;
 
   /// The registered handler, on the copy that runs it.
@@ -539,6 +547,73 @@ abstract class CommandDescriptor {
   /// [hasControlSink] for a [SignalCommand] - takes and returns nothing.
   void hasControlSignal(SignalCommand command, void Function() handler);
 
+  /// Registers a [GameCommand]'s handler to run **once per frame, outside the
+  /// tick window** - so it answers while the fixed tick is stopped.
+  ///
+  /// This is pause-and-inspect. A tick-delivered command is pumped from
+  /// `GameState.runFixedStep`, so a paused game - or one at a time scale of
+  /// zero - queues it and answers nothing at all until the tick comes back. A
+  /// pause menu asking the simulation for a number, or an inspector reading a
+  /// world that is deliberately standing still, waits out the pause with no
+  /// error and no timeout. This lane is drained from `GameState.advance`
+  /// instead, which runs on every frame including one that afforded no step.
+  ///
+  /// ```dart
+  /// // in GameState.describeCommands
+  /// descriptor.hasReadOnlyHandler(inspect, (id) => _summarise(id));
+  /// ```
+  ///
+  /// **It keeps the reply leg**, which is what separates it from
+  /// [hasControlSink]. The batch rides the same command ring a tick-delivered
+  /// one does, so `await` completes when the handler has run and its answer
+  /// has come back - not when the bytes were handed over. That is why this
+  /// lane takes the shapes that return something and the control lane refuses
+  /// them.
+  ///
+  /// **Read-only is a promise you make, and the engine does not check it.**
+  /// Nothing in Dart makes a closure read-only, so this is a naming
+  /// convention with a lane attached, not a guarantee. What actually happens
+  /// if a handler here writes:
+  ///
+  /// - **A component field is erased, quietly.** There is no open write window
+  ///   outside a tick, and `MemoryPool.beginTick` copies each page's published
+  ///   bytes over the write slot, so the value is gone on the next step with
+  ///   nothing said. A debug assert in `data_layout.dart` catches it, except
+  ///   on a page that has never published - scene bootstrap, and nothing else.
+  /// - **Everything else is not guarded at all.** Adding an entity, writing a
+  ///   `StateChannel`, unloading a scene: none of them assert from here, and
+  ///   `unloadScene` frees native pages immediately (#245).
+  ///
+  /// So the lane is worth reaching for when the handler reads and returns, and
+  /// worth avoiding otherwise. `hasHandler` is the one that may write.
+  ///
+  /// **There is no ordering against tick-delivered commands.** They are
+  /// drained from separate inboxes on separate schedules, so two batches sent
+  /// in order can run in either. Ordering *within* this lane is kept - it is
+  /// one FIFO fed by one ring - which is the same guarantee tick delivery
+  /// gives within its own.
+  void hasReadOnlyHandler<P, R>(
+    GameCommand<P, R> command,
+    R Function(P) handler,
+  );
+
+  /// [hasReadOnlyHandler] for a [SupplierCommand] - takes nothing, returns an
+  /// `R`.
+  void hasReadOnlySupplier<R>(SupplierCommand<R> command, R Function() handler);
+
+  /// Always throws. A read-only command that returns nothing does nothing.
+  ///
+  /// Here for the same reason [hasControlHandler] is: the name someone reaches
+  /// for should explain itself rather than be absent. A handler on this lane
+  /// promises not to write and a [SinkCommand] has no answer to give, so
+  /// between the two there is no effect left for it to have. Use [hasSink],
+  /// which is tick-delivered and may write, or [hasControlSink], which also
+  /// runs while the tick is stopped.
+  void hasReadOnlySink<P>(SinkCommand<P> command, void Function(P) handler);
+
+  /// Always throws, for the same reason as [hasReadOnlySink].
+  void hasReadOnlySignal(SignalCommand command, void Function() handler);
+
   /// Always throws. A receipt-delivered command **cannot answer**.
   ///
   /// It exists so the name someone reaches for explains itself instead of
@@ -718,6 +793,20 @@ Never _controlCannotAnswer(Type command, String method) {
   );
 }
 
+/// The message both descriptors give for a read-only handler on a shape that
+/// answers with nothing. One function so the two sides cannot drift.
+Never _readOnlyDoesNothing(Type command, String method) {
+  throw StateError(
+    '$command returns nothing, so registering it with $method would leave it '
+    'with no effect at all: the read-only lane is drained outside the tick '
+    'window and its handlers promise not to write, so a shape that has no '
+    'answer to send back has nothing left to do. Register it with hasSink or '
+    'hasSignal, which are tick-delivered and may write, or with '
+    'hasControlSink or hasControlSignal, which also run while the fixed tick '
+    'is stopped.',
+  );
+}
+
 /// `CommandDescriptor` as seen by `Game.describeCommands` - may declare
 /// commands, and registers handlers that run on the **Flutter** isolate.
 @internal
@@ -763,6 +852,36 @@ final class MainCommandDescriptor implements CommandDescriptor {
         HandlerSide.main,
         HandlerDelivery.receipt,
       );
+
+  @override
+  void hasReadOnlyHandler<P, R>(
+    GameCommand<P, R> command,
+    R Function(P) handler,
+  ) => _registry.declareHandler(
+    command,
+    handler,
+    HandlerSide.main,
+    HandlerDelivery.frame,
+  );
+
+  @override
+  void hasReadOnlySupplier<R>(
+    SupplierCommand<R> command,
+    R Function() handler,
+  ) => _registry.declareHandler(
+    command,
+    handler,
+    HandlerSide.main,
+    HandlerDelivery.frame,
+  );
+
+  @override
+  void hasReadOnlySink<P>(SinkCommand<P> command, void Function(P) handler) =>
+      _readOnlyDoesNothing(command.runtimeType, 'hasReadOnlySink');
+
+  @override
+  void hasReadOnlySignal(SignalCommand command, void Function() handler) =>
+      _readOnlyDoesNothing(command.runtimeType, 'hasReadOnlySignal');
 
   @override
   void hasControlHandler<P, R>(
@@ -832,6 +951,36 @@ final class GameCommandDescriptor implements CommandDescriptor {
         HandlerSide.game,
         HandlerDelivery.receipt,
       );
+
+  @override
+  void hasReadOnlyHandler<P, R>(
+    GameCommand<P, R> command,
+    R Function(P) handler,
+  ) => _registry.declareHandler(
+    command,
+    handler,
+    HandlerSide.game,
+    HandlerDelivery.frame,
+  );
+
+  @override
+  void hasReadOnlySupplier<R>(
+    SupplierCommand<R> command,
+    R Function() handler,
+  ) => _registry.declareHandler(
+    command,
+    handler,
+    HandlerSide.game,
+    HandlerDelivery.frame,
+  );
+
+  @override
+  void hasReadOnlySink<P>(SinkCommand<P> command, void Function(P) handler) =>
+      _readOnlyDoesNothing(command.runtimeType, 'hasReadOnlySink');
+
+  @override
+  void hasReadOnlySignal(SignalCommand command, void Function() handler) =>
+      _readOnlyDoesNothing(command.runtimeType, 'hasReadOnlySignal');
 
   @override
   void hasControlHandler<P, R>(

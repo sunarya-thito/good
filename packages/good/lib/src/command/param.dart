@@ -545,10 +545,10 @@ final class CommandBatch extends ParamBatch {
     if (currentDelivery != null && currentDelivery != delivery) {
       throw StateError(
         '$command is ${delivery.name}-delivered and this batch already holds '
-        '${currentDelivery.name}-delivered calls. The two travel by '
-        'different carriers - one rides the command ring inside the tick '
-        'window, the other the control port - so they cannot share a '
-        'message. Use two batches.',
+        '${currentDelivery.name}-delivered calls. Each delivery is its own '
+        'lane - the tick window, the control port, the per-frame read-only '
+        'drain - and a batch is one message down one of them, so they cannot '
+        'share it. Use two batches.',
       );
     }
     _delivery = delivery;
@@ -641,6 +641,23 @@ enum HandlerDelivery {
   /// works while the fixed tick is stopped - and the whole cost: there is no
   /// open write window, so a handler must not touch component data.
   receipt,
+
+  /// The batch rides the command ring exactly as a [tick]-delivered one does,
+  /// reply leg and all - but it is queued in its own inbox and run once per
+  /// *frame*, from `GameState.advance`, whether or not that frame afforded a
+  /// fixed step. So it is answered while the tick is stopped, and answered
+  /// over the ring rather than needing a second carrier.
+  ///
+  /// Two inboxes and not one, because the two cannot share a queue: a single
+  /// arrival-ordered inbox drained per frame would run [tick]-delivered
+  /// handlers outside the tick window, which is the hazard
+  /// `_ControlMessage.stop`'s doc describes. The price of the split is that
+  /// there is no ordering *between* the lanes, only within each.
+  ///
+  /// The handler runs with no tick open, so it must not write - see
+  /// `CommandDescriptor.hasReadOnlySupplier`, which is where that promise is
+  /// set out and where it is admitted that nothing checks it.
+  frame,
 }
 
 @internal

@@ -2357,13 +2357,18 @@ final class GameRuntime {
   }
 
   /// Takes in whatever the other copy has sent since the last call and runs
-  /// what is due - see `CommandTransport.pump`.
+  /// the **tick-delivered** part of it - see `CommandTransport.pumpTickWindow`.
   ///
   /// Called from `GameState.runFixedStep`, inside the tick window and before
   /// any system, which is what makes a command-spawned entity visible to
   /// every system on the tick its command lands. The main isolate pumps on
-  /// its own schedule (each tick notification), where nothing is tick-bound.
-  void pumpCommands() => commandTransport?.pump();
+  /// its own schedule (each tick notification), where nothing is tick-bound
+  /// and one call drains every lane.
+  ///
+  /// The read-only lane is not drained here. It is drained once per frame by
+  /// [runReadOnlyCommands], which is what makes it reachable on a frame that
+  /// ran no step at all.
+  void pumpCommands() => commandTransport?.pumpTickWindow();
 
   /// Adopts whatever replies the other copy has written, and runs nothing -
   /// see `CommandTransport.adoptReplies`.
@@ -2378,6 +2383,22 @@ final class GameRuntime {
   /// tick window, which is what makes the whole-pump version unsafe in this
   /// position.
   void adoptCommandReplies() => commandTransport?.adoptReplies();
+
+  /// Runs the read-only commands waiting for this copy - see
+  /// `CommandTransport.runReadOnlyInbox`.
+  ///
+  /// Called from `GameState.advance` once per frame, straight after
+  /// [adoptCommandReplies], so a request that arrived on this frame is
+  /// answered on it. `advance` runs on a frame that afforded no fixed step,
+  /// which is the whole point: this is the only place a game whose tick is
+  /// stopped runs a handler at all, and it is why the other isolate can ask a
+  /// paused game a question and be answered (#165).
+  ///
+  /// Its own queue, deliberately. [pumpCommands] runs everything waiting in
+  /// arrival order, so calling it here would run tick-delivered handlers
+  /// outside the tick window - user code writing component data with no write
+  /// slot open, which the next `beginTick` erases without a word.
+  void runReadOnlyCommands() => commandTransport?.runReadOnlyInbox();
 
   /// Called by [GameState.runFixedStep] once a fixed step is fully committed.
   void completeTick() => tick++;

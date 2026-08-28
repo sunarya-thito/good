@@ -1022,8 +1022,8 @@ class _AskingGame extends Game {
 /// that were measured to behave identically are tested identically.
 typedef _StopRoute = (
   String label,
-  void Function(_AskingGame) stop,
-  void Function(_AskingGame) start,
+  void Function(Game) stop,
+  void Function(Game) start,
 );
 
 /// Polls [ready] on the wall clock rather than on ticks, because everything
@@ -1034,6 +1034,103 @@ Future<bool> _waitStopped(bool Function() ready) async {
     await Future<void>.delayed(const Duration(milliseconds: 10));
   }
   return ready();
+}
+
+// --- #165 slice 1: main asking a paused game, over the ring ----------------
+//
+// The other direction from slice 0, and the one it left open. Answering here
+// means running a handler on the game isolate, and the only thing that ran a
+// handler was the pump inside `runFixedStep` - so a paused game could be asked
+// nothing at all. The read-only lane is a second inbox drained from `advance`,
+// which runs on a frame that afforded no step.
+
+/// Read-only and handled on the **game** isolate: reports the tick it ran on
+/// and whether the simulation was stopped while it ran. That second field is
+/// the only way this side learns a fact the other copy holds - main cannot
+/// read `paused` (#246).
+class _ReadPaused extends SupplierCommand<({int tick, bool stopped})> {
+  final atTick = Param.int32();
+  final wasStopped = Param.uint1();
+
+  @override
+  void bufferFromResult(ParamBuffer call, ({int tick, bool stopped}) result) {
+    atTick[call] = result.tick;
+    wasStopped[call] = result.stopped ? 1 : 0;
+  }
+
+  @override
+  ({int tick, bool stopped}) resultFromBuffer(ParamBuffer call) =>
+      (tick: atTick[call], stopped: wasStopped[call] == 1);
+}
+
+/// Read-only, answering with the ordinal of its own arrival - so this side can
+/// see the order the lane ran things in after they have crossed a ring.
+class _ReadOrder extends SupplierCommand<int> {
+  final ordinal = Param.int32();
+
+  @override
+  void bufferFromResult(ParamBuffer call, int result) => ordinal[call] = result;
+
+  @override
+  int resultFromBuffer(ParamBuffer call) => ordinal[call];
+}
+
+/// Tick-delivered, handled on the game isolate. The discriminator: it needs a
+/// fixed step, so while the tick is stopped it must stay pending.
+class _NeedsTick extends SignalCommand {}
+
+class _PausedAskState extends GameState<_PausedAskGame> {
+  int arrivals = 0;
+
+  @override
+  void onMounted() {
+    // No scene: the question is about the command lanes.
+  }
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    descriptor
+      ..hasReadOnlySupplier(
+        game.readPaused,
+        () => (tick: game.tick, stopped: paused || timeScale == 0),
+      )
+      ..hasReadOnlySupplier(game.readOrder, () => ++arrivals)
+      ..hasSignal(game.needsTick, () => game.tickRan.value += 1);
+  }
+}
+
+class _PausedAskGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 5);
+
+  late final _ReadPaused readPaused;
+  late final _ReadOrder readOrder;
+  late final _NeedsTick needsTick;
+
+  /// Written by the tick-delivered handler on the game isolate, so this side
+  /// can see whether it has run without waiting on its future.
+  late final StateChannel<int> tickRan;
+
+  @override
+  GameState createState() => _PausedAskState();
+
+  @override
+  void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
+    tickRan = descriptor.hasInt32();
+  }
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    readPaused = descriptor.has(_ReadPaused.new);
+    readOrder = descriptor.has(_ReadOrder.new);
+    needsTick = descriptor.has(_NeedsTick.new);
+  }
 }
 
 /// Polls [ready] once per reported tick, up to [within] ticks.
@@ -1510,6 +1607,147 @@ void main() {
       );
     });
   }
+
+  // #165 slice 1. Both stop routes again, for the same reason: they were
+  // measured to behave identically, and a lane that served one and not the
+  // other would be aimed at the wrong thing.
+  for (final route in <_StopRoute>[
+    ('pause()', (game) => game.pause(), (game) => game.resume()),
+    (
+      'setTimeScale(0)',
+      (game) => game.setTimeScale(0),
+      (game) => game.setTimeScale(1),
+    ),
+  ]) {
+    final (label, stopIt, startIt) = route;
+    test('$label answers a read-only command from main', () async {
+      final game = await Game.start(_PausedAskGame.new);
+      run = game;
+      addTearDown(() async {
+        if (run.isRunning) await run.stop();
+      });
+      await _waitTicks(run, 3);
+
+      stopIt(game);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      final stopped = run.tick;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(
+        run.tick,
+        stopped,
+        reason: 'the tick has to be stopped for any of this to mean anything',
+      );
+
+      // Sent *first*, so a lane that ran arrivals in one order would run this
+      // one ahead of the read-only ask rather than leave it waiting.
+      var tickBoundDone = false;
+      final tickBound = game.needsTick();
+      unawaited(
+        tickBound.then((_) {
+          tickBoundDone = true;
+        }).catchError((Object _) {}),
+      );
+
+      final answer = await game.readPaused().timeout(
+        const Duration(seconds: 5),
+      );
+
+      expect(
+        answer.stopped,
+        isTrue,
+        reason:
+            'the handler ran on the game isolate and reported from there that '
+            'the simulation was stopped while it ran. Before this lane '
+            'existed the only thing that ran a handler was the pump inside '
+            'runFixedStep, so this await never returned while paused (#165)',
+      );
+      expect(
+        answer.tick,
+        stopped,
+        reason: 'and it read the same tick this side is looking at',
+      );
+      expect(
+        run.tick,
+        stopped,
+        reason: 'the tick did not move to serve the ask',
+      );
+
+      // The discriminator. Give anything that was going to happen time to
+      // happen: this is a real isolate, and the ping arrives every frame.
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(
+        tickBoundDone,
+        isFalse,
+        reason:
+            'a tick-delivered command sent at the same moment still needs a '
+            'fixed step, so it has to still be pending - without this the '
+            'test passes against a fix that quietly runs one, which is what '
+            'stepOnce already does',
+      );
+      expect(
+        game.tickRan.value,
+        0,
+        reason: 'seen from the game side too - its handler has not run',
+      );
+
+      // Order within the lane, after crossing a ring rather than a list.
+      final ordered = await Future.wait(<Future<int>>[
+        game.readOrder(),
+        game.readOrder(),
+        game.readOrder(),
+      ]).timeout(const Duration(seconds: 5));
+      expect(
+        ordered,
+        <int>[1, 2, 3],
+        reason:
+            'one queue, fed from the ring in arrival order and drained from '
+            'the front',
+      );
+      expect(run.tick, stopped, reason: 'still no step, three answers later');
+
+      startIt(game);
+      await tickBound.timeout(const Duration(seconds: 5));
+      expect(
+        await _waitStopped(() => game.tickRan.value == 1),
+        isTrue,
+        reason:
+            'and the tick lane delivers on resume exactly as it always did - '
+            'the read-only lane takes nothing away from it',
+      );
+    });
+  }
+
+  test('a read-only command works on a running game too', () async {
+    final game = await Game.start(_PausedAskGame.new);
+    run = game;
+    addTearDown(() async {
+      if (run.isRunning) await run.stop();
+    });
+    await _waitTicks(run, 3);
+
+    final tickBound = game.needsTick();
+    final answer = await game.readPaused().timeout(const Duration(seconds: 5));
+    expect(
+      answer.stopped,
+      isFalse,
+      reason: 'nothing about this lane depends on the game being stopped',
+    );
+    expect(
+      answer.tick,
+      greaterThan(0),
+      reason: 'it read a tick the running simulation had actually reached',
+    );
+
+    await tickBound.timeout(const Duration(seconds: 5));
+    expect(
+      await _waitStopped(() => game.tickRan.value == 1),
+      isTrue,
+      reason:
+          'and the tick-delivered command sent alongside it still arrives on '
+          'its own schedule',
+    );
+  });
+
   test(
     'a Game subclass survives Isolate.spawn and ticks on the other side',
     () async {
