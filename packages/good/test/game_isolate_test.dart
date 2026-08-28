@@ -8,6 +8,7 @@ import 'package:good/src/command/command.dart';
 import 'package:good/src/command/param.dart';
 import 'package:good/src/asset.dart';
 import 'package:good/src/data.dart';
+import 'package:good/src/debug/world_census.dart';
 import 'package:good/src/event/fixed_loop.dart';
 import 'package:good/src/event/tick_loop.dart';
 import 'package:good/src/event/lifecycle.dart';
@@ -1197,6 +1198,123 @@ Future<void> _waitTicks(Game run, int count) {
       .whenComplete(() => runtime.removeTickListener(listener));
 }
 
+// --- #122 B1: a world census, across the boundary --------------------------
+//
+// The inline half is in world_census_test.dart. This is the half that can
+// actually fail on its own: main and the game isolate hold two copies of the
+// `Game`, and only one of them registers archetypes, loads scenes or holds
+// systems. A census that read the registries on this side would answer
+// "empty world" about a world that is simply somewhere else, and would do it
+// without an error - so the blob has to be produced over there and carried
+// back, and only a spawned run proves it is.
+
+mixin _Counted on Component {
+  final weight = Field.uint16(2);
+
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<_Counted>();
+  }
+}
+
+class _Pebble extends EntityStruct with _Counted {}
+
+class _CensusScene extends SceneStruct {
+  late final _Pebble pebble;
+
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
+    pebble = descriptor.has(_Pebble.new);
+  }
+
+  @override
+  void onSceneMounted(Scene scene) {
+    for (var i = 0; i < 5; i++) {
+      scene.addEntity(pebble);
+    }
+  }
+}
+
+class _IdleSystem extends GameSystem with FixedTickable {
+  @override
+  void onFixedUpdate() {}
+}
+
+class _SleepySystem extends GameSystem with FixedTickable {
+  @override
+  void onFixedUpdate() {}
+}
+
+/// The census blob, as the one `hasBytes` parameter B1 is scoped to.
+///
+/// [resultFromBuffer] copies, because a `hasBytes` read hands back a view onto
+/// the batch's own buffer and the transport reuses those bytes.
+class _TakeWorldCensus extends SupplierCommand<Uint8List> {
+  final blob = Param.bytes();
+
+  @override
+  void bufferFromResult(ParamBuffer call, Uint8List result) =>
+      blob[call] = result;
+
+  @override
+  Uint8List resultFromBuffer(ParamBuffer call) => Uint8List.fromList(blob[call]);
+}
+
+/// Disables one system on the game isolate, so the enabled bits this side
+/// reads are ones this side asked for rather than ones the fixture was born
+/// with.
+class _SleepASystem extends SignalCommand {}
+
+class _CensusIsolateState extends GameState<_CensusIsolateGame> {
+  final _CensusScene level = _CensusScene();
+
+  @override
+  void onMounted() {
+    loadScene(level);
+  }
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_IdleSystem.new);
+    descriptor.has(_SleepySystem.new);
+  }
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    descriptor
+      ..hasReadOnlySupplier(
+        game.censusBlob,
+        () => WorldCensus.of(this).encode(),
+      )
+      ..hasControlSignal(game.sleepASystem, disableSystem<_SleepySystem>);
+  }
+}
+
+class _CensusIsolateGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 5);
+
+  late final _TakeWorldCensus censusBlob;
+  late final _SleepASystem sleepASystem;
+
+  @override
+  GameState createState() => _CensusIsolateState();
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    censusBlob = descriptor.has(_TakeWorldCensus.new);
+    sleepASystem = descriptor.has(_SleepASystem.new);
+  }
+}
+
 // --- #123: which isolate registers an asset decoder ------------------------
 //
 // `AssetLoaders` is a per-isolate static map, so the question "who registers"
@@ -1808,6 +1926,116 @@ void main() {
           'and the tick-delivered command sent alongside it still arrives on '
           'its own schedule',
     );
+  });
+
+  // #122 B1. The inline half of this is in world_census_test.dart; what a
+  // spawned run adds is the only thing that can distinguish a census from a
+  // census that quietly read the wrong copy's registries. #165's guard-binding
+  // bug was caught the same way.
+  group('a world census', () {
+    test('crosses the boundary while the game is paused', () async {
+      final game = await Game.start(_CensusIsolateGame.new);
+      run = game;
+      addTearDown(() async {
+        if (run.isRunning) await run.stop();
+      });
+      await _waitTicks(run, 3);
+
+      game.pause();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      final stopped = run.tick;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(
+        run.tick,
+        stopped,
+        reason: 'the tick has to be stopped for any of this to mean anything',
+      );
+
+      expect(
+        ArchetypeRegistry.count,
+        0,
+        reason:
+            'this side registered nothing, so a census assembled here would '
+            'report an empty world - which is the failure a spawned run '
+            'catches and an inline one cannot',
+      );
+      expect(SceneRegistry.slotCount, 0);
+
+      final census = WorldCensus.decode(
+        await game.censusBlob().timeout(const Duration(seconds: 5)),
+      );
+
+      expect(census.tick, stopped, reason: 'it counted the world standing still');
+      expect(run.tick, stopped, reason: 'and the tick did not move to serve it');
+      expect(census.entityCount, 5);
+      expect(
+        census.scenes.map((s) => (s.slot, s.typeName, s.entityCount)),
+        [(0, '_CensusScene', 5)],
+        reason: 'one scene, mounted with five entities in onSceneMounted',
+      );
+      expect(
+        census.archetypes.map((a) => (a.typeName, a.entityCount, a.strideBytes)),
+        [('_Pebble', 5, 2)],
+      );
+      expect(census.archetypes.single.componentSignature, isNot(0));
+      expect(
+        census.systems.map((s) => (s.index, s.typeName, s.enabled)),
+        [(0, '_IdleSystem', true), (1, '_SleepySystem', true)],
+      );
+    });
+
+    test('reports an enabled bit this side changed', () async {
+      final game = await Game.start(_CensusIsolateGame.new);
+      run = game;
+      addTearDown(() async {
+        if (run.isRunning) await run.stop();
+      });
+      await _waitTicks(run, 3);
+      game.pause();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      await game.sleepASystem();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      final census = WorldCensus.decode(
+        await game.censusBlob().timeout(const Duration(seconds: 5)),
+      );
+      expect(
+        census.systems.map((s) => (s.typeName, s.enabled)),
+        [('_IdleSystem', true), ('_SleepySystem', false)],
+        reason:
+            'the census reads the systems the game isolate holds now, not the '
+            'set it booted with - so a disable that crossed on the control '
+            'lane is visible on the read-only one',
+      );
+    });
+
+    test('the copy that does not simulate refuses to take one', () async {
+      final game = await Game.start(_CensusIsolateGame.new);
+      run = game;
+      addTearDown(() async {
+        if (run.isRunning) await run.stop();
+      });
+
+      // This side's `GameState` exists only to re-run the declaration passes.
+      // It never ticks and its registries stay empty, so a census taken from
+      // it would be empty for a reason that has nothing to do with the world.
+      final here = run.runtimeOrNull!.state!;
+      expect(here.isSimulating, isFalse);
+      expect(
+        () => WorldCensus.of(here),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('does not own the simulation'),
+              contains('hasReadOnlySupplier'),
+            ),
+          ),
+        ),
+      );
+    });
   });
 
   test(

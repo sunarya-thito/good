@@ -524,6 +524,26 @@ class MemoryPage {
   /// to call this once per candidate row while iterating a page.
   bool isLive(int offset) => !_freeOffsets.contains(offset);
 
+  /// How many rows in this page are currently allocated.
+  ///
+  /// Arithmetic, not a walk: [highWaterMark] over the stride is every row
+  /// that has ever been handed out, and the free set holds the ones handed
+  /// back. So a caller counting a whole world - `WorldCensus` - pays per
+  /// page rather than per entity, and a hundred thousand rows cost the same
+  /// as ten.
+  ///
+  /// Two things it deliberately does not do. It does not step [rowOffsets],
+  /// which latches the page into deferring structural changes until the next
+  /// tick boundary - and a paused game has no next tick boundary, so a
+  /// counting walk there would strand every page it touched. And it counts a
+  /// row freed while a walk is open, because [free] has only deferred it:
+  /// the row is still allocated and still readable until [flushPending].
+  int get liveRowCount {
+    final stride = _strideBytes;
+    if (stride == null) return 0;
+    return _writeOffset ~/ stride - _freeOffsets.length;
+  }
+
   /// Every currently-live row offset in this page, in ascending order -
   /// what the query system walks to find matching entities. Lazy: does not
   /// allocate a list, just steps `highWaterMark ~/ strideBytes` candidates
