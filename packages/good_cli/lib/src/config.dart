@@ -7,6 +7,7 @@ import 'package:yaml/yaml.dart';
 ///
 /// ```yaml
 /// good:
+///   bundle: my_game_bundle  # the generated package, recorded not derived
 ///   assets:
 ///     source: assets_src/    # originals you edit and commit
 ///     output: assets/        # canonical files, generated
@@ -36,6 +37,7 @@ import 'package:yaml/yaml.dart';
 @immutable
 class GoodConfig {
   const GoodConfig({
+    this.bundle,
     required this.assetSource,
     required this.assetOutput,
     this.packOutput = 'assets/packed/',
@@ -43,6 +45,20 @@ class GoodConfig {
     required this.texture,
     required this.audio,
   });
+
+  /// The generated sibling package that holds everything good writes, or null
+  /// when a project has never had one generated.
+  ///
+  /// **Recorded, never computed.** A name derived from the project's would
+  /// change the moment the project was renamed, leaving the old bundle on disk
+  /// and still named in `dependencies:` while a second one was generated
+  /// beside it - two packages declaring the same generated code, one of them
+  /// dead, and nothing in the build saying which answered. Recorded, a rename
+  /// is a non-event.
+  ///
+  /// Derived from the project name once, at `good create`, and written here.
+  /// See `defaultBundleName`.
+  final String? bundle;
 
   /// Where the originals live - whatever format they happen to be in.
   ///
@@ -122,6 +138,7 @@ class GoodConfig {
     final audio = good['audio'];
 
     return GoodConfig(
+      bundle: _packageName(good, 'bundle'),
       assetSource: _dir(assets, 'source', defaults.assetSource),
       assetOutput: _dir(assets, 'output', defaults.assetOutput),
       packOutput: _dir(assets, 'packed', defaults.packOutput),
@@ -151,6 +168,26 @@ class GoodConfig {
     final value = map is YamlMap ? map[key] : null;
     if (value is! String || value.isEmpty) return fallback;
     return value.endsWith('/') ? value : '$value/';
+  }
+
+  /// A recorded package name, refused rather than passed on when it is not
+  /// one.
+  ///
+  /// Everything downstream builds a directory, a pubspec `name:` and a
+  /// `package:` import out of this. A value that is not a legal package name
+  /// produces a package pub cannot read, at a distance from the line that
+  /// caused it.
+  static String? _packageName(Object? map, String key) {
+    final value = map is YamlMap ? map[key] : null;
+    if (value == null) return null;
+    if (value is! String || !RegExp(r'^[a-z_][a-z0-9_]*$').hasMatch(value)) {
+      throw ArgumentError(
+        'pubspec.yaml: `good: $key: $value` is not a package name. It has to '
+        'be lower_snake_case - it names a directory, a pubspec and every '
+        '`package:` import of the code generated into it.',
+      );
+    }
+    return value;
   }
 
   static T _enum<T extends Enum>(

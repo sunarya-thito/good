@@ -21,7 +21,7 @@ Drop source art in `assets_src/`, then:
 
 ```bash
 good assets compact   # one canonical format per kind, via ffmpeg
-good generate         # writes lib/good.generated/ — an enum per shipped asset
+good generate         # writes the generated bundle package beside the project
 ```
 
 `good generate` is what lets you write `Textures.spritesPlayer` instead of a

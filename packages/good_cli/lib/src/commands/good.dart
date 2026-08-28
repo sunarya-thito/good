@@ -28,7 +28,8 @@ class GoodCommand extends Command {
     );
     generate = descriptor.describeSubCommand(
       'generate',
-      'Write lib/good.generated/ from the assets the pubspec declares.',
+      'Write the generated bundle package from the assets the pubspec '
+          'declares.',
       GenerateCommand(),
     );
     assets = descriptor.describeSubCommand(

@@ -2,6 +2,44 @@
 
 ### Changed
 
+* **Everything good generates moves into a package beside the project.** A
+  project called `my_game` gets `my_game/my_game_bundle/`, and `lib/` holds
+  nothing generated: `textures.dart`, `audios.dart`, `good.dart` and
+  `asset_key.dart` are now `package:my_game_bundle/...` rather than
+  `lib/good.generated/...` (#108, #113). The split is by who wrote a file
+  rather than by what kind of file it is, so "may good overwrite this" has one
+  answer instead of two. An existing project is migrated by the next
+  generate - the four files move, `lib/good.generated/` goes away, and the
+  imports that named it are repointed. `asset_key.dart` is carried over byte
+  for byte, so the keys every shipped pack was built with are not rotated by
+  the migration.
+
+* **The bundle package's name is recorded in the pubspec, not derived from the
+  project's.** `good: bundle: my_game_bundle` is written the first time the
+  package is generated. A project renamed afterwards keeps pointing at the
+  directory that already exists, rather than leaving a stale bundle on disk
+  and in `dependencies:` while a second one is generated beside it (#113).
+
+* **Nothing writes to or deletes from the bundle package without proof it is
+  generated.** A `.good_bundle` marker is written into it and checked before
+  anything else. Absent, the command refuses and names the path; so do two
+  marked directories, a marked directory that is not the recorded name, and a
+  `dependencies:` entry of that name pointing somewhere else. Regeneration
+  rewrites in place rather than clearing and refilling, because the generated
+  code is imported by package name and an empty package is every one of those
+  imports failing to resolve.
+
+* **Generating runs `flutter pub get` and checks what it wrote.** A path
+  dependency that was never resolved does not fail a build - Flutter builds
+  green and ships without the package. The resolve is skipped only when the
+  project's package config already points at the bundle, and `--no-pub-get`
+  turns it off for a caller that resolves for itself. Afterwards the files,
+  the marker, both pubspecs and the resolved config are all read back, and
+  anything wrong stops the command.
+
+* **`good create` no longer tells you to run `flutter pub get`.** Generating
+  the bundle package does it.
+
 * **`good create` starts its game with a constructor.** The generated
   `main.dart` writes `await Game.start(MyGameGame.new)` rather than building
   the game and handing over the instance, following `good`'s `Game.start`

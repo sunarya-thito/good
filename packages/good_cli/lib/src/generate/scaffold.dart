@@ -1,3 +1,4 @@
+import 'package:good_cli/src/generate/bundle.dart';
 import 'package:yaml/yaml.dart';
 
 /// Which engine package a new project is built against.
@@ -68,13 +69,13 @@ Map<String, String> scaffoldFiles({
         : _scene2D(package),
     'lib/game/prefabs/player.dart': engine == GoodEngine.threeD
         ? _player3D(package)
-        : _player2D(package),
+        : _player2D(package, defaultBundleName(projectName)),
     if (engine == GoodEngine.threeD) ...<String, String>{
       'lib/game/prefabs/eye.dart': _eye3D(package),
       'lib/game/systems/spin_system.dart': _spinSystem3D(package),
     },
     'test/widget_test.dart': _widgetTest(projectName, className, package),
-    'assets/.gitkeep': _gitkeep(command),
+    'assets/.gitkeep': _gitkeep(command, defaultBundleName(projectName)),
     // Present from the start so the entry below resolves before anything has
     // been packed: Flutter refuses to build over an asset directory that does
     // not exist, and the first `good build` is the worst moment to discover it.
@@ -568,7 +569,7 @@ class MainScene extends SceneStruct {
 }
 ''';
 
-String _player2D(String package) =>
+String _player2D(String package, String bundle) =>
     '''
 import 'package:$package/$package.dart';
 
@@ -590,12 +591,14 @@ import 'package:$package/$package.dart';
 /// @override
 /// void describeAssets(AssetDescriptor descriptor) {
 ///   super.describeAssets(descriptor);
-///   texture = descriptor.has(Textures.yourAsset);  // from good.generated
+///   texture = descriptor.has(Textures.yourAsset);
 /// }
 /// ```
 ///
-/// Drop an image into `assets/`, list it under `flutter: assets:` in the
-/// pubspec, and run `good generate` to get the `Textures` enum.
+/// `Textures` comes from `package:$bundle/textures.dart`, which is
+/// generated. Drop an image into `assets/`, list it under `flutter: assets:`
+/// in the pubspec, and run `good generate`. Everything good writes lands in
+/// that package; every file under `lib/` here is one you wrote.
 class Player extends EntityStruct with Transform2D, WorldTransform2D, Renderable2D {
   late final Sprite sprite;
 
@@ -757,9 +760,12 @@ void main() {
 }
 ''';
 
-String _gitkeep(String command) =>
+String _gitkeep(String command, String bundle) =>
     '''
 # Drop images here, list them under `flutter: assets:` in pubspec.yaml, then
-# run `$command`'s sibling: `good generate`. That writes lib/good.generated/,
-# where each asset becomes a value of the `Textures` enum.
+# run `$command`'s sibling: `good generate`. That writes ../$bundle/, where
+# each asset becomes a value of the `Textures` enum.
+#
+# Nothing generated is written into lib/. The package good generates sits
+# beside it, so every file under lib/ is one you wrote.
 ''';

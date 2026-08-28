@@ -6,7 +6,7 @@ Three stages turn the art you edit into the bytes you ship.
 flowchart LR
     SRC["<b>assets_src/</b><br/>sprites/player.png<br/>sfx/hit.wav"]
     CAN["<b>assets/</b><br/>sprites/player.webp<br/>sfx/hit.ogg"]
-    GEN["<b>lib/good.generated/</b><br/>textures.dart<br/>audios.dart"]
+    GEN["<b>my_game_bundle/lib/</b><br/>textures.dart<br/>audios.dart"]
     PACK["<b>assets/packed/</b><br/>chunk_main.dat<br/>chunk_shared.dat"]
     SRC -->|"good assets compact<br/>ffmpeg, one format per kind"| CAN
     CAN -->|"good generate"| GEN
@@ -120,17 +120,21 @@ source to rebuild it from. A release build stops instead of deleting one; see
 good generate
 ```
 
-Scans what the pubspec declares under `flutter: assets:` and writes four files.
+Scans what the pubspec declares under `flutter: assets:` and writes four Dart
+files into the generated package beside the project, along with that package's
+own pubspec.
 
 ```console
 $ good generate
-Wrote ./lib/good.generated/textures.dart
-Wrote ./lib/good.generated/audios.dart
-Wrote ./lib/good.generated/good.dart
+Wrote ./my_game_bundle/pubspec.yaml
+Wrote ./my_game_bundle/lib/textures.dart
+Wrote ./my_game_bundle/lib/audios.dart
+Wrote ./my_game_bundle/lib/good.dart
+Resolving my_game_bundle - flutter pub get
 1 texture(s), 0 audio file(s).
 ```
 
-| File | Rewritten | Contents |
+| File in `my_game_bundle/lib/` | Rewritten | Contents |
 |---|---|---|
 | `textures.dart` | every run | One enum value per shipped image |
 | `audios.dart` | every run | One enum value per shipped audio file |
@@ -145,6 +149,13 @@ Wrote ./lib/good.generated/good.dart
 
     **Commit this file.** It is generated, and it is also the only record of
     your keys.
+
+The package is rewritten in place rather than cleared and refilled. Its code is
+imported as `package:my_game_bundle/textures.dart`, so an empty bundle package
+is not one waiting to be refilled — it is every asset-referencing file in the
+project failing to resolve. Regenerating also runs `flutter pub get`, because a
+path dependency that was never resolved does not fail the build; the build
+succeeds and ships without the package.
 
 ### Subdirectories must be listed
 

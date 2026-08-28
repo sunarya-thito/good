@@ -6,7 +6,8 @@ Usage: good <command> [options]
 
 Commands:
   create    Scaffold a new Flutter project wired up to good.
-  generate  Write lib/good.generated/ from the assets the pubspec declares.
+  generate  Write the generated bundle package from the assets the pubspec
+            declares.
   assets    Convert and pack the assets a project ships.
   build     Build and package a game for a target platform.
 
@@ -86,13 +87,22 @@ See [Create a project](../getting-started/create-a-project.md).
 Usage: good generate [options]
 ```
 
-Writes `lib/good.generated/` from the assets the pubspec declares.
+Writes the generated bundle package — `my_game_bundle/` beside a project called
+`my_game` — from the assets the pubspec declares.
+
+Everything good generates lives there and nothing good generates lives under
+`lib/`. The package's name is **recorded** in the pubspec's `good:` section the
+first time it is written, so renaming the project later points at the directory
+that already exists rather than building a second one beside it. A
+`.good_bundle` marker inside proves the directory is good's; without it the
+command refuses to write or delete anything there and names the path.
 
 | Option | Default | Description |
 |---|---|---|
 | `--project-dir=<dir>` | `.` | The project to generate into |
 | `--dry-run` | off | Report what would be written, and write nothing |
 | `--rotate-keys` | off | Regenerate `asset_key.dart` |
+| `--no-pub-get` | off | Skip `flutter pub get` after writing the package |
 | `--verbose` | off | Verbose output |
 
 | File | Rewritten |
@@ -106,6 +116,11 @@ Writes `lib/good.generated/` from the assets the pubspec declares.
     Every existing asset pack stops decrypting. Repack immediately after, and
     understand that any build already shipped can no longer read a pack made
     with the new keys.
+
+!!! warning "`--no-pub-get`"
+    The resolve is what makes the path dependency real. Skip it and Flutter
+    still builds — it builds without the generated package, exits 0, and says
+    nothing. Use it only where something else runs `flutter pub get` after.
 
 Scans what the pubspec **declares** under `flutter: assets:`, not what is on
 disk — a file in an unlisted directory is invisible to it, and to Flutter.

@@ -1,4 +1,4 @@
-/// Reads and rewrites `lib/good.generated/asset_key.dart`.
+/// Reads and rewrites the generated `asset_key.dart`.
 ///
 /// The keys and the manifest share that one file because that is the shape
 /// `good generate` established, but they are produced by different commands on

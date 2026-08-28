@@ -8,6 +8,7 @@ import 'package:good_cli/src/assets/pack.dart';
 import 'package:good_cli/src/assets/strip.dart';
 import 'package:good_cli/src/config.dart';
 import 'package:good_cli/src/generate/assets.dart';
+import 'package:good_cli/src/generate/bundle.dart';
 import 'package:good_cli/src/generate/run.dart';
 import 'package:good_cli/src/generate/scene_scan.dart';
 import 'package:good_cli/src/command.dart';
@@ -22,7 +23,7 @@ import 'package:good_cli/src/verbosable.dart';
 /// `describeCommand` and calls `super`.
 ///
 /// Not a command itself: it declares no subcommand name and is never selected.
-abstract class BuildSubCommand extends Command with Verbose {
+abstract class BuildSubCommand extends Command with Verbose, Resolving {
   late final Arg<Directory> projectDir;
   late final Arg<bool> dryRun;
   late final Arg<bool> noDownload;
@@ -131,6 +132,7 @@ abstract class BuildSubCommand extends Command with Verbose {
       command: '${session.path.first} generate',
       out: info,
       verbose: debug,
+      pubGet: pubGet,
     );
 
     info.println('[3/4] packing assets');
@@ -206,7 +208,8 @@ abstract class BuildSubCommand extends Command with Verbose {
       for (final asset in scan.textures) asset.path,
       for (final asset in scan.audio) asset.path,
     ]..sort();
-    final keyFile = File('${project.path}/lib/good.generated/asset_key.dart');
+    // The bundle package's, which is where every generated file lives now.
+    final keyFile = resolveBundle(project).assetKeyFile;
 
     if (paths.isEmpty) {
       debug.println('  no declared assets - nothing to pack');

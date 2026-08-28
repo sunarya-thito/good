@@ -85,8 +85,12 @@ void _image(String path, String colour, String size) {
   }
 }
 
-ProcessResult _good(Directory project, List<String> args) =>
-    GoodCli.instance.run(<String>[...args, '--project-dir', project.path]);
+// `--no-pub-get` on every one of these. The projects below are the smallest
+// thing the build commands will accept and not resolvable Flutter apps, so a
+// real `flutter pub get` in one fails on its own terms and says nothing about
+// what these tests are asking.
+ProcessResult _good(Directory project, List<String> args) => GoodCli.instance
+    .run(<String>[...args, '--project-dir', project.path, '--no-pub-get']);
 
 void main() {
   tearDownAll(GoodCli.disposeAll);
