@@ -321,6 +321,47 @@
 
 ### Added
 
+* **`WorldCensus` counts what the game isolate holds.** Loaded scenes,
+  registered archetypes and how many entities are in each, and the declared
+  systems with their enabled bits. Everything in it was already known on the
+  game isolate and reachable from nowhere else; what was missing was a way to
+  ask (#122).
+
+  ```dart
+  // in GameState.describeCommands
+  descriptor.hasReadOnlySupplier(game.census, () => WorldCensus.of(this).encode());
+
+  // on main, whether or not the game is paused
+  final census = WorldCensus.decode(await game.census());
+  ```
+
+  A census reads and answers, so it goes on the read-only lane above and
+  therefore works on a stopped simulation - which is when a world is usually
+  worth looking at. `encode`/`decode` is the crossing: one `hasBytes` blob,
+  345 bytes for four scenes, six archetypes and eight systems, against the
+  64 KiB a command ring carries.
+
+  **Nothing takes one on its own.** There is no per-frame hook and no buffer
+  that fills whether or not anyone reads it, so a running game pays nothing.
+  One census costs O(archetypes + pages + scene slots + systems) and **not**
+  O(entities): a page reports its rows as arithmetic over its bump cursor and
+  its free set, which is what the new `MemoryPage.liveRowCount` is. Measured
+  under `flutter test`, so JIT: 0.6 us at zero entities, 0.9 us at 100,000,
+  and 4.9 us for a world of four scenes, six archetypes, 24 pages and 120,000
+  entities. Counting the same rows by walking them is 0.01 us, 540 us and
+  rising.
+
+  **Type names are for reading, and nothing resolves by one.** An archetype is
+  named by `archetypeId`, a scene by `slot` and a system by `index`; the
+  `runtimeType` strings ride along so a person can tell one from another, and
+  a build that minifies them will show minified ones. A component type's name
+  is still not available at runtime at all.
+
+  Taking a census on the main isolate's copy of a `GameState` throws. That
+  copy registers no archetypes, loads no scenes and holds no systems, so a
+  census from there would report an empty world for a reason that has nothing
+  to do with the world.
+
 * **`hasReadOnlyHandler` and `hasReadOnlySupplier` answer a game whose fixed
   tick is stopped.** A tick-delivered command is pumped from
   `GameState.runFixedStep`, so a paused game - or one at a time scale of zero -

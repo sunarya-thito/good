@@ -60,6 +60,12 @@ export 'src/command/param.dart'
         ParamLayouts,
         ParamPointer;
 export 'src/data.dart';
+// The world census (#122 B1): what the game isolate holds, counted, and the
+// blob that carries it back to main. In `good` rather than a devtools package
+// because the registries it reads - `SceneRegistry.handleAt`,
+// `GameState.declaredSystems` - are `@internal`, and a facility that has to be
+// inside the package to compile is not made safer by living outside it.
+export 'src/debug/world_census.dart';
 export 'src/data/hierarchy.dart';
 // EventBinder is the machinery behind the two declare/collect passes - `Game`
 // and `SceneStruct` drive it; nothing outside the kernel has a reason to name

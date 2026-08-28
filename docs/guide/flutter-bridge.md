@@ -362,6 +362,87 @@ tick and the other for a frame. Order *within* each lane is kept.
 A game that is hidden rather than paused is not covered: `pauseWhenHidden`
 stops the frame timer, so there is no frame to drain on.
 
+### Counting the world
+
+`WorldCensus` is what the read-only lane was built to carry: the loaded
+scenes, the registered archetypes and how many entities are in each, and the
+declared systems with their enabled bits. All of it is already known on the
+game isolate and reachable from nowhere else, so the census is taken there and
+crosses as one blob.
+
+Declare the command with a `hasBytes` parameter, and copy the bytes out of the
+buffer on the way back:
+
+<!-- snippet: top -->
+```dart
+class TakeCensus extends SupplierCommand<Uint8List> {
+  final blob = Param.bytes();
+
+  @override
+  void bufferFromResult(ParamBuffer call, Uint8List result) =>
+      blob[call] = result;
+
+  // A copy, not the view: reading a `hasBytes` field hands back a window onto
+  // the batch's own buffer, and the transport reuses those bytes.
+  @override
+  Uint8List resultFromBuffer(ParamBuffer call) => Uint8List.fromList(blob[call]);
+}
+```
+
+Handle it on the read-only lane, and read it back on main:
+
+<!-- snippet: in GameState -->
+<!-- snippet-setup
+late TakeCensus census;
+-->
+```dart
+@override
+void describeCommands(CommandDescriptor descriptor) {
+  super.describeCommands(descriptor);
+  descriptor.hasReadOnlySupplier(census, () => WorldCensus.of(this).encode());
+}
+```
+
+<!-- snippet: plain -->
+<!-- snippet-setup
+final census = given<TakeCensus>();
+-->
+```dart
+final world = WorldCensus.decode(await census());
+for (final archetype in world.archetypes) {
+  print('${archetype.typeName}: ${archetype.entityCount}');
+}
+```
+
+Because it is on that lane it answers while the game is paused, which is when
+a world is usually worth looking at. `WorldCensus.tick` says which tick was
+counted, so two censuses reporting the same tick describe the same world.
+
+!!! note "What it costs, and what it does not"
+    Nothing takes a census on its own. There is no per-frame hook and no
+    buffer that fills whether or not anyone reads it, so a running game that
+    never asks pays nothing at all.
+
+    One census is O(archetypes + pages + scene slots + systems), **not**
+    O(entities) — a page reports its rows as arithmetic over its bump cursor
+    and its free set rather than by walking them. Measured under
+    `flutter test`, so JIT: 0.6 µs on an empty world, 0.9 µs at 100,000
+    entities, and 4.9 µs for four scenes, six archetypes, 24 pages and
+    120,000 entities. The blob for that last one is 345 bytes, against the
+    64 KiB `commandBufferBytes` gives a command ring.
+
+Every name in a census — `ArchetypeCensus.typeName` and its two counterparts —
+is a `runtimeType` string carried so a person can tell one entry from another.
+Nothing resolves by one: an archetype is named by `archetypeId`, a scene by
+`slot` and a system by `index`. A component type's name does not exist at
+runtime at all, which is why a census counts entities per archetype and does
+not list an archetype's components by name.
+
+Taking one on main's copy of the `GameState` throws rather than answering. That
+copy runs the same declaration passes and never ticks — it registers no
+archetypes, loads no scenes and holds no systems — so a census from there would
+report an empty world for a reason that has nothing to do with the world.
+
 ### Batching
 
 Several commands in one round trip:
