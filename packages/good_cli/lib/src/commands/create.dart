@@ -2,6 +2,7 @@
 import 'dart:io';
 
 import 'package:good_cli/src/command.dart';
+import 'package:good_cli/src/generate/bundle.dart';
 import 'package:good_cli/src/generate/run.dart';
 import 'package:good_cli/src/generate/scaffold.dart';
 import 'package:good_cli/src/parsers.dart';
@@ -88,9 +89,16 @@ class CreateCommand extends Command with Verbose, Resolving {
       for (final path in files.keys) {
         info.printf('Would write %s/%s\n', [root.path, path]);
       }
-      info.printf('Would add to %s/pubspec.yaml:\n%s', [
+      // Both halves of the pubspec edit, because generating is part of what
+      // this command does and a dry run that shows half of it is a dry run
+      // somebody has to run twice.
+      info.printf('Would add to %s/pubspec.yaml:\n%s\n%s', [
         root.path,
         pubspecPatch(engine.package),
+        bundlePubspecPatch(defaultBundleName(projectName)),
+      ]);
+      info.printf('Would generate %s/ beside it.\n', [
+        defaultBundleName(projectName),
       ]);
       return;
     }

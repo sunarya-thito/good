@@ -73,6 +73,15 @@ flutter:
   assets:
     - assets/
     - assets/packed/
+
+dependencies:
+  my_game_bundle:
+    path: my_game_bundle
+
+good:
+  bundle: my_game_bundle
+
+Would generate my_game_bundle/ beside it.
 ```
 
 ### Two guarantees worth knowing
