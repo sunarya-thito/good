@@ -371,7 +371,7 @@ Four kinds are provided:
 |---|---|
 | `hasAreaEffector(region, forceX:, forceY:, torque:)` | A uniform push, and optionally a spin |
 | `hasPointEffector(region, force:, minDistance:)` | Pulls toward or pushes from the centre. `minDistance` stops the force exploding at zero |
-| `hasBuoyancyEffector(region, density:, linearDrag:, angularDrag:)` | Water: floats what is less dense, drags what moves |
+| `hasBuoyancyEffector(region, density:, linearDrag:, angularDrag:)` | Water: floats what is less dense, drags what moves. The water line is the region's **top** edge |
 | `hasSurfaceEffector(region, speed:, speedY:, force:)` | A conveyor, dragging contents toward a target speed |
 
 Platform (one-way) is not provided.

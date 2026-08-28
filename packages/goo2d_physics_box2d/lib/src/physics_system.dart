@@ -442,13 +442,16 @@ class Box2DPhysicsSystem extends GameSystem
           layerMask: layerMask,
         );
       case BuoyancyEffector():
-        // +y is down in goo2d, so the water line is the *smaller* y - see
-        // BuoyancyEffector's own doc on why it is horizontal regardless.
+        // The water line is the region's *top* edge, which is its largest y:
+        // goo2d's +y is up, and [buoyancyEffector] hangs the fluid below the
+        // surface it is given. Passing minY put the water a whole region
+        // height underneath the region it was declared on - see
+        // BuoyancyEffector's own doc, and on why it is horizontal regardless.
         buoyancyEffector(
           scene,
           minX,
           maxX,
-          surfaceY: minY,
+          surfaceY: maxY,
           depth: maxY - minY,
           density: effector.density[entity],
           linearDrag: effector.linearDrag[entity],

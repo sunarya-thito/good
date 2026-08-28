@@ -191,8 +191,10 @@ void main() {
     // poured through the gap. Ask Box2D where the floor is, not the ECS.
     final physics = state.getSystem<Box2DPhysicsSystem>();
     final arena = scene.arena;
-    // From below, casting up: +y is down, so this can only hit the floor's
-    // underside and never the pile resting on top of it.
+    // From above the floor, casting down - +y is up, so `floorY + 6` is over
+    // it and `-8` travels toward it. Four steps in, everything spawned is
+    // still up at the drop line, so the floor is the only thing this ray can
+    // reach.
     final hit = physics.raycast(
       scene.handle,
       arena.halfWidth * 0.9,
