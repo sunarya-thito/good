@@ -297,6 +297,47 @@
 
 ### Added
 
+* **`hasReadOnlyHandler` and `hasReadOnlySupplier` answer a game whose fixed
+  tick is stopped.** A tick-delivered command is pumped from
+  `GameState.runFixedStep`, so a paused game - or one at a time scale of zero -
+  queued it and answered nothing until the tick came back. A pause menu asking
+  the simulation for a number, or an inspector reading a world that is
+  deliberately standing still, waited out the pause with no error and no
+  timeout (#165).
+
+  ```dart
+  // in GameState.describeCommands
+  descriptor.hasReadOnlySupplier(inspect, () => _summarise());
+  ```
+
+  The batch rides the same command ring a tick-delivered one does, and keeps
+  the same reply leg - so `await` completes when the handler has run and its
+  answer is back, which is what separates this from `hasControlSink`. What
+  changes is where it is drained: a second inbox, emptied once per frame from
+  `GameState.advance`, which runs on a frame that afforded no fixed step.
+
+  **Two inboxes and not one.** A single arrival-ordered queue drained per frame
+  would run tick-delivered handlers with no tick window open, which is the
+  hazard that makes `Game.stop` a control message rather than a command. The
+  price of the split is that there is no ordering *between* the lanes, only
+  within each - the same trade receipt delivery already makes.
+
+  **Read-only is a promise the caller makes, and nothing checks it.** Nothing
+  in Dart makes a closure read-only. A handler here that writes a component
+  field has that write erased by the next `beginTick` with nothing said (a
+  debug assert in `data_layout.dart` catches it, except on a page that has
+  never published); adding an entity, writing a `StateChannel` and unloading a
+  scene are not guarded from here at all (#245). `hasHandler` is the one that
+  may write.
+
+  `hasReadOnlySink` and `hasReadOnlySignal` exist and always throw, the way
+  `hasControlHandler` does: a handler that promises not to write and has no
+  answer to send back has no effect left to have.
+
+  Not covered: a game hidden under `pauseWhenHidden` calls `stopTimer()`, so
+  nothing calls `advance` and there is no frame to drain on. Answering that
+  one needs a reply leg on the control port, which is deferred.
+
 * **`Channel.*` declares a published state channel on the field that holds
   it.** A `Game` is framework-built as of the change above, so the state
   descriptor is open while its fields initialise (#91).

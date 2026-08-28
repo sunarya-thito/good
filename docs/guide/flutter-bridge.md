@@ -317,6 +317,50 @@ void describeCommands(CommandDescriptor descriptor) {
 }
 ```
 
+### Asking a game that is paused
+
+A handler runs inside the fixed tick window, which means it runs only if the
+tick runs. Pause the game — `pause()`, or a time scale of zero — and a command
+sent to it waits in the queue until the game resumes. Nothing is lost, and for
+anything that changes the world that is the behaviour you want. It is the wrong
+answer for a pause menu or a debug overlay asking the simulation a question,
+which is the case the game is usually paused *for*.
+
+`hasReadOnlySupplier` and `hasReadOnlyHandler` put the handler on a second
+lane, drained once per **frame** instead of once per tick:
+
+<!-- snippet: plain -->
+<!-- snippet-setup
+final descriptor = given<CommandDescriptor>();
+Entity findPlayer() => given<Entity>();
+-->
+```dart
+descriptor.hasReadOnlySupplier(game.whoIsPlayer, findPlayer);
+```
+
+The call site is unchanged — `await game.whoIsPlayer()` — and so is the reply:
+the batch crosses on the same ring and the future completes when the handler
+has run and its answer is back. What changes is that a frame still happens
+while the game is paused, so the answer arrives instead of waiting out the
+pause.
+
+The two lanes have no ordering between them. A read-only command and an
+ordinary one sent in that order can run in either, because one waits for a
+tick and the other for a frame. Order *within* each lane is kept.
+
+!!! warning "Read-only is your promise, not a guarantee"
+    Nothing in Dart makes a closure read-only, and the engine does not check
+    it. A handler here runs with no tick open: a component field it writes is
+    erased by the next step with nothing said, and adding an entity, writing a
+    `StateChannel` or unloading a scene are not stopped at all. Use
+    `hasHandler` for anything that writes.
+
+    `hasReadOnlySink` and `hasReadOnlySignal` exist only to throw. A handler
+    that promises not to write and returns nothing has no effect left to have.
+
+A game that is hidden rather than paused is not covered: `pauseWhenHidden`
+stops the frame timer, so there is no frame to drain on.
+
 ### Batching
 
 Several commands in one round trip:

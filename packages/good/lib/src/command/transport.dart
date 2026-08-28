@@ -55,6 +55,15 @@ import 'package:good/src/ring_buffer.dart';
 /// at all, and a game-handled command still waits for the next tick rather
 /// than running inside the widget callback that sent it. One timing model,
 /// whichever way the game was booted.
+///
+/// A **read-only** batch is the exception, and it is why there are two
+/// inboxes rather than one. It rides the same ring and carries the same reply,
+/// but it is queued in [_readInbox] and drained once per frame from
+/// `GameState.advance` - so it is answered on a frame that afforded no fixed
+/// step, which is what lets a paused game be asked anything at all (#165).
+/// The two queues cannot be one: draining a single arrival-ordered inbox per
+/// frame would run tick-delivered handlers with no tick open. See
+/// `HandlerDelivery.frame`.
 @internal
 final class CommandTransport implements CommandSender {
   /// Ring record types. Two, because both directions carry both kinds.
@@ -87,6 +96,15 @@ final class CommandTransport implements CommandSender {
 
   /// Batches bound for this copy that have not been run yet.
   final List<_Inbound> _inbox = <_Inbound>[];
+
+  /// The same, for the read-only lane - see [runReadOnlyInbox].
+  ///
+  /// A second list and not a flag on [_Inbound], because the two are drained
+  /// on different schedules: one inside the tick window, one once per frame.
+  /// A single arrival-ordered queue could not serve both without running
+  /// tick-delivered handlers with no tick open. Allocated once, empty on
+  /// almost every frame of almost every game.
+  final List<_Inbound> _readInbox = <_Inbound>[];
 
   /// Scratch for the drained-record list, reused across pumps - the same
   /// reasoning as `RingBuffer.drainInto`'s own.
@@ -157,9 +175,14 @@ final class CommandTransport implements CommandSender {
         return Future<void>.value();
       }
       // Handled here, but on the game side - so it waits for the tick window
-      // exactly as a batch that arrived over a ring would.
+      // exactly as a batch that arrived over a ring would. A read-only batch
+      // waits for the next frame instead, in the other queue, which is what
+      // makes the lane work in the inline configuration too.
       final completer = Completer<void>();
-      _inbox.add(_Inbound(batch, completer));
+      final queue = batch.delivery == HandlerDelivery.frame
+          ? _readInbox
+          : _inbox;
+      queue.add(_Inbound(batch, completer));
       return completer.future;
     }
 
@@ -217,26 +240,66 @@ final class CommandTransport implements CommandSender {
   /// Takes in everything the other copy has said since the last call, and
   /// answers whatever is due.
   ///
-  /// Called once per fixed tick on the game isolate (from
-  /// `GameState.runFixedStep`, inside the tick window and before any system)
-  /// and once per tick notification on the main isolate. Cheap when nothing
-  /// has arrived: one cursor comparison and an empty list.
+  /// Cheap when nothing has arrived: one cursor comparison and an empty list.
+  ///
+  /// This is the **main** isolate's schedule, once per tick notification.
+  /// The game isolate uses [pumpTickWindow] and [runReadOnlyInbox], which are
+  /// the same work split across the two moments it has.
   ///
   /// **The two schedules are not symmetric, and that asymmetry has a cost.**
   /// A tick notification arrives on every frame, including a frame that
   /// afforded no fixed step, so main goes on pumping at full rate through a
-  /// pause; a fixed step does not run at all, so this never runs on the game
-  /// isolate while the tick is stopped. [adoptReplies] is the half of this
-  /// that a stopped game still needs, and `GameState.advance` calls it once
-  /// per frame for exactly that reason.
+  /// pause; a fixed step does not run at all, so [pumpTickWindow] does not run
+  /// on the game isolate while the tick is stopped. What a stopped copy still
+  /// needs is drained from `GameState.advance` instead - [adoptReplies] for an
+  /// answer it is waiting on, [runReadOnlyInbox] for a question the other copy
+  /// has asked it.
   void pump() {
     adoptReplies();
-    _runInbox();
+    // Both lanes, because on main there is only one schedule: nothing over
+    // here is tick-bound, so the split that exists on the game isolate - a
+    // tick window for one queue, a frame for the other - has nothing to
+    // separate. Read-only first, to match the order `GameState.advance`
+    // drains them in on the other copy.
+    runReadOnlyInbox();
+    _runQueue(_inbox);
   }
 
+  /// The game isolate's schedule: replies, and the **tick-delivered** queue
+  /// only.
+  ///
+  /// Called from `GameState.runFixedStep`, inside the tick window and before
+  /// any system. The read-only queue is deliberately not drained here - it is
+  /// drained from `GameState.advance`, once per frame, by [runReadOnlyInbox].
+  /// Draining it in both places would mean a read-only handler saw the world
+  /// at the top of a step on a running game and after the presentation pass
+  /// on a stopped one, which is two answers to "what does this lane read"
+  /// decided by whether the game happened to be moving.
+  void pumpTickWindow() {
+    adoptReplies();
+    _runQueue(_inbox);
+  }
+
+  /// Runs the read-only batches waiting for this copy, and answers each one.
+  ///
+  /// Called from `GameState.advance` once per frame, beside [adoptReplies] and
+  /// after it - so a request that arrived on this very frame is answered on
+  /// it rather than a frame later. That is the whole capability: `advance`
+  /// runs on a frame that afforded no fixed step, so a paused game answers
+  /// here while its tick stands still (#165).
+  ///
+  /// **The handlers run with no tick open**, which is a promise the commands
+  /// registered here make and nothing enforces - see
+  /// `CommandDescriptor.hasReadOnlyHandler`. It is the reason this is a
+  /// separate queue rather than [_inbox] drained more often.
+  ///
+  /// Costs one length check on an empty queue, and allocates nothing.
+  void runReadOnlyInbox() => _runQueue(_readInbox);
+
   /// Drains the inbound ring, running nothing: replies complete the send that
-  /// asked for them, and a request that arrives alongside joins the inbox and
-  /// waits for the next [pump] like any other.
+  /// asked for them, and a request that arrives alongside joins the inbox for
+  /// its lane and waits to be drained like any other - the tick window for a
+  /// tick-delivered one, [runReadOnlyInbox] for a read-only one.
   ///
   /// **Safe outside the tick window**, which is the whole reason it is
   /// separable. No handler runs here, so no user code sees a world with no
@@ -270,13 +333,14 @@ final class CommandTransport implements CommandSender {
         Uint8List.sublistView(payload, _idBytes),
       );
       if (record.recordType == requestRecord) {
-        _inbox.add(
-          _Inbound(
-            CommandBatch(id, initialBytes: bytes.length)
-              ..adoptIncoming(bytes, registry),
-            null,
-          ),
-        );
+        final batch = CommandBatch(id, initialBytes: bytes.length)
+          ..adoptIncoming(bytes, registry);
+        // Which queue is a fact about the command, not about the record: a
+        // batch is one lane's (`CommandBatch.routeTo` refuses a mixed one), so
+        // the first call decides for all of them. Read off the declaration
+        // rather than put on the wire - both copies ran the same
+        // describeCommands pass, so both already agree.
+        (_isReadOnly(batch) ? _readInbox : _inbox).add(_Inbound(batch, null));
         continue;
       }
       final pending = _pending.remove(id);
@@ -295,17 +359,24 @@ final class CommandTransport implements CommandSender {
     }
   }
 
-  /// Runs the batches waiting for this copy, in arrival order, and answers
-  /// each one.
-  void _runInbox() {
+  /// Whether [batch] belongs to the read-only lane.
+  ///
+  /// The batch's own `delivery` is null here: it is set by `routeTo` on the
+  /// copy that built the batch, and this one parsed it out of a ring record.
+  bool _isReadOnly(CommandBatch batch) =>
+      batch.callCount > 0 && registry[batch.indexAt(0)].isReadOnlyDelivered;
+
+  /// Runs the batches waiting in [queue], in arrival order, and answers each
+  /// one.
+  void _runQueue(List<_Inbound> queue) {
     // Snapshotted before the loop: a handler may itself send a batch back to
     // this same side, and running that one here too would let one command
     // decide how many more run this tick. It waits for the next pump, like
     // anything else that arrives after this one started.
-    final due = _inbox.length;
+    final due = queue.length;
     if (due == 0) return;
     for (var i = 0; i < due; i++) {
-      final inbound = _inbox[i];
+      final inbound = queue[i];
       final batch = inbound.batch;
       registry.dispatch(batch);
       final local = inbound.local;
@@ -329,7 +400,7 @@ final class CommandTransport implements CommandSender {
         );
       }
     }
-    _inbox.removeRange(0, due);
+    queue.removeRange(0, due);
   }
 
   /// The batch id in front of every ring record - see [_write].
@@ -376,20 +447,8 @@ final class CommandTransport implements CommandSender {
     // A batch that arrived over a ring has no local completer: its caller is
     // the other copy, waiting in *its* `_pending`, and the route back is the
     // ring this just dropped. That copy's own shutdown is what fails it.
-    final queued = _inbox.toList(growable: false);
-    _inbox.clear();
-    for (var i = 0; i < queued.length; i++) {
-      // A distinct message from the in-flight one below, because it says
-      // something different: this batch never ran, so nothing it asked for
-      // happened. An in-flight one may well have run on the other side with
-      // only the reply lost.
-      queued[i].local?.completeError(
-        StateError(
-          'the game stopped before command batch #${queued[i].batch.id} '
-          'was run.',
-        ),
-      );
-    }
+    _failQueued(_inbox);
+    _failQueued(_readInbox);
     if (_pending.isEmpty) return;
     final abandoned = _pending.values.toList(growable: false);
     _pending.clear();
@@ -398,6 +457,29 @@ final class CommandTransport implements CommandSender {
         StateError(
           'the game stopped before command batch #${abandoned[i].batch.id} '
           'was answered.',
+        ),
+      );
+    }
+  }
+
+  /// Empties [queue] and errors whatever caller each batch in it has.
+  ///
+  /// Both lanes, because both hold batches that were waiting for something
+  /// that is not coming and both can hold a local completer that nothing else
+  /// would ever touch.
+  void _failQueued(List<_Inbound> queue) {
+    if (queue.isEmpty) return;
+    final queued = queue.toList(growable: false);
+    queue.clear();
+    for (var i = 0; i < queued.length; i++) {
+      // A distinct message from the in-flight one, because it says something
+      // different: this batch never ran, so nothing it asked for happened. An
+      // in-flight one may well have run on the other side with only the reply
+      // lost.
+      queued[i].local?.completeError(
+        StateError(
+          'the game stopped before command batch #${queued[i].batch.id} '
+          'was run.',
         ),
       );
     }

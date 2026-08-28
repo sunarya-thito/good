@@ -1110,6 +1110,18 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // is not the whole pump - running a handler here would be user code
     // outside the tick window.
     runtime.adoptCommandReplies();
+    // And the read-only lane, which is the other half of the same problem:
+    // the adopt above answers a question this isolate asked, and this answers
+    // a question the other one asked. Its handlers run here rather than in
+    // [runFixedStep] because that is what makes them reachable on a frame
+    // that afforded no step - a paused game, a zero time scale. They promise
+    // not to write, which is a convention the engine cannot check; see
+    // `CommandDescriptor.hasReadOnlyHandler`.
+    //
+    // After the presentation pass and after the adopt, so a request that
+    // arrived on this frame is answered on it: `presentFrame` below is what
+    // tells the other copy to come and look.
+    runtime.runReadOnlyCommands();
     // Only now is the frame actually complete: the simulation advanced and
     // the presentation pass wrote whatever it produces. See
     // `Game.presentFrame` for why the announcement cannot happen earlier.
