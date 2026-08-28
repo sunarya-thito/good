@@ -4,13 +4,16 @@
 // The actions and the game's own helpers this page reads without introducing.
 late InputDescriptor descriptor;
 late InputBinding<double> binding;
+late Input<bool> attack;
 late Input<bool> fire;
 late Input<bool> jump;
 late Input<bool> p1Jump;
 late Input<bool> p2Jump;
 late Input<double> throttle;
+late Input<Vector2> move;
 late Input<Vector2> movement;
 late Input<CursorPosition> pointer;
+late List<InputKey> savedKeys;
 Vector2 _saved = Vector2.zero();
 
 void shoot() {}
@@ -251,6 +254,78 @@ the view the pointer is currently over — carried alongside the position becaus
 with two views of different sizes on screen, "the view size" is only answerable
 relative to a pointer.
 
+### `CompositeBinding` — one action, several sources
+
+<!-- snippet-setup
+late Input<bool> attack;
+late Input<Vector2> move;
+late List<InputKey> savedKeys;
+-->
+```dart
+attack = descriptor.has<bool>(
+  CompositeBinding(
+    const TriggerBinding(InputKey.spacebar),
+    const TriggerBinding(InputKey.leftMouseButton),
+  ),
+);
+
+move = descriptor.has<Vector2>(
+  CompositeBinding(
+    const StickBinding(x: InputAxis.padLeftStickX, y: InputAxis.padLeftStickY),
+    const Vec2Binding(
+      up: InputKey.w, down: InputKey.s,
+      left: InputKey.a, right: InputKey.d,
+    ),
+  ),
+);
+```
+
+Space **or** left click; the stick **or** WASD. Every source is an
+`InputBinding<T>` over the same `T`, so the composite is itself one binding of
+that type and the action is declared exactly as it would be with one source.
+Two to ten sources positionally, and `CompositeBinding.fromList` when the count
+is only known at run time — which is what a rebinding screen has:
+
+```dart
+attack.binding = CompositeBinding<bool>.fromList(<InputBinding<bool>>[
+  for (final key in savedKeys) TriggerBinding(key),
+]);
+```
+
+**One action, one pair of edges.** The composite is *actuated* while any source
+is, and the edges come off that one bit — so pressing the second source while
+the first is held does not re-fire `wasPressedThisFrame`, and the release fires
+once, when the last source goes up. Declaring two actions and `||`-ing their
+edges instead is the shape to avoid: hold space, then click while still
+holding, and both fire on their own tick, so one intended attack swings twice.
+
+!!! note "Values merge, they do not take precedence"
+    `resolve` folds the sources through `InputBinding.combine`, whose rule
+    belongs to the value type: OR for `bool`, componentwise sum clamped to
+    −1..1 for `Vector2`, furthest-from-rest for `double`.
+
+    | held | reads |
+    |---|---|
+    | `w` + `arrowRight` | `(1, 1)` — the diagonal |
+    | `w` + `arrowUp` | `(0, 1)` — the clamp, not `(0, 2)` |
+    | `a` + `arrowRight` | `(0, 0)` — cancelling, as on one keyboard |
+    | stick at `(0.5, 0)` + `w` | `(0.5, 1)` — both devices, not one |
+
+    "First actuated source wins" would read straight off the `primary` /
+    `secondary` naming and lose the first row: `w` keeps the WASD source
+    actuated, so the arrow key would do nothing and a player using both halves
+    of the keyboard could not move diagonally.
+
+!!! warning "`MouseBinding` is not a source"
+    A device has one cursor, so "the pointer is at either of two places" is not
+    a position. A composite asserts against it at declare time. Mouse *buttons*
+    are ordinary `TriggerBinding`s and compose like any other key.
+
+This is the one binding that is **not `const`**: every source past the first
+needs somewhere to resolve into that is not the action's own storage, and the
+constructor makes those once, at declare time. Resolution itself allocates
+nothing. The sources stay `const` values, which is where it mattered.
+
 ## Keys
 
 `InputKey` carries every key as a `const`:
@@ -361,10 +436,21 @@ Bindings serialise, which is what a rebinding screen needs:
 ```dart
 final json = jump.binding!.toJson();
 jump.binding = TriggerBinding.fromJson(json);
+
+// A composite is restored the same way, with its value type written out.
+final saved = attack.binding!.toJson();
+attack.binding = CompositeBinding.fromJson<bool>(saved);
 ```
 
 Keys serialise by **name**, not by index, so a saved binding survives a
 reordering of the key table.
+
+`fromJson` is a static on the concrete binding rather than a lookup, because a
+restore site already knows which action it is restoring — it is the one that
+declared it. A composite is the exception that proves it: its children are
+heterogeneous by design, so it writes a `kind` tag around each one and
+dispatches on that when it reads them back. The tags are the composite's own
+format; every other binding's JSON is unchanged.
 
 ## Gamepads
 

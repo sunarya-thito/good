@@ -262,6 +262,39 @@
   and `onMouseExit` have no meaning for a finger, which is either down on you
   or absent, so renaming those is a design question and not a spelling one.
 
+* **`InputBinding<T>` gains a required `T combine(T a, T b)`.** Any binding
+  written outside this repo stops compiling until it implements one (#215).
+
+  ```dart
+  // on your own InputBinding<double>
+  @override
+  double combine(double a, double b) => b.abs() > a.abs() ? b : a;
+  ```
+
+  **What to write.** `combine` answers "what does the action read when two
+  sources are both producing something", for the one value type your binding
+  is over: OR for a `bool`, componentwise sum clamped to -1..1 for a
+  `Vector2`, whichever is further from rest for a `double`. For a reference
+  type it must write into `a` and return it rather than build a new value -
+  it is called per composite per fixed tick, and the no-allocation rule
+  applies to it exactly as it does to `resolve`. Copy the body from whichever
+  shipped binding shares your `T`. A binding whose value can never sensibly
+  merge - the way a cursor position cannot - throws, as `MouseBinding` does.
+
+  **Why it is required and not defaulted.** A default returning `b` would
+  keep every third-party binding compiling and be wrong for all of them: an
+  action composing two of your bindings would silently read only the last one.
+  A compile error you fix once is better than a merge rule nobody chose.
+
+  **Why it is on the binding at all.** `CompositeBinding<T>` - see Added -
+  cannot switch on `T` without knowing every value type a game will ever bind.
+  Every source in a composite shares `T` by construction, so any one of them
+  can supply the rule, and the composite folds with its primary's.
+
+  Nothing inside the repo broke: `TriggerBinding`, `Vec2Binding`,
+  `AxisBinding`, `StickBinding` and `MouseBinding` are the only
+  implementations, and they all ship one.
+
 ### Added
 
 * **`Channel.*` declares a published state channel on the field that holds
@@ -673,6 +706,76 @@
   writes `InputAxis.virtualLeftStickX` and a binding reading it cannot tell a
   thumb from a thumbstick, which is what lets a touch build and a controller
   build share one declaration (#192).
+
+
+* **`CompositeBinding` binds one action to several sources.** Space *or* left
+  click, the left stick *or* WASD, WASD *or* the arrow keys - one action, one
+  value, one pair of edges (#215).
+
+  ```dart
+  attack = input.has<bool>(
+    CompositeBinding(
+      const TriggerBinding(.spacebar),
+      const TriggerBinding(.leftMouseButton),
+    ),
+  );
+
+  move = input.has<Vector2>(
+    CompositeBinding(
+      const StickBinding(x: .padLeftStickX, y: .padLeftStickY),
+      const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
+    ),
+  );
+  ```
+
+  Every source is an `InputBinding<T>` of the same `T`, so a composite is one
+  binding of that type and `has<T>` is unchanged. Two to ten sources
+  positionally, or `CompositeBinding.fromList` when the count is decided at
+  run time - a rebinding screen rebuilding an action from what the player
+  chose. The positional form is sugar over `fromList`; there is one storage
+  shape.
+
+  **The edges come out right, which is the point.** `isActuated` is "any
+  source is actuated" and the action derives its edges from that one bit, so
+  pressing the second source while the first is held does not re-fire
+  `wasPressedThisFrame` and the release fires once, when the last source goes
+  up. Declaring two actions and `||`-ing `wasPressedThisFrame` - what a game
+  writes today - swings twice for one intended attack.
+
+  **Values merge, they do not take precedence.** `resolve` folds the sources
+  through `InputBinding.combine`. Precedence reads straight off the
+  `primary`/`secondary` naming and loses the case this was asked for: hold `w`
+  and then press `arrowRight` and the WASD source is still actuated, so it
+  still supplies `(0, 1)` and the arrow does nothing. Summing gives `(1, 1)`,
+  and since `Vec2Binding` does not normalise, summing two of them is exactly
+  the per-direction union - `w`+`arrowUp` is `(0, 1)` and not `(0, 2)`,
+  `a`+`arrowRight` cancels to `(0, 0)`. A stick at `(0.5, 0)` with `w` held
+  reads `(0.5, 1)`, which respects both devices instead of discarding one.
+
+  **It is the one binding that is not `const`.** Every source past the first
+  needs somewhere to resolve into that is not the action's own storage, and
+  the constructor makes those with `createStorage` - one per extra source, at
+  declare time. Resolution allocates nothing. The sources themselves are still
+  `const` values, which is where `const` mattered.
+
+  **`MouseBinding` is not a source.** A device has one cursor, so "the pointer
+  is at either of two places" is not a position. The constructor asserts
+  against it, the wire format has no tag for it, and `MouseBinding.combine`
+  throws. Mouse *buttons* are ordinary `TriggerBinding`s and compose freely -
+  a composite of a key and a mouse button is one action with one edge.
+
+  **Serialization tags each child, and only here.** `toJson` writes
+  `{'kind': ..., 'binding': ...}` around every source and `fromJson`
+  dispatches on the tag, the way `InputKey.fromJson` already does. The other
+  five bindings' `toJson` output is exactly what it always was, so the
+  "no binding registry and no framework-owned save format" line in
+  `InputBinding`'s doc still holds for every one of them: a composite is the
+  case that argument does not cover, because its children are heterogeneous by
+  design and a restore site cannot know them statically. `T` is written at the
+  call site - `CompositeBinding.fromJson<bool>(saved)` - and a child that
+  decodes to the wrong value type is a `FormatException` naming both.
+
+  Composites nest, so a saved composite of composites round-trips too.
 
 ### Fixed
 
