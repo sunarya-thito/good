@@ -184,28 +184,29 @@ class Player extends EntityStruct with Velocity, Health {}
   });
 
   test('an engine component collides with a user field of the same name', () {
-    // The case the issue calls the likeliest: `Child` declares `parent`
-    // unprefixed, and `parent` is exactly what a user's own component would
-    // name a field. It only surfaces because the scan reads the engine package
-    // the project resolves.
+    // The prefix rule (#133) makes this rare rather than impossible: the
+    // engine now spells the column `childParent`, and a third-party
+    // component author who picks the same name still shadows it. It only
+    // surfaces because the scan reads the engine package the project
+    // resolves.
     final dir = _project(<String, String>{
       'game.dart': '''
 mixin Ownership on Component {
-  final parent = Field.optEntity();
+  final childParent = Field.optEntity();
 }
 class Crate extends EntityStruct with Child, Ownership {}
 ''',
     });
     _withEnginePackage(dir, '''
 mixin Child on Component {
-  final parent = Field.optEntity();
-  final nextSibling = Field.optEntity();
+  final childParent = Field.optEntity();
+  final childNextSibling = Field.optEntity();
 }
 ''');
 
     final scan = scanStructRules(dir);
     expect(scan.shadowed, hasLength(1));
-    expect(scan.shadowed.single.field, 'parent');
+    expect(scan.shadowed.single.field, 'childParent');
     expect(scan.shadowed.single.loser, 'Child');
     expect(scan.shadowed.single.winner, 'Ownership');
     expect(
@@ -219,7 +220,7 @@ mixin Child on Component {
     final dir = _project(<String, String>{
       'game.dart': '''
 mixin Ownership on Component {
-  final parent = Field.optEntity();
+  final childParent = Field.optEntity();
 }
 class Crate extends EntityStruct with Child, Ownership {}
 ''',
@@ -239,7 +240,7 @@ class Crate extends EntityStruct with Child, Ownership {}
     final dir = _project(<String, String>{
       'game.dart': '''
 mixin Ownership on Component {
-  final parent = Field.optEntity();
+  final childParent = Field.optEntity();
 }
 class Crate extends EntityStruct with Child, Ownership {}
 ''',
@@ -248,7 +249,7 @@ class Crate extends EntityStruct with Child, Ownership {}
       ..createSync(recursive: true);
     File('${engine.path}/good.dart').writeAsStringSync('''
 mixin Child on Component {
-  final parent = Field.optEntity();
+  final childParent = Field.optEntity();
 }
 ''');
     File('${dir.path}/.dart_tool/package_config.json')
@@ -265,7 +266,7 @@ mixin Child on Component {
 
     final scan = scanStructRules(dir);
     expect(scan.shadowed.map((s) => '${s.winner}.${s.field}'), <String>[
-      'Ownership.parent',
+      'Ownership.childParent',
     ]);
     expect(scan.unresolved, isEmpty);
   });

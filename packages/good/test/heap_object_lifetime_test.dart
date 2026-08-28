@@ -247,7 +247,8 @@ void main() {
       }
       expect(HeapObjectRegistry.slotCount, before + 4);
 
-      // One call, four rows: destroy() recurses through Parent.firstChild.
+      // One call, four rows: destroy() recurses through
+      // Parent.parentFirstChild.
       root.destroy();
       for (var i = 0; i < 4; i++) {
         expect(

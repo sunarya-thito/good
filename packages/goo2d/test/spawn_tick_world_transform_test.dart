@@ -223,11 +223,11 @@ void main() {
   test('a spawned CHILD composes against its parent on the spawn tick', () async {
     // **The swarm demo's yellow ball.** A child is not merely composed from a
     // stale row like the cases above - it is not visited *at all* on its spawn
-    // tick. The main pass descends through `Parent.firstChild`, an ordinary
-    // published read, and the splice that added this entity to its parent's
-    // child list happened this tick. So the pass walks straight past it and
-    // its world row publishes holding the defaults: (0, 0), the world origin.
-    //
+    // tick. The main pass descends through `Parent.parentFirstChild`, an
+    // ordinary published read, and the splice that added this entity to its
+    // parent's child list happened this tick. So the pass walks straight past
+    // it and its world row publishes holding the defaults: (0, 0), the world
+    // origin.
     // The page must have published for this to bite, which is what the first
     // advance below is for - on a fresh page `resolveRow` falls through to the
     // write slot and everything is accidentally right. That is exactly why the

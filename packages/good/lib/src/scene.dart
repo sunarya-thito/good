@@ -583,17 +583,20 @@ abstract class SceneStruct extends GameListenerBase
         for (final offset in page.rowOffsets) {
           final entity = Entity.pack(id, pageIndex, offset);
           if (asChild != null) {
-            final parent = asChild.parent.readPending(entity);
+            final parent = asChild.childParent.readPending(entity);
             if (parent != null && parent.sceneSlot != sceneSlot) {
               parent<Parent>().unlinkChildAcrossScenes(entity);
             }
           }
           if (asParent != null) {
-            var child = asParent.firstChild.readPending(entity);
+            var child = asParent.parentFirstChild.readPending(entity);
             while (child != null) {
               // Read before the splice, which clears it - the same order
               // `EntityLifetime.destroy` walks a subtree in.
-              final after = child.get<Child>().nextSibling.readPending(child);
+              final after = child
+                  .get<Child>()
+                  .childNextSibling
+                  .readPending(child);
               if (child.sceneSlot != sceneSlot) {
                 entity<Parent>().unlinkChildAcrossScenes(child);
               }
@@ -956,16 +959,16 @@ extension EntityLifetime on Entity {
     if (parentComponent != null) {
       // The next sibling is read *before* the child is destroyed, because
       // destroying it clears the link this walk would need next.
-      var child = parentComponent.firstChild.readPending(this);
+      var child = parentComponent.parentFirstChild.readPending(this);
       while (child != null) {
-        final after = child.get<Child>().nextSibling.readPending(child);
+        final after = child.get<Child>().childNextSibling.readPending(child);
         child.destroy();
         child = after;
       }
     }
 
     final childComponent = tryGet<Child>();
-    final parent = childComponent?.parent.readPending(this);
+    final parent = childComponent?.childParent.readPending(this);
     if (parent != null) parent<Parent>().unlinkChild(this);
 
     // Broad first, then narrow - the same order `unmountEntitiesOf` uses, so

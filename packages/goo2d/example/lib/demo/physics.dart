@@ -485,8 +485,8 @@ class Sandbox extends SceneStruct {
     // none, and the renderer falls back to an implicit camera at the world
     // origin with zoom 1 - so `zoom` below is simply ignored and one metre
     // draws as one pixel. The whole scene then renders about 32 px across.
-    eye.view[camera] = (game as Game2D).defaultCamera;
-    eye.zoom[camera] = _fallbackPixelsPerMetre;
+    eye.cameraView[camera] = (game as Game2D).defaultCamera;
+    eye.cameraZoom[camera] = _fallbackPixelsPerMetre;
     buildArena(arena);
   }
 
@@ -741,7 +741,7 @@ class SandboxSystem extends GameSystem with FixedTickable {
     // Zero until a `GameView` has laid out - a headless test never has one -
     // in which case `zoomFor` keeps the fallback rather than dividing by it.
     final view = getGame<PhysicsGame>().defaultCamera;
-    scene.eye.zoom[scene.camera] = next.zoomFor(
+    scene.eye.cameraZoom[scene.camera] = next.zoomFor(
       view.viewportWidth,
       view.viewportHeight,
     );

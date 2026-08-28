@@ -43,13 +43,13 @@ abstract class DataDescriptor {
   // `Entity` handle (archetype id + page index + row offset, see
   // struct.dart). A field that holds one should say so - `hasEntity` and
   // `optEntity` are these two widths with the handle type on them, and
-  // `data/hierarchy.dart`'s Child.parent/nextSibling/prevSibling and
-  // Parent.firstChild/lastChild are the reference use. Both are signed,
-  // because `Entity.value` is a signed Dart `int` already (packing can push
-  // bits into the sign position, see Entity's own doc), so storing it signed
-  // avoids any unsigned reinterpretation at the boundary. Uint64 exists for
-  // symmetry with every narrower width, not because this engine needs
-  // unsigned 64-bit arithmetic anywhere yet.
+  // `data/hierarchy.dart`'s Child.childParent/childNextSibling/
+  // childPrevSibling and Parent.parentFirstChild/parentLastChild are the
+  // reference use. Both are signed, because `Entity.value` is a signed Dart
+  // `int` already (packing can push bits into the sign position, see Entity's
+  // own doc), so storing it signed avoids any unsigned reinterpretation at
+  // the boundary. Uint64 exists for symmetry with every narrower width, not
+  // because this engine needs unsigned 64-bit arithmetic anywhere yet.
   DefaultPointer<int> hasUint64([int defaultValue = 0]);
   DefaultPointer<int> hasInt64([int defaultValue = 0]);
 
@@ -590,7 +590,7 @@ abstract class DataPointer<T> {
   /// no-specialised-variant rule exists to forbid, and this does not change
   /// that. What it is for is the narrow case of a mutation that has to read
   /// back the structure **it is itself editing**, within one tick:
-  /// `Parent.addChild` reads `lastChild` to append to the chain, and two
+  /// `Parent.addChild` reads `parentLastChild` to append to the chain, and two
   /// `addChild` calls in one tick both read the same published value, both
   /// conclude the parent has no children yet, and the second silently
   /// overwrites the first. That is not a race or a subtle ordering question -
@@ -685,12 +685,13 @@ abstract class DefaultPointer<T> extends DataPointer<T> {
   /// instead of restating it:
   ///
   /// ```dart
-  /// far.defaultValue *= 2;      // twice whatever Camera3D chose
-  /// hp.defaultValue += 50;      // the component's number, plus fifty
+  /// cameraFar.defaultValue *= 2;   // twice whatever Camera3D chose
+  /// hp.defaultValue += 50;         // the component's number, plus fifty
   /// ```
   ///
-  /// Neither is a write to any entity. `near.defaultValue = 10` changes what
-  /// the *next* row starts with; `near[entity] = 10` changes one entity now.
+  /// Neither is a write to any entity. `cameraNear.defaultValue = 10` changes
+  /// what the *next* row starts with; `cameraNear[entity] = 10` changes one
+  /// entity now.
   ///
   /// # Why packed, heap-object and array columns have neither half
   ///

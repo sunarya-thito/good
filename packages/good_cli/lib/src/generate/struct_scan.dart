@@ -109,8 +109,8 @@ class StructScan {
 /// every dependency's summary and seconds per run, and the shapes that matter
 /// here are syntactic. It reads the project's own `lib/`, plus the engine
 /// packages it finds through `.dart_tool/package_config.json` - without those,
-/// `Child.parent` and `Transform2D.transformOffsetX` would be invisible, and
-/// those are the collisions a user is likeliest to walk into.
+/// `Child.childParent` and `Transform2D.transformOffsetX` would be invisible,
+/// and those are the collisions a user is likeliest to walk into.
 ///
 /// A name that resolves to two different files is not guessed at. Both land in
 /// [StructScan.unresolved], because a build error that fires wrongly is worse
@@ -520,10 +520,11 @@ bool _isRootType(String name) => const <String>{
 /// packages it depends on.
 ///
 /// The engine half is what makes the check useful instead of merely correct.
-/// `Child` declares `parent`, `Parent` declares `firstChild`, `Camera` declares
-/// `zoom` and `view` - none of them prefixed - and a user component naming a
-/// field `parent` is the collision this issue was filed about. Reading only the
-/// project would leave every one of those in `unresolved`.
+/// The engine's own columns are prefixed (#133) - `Child.childParent`,
+/// `Camera.cameraZoom` - so a collision with one is rare, but a third-party
+/// component author follows no such rule, and neither does a user who happens
+/// to pick the same name. Reading only the project would leave every engine
+/// declaration in `unresolved`.
 List<String> _scanRoots(Directory projectDir) {
   final roots = <String>[];
   final lib = Directory('${projectDir.path}/lib');

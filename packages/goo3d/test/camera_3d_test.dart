@@ -11,9 +11,9 @@ class _WideEye extends EntityStruct
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    fieldOfView.defaultValue = 90;
-    near.defaultValue = 0.5;
-    far.defaultValue = 250;
+    cameraFieldOfView.defaultValue = 90;
+    cameraNear.defaultValue = 0.5;
+    cameraFar.defaultValue = 250;
   }
 }
 
@@ -64,10 +64,10 @@ void main() {
     final eye = scene.addEntity(scene.defaultEye);
     scene.pool.commitTick();
 
-    expect(scene.defaultEye.fieldOfView[eye], 60);
-    expect(scene.defaultEye.near[eye], 0.1);
-    expect(scene.defaultEye.far[eye], 1000);
-    expect(scene.defaultEye.view[eye], isNull);
+    expect(scene.defaultEye.cameraFieldOfView[eye], 60);
+    expect(scene.defaultEye.cameraNear[eye], 0.1);
+    expect(scene.defaultEye.cameraFar[eye], 1000);
+    expect(scene.defaultEye.cameraView[eye], isNull);
   });
 
   test('an overridden default lands in the row, with nothing written at '
@@ -77,9 +77,9 @@ void main() {
     final eye = scene.addEntity(scene.wideEye);
     scene.pool.commitTick();
 
-    expect(scene.wideEye.fieldOfView[eye], 90);
-    expect(scene.wideEye.near[eye], 0.5);
-    expect(scene.wideEye.far[eye], 250);
+    expect(scene.wideEye.cameraFieldOfView[eye], 90);
+    expect(scene.wideEye.cameraNear[eye], 0.5);
+    expect(scene.wideEye.cameraFar[eye], 250);
   });
 
   test('one prefab moving its defaults leaves another mixing Camera3D '
@@ -90,8 +90,8 @@ void main() {
     final plain = scene.addEntity(scene.defaultEye);
     scene.pool.commitTick();
 
-    expect(scene.wideEye.near[wide], 0.5);
-    expect(scene.defaultEye.near[plain], 0.1, reason: 'per archetype');
+    expect(scene.wideEye.cameraNear[wide], 0.5);
+    expect(scene.defaultEye.cameraNear[plain], 0.1, reason: 'per archetype');
   });
 
   test('the declared values are defaults, not constants', () {
@@ -103,9 +103,9 @@ void main() {
     // A zoom-in is a field-of-view change at run time, so the declaration
     // cannot be the last word on it.
     scene.pool.beginTick();
-    scene.wideEye.fieldOfView[eye] = 30;
+    scene.wideEye.cameraFieldOfView[eye] = 30;
     scene.pool.commitTick();
-    expect(scene.wideEye.fieldOfView[eye], 30);
+    expect(scene.wideEye.cameraFieldOfView[eye], 30);
   });
 
   test('two entities of one camera prefab carry their own field of view', () {
@@ -116,11 +116,15 @@ void main() {
     scene.pool.commitTick();
 
     scene.pool.beginTick();
-    scene.wideEye.fieldOfView[a] = 20;
+    scene.wideEye.cameraFieldOfView[a] = 20;
     scene.pool.commitTick();
 
-    expect(scene.wideEye.fieldOfView[a], 20);
-    expect(scene.wideEye.fieldOfView[b], 90, reason: 'per row, not per prefab');
+    expect(scene.wideEye.cameraFieldOfView[a], 20);
+    expect(
+      scene.wideEye.cameraFieldOfView[b],
+      90,
+      reason: 'per row, not per prefab',
+    );
   });
 
   test('a camera takes the view it was pointed at', () {
@@ -131,9 +135,9 @@ void main() {
 
     final view = views.declareDetached();
     scene.pool.beginTick();
-    scene.defaultEye.view[eye] = view;
+    scene.defaultEye.cameraView[eye] = view;
     scene.pool.commitTick();
 
-    expect(scene.defaultEye.view[eye]?.pack(), view.pack());
+    expect(scene.defaultEye.cameraView[eye]?.pack(), view.pack());
   });
 }

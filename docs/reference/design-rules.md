@@ -100,9 +100,9 @@ parent<Parent>().addChild(child);
 ```
 
 `Accessor<T> implements Entity`, so inside the extension `this` **is** the
-entity: `component.hp[this]` indexes a column directly, and the accessor can be
-passed anywhere an `Entity` is wanted. It costs nothing — `Accessor<T>` erases
-to `Entity`, which erases to `int`.
+entity: `component.healthHp[this]` indexes a column directly, and the accessor
+can be passed anywhere an `Entity` is wanted. It costs nothing — `Accessor<T>`
+erases to `Entity`, which erases to `int`.
 
 Two things this buys that the first spelling cannot:
 
@@ -177,8 +177,9 @@ components per group, not per entity* in
 **A property performs one read.** `column[entity]` reads the published snapshot
 and `column.readPending(entity)` reads the write slot, so a property can only be
 the first of those. It never answers "what did I write earlier in this tick" —
-`addChild` needs the pending `lastChild`, and a prefab's declared children need
-the pending slot on the tick they mount. Those cases index the column, and
+`addChild` needs the pending `parentLastChild`, and a prefab's declared
+children need the pending slot on the tick they mount. Those cases index the
+column, and
 [Same-tick reads](../guide/entities-and-components.md#same-tick-reads) covers
 why the fix is usually to move the reader into a later phase instead.
 
@@ -205,6 +206,47 @@ entity<Transform3D>().upZ;
     a hundred-odd members held in step by memory is *One fact, one place*
     undone. That pass is not written yet, so for now every tier spells the
     column.
+
+## A component's columns carry the component's name
+
+`Transform2D` declares `transformOffsetX`, not `offsetX`. `Child` declares
+`childParent`, not `parent`. Every component prefixes its columns with a stem
+taken from its own type — a readable one, not the type name itself, and
+without a dimension suffix, because `Transform2D` and `Transform3D` are never
+on the same entity and `transform2dOffsetX` reads badly.
+
+| component | stem | columns |
+|---|---|---|
+| `Transform2D` | `transform` | `transformOffsetX`, `transformRotation` |
+| `WorldTransform2D` | `world` | `worldX`, `worldScaleY` |
+| `Child` | `child` | `childParent`, `childNextSibling` |
+| `Parent` | `parent` | `parentFirstChild`, `parentLastChild` |
+| `Camera`, `Camera3D` | `camera` | `cameraZoom`, `cameraNear` |
+| `RigidBody2D` | `body` | `bodyType`, `bodyLinearVelocityX` |
+
+A component is a mixin, so every component on an entity puts its columns in
+**one namespace**. Two of them declaring `speed` is not an error in Dart, it is
+an override: the last mixin in the `with` clause wins, the row grows by both
+columns, and writes aimed at the hidden one land on its neighbour. Since #57
+made field initialisers eager there is nothing at run time to notice it — no
+throw, no assert, and a debugger showing a plausible number in the wrong column.
+
+The prefix is prevention. `good generate`'s shadow check (#100) is detection,
+and it catches what predates the rule or arrives from a package that never
+followed it; the two are not alternatives. The prefix is also the only half of
+it that reaches a third-party component author, who will not run this
+repository's checker over their own package.
+
+This applies to a **component**. A prefab's own columns — `final speed =
+Field.float64(220)` on a `Player` — are the leaf of the chain and nothing
+mixes into them, so they stay unprefixed.
+
+!!! note "The accessor is where the short name goes"
+    `childParent` reads badly on purpose: it is storage, and storage is shared.
+    An accessor is per-component and has its own namespace, so the readable
+    spelling belongs there (#99) — `entity<Child>().parentOf` over a column
+    called `childParent`. Renaming the column is what makes that possible; it
+    is not an argument for leaving the column short.
 
 ## Never dispatch on `is` to work out what the receiver is
 

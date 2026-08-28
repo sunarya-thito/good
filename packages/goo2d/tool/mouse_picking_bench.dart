@@ -153,7 +153,7 @@ void main() {
 
         final scene = run.state.singleScene<_Scene>();
         final eye = scene.handle.addEntity(scene.eye);
-        scene.eye.view[eye] = game.view;
+        scene.eye.cameraView[eye] = game.view;
 
         // A square block of receivers around the origin. The cursor sits at
         // the origin, so exactly the entities near it survive a bound.

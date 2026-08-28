@@ -195,7 +195,7 @@ class MainScene extends SceneStruct {
 ///
 /// Note this example does not declare `Transform2DSystem`. That system's body
 /// is an explicitly-labelled placeholder which, among other things, clears
-/// `Child.parent` on every entity every tick - which would tear down the
+/// `Child.childParent` on every entity every tick - which would tear down the
 /// hierarchy this example exists to exercise before the first frame.
 class SpinSystem extends GameSystem with FixedTickable {
   final spinnable = Query.all(Transform2D, Renderable2D);

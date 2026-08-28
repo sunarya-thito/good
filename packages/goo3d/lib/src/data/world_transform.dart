@@ -69,12 +69,12 @@ mixin WorldTransform3D on Component {
 ///
 /// The 3D counterpart of `goo2d`'s `WorldTransformSystem`, and the same
 /// machinery: it walks the hierarchy **top-down** through the intrusive
-/// `Parent.firstChild`/`Child.nextSibling` list the kernel already maintains,
-/// starting from roots (no parent, or no `Child` mixin at all) so a parent is
-/// always resolved before its children read it. Each entity's "did anything
-/// change" check is a handful of field comparisons against last tick's cached
-/// values, not a walk back to the root, so an unchanged subtree is cheap to
-/// skip past.
+/// `Parent.parentFirstChild`/`Child.childNextSibling` list the kernel
+/// already maintains, starting from roots (no parent, or no `Child` mixin at
+/// all) so a parent is always resolved before its children read it. Each
+/// entity's "did anything change" check is a handful of field comparisons
+/// against last tick's cached values, not a walk back to the root, so an
+/// unchanged subtree is cheap to skip past.
 ///
 /// Ordering: any system reading `WorldTransform3D` should extend its own
 /// `compareTo` to run after this one (`other is WorldTransform3DSystem ? 1 :
@@ -154,7 +154,7 @@ class WorldTransform3DSystem extends GameSystem
         continue;
       }
       for (final entity in group) {
-        if (childLink != null && childLink.parent[entity] != null) {
+        if (childLink != null && childLink.childParent[entity] != null) {
           continue; // not a root - reached via its real root's recursion below
         }
         // Roots have no parent to compose with - the parentWorld* arguments
@@ -200,9 +200,9 @@ class WorldTransform3DSystem extends GameSystem
   /// from a write made earlier in its own tick.
   ///
   /// A spawned *child* needs this as much as a root does: the main pass
-  /// descends through `Parent.firstChild`, an ordinary published read, and
-  /// the splice that put a freshly spawned entity into its parent's child
-  /// list happened *this* tick, so the pass does not visit it at all.
+  /// descends through `Parent.parentFirstChild`, an ordinary published read,
+  /// and the splice that put a freshly spawned entity into its parent's
+  /// child list happened *this* tick, so the pass does not visit it at all.
   void _composeSpawned() {
     if (_spawned.isEmpty) return;
     // Spawn order, and that is load-bearing: a parent necessarily exists
@@ -378,7 +378,7 @@ class WorldTransform3DSystem extends GameSystem
         : local.transformScaleZ.readPending(entity);
 
     final childLink = entity.tryGet<Child>();
-    final parent = childLink?.parent.readPending(entity);
+    final parent = childLink?.childParent.readPending(entity);
     if (parent == null || depth >= maxHierarchyDepth) {
       assert(
         parent == null,
@@ -502,7 +502,7 @@ class WorldTransform3DSystem extends GameSystem
       return;
     }
     for (final entity in group) {
-      if (childLink.parent[entity] != null) {
+      if (childLink.childParent[entity] != null) {
         continue; // not a root - reached via its real root's recursion
       }
       _composeRoot(entity, local, world);
@@ -584,7 +584,7 @@ class WorldTransform3DSystem extends GameSystem
       return;
     }
 
-    final parent = childLink?.parent[entity];
+    final parent = childLink?.childParent[entity];
 
     final offsetX = local == null ? 0.0 : local.transformOffsetX[entity];
     final offsetY = local == null ? 0.0 : local.transformOffsetY[entity];
@@ -724,7 +724,7 @@ class WorldTransform3DSystem extends GameSystem
     // there is nothing below to walk - and for a flat scene that is every
     // entity, which is why this is the one early return worth having here.
     if (parentComp == null) return;
-    var next = parentComp.firstChild[entity];
+    var next = parentComp.parentFirstChild[entity];
     while (next != null) {
       // Per child, because a child may be any archetype at all - this is the
       // lookup [onFixedUpdate] hoisted out of the *root* pass and the reason
@@ -749,7 +749,7 @@ class WorldTransform3DSystem extends GameSystem
         parentWorldScaleZ: thisWorldScaleZ,
         depth: depth + 1,
       );
-      next = next.get<Child>().nextSibling[next];
+      next = next.get<Child>().childNextSibling[next];
     }
   }
 }

@@ -558,7 +558,7 @@ Entity _eye(_RenderGame game, _SpriteScene scene, {Entity? parent}) {
   // created, so its page has never published and the write is allowed - the
   // same path every other field default here takes. Opening a tick would
   // publish the page and make the caller's *next* write assert.
-  scene.eye.view[eye] = game.view;
+  scene.eye.cameraView[eye] = game.view;
   return eye;
 }
 
@@ -1205,7 +1205,7 @@ void main() {
         final entity = scene.addEntity(scene.sprite);
         _place(scene.sprite, entity, x: 7, y: 9);
         _size(scene.sprite, entity, 2, 2);
-        expect(scene.sprite.parent[entity], isNull);
+        expect(scene.sprite.childParent[entity], isNull);
 
         run.state.advance(_step);
         final quad = _drainFrames(game).single.quads.single;
@@ -2014,7 +2014,7 @@ void main() {
         _size(scene.sprite, entity, 40, 20);
 
         final camera = _eye(game, scene);
-        scene.eye.zoom[camera] = 2;
+        scene.eye.cameraZoom[camera] = 2;
 
         run.state.advance(_step);
         final quad = _drainFrames(game).single.quads.single;
@@ -2132,7 +2132,7 @@ void main() {
       _size(scene.sprite, entity, 40, 20);
       final camera = _eye(game, scene);
       scene.pool.beginTick();
-      scene.eye.zoom[camera] = 2;
+      scene.eye.cameraZoom[camera] = 2;
       scene.pool.commitTick();
       game.inputDevice!.setViewSize(800, 600);
       // The projection centres on the *view's* viewport now, not the game's

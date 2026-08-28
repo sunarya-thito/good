@@ -55,7 +55,7 @@ void main() {
     scene.pool.beginTick();
     final camera = scene.addEntity(scene.cam);
     scene.pool.commitTick();
-    expect(scene.cam.zoom[camera], 1);
+    expect(scene.cam.cameraZoom[camera], 1);
   });
 
   group('ActiveCameraResolver', () {
@@ -75,7 +75,7 @@ void main() {
       scene.pool.commitTick();
       final view = views.declareDetached();
       scene.pool.beginTick();
-      scene.cam.view[camera] = view;
+      scene.cam.cameraView[camera] = view;
       scene.pool.commitTick();
       final query = await _query(scene);
       expect(ActiveCameraResolver().resolve(query, view), camera);
@@ -89,8 +89,8 @@ void main() {
       final b = scene.addEntity(scene.cam);
       scene.pool.commitTick();
       scene.pool.beginTick();
-      scene.cam.view[a] = view;
-      scene.cam.view[b] = view;
+      scene.cam.cameraView[a] = view;
+      scene.cam.cameraView[b] = view;
       scene.pool.commitTick();
       final query = await _query(scene);
       // Tests run with asserts enabled, so this is the debug-build behaviour:
@@ -347,8 +347,8 @@ void main() {
       final view = views.declareDetached();
       scene.pool.beginTick();
       final camera = scene.addEntity(scene.cam);
-      scene.cam.view[camera] = view;
-      scene.cam.zoom[camera] = 3;
+      scene.cam.cameraView[camera] = view;
+      scene.cam.cameraZoom[camera] = 3;
       scene.cam.worldX[camera] = 120;
       scene.cam.worldY[camera] = -60;
       scene.pool.commitTick();

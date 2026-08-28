@@ -55,9 +55,10 @@ mixin WorldTransform2D on Component {
 
 /// Keeps every [WorldTransform2D] current, once per `FixedTickEvent`.
 ///
-/// Walks the hierarchy **top-down** using the intrusive `Parent.firstChild`/
-/// `Child.nextSibling` linked list `data/hierarchy.dart` already maintains -
-/// no separate adjacency structure needed - starting from roots (no parent,
+/// Walks the hierarchy **top-down** using the intrusive
+/// `Parent.parentFirstChild`/`Child.childNextSibling` linked list
+/// `data/hierarchy.dart` already maintains - no separate adjacency
+/// structure needed - starting from roots (no parent,
 /// or no `Child` mixin at all) so a parent's world transform is always
 /// resolved before its children read it. Each entity's "did anything
 /// change" check is a handful of field comparisons against last tick's
@@ -166,7 +167,7 @@ class WorldTransformSystem extends GameSystem
         continue;
       }
       for (final entity in group) {
-        if (childLink != null && childLink.parent[entity] != null) {
+        if (childLink != null && childLink.childParent[entity] != null) {
           continue; // not a root - reached via its real root's recursion below
         }
         // Roots have no parent to compose with - the parentWorld* arguments
@@ -209,11 +210,11 @@ class WorldTransformSystem extends GameSystem
   /// # Why a spawned *child* needs this just as much as a root
   ///
   /// The main pass does not reach a spawned child. It descends through
-  /// `Parent.firstChild`, an ordinary published read, and the splice that put
-  /// this entity into its parent's child list happened *this* tick. So a
-  /// spawned child is not visited at all on its spawn tick, and its world row
-  /// publishes holding whatever it held before - the defaults `(0, 0)` for a
-  /// row never used, which is the sprite at the world origin.
+  /// `Parent.parentFirstChild`, an ordinary published read, and the splice
+  /// that put this entity into its parent's child list happened *this* tick.
+  /// So a spawned child is not visited at all on its spawn tick, and its world
+  /// row publishes holding whatever it held before - the defaults `(0, 0)` for
+  /// a row never used, which is the sprite at the world origin.
   ///
   /// Which of three row states a spawn lands in decides whether you see that
   /// at all, so without this it is maddening to reproduce. A *recycled* row
@@ -284,7 +285,7 @@ class WorldTransformSystem extends GameSystem
         : local.transformScaleY.readPending(entity);
 
     final childLink = entity.tryGet<Child>();
-    final parent = childLink?.parent.readPending(entity);
+    final parent = childLink?.childParent.readPending(entity);
     if (parent == null || depth >= maxHierarchyDepth) {
       assert(
         parent == null,
@@ -378,7 +379,7 @@ class WorldTransformSystem extends GameSystem
       return;
     }
     for (final entity in group) {
-      if (childLink.parent[entity] != null) {
+      if (childLink.childParent[entity] != null) {
         continue; // not a root - reached via its real root's recursion
       }
       _composeRoot(entity, local, world);
@@ -454,7 +455,7 @@ class WorldTransformSystem extends GameSystem
       return;
     }
 
-    final parent = childLink?.parent[entity];
+    final parent = childLink?.childParent[entity];
 
     final offsetX = local == null ? 0.0 : local.transformOffsetX[entity];
     final offsetY = local == null ? 0.0 : local.transformOffsetY[entity];
@@ -541,7 +542,7 @@ class WorldTransformSystem extends GameSystem
     // there is nothing below to walk - and for a flat scene that is every
     // entity, so this is the one early return worth having here.
     if (parentComp == null) return;
-    var next = parentComp.firstChild[entity];
+    var next = parentComp.parentFirstChild[entity];
     while (next != null) {
       // Per child, because a child may be any archetype at all - this is the
       // lookup [onFixedUpdate] hoisted out of the *root* pass and the reason
@@ -561,7 +562,7 @@ class WorldTransformSystem extends GameSystem
         parentWorldScaleY: thisWorldScaleY,
         depth: depth + 1,
       );
-      next = next.get<Child>().nextSibling[next];
+      next = next.get<Child>().childNextSibling[next];
     }
   }
 }

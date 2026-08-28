@@ -36,7 +36,7 @@ class Level1 extends SceneStruct {
   @override
   void onSceneMounted(Scene scene) {
     final camera = scene.addEntity(eye);
-    eye.view[camera] = (game as Game2D).defaultCamera;
+    eye.cameraView[camera] = (game as Game2D).defaultCamera;
     scene.addEntity(player);
     for (var i = 0; i < 10; i++) {
       scene.addEntity(enemy);

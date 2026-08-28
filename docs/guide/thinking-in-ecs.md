@@ -4,7 +4,7 @@
 // The page's running cast. Health is the only component it names without
 // declaring; the rest are the queries, columns and handles the fragments read.
 mixin Health on Component {
-  final hp = Field.int32(100);
+  final healthHp = Field.int32(100);
 
   @override
   void describeType(ComponentDescriptor component) {
@@ -45,7 +45,7 @@ late Query everyone;
 late Query enemies;
 late Query civilians;
 late DataPointer<double> speed;
-late DataPointer<int> hp;
+late DataPointer<int> healthHp;
 late Sprite sprite;
 late EntityStruct prefab;
 int alive = 0;
@@ -248,9 +248,9 @@ where the overwhelming majority of your code gets its entities, and it never
 has to search for them because the query already matched the archetype.
 
 The hierarchy links are handles in columns, so parent and child are reads:
-`child.parent[entity]` gives an `Entity?`, and `parent.firstChild[entity]` with
-`child.nextSibling[entity]` walks a subtree. See
-[Transforms and hierarchy](transforms-and-hierarchy.md).
+`child.childParent[entity]` gives an `Entity?`, and
+`parent.parentFirstChild[entity]` with `child.childNextSibling[entity]` walks a
+subtree. See [Transforms and hierarchy](transforms-and-hierarchy.md).
 
 Events deliver one as their payload: `onEntityMounted(Entity entity)`,
 `onEntitySpawned`, and `sourceEntity`/`targetEntity` on a collision event.
@@ -290,7 +290,7 @@ Given a handle, resolve the component it belongs to and index:
 
 ```dart
 final health = target.get<Health>();
-health.hp[target] -= 5;
+health.healthHp[target] -= 5;
 ```
 
 `get<T>()` is a list index and a type test. Cheap, but not free, and it is one
@@ -423,8 +423,8 @@ mixins, each contributing columns and a queryable type.
 
 ```dart
 mixin Character on Component {
-  final moveSpeed = Field.float64(120);
-  final turnSpeed = Field.float64(4);
+  final characterMoveSpeed = Field.float64(120);
+  final characterTurnSpeed = Field.float64(4);
 
   @override
   void describeType(ComponentDescriptor component) {
@@ -435,8 +435,8 @@ mixin Character on Component {
 }
 
 mixin Hostile on Component {
-  final aggroRadius = Field.float64(220);
-  final contactDamage = Field.int32(5);
+  final hostileAggroRadius = Field.float64(220);
+  final hostileContactDamage = Field.int32(5);
 
   @override
   void describeType(ComponentDescriptor component) {
@@ -573,7 +573,8 @@ void onFixedUpdate() {
         case OrcState.idle:
           if (_playerIsNear(entity)) orc.enter(entity, OrcState.chasing);
         case OrcState.chasing:
-          transform.transformOffsetX[entity] += orc.moveSpeed[entity] * dt;
+          transform.transformOffsetX[entity] +=
+              orc.characterMoveSpeed[entity] * dt;
           if (_playerIsClose(entity)) orc.enter(entity, OrcState.attacking);
         case OrcState.attacking:
           if (orc.stateTime[entity] > 0.4) orc.enter(entity, OrcState.idle);
@@ -693,7 +694,7 @@ class Orc extends EntityStruct
     final bullet = event.targetEntity.tryGet<Bullet>();
     if (bullet == null) return;
 
-    hp[self] -= bullet.damage[event.targetEntity];
+    healthHp[self] -= bullet.damage[event.targetEntity];
     event.targetEntity.destroy();
   }
 }
@@ -710,10 +711,10 @@ Enter, stay and exit are separate phases for collisions and for triggers, so
 
 ### Two hits in one tick
 
-That snippet has a bug a shotgun will find and a pistol will not. `hp[self] -=
-d` reads the published value and writes the pending one, so two contacts in the
-same tick both start from the same published `hp` and the second write replaces
-the first. Two bullets, one bullet's worth of damage.
+That snippet has a bug a shotgun will find and a pistol will not.
+`healthHp[self] -= d` reads the published value and writes the pending one, so
+two contacts in the same tick both start from the same published `healthHp` and
+the second write replaces the first. Two bullets, one bullet's worth of damage.
 
 If your design gives the victim invulnerability frames, one hit per tick is all
 you wanted and there is nothing to fix. Otherwise, stop accumulating through a
@@ -750,7 +751,7 @@ class DamageSystem extends GameSystem with FixedTickable {
       }
       final victim = Entity(_victims[i]);
       final health = victim.get<Health>();
-      health.hp[victim] -= total;
+      health.healthHp[victim] -= total;
     }
     _victims.clear();
     _amounts.clear();
@@ -1049,7 +1050,7 @@ class WatchPlayer extends GameSystem with Tickable {
     if (player == null) return;
     getGame<ArenaGame>()
       ..watchedX.value = player.get<Transform2D>().transformOffsetX[player]
-      ..watchedHp.value = player.get<Health>().hp[player];
+      ..watchedHp.value = player.get<Health>().healthHp[player];
   }
 }
 ```
@@ -1081,7 +1082,7 @@ same mechanism a pause menu uses.
 
 **Breakpoints still work.** A system's loop is ordinary Dart. The debugger
 shows you `entity` as a large integer, which is not useful on its own; add a
-watch expression on `orc.hp[entity]` and you get the row. Use
+watch expression on `orc.healthHp[entity]` and you get the row. Use
 `assert(false, 'message')` for framework-level problems instead of `print`,
 which is swallowed in release and invisible in test output.
 

@@ -25,6 +25,25 @@
 
 ### Breaking
 
+* **`Camera` columns carry the component's name.** `zoom` and `view` were two
+  of the shortest, most guessable names in the engine, sitting in a namespace
+  every other component on the entity shares. `Camera3D` declared its own
+  `view` beside them, which was harmless only because nothing mixes both
+  (#133).
+
+  | before | after |
+  |---|---|
+  | `Camera.zoom` | `Camera.cameraZoom` |
+  | `Camera.view` | `Camera.cameraView` |
+
+  `Transform2D` and `WorldTransform2D` already prefixed and do not move.
+  `CameraProjection.zoom` is a plain field on a class, not a column, and keeps
+  its name.
+
+  Names only - column order, widths and `strideBytes` are unchanged. `good`
+  carries the same change for `Child` and `Parent`, and the rule behind both
+  is in `docs/reference/design-rules.md`.
+
 * **`Sprite.alignment` is deleted**, along with the `alignFractionX`,
   `alignFractionY`, `alignOffsetX` and `alignOffsetY` row fields, the
   `alignment:` parameter on `SpriteDescriptor.has`, and the `setAlignment`

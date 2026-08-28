@@ -19,8 +19,8 @@ import 'package:good/good.dart';
 ///   @override
 ///   void describeStruct(DataDescriptor data) {
 ///     super.describeStruct(data);
-///     fieldOfView.defaultValue = 90;
-///     near.defaultValue = 10;
+///     cameraFieldOfView.defaultValue = 90;
+///     cameraNear.defaultValue = 10;
 ///   }
 /// }
 /// ```
@@ -28,19 +28,20 @@ mixin Camera3D on Component {
   /// Vertical field of view, in **degrees**, not radians: this is a number
   /// you type into a prefab, and 60 is a choice while 1.0471975511965976 is a
   /// transcription.
-  final fieldOfView = Field.float64(60);
+  final cameraFieldOfView = Field.float64(60);
 
   /// The near clip distance, in world units, measured along the camera's
   /// forward axis. A positive distance in front of the camera.
   ///
   /// Very close to zero is not free - the depth buffer's precision is spent
-  /// mostly between `near` and a small multiple of it, so a `near` of 0.001
-  /// buys detail nobody can see at the cost of z-fighting everywhere else.
-  final near = Field.float64(0.1);
+  /// mostly between `cameraNear` and a small multiple of it, so a
+  /// `cameraNear` of 0.001 buys detail nobody can see at the cost of
+  /// z-fighting everywhere else.
+  final cameraNear = Field.float64(0.1);
 
   /// The far clip distance, in world units, measured along the camera's
   /// forward axis. Nothing past it is drawn.
-  final far = Field.float64(1000);
+  final cameraFar = Field.float64(1000);
 
   /// Which declared view this camera fills, or null for a camera that is not
   /// currently shown anywhere.
@@ -48,7 +49,7 @@ mixin Camera3D on Component {
   /// Set it from the game isolate with the handle the game declared:
   ///
   /// ```dart
-  /// eye.camera.view[entity] = game.mainCamera;
+  /// eye.camera.cameraView[entity] = game.mainCamera;
   /// ```
   ///
   /// Typed, not an int: `CameraView` is a `GlobalObject`, so a stray integer
@@ -61,7 +62,7 @@ mixin Camera3D on Component {
   /// More than one camera on one view has no meaning - a view has one origin
   /// - and nothing here checks for it. `goo2d` makes that check in
   /// `ActiveCameraResolver`.
-  late final DataPointer<CameraView?> view;
+  late final DataPointer<CameraView?> cameraView;
 
   @override
   void describeType(ComponentDescriptor component) {
@@ -74,6 +75,6 @@ mixin Camera3D on Component {
     super.describeStruct(data);
     // The declaring game's own view table - not a shared registry. An address
     // read out of this field means nothing except against this table.
-    view = data.optPacked(getScene<SceneStruct>().cameraViews);
+    cameraView = data.optPacked(getScene<SceneStruct>().cameraViews);
   }
 }

@@ -53,8 +53,9 @@ class Eye extends EntityStruct with Transform3D, WorldTransform3D, Camera3D {}
 That is the whole prefab. `Camera3D` declares the lens — a 60 degree field of
 view, clipping from 0.1 out to 1000 — so a camera that wants those says nothing.
 
-`fieldOfView` is in degrees, vertical. `near` and `far` bound what is drawn:
-anything closer than `near` or further than `far` is skipped.
+`cameraFieldOfView` is in degrees, vertical. `cameraNear` and `cameraFar` bound
+what is drawn: anything closer than `cameraNear` or further than `cameraFar` is
+skipped.
 
 A camera that wants a different lens moves the column defaults in its own
 `describeStruct`, and only the ones that differ:
@@ -65,8 +66,8 @@ class LongLens extends EntityStruct
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    fieldOfView.defaultValue = 20;
-    far.defaultValue = 5000;
+    cameraFieldOfView.defaultValue = 20;
+    cameraFar.defaultValue = 5000;
   }
 }
 ```

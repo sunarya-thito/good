@@ -2,6 +2,13 @@
 
 ### Changed
 
+* **The scaffolded game writes `eye.cameraView[camera]`.** `Camera.view` is
+  `Camera.cameraView` in `goo2d` 0.3.0-dev, and the starter project generated
+  by `good create` follows it (#133). Nothing in this package's own API moves.
+  The shadowed-field check reads the engine's declarations as it always did,
+  so a project of yours colliding with one is still reported - there is just
+  much less to collide with now.
+
 * **Everything good generates moves into a package beside the project.** A
   project called `my_game` gets `my_game/my_game_bundle/`, and `lib/` holds
   nothing generated: `textures.dart`, `audios.dart`, `good.dart` and

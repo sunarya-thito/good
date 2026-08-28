@@ -4,8 +4,8 @@
 // The component the movement example walks, and the systems the enable /
 // disable example names.
 mixin Velocity on Component {
-  final x = Field.float64();
-  final y = Field.float64();
+  final velocityX = Field.float64();
+  final velocityY = Field.float64();
 
   @override
   void describeType(ComponentDescriptor component) {
@@ -39,8 +39,8 @@ class MovementSystem extends GameSystem with FixedTickable {
       final velocity = group.get<Velocity>();
       for (final entity in group) {
         transform
-          ..transformOffsetX[entity] += velocity.x[entity] * dt
-          ..transformOffsetY[entity] += velocity.y[entity] * dt;
+          ..transformOffsetX[entity] += velocity.velocityX[entity] * dt
+          ..transformOffsetY[entity] += velocity.velocityY[entity] * dt;
       }
     }
   }

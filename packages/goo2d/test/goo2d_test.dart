@@ -51,13 +51,13 @@ void main() {
   });
 
   group('Transform2D through the real kernel API', () {
-    test('lays out five float64 fields plus Child\'s parent/nextSibling/prevSibling', () {
+    test("lays out five float64 fields plus Child's three links", () {
       final scene = _scene();
       // 5 x 64 bits of transform, then Child's three optEntity fields
-      // (parent, nextSibling, prevSibling - each wide enough to hold a
-      // full packed Entity handle, not just a 32-bit id): 64 bits of value
-      // each, and the three has-bits sharing one byte rather than taking a
-      // byte apiece. The first has-bit opens that byte and the alignment
+      // (childParent, childNextSibling, childPrevSibling - each wide enough
+      // to hold a full packed Entity handle, not just a 32-bit id): 64 bits of
+      // value each, and the three has-bits sharing one byte rather than taking
+      // a byte apiece. The first has-bit opens that byte and the alignment
       // rounding before its value strands the other seven; `declareFlagBit`
       // hands the next two flags those bits instead of extending the row.
       expect(scene.playerPrefab.archetype.bitLength, 5 * 64 + (1 + 7) + 3 * 64);
@@ -138,7 +138,7 @@ void main() {
           transform.transformOffsetY[instance] += 1;
           final optChildren = instance.tryGet<Child>();
           if (optChildren != null) {
-            optChildren.parent[instance] = null;
+            optChildren.childParent[instance] = null;
           }
         }
         scene.pool.commitTick();
@@ -150,31 +150,31 @@ void main() {
         expect(transform.transformOffsetY[instance], 3.0);
       }
       // Rock has no Child mixin, so the optional branch was skipped for it.
-      expect(entities[0].tryGet<Child>()!.parent[entities[0]], isNull);
-      expect(entities[1].tryGet<Child>()!.parent[entities[1]], isNull);
+      expect(entities[0].tryGet<Child>()!.childParent[entities[0]], isNull);
+      expect(entities[1].tryGet<Child>()!.childParent[entities[1]], isNull);
       expect(entities[2].tryGet<Child>(), isNull);
     });
 
-    test('Child.parent starts absent and round-trips through null', () {
+    test('Child.childParent starts absent and round-trips through null', () {
       final scene = _scene();
       scene.pool.beginTick();
       final player = scene.addEntity(scene.playerPrefab);
       final other = scene.addEntity(scene.playerPrefab);
       scene.pool.commitTick();
 
-      expect(scene.playerPrefab.parent[player], isNull);
+      expect(scene.playerPrefab.childParent[player], isNull);
 
       scene.pool.beginTick();
-      scene.playerPrefab.parent[player] = other;
+      scene.playerPrefab.childParent[player] = other;
       scene.pool.commitTick();
-      expect(scene.playerPrefab.parent[player], other);
+      expect(scene.playerPrefab.childParent[player], other);
       // The nullable flag must not have disturbed the transform bytes.
       expect(scene.playerPrefab.transformOffsetX[player], 0.0);
 
       scene.pool.beginTick();
-      scene.playerPrefab.parent[player] = null;
+      scene.playerPrefab.childParent[player] = null;
       scene.pool.commitTick();
-      expect(scene.playerPrefab.parent[player], isNull);
+      expect(scene.playerPrefab.childParent[player], isNull);
     });
   });
 }
