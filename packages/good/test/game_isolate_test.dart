@@ -9,6 +9,7 @@ import 'package:good/src/command/param.dart';
 import 'package:good/src/asset.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/event/fixed_loop.dart';
+import 'package:good/src/event/tick_loop.dart';
 import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/event/state.dart';
 import 'package:good/src/game.dart';
@@ -880,6 +881,161 @@ class _UnloadGame extends Game {
   }
 }
 
+// --- #165 slice 0: adopting a reply while the fixed tick is stopped --------
+//
+// The direction here is game -> main, which is the one the issue's original
+// framing missed. The game isolate asks main something from its presentation
+// pass; main answers on the very next ping, because `presentFrame` fires on a
+// zero-step frame too. What was missing is the last hop: nothing on the game
+// side read the answer back out of the ring, because the only drain lived
+// inside `runFixedStep`.
+
+/// Main-destination and tick-delivered, so its reply comes back over the ring
+/// and only an adopt on the asking side completes it.
+class _AskMain extends SupplierCommand<int> {
+  final answer = Param.int32();
+
+  @override
+  void bufferFromResult(ParamBuffer call, int result) => answer[call] = result;
+
+  @override
+  int resultFromBuffer(ParamBuffer call) => answer[call];
+}
+
+/// Game-destination and tick-delivered, sent from the same presentation pass.
+/// The control for the test: this one genuinely needs a fixed step, so it
+/// stays pending for as long as the tick is stopped and discriminates against
+/// a "fix" that quietly runs one.
+class _AskGame extends SignalCommand {}
+
+/// Tells the game isolate to start asking. Control-delivered, so it lands
+/// while the tick is stopped.
+class _StartAsking extends SignalCommand {}
+
+/// Does the asking from the presentation pass, which is the one game-isolate
+/// hook a paused game still runs.
+class _AskingSystem extends GameSystem with Tickable {
+  @override
+  void onTick(Duration delta) {
+    final asking = state as _AskingState;
+    if (!asking.shouldAsk) return;
+    asking.shouldAsk = false;
+    asking.ask();
+  }
+}
+
+class _AskingState extends GameState<_AskingGame> {
+  /// Set by the control signal, read by the next presentation pass.
+  bool shouldAsk = false;
+
+  @override
+  void onMounted() {
+    // No scene: the question is about the command lanes, and a world would
+    // only add pages to this test.
+  }
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    descriptor
+      ..hasControlSignal(game.startAsking, () => shouldAsk = true)
+      ..hasSignal(game.askGame, () => game.gameAnswered.value = 1);
+  }
+
+  /// Fires both commands in one presentation pass, so they are queued at the
+  /// same moment and differ only in where their handler lives.
+  void ask() {
+    game.askedTick.value = game.tick;
+    game.asked.value = 1;
+    unawaited(
+      game.askMain().then((value) {
+        game.mainAnswer.value = value;
+        game.answeredTick.value = game.tick;
+        game.answeredStopped.value = paused || timeScale == 0 ? 1 : 0;
+        game.mainAnswered.value = 1;
+      }),
+    );
+    // Dropped rather than awaited: while the tick is stopped this one is
+    // supposed to stay pending, and stopping the game errors it.
+    unawaited(game.askGame().catchError((Object _) {}));
+  }
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_AskingSystem.new);
+  }
+}
+
+class _AskingGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 5);
+
+  late final _AskMain askMain;
+  late final _AskGame askGame;
+  late final _StartAsking startAsking;
+
+  /// Counted on this copy, because this is where the handler runs - the game
+  /// isolate holds the same closure and never dispatches it.
+  int mainHandlerRuns = 0;
+
+  late final StateChannel<int> asked;
+  late final StateChannel<int> mainAnswered;
+  late final StateChannel<int> gameAnswered;
+  late final StateChannel<int> mainAnswer;
+  late final StateChannel<int> askedTick;
+  late final StateChannel<int> answeredTick;
+  late final StateChannel<int> answeredStopped;
+
+  @override
+  GameState createState() => _AskingState();
+
+  @override
+  void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
+    asked = descriptor.hasInt32();
+    mainAnswered = descriptor.hasInt32();
+    gameAnswered = descriptor.hasInt32();
+    mainAnswer = descriptor.hasInt32(-1);
+    askedTick = descriptor.hasInt32(-1);
+    answeredTick = descriptor.hasInt32(-1);
+    answeredStopped = descriptor.hasInt32(-1);
+  }
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    askMain = descriptor.has(_AskMain.new);
+    askGame = descriptor.has(_AskGame.new);
+    startAsking = descriptor.has(_StartAsking.new);
+    descriptor.hasSupplier(askMain, () {
+      mainHandlerRuns++;
+      return 41 + mainHandlerRuns;
+    });
+  }
+}
+
+/// One way of stopping the fixed tick, with its undo - so the two routes
+/// that were measured to behave identically are tested identically.
+typedef _StopRoute = (
+  String label,
+  void Function(_AskingGame) stop,
+  void Function(_AskingGame) start,
+);
+
+/// Polls [ready] on the wall clock rather than on ticks, because everything
+/// this waits for happens while the tick is stopped.
+Future<bool> _waitStopped(bool Function() ready) async {
+  for (var i = 0; i < 150; i++) {
+    if (ready()) return true;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  return ready();
+}
+
 /// Polls [ready] once per reported tick, up to [within] ticks.
 ///
 /// Ticks rather than wall-clock: the thing being waited on is driven by the
@@ -1260,6 +1416,100 @@ void main() {
     // Let the game go so teardown can stop it.
     await game.resumeByControl().timeout(const Duration(seconds: 5));
   });
+
+  // #165 slice 0. Both routes into a stopped tick, because both were measured
+  // to behave identically and a fix that served one and not the other would
+  // be a fix aimed at the wrong thing.
+  for (final route in <_StopRoute>[
+    ('pause()', (game) => game.pause(), (game) => game.resume()),
+    (
+      'setTimeScale(0)',
+      (game) => game.setTimeScale(0),
+      (game) => game.setTimeScale(1),
+    ),
+  ]) {
+    final (label, stopIt, startIt) = route;
+    test('$label adopts a reply main has already written', () async {
+      final game = await Game.start(_AskingGame.new);
+      run = game;
+      addTearDown(() async {
+        if (run.isRunning) await run.stop();
+      });
+      await _waitTicks(run, 3);
+
+      stopIt(game);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      final stopped = run.tick;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(
+        run.tick,
+        stopped,
+        reason: 'the tick has to be stopped for any of this to mean anything',
+      );
+
+      // Control-delivered, so it lands in the port callback and the next
+      // presentation pass does the asking.
+      await game.startAsking().timeout(const Duration(seconds: 5));
+      expect(
+        await _waitStopped(() => game.asked.value == 1),
+        isTrue,
+        reason:
+            'the presentation pass runs on a zero-step frame, so a paused game '
+            'can still send',
+      );
+
+      expect(
+        await _waitStopped(() => game.mainAnswered.value == 1),
+        isTrue,
+        reason:
+            'main ran the handler and wrote the reply into the ring on its '
+            'per-tick ping, which keeps arriving while the tick is stopped. '
+            'Before #165 nothing on the game side ever read it back out: the '
+            'only drain was inside runFixedStep, so the caller waited out the '
+            'pause for an answer that already existed.',
+      );
+
+      expect(
+        game.answeredStopped.value,
+        1,
+        reason:
+            'and it completed while the simulation was still stopped, not '
+            'after something quietly restarted it',
+      );
+      expect(
+        game.answeredTick.value,
+        game.askedTick.value,
+        reason: 'the tick did not move across the answer',
+      );
+      expect(
+        run.tick,
+        stopped,
+        reason: 'seen from this side too - no step was run to serve the ask',
+      );
+      expect(game.mainAnswer.value, 42, reason: 'the reply carried its value');
+      expect(game.mainHandlerRuns, 1, reason: 'answered by main, exactly once');
+
+      // The discriminator. A tick-delivered command queued in the same
+      // presentation pass needs a fixed step and must still be waiting, which
+      // is what a fix built on stepOnce would fail.
+      expect(
+        game.gameAnswered.value,
+        0,
+        reason:
+            'a game-destination command queued at the same moment is still '
+            'pending, so nothing ran a fixed step to answer the other one',
+      );
+
+      startIt(game);
+      expect(
+        await _waitStopped(() => game.gameAnswered.value == 1),
+        isTrue,
+        reason:
+            'and it drains on resume exactly as it always did - adopting '
+            'replies early takes nothing away from the tick lane',
+      );
+    });
+  }
   test(
     'a Game subclass survives Isolate.spawn and ticks on the other side',
     () async {

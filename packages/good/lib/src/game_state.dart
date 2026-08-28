@@ -1100,6 +1100,16 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // smoothing toward a target has work to do on it.
     runPresentation(elapsed);
     _lastSteps = steps;
+    // Replies only, and deliberately here rather than in [runFixedStep].
+    // `pumpCommands` runs inside a fixed step, so a frame that afforded no
+    // step - a paused game, a zero time scale - adopted nothing, and a
+    // caller on this isolate awaiting a main-isolate answer waited out the
+    // pause for a reply main had already written into the ring. Main has no
+    // such gap: its pump rides the tick notification, which this method
+    // sends on every frame. See `CommandTransport.adoptReplies` for why this
+    // is not the whole pump - running a handler here would be user code
+    // outside the tick window.
+    runtime.adoptCommandReplies();
     // Only now is the frame actually complete: the simulation advanced and
     // the presentation pass wrote whatever it produces. See
     // `Game.presentFrame` for why the announcement cannot happen earlier.

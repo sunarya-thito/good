@@ -200,12 +200,6 @@ final class CommandTransport implements CommandSender {
     return pending.completer.future;
   }
 
-  /// Takes in everything the other copy has said since the last call, and
-  /// answers whatever is due.
-  ///
-  /// Called once per fixed tick on the game isolate (from
-  /// `GameState.runFixedStep`, inside the tick window and before any system)
-
   /// Runs a receipt-delivered batch that arrived over the control port.
   ///
   /// Straight to [CommandRegistry.dispatch] with no inbox: the inbox is what
@@ -220,16 +214,44 @@ final class CommandTransport implements CommandSender {
     );
   }
 
+  /// Takes in everything the other copy has said since the last call, and
+  /// answers whatever is due.
+  ///
+  /// Called once per fixed tick on the game isolate (from
+  /// `GameState.runFixedStep`, inside the tick window and before any system)
   /// and once per tick notification on the main isolate. Cheap when nothing
   /// has arrived: one cursor comparison and an empty list.
+  ///
+  /// **The two schedules are not symmetric, and that asymmetry has a cost.**
+  /// A tick notification arrives on every frame, including a frame that
+  /// afforded no fixed step, so main goes on pumping at full rate through a
+  /// pause; a fixed step does not run at all, so this never runs on the game
+  /// isolate while the tick is stopped. [adoptReplies] is the half of this
+  /// that a stopped game still needs, and `GameState.advance` calls it once
+  /// per frame for exactly that reason.
   void pump() {
-    _receive();
+    adoptReplies();
     _runInbox();
   }
 
-  /// Drains the inbound ring: requests join the inbox, replies complete the
-  /// send that asked for them.
-  void _receive() {
+  /// Drains the inbound ring, running nothing: replies complete the send that
+  /// asked for them, and a request that arrives alongside joins the inbox and
+  /// waits for the next [pump] like any other.
+  ///
+  /// **Safe outside the tick window**, which is the whole reason it is
+  /// separable. No handler runs here, so no user code sees a world with no
+  /// tick open - the hazard `_ControlMessage.stop`'s doc describes, and the
+  /// reason a plain [pump] cannot be moved to the same place.
+  ///
+  /// Called from `GameState.advance` on every frame, between the presentation
+  /// pass and `presentFrame`. Without it a game whose fixed tick is stopped
+  /// never reads a reply main has already computed and already written into
+  /// the ring, and a caller on the game side waits out the pause for an
+  /// answer that exists (#165).
+  ///
+  /// Costs one cursor comparison on an empty ring, and allocates nothing:
+  /// [_drained] is reused and `RingBuffer.drainInto` appends into it.
+  void adoptReplies() {
     final ring = inbound;
     if (ring == null) return;
     final drained = _drained..clear();

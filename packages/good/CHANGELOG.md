@@ -779,6 +779,26 @@
 
 ### Fixed
 
+* **A game whose fixed tick is stopped now adopts a reply the other isolate
+  has already written.** `CommandTransport.pump` had one call site on the game
+  isolate, inside `runFixedStep`, so a paused game — or one at a time scale of
+  zero — read nothing back out of the command ring. Main was never affected:
+  its pump rides the per-tick notification, which `presentFrame` sends on
+  every frame including one that ran no step, so main went on answering at
+  full rate while the game side collected none of it. A system awaiting a
+  main-isolate supplier from its presentation pass waited out the whole pause
+  for a value main had computed several frames earlier.
+
+  `GameState.advance` now calls `GameRuntime.adoptCommandReplies` once per
+  frame, between the presentation pass and `presentFrame`. It adopts replies
+  and runs no handler, so nothing new runs outside the tick window and a
+  tick-delivered command still waits for a fixed step exactly as it did
+  (#165).
+
+  The other direction is unchanged: main asking a paused game something still
+  waits for the tick to come back, and a game hidden under `pauseWhenHidden`
+  runs no frame at all, so it adopts nothing either way.
+
 * **`Game.simulationFps` counts frames the simulation published, not frame
   callbacks.** The meter was fed from the per-frame tick notification, which
   fires on every frame including one that ran zero fixed steps — so a paused
