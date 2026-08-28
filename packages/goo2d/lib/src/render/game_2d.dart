@@ -144,13 +144,20 @@ mixin Renderer2D on Game {
     defaultCamera = descriptor.has();
   }
 
-  /// Sprites past this many in a single tick are dropped. A hard bound, not a
-  /// growing buffer: the byte scratch and the handoff slots are both sized
-  /// from it, and silently growing them mid-tick is an allocation on the hot
-  /// path. Override it if a scene genuinely draws more.
+  /// Draw records past this many in a single tick are dropped. A hard bound,
+  /// not a growing buffer: the byte scratch and the handoff slots are both
+  /// sized from it, and silently growing them mid-tick is an allocation on the
+  /// hot path. Override it if a scene genuinely draws more.
   ///
-  /// Note this counts *sprites*, not entities - an entity declaring three
-  /// sprites spends three of them.
+  /// It counts **records**, not entities and not sprites. An entity declaring
+  /// three sprites spends three of them, and a nine-sliced sprite spends one
+  /// per cell it draws - nine for a full frame, three for something sliced on
+  /// one axis only. `GameRenderer2D.lastRecordCount` is what a frame spent and
+  /// `lastRecordsOverBudget` is what it could not fit, so raising this by the
+  /// second is the direct fix for a scene that is dropping sprites.
+  ///
+  /// The name says sprites and the number counts records; renaming it is
+  /// breaking and is #175's to make.
   ///
   /// It lives here, on the `Game`, and not on [GameRenderer2D], because it is
   /// a **sizing** knob and sizing happens on this side: [describeBuffers]

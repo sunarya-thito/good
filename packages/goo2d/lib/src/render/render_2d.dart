@@ -803,7 +803,7 @@ final class _SpriteDrawQueue {
       _sprites = List<Sprite?>.filled(initialCapacity, null),
       _sources = List<_TransformSource?>.filled(initialCapacity, null),
       _zIndices = Int32List(initialCapacity),
-      _records = Int32List(initialCapacity),
+      _sliced = Uint8List(initialCapacity),
       _order = Int32List(initialCapacity),
       _merge = Int32List(initialCapacity),
       _corners = Float32List(initialCapacity * _cornerStride),
@@ -833,18 +833,27 @@ final class _SpriteDrawQueue {
   List<_TransformSource?> _sources;
   Int32List _zIndices;
 
-  /// How many draw records this pair will write: 1 for a plain sprite, 9 for a
-  /// nine-sliced one.
+  /// 1 where the pair draws through the nine-slice path, 0 where it is a
+  /// plain quad.
   ///
-  /// Decided during the fill pass and *stored*, not re-derived in the
-  /// write pass, because the fill pass is what spends the record budget
-  /// against it. Two passes each deciding "is this sliced?" from the same rows
-  /// would agree today - presentation runs after the tick commits, so nothing
-  /// mutates underneath them - but the byte scratch is sized from the budget
-  /// the first pass computed, so any future disagreement would be a buffer
-  /// overrun and not a wrong picture. One `int` per queued sprite removes
-  /// the question.
-  Int32List _records;
+  /// Decided during the fill pass and *stored*, not re-derived in the write
+  /// pass, because the fill pass is what spends the record budget against it.
+  /// Two passes each deciding "is this sliced?" from the same rows would agree
+  /// today - presentation runs after the tick commits, so nothing mutates
+  /// underneath them - but the byte scratch is sized from the budget the first
+  /// pass computed, so any future disagreement would be a buffer overrun and
+  /// not a wrong picture.
+  ///
+  /// A flag and not the record count, which is what used to be here: the two
+  /// stopped being the same question when the charge became the real cell
+  /// count (#252). A sprite sliced on one axis can be down to a single live
+  /// cell, which makes it one record *and* nine-sliced, and it still has to
+  /// write through [GameRenderer2D._writeNineSlice] - that record samples a
+  /// sub-rectangle of the frame, which the plain path knows nothing about.
+  /// Branching on `records == 1` would have swapped its UVs for the whole
+  /// frame's and drawn a stretched panel with no way to see why. The count
+  /// itself is needed only in total, which [_recordTotal] already carries.
+  Uint8List _sliced;
 
   /// Slot indices in draw order. Sorted in place by [sortByZ]; before that it
   /// is the identity permutation, i.e. encounter order.
@@ -867,9 +876,9 @@ final class _SpriteDrawQueue {
   /// through the cache, which is the entire point.
   ///
   /// **Only written for sprites that draw as one quad.** A nine-sliced sprite
-  /// has nine records with their own per-cell UVs and cannot be reduced to four
+  /// has a record per live cell with its own UVs and cannot be reduced to four
   /// corners, so its slots here are left holding whatever a previous tick put
-  /// there. Nothing reads them: the write pass branches on [recordsAt] first.
+  /// there. Nothing reads them: the write pass branches on [slicedAt] first.
   Float32List _corners;
 
   /// Packed ARGB then texture address per queued sprite. See [_corners] for
@@ -900,16 +909,17 @@ final class _SpriteDrawQueue {
 
   int _count = 0;
 
-  /// Total draw records the queued pairs will write - the sum of [_records].
-  /// What the byte scratch has to be sized for, as opposed to [length], which
-  /// counts sprites.
+  /// Total draw records the queued pairs will write - accumulated by [add],
+  /// since no pass needs a single pair's count on its own. What the byte
+  /// scratch has to be sized for, as opposed to [length], which counts
+  /// sprites.
   int _recordTotal = 0;
 
   /// How many pairs are queued. Also the length of the sorted prefix.
   int get length => _count;
 
   /// How many draw records those pairs amount to. A plain sprite contributes
-  /// 1; a nine-sliced one contributes 9.
+  /// 1; a nine-sliced one contributes one per live cell, up to 9.
   int get recordCount => _recordTotal;
 
   void reset() {
@@ -921,6 +931,9 @@ final class _SpriteDrawQueue {
   /// costing [records] draw records, and returns its **slot** - the index the
   /// parallel arrays store it at, which is also its encounter position.
   ///
+  /// [sliced] says which write path it takes, and is not inferred from
+  /// [records] - see [_sliced].
+  ///
   /// The slot is what [setQuad] takes. It is not the draw
   /// position: nothing knows that until [sortByZ] has run, and the fill pass
   /// has to be able to write a sprite's geometry the moment it computes it.
@@ -929,8 +942,9 @@ final class _SpriteDrawQueue {
     Sprite sprite,
     _TransformSource source,
     int zIndex,
-    int records,
-  ) {
+    int records, {
+    required bool sliced,
+  }) {
     _ensure(_count + 1);
     // Seeded from the first key, not the int extremes, so an empty range is
     // 1 and not the whole number line - see [_zMin].
@@ -946,7 +960,7 @@ final class _SpriteDrawQueue {
     _sprites[_count] = sprite;
     _sources[_count] = source;
     _zIndices[_count] = zIndex;
-    _records[_count] = records;
+    _sliced[_count] = sliced ? 1 : 0;
     _order[_count] = _count;
     _recordTotal += records;
     return _count++;
@@ -990,7 +1004,7 @@ final class _SpriteDrawQueue {
   }
 
   /// Writes the [i]th pair *in draw order* as one quad record, returning the
-  /// next write offset. Only valid where `recordsAt(i) == 1`.
+  /// next write offset. Only valid where [slicedAt] is false.
   ///
   /// This is the whole of the write pass for a plain sprite, and it touches no
   /// component row: one `_order` read, then eight contiguous floats and a few
@@ -1045,8 +1059,9 @@ final class _SpriteDrawQueue {
   /// Where the [i]th pair *in draw order* reads its transform from.
   _TransformSource sourceAt(int i) => _sources[_order[i]]!;
 
-  /// How many records the [i]th pair *in draw order* writes.
-  int recordsAt(int i) => _records[_order[i]];
+  /// Whether the [i]th pair *in draw order* draws through the nine-slice
+  /// path. See [_sliced].
+  bool slicedAt(int i) => _sliced[_order[i]] != 0;
 
   /// The widest `zIndex` span a counting sort is allowed to bucket.
   ///
@@ -1207,7 +1222,7 @@ final class _SpriteDrawQueue {
     _sources = List<_TransformSource?>.filled(next, null)
       ..setRange(0, _count, _sources);
     _zIndices = Int32List(next)..setRange(0, _count, _zIndices);
-    _records = Int32List(next)..setRange(0, _count, _records);
+    _sliced = Uint8List(next)..setRange(0, _count, _sliced);
     _order = Int32List(next)..setRange(0, _count, _order);
     _corners = Float32List(next * _cornerStride)
       ..setRange(0, _count * _cornerStride, _corners);
@@ -1443,7 +1458,7 @@ class GameRenderer2D extends GameSystem
   /// How many *sprites* the last [onTick] drew. Diagnostics and tests.
   ///
   /// Not the same as [lastRecordCount] once nine-slicing is in play: one
-  /// sliced sprite is one sprite and nine records. This is the count of
+  /// sliced sprite is one sprite and up to nine records. This is the count of
   /// things the scene asked to draw; that one is the count of quads the
   /// buffer actually holds, and it is the buffer's number that has to stay
   /// under the budget.
@@ -1454,6 +1469,11 @@ class GameRenderer2D extends GameSystem
   /// This is what `maxSpritesPerTick` bounds and what `spriteBatchBytes`
   /// is sized from, so it is the number to watch when a scene starts
   /// dropping frames.
+  ///
+  /// It is the records in the published batch, exactly: a nine-sliced sprite
+  /// is counted by the cells it actually draws and not by the nine it might
+  /// have. Until #252 this was the *charge*, which for anything sliced on one
+  /// axis was up to nine times what the batch held.
   int lastRecordCount = 0;
 
   /// How many draw records the last [onTick] asked for and could not fit -
@@ -1471,6 +1491,12 @@ class GameRenderer2D extends GameSystem
   /// frame that is already over budget, which is the trade taken:
   /// a reading of "at least 9" on a scene four thousand records over points
   /// at the wrong fix.
+  ///
+  /// Exact in the other direction too, since #252: what a refused sprite adds
+  /// here is what it would have drawn. A frame of three-sliced panels used to
+  /// report a shortfall against a budget that had room for all of them, so
+  /// following the advice above raised a knob that was never the problem and
+  /// the panels kept vanishing.
   ///
   /// Not the same failure as [lastWriteDropped] and it does not imply it. That
   /// one means main had not collected the previous frame yet and no budget
@@ -1521,13 +1547,103 @@ class GameRenderer2D extends GameSystem
   //
   // `_lx`/`_ly` are *transformed-space* offsets from the pivot (already
   // scaled); `_u`/`_v` are the matching cuts in 0..1 texture space.
+  //
+  // `_lx`/`_ly` are written by both passes - the fill pass lays the grid to
+  // count what the sprite costs, the write pass lays it again to emit off it
+  // (see [_nineSliceGrid]). Neither reads what the other left: each fills all
+  // four lanes before looking at any of them.
   final Float64List _lx = Float64List(4);
   final Float64List _ly = Float64List(4);
   final Float64List _u = Float64List(4);
   final Float64List _v = Float64List(4);
 
-  /// Expands one sprite into the nine quads of a nine-slice, returning the
-  /// new write offset.
+  /// Lays this sprite's nine-slice grid into [_lx] and [_ly] and returns how
+  /// many of the nine cells are not collapsed - which is exactly how many
+  /// records [_writeNineSlice] will emit for it.
+  ///
+  /// Both passes call this, and that is the point: the fill pass charges the
+  /// budget with the number this returns and the write pass emits off the
+  /// grid this left behind, so the charge cannot drift from the cost. It used
+  /// to be a hardcoded `9`, and a sprite sliced on one axis only has a
+  /// collapsed row or column by construction - so a three-sliced capsule
+  /// button was charged nine records to write three, and a screen of them hit
+  /// the budget three times sooner than it had any reason to (#252).
+  ///
+  /// Counted by comparing the grid lines the writer compares, and not from
+  /// the insets directly, because the writer's test is `x1 == x0` on the
+  /// *scaled, pivot-shifted* line positions. Three things fall out of that
+  /// which an inset-only count gets wrong:
+  ///
+  ///  * A **zero scale** collapses every line onto the same point, so the
+  ///    answer is 0 records and not 9. The fill pass has to skip such a
+  ///    candidate outright rather than let the budget test filter it - see
+  ///    its call site.
+  ///  * A **negative inset** is a live cell, not a dead one. Nothing
+  ///    downstream expects one, but `left != 0` is what the writer asks and
+  ///    `left > 0` is not the same question.
+  ///  * The middle cell survives on `width - right != left` **as floats**,
+  ///    which is not `left + right < width` once the fit above has divided
+  ///    and multiplied the insets back.
+  int _nineSliceGrid(
+    Entity entity,
+    Sprite sprite,
+    double width,
+    double height,
+    double pivotX,
+    double pivotY,
+    double scaleX,
+    double scaleY,
+  ) {
+    // Destination corners, in the sprite's own units. Absolute, so they are
+    // unchanged by how large the sprite is drawn - see [NineSliceBorder].
+    var left = sprite.insetLeft[entity];
+    var right = sprite.insetRight[entity];
+    var top = sprite.insetTop[entity];
+    var bottom = sprite.insetBottom[entity];
+
+    // Destination-side fit, per axis and independently - see
+    // [_writeNineSlice]'s doc.
+    final horizontal = left + right;
+    if (horizontal > width && horizontal > 0) {
+      final k = width / horizontal;
+      left *= k;
+      right *= k;
+    }
+    final vertical = top + bottom;
+    if (vertical > height && vertical > 0) {
+      final k = height / vertical;
+      top *= k;
+      bottom *= k;
+    }
+
+    // Grid lines in unscaled local space (0..width from the sprite's own
+    // top-left), shifted onto the pivot and scaled in one step, exactly as
+    // the single-quad path derives its `lx0`/`lx1`.
+    final lx = _lx;
+    final ly = _ly;
+    lx[0] = (0 - pivotX) * scaleX;
+    lx[1] = (left - pivotX) * scaleX;
+    lx[2] = (width - right - pivotX) * scaleX;
+    lx[3] = (width - pivotX) * scaleX;
+    ly[0] = (0 - pivotY) * scaleY;
+    ly[1] = (top - pivotY) * scaleY;
+    ly[2] = (height - bottom - pivotY) * scaleY;
+    ly[3] = (height - pivotY) * scaleY;
+
+    var cols = 0;
+    if (lx[1] != lx[0]) cols++;
+    if (lx[2] != lx[1]) cols++;
+    if (lx[3] != lx[2]) cols++;
+    if (cols == 0) return 0;
+    var rows = 0;
+    if (ly[1] != ly[0]) rows++;
+    if (ly[2] != ly[1]) rows++;
+    if (ly[3] != ly[2]) rows++;
+    return cols * rows;
+  }
+
+  /// Expands one sprite into the quads of a nine-slice - up to nine of them,
+  /// and as few as one - returning the new write offset.
   ///
   /// # The layout
   ///
@@ -1586,40 +1702,18 @@ class GameRenderer2D extends GameSystem
     int address,
     int filter,
   ) {
-    // Destination corners, in the sprite's own units. Absolute, so they are
-    // unchanged by how large the sprite is drawn - see [NineSliceBorder].
-    var left = sprite.insetLeft[entity];
-    var right = sprite.insetRight[entity];
-    var top = sprite.insetTop[entity];
-    var bottom = sprite.insetBottom[entity];
-
-    // Destination-side fit, per axis and independently - see the doc above.
-    final horizontal = left + right;
-    if (horizontal > width && horizontal > 0) {
-      final k = width / horizontal;
-      left *= k;
-      right *= k;
-    }
-    final vertical = top + bottom;
-    if (vertical > height && vertical > 0) {
-      final k = height / vertical;
-      top *= k;
-      bottom *= k;
-    }
-
-    // Grid lines in unscaled local space (0..width from the sprite's own
-    // top-left), shifted onto the pivot and scaled in one step, exactly as
-    // the single-quad path derives its `lx0`/`lx1`.
+    _nineSliceGrid(
+      entity,
+      sprite,
+      width,
+      height,
+      pivotX,
+      pivotY,
+      scaleX,
+      scaleY,
+    );
     final lx = _lx;
     final ly = _ly;
-    lx[0] = (0 - pivotX) * scaleX;
-    lx[1] = (left - pivotX) * scaleX;
-    lx[2] = (width - right - pivotX) * scaleX;
-    lx[3] = (width - pivotX) * scaleX;
-    ly[0] = (0 - pivotY) * scaleY;
-    ly[1] = (top - pivotY) * scaleY;
-    ly[2] = (height - bottom - pivotY) * scaleY;
-    ly[3] = (height - pivotY) * scaleY;
 
     // The matching cuts in texture space. **No pixel dimension anywhere**, and
     // therefore no decoded image and no `TextureInfo`: the cuts are fractions,
@@ -1946,9 +2040,38 @@ class GameRenderer2D extends GameSystem
             continue;
           }
 
-          final records = _isNineSliced(entity, sprite) ? 9 : 1;
+          // The charge is what the write pass will actually emit, counted off
+          // the same grid it will emit from - not a flat 9 for anything with
+          // an inset on it. A three-sliced capsule button has a collapsed row
+          // by construction and costs 3, and charging it 9 shut the budget
+          // three times sooner than the scene needed (#252).
+          final int records;
+          final bool sliced;
+          if (_isNineSliced(entity, sprite)) {
+            sliced = true;
+            records = _nineSliceGrid(
+              entity,
+              sprite,
+              width,
+              height,
+              pivotX,
+              pivotY,
+              scaleX,
+              scaleY,
+            );
+            // Every cell collapsed - a scale of zero, or insets that fit
+            // exactly - so there is nothing to draw. Skipped here rather than
+            // left to the budget test below, which `recordCount + 0 > limit`
+            // would wave through even after the budget had closed: a
+            // zero-record sprite admitted past a shut budget breaks the one
+            // thing closing `limit` is for.
+            if (records == 0) continue;
+          } else {
+            sliced = false;
+            records = 1;
+          }
           // Checked against this sprite's own cost, not against a fixed 1, so a
-          // nine-sliced sprite is admitted only if all nine of its records fit.
+          // nine-sliced sprite is admitted only if all its records fit.
           // Admitting it partially would write past the scratch.
           if (queue.recordCount + records > limit) {
             // Over budget. The walk carries on instead of breaking out, and
@@ -1975,12 +2098,17 @@ class GameRenderer2D extends GameSystem
             source,
             sprite.zIndex[entity],
             records,
+            sliced: sliced,
           );
           // A nine-sliced sprite cannot be reduced to four corners, so it keeps
           // reading its row in the write pass. That is the rare path and it is
           // left alone; what follows is for the plain quad, which
           // is almost everything almost always.
-          if (records != 1) continue;
+          //
+          // On `sliced` and not on `records != 1`: a sliced sprite down to its
+          // last live cell writes one record and still has to take the sliced
+          // path, because that record samples a sub-rectangle of the frame.
+          if (sliced) continue;
 
           // The geometry, computed here and not in the write pass, and
           // this placement is the entire optimisation - see
@@ -2056,7 +2184,7 @@ class GameRenderer2D extends GameSystem
     var offset = DrawData2D.batchHeaderBytes;
     final count = queue.length;
     for (var i = 0; i < count; i++) {
-      if (queue.recordsAt(i) == 1) {
+      if (!queue.slicedAt(i)) {
         offset = queue.writeQuadAt(view, offset, i);
         continue;
       }
