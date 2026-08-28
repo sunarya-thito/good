@@ -803,6 +803,7 @@ final class _SpriteDrawQueue {
       _sprites = List<Sprite?>.filled(initialCapacity, null),
       _sources = List<_TransformSource?>.filled(initialCapacity, null),
       _zIndices = Int32List(initialCapacity),
+      _records = Int32List(initialCapacity),
       _sliced = Uint8List(initialCapacity),
       _order = Int32List(initialCapacity),
       _merge = Int32List(initialCapacity),
@@ -833,6 +834,16 @@ final class _SpriteDrawQueue {
   List<_TransformSource?> _sources;
   Int32List _zIndices;
 
+  /// Draw records each queued pair costs - 1 for a plain quad, one per live
+  /// cell for a nine-slice.
+  ///
+  /// Kept per pair and not only in total because the budget is now spent
+  /// after the sort: [trimToBudget] walks the sorted order from the front
+  /// and has to know what each candidate costs at the position depth put it
+  /// in, which is not the position the fill pass met it at. Before #175 the
+  /// total was the only thing anyone asked for.
+  Int32List _records;
+
   /// 1 where the pair draws through the nine-slice path, 0 where it is a
   /// plain quad.
   ///
@@ -852,7 +863,8 @@ final class _SpriteDrawQueue {
   /// sub-rectangle of the frame, which the plain path knows nothing about.
   /// Branching on `records == 1` would have swapped its UVs for the whole
   /// frame's and drawn a stretched panel with no way to see why. The count
-  /// itself is needed only in total, which [_recordTotal] already carries.
+  /// lives in [_records] and answers a different question - what a pair costs,
+  /// not how it draws.
   Uint8List _sliced;
 
   /// Slot indices in draw order. Sorted in place by [sortByZ]; before that it
@@ -909,22 +921,85 @@ final class _SpriteDrawQueue {
 
   int _count = 0;
 
-  /// Total draw records the queued pairs will write - accumulated by [add],
-  /// since no pass needs a single pair's count on its own. What the byte
-  /// scratch has to be sized for, as opposed to [length], which counts
-  /// sprites.
+  /// Total draw records the queued pairs would write if every one of them
+  /// were drawn - accumulated by [add]. [trimToBudget] is what decides how
+  /// many of them actually are.
   int _recordTotal = 0;
 
-  /// How many pairs are queued. Also the length of the sorted prefix.
+  /// Draw-order index the write pass starts at: the first pair the budget
+  /// admitted. Zero on a frame that fits, which is every frame a game should
+  /// be having.
+  int _first = 0;
+
+  /// Records [trimToBudget] discarded off the back of the sorted order.
+  ///
+  /// Held as the discarded count rather than the admitted one so that both
+  /// this and [_first] are already correct for a frame that fits - which is
+  /// what lets [trimToBudget] return on a single comparison, writing nothing.
+  int _trimmedRecords = 0;
+
+  /// How many pairs are queued, drawn or not. Also the length of the sorted
+  /// prefix. The drawn ones are `[firstAdmitted, length)`.
   int get length => _count;
 
-  /// How many draw records those pairs amount to. A plain sprite contributes
-  /// 1; a nine-sliced one contributes one per live cell, up to 9.
-  int get recordCount => _recordTotal;
+  /// Draw-order index of the first pair that will be written. See [_first].
+  int get firstAdmitted => _first;
+
+  /// How many draw records the write pass will emit. A plain sprite
+  /// contributes 1; a nine-sliced one contributes one per live cell, up to 9.
+  ///
+  /// This is the *admitted* total, so it is what the published batch holds
+  /// and what `GameRenderer2D.lastRecordCount` reports.
+  int get recordCount => _recordTotal - _trimmedRecords;
+
+  /// How many draw records the budget turned away - the exact shortfall,
+  /// since every candidate was queued before the budget was spent.
+  int get trimmedRecordCount => _trimmedRecords;
 
   void reset() {
     _count = 0;
     _recordTotal = 0;
+    _first = 0;
+    _trimmedRecords = 0;
+  }
+
+  /// Spends a budget of [limit] records over the pairs queued so far, in the
+  /// draw order [sortByZ] left them in, and marks everything it cannot afford
+  /// as not drawn.
+  ///
+  /// **Walked from the front of the scene backwards.** The sorted order runs
+  /// back to front, so this starts at the last pair - the nearest thing to
+  /// the camera - and admits candidates until one does not fit. What a frame
+  /// loses is therefore the furthest layer, which is a property of the scene,
+  /// instead of whichever archetype happened to be registered last (#175).
+  ///
+  /// **It stops at the first candidate that does not fit** rather than
+  /// skipping it for a cheaper one further back. Survivors are a contiguous
+  /// slab: everything from some depth forward is drawn. Admitting a smaller
+  /// sprite from behind a refused one would punch a hole in the depth order -
+  /// a background tile drawn while a mid-layer one is missing - which is a
+  /// worse frame, not a better one.
+  ///
+  /// On a frame that fits this is one comparison and no writes at all: [_first]
+  /// and [_trimmedRecords] were already set to their fitting values by
+  /// [reset].
+  void trimToBudget(int limit) {
+    if (_recordTotal <= limit) return;
+    final records = _records;
+    final order = _order;
+    var admitted = 0;
+    var i = _count;
+    while (i > 0) {
+      final cost = records[order[i - 1]];
+      // All-or-nothing, as it was when the fill pass spent the budget: a
+      // nine-sliced sprite is admitted only if every one of its records fits,
+      // because admitting it partially would write past the scratch.
+      if (admitted + cost > limit) break;
+      admitted += cost;
+      i--;
+    }
+    _first = i;
+    _trimmedRecords = _recordTotal - admitted;
   }
 
   /// Queues one (entity, sprite) pair to be drawn at depth [zIndex],
@@ -960,6 +1035,7 @@ final class _SpriteDrawQueue {
     _sprites[_count] = sprite;
     _sources[_count] = source;
     _zIndices[_count] = zIndex;
+    _records[_count] = records;
     _sliced[_count] = sliced ? 1 : 0;
     _order[_count] = _count;
     _recordTotal += records;
@@ -1222,6 +1298,7 @@ final class _SpriteDrawQueue {
     _sources = List<_TransformSource?>.filled(next, null)
       ..setRange(0, _count, _sources);
     _zIndices = Int32List(next)..setRange(0, _count, _zIndices);
+    _records = Int32List(next)..setRange(0, _count, _records);
     _sliced = Uint8List(next)..setRange(0, _count, _sliced);
     _order = Int32List(next)..setRange(0, _count, _order);
     _corners = Float32List(next * _cornerStride)
@@ -1273,6 +1350,13 @@ final class _SpriteDrawQueue {
 /// [_SpriteDrawQueue.sortByZ]) - no per-tick allocation, no comparator
 /// closure, and stability by construction, not by trusting a library sort's
 /// unspecified behaviour.
+///
+/// # The budget
+///
+/// `maxSpritesPerTick` is spent **after** that sort and not during the fill,
+/// so a frame that asks for more records than it can hold loses its furthest
+/// layers and keeps everything in front of them. Survivors are a contiguous
+/// depth slab. See [_SpriteDrawQueue.trimToBudget].
 ///
 /// # Culling
 ///
@@ -1455,7 +1539,9 @@ class GameRenderer2D extends GameSystem
   Uint8List? _scratch;
   ByteData? _scratchView;
 
-  /// How many *sprites* the last [onTick] drew. Diagnostics and tests.
+  /// How many *sprites* the last [onTick] drew - sprites that reached the
+  /// batch, so a candidate the depth trim discarded is not among them.
+  /// Diagnostics and tests.
   ///
   /// Not the same as [lastRecordCount] once nine-slicing is in play: one
   /// sliced sprite is one sprite and up to nine records. This is the count of
@@ -1484,13 +1570,18 @@ class GameRenderer2D extends GameSystem
   /// not like anything was dropped. Raising `maxSpritesPerTick` by at
   /// least this much is the direct fix; drawing less is the other one.
   ///
-  /// This is the *exact* shortfall and not a lower bound. Once the budget is
-  /// spent the fill pass keeps walking candidates purely to total what it is
-  /// turning away, so `lastRecordCount + lastRecordsOverBudget` is what the
-  /// scene asked for. That walk costs something and it costs it only on a
-  /// frame that is already over budget, which is the trade taken:
-  /// a reading of "at least 9" on a scene four thousand records over points
+  /// This is the *exact* shortfall and not a lower bound. Every visible
+  /// candidate is queued before the budget is spent, so the total the scene
+  /// asked for is known outright and this is that total less what was drawn:
+  /// `lastRecordCount + lastRecordsOverBudget` is what the scene asked for.
+  /// A reading of "at least 9" on a scene four thousand records over points
   /// at the wrong fix.
+  ///
+  /// **What it drops is the back of the scene.** The budget is spent after
+  /// the sort, walking outwards from the camera, so a frame that cannot fit
+  /// loses its furthest layers and keeps everything in front of them
+  /// (#175). Until that landed it lost whichever archetype was registered
+  /// last, which is not a property of the scene.
   ///
   /// Exact in the other direction too, since #252: what a refused sprite adds
   /// here is what it would have drawn. A frame of three-sliced panels used to
@@ -1912,18 +2003,22 @@ class GameRenderer2D extends GameSystem
     // byte scratch yet, because the order is not known until every candidate
     // has been seen.
     final queue = _queue..reset();
-    // A *record* budget, not a sprite count. A nine-sliced sprite writes nine
-    // records, so counting sprites would let nine times the declared maximum
-    // through and overrun the byte scratch, which is sized from this same
-    // number times the record stride. Counting records keeps the two honest
-    // against each other whatever mix of sliced and plain sprites shows up.
+    // **The budget is not spent here.** This pass queues every visible
+    // candidate the camera can see, and `_SpriteDrawQueue.trimToBudget` spends
+    // the budget after the sort, when depth is known. Spending it here meant
+    // spending it in encounter order - archetype registration, then page, then
+    // row - so what a frame lost was whichever archetype was declared last,
+    // which is not a property of the scene at all (#175).
     //
-    // Not final: the moment the budget is spent this drops to what is already
-    // queued, which is what closes the pass to every later candidate. See the
-    // over-budget branch below.
-    var limit = _renderer.maxSpritesPerTick;
-    // Records this pass turned away, reported as `lastRecordsOverBudget`.
-    var overBudget = 0;
+    // What that costs is the queue growing to the candidate high-water instead
+    // of the budget: Dart heap, 80 bytes per queued sprite, and it never
+    // crosses the isolate boundary. The native handoff and the byte scratch
+    // are still sized from `maxSpritesPerTick` and the trim is what keeps the
+    // write inside them.
+    //
+    // Culling still comes first, so what is queued is bounded by what the
+    // camera sees rather than by the size of the world.
+    //
     // This view draws the scene its camera is in and no other - the test is
     // `projection.shows` below. There is no global front scene: "which scene
     // do I draw" is a question a *view* answers and there can be several
@@ -1935,13 +2030,8 @@ class GameRenderer2D extends GameSystem
     // hands back the same object for every row, and at 10k rows that shows up
     // in a profile.
     //
-    // No `break` out of these loops, and no label to break to. The budget
-    // check below closes `limit` instead, which makes every later candidate
-    // fail the same test - so the pass runs to the end counting what it
-    // cannot admit, and still queues nothing more. Closing the budget is also
-    // the stronger guarantee: a `break` only worked from the *group* loop,
-    // since one on the entity loop would have finished this archetype and
-    // started the next, overrunning the budget once per group.
+    // No `break` out of these loops and no label to break to: there is no
+    // longer anything to break for. Every candidate is queued.
     for (final group in _renderables.groups()) {
       final renderable = group.get<Renderable2D>();
       final sprites = renderable.sprites;
@@ -2060,37 +2150,14 @@ class GameRenderer2D extends GameSystem
               scaleY,
             );
             // Every cell collapsed - a scale of zero, or insets that fit
-            // exactly - so there is nothing to draw. Skipped here rather than
-            // left to the budget test below, which `recordCount + 0 > limit`
-            // would wave through even after the budget had closed: a
-            // zero-record sprite admitted past a shut budget breaks the one
-            // thing closing `limit` is for.
+            // exactly - so there is nothing to draw. Skipped rather than
+            // queued: a zero-record pair costs the budget nothing and can
+            // never be the candidate the trim stops at, so queuing it would
+            // add a sprite to `lastSpriteCount` that draws no part of itself.
             if (records == 0) continue;
           } else {
             sliced = false;
             records = 1;
-          }
-          // Checked against this sprite's own cost, not against a fixed 1, so a
-          // nine-sliced sprite is admitted only if all its records fit.
-          // Admitting it partially would write past the scratch.
-          if (queue.recordCount + records > limit) {
-            // Over budget. The walk carries on instead of breaking out, and
-            // the only thing it does from here is count: a game told "at
-            // least 9 records did not fit" when its tilemap is four thousand
-            // over has been pointed at the wrong fix. Finishing the walk is
-            // what makes `lastRecordsOverBudget` the real shortfall, and it
-            // is paid only on a frame that is already broken.
-            //
-            // Closing the budget is what keeps *what* gets dropped identical
-            // to the `break outer` this replaced. Left alone, `limit` would
-            // still admit a 1-record sprite behind a 9-record one that just
-            // failed - a different drop set, and #175 is about reporting the
-            // policy, not changing it. Setting it to what is queued makes
-            // this same test true for every later candidate, so the common
-            // path pays no extra branch for it.
-            overBudget += records;
-            limit = queue.recordCount;
-            continue;
           }
           final slot = queue.add(
             entity,
@@ -2173,6 +2240,11 @@ class GameRenderer2D extends GameSystem
       }
     }
     if (!debugSkipZSort) queue.sortByZ();
+    // The budget, spent now that depth is known. On a frame that fits this is
+    // a single comparison against the queued total; on one that does not, the
+    // furthest layers are what it drops. See
+    // `_SpriteDrawQueue.trimToBudget`.
+    queue.trimToBudget(_renderer.maxSpritesPerTick);
 
     // Pass two: emit the records, in draw order.
     //
@@ -2183,7 +2255,10 @@ class GameRenderer2D extends GameSystem
     // class doc for the device measurement that forced the split.
     var offset = DrawData2D.batchHeaderBytes;
     final count = queue.length;
-    for (var i = 0; i < count; i++) {
+    // From the first pair the budget admitted, not from zero: what the trim
+    // discarded is a prefix of the sorted order, so skipping it is where the
+    // frame's depth slab begins.
+    for (var i = queue.firstAdmitted; i < count; i++) {
       if (!queue.slicedAt(i)) {
         offset = queue.writeQuadAt(view, offset, i);
         continue;
@@ -2247,9 +2322,9 @@ class GameRenderer2D extends GameSystem
       );
     }
 
-    lastSpriteCount = count;
+    lastSpriteCount = count - queue.firstAdmitted;
     lastRecordCount = queue.recordCount;
-    lastRecordsOverBudget = overBudget;
+    lastRecordsOverBudget = queue.trimmedRecordCount;
     // One record for the whole tick - see draw_2d.dart's library doc for why
     // this is not one record per sprite.
     //

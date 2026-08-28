@@ -144,10 +144,11 @@ mixin Renderer2D on Game {
     defaultCamera = descriptor.has();
   }
 
-  /// Draw records past this many in a single tick are dropped. A hard bound,
-  /// not a growing buffer: the byte scratch and the handoff slots are both
-  /// sized from it, and silently growing them mid-tick is an allocation on the
-  /// hot path. Override it if a scene genuinely draws more.
+  /// Draw records past this many in a single tick are dropped. A hard bound
+  /// on the batch: the byte scratch and the handoff slots are both sized from
+  /// it, and silently growing them mid-tick is an allocation on the hot path -
+  /// the handoff slots could not grow at all, since their addresses cross to
+  /// the game isolate at spawn. Override it if a scene genuinely draws more.
   ///
   /// It counts **records**, not entities and not sprites. An entity declaring
   /// three sprites spends three of them, and a nine-sliced sprite spends one
@@ -156,15 +157,25 @@ mixin Renderer2D on Game {
   /// `lastRecordsOverBudget` is what it could not fit, so raising this by the
   /// second is the direct fix for a scene that is dropping sprites.
   ///
+  /// **What a frame over this loses is its furthest layers.** The renderer
+  /// sorts by depth and then spends the budget from the camera forward, so
+  /// everything in front of some depth is drawn and nothing behind it is.
+  /// Until #175 it was whichever archetype was registered last that vanished.
+  ///
+  /// The default reserves 3.56 MiB per declared [CameraView]. It is 16384 and
+  /// not something smaller because a full-screen layer of 16 px tiles is 8228
+  /// records on its own, and the previous 4096 was a number a first tilemap
+  /// walked past on its first frame with nothing on screen to say so.
+  ///
   /// The name says sprites and the number counts records; renaming it is
-  /// breaking and is #175's to make.
+  /// breaking and nothing has been willing to pay for it yet.
   ///
   /// It lives here, on the `Game`, and not on [GameRenderer2D], because it is
   /// a **sizing** knob and sizing happens on this side: [describeBuffers]
   /// runs on main before the spawn and reserves the memory. Raising it is
   /// therefore an override on your `Game2D` subclass, not a reason to subclass
   /// the renderer.
-  int get maxSpritesPerTick => 4096;
+  int get maxSpritesPerTick => 16384;
 
   /// Bytes one tick's sprite batch occupies, including its tick stamp.
   int get spriteBatchBytes =>

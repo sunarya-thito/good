@@ -359,24 +359,39 @@ comparison silently.
 ```dart
 class MyGame extends Game2D {
   @override
-  int get maxSpritesPerTick => 24000;   // default 4096
+  int get maxSpritesPerTick => 24000;   // default 16384
 }
 ```
 
-This sizes the native frame buffer. Hitting the cap truncates the batch, which
-looks exactly like the renderer getting slower unless you can see the count — so
-the renderer exposes how many sprites it actually emitted, and
-`lastRecordsOverBudget` beside it: how many records the frame asked for and had
-to turn away. A debug overlay showing both is worth building early, and the
-second is the number to add to `maxSpritesPerTick`.
+This sizes the native frame buffer — the default reserves 3.56 MiB per camera
+view. Hitting the cap truncates the batch, which looks exactly like the renderer
+getting slower unless you can see the count — so the renderer exposes how many
+sprites it actually emitted, and `lastRecordsOverBudget` beside it: how many
+records the frame asked for and had to turn away. A debug overlay showing both
+is worth building early, and the second is the number to add to
+`maxSpritesPerTick`.
 
 The cap counts **records, not sprites** — a sliced sprite spends one per cell it
 draws, nine for a full frame — so a screen of panels reaches it sooner than the
 entity count suggests. Only the cells that survive are charged: a capsule button
 sliced left and right has no top or bottom row to draw, so it costs three and not
-nine. Which sprites go when it runs out is settled by archetype registration
-order, which is not a property of your scene: treat being over budget as
-something to fix, not as a layer to lose deliberately.
+nine.
+
+### What goes when it runs out
+
+**The furthest layers.** The renderer sorts by depth first and then spends the
+budget from the camera backwards, so a frame that cannot fit keeps everything in
+front of some depth and draws nothing behind it. The survivors are a contiguous
+slab: a sprite behind a refused one is refused too, even when it would have fit,
+because drawing a background tile while the mid-layer tile over it is missing is
+a worse frame than a missing back layer.
+
+A sliced sprite is still all or nothing — either every cell it draws fits or
+none of them do.
+
+Being over budget is something to fix, not a layer to lose deliberately. The
+policy exists so that a frame that goes over degrades in a way you can predict,
+not so you can plan around it.
 
 The renderer also reports its three phases — walking renderables into the draw
 queue, sorting by z, and writing geometry — separately instead of as one

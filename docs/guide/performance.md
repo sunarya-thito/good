@@ -71,6 +71,10 @@ inside the budget, and the exact amount to raise it by when you are not. Put it
 on your debug overlay next to the emitted sprite count — nothing on screen tells
 "the scene is heavy" and "the scene is clipped" apart.
 
+What a clipped frame loses is its furthest layers, so the symptom is a
+background that comes and goes rather than a sprite vanishing at random. See
+[Budgets](rendering.md#budgets).
+
 It is not `lastWriteDropped`. That one means main had not collected the previous
 frame yet, and no budget would have helped.
 

@@ -2,6 +2,33 @@
 
 ### Fixed
 
+* **A frame over the record budget drops its furthest layers, not its
+  last-registered archetype.** The budget was spent during the fill pass,
+  which walks in encounter order - archetype registration, then page, then
+  row - and the sort by depth happened afterwards. So a scene with a tilemap
+  declared first and a player declared last lost the player, and what a frame
+  dropped had nothing to do with what it looked like (#175).
+
+  The sort has not moved. The budget decision has: the fill pass queues every
+  visible candidate, `sortByZ` runs exactly as before, and the budget is spent
+  walking the sorted order from the camera backwards. Survivors are a
+  contiguous depth slab - a sprite behind a refused one is refused too, even
+  where it would have fit, because a background tile drawn while the
+  mid-layer tile over it is missing is a worse frame than a missing back
+  layer. A sliced sprite is still admitted only if every record it draws
+  fits.
+
+  On a frame that fits the trim is one integer comparison, measured at 1 ns
+  against a 47-485 microsecond pass (`tool/budget_trim_bench.dart`). What it
+  costs instead is the draw queue growing to the number of visible candidates
+  rather than to the budget - Dart heap, 80 bytes per queued sprite. The
+  native handoff and the byte scratch are still sized from
+  `maxSpritesPerTick`, so nothing that crosses the isolate boundary grew.
+
+  `lastRecordsOverBudget` is unchanged in meaning and still exact: every
+  candidate is queued before anything is spent, so the shortfall is the
+  queued total less what was drawn.
+
 * **A nine-sliced sprite is charged the records it draws, not nine.** The
   charge was hardcoded at nine for anything with an inset on it, while the
   write pass has always skipped a collapsed row or column - and a sprite
@@ -17,6 +44,13 @@
   nothing, where before it cost nine.
 
 ### Changed
+
+* **`Game2D.maxSpritesPerTick` defaults to 16384, up from 4096.** A
+  full-screen layer of 16 px tiles is 8228 records on its own, so 4096 was a
+  figure a first tilemap walked past on its first frame - and until the
+  shortfall counter landed it did so in silence. The new default reserves
+  3.56 MiB per declared `CameraView` against the previous 0.89 MiB. Override
+  it downwards on a game that knows it draws less (#175).
 
 * **`MousePickingSystem` declares `cursor` and `click` on their fields.** Both
   were `late final` assigned from a `describeInputs` override, which the
