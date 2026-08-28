@@ -528,16 +528,21 @@ abstract class CommandDescriptor {
   /// here, because a reply would be pumped by the tick this exists to work
   /// without.
   ///
-  /// **The handler must not write component data.** There is no open write
-  /// window outside a tick: `MemoryPool.beginTick` copies each page's
-  /// published bytes over the write slot, so a write landing outside one is
-  /// erased by the next tick with nothing said. A debug assert in
-  /// `data_layout.dart` catches it.
+  /// **The handler must not change the world, and the engine now stops it.**
+  /// There is no open write window outside a tick: `MemoryPool.beginTick`
+  /// copies each page's published bytes over the write slot, so a write
+  /// landing outside one is erased by the next tick with nothing said. Writing
+  /// a component field, adding or destroying an entity, and loading or
+  /// unloading a scene each throw a `StateError` from here - in every build,
+  /// on a page that has published and on one that has not. See `HandlerWindow`
+  /// (#245); until then this was a debug `assert` covering component fields
+  /// alone, silent on an unpublished page, and gone from a release build.
   ///
-  /// **That assert has one hole**, and it is worth knowing before you trust
-  /// the guard: it stays silent while a page has never published, which is
-  /// scene bootstrap and nothing else. A running game is covered; a control
-  /// handler that writes during bring-up is not.
+  /// **A `StateChannel` is the exception, deliberately.** It publishes into
+  /// its own `TripleBuffer` on the spot, so nothing erases it, and it is the
+  /// answer leg this lane has instead of a reply - which is what the refusal
+  /// for a control command that returns something tells you to reach for.
+  /// Plain Dart state (a pause flag, a time scale) was never in question.
   ///
   /// **There is no ordering against tick-delivered commands.** They travel by
   /// different carriers, so two calls sent in order can run in either. That
@@ -570,22 +575,24 @@ abstract class CommandDescriptor {
   /// lane takes the shapes that return something and the control lane refuses
   /// them.
   ///
-  /// **Read-only is a promise you make, and the engine does not check it.**
-  /// Nothing in Dart makes a closure read-only, so this is a naming
-  /// convention with a lane attached, not a guarantee. What actually happens
-  /// if a handler here writes:
+  /// **Read-only is a promise you make, and the engine holds you to it.**
+  /// Nothing in Dart makes a closure read-only, so the lane is opened around
+  /// the dispatch instead: `CommandTransport` tells the pool which kind of
+  /// handler is running, and every path that changes anything asks. A write
+  /// from here throws a `StateError` naming the lane, in every build:
   ///
-  /// - **A component field is erased, quietly.** There is no open write window
-  ///   outside a tick, and `MemoryPool.beginTick` copies each page's published
-  ///   bytes over the write slot, so the value is gone on the next step with
-  ///   nothing said. A debug assert in `data_layout.dart` catches it, except
-  ///   on a page that has never published - scene bootstrap, and nothing else.
-  /// - **Everything else is not guarded at all.** Adding an entity, writing a
-  ///   `StateChannel`, unloading a scene: none of them assert from here, and
-  ///   `unloadScene` frees native pages immediately (#245).
+  /// - **A component field**, which there is no write slot for - `beginTick`
+  ///   would copy the published bytes back over it on the next step. Refused
+  ///   on a page that has published and on one that has not.
+  /// - **Adding or destroying an entity, loading or unloading a scene.**
+  ///   `unloadScene` frees native pages on the spot, which is the one #245
+  ///   named first.
+  /// - **A `StateChannel`.** Unlike the receipt lane, which publishes on one
+  ///   because it has no reply leg, this lane has a reply - so a write is
+  ///   never how it says something.
   ///
   /// So the lane is worth reaching for when the handler reads and returns, and
-  /// worth avoiding otherwise. `hasHandler` is the one that may write.
+  /// it will tell you when it is not. `hasHandler` is the one that may write.
   ///
   /// **There is no ordering against tick-delivered commands.** They are
   /// drained from separate inboxes on separate schedules, so two batches sent

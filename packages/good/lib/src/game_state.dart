@@ -488,6 +488,10 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // to arrive at the same ids, which is the agreement `Game`'s registry
     // snapshot existed to preserve. One registrar has no one to agree with.
     _requireSimulating('loadScene');
+    // A scene brought up from a handler with no tick window open spawns its
+    // entities and runs its mount listeners with no write slot for either.
+    // See `HandlerWindow` (#245).
+    pool.requireWorldMutable('A scene was loaded');
 
     // Synchronous, order-critical half - see the doc above.
     next.bindState(this);
@@ -548,6 +552,10 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// exists to avoid.
   void unloadScene(Scene scene) {
     _requireSimulating('unloadScene');
+    // The one #245 named first: this frees the scene's native pages on the
+    // spot, so a receipt handler could pull the memory out from under a
+    // simulation that is merely paused. See `HandlerWindow`.
+    pool.requireWorldMutable('A scene was unloaded');
     final struct = SceneRegistry.tryResolve(scene);
     if (struct == null) return;
 
@@ -580,6 +588,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// Iterates a copy of the list, because [unloadScene] mutates it.
   void unloadAllScene(SceneStruct struct) {
     _requireSimulating('unloadAllScene');
+    pool.requireWorldMutable('Every loaded instance of a scene was unloaded');
     final doomed = <Scene>[
       for (final scene in _loaded)
         if (identical(SceneRegistry.tryResolve(scene), struct)) scene,
@@ -1115,7 +1124,8 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // a question the other one asked. Its handlers run here rather than in
     // [runFixedStep] because that is what makes them reachable on a frame
     // that afforded no step - a paused game, a zero time scale. They promise
-    // not to write, which is a convention the engine cannot check; see
+    // not to write, and the transport opens a `HandlerWindow` around the
+    // dispatch so the pool can hold them to it (#245); see
     // `CommandDescriptor.hasReadOnlyHandler`.
     //
     // After the presentation pass and after the adopt, so a request that

@@ -35,6 +35,58 @@ import 'package:good/src/triple_buffer.dart';
 // that path is what 39 of the 48 test bring-ups exercise. See
 // `GameRuntime.drivable` for why it is still not allowed to hand out the world.
 
+/// Which kind of handler is running with no tick window open, if any.
+///
+/// Two command lanes run user code outside `beginTick`/`commitTick`: the
+/// receipt-delivered one, dispatched from a control-port callback
+/// (`CommandDescriptor.hasControlSink`), and the read-only one, drained once
+/// per frame from `GameState.advance` (`hasReadOnlyHandler`). Both told the
+/// caller not to write and neither could check it - a component write was
+/// erased by the next tick with an `assert` that a release build compiles out,
+/// and adding an entity, writing a `StateChannel` and unloading a scene were
+/// not guarded at all (#245).
+///
+/// `CommandTransport` opens the matching window around the dispatch and puts
+/// the previous one back after. `MemoryPool` is where it lives because the
+/// pool already answers the neighbouring question - see
+/// [MemoryPool.isTickOpen] - and because it is the one object every write path
+/// in the engine already holds.
+enum HandlerWindow {
+  /// No out-of-tick handler is running: the ordinary state, and the one the
+  /// engine's own bring-up and teardown run in.
+  none('', ''),
+
+  /// A receipt-delivered handler - `hasControlSink`, `hasControlSignal`.
+  ///
+  /// It may not touch the world. It may still publish on a `StateChannel`,
+  /// which is the answer leg it has instead of a reply.
+  receipt(
+    'receipt-delivered',
+    'Register the part that changes the world with hasSink or hasHandler, '
+        'which are delivered inside the tick; keep hasControlSink for the '
+        'part that has to work while the tick is stopped.',
+  ),
+
+  /// A read-only handler - `hasReadOnlyHandler`, `hasReadOnlySupplier`.
+  ///
+  /// It may not write anything at all, a `StateChannel` included: it has a
+  /// reply leg to answer through, so a write is never how it says something.
+  readOnly(
+    'read-only',
+    'This lane exists to answer a question while the tick is stopped, and it '
+        'replies - so read, return, and let the caller decide. Register '
+        'anything that changes the world with hasHandler instead.',
+  );
+
+  const HandlerWindow(this.lane, this.remedy);
+
+  /// How the refusal names this lane.
+  final String lane;
+
+  /// What the refusal tells the caller to do instead.
+  final String remedy;
+}
+
 // Shared memory pool across isolates.
 //
 // The game isolate runs fixed-tick ECS systems (physics, gameplay logic)
@@ -106,6 +158,116 @@ class MemoryPool {
 
   @internal
   int get epoch => _epoch;
+
+  /// [epoch] as the **write** path compares against, and the whole of what
+  /// #245's guard costs the hot path: nothing.
+  ///
+  /// `ArchetypeStorage.rowWrite` already tested its cached epoch against
+  /// [epoch] before every field write, to notice the bases moving. It tests
+  /// against this instead. The two numbers are equal whenever writing
+  /// component data is legitimate, so a running game compares exactly what it
+  /// compared before - same field load, same branch, same cache hits.
+  ///
+  /// While a handler that may not write is running (see [handlerWindow]) this
+  /// holds [_sealedEpoch], which no cache can be holding. Every write then
+  /// misses and lands in `_refreshWriteCache`, the cold path that already
+  /// exists, and that is where the refusal is a real `throw` rather than an
+  /// `assert` - so it stands in a release build, which is the row of #245's
+  /// table that mattered most.
+  int _writeEpoch = 0;
+
+  @internal
+  int get writeEpoch => _writeEpoch;
+
+  /// A number [_refreshRowCache] never stores, so a cache holding it is a
+  /// contradiction rather than a coincidence. `ArchetypeStorage._cacheEpoch`
+  /// starts at -2 for the same reason.
+  static const int _sealedEpoch = -1;
+
+  /// Which kind of no-tick-window handler is running right now, if any.
+  ///
+  /// Set by `CommandTransport` around the dispatch and back again after; read
+  /// by every path in the engine that changes the world. There is no getter
+  /// for it: nothing outside this class has a question that the two
+  /// `require` methods below do not answer better.
+  HandlerWindow _window = HandlerWindow.none;
+
+  /// Whether component data may be written at this instant.
+  ///
+  /// A tick window trumps the handler window: `GameState.stepOnce` is a
+  /// receipt-delivered handler that runs a whole fixed step, and the writes
+  /// inside that step are exactly as legitimate as any other tick's.
+  bool get _writable => _tickOpen || _window == HandlerWindow.none;
+
+  void _bumpEpoch() {
+    _epoch++;
+    _resealWriteEpoch();
+  }
+
+  void _resealWriteEpoch() {
+    _writeEpoch = _writable ? _epoch : _sealedEpoch;
+  }
+
+  /// Opens [window] around a handler about to run, and hands back the window
+  /// that was open so [closeHandlerWindow] can put it back.
+  ///
+  /// Returns rather than counts, because a handler can send a receipt batch of
+  /// its own and be dispatched from inside another one's window - a depth
+  /// counter would restore the wrong *kind*.
+  @internal
+  HandlerWindow openHandlerWindow(HandlerWindow window) {
+    final previous = _window;
+    _window = window;
+    _resealWriteEpoch();
+    return previous;
+  }
+
+  @internal
+  void closeHandlerWindow(HandlerWindow previous) {
+    _window = previous;
+    _resealWriteEpoch();
+  }
+
+  /// Refuses [what] when it is being asked for by a handler with no tick
+  /// window open.
+  ///
+  /// One field test and one enum compare, on paths that are already doing far
+  /// more than that - a spawn memcpys a row, an unload frees pages. The
+  /// per-field write path does not call this at all; it gets the same answer
+  /// out of [writeEpoch] for free.
+  @internal
+  void requireWorldMutable(String what) {
+    if (_writable) return;
+    throw StateError(_refusal(what));
+  }
+
+  /// The same refusal for a `StateChannel`, which only the read-only lane is
+  /// held to.
+  ///
+  /// A receipt-delivered handler publishing on a channel is the answer leg it
+  /// has instead of a reply, and the engine's own message for a control
+  /// command that returns something says so outright ("make it a SinkCommand
+  /// and publish the answer on a StateChannel"). A channel write is not
+  /// tick-scoped either: it publishes into its own `TripleBuffer` on the spot,
+  /// so nothing erases it. The read-only lane is a different promise - it
+  /// answers through a reply - and it is held to it.
+  @internal
+  void requireChannelWritable() {
+    if (_tickOpen || _window != HandlerWindow.readOnly) return;
+    throw StateError(
+      'A state channel was written from a ${_window.lane} handler. Nothing '
+      'erases it - a channel publishes into its own TripleBuffer on the spot - '
+      'so this is refused for what it says rather than for what it loses: the '
+      'lane declared that it answers by returning. ${_window.remedy}',
+    );
+  }
+
+  String _refusal(String what) =>
+      '$what from a ${_window.lane} handler, which runs with no tick window '
+      'open. There is no write slot outside beginTick()/commitTick(): a '
+      'component write lands in a slot the next beginTick() copies over, and '
+      'an entity or a scene changed here changes while the simulation is '
+      'standing still. ${_window.remedy}';
 
   bool _tickOpen = false;
 
@@ -193,8 +355,11 @@ class MemoryPool {
   /// Starts a fixed tick's write pass across every page - see the class
   /// doc above. Call once, before any system runs.
   void beginTick() {
-    _epoch++;
     _tickOpen = true;
+    // After [_tickOpen], because the bump reseals the write epoch off it -
+    // and a tick window is what makes writing legitimate again inside a
+    // receipt handler that ran a step (`GameState.stepOnce`).
+    _bumpEpoch();
     for (final page in _pages) {
       if (page == null) continue;
       // Before the write pass, and before any system can run a query: this is
@@ -222,8 +387,10 @@ class MemoryPool {
     }
     // After every publish, not before: the read base each page resolves to has
     // just moved, and presentation reads through the cache.
-    _epoch++;
     _tickOpen = false;
+    // And back under whatever handler window the step ran inside, which for
+    // `stepOnce` is a receipt-delivered one.
+    _bumpEpoch();
   }
 
   /// Frees one page and drops it from this pool.
@@ -235,7 +402,7 @@ class MemoryPool {
   /// removing it, because `Entity.pageIndex` is an index into *that* list and
   /// shifting it would silently repoint every handle after the hole.
   void freePage(MemoryPage page) {
-    _epoch++;
+    _bumpEpoch();
     final index = _pages.indexOf(page);
     if (index < 0) return;
     // Tombstoned, not removed - see [_pages]. `dispose` is a no-op on an

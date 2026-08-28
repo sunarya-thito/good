@@ -232,7 +232,11 @@ class ArchetypeStorage {
   // `DataPointer` dispatch left in place. Addresses stay stable because the
   // memory is native (`calloc`), never GC-relocated, and `epoch` already
   // catches the bases actually moving.
-  int _cacheEpoch = -1;
+  // -2, not -1: `MemoryPool._sealedEpoch` is -1, and a fresh storage holding
+  // it would read as a cache that agrees with a sealed pool. The page compare
+  // would still catch it, but a sentinel that cannot collide is one less thing
+  // to have to notice.
+  int _cacheEpoch = -2;
   int _cachePage = -1;
   late MemoryPage _cachedPage;
   late int _cacheRead;
@@ -280,6 +284,19 @@ class ArchetypeStorage {
   @internal
   MemoryPage get cachedPage => _cachedPage;
 
+  /// The write half of [_refreshRowCache], and the only place a component
+  /// write is refused.
+  ///
+  /// Cold by construction: [rowWrite] reaches it once per page per epoch, and
+  /// a sealed pool reports an epoch no cache can hold (see
+  /// `MemoryPool.writeEpoch`), so every write inside a handler that may not
+  /// write arrives here. A real `throw`, not an `assert` - the point of #245
+  /// is that a release build checks too.
+  void _refreshWriteCache(int pageIndex, Entity entity) {
+    pool.requireWorldMutable('Component data was written');
+    _refreshRowCache(pageIndex, entity);
+  }
+
   @internal
   @pragma('vm:prefer-inline')
   /// The **address** of [entity]'s published row, not a `Pointer` - see the
@@ -297,8 +314,13 @@ class ArchetypeStorage {
   /// The **address** of [entity]'s write-slot row. See [rowRead].
   int rowWrite(Entity entity) {
     final index = entity.pageIndex;
-    if (_cacheEpoch != pool.epoch || _cachePage != index) {
-      _refreshRowCache(index, entity);
+    // `writeEpoch`, where [rowRead] uses `epoch`. The two are the same number
+    // whenever writing is legitimate, so this is the identical field load and
+    // compare it has always been; a sealed pool reports a value no cache holds
+    // and sends every write into the cold path, where it is refused. See
+    // `MemoryPool.writeEpoch`.
+    if (_cacheEpoch != pool.writeEpoch || _cachePage != index) {
+      _refreshWriteCache(index, entity);
     }
     return _cacheWrite + entity.rowOffset;
   }
@@ -629,6 +651,10 @@ class ArchetypeStorage {
   /// [_currentPageBySlot]. Pass -1 for a row outside any scene.
   Entity allocateRow(int sceneSlot) {
     assert(_requireSealed());
+    // Not covered by the write-epoch seal: a spawn writes its defaults through
+    // `resolveWrite` directly, not through [rowWrite]. One enum compare on a
+    // path that memcpys the stride twice.
+    pool.requireWorldMutable('An entity was added');
     var current = _currentPageBySlot[sceneSlot] ?? -1;
     if (current < 0 || _pages[current] == null || _pages[current]!.isFull) {
       // Before opening a *new* page, look for an existing one with room.

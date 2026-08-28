@@ -9,6 +9,7 @@ import 'package:good/src/command/param.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/event.dart';
 import 'package:good/src/event/fixed_loop.dart';
+import 'package:good/src/event/state.dart';
 import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
@@ -638,6 +639,165 @@ class _MuteReadOnlyGame extends _TestGame {
   }
 }
 
+// --- #245: a handler that runs with no tick window open --------------------
+//
+// One fixture, one command per thing #245 measured, so the tests differ only
+// in which one they call. Both out-of-tick lanes are represented, because the
+// promise is the same one made twice: a receipt-delivered handler runs in a
+// port callback and a read-only one runs from `advance`, and neither has a
+// write slot behind it.
+
+/// A `SupplierCommand<int>` with its parameter plumbing written once. The
+/// read-only lane only takes shapes that answer, so every probe on it needs
+/// this and none of them needs a different one.
+abstract class _IntAnswer extends SupplierCommand<int> {
+  final answer = Param.int32();
+
+  @override
+  void bufferFromResult(ParamBuffer call, int result) => answer[call] = result;
+
+  @override
+  int resultFromBuffer(ParamBuffer call) => answer[call];
+}
+
+class _ControlWrite extends SignalCommand {}
+
+class _ControlSpawn extends SignalCommand {}
+
+class _ControlDestroy extends SignalCommand {}
+
+class _ControlUnload extends SignalCommand {}
+
+class _ControlChannelWrite extends SignalCommand {}
+
+class _ControlStateWrite extends SignalCommand {}
+
+class _ReadOnlyComponentWrite extends _IntAnswer {}
+
+class _ReadOnlySpawn extends _IntAnswer {}
+
+class _ReadOnlyUnload extends _IntAnswer {}
+
+class _ReadOnlyChannelWrite extends _IntAnswer {}
+
+class _ReadOnlyRead extends _IntAnswer {}
+
+/// Writes a component field from a system, inside the tick, which is the one
+/// place all of this is meant to work.
+class _MarkerSystem extends GameSystem with FixedTickable {
+  _MarkerSystem(this._scene);
+
+  final _TestScene _scene;
+  Entity? target;
+  int wrote = 0;
+
+  @override
+  void onFixedUpdate() {
+    final entity = target;
+    if (entity == null) return;
+    _scene.unit.marker[entity] = ++wrote;
+  }
+}
+
+class _WindowState extends _FixtureState {
+  /// The row the write probes aim at. Set by the test, because whether its
+  /// page has published is the whole of one of these cases.
+  late Entity victim;
+
+  late final _MarkerSystem marker;
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    marker = descriptor.has(() => _MarkerSystem(level));
+  }
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    final game = this.game as _WindowGame;
+    descriptor
+      ..hasControlSignal(game.controlWrite, _write)
+      ..hasControlSignal(game.controlSpawn, _spawn)
+      ..hasControlSignal(game.controlDestroy, _destroy)
+      ..hasControlSignal(game.controlUnload, _unload)
+      ..hasControlSignal(game.controlChannelWrite, _channel)
+      ..hasControlSignal(game.controlStateWrite, _plainDartState)
+      ..hasReadOnlySupplier(game.readOnlyWrite, () {
+        _write();
+        return 1;
+      })
+      ..hasReadOnlySupplier(game.readOnlySpawn, () {
+        _spawn();
+        return 1;
+      })
+      ..hasReadOnlySupplier(game.readOnlyUnload, () {
+        _unload();
+        return 1;
+      })
+      ..hasReadOnlySupplier(game.readOnlyChannelWrite, () {
+        _channel();
+        return 1;
+      })
+      ..hasReadOnlySupplier(
+        game.readOnlyRead,
+        () => level.unit.marker[victim],
+      );
+  }
+
+  /// Plain Dart state, touched by a receipt handler. Nothing in #245 is about
+  /// this and the guard must leave it alone - it is what the whole lane is
+  /// for.
+  int pokes = 0;
+
+  void _write() => level.unit.marker[victim] = 5;
+
+  void _spawn() => loadedScenes.single.addEntity(level.unit);
+
+  void _destroy() => victim.destroy();
+
+  void _unload() => unloadScene(loadedScenes.single);
+
+  void _channel() => (game as _WindowGame).score.value = 5;
+
+  void _plainDartState() => pokes++;
+}
+
+class _WindowGame extends _TestGame {
+  final score = Channel.int32();
+
+  late final _ControlWrite controlWrite;
+  late final _ControlSpawn controlSpawn;
+  late final _ControlDestroy controlDestroy;
+  late final _ControlUnload controlUnload;
+  late final _ControlChannelWrite controlChannelWrite;
+  late final _ControlStateWrite controlStateWrite;
+  late final _ReadOnlyComponentWrite readOnlyWrite;
+  late final _ReadOnlySpawn readOnlySpawn;
+  late final _ReadOnlyUnload readOnlyUnload;
+  late final _ReadOnlyChannelWrite readOnlyChannelWrite;
+  late final _ReadOnlyRead readOnlyRead;
+
+  @override
+  GameState createState() => _WindowState();
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    controlWrite = descriptor.has(_ControlWrite.new);
+    controlSpawn = descriptor.has(_ControlSpawn.new);
+    controlDestroy = descriptor.has(_ControlDestroy.new);
+    controlUnload = descriptor.has(_ControlUnload.new);
+    controlChannelWrite = descriptor.has(_ControlChannelWrite.new);
+    controlStateWrite = descriptor.has(_ControlStateWrite.new);
+    readOnlyWrite = descriptor.has(_ReadOnlyComponentWrite.new);
+    readOnlySpawn = descriptor.has(_ReadOnlySpawn.new);
+    readOnlyUnload = descriptor.has(_ReadOnlyUnload.new);
+    readOnlyChannelWrite = descriptor.has(_ReadOnlyChannelWrite.new);
+    readOnlyRead = descriptor.has(_ReadOnlyRead.new);
+  }
+}
+
 /// The same refusal asked of the **main** descriptor, and through the sink
 /// spelling rather than the signal one - two methods and two descriptors, so
 /// the shared message function is proved wired on both sides.
@@ -1142,29 +1302,330 @@ void main() {
       );
     });
   });
+  // #245. The two lanes that run a handler with no tick window open both
+  // promised not to write and neither could check it. `MemoryPool` now holds a
+  // `HandlerWindow` that `CommandTransport` opens around the dispatch, and
+  // every path that changes the world asks it - so the refusal is a `throw`
+  // that stands in a release build rather than an `assert` that does not.
+  group('a handler with no tick window open', () {
+    Future<_WindowState> boot({required bool publish}) async {
+      final game = await _game(_WindowGame.new);
+      final state = _state(game) as _WindowState;
+      state.victim = state.loadedScenes.single.addEntity(state.level.unit);
+      // A page publishes at the first `commitTick` and not before, so this is
+      // the whole difference between the two component-write cases.
+      if (publish) state.advance(_step);
+      return state;
+    }
+
+    /// Queues [ask] on the read-only lane, drives the frame that drains it,
+    /// and checks what both ends were told.
+    Future<void> expectReadOnlyRefused(
+      _WindowState state,
+      Future<int> Function() ask,
+      Matcher message,
+    ) async {
+      final pending = ask();
+      expect(
+        () => state.advance(_step),
+        throwsA(isA<StateError>().having((e) => e.message, 'message', message)),
+        reason:
+            'the lane is drained from advance, so that is where a refusal '
+            'surfaces on this copy',
+      );
+      await expectLater(
+        pending,
+        throwsA(isA<StateError>().having((e) => e.message, 'message', message)),
+        reason:
+            'and the caller is told rather than left awaiting a batch that '
+            'has already failed',
+      );
+    }
+
+    group('a receipt-delivered handler', () {
+      test('cannot write a component on a page that never published', () async {
+        final state = await boot(publish: false);
+        final game = state.game as _WindowGame;
+
+        expect(
+          () => game.controlWrite(),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              allOf(
+                contains('Component data was written'),
+                contains('receipt-delivered'),
+              ),
+            ),
+          ),
+          reason:
+              'this is the row that reported nothing in any build: the old '
+              'assert let an unpublished page through, so a handler touching '
+              'a fresh scene was unguarded everywhere (#245)',
+        );
+        expect(
+          state.level.unit.marker[state.victim],
+          7,
+          reason:
+              'and the write did not land - 7 is what onEntityMounted wrote '
+              'during bootstrap',
+        );
+      });
+
+      test('cannot add an entity', () async {
+        final state = await boot(publish: true);
+        final game = state.game as _WindowGame;
+        final before = state.pool.pageCount;
+
+        expect(
+          () => game.controlSpawn(),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              allOf(
+                contains('An entity was added'),
+                contains('receipt-delivered'),
+              ),
+            ),
+          ),
+        );
+        expect(state.pool.pageCount, before);
+      });
+
+      test('cannot destroy an entity', () async {
+        final state = await boot(publish: true);
+        final game = state.game as _WindowGame;
+
+        expect(
+          () => game.controlDestroy(),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              contains('An entity was destroyed'),
+            ),
+          ),
+          reason:
+              'the mirror of adding one. #245 did not measure it, and it is '
+              'the same free-a-row-while-nothing-is-ticking hazard',
+        );
+        expect(state.level.unit.marker[state.victim], 7);
+      });
+
+      test('cannot unload a scene', () async {
+        final state = await boot(publish: true);
+        final game = state.game as _WindowGame;
+
+        expect(
+          () => game.controlUnload(),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              allOf(
+                contains('A scene was unloaded'),
+                contains('receipt-delivered'),
+              ),
+            ),
+          ),
+          reason:
+              'this one frees the native pages on the spot, which is the '
+              'per-scene version of what made `stop` a control message',
+        );
+        expect(
+          state.loadedScenes,
+          hasLength(1),
+          reason:
+              'and the scene is still there, so nothing was half done before '
+              'the refusal',
+        );
+      });
+
+      test('may still publish on a state channel', () async {
+        final state = await boot(publish: true);
+        final game = state.game as _WindowGame;
+
+        game.controlChannelWrite();
+
+        expect(
+          game.score.value,
+          5,
+          reason:
+              'a channel write is the answer leg a receipt-delivered command '
+              'has instead of a reply, and the engine tells callers to reach '
+              'for it - see _controlCannotAnswer. It publishes into its own '
+              'TripleBuffer on the spot, so no tick erases it',
+        );
+      });
+
+      test('may still touch plain Dart state', () async {
+        final state = await boot(publish: true);
+        final game = state.game as _WindowGame;
+
+        game.controlStateWrite();
+
+        expect(
+          state.pokes,
+          1,
+          reason:
+              'setting a field is what the whole lane is for - pause, time '
+              'scale, visibility. A guard that stopped this would have taken '
+              'the capability with it',
+        );
+      });
+    });
+
+    group('a read-only handler', () {
+      test('cannot write a component', () async {
+        final state = await boot(publish: true);
+        final game = state.game as _WindowGame;
+
+        await expectReadOnlyRefused(
+          state,
+          game.readOnlyWrite.call,
+          contains('Component data was written'),
+        );
+        expect(state.level.unit.marker[state.victim], 7);
+      });
+
+      test('cannot add an entity', () async {
+        final state = await boot(publish: true);
+        final game = state.game as _WindowGame;
+
+        await expectReadOnlyRefused(
+          state,
+          game.readOnlySpawn.call,
+          contains('An entity was added'),
+        );
+      });
+
+      test('cannot unload a scene', () async {
+        final state = await boot(publish: true);
+        final game = state.game as _WindowGame;
+
+        await expectReadOnlyRefused(
+          state,
+          game.readOnlyUnload.call,
+          contains('A scene was unloaded'),
+        );
+        expect(state.loadedScenes, hasLength(1));
+      });
+
+      test('cannot write a state channel either', () async {
+        final state = await boot(publish: true);
+        final game = state.game as _WindowGame;
+
+        await expectReadOnlyRefused(
+          state,
+          game.readOnlyChannelWrite.call,
+          allOf(contains('A state channel was written'), contains('read-only')),
+        );
+        expect(
+          game.score.value,
+          0,
+          reason:
+              'the lane that answers through a reply has no business saying '
+              'anything by writing - which is where it parts company with the '
+              'receipt lane above',
+        );
+      });
+
+      test('still answers when it only reads', () async {
+        final state = await boot(publish: true);
+        final game = state.game as _WindowGame;
+
+        final answer = game.readOnlyRead();
+        state.advance(_step);
+
+        expect(
+          await answer,
+          7,
+          reason:
+              'the capability #249 added is untouched: a paused game can '
+              'still be asked a question',
+        );
+      });
+    });
+
+    group('what the guard must not break', () {
+      test('a system writing inside the tick still writes', () async {
+        final state = await boot(publish: true);
+        state.marker.target = state.victim;
+
+        state.advance(_step * 2);
+
+        expect(state.level.unit.marker[state.victim], 2);
+      });
+
+      test('bootstrap writes before anything published still land', () async {
+        final state = await boot(publish: false);
+
+        expect(
+          state.level.unit.marker[state.victim],
+          7,
+          reason:
+              'onEntityMounted runs during scene bring-up, outside any tick '
+              'and before any publish. That window is not a handler window, '
+              'so the guard never sees it',
+        );
+      });
+
+      test('stepOnce runs a fixed step from inside a receipt handler', () async {
+        final state = await boot(publish: true);
+        final game = state.game as _WindowGame;
+        state.marker.target = state.victim;
+
+        game.stepOnce();
+
+        expect(
+          state.level.unit.marker[state.victim],
+          1,
+          reason:
+              'stepOnce is itself a receipt-delivered handler and it calls '
+              'runFixedStep, so the writes inside that step happen with a '
+              'control window open. A tick window has to win over the handler '
+              'window or this capability goes',
+        );
+      });
+
+      test('unloading a scene from ordinary code still works', () async {
+        final state = await boot(publish: true);
+
+        state.unloadScene(state.loadedScenes.single);
+
+        expect(state.loadedScenes, isEmpty);
+      });
+    });
+  });
+
   group('control-delivered commands', () {
     test('a control handler writing component data trips the guard', () async {
       final game = await _game(_BadControlGame.new);
       final state = _state(game) as _BadControlState;
       state.victim = state.loadedScenes.single.addEntity(state.level.unit);
-      // One committed tick, so the page has published - the assert stays
-      // silent before the first publish, which is scene bootstrap and the one
-      // hole in the guard.
+      // One committed tick, so the page has published - which used to be the
+      // only case the guard covered at all.
       state.advance(_step);
 
       expect(
         () => game.writeOutsideTick(),
         throwsA(
-          isA<AssertionError>().having(
-            (e) => e.toString(),
+          isA<StateError>().having(
+            (e) => e.message,
             'message',
-            contains('outside a tick'),
+            allOf(
+              contains('Component data was written'),
+              contains('receipt-delivered'),
+            ),
           ),
         ),
         reason:
             'there is no open write slot outside a tick, so the write would '
-            'be erased by the next beginTick with nothing said. The debug '
-            'assert is what turns a silent loss into a failure.',
+            'be erased by the next beginTick with nothing said. A StateError '
+            'and not an AssertionError, because an assert is not there in the '
+            'build people ship (#245).',
       );
     });
 

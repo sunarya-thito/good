@@ -322,13 +322,12 @@
   price of the split is that there is no ordering *between* the lanes, only
   within each - the same trade receipt delivery already makes.
 
-  **Read-only is a promise the caller makes, and nothing checks it.** Nothing
-  in Dart makes a closure read-only. A handler here that writes a component
-  field has that write erased by the next `beginTick` with nothing said (a
-  debug assert in `data_layout.dart` catches it, except on a page that has
-  never published); adding an entity, writing a `StateChannel` and unloading a
-  scene are not guarded from here at all (#245). `hasHandler` is the one that
-  may write.
+  **Read-only is a promise the caller makes, and the engine holds them to
+  it.** Nothing in Dart makes a closure read-only, so the lane is declared
+  around the dispatch instead. A component write, adding or destroying an
+  entity, loading or unloading a scene and a `StateChannel` write each throw a
+  `StateError` from here, in every build - see Fixed, #245. `hasHandler` is the
+  one that may write.
 
   `hasReadOnlySink` and `hasReadOnlySignal` exist and always throw, the way
   `hasControlHandler` does: a handler that promises not to write and has no
@@ -819,6 +818,53 @@
   Composites nest, so a saved composite of composites round-trips too.
 
 ### Fixed
+
+* **A handler that runs with no tick window open can no longer change the
+  world, in any build.** Two command lanes run user code outside
+  `beginTick`/`commitTick`: the receipt-delivered one, dispatched from a
+  control-port callback, and the read-only one, drained once per frame from
+  `GameState.advance`. Both told the caller not to write and neither could
+  check it (#245). Measured on a `hasControlSink` handler writing a component
+  field: with asserts on and a page that had published, the one assert in
+  `data_layout.dart` fired; in a release build that assert is not there, so the
+  write landed in the write slot and the next `beginTick` copied the published
+  bytes back over it with nothing said; on a page that had never published,
+  nothing was reported in either build and the value stuck. `addEntity`, a
+  `StateChannel` write and `unloadScene` reported nothing at all, and
+  `unloadScene` freed the scene's native pages on the spot.
+
+  `MemoryPool` now holds a `HandlerWindow`, and `CommandTransport` opens the
+  matching one around every dispatch that runs with no tick open — one place,
+  where a handler starts running, rather than one check per write path. A
+  component write, adding or destroying an entity, and loading or unloading a
+  scene each throw a `StateError` naming the lane. A read-only handler is held
+  to a `StateChannel` as well; a receipt-delivered one is not, because
+  publishing on a channel is the answer leg it has instead of a reply and the
+  engine's own refusal for a control command that returns a value says to reach
+  for exactly that.
+
+  **It costs the write path nothing.** `ArchetypeStorage.rowWrite` already
+  compared its cached epoch against `MemoryPool.epoch` before every field
+  write; it compares against `writeEpoch` instead, which is the same number
+  whenever writing is legitimate and an impossible one while a window is open.
+  So a running game runs the same field load and the same branch it always did,
+  and a sealed pool sends every write into the row-cache miss path that already
+  existed, where the refusal lives. Nothing per entity, nothing per tick.
+
+  **A tick window beats a handler window**, which is what keeps `stepOnce`
+  working: it is itself a receipt-delivered handler and it runs a whole fixed
+  step, and the writes inside that step are as legitimate as any other tick's.
+
+  **Bootstrap is untouched.** The `|| !hasPublished` clause on the old assert
+  was an escape hatch for scene bring-up, and a hole at the same time — a
+  handler that happened to touch a fresh page was unguarded in every build. It
+  stays, and it stops being a hole: the new refusal never asks whether a page
+  has published, only whether a handler that may not write is running. Scene
+  mounting is not one, so it writes exactly as it did.
+
+  A handler that throws — including one refused here — no longer re-runs off
+  the same queue entry on the next frame, and a local caller awaiting it is
+  told rather than left waiting.
 
 * **A game whose fixed tick is stopped now adopts a reply the other isolate
   has already written.** `CommandTransport.pump` had one call site on the game
