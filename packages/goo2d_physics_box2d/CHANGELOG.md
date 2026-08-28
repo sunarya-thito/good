@@ -2,8 +2,35 @@
 
 ### Breaking
 
-* **This needs `goo2d` 0.3.0.** Nothing in this package's own API moves, but
-  `goo2d` and `good` carry source breaks under their own `## Unreleased` -
+* **`RigidBody2D` finishes the prefix its first two columns already had.**
+  `bodyHandle` and `bodyType` were prefixed; the other twelve were not, and
+  `linearVelocityX`, `gravityScale` and `fixedRotation` are all plausible
+  names for a column on somebody else's component. The stem is `body` rather
+  than `rigidBody`, which would have produced `rigidBodyLinearVelocityX`
+  (#133).
+
+  | before | after |
+  |---|---|
+  | `linearVelocityX` | `bodyLinearVelocityX` |
+  | `linearVelocityY` | `bodyLinearVelocityY` |
+  | `angularVelocity` | `bodyAngularVelocity` |
+  | `gravityScale` | `bodyGravityScale` |
+  | `linearDamping` | `bodyLinearDamping` |
+  | `angularDamping` | `bodyAngularDamping` |
+  | `fixedRotation` | `bodyFixedRotation` |
+  | `isBullet` | `bodyIsBullet` |
+  | `syncedX` | `bodySyncedX` |
+  | `syncedY` | `bodySyncedY` |
+  | `syncedAngle` | `bodySyncedAngle` |
+  | `syncedType` | `bodySyncedType` |
+
+  `bodyHandle` and `bodyType` do not move. The four `synced*` columns are
+  `@internal` and are listed for completeness. Names only - column order,
+  widths and `strideBytes` are unchanged, and the rule is in
+  `docs/reference/design-rules.md`.
+
+* **This needs `goo2d` 0.3.0.** Beyond the renames above nothing here moves,
+  but `goo2d` and `good` carry source breaks under their own `## Unreleased` -
   `SystemDescriptor.has` takes a constructor now, and `Box2DPhysicsSystem` is
   declared through it - so a project cannot take this and leave the engine
   where it was. The dependency reads `^0.3.0-dev` until 0.3.0 is published

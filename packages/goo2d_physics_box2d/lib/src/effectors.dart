@@ -212,10 +212,10 @@ extension Effectors2D on Box2DPhysicsSystem {
         ..applyForce(entity, 0, -density * gravityY * scale)
         ..applyForce(
           entity,
-          -body.linearVelocityX[entity] * linearDrag,
-          -body.linearVelocityY[entity] * linearDrag,
+          -body.bodyLinearVelocityX[entity] * linearDrag,
+          -body.bodyLinearVelocityY[entity] * linearDrag,
         )
-        ..applyTorque(entity, -body.angularVelocity[entity] * angularDrag);
+        ..applyTorque(entity, -body.bodyAngularVelocity[entity] * angularDrag);
       affected++;
     }
     return affected;
@@ -256,8 +256,8 @@ extension Effectors2D on Box2DPhysicsSystem {
       final body = entity.tryGet<RigidBody2D>();
       if (body == null) continue;
 
-      final dvx = speed - body.linearVelocityX[entity];
-      final dvy = speedY - body.linearVelocityY[entity];
+      final dvx = speed - body.bodyLinearVelocityX[entity];
+      final dvy = speedY - body.bodyLinearVelocityY[entity];
       body.applyForce(entity, dvx * force, dvy * force);
       affected++;
     }

@@ -85,7 +85,7 @@ class Transform2DSystem extends GameSystem with FixedTickable {
       transform.transformOffsetY[instance] += 1;
       final optChildren = instance.tryGet<Child>();
       if (optChildren != null) {
-        optChildren.parent[instance] = null;
+        optChildren.childParent[instance] = null;
       }
     }
   }

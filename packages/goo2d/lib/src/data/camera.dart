@@ -8,12 +8,12 @@ import 'package:goo2d/src/data/world_transform.dart';
 /// to, so there is no separate transform to keep in sync.
 ///
 /// **A camera's rotation is ignored.** [CameraProjection] reads the camera's
-/// world x, its world y and [zoom], and nothing else: the same scene drawn
-/// through a camera at rotation 0 and through one at rotation pi/2 gives
-/// identical geometry. A camera parented to something that turns inherits
-/// the turn into its `worldRotation` and still draws upright. A view that
-/// banks, or that locks to a subject's facing, has nothing here to build on
-/// (#172).
+/// world x, its world y and [cameraZoom], and nothing else: the same
+/// scene drawn through a camera at rotation 0 and through one at rotation
+/// pi/2 gives identical geometry. A camera parented to something that turns
+/// inherits the turn into its `worldRotation` and still draws upright. A view
+/// that banks, or that locks to a subject's facing, has nothing here to build
+/// on (#172).
 ///
 /// A camera occupies a [CameraView] - one of the places the game declared it
 /// can be drawn - and at most one camera should occupy a given view at a time.
@@ -22,7 +22,7 @@ import 'package:goo2d/src/data/world_transform.dart';
 /// and a release build compiles the check out and draws through whichever
 /// camera the query returned first.
 ///
-/// Setting [view] to null takes a camera out of play - there is no other
+/// Setting [cameraView] to null takes a camera out of play - there is no other
 /// switch that turns one off. A camera pointing at no view is resolved for no
 /// view, and a view left with no camera draws through an implicit one at the
 /// world origin with zoom 1.
@@ -35,7 +35,7 @@ import 'package:goo2d/src/data/world_transform.dart';
 ///   @override
 ///   void describeStruct(DataDescriptor data) {
 ///     super.describeStruct(data);
-///     zoom.defaultValue = 2;
+///     cameraZoom.defaultValue = 2;
 ///   }
 /// }
 /// ```
@@ -43,7 +43,7 @@ mixin Camera on Component {
   /// Screen pixels per world unit. `1` (the default) means one world unit
   /// draws as one pixel; `2` zooms in (things draw twice as large), `0.5`
   /// zooms out.
-  final zoom = Field.float64(1);
+  final cameraZoom = Field.float64(1);
 
   /// Which declared view this camera fills, or null for a camera that is not
   /// currently shown anywhere.
@@ -51,7 +51,7 @@ mixin Camera on Component {
   /// Set it from the game isolate with the handle the game declared:
   ///
   /// ```dart
-  /// player.camera.view[entity] = game.mainCamera;
+  /// player.camera.cameraView[entity] = game.mainCamera;
   /// ```
   ///
   /// Typed, and not an int: `CameraView` is a `GlobalObject`, so a stray
@@ -60,7 +60,7 @@ mixin Camera on Component {
   /// The one field here that still needs [describeStruct]: the view table it
   /// is declared against comes from `getScene`, an instance method a field
   /// initialiser cannot reach.
-  late final DataPointer<CameraView?> view;
+  late final DataPointer<CameraView?> cameraView;
 
   @override
   void describeType(ComponentDescriptor component) {
@@ -73,7 +73,7 @@ mixin Camera on Component {
     super.describeStruct(data);
     // The declaring game's own view table - not a shared registry. An address
     // read out of this field means nothing except against this table.
-    view = data.optPacked(getScene<SceneStruct>().cameraViews);
+    cameraView = data.optPacked(getScene<SceneStruct>().cameraViews);
   }
 }
 
@@ -99,7 +99,9 @@ class ActiveCameraResolver {
     Entity? first;
     Entity? second;
     for (final entity in cameras.run()) {
-      if (entity.get<Camera>().view[entity]?.pack() != view.pack()) continue;
+      if (entity.get<Camera>().cameraView[entity]?.pack() != view.pack()) {
+        continue;
+      }
       if (first == null) {
         first = entity;
       } else {
@@ -331,7 +333,7 @@ class CameraProjection {
     final world = entity.get<WorldTransform2D>();
     originX = world.worldX[entity];
     originY = world.worldY[entity];
-    zoom = entity.get<Camera>().zoom[entity];
+    zoom = entity.get<Camera>().cameraZoom[entity];
   }
 
   /// View-space (a `GameView` pixel, origin at its top-left) to world space.

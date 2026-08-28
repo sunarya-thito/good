@@ -49,7 +49,7 @@ A short list, and it is the whole difference:
 |---|---|---|
 | Transform | `Transform2D`, `WorldTransform2D` | `Transform3D`, `WorldTransform3D` |
 | Rotation | one angle | a quaternion, four columns |
-| Camera | `Camera` with `zoom` | `Camera3D` with `fieldOfView`, `near`, `far` |
+| Camera | `Camera` with `cameraZoom` | `Camera3D` with `cameraFieldOfView`, `cameraNear`, `cameraFar` |
 | Drawing | `Renderable2D`, `Sprite`, `GameRenderer2D` | `Renderable3D`, `MeshAsset`, `MaterialAsset`, `Light3D` |
 | Geometry | `Collider2D` — circle, box, capsule, polygon | `Collider3D` — box, sphere, capsule, hull, mesh |
 | Physics | `goo2d_physics_box2d` (Box2D v3) | `goo3d_physics_box3d` (Box3D) |

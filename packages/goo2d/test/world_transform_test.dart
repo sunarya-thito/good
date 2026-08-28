@@ -522,9 +522,9 @@ void main() {
         scene.node.worldX[state.spawner.child!],
         110,
         reason:
-            'the pass walks `Parent.firstChild` through published reads and '
-            'the splice that put this child there is still in the write '
-            'slot, so nothing but the spawned-this-tick set can have '
+            'the pass walks `Parent.parentFirstChild` through published '
+            'reads and the splice that put this child there is still in the '
+            'write slot, so nothing but the spawned-this-tick set can have '
             'composed it - a 0 here means that set stayed empty, and the '
             'timings below would be measuring nothing',
       );

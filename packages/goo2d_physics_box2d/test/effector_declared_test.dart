@@ -227,7 +227,7 @@ void main() {
     _advance(12);
 
     expect(
-      scene.box.linearVelocityY[box],
+      scene.box.bodyLinearVelocityY[box],
       lessThan(-1),
       reason:
           'the wind blows toward -y and gravity is off, so nothing else '
@@ -241,7 +241,7 @@ void main() {
     setup.once = () => box = scene.add();
     _advance(12);
 
-    final moving = scene.box.linearVelocityY[box];
+    final moving = scene.box.bodyLinearVelocityY[box];
     expect(moving, lessThan(-1), reason: 'the wind is on to begin with');
 
     setup.once = () => scene.zone.wind.enable[scene.zoneEntity] = false;
@@ -252,7 +252,7 @@ void main() {
     // is the engine's standard pipeline, documented on `Effector.enable`, and
     // asserting it away here would be asserting the pipeline does not exist.
     _advance(3);
-    final coasting = scene.box.linearVelocityY[box];
+    final coasting = scene.box.bodyLinearVelocityY[box];
 
     _advance(30);
 
@@ -261,7 +261,7 @@ void main() {
     // after the disable is what separates "stopped pushing" from "never
     // pushed" - `lessThan(0)` would pass in both cases.
     expect(
-      scene.box.linearVelocityY[box],
+      scene.box.bodyLinearVelocityY[box],
       closeTo(coasting, 0.001),
       reason:
           'a disabled effector applies no further force, so an undamped '
@@ -287,7 +287,7 @@ void main() {
     _advance(12);
 
     expect(
-      scene.box.linearVelocityY[box],
+      scene.box.bodyLinearVelocityY[box],
       closeTo(0, 0.001),
       reason: 'the zone moved far away, so its wind moved with it',
     );
@@ -320,7 +320,7 @@ void main() {
       // plain gravity. The body sat squarely in the declared water and got
       // nothing at all from it.
       expect(
-        scene.box.linearVelocityY[floater],
+        scene.box.bodyLinearVelocityY[floater],
         greaterThan(0),
         reason:
             'a box in water three times its own density has to be rising a '
@@ -363,7 +363,7 @@ void main() {
       // -12.68. The phantom volume was floating a body that was never in any
       // declared water.
       expect(
-        scene.box.linearVelocityY[sinker],
+        scene.box.bodyLinearVelocityY[sinker],
         closeTo(-10.17, 0.5),
         reason:
             'a body outside every effector falls under gravity and nothing '
@@ -403,7 +403,7 @@ void main() {
       _advance(60);
 
       expect(
-        scene.box.linearVelocityY[floater],
+        scene.box.bodyLinearVelocityY[floater],
         greaterThan(0),
         reason:
             'the same water written out by hand floats the same body - if '
@@ -411,7 +411,7 @@ void main() {
             'passing the wrong region edge again',
       );
       expect(
-        scene.box.linearVelocityY[sinker],
+        scene.box.bodyLinearVelocityY[sinker],
         closeTo(-10.17, 0.5),
         reason: 'and leaves the body below it alone, exactly as declaring did',
       );

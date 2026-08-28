@@ -32,7 +32,7 @@ class _Body extends EntityStruct with Child, Parent, EntityLifecycleListener {
     // detach pass runs after every event, so this is the hierarchy as it
     // stood - not a row whose links were cut because it happened to sit in an
     // archetype the repair walk reached first.
-    _parentAtUnmount[entity] = parent.readPending(entity);
+    _parentAtUnmount[entity] = childParent.readPending(entity);
   }
 }
 
@@ -91,12 +91,12 @@ void _linkAcrossScenes(Entity parent, Entity child) {
   final parentComponent = parent.get<Parent>();
   final childComponent = child.get<Child>();
   childComponent
-    ..prevSibling[child] = null
-    ..nextSibling[child] = null
-    ..parent[child] = parent;
+    ..childPrevSibling[child] = null
+    ..childNextSibling[child] = null
+    ..childParent[child] = parent;
   parentComponent
-    ..firstChild[parent] = child
-    ..lastChild[parent] = child;
+    ..parentFirstChild[parent] = child
+    ..parentLastChild[parent] = child;
 }
 
 /// Live rows of [prefab] belonging to [scene], counted the way
@@ -161,7 +161,7 @@ void main() {
 
     expect(() => here<Parent>().adopt(child), _crossesScenes());
     expect(
-      child.get<Child>().parent.readPending(child),
+      child.get<Child>().childParent.readPending(child),
       there,
       reason: 'and the refusal leaves the child where it was',
     );
@@ -251,8 +251,8 @@ void main() {
     state.unloadScene(b);
 
     final parentComponent = parent.get<Parent>();
-    expect(parentComponent.firstChild.readPending(parent), isNull);
-    expect(parentComponent.lastChild.readPending(parent), isNull);
+    expect(parentComponent.parentFirstChild.readPending(parent), isNull);
+    expect(parentComponent.parentLastChild.readPending(parent), isNull);
     expect(
       _unmounted,
       contains(child),
@@ -286,9 +286,9 @@ void main() {
     state.unloadScene(a);
 
     final childComponent = child.get<Child>();
-    expect(childComponent.parent.readPending(child), isNull);
-    expect(childComponent.prevSibling.readPending(child), isNull);
-    expect(childComponent.nextSibling.readPending(child), isNull);
+    expect(childComponent.childParent.readPending(child), isNull);
+    expect(childComponent.childPrevSibling.readPending(child), isNull);
+    expect(childComponent.childNextSibling.readPending(child), isNull);
     expect(
       child.get<_Body>().mark[child],
       7,
@@ -317,12 +317,12 @@ void main() {
     state.unloadScene(a);
 
     expect(
-      child.get<Child>().parent.readPending(child),
+      child.get<Child>().childParent.readPending(child),
       isNull,
       reason: 'the edge that crossed is cut',
     );
     expect(
-      child.get<Parent>().firstChild.readPending(child),
+      child.get<Parent>().parentFirstChild.readPending(child),
       grandchild,
       reason: 'and the subtree below the cut is left alone',
     );

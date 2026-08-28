@@ -194,9 +194,9 @@ void main() {
 
     // A camera in each scene, each occupying a different view.
     final levelEye = level.handle.addEntity(level.eye);
-    level.eye.view[levelEye] = game.defaultCamera;
+    level.eye.cameraView[levelEye] = game.defaultCamera;
     final overlayEye = overlay.handle.addEntity(overlay.eye);
-    overlay.eye.view[overlayEye] = game.minimap;
+    overlay.eye.cameraView[overlayEye] = game.minimap;
 
     run.state.advance(_step);
 
@@ -232,7 +232,7 @@ void main() {
 
     state.level.handle.addEntity(state.level.sprite);
     final eye = state.overlay.handle.addEntity(state.overlay.eye);
-    state.overlay.eye.view[eye] = game.minimap;
+    state.overlay.eye.cameraView[eye] = game.minimap;
 
     run.state.advance(_step);
 
@@ -256,9 +256,9 @@ void main() {
     state.overlay.handle.addEntity(state.overlay.sprite);
 
     final levelEye = state.level.handle.addEntity(state.level.eye);
-    state.level.eye.view[levelEye] = game.defaultCamera;
+    state.level.eye.cameraView[levelEye] = game.defaultCamera;
     final overlayEye = state.overlay.handle.addEntity(state.overlay.eye);
-    state.overlay.eye.view[overlayEye] = game.minimap;
+    state.overlay.eye.cameraView[overlayEye] = game.minimap;
 
     await tester.pumpWidget(
       Row(
@@ -287,7 +287,7 @@ void main() {
     final game = await _start();
     final state = run.state as _MultiState;
     final eye = state.level.handle.addEntity(state.level.eye);
-    state.level.eye.view[eye] = game.defaultCamera;
+    state.level.eye.cameraView[eye] = game.defaultCamera;
 
     await tester.pumpWidget(
       Row(
@@ -326,10 +326,10 @@ void main() {
     // position means two completely different world points. Without routing
     // this test cannot tell the views apart; with it, the answer flips.
     final levelEye = state.level.handle.addEntity(state.level.eye);
-    state.level.eye.view[levelEye] = game.defaultCamera;
+    state.level.eye.cameraView[levelEye] = game.defaultCamera;
     final overlayEye = state.overlay.handle.addEntity(state.overlay.eye);
     state.overlay.eye
-      ..view[overlayEye] = game.minimap
+      ..cameraView[overlayEye] = game.minimap
       ..transformOffsetX[overlayEye] = 1000;
 
     game.defaultCamera.setViewport(400, 400);
@@ -385,9 +385,9 @@ void main() {
     // in the overlay - so the level view has nothing to draw and the minimap
     // draws the target.
     final levelEye = state.level.handle.addEntity(state.level.eye);
-    state.level.eye.view[levelEye] = game.defaultCamera;
+    state.level.eye.cameraView[levelEye] = game.defaultCamera;
     final overlayEye = state.overlay.handle.addEntity(state.overlay.eye);
-    state.overlay.eye.view[overlayEye] = game.minimap;
+    state.overlay.eye.cameraView[overlayEye] = game.minimap;
     state.overlay.handle.addEntity(state.overlay.target);
 
     game.defaultCamera.setViewport(400, 400);
@@ -478,7 +478,7 @@ void main() {
     final state = run.state as _MultiState;
     state.level.handle.addEntity(state.level.sprite);
     final eye = state.level.handle.addEntity(state.level.eye);
-    state.level.eye.view[eye] = game.defaultCamera;
+    state.level.eye.cameraView[eye] = game.defaultCamera;
 
     await tester.pumpWidget(
       Row(

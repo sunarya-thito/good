@@ -223,8 +223,8 @@ Entity _quadAt(
 Entity _eye(_CullGame game, _Scene scene, {double x = 0, double zoom = 1}) {
   final eye = scene.addEntity(scene.eye);
   scene.eye
-    ..view[eye] = game.view
-    ..zoom[eye] = zoom
+    ..cameraView[eye] = game.view
+    ..cameraZoom[eye] = zoom
     ..transformOffsetX[eye] = x;
   return eye;
 }

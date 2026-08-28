@@ -559,7 +559,7 @@ class MainScene extends SceneStruct {
     // Nothing shows it today either - there is no renderer to read this - but
     // the wiring is the wiring, and it is the line that will stop being
     // inert when issue #43 lands.
-    eye.view[camera] = (game as $gameClass).mainView;
+    eye.cameraView[camera] = (game as $gameClass).mainView;
     // Backed off along +Z. A camera looks down its own -Z, and this one's
     // rotation is left at identity, so from here it faces the origin - where
     // the player is. `camera<Transform3D>().lookAt(x, y, z)` is the general
@@ -657,7 +657,7 @@ import 'package:$package/$package.dart';
 /// @override
 /// void describeStruct(DataDescriptor data) {
 ///   super.describeStruct(data);
-///   fieldOfView.defaultValue = 90;
+///   cameraFieldOfView.defaultValue = 90;
 /// }
 /// ```
 ///

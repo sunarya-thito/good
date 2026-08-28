@@ -134,10 +134,10 @@ void main() {
       // 0.001 rad a tick against a 5e-3 threshold: the guard lets one write
       // through per six, carrying the whole accumulated 0.006.
       var sends = 0;
-      var last = body.syncedAngle[slab];
+      var last = body.bodySyncedAngle[slab];
       for (var tick = 0; tick < 24; tick++) {
         _step();
-        final synced = body.syncedAngle[slab];
+        final synced = body.bodySyncedAngle[slab];
         if ((synced - last).abs() > 1e-9) {
           sends++;
           last = synced;
@@ -158,7 +158,7 @@ void main() {
         reason: 'and it does keep arriving - nothing is dropped, only delayed',
       );
       expect(
-        body.syncedAngle[slab],
+        body.bodySyncedAngle[slab],
         closeTo(_turner.angle, 6e-3),
         reason:
             'the body ends within one threshold of everything written to it, '

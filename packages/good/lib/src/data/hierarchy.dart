@@ -10,9 +10,9 @@ mixin Child on Component {
   /// unparented. A packed `Entity` is a 64-bit handle (archetype id + page
   /// index + row offset - see `Entity` in struct.dart), which is the width
   /// `optEntity` stores it at.
-  final parent = Field.optEntity();
-  final nextSibling = Field.optEntity();
-  final prevSibling = Field.optEntity();
+  final childParent = Field.optEntity();
+  final childNextSibling = Field.optEntity();
+  final childPrevSibling = Field.optEntity();
 
   // Every other mixin (Transform2D, and this file's own callers in
   // query_test.dart) registers itself via `component.has<Self>()` in
@@ -36,8 +36,8 @@ mixin Child on Component {
   /// `EntityStruct.of`, holding which entity of this prefab one entity of
   /// that archetype owns.
   ///
-  /// The reverse of [parent], and named so the two do not read as the same
-  /// thing: [parent] is a column on *this* row naming the owner; this is a
+  /// The reverse of [childParent], and named so the two do not read as the same
+  /// thing: [childParent] is a column on *this* row naming the owner; this is a
   /// column on the *owner's* row naming the entity of this prefab it holds.
   /// `null` unless something declared this prefab as its child - a prefab a
   /// scene declared has no owner to hold it.
@@ -67,8 +67,8 @@ mixin Child on Component {
 }
 
 mixin Parent on Component {
-  final firstChild = Field.optEntity();
-  final lastChild = Field.optEntity();
+  final parentFirstChild = Field.optEntity();
+  final parentLastChild = Field.optEntity();
 
   @override
   @mustCallSuper
@@ -143,8 +143,8 @@ extension ParentAccessor on Accessor<Parent> {
   /// entity publishes its declared defaults instead of this tick's writes
   /// (issue #5) - so an ordinary read on a turret's own mount tick would hand
   /// back `Entity(0)`, a real handle naming somebody else's row. See
-  /// [DataPointer.readPending] and [addChild], which reads `lastChild` the
-  /// same way for the same reason.
+  /// [DataPointer.readPending] and [addChild], which reads
+  /// `parentLastChild` the same way for the same reason.
   Entity operator [](Child child) {
     assert(_declaredHere(child));
     final owned = child.declaredIn!.readPending(this);
@@ -159,8 +159,8 @@ extension ParentAccessor on Accessor<Parent> {
   }
 
   /// Appends [child] to the end of this entity's child list - a doubly-linked
-  /// splice through `firstChild`/`lastChild` and `child`'s own
-  /// `nextSibling`/`prevSibling`.
+  /// splice through `parentFirstChild`/`parentLastChild` and `child`'s own
+  /// `childNextSibling`/`childPrevSibling`.
   ///
   /// [child] must be **unparented**, and passing an attached entity is an
   /// error. Splicing unconditionally would leave it in two chains - its old
@@ -185,7 +185,7 @@ extension ParentAccessor on Accessor<Parent> {
   /// a fixed property of the calling code, so it belongs in an assert; the
   /// read is what makes leaving it in release worth avoiding.
   bool _unparented(Child childComponent, Entity child) {
-    if (childComponent.parent.readPending(child) != null) {
+    if (childComponent.childParent.readPending(child) != null) {
       throw ArgumentError.value(
         child,
         'child',
@@ -210,7 +210,7 @@ extension ParentAccessor on Accessor<Parent> {
   void adopt(Entity child) {
     final childComponent = _requireChild(child);
     assert(_sameScene(child));
-    final current = childComponent.parent.readPending(child);
+    final current = childComponent.childParent.readPending(child);
     if (current != null) current<Parent>().unlinkChild(child);
     _append(childComponent, child);
   }
@@ -233,7 +233,7 @@ extension ParentAccessor on Accessor<Parent> {
     assert(_sameScene(child));
     // `readPending`, for the same reason the splice needs it: a chain edited
     // earlier this tick is only visible in the write slot.
-    if (childComponent.parent.readPending(child) != entity) {
+    if (childComponent.childParent.readPending(child) != entity) {
       throw ArgumentError.value(
         child,
         'child',
@@ -273,22 +273,22 @@ extension ParentAccessor on Accessor<Parent> {
     // tick would both read the *published* neighbours - so the second would
     // restitch the list as it stood before the first, silently resurrecting a
     // link. See `DataPointer.readPending`.
-    final prev = childComponent.prevSibling.readPending(child);
-    final next = childComponent.nextSibling.readPending(child);
+    final prev = childComponent.childPrevSibling.readPending(child);
+    final next = childComponent.childNextSibling.readPending(child);
     if (prev == null) {
-      self.firstChild[this] = next;
+      self.parentFirstChild[this] = next;
     } else {
-      prev.get<Child>().nextSibling[prev] = next;
+      prev.get<Child>().childNextSibling[prev] = next;
     }
     if (next == null) {
-      self.lastChild[this] = prev;
+      self.parentLastChild[this] = prev;
     } else {
-      next.get<Child>().prevSibling[next] = prev;
+      next.get<Child>().childPrevSibling[next] = prev;
     }
     childComponent
-      ..parent[child] = null
-      ..nextSibling[child] = null
-      ..prevSibling[child] = null;
+      ..childParent[child] = null
+      ..childNextSibling[child] = null
+      ..childPrevSibling[child] = null;
     // A declared child also fills a named slot on this row, and unlinking it
     // has to empty that too. Left alone, `parent<Parent>()[barrel]` keeps
     // answering with a row that is about to be freed and recycled - a stale
@@ -418,7 +418,7 @@ extension ParentAccessor on Accessor<Parent> {
       }
       final link = ancestor.tryGet<Child>();
       if (link == null) break;
-      final above = link.parent.readPending(ancestor);
+      final above = link.childParent.readPending(ancestor);
       if (above == null) break;
       ancestor = above;
     }
@@ -428,24 +428,24 @@ extension ParentAccessor on Accessor<Parent> {
   void _append(Child childComponent, Entity child) {
     assert(_requireAcyclic(child));
     final self = component;
-    // `readPending`, not `lastChild[this]`. An ordinary read sees the last
-    // *published* snapshot, so two `addChild` calls in the same tick both read
-    // the same stale tail, both take the `oldLast == null` branch, and the
-    // second silently overwrites the first - the parent ends up with one child
-    // and the rest are orphaned with no error anywhere. Spawning a character
-    // with three attachments from one command is exactly that shape, and so is
-    // one prefab declaring three children with `EntityStruct.of`. See
-    // `DataPointer.readPending`.
-    final oldLast = self.lastChild.readPending(this);
-    childComponent.prevSibling[child] = oldLast;
-    childComponent.nextSibling[child] = null;
+    // `readPending`, not `parentLastChild[this]`. An ordinary read sees
+    // the last *published* snapshot, so two `addChild` calls in the same tick
+    // both read the same stale tail, both take the `oldLast == null` branch,
+    // and the second silently overwrites the first - the parent ends up with
+    // one child and the rest are orphaned with no error anywhere. Spawning a
+    // character with three attachments from one command is exactly that shape,
+    // and so is one prefab declaring three children with `EntityStruct.of`.
+    // See `DataPointer.readPending`.
+    final oldLast = self.parentLastChild.readPending(this);
+    childComponent.childPrevSibling[child] = oldLast;
+    childComponent.childNextSibling[child] = null;
     if (oldLast == null) {
-      self.firstChild[this] = child;
+      self.parentFirstChild[this] = child;
     } else {
-      oldLast.get<Child>().nextSibling[oldLast] = child;
+      oldLast.get<Child>().childNextSibling[oldLast] = child;
     }
-    self.lastChild[this] = child;
-    childComponent.parent[child] = this;
+    self.parentLastChild[this] = child;
+    childComponent.childParent[child] = this;
   }
 }
 
@@ -461,7 +461,7 @@ extension ChildAccessor on Accessor<Child> {
   /// `Entity` carries no generation, so a dropped handle leaves the subtree
   /// occupying rows until its scene unloads.
   void detach() {
-    final parent = component.parent.readPending(this);
+    final parent = component.childParent.readPending(this);
     if (parent == null) return;
     parent<Parent>().unlinkChild(this);
   }

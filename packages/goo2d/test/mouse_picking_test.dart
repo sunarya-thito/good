@@ -275,7 +275,7 @@ Entity _eye(_Game game, _Scene scene) {
   // created, so its page has never published and the write is allowed - the
   // same path every other field default here takes. Opening a tick would
   // publish the page and make the caller's *next* write assert.
-  scene.eye.view[eye] = game.view;
+  scene.eye.cameraView[eye] = game.view;
   return eye;
 }
 
@@ -980,7 +980,7 @@ void main() {
       final button = scene.addEntity(scene.button);
       final eye = _eye(game, scene);
       scene.pool.beginTick();
-      scene.eye.zoom[eye] = 2; // everything draws twice as large
+      scene.eye.cameraZoom[eye] = 2; // everything draws twice as large
       scene.pool.commitTick();
       _settle(game);
 
@@ -1044,7 +1044,7 @@ void main() {
       scene.eye
         ..transformOffsetX[eye] = 120
         ..transformOffsetY[eye] = -40;
-      scene.eye.zoom[eye] = 1.5;
+      scene.eye.cameraZoom[eye] = 1.5;
       scene.pool.commitTick();
       _settle(game);
       _moveTo(game, 0, 0);
@@ -1117,7 +1117,7 @@ void main() {
         final eye = _eye(game, scene);
         scene.pool.beginTick();
         scene.eye.transformOffsetX[eye] = 7;
-        scene.eye.zoom[eye] = 0;
+        scene.eye.cameraZoom[eye] = 0;
         scene.pool.commitTick();
         _settle(game);
         _moveTo(game, 100, 100);

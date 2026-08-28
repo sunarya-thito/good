@@ -109,15 +109,15 @@ reparent.
 A link that would close a loop is refused where it is made: `addChild` and
 `adopt` walk up from the prospective parent, and throw if they reach the child.
 
-`Child` holds `parent`, `nextSibling` and `prevSibling`; `Parent` holds
-`firstChild` and `lastChild`. They are readable columns like any other, so
-walking a subtree by hand is an ordinary loop:
+`Child` holds `childParent`, `childNextSibling` and `childPrevSibling`;
+`Parent` holds `parentFirstChild` and `parentLastChild`. They are readable
+columns like any other, so walking a subtree by hand is an ordinary loop:
 
 ```dart
-var next = parent.firstChild[entity];
+var next = parent.parentFirstChild[entity];
 while (next != null) {
   // ...
-  next = next.get<Child>().nextSibling[next];
+  next = next.get<Child>().childNextSibling[next];
 }
 ```
 
@@ -236,7 +236,7 @@ A camera is an entity with `Transform2D`, `WorldTransform2D` and `Camera`, so
 ```dart
 final player = scene.addEntity(playerPrefab);
 final camera = scene.addEntity(eyePrefab, parent: player);
-eye.view[camera] = game.defaultCamera;
+eye.cameraView[camera] = game.defaultCamera;
 ```
 
 The camera's own local transform stays at the origin, and `WorldTransformSystem`

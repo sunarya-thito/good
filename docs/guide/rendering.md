@@ -265,20 +265,20 @@ class Eye() extends EntityStruct with Transform2D, WorldTransform2D, Camera;
 
 | Column | Meaning |
 |---|---|
-| `zoom` | Screen pixels per world unit. `1` is 1:1, `2` zooms in, `0.5` out |
-| `view` | Which declared `CameraView` this camera fills, or null for none |
+| `cameraZoom` | Screen pixels per world unit. `1` is 1:1, `2` zooms in, `0.5` out |
+| `cameraView` | Which declared `CameraView` this camera fills, or null for none |
 
 <!-- snippet: plain -->
 ```dart
 final camera = scene.addEntity(eye);
-eye.view[camera] = game.defaultCamera;
-eye.zoom[camera] = 2;
+eye.cameraView[camera] = game.defaultCamera;
+eye.cameraZoom[camera] = 2;
 ```
 
-`view` is typed, not an integer — a stray int does not compile there.
+`cameraView` is typed, not an integer — a stray int does not compile there.
 
 !!! warning "A camera's rotation is ignored"
-    The projection reads the camera's world x, its world y and `zoom`, and
+    The projection reads the camera's world x, its world y and `cameraZoom`, and
     nothing else. The same scene through a camera at rotation 0 and through
     one at rotation π/2 draws identically, and a camera parented to something
     that turns inherits the turn and still draws upright. A banking view, or

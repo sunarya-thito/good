@@ -56,7 +56,7 @@ enum BodyType2D {
 ///   tick would fight the solver and destroy the simulation.
 ///
 /// A body of any type is therefore pushed into Box2D only when its transform
-/// actually differs from what the sync cache holds - see [syncedX]. That is
+/// actually differs from what the sync cache holds - see [bodySyncedX]. That is
 /// not merely an optimisation: Box2D's `b2MakeRot` is an *approximation*
 /// (Bhaskara rational, not libm), and round-tripping an angle through it
 /// repeatedly converges on multiples of pi/4 - measured, about 27 degrees of
@@ -109,7 +109,7 @@ mixin RigidBody2D on Component {
   /// Which [BodyType2D] this body is.
   ///
   /// Writing it on a live body is honoured. The next fixed step compares it
-  /// against [syncedType] and, when they differ, calls Box2D's own
+  /// against [bodySyncedType] and, when they differ, calls Box2D's own
   /// `b2Body_SetType` - which keeps the body's handle, its shapes and its
   /// joints, moves it between the solver's static and awake sets, rebuilds
   /// its broad-phase proxies and recomputes its mass. Nothing is destroyed
@@ -131,39 +131,39 @@ mixin RigidBody2D on Component {
   /// Treating them as an input would silently undo every impulse:
   /// `applyImpulse` changes Box2D's velocity while the component still holds
   /// last tick's, and the push would write the stale value back over it.
-  final linearVelocityX = Field.float64();
+  final bodyLinearVelocityX = Field.float64();
 
   /// The Y component of the solver's linear velocity. **Read-only** - see
-  /// [linearVelocityX].
-  final linearVelocityY = Field.float64();
+  /// [bodyLinearVelocityX].
+  final bodyLinearVelocityY = Field.float64();
 
   /// The solver's angular velocity in radians per second, refreshed every
-  /// tick. **Read-only** - see [linearVelocityX], and use
+  /// tick. **Read-only** - see [bodyLinearVelocityX], and use
   /// [setAngularVelocity] or [applyTorque] to change it.
-  final angularVelocity = Field.float64();
+  final bodyAngularVelocity = Field.float64();
 
   /// Multiplier on world gravity for this body alone. Defaults to 1 for the
   /// same reason `Transform2D.transformScaleX` does: 0 is a degenerate value
   /// that would silently make every body float, with nothing saying why.
-  final gravityScale = Field.float64(1);
+  final bodyGravityScale = Field.float64(1);
 
   /// How fast this body loses linear speed with nothing acting on it. 0 is
   /// no damping at all; a small value gives the drift of air resistance.
-  final linearDamping = Field.float64();
+  final bodyLinearDamping = Field.float64();
 
   /// The same, for spin.
-  final angularDamping = Field.float64();
+  final bodyAngularDamping = Field.float64();
 
   /// Whether the solver refuses to rotate this body. On for a character that
   /// should stay upright whatever it walks into.
-  final fixedRotation = Field.boolean();
+  final bodyFixedRotation = Field.boolean();
 
   /// Whether this body gets continuous collision detection, the fix for a
   /// fast body tunnelling through a thin wall between two steps.
   ///
   /// It costs real solver time, so it is off by default and belongs on
   /// projectiles instead of on everything that happens to move quickly.
-  final isBullet = Field.boolean();
+  final bodyIsBullet = Field.boolean();
 
   // --- sync cache -----------------------------------------------------------
   //
@@ -192,11 +192,11 @@ mixin RigidBody2D on Component {
   // as WorldTransform2D's own cache defaults: it removes the need for a
   // separate "have I ever synced this" flag.
   @internal
-  final syncedX = Field.float64(double.nan);
+  final bodySyncedX = Field.float64(double.nan);
   @internal
-  final syncedY = Field.float64(double.nan);
+  final bodySyncedY = Field.float64(double.nan);
   @internal
-  final syncedAngle = Field.float64(double.nan);
+  final bodySyncedAngle = Field.float64(double.nan);
 
   /// The [BodyType2D] Box2D was last told to simulate this body as, which is
   /// what it is simulating it as - unlike the transform, the solver never
@@ -218,7 +218,10 @@ mixin RigidBody2D on Component {
   /// `_applyBodyType` on the way past - so by the time anything compares the
   /// two, both hold what the shim was told.
   @internal
-  final syncedType = Field.enumOf(BodyType2D.values, BodyType2D.dynamicBody);
+  final bodySyncedType = Field.enumOf(
+    BodyType2D.values,
+    BodyType2D.dynamicBody,
+  );
 
   @override
   void describeType(ComponentDescriptor component) {
@@ -238,7 +241,7 @@ mixin RigidBody2D on Component {
   // Writing through also means these are legal at any point in a tick, and
   // take effect on that tick's step rather than the next one - unlike a
   // transform write, which is pipelined through the published snapshot. That
-  // is the *reason* to have them at all: `linearVelocityX[e] = 5` sets a
+  // is the *reason* to have them at all: `bodyLinearVelocityX[e] = 5` sets a
   // velocity next tick, `applyImpulse` changes motion now.
   //
   // Each is a no-op on a body that does not exist yet, so calling one from a
@@ -266,7 +269,7 @@ mixin RigidBody2D on Component {
   }
 
   /// Applies a continuous torque about [entity]'s centre, in newton-metres.
-  /// Positive spins the same way positive [angularVelocity] does.
+  /// Positive spins the same way positive [bodyAngularVelocity] does.
   void applyTorque(Entity entity, double torque, {bool wake = true}) {
     final handle = bodyHandle[entity];
     if (handle == 0) return;
@@ -275,9 +278,10 @@ mixin RigidBody2D on Component {
 
   /// Sets [entity]'s velocity immediately, taking effect on this tick's step.
   ///
-  /// Writing [linearVelocityX]/[linearVelocityY] instead is also supported and
-  /// is the right choice inside a system that is already reading rows - but it
-  /// goes through the component snapshot and so lands on the *next* step.
+  /// Writing [bodyLinearVelocityX]/[bodyLinearVelocityY] instead is also
+  /// supported and is the right choice inside a system already reading rows -
+  /// but it goes through the component snapshot and so lands on the *next*
+  /// step.
   void setVelocity(Entity entity, double vx, double vy) {
     final handle = bodyHandle[entity];
     if (handle == 0) return;

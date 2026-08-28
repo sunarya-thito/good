@@ -156,10 +156,10 @@ void main() {
       // to each believe they were the first, and every limb but one was
       // silently orphaned.
       final walked = <Entity>[];
-      Entity? at = critter.get<Parent>().firstChild[critter];
+      Entity? at = critter.get<Parent>().parentFirstChild[critter];
       while (at != null) {
         walked.add(at);
-        at = at.get<Child>().nextSibling[at];
+        at = at.get<Child>().childNextSibling[at];
       }
       expect(walked, hasLength(Limb.limbsPerCritter));
     });
@@ -201,7 +201,7 @@ void main() {
 
       final state = game.state as SceneGraphState;
       final critter = state.getSystem<CritterSystem>().critters.run().first;
-      final limb = critter.get<Parent>().firstChild[critter]!;
+      final limb = critter.get<Parent>().parentFirstChild[critter]!;
       final limbStruct = state.swarm.limb;
 
       final localBefore = limbStruct.transformOffsetX[limb];
@@ -232,7 +232,7 @@ void main() {
       final state = game.state as SceneGraphState;
       final limbStruct = state.swarm.limb;
       final critter = state.getSystem<CritterSystem>().critters.run().first;
-      final limb = critter.get<Parent>().firstChild[critter]!;
+      final limb = critter.get<Parent>().parentFirstChild[critter]!;
       final before = limbStruct.worldY[limb];
 
       game.state.pool.beginTick();

@@ -106,8 +106,8 @@ A `Component` is a mixin on an `EntityStruct`. It contributes two things: a
 
 ```dart
 mixin Health on Component {
-  final hp = Field.int32(100);
-  final maxHp = Field.int32(100);
+  final healthHp = Field.int32(100);
+  final healthMaxHp = Field.int32(100);
 
   @override
   void describeType(ComponentDescriptor component) {
@@ -145,18 +145,33 @@ Velocity.describeType does not call super.describeType()
 A mixin that never overrides a hook is fine and is not mentioned. Only an
 override that leaves the call out is the defect.
 
-!!! warning "Field names collide across mixins"
-    A component is a mixin, so two of them declaring a field called `speed` is
-    not an error in Dart. It is an override. The later mixin in the `with`
-    clause wins, the row grows by both columns, and the earlier column can no
-    longer be reached under that name. Anything you write against the hidden
-    one reads and writes its neighbour.
+### Prefix a component's columns with the component
 
-    The engine cannot catch this for you. `Field.float64()` declares a column
-    against the descriptor the framework has open, and nothing tells it which
-    Dart field holds the result — so two mixins declaring `speed` reach the
-    engine as two anonymous columns, which is exactly what two columns that
-    genuinely differ look like. The name is in your source and nowhere else.
+`Health` above spells its columns `healthHp` and `healthMaxHp`, not `hp` and
+`maxHp`, and every component in the engine does the same: `Transform2D` has
+`transformOffsetX`, `Child` has `childParent`, `Camera` has `cameraZoom`. Use a
+readable stem rather than the full type name, and drop a dimension suffix —
+`Transform2D` and `Transform3D` are never on the same entity, and
+`transform2dOffsetX` reads badly.
+
+The reason is that **an entity's columns share one namespace**. A component is
+a mixin, so two of them declaring a field called `speed` is not an error in
+Dart. It is an override: the later mixin in the `with` clause wins, the row
+grows by both columns, and the earlier column can no longer be reached under
+that name. Anything you write against the hidden one reads and writes its
+neighbour, and nothing anywhere says so.
+
+`Child.parent` was the sharpest case before the rule: `parent` is exactly what
+your own component would call a field, and mixing yours in beside `Child` would
+have silently taken the column over. It is `childParent` now, and yours can be
+whatever you like.
+
+!!! warning "The engine cannot catch a collision at run time"
+    `Field.float64()` declares a column against the descriptor the framework
+    has open, and nothing tells it which Dart field holds the result — so two
+    mixins declaring `speed` reach the engine as two anonymous columns, which
+    is exactly what two columns that genuinely differ look like. The name is in
+    your source and nowhere else.
 
     `good generate` reads it there, and stops:
 
@@ -167,14 +182,13 @@ override that leaves the call out is the defect.
     ```
 
     It compares your `lib/` against the engine packages your project resolves,
-    so a field you call `parent` colliding with `Child.parent` is caught as
-    well. A component from some other package is one it cannot read. Those
-    parts are listed by `good generate --verbose`, so you can tell a clean run
-    from an incomplete one.
+    so a field of yours colliding with `Child.childParent` is caught as well. A
+    component from some other package is one it cannot read. Those parts are
+    listed by `good generate --verbose`, so you can tell a clean run from an
+    incomplete one.
 
-    Pick names that will not collide. `Transform2D` calls its position columns
-    `transformOffsetX` and `transformOffsetY`, and a component you publish for
-    other people to mix in wants the same kind of prefix.
+    The prefix is what makes that report rare. The checker catches the ones
+    that happen anyway — including in a package whose author never ran it.
 
 ### Multi-components
 
@@ -199,7 +213,7 @@ instead of eight is 7 bits per entity per frame of bandwidth saved.
 | `Field.enumOf(values, [default])` | `E` | the member's index, in the narrowest column its `values` fit — two bits for four members |
 | `Field.float32()`, `Field.float64()` | `double` | `Transform2D` uses float64 |
 | `Field.packed<T>(table, [default])` | `T` | a value with an `int` representation |
-| `Field.optPacked<T>(table, [default])` | `T?` | nullable packed — how `Sprite.texture` and `Camera.view` are stored |
+| `Field.optPacked<T>(table, [default])` | `T?` | nullable packed — how `Sprite.texture` and `Camera.cameraView` are stored |
 | `Field.heapObject<T>()` / `Field.optHeapObject<T>()` | `T` / `T?` | an arbitrary Dart object, by registry address |
 | `Field.*Array(length, [default])` | `DataArrayPointer<T>` | fixed-length inline array |
 
@@ -230,7 +244,8 @@ read.
 
 ## Helpers go on an accessor
 
-`Health` gives you `hp` and `maxHp` and nothing that *does* anything with them.
+`Health` gives you `healthHp` and `healthMaxHp` and nothing that *does*
+anything with them.
 Methods like `damage` and `isDead` do not go on the mixin. They go on an
 extension of `Accessor<Health>`:
 
@@ -238,10 +253,10 @@ extension of `Accessor<Health>`:
 extension HealthAccessor on Accessor<Health> {
   void damage(int amount) {
     final health = component;
-    health.hp[this] = health.hp[this] - amount;
+    health.healthHp[this] = health.healthHp[this] - amount;
   }
 
-  bool get isDead => component.hp[this] <= 0;
+  bool get isDead => component.healthHp[this] <= 0;
 }
 ```
 
@@ -267,7 +282,7 @@ The rest of `Entity` is there too:
 ```dart
 extension HealthAccessor on Accessor<Health> {
   void kill() {
-    component.hp[this] = 0;
+    component.healthHp[this] = 0;
     destroy();
   }
 }
@@ -288,16 +303,16 @@ extension HealthAccessor on Accessor<Health> {
   void drain(Entity other, int amount) {
     final mine = component;
     final theirs = other.get<Health>();
-    theirs.hp[other] -= amount;
-    mine.hp[this] += amount;
+    theirs.healthHp[other] -= amount;
+    mine.healthHp[this] += amount;
   }
 }
 ```
 
 `other` may be a different prefab with a different row layout, and only the
-receiver is guaranteed to be this one. `mine.hp[other]` compiles, and reads
-*this* archetype's storage at the other entity's page and row — some unrelated
-entity's health, or nothing at all.
+receiver is guaranteed to be this one. `mine.healthHp[other]` compiles, and
+reads *this* archetype's storage at the other entity's page and row — some
+unrelated entity's health, or nothing at all.
 
 ### Two components can want the same method name
 

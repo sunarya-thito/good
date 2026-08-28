@@ -417,19 +417,19 @@ extension type const Entity(int value) implements int {
 ///
 /// ```dart
 /// mixin Health on Component {
-///   late final DataPointer<int> hp;
+///   late final DataPointer<int> healthHp;
 ///
 ///   @override
 ///   void describeStruct(DataDescriptor data) {
 ///     super.describeStruct(data);
-///     hp = data.hasInt32(100);
+///     healthHp = data.hasInt32(100);
 ///   }
 /// }
 ///
 /// extension HealthAccessor on Accessor<Health> {
 ///   void damage(int amount) {
 ///     final health = component;
-///     health.hp[this] = health.hp[this] - amount;
+///     health.healthHp[this] = health.healthHp[this] - amount;
 ///   }
 /// }
 /// ```

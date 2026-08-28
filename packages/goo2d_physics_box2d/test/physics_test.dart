@@ -95,7 +95,7 @@ class _Pinned extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    fixedRotation.defaultValue = true;
+    bodyFixedRotation.defaultValue = true;
   }
 }
 
@@ -318,7 +318,7 @@ void main() {
       _advance(30);
 
       expect(
-        scene.crate.linearVelocityY[crate],
+        scene.crate.bodyLinearVelocityY[crate],
         lessThan(-1),
         reason:
             'a falling body should report a downward (negative y) '
@@ -543,7 +543,7 @@ void main() {
       );
     });
 
-    test('fixedRotation refuses angular velocity', () async {
+    test('bodyFixedRotation refuses angular velocity', () async {
       final scene = await _boot();
       final pinned = scene.addEntity(scene.pinned);
 
@@ -553,7 +553,7 @@ void main() {
       expect(
         scene.pinned.transformRotation[pinned],
         closeTo(0, 1e-6),
-        reason: 'fixedRotation should refuse the spin entirely',
+        reason: 'bodyFixedRotation should refuse the spin entirely',
       );
     });
   });
@@ -589,7 +589,7 @@ void main() {
 
       // Stop pushing; drag is zero, so it coasts rather than stopping - but
       // it must not keep accelerating.
-      final speedWhilePushed = scene.crate.linearVelocityX[crate];
+      final speedWhilePushed = scene.crate.bodyLinearVelocityX[crate];
       for (var i = 0; i < 30; i++) {
         _advance(1);
       }
@@ -600,7 +600,7 @@ void main() {
         reason: 'the force should have moved it',
       );
       expect(
-        scene.crate.linearVelocityX[crate],
+        scene.crate.bodyLinearVelocityX[crate],
         closeTo(speedWhilePushed, 0.5),
         reason: 'with the force removed it should coast, not keep speeding up',
       );
@@ -616,7 +616,7 @@ void main() {
         _advance(1);
       }
 
-      expect(scene.crate.angularVelocity[crate].abs(), greaterThan(0.1));
+      expect(scene.crate.bodyAngularVelocity[crate].abs(), greaterThan(0.1));
     });
 
     test('setVelocity takes effect immediately', () async {
@@ -696,7 +696,7 @@ void main() {
             'gravity should leave it exactly where it was',
       );
       expect(
-        scene.crate.linearVelocityY[crate],
+        scene.crate.bodyLinearVelocityY[crate],
         closeTo(0, 1e-6),
         reason:
             'a static body does not keep the velocity it was '
@@ -736,7 +736,7 @@ void main() {
 
       _retype = (crate, BodyType2D.kinematicBody);
       _advance(3);
-      final coasting = scene.crate.linearVelocityY[crate];
+      final coasting = scene.crate.bodyLinearVelocityY[crate];
       expect(
         coasting,
         lessThan(-0.4),
@@ -751,7 +751,7 @@ void main() {
       // exempt from, not motion. A dynamic body would be a second of g
       // faster by now.
       expect(
-        scene.crate.linearVelocityY[crate],
+        scene.crate.bodyLinearVelocityY[crate],
         closeTo(coasting, 1e-6),
         reason:
             'a kinematic body coasts at whatever velocity it has - a '
@@ -1186,7 +1186,7 @@ void main() {
       _advance(90);
 
       expect(
-        scene.crate.linearVelocityX[crate].abs(),
+        scene.crate.bodyLinearVelocityX[crate].abs(),
         lessThan(1.0),
         reason: 'the motor should have arrested the impulse',
       );

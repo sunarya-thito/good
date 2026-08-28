@@ -2,6 +2,30 @@
 
 ### Breaking
 
+* **`Child` and `Parent` columns carry their component's name.** An entity's
+  columns share one namespace - a component is a mixin, so two of them
+  declaring the same field is an override, not an error, and since #57 made
+  field initialisers eager nothing at run time notices. The row grows by both
+  columns, the name resolves to whichever mixin came last in the `with`
+  clause, and writes aimed at the hidden column land on its neighbour.
+  `Child.parent` was the worst of it: `parent` is exactly what a user's own
+  component would call a field (#133).
+
+  | before | after |
+  |---|---|
+  | `Child.parent` | `Child.childParent` |
+  | `Child.nextSibling` | `Child.childNextSibling` |
+  | `Child.prevSibling` | `Child.childPrevSibling` |
+  | `Parent.firstChild` | `Parent.parentFirstChild` |
+  | `Parent.lastChild` | `Parent.parentLastChild` |
+
+  Names only. Column order, widths and `strideBytes` are unchanged, so a
+  prefab's row layout is byte for byte what it was.
+
+  The rule this follows is now written down in
+  `docs/reference/design-rules.md` and taught in the guide, so a component you
+  publish for other people to mix in has something to follow.
+
 * **`Game.start` and `Game.startInline` take a constructor, not an instance.**
   `Game.start(MyGame())` becomes `Game.start(MyGame.new)`, and the same for
   `startInline`. A game taking constructor arguments goes through a closure:

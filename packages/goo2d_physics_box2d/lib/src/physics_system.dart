@@ -683,7 +683,7 @@ class Box2DPhysicsSystem extends GameSystem
     // published - see [_freshHandles].
     _freshHandles[entity] = handle;
 
-    // Seeds `syncedType` through the same call that will later change it,
+    // Seeds `bodySyncedType` through the same call that will later change it,
     // rather than assigning the column here, so that one method is the only
     // writer of the mirror and it cannot disagree with what the shim was
     // told. The shim call itself does nothing: `gooBodyCreate` was just
@@ -692,20 +692,20 @@ class Box2DPhysicsSystem extends GameSystem
     _applyBodyType(body, entity, handle, type);
 
     box2d
-      ..gooBodySetGravityScale(handle, body.gravityScale[entity])
+      ..gooBodySetGravityScale(handle, body.bodyGravityScale[entity])
       ..gooBodySetDamping(
         handle,
-        body.linearDamping[entity],
-        body.angularDamping[entity],
+        body.bodyLinearDamping[entity],
+        body.bodyAngularDamping[entity],
       )
-      ..gooBodySetFixedRotation(handle, body.fixedRotation[entity] ? 1 : 0)
-      ..gooBodySetBullet(handle, body.isBullet[entity] ? 1 : 0);
+      ..gooBodySetFixedRotation(handle, body.bodyFixedRotation[entity] ? 1 : 0)
+      ..gooBodySetBullet(handle, body.bodyIsBullet[entity] ? 1 : 0);
 
     // Seed the sync cache from what was just pushed in, so a body does not
     // read as "gameplay moved me" on its very first tick.
-    body.syncedX[entity] = transform.transformOffsetX[entity];
-    body.syncedY[entity] = transform.transformOffsetY[entity];
-    body.syncedAngle[entity] = transform.transformRotation[entity];
+    body.bodySyncedX[entity] = transform.transformOffsetX[entity];
+    body.bodySyncedY[entity] = transform.transformOffsetY[entity];
+    body.bodySyncedAngle[entity] = transform.transformRotation[entity];
 
     final collider = entity.tryGet<Collider2D>();
     if (collider != null) {
@@ -999,7 +999,7 @@ class Box2DPhysicsSystem extends GameSystem
         // reads `_movedByGameplay` does below - and the call it guards fires
         // only on the tick a type actually changes.
         final type = body.bodyType[entity];
-        if (type != body.syncedType[entity]) {
+        if (type != body.bodySyncedType[entity]) {
           _applyBodyType(body, entity, handle, type);
         }
 
@@ -1024,9 +1024,9 @@ class Box2DPhysicsSystem extends GameSystem
           // bit for bit, so the next comparison is exact rather than against
           // Box2D's approximation of it.
           body
-            ..syncedX[entity] = x
-            ..syncedY[entity] = y
-            ..syncedAngle[entity] = angle;
+            ..bodySyncedX[entity] = x
+            ..bodySyncedY[entity] = y
+            ..bodySyncedAngle[entity] = angle;
         }
 
         _handles[index] = handle;
@@ -1049,7 +1049,7 @@ class Box2DPhysicsSystem extends GameSystem
   /// Points Box2D at [type] and records it as the type this body now has.
   ///
   /// The only caller of `gooBodySetType` and the only writer of
-  /// [RigidBody2D.syncedType], which is what keeps the mirror honest.
+  /// [RigidBody2D.bodySyncedType], which is what keeps the mirror honest.
   ///
   /// The change is not a rebuild: `b2Body_SetType` keeps the body id, its
   /// shapes and its joints, and does the work around them - it drops the
@@ -1064,7 +1064,7 @@ class Box2DPhysicsSystem extends GameSystem
     BodyType2D type,
   ) {
     box2d.gooBodySetType(handle, type.index);
-    body.syncedType[entity] = type;
+    body.bodySyncedType[entity] = type;
   }
 
   bool _movedByGameplay(
@@ -1074,14 +1074,14 @@ class Box2DPhysicsSystem extends GameSystem
     double y,
     double angle,
   ) {
-    final lastX = body.syncedX[entity];
+    final lastX = body.bodySyncedX[entity];
     // NaN on a never-synced body, and NaN fails every comparison - so the
     // first tick always counts as moved, with no separate "have I synced"
     // flag to keep in step.
     if (lastX.isNaN) return true;
     if ((x - lastX).abs() > positionEpsilon) return true;
-    if ((y - body.syncedY[entity]).abs() > positionEpsilon) return true;
-    return (angle - body.syncedAngle[entity]).abs() > angleEpsilon;
+    if ((y - body.bodySyncedY[entity]).abs() > positionEpsilon) return true;
+    return (angle - body.bodySyncedAngle[entity]).abs() > angleEpsilon;
   }
 
   /// Writes the solver's results back into `Transform2D` and refreshes the
@@ -1125,18 +1125,18 @@ class Box2DPhysicsSystem extends GameSystem
           ..transformRotation[entity] = angle;
 
         body
-          ..syncedX[entity] = x
-          ..syncedY[entity] = y
-          ..syncedAngle[entity] = angle;
+          ..bodySyncedX[entity] = x
+          ..bodySyncedY[entity] = y
+          ..bodySyncedAngle[entity] = angle;
       }
 
       // Velocity is mirrored for every body, static included: Box2D reports
       // zero for a static one, which is what a body frozen mid-flight by a
       // type change has to read as.
       body
-        ..linearVelocityX[entity] = _velocities[i * 3]
-        ..linearVelocityY[entity] = _velocities[i * 3 + 1]
-        ..angularVelocity[entity] = _velocities[i * 3 + 2];
+        ..bodyLinearVelocityX[entity] = _velocities[i * 3]
+        ..bodyLinearVelocityY[entity] = _velocities[i * 3 + 1]
+        ..bodyAngularVelocity[entity] = _velocities[i * 3 + 2];
     }
   }
 

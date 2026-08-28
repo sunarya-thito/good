@@ -245,8 +245,8 @@ class JointScene extends SceneStruct {
     // implicit one at the origin with zoom 1, and the whole scene draws about
     // 30 px across.
     eye
-      ..view[camera] = (game as Game2D).defaultCamera
-      ..zoom[camera] = 24;
+      ..cameraView[camera] = (game as Game2D).defaultCamera
+      ..cameraZoom[camera] = 24;
 
     // Three chains: two plain, one carrying a weight and set to break.
     for (var i = 0; i < 3; i++) {

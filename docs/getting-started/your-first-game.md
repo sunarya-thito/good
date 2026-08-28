@@ -289,7 +289,7 @@ class MainScene extends SceneStruct {
   @override
   void onSceneMounted(Scene scene) {
     final camera = scene.addEntity(eye);
-    eye.view[camera] = (game as Game2D).defaultCamera;   // (1)!
+    eye.cameraView[camera] = (game as Game2D).defaultCamera;   // (1)!
     scene.addEntity(player);
   }
 }
@@ -301,7 +301,7 @@ class MainScene extends SceneStruct {
 
 Nothing looks different yet — the camera sits at the origin, which is where the
 projection already was. Move the `Eye`'s transform and the view moves; set
-`eye.zoom[camera] = 2` and everything draws twice as large.
+`eye.cameraZoom[camera] = 2` and everything draws twice as large.
 
 To make it follow, write its position from a system, or make it a `Child` of
 the player and let `WorldTransformSystem` compose it. See

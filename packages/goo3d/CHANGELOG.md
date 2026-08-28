@@ -1,5 +1,22 @@
 ## Unreleased
 
+### Breaking
+
+* **`Camera3D` columns carry the component's name.** `near`, `far`,
+  `fieldOfView` and `view` sat in the namespace every component on the entity
+  shares, and `view` was the same name `goo2d`'s `Camera` declared (#133).
+
+  | before | after |
+  |---|---|
+  | `Camera3D.fieldOfView` | `Camera3D.cameraFieldOfView` |
+  | `Camera3D.near` | `Camera3D.cameraNear` |
+  | `Camera3D.far` | `Camera3D.cameraFar` |
+  | `Camera3D.view` | `Camera3D.cameraView` |
+
+  `Transform3D` and `WorldTransform3D` already prefixed and do not move. Names
+  only - column order, widths and `strideBytes` are unchanged. The rule is in
+  `docs/reference/design-rules.md`.
+
 ### Fixed
 
 * **A tick that destroys thousands of parented entities is linear in how many

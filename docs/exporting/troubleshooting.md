@@ -2,7 +2,7 @@
 
 <!-- snippet-scope
 late Future<void> someFuture;
-late DefaultPointer<bool> isBullet;
+late DefaultPointer<bool> bodyIsBullet;
 -->
 
 The failures the pipeline can produce, what each one means, and what to do.
@@ -310,7 +310,7 @@ want to drive it directly.
 Tunnelling. Turn on continuous detection for the projectile:
 
 ```dart
-isBullet.defaultValue = true;   // in the prefab's describeStruct
+bodyIsBullet.defaultValue = true;   // in the prefab's describeStruct
 ```
 
 It costs real solver time, so put it on projectiles instead of on everything

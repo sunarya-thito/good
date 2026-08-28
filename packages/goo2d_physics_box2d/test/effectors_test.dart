@@ -245,7 +245,7 @@ void main() {
     _advance(60);
 
     expect(
-      scene.box.linearVelocityX[body],
+      scene.box.bodyLinearVelocityX[body],
       closeTo(4, 0.5),
       reason: 'a conveyor should bring a body to belt speed and hold it there',
     );

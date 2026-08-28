@@ -232,13 +232,13 @@ void main() {
       a<Parent>().addChild(c);
       level.pool.commitTick();
 
-      expect(level.node.firstChild[a], b);
-      expect(level.node.lastChild[a], c);
-      expect(level.node.parent[b], a);
-      expect(level.node.nextSibling[b], c);
-      expect(level.node.prevSibling[c], b);
-      expect(level.node.parent[a], isNull);
-      expect(level.node.nextSibling[a], isNull);
+      expect(level.node.parentFirstChild[a], b);
+      expect(level.node.parentLastChild[a], c);
+      expect(level.node.childParent[b], a);
+      expect(level.node.childNextSibling[b], c);
+      expect(level.node.childPrevSibling[c], b);
+      expect(level.node.childParent[a], isNull);
+      expect(level.node.childNextSibling[a], isNull);
 
       level.pool.beginTick();
       b<Child>().detach();
@@ -246,17 +246,17 @@ void main() {
 
       // b's three flags cleared; a's two and c's links are in the same byte
       // of their own rows and must be untouched.
-      expect(level.node.parent[b], isNull);
-      expect(level.node.nextSibling[b], isNull);
-      expect(level.node.prevSibling[b], isNull);
-      expect(level.node.firstChild[a], c);
-      expect(level.node.lastChild[a], c);
-      expect(level.node.parent[c], a);
+      expect(level.node.childParent[b], isNull);
+      expect(level.node.childNextSibling[b], isNull);
+      expect(level.node.childPrevSibling[b], isNull);
+      expect(level.node.parentFirstChild[a], c);
+      expect(level.node.parentLastChild[a], c);
+      expect(level.node.childParent[c], a);
     });
   });
 
   group('Parent.addChild / Child.detach', () {
-    test('a single child becomes both firstChild and lastChild', () {
+    test('a single child becomes both the first and the last child', () {
       final level = _level();
       level.pool.beginTick();
       final parent = level.addEntity(level.node);
@@ -264,11 +264,11 @@ void main() {
       parent<Parent>().addChild(child);
       level.pool.commitTick();
 
-      expect(level.node.firstChild[parent], child);
-      expect(level.node.lastChild[parent], child);
-      expect(child.get<Child>().parent[child], parent);
-      expect(child.get<Child>().nextSibling[child], isNull);
-      expect(child.get<Child>().prevSibling[child], isNull);
+      expect(level.node.parentFirstChild[parent], child);
+      expect(level.node.parentLastChild[parent], child);
+      expect(child.get<Child>().childParent[child], parent);
+      expect(child.get<Child>().childNextSibling[child], isNull);
+      expect(child.get<Child>().childPrevSibling[child], isNull);
     });
 
     // The same append, but on a tick that is **not** the page's first.
@@ -278,7 +278,7 @@ void main() {
     // read-modify-write happens to see its own earlier writes and the chain
     // comes out right. From the second tick on it does not: reads see the last
     // published snapshot, so each `addChild` in one tick reads the same stale
-    // `lastChild` and believes it is the first child there has ever been.
+    // `parentLastChild` and believes it is the first child there has ever been.
     // Spawning a character with three attachments in one command is exactly
     // this, and it silently kept only the last one.
     test(
@@ -298,21 +298,21 @@ void main() {
         }
         level.pool.commitTick();
 
-        expect(level.node.firstChild[parent], children[0]);
-        expect(level.node.lastChild[parent], children[2]);
+        expect(level.node.parentFirstChild[parent], children[0]);
+        expect(level.node.parentLastChild[parent], children[2]);
 
         final walked = <Entity>[];
-        Entity? at = level.node.firstChild[parent];
+        Entity? at = level.node.parentFirstChild[parent];
         while (at != null) {
           walked.add(at);
-          at = at.get<Child>().nextSibling[at];
+          at = at.get<Child>().childNextSibling[at];
         }
         expect(
           walked,
           children,
           reason:
               'every child added this tick has to be on the chain, not '
-              'just the last one to overwrite lastChild',
+              'just the last one to overwrite parentLastChild',
         );
       },
     );
@@ -329,25 +329,25 @@ void main() {
       }
       level.pool.commitTick();
 
-      expect(level.node.firstChild[parent], children[0]);
-      expect(level.node.lastChild[parent], children[2]);
+      expect(level.node.parentFirstChild[parent], children[0]);
+      expect(level.node.parentLastChild[parent], children[2]);
 
-      // Walk firstChild -> nextSibling and confirm it visits all three, in
-      // append order.
+      // Walk parentFirstChild -> childNextSibling and confirm it visits all
+      // three, in append order.
       final walked = <Entity>[];
-      Entity? cursor = level.node.firstChild[parent];
+      Entity? cursor = level.node.parentFirstChild[parent];
       while (cursor != null) {
         walked.add(cursor);
-        cursor = cursor.get<Child>().nextSibling[cursor];
+        cursor = cursor.get<Child>().childNextSibling[cursor];
       }
       expect(walked, children);
 
-      // And backwards via prevSibling from lastChild.
+      // And backwards via childPrevSibling from parentLastChild.
       final walkedBack = <Entity>[];
-      cursor = level.node.lastChild[parent];
+      cursor = level.node.parentLastChild[parent];
       while (cursor != null) {
         walkedBack.add(cursor);
-        cursor = cursor.get<Child>().prevSibling[cursor];
+        cursor = cursor.get<Child>().childPrevSibling[cursor];
       }
       expect(walkedBack, children.reversed.toList());
     });
@@ -367,20 +367,26 @@ void main() {
         children[1]<Child>().detach();
         level.pool.commitTick();
 
-        expect(level.node.firstChild[parent], children[0]);
-        expect(level.node.lastChild[parent], children[2]);
-        expect(children[0].get<Child>().nextSibling[children[0]], children[2]);
-        expect(children[2].get<Child>().prevSibling[children[2]], children[0]);
+        expect(level.node.parentFirstChild[parent], children[0]);
+        expect(level.node.parentLastChild[parent], children[2]);
+        expect(
+          children[0].get<Child>().childNextSibling[children[0]],
+          children[2],
+        );
+        expect(
+          children[2].get<Child>().childPrevSibling[children[2]],
+          children[0],
+        );
         // The detached child is fully unlinked, and still alive - which is
         // the whole difference between this and removeChild.
         final removed = children[1].get<Child>();
-        expect(removed.parent[children[1]], isNull);
-        expect(removed.nextSibling[children[1]], isNull);
-        expect(removed.prevSibling[children[1]], isNull);
+        expect(removed.childParent[children[1]], isNull);
+        expect(removed.childNextSibling[children[1]], isNull);
+        expect(removed.childPrevSibling[children[1]], isNull);
       },
     );
 
-    test('detaching the first and last child updates firstChild/lastChild', () {
+    test('detaching the first and last child updates both ends', () {
       final level = _level();
       level.pool.beginTick();
       final parent = level.addEntity(level.node);
@@ -394,10 +400,10 @@ void main() {
       children[2]<Child>().detach();
       level.pool.commitTick();
 
-      expect(level.node.firstChild[parent], children[1]);
-      expect(level.node.lastChild[parent], children[1]);
-      expect(children[1].get<Child>().nextSibling[children[1]], isNull);
-      expect(children[1].get<Child>().prevSibling[children[1]], isNull);
+      expect(level.node.parentFirstChild[parent], children[1]);
+      expect(level.node.parentLastChild[parent], children[1]);
+      expect(children[1].get<Child>().childNextSibling[children[1]], isNull);
+      expect(children[1].get<Child>().childPrevSibling[children[1]], isNull);
     });
 
     test('detaching the only child empties the list', () {
@@ -409,8 +415,8 @@ void main() {
       child<Child>().detach();
       level.pool.commitTick();
 
-      expect(level.node.firstChild[parent], isNull);
-      expect(level.node.lastChild[parent], isNull);
+      expect(level.node.parentFirstChild[parent], isNull);
+      expect(level.node.parentLastChild[parent], isNull);
     });
 
     test('addChild rejects an entity that does not mix in Child', () {
@@ -451,8 +457,8 @@ void main() {
       final child = level.addEntity(level.leaf, parent: parent);
       level.pool.commitTick();
 
-      expect(level.node.firstChild[parent], child);
-      expect(child.get<Child>().parent[child], parent);
+      expect(level.node.parentFirstChild[parent], child);
+      expect(child.get<Child>().childParent[child], parent);
     });
 
     test('rejects a parent entity that does not mix in Parent', () {
@@ -477,10 +483,10 @@ void main() {
       level.pool.commitTick();
 
       final walked = <Entity>[];
-      Entity? cursor = level.node.firstChild[parent];
+      Entity? cursor = level.node.parentFirstChild[parent];
       while (cursor != null) {
         walked.add(cursor);
-        cursor = cursor.get<Child>().nextSibling[cursor];
+        cursor = cursor.get<Child>().childNextSibling[cursor];
       }
       expect(walked, children);
     });
@@ -505,10 +511,10 @@ void main() {
       a.destroy();
       level.pool.commitTick();
 
-      expect(level.node.firstChild[parent], b);
-      expect(level.node.lastChild[parent], b);
+      expect(level.node.parentFirstChild[parent], b);
+      expect(level.node.parentLastChild[parent], b);
       expect(
-        b.get<Child>().prevSibling[b],
+        b.get<Child>().childPrevSibling[b],
         isNull,
         reason: 'b is now the only child, so it has no previous sibling',
       );
@@ -529,7 +535,7 @@ void main() {
       level.pool.commitTick();
 
       expect(
-        level.node.firstChild[root],
+        level.node.parentFirstChild[root],
         isNull,
         reason: 'root has no children left',
       );
@@ -573,13 +579,13 @@ void main() {
         level.pool.commitTick();
 
         final walked = <Entity>[];
-        Entity? at = level.node.firstChild[parent];
+        Entity? at = level.node.parentFirstChild[parent];
         while (at != null) {
           walked.add(at);
-          at = at.get<Child>().nextSibling[at];
+          at = at.get<Child>().childNextSibling[at];
         }
         expect(walked, <Entity>[children[0], children[3]]);
-        expect(level.node.lastChild[parent], children[3]);
+        expect(level.node.parentLastChild[parent], children[3]);
       },
     );
   });
@@ -615,9 +621,9 @@ void main() {
       level.pool.commitTick();
 
       final barrel = turret<Parent>()[level.turret.barrel];
-      expect(level.turret.firstChild[turret], barrel);
-      expect(level.turret.lastChild[turret], barrel);
-      expect(barrel.get<Child>().parent[barrel], turret);
+      expect(level.turret.parentFirstChild[turret], barrel);
+      expect(level.turret.parentLastChild[turret], barrel);
+      expect(barrel.get<Child>().childParent[barrel], turret);
       expect(
         barrel.tryGet<_Barrel>(),
         isNotNull,
@@ -641,10 +647,10 @@ void main() {
       expect(<Entity>{left, middle, right}, hasLength(3));
 
       final walked = <Entity>[];
-      Entity? cursor = level.rig.firstChild[rig];
+      Entity? cursor = level.rig.parentFirstChild[rig];
       while (cursor != null) {
         walked.add(cursor);
-        cursor = cursor.get<Child>().nextSibling[cursor];
+        cursor = cursor.get<Child>().childNextSibling[cursor];
       }
       expect(
         walked,
@@ -653,7 +659,7 @@ void main() {
             'declaration order is chain order, and none of the three '
             'overwrote another',
       );
-      expect(level.rig.lastChild[rig], right);
+      expect(level.rig.parentLastChild[rig], right);
     });
 
     test('declared children nest to whatever depth is declared', () {
@@ -664,8 +670,8 @@ void main() {
 
       final barrel = turret<Parent>()[level.deepTurret.barrel];
       final tip = barrel<Parent>()[level.deepTurret.barrel.tip];
-      expect(barrel.get<Child>().parent[barrel], turret);
-      expect(tip.get<Child>().parent[tip], barrel);
+      expect(barrel.get<Child>().childParent[barrel], turret);
+      expect(tip.get<Child>().childParent[tip], barrel);
     });
 
     test('destroying the parent takes its declared children with it', () {
@@ -712,7 +718,7 @@ void main() {
       // and the slot must stop naming it, because the row is now free to be
       // destroyed and recycled under a handle nothing can tell is stale.
       expect(() => turret<Parent>()[level.turret.barrel], throwsStateError);
-      expect(level.turret.firstChild[turret], isNull);
+      expect(level.turret.parentFirstChild[turret], isNull);
     });
 
     test(
@@ -853,9 +859,9 @@ void main() {
       b<Parent>().adopt(child);
       level.pool.commitTick();
 
-      expect(level.node.firstChild[a], isNull);
-      expect(level.node.firstChild[b], child);
-      expect(level.leaf.parent[child], b);
+      expect(level.node.parentFirstChild[a], isNull);
+      expect(level.node.parentFirstChild[b], child);
+      expect(level.leaf.childParent[child], b);
     });
 
     test('an entity cannot be its own parent', () {
@@ -907,7 +913,7 @@ void main() {
       parent<Parent>().removeChild(child);
       level.pool.commitTick();
 
-      expect(level.node.firstChild[parent], isNull);
+      expect(level.node.parentFirstChild[parent], isNull);
       level.pool.beginTick();
       final reused = <Entity>[
         level.addEntity(level.node),

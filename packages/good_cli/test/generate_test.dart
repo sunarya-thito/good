@@ -689,7 +689,7 @@ flutter:
       expect(scaffolded.keys, contains('lib/game/prefabs/eye.dart'));
       expect(
         scaffolded['lib/game/scenes/main_scene.dart'],
-        contains('eye.view[camera] ='),
+        contains('eye.cameraView[camera] ='),
         reason: 'a camera occupying no view is a camera nothing would show',
       );
     });
