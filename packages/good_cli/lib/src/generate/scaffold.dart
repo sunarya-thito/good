@@ -106,7 +106,17 @@ flutter:
 /// outlive the 0.1.0 release, and `^0.0.1` does not allow 0.1.0 - so every
 /// project scaffolded in between failed `flutter pub get` on a machine without
 /// a path override, which is every machine but this repository's.
-const String engineConstraint = '^0.2.0';
+///
+/// The pre-release suffix is not decoration. `master` carries the 0.3.0 line
+/// while pub.dev carries 0.2.0, and the scaffold writes calls - `Game.start`
+/// taking a constructor, a query declared on its field - that only compile
+/// against 0.3.0. `^0.3.0` would not even admit `0.3.0-dev`, because pub
+/// excludes pre-releases of a range's exclusive maximum, so this has to name
+/// the pre-release to reach the code it generates for. Until 0.3.0 is
+/// published a project scaffolded off `master` resolves only under a path
+/// override; the released `good_cli` scaffolds against the released engine,
+/// and the release drops both suffixes together.
+const String engineConstraint = '^0.3.0-dev';
 
 /// [lines] with the good dependency and the asset entries added, or null if the
 /// pubspec is not a shape this can edit safely.

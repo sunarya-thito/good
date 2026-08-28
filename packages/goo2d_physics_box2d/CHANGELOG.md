@@ -1,3 +1,29 @@
+## Unreleased
+
+### Breaking
+
+* **This needs `goo2d` 0.3.0.** Nothing in this package's own API moves, but
+  `goo2d` and `good` carry source breaks under their own `## Unreleased` -
+  `SystemDescriptor.has` takes a constructor now, and `Box2DPhysicsSystem` is
+  declared through it - so a project cannot take this and leave the engine
+  where it was. The dependency reads `^0.3.0-dev` until 0.3.0 is published
+  (#236).
+
+### Changed
+
+* **`Box2DPhysicsSystem` declares its two queries on their fields.** Both were
+  `late final` assigned from a `describeQuery` override that the system no
+  longer has; they are plain `final` built by `Query.where()` and `Query.all`
+  (#226). Which entities each one matches is unchanged, and neither field is
+  public.
+
+### Fixed
+
+* **The `Box2DPhysicsSystem` doc example declares the system with a
+  constructor.** The one snippet on the class still handed an instance to
+  `descriptor.has`, so it taught a call that no longer compiles. The README
+  had already been corrected; this had not.
+
 ## 0.2.0
 
 ### Breaking
