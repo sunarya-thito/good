@@ -348,12 +348,13 @@ The two lanes have no ordering between them. A read-only command and an
 ordinary one sent in that order can run in either, because one waits for a
 tick and the other for a frame. Order *within* each lane is kept.
 
-!!! warning "Read-only is your promise, not a guarantee"
-    Nothing in Dart makes a closure read-only, and the engine does not check
-    it. A handler here runs with no tick open: a component field it writes is
-    erased by the next step with nothing said, and adding an entity, writing a
-    `StateChannel` or unloading a scene are not stopped at all. Use
-    `hasHandler` for anything that writes.
+!!! warning "Read-only is checked, and it throws"
+    A handler here runs with no tick open, so there is no write slot behind it.
+    Writing a component field, adding or destroying an entity, loading or
+    unloading a scene and writing a `StateChannel` all throw a `StateError`
+    naming the lane — in every build, not only where asserts are on. Use
+    `hasHandler` for anything that writes; it is delivered inside the tick and
+    it replies the same way.
 
     `hasReadOnlySink` and `hasReadOnlySignal` exist only to throw. A handler
     that promises not to write and returns nothing has no effect left to have.

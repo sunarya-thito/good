@@ -99,8 +99,12 @@ enum _ControlMessage {
   /// `GameState.unmount` takes down every loaded scene and destroys their
   /// entities, which is component-data writing. A receipt-delivered handler
   /// runs in the port callback with no tick window open, where that is the
-  /// one thing it must not do. Ring delivery would need a tick, and this
-  /// message exists to end them.
+  /// one thing it must not do - and where the engine now refuses it outright
+  /// (`HandlerWindow`, #245), so this could not become a command even if the
+  /// reply leg were not the problem. Ring delivery would need a tick, and this
+  /// message exists to end them. Being a `_ControlMessage` and not a command
+  /// is also what keeps it *outside* that guard: teardown is the engine taking
+  /// the world down on purpose.
   stop,
 
   /// Main -> game after [stopped]: free the native memory and close this
@@ -1766,6 +1770,11 @@ abstract class Game implements RandomOwner {
       inline: runtime.inline,
     );
     transport.registry = commands;
+    // What the transport seals around a handler that runs with no tick window
+    // open - see `CommandTransport.pool` and `HandlerWindow`. Bound here
+    // rather than in `attachCommandRings`, which is about direction and runs
+    // twice; the pool exists from `bindRuntime` and never changes.
+    transport.pool = state.pool;
     runtime.commands = commands;
     runtime.commandTransport = transport;
 
@@ -2397,7 +2406,9 @@ final class GameRuntime {
   /// Its own queue, deliberately. [pumpCommands] runs everything waiting in
   /// arrival order, so calling it here would run tick-delivered handlers
   /// outside the tick window - user code writing component data with no write
-  /// slot open, which the next `beginTick` erases without a word.
+  /// slot open, which the next `beginTick` erases without a word. A
+  /// tick-delivered handler is written expecting to write, so it would be
+  /// refused outright now; the queue stays split so it is never asked to.
   void runReadOnlyCommands() => commandTransport?.runReadOnlyInbox();
 
   /// Called by [GameState.runFixedStep] once a fixed step is fully committed.
@@ -3646,6 +3657,12 @@ abstract class _StateChannelBase<T>
       );
       return;
     }
+    // The read-only lane promised to answer through its reply and write
+    // nothing, and this is a write. The receipt lane is deliberately *not*
+    // held to it: publishing on a channel is the answer leg a control command
+    // has instead of a reply, which is what `_controlCannotAnswer` tells a
+    // caller to reach for. See `HandlerWindow` (#245).
+    _run.state?.pool.requireChannelWritable();
     _publish(newValue);
   }
 

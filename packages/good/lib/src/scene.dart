@@ -944,6 +944,11 @@ extension EntityLifetime on Entity {
   /// tick, not across ticks, unless you know the entity outlives the reference.
   void destroy() {
     final storage = ArchetypeRegistry.byId(archetypeId);
+    // The mirror of the check `allocateRow` makes, and here for the same
+    // reason: freeing a row from a handler with no tick window open hands it
+    // to the next spawn while the simulation is standing still. See
+    // `HandlerWindow`.
+    storage.pool.requireWorldMutable('An entity was destroyed');
     final page = storage.pageAt(pageIndex);
     if (page == null) return; // its scene was already unloaded
 

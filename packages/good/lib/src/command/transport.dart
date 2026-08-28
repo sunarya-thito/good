@@ -5,6 +5,7 @@ import 'package:meta/meta.dart';
 
 import 'package:good/src/command/command.dart';
 import 'package:good/src/command/param.dart';
+import 'package:good/src/pool.dart';
 import 'package:good/src/ring_buffer.dart';
 
 /// Carries command batches between the two copies of a `Game`, and answers
@@ -83,6 +84,26 @@ final class CommandTransport implements CommandSender {
   /// This copy's consumer end - drained by [pump].
   RingBuffer? inbound;
 
+  /// This copy's page storage, set once in `Game._bootFinalize`.
+  ///
+  /// Held for one reason: every handler that runs with no tick window open
+  /// runs from this class, and the pool is what every mutating path in the
+  /// engine already asks before it changes anything. Opening the matching
+  /// [HandlerWindow] around the dispatch - and only there - is what turns
+  /// `hasControlSink`'s and `hasReadOnlyHandler`'s promise from a sentence in
+  /// a doc comment into a check that stands in a release build (#245).
+  ///
+  /// **The door, and not each write.** `data_layout.dart` had the one write
+  /// guard there was; adding an entity, writing a `StateChannel` and unloading
+  /// a scene each had none, and every write path added after this would be one
+  /// more to remember. There is exactly one place a handler that must not
+  /// write starts running, and this is it.
+  ///
+  /// Nullable because a transport can be built without a game behind it -
+  /// `command_param_test.dart`'s loopback does - and a copy with no world has
+  /// nothing to protect.
+  MemoryPool? pool;
+
   /// Carries a receipt-delivered batch to the other copy, or null when there
   /// is no other copy. A callback and not a `SendPort`, so this layer
   /// never learns the control port's message vocabulary - `GameRuntime`
@@ -148,7 +169,7 @@ final class CommandTransport implements CommandSender {
     // without and the caller would wait forever.
     if (batch.delivery == HandlerDelivery.receipt) {
       if (registry.handles(destination)) {
-        registry.dispatch(batch);
+        _dispatchOutsideTick(batch, HandlerWindow.receipt);
         return Future<void>.value();
       }
       final carry = controlSend;
@@ -231,10 +252,37 @@ final class CommandTransport implements CommandSender {
   /// record format does not change with the carrier.
   void receiveControlBatch(Uint8List bytes) {
     if (_shutdown) return;
-    registry.dispatch(
+    _dispatchOutsideTick(
       CommandBatch(-1, initialBytes: bytes.length)
         ..adoptIncoming(bytes, registry),
+      HandlerWindow.receipt,
     );
+  }
+
+  /// Runs [batch] with [window] open, and puts the previous window back
+  /// whatever the handler does.
+  ///
+  /// **A no-op while a tick happens to be open**, which is not a hole but the
+  /// rule itself: `MemoryPool` compares the tick window first, so a receipt
+  /// batch a system sends to itself mid-tick - [send] dispatches a local one
+  /// on the spot - keeps writing exactly as it did. What is refused is a
+  /// handler running where there is no write slot at all.
+  ///
+  /// Two field stores and a try/finally per batch, at user-action rate for the
+  /// receipt lane and once per waiting batch per frame for the read-only one.
+  /// Nothing per entity, nothing per tick.
+  void _dispatchOutsideTick(CommandBatch batch, HandlerWindow window) {
+    final pool = this.pool;
+    if (pool == null) {
+      registry.dispatch(batch);
+      return;
+    }
+    final previous = pool.openHandlerWindow(window);
+    try {
+      registry.dispatch(batch);
+    } finally {
+      pool.closeHandlerWindow(previous);
+    }
   }
 
   /// Takes in everything the other copy has said since the last call, and
@@ -288,13 +336,14 @@ final class CommandTransport implements CommandSender {
   /// runs on a frame that afforded no fixed step, so a paused game answers
   /// here while its tick stands still (#165).
   ///
-  /// **The handlers run with no tick open**, which is a promise the commands
-  /// registered here make and nothing enforces - see
-  /// `CommandDescriptor.hasReadOnlyHandler`. It is the reason this is a
-  /// separate queue rather than [_inbox] drained more often.
+  /// **The handlers run with no tick open**, which is the reason this is a
+  /// separate queue rather than [_inbox] drained more often - and the reason
+  /// it opens `HandlerWindow.readOnly` around each dispatch, so a handler that
+  /// writes anyway is refused rather than quietly erased (#245). See
+  /// `CommandDescriptor.hasReadOnlyHandler`.
   ///
   /// Costs one length check on an empty queue, and allocates nothing.
-  void runReadOnlyInbox() => _runQueue(_readInbox);
+  void runReadOnlyInbox() => _runQueue(_readInbox, HandlerWindow.readOnly);
 
   /// Drains the inbound ring, running nothing: replies complete the send that
   /// asked for them, and a request that arrives alongside joins the inbox for
@@ -368,39 +417,60 @@ final class CommandTransport implements CommandSender {
 
   /// Runs the batches waiting in [queue], in arrival order, and answers each
   /// one.
-  void _runQueue(List<_Inbound> queue) {
+  void _runQueue(
+    List<_Inbound> queue, [
+    HandlerWindow window = HandlerWindow.none,
+  ]) {
     // Snapshotted before the loop: a handler may itself send a batch back to
     // this same side, and running that one here too would let one command
     // decide how many more run this tick. It waits for the next pump, like
     // anything else that arrives after this one started.
     final due = queue.length;
     if (due == 0) return;
-    for (var i = 0; i < due; i++) {
-      final inbound = queue[i];
-      final batch = inbound.batch;
-      registry.dispatch(batch);
-      final local = inbound.local;
-      if (local != null) {
-        // Never crossed a boundary - the caller is still holding this exact
-        // batch, with the handler's writes already in it.
-        local.complete();
-        continue;
+    // Declared out here so the catch below knows which batch threw. A plain
+    // int and no closure: this runs once per pump.
+    var i = 0;
+    try {
+      for (; i < due; i++) {
+        final inbound = queue[i];
+        final batch = inbound.batch;
+        if (window == HandlerWindow.none) {
+          registry.dispatch(batch);
+        } else {
+          _dispatchOutsideTick(batch, window);
+        }
+        final local = inbound.local;
+        if (local != null) {
+          // Never crossed a boundary - the caller is still holding this exact
+          // batch, with the handler's writes already in it.
+          local.complete();
+          continue;
+        }
+        final ring = outbound;
+        if (ring == null) continue;
+        if (!_write(ring, replyRecord, batch.id, batch.bytes, batch.length)) {
+          // The sender is awaiting this and will now wait forever, so it is
+          // worth being loud about (the assert-not-print rule). Dropping is
+          // still better than blocking a tick on a ring only the other isolate
+          // can drain.
+          assert(
+            false,
+            'the reply ring is full, so batch #${batch.id} has been run but '
+            'its caller will never hear back. Raise Game.commandBufferBytes.',
+          );
+        }
       }
-      final ring = outbound;
-      if (ring == null) continue;
-      if (!_write(ring, replyRecord, batch.id, batch.bytes, batch.length)) {
-        // The sender is awaiting this and will now wait forever, so it is worth
-        // being loud about (the assert-not-print rule). Dropping is still
-        // better than blocking a tick on a ring only the other isolate can
-        // drain.
-        assert(
-          false,
-          'the reply ring is full, so batch #${batch.id} has been run but its '
-          'caller will never hear back. Raise Game.commandBufferBytes.',
-        );
-      }
+    } catch (error) {
+      // A throwing handler still takes the pump down with it - that is what it
+      // did before #245, and what a throwing system does. What it must not do
+      // is run again off the same queue entry on the next frame, or leave a
+      // local caller awaiting a batch that has already failed. Both became
+      // reachable the moment the refusals this file installs became throws.
+      queue[i].local?.completeError(error);
+      rethrow;
+    } finally {
+      queue.removeRange(0, due);
     }
-    queue.removeRange(0, due);
   }
 
   /// The batch id in front of every ring record - see [_write].

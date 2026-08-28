@@ -169,6 +169,11 @@ class _ResumeByControl extends SignalCommand {}
 
 class _ResumeByTick extends SignalCommand {}
 
+/// Tries the one thing #245 measured as reporting nothing at all - a spawn
+/// from a receipt-delivered handler - and publishes what came back, because a
+/// receipt handler has no reply leg to throw through.
+class _ControlProbe extends SignalCommand {}
+
 class _PauseMover extends SinkCommand<bool> {
   final paused = Param.uint1();
 
@@ -195,10 +200,23 @@ class _IsolateState extends GameState<_IsolateGame> {
       ..hasSupplier(game.spawnMover, _onSpawnMover)
       ..hasSink(game.pauseMover, _onPauseMover)
       ..hasControlSignal(game.resumeByControl, () => paused = false)
+      ..hasControlSignal(game.controlProbe, _onControlProbe)
       ..hasSignal(game.resumeByTick, () => paused = false);
   }
 
   Entity _onSpawnMover() => loadedScenes.single.addEntity(level.mover);
+
+  void _onControlProbe() {
+    try {
+      loadedScenes.single.addEntity(level.mover);
+      // Publishing on a channel from a receipt handler is deliberately still
+      // allowed - it is the answer leg this lane has - so this line reaching
+      // main at all is half of what the test reads.
+      game.probeRefused.value = 2;
+    } on StateError {
+      game.probeRefused.value = 1;
+    }
+  }
 
   void _onPauseMover(bool paused) {
     if (paused) {
@@ -312,6 +330,7 @@ class _IsolateGame extends Game {
   late final _PauseMover pauseMover;
   late final _ResumeByControl resumeByControl;
   late final _ResumeByTick resumeByTick;
+  late final _ControlProbe controlProbe;
 
   /// What `_MoverSystem` publishes. Declared here because main is the copy
   /// that allocates the storage - and main is also the only reader, which is
@@ -320,12 +339,18 @@ class _IsolateGame extends Game {
   late final StateChannel<int> population;
   late final StateChannel<int> firstMarker;
 
+  /// 1 when the spawn in `_onControlProbe` was refused, 2 when it went
+  /// through. Starts at 0, so a handler that never ran is distinguishable
+  /// from one that ran and was refused.
+  late final StateChannel<int> probeRefused;
+
   @override
   void describeState(StateDescriptor descriptor) {
     super.describeState(descriptor);
     firstX = descriptor.hasFloat64();
     population = descriptor.hasInt32();
     firstMarker = descriptor.hasInt32();
+    probeRefused = descriptor.hasInt32();
   }
 
   @override
@@ -338,6 +363,7 @@ class _IsolateGame extends Game {
     pauseMover = descriptor.has(_PauseMover.new);
     resumeByControl = descriptor.has(_ResumeByControl.new);
     resumeByTick = descriptor.has(_ResumeByTick.new);
+    controlProbe = descriptor.has(_ControlProbe.new);
   }
 }
 
@@ -1462,6 +1488,42 @@ void main() {
           'the handler set paused = false, so the tick came back. Sent as a '
           'tick-delivered command this could never arrive - the message that '
           'restarts the tick would be waiting on the tick it stopped.',
+    );
+  });
+
+  test('a control handler is refused the world on the game isolate', () async {
+    final game = await Game.start(_IsolateGame.new);
+    run = game;
+    addTearDown(() async {
+      if (run.isRunning) await run.stop();
+    });
+    await _waitTicks(run, 3);
+
+    game.pause();
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    final stopped = run.tick;
+
+    // Runs in the port callback on the game isolate, with the tick genuinely
+    // stopped. The handler catches its own refusal and publishes what it saw,
+    // because a receipt-delivered handler has no reply leg to throw back
+    // through - which is also what makes this the real configuration and not
+    // the inline stand-in: the transport, the pool and the state all crossed
+    // an `Isolate.spawn` before this ran.
+    await game.controlProbe().timeout(const Duration(seconds: 5));
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+
+    expect(
+      game.probeRefused.value,
+      1,
+      reason:
+          'addEntity from a receipt handler was the second row of #245 and it '
+          'reported nothing at all. A guard bound to the wrong pool copy '
+          'across the spawn would read 2 here',
+    );
+    expect(
+      run.tick,
+      stopped,
+      reason: 'and nothing restarted the tick behind the test',
     );
   });
 

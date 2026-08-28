@@ -147,13 +147,21 @@ int _readRow(ArchetypeStorage storage, Entity entity) {
 
 /// Resolves this tick's write slot for [entity]'s row.
 ///
-/// The tick assertion is the only thing standing between a caller and silent
-/// data loss: `MemoryPool.beginTick` copies each page's published bytes
-/// over the write slot, so a write that lands outside a tick window is
-/// erased by the next `beginTick` with no error anywhere. Writing before
-/// the *first* publish is fine and common (scene bootstrap), hence the
-/// second clause. Debug-only - it compiles out of a release build, so
-/// the hot path stays a page lookup and a pointer add.
+/// The tick assertion catches silent data loss: `MemoryPool.beginTick` copies
+/// each page's published bytes over the write slot, so a write that lands
+/// outside a tick window is erased by the next `beginTick` with no error
+/// anywhere. Writing before the *first* publish is fine and common (scene
+/// bootstrap) and is not lost at all - a page that never published has nothing
+/// to be copied over it - hence the second clause. Debug-only: it compiles out
+/// of a release build, so the hot path stays a page lookup and a pointer add.
+///
+/// **It is no longer the only guard, and it is no longer the one that matters
+/// most.** It reports a *lost write* by whoever made it - a `Tickable` writing
+/// during presentation, a callback resuming after `commitTick`. The narrower
+/// and far more dangerous case, a command handler running on a lane that
+/// promised not to write, is refused outright in `ArchetypeStorage.rowWrite`
+/// before this line is reached, in every build and on an unpublished page too.
+/// See `HandlerWindow` (#245).
 ///
 /// Top-level, mirroring [_readRow], so the array field types can share the
 /// one guarded write path instead of restating the assertion - they are not

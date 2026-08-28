@@ -654,9 +654,10 @@ enum HandlerDelivery {
   /// `_ControlMessage.stop`'s doc describes. The price of the split is that
   /// there is no ordering *between* the lanes, only within each.
   ///
-  /// The handler runs with no tick open, so it must not write - see
-  /// `CommandDescriptor.hasReadOnlySupplier`, which is where that promise is
-  /// set out and where it is admitted that nothing checks it.
+  /// The handler runs with no tick open, so it must not write - and is
+  /// stopped when it tries. `CommandTransport` opens a `HandlerWindow` around
+  /// the dispatch and every mutating path in the engine asks the pool about
+  /// it, in every build (#245). See `CommandDescriptor.hasReadOnlySupplier`.
   frame,
 }
 
