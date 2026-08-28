@@ -3,7 +3,7 @@ description: >-
   Raw FFI bindings to Box2D v3.1.1 for the good game engine, with a vendored
   C shim and a worker-thread pool. Use goo2d_physics_box2d for the ECS-
   facing API instead.
-version: 0.1.1
+version: 0.1.2-dev
 repository: https://github.com/sunarya-thito/good
 homepage: https://sunarya-thito.github.io/good/
 documentation: https://sunarya-thito.github.io/good/

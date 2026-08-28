@@ -3,7 +3,7 @@ description: >-
   2D physics for the good game engine: bodies, colliders, all nine joints,
   effectors, and raycast and overlap queries, stepped in the game isolate
   and solved across threads.
-version: 0.2.0
+version: 0.3.0-dev
 repository: https://github.com/sunarya-thito/good
 homepage: https://sunarya-thito.github.io/good/
 documentation: https://sunarya-thito.github.io/good/
@@ -19,8 +19,8 @@ dependencies:
   ffi: ^2.2.0
   flutter:
     sdk: flutter
-  goo2d: ^0.2.0
-  goo2d_ffi_box2d: ^0.1.0
+  goo2d: ^0.3.0-dev
+  goo2d_ffi_box2d: ^0.1.2-dev
   meta: ^1.15.0
 
 dev_dependencies:

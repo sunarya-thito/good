@@ -3,7 +3,7 @@ description: >-
   The 3D renderer for the good game engine: decomposed transforms with
   quaternion rotation, composed world transforms and the camera, on top of
   the good kernel, which it re-exports.
-version: 0.2.0
+version: 0.3.0-dev
 repository: https://github.com/sunarya-thito/good
 homepage: https://sunarya-thito.github.io/good/
 documentation: https://sunarya-thito.github.io/good/
@@ -16,7 +16,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  good: ^0.2.0
+  good: ^0.3.0-dev
   meta: ^1.15.0
 
 dev_dependencies:
