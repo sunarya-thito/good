@@ -19,6 +19,15 @@
 
 ### Fixed
 
+* **A declared buoyancy effector floats what is inside it.** The dispatch in
+  `Box2DPhysicsSystem` handed `Effectors2D.buoyancyEffector` the region's
+  bottom edge as the water line, and that function hangs its fluid *below* the
+  line it is given - so the water sat one full region height under the region
+  it was declared on. A body inside the region free-fell through it, and a
+  body beneath the region was shoved upward by water that was not there. The
+  comment above the call said `+y is down in goo2d`, which is the opposite of
+  what this engine does (#197).
+
 * **The `Box2DPhysicsSystem` doc example declares the system with a
   constructor.** The one snippet on the class still handed an instance to
   `descriptor.has`, so it taught a call that no longer compiles. The README
