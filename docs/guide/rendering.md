@@ -370,11 +370,13 @@ the renderer exposes how many sprites it actually emitted, and
 to turn away. A debug overlay showing both is worth building early, and the
 second is the number to add to `maxSpritesPerTick`.
 
-The cap counts **records, not sprites** — a nine-sliced sprite spends nine of
-them — so a screen of nine-sliced panels reaches it nine times sooner than the
-entity count suggests. Which sprites go when it runs out is settled by archetype
-registration order, which is not a property of your scene: treat being over
-budget as something to fix, not as a layer to lose deliberately.
+The cap counts **records, not sprites** — a sliced sprite spends one per cell it
+draws, nine for a full frame — so a screen of panels reaches it sooner than the
+entity count suggests. Only the cells that survive are charged: a capsule button
+sliced left and right has no top or bottom row to draw, so it costs three and not
+nine. Which sprites go when it runs out is settled by archetype registration
+order, which is not a property of your scene: treat being over budget as
+something to fix, not as a layer to lose deliberately.
 
 The renderer also reports its three phases — walking renderables into the draw
 queue, sorting by z, and writing geometry — separately instead of as one

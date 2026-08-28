@@ -31,6 +31,8 @@ const int _budget = 64;
 const int _firstColor = 0xFF00FF00;
 const int _secondColor = 0xFFFF0000;
 const int _panelColor = 0xFF0000FF;
+const int _barColor = 0xFF00FFFF;
+const int _columnColor = 0xFFFF00FF;
 
 /// A 2x1 PNG. Nothing here looks at a pixel; a nine-sliced sprite needs a
 /// texture to exist because slicing subdivides image space, and this is the
@@ -98,6 +100,74 @@ class _Panel extends EntityStruct
   }
 }
 
+/// Sliced on the horizontal axis only - a capsule button, a progress bar, a
+/// panel that stretches sideways. Three records, not nine: with nothing
+/// declared top or bottom, two of the four horizontal grid lines coincide and
+/// the writer has always skipped the rows they bound.
+///
+/// The whole of #252 is that the fill pass charged this nine.
+class _Bar extends EntityStruct
+    with Transform2D, WorldTransform2D, Renderable2D {
+  late final TextureAsset skin;
+  late final Sprite bar;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    skin = descriptor.has(_panelTextureKey);
+  }
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    bar = descriptor.has(
+      texture: skin,
+      width: 40,
+      height: 40,
+      color: _barColor,
+      nineSliceBorder: const NineSliceBorder(
+        left: 0.25,
+        right: 0.25,
+        insetLeft: 4,
+        insetRight: 4,
+      ),
+    );
+  }
+}
+
+/// The same shape turned ninety degrees: sliced top and bottom only, so it is
+/// the *columns* that coincide. Here to keep the count from being right for
+/// one axis by accident - a fix that counted rows and applied the answer to
+/// both would pass [_Bar] and fail this.
+class _Column extends EntityStruct
+    with Transform2D, WorldTransform2D, Renderable2D {
+  late final TextureAsset skin;
+  late final Sprite bar;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    skin = descriptor.has(_panelTextureKey);
+  }
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    bar = descriptor.has(
+      texture: skin,
+      width: 40,
+      height: 40,
+      color: _columnColor,
+      nineSliceBorder: const NineSliceBorder(
+        top: 0.25,
+        bottom: 0.25,
+        insetTop: 4,
+        insetBottom: 4,
+      ),
+    );
+  }
+}
+
 class _BudgetScene extends SceneStruct {
   late Scene _handle;
 
@@ -109,6 +179,8 @@ class _BudgetScene extends SceneStruct {
   late final _First first;
   late final _Panel panel;
   late final _Second second;
+  late final _Bar bar;
+  late final _Column column;
 
   @override
   void describeScene(SceneDescriptor descriptor) {
@@ -118,6 +190,10 @@ class _BudgetScene extends SceneStruct {
     first = descriptor.has(_First.new);
     panel = descriptor.has(_Panel.new);
     second = descriptor.has(_Second.new);
+    // Appended, so the three above keep the encounter order the drop-set
+    // expectations in the first group are pinned against.
+    bar = descriptor.has(_Bar.new);
+    column = descriptor.has(_Column.new);
   }
 }
 
@@ -354,6 +430,235 @@ void main() {
             'it describes the last frame, like every other `last*` field on '
             'the renderer - a latch would report a scene that has since '
             'been fixed',
+      );
+    });
+  });
+
+  // #252. `_isNineSliced` is true when *any* of the four insets is set, and
+  // the charge was a flat 9 from there. But the writer skips a collapsed row
+  // or column, and a sprite sliced on one axis has them by construction - so
+  // a three-sliced capsule button was charged three times what it draws, and
+  // a frame of ten of them dropped three panels with 34 records to spare.
+  //
+  // Every test here asserts the charge against `_batchColors(game).length` -
+  // the records actually in the published batch - and not against a literal.
+  // A literal is what let the two drift apart in the first place: it pins
+  // what someone believed on the day, where the invariant is that the number
+  // the budget is spent against is the number the buffer holds.
+  group('the nine-slice charge', () {
+    test('a sprite sliced on one axis is charged what it draws', () async {
+      final game = await _game();
+      final scene = _scene;
+      scene.add(scene.bar);
+      run.state.advance(_step);
+
+      final colors = _batchColors(game);
+      expect(
+        colors,
+        hasLength(3),
+        reason:
+            'left corner, stretched middle, right corner - the top and '
+            'bottom rows are collapsed, so the writer never emitted them',
+      );
+      expect(
+        _renderer.lastRecordCount,
+        colors.length,
+        reason:
+            'the charge is the batch. It read 9 against a batch of 3 before '
+            'this fix, which is what made `lastRecordCount` disagree with '
+            'its own doc',
+      );
+      expect(_renderer.lastSpriteCount, 1);
+      expect(_renderer.lastRecordsOverBudget, 0);
+    });
+
+    test('and the same sliced on the other axis', () async {
+      final game = await _game();
+      final scene = _scene;
+      scene.add(scene.column);
+      run.state.advance(_step);
+
+      final colors = _batchColors(game);
+      expect(colors, hasLength(3));
+      expect(_renderer.lastRecordCount, colors.length);
+      expect(
+        colors.every((c) => c == _columnColor),
+        isTrue,
+        reason:
+            'three cells of one column. Here so a count that got rows right '
+            'and applied the answer to both axes cannot pass',
+      );
+    });
+
+    test('a full nine-slice is still charged nine', () async {
+      final game = await _game();
+      final scene = _scene;
+      scene.add(scene.panel);
+      run.state.advance(_step);
+
+      final colors = _batchColors(game);
+      expect(
+        colors,
+        hasLength(9),
+        reason:
+            'insets on all four edges of a 40x40 sprite leave every row and '
+            'every column live - the behaviour #252 must not move',
+      );
+      expect(_renderer.lastRecordCount, colors.length);
+      expect(_renderer.lastSpriteCount, 1);
+    });
+
+    test('ten three-sliced panels fit a budget with room to spare', () async {
+      final game = await _game();
+      final scene = _scene;
+      for (var i = 0; i < 10; i++) {
+        scene.add(scene.bar);
+      }
+      run.state.advance(_step);
+
+      final colors = _batchColors(game);
+      expect(
+        _renderer.lastSpriteCount,
+        10,
+        reason:
+            'this frame reported 7 sprites and dropped three panels, out of '
+            'a 64-record budget it was using 30 of. That is #252 as a player '
+            'sees it: panels missing from a UI that fits',
+      );
+      expect(colors, hasLength(30));
+      expect(_renderer.lastRecordCount, colors.length);
+      expect(
+        _renderer.lastRecordsOverBudget,
+        0,
+        reason:
+            'and it reported a shortfall of 27 against a true shortfall of '
+            'zero, so `maxSpritesPerTick += lastRecordsOverBudget` - the '
+            'documented fix - raised a knob that was never the problem',
+      );
+    });
+
+    test('the charge equals the batch across a mixed frame', () async {
+      final game = await _game();
+      final scene = _scene;
+      for (var i = 0; i < 5; i++) {
+        scene.add(scene.first);
+      }
+      scene.add(scene.panel);
+      for (var i = 0; i < 3; i++) {
+        scene.add(scene.bar);
+      }
+      for (var i = 0; i < 2; i++) {
+        scene.add(scene.column);
+      }
+      run.state.advance(_step);
+
+      final colors = _batchColors(game);
+      expect(
+        _renderer.lastRecordCount,
+        colors.length,
+        reason:
+            'the invariant, over four archetypes at once: whatever the fill '
+            'pass charged is what the write pass wrote',
+      );
+      expect(
+        colors,
+        hasLength(5 + 9 + 3 * 3 + 2 * 3),
+        reason:
+            'five plain quads, one full nine-slice, three horizontal bars '
+            'and two vertical ones',
+      );
+      expect(_renderer.lastRecordsOverBudget, 0);
+      expect(_renderer.lastSpriteCount, 11);
+    });
+
+    test('the charge equals the batch when the budget closes', () async {
+      final game = await _game();
+      final scene = _scene;
+      for (var i = 0; i < 62; i++) {
+        scene.add(scene.first);
+      }
+      // 62 spent, two left, and a bar wants three - so it is refused whole.
+      scene.add(scene.bar);
+      run.state.advance(_step);
+
+      final colors = _batchColors(game);
+      expect(_renderer.lastRecordCount, colors.length);
+      expect(colors, hasLength(62));
+      expect(
+        _renderer.lastRecordsOverBudget,
+        3,
+        reason:
+            'the shortfall is what the refused sprite would have drawn. '
+            'Three, not nine: raising the budget by nine to fit a bar that '
+            'needs three is the wrong number even when it happens to work',
+      );
+      expect(
+        _renderer.lastSpriteCount,
+        62,
+        reason:
+            'all-or-nothing still holds - a sliced sprite is admitted only '
+            'if every one of its records fits, because admitting it '
+            'partially would write past the scratch',
+      );
+    });
+
+    test('a sprite scaled to nothing is skipped, not charged', () async {
+      final game = await _game();
+      final scene = _scene;
+      final entity = scene.add(scene.panel);
+      scene.panel.transformScaleX[entity] = 0;
+      scene.panel.transformScaleY[entity] = 0;
+      run.state.advance(_step);
+
+      expect(
+        _batchColors(game),
+        isEmpty,
+        reason:
+            'every grid line lands on the same point, so all nine cells are '
+            'collapsed and the writer emits nothing',
+      );
+      expect(_renderer.lastRecordCount, 0);
+      expect(
+        _renderer.lastSpriteCount,
+        0,
+        reason: 'a sprite that draws no records is not a drawn sprite',
+      );
+      expect(_renderer.lastRecordsOverBudget, 0);
+    });
+
+    test('a zero-record sprite cannot slip past a closed budget', () async {
+      final game = await _game();
+      final scene = _scene;
+      for (var i = 0; i < 60; i++) {
+        scene.add(scene.first);
+      }
+      // One archetype, so these two are walked in the order they were added:
+      // the first closes the budget, the second arrives after it is shut.
+      scene.add(scene.panel);
+      final collapsed = scene.add(scene.panel);
+      scene.panel.transformScaleX[collapsed] = 0;
+      scene.panel.transformScaleY[collapsed] = 0;
+      run.state.advance(_step);
+
+      expect(
+        _renderer.lastSpriteCount,
+        60,
+        reason:
+            'the collapsed panel costs 0 records, and `recordCount + 0 > '
+            'limit` is false however shut the budget is - so left to the '
+            'budget test it would be admitted after the pass had closed, '
+            'which is the one thing closing `limit` exists to prevent. It '
+            'is skipped before the test instead',
+      );
+      expect(_batchColors(game), hasLength(60));
+      expect(_renderer.lastRecordCount, 60);
+      expect(
+        _renderer.lastRecordsOverBudget,
+        9,
+        reason:
+            'nine for the full-scale panel that was refused, and nothing '
+            'for the collapsed one - it asked for nothing, so nothing was '
+            'turned away',
       );
     });
   });

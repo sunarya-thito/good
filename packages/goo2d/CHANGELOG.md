@@ -1,5 +1,21 @@
 ## Unreleased
 
+### Fixed
+
+* **A nine-sliced sprite is charged the records it draws, not nine.** The
+  charge was hardcoded at nine for anything with an inset on it, while the
+  write pass has always skipped a collapsed row or column - and a sprite
+  sliced on one axis has them by construction. A three-sliced capsule button
+  cost three times what it drew, so ten of them against a 64-record budget
+  dropped three panels from a frame that needed 30. `lastRecordCount` is now
+  what the published batch holds, and `lastRecordsOverBudget` is the real
+  shortfall rather than up to nine times it, which is what makes
+  `maxSpritesPerTick += lastRecordsOverBudget` the fix its doc says it is
+  (#252).
+
+  A sprite whose scale collapses every cell now draws nothing and costs
+  nothing, where before it cost nine.
+
 ### Changed
 
 * **`MousePickingSystem` declares `cursor` and `click` on their fields.** Both

@@ -320,6 +320,78 @@ class _PlainPanel extends EntityStruct
   }
 }
 
+/// Sliced on the horizontal axis only - a capsule button, a progress bar, a
+/// panel that stretches sideways. The same 16x16 source and 4px inset as
+/// [_Panel], with nothing declared top or bottom.
+///
+/// Its top and bottom rows are collapsed **by construction**: `insetTop` and
+/// `insetBottom` are zero, so two of the four horizontal grid lines coincide.
+/// Three cells, not nine, and it was charged nine anyway until #252.
+class _HorizontalBar extends EntityStruct
+    with Transform2D, WorldTransform2D, Renderable2D {
+  late final TextureAsset skin;
+  late final Sprite bar;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    skin = descriptor.has(_Panel.asset);
+  }
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    bar = descriptor.has(
+      texture: skin,
+      width: _Panel.drawSize,
+      height: _Panel.drawSize,
+      pivot: RelativeOffset2D.zero,
+      nineSliceBorder: const NineSliceBorder(
+        left: 0.25,
+        right: 0.25,
+        insetLeft: _Panel.inset,
+        insetRight: _Panel.inset,
+      ),
+    );
+  }
+}
+
+/// A sliced sprite whose grid leaves exactly **one** live cell: the left inset
+/// takes the whole width, so the centre and right columns coincide with it,
+/// and nothing is declared on the vertical axis so only the middle row
+/// survives.
+///
+/// One record, and still nine-sliced. That combination is the reason the draw
+/// queue carries a sliced flag instead of asking whether the record count is
+/// 1: this sprite has to keep sampling the quarter of the source its `left`
+/// cut names, and the plain-quad path would hand it the whole image.
+class _SingleCellPanel extends EntityStruct
+    with Transform2D, WorldTransform2D, Renderable2D {
+  late final TextureAsset skin;
+  late final Sprite frame;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    skin = descriptor.has(_Panel.asset);
+  }
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    frame = descriptor.has(
+      texture: skin,
+      width: _Panel.drawSize,
+      height: _Panel.drawSize,
+      pivot: RelativeOffset2D.zero,
+      nineSliceBorder: const NineSliceBorder(
+        left: 0.25,
+        insetLeft: _Panel.drawSize,
+      ),
+    );
+  }
+}
+
 /// Insets declared, no texture. Slicing subdivides image space, so with no
 /// image there is nothing to subdivide.
 class _BorderedUntextured extends EntityStruct
@@ -397,6 +469,8 @@ class _SpriteScene extends SceneStruct {
   late final _BorderedUntextured borderedUntextured;
   late final _PivotBody pivotBody;
   late final _PlainPanel plainPanel;
+  late final _HorizontalBar horizontalBar;
+  late final _SingleCellPanel singleCellPanel;
 
   @override
   void describeScene(SceneDescriptor descriptor) {
@@ -416,6 +490,8 @@ class _SpriteScene extends SceneStruct {
     flat = descriptor.has(_Flat.new);
     pivotBody = descriptor.has(_PivotBody.new);
     plainPanel = descriptor.has(_PlainPanel.new);
+    horizontalBar = descriptor.has(_HorizontalBar.new);
+    singleCellPanel = descriptor.has(_SingleCellPanel.new);
   }
 }
 
@@ -2828,6 +2904,74 @@ void main() {
         );
       },
     );
+
+    test('slicing one axis emits one row of three, not nine', () async {
+      // Two of the four horizontal grid lines coincide when nothing is
+      // declared top or bottom, so the top and bottom rows are skipped. This
+      // is the *writer's* side of #252 and it always behaved: it is the fill
+      // pass that charged nine for these three, and what that costs is
+      // measured in `sprite_budget_test.dart`. Pinned here because it is the
+      // fact the charge is now derived from, and an unpinned fact is one a
+      // later change can move without anything noticing.
+      final game = await _game();
+      final scene = run.state.singleScene<_SpriteScene>();
+      scene.addEntity(scene.horizontalBar);
+      run.state.advance(_step);
+      final quads = _drainFrames(game).single.quads;
+
+      expect(quads, hasLength(3));
+      for (var col = 0; col < 3; col++) {
+        final q = quads[col];
+        expect(q.x, [cuts[col], cuts[col + 1], cuts[col + 1], cuts[col]]);
+        expect(
+          q.y,
+          [0.0, 0.0, 40.0, 40.0],
+          reason:
+              'every cell spans the full height - there is only one row, so '
+              'the middle one covers the whole axis',
+        );
+        expect(q.u, [uvCuts[col], uvCuts[col + 1], uvCuts[col + 1], uvCuts[col]]);
+        expect(
+          q.v,
+          [0.0, 0.0, 1.0, 1.0],
+          reason:
+              'and samples the full height of the source, because no cut '
+              'was declared on that axis',
+        );
+      }
+    });
+
+    test('a sliced sprite down to one cell still samples its own cut', () async {
+      // The record count stopped being able to answer "which write path"
+      // when the charge became the real cell count (#252). This sprite is one
+      // record *and* nine-sliced, so a write pass branching on `records == 1`
+      // would send it through the plain-quad path - which knows nothing about
+      // the border cuts and would hand it the whole image. The picture would
+      // be a stretched panel with nothing anywhere saying why.
+      final game = await _game();
+      final scene = run.state.singleScene<_SpriteScene>();
+      scene.addEntity(scene.singleCellPanel);
+      run.state.advance(_step);
+      final quads = _drainFrames(game).single.quads;
+
+      expect(
+        quads,
+        hasLength(1),
+        reason:
+            'the left inset takes the whole width, so the centre and right '
+            'columns collapse onto it, and with nothing declared top or '
+            'bottom only the middle row survives',
+      );
+      expect(quads.single.x, [0.0, 40.0, 40.0, 0.0]);
+      expect(
+        quads.single.u,
+        [0.0, 0.25, 0.25, 0.0],
+        reason:
+            'the surviving cell is the *left* column and samples the left '
+            'quarter of the source. `[0, 1, 1, 0]` here would mean it went '
+            'through the plain-quad path',
+      );
+    });
 
     test('a collapsed destination does not re-slice the source', () async {
       final game = await _game();
