@@ -24,6 +24,7 @@ import 'package:vector_math/vector_math_64.dart' show Vector2;
 
 import 'package:good/src/archetype.dart';
 import 'package:good/src/asset.dart';
+import 'package:good/src/audio/audio_backend.dart';
 import 'package:good/src/audio/audio_clip.dart';
 import 'package:good/src/camera_view.dart';
 import 'package:good/src/command/command.dart';
@@ -171,6 +172,20 @@ enum _ControlMessage {
   /// Game -> main: drop these payloads. Fire and forget - the declaration is
   /// already gone on the asking copy.
   unloadAssets,
+
+  /// Game -> main: send the raw bytes of this audio clip's payload.
+  ///
+  /// The one asset kind whose payload can cross. A decoded texture owns a
+  /// `ui.Image` and stays where it was decoded, which is why the game isolate
+  /// only ever holds an address for one; a decoded `AudioClip` is a
+  /// `Uint8List`, and the mixer that has to hand those bytes to a native
+  /// engine lives over here. So this asks for them, once per clip, the first
+  /// time something plays it.
+  readAudio,
+
+  /// Main -> game: the bytes [readAudio] asked for, or the reason there are
+  /// none.
+  audioRead,
 }
 
 /// The main-isolate half of a game: **declarations live here**.
@@ -352,6 +367,31 @@ abstract class Game implements RandomOwner {
   /// Only the copy that owns the simulation ever *ticks* its state; see
   /// [GameState.isSimulating].
   GameState createState();
+
+  /// The audio engine this game plays through, or `null` for a game with no
+  /// sound.
+  ///
+  /// Null by default, and that default is load-bearing: a game that returns
+  /// nothing here never builds a mixer, never opens an audio device and never
+  /// starts a mixing thread. Audio is opt-in at the cost of one override.
+  ///
+  /// ```dart
+  /// @override
+  /// AudioBackend createAudioBackend() => SoLoudAudioBackend();
+  /// ```
+  ///
+  /// Called on the copy that simulates, when `GameState.audio` is first
+  /// reached for - so a backend that opens a native library is constructed on
+  /// the game isolate, which is where every later call into it happens too.
+  /// Like [createState] it must be a pure factory: `GameState.audio` caches
+  /// what it built, but `GameState.hasAudio` calls this to ask the question
+  /// and throws away the answer.
+  ///
+  /// The engine ships `SoLoudAudioBackend` in `good_audio_soloud`, a package
+  /// of its own. `good` deliberately does not depend on it: a native audio
+  /// engine brings a platform build and a `path_provider` dependency with it,
+  /// and a game that ships no sound should not compile either.
+  AudioBackend? createAudioBackend() => null;
 
   // `describeSystems` is **not** here. It is `GameState.describeSystems`.
   //
@@ -2187,6 +2227,10 @@ final class GameRuntime {
   int _assetRequestId = 0;
   final Map<int, _AssetLoadRequest> _assetRequests = <int, _AssetLoadRequest>{};
 
+  int _audioRequestId = 0;
+  final Map<int, Completer<Uint8List>> _audioRequests =
+      <int, Completer<Uint8List>>{};
+
   // Main-isolate handle copy only.
   ReceivePort? _fromGame;
   SendPort? _toGame;
@@ -2860,6 +2904,15 @@ final class GameRuntime {
           parts[3] as int,
           parts[4] as int,
         );
+      case _ControlMessage.audioRead:
+        final request = _audioRequests.remove(parts[1] as int);
+        if (request == null || request.isCompleted) break;
+        final failure = parts[3] as String?;
+        if (failure == null) {
+          request.complete(parts[2] as Uint8List);
+        } else {
+          request.completeError(StateError(failure));
+        }
       case _ControlMessage.assetsDone:
         final request = _assetRequests.remove(parts[1] as int);
         final failure = parts[2] as String?;
@@ -2883,6 +2936,7 @@ final class GameRuntime {
       case _ControlMessage.stopped:
       case _ControlMessage.loadAssets:
       case _ControlMessage.unloadAssets:
+      case _ControlMessage.readAudio:
         assert(
           false,
           '${parts[0]} is handled on main, not on the game isolate.',
@@ -2932,6 +2986,8 @@ final class GameRuntime {
         for (var i = 0; i < addresses.length; i++) {
           game.assets.unloadAddress(addresses[i]);
         }
+      case _ControlMessage.readAudio:
+        _handleAudioReadRequest(parts);
       case _ControlMessage.stopped:
         _toGame?.send(const <Object>[_ControlMessage.dispose]);
         _toGame = null;
@@ -2944,6 +3000,7 @@ final class GameRuntime {
       case _ControlMessage.dispose:
       case _ControlMessage.assetLoaded:
       case _ControlMessage.assetsDone:
+      case _ControlMessage.audioRead:
         assert(
           false,
           '${parts[0]} is handled on the game isolate, not on main.',
@@ -2993,6 +3050,70 @@ final class GameRuntime {
     _assetRequests[id] = request;
     toMain.send(<Object>[_ControlMessage.loadAssets, id, addresses, keys]);
     return request.done.future;
+  }
+
+  /// Asks main for the bytes of the audio clip at [address].
+  ///
+  /// The mixer runs here, on the game isolate, and hands a clip's bytes to a
+  /// native engine - but this copy never decodes anything, so it has an
+  /// address and no payload. Audio is the asset kind where asking is enough:
+  /// an `AudioClip`'s payload is a `Uint8List`, which `SendPort.send` copies
+  /// like any other typed data. A `ui.Image` is why there is no general
+  /// version of this.
+  ///
+  /// One request per clip per run - `AudioMixer` caches the upload - so the
+  /// copy is paid once and not per sound.
+  ///
+  /// Throws if there is no main to ask, which is a caller bug rather than a
+  /// configuration: the inline run has `decodesAssets` true and reads the
+  /// payload in place without coming here.
+  Future<Uint8List> requestAudioBytes(int address) {
+    final toMain = _toMain;
+    if (toMain == null) {
+      throw StateError(
+        'There is no Flutter isolate to read audio bytes from. This copy does '
+        'not decode assets and has only the address, so somebody has to hold '
+        'the payload; an inline run decodes in place and never reaches here.',
+      );
+    }
+    final id = ++_audioRequestId;
+    final completer = Completer<Uint8List>();
+    _audioRequests[id] = completer;
+    toMain.send(<Object>[_ControlMessage.readAudio, id, address]);
+    return completer.future;
+  }
+
+  /// Main's half: hand back the bytes, or say why there are none.
+  ///
+  /// Synchronous, unlike [_handleAssetLoadRequest], because there is nothing
+  /// to decode - the payload is already resident, put there by the scene load
+  /// that asked main to decode it, and this only reads it out.
+  void _handleAudioReadRequest(List parts) {
+    final id = parts[1] as int;
+    final address = parts[2] as int;
+    final asset = game.assets.tryGetAt(address);
+    String? failure;
+    Uint8List bytes = Uint8List(0);
+    if (asset == null) {
+      failure =
+          'no asset is declared at address $address on the Flutter isolate, '
+          'so its bytes cannot be read. An audio clip is brought over by the '
+          'scene load that declares it.';
+    } else if (!asset.isLoaded) {
+      failure =
+          '${asset.debugLabel} is declared but not loaded on the Flutter '
+          'isolate, so there is nothing to play.';
+    } else {
+      final value = asset.value;
+      if (value is AudioClip) {
+        bytes = value.bytes;
+      } else {
+        failure =
+            '${asset.debugLabel} is not an AudioClip, so it has no bytes to '
+            'play. Only an Asset<AudioClip> can be handed to the mixer.';
+      }
+    }
+    _toGame?.send(<Object?>[_ControlMessage.audioRead, id, bytes, failure]);
   }
 
   /// Tells main to drop the payloads for [addresses]. Fire-and-forget: the

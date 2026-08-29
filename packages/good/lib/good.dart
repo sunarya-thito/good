@@ -16,7 +16,13 @@ export 'src/animation/struct.dart';
 export 'src/archetype.dart';
 export 'src/asset.dart';
 export 'src/asset_pack.dart';
+// The playback half of audio. `AudioBackend` is the seam a native engine
+// plugs into and `good` ships no implementation of it - see
+// `Game.createAudioBackend` for why the engine that actually makes noise is a
+// package of its own.
+export 'src/audio/audio_backend.dart';
 export 'src/audio/audio_clip.dart';
+export 'src/audio/audio_mixer.dart';
 export 'src/coroutine/coroutine.dart';
 // The command API's two public layers: the shapes a command can take, and the
 // record its parameters and results live in. What is hidden is the plumbing
