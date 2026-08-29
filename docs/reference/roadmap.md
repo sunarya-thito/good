@@ -3,14 +3,15 @@
 The rest of this documentation describes the engine as a whole. **This page says which parts of it
 are built**, so that nobody follows a guide for code that is not there yet.
 
-Last verified: **2026-08-19**, on `master`.
+Last verified: **2026-08-29**, on `master`.
 
 ## Packages
 
 | Package | State | Notes |
 |---|---|---|
 | `good` | **Working** | The kernel is real and tested — ECS, memory pool, ring buffers, scheduler, scenes, hierarchy, input, assets, coroutines, timelines, `GameView` |
-| `goo2d` | **Working** | Transforms, world transforms, camera, colliders, sprite rendering, mouse picking, audio assets |
+| `goo2d` | **Working** | Transforms, world transforms, camera, colliders, sprite rendering, mouse picking |
+| `good_audio_soloud` | **Plays one clip** | The `AudioBackend` implementation, over SoLoud. Play and stop, one bus. No looping, loop points, per-bus levels, fades, voice cap or web |
 | `good_cli` | **Working** | `create`, `generate`, `assets compact`, `assets pack`, `build windows/linux/android/ios`. Verified end to end |
 | `goo2d_ffi_box2d` | **Working** | Box2D v3.1.1 vendored, shim written, bindings generated, builds on Windows/Linux/Android/macOS/iOS |
 | `goo2d_physics_box2d` | **Working** | Bodies, colliders, the nine joints, effectors, raycast and overlap queries |
@@ -53,9 +54,16 @@ Deferred, and documented in place instead of left as silent gaps.
   `distanceTo` and the rest take the entity as an argument
   (`transform.lookAt(entity, x, y)`). The accessor form the guide teaches,
   `entity<Transform2D>().lookAt(x, y)`, is `goo3d` only so far.
-- **Audio playback.** `AudioClip` decodes and the asset pipeline ships audio,
-  but there is **no audio backend, no mixer and no voice management**. The asset
-  half is done; the playback half is not.
+- **Audio beyond one clip on one bus.** A clip plays and stops through
+  `state.audio`, and a playing voice holds a claim on its asset so a track
+  survives the scene that started it unloading. What is **not** there:
+  looping and authored loop points (an asset-pipeline change before it is a
+  mixer change - there is nowhere to author a loop point today), per-bus levels
+  and the settings surface they need, fades, positional audio, and web.
+  There is also **no voice cap**, and none is coming from the backend:
+  flutter_soloud 4.1.7's `setMaxActiveVoiceCount(4)` reports back 4 and then
+  permits 59 concurrent voices, measured on its supported public API, so the
+  budget and the stealing policy have to be counted in the engine.
 - **The 3D renderer.** `goo3d` composes transforms and carries a camera; the
   half that draws is a native backend behind our own C shim and is not written.
   `Renderable3D`, `MeshAsset`, `MaterialAsset` and `Light3D` do not exist yet,

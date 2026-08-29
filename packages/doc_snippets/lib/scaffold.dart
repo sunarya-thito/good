@@ -17,6 +17,9 @@ export 'dart:math';
 export 'dart:typed_data';
 
 export 'package:flutter/material.dart' hide Texture, Transform, Image;
+// The audio backend is a package of its own, so a page teaching
+// `createAudioBackend` names a type the engine re-exports nothing of.
+export 'package:good_audio_soloud/good_audio_soloud.dart';
 export 'package:good_net/good_net.dart';
 export 'package:good_net_p2p/good_net_p2p.dart';
 // goo2d and goo3d both re-export `package:good`. That is not an ambiguity —

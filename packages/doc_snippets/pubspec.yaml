@@ -17,6 +17,7 @@ dependencies:
   flutter:
     sdk: flutter
   good: ^0.3.0-dev
+  good_audio_soloud: ^0.1.0-dev
   goo2d: ^0.3.0-dev
   goo2d_physics_box2d: ^0.3.0-dev
   goo3d: ^0.3.0-dev
