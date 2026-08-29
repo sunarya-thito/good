@@ -285,9 +285,12 @@ abstract class InputDescriptor {
   /// Registers the value every action of type [T] falls back to when it has
   /// no default of its own.
   ///
-  /// `Game.describeInputs` ships with `hasDefaultValue<bool>(false)` and
-  /// `hasDefaultValue<Vector2>(Vector2.zero())`, so the two built-in binding
-  /// types work out of the box. Declaring a `T` **twice** in one boot is an
+  /// `Game.describeInputs` ships with `hasDefaultValue<bool>(false)`,
+  /// `hasDefaultValue<Vector2>(Vector2.zero())` and an empty
+  /// `PointerContacts`, so the built-in binding types work out of the box -
+  /// `CursorPosition` is the exception, since a position with no pointer
+  /// behind it is not a place and `MouseBinding` resolves on the first tick
+  /// anyway. Declaring a `T` **twice** in one boot is an
   /// error, not a silent overwrite: two sources each believing they set the
   /// fallback for a type is a disagreement, and picking the last one to run
   /// would make the answer depend on system declaration order.
@@ -341,7 +344,48 @@ final class InputRegistry implements InputDescriptor {
   /// The reader's window onto the raw block, re-pointed once per fixed tick.
   /// One instance for the whole game: every action resolves through the same
   /// snapshot, which is what makes a tick's input coherent.
-  final InputState _state = InputState();
+  ///
+  /// Built on first use and not in the field initialiser, because its size
+  /// depends on [maxContacts] and the registry is opened before the `Game`
+  /// that answers for it exists - the declaration windows have to be open
+  /// while the game's fields initialise. See `Game._construct`.
+  InputState? _sizedState;
+
+  InputState get _state => _sizedState ??= InputState(_maxContacts);
+
+  int _maxContacts = 1;
+
+  /// How many contacts the raw block carries, from `Game.maxPointerContacts`.
+  ///
+  /// Written once, by `Game._construct`, before anything reads or allocates
+  /// the block. Refuses a later change instead of resizing: the buffer is
+  /// allocated from this figure and both isolate copies index it by the same
+  /// offsets, so a second answer would leave one copy reading a table that
+  /// starts somewhere else.
+  int get maxContacts => _maxContacts;
+
+  set maxContacts(int value) {
+    if (value < 1) {
+      throw ArgumentError.value(
+        value,
+        'maxPointerContacts',
+        'a game has room for at least one contact - a block with none can '
+            'never report a press, and Game.maxPointerContacts is what sizes '
+            'it. Override it with the number of fingers the game reads at '
+            'once.',
+      );
+    }
+    if (_sizedState != null || _buffer != null || _sealed) {
+      throw StateError(
+        'the contact count changed after the input block was sized. '
+        'Game.maxPointerContacts is read once, while the game is being '
+        'constructed, because the block is allocated from it and both '
+        'isolate copies index the table by offsets computed from it. Make it '
+        'a constant getter, not something that can answer twice.',
+      );
+    }
+    _maxContacts = value;
+  }
 
   /// The snapshot every action resolves through. Exposed for the two facts
   /// on it that are not input actions and that nothing binds to - the view's
@@ -461,7 +505,7 @@ final class InputRegistry implements InputDescriptor {
   /// is created, and until then an unpublished buffer reads as "every key
   /// up", which is the truth.
   void allocate() {
-    _buffer = TripleBuffer(InputState.byteLength);
+    _buffer = TripleBuffer(InputState.byteLengthFor(_maxContacts));
   }
 
   /// Handle copy: take a view over the simulating copy's allocation. The
@@ -469,7 +513,7 @@ final class InputRegistry implements InputDescriptor {
   /// runs on and therefore the only one that can see a key event at all.
   void adopt({required int latestAddress, required List<int> slotAddresses}) {
     _buffer = TripleBuffer.fromAddresses(
-      slotBytes: InputState.byteLength,
+      slotBytes: InputState.byteLengthFor(_maxContacts),
       latestAddress: latestAddress,
       slotAddresses: slotAddresses,
     );
@@ -487,7 +531,7 @@ final class InputRegistry implements InputDescriptor {
         'address before start() completes.',
       );
     }
-    final device = InputDevice(buffer);
+    final device = InputDevice(buffer, _maxContacts);
     _device = device;
     _gamepads = GamepadCollector(device);
   }

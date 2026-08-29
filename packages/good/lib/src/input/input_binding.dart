@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:meta/meta.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector2;
 
@@ -625,6 +627,353 @@ final class MouseBinding extends InputBinding<CursorPosition> {
   String toString() => 'MouseBinding()';
 }
 
+/// Where a contact is in its life, as [PointerContacts] reports it.
+///
+/// Derived per tick from the block's latest-value snapshot, not carried in it:
+/// the writer records what a contact *is* and the reader works out what
+/// changed since the tick before, so each of these fires the number of times a
+/// state machine expects. A contact that never moves stays [held] and does not
+/// keep re-reporting [began].
+enum PointerPhase {
+  /// The first tick this contact is visible. Its position is where it landed.
+  began,
+
+  /// Down, and reported before. Moving or still - compare positions across
+  /// ticks for that, since a contact that has not moved is still holding
+  /// whatever it is holding.
+  held,
+
+  /// The last tick this contact is visible: whatever was pressing lifted off.
+  /// Its position is where it lifted.
+  ended,
+
+  /// The last tick this contact is visible, and it did not lift: a
+  /// notification, an incoming call, the app losing focus, or a widget taking
+  /// the gesture. The position is where the contact was abandoned and says
+  /// nothing about intent.
+  ///
+  /// Handle it wherever [ended] is handled. A game that only ends a drag on
+  /// [ended] leaves the player steering into a wall after a phone call, and
+  /// that failure does not show up testing by hand on a desk.
+  cancelled,
+}
+
+/// One contact in a [PointerContacts] list: a finger, a stylus, or a mouse
+/// with a button held.
+///
+/// **Scratch, not a value.** A [PointerContacts] owns a fixed set of these
+/// from its first resolution and refills them each tick, so the object at
+/// index 0 describes a different contact once the one it held ends. Read what
+/// is wanted during the tick; carrying one across ticks reads whatever landed
+/// in it since. [id] is what identifies a contact across ticks.
+final class PointerContact {
+  PointerContact._();
+
+  int _id = 0;
+  ContactKind _kind = ContactKind.touch;
+  PointerPhase _phase = PointerPhase.began;
+  int _viewAddress = -1;
+
+  /// Identifies this contact for its whole life, and is not reused within a
+  /// run. What to store when a contact has to be followed across ticks - the
+  /// index into the list is not stable, because a contact that ends moves
+  /// every contact after it up a place.
+  int get id => _id;
+
+  /// What is pressing.
+  ///
+  /// A game meant for fingers and playable with a mouse reads every kind; one
+  /// with separate mouse controls skips [ContactKind.mouse] here, since
+  /// [MouseBinding] and the mouse-button keys already report that press.
+  ContactKind get kind => _kind;
+
+  /// Where this contact is in its life. See [PointerPhase], and handle
+  /// [PointerPhase.cancelled] wherever [PointerPhase.ended] is handled.
+  PointerPhase get phase => _phase;
+
+  /// Whether this contact is over, lifted or cancelled. It is reported on this
+  /// tick and gone from the list on the next.
+  bool get isOver =>
+      _phase == PointerPhase.ended || _phase == PointerPhase.cancelled;
+
+  /// This contact in window coordinates, the space
+  /// [CursorPosition.screenSpace] reports the cursor in.
+  final Vector2 screenSpace = Vector2.zero();
+
+  /// This contact within the `GameView`'s own rect, the space
+  /// [CursorPosition.viewSpace] reports the cursor in - and the one to
+  /// hit-test a HUD in.
+  ///
+  /// World space is absent for the reason it is absent from [CursorPosition]:
+  /// projecting needs the active camera, and a camera is a `goo2d` component.
+  /// `Game.viewOfContact` says which view this landed in, and that view's
+  /// `CameraProjection` turns this into world coordinates.
+  final Vector2 viewSpace = Vector2.zero();
+
+  /// The `CameraView` address this contact is in, or -1 for none.
+  /// `Game.viewOfContact` turns it into the view.
+  @internal
+  int get viewAddress => _viewAddress;
+
+  void _read(InputState state, int slot, PointerPhase phase) {
+    _id = state.contactId(slot);
+    _kind = ContactKind.values[state.contactKind(slot)];
+    _phase = phase;
+    _viewAddress = state.contactView(slot);
+    screenSpace.setValues(
+      state.contactScreenX(slot),
+      state.contactScreenY(slot),
+    );
+    viewSpace.setValues(state.contactViewX(slot), state.contactViewY(slot));
+  }
+
+  @override
+  String toString() =>
+      'PointerContact(#$_id ${_kind.name} ${_phase.name} at '
+      '${viewSpace.x}, ${viewSpace.y})';
+}
+
+/// Everything pressing on the screen this tick, in the order it started
+/// pressing.
+///
+/// One instance per declared action, refilled in place by [ContactBinding]
+/// each tick - so `Input<PointerContacts>.value` is the same object for the
+/// life of the game and reading it allocates nothing (the no-allocation rule).
+/// The [PointerContact]s it hands out are its own scratch and are reused; see
+/// [PointerContact].
+///
+/// # Reading it
+///
+/// Indexed, not iterated: `for (final c in contacts)` builds an iterator per
+/// tick, which is the allocation this shape exists to avoid. There is no
+/// `Iterable` here to make that mistake with.
+///
+/// ```dart
+/// for (var i = 0; i < contacts.count; i++) {
+///   final contact = contacts[i];
+///   switch (contact.phase) {
+///     case PointerPhase.began:
+///       aim(contact.id, contact.viewSpace);
+///     case PointerPhase.held:
+///       steer(contact.id, contact.viewSpace);
+///     case PointerPhase.ended:
+///     case PointerPhase.cancelled:
+///       stop(contact.id);
+///   }
+/// }
+/// ```
+///
+/// # The order
+///
+/// Ascending [PointerContact.id], which is the order the contacts started, so
+/// `contacts[0]` is the oldest one still being reported - "the finger", for a
+/// game that only wants one. A contact keeps its place relative to the others
+/// for its whole life; it does not keep its index, because a contact ending
+/// moves everything after it up one.
+///
+/// # What a fixed tick misses
+///
+/// The device block is a latest-value snapshot sampled once per fixed tick, so
+/// a contact that presses and lifts entirely between two ticks is reported
+/// once, with [PointerPhase.ended] - it had no [PointerPhase.began] tick to be
+/// read on. Fire a tap on the end for that reason, which is also when a real
+/// tap gesture fires.
+///
+/// Lost outright: a press whose slot is recycled by `Game.maxPointerContacts`
+/// later presses before the next tick, and any press arriving while every slot
+/// is live. Both need more contacts in one sixtieth of a second than that
+/// getter allows at once.
+final class PointerContacts {
+  PointerContacts._();
+
+  /// An empty list, for the type-level default `Game.describeInputs`
+  /// registers so an **unbound** `Input<PointerContacts>` reads "nothing is
+  /// pressing" instead of throwing. It never resolves, so it stays empty; a
+  /// bound action reads its own storage from the first tick onwards.
+  @internal
+  static PointerContacts empty() => PointerContacts._();
+
+  /// The scratch contacts, one per slot the block carries. Built on the first
+  /// resolution and not in the constructor, because
+  /// [InputBinding.createStorage] is not told how big the block is and the
+  /// [InputState] handed to [ContactBinding.resolve] is the first thing here
+  /// that knows.
+  List<PointerContact> _contacts = const <PointerContact>[];
+
+  /// Per block slot, the contact id this list last reported as live. Zero for
+  /// a slot it has not reported, which is what makes the first sighting of a
+  /// contact [PointerPhase.began].
+  Int32List _seenId = _noSlots;
+
+  /// Per block slot, the contact id whose end this list has already reported.
+  /// An ended contact sits in its slot until a later press needs the space, so
+  /// without this it would be reported every tick until then.
+  Int32List _endedId = _noSlots;
+
+  /// Scratch for the ordering pass - the ids, slots and phases of this tick's
+  /// contacts, insertion-sorted by id as they are collected.
+  Int32List _orderId = _noSlots;
+  Int32List _orderSlot = _noSlots;
+  Int32List _orderPhase = _noSlots;
+
+  static final Int32List _noSlots = Int32List(0);
+
+  int _count = 0;
+
+  /// How many contacts are being reported this tick.
+  int get count => _count;
+
+  /// The contact at [index], `0 <= index < count`. See the class doc for the
+  /// order, and [PointerContact] for how long the object is good for.
+  PointerContact operator [](int index) {
+    RangeError.checkValidIndex(index, this, 'index', _count);
+    return _contacts[index];
+  }
+
+  /// Sizes the scratch to the block, once. `maxContacts` is fixed for a run -
+  /// it comes off `Game.maxPointerContacts`, read once at construction - so
+  /// this allocates on the first tick and never again.
+  void _ensureSized(int maxContacts) {
+    if (_contacts.length == maxContacts) return;
+    _contacts = List<PointerContact>.generate(
+      maxContacts,
+      (_) => PointerContact._(),
+      growable: false,
+    );
+    _seenId = Int32List(maxContacts);
+    _endedId = Int32List(maxContacts);
+    _orderId = Int32List(maxContacts);
+    _orderSlot = Int32List(maxContacts);
+    _orderPhase = Int32List(maxContacts);
+  }
+
+  /// Rebuilds the list from [state]. Allocation-free after the first call and
+  /// closure-free: an indexed sweep of the slots, an insertion sort over at
+  /// most `maxContacts` ints, then writes into scratch that already exists.
+  void _resolveFrom(InputState state) {
+    _ensureSized(state.maxContacts);
+    var found = 0;
+    for (var slot = 0; slot < state.maxContacts; slot++) {
+      final phase = state.contactPhase(slot);
+      if (phase == InputState.contactEmpty) {
+        _seenId[slot] = 0;
+        _endedId[slot] = 0;
+        continue;
+      }
+      final id = state.contactId(slot);
+      final PointerPhase reported;
+      if (phase == InputState.contactLive) {
+        reported = _seenId[slot] == id ? PointerPhase.held : PointerPhase.began;
+        _seenId[slot] = id;
+        _endedId[slot] = 0;
+      } else {
+        // An ended contact is reported the tick it is first seen ended and
+        // held back after that: its slot keeps it until a later press wants
+        // the space, which can be many ticks.
+        if (_endedId[slot] == id) continue;
+        _endedId[slot] = id;
+        _seenId[slot] = id;
+        reported = phase == InputState.contactCancelled
+            ? PointerPhase.cancelled
+            : PointerPhase.ended;
+      }
+      var at = found;
+      while (at > 0 && _orderId[at - 1] > id) {
+        _orderId[at] = _orderId[at - 1];
+        _orderSlot[at] = _orderSlot[at - 1];
+        _orderPhase[at] = _orderPhase[at - 1];
+        at--;
+      }
+      _orderId[at] = id;
+      _orderSlot[at] = slot;
+      _orderPhase[at] = reported.index;
+      found++;
+    }
+    for (var i = 0; i < found; i++) {
+      _contacts[i]._read(
+        state,
+        _orderSlot[i],
+        PointerPhase.values[_orderPhase[i]],
+      );
+    }
+    _count = found;
+  }
+
+  @override
+  String toString() => 'PointerContacts($_count)';
+}
+
+/// Binds an action to everything pressing on the screen.
+///
+/// ```dart
+/// contacts = descriptor.has<PointerContacts>(const ContactBinding());
+/// ```
+///
+/// Nothing to configure: there is one screen, and a contact says which kind of
+/// pointer made it instead of the binding saying which kind it wants. A game
+/// for fingers only skips [ContactKind.mouse] while reading.
+///
+/// Raw contacts, not gestures. Two fingers into one Flutter
+/// `GestureDetector`'s pan callbacks arrive as a single drag, because
+/// `DragGestureRecognizer` is mono-drag by construction, so a twin-stick
+/// control scheme cannot be built on the gesture layer at all. Contacts also
+/// reach a game with no widget: `InputDevice.pressContact` drives them from a
+/// replay, a bot or a test, the way `InputDevice.movePointer` drives the
+/// cursor.
+///
+/// [isActuated] is true while anything is pressing, so an action bound to this
+/// fires `pressed` when the first contact lands and `released` when the last
+/// one leaves, whether it lifted or was cancelled.
+final class ContactBinding extends InputBinding<PointerContacts> {
+  const ContactBinding();
+
+  @override
+  PointerContacts createStorage() => PointerContacts._();
+
+  @override
+  PointerContacts resolve(InputState state, PointerContacts storage) {
+    storage._resolveFrom(state);
+    return storage;
+  }
+
+  @override
+  bool isActuated(InputState state) => state.hasLiveContact;
+
+  /// Throws. There is one screen, so two contact lists are two readings of the
+  /// same thing: concatenating them reports every contact twice, and picking
+  /// one drops a source the caller asked for.
+  ///
+  /// [CompositeBinding] asserts against this at declare time and has no wire
+  /// tag for it. This is the release-mode backstop for the same mistake.
+  @override
+  PointerContacts combine(PointerContacts a, PointerContacts b) {
+    throw UnsupportedError(
+      'PointerContacts values cannot be merged, so a ContactBinding cannot be '
+      'a source in a CompositeBinding: there is one screen, and both sources '
+      'would be reading all of it. Bind contacts on their own action.',
+    );
+  }
+
+  ContactBinding copyWith() => const ContactBinding();
+
+  @override
+  Map<String, Object?> toJson() => const <String, Object?>{};
+
+  /// Round-trips, trivially - there is no state to restore. Present so a
+  /// rebinding screen can serialize every binding uniformly.
+  static ContactBinding fromJson(Map<String, Object?> json) =>
+      const ContactBinding();
+
+  @override
+  bool operator ==(Object other) => other is ContactBinding;
+
+  @override
+  int get hashCode => (ContactBinding).hashCode;
+
+  @override
+  String toString() => 'ContactBinding()';
+}
+
 /// One action, several sources: `attack` on the spacebar **or** the left mouse
 /// button, `move` on the left stick **or** WASD.
 ///
@@ -805,6 +1154,13 @@ final class CompositeBinding<T> extends InputBinding<T> {
       'pointer on its own action. Mouse buttons are ordinary TriggerBindings '
       'and compose like any other key.',
     );
+    assert(
+      !sources.any((source) => source is ContactBinding),
+      'a ContactBinding cannot be a source in a CompositeBinding: there is '
+      'one screen, so both sources would be reading all of it - '
+      'concatenating them reports every contact twice, and picking one drops '
+      'a source the caller asked for. Bind contacts on their own action.',
+    );
     return List<InputBinding<T>>.unmodifiable(sources);
   }
 
@@ -880,8 +1236,9 @@ final class CompositeBinding<T> extends InputBinding<T> {
     CompositeBinding<Object?>() => _kindComposite,
     _ => throw UnsupportedError(
       'a $source cannot be a source in a serialized CompositeBinding: this '
-      'format tags the five bindings good ships, and a MouseBinding is '
-      'deliberately not one of them (a device has one cursor). A binding of '
+      'format tags the five bindings good ships. A MouseBinding and a '
+      'ContactBinding are not among them, because neither can be a source at '
+      'all - a device has one cursor and a screen is read whole. A binding of '
       'your own has no tag here at all - serialize the composite yourself, '
       'from its sources, where you know what they are.',
     ),

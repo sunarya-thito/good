@@ -41,6 +41,7 @@ import 'package:good/src/widget/frame_meter.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/input.dart';
 import 'package:good/src/input/gamepad.dart';
+import 'package:good/src/input/input_binding.dart';
 import 'package:good/src/input/input_state.dart';
 import 'package:good/src/ring_buffer.dart';
 import 'package:good/src/scene.dart';
@@ -333,6 +334,24 @@ abstract class Game implements RandomOwner {
   /// declaration that may back several loaded scenes at once, so it cannot own
   /// the storage they allocate out of. See `SceneStruct.pool`.
   int get pageSize => 64 * 1024 * 1024;
+
+  /// How many contacts - fingers, styluses, mouse buttons held - the raw input
+  /// block carries at once. Ten by default, which is every finger on two
+  /// hands and more than most digitizers report.
+  ///
+  /// Read **once**, while this game is being constructed, because the block is
+  /// allocated from it and both isolate copies index the contact table by
+  /// offsets computed from it. A getter that can answer twice is answering
+  /// into nothing - the first answer is the one the block has.
+  ///
+  /// A press arriving while every slot is live is dropped whole - neither it
+  /// nor its lift is ever reported - so a game that genuinely reads more
+  /// fingers than this raises it. The cost is `32 * maxPointerContacts` bytes
+  /// per triple-buffer slot and the same again copied per fixed tick: about
+  /// 30ns at ten contacts, against a 16ms budget.
+  ///
+  /// See `ContactBinding` for what reads them.
+  int get maxPointerContacts => 10;
 
   /// The most pages this game's pool will ever allocate. The pool never grows
   /// past it - exhausting it throws, so a runaway spawn loop reports itself
@@ -908,8 +927,9 @@ abstract class Game implements RandomOwner {
   ///
   /// # Where the values come from
   ///
-  /// Raw key and mouse-button state is collected on the Flutter isolate (see
-  /// `InputDevice`) and resolved on the game isolate, once per fixed tick.
+  /// Raw key, mouse-button and contact state is collected on the Flutter
+  /// isolate (see `InputDevice`) and resolved on the game isolate, once per
+  /// fixed tick.
   /// A game with no `GameView` in the widget tree has nothing feeding it, so
   /// every action reads its default forever - correct, not broken, and spelled
   /// out in `InputDevice`'s doc.
@@ -917,6 +937,7 @@ abstract class Game implements RandomOwner {
   void describeInputs(InputDescriptor input) {
     input.hasDefaultValue<bool>(false);
     input.hasDefaultValue<Vector2>(Vector2.zero());
+    input.hasDefaultValue<PointerContacts>(PointerContacts.empty());
   }
 
   // --- declarations -------------------------------------------------------
@@ -1097,6 +1118,19 @@ abstract class Game implements RandomOwner {
   /// the widget says so and the game isolate reads it here.
   CameraView? get pointerView {
     final address = _inputs.state.pointerView;
+    if (address < 0 || address >= cameraViews.length) return null;
+    return cameraViews[address];
+  }
+
+  /// The [CameraView] [contact] landed in, or null when it landed in none -
+  /// no `GameView` is showing one, or the contact was written without naming
+  /// a view.
+  ///
+  /// [pointerView]'s counterpart for a contact, and per contact, not per
+  /// game: two fingers can be in two views at once, which a single cursor
+  /// never is.
+  CameraView? viewOfContact(PointerContact contact) {
+    final address = contact.viewAddress;
     if (address < 0 || address >= cameraViews.length) return null;
     return cameraViews[address];
   }
@@ -1299,6 +1333,11 @@ abstract class Game implements RandomOwner {
     game._requireNotYetDescribed();
     game._states = states;
     game._inputs = inputs;
+    // After the game exists and before anything sizes the raw input block:
+    // the contact table's length is the one part of that block a game gets to
+    // choose, and the registry has to be open through `create()` for field
+    // initialisers to declare into, so it cannot have been asked earlier.
+    inputs.maxContacts = game.maxPointerContacts;
     return game;
   }
 

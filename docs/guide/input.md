@@ -13,9 +13,16 @@ late Input<double> throttle;
 late Input<Vector2> move;
 late Input<Vector2> movement;
 late Input<CursorPosition> pointer;
+late Input<PointerContacts> contacts;
 late List<InputKey> savedKeys;
+late Game game;
+late PointerContact contact;
 Vector2 _saved = Vector2.zero();
 
+void startDrag(int id, Vector2 at) {}
+void moveDrag(int id, Vector2 at) {}
+void endDrag(int id) {}
+void wakeUp() {}
 void shoot() {}
 void stopShooting() {}
 void startWalkAnimation() {}
@@ -91,9 +98,9 @@ says so rather than declaring into nothing.
 
 ## Where values come from
 
-Raw key and button state is collected on the Flutter isolate by whatever
-`GameView` is in the tree, and **resolved on the game isolate once per fixed
-tick**. Your action's value is therefore stable for the whole step — every
+Raw key, button and contact state is collected on the Flutter isolate by
+whatever `GameView` is in the tree, and **resolved on the game isolate once per
+fixed tick**. Your action's value is therefore stable for the whole step — every
 system in a step sees the same input.
 
 !!! info "No `GameView`, no input"
@@ -253,6 +260,144 @@ the `GameView`'s rect, which is the space to hit-test a HUD in) and the size of
 the view the pointer is currently over — carried alongside the position because
 with two views of different sizes on screen, "the view size" is only answerable
 relative to a pointer.
+
+### `ContactBinding` — fingers on the screen
+
+```dart
+contacts = descriptor.has<PointerContacts>(const ContactBinding());
+```
+
+A **contact** is one thing pressing on the screen: a finger, a stylus, or a
+mouse with a button held. `PointerContacts` is all of them for the current tick,
+indexed:
+
+```dart
+final pressing = contacts.value;
+for (var i = 0; i < pressing.count; i++) {
+  final contact = pressing[i];
+  switch (contact.phase) {
+    case PointerPhase.began:
+      startDrag(contact.id, contact.viewSpace);
+    case PointerPhase.held:
+      moveDrag(contact.id, contact.viewSpace);
+    case PointerPhase.ended:
+    case PointerPhase.cancelled:
+      endDrag(contact.id);
+  }
+}
+```
+
+Indexed and not `for (final c in pressing)`: a for-in builds an iterator per
+tick, which is exactly the allocation this shape avoids. There is no `Iterable`
+here to make that mistake with.
+
+| Member | Meaning |
+|---|---|
+| `id` | Identifies the contact for its whole life, and is not reused |
+| `phase` | `began`, `held`, `ended` or `cancelled` |
+| `kind` | `touch`, `stylus`, `mouse` or `other` |
+| `screenSpace` | Window coordinates |
+| `viewSpace` | Coordinates inside the `GameView` — the space to hit-test in |
+| `isOver` | `ended` or `cancelled`, the last tick this contact is reported |
+
+The list is ordered by `id`, which is the order the contacts started, so
+`contacts.value[0]` is the oldest one still pressing — "the finger", for a game
+that only wants one. The **index is not stable**: a contact ending moves the
+ones after it up a place. Follow a contact by its `id`.
+
+Both the list and the `PointerContact` objects in it are scratch the action owns
+and refills each tick. Read what you need during the tick; a contact kept until
+the next one describes something else by then.
+
+!!! warning "`cancelled` is not optional"
+    A notification, an incoming call, the app losing focus, or a widget taking
+    the gesture all end a contact with **no lift behind it**. A game that only
+    ends a drag on `ended` leaves the player steering into a wall after a phone
+    call, and nothing about testing by hand on a desk produces that. Handle
+    `cancelled` wherever you handle `ended`; the position on a cancelled contact
+    is where it was abandoned and says nothing about intent.
+
+A mouse button held is a contact too, so a game written for fingers is playable
+with a mouse and testable without a phone. A game that has its own mouse
+controls skips `ContactKind.mouse` while reading — `MouseBinding` and the
+mouse-button keys already report that press.
+
+Bound to an action, contacts press when the first contact lands and release when
+the last one leaves:
+
+```dart
+if (contacts.wasPressedThisFrame) wakeUp();
+```
+
+#### How many at once
+
+`Game.maxPointerContacts` sizes the table — ten by default, which is every
+finger on two hands. A press arriving while every slot is live is dropped whole,
+so raise it if a game genuinely reads more:
+
+```dart
+class Tabletop extends Game {
+  @override
+  int get maxPointerContacts => 16;
+}
+```
+
+It is read once, while the game is being constructed, because the raw block is
+sized from it and both isolate copies index the contact table by offsets
+computed from it.
+
+#### What one fixed tick can see
+
+The raw block is a latest-value snapshot sampled once per tick, so a contact
+that presses and lifts entirely between two ticks is reported once, with
+`ended` — its `began` tick never existed to be read. Fire a tap on the end for
+that reason, which is also when a real tap gesture fires.
+
+#### Screen to world
+
+A contact reports in window and view coordinates. Turning that into world
+coordinates needs the active camera, which is a `goo2d` component, so the
+projection lives there — `MousePickingSystem.projection` is the same
+`CameraProjection` mouse picking already inverts every tick:
+
+<!-- snippet: skip CameraProjection is goo2d, and this page is the kernel guide -->
+```dart
+final projection = getSystem<MousePickingSystem>().projection;
+final worldX = projection.viewToWorldX(contact.viewSpace.x);
+final worldY = projection.viewToWorldY(contact.viewSpace.y);
+```
+
+That projection is resolved against the view the **cursor** is in, which is the
+right answer whenever one view is on screen. With several, ask
+`game.viewOfContact(contact)` which view the contact landed in and resolve a
+`CameraProjection` against that one — a contact is per finger, and two fingers
+can be in two views at once, which one cursor never is.
+
+#### Raw contacts, not gestures
+
+Two fingers into one Flutter `GestureDetector`'s pan callbacks arrive as a
+single drag, because `DragGestureRecognizer` is mono-drag by construction — so a
+twin-stick scheme cannot be built on the gesture layer at all. Contacts come off
+a raw `Listener` instead, which also means they reach a game with no widget: a
+replay, a bot or a test writes them through `game.inputDevice`.
+
+`GameView` does not claim the gesture arena. A `GameView` inside a `ListView`
+therefore reads a drag the list is also scrolling on. Claiming the arena would
+silence every Flutter gesture widget below the view, and in this engine a HUD is
+a descendant — so put interactive widgets in a `Stack` **above** the `GameView`,
+not inside it.
+
+#### On-screen sticks and buttons are widgets
+
+An on-screen joystick is a Flutter widget in that `Stack`, feeding
+`game.inputDevice?.setVirtualAxis(...)`. A game reading a `StickBinding` cannot
+tell a thumb from a thumbstick, which is the point. The engine draws no
+controls.
+
+Wrap those widgets in `SafeArea` so they stay clear of a home indicator. **Do
+not wrap `GameView` in one**: it takes its viewport from its constraints and
+feeds `camera.setViewport`, so wrapping it letterboxes the art. Full-bleed art
+with inset controls is the shape.
 
 ### `CompositeBinding` — one action, several sources
 
