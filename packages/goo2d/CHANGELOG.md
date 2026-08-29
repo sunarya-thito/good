@@ -155,6 +155,49 @@
 
 ### Added
 
+* **`Text2D` draws a line of text in the world**, sorted, culled and moved by
+  the camera with the sprites around it - so a damage number, a name over a
+  character or a sign in the scene has somewhere to live. Flutter widgets sit
+  outside the game view: they cannot follow an entity and cannot sort behind a
+  sprite. Mix it into a prefab, override `textFont` with a `BitmapFont` - a
+  `TextureAsset` plus the `columns` and `rows` of its glyph grid, with
+  `firstCodepoint`, `glyphCount`, and a `frame` for a font packed into a corner
+  of a shared atlas - and write the label with `setText`, or with `setInt`,
+  which puts a number's digits straight on the row and builds no `String` at
+  all. `text` reads one back.
+
+  **Layout is arithmetic over that grid, and never a measured glyph.** The game
+  isolate has no font and no rasteriser - `ui.ParagraphBuilder` throws there and
+  `ui.loadFontFromList` kills the process - so a measured glyph would have to be
+  measured on main and sent back after the decode, leaving every label blank for
+  the first frames of a run. A cell is `codeUnit - firstCodepoint` split by
+  `columns`, so nothing has to arrive before a label draws. There is no kerning,
+  no proportional metrics, no shaping and no line breaking; `\n` is a code unit
+  like any other, and two lines are two entities.
+
+  **A label is one queue candidate that expands into one quad per glyph in the
+  write pass** - the arrangement nine-slice already had, so z-order, culling,
+  the camera and the wire format needed nothing new. The budget is charged by
+  counting through the same `BitmapFont.cellOf` the write pass expands with, so
+  a code unit the font has no cell for is charged nothing and draws nothing.
+  Admission is all or nothing, as it is for a sprite: one long label fits whole
+  or closes the budget for everything behind it. A candidate with nothing to
+  draw is skipped before the budget test, since `recordCount + 0 > limit` is
+  false however closed the budget already is.
+
+  **Sixteen glyphs are 32 bytes of `uint16` on the row.** The same sixteen
+  declared as sixteen sprites is a 2.5 KiB row - ten times the row size that
+  already cost this renderer 42% of its write pass on a device. The font, its
+  metrics and the atlas address are on the component, which is one per
+  archetype, so two fonts in one scene are two prefabs.
+
+  `textCapacity` is that storage: `1..65535`, 32 by default, reserved in every
+  row of the archetype whether an entity fills it or not. Text past it keeps
+  what fits, adds the rest to `Text2D.textCodeUnitsDropped` and then asserts, in
+  that order, so a debug run and a shipped one leave the identical row behind
+  and the counter is what reports a cut label in a build with no asserts left
+  (#127).
+
 * **`SpriteWidget`** draws a texture, or one frame of a sprite sheet, as an
   ordinary Flutter widget - so a menu, a HUD or an inventory can show the art
   the game already loaded. It takes the `TextureAsset` a `describeAssets` pass

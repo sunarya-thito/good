@@ -112,6 +112,11 @@ a `Renderable2D` with `MouseReceiver`, and `NineSliceBorder` for panels and
 bars. If it sits in screen space and never has to know where the camera is, it
 is a widget, and making it an entity buys nothing but work.
 
+Text splits the same way. A damage number, a name over a character and a sign in
+the scene are `Text2D` labels on entities, drawn from a grid font you supply
+(see [Text](rendering.md#text)). A score in the corner is a `Text` widget, and
+the engine offers no screen-space text to talk you out of it.
+
 !!! tip "You can mix them freely"
     A world-space marker as an entity and the panel it opens as a Flutter
     dialog is a perfectly ordinary combination. They are not competing systems

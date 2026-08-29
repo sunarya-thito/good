@@ -11,6 +11,7 @@ import 'package:goo2d/src/render/draw/draw_2d.dart';
 // isolate-halves of one feature. The Game mixin declares and drains the frame
 // buffers; this system fills them.
 import 'package:goo2d/src/render/game_2d.dart';
+import 'package:goo2d/src/render/text_2d.dart';
 import 'package:goo2d/src/render/texture.dart';
 import 'package:meta/meta.dart';
 
@@ -800,11 +801,11 @@ mixin Renderable2D on MultiComponent {
 final class _SpriteDrawQueue {
   _SpriteDrawQueue({int initialCapacity = 64})
     : _entities = List<Entity>.filled(initialCapacity, const Entity(0)),
-      _sprites = List<Sprite?>.filled(initialCapacity, null),
+      _owners = List<Object?>.filled(initialCapacity, null),
       _sources = List<_TransformSource?>.filled(initialCapacity, null),
       _zIndices = Int32List(initialCapacity),
       _records = Int32List(initialCapacity),
-      _sliced = Uint8List(initialCapacity),
+      _kinds = Uint8List(initialCapacity),
       _order = Int32List(initialCapacity),
       _merge = Int32List(initialCapacity),
       _corners = Float32List(initialCapacity * _cornerStride),
@@ -821,7 +822,16 @@ final class _SpriteDrawQueue {
   static const int _colorStride = 3;
 
   List<Entity> _entities;
-  List<Sprite?> _sprites;
+
+  /// What the queued candidate is drawn from: the [Sprite] for a quad or a
+  /// nine-slice, the [Text2D] for a label. Which of the two it is follows
+  /// from [_kinds], and nothing asks it any other way.
+  ///
+  /// One array and not one per kind, because a slot holds exactly one of
+  /// them and a second parallel array would be eight bytes per queued sprite
+  /// spent to avoid a cast the write pass performs at most once per
+  /// candidate, on the paths that are already reading a row.
+  List<Object?> _owners;
 
   /// Where the queued entity's transform is read from, carried from the fill
   /// pass and never re-derived in the write pass.
@@ -834,8 +844,8 @@ final class _SpriteDrawQueue {
   List<_TransformSource?> _sources;
   Int32List _zIndices;
 
-  /// Draw records each queued pair costs - 1 for a plain quad, one per live
-  /// cell for a nine-slice.
+  /// Draw records each queued candidate costs - 1 for a plain quad, one per
+  /// live cell for a nine-slice, one per drawn glyph for a label.
   ///
   /// Kept per pair and not only in total because the budget is now spent
   /// after the sort: [trimToBudget] walks the sorted order from the front
@@ -844,8 +854,8 @@ final class _SpriteDrawQueue {
   /// total was the only thing anyone asked for.
   Int32List _records;
 
-  /// 1 where the pair draws through the nine-slice path, 0 where it is a
-  /// plain quad.
+  /// Which write path each queued candidate takes - [kindQuad], [kindSliced]
+  /// or [kindText].
   ///
   /// Decided during the fill pass and *stored*, not re-derived in the write
   /// pass, because the fill pass is what spends the record budget against it.
@@ -855,7 +865,7 @@ final class _SpriteDrawQueue {
   /// pass computed, so any future disagreement would be a buffer overrun and
   /// not a wrong picture.
   ///
-  /// A flag and not the record count, which is what used to be here: the two
+  /// A kind and not the record count, which is what used to be here: the two
   /// stopped being the same question when the charge became the real cell
   /// count (#252). A sprite sliced on one axis can be down to a single live
   /// cell, which makes it one record *and* nine-sliced, and it still has to
@@ -863,9 +873,21 @@ final class _SpriteDrawQueue {
   /// sub-rectangle of the frame, which the plain path knows nothing about.
   /// Branching on `records == 1` would have swapped its UVs for the whole
   /// frame's and drawn a stretched panel with no way to see why. The count
-  /// lives in [_records] and answers a different question - what a pair costs,
-  /// not how it draws.
-  Uint8List _sliced;
+  /// lives in [_records] and answers a different question - what a candidate
+  /// costs, not how it draws.
+  Uint8List _kinds;
+
+  /// One record, four corners the fill pass already transformed. Almost
+  /// everything, almost always.
+  static const int kindQuad = 0;
+
+  /// One record per live cell of a nine-slice, geometry derived in the write
+  /// pass off the row - see [GameRenderer2D._writeNineSlice].
+  static const int kindSliced = 1;
+
+  /// One record per glyph the label draws, expanded in the write pass off the
+  /// run the fill pass parked in [_corners] - see [writeTextAt].
+  static const int kindText = 2;
 
   /// Slot indices in draw order. Sorted in place by [sortByZ]; before that it
   /// is the identity permutation, i.e. encounter order.
@@ -887,14 +909,19 @@ final class _SpriteDrawQueue {
   /// out widens exactly. It also halves what the permutation has to drag
   /// through the cache, which is the entire point.
   ///
-  /// **Only written for sprites that draw as one quad.** A nine-sliced sprite
-  /// has a record per live cell with its own UVs and cannot be reduced to four
-  /// corners, so its slots here are left holding whatever a previous tick put
-  /// there. Nothing reads them: the write pass branches on [slicedAt] first.
+  /// **Not written for a nine-slice.** A sliced sprite has a record per live
+  /// cell with its own UVs and cannot be reduced to four corners, so its
+  /// slots here are left holding whatever a previous tick put there. Nothing
+  /// reads them: the write pass branches on [kindAt] first.
+  ///
+  /// **A label uses the same eight floats to mean something else** - an
+  /// origin and three vectors, see [setTextRun]. Eight is what a run needs
+  /// too, so a label pays the same 32 bytes a sprite does and no second
+  /// layout exists to keep in step.
   Float32List _corners;
 
-  /// Packed ARGB then texture address per queued sprite. See [_corners] for
-  /// which sprites these are filled for.
+  /// Packed ARGB, then texture address, then filter, per queued candidate.
+  /// Filled for a quad and for a label; see [_corners].
   Int32List _colorAddress;
 
   /// Packed [SpriteFrame] per queued sprite. Its own `Int64List`, and not
@@ -946,7 +973,8 @@ final class _SpriteDrawQueue {
   int get firstAdmitted => _first;
 
   /// How many draw records the write pass will emit. A plain sprite
-  /// contributes 1; a nine-sliced one contributes one per live cell, up to 9.
+  /// contributes 1; a nine-sliced one contributes one per live cell, up to 9;
+  /// a label contributes one per glyph it draws.
   ///
   /// This is the *admitted* total, so it is what the published batch holds
   /// and what `GameRenderer2D.lastRecordCount` reports.
@@ -1002,23 +1030,24 @@ final class _SpriteDrawQueue {
     _trimmedRecords = _recordTotal - admitted;
   }
 
-  /// Queues one (entity, sprite) pair to be drawn at depth [zIndex],
-  /// costing [records] draw records, and returns its **slot** - the index the
-  /// parallel arrays store it at, which is also its encounter position.
+  /// Queues one candidate - an (entity, [Sprite]) pair or an (entity,
+  /// [Text2D]) label - to be drawn at depth [zIndex], costing [records] draw
+  /// records, and returns its **slot**: the index the parallel arrays store
+  /// it at, which is also its encounter position.
   ///
-  /// [sliced] says which write path it takes, and is not inferred from
-  /// [records] - see [_sliced].
+  /// [kind] says which write path it takes, and is not inferred from
+  /// [records] - see [_kinds].
   ///
-  /// The slot is what [setQuad] takes. It is not the draw
+  /// The slot is what [setQuad] and [setTextRun] take. It is not the draw
   /// position: nothing knows that until [sortByZ] has run, and the fill pass
   /// has to be able to write a sprite's geometry the moment it computes it.
   int add(
     Entity entity,
-    Sprite sprite,
+    Object owner,
     _TransformSource source,
     int zIndex,
     int records, {
-    required bool sliced,
+    required int kind,
   }) {
     _ensure(_count + 1);
     // Seeded from the first key, not the int extremes, so an empty range is
@@ -1032,11 +1061,11 @@ final class _SpriteDrawQueue {
       _zMax = zIndex;
     }
     _entities[_count] = entity;
-    _sprites[_count] = sprite;
+    _owners[_count] = owner;
     _sources[_count] = source;
     _zIndices[_count] = zIndex;
     _records[_count] = records;
-    _sliced[_count] = sliced ? 1 : 0;
+    _kinds[_count] = kind;
     _order[_count] = _count;
     _recordTotal += records;
     return _count++;
@@ -1080,7 +1109,7 @@ final class _SpriteDrawQueue {
   }
 
   /// Writes the [i]th pair *in draw order* as one quad record, returning the
-  /// next write offset. Only valid where [slicedAt] is false.
+  /// next write offset. Only valid where [kindAt] is [kindQuad].
   ///
   /// This is the whole of the write pass for a plain sprite, and it touches no
   /// component row: one `_order` read, then eight contiguous floats and a few
@@ -1126,18 +1155,143 @@ final class _SpriteDrawQueue {
     );
   }
 
-  /// The entity of the [i]th pair *in draw order*.
+  /// The entity of the [i]th candidate *in draw order*.
   Entity entityAt(int i) => _entities[_order[i]];
 
-  /// The sprite of the [i]th pair *in draw order*.
-  Sprite spriteAt(int i) => _sprites[_order[i]]!;
+  /// The sprite of the [i]th candidate *in draw order*. Only valid where
+  /// [kindAt] is not [kindText].
+  Sprite spriteAt(int i) => _owners[_order[i]]! as Sprite;
 
-  /// Where the [i]th pair *in draw order* reads its transform from.
+  /// Where the [i]th candidate *in draw order* reads its transform from.
   _TransformSource sourceAt(int i) => _sources[_order[i]]!;
 
-  /// Whether the [i]th pair *in draw order* draws through the nine-slice
-  /// path. See [_sliced].
-  bool slicedAt(int i) => _sliced[_order[i]] != 0;
+  /// Which write path the [i]th candidate *in draw order* takes. See
+  /// [_kinds].
+  int kindAt(int i) => _kinds[_order[i]];
+
+  /// Stores one label's finished, view-space **run** against [slot] - where
+  /// its first glyph's top-left corner landed, and the three vectors every
+  /// glyph after that is placed by.
+  ///
+  /// The four numbers a glyph quad needs are all sums of these: glyph `g`'s
+  /// top-left is `origin + g * advance`, and its other three corners add
+  /// [cellWidthX]/[cellWidthY] and [cellHeightX]/[cellHeightY]. So the
+  /// rotation, the scale, the zoom, the pivot and the projection are all
+  /// spent once per label in the fill pass, while it is standing on the row,
+  /// exactly as [setQuad] spends them once per sprite.
+  ///
+  /// Multiplying by `g` and not accumulating: an accumulated origin drifts by
+  /// a rounding step per glyph, and these are `float32`.
+  void setTextRun(
+    int slot,
+    double originX,
+    double originY,
+    double advanceX,
+    double advanceY,
+    double cellWidthX,
+    double cellWidthY,
+    double cellHeightX,
+    double cellHeightY,
+    int color,
+    int textureAddress,
+    int filter,
+  ) {
+    final c = slot * _cornerStride;
+    final corners = _corners;
+    corners[c] = originX;
+    corners[c + 1] = originY;
+    corners[c + 2] = advanceX;
+    corners[c + 3] = advanceY;
+    corners[c + 4] = cellWidthX;
+    corners[c + 5] = cellWidthY;
+    corners[c + 6] = cellHeightX;
+    corners[c + 7] = cellHeightY;
+    final k = slot * _colorStride;
+    _colorAddress[k] = color;
+    _colorAddress[k + 1] = textureAddress;
+    _colorAddress[k + 2] = filter;
+  }
+
+  /// Expands the [i]th candidate *in draw order* into one quad per glyph it
+  /// draws, returning the new write offset. Only valid where [kindAt] is
+  /// [kindText].
+  ///
+  /// One candidate, N records, one z key for the group - the same shape
+  /// [GameRenderer2D._writeNineSlice] has, and the reason a label is not
+  /// declared as N sprites. Sixteen sprites on a row measures 2.5 KiB; the
+  /// same sixteen glyphs here are 32 bytes of `uint16` on the row and sixteen
+  /// records at write time.
+  ///
+  /// This is the one write path that still reads a row, and it has to: the
+  /// characters are the row. What it does *not* re-read is any of the
+  /// geometry - [setTextRun] left that finished.
+  ///
+  /// A code unit the font has no cell for is skipped and still advances, so a
+  /// missing glyph leaves a gap where it would have been and does not shuffle
+  /// the rest of the line left. The fill pass charges the budget by counting
+  /// through the same [BitmapFont.cellOf], so what is skipped here was never
+  /// charged there.
+  int writeTextAt(ByteData view, int offset, int i) {
+    final slot = _order[i];
+    final entity = _entities[slot];
+    final text = _owners[slot]! as Text2D;
+    final font = text.textFontResolved!;
+    final columns = font.columns;
+    final cellU = font.cellU;
+    final cellV = font.cellV;
+    final atlasU = font.frame.u;
+    final atlasV = font.frame.v;
+    final c = slot * _cornerStride;
+    final q = _corners;
+    final originX = q[c];
+    final originY = q[c + 1];
+    final advanceX = q[c + 2];
+    final advanceY = q[c + 3];
+    final wx = q[c + 4];
+    final wy = q[c + 5];
+    final hx = q[c + 6];
+    final hy = q[c + 7];
+    final k = slot * _colorStride;
+    final color = _colorAddress[k];
+    final address = _colorAddress[k + 1];
+    final filter = _colorAddress[k + 2];
+    final units = text.textCodeUnits;
+    final length = text.textLength[entity];
+    for (var g = 0; g < length; g++) {
+      final cell = font.cellOf(units.get(entity, g));
+      if (cell < 0) continue;
+      final x0 = originX + advanceX * g;
+      final y0 = originY + advanceY * g;
+      final u0 = atlasU + cellU * (cell % columns);
+      final v0 = atlasV + cellV * (cell ~/ columns);
+      final u1 = u0 + cellU;
+      final v1 = v0 + cellV;
+      offset = DrawSpriteData2D.writeQuad(
+        view,
+        offset,
+        x0,
+        y0, // (left,  top)
+        x0 + wx,
+        y0 + wy, // (right, top)
+        x0 + wx + hx,
+        y0 + wy + hy, // (right, bottom)
+        x0 + hx,
+        y0 + hy, // (left,  bottom)
+        color,
+        textureAddress: address,
+        filter: filter,
+        u0: u0,
+        v0: v0,
+        u1: u1,
+        v1: v0,
+        u2: u1,
+        v2: v1,
+        u3: u0,
+        v3: v1,
+      );
+    }
+    return offset;
+  }
 
   /// The widest `zIndex` span a counting sort is allowed to bucket.
   ///
@@ -1294,12 +1448,12 @@ final class _SpriteDrawQueue {
     }
     _entities = List<Entity>.filled(next, const Entity(0))
       ..setRange(0, _count, _entities);
-    _sprites = List<Sprite?>.filled(next, null)..setRange(0, _count, _sprites);
+    _owners = List<Object?>.filled(next, null)..setRange(0, _count, _owners);
     _sources = List<_TransformSource?>.filled(next, null)
       ..setRange(0, _count, _sources);
     _zIndices = Int32List(next)..setRange(0, _count, _zIndices);
     _records = Int32List(next)..setRange(0, _count, _records);
-    _sliced = Uint8List(next)..setRange(0, _count, _sliced);
+    _kinds = Uint8List(next)..setRange(0, _count, _kinds);
     _order = Int32List(next)..setRange(0, _count, _order);
     _corners = Float32List(next * _cornerStride)
       ..setRange(0, _count * _cornerStride, _corners);
@@ -1345,6 +1499,10 @@ final class _SpriteDrawQueue {
 /// order (archetype registration order, then page order, then row order, then
 /// the order sprites were declared within a prefab). So a scene that never
 /// sets `zIndex` draws in encounter order.
+///
+/// Labels sort into the same order on the same key, and are walked after
+/// every sprite - so a label and a sprite at one `zIndex` puts the label in
+/// front, which is the way round a name over a character wants.
 ///
 /// The sort is a prefix merge sort over a reusable index permutation (see
 /// [_SpriteDrawQueue.sortByZ]) - no per-tick allocation, no comparator
@@ -1431,6 +1589,25 @@ final class _SpriteDrawQueue {
 /// source cut is a fraction and the destination corner is not. The nine cells
 /// tile exactly the rectangle the single quad would have covered, which is
 /// what lets culling and the record budget treat the sprite as one thing.
+///
+/// # Text
+///
+/// A [Text2D] label is one candidate that expands into one quad per glyph in
+/// the write pass - the same arrangement nine-slice has, and for the same
+/// reason: sixteen glyphs declared as sixteen sprites is a 2.5 KiB entity
+/// row, and [_SpriteDrawQueue]'s own doc records what rows a tenth that size
+/// did to the write pass on a device.
+///
+/// Layout is arithmetic over a [BitmapFont]'s grid and happens here, on the
+/// game isolate, because this is the pass that walks the rows in z order and
+/// main has none. Nothing here touches a font, a glyph or the rasteriser,
+/// and it could not: `ui.ParagraphBuilder` throws on this isolate and
+/// `ui.loadFontFromList` kills the process.
+///
+/// The budget counts a label by the glyphs it draws, and admission stays all
+/// or nothing - so one long label that does not fit closes the budget for
+/// everything behind it, which under the depth trim is the back of the
+/// scene.
 class GameRenderer2D extends GameSystem
     with Tickable, GameSystemLifecycleListener {
   /// Runs in the presentation phase, after the fixed tick commits, and after
@@ -1519,6 +1696,20 @@ class GameRenderer2D extends GameSystem
       .withOptional(WorldTransform2D)
       .build();
 
+  // Labels. The same three clauses for the same three reasons - a label needs
+  // somewhere to be drawn, and it is composed by `WorldTransformSystem` where
+  // the archetype carries the mixin and drawn from its local transform where
+  // it does not.
+  //
+  // Separate from `_renderables` because `Text2D` is a plain `Component` an
+  // entity carries with or without `Renderable2D`: a sign is a panel sprite
+  // and a label, a damage number is a label and nothing else, and neither one
+  // can be expressed as a clause on the other query.
+  final _labels = Query.where()
+      .withAll(Text2D, Transform2D)
+      .withOptional(WorldTransform2D)
+      .build();
+
   // The camera is queried, not configured on this system: "where the view
   // is" is a property of an entity in the scene that the simulation can move
   // like any other, not a field a presentation system owns. Requiring
@@ -1543,11 +1734,12 @@ class GameRenderer2D extends GameSystem
   /// batch, so a candidate the depth trim discarded is not among them.
   /// Diagnostics and tests.
   ///
-  /// Not the same as [lastRecordCount] once nine-slicing is in play: one
-  /// sliced sprite is one sprite and up to nine records. This is the count of
-  /// things the scene asked to draw; that one is the count of quads the
-  /// buffer actually holds, and it is the buffer's number that has to stay
-  /// under the budget.
+  /// Not the same as [lastRecordCount] once nine-slicing or text is in play:
+  /// one sliced sprite is one sprite and up to nine records, and a label is
+  /// one and as many records as it has glyphs. This is the count of things
+  /// the scene asked to draw; that one is the count of quads the buffer
+  /// actually holds, and it is the buffer's number that has to stay under the
+  /// budget.
   int lastSpriteCount = 0;
 
   /// How many draw records the last [onTick] wrote - quads, not sprites.
@@ -2136,9 +2328,9 @@ class GameRenderer2D extends GameSystem
           // by construction and costs 3, and charging it 9 shut the budget
           // three times sooner than the scene needed (#252).
           final int records;
-          final bool sliced;
+          final int kind;
           if (_isNineSliced(entity, sprite)) {
-            sliced = true;
+            kind = _SpriteDrawQueue.kindSliced;
             records = _nineSliceGrid(
               entity,
               sprite,
@@ -2156,7 +2348,7 @@ class GameRenderer2D extends GameSystem
             // add a sprite to `lastSpriteCount` that draws no part of itself.
             if (records == 0) continue;
           } else {
-            sliced = false;
+            kind = _SpriteDrawQueue.kindQuad;
             records = 1;
           }
           final slot = queue.add(
@@ -2165,17 +2357,18 @@ class GameRenderer2D extends GameSystem
             source,
             sprite.zIndex[entity],
             records,
-            sliced: sliced,
+            kind: kind,
           );
           // A nine-sliced sprite cannot be reduced to four corners, so it keeps
           // reading its row in the write pass. That is the rare path and it is
           // left alone; what follows is for the plain quad, which
           // is almost everything almost always.
           //
-          // On `sliced` and not on `records != 1`: a sliced sprite down to its
-          // last live cell writes one record and still has to take the sliced
-          // path, because that record samples a sub-rectangle of the frame.
-          if (sliced) continue;
+          // On the kind and not on `records != 1`: a sliced sprite down to
+          // its last live cell writes one record and still has to take the
+          // sliced path, because that record samples a sub-rectangle of the
+          // frame.
+          if (kind != _SpriteDrawQueue.kindQuad) continue;
 
           // The geometry, computed here and not in the write pass, and
           // this placement is the entire optimisation - see
@@ -2239,6 +2432,140 @@ class GameRenderer2D extends GameSystem
         }
       }
     }
+
+    // Labels, walked after the sprites and into the same queue, so a label
+    // and a sprite at one `zIndex` put the label in front. That is the useful
+    // way round - a name over a body, a damage number over an enemy - and the
+    // encounter tie-break is what decides it, exactly as it decides two
+    // sprites at one depth.
+    //
+    // A second query and not a clause on the first: `Renderable2D` and
+    // `Text2D` are independent, an entity may carry either or both, and a
+    // label has no `Sprite` to read a width, a frame or an inset from.
+    for (final group in _labels.groups()) {
+      final text = group.get<Text2D>();
+      // Per archetype, so a prefab that declared no font is skipped once for
+      // every entity of it rather than once each. A font is the atlas and the
+      // grid together and there is nothing to draw without one.
+      final font = text.textFontResolved;
+      if (font == null) continue;
+      final address = font.texture.pack();
+      final source = _sourceOf(group);
+      final units = text.textCodeUnits;
+      for (final entity in group) {
+        if (!projection.shows(entity)) continue;
+        if (!text.textVisible[entity]) continue;
+        final length = text.textLength[entity];
+        final cellWidth = text.textCellWidth[entity];
+        final cellHeight = text.textCellHeight[entity];
+        if (cellWidth == 0 || cellHeight == 0) continue;
+
+        // The charge, counted through the same `cellOf` the write pass
+        // expands with. A code unit the font has no cell for draws nothing
+        // and is charged nothing, and the two passes cannot disagree about
+        // which ones those are because there is one test and both call it.
+        var records = 0;
+        for (var g = 0; g < length; g++) {
+          if (font.cellOf(units.get(entity, g)) >= 0) records++;
+        }
+        // Nothing to draw: an empty label, or one whose every character is
+        // outside the font. Skipped here and not left to the budget test,
+        // because `recordCount + 0 > limit` is false however closed the
+        // budget already is - so a zero-record candidate would slip past a
+        // trim that had stopped admitting anything and land in
+        // `lastSpriteCount` drawing no part of itself (#252, for collapsed
+        // slices).
+        //
+        // The one guard, and there is deliberately no `length == 0` shortcut
+        // above it. A second test that catches a subset of this one is a
+        // second thing a change can leave behind: with both present, deleting
+        // either leaves every test green and the bug hides behind the
+        // survivor.
+        if (records == 0) continue;
+
+        // Every character advances, in the font's cell or not, so a missing
+        // glyph leaves its gap instead of pulling the rest of the line left.
+        // The box is therefore as wide as the text, and the last glyph is a
+        // cell and not an advance - trailing letter spacing would push the
+        // pivot off the visible ink.
+        final advance = cellWidth + text.textLetterSpacing[entity];
+        final boxWidth = (length - 1) * advance + cellWidth;
+        // The pivot is the alignment: resolved against a box as wide as the
+        // text currently is, `0.5` keeps a label of any length centred on the
+        // entity and `0` keeps its left edge there.
+        final pivotX =
+            text.textPivotFractionX[entity] * boxWidth +
+            text.textPivotOffsetX[entity];
+        final pivotY =
+            text.textPivotFractionY[entity] * cellHeight +
+            text.textPivotOffsetY[entity];
+        final scaleX = source.scaleX[entity] * zoom;
+        final scaleY = source.scaleY[entity] * zoom;
+        final lx0 = -pivotX * scaleX;
+        final lx1 = (boxWidth - pivotX) * scaleX;
+        final ly0 = -pivotY * scaleY;
+        final ly1 = (cellHeight - pivotY) * scaleY;
+        final tx = projection.worldToViewX(source.x[entity]);
+        final ty = projection.worldToViewY(source.y[entity]);
+        // Culled whole, on the circle around the pivot the sprite path uses -
+        // the glyphs tile exactly the box those four corners bound, so a
+        // label is one thing to the culler as a nine-slice is.
+        final sx0 = lx0 * lx0;
+        final sx1 = lx1 * lx1;
+        final sy0 = ly0 * ly0;
+        final sy1 = ly1 * ly1;
+        if (!projection.showsCircle(
+          tx,
+          ty,
+          (sx0 > sx1 ? sx0 : sx1) + (sy0 > sy1 ? sy0 : sy1),
+        )) {
+          continue;
+        }
+
+        final rotation = source.rotation[entity];
+        final double cos;
+        final double sin;
+        if (rotation == 0) {
+          cos = 1.0;
+          sin = 0.0;
+        } else {
+          cos = math.cos(rotation);
+          // Negated for the same reason the sprite path negates it - the run
+          // is composed in view space, which is y-down.
+          sin = -math.sin(rotation);
+        }
+        // The label's own axes in view space. A local point `(x, y)` in the
+        // box lands at `(tx + x*ex + y*fx, ty + x*ey + y*fy)`, which is the
+        // sprite path's `lx*cos - ly*sin` with the scale folded in - so every
+        // glyph is two multiplies and an add off numbers computed once here.
+        final ex = scaleX * cos;
+        final ey = scaleX * sin;
+        final fx = -scaleY * sin;
+        final fy = scaleY * cos;
+        final slot = queue.add(
+          entity,
+          text,
+          source,
+          text.textZIndex[entity],
+          records,
+          kind: _SpriteDrawQueue.kindText,
+        );
+        queue.setTextRun(
+          slot,
+          tx - pivotX * ex - pivotY * fx,
+          ty - pivotX * ey - pivotY * fy,
+          advance * ex,
+          advance * ey,
+          cellWidth * ex,
+          cellWidth * ey,
+          cellHeight * fx,
+          cellHeight * fy,
+          text.textColor[entity],
+          address,
+          text.textFilter[entity],
+        );
+      }
+    }
     if (!debugSkipZSort) queue.sortByZ();
     // The budget, spent now that depth is known. On a frame that fits this is
     // a single comparison against the queued total; on one that does not, the
@@ -2259,8 +2586,17 @@ class GameRenderer2D extends GameSystem
     // discarded is a prefix of the sorted order, so skipping it is where the
     // frame's depth slab begins.
     for (var i = queue.firstAdmitted; i < count; i++) {
-      if (!queue.slicedAt(i)) {
+      final kind = queue.kindAt(i);
+      if (kind == _SpriteDrawQueue.kindQuad) {
         offset = queue.writeQuadAt(view, offset, i);
+        continue;
+      }
+      if (kind == _SpriteDrawQueue.kindText) {
+        // The label path. It reads a row too, and unavoidably: the characters
+        // are on the row and they are the whole of what it draws. Its
+        // geometry is not - the fill pass finished that and parked it beside
+        // every plain quad's corners.
+        offset = queue.writeTextAt(view, offset, i);
         continue;
       }
 
