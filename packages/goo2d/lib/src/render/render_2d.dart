@@ -1235,7 +1235,7 @@ final class _SpriteDrawQueue {
     final slot = _order[i];
     final entity = _entities[slot];
     final text = _owners[slot]! as Text2D;
-    final font = text.textFont!;
+    final font = text.textFontResolved!;
     final columns = font.columns;
     final cellU = font.cellU;
     final cellV = font.cellV;
@@ -2447,7 +2447,7 @@ class GameRenderer2D extends GameSystem
       // Per archetype, so a prefab that declared no font is skipped once for
       // every entity of it rather than once each. A font is the atlas and the
       // grid together and there is nothing to draw without one.
-      final font = text.textFont;
+      final font = text.textFontResolved;
       if (font == null) continue;
       final address = font.texture.pack();
       final source = _sourceOf(group);

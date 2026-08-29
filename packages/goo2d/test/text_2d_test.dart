@@ -99,13 +99,21 @@ class _Damage extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
     atlas = descriptor.has(_atlasKey);
   }
 
+  /// How many times [textFont] has been read. The override builds a font, so
+  /// a read allocates one, and a frame that reached the getter would allocate
+  /// one per archetype per frame.
+  int fontReads = 0;
+
   @override
-  BitmapFont describeFont() => BitmapFont(
-    texture: atlas,
-    columns: _columns,
-    rows: _rows,
-    glyphCount: _glyphs,
-  );
+  BitmapFont get textFont {
+    fontReads++;
+    return BitmapFont(
+      texture: atlas,
+      columns: _columns,
+      rows: _rows,
+      glyphCount: _glyphs,
+    );
+  }
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -337,6 +345,32 @@ void main() {
       );
       expect(_renderer.lastSpriteCount, 4);
       expect(_renderer.lastRecordCount, 6);
+    });
+
+    test('the font is read while the archetype is described, and no '
+        'more', () async {
+      final game = await _game();
+      final scene = _scene();
+      _eyeAt(game, scene);
+      _labelAt(scene, '-24', y: 20);
+      _labelAt(scene, '99', x: 40);
+      final described = scene.damage.fontReads;
+      expect(described, 1, reason: 'once for the archetype, not per entity');
+      final resolved = scene.damage.textFontResolved;
+      expect(resolved, isNotNull);
+
+      run.state.advance(_step);
+      run.state.advance(_step);
+
+      expect(_batch(game), hasLength(5), reason: 'both labels drew');
+      expect(
+        scene.damage.fontReads,
+        described,
+        reason:
+            'the write pass reads textFontResolved, and reaching the getter '
+            'would build a BitmapFont per archetype per frame',
+      );
+      expect(scene.damage.textFontResolved, same(resolved));
     });
 
     test('the glyphs sit above the entity they label', () async {

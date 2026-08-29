@@ -278,7 +278,7 @@ class DamageNumber extends EntityStruct
   }
 
   @override
-  BitmapFont describeFont() =>
+  BitmapFont get textFont =>
       BitmapFont(texture: atlas, columns: 16, rows: 6, glyphCount: 95);
 
   @override
@@ -323,8 +323,9 @@ ordinary texture asset and goes through the same pipeline as every other image.
 **The engine ships no font.** Supply your own PNG grid — one texture, one
 `TextureKey`, and the three numbers above.
 
-The font belongs to the prefab, not to the row: `describeFont` runs once per
-archetype. Two fonts in one scene are two prefabs.
+The font belongs to the prefab, not to the row: `textFont` is read once per
+archetype, when the archetype is described, and the renderer draws from the
+stored answer in `textFontResolved`. Two fonts in one scene are two prefabs.
 
 ### Capacity is storage, not a limit you can bend
 

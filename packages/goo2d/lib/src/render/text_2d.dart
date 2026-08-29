@@ -31,7 +31,7 @@ import 'package:meta/meta.dart';
 /// A `BitmapFont` is held by the component, which is one instance per
 /// archetype, so it costs a label's row nothing at all: no texture address,
 /// no metrics, no packing. Two fonts in one scene are two prefabs. See
-/// [Text2D.describeFont].
+/// [Text2D.textFont].
 @immutable
 final class BitmapFont {
   BitmapFont({
@@ -130,7 +130,7 @@ final class BitmapFont {
 ///   }
 ///
 ///   @override
-///   BitmapFont describeFont() =>
+///   BitmapFont get textFont =>
 ///       BitmapFont(texture: atlas, columns: 16, rows: 6);
 ///
 ///   @override
@@ -183,20 +183,25 @@ final class BitmapFont {
 /// a cell for it and skipped if not, and it advances either way. Two lines
 /// are two entities.
 mixin Text2D on Component {
-  /// The font this prefab's labels draw with, or null for a prefab that
-  /// declares none - which draws nothing at all.
+  /// The font this prefab's labels draw with. Override it; the default is
+  /// null, and a prefab with no font draws nothing at all.
   ///
-  /// Resolved once, when the archetype is described, so the renderer reads a
-  /// field instead of calling [describeFont] on the frame path.
-  late final BitmapFont? textFont;
+  /// Read once, during `describeStruct`, and kept in [textFontResolved].
+  /// `describeStruct` runs after `describeAssets`, so a [TextureAsset] the
+  /// prefab declared for itself is already populated when an override builds
+  /// a font from it.
+  ///
+  /// An override that constructs a `BitmapFont` allocates one per read, so
+  /// anything wanting a prefab's font after the archetype is described reads
+  /// [textFontResolved].
+  BitmapFont? get textFont => null;
 
-  /// Declares the font. Override it; the default declares none.
+  /// What [textFont] answered, stored while the archetype was described, or
+  /// null for a prefab that declares no font.
   ///
-  /// Runs during `describeStruct`, which is after `describeAssets`, so a
-  /// [TextureAsset] the prefab declared for itself is already populated.
-  /// Acts on the archetype and takes no entity, like every other `describe`
-  /// hook.
-  BitmapFont? describeFont() => null;
+  /// This is the frame path's copy: the renderer reads it once per archetype
+  /// per frame and never calls [textFont].
+  BitmapFont? textFontResolved;
 
   /// The most UTF-16 code units a label of this prefab holds, `1..65535`.
   /// Override it; the default is 32.
@@ -299,7 +304,7 @@ mixin Text2D on Component {
       );
     }
     textCodeUnits = data.hasUint16Array(capacity);
-    textFont = describeFont();
+    textFontResolved = textFont;
   }
 }
 
