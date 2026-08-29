@@ -1,0 +1,30 @@
+name: good_audio_soloud
+description: >-
+  SoLoud audio backend for the good game engine: the AudioBackend
+  implementation the mixer plays through, driven from the game isolate.
+version: 0.1.0-dev
+repository: https://github.com/sunarya-thito/good
+homepage: https://sunarya-thito.github.io/good/
+documentation: https://sunarya-thito.github.io/good/
+issue_tracker: https://github.com/sunarya-thito/good/issues
+
+environment:
+  sdk: ^3.13.0
+  flutter: ">=3.47.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Pinned to a single version, not a caret range. This package reaches past
+  # flutter_soloud's public API into src/bindings, because the public wrapper
+  # refuses every call from a spawned isolate (see SoLoudAudioBackend). A
+  # private layer carries no compatibility promise, so the constraint says so:
+  # a new flutter_soloud has to be looked at rather than resolved into.
+  flutter_soloud: 4.1.7
+  good: ^0.3.0-dev
+  meta: ^1.15.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
