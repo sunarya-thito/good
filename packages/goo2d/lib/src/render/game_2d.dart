@@ -9,6 +9,7 @@ import 'package:flutter/widgets.dart' hide Texture;
 import 'package:good/good.dart';
 
 import 'package:goo2d/src/data/world_transform.dart';
+import 'package:goo2d/src/render/debug_draw_2d.dart';
 import 'package:goo2d/src/render/draw/draw_2d.dart';
 import 'package:goo2d/src/render/render_2d.dart';
 import 'package:goo2d/src/render/texture.dart';
@@ -182,6 +183,34 @@ mixin Renderer2D on Game {
       DrawData2D.batchHeaderBytes +
       maxSpritesPerTick * DrawSpriteData2D.strideBytes;
 
+  /// Debug draw segments past this many in a single tick are dropped, and the
+  /// records they would have drawn with them.
+  ///
+  /// **Its own budget, spent against its own buffer.** A debug shape never
+  /// competes with a sprite for `maxSpritesPerTick`: a line drawn to explain
+  /// why an entity is where it is, that pushed that entity out of the frame,
+  /// would make the tool lie about the thing being inspected.
+  ///
+  /// It counts **segments**, which is also records, because a debug shape is
+  /// flattened to straight segments at the call and each one is a quad. A
+  /// `line` costs 1, a 24-segment `circle` costs 24, and a `label` costs one
+  /// per glyph stroke - around four per character. `DebugDraw2D.segmentCount`
+  /// is what the store holds and `DebugDraw2D.droppedSegments` is what did
+  /// not fit, so raising this by the second is the direct fix.
+  ///
+  /// The default reserves 304 KiB per declared [CameraView], in a debug build
+  /// only: [describeBuffers] declares nothing at all when `debugDrawEnabled`
+  /// is false, so a release build reserves none of it.
+  ///
+  /// It lives here for the reason [maxSpritesPerTick] does - it sizes native
+  /// memory, and that is reserved on this side before the spawn.
+  int get maxDebugRecordsPerTick => 4096;
+
+  /// Bytes one tick's debug batch occupies, including its tick stamp.
+  int get debugBatchBytes =>
+      DrawData2D.batchHeaderBytes +
+      maxDebugRecordsPerTick * DrawSpriteData2D.strideBytes;
+
   /// One handoff buffer per declared [CameraView], indexed by its address.
   ///
   /// Declared on the `Game` and not on the system that fills it, because
@@ -197,9 +226,23 @@ mixin Renderer2D on Game {
   /// else entirely against the same views.
   late final List<HandoffHandle> _viewFrames;
 
+  /// One debug handoff buffer per declared [CameraView], indexed by its
+  /// address, or empty in a build with `debugDrawEnabled` false.
+  ///
+  /// Separate from [_viewFrames] and not a second section inside it: the two
+  /// have separate producers, separate budgets and separate lifetimes, and a
+  /// release build has to be able to not have this one at all.
+  late final List<HandoffHandle> _viewDebugFrames;
+
   /// The frame buffer [view] is drawn into. `GameRenderer2D` writes it on the
   /// game isolate; `_ViewSurface` reads it here.
   HandoffHandle framesFor(CameraView view) => _viewFrames[view.pack()];
+
+  /// The debug buffer [view]'s shapes are drawn into. Throws in a build with
+  /// `debugDrawEnabled` false, where there is no such buffer - every caller
+  /// is already behind that constant.
+  HandoffHandle debugFramesFor(CameraView view) =>
+      _viewDebugFrames[view.pack()];
 
   @override
   @mustCallSuper
@@ -210,6 +253,15 @@ mixin Renderer2D on Game {
     _viewFrames = <HandoffHandle>[
       for (var i = 0; i < cameraViews.length; i++)
         descriptor.hasHandoff(slotBytes: spriteBatchBytes),
+    ];
+    // `debugDrawEnabled` is a compile-time constant, so a release build has
+    // no `hasHandoff` call here to run and reserves nothing. Declaration order
+    // still matches across the two copies of the `Game`, because both compile
+    // the same constant.
+    _viewDebugFrames = <HandoffHandle>[
+      if (debugDrawEnabled)
+        for (var i = 0; i < cameraViews.length; i++)
+          descriptor.hasHandoff(slotBytes: debugBatchBytes),
     ];
   }
 
@@ -310,7 +362,13 @@ mixin Renderer2D on Game {
 
     final surface = _surfaces.putIfAbsent(
       camera.pack(),
-      () => _ViewSurface(camera, DrawCanvas2D(assets: assets)),
+      () => _ViewSurface(
+        camera,
+        DrawCanvas2D(assets: assets),
+        // A `const false` in release, so the second canvas, its vertex arrays
+        // and the painter branch that replays them are all gone.
+        debugDrawEnabled ? DrawCanvas2D(assets: assets) : null,
+      ),
     );
 
     // `ClipRect`, because a `CustomPaint` does **not** clip its painter to its
@@ -323,7 +381,11 @@ mixin Renderer2D on Game {
     return RepaintBoundary(
       child: ClipRect(
         child: CustomPaint(
-          painter: _GameViewPainter(surface.canvas, surface.frames),
+          painter: _GameViewPainter(
+            surface.canvas,
+            surface.debugCanvas,
+            surface.frames,
+          ),
           size: Size.infinite,
           isComplex: true,
           willChange: true,
@@ -385,40 +447,69 @@ mixin Renderer2D on Game {
 /// they decode once and paint the same frame - which is what makes "the same
 /// camera at two sizes" cost one ingest and not two.
 class _ViewSurface {
-  _ViewSurface(this.view, this.canvas);
+  _ViewSurface(this.view, this.canvas, this.debugCanvas);
 
   final CameraView view;
   final DrawCanvas2D canvas;
+
+  /// The debug shapes' own vertex arrays, replayed over [canvas]. Null in a
+  /// build with `debugDrawEnabled` false, where there is no debug buffer to
+  /// ingest from.
+  ///
+  /// A second [DrawCanvas2D] and not more runs on the first: the two frames
+  /// arrive in separate buffers and either can be newer, so one ingest
+  /// deciding for both would drop whichever landed second.
+  final DrawCanvas2D? debugCanvas;
+
   final _FrameSignal frames = _FrameSignal();
 
   HandoffBuffer? _buffer;
+  HandoffBuffer? _debugBuffer;
 
   void sample(Renderer2D renderer) {
+    var landed = _sampleScene(renderer);
+    if (debugDrawEnabled) landed = _sampleDebug(renderer) || landed;
+    if (landed) frames.pulse();
+  }
+
+  bool _sampleScene(Renderer2D renderer) {
     final buffer = _buffer ??= renderer.framesFor(view).tryBuffer;
-    if (buffer == null) return;
+    if (buffer == null) return false;
 
     // Null means nothing new since the last look, which at 60Hz against a
     // slower tick is the ordinary case. Taking a slot is also what hands the
     // previous one back, so the writer only ever resumes because this ran.
     final slot = buffer.beginRead();
-    if (slot == null) return;
+    if (slot == null) return false;
 
     // Decoded into the canvas's own vertex arrays here, in the frame callback,
     // and not read during paint. That is what keeps the window in which
     // the writer could interfere down to this ingest instead of a whole
     // raster - see `HandoffBuffer`.
-    if (!canvas.ingestFrame(
+    return canvas.ingestFrame(
       ByteData.sublistView(slot.asTypedList(buffer.readUsedBytes)),
       buffer.readUsedBytes,
-    )) {
-      return;
-    }
-    frames.pulse();
+    );
+  }
+
+  bool _sampleDebug(Renderer2D renderer) {
+    final canvas = debugCanvas;
+    if (canvas == null) return false;
+    final buffer = _debugBuffer ??= renderer.debugFramesFor(view).tryBuffer;
+    if (buffer == null) return false;
+    final slot = buffer.beginRead();
+    if (slot == null) return false;
+    return canvas.ingestFrame(
+      ByteData.sublistView(slot.asTypedList(buffer.readUsedBytes)),
+      buffer.readUsedBytes,
+    );
   }
 
   void dispose() {
     _buffer = null;
+    _debugBuffer = null;
     canvas.dispose();
+    debugCanvas?.dispose();
     frames.dispose();
   }
 }
@@ -432,13 +523,22 @@ class _FrameSignal extends ChangeNotifier {
 }
 
 class _GameViewPainter extends CustomPainter {
-  const _GameViewPainter(this.canvas, Listenable repaint)
+  const _GameViewPainter(this.canvas, this.debugCanvas, Listenable repaint)
     : super(repaint: repaint);
 
   final DrawCanvas2D canvas;
 
+  /// The debug overlay, or null in a build with `debugDrawEnabled` false.
+  final DrawCanvas2D? debugCanvas;
+
+  /// Scene first, then the debug shapes over it. The overlay describes what
+  /// the scene is doing, so a sprite drawn on top of it would hide the thing
+  /// being read.
   @override
-  void paint(Canvas target, Size size) => canvas.replay(target);
+  void paint(Canvas target, Size size) {
+    canvas.replay(target);
+    if (debugDrawEnabled) debugCanvas?.replay(target);
+  }
 
   /// Always false: repaints come from the `repaint` `Listenable` handed to
   /// the constructor, and the painter's own identity says nothing about

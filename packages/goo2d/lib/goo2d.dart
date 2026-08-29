@@ -18,6 +18,7 @@ export 'src/data/collider.dart';
 export 'src/data/transform.dart';
 export 'src/input/mouse.dart';
 export 'src/data/world_transform.dart';
+export 'src/render/debug_draw_2d.dart';
 export 'src/render/draw/draw_2d.dart';
 export 'src/render/render_2d.dart';
 export 'src/render/text_2d.dart';
