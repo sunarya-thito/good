@@ -71,9 +71,8 @@ class _MainOnlySource extends AssetSource {
     //
     // Real sources all read a file or a bundle, so they yield and the window
     // never opens; a synchronous in-memory one walks straight into it. Found
-    // by this test and reported alongside the audio work rather than fixed
-    // here - the fix is a boot-ordering change and this is not a boot-ordering
-    // landing.
+    // by this test and filed as #260 rather than fixed here - the fix is a
+    // boot-ordering change and this is not a boot-ordering landing.
     await Future<void>.delayed(Duration.zero);
     return Uint8List.fromList(List<int>.filled(length, 3));
   }
