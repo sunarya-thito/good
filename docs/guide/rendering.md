@@ -2,6 +2,7 @@
 
 <!-- snippet-scope
 late Sprite sprite;
+late TextureKey fontKey;
 late Query players;
 late Eye eye;
 late BoxBody box;
@@ -255,6 +256,133 @@ for (final group in players.groups()) {
 `SpriteFrame.grid` is exact whatever the image's pixel size — the constructor
 never asks how big the source is, because it does not need to know.
 
+## Text
+
+`Text2D` puts a line of text in the world: a damage number over an enemy, a name
+above a character, a price on a sign. It is drawn from a **grid font** you
+supply, it sorts with the sprites on the same `zIndex` scale, and the camera
+moves and scales it like anything else.
+
+```dart
+class DamageNumber extends EntityStruct
+    with Transform2D, WorldTransform2D, Text2D {
+  late final TextureAsset atlas;
+
+  @override
+  int get textCapacity => 8;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    atlas = descriptor.has(fontKey);
+  }
+
+  @override
+  BitmapFont describeFont() =>
+      BitmapFont(texture: atlas, columns: 16, rows: 6, glyphCount: 95);
+
+  @override
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    textCellWidth.defaultValue = 8;
+    textCellHeight.defaultValue = 12;
+  }
+}
+```
+
+Then write the text per entity:
+
+```dart
+entity<Text2D>().setText('Boss');
+entity<Text2D>().setInt(-24);
+final showing = entity<Text2D>().text;
+```
+
+`setInt` builds no `String`, so a number that changes every frame costs no
+allocation at all. `setText` allocates nothing either — whatever built the
+string did.
+
+### The font is a sprite sheet
+
+A `BitmapFont` is a texture plus three numbers: how many cells across, how many
+down, and which code point cell 0 draws. A character's cell is
+`codeUnit - firstCodepoint`, split by `columns`, and its rectangle in the atlas
+is that cell divided by the grid — no pixel size anywhere, so a repacked atlas
+still slices correctly and nothing waits for the image to decode.
+
+`firstCodepoint` is 32 by default, which is where an ASCII sheet normally
+starts. `glyphCount` says how many cells actually hold a glyph, for a last row
+that is only partly filled. A code unit with no cell draws nothing and still
+advances, so a missing character leaves its gap instead of pulling the rest of
+the line left.
+
+There is no `flutter: fonts:` entry involved. That mechanism belongs to the
+Flutter isolate and the renderer runs on the other one; a bitmap font is an
+ordinary texture asset and goes through the same pipeline as every other image.
+
+**The engine ships no font.** Supply your own PNG grid — one texture, one
+`TextureKey`, and the three numbers above.
+
+The font belongs to the prefab, not to the row: `describeFont` runs once per
+archetype. Two fonts in one scene are two prefabs.
+
+### Capacity is storage, not a limit you can bend
+
+`textCapacity` reserves that many UTF-16 code units in **every row of the
+archetype**, the same way `hasPolygonCollider`'s `maxPoints` does. Pick it for
+the longest text that prefab will ever show.
+
+A string that does not fit is a programming error, so a debug run stops on it.
+A release build has no assert to stop it: it keeps what fits and adds the rest
+to `Text2D.textCodeUnitsDropped`, a running total over every entity of that
+prefab. Zero there means no label has ever been cut; anything else is how much
+text is missing and by how much the capacity is short.
+
+### The pivot is the alignment
+
+A label's box is as wide as the text currently in it, and the pivot resolves
+against that box:
+
+| `textPivotFractionX` | Where the entity sits |
+|---|---|
+| `0` | at the label's left edge — left-aligned |
+| `0.5` (default) | in its middle — centred, however the text changes length |
+| `1` | at its right edge |
+
+`textPivotOffsetX`/`textPivotOffsetY` shift it by a fixed number of world units
+on top of that. There is no separate alignment enum; this is it.
+
+`textCellWidth` and `textCellHeight` are one glyph's size in world units, and
+`textLetterSpacing` adds to the advance without changing the cell — negative to
+tighten a grid whose cells carry more side bearing than you want.
+
+### What a label costs
+
+One candidate and **one record per glyph it draws**. `maxSpritesPerTick` counts
+records, so a screen of long labels reaches the cap sooner than the entity count
+suggests, and a label is admitted all or nothing: one that does not fit closes
+the budget for everything behind it. A code unit the font has no cell for is
+charged nothing, and an empty label is not a candidate at all.
+
+The row stays small — `textCapacity` code units and about fifty more bytes,
+because the font, its metrics and the atlas address are on the component. The
+same sixteen glyphs declared as sixteen sprites would be a 2.5 KiB row, which is
+ten times the row size that already cost this renderer 42% of its write pass.
+
+### One label per entity, and world space only
+
+`Text2D` is a plain component, so an entity that wants both a name and a damage
+number wants two entities. Parent one to the other and it follows.
+
+**There is no screen-space text.** A HUD is Flutter widgets over the `GameView`
+— see [Where your UI belongs](flutter-bridge.md#where-your-ui-belongs) — and
+that is the first thing to reach for when what you want is a score in the
+corner. `Text2D` is for text the world owns.
+
+Not built, and named here so you do not go looking: proportional metrics,
+kerning, line wrapping, and shaping for scripts that need it. `\n` is not a line
+break — it is a code unit like any other, so two lines are two entities.
+
 ## Cameras
 
 A camera is an entity: `Transform2D`, `WorldTransform2D` and `Camera`.
@@ -376,6 +504,9 @@ draws, nine for a full frame — so a screen of panels reaches it sooner than th
 entity count suggests. Only the cells that survive are charged: a capsule button
 sliced left and right has no top or bottom row to draw, so it costs three and not
 nine.
+
+A label spends one record per glyph it draws, so text is counted the same way:
+one candidate, as many records as it has characters the font has cells for.
 
 ### What goes when it runs out
 
