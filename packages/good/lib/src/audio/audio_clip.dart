@@ -4,21 +4,18 @@ import 'package:good/src/asset.dart';
 
 /// An audio file's bytes, loaded and addressed like any other asset.
 ///
-/// # What this is not
+/// # This is the asset, not the playback
 ///
-/// It is **not** playback. This engine has no audio backend, no mixer and no
-/// voice
-/// management, and this does not pretend otherwise: the bytes are read and
-/// held, and nothing decodes or plays them. What it *is* is the other half of
-/// the asset pipeline - a clip can be declared in `describeAssets`, addressed,
-/// pointed at from a component row, packed, encrypted and shipped exactly like
-/// a texture, and a readiness check can tell you it is missing before the
-/// game starts.
+/// A clip is declared in `describeAssets`, addressed, pointed at from a
+/// component row, packed, encrypted and shipped exactly like a texture, and a
+/// readiness check can tell you it is missing before the game starts. What
+/// turns it into a sound is `AudioMixer` - `state.audio.play(clip, bus)` -
+/// which hands [bytes] to whatever `AudioBackend` the game declared.
 ///
-/// That split is not a shortcut. The pipeline is uniform over asset *kinds* -
-/// `Asset<T>` does not care what `T` is - so audio can travel the whole of it
-/// before anything can play a sound. When a backend lands it consumes [bytes];
-/// nothing above this line changes.
+/// The split is what let the pipeline ship a whole release before anything
+/// could play a sound: it is uniform over asset *kinds*, because `Asset<T>`
+/// does not care what `T` is. Nothing above this line changed when the mixer
+/// landed.
 class AudioClip {
   AudioClip(this.bytes, this.format);
 
@@ -29,7 +26,10 @@ class AudioClip {
   /// The container the bytes are in, from the source path's extension.
   ///
   /// Carried, never re-sniffed: the loader already knows it, and a backend
-  /// would otherwise have to guess from a header.
+  /// would otherwise have to guess from a header. `AudioContainer.of` reads it
+  /// off the source's extension, and answers [AudioContainer.ogg] for a source
+  /// that has none - which a `MemorySource` generally does not, so a
+  /// procedurally generated clip is labelled Ogg whatever it holds (#17).
   final AudioContainer format;
 
   /// How many bytes the clip occupies. The one thing that can be answered

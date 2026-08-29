@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
 
 import 'package:good/src/asset.dart';
+import 'package:good/src/audio/audio_clip.dart';
+import 'package:good/src/audio/audio_mixer.dart';
 import 'package:good/src/event.dart';
 import 'package:good/src/event/fixed_loop.dart';
 import 'package:good/src/event/lifecycle.dart';
@@ -175,8 +178,14 @@ abstract class GameState<T extends Game> extends GameListenerBase
   // handle and never the object.
   final List<Scene> _loaded = <Scene>[];
 
-  // How many loaded scenes declared each asset. An asset is freed when the
-  // last of them is unloaded, never before - see [_releaseAssetsOf].
+  // How many things are currently using each asset. An asset is freed when the
+  // last of them lets go, never before - see [releaseAssetClaim].
+  //
+  // A loaded scene takes one claim per asset it declares, and a playing
+  // [Voice] takes one on the clip it is sounding. Those are the same kind of
+  // claim on purpose: a track has to survive the scene that started it, and
+  // the only asset lifetime this engine has is the scene, so the voice has to
+  // be a claimant in its own right or the bytes go the moment the scene does.
   //
   // Keyed by the declared *handle*, which is canonical per asset, so the
   // default identity hashing is exactly right here. Keying by key would not
@@ -629,7 +638,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // that mistake, and it is also the only thing that can answer "is anyone
     // still using this" when scenes are unloaded out of order.
     for (var i = 0; i < incoming.length; i++) {
-      _assetClaims.update(incoming[i], (n) => n + 1, ifAbsent: () => 1);
+      claimAsset(incoming[i]);
     }
 
     if (!runtime.decodesAssets) {
@@ -709,25 +718,127 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // afterwards would throw.
     final freed = <int>[];
     for (var i = 0; i < declared.length; i++) {
-      final asset = declared[i];
-      final remaining = (_assetClaims[asset] ?? 0) - 1;
-      if (remaining > 0) {
-        _assetClaims[asset] = remaining;
-        continue;
-      }
-      _assetClaims.remove(asset);
-      final address = asset.pack();
-      // Unloading runs on both copies - it is the undoing of a declaration,
-      // and the two copies have to agree on what is declared for an address
-      // to mean the same thing on both sides.
-      game.assets.unload(asset.key);
-      freed.add(address);
+      final address = _dropClaim(declared[i]);
+      if (address != null) freed.add(address);
     }
     // The other copy holds the decoded payload, so dropping the declaration
     // here is only half of it. The mirror of `requestAssetLoad`: without this,
     // a scene unloaded on the game isolate leaves its images alive on main
     // with nothing left that could name them.
     if (!runtime.decodesAssets) runtime.requestAssetUnload(freed);
+  }
+
+  /// Takes one claim on [asset], keeping its payload resident until whoever
+  /// took it lets go.
+  ///
+  /// Internal because the two claimants are both inside the engine - a scene
+  /// load, and a [Voice]. A game asks for a scene or a sound and the claim
+  /// follows; a claim taken by hand is one nothing would ever release.
+  @internal
+  void claimAsset(Asset<Object?> asset) =>
+      _assetClaims.update(asset, (n) => n + 1, ifAbsent: () => 1);
+
+  /// Drops one claim on [asset], unloading it if that was the last.
+  ///
+  /// The single-asset spelling of what [_releaseAssetsOf] does for a whole
+  /// scene, and the one a voice ending uses.
+  @internal
+  void releaseAssetClaim(Asset<Object?> asset) {
+    final address = _dropClaim(asset);
+    if (address != null && !runtime.decodesAssets) {
+      runtime.requestAssetUnload(<int>[address]);
+    }
+  }
+
+  /// Drops one claim and returns the address freed by doing so, or null if
+  /// somebody else is still holding one.
+  ///
+  /// Does not tell the other copy: the scene path batches a whole scene's
+  /// worth of addresses into one message, and this is the half both callers
+  /// share.
+  int? _dropClaim(Asset<Object?> asset) {
+    final remaining = (_assetClaims[asset] ?? 0) - 1;
+    if (remaining > 0) {
+      _assetClaims[asset] = remaining;
+      return null;
+    }
+    _assetClaims.remove(asset);
+    final address = asset.pack();
+    // Unloading runs on both copies - it is the undoing of a declaration,
+    // and the two copies have to agree on what is declared for an address
+    // to mean the same thing on both sides.
+    game.assets.unload(asset.key);
+    return address;
+  }
+
+  /// How many claims [asset] is currently under - what decides whether it
+  /// survives the next unload.
+  @visibleForTesting
+  int assetClaimCount(Asset<Object?> asset) => _assetClaims[asset] ?? 0;
+
+  // --- audio ------------------------------------------------------------
+
+  AudioMixer? _mixer;
+
+  /// Whether this game declared an audio backend at all - see
+  /// `Game.createAudioBackend`.
+  ///
+  /// Checking this never builds one. A game with no backend has no mixer, no
+  /// audio device and no mixing thread, and reading [audio] on it throws by
+  /// name rather than handing back something that silently plays nothing.
+  bool get hasAudio => game.createAudioBackend() != null;
+
+  /// This game's mixer - what plays a clip. See [AudioMixer].
+  ///
+  /// Built on first use, and the backend is opened later still, on the first
+  /// [AudioMixer.play]. So the cost of audio is paid by a game that makes a
+  /// sound and by nothing else: declaring a backend costs one method call,
+  /// touching this costs one object, and the device only opens when something
+  /// is actually going to come out of it.
+  ///
+  /// Throws on the copy that does not simulate. The mixer lives where the
+  /// decisions are - the system that decides a footstep happened, the
+  /// `Asset<AudioClip>` it names and the scene whose claim keeps that clip
+  /// alive are all on this isolate - and nothing about starting a sound
+  /// crosses the boundary.
+  AudioMixer get audio {
+    _requireSimulating('audio');
+    final existing = _mixer;
+    if (existing != null) return existing;
+    final backend = game.createAudioBackend();
+    if (backend == null) {
+      throw StateError(
+        '${game.runtimeType} declared no audio backend, so there is nothing '
+        'to play through. Override Game.createAudioBackend() and return one - '
+        'SoLoudAudioBackend from package:good_audio_soloud is the '
+        'implementation this engine ships. It is a separate package on '
+        'purpose: a native audio engine is a plugin with a platform build, '
+        'and a game that ships no sound should not have to compile one.',
+      );
+    }
+    return _mixer = AudioMixer(backend, this);
+  }
+
+  /// The bytes of [clip], on this isolate, for a backend to upload.
+  ///
+  /// Two routes, and which one runs is the ordinary decoding split. The copy
+  /// that decodes has the payload already and reads it. The game isolate has
+  /// only the address, so it asks - and audio is the asset kind where that
+  /// works, because a clip's payload is a `Uint8List` and a `Uint8List`
+  /// crosses. A texture's is a `ui.Image` and does not, which is why there is
+  /// no general version of this.
+  @internal
+  Future<Uint8List> readAudioBytes(Asset<AudioClip> clip) async {
+    if (!runtime.decodesAssets) return runtime.requestAudioBytes(clip.pack());
+    if (!clip.isLoaded) {
+      throw StateError(
+        '${clip.debugLabel} is declared but not loaded, so there is nothing '
+        'to play. An audio clip is loaded by the scene that declares it: put '
+        "it in a SceneStruct's or a Component's describeAssets and play it "
+        'from a scene that is loaded.',
+      );
+    }
+    return clip.value.bytes;
   }
 
   // --- bring-up ---------------------------------------------------------
@@ -883,6 +994,17 @@ abstract class GameState<T extends Game> extends GameListenerBase
     for (var i = _systems.length - 1; i >= 0; i--) {
       _systems[i].unmountEvent.call();
     }
+
+    // After the systems, because a system's own teardown may well be where a
+    // sound is stopped, and stopping one after the mixer has gone would throw
+    // on a game that is already halfway down.
+    //
+    // Not awaited, and it does not need to be: `AudioMixer.close` releases
+    // every live voice's asset claim before its first `await`, so by the time
+    // this returns the claim ledger is settled and only the native device is
+    // still closing. There is nothing left here for it to race.
+    unawaited(_mixer?.close() ?? Future<void>.value());
+    _mixer = null;
   }
 
   /// Starts the wall-clock-paced tick loop. Called by `Game.start()` unless

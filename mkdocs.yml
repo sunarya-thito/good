@@ -126,6 +126,7 @@ nav:
       - Events and listeners: guide/events.md
       - Input: guide/input.md
       - Assets: guide/assets.md
+      - Audio: guide/audio.md
       - Talking to Flutter: guide/flutter-bridge.md
       - Coroutines and animation: guide/coroutines-and-animation.md
       - Performance: guide/performance.md

@@ -4,6 +4,8 @@
 dependency_overrides:
   good:
     path: ../good
+  good_audio_soloud:
+    path: ../good_audio_soloud
   goo2d:
     path: ../goo2d
   goo3d:

@@ -321,6 +321,57 @@
 
 ### Added
 
+* **Audio plays.** `AudioClip` has shipped through the whole asset pipeline
+  since 0.2.0 with nothing that could make a sound out of it. There is now a
+  mixer: `state.audio.play(clip, AudioBus.master)` returns a `Voice`, and
+  `voice.stop()` stops it (#17).
+
+  ```dart
+  class MyGame extends Game {
+    @override
+    AudioBackend createAudioBackend() => SoLoudAudioBackend();
+  }
+
+  // anywhere on the game isolate
+  final music = state.audio.play(scene.theme, AudioBus.master);
+  ```
+
+  The mixer lives on the **game isolate** and calls the native engine
+  directly. Nothing crosses the boundary to start a sound, and nothing has to:
+  a `play` costs a couple of microseconds, less than a port send, and mixing
+  runs on the engine's own thread - so an overrunning tick, or a game paused
+  with its timer stopped, does not perturb playback.
+
+  `good` ships no engine. `AudioBackend` is the seam and
+  `package:good_audio_soloud` is the implementation, because a native audio
+  engine is a plugin with a platform build and a game that ships no sound
+  should not compile one. A game that declares no backend allocates nothing
+  and opens no device; one that declares a backend but plays nothing does not
+  either, because the device opens on the first `play`.
+
+  Two things are in this first slice that look deferrable and are not.
+
+  **The bus parameter.** Players treat music, effects, voice and interface as
+  four separate things, and a single master volume does not decompose into
+  four later without touching every call site that ever played a sound. So
+  `play` takes a bus now, while `AudioBus` has one member and its level is
+  fixed at 1.0.
+
+  **The asset claim.** A playing voice takes a claim on its clip, exactly as a
+  loaded scene takes one on each asset it declares - so a scene can unload
+  while its music keeps playing, and the bytes survive because the voice is
+  still holding them. Without it a track cannot outlive the scene that started
+  it, and since there is no game-level `describeAssets`, every clip is declared
+  by some scene and every scene eventually unloads.
+
+  Deferred, and named so nobody builds on the assumption that they are here:
+  looping and authored loop points, per-bus levels, fades, a voice cap and a
+  stealing policy, a settings surface, and web. The cap is worth its own line
+  because it looks like something a backend supplies and does not:
+  flutter_soloud 4.1.7's `setMaxActiveVoiceCount(4)` reports back 4 and then
+  permits 59 concurrent voices, measured on its supported public API, so the
+  engine will have to count one itself.
+
 * **`WorldCensus` counts what the game isolate holds.** Loaded scenes,
   registered archetypes and how many entities are in each, and the declared
   systems with their enabled bits. Everything in it was already known on the
