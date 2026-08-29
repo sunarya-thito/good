@@ -58,22 +58,6 @@ class _MainOnlySource extends AssetSource {
     if (!_onMain) {
       throw StateError('$name can only be read on the Flutter isolate');
     }
-    // A real event-loop turn, and it is load-bearing rather than decorative.
-    //
-    // Main handles the game isolate's `loadAssets` before it handles `ready`,
-    // and `ready` is what sets `_toGame` - the port every reply goes back
-    // over. `_handleAssetLoadRequest` sends those replies with
-    // `_toGame?.send`, so while that field is still null they are dropped
-    // without a word. A source that resolves entirely in microtasks never
-    // yields between the two messages, so the whole decode finishes before
-    // `ready` is delivered, both replies vanish, and the `loadScene` that
-    // asked hangs forever with nothing to point at.
-    //
-    // Real sources all read a file or a bundle, so they yield and the window
-    // never opens; a synchronous in-memory one walks straight into it. Found
-    // by this test and filed as #260 rather than fixed here - the fix is a
-    // boot-ordering change and this is not a boot-ordering landing.
-    await Future<void>.delayed(Duration.zero);
     return Uint8List.fromList(List<int>.filled(length, 3));
   }
 

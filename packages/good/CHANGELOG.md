@@ -935,6 +935,29 @@
 
 ### Fixed
 
+* **A scene loaded from `GameState.onMounted` no longer hangs when its assets
+  decode without yielding.** On a spawned run the game isolate mounts the world
+  before it sends `ready`, so a `loadScene` in `onMounted` puts its
+  `loadAssets` request on the wire first, and `ready` is what carries the port
+  main answers over. Main handled the request with that port still null and
+  sent both replies through `_toGame?.send`, which on null is a no-op with
+  nothing logged: the `Completer` the `loadScene` was waiting on never
+  completed, and the game went on ticking around a dead `await` with no error,
+  no timeout and no stack (#260).
+
+  Every source that ships reads a file or a bundle, and awaiting real I/O
+  yields to the event loop, which is where `ready` got delivered mid-request.
+  So the window was closed by the decode taking a turn. `MemorySource.load` is
+  `async => bytes` and takes none — and it is the documented source for tests
+  and generated content.
+
+  A reply produced before `ready` is now held and sent on the `ready` arm, in
+  the order it was made. One list per run, allocated only on a run that
+  replies that early; after `ready` the path is a field read and a send. The
+  boot ordering is unchanged, so `start()` still returns to a game whose world
+  exists. `Game.startInline` was never affected: it decodes in place and sends
+  no message.
+
 * **A handler that runs with no tick window open can no longer change the
   world, in any build.** Two command lanes run user code outside
   `beginTick`/`commitTick`: the receipt-delivered one, dispatched from a
