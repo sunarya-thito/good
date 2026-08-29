@@ -6,6 +6,7 @@ import 'package:good/good.dart';
 import 'package:goo2d/src/data/camera.dart';
 import 'package:goo2d/src/data/world_transform.dart';
 import 'package:goo2d/src/data/transform.dart';
+import 'package:goo2d/src/render/debug_draw_2d.dart';
 import 'package:goo2d/src/render/draw/draw_2d.dart';
 // Mutual with this file: `Renderer2D` and `GameRenderer2D` are the two
 // isolate-halves of one feature. The Game mixin declares and drains the frame
@@ -1667,6 +1668,34 @@ class GameRenderer2D extends GameSystem
   /// from the `Game`, which sized the buffers from the same number.
   int get spriteBatchBytes => _renderer.spriteBatchBytes;
 
+  /// The debug shapes this run has drawn, and the calls that draw more.
+  ///
+  /// Built on first read and sized from `Renderer2D.maxDebugRecordsPerTick`,
+  /// so a game that never draws a debug shape never allocates the store. In a
+  /// release build [debugDrawEnabled] is false and this is the shared
+  /// `DebugDraw2D.disabled` instance, which stores nothing.
+  ///
+  /// A system reaches it as `debugDraw`, without naming this system - see
+  /// [DebugDrawAccessForSystems].
+  DebugDraw2D get debugDraw {
+    if (!debugDrawEnabled) return const DebugDraw2D.disabled();
+    return _debugDraw ??= DebugDraw2D(
+      capacity: _renderer.maxDebugRecordsPerTick,
+    );
+  }
+
+  DebugDraw2D? _debugDraw;
+
+  Uint8List? _debugScratch;
+  ByteData? _debugScratchView;
+
+  /// How many debug draw records the last [onTick] wrote, summed over views.
+  ///
+  /// Below `DebugDraw2D.segmentCount` by whatever the viewport culled.
+  /// `DebugDraw2D.droppedSegments` is the other number: what never reached
+  /// the store at all.
+  int lastDebugRecordCount = 0;
+
   // There is no ring capacity to configure. A queue sized to a few batches
   // keeps the *oldest* frames, and an old frame is the one thing a renderer
   // never wants; overflow then drops the newest, which is the wrong end. A
@@ -2106,6 +2135,7 @@ class GameRenderer2D extends GameSystem
     var records = 0;
     var overBudget = 0;
     var dropped = false;
+    var debugRecords = 0;
     final views = game.cameraViews;
     for (var i = 0; i < views.length; i++) {
       _renderView(views[i], framesFor(views[i]));
@@ -2116,11 +2146,68 @@ class GameRenderer2D extends GameSystem
       // records between them, not 100.
       overBudget += lastRecordsOverBudget;
       dropped = dropped || lastWriteDropped;
+      // A `const false` in release, so this call and everything it reaches
+      // are gone from the shipped binary along with the buffer it writes.
+      if (debugDrawEnabled) {
+        debugRecords += _renderDebugView(
+          views[i],
+          _renderer.debugFramesFor(views[i]),
+        );
+      }
+    }
+    if (debugDrawEnabled) {
+      // After the last view, and not inside the loop: every view projects the
+      // same world-space segments, so the store is what they all read and only
+      // the last one is finished with it.
+      _debugDraw?.markConsumed();
+      lastDebugRecordCount = debugRecords;
     }
     lastSpriteCount = sprites;
     lastRecordCount = records;
     lastRecordsOverBudget = overBudget;
     lastWriteDropped = dropped;
+  }
+
+  /// Projects the debug shape store into [cameraView] and publishes it as
+  /// that view's debug batch. Returns the records written.
+  ///
+  /// Its own pass over its own buffer, running whether or not [_renderView]
+  /// found somewhere to put the scene. The two are independent by
+  /// construction: debug shapes are what a system draws to explain what the
+  /// scene is doing, and a frame that showed the shapes only when the scene
+  /// batch also landed would go missing exactly when it is being read.
+  ///
+  /// It resolves the projection again instead of reusing what [_renderView]
+  /// left, for the same reason - that pass may have returned before resolving
+  /// anything.
+  int _renderDebugView(CameraView cameraView, HandoffHandle handle) {
+    final debugDraw = _debugDraw;
+    // Nothing has ever drawn, so there is no store and nothing to publish.
+    // The main-isolate half replays whatever it last ingested, which is also
+    // nothing.
+    if (debugDraw == null) return 0;
+    final frames = handle.tryBuffer;
+    if (frames == null) return 0;
+    final target = frames.beginWrite();
+    if (target == null) return 0;
+
+    final bytes = _renderer.debugBatchBytes;
+    final scratch = _debugScratch ??= Uint8List(bytes);
+    final view = _debugScratchView ??= ByteData.sublistView(scratch);
+    DrawData2D.writeBatchTick(view, state.tick);
+    final written = debugDraw.writeBatch(
+      view,
+      DrawData2D.batchHeaderBytes,
+      _projection..resolve(_cameras, cameraView),
+    );
+    final offset =
+        DrawData2D.batchHeaderBytes + written * DrawSpriteData2D.strideBytes;
+    // Published even when it is empty. An empty batch is what replaces the
+    // shapes of the frame before it, so a store that was cleared stops being
+    // drawn instead of hanging on screen.
+    target.asTypedList(bytes).setRange(0, offset, scratch);
+    frames.publish(offset);
+    return written;
   }
 
   /// One [_TransformSource] per archetype, keyed by that archetype's
@@ -2686,4 +2773,28 @@ class GameRenderer2D extends GameSystem
     frames.publish(offset);
     lastWriteDropped = false;
   }
+}
+
+/// The prebuilt shortcut for the debug overlay, so a system never spells out
+/// `getSystem<GameRenderer2D>().debugDraw` - the standing convention for this
+/// engine's own built-in systems.
+///
+/// ```dart
+/// debugDraw.line(x0, y0, x1, y1, color: 0xFF00FFFF);
+/// ```
+///
+/// In a release build [debugDrawEnabled] is a `const false`, so this getter
+/// folds to the canonical `DebugDraw2D.disabled` instance: no system lookup,
+/// no store, and every method on what it hands back returns immediately.
+extension DebugDrawAccessForSystems on GameSystem {
+  DebugDraw2D get debugDraw => debugDrawEnabled
+      ? getSystem<GameRenderer2D>().debugDraw
+      : const DebugDraw2D.disabled();
+}
+
+/// [DebugDrawAccessForSystems], for a component instead of a system.
+extension DebugDrawAccess on Component {
+  DebugDraw2D get debugDraw => debugDrawEnabled
+      ? getSystem<GameRenderer2D>().debugDraw
+      : const DebugDraw2D.disabled();
 }

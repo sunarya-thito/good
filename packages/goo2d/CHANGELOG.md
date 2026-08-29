@@ -155,6 +155,52 @@
 
 ### Added
 
+* **`debugDraw` draws lines, circles and labels over the world from a game
+  system**, so a system can show what it is thinking - a steering vector, a
+  search radius, the name of a state - where the thing it is describing is.
+  `debugDraw.line(x0, y0, x1, y1)`, `debugDraw.circle(x, y, radius: 0.3)` and
+  `debugDraw.label(x, y, 'seek')` reach it from any `GameSystem` or
+  `Component`, the same prebuilt-shortcut spelling `mousePicking` has.
+  Positions are world coordinates and go through the same `CameraProjection`
+  the sprites do; `thickness` and a label's `size` are in view pixels, so ink
+  stays legible when the camera pulls back.
+
+  **`debugDrawEnabled` is a `const bool`, and everything is behind it.** True
+  in a debug build, false in profile and in release, and
+  `--dart-define=goo2d.debugDraw=false` or `=true` overrides either way. It is
+  a compile-time constant, so a release build has no `hasHandoff` call to run
+  in `describeBuffers` and reserves no debug buffer, has no debug pass in
+  `GameRenderer2D.onTick`, builds no second `DrawCanvas2D` and replays none;
+  the `debugDraw` getter folds to the canonical `DebugDraw2D.disabled`
+  instance, which stores nothing and looks nothing up. What it does not remove
+  is the arguments - guard the loop with `if (debugDrawEnabled)` where
+  computing them costs something.
+
+  **Its own buffer and its own budget.** Debug shapes cross on a second
+  handoff per `CameraView` and are replayed after the sprite batch, so they
+  never spend `maxSpritesPerTick`: a debug line that pushed a sprite out of a
+  frame would make the tool lie about the thing being inspected. The knob is
+  `Renderer2D.maxDebugRecordsPerTick`, 4096 by default, 304 KiB per view in a
+  debug build and nothing at all in a release one. Every call is flattened to
+  straight segments as it is made and one segment is one record, so a `line`
+  costs 1, a 24-segment `circle` costs 24, and a `label` costs one per glyph
+  stroke. The store's capacity is the budget, so a segment that fits the store
+  has a record that fits the buffer; anything past it is dropped and counted
+  in `DebugDraw2D.droppedSegments`.
+
+  **A label needs no font.** The glyphs are a stroke alphabet built into
+  `debug_draw_2d.dart` - printable ASCII, lower case folded to upper - so an
+  overlay works in a project that has declared no `TextureAsset` at all.
+  `Text2D` is the other kind of text and stays the game's: a `BitmapFont`, an
+  atlas, and glyphs that sort and scale with the sprites around them.
+
+  **Shapes stay until something draws again.** The store is emptied by the
+  first call after a frame consumed it, so a system drawing on a fixed tick
+  slower than the display does not flicker at the beat frequency and a paused
+  game keeps showing what it drew last. `clear()` empties it outright.
+  `DebugDraw2D.categories` is a bit per category, tested at the call, so a
+  category that is off costs one integer test and stores nothing (#122).
+
 * **`Text2D` draws a line of text in the world**, sorted, culled and moved by
   the camera with the sprites around it - so a damage number, a name over a
   character or a sign in the scene has somewhere to live. Flutter widgets sit

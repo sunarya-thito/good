@@ -10,7 +10,7 @@ Last verified: **2026-08-29**, on `master`.
 | Package | State | Notes |
 |---|---|---|
 | `good` | **Working** | The kernel is real and tested — ECS, memory pool, ring buffers, scheduler, scenes, hierarchy, input, assets, coroutines, timelines, `GameView` |
-| `goo2d` | **Working** | Transforms, world transforms, camera, colliders, sprite rendering, grid-font text, mouse picking |
+| `goo2d` | **Working** | Transforms, world transforms, camera, colliders, sprite rendering, grid-font text, debug draw, mouse picking |
 | `good_audio_soloud` | **Plays one clip** | The `AudioBackend` implementation, over SoLoud. Play and stop, one bus. No looping, loop points, per-bus levels, fades, voice cap or web |
 | `good_cli` | **Working** | `create`, `generate`, `assets compact`, `assets pack`, `build windows/linux/android/ios`. Verified end to end |
 | `goo2d_ffi_box2d` | **Working** | Box2D v3.1.1 vendored, shim written, bindings generated, builds on Windows/Linux/Android/macOS/iOS |
@@ -55,6 +55,14 @@ Deferred, and documented in place instead of left as silent gaps.
   there: proportional metrics, kerning, line wrapping, shaping, `dart:ui`
   rasterisation, runtime font loading, and a font shipped with the engine.
   Screen-space text is not coming either — a HUD is widgets
+- **Runtime inspection beyond debug draw.** `debugDraw` draws lines, circles
+  and labels over the world from a system, in world space, on its own buffer
+  and its own budget, and a `const bool` takes all of it out of a release
+  build. Not there: the panel half — archetypes and their entity counts, one
+  entity's column values, the system list with per-system tick cost.
+  `WorldCensus` answers the counting half on the game isolate already; nothing
+  renders it, no component or field carries a name at runtime, and there is no
+  per-system timing to report
 - **`goo2d`'s transform helpers are still on the mixin.** `Transform2D.lookAt`,
   `distanceTo` and the rest take the entity as an argument
   (`transform.lookAt(entity, x, y)`). The accessor form the guide teaches,

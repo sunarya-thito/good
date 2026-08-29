@@ -8,6 +8,7 @@ late Eye eye;
 late BoxBody box;
 late MyGame game;
 double localX = 0, localY = 0, entityWorldX = 0;
+double targetX = 0, targetY = 0;
 -->
 
 !!! abstract "Layer: 2D (`goo2d`)"
@@ -483,12 +484,141 @@ A zoom of zero maps the whole world onto one pixel, so the inverse reports the
 camera's own origin, not an infinity that would poison every downstream
 comparison silently.
 
+## Debug draw
+
+`debugDraw` puts shapes over the world from a system: a line for where an agent
+thinks it is heading, a circle for a search radius, a label for the state it is
+in. A steering vector is a picture and not a value, so a channel or a log
+cannot show it. Reach it from any `GameSystem` or `Component`, the way you
+reach `mousePicking`.
+
+```dart
+class Navigation extends GameSystem with FixedTickable {
+  @override
+  void onFixedUpdate() {
+    for (final group in players.groups()) {
+      final world = group.get<WorldTransform2D>();
+      for (final entity in group) {
+        debugDraw.line(
+          world.worldX[entity],
+          world.worldY[entity],
+          targetX,
+          targetY,
+          color: 0xFF00FFFF,
+        );
+        debugDraw.circle(targetX, targetY, radius: 0.3);
+        debugDraw.label(world.worldX[entity], world.worldY[entity], 'seek');
+      }
+    }
+  }
+}
+```
+
+| Call | Draws | Records |
+|---|---|---|
+| `line(x0, y0, x1, y1)` | a straight segment between two world points | 1 |
+| `circle(x, y, radius: r)` | an outline, as `segments` chords — 24 by default | one per segment |
+| `label(x, y, 'text')` | one line of text centred on the point | one per glyph stroke, about four a character |
+
+Colours are packed ARGB integers, as they are on `Sprite.color` and
+`Text2D.textColor`. The default is magenta, `0xFFFF00FF`, which no art asset
+is.
+
+### World space, pixel ink
+
+Positions are world coordinates and go through the same `CameraProjection` the
+sprites go through, so a line lands on the thing it describes at any camera
+position and any zoom. `thickness` and a label's `size` are **view pixels** and
+do not scale with the camera: a one-world-unit label is four pixels tall on a
+zoomed-out map and tells you nothing, while a one-world-unit line is a blob at
+4x.
+
+Shapes are drawn after the whole scene, in call order. They do not sort against
+sprites on `zIndex` — the overlay is on top of everything, so a sprite cannot
+cover the thing you are reading.
+
+### It is compiled out of a release build
+
+`debugDrawEnabled` is a `const bool`: true in a debug build, false in profile so
+a profile run measures the game and not the overlay, and false in release.
+Everything sits behind it. A release build reserves no debug buffer, runs no
+debug pass, builds no second canvas, and `debugDraw` resolves to an instance
+that stores nothing and whose methods return on their first line.
+
+Override it either way:
+
+```bash
+flutter run --release --dart-define=goo2d.debugDraw=true
+flutter test --dart-define=goo2d.debugDraw=false
+```
+
+**The arguments are not compiled out.** The call disappears; the four numbers
+handed to it are still computed, because they are ordinary expressions in your
+system. Where producing them costs something — a raycast, a path query, a
+string — guard the loop on the same constant:
+
+```dart
+if (debugDrawEnabled) {
+  for (final entity in group) {
+    debugDraw.line(0, 0, 10, 4);
+  }
+}
+```
+
+`debugDrawEnabled` is public for exactly that.
+
+### Its own budget
+
+Debug shapes cross to the render isolate on a buffer of their own and never
+spend `maxSpritesPerTick`. A debug line cannot push a sprite out of a frame, so
+the overlay never changes the picture it is describing. The cap is
+`maxDebugRecordsPerTick` — see [Budgets](#budgets).
+
+Every call is flattened to straight segments as it is made, and one segment is
+one record. Past the cap a call stores nothing, and `DebugDraw2D.droppedSegments`
+counts what was lost — a dropped shape looks like a system that never drew, so
+the count is what tells the two apart.
+
+### A label needs no font
+
+`debugDraw.label` draws from a stroke alphabet built into the engine — printable
+ASCII, with lower case drawn as upper case. There is no `TextureAsset` to
+declare, no atlas to pack and nothing to decode, so an overlay works on the
+first frame of a project that has declared no font at all.
+
+[`Text2D`](#text) is the other kind of text: the game's own, with its grid and
+its atlas, sorted and scaled with the sprites around it. Reach for this one only
+to read a number while the game runs.
+
+### Shapes stay until something draws again
+
+The store is emptied by the first call *after* a frame drew it. A system drawing
+on a fixed tick slower than the display keeps its shapes on screen between fixed
+ticks instead of flashing at the beat frequency, a paused game keeps showing
+what it drew last, and several fixed steps inside one displayed frame
+accumulate. `debugDraw.clear()` empties it, for an overlay that draws only while
+some condition holds.
+
+Categories are a bit each, tested at the call, so two systems drawing into one
+overlay can be read one at a time:
+
+```dart
+debugDraw.categories = ~(1 << 3);           // everything except category 3
+debugDraw.line(0, 0, 10, 0, category: 3);   // stored nothing, cost one test
+```
+
+The mask lives on the game isolate. Toggling it from a widget is a command, like
+any other write.
+
 ## Budgets
 
 ```dart
 class MyGame extends Game2D {
   @override
-  int get maxSpritesPerTick => 24000;   // default 16384
+  int get maxSpritesPerTick => 24000;        // default 16384
+
+  @override
+  int get maxDebugRecordsPerTick => 8192;    // default 4096
 }
 ```
 
@@ -508,6 +638,16 @@ nine.
 
 A label spends one record per glyph it draws, so text is counted the same way:
 one candidate, as many records as it has characters the font has cells for.
+
+**Debug draw has a second budget, and the two never meet.**
+`maxDebugRecordsPerTick` is an overridable getter on the same `Game`, defaulting
+to 4096 and reserving 304 KiB per camera view in a debug build and nothing in a
+release one. Debug shapes cross on a buffer of their own, so a `debugDraw.line`
+cannot take a record from a sprite and cannot push one out of a frame — an
+overlay that changed the picture it was describing would be worse than no
+overlay. It is also the store's capacity, so a shape that is accepted has a
+record that fits. `DebugDraw2D.droppedSegments` counts what went past it. See
+[Debug draw](#debug-draw).
 
 ### What goes when it runs out
 
