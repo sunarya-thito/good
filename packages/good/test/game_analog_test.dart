@@ -233,12 +233,29 @@ void main() {
   group('the block', () {
     test('the axis section is floats appended after the pointer', () {
       expect(
-        InputState.byteLength,
+        InputState.contactIntOffset,
         InputState.bitBlockBytes + 28 + InputAxis.count * 4,
         reason:
             'bits, then the pointer\'s seven floats, then one float per axis',
       );
       expect(InputAxis.count, greaterThan(0));
+    });
+
+    test('the contact table is appended after the axes', () {
+      expect(
+        InputState.byteLengthFor(4),
+        InputState.contactIntOffset +
+            4 *
+                (InputState.contactIntStride +
+                    InputState.contactCoordStride) *
+                4,
+        reason: 'four ints and four floats per contact slot, after the axes',
+      );
+      expect(
+        InputState.byteLengthFor(8) - InputState.byteLengthFor(4),
+        InputState.byteLengthFor(4) - InputState.contactIntOffset,
+        reason: 'the table grows linearly in the contact count',
+      );
     });
 
     test('the pointer and the axes do not share floats', () async {

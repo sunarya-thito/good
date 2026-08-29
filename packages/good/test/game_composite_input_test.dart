@@ -450,7 +450,7 @@ void main() {
       expect(b.storagesCreated, 1);
       expect(c.storagesCreated, 1);
 
-      final state = InputState();
+      final state = InputState(10);
       final storage = composite.createStorage();
       expect(
         a.storagesCreated,
@@ -614,7 +614,7 @@ void main() {
       final composite = CompositeBinding<bool>.fromList(
         const <InputBinding<bool>>[TriggerBinding(.spacebar)],
       );
-      final state = InputState();
+      final state = InputState(10);
 
       expect(composite.isActuated(state), isFalse);
       expect(composite.resolve(state, composite.createStorage()), isFalse);
@@ -637,7 +637,7 @@ void main() {
 
       expect(outer.sources[1], inner);
       expect(
-        outer.resolve(InputState(), outer.createStorage()),
+        outer.resolve(InputState(10), outer.createStorage()),
         Vector2.zero(),
         reason: 'nothing is held or pushed, and nothing throws on the way',
       );

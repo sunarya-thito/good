@@ -319,7 +319,88 @@
   `AxisBinding`, `StickBinding` and `MouseBinding` are the only
   implementations, and they all ship one.
 
+* **`InputState.byteLength` is now `InputState.byteLengthFor(maxContacts)`.**
+  The raw device block ends in a contact table - see Added - whose length
+  comes off `Game.maxPointerContacts`, so the block no longer has one size
+  for every game and a static getter could not answer for it. The static is
+  gone; `byteLengthFor` takes the count, and an `InputState` instance still
+  answers `byteLength` for its own block (#129).
+
+  This is engine plumbing: `InputState`'s constructor and `InputDevice`'s are
+  both `@internal`, and nothing but the registry that allocates the buffer
+  ever asked how long it was.
+
 ### Added
+
+* **Touch input.** A finger, a stylus, or a mouse with a button held is a
+  **contact**, and `ContactBinding` reads all of them at once. The engine
+  built for Android and iOS and could not read a finger (#129).
+
+  ```dart
+  contacts = descriptor.has<PointerContacts>(const ContactBinding());
+
+  // in a fixed step
+  final pressing = contacts.value;
+  for (var i = 0; i < pressing.count; i++) {
+    final contact = pressing[i];
+    switch (contact.phase) {
+      case PointerPhase.began:
+        startDrag(contact.id, contact.viewSpace);
+      case PointerPhase.held:
+        moveDrag(contact.id, contact.viewSpace);
+      case PointerPhase.ended:
+      case PointerPhase.cancelled:
+        endDrag(contact.id);
+    }
+  }
+  ```
+
+  Each contact carries an `id` stable for its whole life, a `kind`, and its
+  position in window and view coordinates. The list is ordered by `id`, which
+  is the order the contacts started, so `pressing[0]` is the oldest one still
+  down. Both the list and the contacts in it are scratch the action owns and
+  refills each tick, the same contract `Input<Vector2>.value` has.
+
+  **`cancelled` is a phase of its own.** A notification, an incoming call, the
+  app losing focus, or a widget taking the gesture all end a contact with no
+  lift behind it. A game that only ends a drag on `ended` leaves the player
+  steering into a wall after a phone call, and testing by hand on a desk never
+  produces it. `InputDevice.releaseAll` - which `GameView` already called when
+  the app stops being focused and when the last view goes away - now cancels
+  every live contact for the same reason it clears held keys.
+
+  **Raw contacts, not gestures.** Two fingers into one `GestureDetector`'s pan
+  callbacks arrive as a single drag, because `DragGestureRecognizer` is
+  mono-drag by construction, so a twin-stick scheme cannot be built on the
+  gesture layer at all. Contacts come off the `Listener` `GameView` already
+  had. `GameView` still does not claim the gesture arena, so a `GameView`
+  inside a `ListView` reads a drag the list is also scrolling on; put
+  interactive widgets in a `Stack` above the view, not inside it.
+
+  Contacts cross the boundary in the raw input block, beside the key bits and
+  the axes, so a tick's contacts are as coherent as the rest of its input.
+  `Game.maxPointerContacts` sizes the table - ten by default, every finger on
+  two hands - and a press arriving while every slot is live is dropped whole.
+  It is read once, while the game is constructed, because both isolate copies
+  index the table by offsets computed from it.
+
+  A press and a lift that both land between two fixed ticks are reported once,
+  with `ended`: the block is a latest-value snapshot, so the `began` tick
+  never existed to be read. Fire a tap on the end, which is when a real tap
+  gesture fires anyway.
+
+  `InputDevice.pressContact`, `moveContact`, `releaseContact` and
+  `cancelContact` are the write end, so a replay, a bot or a test drives
+  fingers without fabricating a Flutter `PointerEvent` - the same reason
+  `movePointer` exists for the cursor.
+
+  `Game.viewOfContact` says which `CameraView` a contact landed in. That is
+  per contact and not per game because two fingers can be in two views at
+  once, which one cursor never is.
+
+  A touch does **not** move `CursorPosition` and does not press a mouse
+  button: a finger has no buttons and moves no cursor, and having one do so
+  would teleport the cursor a mouse game aims with.
 
 * **Audio plays.** `AudioClip` has shipped through the whole asset pipeline
   since 0.2.0 with nothing that could make a sound out of it. There is now a

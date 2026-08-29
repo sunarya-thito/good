@@ -2,7 +2,13 @@ import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart'
-    show PointerCancelEvent, PointerDeviceKind, PointerEvent;
+    show
+        PointerCancelEvent,
+        PointerDeviceKind,
+        PointerDownEvent,
+        PointerEvent,
+        PointerMoveEvent,
+        PointerUpEvent;
 import 'package:flutter/services.dart'
     show KeyDownEvent, KeyEvent, KeyUpEvent, PhysicalKeyboardKey;
 import 'package:meta/meta.dart';
@@ -11,6 +17,27 @@ import 'package:good/src/camera_view.dart';
 import 'package:good/src/input/input_axis.dart';
 import 'package:good/src/input/input_key.dart';
 import 'package:good/src/triple_buffer.dart';
+
+/// What is pressing on the screen, for a contact in [InputState].
+///
+/// Carried per contact so a game can ignore the ones it does not want - a
+/// twin-stick control scheme reads [touch] and [stylus] and leaves [mouse] to
+/// `MouseBinding`, which reports the same press as a cursor and a button bit.
+enum ContactKind {
+  /// A finger.
+  touch,
+
+  /// A pen or an eraser.
+  stylus,
+
+  /// A mouse with a button held. Hovering produces no contact: a contact is a
+  /// press, and a mouse that is merely over the window is not pressing.
+  mouse,
+
+  /// A trackpad, a joystick-driven pointer, or anything Flutter reports as a
+  /// kind this enum does not name.
+  other,
+}
 
 /// The **raw device state** for one moment: one bit per [InputKey], nothing
 /// else.
@@ -43,8 +70,10 @@ import 'package:good/src/triple_buffer.dart';
 /// asking for a torn read: a key spuriously up for one tick, or a pointer X
 /// from one event paired with a Y from the next.
 ///
-/// The copy is 156 bytes - 16 of key bits, seven `float32`s of pointer, and
-/// one more per [InputAxis] - so the window in which the writer could
+/// The copy is a few hundred bytes - 16 of key bits, seven `float32`s of
+/// pointer, one more per [InputAxis], and eight words per contact slot
+/// (`Game.maxPointerContacts` of them, ten by default) - so the window in
+/// which the writer could
 /// interfere shrinks from a whole tick to a hundred-odd loads. It also makes
 /// the coherence promise above an actual guarantee, instead of something true
 /// only while the margin happens to hold.
@@ -56,7 +85,16 @@ import 'package:good/src/triple_buffer.dart';
 /// per call.
 final class InputState {
   @internal
-  InputState();
+  InputState(this.maxContacts)
+    : _contactInts = Int32List(maxContacts * contactIntStride),
+      _contactCoords = Float32List(maxContacts * contactCoordStride);
+
+  /// How many contacts the block has room for, from `Game.maxPointerContacts`.
+  ///
+  /// Both isolate copies size the block from the same getter on the same
+  /// `Game` subclass, so they agree by construction. Contacts beyond this
+  /// many are dropped by [InputDevice] and never appear here.
+  final int maxContacts;
 
   /// This tick's key bits, copied from the published slot by [attach].
   final Uint8List _bits = Uint8List(bitBlockBytes);
@@ -71,6 +109,21 @@ final class InputState {
   /// [attach] alongside the other two. Its own array for the same reason
   /// [_floats] is: nothing here aliases anything else.
   final Float32List _axes = Float32List(InputAxis.count);
+
+  /// This tick's contact identities: [contactIntStride] `int32`s per slot -
+  /// id, phase code, [ContactKind] index, one-based view address.
+  ///
+  /// Ints and coordinates are two arrays, not one interleaved struct, because
+  /// a typed list cannot stride: reading an `int32` id and a `float32` x out of
+  /// one array means two views over the same bytes and a multiply per field. Two parallel arrays index directly, and this is storage, so the
+  /// struct-of-arrays exception in the one-fact-one-place rule is the one that
+  /// applies.
+  final Int32List _contactInts;
+
+  /// This tick's contact positions: [contactCoordStride] `float32`s per slot -
+  /// screen x and y, then view x and y, in the same spaces
+  /// [pointerScreenX] and [pointerViewX] report.
+  final Float32List _contactCoords;
 
   /// Whether anything has ever been published - false on a game with no
   /// widget attached, or for the handful of ticks before the first device
@@ -106,8 +159,56 @@ final class InputState {
   /// fixed layout both isolates agree on, not a message.
   static final int _axisOffset = bitBlockBytes + 28;
 
-  /// Bytes in the whole block.
-  static final int byteLength = _axisOffset + InputAxis.count * 4;
+  /// Where the contact table starts - immediately after the axis block.
+  ///
+  /// Last in the block because it is the one section whose length is not the
+  /// same for every game: everything before it sits at an offset both isolate
+  /// copies compute from constants, so a disagreement about
+  /// `Game.maxPointerContacts` could only ever move the contacts.
+  @internal
+  static final int contactIntOffset = _axisOffset + InputAxis.count * 4;
+
+  /// `int32`s per contact: id, phase code, [ContactKind] index, one-based view
+  /// address.
+  @internal
+  static const int contactIntStride = 4;
+
+  /// `float32`s per contact: screen x, screen y, view x, view y.
+  @internal
+  static const int contactCoordStride = 4;
+
+  /// A slot nothing is using. The zeros a fresh `calloc` hands back already
+  /// read as an empty table, so a game that has never been touched reports no
+  /// contacts without anything having to write that.
+  @internal
+  static const int contactEmpty = 0;
+
+  /// A contact that is down now.
+  @internal
+  static const int contactLive = 1;
+
+  /// A contact that ended because whatever was pressing lifted off.
+  @internal
+  static const int contactLifted = 2;
+
+  /// A contact that ended without a lift - the app lost the gesture to a
+  /// notification, a call, or a widget that won the arena. See
+  /// [InputDevice.cancelContact].
+  @internal
+  static const int contactCancelled = 3;
+
+  /// Bytes in a block with room for [maxContacts] contacts. What the
+  /// `TripleBuffer` is sized by, on both copies.
+  static int byteLengthFor(int maxContacts) =>
+      contactIntOffset +
+      maxContacts * (contactIntStride + contactCoordStride) * 4;
+
+  /// Bytes in this block.
+  int get byteLength => byteLengthFor(maxContacts);
+
+  /// Where this block's contact coordinates start - after all of its ids.
+  int get _contactCoordOffset =>
+      contactIntOffset + maxContacts * contactIntStride * 4;
 
   /// Whether [key] is currently held.
   bool isDown(InputKey key) {
@@ -162,6 +263,65 @@ final class InputState {
   /// plausible number of views.
   int get pointerView => _float(6).toInt() - 1;
 
+  /// What [slot] holds: [contactEmpty], [contactLive], [contactLifted] or
+  /// [contactCancelled].
+  ///
+  /// Slot indices are the table's, not the game's: a contact keeps its slot
+  /// for its whole life and the slot is reused afterwards, so the same index
+  /// means different fingers over a session. `PointerContacts` is what turns
+  /// this into a list in a stable order.
+  @internal
+  int contactPhase(int slot) =>
+      _attached ? _contactInts[slot * contactIntStride] : contactEmpty;
+
+  /// The contact's identity, stable for its whole life and never reused
+  /// within a run. Zero on an empty slot.
+  @internal
+  int contactId(int slot) =>
+      _attached ? _contactInts[slot * contactIntStride + 1] : 0;
+
+  /// What is pressing, as a [ContactKind] index.
+  @internal
+  int contactKind(int slot) =>
+      _attached ? _contactInts[slot * contactIntStride + 2] : 0;
+
+  /// Which `CameraView` the contact is in, as its table address, or -1 for
+  /// none. Stored one-based for the reason [pointerView] is.
+  @internal
+  int contactView(int slot) =>
+      _attached ? _contactInts[slot * contactIntStride + 3] - 1 : -1;
+
+  /// The contact in window coordinates.
+  @internal
+  double contactScreenX(int slot) =>
+      _attached ? _contactCoords[slot * contactCoordStride] : 0;
+
+  @internal
+  double contactScreenY(int slot) =>
+      _attached ? _contactCoords[slot * contactCoordStride + 1] : 0;
+
+  /// The contact within the `GameView`'s own rect, the space
+  /// [pointerViewX] reports the cursor in.
+  @internal
+  double contactViewX(int slot) =>
+      _attached ? _contactCoords[slot * contactCoordStride + 2] : 0;
+
+  @internal
+  double contactViewY(int slot) =>
+      _attached ? _contactCoords[slot * contactCoordStride + 3] : 0;
+
+  /// Whether anything is pressing right now. What `ContactBinding` reports as
+  /// its held bit, so an action bound to contacts presses when the first
+  /// finger lands and releases when the last one leaves.
+  @internal
+  bool get hasLiveContact {
+    if (!_attached) return false;
+    for (var slot = 0; slot < maxContacts; slot++) {
+      if (_contactInts[slot * contactIntStride] == contactLive) return true;
+    }
+    return false;
+  }
+
   /// Copies the newest published snapshot into this state. Called exactly
   /// once per fixed tick - see the class doc on why it copies.
   ///
@@ -185,6 +345,14 @@ final class InputState {
     final axes = (slot + _axisOffset).cast<Float>();
     for (var i = 0; i < _axes.length; i++) {
       _axes[i] = axes[i];
+    }
+    final contactInts = (slot + contactIntOffset).cast<Int32>();
+    for (var i = 0; i < _contactInts.length; i++) {
+      _contactInts[i] = contactInts[i];
+    }
+    final contactCoords = (slot + _contactCoordOffset).cast<Float>();
+    for (var i = 0; i < _contactCoords.length; i++) {
+      _contactCoords[i] = contactCoords[i];
     }
     _attached = true;
   }
@@ -231,12 +399,14 @@ final class InputState {
 /// bytes.
 final class InputDevice {
   @internal
-  InputDevice(this._buffer) {
+  InputDevice(this._buffer, this.maxContacts) {
     final addresses = _buffer.slotAddresses;
     _slotAddresses = addresses;
     _slotViews = <Uint8List>[
       for (final address in addresses)
-        Pointer<Uint8>.fromAddress(address).asTypedList(InputState.byteLength),
+        Pointer<Uint8>.fromAddress(
+          address,
+        ).asTypedList(InputState.byteLengthFor(maxContacts)),
     ];
     // Seed an all-keys-up snapshot immediately, so a reader that ticks before
     // the first real device event sees a published block rather than the
@@ -247,11 +417,19 @@ final class InputDevice {
 
   final TripleBuffer _buffer;
 
+  /// How many contacts this device's block has room for - the same figure
+  /// `InputState.maxContacts` reads, from the same `Game.maxPointerContacts`.
+  /// A press arriving with every slot occupied is dropped; see
+  /// [pressContact].
+  final int maxContacts;
+
   /// This copy's authoritative picture of what is held. The published slots
   /// are write-only from here; keeping the truth in one plain [Uint8List]
   /// means a publish is a single bulk copy and never a read-modify-write of
   /// shared memory.
-  final Uint8List _mirror = Uint8List(InputState.byteLength);
+  late final Uint8List _mirror = Uint8List(
+    InputState.byteLengthFor(maxContacts),
+  );
 
   /// The pointer block of [_mirror], typed. A view over the same bytes rather
   /// than a second buffer, so [_publish] stays one bulk copy of one array -
@@ -273,6 +451,33 @@ final class InputDevice {
     InputState._axisOffset,
     InputAxis.count,
   );
+
+  /// The contact identities of [_mirror], typed - a view over the same bytes,
+  /// like the two above.
+  late final Int32List _mirrorContactInts = Int32List.view(
+    _mirror.buffer,
+    InputState.contactIntOffset,
+    maxContacts * InputState.contactIntStride,
+  );
+
+  /// The contact positions of [_mirror], typed.
+  late final Float32List _mirrorContactCoords = Float32List.view(
+    _mirror.buffer,
+    InputState.contactIntOffset +
+        maxContacts * InputState.contactIntStride * 4,
+    maxContacts * InputState.contactCoordStride,
+  );
+
+  /// Where [_openContactSlot] starts looking for somewhere to put the next
+  /// press, advanced past whatever it hands out.
+  ///
+  /// Slots are handed out round-robin and not lowest-first, because a slot
+  /// holds an ended contact until something needs the space - that is what
+  /// lets a press and a lift that both land between two fixed ticks still be
+  /// reported once. Lowest-first would recycle the slot a single tapping
+  /// finger keeps landing in, which is exactly the case that reporting has to
+  /// survive.
+  int _nextContactSlot = 0;
 
   // One cached view per slot, built once. `Pointer.asTypedList` allocates,
   // so doing it per publish would be a heap object per keystroke - the same
@@ -348,6 +553,13 @@ final class InputDevice {
   /// pressed again. That is the keyboard's trade, taken by a device the OS
   /// never stopped talking to.
   ///
+  /// # Every live contact is cancelled, not lifted
+  ///
+  /// A finger on the screen when the app loses focus produces no up event
+  /// either, and a contact left live drives whatever it was driving forever.
+  /// It ends as `PointerPhase.cancelled` and not as a lift, because where it
+  /// stopped is not where the player let go - see [cancelContact].
+  ///
   /// # The pointer's position is left alone
   ///
   /// Where the cursor is is not something anyone is holding down, and zeroing
@@ -358,6 +570,12 @@ final class InputDevice {
     for (var i = 0; i < InputState.bitBlockBytes; i++) {
       if (_mirror[i] == 0) continue;
       _mirror[i] = 0;
+      changed = true;
+    }
+    for (var slot = 0; slot < maxContacts; slot++) {
+      final base = slot * InputState.contactIntStride;
+      if (_mirrorContactInts[base] != InputState.contactLive) continue;
+      _mirrorContactInts[base] = InputState.contactCancelled;
       changed = true;
     }
     // Every axis back to rest, by the same argument the bits go up by: a
@@ -404,34 +622,297 @@ final class InputDevice {
   /// mask, not as a second down event. Reading the mask covers every case
   /// with one code path.
   ///
-  /// Touch and stylus are ignored: mouse *buttons* are in scope here and a
-  /// finger is not one. A tap-as-click mapping is a real decision to make
-  /// alongside pointer position, and belongs with it.
+  /// Buttons and the cursor position are read from a mouse only: a finger has
+  /// no buttons and does not move a cursor. What a finger does move is the
+  /// contact table, which every kind of pointer writes to - see
+  /// [pressContact].
   @internal
   void handlePointerEvent(PointerEvent event, {int viewAddress = -1}) {
-    if (event.kind != PointerDeviceKind.mouse) return;
-    // A cancel means the gesture was taken away, not that the user let go
-    // somewhere we can see - treat every button as released.
-    final buttons = event is PointerCancelEvent ? 0 : event.buttons;
     var changed = false;
-    for (var i = 0; i < _mouseButtons.length; i++) {
-      final key = _mouseButtons[i] as MouseButtonKey;
-      if (_setBit(key.id, buttons & key.buttonMask != 0)) changed = true;
+    if (event.kind == PointerDeviceKind.mouse) {
+      // A cancel means the gesture was taken away, not that the user let go
+      // somewhere we can see - treat every button as released.
+      final buttons = event is PointerCancelEvent ? 0 : event.buttons;
+      for (var i = 0; i < _mouseButtons.length; i++) {
+        final key = _mouseButtons[i] as MouseButtonKey;
+        if (_setBit(key.id, buttons & key.buttonMask != 0)) changed = true;
+      }
+      // `localPosition` is already relative to the widget the `Listener`
+      // wraps, so the view-space figure costs nothing to capture here and
+      // would cost the view's window origin to reconstruct on the other side.
+      if (_setPointer(
+        event.position.dx,
+        event.position.dy,
+        event.localPosition.dx,
+        event.localPosition.dy,
+        viewAddress,
+      )) {
+        changed = true;
+      }
     }
-    // `localPosition` is already relative to the widget the `Listener` wraps,
-    // so the view-space figure costs nothing to capture here and would cost
-    // the view's window origin to reconstruct on the other side.
-    if (_setPointer(
+    if (_handleContactEvent(event, viewAddress)) changed = true;
+    if (changed) _publish();
+  }
+
+  /// The contact half of [handlePointerEvent]. Returns whether the table
+  /// moved; the caller publishes once for both halves.
+  ///
+  /// Hover, enter, exit and scroll events fall through unhandled: none of
+  /// them is anything pressing on the screen.
+  bool _handleContactEvent(PointerEvent event, int viewAddress) {
+    final id = event.pointer;
+    if (event is PointerDownEvent) {
+      final slot = _openContactSlotFor(id);
+      if (slot < 0) return false;
+      return _writeContact(
+        slot,
+        id,
+        _contactKindOf(event.kind),
+        InputState.contactLive,
+        event.position.dx,
+        event.position.dy,
+        event.localPosition.dx,
+        event.localPosition.dy,
+        viewAddress,
+      );
+    }
+    final slot = _contactSlotOf(id);
+    if (slot < 0) return false;
+    final int phase;
+    if (event is PointerUpEvent) {
+      phase = InputState.contactLifted;
+    } else if (event is PointerCancelEvent) {
+      phase = InputState.contactCancelled;
+    } else if (event is PointerMoveEvent) {
+      phase = InputState.contactLive;
+    } else {
+      return false;
+    }
+    return _writeContact(
+      slot,
+      id,
+      _contactKindOf(event.kind),
+      phase,
       event.position.dx,
       event.position.dy,
       event.localPosition.dx,
       event.localPosition.dy,
       viewAddress,
-    )) {
-      changed = true;
-    }
-    if (changed) _publish();
+    );
   }
+
+  /// Records a press at [screenX]/[screenY], and publishes if that changed
+  /// anything.
+  ///
+  /// The contact counterpart of [movePointer], and the same single write path
+  /// [handlePointerEvent] uses - so a replay, a bot or a test drives fingers
+  /// without fabricating a Flutter `PointerEvent`, and a game reads them
+  /// through `ContactBinding` either way.
+  ///
+  /// [id] identifies this contact until it is released, and must not be in
+  /// use: pressing an id that is already down is an error, since two presses
+  /// of one finger with no lift between them describe nothing a device can
+  /// do. Ids need not be dense or ordered, but a contact list is ordered by
+  /// them, so an id smaller than one already down sorts ahead of it.
+  ///
+  /// [viewX]/[viewY] default to the screen coordinates, for the reason
+  /// [movePointer]'s do.
+  ///
+  /// **A press with every slot occupied is dropped**, and nothing about the
+  /// press or its lift is reported. That is the ceiling
+  /// `Game.maxPointerContacts` sets; raise it if a game genuinely wants more
+  /// fingers than the ten it allows by default.
+  void pressContact(
+    int id, {
+    required double screenX,
+    required double screenY,
+    double? viewX,
+    double? viewY,
+    CameraView? view,
+    ContactKind kind = ContactKind.touch,
+  }) {
+    assert(id > 0, 'a contact id is positive - 0 marks an empty slot');
+    assert(
+      _contactSlotOf(id) < 0,
+      'contact $id is already down. A press of an id that is down describes '
+      'nothing a device can do, and the second press would land on the first '
+      'one\'s slot and lose it. Release it first, or use a fresh id.',
+    );
+    final slot = _openContactSlotFor(id);
+    if (slot < 0) return;
+    if (_writeContact(
+      slot,
+      id,
+      kind,
+      InputState.contactLive,
+      screenX,
+      screenY,
+      viewX ?? screenX,
+      viewY ?? screenY,
+      view?.pack() ?? -1,
+    )) {
+      _publish();
+    }
+  }
+
+  /// Moves a contact [pressContact] opened, and publishes if that changed
+  /// anything. Does nothing for an id that is not down - a move from a
+  /// contact the table dropped is not an error, and neither is one that
+  /// arrives after the lift.
+  void moveContact(
+    int id, {
+    required double screenX,
+    required double screenY,
+    double? viewX,
+    double? viewY,
+    CameraView? view,
+  }) {
+    final slot = _contactSlotOf(id);
+    if (slot < 0) return;
+    if (_writeContact(
+      slot,
+      id,
+      ContactKind.values[_mirrorContactInts[slot *
+              InputState.contactIntStride +
+          2]],
+      InputState.contactLive,
+      screenX,
+      screenY,
+      viewX ?? screenX,
+      viewY ?? screenY,
+      view?.pack() ?? -1,
+    )) {
+      _publish();
+    }
+  }
+
+  /// Ends a contact because whatever was pressing lifted off, and publishes.
+  ///
+  /// The slot keeps the ended contact until a later press needs the space, so
+  /// a press and a lift that both land between two fixed ticks are still
+  /// reported - once, as an ended contact whose beginning was never
+  /// observable. Nothing frees it eagerly, and nothing has to: the reader
+  /// reports an ended contact once and then ignores it.
+  void releaseContact(int id) => _endContact(id, InputState.contactLifted);
+
+  /// Ends a contact that was taken away without a lift, and publishes.
+  ///
+  /// A notification, an incoming call, or a widget that won the gesture arena
+  /// all end a contact with no up event behind them. A game that assumes a
+  /// lift follows every press holds the direction that contact was driving
+  /// forever, so this is a phase of its own and not a quiet
+  /// [releaseContact]: `PointerPhase.cancelled` says the contact is over
+  /// *and* that where it stopped means nothing.
+  void cancelContact(int id) => _endContact(id, InputState.contactCancelled);
+
+  void _endContact(int id, int phase) {
+    final slot = _contactSlotOf(id);
+    if (slot < 0) return;
+    if (_setContactInt(slot, 0, phase)) _publish();
+  }
+
+  /// The slot holding [id] **while it is still down**, or -1 if none is. A
+  /// linear scan of at most `maxContacts` `int32` loads, on the Flutter
+  /// isolate, once per pointer event - a map keyed by id would be a heap
+  /// object per press to save ten comparisons.
+  ///
+  /// An ended contact does not answer here, so a move or a second lift
+  /// arriving after the lift finds nothing and does nothing.
+  int _contactSlotOf(int id) {
+    for (var slot = 0; slot < maxContacts; slot++) {
+      final base = slot * InputState.contactIntStride;
+      if (_mirrorContactInts[base] == InputState.contactLive &&
+          _mirrorContactInts[base + 1] == id) {
+        return slot;
+      }
+    }
+    return -1;
+  }
+
+  /// Somewhere to put a press of [id], first clearing an ended contact that
+  /// still carries the same id.
+  ///
+  /// Flutter never reuses a pointer id within a run, so this only matters to a
+  /// host writing contacts itself. Leaving the stale row would put two of them
+  /// under one id, and the reader would take the new press for the old contact
+  /// continuing.
+  int _openContactSlotFor(int id) {
+    for (var slot = 0; slot < maxContacts; slot++) {
+      final base = slot * InputState.contactIntStride;
+      final phase = _mirrorContactInts[base];
+      if (phase != InputState.contactEmpty &&
+          phase != InputState.contactLive &&
+          _mirrorContactInts[base + 1] == id) {
+        _mirrorContactInts[base] = InputState.contactEmpty;
+        _mirrorContactInts[base + 1] = 0;
+      }
+    }
+    return _openContactSlot();
+  }
+
+  /// Somewhere to put a new contact, preferring a slot nothing has used over
+  /// one still holding an ended contact, and -1 when every slot is live.
+  int _openContactSlot() {
+    for (var pass = 0; pass < 2; pass++) {
+      for (var i = 0; i < maxContacts; i++) {
+        final slot = (_nextContactSlot + i) % maxContacts;
+        final phase = _mirrorContactInts[slot * InputState.contactIntStride];
+        final free = pass == 0
+            ? phase == InputState.contactEmpty
+            : phase != InputState.contactLive;
+        if (free) {
+          _nextContactSlot = (slot + 1) % maxContacts;
+          return slot;
+        }
+      }
+    }
+    return -1;
+  }
+
+  bool _writeContact(
+    int slot,
+    int id,
+    ContactKind kind,
+    int phase,
+    double screenX,
+    double screenY,
+    double viewX,
+    double viewY,
+    int viewAddress,
+  ) {
+    // Bitwise `|` for the reason `_setPointer` uses it: every write has to
+    // run, and short-circuiting would leave later fields holding the previous
+    // contact's numbers.
+    return _setContactInt(slot, 0, phase) |
+        _setContactInt(slot, 1, id) |
+        _setContactInt(slot, 2, kind.index) |
+        _setContactInt(slot, 3, viewAddress + 1) |
+        _setContactCoord(slot, 0, screenX) |
+        _setContactCoord(slot, 1, screenY) |
+        _setContactCoord(slot, 2, viewX) |
+        _setContactCoord(slot, 3, viewY);
+  }
+
+  bool _setContactInt(int slot, int field, int value) {
+    final index = slot * InputState.contactIntStride + field;
+    if (_mirrorContactInts[index] == value) return false;
+    _mirrorContactInts[index] = value;
+    return true;
+  }
+
+  bool _setContactCoord(int slot, int field, double value) => _setFloatIn(
+    _mirrorContactCoords,
+    slot * InputState.contactCoordStride + field,
+    value,
+  );
+
+  static ContactKind _contactKindOf(PointerDeviceKind kind) => switch (kind) {
+    PointerDeviceKind.touch => ContactKind.touch,
+    PointerDeviceKind.stylus ||
+    PointerDeviceKind.invertedStylus => ContactKind.stylus,
+    PointerDeviceKind.mouse => ContactKind.mouse,
+    _ => ContactKind.other,
+  };
 
   /// Sets one gamepad button on one player slot, and publishes if that
   /// changed anything.

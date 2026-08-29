@@ -133,7 +133,8 @@ class _GameViewState extends State<GameView> {
     return false;
   }
 
-  /// Forwards the pointer **with the view it is over**.
+  /// Forwards the pointer **with the view it is over** - a mouse, a finger and
+  /// a stylus all through this one path.
   ///
   /// `localPosition` is already relative to this widget, so the coordinates
   /// were always view-local; what was missing was *which* view, and with two
@@ -175,8 +176,18 @@ class _GameViewState extends State<GameView> {
   /// renderer, instead of a crash or a blank-but-sized placeholder pretending
   /// something is there.
   ///
-  /// The [Listener] is how the mouse reaches the game, position as well as
-  /// buttons; keys come in through `HardwareKeyboard`, which needs no widget.
+  /// The [Listener] is how every pointer reaches the game: the mouse as a
+  /// cursor position and button bits, and fingers and styluses as contacts.
+  /// Keys come in through `HardwareKeyboard`, which needs no widget.
+  ///
+  /// A raw [Listener] and not a gesture recognizer. `RenderPointerListener` is
+  /// not a `GestureArenaMember`, so it takes whatever the hit test routes to
+  /// it - which means a `GameView` inside a `ListView` reads a drag the list
+  /// is also scrolling on. Claiming the arena instead would silence every
+  /// Flutter gesture widget below this one, and in this engine a HUD is a
+  /// descendant, since `buildView` fires `BuildWidgetEvent` and each
+  /// `BuildWidgetListener` wraps what was built. Put interactive widgets in a
+  /// `Stack` above the view, and read contacts for the game.
   /// `translucent`, so wrapping the game costs nothing in hit testing:
   /// whatever the game built still gets its own hits, and an empty game still
   /// reports button state.
