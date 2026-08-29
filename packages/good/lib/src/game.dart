@@ -2236,6 +2236,20 @@ final class GameRuntime {
   SendPort? _toGame;
   Completer<void>? _stopping;
 
+  /// Whether [_ControlMessage.ready] has landed on this copy.
+  ///
+  /// Separate from [_toGame] being non-null because the two come apart at
+  /// shutdown: the `stopped` arm and [_handleIsolateDeath] both clear the
+  /// port, and a null port before `ready` and a null port after it mean
+  /// opposite things - see [_sendToGame].
+  bool _gameReady = false;
+
+  /// Messages made before [_ControlMessage.ready] arrived, in order.
+  ///
+  /// Null on a run that never produced one, which is every run whose assets
+  /// touch a disk. See [_sendToGame].
+  List<List<Object?>>? _toGameBacklog;
+
   /// The game isolate died of an uncaught error - see [_handleIsolateDeath].
   RawReceivePort? _isolateErrors;
 
@@ -2946,6 +2960,51 @@ final class GameRuntime {
 
   // --- main isolate side --------------------------------------------------
 
+  /// Sends [message] to the game isolate, holding it back until there is a
+  /// port to send it over.
+  ///
+  /// [_ControlMessage.ready] is what carries that port, and it is not the
+  /// first message main handles. `runOnIsolate` mounts the world before it
+  /// sends `ready`, so a `loadScene` in `GameState.onMounted` puts
+  /// [_ControlMessage.loadAssets] on the wire first; main answers it with
+  /// [_toGame] still null. A plain `_toGame?.send` drops that answer, and the
+  /// `Completer` inside the `_AssetLoadRequest` waiting on it never completes
+  /// - no error, no timeout, and the `await loadScene` in `onMounted` returns
+  /// on no path at all.
+  ///
+  /// The window closed by accident for every source that reads a file: port
+  /// messages are delivered as events and the microtask queue drains between
+  /// them, so awaiting real I/O mid-request is what let `ready` in. A source
+  /// resolving entirely in microtasks - `MemorySource`, and anything
+  /// generated - never yields, so the whole request finishes first (#260).
+  /// Removing the backlog restores that dependency on the source.
+  ///
+  /// Costs one growable list per run, allocated only on a run that sends
+  /// something this early. Once `ready` has landed this is a field read and a
+  /// send.
+  ///
+  /// A null port *after* `ready` is the run being down - the `stopped` arm
+  /// clears it, and so does [_handleIsolateDeath] - so there is no longer
+  /// anyone to answer and the message is dropped. The assert holds that
+  /// reading: a live run with no port would be a reply going nowhere again.
+  void _sendToGame(List<Object?> message) {
+    final toGame = _toGame;
+    if (toGame != null) {
+      toGame.send(message);
+      return;
+    }
+    if (_gameReady) {
+      assert(
+        !booted,
+        'a ${game.runtimeType} reply has no port to go back over on a run '
+        'that is still going. ${message[0]} would be dropped and whatever is '
+        'waiting on it would wait forever.',
+      );
+      return;
+    }
+    (_toGameBacklog ??= <List<Object?>>[]).add(message);
+  }
+
   void _handleGameMessage(dynamic message, Completer<void> ready) {
     // A bare int is the per-tick ping; anything else is a control message.
     if (message is int) {
@@ -2974,7 +3033,20 @@ final class GameRuntime {
         // arrived on the other one inside the copied object, already
         // addressed. The three announcement messages that used to carry them
         // are gone, and so is the reason `start()` had to wait for them.
-        _toGame = parts[1] as SendPort;
+        final toGame = parts[1] as SendPort;
+        _toGame = toGame;
+        _gameReady = true;
+        // Before `ready.complete()`, and in the order they were made: these
+        // are answers to requests the other copy is already blocked on, and
+        // one of them is what releases the `loadScene` that boot's own
+        // `onMounted` started. See `_sendToGame`.
+        final backlog = _toGameBacklog;
+        if (backlog != null) {
+          _toGameBacklog = null;
+          for (var i = 0; i < backlog.length; i++) {
+            toGame.send(backlog[i]);
+          }
+        }
         ready.complete();
       case _ControlMessage.loadAssets:
         // Unawaited by design: this is a port callback, and the decode is
@@ -3113,7 +3185,7 @@ final class GameRuntime {
             'play. Only an Asset<AudioClip> can be handed to the mixer.';
       }
     }
-    _toGame?.send(<Object?>[_ControlMessage.audioRead, id, bytes, failure]);
+    _sendToGame(<Object?>[_ControlMessage.audioRead, id, bytes, failure]);
   }
 
   /// Tells main to drop the payloads for [addresses]. Fire-and-forget: the
@@ -3168,7 +3240,7 @@ final class GameRuntime {
         failure ??= '${asset.debugLabel}: $error';
       }
       completed++;
-      _toGame?.send(<Object?>[
+      _sendToGame(<Object?>[
         _ControlMessage.assetLoaded,
         id,
         address,
@@ -3182,7 +3254,7 @@ final class GameRuntime {
         asset.info,
       ]);
     }
-    _toGame?.send(<Object?>[_ControlMessage.assetsDone, id, failure]);
+    _sendToGame(<Object?>[_ControlMessage.assetsDone, id, failure]);
   }
 }
 
