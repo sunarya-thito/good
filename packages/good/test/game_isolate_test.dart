@@ -125,7 +125,7 @@ class _MoverSystem extends GameSystem with FixedTickable {
     Entity? first;
     for (final entity in query.run()) {
       first ??= entity;
-      final moving = entity.get<_Moving>();
+      final moving = entity<_Moving>().component;
       // Reads see last tick's published value (see data_layout.dart), so
       // this is exactly +1 per tick regardless of system ordering.
       moving.x[entity] = moving.x[entity] + 1;
@@ -133,7 +133,7 @@ class _MoverSystem extends GameSystem with FixedTickable {
     }
     population.value = count;
     if (first != null) {
-      final moving = first.get<_Moving>();
+      final moving = first<_Moving>().component;
       moving.census[first] = count;
       firstX.value = moving.x[first];
       firstMarker.value = moving.marker[first];
@@ -675,7 +675,7 @@ class _TexturedSystem extends GameSystem with FixedTickable {
   @override
   void onFixedUpdate() {
     for (final entity in query.run()) {
-      final prefab = entity.get<_Textured>();
+      final prefab = entity<_Textured>().component;
       prefab.seenAddress[entity] = prefab.texture.pack();
       prefab.seenLoaded[entity] = prefab.texture.isLoaded ? 1 : 0;
       // The row write above still happens, and is still read back on this
@@ -2126,7 +2126,7 @@ void main() {
       // It is a valid handle on the isolate that made it and meaningless on
       // this one; the diagnostic says so rather than indexing an empty table.
       expect(
-        () => spawned.get<_Moving>(),
+        () => spawned<_Moving>().component,
         throwsA(
           isA<StateError>().having(
             (e) => e.message,

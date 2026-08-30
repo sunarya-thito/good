@@ -117,7 +117,7 @@ columns like any other, so walking a subtree by hand is an ordinary loop:
 var next = parent.parentFirstChild[entity];
 while (next != null) {
   // ...
-  next = next.get<Child>().childNextSibling[next];
+  next = next<Child>().component.childNextSibling[next];
 }
 ```
 
@@ -165,7 +165,7 @@ Mix it in and `WorldTransformSystem` composes a world-space transform for the
 entity from its own local transform and its ancestors':
 
 ```dart
-final world = entity.get<WorldTransform2D>();
+final world = entity<WorldTransform2D>().component;
 final x = world.worldX[entity];    // composed, read-only
 final y = world.worldY[entity];
 ```

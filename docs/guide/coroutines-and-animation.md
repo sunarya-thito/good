@@ -282,8 +282,8 @@ derived:
 @override
 void onFixedUpdate() {
   for (final group in enemies.groups()) {
-    final enemy = group.get<Enemy>();
-    final transform = group.get<Transform2D>();
+    final enemy = group<Enemy>();
+    final transform = group<Transform2D>();
     for (final entity in group) {
       final sample = enemy.timeline.entrance.animate(
         offset: -enemy.startedAt[entity],

@@ -275,7 +275,7 @@ void main() {
       final descriptor = ArchetypeQueryDescriptor();
       final seen = <double>[];
       for (final e in descriptor.query().withAll(_Position).build().run()) {
-        seen.add(e.get<_Position>().x[e]);
+        seen.add(e<_Position>().component.x[e]);
       }
       expect(seen.toSet(), List.generate(10, (i) => i.toDouble()).toSet());
     });
@@ -305,7 +305,7 @@ void main() {
       expect(single.run().toSet(), built.run().toSet());
       expect(single.run().toSet(), {p, r});
       expect(
-        {for (final e in single.run()) e.get<_Position>().x[e]},
+        {for (final e in single.run()) e<_Position>().component.x[e]},
         {42.0, 7.0},
       );
     });
@@ -427,13 +427,56 @@ void main() {
       final query = descriptor.query().withAll(_Position).build();
       final group = query.groups().first;
 
-      final component = group.get<_Position>();
+      final component = group<_Position>();
       for (final entity in group) {
         // The whole point: this is not a per-entity lookup that happens to be
         // fast, it is the *same object* for every row. Resolving it per entity
         // was ~7% of the engine's CPU in a profile.
-        expect(identical(entity.get<_Position>(), component), isTrue);
+        expect(identical(entity<_Position>().component, component), isTrue);
       }
+    });
+
+    test('group<T?>() tells the archetypes of one match apart', () {
+      final level = _level(pageSize: 64);
+      level.pool.beginTick();
+      // Two archetypes under one query: _Player has _Health, _Rock does not.
+      // With only one of them matching, "resolves the right archetype's
+      // component" and "answers for anything" look the same.
+      level.addEntity(level.player);
+      level.addEntity(level.rock);
+      level.pool.commitTick();
+
+      final descriptor = ArchetypeQueryDescriptor();
+      final query = descriptor.query().withAll(_Position).build();
+      final groups = query.groups().toList();
+      expect(groups.length, 2, reason: 'the optional form has to be able to '
+          'come back both ways, or this measures nothing');
+
+      var resolved = 0;
+      var absent = 0;
+      for (final group in groups) {
+        // Present in both, so a group that resolved nothing at all fails here.
+        expect(group<_Position>(), isNotNull);
+        final health = group<_Health?>();
+        if (health == null) {
+          absent++;
+          expect(
+            () => group<_Health>(),
+            throwsA(
+              isA<StateError>().having(
+                (e) => e.message,
+                'message',
+                allOf(contains('_Health'), contains('ask for _Health?')),
+              ),
+            ),
+          );
+        } else {
+          resolved++;
+          expect(group<_Health>(), same(health));
+        }
+      }
+      expect(resolved, 1, reason: 'only _Player carries _Health');
+      expect(absent, 1, reason: 'and only _Rock lacks it');
     });
 
     test('groups are rebuilt when a new archetype appears', () {
@@ -676,7 +719,7 @@ void main() {
       var healthA = 0;
       for (final entity in query.run(handleA)) {
         runsA++;
-        if (entity.tryGet<_Health>() != null) healthA++;
+        if (entity<_Health?>().component != null) healthA++;
       }
       expect(runsA, 5, reason: 'scene A holds 2 players and 3 rocks');
       expect(healthA, 2, reason: 'only the players carry _Health');
@@ -685,7 +728,7 @@ void main() {
       var healthB = 0;
       for (final entity in query.run(handleB)) {
         runsB++;
-        if (entity.tryGet<_Health>() != null) healthB++;
+        if (entity<_Health?>().component != null) healthB++;
       }
       expect(runsB, 6, reason: 'scene B holds 5 players and 1 rock');
       expect(healthB, 5);
@@ -712,7 +755,7 @@ void main() {
       final scopedA = single.inScene(levelA.handle);
 
       expect(scopedA.run().toSet(), {pA});
-      expect(scopedA.run().single.get<_Position>().x[pA], 99);
+      expect(scopedA.run().single<_Position>().component.x[pA], 99);
       expect(single.run().toSet(), {pA, pB});
     });
 

@@ -704,7 +704,7 @@ class SpinSystem extends GameSystem with FixedTickable {
   void onFixedUpdate() {
     _elapsed += state.game.fixedTimeStep.inMicroseconds / 1000000.0;
     for (final group in _players.groups()) {
-      final player = group.get<Player>();
+      final player = group<Player>();
       for (final entity in group) {
         // Euler angles are an input format, not storage: this writes the four
         // quaternion columns that everything downstream reads.

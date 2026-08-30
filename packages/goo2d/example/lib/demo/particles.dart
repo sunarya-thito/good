@@ -219,12 +219,12 @@ class SwirlSystem extends GameSystem with FixedTickable {
     final breathe = 1.0 + 0.08 * math.sin(_time * 0.6);
 
     // Grouped, not `run()`: a component belongs to an archetype, so
-    // `entity.get<Mote>()` would return the same object for every row. It is
+    // `entity<Mote>().component` would return the same object for every row. It is
     // only *correct* to hoist per archetype - one query can match several -
     // which is exactly the scope a group is.
     for (final group in motes.groups()) {
-      final transform = group.get<Transform2D>();
-      final mote = group.get<Mote>();
+      final transform = group<Transform2D>();
+      final mote = group<Mote>();
       for (final entity in group) {
         final remaining = mote.life[entity] - dt;
         if (remaining <= 0) {

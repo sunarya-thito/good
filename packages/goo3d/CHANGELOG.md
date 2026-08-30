@@ -2,6 +2,15 @@
 
 ### Breaking
 
+* **Components are reached by calling the receiver, not by `get`/`tryGet`.**
+  `Entity.get`/`tryGet`, `QueryGroup.get`/`tryGet` and `Scene.get`/`tryGet` are
+  removed in `good` 0.3.0-dev, and the type argument now says whether the
+  component may be absent (#220). `entity.get<Transform3D>()` becomes
+  `entity<Transform3D>().component`, `entity.tryGet<Transform3D>()` becomes
+  `entity<Transform3D?>().component`, and `group.get<Transform3D>()` becomes
+  `group<Transform3D>()`. `Transform3D`, `WorldTransform3D` and `Camera3D` are
+  unchanged, and `entity<Transform3D>().setEuler(...)` reads as it did.
+
 * **`cameraFar.defaultValue` is `cameraFar.initialValue`.** `DefaultPointer`
   is `InitialPointer` in `good` 0.3.0-dev and its accessor is renamed with it
   (#210). `Camera3D`'s columns do not move - names, order and widths are

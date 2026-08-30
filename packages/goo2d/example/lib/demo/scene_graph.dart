@@ -198,7 +198,7 @@ class CritterSystem extends GameSystem with FixedTickable {
     var alive = 0;
 
     for (final group in hubs.groups()) {
-      final transform = group.get<Transform2D>();
+      final transform = group<Transform2D>();
       for (final entity in group) {
         // One entity, one field. Every critter and every limb in the case
         // moves because of this line and nothing else.
@@ -207,8 +207,8 @@ class CritterSystem extends GameSystem with FixedTickable {
     }
 
     for (final group in critters.groups()) {
-      final transform = group.get<Transform2D>();
-      final critter = group.get<Critter>();
+      final transform = group<Transform2D>();
+      final critter = group<Critter>();
       for (final entity in group) {
         final remaining = critter.life[entity] - dt;
         if (remaining <= 0) {

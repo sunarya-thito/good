@@ -167,7 +167,7 @@ extension ParentAccessor on Accessor<Parent> {
   /// parent still naming it, its old siblings still pointing at it - and the
   /// corruption is silent. Use [adopt] to move something that has a parent.
   ///
-  /// [child] must mix in [Child] - checked at runtime (`tryGet<Child>()`)
+  /// [child] must mix in [Child] - checked at runtime (`child<Child?>()`)
   /// since the type system has no way to require "some component that
   /// mixes in Child" as a constraint on a bare `Entity`.
   void addChild(Entity child) {
@@ -278,12 +278,12 @@ extension ParentAccessor on Accessor<Parent> {
     if (prev == null) {
       self.parentFirstChild[this] = next;
     } else {
-      prev.get<Child>().childNextSibling[prev] = next;
+      prev<Child>().component.childNextSibling[prev] = next;
     }
     if (next == null) {
       self.parentLastChild[this] = prev;
     } else {
-      next.get<Child>().childPrevSibling[next] = prev;
+      next<Child>().component.childPrevSibling[next] = prev;
     }
     childComponent
       ..childParent[child] = null
@@ -371,7 +371,7 @@ extension ParentAccessor on Accessor<Parent> {
   }
 
   Child _requireChild(Entity child) {
-    final childComponent = child.tryGet<Child>();
+    final childComponent = child<Child?>().component;
     if (childComponent == null) {
       throw ArgumentError.value(
         child,
@@ -416,7 +416,7 @@ extension ParentAccessor on Accessor<Parent> {
                     'would close a loop in the hierarchy',
         );
       }
-      final link = ancestor.tryGet<Child>();
+      final link = ancestor<Child?>().component;
       if (link == null) break;
       final above = link.childParent.readPending(ancestor);
       if (above == null) break;
@@ -442,7 +442,7 @@ extension ParentAccessor on Accessor<Parent> {
     if (oldLast == null) {
       self.parentFirstChild[this] = child;
     } else {
-      oldLast.get<Child>().childNextSibling[oldLast] = child;
+      oldLast<Child>().component.childNextSibling[oldLast] = child;
     }
     self.parentLastChild[this] = child;
     childComponent.childParent[child] = this;

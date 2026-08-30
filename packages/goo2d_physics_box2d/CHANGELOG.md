@@ -2,6 +2,14 @@
 
 ### Breaking
 
+* **Components are reached by calling the receiver, not by `get`/`tryGet`.**
+  `Entity.get`/`tryGet`, `QueryGroup.get`/`tryGet` and `Scene.get`/`tryGet` are
+  removed in `good` 0.3.0-dev, and the type argument now says whether the
+  component may be absent (#220). `entity.get<RigidBody2D>()` becomes
+  `entity<RigidBody2D>().component` and `entity.tryGet<Collider2D>()` becomes
+  `entity<Collider2D?>().component`. `RigidBody2D`, `Collider2D` and
+  `Effector2D` are unchanged.
+
 * **`bodyType.defaultValue` is `bodyType.initialValue`.** The accessor is
   renamed in `good` 0.3.0-dev, because the value is stamped into a fresh row
   rather than consulted on a read (#210). `RigidBody2D`'s columns do not

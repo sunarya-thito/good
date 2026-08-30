@@ -112,8 +112,8 @@ class _DriftSystem extends GameSystem with FixedTickable {
       ..reset()
       ..start();
     for (final group in motes.groups()) {
-      final transform = group.get<Transform2D>();
-      final mote = group.get<_Mote>();
+      final transform = group<Transform2D>();
+      final mote = group<_Mote>();
       for (final entity in group) {
         final t = mote.phase[entity] + 0.05;
         mote.phase[entity] = t;

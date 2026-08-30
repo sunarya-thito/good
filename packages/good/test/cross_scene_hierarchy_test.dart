@@ -88,8 +88,8 @@ Future<_CrossGame> _boot() async {
 /// `addChild` would trip the assert that the repair exists to back up.
 /// Written for a parent with no children yet, which is all these cases need.
 void _linkAcrossScenes(Entity parent, Entity child) {
-  final parentComponent = parent.get<Parent>();
-  final childComponent = child.get<Child>();
+  final parentComponent = parent<Parent>().component;
+  final childComponent = child<Child>().component;
   childComponent
     ..childPrevSibling[child] = null
     ..childNextSibling[child] = null
@@ -161,7 +161,7 @@ void main() {
 
     expect(() => here<Parent>().adopt(child), _crossesScenes());
     expect(
-      child.get<Child>().childParent.readPending(child),
+      child<Child>().component.childParent.readPending(child),
       there,
       reason: 'and the refusal leaves the child where it was',
     );
@@ -180,7 +180,7 @@ void main() {
     // call went through to `child.destroy()` and a scene-A parent destroyed a
     // scene-B row.
     expect(() => parent<Parent>().removeChild(child), _crossesScenes());
-    expect(child.get<_Body>().mark[child], 0, reason: 'still there');
+    expect(child<_Body>().component.mark[child], 0, reason: 'still there');
   });
 
   test('unlinkChild refuses an entity of another scene', () async {
@@ -250,7 +250,7 @@ void main() {
 
     state.unloadScene(b);
 
-    final parentComponent = parent.get<Parent>();
+    final parentComponent = parent<Parent>().component;
     expect(parentComponent.parentFirstChild.readPending(parent), isNull);
     expect(parentComponent.parentLastChild.readPending(parent), isNull);
     expect(
@@ -280,17 +280,17 @@ void main() {
 
     final parent = a.addEntity(game.level.body);
     final child = b.addEntity(game.level.body);
-    child.get<_Body>().mark[child] = 7;
+    child<_Body>().component.mark[child] = 7;
     _linkAcrossScenes(parent, child);
 
     state.unloadScene(a);
 
-    final childComponent = child.get<Child>();
+    final childComponent = child<Child>().component;
     expect(childComponent.childParent.readPending(child), isNull);
     expect(childComponent.childPrevSibling.readPending(child), isNull);
     expect(childComponent.childNextSibling.readPending(child), isNull);
     expect(
-      child.get<_Body>().mark[child],
+      child<_Body>().component.mark[child],
       7,
       reason: 'alive and untouched apart from the link it lost',
     );
@@ -317,12 +317,12 @@ void main() {
     state.unloadScene(a);
 
     expect(
-      child.get<Child>().childParent.readPending(child),
+      child<Child>().component.childParent.readPending(child),
       isNull,
       reason: 'the edge that crossed is cut',
     );
     expect(
-      child.get<Parent>().parentFirstChild.readPending(child),
+      child<Parent>().component.parentFirstChild.readPending(child),
       grandchild,
       reason: 'and the subtree below the cut is left alone',
     );

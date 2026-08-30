@@ -95,7 +95,7 @@ abstract final class ComponentTypeRegistry {
 /// from its bits alone. A per-scene registry would force every entity to
 /// carry a scene reference (a heap pointer, so no longer a plain int) or
 /// force every call site to thread the scene through, which is exactly the
-/// coupling `Entity.get<T>()` exists to avoid.
+/// coupling `entity<T>().component` exists to avoid.
 ///
 /// The cost is that archetype ids are unique per *process*, not per scene,
 /// and are never recycled when a scene unloads. With a 16-bit id that is
@@ -148,7 +148,7 @@ abstract final class ArchetypeRegistry {
   static ArchetypeStorage register(MemoryPool pool, EntityStruct prefab) =>
       reserve(pool)..bindPrefab(prefab);
 
-  /// Resolves an archetype id - the hot path behind `Entity.get<T>()`. A
+  /// Resolves an archetype id - the hot path behind `entity<T>().component`. A
   /// plain list index, no map, no allocation.
   @pragma('vm:prefer-inline')
   static ArchetypeStorage byId(int archetypeId) {
@@ -193,7 +193,7 @@ abstract final class ArchetypeRegistry {
 /// `with Transform2D, Child` and therefore have byte-identical layouts, yet
 /// they get two archetypes, two signatures, and two disjoint sets of pages.
 /// That is Phase 1 scope: it keeps registration a single one-time pass with
-/// no structural hashing, and it keeps `Entity.get<T>()`
+/// no structural hashing, and it keeps `entity<T>().component`
 /// able to hand back *the* prefab instance for a row (the one holding the
 /// `DataPointer` fields the mixins wrote into their `late final`s), which a
 /// deduplicated archetype could not do unambiguously. Structural archetype
@@ -339,7 +339,7 @@ class ArchetypeStorage {
   // exists to stop.
 
   /// The single shared struct instance that describes this archetype -
-  /// what `Entity.get<T>()` returns. It holds no per-entity state; its
+  /// what `entity<T>().component` returns. It holds no per-entity state; its
   /// `DataPointer` fields are (field-offset, storage) pairs that take the
   /// `Entity` as an argument.
   ///

@@ -239,7 +239,7 @@ void main() {
     final a = await state.loadScene(game.level);
     final b = await state.loadScene(game.level);
     final survivor = b.addEntity(game.level.unit);
-    survivor.get<_Marked>().mark[survivor] = 41;
+    survivor<_Marked>().component.mark[survivor] = 41;
 
     state.advance(_step);
     expect(
@@ -262,7 +262,7 @@ void main() {
       reason: "the unloaded scene's rows are gone from every query",
     );
     expect(
-      survivor.get<_Marked>().mark[survivor],
+      survivor<_Marked>().component.mark[survivor],
       41,
       reason: 'and the survivor is untouched - its pages were never shared',
     );
@@ -283,7 +283,7 @@ void main() {
       // Page granularity, not per handle: `Entity` spends all 64 of its bits
       // and has none for a generation counter, so the detection is that the
       // page it names has been freed and its slot tombstoned.
-      expect(() => doomed.get<_Marked>().mark[doomed], throwsStateError);
+      expect(() => doomed<_Marked>().component.mark[doomed], throwsStateError);
     },
   );
 
@@ -367,7 +367,7 @@ void main() {
     expect(a.isLoaded, isFalse, reason: 'unreachable through the handle');
     expect(state.loadedScenes, isEmpty);
     expect(
-      () => doomed.get<_Marked>().mark[doomed],
+      () => doomed<_Marked>().component.mark[doomed],
       throwsStateError,
       reason: 'and unreachable through any Entity into it',
     );
@@ -392,7 +392,7 @@ void main() {
           'handle above keeps reporting the unload rather than resolving '
           'into whatever the next scene put there',
     );
-    expect(() => inA.get<_Marked>().mark[inA], throwsStateError);
+    expect(() => inA<_Marked>().component.mark[inA], throwsStateError);
   });
 
   test('a query can be scoped to one loaded scene', () async {

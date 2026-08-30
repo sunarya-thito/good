@@ -896,7 +896,7 @@ void main() {
       );
 
       final second = await state.loadScene(_SpriteScene());
-      final secondStruct = second.get<_SpriteScene>();
+      final secondStruct = second<_SpriteScene>();
       _size(secondStruct.sprite, second.addEntity(secondStruct.sprite), 10, 10);
 
       state.advance(_step);

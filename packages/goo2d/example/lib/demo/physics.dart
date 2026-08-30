@@ -625,11 +625,11 @@ class SandboxSystem extends GameSystem with FixedTickable {
 
     var alive = 0;
     for (final group in bodies.groups()) {
-      final transform = group.get<Transform2D>();
+      final transform = group<Transform2D>();
       // Only the two prefabs that flash; the ground and walls match the query
       // too and have neither field.
-      final crate = group.tryGet<Crate>();
-      final ball = group.tryGet<Ball>();
+      final crate = group<Crate?>();
+      final ball = group<Ball?>();
       if (crate == null && ball == null) continue;
 
       for (final entity in group) {

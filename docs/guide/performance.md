@@ -44,12 +44,12 @@ The single most common one:
 ```dart
 // no — a registry lookup per entity
 for (final entity in query.run()) {
-  entity.get<Transform2D>().transformOffsetX[entity] += 1;
+  entity<Transform2D>().component.transformOffsetX[entity] += 1;
 }
 
 // yes — one lookup per archetype
 for (final group in query.groups()) {
-  final transform = group.get<Transform2D>();
+  final transform = group<Transform2D>();
   for (final entity in group) {
     transform.transformOffsetX[entity] += 1;
   }

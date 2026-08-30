@@ -228,7 +228,7 @@ class _Census extends GameSystem with EntityLifecycleListener {
   @override
   void onEntityUnmounted(Entity entity) {
     unmounted.add(entity);
-    marksAtUnmount.add(entity.get<_Marked>().mark[entity]);
+    marksAtUnmount.add(entity<_Marked>().component.mark[entity]);
   }
 }
 
@@ -362,7 +362,7 @@ void main() {
 
       expect(game.observer.heard, hasLength(1));
       expect(
-        game.observer.heard.single.get<_Observer>(),
+        game.observer.heard.single<_Observer>(),
         same(game.observer),
         reason:
             'the handle, not the struct - one struct backs many loaded '
@@ -375,7 +375,7 @@ void main() {
 
       // Both _Level and _Observer are loaded during boot.
       expect(
-        game.observer.heard.map((s) => s.get<SceneStruct>()),
+        game.observer.heard.map((s) => s<SceneStruct>()),
         everyElement(same(game.observer)),
         reason:
             'the dispatcher belongs to _Observer, so its list was '

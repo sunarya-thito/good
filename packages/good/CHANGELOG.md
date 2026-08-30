@@ -2,6 +2,43 @@
 
 ### Breaking
 
+* **`get` and `tryGet` are gone; the receiver is called instead, and `T`
+  carries whether the component may be absent.** `Entity`, `QueryGroup` and
+  `Scene` each had a throwing `get<T>()` and a nullable `tryGet<T>()`. Both are
+  removed and the receiver's own call takes their place, with the type argument
+  saying which one you meant (#220):
+
+  | before | after |
+  |---|---|
+  | `entity.get<Transform2D>()` | `entity<Transform2D>().component` |
+  | `entity.tryGet<Transform2D>()` | `entity<Transform2D?>().component` |
+  | `group.get<Transform2D>()` | `group<Transform2D>()` |
+  | `group.tryGet<Transform2D>()` | `group<Transform2D?>()` |
+  | `scene.get<Level>()` | `scene<Level>()` |
+  | `scene.tryGet<Level>()` | `scene<Level?>()` |
+
+  The bounds widen to admit the nullable spelling: `Entity.call` and
+  `Accessor` take `T extends Component?`, `QueryGroup.call` takes
+  `T extends Component?`, and `Scene.call` takes `T extends SceneStruct?`.
+  `Component?` and not `Object?`, so `entity<String>()` is still refused where
+  the type argument is written. `null is T` is the whole dispatch: it is true
+  exactly for the nullable spelling, and it is read only on the path where the
+  archetype turns out to lack the component.
+
+  `Entity` keeps returning an `Accessor<T>` and the component is reached
+  through `.component`, which is where the nullability now lives. The accessor
+  itself is never null in either spelling, so it goes on erasing to an `int`
+  and neither form allocates; a nullable extension type would not have. On
+  `QueryGroup` and `Scene` the call returns the component or the scene struct
+  directly, so those return `null` themselves.
+
+  A null-aware call has no sugar - `scene?<SceneStruct>()` does not parse - so
+  the one site that needs it spells `scene?.call<SceneStruct>()`.
+
+  Two messages change with the spelling they suggest. A missing component on an
+  entity ends `Write Transform2D? if that is expected.`, and on a group
+  `Add it to the query (withAll) or ask for Transform2D?.`
+
 * **An array column names its element as an argument.** The thirty-two
   `has*Array`/`opt*Array` methods on `DataDescriptor`, their thirty-two
   mirrors on `Field`, and `hasPackedArray`/`optPackedArray` beside them are

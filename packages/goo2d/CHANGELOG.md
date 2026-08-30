@@ -2,6 +2,18 @@
 
 ### Breaking
 
+* **Components are reached by calling the receiver, not by `get`/`tryGet`.**
+  `Entity.get`/`tryGet`, `QueryGroup.get`/`tryGet` and `Scene.get`/`tryGet` are
+  removed in `good` 0.3.0-dev, and the type argument now says whether the
+  component may be absent (#220). `Transform2D`, `Renderable2D`, `Camera2D` and
+  every other component here are read through that call, so
+  `entity.get<Transform2D>()` becomes `entity<Transform2D>().component`,
+  `entity.tryGet<Transform2D>()` becomes `entity<Transform2D?>().component`,
+  and `group.get<Transform2D>()` becomes `group<Transform2D>()`. The components
+  themselves are unchanged - names, columns and layout all stay where they
+  were, and `entity<Text2D>().setText(...)` and the other accessor extensions
+  read exactly as before.
+
 * **`textCellWidth.defaultValue` is `textCellWidth.initialValue`.** The
   accessor a prefab adjusts an inherited column through is renamed in `good`
   0.3.0-dev, because the value is stamped into a fresh row and never consulted

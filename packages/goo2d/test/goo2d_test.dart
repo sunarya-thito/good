@@ -96,21 +96,21 @@ void main() {
         scene.playerPrefab.transformOffsetY[player] = 240.0;
         scene.playerPrefab.transformRotation[player] = 1.5;
         for (var i = 0; i < enemies.length; i++) {
-          final t = enemies[i].get<Transform2D>();
+          final t = enemies[i]<Transform2D>().component;
           t.transformOffsetX[enemies[i]] = i * 10.0;
           t.transformOffsetY[enemies[i]] = i * -10.0;
           t.transformScaleX[enemies[i]] = 1.0 + i;
         }
         scene.pool.commitTick();
 
-        expect(player.get<Transform2D>(), same(scene.playerPrefab));
+        expect(player<Transform2D>().component, same(scene.playerPrefab));
         expect(scene.playerPrefab.transformOffsetX[player], 320.0);
         expect(scene.playerPrefab.transformOffsetY[player], 240.0);
         expect(scene.playerPrefab.transformRotation[player], 1.5);
 
         for (var i = 0; i < enemies.length; i++) {
           final e = enemies[i];
-          final t = e.get<Transform2D>();
+          final t = e<Transform2D>().component;
           expect(t, same(scene.enemyPrefab));
           expect(t.transformOffsetX[e], i * 10.0, reason: 'enemy $i');
           expect(t.transformOffsetY[e], i * -10.0, reason: 'enemy $i');
@@ -142,10 +142,10 @@ void main() {
       for (var tick = 0; tick < 3; tick++) {
         scene.pool.beginTick();
         for (final instance in entities) {
-          final transform = instance.get<Transform2D>();
+          final transform = instance<Transform2D>().component;
           transform.transformOffsetX[instance] += 1;
           transform.transformOffsetY[instance] += 1;
-          final optChild = instance.tryGet<Child>();
+          final optChild = instance<Child?>().component;
           if (optChild != null && optChild.childParent[instance] != null) {
             parentedSeen++;
           }
@@ -154,7 +154,7 @@ void main() {
       }
 
       for (final instance in entities) {
-        final transform = instance.get<Transform2D>();
+        final transform = instance<Transform2D>().component;
         expect(transform.transformOffsetX[instance], 3.0);
         expect(transform.transformOffsetY[instance], 3.0);
       }
@@ -167,10 +167,10 @@ void main() {
       // column on every match and passed this test, because nothing here
       // had a parent to lose.
       expect(parentedSeen, 3);
-      expect(enemy.tryGet<Child>()!.childParent[enemy], player);
-      expect(player.tryGet<Child>()!.childParent[player], isNull);
+      expect(enemy<Child?>().component!.childParent[enemy], player);
+      expect(player<Child?>().component!.childParent[player], isNull);
       // Rock has no Child mixin, so the optional branch was skipped for it.
-      expect(rock.tryGet<Child>(), isNull);
+      expect(rock<Child?>().component, isNull);
     });
 
     test('Child.childParent starts absent and round-trips through null', () {

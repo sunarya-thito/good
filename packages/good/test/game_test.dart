@@ -921,7 +921,7 @@ class _CommandState extends GameState<_CommandGame> {
 
   // The handler is the plain function the command claims to be: no buffer in
   // the signature, no pointer in the body.
-  void _onNudge(_Nudge p) => p.entity.get<_Counter>().x[p.entity] = p.amount;
+  void _onNudge(_Nudge p) => p.entity<_Counter>().component.x[p.entity] = p.amount;
 }
 
 /// Declares a command from the `GameState`, which is refused: its index would

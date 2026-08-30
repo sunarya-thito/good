@@ -192,8 +192,8 @@ abstract class GameSystem extends GameListenerBase
 
   /// This system's game, as [T].
   ///
-  /// The typed counterpart to [game], and the same shape `Entity.get<T>` and
-  /// `Scene.get<T>` already use. A cast at the call site is the caller
+  /// The typed counterpart to [game], and the same shape `entity<T>()` and
+  /// `scene<T>()` already use. A cast at the call site is the caller
   /// asserting something the API could have carried, and when it is wrong a
   /// bare `as` reports a `TypeError` naming two classes and no reason - this
   /// names the game that is actually running and where to look.
@@ -421,15 +421,15 @@ abstract class Query {
   ///
   /// **The iteration to prefer**, and the reason is correctness before speed.
   /// A component instance belongs to an *archetype*, not to an entity -
-  /// `entity.get<Mote>()` returns the same object for every entity of that
+  /// `entity<Mote>().component` returns the same object for every entity of that
   /// archetype - so resolving it inside the row loop is work repeated for
   /// every row. Hoisting it out is only *correct* per archetype, though, since
   /// one query can match several; a group is that scope made explicit.
   ///
   /// ```dart
   /// for (final group in enemies.groups()) {
-  ///   final enemy = group.get<Enemy>();          // once per archetype
-  ///   final transform = group.get<Transform2D>();
+  ///   final enemy = group<Enemy>();          // once per archetype
+  ///   final transform = group<Transform2D>();
   ///   for (final entity in group) {
   ///     transform.transformOffsetX[entity] += 1;
   ///   }
@@ -557,9 +557,9 @@ abstract class QueryBuilder {
   /// Declares that a match *may* have these components, without requiring
   /// or forbidding them. Pure documentation - it does not narrow the query.
   /// Its role is signalling to the reader (and, later, to codegen) that the
-  /// loop body branches on `entity.tryGet<T>()`; `WorldTransformSystem` is
+  /// loop body branches on `entity<T?>().component`; `WorldTransformSystem` is
   /// the reference usage, matching every `Transform2D` entity whether
-  /// hierarchy-linked or not and testing `tryGet<Child>()` inside.
+  /// hierarchy-linked or not and testing `entity<Child?>().component` inside.
   QueryBuilder withOptional(
     Type a, [
     Type? b,
@@ -790,7 +790,7 @@ class _ArchetypeQuery implements Query {
       _groupsBuiltFor = count;
     }
     if (scene == null) return _groups;
-    scene.get<SceneStruct>();
+    scene<SceneStruct>();
     final slot = scene.slot;
     var cached = _scopedGroups[slot];
     if (cached == null || cached.scene != scene) {
@@ -811,14 +811,14 @@ class _ArchetypeQuery implements Query {
     // reported at whatever line happened to iterate rather than at the call
     // that named it - and a caller that only asked `isEmpty` would be told
     // "no rows" instead.
-    if (scene != null) scene.get<SceneStruct>();
+    if (scene != null) scene<SceneStruct>();
     return _run(scene);
   }
 
   Iterable<Entity> _run(Scene? scene) sync* {
     final int? sceneSlot;
     if (scene != null) {
-      scene.get<SceneStruct>();
+      scene<SceneStruct>();
       sceneSlot = scene.slot;
     } else {
       sceneSlot = null;
@@ -844,7 +844,7 @@ class _ArchetypeQuery implements Query {
 
   @override
   Query inScene(Scene scene) {
-    scene.get<SceneStruct>();
+    scene<SceneStruct>();
     return _ScopedQuery(this, scene);
   }
 }
@@ -859,7 +859,7 @@ final class _ArchetypeSingleQuery<T extends Component> extends _ArchetypeQuery
 
   @override
   SingleQuery<T> inScene(Scene scene) {
-    scene.get<SceneStruct>();
+    scene<SceneStruct>();
     return _ScopedSingleQuery<T>(this, scene);
   }
 }
@@ -891,7 +891,7 @@ class _ScopedQuery implements Query {
 
   @override
   Query inScene(Scene scene) {
-    scene.get<SceneStruct>();
+    scene<SceneStruct>();
     return _ScopedQuery(_query, scene);
   }
 }
@@ -902,7 +902,7 @@ final class _ScopedSingleQuery<T extends Component> extends _ScopedQuery
 
   @override
   SingleQuery<T> inScene(Scene scene) {
-    scene.get<SceneStruct>();
+    scene<SceneStruct>();
     return _ScopedSingleQuery<T>(_query, scene);
   }
 }
@@ -920,11 +920,11 @@ final class ArchetypeQueryDescriptor implements QueryDescriptor {
 /// One matching archetype inside a [Query], and the rows it holds.
 ///
 /// Exists so a component can be resolved **once per archetype** instead of once
-/// per entity. `entity.get<Mote>()` is not a per-entity lookup pretending to be
+/// per entity. `entity<Mote>().component` is not a per-entity lookup pretending to be
 /// cheap - it genuinely returns the same object every time, because a component
 /// describes an archetype's layout and every row shares it. A profile put the
-/// repeated resolution (`Entity.get`, `Entity.tryGet`,
-/// `ArchetypeRegistry.byId`) at ~7% of the engine's CPU.
+/// repeated resolution (`Accessor.component`, `ArchetypeRegistry.byId`) at
+/// ~7% of the engine's CPU.
 ///
 /// Hoisting it by hand is only correct when a query matches exactly one
 /// archetype, which is not something a caller can see from the query. This
@@ -948,31 +948,34 @@ final class QueryGroup extends Iterable<Entity> {
   /// This group, scoped to [scene] - the rows of this one archetype that
   /// belong to that scene.
   QueryGroup inScene(Scene scene) {
-    scene.get<SceneStruct>();
+    scene<SceneStruct>();
     return QueryGroup(storage, scene);
   }
 
   /// This archetype's instance of [T] - the prefab, viewed as one of the
   /// components it mixes in.
   ///
-  /// Resolve it before the row loop and use it for every row.
-  T get<T extends Component>() {
+  /// ```dart
+  /// final transform = group<Transform2D>();   // throws if absent
+  /// final maybe = group<Transform2D?>();      // null if absent
+  /// ```
+  ///
+  /// Resolve it before the row loop and use it for every row. Write [T]
+  /// nullable where the archetype may not have the component: the bound is
+  /// `Component?` so that `Transform2D?` is a legal argument, and `null is T`
+  /// is what picks the answer for an archetype that lacks it.
+  T call<T extends Component?>() {
     // Widened to `Object` first: `prefab` is an `EntityStruct` and `T` is a
-    // `Component`, and Dart will not promote between two class types neither
+    // `Component?`, and Dart will not promote between two class types neither
     // of which is a subtype of the other.
     final Object prefab = storage.prefab;
-    if (prefab is T) return prefab;
+    if (prefab is T) return prefab as T;
+    if (null is T) return null as T;
     throw StateError(
       '${prefab.runtimeType} is not a $T. The query matched this archetype, '
       'so it satisfies the query\'s constraints - but $T is not among them. '
-      'Add it to the query (withAll) or use tryGet.',
+      'Add it to the query (withAll) or ask for $T?.',
     );
-  }
-
-  /// [get], or null when this archetype does not have [T].
-  T? tryGet<T extends Component>() {
-    final Object prefab = storage.prefab;
-    return prefab is T ? prefab : null;
   }
 
   /// A hand-written walk over this archetype's live rows.
@@ -992,7 +995,9 @@ final class _GroupIterator implements Iterator<Entity> {
     // group is held across ticks, so its scene can be unloaded between the
     // two - and a freed page answers `pageAt` with null, which would make an
     // unloaded scope look like an archetype with no rows in it.
-    scene?.get<SceneStruct>();
+    // Spelled `.call` because a null-aware invocation has no sugar:
+    // `scene?<SceneStruct>()` does not parse.
+    scene?.call<SceneStruct>();
   }
 
   final ArchetypeStorage _storage;

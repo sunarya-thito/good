@@ -78,21 +78,33 @@ Passing one around costs an `int`. It is also self-describing — given only the
 integer, the engine finds the archetype, the page, and the row.
 
 ```dart
-final transform = entity.get<Transform2D>();      // throws if absent
-final child = entity.tryGet<Child>();             // null if absent
-entity.destroy();                                 // removes it and its subtree
+final transform = entity<Transform2D>().component;  // throws if absent
+final child = entity<Child?>().component;           // null if absent
+entity.destroy();                                   // it and its subtree
 ```
 
-`get<T>()` resolves the *prefab* that declared the archetype, which is why it
-returns the component with all its columns bound to that archetype's layout.
+`entity<T>()` resolves the *prefab* that declared the archetype, so the
+component it hands back has all its columns bound to that archetype's layout.
+
+The type argument says whether absence is expected, and there is one spelling
+for both. `entity<Transform2D>()` is a claim that the archetype has the
+component: reading `.component` off it throws a `StateError` naming the
+archetype when it does not. `entity<Transform2D?>()` makes no claim, and
+`.component` answers `null`. The bound is `Component?`, so `String` and `int`
+are still rejected where the type argument is written.
+
+The accessor itself is never `null` in either form. It is an extension type
+over `Entity` and erases to an `int`, and a nullable one would not; the
+nullability lives on `.component`, which hands back an object the archetype
+already holds.
 
 !!! warning "Resolve components per group, not per entity"
-    `entity.get<T>()` is a registry lookup. In a loop over thousands of
+    `entity<T>().component` is a registry lookup. In a loop over thousands of
     entities, resolve once per group and index by entity inside:
 
     ```dart
     for (final group in query.groups()) {
-      final transform = group.get<Transform2D>();   // once per archetype
+      final transform = group<Transform2D>();   // once per archetype
       for (final entity in group) {
         transform.transformOffsetX[entity] += 1;    // just an indexed write
       }
@@ -280,9 +292,9 @@ and hang it on `Accessor<YourComponent>`.
 ### Inside the extension, `this` is the entity
 
 `Accessor<T>` implements `Entity`, so `this` is the row index and a column takes
-it directly. `component` is the `Health` the receiver's archetype declared,
-sugar for `get<Health>()` — an inlined list index and a type check, not a map,
-so reaching for it twice is a style question and not a cost.
+it directly. `component` is the `Health` the receiver's archetype declared —
+an inlined list index and a type check, not a map, so reaching for it twice is
+a style question and not a cost.
 
 The rest of `Entity` is there too:
 
@@ -309,7 +321,7 @@ A helper that takes a *second* entity resolves that one's component itself:
 extension HealthAccessor on Accessor<Health> {
   void drain(Entity other, int amount) {
     final mine = component;
-    final theirs = other.get<Health>();
+    final theirs = other<Health>().component;
     theirs.healthHp[other] -= amount;
     mine.healthHp[this] += amount;
   }

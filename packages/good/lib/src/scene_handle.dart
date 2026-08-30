@@ -18,7 +18,7 @@ import 'package:good/src/struct.dart';
 /// extension type over `int`, so passing one around or storing one costs
 /// nothing (the no-allocation rule), and like [Entity] it carries no references
 /// - resolution goes through the process-global [SceneRegistry], for the same
-/// reason `Entity.get<T>()` goes through `ArchetypeRegistry`.
+/// reason `entity<T>().component` goes through `ArchetypeRegistry`.
 ///
 /// # Why this one has a generation counter and [Entity] does not
 ///
@@ -50,12 +50,21 @@ extension type const Scene(int value) {
 
   /// The [SceneStruct] this handle names, as [T].
   ///
+  /// ```dart
+  /// scene<MyScene>()     // throws for an unloaded scene or the wrong type
+  /// scene<MyScene?>()    // null instead, for a caller that works either way
+  /// ```
+  ///
   /// One list index and a generation compare - the same shape and the same
-  /// cost as `Entity.get<T>()`. Throws for an unloaded scene instead of
-  /// returning null, so a stale handle is a diagnostic and not a null-check
-  /// every caller has to remember; use [tryGet] where absence is expected.
-  T get<T extends SceneStruct>() {
+  /// cost as `entity<T>().component`. The non-nullable spelling throws for an
+  /// unloaded scene instead of returning null, so a stale handle is a
+  /// diagnostic and not a null-check every caller has to remember; write [T]
+  /// nullable where absence is expected. The bound is `SceneStruct?` so that
+  /// the nullable spelling is a legal argument.
+  T call<T extends SceneStruct?>() {
     final scene = SceneRegistry.tryResolve(this);
+    if (scene is T) return scene;
+    if (null is T) return null as T;
     if (scene == null) {
       throw StateError(
         'Scene #$slot (generation $generation) is not loaded. Either it was '
@@ -64,15 +73,7 @@ extension type const Scene(int value) {
         'loaded into the same slot afterwards.',
       );
     }
-    if (scene is T) return scene;
     throw StateError('Scene #$slot is a ${scene.runtimeType}, not a $T.');
-  }
-
-  /// [get], but `null` instead of throwing - for a caller that legitimately
-  /// works either way.
-  T? tryGet<T extends SceneStruct>() {
-    final scene = SceneRegistry.tryResolve(this);
-    return scene is T ? scene : null;
   }
 
   /// Creates an entity from [prefab] in this scene - one row in the prefab's
@@ -86,7 +87,7 @@ extension type const Scene(int value) {
   ///
   /// Allocation-free apart from what the mount dispatch itself does.
   Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
-      get<SceneStruct>().addEntityIn(slot, prefab, parent: parent);
+      this<SceneStruct>().addEntityIn(slot, prefab, parent: parent);
 }
 
 /// The process-global table of loaded scenes - what a [Scene] handle resolves

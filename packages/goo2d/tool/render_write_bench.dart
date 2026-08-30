@@ -400,8 +400,8 @@ Future<_Cell> _measure(int count) async {
   late Sprite sprite;
   late Transform2D transform;
   for (final group in query.groups()) {
-    sprite = group.get<Renderable2D>().sprites[0];
-    transform = group.get<Transform2D>();
+    sprite = group<Renderable2D>().sprites[0];
+    transform = group<Transform2D>();
     for (final entity in group) {
       entities.add(entity);
     }

@@ -120,7 +120,7 @@ void main() {
         // The case's whole claim: an unparented sprite carries no
         // `WorldTransform2D`, so it is not in `WorldTransformSystem`'s query
         // and the renderer reads its local transform directly.
-        expect(entity.tryGet<WorldTransform2D>(), isNull);
+        expect(entity<WorldTransform2D?>().component, isNull);
         seen++;
       }
       expect(seen, greaterThan(0));
@@ -156,10 +156,10 @@ void main() {
       // to each believe they were the first, and every limb but one was
       // silently orphaned.
       final walked = <Entity>[];
-      Entity? at = critter.get<Parent>().parentFirstChild[critter];
+      Entity? at = critter<Parent>().component.parentFirstChild[critter];
       while (at != null) {
         walked.add(at);
-        at = at.get<Child>().childNextSibling[at];
+        at = at<Child>().component.childNextSibling[at];
       }
       expect(walked, hasLength(Limb.limbsPerCritter));
     });
@@ -201,7 +201,7 @@ void main() {
 
       final state = game.state as SceneGraphState;
       final critter = state.getSystem<CritterSystem>().critters.run().first;
-      final limb = critter.get<Parent>().parentFirstChild[critter]!;
+      final limb = critter<Parent>().component.parentFirstChild[critter]!;
       final limbStruct = state.swarm.limb;
 
       final localBefore = limbStruct.transformOffsetX[limb];
@@ -232,7 +232,7 @@ void main() {
       final state = game.state as SceneGraphState;
       final limbStruct = state.swarm.limb;
       final critter = state.getSystem<CritterSystem>().critters.run().first;
-      final limb = critter.get<Parent>().parentFirstChild[critter]!;
+      final limb = critter<Parent>().component.parentFirstChild[critter]!;
       final before = limbStruct.worldY[limb];
 
       game.state.pool.beginTick();

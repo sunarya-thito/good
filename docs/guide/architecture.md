@@ -203,7 +203,7 @@ for a number, a buffer for bulk per-frame data such as the 2D draw list.
 
 Sharing the memory is not the hard part. Keeping a second page list on main in
 step with the game isolate's is, and so is freeing a page main might still be
-reading. `Entity.get` on this copy throws instead of reading a page list that
+reading. `entity<T>()` on this copy throws instead of reading a page list that
 will always be empty.
 
 ---

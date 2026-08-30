@@ -35,8 +35,8 @@ class MovementSystem extends GameSystem with FixedTickable {
   void onFixedUpdate() {
     final dt = game.fixedTimeStep.inMicroseconds / 1000000.0;
     for (final group in movers.groups()) {
-      final transform = group.get<Transform2D>();
-      final velocity = group.get<Velocity>();
+      final transform = group<Transform2D>();
+      final velocity = group<Velocity>();
       for (final entity in group) {
         transform
           ..transformOffsetX[entity] += velocity.velocityX[entity] * dt
@@ -153,22 +153,22 @@ Each clause takes up to ten types.
     "any of these four".
 
 `withOptional` narrows nothing; it signals to the reader that the loop body
-branches on `entity.tryGet<T>()`. `WorldTransformSystem` is the reference usage:
-it matches every `Transform2D` entity, hierarchy-linked or not, and tests
-`tryGet<Child>()` inside.
+branches on `entity<T?>().component`. `WorldTransformSystem` is the reference
+usage: it matches every `Transform2D` entity, hierarchy-linked or not, and
+tests `entity<Child?>().component` inside.
 
 ## Walking results
 
 ```dart
 for (final group in query.groups()) {      // one group per matching archetype
-  final transform = group.get<Transform2D>();   // resolved once for the group
+  final transform = group<Transform2D>();   // resolved once for the group
   for (final entity in group) {
     transform.transformOffsetX[entity] += 1;
   }
 }
 ```
 
-The two-level shape is the point. `group.get<T>()` resolves that archetype's
+The two-level shape is the point. `group<T>()` resolves that archetype's
 component **once**; the inner loop is then pure indexed access. Resolving inside
 the inner loop repeats a registry lookup per entity, which is the single most
 common performance mistake in a good system.

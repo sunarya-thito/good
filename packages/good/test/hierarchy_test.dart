@@ -266,9 +266,9 @@ void main() {
 
       expect(level.node.parentFirstChild[parent], child);
       expect(level.node.parentLastChild[parent], child);
-      expect(child.get<Child>().childParent[child], parent);
-      expect(child.get<Child>().childNextSibling[child], isNull);
-      expect(child.get<Child>().childPrevSibling[child], isNull);
+      expect(child<Child>().component.childParent[child], parent);
+      expect(child<Child>().component.childNextSibling[child], isNull);
+      expect(child<Child>().component.childPrevSibling[child], isNull);
     });
 
     // The same append, but on a tick that is **not** the page's first.
@@ -305,7 +305,7 @@ void main() {
         Entity? at = level.node.parentFirstChild[parent];
         while (at != null) {
           walked.add(at);
-          at = at.get<Child>().childNextSibling[at];
+          at = at<Child>().component.childNextSibling[at];
         }
         expect(
           walked,
@@ -338,7 +338,7 @@ void main() {
       Entity? cursor = level.node.parentFirstChild[parent];
       while (cursor != null) {
         walked.add(cursor);
-        cursor = cursor.get<Child>().childNextSibling[cursor];
+        cursor = cursor<Child>().component.childNextSibling[cursor];
       }
       expect(walked, children);
 
@@ -347,7 +347,7 @@ void main() {
       cursor = level.node.parentLastChild[parent];
       while (cursor != null) {
         walkedBack.add(cursor);
-        cursor = cursor.get<Child>().childPrevSibling[cursor];
+        cursor = cursor<Child>().component.childPrevSibling[cursor];
       }
       expect(walkedBack, children.reversed.toList());
     });
@@ -370,16 +370,16 @@ void main() {
         expect(level.node.parentFirstChild[parent], children[0]);
         expect(level.node.parentLastChild[parent], children[2]);
         expect(
-          children[0].get<Child>().childNextSibling[children[0]],
+          children[0]<Child>().component.childNextSibling[children[0]],
           children[2],
         );
         expect(
-          children[2].get<Child>().childPrevSibling[children[2]],
+          children[2]<Child>().component.childPrevSibling[children[2]],
           children[0],
         );
         // The detached child is fully unlinked, and still alive - which is
         // the whole difference between this and removeChild.
-        final removed = children[1].get<Child>();
+        final removed = children[1]<Child>().component;
         expect(removed.childParent[children[1]], isNull);
         expect(removed.childNextSibling[children[1]], isNull);
         expect(removed.childPrevSibling[children[1]], isNull);
@@ -402,8 +402,8 @@ void main() {
 
       expect(level.node.parentFirstChild[parent], children[1]);
       expect(level.node.parentLastChild[parent], children[1]);
-      expect(children[1].get<Child>().childNextSibling[children[1]], isNull);
-      expect(children[1].get<Child>().childPrevSibling[children[1]], isNull);
+      expect(children[1]<Child>().component.childNextSibling[children[1]], isNull);
+      expect(children[1]<Child>().component.childPrevSibling[children[1]], isNull);
     });
 
     test('detaching the only child empties the list', () {
@@ -426,7 +426,7 @@ void main() {
       final notAChild = level.addEntity(level.noChild);
       level.pool.commitTick();
 
-      expect(notAChild.tryGet<Child>(), isNull);
+      expect(notAChild<Child?>().component, isNull);
       expect(() => parent<Parent>().addChild(notAChild), throwsArgumentError);
     });
 
@@ -458,7 +458,7 @@ void main() {
       level.pool.commitTick();
 
       expect(level.node.parentFirstChild[parent], child);
-      expect(child.get<Child>().childParent[child], parent);
+      expect(child<Child>().component.childParent[child], parent);
     });
 
     test('rejects a parent entity that does not mix in Parent', () {
@@ -486,7 +486,7 @@ void main() {
       Entity? cursor = level.node.parentFirstChild[parent];
       while (cursor != null) {
         walked.add(cursor);
-        cursor = cursor.get<Child>().childNextSibling[cursor];
+        cursor = cursor<Child>().component.childNextSibling[cursor];
       }
       expect(walked, children);
     });
@@ -514,7 +514,7 @@ void main() {
       expect(level.node.parentFirstChild[parent], b);
       expect(level.node.parentLastChild[parent], b);
       expect(
-        b.get<Child>().childPrevSibling[b],
+        b<Child>().component.childPrevSibling[b],
         isNull,
         reason: 'b is now the only child, so it has no previous sibling',
       );
@@ -582,7 +582,7 @@ void main() {
         Entity? at = level.node.parentFirstChild[parent];
         while (at != null) {
           walked.add(at);
-          at = at.get<Child>().childNextSibling[at];
+          at = at<Child>().component.childNextSibling[at];
         }
         expect(walked, <Entity>[children[0], children[3]]);
         expect(level.node.parentLastChild[parent], children[3]);
@@ -623,9 +623,9 @@ void main() {
       final barrel = turret<Parent>()[level.turret.barrel];
       expect(level.turret.parentFirstChild[turret], barrel);
       expect(level.turret.parentLastChild[turret], barrel);
-      expect(barrel.get<Child>().childParent[barrel], turret);
+      expect(barrel<Child>().component.childParent[barrel], turret);
       expect(
-        barrel.tryGet<_Barrel>(),
+        barrel<_Barrel?>().component,
         isNotNull,
         reason: 'the child is an entity of the declared prefab',
       );
@@ -650,7 +650,7 @@ void main() {
       Entity? cursor = level.rig.parentFirstChild[rig];
       while (cursor != null) {
         walked.add(cursor);
-        cursor = cursor.get<Child>().childNextSibling[cursor];
+        cursor = cursor<Child>().component.childNextSibling[cursor];
       }
       expect(
         walked,
@@ -670,8 +670,8 @@ void main() {
 
       final barrel = turret<Parent>()[level.deepTurret.barrel];
       final tip = barrel<Parent>()[level.deepTurret.barrel.tip];
-      expect(barrel.get<Child>().childParent[barrel], turret);
-      expect(tip.get<Child>().childParent[tip], barrel);
+      expect(barrel<Child>().component.childParent[barrel], turret);
+      expect(tip<Child>().component.childParent[tip], barrel);
     });
 
     test('destroying the parent takes its declared children with it', () {

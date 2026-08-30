@@ -95,7 +95,7 @@ extension Effectors2D on Box2DPhysicsSystem {
     var affected = 0;
     for (var i = 0; i < found; i++) {
       final entity = overlapEntityAt(i);
-      final body = entity.tryGet<RigidBody2D>();
+      final body = entity<RigidBody2D?>().component;
       if (body == null) continue;
       if (forceX != 0 || forceY != 0) body.applyForce(entity, forceX, forceY);
       if (torque != 0) body.applyTorque(entity, torque);
@@ -138,8 +138,8 @@ extension Effectors2D on Box2DPhysicsSystem {
     var affected = 0;
     for (var i = 0; i < found; i++) {
       final entity = overlapEntityAt(i);
-      final body = entity.tryGet<RigidBody2D>();
-      final transform = entity.tryGet<Transform2D>();
+      final body = entity<RigidBody2D?>().component;
+      final transform = entity<Transform2D?>().component;
       if (body == null || transform == null) continue;
 
       final dx = transform.transformOffsetX[entity] - x;
@@ -195,8 +195,8 @@ extension Effectors2D on Box2DPhysicsSystem {
     var affected = 0;
     for (var i = 0; i < found; i++) {
       final entity = overlapEntityAt(i);
-      final body = entity.tryGet<RigidBody2D>();
-      final transform = entity.tryGet<Transform2D>();
+      final body = entity<RigidBody2D?>().component;
+      final transform = entity<Transform2D?>().component;
       if (body == null || transform == null) continue;
 
       final submerged = surfaceY - transform.transformOffsetY[entity];
@@ -253,7 +253,7 @@ extension Effectors2D on Box2DPhysicsSystem {
     var affected = 0;
     for (var i = 0; i < found; i++) {
       final entity = overlapEntityAt(i);
-      final body = entity.tryGet<RigidBody2D>();
+      final body = entity<RigidBody2D?>().component;
       if (body == null) continue;
 
       final dvx = speed - body.bodyLinearVelocityX[entity];
