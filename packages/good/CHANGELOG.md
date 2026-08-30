@@ -332,6 +332,44 @@
 
 ### Added
 
+* **An on-screen analog stick, as three widgets.** A finger dragging one
+  produces a continuous vector a game reads through a `StickBinding`, and
+  letting go returns it to rest (#191).
+
+  ```dart
+  Stack(
+    children: [
+      GameView(camera: camera),
+      Positioned(
+        left: 0, top: 0, bottom: 0, width: 160,
+        child: JoystickArea(game: game),
+      ),
+    ],
+  )
+  ```
+
+  `JoystickArea` reads a finger anywhere in its box and centres the stick
+  where the finger landed, touchpad style. `JoystickControl` reads the same
+  thing from a stick fixed to its own box. `Joystick` is the visual with no
+  input attached, for drawing a value already in hand. All three take a
+  `track` and a `thumb` widget and paint a default disc and ring for whichever
+  is left null.
+
+  A widget names the two `VirtualAxis` values it writes and a binding names the
+  two it reads, so there is no stick number to keep in step and two sticks are
+  two axis pairs. The value is -1..1 with 0 at rest and +1 up, matching what
+  `StickBinding` delivers, and it is proportional: half the travel reads a
+  half. Past full travel it clamps to the circle, so a diagonal at the edge has
+  a magnitude of 1.
+
+  All three return the stick to rest on a cancelled pointer as well as on a
+  lift, and on going away with a finger still down. A notification or an
+  incoming call ends a pointer with no up event behind it, and a stick that
+  waited for a lift would hold its direction until the app was restarted.
+
+  The thumb's position drives a repaint through a `Listenable`, so a drag
+  rebuilds no widgets.
+
 * **Touch input.** A finger, a stylus, or a mouse with a button held is a
   **contact**, and `ContactBinding` reads all of them at once. The engine
   built for Android and iOS and could not read a finger (#129).
