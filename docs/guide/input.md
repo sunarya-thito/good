@@ -388,6 +388,14 @@ silence every Flutter gesture widget below the view, and in this engine a HUD is
 a descendant — so put interactive widgets in a `Stack` **above** the `GameView`,
 not inside it.
 
+Two `GameView`s stacked over each other share one hit test, and the front one
+takes the pointer. `GameView`'s `Listener` is translucent, so a finger over a
+HUD view drawn above a world view is handed to both; only the front-most view
+writes it. One finger is one contact however many views it passes through, and
+`game.viewOfContact` and `game.pointerView` both name the view it visibly
+landed in. A pointer outside the front view's box never reaches that view at
+all, so the one behind takes it as usual.
+
 #### On-screen sticks and buttons are widgets
 
 An on-screen joystick is a Flutter widget in that `Stack`, feeding

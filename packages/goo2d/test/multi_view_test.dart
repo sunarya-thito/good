@@ -437,27 +437,27 @@ void main() {
     expect(events, contains('enter'));
   });
 
-  // NOT COVERED: that `CursorPosition.viewSize` follows the pointer between two
-  // views of different sizes. **The wiring is not at fault** - the widget
-  // ->device leg simply cannot be driven in this test binding.
+  // NOT COVERED: that `CursorPosition.viewSize` follows the pointer as it
+  // crosses from one view into another of a different size. What cannot be
+  // driven here is a **hover**, and a hover is the only way a cursor crosses.
   //
   // Established with an isolated probe (a *bare* `Listener`, no engine code in
-  // sight): with `behavior: translucent`, a correctly-sized box, and the
-  // textbook mouse sequence - `createGesture(kind: mouse)`, `addPointer`,
-  // `moveTo` over the box - neither `onPointerHover` nor `onPointerDown` ever
-  // fires. `tester.startGesture` and a hand-built `PointerHoverEvent` sent
-  // straight to the binding behave the same, and skipping `addPointer` trips a
+  // sight): `onPointerHover` never fires by any route, and the textbook
+  // recipe - `createGesture(kind: mouse)` then `addPointer` - trips a
   // `MouseTracker` assertion inside Flutter itself.
   //
-  // So a `GameView` receiving no pointer events here says nothing about a
-  // `GameView` in a real app. Two traps worth remembering if this is picked up
-  // again: `tester.tapAt` sends **touch**, which
-  // `InputDevice.handlePointerEvent` deliberately ignores, so it is not a
-  // probe; and a pressed pointer is *captured* by whatever it went down on, so
-  // a drag can never move between two views even if it did dispatch.
+  // The widget->device leg does dispatch for everything else, and #275 is
+  // measured across it. `tester.startGesture(kind: PointerDeviceKind.mouse,
+  // buttons: kPrimaryMouseButton)` delivers down, move and up carrying
+  // `PointerDeviceKind.mouse`, so the mouse branch of `handlePointerEvent`
+  // runs and `pointerView` can be read; `tester.tapAt` delivers touch, which
+  // the contact half reads. `good`'s `test/stacked_game_view_test.dart`
+  // drives both.
   //
-  // Covering this needs an integration test on a device, alongside the
-  // rendering perf demo.
+  // The trap that remains: a pressed pointer is *captured* by whatever it went
+  // down on, so a drag cannot move between two views even though it
+  // dispatches. Covering the crossing needs an integration test on a device,
+  // alongside the rendering perf demo.
 
   testWidgets('a pointer over no view reports none', (tester) async {
     final game = await _start();

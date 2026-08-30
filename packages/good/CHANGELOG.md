@@ -1224,6 +1224,35 @@
   "not held" corrects itself on the next press, a false "held" corrects itself
   never.
 
+* **One finger through two stacked `GameView`s is one contact again, and the
+  front view is the one that gets named.** `GameView`'s `Listener` is
+  `HitTestBehavior.translucent`, so a view behind another is handed the same
+  pointer dispatch and wrote it to the device too. The contact table saw a
+  press of an id already down, found the first slot still live, declined to
+  reuse it and opened a second - two live contacts under one id, which nothing
+  downstream can tell from two fingers. Measured with two views in a `Stack`
+  and one tap: `#1 ended view=CameraView#1 | #1 ended view=CameraView#0` (#275).
+
+  The cursor half is the same event arriving twice with the writes in the
+  other order. Hit testing runs front to back, so the view furthest back wrote
+  `pointerView` and the surface size last and claimed both: a HUD drawn in
+  front resolved its picking against the world view underneath it, and
+  `Game.viewWidth` read the size of a view the pointer was not in. Measured on
+  a 200x150 panel over a 400x300 view, where a press inside the panel reported
+  400x300.
+
+  `InputDevice.claimPointerEvent` is the gate. `PointerEvent.original` is the
+  same object for every copy a hit test makes of one dispatch, so the first
+  caller of a dispatch takes it and every later one is turned away - one
+  reference compare and one field, on a path that runs for every pointer move.
+  Two fingers landing in the same frame are two dispatches and stay two
+  contacts.
+
+  Nothing changes for a game with one `GameView`, which is the only caller of
+  its dispatch. `InputDevice.handlePointerEvent` still writes whatever it is
+  given, so a replay, a bot or a test driving the device directly is
+  unaffected.
+
 ## 0.2.0
 
 Two gaps 0.1.0 admitted are closed: a column can be declared by the field that
