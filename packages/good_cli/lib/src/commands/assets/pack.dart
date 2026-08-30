@@ -27,11 +27,11 @@ import 'package:good_cli/src/verbosable.dart';
 /// # What this does not do
 ///
 /// It writes the chunks and leaves the loose assets where they are, so running
-/// `flutter build` straight after this bundles both. Only `good build` for a
-/// platform strips them, and only there because only there is good the one
-/// who compacted them and can say which files it is safe to delete. Deleting a
-/// working directory's assets out from under someone who asked for a pack is
-/// not this command's call to make.
+/// `flutter build` straight after this bundles both. Removing them is `good
+/// build`'s to do, and only when the project sets `strip-originals: true`,
+/// because only there is good the one who compacted them and can say which
+/// files it is safe to delete. Deleting a working directory's assets out from
+/// under someone who asked for a pack is not this command's call to make.
 ///
 /// # Why per chunk and not per asset
 ///

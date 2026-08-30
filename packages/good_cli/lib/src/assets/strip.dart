@@ -2,13 +2,17 @@ import 'dart:io';
 
 /// Removes the loose copies of assets that are now inside a chunk.
 ///
-/// # Why a release build has to do this
+/// # What a build carries without this
 ///
 /// Flutter bundles what `flutter: assets:` lists. The packed directory has to
 /// be listed or the chunks never ship - but the asset directory is listed too,
-/// and left alone a release build carries every asset twice: once loose and
-/// legible, once inside an encrypted chunk. That is double the download, and it
-/// hands back in plaintext exactly what packing was for.
+/// and left alone a build carries every asset twice: once loose and legible,
+/// once inside an encrypted chunk. That is double the download, and it hands
+/// back in plaintext exactly what packing was for.
+///
+/// That is the default. `good build` calls this only when the project sets
+/// `strip-originals: true`, so that `Image.asset` and everything else reading
+/// the Flutter bundle by path keep resolving.
 ///
 /// # What comes out
 ///
@@ -27,10 +31,10 @@ import 'dart:io';
 /// re-encode at worst. A hand-placed original has nowhere to come back from,
 /// and this function cannot tell the difference: it deletes what it is handed.
 ///
-/// Deciding what is safe to hand it belongs to the caller. `good build` works
-/// out which of the packed paths compaction produced, and stops before calling
-/// this at all when any of them is an original - unless the project set
-/// `strip-originals: true`. See `BuildSubCommand._pack`.
+/// Deciding what is safe to hand it belongs to the caller. `good build` calls
+/// this only when the project set `strip-originals: true`, and works out which
+/// of the packed paths compaction produced so it can name the ones compaction
+/// cannot build again. See `BuildSubCommand._pack`.
 ///
 /// Returns how many files were removed.
 int stripLoose({

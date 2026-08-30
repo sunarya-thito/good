@@ -96,49 +96,45 @@ stops looking for chunks that are no longer built.
 good assets pack --mode=release
 ```
 
-### Assets vanished from `assets/`
+### A packed asset is also in the bundle loose
 
-Expected. A release build strips the loose copy of everything it packed, so each
-asset ships exactly once, inside a chunk:
+Expected with `strip-originals` unset, which is the default. A build that packs
+writes the chunks and leaves `assets/` as it found it, so every packed asset
+ships twice — once legible, once inside a chunk. Nothing is printed about it.
 
-```
-stripped 3 loose asset(s) now carried in chunks; `good assets compact` rebuilds them
-```
+Set the key to ship one copy:
 
-`good assets compact` rebuilds whatever came from `assets_src/`, which is
-everything a build will strip unless you have opted out of that protection.
-
-### `N packed asset(s) cannot be rebuilt if the build strips them`
-
-A file you put into `assets/` yourself came from no source. It ships, so packing
-takes it, and stripping the loose copies would delete the only one there is. The
-build stops before that happens:
-
-```
-1 packed asset(s) cannot be rebuilt if the build strips them:
-    assets/handmade.png
-Compaction did not produce these, so deleting the loose copy destroys the only
-one. Leaving it in place ships a legible copy beside the encrypted chunk.
-
-Choose one:
-  - move them into assets_src/ so compaction owns them, or
-  - add `strip-originals: true` under `good: assets:` in pubspec.yaml to accept
-    the deletion.
-```
-
-Move the file into `assets_src/` and run `good assets compact`. Compaction owns
-it from then on, the art survives, and the release ships it only inside a chunk.
-
-Opt in when `assets_src/` already holds every original and `assets/` is
-disposable:
-
-```yaml
+```yaml title="pubspec.yaml"
 good:
   assets:
     strip-originals: true
 ```
 
-The build strips those files and names each one as it goes.
+`Image.asset`, `rootBundle.load` and anything else naming a file under `assets/`
+stop resolving the stripped paths after that, so a project that draws packed
+assets through Flutter's own widgets has to leave the key off.
+
+### Assets vanished from `assets/`
+
+The project has `strip-originals: true`, so the build deleted the loose copy of
+everything it packed:
+
+```
+stripped 3 loose asset(s) now carried in chunks; `good assets compact` rebuilds them
+```
+
+`good assets compact` rebuilds whatever came from `assets_src/`. A file you put
+into `assets/` yourself came from no source and does not come back; the build
+names each of those as it deletes it:
+
+```
+1 of those were not built from assets_src/, so compaction cannot bring them back. Keep the originals under assets_src/:
+    assets/handmade.png
+```
+
+Move such a file into `assets_src/` and run `good assets compact`. Compaction
+owns it from then on, the art survives, and the release ships it only inside a
+chunk.
 
 ### `Asset chunk is version N; this build understands 1`
 

@@ -29,7 +29,7 @@ These were actually run:
 - `good generate` producing a populated `Textures` enum
 - `good assets pack` writing an encrypted chunk and the mapping
 - `good build windows` producing a launchable application whose bundle contains
-  the chunk and **not** the loose asset
+  the chunk — and, with `strip-originals` unset, the loose copy beside it
 - The `NetTransport` conformance suite against **both** backends — the
   in-process one and real UDP sockets
 - Two `Game`s in one process, each with its own `P2PNetTransport`, playing a

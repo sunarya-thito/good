@@ -50,8 +50,9 @@ Every value shown is the default, and the whole section is optional.
 
 Both `assets/` and `assets/packed/` must appear under `flutter: assets:` — that
 list is the only thing Flutter bundles from. A release build fills `packed` and
-then empties `output` of everything it generated, so the two are listed together
-and only one of them ever ships anything.
+leaves `output` alone, so both directories ship and a packed asset is bundled
+twice. `strip-originals: true` empties `output` of everything the build packed;
+see [Both copies ship by default](#both-copies-ship-by-default).
 
 ---
 
@@ -108,8 +109,8 @@ definition, a font — directly in the output directory. Codegen does not
 recognise them, so they are never packed and never stripped.
 
 An image or audio file you put there is a different matter. It ships, so it gets
-packed, so stripping the loose copies would take it — and compaction has no
-source to rebuild it from. A release build stops instead of deleting one; see
+packed, and a build with `strip-originals: true` deletes the loose copy that
+compaction has no source to rebuild. See
 [Originals in the output directory](#originals-in-the-output-directory).
 
 ---
@@ -283,49 +284,53 @@ are no longer built.
 ### What packing does not do
 
 It writes the chunks and **leaves the loose assets where they are**, so running
-`flutter build` straight after bundles both. Only `good build` strips them — and
-only there, because only there is good the one who compacted them and can say
-which files are safe to delete.
-
-```console
-stripped 1 loose asset(s) now carried in chunks; `good assets compact` rebuilds them
-```
+`flutter build` straight after bundles both. Removing them is `good build`'s to
+do, and only when the project sets `strip-originals: true`, because only there
+is good the one who compacted them and can say which files are safe to delete.
 
 Deleting a working directory's assets out from under someone who asked for a
 pack is not `good assets pack`'s call to make.
 
-### Originals in the output directory
+### Both copies ship by default
 
-`good build` strips the loose copy of everything it packed, and compaction can
-rebuild anything it produced. A file you placed in `assets/` yourself came from
-no source, so stripping it destroys the only copy.
+`strip-originals` is off unless a project sets it, and nothing else turns it on.
+A build that packs writes the chunks and leaves `assets/` as it found it, so
+everything packed is in the bundle twice — legible under `assets/`, and again
+inside an encrypted chunk. The build prints nothing about it.
 
-The build refuses when the packed set holds one:
+Setting it removes the loose copy:
 
-```console
-1 packed asset(s) cannot be rebuilt if the build strips them:
-    assets/handmade.png
-Compaction did not produce these, so deleting the loose copy destroys the only
-one. Leaving it in place ships a legible copy beside the encrypted chunk.
-
-Choose one:
-  - move them into assets_src/ so compaction owns them, or
-  - add `strip-originals: true` under `good: assets:` in pubspec.yaml to accept
-    the deletion.
-```
-
-Moving the file into `assets_src/` is the fix that keeps both properties: the
-art survives, and the release ships it only inside a chunk. Opting in is for a
-project where `assets_src/` already holds everything and `assets/` is
-disposable:
-
-```yaml
+```yaml title="pubspec.yaml"
 good:
   assets:
     strip-originals: true
 ```
 
-The build then strips those files and names each one as it goes.
+`good build` then deletes the loose copy of every asset it packed, and says how
+many went:
+
+```console
+  stripped 1 loose asset(s) now carried in chunks; `good assets compact` rebuilds them
+```
+
+What that costs is direct bundle access. `Image.asset`, `rootBundle.load` and
+anything else naming a file under `assets/` stop resolving the stripped paths,
+and only good's own asset API reaches the bytes. A project that draws packed
+assets through Flutter's own widgets has to leave this off and ship both copies.
+
+### Originals in the output directory
+
+Compaction rebuilds anything it produced. A file you placed in `assets/`
+yourself came from no source, so a build that strips it destroys the only copy.
+`good build` names each one as it deletes it:
+
+```console
+  1 of those were not built from assets_src/, so compaction cannot bring them back. Keep the originals under assets_src/:
+    assets/handmade.png
+```
+
+Moving the file into `assets_src/` is the fix that keeps both properties: the
+art survives, and a stripping release ships it only inside a chunk.
 
 ---
 

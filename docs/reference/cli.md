@@ -169,9 +169,10 @@ mapping back into `asset_key.dart`.
 | `--dry-run` | off | Report the plan, write nothing |
 | `--verbose` | off | Show chunk membership |
 
-Writes the chunks and **leaves the loose assets alone**. Only `good build` strips
-them — only there is good the one who compacted them and able to say which files
-are safe to delete.
+Writes the chunks and **leaves the loose assets alone**. Removing them is `good
+build`'s to do, and only when the project sets `strip-originals: true` — only
+there is good the one who compacted them and able to say which files are safe to
+delete.
 
 `--mode=development` writes nothing and **clears** the mapping, which is what
 switches a project back to loose assets.
@@ -253,10 +254,12 @@ and `assets/` mean the same thing.
 Both `output` and `packed` must appear under `flutter: assets:` — that list is
 the only thing Flutter bundles from.
 
-`strip-originals` covers one case: a file you put in `output` yourself, which
-packing takes and stripping would delete with no source to rebuild it from. The
-build stops and names those files. Turn it on when `source` holds every original
-and `output` is disposable.
+`strip-originals` is off, so a build that packs leaves the loose copies in
+`output` and every packed asset ships twice. Turning it on deletes the loose
+copy of each one: those paths stop resolving through `Image.asset`, and a file
+you put in `output` yourself is deleted with no source to rebuild it from. The
+build names each of those as it goes. Turn it on when `source` holds every
+original and `output` is disposable.
 
 ---
 

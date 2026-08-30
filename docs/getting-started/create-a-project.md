@@ -151,8 +151,11 @@ dependencies:
 flutter:
   uses-material-design: true
 
-  # Both directories ship. `good build` fills assets/packed/ and empties
-  # assets/ of what it packed, so each asset is bundled exactly once.
+  # Both directories ship. `good build` fills assets/packed/ and
+  # leaves the loose copies in assets/, so a packed asset is bundled
+  # twice. Set `strip-originals: true` under `good: assets:` to delete
+  # them - Image.asset stops resolving those paths once they are gone.
+  # Keep your originals in assets_src/; assets/ is generated.
   assets:
     - assets/
     - assets/packed/
