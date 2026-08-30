@@ -123,6 +123,7 @@ export 'src/scene.dart';
 export 'src/camera_view.dart' hide GameCameraDescriptor;
 export 'src/scene_handle.dart';
 export 'src/struct.dart';
+export 'src/time.dart';
 export 'src/system.dart';
 export 'src/triple_buffer.dart';
 export 'src/widget/game_view.dart';

@@ -19,6 +19,7 @@ import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/struct.dart';
 import 'package:good/src/system.dart';
+import 'package:good/src/time.dart';
 
 /// The game-isolate half of a game: **mutations happen here**.
 ///
@@ -321,7 +322,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// this is the simulation-side spelling of the same number.
   int get tick => runtime.tick;
 
-  /// Simulated seconds since the game came up: [tick] times `fixedTimeStep`.
+  /// Simulated time since the game came up: [tick] times `fixedTimeStep`.
   ///
   /// Derived, never accumulated (rule 10). A separate `_elapsed` field added
   /// to on every step would drift from the tick count by a float epsilon per
@@ -331,7 +332,8 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// Wall clock has nothing to do with it: a game stepped by hand from a test
   /// and one running on a timer report the same time for the same tick, which
   /// is what makes an animation reproducible.
-  double get time => tick * game.fixedTimeStep.inMicroseconds / 1000000.0;
+  Seconds get time =>
+      Seconds.ofMicroseconds(tick * game.fixedTimeStep.inMicroseconds);
 
   // --- declaration hooks ------------------------------------------------
 
@@ -1310,7 +1312,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // generator precisely so it can be resumed from here - an `async*` one
     // would resume on a microtask, after `commitTick`, and every write it made
     // would be discarded by the next `beginTick`. See `Coroutine`'s doc.
-    coroutines.step(game.fixedTimeStep.inMicroseconds / 1000000.0);
+    coroutines.step(Seconds.ofDuration(game.fixedTimeStep));
     // One dispatch over a list resolved at boot. `const` because the event
     // carries nothing, so the hottest event in the engine allocates nothing.
     fixedTickEvent.call();

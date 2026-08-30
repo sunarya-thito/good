@@ -2,6 +2,7 @@ import 'package:meta/meta.dart';
 
 import 'package:good/src/animation/struct.dart';
 import 'package:good/src/coroutine/coroutine.dart';
+import 'package:good/src/time.dart';
 
 /// Timelines, on every `EntityStruct`.
 ///
@@ -26,10 +27,13 @@ import 'package:good/src/coroutine/coroutine.dart';
 ///     timeline = descriptor.has(EnemyTimeline());
 ///   }
 ///
-///   void enter(Entity self) => startedAt[self] = simulationState.time;
+///   void enter(Entity self) =>
+///       startedAt[self] = simulationState.time.inSeconds;
 ///
 ///   void update(Entity self) {
-///     final at = timeline.entrance.animate(offset: -startedAt[self]);
+///     final at = timeline.entrance.animate(
+///       offset: -Seconds(startedAt[self]),
+///     );
 ///     transformOffsetX[self] = timeline.x[at];
 ///   }
 /// }
@@ -76,7 +80,7 @@ mixin Animations on Coroutines {
   CoroutineFuture startAnimation(
     TimelineAnimation animation,
     List<TrackBinding> bindings, {
-    double duration = 0.0,
+    Seconds duration = Seconds.zero,
     WrapMode wrapMode = WrapMode.clamp,
     bool reverse = false,
   }) => simulationState.coroutines.start(

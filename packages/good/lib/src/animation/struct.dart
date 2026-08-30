@@ -5,6 +5,7 @@ import 'package:meta/meta.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/scene.dart';
+import 'package:good/src/time.dart';
 
 /// What happens once an animation runs past its own length.
 enum WrapMode {
@@ -38,9 +39,9 @@ extension type const TimelineSample._(int value) {
   int get clipId => value >> 48;
   int get micros => value & 0xFFFFFFFFFFFF;
 
-  /// Seconds into the clip. Convenience for a caller doing its own maths;
-  /// nothing in the sampling path uses it.
-  double get seconds => micros / 1000000.0;
+  /// How far into the clip this sample sits. Convenience for a caller doing
+  /// its own maths; nothing in the sampling path uses it.
+  Seconds get elapsed => Seconds.ofMicroseconds(micros);
 }
 
 /// How two keyframe values are blended.
@@ -160,9 +161,9 @@ final class TrackBinding<T> {
 /// toTheLeft = descriptor.has()
 ///   ..track(positionX)
 ///       .key(0)
-///       .key(100, 1.0, Curves.easeIn)
-///       .hold(2.0)
-///       .key(0, 1.0, Curves.easeOut);
+///       .key(100, Seconds(1.0), Curves.easeIn)
+///       .hold(Seconds(2.0))
+///       .key(0, Seconds(1.0), Curves.easeOut);
 /// ```
 final class TimelineAnimation {
   @internal
@@ -176,10 +177,10 @@ final class TimelineAnimation {
 
   int _lengthMicros = 0;
 
-  /// How long the clip runs, in seconds: the furthest keyframe on any of its
-  /// tracks. Derived, not declared, so adding a key to one track cannot
-  /// leave a separately-stated duration wrong (rule 10).
-  double get length => _lengthMicros / 1000000.0;
+  /// How long the clip runs: the furthest keyframe on any of its tracks.
+  /// Derived, not declared, so adding a key to one track cannot leave a
+  /// separately-stated duration wrong (rule 10).
+  Seconds get length => Seconds.ofMicroseconds(_lengthMicros);
 
   /// Starts keying [track] in this clip, from time zero.
   ///
@@ -212,19 +213,20 @@ final class TimelineAnimation {
   /// [duration] overrides the clip's natural [length] - the same keys played
   /// faster or slower. Zero (the default) means use the natural length.
   ///
-  /// Allocation-free: a `TimelineSample` is an `int`.
+  /// Allocation-free: a `TimelineSample` is an `int` and a [Seconds] is a
+  /// `double`.
   TimelineSample animate({
-    double offset = 0.0,
-    double duration = 0.0,
+    Seconds offset = Seconds.zero,
+    Seconds duration = Seconds.zero,
     WrapMode wrapMode = WrapMode.clamp,
     bool reverse = false,
   }) {
-    final lengthMicros = duration > 0
-        ? (duration * 1000000.0).round()
+    final lengthMicros = duration > Seconds.zero
+        ? duration.inMicroseconds
         : _lengthMicros;
     if (lengthMicros <= 0) return TimelineSample.pack(clipId, 0);
 
-    var micros = ((_owner.state.time + offset) * 1000000.0).round();
+    var micros = (_owner.state.time + offset).inMicroseconds;
     switch (wrapMode) {
       case WrapMode.clamp:
         if (micros < 0) micros = 0;
@@ -242,7 +244,9 @@ final class TimelineAnimation {
 
     // Rescaled onto the clip's own key times, so `duration` genuinely means
     // "play the same keys over this long" rather than "cut them off early".
-    if (duration > 0 && lengthMicros != _lengthMicros && _lengthMicros > 0) {
+    if (duration > Seconds.zero &&
+        lengthMicros != _lengthMicros &&
+        _lengthMicros > 0) {
       micros = (micros * _lengthMicros / lengthMicros).round();
     }
     return TimelineSample.pack(clipId, micros);
@@ -251,12 +255,12 @@ final class TimelineAnimation {
   @internal
   Iterable play(
     List<TrackBinding> bindings, {
-    required double duration,
+    required Seconds duration,
     required WrapMode wrapMode,
     required bool reverse,
   }) sync* {
     final startedAt = _owner.state.time;
-    final length = duration > 0 ? duration : this.length;
+    final length = duration > Seconds.zero ? duration : this.length;
     while (true) {
       final elapsed = _owner.state.time - startedAt;
       final sample = animate(
@@ -285,45 +289,47 @@ final class TrackAnimator<T> {
 
   int _atMicros = 0;
 
-  /// Reaches [value] [duration] seconds after the previous keyframe, easing
-  /// along [curve].
+  /// Reaches [value] [duration] after the previous keyframe, easing along
+  /// [curve].
   ///
   /// Durations are **relative**: each call advances the write head, so
-  /// `.key(0).key(100, 1.0).key(0, 1.0)` is a two-second clip. Absolute times
-  /// would make inserting a keyframe mean renumbering every one after it.
+  /// `.key(0).key(100, Seconds(1.0)).key(0, Seconds(1.0))` is a two-second
+  /// clip. Absolute times would make inserting a keyframe mean renumbering
+  /// every one after it.
   ///
-  /// The first key is normally placed at zero with the default `duration: 0`.
+  /// The first key is normally placed at zero with the default
+  /// [Seconds.zero].
   TrackAnimator<T> key(
     T value, [
-    double duration = 0.0,
+    Seconds duration = Seconds.zero,
     Curve curve = Curves.linear,
   ]) {
-    if (duration < 0) {
+    if (duration < Seconds.zero) {
       throw ArgumentError.value(
-        duration,
+        duration.inSeconds,
         'duration',
         'a keyframe cannot arrive before the one it follows',
       );
     }
-    _atMicros += (duration * 1000000.0).round();
+    _atMicros += duration.inMicroseconds;
     _keys.add(_Key<T>(_atMicros, value, curve));
     _clip._grewTo(_atMicros);
     return this;
   }
 
-  /// Holds the previous value for [seconds] before the next [key].
+  /// Holds the previous value for [duration] before the next [key].
   ///
   /// Sugar for repeating the last keyframe, and worth having: written by hand
   /// it means naming the same value twice, and the two copies then have to be
   /// kept in step by whoever edits the clip (rule 10).
-  TrackAnimator<T> hold(double seconds) {
+  TrackAnimator<T> hold(Seconds duration) {
     if (_keys.isEmpty) {
       throw StateError(
         'hold() has nothing to hold - key() a value first, so there is '
         'something for the clip to sit on.',
       );
     }
-    return key(_keys[_keys.length - 1].value, seconds);
+    return key(_keys[_keys.length - 1].value, duration);
   }
 }
 

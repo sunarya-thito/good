@@ -31,12 +31,16 @@ class _EnemyTimeline extends TimelineStruct {
   void describeAnimation(TimelineAnimationDescriptor descriptor) {
     // 0 -> 100 over one second, hold two, back to 0 over one. Four seconds.
     entrance = descriptor.has()
-      ..track(x).key(0.0).key(100.0, 1.0).hold(2.0).key(0.0, 1.0);
+      ..track(x)
+          .key(0.0)
+          .key(100.0, Seconds(1.0))
+          .hold(Seconds(2.0))
+          .key(0.0, Seconds(1.0));
     // A second clip over the *same* struct's tracks. `y` is keyed here and
     // nowhere in `entrance`, which is what the default-value fallback is for.
     blink = descriptor.has()
-      ..track(y).key(0.0).key(10.0, 1.0)
-      ..track(frame).key(0).key(3, 1.0);
+      ..track(y).key(0.0).key(10.0, Seconds(1.0))
+      ..track(frame).key(0).key(3, Seconds(1.0));
   }
 }
 
@@ -136,13 +140,13 @@ void main() {
     test('a clip is as long as its furthest keyframe', () async {
       run = await _boot();
       expect(
-        _timeline().entrance.length,
+        _timeline().entrance.length.inSeconds,
         closeTo(4.0, 1e-9),
         reason:
             '0 + 1s rise + 2s hold + 1s fall - derived from the keys '
             'rather than declared beside them, so they cannot disagree',
       );
-      expect(_timeline().blink.length, closeTo(1.0, 1e-9));
+      expect(_timeline().blink.length.inSeconds, closeTo(1.0, 1e-9));
     });
 
     test('clips get their own ids, and a sample carries which', () async {
@@ -154,7 +158,34 @@ void main() {
       final sample = TimelineSample.pack(1, 250000);
       expect(sample.clipId, 1);
       expect(sample.micros, 250000);
-      expect(sample.seconds, closeTo(0.25, 1e-9));
+      expect(sample.elapsed.inSeconds, closeTo(0.25, 1e-9));
+    });
+
+    test('a keyframe written in milliseconds lands in microseconds', () async {
+      run = await _boot();
+      // A key placed with `Seconds.ofMilliseconds(250)` has to sit at 250000
+      // microseconds. A seconds round-trip cannot see this: it would pass with
+      // the milliseconds factor set to anything, because nothing on that path
+      // divides by a thousand.
+      final track = Track<double>(0, (a, b, t) => a + (b - a) * t);
+      _timeline().blink
+          .track(track)
+          .key(0.0)
+          .key(100.0, Seconds.ofMilliseconds(250));
+
+      expect(track[TimelineSample.pack(1, 250000)], closeTo(100.0, 1e-9));
+      expect(
+        track[TimelineSample.pack(1, 125000)],
+        closeTo(50.0, 1e-9),
+        reason: 'halfway in time is halfway in value on a linear track',
+      );
+      expect(
+        track[TimelineSample.pack(1, 250)],
+        lessThan(1.0),
+        reason:
+            '250 microseconds in is a thousandth of the way, which is what '
+            'fails if 250 milliseconds were stored as 250 microseconds',
+      );
     });
 
     test('keying one track twice in one clip is refused', () async {
@@ -169,11 +200,35 @@ void main() {
       );
     });
 
+    test('a keyframe cannot arrive before the one it follows', () async {
+      run = await _boot();
+      // Nothing downstream refuses a negative duration - the write head just
+      // moves backwards and the key lands at a negative time - so this guard
+      // is the only thing between a typo and a clip nothing can sample. The
+      // assertion is on the message and the argument name, not on the type:
+      // `RangeError` is an `ArgumentError`, so `throwsArgumentError` would
+      // pass on a range failure raised somewhere else entirely.
+      final track = Track<double>(0, (a, b, t) => a + (b - a) * t);
+      expect(
+        () => _timeline().blink.track(track).key(0.0, Seconds(-1.0)),
+        throwsA(
+          isA<ArgumentError>()
+              .having(
+                (e) => e.message,
+                'message',
+                'a keyframe cannot arrive before the one it follows',
+              )
+              .having((e) => e.name, 'name', 'duration')
+              .having((e) => e.invalidValue, 'invalidValue', -1.0),
+        ),
+      );
+    });
+
     test('hold() with nothing to hold is refused', () async {
       run = await _boot();
       final timeline = _timeline();
       expect(
-        () => timeline.blink.track(timeline.x).hold(1.0),
+        () => timeline.blink.track(timeline.x).hold(Seconds(1.0)),
         throwsStateError,
       );
     });
@@ -238,7 +293,7 @@ void main() {
       // fixture because the fallback is what is under test.
       final track = Track<String>('idle', null);
       final clip = _timeline().blink;
-      clip.track(track).key('a').key('b', 1.0);
+      clip.track(track).key('a').key('b', Seconds(1.0));
 
       expect(track[TimelineSample.pack(1, 0)], 'a');
       expect(
@@ -253,7 +308,10 @@ void main() {
       run = await _boot();
       final timeline = _timeline();
       final eased = Track<double>(0, (a, b, t) => a + (b - a) * t);
-      timeline.blink.track(eased).key(0.0).key(100.0, 1.0, Curves.easeIn);
+      timeline.blink
+          .track(eased)
+          .key(0.0)
+          .key(100.0, Seconds(1.0), Curves.easeIn);
 
       // easeIn starts slow, so halfway through the *time* is well below
       // halfway through the value.
@@ -268,11 +326,11 @@ void main() {
       final state = run.state;
 
       _tick(10); // t = 1.0s
-      expect(state.time, closeTo(1.0, 1e-9));
+      expect(state.time.inSeconds, closeTo(1.0, 1e-9));
 
       // Two entities, started a second apart, sampling the same clip.
-      final early = timeline.entrance.animate(offset: -0.0);
-      final late = timeline.entrance.animate(offset: -1.0);
+      final early = timeline.entrance.animate(offset: -Seconds(0.0));
+      final late = timeline.entrance.animate(offset: -Seconds(1.0));
       expect(early.micros, 1000000);
       expect(
         late.micros,
@@ -326,7 +384,7 @@ void main() {
 
       // The same four seconds of keys played over two. One second in is
       // halfway, which on the original key times is two seconds.
-      final sample = timeline.entrance.animate(duration: 2.0);
+      final sample = timeline.entrance.animate(duration: Seconds(2.0));
       expect(sample.micros, 2000000);
       expect(
         timeline.x[sample],
@@ -346,7 +404,7 @@ void main() {
         // half-written timeline is in.
         final bare = _Bare()
           ..initializeTimeline(run.state.singleScene<_Scene>());
-        expect(bare.empty.length, 0.0);
+        expect(bare.empty.length.inSeconds, 0.0);
         expect(bare.empty.animate().micros, 0);
         expect(
           bare.empty.animate(wrapMode: WrapMode.loop).micros,

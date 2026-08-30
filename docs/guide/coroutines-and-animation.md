@@ -244,11 +244,15 @@ class EnemyTimeline extends TimelineStruct {
   void describeAnimation(TimelineAnimationDescriptor descriptor) {
     // 0 -> 100 over one second, hold two, back to 0 over one. Four seconds.
     entrance = descriptor.has()
-      ..track(x).key(0.0).key(100.0, 1.0).hold(2.0).key(0.0, 1.0);
+      ..track(x)
+          .key(0.0)
+          .key(100.0, Seconds(1.0))
+          .hold(Seconds(2.0))
+          .key(0.0, Seconds(1.0));
 
     blink = descriptor.has()
-      ..track(y).key(0.0).key(10.0, 1.0)
-      ..track(frame).key(0).key(3, 1.0);
+      ..track(y).key(0.0).key(10.0, Seconds(1.0))
+      ..track(frame).key(0).key(3, Seconds(1.0));
   }
 }
 ```
@@ -286,7 +290,7 @@ void onFixedUpdate() {
     final transform = group<Transform2D>();
     for (final entity in group) {
       final sample = enemy.timeline.entrance.animate(
-        offset: -enemy.startedAt[entity],
+        offset: -Seconds(enemy.startedAt[entity]),
         wrapMode: WrapMode.loop,
       );
       transform
@@ -377,17 +381,18 @@ final x = given<Track<double>>();
 ```dart
 entrance = descriptor.has()
   ..track(x)
-      .key(0.0)                          // (1)!
-      .key(100.0, 1.0)                   // (2)!
-      .hold(2.0)                         // (3)!
-      .key(0.0, 1.0, Curves.easeInOut);  // (4)!
+      .key(0.0)                                  // (1)!
+      .key(100.0, Seconds(1.0))                  // (2)!
+      .hold(Seconds(2.0))                        // (3)!
+      .key(0.0, Seconds(1.0), Curves.easeInOut); // (4)!
 ```
 
 1. `key(value)` with no duration places the **first** keyframe at t = 0. The
    track reads `0.0` at the start of the clip.
 2. `key(value, duration)` — reach `100.0` **one second after the previous
-   keyframe**. Between them the value is interpolated.
-3. `hold(seconds)` — stay at the previous value for two seconds. Sugar for
+   keyframe**. Between them the value is interpolated. `Seconds` carries the
+   unit, so the number says what it means where it is written.
+3. `hold(duration)` — stay at the previous value for two seconds. Sugar for
    repeating the last keyframe: written by hand it means
    naming the same value twice, and the two copies then have to be kept in step
    by whoever edits the clip.
@@ -445,8 +450,9 @@ keys: 0 + 1 + 2 + 1.</figcaption>
 </figure>
 
 !!! important "Durations are **relative**, not absolute"
-    Each call advances a write head, so `.key(0).key(100, 1.0).key(0, 1.0)` is a
-    **two-second** clip — not a one-second one with keys at t = 1 and t = 1.
+    Each call advances a write head, so
+    `.key(0).key(100, Seconds(1.0)).key(0, Seconds(1.0))` is a **two-second**
+    clip — not a one-second one with keys at t = 1 and t = 1.
 
     Relative instead of absolute because absolute times would make inserting a
     keyframe mean renumbering every one after it.
@@ -454,9 +460,9 @@ keys: 0 + 1 + 2 + 1.</figcaption>
 | Call | Meaning |
 |---|---|
 | `key(v)` | Be `v` at the current position on the timeline. Used for the first key |
-| `key(v, d)` | Reach `v` `d` seconds after the previous key, interpolating |
+| `key(v, d)` | Reach `v` a `Seconds` `d` after the previous key, interpolating |
 | `key(v, d, curve)` | The same, shaped by `curve` |
-| `hold(d)` | Keep the previous value for `d` seconds |
+| `hold(d)` | Keep the previous value for a `Seconds` `d` |
 
 A negative duration throws — a keyframe cannot arrive before the one it follows.
 `hold()` before any `key()` throws too: there is nothing to hold.
@@ -465,7 +471,7 @@ A negative duration throws — a keyframe cannot arrive before the one it follow
 
 <!-- snippet: skip a cascade fragment, not a statement -->
 ```dart
-.key(100.0, 1.0, Curves.easeIn)
+.key(100.0, Seconds(1.0), Curves.easeIn)
 ```
 
 reads as "**ease into** 100", not "ease out of whatever came before". Any
@@ -483,7 +489,7 @@ number and is the honest fallback for a type that cannot be interpolated.
 
 <!-- snippet: skip a cascade fragment, not a statement -->
 ```dart
-..track(frame).key(0).key(3, 1.0)   // frames 0,1,2,3 — stepped, not blended
+..track(frame).key(0).key(3, Seconds(1.0))  // frames 0,1,2,3 — stepped
 ```
 
 #### Multiple tracks in one clip
@@ -498,8 +504,8 @@ final frame = given<Track<int>>();
 -->
 ```dart
 blink = descriptor.has()
-  ..track(y).key(0.0).key(10.0, 1.0)
-  ..track(frame).key(0).key(3, 1.0);
+  ..track(y).key(0.0).key(10.0, Seconds(1.0))
+  ..track(frame).key(0).key(3, Seconds(1.0));
 ```
 
 Each `track(...)` starts its own write head at zero, so the two chains are
