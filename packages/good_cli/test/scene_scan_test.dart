@@ -5,6 +5,8 @@ import 'package:good_cli/src/generate/assets.dart';
 import 'package:good_cli/src/generate/scene_scan.dart';
 import 'package:test/test.dart';
 
+import '_temp.dart';
+
 // Which scene needs which asset, and therefore which chunk each asset lands
 // in.
 //
@@ -16,10 +18,7 @@ import 'package:test/test.dart';
 // and one is about what happens when attribution fails.
 
 Directory _project(String source, {List<String> assets = const <String>[]}) {
-  final dir = Directory.systemTemp.createTempSync('good_scenes');
-  addTearDown(() {
-    if (dir.existsSync()) dir.deleteSync(recursive: true);
-  });
+  final dir = testTempDir('good_scenes');
   File('${dir.path}/pubspec.yaml').writeAsStringSync('''
 name: demo
 flutter:

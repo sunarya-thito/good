@@ -8,6 +8,8 @@ import 'package:good_cli/src/assets/pack.dart';
 import 'package:good_cli/src/verbosable.dart';
 import 'package:test/test.dart';
 
+import '_temp.dart';
+
 // Packing: how assets are grouped, what a chunk looks like on disk, and that
 // what comes out of a chunk is exactly what went in.
 //
@@ -31,10 +33,7 @@ final List<int> _key = List<int>.generate(32, (i) => i * 7 % 256);
 Uint8List _bytes(String text) => Uint8List.fromList(utf8.encode(text));
 
 Directory _tempDir() {
-  final dir = Directory.systemTemp.createTempSync('good_pack');
-  addTearDown(() {
-    if (dir.existsSync()) dir.deleteSync(recursive: true);
-  });
+  final dir = testTempDir('good_pack');
   return dir;
 }
 

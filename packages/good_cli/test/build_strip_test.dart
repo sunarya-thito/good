@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:test/test.dart';
 
 import '_cli.dart';
+import '_temp.dart';
 
 // `good build` end to end, as far as the strip.
 //
@@ -34,10 +35,7 @@ bool get _hasFfmpeg {
 }
 
 Directory _project({bool stripOriginals = false}) {
-  final dir = Directory.systemTemp.createTempSync('good_build_strip');
-  addTearDown(() {
-    if (dir.existsSync()) dir.deleteSync(recursive: true);
-  });
+  final dir = testTempDir('good_build_strip');
   Directory('${dir.path}/assets_src').createSync(recursive: true);
   Directory('${dir.path}/assets/packed').createSync(recursive: true);
   const optInBlock = '''
@@ -93,8 +91,6 @@ ProcessResult _good(Directory project, List<String> args) => GoodCli.instance
     .run(<String>[...args, '--project-dir', project.path, '--no-pub-get']);
 
 void main() {
-  tearDownAll(GoodCli.disposeAll);
-
   test(
     'a release build does not delete assets from the project source tree',
     () {

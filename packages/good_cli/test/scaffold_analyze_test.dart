@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:good_cli/src/generate/scaffold.dart';
 import 'package:test/test.dart';
 
+import '_temp.dart';
+
 // Whether a scaffolded project compiles - asked of the analyzer, not of the
 // template text.
 //
@@ -73,10 +75,7 @@ void main() {
     test('a scaffolded ${engine.package} project analyzes clean', () async {
       const projectName = 'scaffold_probe';
       final root = _repoRoot();
-      final dir = Directory.systemTemp.createTempSync('good_scaffold_analyze');
-      addTearDown(() {
-        if (dir.existsSync()) dir.deleteSync(recursive: true);
-      });
+      final dir = testTempDir('good_scaffold_analyze');
 
       final files = scaffoldFiles(
         projectName: projectName,

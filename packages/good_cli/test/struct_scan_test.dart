@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:good_cli/src/generate/struct_scan.dart';
 import 'package:test/test.dart';
 
+import '_temp.dart';
+
 // Two components on one struct declaring the same field name.
 //
 // To Dart this is an override and nothing is wrong. Both field initialisers
@@ -21,10 +23,7 @@ import 'package:test/test.dart';
 
 /// A project directory with one or more library files.
 Directory _project(Map<String, String> files) {
-  final dir = Directory.systemTemp.createTempSync('good_shadow');
-  addTearDown(() {
-    if (dir.existsSync()) dir.deleteSync(recursive: true);
-  });
+  final dir = testTempDir('good_shadow');
   File('${dir.path}/pubspec.yaml').writeAsStringSync('name: demo\n');
   files.forEach((name, source) {
     File('${dir.path}/lib/$name')
@@ -563,10 +562,7 @@ class Player extends EntityStruct with Velocity, Fast {}
   });
 
   test('a project with no lib directory scans clean', () {
-    final dir = Directory.systemTemp.createTempSync('good_shadow_empty');
-    addTearDown(() {
-      if (dir.existsSync()) dir.deleteSync(recursive: true);
-    });
+    final dir = testTempDir('good_shadow_empty');
     final scan = scanStructRules(dir);
     expect(scan.isEmpty, isTrue);
     expect(scan.unresolved, isEmpty);

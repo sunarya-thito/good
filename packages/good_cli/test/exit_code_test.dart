@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:test/test.dart';
 
 import '_cli.dart';
+import '_temp.dart';
 
 // What the shell sees.
 //
@@ -32,10 +33,7 @@ bool get _hasFfmpeg {
 }
 
 Directory _tempDir() {
-  final dir = Directory.systemTemp.createTempSync('good_exit');
-  addTearDown(() {
-    if (dir.existsSync()) dir.deleteSync(recursive: true);
-  });
+  final dir = testTempDir('good_exit');
   return dir;
 }
 
@@ -91,8 +89,6 @@ void _notAnImage(String path) {
 int _run(List<String> args) => GoodCli.instance.run(args).exitCode;
 
 void main() {
-  tearDownAll(GoodCli.disposeAll);
-
   final needsFfmpeg = _hasFfmpeg ? null : 'ffmpeg is not installed';
 
   group('good build', () {

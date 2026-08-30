@@ -7,6 +7,8 @@ import 'package:good_cli/src/generate/assets.dart';
 import 'package:good_cli/src/verbosable.dart';
 import 'package:test/test.dart';
 
+import '_temp.dart';
+
 // Asset compaction: which source becomes which output, which ffmpeg gets used,
 // and what is skipped because it has not changed.
 //
@@ -29,10 +31,7 @@ class _NullOutput implements VerboseOutput {
 }
 
 Directory _tempDir() {
-  final dir = Directory.systemTemp.createTempSync('good_compact');
-  addTearDown(() {
-    if (dir.existsSync()) dir.deleteSync(recursive: true);
-  });
+  final dir = testTempDir('good_compact');
   return dir;
 }
 

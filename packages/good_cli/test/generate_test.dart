@@ -9,6 +9,8 @@ import 'package:good_cli/src/verbosable.dart';
 import 'package:pub_semver/pub_semver.dart';
 import 'package:test/test.dart';
 
+import '_temp.dart';
+
 // Codegen: does a project's *declared* assets become the right enum, and does
 // a bad input fail at generate time rather than at run time.
 //
@@ -43,8 +45,7 @@ Version _packageVersion(String package) {
 }
 
 Directory _project(String pubspec, List<String> files) {
-  final dir = Directory.systemTemp.createTempSync('good_cli_test');
-  addTearDown(() => dir.deleteSync(recursive: true));
+  final dir = testTempDir('good_cli_test');
   File('${dir.path}/pubspec.yaml').writeAsStringSync(pubspec);
   for (final path in files) {
     final file = File('${dir.path}/$path');
@@ -269,8 +270,7 @@ flutter:
     });
 
     test('a project with no pubspec says so', () {
-      final dir = Directory.systemTemp.createTempSync('good_cli_empty');
-      addTearDown(() => dir.deleteSync(recursive: true));
+      final dir = testTempDir('good_cli_empty');
       expect(() => scanAssets(dir), throwsArgumentError);
     });
   });

@@ -5,6 +5,8 @@ import 'package:good_cli/src/verbosable.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
+import '_temp.dart';
+
 // Where ffmpeg comes from, and in what order.
 //
 // The order is the whole of the interesting logic here, and getting it wrong
@@ -39,10 +41,7 @@ class _Recording implements VerboseOutput {
 }
 
 Directory _tempDir() {
-  final dir = Directory.systemTemp.createTempSync('good_ffmpeg');
-  addTearDown(() {
-    if (dir.existsSync()) dir.deleteSync(recursive: true);
-  });
+  final dir = testTempDir('good_ffmpeg');
   return dir;
 }
 

@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:good_cli/src/assets/strip.dart';
 import 'package:test/test.dart';
 
+import '_temp.dart';
+
 // What a release build is allowed to delete.
 //
 // This is the one step in the pipeline that removes files a person might have
@@ -11,10 +13,7 @@ import 'package:test/test.dart';
 // copy left anywhere.
 
 Directory _assets(List<String> names) {
-  final dir = Directory.systemTemp.createTempSync('good_strip');
-  addTearDown(() {
-    if (dir.existsSync()) dir.deleteSync(recursive: true);
-  });
+  final dir = testTempDir('good_strip');
   for (final name in names) {
     File('${dir.path}/$name')
       ..parent.createSync(recursive: true)
