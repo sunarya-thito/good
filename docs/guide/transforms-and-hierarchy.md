@@ -183,6 +183,26 @@ sees needs this component.
     Rotating one hub entity moves an entire swarm, and the only line of code
     that runs is the one writing the hub's rotation.
 
+## `ScreenTransform2D`
+
+The third space, and the one the hierarchy does not reach. Mix it in beside
+`Transform2D` and the offsets become view units measured from an anchor on the
+view — a backdrop that fills the viewport, a badge in a corner — with the
+camera's zoom and position both out of the arithmetic.
+
+It cannot be mixed in beside `WorldTransform2D`; a prefab carrying both trips a
+debug assert. An ancestor's offset is world units and this entity's is view
+units, so there is no composition that means anything, and a parent and a child
+anchored to two different corners share no origin to compose through.
+
+A screen-space entity may still be a `Child`. `WorldTransformSystem`'s query
+requires `WorldTransform2D`, so nothing composes it: it draws where its own
+offsets put it, and a parent that moves or turns takes it nowhere. Group
+screen-space art with several `Sprite`s on one entity.
+
+See [Screen space](rendering.md#screen-space) for the anchors, the per-axis
+sizing and the draw layers.
+
 ## Phase ordering
 
 `WorldTransformSystem` reads local transforms and writes world ones, so a system

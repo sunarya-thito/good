@@ -10,7 +10,7 @@ Last verified: **2026-08-30**, on `master`.
 | Package | State | Notes |
 |---|---|---|
 | `good` | **Working** | The kernel is real and tested — ECS, memory pool, ring buffers, scheduler, scenes, hierarchy, input, assets, coroutines, timelines, `GameView`, on-screen sticks |
-| `goo2d` | **Working** | Transforms, world transforms, camera, colliders, sprite rendering, grid-font text, debug draw, mouse picking |
+| `goo2d` | **Working** | Transforms, world transforms, screen space, camera, colliders, sprite rendering, grid-font text, debug draw, mouse picking |
 | `good_audio_soloud` | **Plays clips on five buses** | The `AudioBackend` implementation, over SoLoud. Play, set a volume, stop. Bus levels and the voice budget are counted in `good`. No looping, loop points, fades or web |
 | `good_cli` | **Working** | `create`, `generate`, `assets compact`, `assets pack`, `build windows/linux/android/ios`. Verified end to end |
 | `goo2d_ffi_box2d` | **Working** | Box2D v3.1.1 vendored, shim written, bindings generated, builds on Windows/Linux/Android/macOS/iOS |
@@ -45,6 +45,13 @@ Deferred, and documented in place instead of left as silent gaps.
 ### Engine
 
 - **Array-typed `DataDescriptor` fields** in the codegen path
+- **Screen space beyond anchoring and view-fraction sizing.**
+  `ScreenTransform2D` anchors an entity to a point on the view, sizes each axis
+  in view units or as a fraction of the view, and draws it in a layer behind or
+  in front of the world. Not there: parallax (a scroll factor against the
+  camera), texture tiling with a UV origin, and the aspect-driven fit modes —
+  `auto`, `cover` and `contain` — which need a decoded texture's dimensions on
+  the game isolate
 - **Z-ordering** beyond declaration order and the `zIndex` sort
 - **Skipping work for a subtree nothing moved.** A sprite outside the camera's
   viewport is now dropped before it is queued, but a static subtree is still
@@ -60,7 +67,8 @@ Deferred, and documented in place instead of left as silent gaps.
   bitmap atlas you supply, laid out by arithmetic on the game isolate. Not
   there: proportional metrics, kerning, line wrapping, shaping, `dart:ui`
   rasterisation, runtime font loading, and a font shipped with the engine.
-  Screen-space text is not coming either — a HUD is widgets
+  Screen-space text is not coming either — a HUD is widgets, and a `Text2D`
+  on a `ScreenTransform2D` entity is refused at declare time
 - **Runtime inspection beyond debug draw.** `debugDraw` draws lines, circles
   and labels over the world from a system, in world space, on its own buffer
   and its own budget, and a `const bool` takes all of it out of a release

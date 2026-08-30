@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:good/good.dart';
 import 'package:goo2d/src/data/camera.dart';
+import 'package:goo2d/src/data/screen_transform.dart';
 import 'package:goo2d/src/data/world_transform.dart';
 import 'package:goo2d/src/data/transform.dart';
 import 'package:goo2d/src/render/debug_draw_2d.dart';
@@ -692,6 +693,79 @@ class _TransformSource {
   final DataPointer<double> scaleY;
 }
 
+/// Where one archetype's numbers land in the view being drawn: the five terms
+/// the fill pass folds into every quad, and the two that say what a
+/// [Sprite]'s width and height mean.
+///
+/// A world entity and a screen-space one differ in exactly these seven
+/// doubles and in nothing else. So the space is resolved **once per archetype
+/// per view**, and the per-sprite arithmetic never asks which of the two it
+/// is standing on - the same answer [_TransformSource] gives for "which
+/// component holds the transform", for the same measured reason: at 20,000
+/// sprites it is the question that costs, not the answer.
+///
+/// The world case is [CameraProjection.worldToViewX]/[CameraProjection.worldToViewY]
+/// term for term, with the camera's own numbers hoisted out of the loop. It
+/// is spelled as `(x - originX) * zoom + anchorX` and not as a fused
+/// multiply-add so that it stays that mapping exactly, down to the bit, and
+/// the renderer and `MousePickingSystem` cannot drift apart.
+///
+/// The screen case sets `originX`, `originY` to zero and `zoom` to one, which
+/// reduces the identical expression to `x + anchorX` with no rounding of its
+/// own - so both spaces go through one line of arithmetic.
+///
+/// Long-lived instances on [GameRenderer2D], refilled in place. One per
+/// archetype per tick would be an allocation on the frame path.
+final class _ViewPlacement {
+  /// The camera's world position, or zero for a screen-space archetype.
+  double originX = 0;
+  double originY = 0;
+
+  /// Where this archetype's own origin sits in the view: the middle of it for
+  /// a world archetype, and the [ScreenAnchor]'s point for a screen one.
+  double anchorX = 0;
+  double anchorY = 0;
+
+  /// The camera's zoom, or `1` for a screen-space archetype - which is the
+  /// whole of "screen space ignores zoom".
+  double zoom = 1;
+
+  /// What a [Sprite.width]/[Sprite.height] is multiplied by: `1` for a length
+  /// already in view units, and the view's own width or height for a fraction
+  /// of it.
+  double widthScale = 1;
+  double heightScale = 1;
+
+  void world(CameraProjection projection) {
+    originX = projection.originX;
+    originY = projection.originY;
+    anchorX = projection.halfViewWidth;
+    anchorY = projection.halfViewHeight;
+    zoom = projection.zoom;
+    widthScale = 1;
+    heightScale = 1;
+  }
+
+  void screen(CameraProjection projection, ScreenTransform2D screen) {
+    // The size of *this* view, off the projection that resolved it a moment
+    // ago - not off the game, which holds one number for every view at once.
+    // Two views showing one scene at two sizes is the reason none of this is
+    // in the row.
+    final viewWidth = projection.halfViewWidth * 2;
+    final viewHeight = projection.halfViewHeight * 2;
+    final anchor = screen.screenAnchor;
+    originX = 0;
+    originY = 0;
+    zoom = 1;
+    anchorX = anchor.fractionX * viewWidth;
+    anchorY = anchor.fractionY * viewHeight;
+    widthScale = screen.screenWidthAxis == ScreenAxis.fraction ? viewWidth : 1;
+    heightScale = screen.screenHeightAxis == ScreenAxis.fraction
+        ? viewHeight
+        : 1;
+  }
+}
+
 /// Marks an entity as something the renderer should draw, and carries the
 /// [Sprite]s it draws as.
 ///
@@ -947,6 +1021,21 @@ final class _SpriteDrawQueue {
   int _zMin = 0;
   int _zMax = 0;
 
+  /// A slot past every slot, so a boundary never set means "no candidates on
+  /// that side of it".
+  static const int _noLayer = 0x7FFFFFFF;
+
+  /// Where the world layer starts, and where the front screen layer starts -
+  /// slot numbers, and therefore fill order, which is why the fill pass has
+  /// to queue the three layers in the order they draw.
+  ///
+  /// Slots and not a flag per candidate: the layers are queued in three
+  /// contiguous runs, so two integers say the same thing an array of
+  /// `_count` bytes would and cost nothing to keep in step. [sortByZ] uses
+  /// them to lift the layers apart after it has sorted them by depth.
+  int _worldFrom = 0;
+  int _frontFrom = _noLayer;
+
   int _count = 0;
 
   /// Total draw records the queued pairs would write if every one of them
@@ -990,6 +1079,30 @@ final class _SpriteDrawQueue {
     _recordTotal = 0;
     _first = 0;
     _trimmedRecords = 0;
+    // Everything queued is world-layer until the fill pass says otherwise,
+    // which is the whole of a game that has no screen-space entity in it.
+    _worldFrom = 0;
+    _frontFrom = _noLayer;
+  }
+
+  /// Closes the behind-the-world screen layer: everything queued from here on
+  /// is a world sprite or a label.
+  void beginWorldLayer() => _worldFrom = _count;
+
+  /// Closes the world layer: everything queued from here on is drawn in front
+  /// of every world sprite and every label.
+  void beginFrontLayer() => _frontFrom = _count;
+
+  /// Whether the [i]th candidate *in draw order* was placed against the view
+  /// instead of against the camera.
+  ///
+  /// Two comparisons, and the only caller is the nine-slice write path, which
+  /// has to rebuild a placement the fill pass resolved per archetype and then
+  /// let go of. The plain-quad path never asks: its geometry was finished
+  /// while the fill pass still knew the answer.
+  bool isScreenAt(int i) {
+    final slot = _order[i];
+    return slot < _worldFrom || slot >= _frontFrom;
   }
 
   /// Spends a budget of [limit] records over the pairs queued so far, in the
@@ -1353,9 +1466,47 @@ final class _SpriteDrawQueue {
     final range = _zMax - _zMin + 1;
     if (range <= _maxCountingRange) {
       _countingSortByZ(n, range);
-      return;
+    } else {
+      _mergeSortByZ(n);
     }
-    _mergeSortByZ(n);
+    _splitLayers(n);
+  }
+
+  /// Pulls the three layers apart - behind the world, the world, in front of
+  /// it - keeping each one in the depth order the sort just left it in.
+  ///
+  /// A stable partition and not a wider sort key. `zIndex` is a plain `int32`
+  /// a game is free to use as a sparse key, and a HUD that had to out-rank
+  /// every world sprite by z would need a value above whatever the scene
+  /// happens to use: at `1 << 20` the counting sort's range test fails and
+  /// the *entire* queue drops onto the merge sort, and at a "safe" 60,000 the
+  /// bucket array grows to 60,001 ints and is never shrunk. Either way every
+  /// world sprite pays for one HUD element. Three comparisons per candidate
+  /// costs neither.
+  ///
+  /// A frame with only one layer in it - every frame of a game that declares
+  /// no [ScreenTransform2D] - returns on two comparisons and writes nothing.
+  void _splitLayers(int n) {
+    final world = _worldFrom;
+    final front = _frontFrom;
+    if (world <= 0 && front >= n) return;
+    final src = _order;
+    final dst = _merge;
+    var k = 0;
+    for (var i = 0; i < n; i++) {
+      final slot = src[i];
+      if (slot < world) dst[k++] = slot;
+    }
+    for (var i = 0; i < n; i++) {
+      final slot = src[i];
+      if (slot >= world && slot < front) dst[k++] = slot;
+    }
+    for (var i = 0; i < n; i++) {
+      final slot = src[i];
+      if (slot >= front) dst[k++] = slot;
+    }
+    _merge = _order;
+    _order = dst;
   }
 
   /// Stable counting sort over `[_zMin, _zMax]`. See [sortByZ].
@@ -1720,9 +1871,28 @@ class GameRenderer2D extends GameSystem
   // nothing - `WorldTransformSystem`'s own query requires the component - so
   // it draws at its offset from its parent, treated as a world position.
   // Parent a renderable and it wants the mixin.
+  //
+  // `withNone(ScreenTransform2D)` is what splits the two spaces, and it is a
+  // per-archetype answer the storage layer gives for free - not a test inside
+  // the loop. No archetype that predates screen space carries the bit, so
+  // this clause changes nothing about what an existing game draws.
   final _renderables = Query.where()
       .withAll(Renderable2D, Transform2D)
+      .withNone(ScreenTransform2D)
       .withOptional(WorldTransform2D)
+      .build();
+
+  // The other half of that split. `ScreenTransform2D` and `WorldTransform2D`
+  // are mutually exclusive (see `ScreenTransform2D`), so `_sourceOf` binds a
+  // screen archetype's five pointers to its local `Transform2D` without being
+  // told to: there is no composed transform on the row to bind to instead.
+  //
+  // Walked twice per view, once per `ScreenLayer`, each pass keeping the
+  // groups in its own layer. A game has a handful of screen archetypes and
+  // the skipped ones cost a getter and a comparison, against a second query
+  // object and a second set of boundaries to keep in step.
+  final _screenRenderables = Query.where()
+      .withAll(Renderable2D, Transform2D, ScreenTransform2D)
       .build();
 
   // Labels. The same three clauses for the same three reasons - a label needs
@@ -1753,6 +1923,16 @@ class GameRenderer2D extends GameSystem
   /// world point on screen" means exactly the same thing here as it does to
   /// `MousePickingSystem`.
   final CameraProjection _projection = CameraProjection();
+
+  /// The space the fill pass is currently reading, refilled once per
+  /// archetype. See [_ViewPlacement].
+  final _ViewPlacement _placement = _ViewPlacement();
+
+  /// The same thing for the nine-slice write path, which runs after the fill
+  /// pass has finished with [_placement] and rebuilds a placement per sliced
+  /// sprite. Its own instance so that neither pass has to know the other left
+  /// the shared one in a usable state.
+  final _ViewPlacement _writePlacement = _ViewPlacement();
 
   final _SpriteDrawQueue _queue = _SpriteDrawQueue();
 
@@ -2236,87 +2416,43 @@ class GameRenderer2D extends GameSystem
     return source;
   }
 
-  void _renderView(CameraView cameraView, HandoffHandle handle) {
-    lastSpriteCount = 0;
-    lastRecordCount = 0;
-    lastRecordsOverBudget = 0;
-    // Asked *before* any work is done, and that ordering is the point. Null
-    // means main has not taken the last frame yet, so there is nowhere safe to
-    // write - and instead of building a frame and throwing it away, the whole
-    // pass is skipped. The simulation is unaffected; only the drawing stops,
-    // and only while nobody is looking. This is what stops a 200Hz tick
-    // building and discarding two frames out of every three against a 60Hz
-    // display.
-    final frames = handle.tryBuffer;
-    if (frames == null) return;
-    final target = frames.beginWrite();
-    if (target == null) {
-      lastWriteDropped = true;
-      return;
-    }
-
-    // The scratch is built on first use and not at bind time: only the
-    // simulating copy ever gets here, and the handle copy would otherwise
-    // carry a megabyte of bytes it never touches.
-    final scratch = _scratch ??= Uint8List(spriteBatchBytes);
-    final view = _scratchView ??= ByteData.sublistView(scratch);
-
-    // Presentation runs after `commitTick`, which is also after the run's tick
-    // counter was bumped - so the tick whose state this batch depicts is the
-    // current one, not one past it. Deriving the stamp instead of keeping a
-    // counter means a disabled-then-reenabled renderer cannot drift out of
-    // step with the simulation it is depicting.
-    //
-    // Off the state, not the `Game`: a tick belongs to a run, and a `Game` can
-    // be backing several.
-    DrawData2D.writeBatchTick(view, state.tick);
-
-    // Through `CameraProjection`, not by reading the camera's fields
-    // here, so this and `MousePickingSystem` cannot end up applying two
-    // slightly different mappings - picking that disagreed with drawing by a
-    // constant would mean clicking next to what you can see. No camera is
-    // not an error: the projection resolves to the identity plus centring.
-    final projection = _projection..resolve(_cameras, cameraView);
-    final zoom = projection.zoom;
-    // Pass one: collect what is going to be drawn. Nothing is written to the
-    // byte scratch yet, because the order is not known until every candidate
-    // has been seen.
-    final queue = _queue..reset();
-    // **The budget is not spent here.** This pass queues every visible
-    // candidate the camera can see, and `_SpriteDrawQueue.trimToBudget` spends
-    // the budget after the sort, when depth is known. Spending it here meant
-    // spending it in encounter order - archetype registration, then page, then
-    // row - so what a frame lost was whichever archetype was declared last,
-    // which is not a property of the scene at all (#175).
-    //
-    // What that costs is the queue growing to the candidate high-water instead
-    // of the budget: Dart heap, 80 bytes per queued sprite, and it never
-    // crosses the isolate boundary. The native handoff and the byte scratch
-    // are still sized from `maxSpritesPerTick` and the trim is what keeps the
-    // write inside them.
-    //
-    // Culling still comes first, so what is queued is bounded by what the
-    // camera sees rather than by the size of the world.
-    //
-    // This view draws the scene its camera is in and no other - the test is
-    // `projection.shows` below. There is no global front scene: "which scene
-    // do I draw" is a question a *view* answers and there can be several
-    // views; a view with no camera at all scopes nothing out and draws the
-    // whole world.
-    //
-    // Grouped, so the component and its sprite list are resolved once per
-    // archetype instead of once per entity - `entity.get<Renderable2D>()`
-    // hands back the same object for every row, and at 10k rows that shows up
-    // in a profile.
-    //
-    // No `break` out of these loops and no label to break to: there is no
-    // longer anything to break for. Every candidate is queued.
-    for (final group in _renderables.groups()) {
+  /// Queues every visible, sized sprite [query] matches into [_queue].
+  ///
+  /// [layer] is null for the world query and a [ScreenLayer] for the
+  /// screen-space one, where it also selects which groups this pass takes -
+  /// the two screen layers are two passes over one query, because a layer
+  /// belongs to an archetype and the draw order needs them contiguous.
+  ///
+  /// A method and not three copies of the loop: the two spaces differ in the
+  /// seven doubles [_ViewPlacement] holds and in nothing else, so there is
+  /// one body and it branches on the space exactly once per archetype.
+  void _fillSprites(Query query, ScreenLayer? layer) {
+    final projection = _projection;
+    final queue = _queue;
+    for (final group in query.groups()) {
       final renderable = group.get<Renderable2D>();
       final sprites = renderable.sprites;
       // Resolved once per archetype and carried through the queue, so the
       // write pass never asks - see `_SpriteDrawQueue._sources`.
       final source = _sourceOf(group);
+      // And the *space*, resolved once per archetype for the same reason.
+      // Everything below reads seven plain doubles and never asks whether it
+      // is placing against the camera or against the view.
+      final place = _placement;
+      if (layer == null) {
+        place.world(projection);
+      } else {
+        final screen = group.get<ScreenTransform2D>();
+        if (screen.screenLayer != layer) continue;
+        place.screen(projection, screen);
+      }
+      final originX = place.originX;
+      final originY = place.originY;
+      final anchorX = place.anchorX;
+      final anchorY = place.anchorY;
+      final zoom = place.zoom;
+      final widthScale = place.widthScale;
+      final heightScale = place.heightScale;
       for (final entity in group) {
         if (!projection.shows(entity)) continue;
         // An indexed loop, not `for (final sprite in sprites)`: this runs once
@@ -2332,8 +2468,13 @@ class GameRenderer2D extends GameSystem
           // Read into locals, not compared in place: the geometry below
           // needs both, and this row is only cheap to touch while the walk is
           // still on it.
-          final width = sprite.width[entity];
-          final height = sprite.height[entity];
+          // The two scales are `1` for a world archetype and for a screen
+          // one sizing in view units, so this is `x * 1.0` - exact, and the
+          // zero test below still means what it always meant. On a screen
+          // archetype sizing by fraction they are the view's own width and
+          // height, so `width: 1` fills it and `0.5` covers half of it.
+          final width = sprite.width[entity] * widthScale;
+          final height = sprite.height[entity] * heightScale;
           if (width == 0 || height == 0) continue;
 
           // The pivot is a point inside the sprite's own `width x height`
@@ -2355,8 +2496,13 @@ class GameRenderer2D extends GameSystem
           final lx1 = (width - pivotX) * scaleX;
           final ly0 = -pivotY * scaleY;
           final ly1 = (height - pivotY) * scaleY;
-          final tx = projection.worldToViewX(source.x[entity]);
-          final ty = projection.worldToViewY(source.y[entity]);
+          // `CameraProjection.worldToViewX`/`worldToViewY` with the camera's
+          // own numbers hoisted out of the loop - the same expression, term
+          // for term, so picking and drawing cannot drift apart. A screen
+          // archetype supplies origin 0 and zoom 1, which reduces it to
+          // `x + anchorX` and `anchorY - y` with no rounding of its own.
+          final tx = (source.x[entity] - originX) * zoom + anchorX;
+          final ty = (originY - source.y[entity]) * zoom + anchorY;
 
           // Viewport culling, and it comes *before* the budget: a record the
           // camera cannot see must not spend a place another sprite needs.
@@ -2519,7 +2665,17 @@ class GameRenderer2D extends GameSystem
         }
       }
     }
+  }
 
+  /// Queues every visible label into [_queue], after every world sprite and
+  /// before anything pinned to the view.
+  ///
+  /// World space only - `Text2D` refuses to sit on a `ScreenTransform2D`
+  /// entity, so there is no second placement to resolve here.
+  void _fillLabels() {
+    final projection = _projection;
+    final queue = _queue;
+    final zoom = projection.zoom;
     // Labels, walked after the sprites and into the same queue, so a label
     // and a sprite at one `zIndex` put the label in front. That is the useful
     // way round - a name over a body, a damage number over an enemy - and the
@@ -2653,6 +2809,100 @@ class GameRenderer2D extends GameSystem
         );
       }
     }
+  }
+
+  void _renderView(CameraView cameraView, HandoffHandle handle) {
+    lastSpriteCount = 0;
+    lastRecordCount = 0;
+    lastRecordsOverBudget = 0;
+    // Asked *before* any work is done, and that ordering is the point. Null
+    // means main has not taken the last frame yet, so there is nowhere safe to
+    // write - and instead of building a frame and throwing it away, the whole
+    // pass is skipped. The simulation is unaffected; only the drawing stops,
+    // and only while nobody is looking. This is what stops a 200Hz tick
+    // building and discarding two frames out of every three against a 60Hz
+    // display.
+    final frames = handle.tryBuffer;
+    if (frames == null) return;
+    final target = frames.beginWrite();
+    if (target == null) {
+      lastWriteDropped = true;
+      return;
+    }
+
+    // The scratch is built on first use and not at bind time: only the
+    // simulating copy ever gets here, and the handle copy would otherwise
+    // carry a megabyte of bytes it never touches.
+    final scratch = _scratch ??= Uint8List(spriteBatchBytes);
+    final view = _scratchView ??= ByteData.sublistView(scratch);
+
+    // Presentation runs after `commitTick`, which is also after the run's tick
+    // counter was bumped - so the tick whose state this batch depicts is the
+    // current one, not one past it. Deriving the stamp instead of keeping a
+    // counter means a disabled-then-reenabled renderer cannot drift out of
+    // step with the simulation it is depicting.
+    //
+    // Off the state, not the `Game`: a tick belongs to a run, and a `Game` can
+    // be backing several.
+    DrawData2D.writeBatchTick(view, state.tick);
+
+    // Through `CameraProjection`, not by reading the camera's fields
+    // here, so this and `MousePickingSystem` cannot end up applying two
+    // slightly different mappings - picking that disagreed with drawing by a
+    // constant would mean clicking next to what you can see. No camera is
+    // not an error: the projection resolves to the identity plus centring.
+    final projection = _projection..resolve(_cameras, cameraView);
+    // Pass one: collect what is going to be drawn. Nothing is written to the
+    // byte scratch yet, because the order is not known until every candidate
+    // has been seen.
+    final queue = _queue..reset();
+    // **The budget is not spent here.** This pass queues every visible
+    // candidate the camera can see, and `_SpriteDrawQueue.trimToBudget` spends
+    // the budget after the sort, when depth is known. Spending it here meant
+    // spending it in encounter order - archetype registration, then page, then
+    // row - so what a frame lost was whichever archetype was declared last,
+    // which is not a property of the scene at all (#175).
+    //
+    // What that costs is the queue growing to the candidate high-water instead
+    // of the budget: Dart heap, 80 bytes per queued sprite, and it never
+    // crosses the isolate boundary. The native handoff and the byte scratch
+    // are still sized from `maxSpritesPerTick` and the trim is what keeps the
+    // write inside them.
+    //
+    // Culling still comes first, so what is queued is bounded by what the
+    // camera sees rather than by the size of the world.
+    //
+    // This view draws the scene its camera is in and no other - the test is
+    // `projection.shows` below. There is no global front scene: "which scene
+    // do I draw" is a question a *view* answers and there can be several
+    // views; a view with no camera at all scopes nothing out and draws the
+    // whole world.
+    //
+    // Grouped, so the component and its sprite list are resolved once per
+    // archetype instead of once per entity - `entity.get<Renderable2D>()`
+    // hands back the same object for every row, and at 10k rows that shows up
+    // in a profile.
+    //
+    // No `break` out of these loops and no label to break to: there is no
+    // longer anything to break for. Every candidate is queued.
+    //
+    // Three fill passes over two queries, queued in draw order: screen-space
+    // backdrops, then the world, then labels, then screen-space entities
+    // pinned in front. Draw order is fill order plus the depth sort within
+    // each layer - see `_SpriteDrawQueue._splitLayers` for why a screen-space
+    // entity is a layer and not a large `zIndex`.
+    //
+    // The budget still spends from the front of the scene backwards, so what
+    // a frame over budget loses is its backdrop first and its pinned layer
+    // last. A HUD does not vanish because twenty thousand particles were
+    // queued ahead of it.
+    _fillSprites(_screenRenderables, ScreenLayer.behind);
+    queue.beginWorldLayer();
+    _fillSprites(_renderables, null);
+    _fillLabels();
+    queue.beginFrontLayer();
+    _fillSprites(_screenRenderables, ScreenLayer.front);
+
     if (!debugSkipZSort) queue.sortByZ();
     // The budget, spent now that depth is known. On a frame that fits this is
     // a single comparison against the queued total; on one that does not, the
@@ -2696,8 +2946,21 @@ class GameRenderer2D extends GameSystem
       final entity = queue.entityAt(i);
       final sprite = queue.spriteAt(i);
       final source = queue.sourceAt(i);
-      final width = sprite.width[entity];
-      final height = sprite.height[entity];
+      // The space this candidate was filled in, resolved a second time: the
+      // fill pass answered it per archetype and let the answer go, and the
+      // sorted order interleaves archetypes. Two comparisons for a world
+      // sprite and one component lookup for a screen one - affordable here
+      // for the same reason the row reads below are, since a sliced sprite is
+      // a panel and not a particle.
+      final place = _writePlacement;
+      if (queue.isScreenAt(i)) {
+        place.screen(projection, entity.get<ScreenTransform2D>());
+      } else {
+        place.world(projection);
+      }
+      final zoom = place.zoom;
+      final width = sprite.width[entity] * place.widthScale;
+      final height = sprite.height[entity] * place.heightScale;
       final rotation = source.rotation[entity];
       final double cos;
       final double sin;
@@ -2712,8 +2975,8 @@ class GameRenderer2D extends GameSystem
         // `a positive rotation turns counter-clockwise on screen`.
         sin = -math.sin(rotation);
       }
-      final tx = projection.worldToViewX(source.x[entity]);
-      final ty = projection.worldToViewY(source.y[entity]);
+      final tx = (source.x[entity] - place.originX) * zoom + place.anchorX;
+      final ty = (place.originY - source.y[entity]) * zoom + place.anchorY;
       final pivotX =
           sprite.pivotFractionX[entity] * width + sprite.pivotOffsetX[entity];
       final pivotY =
