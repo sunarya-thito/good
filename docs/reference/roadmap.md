@@ -3,13 +3,13 @@
 The rest of this documentation describes the engine as a whole. **This page says which parts of it
 are built**, so that nobody follows a guide for code that is not there yet.
 
-Last verified: **2026-08-29**, on `master`.
+Last verified: **2026-08-30**, on `master`.
 
 ## Packages
 
 | Package | State | Notes |
 |---|---|---|
-| `good` | **Working** | The kernel is real and tested — ECS, memory pool, ring buffers, scheduler, scenes, hierarchy, input, assets, coroutines, timelines, `GameView` |
+| `good` | **Working** | The kernel is real and tested — ECS, memory pool, ring buffers, scheduler, scenes, hierarchy, input, assets, coroutines, timelines, `GameView`, on-screen sticks |
 | `goo2d` | **Working** | Transforms, world transforms, camera, colliders, sprite rendering, grid-font text, debug draw, mouse picking |
 | `good_audio_soloud` | **Plays one clip** | The `AudioBackend` implementation, over SoLoud. Play and stop, one bus. No looping, loop points, per-bus levels, fades, voice cap or web |
 | `good_cli` | **Working** | `create`, `generate`, `assets compact`, `assets pack`, `build windows/linux/android/ios`. Verified end to end |
@@ -50,6 +50,12 @@ Deferred, and documented in place instead of left as silent gaps.
   viewport is now dropped before it is queued, but a static subtree is still
   re-composed and re-tested every tick
 - **Dependency-based system ordering** — `compareTo` is the mechanism today
+- **On-screen controls beyond a stick.** `JoystickArea`, `JoystickControl` and
+  `Joystick` draw an analog stick and write the four `VirtualAxis` floats. Not
+  there: a button, a d-pad, a trigger, and a layout that arranges a set of them
+  for a phone. A button is a `Listener` around the game's own art calling
+  `InputDevice.press` and `release`, so the missing half is the art and the
+  arrangement, not a mechanism
 - **Text beyond a grid font.** `Text2D` draws one line from a fixed-cell
   bitmap atlas you supply, laid out by arithmetic on the game isolate. Not
   there: proportional metrics, kerning, line wrapping, shaping, `dart:ui`

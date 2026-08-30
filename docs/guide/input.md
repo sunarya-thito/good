@@ -16,6 +16,7 @@ late Input<CursorPosition> pointer;
 late Input<PointerContacts> contacts;
 late List<InputKey> savedKeys;
 late Game game;
+late CameraView camera;
 late PointerContact contact;
 Vector2 _saved = Vector2.zero();
 
@@ -391,8 +392,9 @@ not inside it.
 
 An on-screen joystick is a Flutter widget in that `Stack`, feeding
 `game.inputDevice?.setVirtualAxis(...)`. A game reading a `StickBinding` cannot
-tell a thumb from a thumbstick, which is the point. The engine draws no
-controls.
+tell a thumb from a thumbstick, which is the point. `JoystickArea` and
+`JoystickControl` are that widget, written once — see
+[On-screen sticks](#on-screen-sticks). Buttons are still the game's to draw.
 
 Wrap those widgets in `SafeArea` so they stay clear of a home indicator. **Do
 not wrap `GameView` in one**: it takes its viewport from its constraints and
@@ -471,6 +473,118 @@ needs somewhere to resolve into that is not the action's own storage, and the
 constructor makes those once, at declare time. Resolution itself allocates
 nothing. The sources stay `const` values, which is where it mattered.
 
+## On-screen sticks
+
+Three widgets turn a finger into the virtual axes above. They are ordinary
+Flutter widgets on the main isolate, they draw no engine art, and the only
+engine thing they touch is the `Game` they are handed.
+
+| widget | what it reads | what it draws |
+|---|---|---|
+| `JoystickArea` | a finger anywhere in its box, centring the stick where the finger lands | nothing, until it is given a `track` or a `thumb` |
+| `JoystickControl` | a finger on a stick fixed to its own box | the stick, always |
+| `Joystick` | nothing | a stick at an offset the caller holds |
+
+A `JoystickArea` covering the left half of the screen turns that half into a
+touchpad and leaves the right half to the game:
+
+<!-- snippet: expr -->
+```dart
+Stack(
+  children: [
+    GameView(camera: camera),
+    Positioned(
+      left: 0,
+      top: 0,
+      bottom: 0,
+      width: 160,
+      child: JoystickArea(game: game),
+    ),
+    Positioned(
+      right: 40,
+      bottom: 40,
+      width: 120,
+      height: 120,
+      child: JoystickControl(
+        game: game,
+        x: InputAxis.virtualRightStickX,
+        y: InputAxis.virtualRightStickY,
+      ),
+    ),
+  ],
+)
+```
+
+The game reads that through a `StickBinding` naming the same two axes, and
+cannot tell the thumb from a thumbstick:
+
+<!-- snippet: in GameSystem -->
+```dart
+@override
+void describeInputs(InputDescriptor input) {
+  super.describeInputs(input);
+  move = input.has<Vector2>(
+    const StickBinding(x: .virtualLeftStickX, y: .virtualLeftStickY),
+  );
+}
+```
+
+### The axis pair is the address
+
+There is no stick number and no slot. A widget names the two `VirtualAxis`
+values it writes and a binding names the two it reads, so a typo is a compile
+error and two sticks are two axis pairs. `virtualLeftStickX`/`Y` is the
+default, which leaves `virtualRightStickX`/`Y` for the second one.
+
+Two widgets naming one pair fight over it: the last event wins, and the reading
+flips between them.
+
+### The value is -1..1, and it is proportional
+
+Half the travel reads a half, the same range `StickBinding` delivers and
+`Joystick.thumbOffset` takes, with **+1 up** to match the world's y. Past full
+travel the value clamps to the circle, so a diagonal at the edge has a
+magnitude of 1 and not 1.41.
+
+`JoystickArea.radius` is the travel to full deflection in logical pixels, 64 by
+default, and also half the width of the stick it draws. `JoystickControl` takes
+its travel from its own box: half the shorter side, so the thumb reaches the
+track's edge as the axis reaches 1. Both need a bounded box and assert without
+one.
+
+No deadzone and no response curve. The value is what the finger did; shaping is
+the game's, the same call `AxisBinding` and `StickBinding` make for hardware.
+
+### A finger can stop without lifting
+
+A notification, an incoming call, or an ancestor winning the gesture arena ends
+a pointer with no up event behind it. All three widgets return the stick to
+rest on a cancel, on a lift, and on going away with a finger still down. A
+stick that waited for a lift would hold its direction until the app was
+restarted, which is the same hole `PointerPhase.cancelled` covers for contacts.
+
+The first finger down owns the stick until it ends. A second one inside the
+same widget is ignored, so two thumbs cannot fight over one pair.
+
+### Drawing
+
+`JoystickArea` and `JoystickControl` both take a `track` and a `thumb` widget,
+and paint a default disc and ring for whichever is left null. The thumb's
+position drives a repaint through a `Listenable`, so a drag rebuilds no
+widgets — a builder taking the offset would rebuild once per pointer event, and
+a drag produces them continuously.
+
+Hit testing is opaque. A finger landing on a stick belongs to the stick and
+does not also reach the `GameView` underneath as a contact.
+
+Wrap a stick in `SafeArea` when its edges have to stay reachable: a control at
+`bottom: 40` sits under the home indicator on most phones. **Do not wrap
+`GameView`** in one — it takes its viewport from its constraints, so that
+letterboxes the art.
+
+On-screen **buttons** are not here. A `Listener` around whatever art the game
+wants, calling `game.inputDevice?.press` and `release`, is the whole of one.
+
 ## Keys
 
 `InputKey` carries every key as a `const`:
@@ -506,7 +620,9 @@ keys:
   `InputAxis.padLeftStickX(2)`. Slot 0 is "any connected pad", and for an axis
   that means whichever seat is pushed furthest from rest.
 - on-screen: `virtualLeftStickX`, `virtualLeftStickY`, `virtualRightStickX`,
-  `virtualRightStickY`, which nothing in the engine writes.
+  `virtualRightStickY`, which no engine *system* writes. The three widgets in
+  [On-screen sticks](#on-screen-sticks) do, and so does anything else calling
+  `InputDevice.setVirtualAxis`.
 
 A widget drives the virtual ones through `InputDevice.setVirtualAxis`, and a
 binding cannot tell which kind of source filled a float in. So an on-screen

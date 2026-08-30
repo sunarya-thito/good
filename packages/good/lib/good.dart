@@ -126,3 +126,8 @@ export 'src/struct.dart';
 export 'src/system.dart';
 export 'src/triple_buffer.dart';
 export 'src/widget/game_view.dart';
+// The on-screen analog stick, in the kernel and not in a renderer package
+// because it draws no engine art: the default track and thumb are a
+// `CustomPainter`, and what the widgets produce is two `VirtualAxis` writes
+// through `InputDevice.setVirtualAxis`, which is `good`'s own input layer.
+export 'src/widget/joystick.dart';
