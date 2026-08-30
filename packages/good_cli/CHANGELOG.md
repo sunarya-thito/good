@@ -80,7 +80,9 @@
   `Image.asset('assets/...')` in Flutter widgets survive the release build and
   resolve correctly at run time. Set `strip-originals: true` in `good: assets:`
   to keep the old behaviour of removing loose copies once they are inside a
-  chunk.
+  chunk. The consequence is that both asset directories ship and a packed asset
+  is bundled twice; the pubspec comment `good create` writes,
+  `assets/packed/.gitkeep` and the exporting pages now say so (#270).
 
 * **`texture: quality: 100` now produces a byte-exact WebP.** It emitted
   `-lossless 1`, but after `-pix_fmt yuva420p`, so ffmpeg halved the chroma

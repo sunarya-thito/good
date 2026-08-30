@@ -36,7 +36,9 @@ good build windows            # also: linux, android, ios
 ```
 
 `good build` runs the pipeline first, so the release bundle carries the packed
-chunks and not your loose source assets.
+chunks. It carries the loose copies as well, unless the project sets
+`strip-originals: true` under `good: assets:` - which also stops `Image.asset`
+resolving those paths.
 
 ## Next
 

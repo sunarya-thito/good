@@ -141,19 +141,26 @@ silently resolving it:
 
 ## What ends up in the bundle
 
-After a release build, the loose assets are gone and the chunks remain:
+A release build bundles both asset directories. The chunks are written, and the
+loose files stay where they are:
 
 ```
 data/flutter_assets/assets/
 ├── .gitkeep
-└── packed/chunk_shared.dat        ← your assets
+├── sprites/player.webp            ← the loose copy, still legible
+└── packed/chunk_shared.dat        ← the same bytes, compressed and encrypted
 ```
 
-Each asset ships exactly once, and nothing good keeps for its own bookkeeping is
-in there. The compaction journal names every source file and hashes its bytes,
-so it lives in `.dart_tool/good/compact.json`, where no build can bundle it.
+Everything packed ships twice unless the project sets `strip-originals: true`
+under `good: assets:`, which deletes the loose copy of each packed asset and
+stops `Image.asset` from resolving those paths. See
+[Both copies ship by default](asset-pipeline.md#both-copies-ship-by-default).
 
-Restore the loose files for further development with:
+Nothing good keeps for its own bookkeeping is in the bundle. The compaction
+journal names every source file and hashes its bytes, so it lives in
+`.dart_tool/good/compact.json`, where no build can bundle it.
+
+Restore stripped files for further development with:
 
 ```bash
 good assets compact

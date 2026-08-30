@@ -23,10 +23,9 @@ import 'package:yaml/yaml.dart';
 ///
 /// Both `output` and `packed` have to appear in `flutter: assets:` - that list
 /// is the only thing Flutter bundles from. A release build fills `packed` and
-/// then empties `output` of everything it packed, so the two are listed
-/// together and only one of them ever ships anything. It stops short of that
-/// when `output` holds something compaction cannot build again - see
-/// [stripOriginals].
+/// leaves `output` as it found it, so both directories ship and a packed asset
+/// is bundled twice. `strip-originals: true` empties `output` of everything the
+/// build packed - see [stripOriginals] for what that costs.
 ///
 /// **In the pubspec, not a `good.yaml`.** A project already has one file that
 /// says what it is and what it ships; a second one beside it is a second place
@@ -89,17 +88,21 @@ class GoodConfig {
   /// entries bundle files and not subdirectories, so the two never overlap.
   final String packOutput;
 
-  /// Whether a release build may delete an asset compaction cannot rebuild.
+  /// Whether a build deletes the loose copy of an asset it packed.
   ///
-  /// A file you put in [assetOutput] by hand is packed like any other, so
-  /// stripping the loose copies takes it too - and `good assets compact` has no
-  /// source to build it from again. Off by default: a build that would do this
-  /// stops and names the files instead.
+  /// **Off by default, and nothing else turns it on.** A build that packs
+  /// leaves [assetOutput] as it found it, so every packed asset is bundled
+  /// twice: once legible in [assetOutput], once inside an encrypted chunk. The
+  /// build says nothing about it. `Image.asset` and everything else that reads
+  /// the Flutter bundle by path go on resolving those files, which is what
+  /// leaving the loose copies in place buys.
   ///
-  /// The two mistakes are not the same size. Leaving a file loose ships a
-  /// legible copy beside the encrypted chunk, which is a bug you can see, name
-  /// and fix on the next build. Deleting it destroys the only copy, says
-  /// nothing at the time, and no later build brings it back.
+  /// Turned on, the build deletes the loose copy of everything it packed. Those
+  /// paths stop resolving through the Flutter bundle, and only good's own asset
+  /// API reaches the bytes. A file you put in [assetOutput] by hand is packed
+  /// like any other, so it goes too - and `good assets compact` has no source
+  /// to build that one from again. The build names each of those as it deletes
+  /// it.
   ///
   /// Turn it on when [assetSource] holds everything and [assetOutput] is
   /// genuinely disposable.

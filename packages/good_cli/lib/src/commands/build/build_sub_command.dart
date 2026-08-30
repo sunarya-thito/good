@@ -150,13 +150,14 @@ abstract class BuildSubCommand extends Command with Verbose, Resolving {
   ///
   /// The plan comes back, and not just a success flag, because it is the only
   /// record of *which* files in the output directory good generated - and
-  /// therefore which ones a release build may delete once they are inside a
-  /// chunk. See [_stripLoose].
+  /// therefore which of the ones a build strips can be built again. See
+  /// [_stripLoose].
   ///
   /// An empty plan when the project has no source directory is not an error:
   /// a project that keeps its art already-canonical in the output
-  /// directory is a legitimate setup, and it also means nothing there is
-  /// regenerable, so nothing gets stripped.
+  /// directory is a legitimate setup. Nothing there is regenerable, so a build
+  /// that sets `strip-originals: true` deletes originals and names every one
+  /// of them.
   Future<CompactPlan?> _compact(Directory project, GoodConfig config) async {
     final sourceDir = Directory('${project.path}/${config.assetSource}');
     if (!sourceDir.existsSync()) {

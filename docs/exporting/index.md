@@ -42,22 +42,27 @@ Wrote ./my_game_bundle/lib/textures.dart
 1 texture(s), 0 audio file(s).
 [3/4] packing assets
   1 asset(s) in 1 chunk(s), grouped by scene (1 scene(s); 0 asset(s) shared or unattributed)
-  stripped 1 loose asset(s) now carried in chunks; `good assets compact` rebuilds them
 [4/4] flutter build windows
 
 Built windows.
 ```
 
-The shipped bundle contains the chunks and **not** the loose files — each asset
-ships exactly once:
+The shipped bundle contains the chunks **and** the loose files, so a packed
+asset is in there twice:
 
 ```
 build/windows/x64/runner/Release/
 ├── my_game.exe
 ├── flutter_windows.dll
 └── data/flutter_assets/assets/
-    └── packed/chunk_shared.dat        ← the assets, compressed and encrypted
+    ├── sprites/player.webp            ← the loose copy, still legible
+    └── packed/chunk_shared.dat        ← the same assets, compressed and encrypted
 ```
+
+`strip-originals: true` under `good: assets:` deletes the loose copy of every
+packed asset, and stops `Image.asset` from resolving those paths. It is off
+unless a project sets it. See
+[Both copies ship by default](asset-pipeline.md#both-copies-ship-by-default).
 
 ## The three pages
 
@@ -85,7 +90,7 @@ The two modes want opposite things, and both are first-class.
 
 | | Development | Release |
 |---|---|---|
-| Assets | Loose files | Chunked |
+| Assets | Loose files | Chunked, and still loose unless `strip-originals` |
 | Compression | None | gzip |
 | Encryption | None | AES-256-GCM |
 | Asset mapping | Empty | Path → chunk |
@@ -111,6 +116,8 @@ with loose assets, for a debugging build you intend to poke at.
       only record of your encryption keys, and losing it orphans every pack
       already shipped.
 - [ ] Both `assets/` and `assets/packed/` are listed under `flutter: assets:`.
+- [ ] `strip-originals` is set the way you meant — left off, the bundle carries
+      a legible copy of every packed asset.
 - [ ] `ensureGameReady()` is called before `Game.start` — it catches a missing
       asset before the first frame instead of mid-scene.
 - [ ] A release build has actually been run and launched, not just compiled.

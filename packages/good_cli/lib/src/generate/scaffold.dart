@@ -175,9 +175,11 @@ List<String>? patchedPubspecLines(List<String> lines, String package) {
   if (!hasAssets) {
     patched.insertAll(material + 1, <String>[
       '',
-      '  # Both directories ship. `good build` fills assets/packed/ and empties',
-      '  # assets/ of everything it packed, so each asset is bundled exactly',
-      '  # once. Keep your originals in assets_src/; assets/ is generated.',
+      '  # Both directories ship. `good build` fills assets/packed/ and',
+      '  # leaves the loose copies in assets/, so a packed asset is bundled',
+      '  # twice. Set `strip-originals: true` under `good: assets:` to delete',
+      '  # them - Image.asset stops resolving those paths once they are gone.',
+      '  # Keep your originals in assets_src/; assets/ is generated.',
       '  assets:',
       '    - assets/',
       '    - assets/packed/',
@@ -191,9 +193,10 @@ List<String>? patchedPubspecLines(List<String> lines, String package) {
 
 /// Why the packed directory exists in a fresh project with nothing in it.
 String _packedGitkeep() => '''
-# `good build` writes its chunks here, and strips the loose copies out of
-# ../ once they are inside one. Both directories are listed under
-# `flutter: assets:`, which is what makes the chunks ship.
+# `good build` writes its chunks here. The loose copies stay in ../ unless the
+# project sets `strip-originals: true`, so by default a packed asset ships from
+# both places. Both directories are listed under `flutter: assets:`, which is
+# what makes the chunks ship.
 #
 # Generated. Safe to delete; `good build` writes it again.
 ''';
