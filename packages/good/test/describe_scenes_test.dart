@@ -33,6 +33,18 @@ mixin _Marked on Component {
 
 class _Unit extends EntityStruct with _Marked {}
 
+mixin _Unmarked on Component {
+  final tag = Field.uint8(7);
+
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<_Unmarked>();
+  }
+}
+
+class _Prop extends EntityStruct with _Unmarked {}
+
 class _Level extends SceneStruct {
   late final _Unit unit;
 
@@ -44,6 +56,63 @@ class _Level extends SceneStruct {
 }
 
 class _Menu extends SceneStruct {}
+
+/// Declared by no game, so `loadScene` is what registers it. One prefab the
+/// census query matches and one it must not - a scene with a single archetype
+/// could not tell "matched the right one" from "matched everything".
+class _Mixed extends SceneStruct {
+  late final _Unit unit;
+  late final _Prop prop;
+
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
+    unit = descriptor.has(_Unit.new);
+    prop = descriptor.has(_Prop.new);
+  }
+}
+
+/// The same census through the `describeQuery` hook. `_bootGame` runs that
+/// hook once, and `_HookGame` declares no scene, so it runs against an empty
+/// `ArchetypeRegistry`.
+class _HookCensusSystem extends GameSystem with FixedTickable {
+  late final Query marked;
+  int seen = 0;
+
+  @override
+  void describeQuery(QueryDescriptor descriptor) {
+    super.describeQuery(descriptor);
+    marked = descriptor.query().withAll(_Marked).build();
+  }
+
+  @override
+  void onFixedUpdate() {
+    var count = 0;
+    for (final _ in marked.run()) {
+      count++;
+    }
+    seen = count;
+  }
+}
+
+class _HookState extends GameState<_HookGame> {
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_HookCensusSystem.new);
+  }
+}
+
+class _HookGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 10);
+
+  @override
+  GameState createState() => _HookState();
+}
 
 /// A prefab with no `Field.*` initialisers, so it can be constructed
 /// directly in a test - the field-declaring ones can only be built by the
@@ -267,4 +336,39 @@ void main() {
 
     expect(run.state.getSystem<_CensusSystem>().seen, 1);
   });
+
+  // What orders the boot passes is `collectListeners` reaching for a system,
+  // not the query pass reaching for an archetype (#225). `describeQuery` reads
+  // `ComponentTypeRegistry` for a bit per named type and resolves archetypes
+  // lazily, so it carries no requirement that `describeScenes` precede it.
+  test(
+    'a hook-built query matches archetypes registered after the query pass',
+    () async {
+      await _boot(_HookGame.new);
+      final system = run.state.getSystem<_HookCensusSystem>();
+      expect(
+        ArchetypeRegistry.count,
+        0,
+        reason:
+            'this game declares no scene, so describeQuery ran against an '
+            'empty registry',
+      );
+
+      final struct = _Mixed();
+      final scene = await run.state.loadScene(struct);
+      scene.addEntity(struct.unit);
+      scene.addEntity(struct.prop);
+      run.state.advance(const Duration(milliseconds: 10));
+
+      expect(ArchetypeRegistry.count, 2);
+      expect(
+        system.seen,
+        1,
+        reason:
+            'the _Unit row and not the _Prop row - a query that resolved to '
+            'every archetype would count two, and one that never resolved '
+            'would count none',
+      );
+    },
+  );
 }

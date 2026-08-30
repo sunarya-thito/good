@@ -1197,6 +1197,25 @@
 
 ### Fixed
 
+* **The boot passes no longer claim `describeQuery` resolves against
+  registered archetypes.** Five source comments and a paragraph of the scene
+  guide gave that as the reason `describeScenes` has to run before
+  `describeSystems`. The query pass reads `ComponentTypeRegistry` for one bit
+  per named type and never reaches `ArchetypeRegistry`; a compiled query holds
+  masks and resolves archetypes in `Query.groups` and `Query.run`, both of
+  which read `ArchetypeRegistry.count` when they walk. A query therefore
+  matches a scene registered long afterwards, which is what `loadScene` on an
+  undeclared scene does at runtime. What orders the passes is
+  `collectListeners` reaching for a system, and that is what the comments say
+  now. One of the five also placed `describeScenes` before the isolate spawn,
+  where it runs from `Game._bootGame`, on the game isolate (#225).
+
+  No behaviour changed. The mechanism is pinned by four tests: three in
+  `query_test.dart` and one in `describe_scenes_test.dart` covering a
+  `describeQuery`-built query against a scene loaded at runtime, each
+  asserting against a fixture with a non-matching archetype in it so that
+  matching everything and matching nothing both fail.
+
 * **A scene loaded from `GameState.onMounted` no longer hangs when its assets
   decode without yielding.** On a spawned run the game isolate mounts the world
   before it sends `ready`, so a `loadScene` in `onMounted` puts its

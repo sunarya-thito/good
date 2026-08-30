@@ -79,8 +79,7 @@ into a game that loads a level twice.
 ## Declaring scenes up front
 
 Declaring a scene on the `Game` registers its archetypes and its assets **at
-boot** — before the game isolate is spawned, and before any system exists to
-query them:
+boot**, on the game isolate, before anything is loaded:
 
 ```dart
 class MyGame extends Game2D {
