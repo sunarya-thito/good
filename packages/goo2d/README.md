@@ -42,7 +42,7 @@ class PlayerSystem extends GameSystem with FixedTickable {
   void onFixedUpdate() {
     final dt = game.fixedTimeStep.inMicroseconds / 1000000.0;
     for (final group in players.groups()) {
-      final transform = group.get<Transform2D>();
+      final transform = group<Transform2D>();
       for (final entity in group) {
         transform.transformOffsetX[entity] += 60 * dt;
       }

@@ -347,7 +347,7 @@ class PointerPickingSystem extends GameSystem with FixedTickable {
       event.viewSpace.setValues(viewSpace.x, viewSpace.y);
       event.worldSpace.setValues(worldX, worldY);
 
-      final receiver = picked.get<PointerReceiver>();
+      final receiver = picked<PointerReceiver>().component;
       // A press and a lift that both land between two fixed ticks are
       // reported once, as ended - see `PointerContacts`. So a tap that fast
       // fires the release and never the press, which is where a real tap
@@ -385,17 +385,17 @@ class PointerPickingSystem extends GameSystem with FixedTickable {
       // the two in the order that leaves it on the right entity.
       if (previous != null) {
         _fillFromCursor(previous, position);
-        previous.get<HoverReceiver>().onHoverExit(_event);
+        previous<HoverReceiver>().component.onHoverExit(_event);
       }
       _hovered = hovering;
       if (hovering != null) {
         _fillFromCursor(hovering, position);
-        hovering.get<HoverReceiver>().onHoverEnter(_event);
+        hovering<HoverReceiver>().component.onHoverEnter(_event);
       }
     }
     if (hovering != null) {
       _fillFromCursor(hovering, position);
-      hovering.get<HoverReceiver>().onHover(_event);
+      hovering<HoverReceiver>().component.onHover(_event);
     }
 
     // A second pick, off the pressable query rather than the hoverable one,
@@ -408,7 +408,7 @@ class PointerPickingSystem extends GameSystem with FixedTickable {
     final target = _pick(_pressables, worldSpace.x, worldSpace.y);
     if (target == null) return;
     _fillFromCursor(target, position);
-    final receiver = target.get<PointerReceiver>();
+    final receiver = target<PointerReceiver>().component;
     // Press and release both go to whatever is under the cursor *now*. A
     // press that drifts off the entity before the button comes up therefore
     // fires no release on it - which is what makes dragging off a button a
@@ -443,7 +443,7 @@ class PointerPickingSystem extends GameSystem with FixedTickable {
   /// # Two things keep this off the profile
   ///
   /// **Grouped.** A component instance belongs to an archetype, so
-  /// `entity.get<WorldTransform2D>()` hands back the same object for every
+  /// `entity<WorldTransform2D>().component` hands back the same object for every
   /// row - a registry lookup per candidate for an answer that changes once
   /// per archetype. `groups()` resolves it once per archetype instead, which
   /// is what `docs/guide/performance.md` names as the fix for the single most
@@ -466,12 +466,12 @@ class PointerPickingSystem extends GameSystem with FixedTickable {
     // walked and the same order `GameRenderer2D` draws in - which is what the
     // equal-z tie-break below leans on.
     for (final group in receivers.groups()) {
-      final world = group.get<WorldTransform2D>();
-      final bodies = group.get<Collider2D>().bodies;
+      final world = group<WorldTransform2D>();
+      final bodies = group<Collider2D>().bodies;
       // Not in the query - an invisible click zone is a receiver with no
-      // sprites at all - so `tryGet`, once, and `_depthOf` is told the answer
-      // instead of asking per hit.
-      final renderable = group.tryGet<Renderable2D>();
+      // sprites at all - so the optional spelling, once, and `_depthOf` is
+      // told the answer instead of asking per hit.
+      final renderable = group<Renderable2D?>();
       for (final entity in group) {
         // Only what the view under the pointer draws is clickable, and
         // `projection.shows` is the same call `GameRenderer2D` skips entities

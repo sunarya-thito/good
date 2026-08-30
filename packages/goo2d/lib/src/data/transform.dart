@@ -29,7 +29,7 @@ mixin Transform2D on Component {
   // WorldTransform2D's fields instead (world_transform.dart).
   //
   // Every helper resolves each Entity argument's own Transform2D instance
-  // fresh via Entity.get<Transform2D>(), and never reads a second entity
+  // fresh via entity<Transform2D>().component, and never reads a second entity
   // through `this` (the receiver). `this` is bound to whichever *concrete*
   // archetype's Transform2D declared it, and a second Entity argument may
   // well belong to a different archetype (a different prefab class) with a
@@ -41,8 +41,8 @@ mixin Transform2D on Component {
   /// Local-space (no ancestors, no `WorldTransform2D`) distance between
   /// [a]'s and [b]'s offsets.
   double distanceTo(Entity a, Entity b) {
-    final ta = a.get<Transform2D>();
-    final tb = b.get<Transform2D>();
+    final ta = a<Transform2D>().component;
+    final tb = b<Transform2D>().component;
     final dx = tb.transformOffsetX[b] - ta.transformOffsetX[a];
     final dy = tb.transformOffsetY[b] - ta.transformOffsetY[a];
     return math.sqrt(dx * dx + dy * dy);
@@ -52,7 +52,7 @@ mixin Transform2D on Component {
   /// ([targetX], [targetY]). Rotation 0 already means "facing +x" (see
   /// [forwardX]/[forwardY]), so this is exactly `atan2(dy, dx)`.
   void lookAt(Entity entity, double targetX, double targetY) {
-    final t = entity.get<Transform2D>();
+    final t = entity<Transform2D>().component;
     final dx = targetX - t.transformOffsetX[entity];
     final dy = targetY - t.transformOffsetY[entity];
     t.transformRotation[entity] = math.atan2(dy, dx);
@@ -60,7 +60,7 @@ mixin Transform2D on Component {
 
   /// [lookAt], sugar for facing [target]'s own local-space offset.
   void lookAtEntity(Entity entity, Entity target) {
-    final tt = target.get<Transform2D>();
+    final tt = target<Transform2D>().component;
     lookAt(entity, tt.transformOffsetX[target], tt.transformOffsetY[target]);
   }
 
@@ -68,7 +68,7 @@ mixin Transform2D on Component {
   /// separate scalar getters and not one record: the engine allocates nothing
   /// per tick, and a record here would be betting on Dart to unbox it.
   double forwardX(Entity entity) =>
-      math.cos(entity.get<Transform2D>().transformRotation[entity]);
+      math.cos(entity<Transform2D>().component.transformRotation[entity]);
   double forwardY(Entity entity) =>
-      math.sin(entity.get<Transform2D>().transformRotation[entity]);
+      math.sin(entity<Transform2D>().component.transformRotation[entity]);
 }

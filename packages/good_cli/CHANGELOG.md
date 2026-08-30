@@ -2,6 +2,11 @@
 
 ### Changed
 
+* **The scaffold emits the new component-read spelling.** `good create` wrote
+  `group.get<Player>()` into the generated system; it writes `group<Player>()`,
+  which is what `good` 0.3.0-dev accepts after `get`/`tryGet` folded into the
+  receiver's own call (#220).
+
 * **The shadowed-field check sees two shapes it was missing.** `_isColumn`
   recognises a declaration by the receiver's name, and `InitialPointer` -
   which is what `hasFloat64` and the rest actually return - was not in the set

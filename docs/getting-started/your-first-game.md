@@ -59,7 +59,7 @@ class PlayerSystem extends GameSystem with FixedTickable {
     final dt = game.fixedTimeStep.inMicroseconds / 1000000.0;
 
     for (final group in players.groups()) {      // (2)!
-      final transform = group.get<Transform2D>();
+      final transform = group<Transform2D>();
       for (final entity in group) {
         transform.transformOffsetX[entity] += 60 * dt;
       }
@@ -70,7 +70,7 @@ class PlayerSystem extends GameSystem with FixedTickable {
 
 1. The query is compiled **once**, at declare time, into an archetype match.
    Nothing searches at tick time.
-2. `groups()` yields one group per matching archetype; `group.get<T>()` resolves
+2. `groups()` yields one group per matching archetype; `group<T>()` resolves
    that archetype's component **once** for the whole group, and the inner loop
    indexes it by `Entity`. Resolving inside the inner loop would repeat that
    lookup per entity.
@@ -135,8 +135,8 @@ void onFixedUpdate() {
   if (direction.x == 0 && direction.y == 0) return;
 
   for (final group in players.groups()) {
-    final transform = group.get<Transform2D>();
-    final player = group.get<Player>();
+    final transform = group<Transform2D>();
+    final player = group<Player>();
     for (final entity in group) {
       final step = player.speed[entity] * dt;            // (2)!
       transform

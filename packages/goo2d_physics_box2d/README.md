@@ -62,7 +62,7 @@ void describeSystems(SystemDescriptor descriptor) {
 Push a body around, or change what kind of body it is:
 
 ```dart
-final body = entity.get<RigidBody2D>();
+final body = entity<RigidBody2D>().component;
 body.applyImpulse(entity, 5, 0);
 body.setVelocity(entity, 3, 0);
 body.bodyType[entity] = BodyType2D.staticBody;

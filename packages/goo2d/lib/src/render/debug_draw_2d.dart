@@ -52,7 +52,7 @@ const bool debugDrawEnabled = bool.fromEnvironment(
 ///   @override
 ///   void onFixedUpdate() {
 ///     for (final group in agents.groups()) {
-///       final world = group.get<WorldTransform2D>();
+///       final world = group<WorldTransform2D>();
 ///       for (final entity in group) {
 ///         debugDraw.line(
 ///           world.worldX[entity], world.worldY[entity], targetX, targetY,

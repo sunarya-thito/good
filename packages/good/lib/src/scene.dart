@@ -339,12 +339,12 @@ abstract class SceneStruct extends GameListenerBase
   }) {
     // Three declaration mistakes, all settled the first time the line runs
     // and none of them able to start being true in a shipped build. They
-    // were checked outright, which put a `tryGet<Parent>` registry lookup on
+    // were checked outright, which put a `Parent?` registry lookup on
     // every parented spawn - five thousand of them in a five-thousand-entity
     // burst - to re-answer a question about the shape of the code.
     //
     // Nothing downstream needs the lookup either: `parent<Parent>()` below
-    // does its own, and its `is` test is the one `Entity.get<T>` needs for
+    // does its own, and its `is` test is the one `entity<T>()` needs for
     // the cast anyway, so a bad parent still fails loudly in release. It
     // just fails there rather than here.
     assert(_declaredHere<T>(prefab));
@@ -446,7 +446,7 @@ abstract class SceneStruct extends GameListenerBase
         '$T does not mix in Child - cannot be attached to a parent',
       );
     }
-    if (parent.tryGet<Parent>() == null) {
+    if (parent<Parent?>().component == null) {
       throw ArgumentError.value(
         parent,
         'parent',
@@ -571,9 +571,9 @@ abstract class SceneStruct extends GameListenerBase
       final storage = ArchetypeRegistry.byId(id);
       final prefab = storage.prefab;
       // Hoisted out of the row loop: one prefab describes every row of an
-      // archetype, so whether these components exist is settled here rather
-      // than re-asked through `tryGet` per row. Cast rather than promote, for
-      // the reason `addEntityIn` gives.
+      // archetype, so whether these components exist is settled here and not
+      // re-asked per row. Cast and do not promote, for the reason
+      // `addEntityIn` gives.
       final asChild = prefab is Child ? prefab as Child : null;
       final asParent = prefab is Parent ? prefab as Parent : null;
       if (asChild == null && asParent == null) continue;
@@ -593,8 +593,8 @@ abstract class SceneStruct extends GameListenerBase
             while (child != null) {
               // Read before the splice, which clears it - the same order
               // `EntityLifetime.destroy` walks a subtree in.
-              final after = child
-                  .get<Child>()
+              final after = child<Child>()
+                  .component
                   .childNextSibling
                   .readPending(child);
               if (child.sceneSlot != sceneSlot) {
@@ -955,19 +955,19 @@ extension EntityLifetime on Entity {
     final page = storage.pageAt(pageIndex);
     if (page == null) return; // its scene was already unloaded
 
-    final parentComponent = tryGet<Parent>();
+    final parentComponent = this<Parent?>().component;
     if (parentComponent != null) {
       // The next sibling is read *before* the child is destroyed, because
       // destroying it clears the link this walk would need next.
       var child = parentComponent.parentFirstChild.readPending(this);
       while (child != null) {
-        final after = child.get<Child>().childNextSibling.readPending(child);
+        final after = child<Child>().component.childNextSibling.readPending(child);
         child.destroy();
         child = after;
       }
     }
 
-    final childComponent = tryGet<Child>();
+    final childComponent = this<Child?>().component;
     final parent = childComponent?.childParent.readPending(this);
     if (parent != null) parent<Parent>().unlinkChild(this);
 

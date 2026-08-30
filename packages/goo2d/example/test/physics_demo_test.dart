@@ -99,7 +99,7 @@ void main() {
     var nearestFloor = 1e9;
     var seen = 0;
     for (final group in bodies.groups()) {
-      final prefab = group.tryGet<Crate>() ?? group.tryGet<Ball>();
+      final prefab = group<Crate?>() ?? group<Ball?>();
       if (prefab == null) continue;
       for (final entity in group) {
         final y = (prefab as Transform2D).transformOffsetY[entity];

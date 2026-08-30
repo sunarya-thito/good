@@ -299,7 +299,7 @@ Entity _spriteAt<T extends EntityStruct>(
   double y = 0,
 }) {
   final entity = scene.addEntity(prefab);
-  final transform = entity.get<Transform2D>();
+  final transform = entity<Transform2D>().component;
   transform
     ..transformOffsetX[entity] = x
     ..transformOffsetY[entity] = y;

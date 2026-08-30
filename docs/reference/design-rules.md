@@ -154,7 +154,7 @@ for (final entity in group) {
 ```dart
 // yes - resolve once per group, and the write is an index
 for (final group in query.groups()) {
-  final transform = group.get<Transform2D>();
+  final transform = group<Transform2D>();
   for (final entity in group) {
     transform.transformOffsetX[entity] += 1;
   }
@@ -287,8 +287,8 @@ silently getting a second scheduler.
 
 !!! info "Legitimate `is`"
     Narrowing a value whose type genuinely varies at run time (`yielded is num`,
-    `listener is EventBus`), and `tryGet<T>`-style lookups that return null. The
-    rule is about *dispatching on the receiver's own type*.
+    `listener is EventBus`), and `entity<T?>()`-style lookups that return null.
+    The rule is about *dispatching on the receiver's own type*.
 
 ## Nothing is resolved by name
 

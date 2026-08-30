@@ -70,8 +70,8 @@ class _OriginProbe extends GameSystem with Tickable {
   void onTick(Duration delta) {
     _tick++;
     for (final group in _renderables.groups()) {
-      final local = group.get<Transform2D>();
-      final world = group.get<WorldTransform2D>();
+      final local = group<Transform2D>();
+      final world = group<WorldTransform2D>();
       for (final entity in group) {
         if (world.worldX[entity] != 0 || world.worldY[entity] != 0) continue;
         final localX = local.transformOffsetX[entity];

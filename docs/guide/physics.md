@@ -182,7 +182,7 @@ This is the part that most often goes wrong, and it is worth being explicit.
 a dynamic body, apply forces or set its velocity:
 
 ```dart
-final body = entity.get<RigidBody2D>();
+final body = entity<RigidBody2D>().component;
 body.applyForce(entity, 0, -50);
 body.applyImpulse(entity, 5, 0);
 body.applyTorque(entity, 2);

@@ -349,23 +349,6 @@ extension type const Entity(int value) implements int {
   int get rowOffset => value & _rowMask;
 
   /// The prefab describing this entity's archetype - the instance holding
-  /// the `DataPointer` fields the struct's mixins wrote into their
-  /// `late final`s. Combine with the entity itself to reach data:
-  /// `instance.get<Transform2D>().transformOffsetX[instance]`.
-  ///
-  /// One list index plus an `is` test; no allocation on the success path.
-  /// Throws if this entity's archetype does not include [T] - use
-  /// [tryGet] when absence is expected.
-  @pragma('vm:prefer-inline')
-  T get<T extends Component>() {
-    final prefab = ArchetypeRegistry.byId(archetypeId).prefab;
-    if (prefab is T) return prefab as T;
-    throw StateError(
-      'Entity of archetype ${prefab.runtimeType} (id $archetypeId) does not '
-      'have component $T. Use tryGet<$T>() if that is expected.',
-    );
-  }
-
   /// Which loaded scene this row belongs to, as `Scene.slot`, or -1 if its
   /// page has been freed or it was created outside any scene.
   ///
@@ -379,24 +362,23 @@ extension type const Entity(int value) implements int {
       ArchetypeRegistry.byId(archetypeId).pageAt(pageIndex)?.ownerSceneSlot ??
       -1;
 
-  /// [get], but `null` instead of throwing when the archetype lacks [T] -
-  /// the `OptWith<Child>()` half of a query.
-  @pragma('vm:prefer-inline')
-  T? tryGet<T extends Component>() {
-    final prefab = ArchetypeRegistry.byId(archetypeId).prefab;
-    return prefab is T ? prefab as T : null;
-  }
-
   /// This entity, seen as its [T] component:
   ///
   /// ```dart
   /// entity<Transform3D>().distanceTo(other)
+  /// final local = entity<Transform2D>().component;
+  /// final maybe = entity<Transform2D?>().component;   // null if absent
   /// ```
+  ///
+  /// Write [T] nullable to say absence is expected. That choice is read by
+  /// [Accessor.component], which throws for a non-nullable [T] the archetype
+  /// lacks and answers `null` for a nullable one; the accessor itself is
+  /// always returned, so neither form allocates.
   ///
   /// See [Accessor], which is what this returns and where a component's
   /// helpers live.
   @pragma('vm:prefer-inline')
-  Accessor<T> call<T extends Component>() => Accessor<T>(this);
+  Accessor<T> call<T extends Component?>() => Accessor<T>(this);
 }
 
 /// One entity seen as its [T] component - what `entity<Transform3D>()`
@@ -440,12 +422,25 @@ extension type const Entity(int value) implements int {
 /// the component again.
 ///
 /// A helper taking a *second* entity reads that one through its own component
-/// (`other.get<Health>()`), because it may be a different archetype with a
-/// different row layout. Only the receiver is guaranteed to be this one.
+/// (`other<Health>().component`), because it may be a different archetype with
+/// a different row layout. Only the receiver is guaranteed to be this one.
 ///
-/// Everything on [Entity] is available too - `destroy()`, `sceneSlot`,
-/// `tryGet` - and an accessor can be passed anywhere an entity is wanted,
-/// because it implements [Entity].
+/// Everything on [Entity] is available too - `destroy()` and `sceneSlot` - and
+/// an accessor can be passed anywhere an entity is wanted, because it
+/// implements [Entity].
+///
+/// # Naming a component that may not be there
+///
+/// [T] carries whether absence is expected, so one spelling covers both:
+///
+/// ```dart
+/// entity<Health>().component      // Health  - throws if the archetype lacks it
+/// entity<Health?>().component     // Health? - null if the archetype lacks it
+/// ```
+///
+/// The bound is `Component?` and not `Component` so that `Health?` is a legal
+/// argument; `String` and `int` are still rejected at the call. `Accessor<T>`
+/// itself is never null in either form, which keeps it erasing to an `int`.
 ///
 /// # Why the helpers go here and not on the component
 ///
@@ -458,8 +453,26 @@ extension type const Entity(int value) implements int {
 /// It costs nothing: `Accessor<T>` erases to [Entity], which erases to `int`,
 /// so `identical(entity<T>().entity, entity)` holds and nothing is allocated
 /// to reach a helper.
-extension type const Accessor<T extends Component>(Entity entity)
+extension type const Accessor<T extends Component?>(Entity entity)
     implements Entity {
+  /// This entity's archetype prefab, seen as [T].
+  ///
+  /// One list index plus an `is` test; no allocation on the success path.
+  /// When the archetype does not have [T] the nullability of [T] decides:
+  /// a nullable one answers `null`, a non-nullable one throws.
   @pragma('vm:prefer-inline')
-  T get component => entity.get<T>();
+  T get component {
+    // Widened to `Object` first: `prefab` is an `EntityStruct` and [T] is a
+    // `Component?`, and Dart will not promote between two class types neither
+    // of which is a subtype of the other.
+    final Object prefab = ArchetypeRegistry.byId(entity.archetypeId).prefab;
+    if (prefab is T) return prefab as T;
+    // Reached only when the archetype lacks [T]. `null is T` is the whole
+    // dispatch: it is true exactly for the nullable spelling.
+    if (null is T) return null as T;
+    throw StateError(
+      'Entity of archetype ${prefab.runtimeType} (id ${entity.archetypeId}) '
+      'does not have component $T. Write $T? if that is expected.',
+    );
+  }
 }

@@ -83,7 +83,7 @@ body.bodyType[entity] = BodyType3D.dynamicBody;
 ## Pushing things
 
 ```dart
-final body = entity.get<RigidBody3D>();
+final body = entity<RigidBody3D>().component;
 body.applyImpulse(entity, 0, 5, 0);
 body.setVelocity(entity, 3, 0, 0);
 ```

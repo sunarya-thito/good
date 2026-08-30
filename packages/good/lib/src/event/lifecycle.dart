@@ -166,7 +166,7 @@ mixin EntityLifecycleListener on GameListener {
 /// class SpatialIndexSystem extends GameSystem with EntitySpawnListener {
 ///   @override
 ///   void onEntitySpawned(Entity entity) {
-///     if (entity.tryGet<Collider2D>() != null) index.insert(entity);
+///     if (entity<Collider2D?>().component != null) index.insert(entity);
 ///   }
 /// }
 /// ```

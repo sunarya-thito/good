@@ -99,7 +99,7 @@ class ActiveCameraResolver {
     Entity? first;
     Entity? second;
     for (final entity in cameras.run()) {
-      if (entity.get<Camera>().cameraView[entity]?.pack() != view.pack()) {
+      if (entity<Camera>().component.cameraView[entity]?.pack() != view.pack()) {
         continue;
       }
       if (first == null) {
@@ -330,10 +330,10 @@ class CameraProjection {
       return;
     }
     sceneSlot = entity.sceneSlot;
-    final world = entity.get<WorldTransform2D>();
+    final world = entity<WorldTransform2D>().component;
     originX = world.worldX[entity];
     originY = world.worldY[entity];
-    zoom = entity.get<Camera>().cameraZoom[entity];
+    zoom = entity<Camera>().component.cameraZoom[entity];
   }
 
   /// View-space (a `GameView` pixel, origin at its top-left) to world space.

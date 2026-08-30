@@ -359,9 +359,9 @@ class Box2DPhysicsSystem extends GameSystem
   /// see anyway.
   void _applyEffectors() {
     for (final group in _effectorZones.groups()) {
-      final zone = group.get<Effector2D>();
+      final zone = group<Effector2D>();
       if (zone.effectors.isEmpty) continue;
-      final transform = group.get<Transform2D>();
+      final transform = group<Transform2D>();
       for (final entity in group) {
         final centreX = transform.transformOffsetX[entity];
         final centreY = transform.transformOffsetY[entity];
@@ -527,10 +527,10 @@ class Box2DPhysicsSystem extends GameSystem
 
   @override
   void onEntitySpawned(Entity entity) {
-    final body = entity.tryGet<RigidBody2D>();
+    final body = entity<RigidBody2D?>().component;
     if (body == null) return;
 
-    if (entity.tryGet<Transform2D>() == null) {
+    if (entity<Transform2D?>().component == null) {
       assert(
         false,
         'A prefab mixing in RigidBody2D must also mix in Transform2D - a '
@@ -595,8 +595,8 @@ class Box2DPhysicsSystem extends GameSystem
     if (_pendingCreate.isEmpty) return;
     for (var i = 0; i < _pendingCreate.length; i++) {
       final entity = _pendingCreate[i];
-      final body = entity.tryGet<RigidBody2D>();
-      final transform = entity.tryGet<Transform2D>();
+      final body = entity<RigidBody2D?>().component;
+      final transform = entity<Transform2D?>().component;
       // Destroyed before it ever got a body - `onEntityDespawned` clears the
       // queue, but an entity whose whole scene went away does not come
       // through there with a resolvable archetype.
@@ -611,7 +611,7 @@ class Box2DPhysicsSystem extends GameSystem
 
   @override
   void onEntityDespawned(Entity entity) {
-    final body = entity.tryGet<RigidBody2D>();
+    final body = entity<RigidBody2D?>().component;
     if (body == null) return;
 
     // Spawned and destroyed inside one tick, before its body was ever made.
@@ -707,7 +707,7 @@ class Box2DPhysicsSystem extends GameSystem
     body.bodySyncedY[entity] = transform.transformOffsetY[entity];
     body.bodySyncedAngle[entity] = transform.transformRotation[entity];
 
-    final collider = entity.tryGet<Collider2D>();
+    final collider = entity<Collider2D?>().component;
     if (collider != null) {
       final shapes = collider.bodies;
       for (var i = 0; i < shapes.length; i++) {
@@ -739,7 +739,7 @@ class Box2DPhysicsSystem extends GameSystem
     _shapeOwners[slot] = _ShapeOwner(
       entity,
       shape,
-      entity.tryGet<CollisionListener>(),
+      entity<CollisionListener?>().component,
     );
   }
 
@@ -978,8 +978,8 @@ class Box2DPhysicsSystem extends GameSystem
   int _fill() {
     var index = 0;
     for (final group in _bodies.groups()) {
-      final body = group.get<RigidBody2D>();
-      final transform = group.get<Transform2D>();
+      final body = group<RigidBody2D>();
+      final transform = group<Transform2D>();
 
       for (final entity in group) {
         final handle = body.bodyHandle[entity];
@@ -1100,8 +1100,8 @@ class Box2DPhysicsSystem extends GameSystem
       // group order, so consecutive entities usually share an archetype and
       // this resolves once per run of them.
       if (previous == null || entity.archetypeId != previous.archetypeId) {
-        body = entity.get<RigidBody2D>();
-        transform = entity.get<Transform2D>();
+        body = entity<RigidBody2D>().component;
+        transform = entity<Transform2D>().component;
         previous = entity;
       }
 
@@ -1529,7 +1529,7 @@ class Box2DPhysicsSystem extends GameSystem
 
   /// The body behind an entity, or 0 if it has none yet.
   int _bodyHandleOf(Entity entity) {
-    final body = entity.tryGet<RigidBody2D>();
+    final body = entity<RigidBody2D?>().component;
     return body == null ? 0 : body.bodyHandle[entity];
   }
 
@@ -1947,11 +1947,11 @@ class Box2DPhysicsSystem extends GameSystem
 /// that entity's collision listener if it has one.
 ///
 /// [listener] is resolved **once, at shape creation**, and that is a real
-/// optimisation, not tidiness. `entity.tryGet<CollisionListener>()` costs an
+/// optimisation, not tidiness. `entity<CollisionListener?>().component` costs an
 /// archetype resolve and a subtype test, and dispatch calls it twice per
 /// touching pair per tick - a settled pile of 20 000 bodies is tens of
 /// thousands of contacts, so resolving on the fly is tens of thousands of
-/// resolves every tick. The answer cannot change: `tryGet` returns the
+/// resolves every tick. The answer cannot change: the lookup returns the
 /// *prefab*, which is one
 /// object per archetype, and a shape's entity never changes archetype.
 class _ShapeOwner {

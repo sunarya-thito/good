@@ -206,33 +206,74 @@ void main() {
     });
   });
 
-  group('Entity.get / tryGet', () {
-    test('return the prefab for components the archetype has', () {
+  group('entity<T>() and entity<T?>()', () {
+    test('both spellings return the prefab for a component it has', () {
       final level = _level();
       level.pool.beginTick();
       final entity = level.addEntity(level.player);
       level.pool.commitTick();
 
-      expect(entity.get<_Transform>(), same(level.player));
-      expect(entity.get<_Health>(), same(level.player));
-      expect(entity.get<_Player>(), same(level.player));
-      expect(entity.tryGet<_Transform>(), same(level.player));
+      expect(entity<_Transform>().component, same(level.player));
+      expect(entity<_Health>().component, same(level.player));
+      expect(entity<_Player>().component, same(level.player));
+
+      // The nullable spelling is not "always null" - present is still the
+      // prefab, and only that tells a working optional form from one that
+      // has stopped resolving at all.
+      expect(entity<_Transform?>().component, same(level.player));
+      expect(entity<_Health?>().component, same(level.player));
     });
 
-    test(
-      'tryGet is null and get throws for components the archetype lacks',
-      () {
-        final level = _level();
-        level.pool.beginTick();
-        final enemy = level.addEntity(level.enemy);
-        level.pool.commitTick();
+    test('the nullable spelling answers null for a component it lacks', () {
+      final level = _level();
+      level.pool.beginTick();
+      final enemy = level.addEntity(level.enemy);
+      level.pool.commitTick();
 
-        expect(enemy.tryGet<_Health>(), isNull);
-        expect(enemy.tryGet<_Player>(), isNull);
-        expect(() => enemy.get<_Health>(), throwsStateError);
-        expect(enemy.get<_Transform>(), same(level.enemy));
-      },
-    );
+      expect(enemy<_Health?>().component, isNull);
+      expect(enemy<_Player?>().component, isNull);
+      // Same entity, same call shape, a component it does have.
+      expect(enemy<_Transform?>().component, same(level.enemy));
+    });
+
+    test('the non-nullable spelling throws, naming the component', () {
+      final level = _level();
+      level.pool.beginTick();
+      final enemy = level.addEntity(level.enemy);
+      level.pool.commitTick();
+
+      // The message and not only the type: a `StateError` from anywhere else
+      // in the resolve would satisfy `throwsStateError` just as well.
+      expect(
+        () => enemy<_Health>().component,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('_Health'),
+              contains('_Enemy'),
+              contains('Write _Health? if that is expected'),
+            ),
+          ),
+        ),
+      );
+      expect(enemy<_Transform>().component, same(level.enemy));
+    });
+
+    test('the accessor is an int, in both spellings', () {
+      final level = _level();
+      level.pool.beginTick();
+      final entity = level.addEntity(level.player);
+      level.pool.commitTick();
+
+      // What keeps the optional form off the allocation path: nullability
+      // rides on `component`, so neither accessor is itself nullable.
+      expect(identical(entity<_Transform>().entity, entity), isTrue);
+      expect(identical(entity<_Transform?>().entity, entity), isTrue);
+      expect(entity<_Transform>(), entity);
+      expect(entity<_Health?>(), entity);
+    });
   });
 
   group('end to end', () {
@@ -261,17 +302,17 @@ void main() {
       expect(a.rowOffset, isNot(b.rowOffset));
       expect(a.archetypeId, b.archetypeId);
 
-      final ta = a.get<_Transform>();
+      final ta = a<_Transform>().component;
       expect([ta.offsetX[a], ta.offsetY[a], ta.rotation[a]], [1.0, 2.0, 3.0]);
-      expect(a.get<_Health>().hitPoints[a], 55);
+      expect(a<_Health>().component.hitPoints[a], 55);
       expect([p.team[a], p.visible[a]], [1, 0]);
 
-      final tb = b.get<_Transform>();
+      final tb = b<_Transform>().component;
       expect(
         [tb.offsetX[b], tb.offsetY[b], tb.rotation[b]],
         [-10.0, -20.0, -30.0],
       );
-      expect(b.get<_Health>().hitPoints[b], 999);
+      expect(b<_Health>().component.hitPoints[b], 999);
       expect([p.team[b], p.visible[b]], [3, 1]);
     });
 
@@ -288,8 +329,8 @@ void main() {
       // archetype has its own page list, so only the archetype id
       // distinguishes them.
       expect(hero.archetypeId, isNot(foe.archetypeId));
-      expect(hero.get<_Transform>().offsetX[hero], 100.0);
-      expect(foe.get<_Transform>().offsetX[foe], -100.0);
+      expect(hero<_Transform>().component.offsetX[hero], 100.0);
+      expect(foe<_Transform>().component.offsetX[foe], -100.0);
     });
 
     test('a fixed-tick step accumulates one step per tick', () {
@@ -306,7 +347,7 @@ void main() {
       for (var tick = 0; tick < 10; tick++) {
         level.pool.beginTick();
         for (final e in [a, b]) {
-          final t = e.get<_Transform>();
+          final t = e<_Transform>().component;
           t.offsetX[e] += 1.0;
           t.offsetY[e] += 2.0;
         }
@@ -332,10 +373,10 @@ void main() {
 
       level.pool.beginTick();
       final fresh = level.addEntity(level.player);
-      expect(fresh.get<_Health>().hitPoints[fresh], 100);
+      expect(fresh<_Health>().component.hitPoints[fresh], 100);
       expect(level.player.visible[fresh], 1);
       level.pool.commitTick();
-      expect(fresh.get<_Health>().hitPoints[fresh], 100);
+      expect(fresh<_Health>().component.hitPoints[fresh], 100);
     });
 
     test('a row spawned outside a tick keeps its defaults', () {
@@ -350,10 +391,10 @@ void main() {
       level.pool.commitTick();
 
       final outside = level.addEntity(level.player);
-      expect(outside.get<_Health>().hitPoints[outside], 100);
+      expect(outside<_Health>().component.hitPoints[outside], 100);
       level.pool.beginTick();
       level.pool.commitTick();
-      expect(outside.get<_Health>().hitPoints[outside], 100);
+      expect(outside<_Health>().component.hitPoints[outside], 100);
     });
 
     test('writes outside a tick window assert rather than vanish', () {

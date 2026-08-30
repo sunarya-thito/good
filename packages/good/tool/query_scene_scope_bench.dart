@@ -88,7 +88,7 @@ class _Field extends SceneStruct {
 double scopedGroups(Query query, Scene scene) {
   var sum = 0.0;
   for (final group in query.groups(scene)) {
-    final position = group.get<_Position>();
+    final position = group<_Position>();
     for (final entity in group) {
       sum += position.x[entity];
     }
@@ -100,7 +100,7 @@ double scopedGroups(Query query, Scene scene) {
 double scopedRun(Query query, Scene scene) {
   var sum = 0.0;
   for (final entity in query.run(scene)) {
-    sum += entity.get<_Position>().x[entity];
+    sum += entity<_Position>().component.x[entity];
   }
   return sum;
 }
@@ -111,7 +111,7 @@ double scopedRun(Query query, Scene scene) {
 double perRowFilter(Query query, int sceneSlot) {
   var sum = 0.0;
   for (final group in query.groups()) {
-    final position = group.get<_Position>();
+    final position = group<_Position>();
     for (final entity in group) {
       if (entity.sceneSlot != sceneSlot) continue;
       sum += position.x[entity];
@@ -124,7 +124,7 @@ double perRowFilter(Query query, int sceneSlot) {
 double unscoped(Query query) {
   var sum = 0.0;
   for (final group in query.groups()) {
-    final position = group.get<_Position>();
+    final position = group<_Position>();
     for (final entity in group) {
       sum += position.x[entity];
     }

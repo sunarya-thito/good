@@ -551,7 +551,7 @@ the per-tick work is — usually a `GameSystem`, through `game.score`, as
 ## Reading the world
 
 You cannot, from Flutter. The main-isolate copy registers no archetypes and
-holds no component pages, so `Entity.get` there throws and tells you to publish
+holds no component pages, so `entity<T>()` there throws and tells you to publish
 the value through a channel instead. Every read of a column happens on the
 game isolate.
 

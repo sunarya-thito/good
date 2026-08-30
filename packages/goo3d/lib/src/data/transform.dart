@@ -80,7 +80,7 @@ extension Transform3DAccessor on Accessor<Transform3D> {
   /// is read through its own component, not through this one's.
   double distanceTo(Entity other) {
     final ta = component;
-    final tb = other.get<Transform3D>();
+    final tb = other<Transform3D>().component;
     final dx = tb.transformOffsetX[other] - ta.transformOffsetX[this];
     final dy = tb.transformOffsetY[other] - ta.transformOffsetY[this];
     final dz = tb.transformOffsetZ[other] - ta.transformOffsetZ[this];
@@ -235,7 +235,7 @@ extension Transform3DAccessor on Accessor<Transform3D> {
 
   /// [lookAt], sugar for facing [target]'s own local-space offset.
   void lookAtEntity(Entity target) {
-    final tt = target.get<Transform3D>();
+    final tt = target<Transform3D>().component;
     lookAt(
       tt.transformOffsetX[target],
       tt.transformOffsetY[target],

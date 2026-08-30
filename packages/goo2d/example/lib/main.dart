@@ -198,7 +198,7 @@ class SpinSystem extends GameSystem with FixedTickable {
   @override
   void onFixedUpdate() {
     for (final entity in spinnable.run()) {
-      final transform = entity.get<Transform2D>();
+      final transform = entity<Transform2D>().component;
       // Reads see last tick's published value, so this is exactly one
       // increment per tick no matter what else ran first.
       transform.transformRotation[entity] =
@@ -208,7 +208,7 @@ class SpinSystem extends GameSystem with FixedTickable {
       // Breath, and asking the row whether it has the component is the
       // sanctioned lookup (the never-dispatch-on-`is` rule names it
       // explicitly).
-      final player = entity.tryGet<Player>();
+      final player = entity<Player?>().component;
       if (player == null) continue;
       // Sampled fresh every tick from the clock - no per-entity animation
       // state anywhere, and nothing to keep in step.

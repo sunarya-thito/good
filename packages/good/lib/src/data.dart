@@ -88,7 +88,7 @@ abstract class DataDescriptor {
   /// archetype hands the row to a new entity whose handle is numerically
   /// equal to the old one. So a handle kept across the destroy resolves to
   /// whichever entity holds the row now, and reads and writes through it land
-  /// on that entity's data, with `get`/`tryGet` answering for the archetype
+  /// on that entity's data, with `entity<T>()` answering for the archetype
   /// as usual.
   ///
   /// A link that outlives the tick it was made in therefore needs something

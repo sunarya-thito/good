@@ -242,7 +242,7 @@ void main() {
           'archetypes - archetype ids are process-global and never '
           'recycled, so that would leak one set per load',
     );
-    expect(scene.get<_Level>(), same(game.level));
+    expect(scene<_Level>(), same(game.level));
   });
 
   test('one declaration backs several loads', () async {
@@ -254,8 +254,8 @@ void main() {
 
     expect(ArchetypeRegistry.count, before);
     expect(
-      first.get<_Level>(),
-      same(second.get<_Level>()),
+      first<_Level>(),
+      same(second<_Level>()),
       reason:
           'a SceneStruct is a declaration - every load of it resolves to '
           'the same object, exactly as every Entity of a prefab resolves to '
@@ -280,7 +280,7 @@ void main() {
           'nothing declared it, so loading is what registers it - '
           'describeScenes is additive, not a new obligation',
     );
-    expect(scene.get<_Level>(), isNot(same(game.level)));
+    expect(scene<_Level>(), isNot(same(game.level)));
   });
 
   test('a declared scene shares the game\'s pool and asset table', () async {

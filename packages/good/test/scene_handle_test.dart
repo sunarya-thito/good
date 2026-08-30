@@ -110,8 +110,8 @@ void main() {
       final handle = run.state.loadedScenes.single;
 
       expect(handle.isLoaded, isTrue);
-      expect(handle.get<_Level>(), same(run.state.scene));
-      expect(handle.tryGet<_Level>(), same(run.state.scene));
+      expect(handle<_Level>(), same(run.state.scene));
+      expect(handle<_Level?>(), same(run.state.scene));
     });
 
     test('the struct is a declaration and holds no handle of its own', () async {
@@ -134,9 +134,9 @@ void main() {
       await run.stop();
 
       expect(handle.isLoaded, isFalse);
-      expect(handle.tryGet<_Level>(), isNull);
+      expect(handle<_Level?>(), isNull);
       expect(
-        () => handle.get<_Level>(),
+        () => handle<_Level>(),
         throwsStateError,
         reason:
             'a stale handle is a diagnostic, not a null every caller has '
@@ -148,7 +148,7 @@ void main() {
       'a reused slot does not answer for the handle that held it before',
       () {
         final first = SceneRegistry.register(_Level());
-        final firstScene = first.get<_Level>();
+        final firstScene = first<_Level>();
 
         SceneRegistry.unregister(first);
         final second = SceneRegistry.register(_Level());
@@ -164,17 +164,48 @@ void main() {
         );
         expect(first.isLoaded, isFalse);
         expect(second.isLoaded, isTrue);
-        expect(second.get<_Level>(), isNot(same(firstScene)));
+        expect(second<_Level>(), isNot(same(firstScene)));
       },
     );
 
-    test('get<T> reports the wrong type rather than returning null', () async {
+    test('scene<T>() reports the wrong type, scene<T?>() answers null', () async {
       await _boot();
+      final handle = run.state.loadedScenes.single;
+
       expect(
-        () => run.state.loadedScenes.single.get<_OtherLevel>(),
-        throwsStateError,
+        () => handle<_OtherLevel>(),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('_Level'), contains('not a _OtherLevel')),
+          ),
+        ),
+        reason: 'a loaded scene of the wrong type is a different diagnostic '
+            'from an unloaded one, and the message is what separates them',
       );
-      expect(run.state.loadedScenes.single.tryGet<_OtherLevel>(), isNull);
+      expect(handle<_OtherLevel?>(), isNull);
+      // The nullable spelling still resolves the type the slot does hold, so
+      // "always null" does not pass this.
+      expect(handle<_Level?>(), same(run.state.scene));
+    });
+
+    test('an unloaded handle throws for T and answers null for T?', () async {
+      await _boot();
+      final handle = run.state.loadedScenes.single;
+      await run.stop();
+
+      expect(
+        () => handle<_Level>(),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('is not loaded'), contains('generation')),
+          ),
+        ),
+      );
+      expect(handle<_Level?>(), isNull);
     });
   });
 
@@ -195,7 +226,7 @@ void main() {
       // row belong to" is a question only the receiver can answer, and the
       // handle answers it by being the receiver.
       expect(
-        first.get<_Marked>().mark[first],
+        first<_Marked>().component.mark[first],
         3,
         reason: 'onMounted and the declared defaults run through the handle',
       );
@@ -224,7 +255,7 @@ void main() {
             'kept its entries would hand them to the next game in this '
             'process',
       );
-      expect(() => handle.get<SceneStruct>(), throwsStateError);
+      expect(() => handle<SceneStruct>(), throwsStateError);
     });
   });
 }

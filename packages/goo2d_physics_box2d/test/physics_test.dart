@@ -146,14 +146,14 @@ class _GameplaySystem extends GameSystem with FixedTickable {
     if (retype != null) {
       _retype = null;
       final (entity, type) = retype;
-      entity.get<RigidBody2D>().bodyType[entity] = type;
+      entity<RigidBody2D>().component.bodyType[entity] = type;
     }
 
     final turn = _turn;
     if (turn != null) {
       _turn = null;
       final (entity, angle) = turn;
-      entity.get<Transform2D>().transformRotation[entity] = angle;
+      entity<Transform2D>().component.transformRotation[entity] = angle;
     }
 
     final pending = _teleport;
@@ -161,7 +161,7 @@ class _GameplaySystem extends GameSystem with FixedTickable {
     _teleport = null;
 
     final (entity, x, y) = pending;
-    entity.get<Transform2D>()
+    entity<Transform2D>().component
       ..transformOffsetX[entity] = x
       ..transformOffsetY[entity] = y;
   }

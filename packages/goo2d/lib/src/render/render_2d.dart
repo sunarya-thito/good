@@ -2402,13 +2402,13 @@ class GameRenderer2D extends GameSystem
       <Transform2D, _TransformSource>{};
 
   _TransformSource _sourceOf(QueryGroup group) {
-    final local = group.get<Transform2D>();
+    final local = group<Transform2D>();
     final cached = _sourceCache[local];
     if (cached != null) return cached;
-    // `tryGet`, because `WorldTransform2D` is optional on a renderable - an
+    // `WorldTransform2D?`, because it is optional on a renderable - an
     // entity that is never parented has no composed transform to read and its
     // local one is already the answer. See [Renderable2D]'s doc.
-    final world = group.tryGet<WorldTransform2D>();
+    final world = group<WorldTransform2D?>();
     final source = world == null
         ? _TransformSource.local(local)
         : _TransformSource.world(world);
@@ -2430,7 +2430,7 @@ class GameRenderer2D extends GameSystem
     final projection = _projection;
     final queue = _queue;
     for (final group in query.groups()) {
-      final renderable = group.get<Renderable2D>();
+      final renderable = group<Renderable2D>();
       final sprites = renderable.sprites;
       // Resolved once per archetype and carried through the queue, so the
       // write pass never asks - see `_SpriteDrawQueue._sources`.
@@ -2442,7 +2442,7 @@ class GameRenderer2D extends GameSystem
       if (layer == null) {
         place.world(projection);
       } else {
-        final screen = group.get<ScreenTransform2D>();
+        final screen = group<ScreenTransform2D>();
         if (screen.screenLayer != layer) continue;
         place.screen(projection, screen);
       }
@@ -2686,7 +2686,7 @@ class GameRenderer2D extends GameSystem
     // `Text2D` are independent, an entity may carry either or both, and a
     // label has no `Sprite` to read a width, a frame or an inset from.
     for (final group in _labels.groups()) {
-      final text = group.get<Text2D>();
+      final text = group<Text2D>();
       // Per archetype, so a prefab that declared no font is skipped once for
       // every entity of it rather than once each. A font is the atlas and the
       // grid together and there is nothing to draw without one.
@@ -2879,7 +2879,7 @@ class GameRenderer2D extends GameSystem
     // whole world.
     //
     // Grouped, so the component and its sprite list are resolved once per
-    // archetype instead of once per entity - `entity.get<Renderable2D>()`
+    // archetype instead of once per entity - `entity<Renderable2D>().component`
     // hands back the same object for every row, and at 10k rows that shows up
     // in a profile.
     //
@@ -2954,7 +2954,7 @@ class GameRenderer2D extends GameSystem
       // a panel and not a particle.
       final place = _writePlacement;
       if (queue.isScreenAt(i)) {
-        place.screen(projection, entity.get<ScreenTransform2D>());
+        place.screen(projection, entity<ScreenTransform2D>().component);
       } else {
         place.world(projection);
       }

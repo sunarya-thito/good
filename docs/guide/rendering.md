@@ -244,7 +244,7 @@ column on the prefab, and `12` is the frame rate:
 
 ```dart
 for (final group in players.groups()) {
-  final player = group.get<Player>();
+  final player = group<Player>();
   for (final entity in group) {
     final t = player.animTime[entity] + dt;
     player.animTime[entity] = t;
@@ -620,7 +620,7 @@ class Navigation extends GameSystem with FixedTickable {
   @override
   void onFixedUpdate() {
     for (final group in players.groups()) {
-      final world = group.get<WorldTransform2D>();
+      final world = group<WorldTransform2D>();
       for (final entity in group) {
         debugDraw.line(
           world.worldX[entity],

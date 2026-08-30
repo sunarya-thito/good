@@ -141,8 +141,8 @@ class OrcMovementSystem extends GameSystem with FixedTickable {
   void onFixedUpdate() {
     final dt = game.fixedTimeStep.inMicroseconds / 1000000.0;
     for (final group in orcs.groups()) {
-      final transform = group.get<Transform2D>();
-      final orc = group.get<Orc>();
+      final transform = group<Transform2D>();
+      final orc = group<Orc>();
       for (final entity in group) {
         transform.transformOffsetX[entity] += orc.speed[entity] * dt;
       }
@@ -165,7 +165,7 @@ object in the whole game and it holds no per-orc values —
 has the full explanation, and this is the single most common way a first prefab
 goes wrong.
 
-The loop has two levels because `group.get<T>()` is the expensive part and a
+The loop has two levels because `group<T>()` is the expensive part and a
 group is the scope where hoisting it out is correct. Doing it in the inner loop
 works and is slow: a profile of this engine put that one mistake at roughly 7%
 of total CPU.
@@ -255,8 +255,8 @@ subtree. See [Transforms and hierarchy](transforms-and-hierarchy.md).
 Events deliver one as their payload: `onEntityMounted(Entity entity)`,
 `onEntitySpawned`, and `sourceEntity`/`targetEntity` on a collision event.
 
-Once you hold one, `entity.get<T>()` and `entity.tryGet<T>()` reach every
-component its prefab declared, which is the next section.
+Once you hold one, `entity<T>().component` and `entity<T?>().component` reach
+every component its prefab declared, which is the next section.
 
 !!! danger "There is no `Find`"
     No `FindObjectOfType`, no lookup by name, no lookup by tag. An entity has
@@ -289,7 +289,7 @@ before you write the field.
 Given a handle, resolve the component it belongs to and index:
 
 ```dart
-final health = target.get<Health>();
+final health = target<Health>().component;
 health.healthHp[target] -= 5;
 ```
 
@@ -305,7 +305,7 @@ through the same object. `Orc` mixes in `Transform2D`, so it answers for
 position too:
 
 ```dart
-final orc = target.get<Orc>();
+final orc = target<Orc>().component;
 final tx = orc.transformOffsetX[target];
 final ty = orc.transformOffsetY[target];
 ```
@@ -379,14 +379,14 @@ handle:
 
 ```dart
 for (final group in missiles.groups()) {
-  final missile = group.get<Missile>();
-  final transform = group.get<Transform2D>();
+  final missile = group<Missile>();
+  final transform = group<Transform2D>();
   for (final entity in group) {
     final raw = missile.target[entity];
     if (raw == null) continue;
 
     final target = Entity(raw);
-    final orc = target.tryGet<Orc>();
+    final orc = target<Orc?>().component;
     if (orc == null || orc.stamp[target] != missile.targetStamp[entity]) {
       missile.target[entity] = null;      // whatever it named is gone
       continue;
@@ -398,9 +398,10 @@ for (final group in missiles.groups()) {
 }
 ```
 
-`tryGet` catches the case where the row was recycled by a different archetype;
-the stamp catches the case where it was recycled by the same one. Together they
-come as close to a weak reference as the storage model allows.
+The nullable spelling catches the case where the row was recycled by a
+different archetype; the stamp catches the case where it was recycled by the
+same one. Together they come as close to a weak reference as the storage
+model allows.
 
 !!! info "Parenting is the link you do not have to maintain"
     A turret on a tank, a health bar over a head, a limb on a body — reach for
@@ -481,10 +482,10 @@ Per-kind hooks are the exception, and they cover more ground than you would
 guess. `onEntityMounted` and `onEntityUnmounted` are events your prefab hears
 by mixing in `EntityLifecycleListener`; `onCollisionEnter2D` and its five
 siblings arrive through `CollisionListener`, which the physics system resolves
-at the contact with `entity.tryGet<CollisionListener>()`. Different machinery,
-same result at the call site: one override on the prefab class, run once per
-event. Polymorphism survives at prefab granularity. It does not survive inside
-the walk.
+at the contact with `entity<CollisionListener?>().component`. Different
+machinery, same result at the call site: one override on the prefab class, run
+once per event. Polymorphism survives at prefab granularity. It does not
+survive inside the walk.
 
 **Shared code needs a shared mixin.** A helper that works over "anything with
 health" needs `Character` to be a real mixin that every prefab applies. Two
@@ -564,8 +565,8 @@ bool _playerIsClose(Entity self) => true;
 void onFixedUpdate() {
   final dt = game.fixedTimeStep.inMicroseconds / 1000000.0;
   for (final group in orcs.groups()) {
-    final orc = group.get<Orc>();
-    final transform = group.get<Transform2D>();
+    final orc = group<Orc>();
+    final transform = group<Transform2D>();
     for (final entity in group) {
       orc.stateTime[entity] += dt;
 
@@ -691,7 +692,7 @@ class Orc extends EntityStruct
   @override
   void onTriggerEnter2D(Collision2DEvent event) {
     final self = event.sourceEntity;
-    final bullet = event.targetEntity.tryGet<Bullet>();
+    final bullet = event.targetEntity<Bullet?>().component;
     if (bullet == null) return;
 
     healthHp[self] -= bullet.damage[event.targetEntity];
@@ -750,7 +751,7 @@ class DamageSystem extends GameSystem with FixedTickable {
         }
       }
       final victim = Entity(_victims[i]);
-      final health = victim.get<Health>();
+      final health = victim<Health>().component;
       health.healthHp[victim] -= total;
     }
     _victims.clear();
@@ -768,7 +769,7 @@ DamageSystem? _damage;
 
 @override
 void onTriggerEnter2D(Collision2DEvent event) {
-  final bullet = event.targetEntity.tryGet<Bullet>();
+  final bullet = event.targetEntity<Bullet?>().component;
   if (bullet == null) return;
   (_damage ??= getSystem<DamageSystem>())
       .report(event.sourceEntity, bullet.damage[event.targetEntity]);
@@ -795,7 +796,7 @@ final _index = given<SpatialIndex>();
 class SpatialIndexSystem extends GameSystem with EntitySpawnListener {
   @override
   void onEntitySpawned(Entity entity) {
-    if (entity.tryGet<Collider2D>() != null) _index.insert(entity);
+    if (entity<Collider2D?>().component != null) _index.insert(entity);
   }
 
   @override
@@ -949,7 +950,7 @@ some frame-boundary behaviour that otherwise looks like a bug.
 
 ```dart
 for (final group in motes.groups()) {
-  final mote = group.get<Mote>();
+  final mote = group<Mote>();
   for (final entity in group) {
     final remaining = mote.life[entity] - dt;
     if (remaining <= 0) {
@@ -1048,9 +1049,11 @@ class WatchPlayer extends GameSystem with Tickable {
   void onTick(Duration delta) {
     final player = getState<ArenaState>().playerEntity;
     if (player == null) return;
+    final transform = player<Transform2D>().component;
+    final health = player<Health>().component;
     getGame<ArenaGame>()
-      ..watchedX.value = player.get<Transform2D>().transformOffsetX[player]
-      ..watchedHp.value = player.get<Health>().healthHp[player];
+      ..watchedX.value = transform.transformOffsetX[player]
+      ..watchedHp.value = health.healthHp[player];
   }
 }
 ```
