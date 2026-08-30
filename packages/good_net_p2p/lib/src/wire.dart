@@ -55,8 +55,14 @@ const int magic0 = 0x67;
 /// `n` - the second magic byte.
 const int magic1 = 0x6E;
 
-/// Follows the magic bytes, so that a format change is a refused connection
-/// instead of a garbled one.
+/// Follows the magic bytes, and says which layout the rest of the packet is
+/// in.
+///
+/// A [PacketType.connectRequest] carrying another version is refused with
+/// [RejectReason.versionMismatch], so the joiner is told what is wrong
+/// instead of waiting out its handshake timeout. Every other packet type
+/// carrying another version is discarded: its body is laid out by a version
+/// this build cannot read, and there is no handshake waiting on an answer.
 const int protocolVersion = 1;
 
 /// Bytes before any packet's own body.
@@ -122,11 +128,28 @@ abstract final class FrameKind {
 
 /// What a [PacketType.connectReject] carries, so that a joiner can say
 /// something true to the player, and not just "connection failed".
+///
+/// # The one packet that crosses a version boundary
+///
+/// A [versionMismatch] reject goes to a peer whose packets this build cannot
+/// parse, and it is stamped with *that* peer's [protocolVersion] byte so that
+/// the peer's own prologue check admits it. A reject wearing the sending
+/// build's version is thrown away by the very check it is about.
+///
+/// That holds only while the layout the other peer expects is the layout it
+/// gets, so the first two body bytes are fixed for the life of the format:
+/// the reason, then the sending peer's [protocolVersion]. Anything a later
+/// version adds goes after them, and a peer that does not know the reason
+/// number still gets a sentence out of [describe].
 abstract final class RejectReason {
   static const int sessionFull = 0;
   static const int schemaMismatch = 1;
   static const int wrongSession = 2;
   static const int notHosting = 3;
+
+  /// The two builds disagree about [protocolVersion]. The byte after this one
+  /// carries the rejecting peer's version - see [describeVersionMismatch].
+  static const int versionMismatch = 4;
 
   static String describe(int reason) {
     switch (reason) {
@@ -138,10 +161,22 @@ abstract final class RejectReason {
         return 'that code is not the session this host has open';
       case notHosting:
         return 'nobody is hosting at that address any more';
+      case versionMismatch:
+        return 'the host speaks a different version of the network protocol';
       default:
         return 'the host refused the connection (reason $reason)';
     }
   }
+
+  /// [versionMismatch], naming both versions.
+  ///
+  /// [describe] is handed the reason byte and nothing else, so it can say
+  /// that the versions differ and not which they are. The number a player
+  /// reports is what tells a developer which of the two builds is behind.
+  static String describeVersionMismatch(int theirVersion) =>
+      'the host speaks network protocol version $theirVersion and this build '
+      'speaks version $protocolVersion - one of the two is a newer build of '
+      'this game';
 }
 
 /// The transport's own frames, inside [FrameKind.system].

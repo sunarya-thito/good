@@ -470,7 +470,22 @@ class P2PNetTransport extends NetTransport {
       final data = datagram.data;
       if (data.length < prologueBytes) continue;
       if (data[0] != magic0 || data[1] != magic1) continue;
-      if (data[2] != protocolVersion) continue;
+      if (data[2] != protocolVersion) {
+        // The magic bytes have already established a peer of this protocol
+        // family, so a join request from one gets an answer. Silence leaves
+        // the joiner to sit out its whole handshake timeout and then report
+        // that nobody was hosting there - a version problem stated as a
+        // network problem, and checking the network is the wrong repair.
+        //
+        // Nothing past the prologue is read: the body is laid out by a
+        // version this build does not have. Every other packet type stays a
+        // discard, because a payload, an accept or a goodbye has no handshake
+        // waiting to hear a refusal.
+        if (data[3] == PacketType.connectRequest) {
+          _sendVersionReject(datagram.address, datagram.port, data[2]);
+        }
+        continue;
+      }
       _onPacket(datagram.address, datagram.port, data[3], data);
     }
   }
@@ -798,14 +813,41 @@ class P2PNetTransport extends NetTransport {
     _send(_scratch, prologueBytes + 1, address, port);
   }
 
+  /// Refuse a joiner whose packets this build cannot parse, in the version it
+  /// speaks.
+  ///
+  /// The prologue carries [theirVersion] and not this build's, because the
+  /// joiner drops a datagram whose version byte is not its own - a reject
+  /// stamped the usual way is discarded by the check it is about, and the
+  /// joiner times out anyway. [RejectReason] fixes the two body bytes this
+  /// writes so that a peer on another version can read them.
+  ///
+  /// Six bytes out for a datagram of at least four in, and only for a
+  /// datagram whose magic bytes are this protocol's - the same exposure
+  /// [RejectReason.notHosting] already carries for a well-formed request. A
+  /// reflector wants orders of magnitude and this is a ratio of at most 1.5.
+  void _sendVersionReject(InternetAddress address, int port, int theirVersion) {
+    _prologue(PacketType.connectReject);
+    _scratch[2] = theirVersion;
+    _scratch[prologueBytes] = RejectReason.versionMismatch;
+    _scratch[prologueBytes + 1] = protocolVersion;
+    _send(_scratch, prologueBytes + 2, address, port);
+  }
+
   void _onConnectReject(InternetAddress address, int port, Uint8List data) {
     final handshake = _handshake;
     if (handshake == null) return;
     if (!handshake.link.isFrom(address.rawAddress, port)) return;
     if (data.length < prologueBytes + 1) return;
-    _failHandshake(
-      NetException(RejectReason.describe(data[prologueBytes]), transport: name),
-    );
+    final reason = data[prologueBytes];
+    // A version mismatch carries the host's version in the byte after the
+    // reason, and that number is what says which of the two builds is behind.
+    final described =
+        reason == RejectReason.versionMismatch &&
+            data.length > prologueBytes + 1
+        ? RejectReason.describeVersionMismatch(data[prologueBytes + 1])
+        : RejectReason.describe(reason);
+    _failHandshake(NetException(described, transport: name));
   }
 
   void _failHandshake(NetException failure) {
