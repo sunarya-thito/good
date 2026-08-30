@@ -2,6 +2,21 @@
 
 ### Changed
 
+* **The shadowed-field check sees two shapes it was missing.** `_isColumn`
+  recognises a declaration by the receiver's name, and `InitialPointer` -
+  which is what `hasFloat64` and the rest actually return - was not in the set
+  of column types, so `late final InitialPointer<double> speed;` written in
+  the older form fell through the check entirely (#262, #210).
+
+  The scan also parses with `dot-shorthands` enabled now. A column written
+  `Field.array(.uint16, 4)` parsed to the right tree either way, since the
+  shorthand is an argument and the receiver is still the identifier `Field`,
+  but a bare `parseString` reported `EXPERIMENT_NOT_ENABLED` on it. This pass
+  never reads its diagnostics, so nothing was wrong today; a pass that did
+  would have seen an error on every element-spelled array in the tree.
+
+  The scaffolded game writes `cameraFieldOfView.initialValue`.
+
 * **The scaffolded game writes `eye.cameraView[camera]`.** `Camera.view` is
   `Camera.cameraView` in `goo2d` 0.3.0-dev, and the starter project generated
   by `good create` follows it (#133). Nothing in this package's own API moves.

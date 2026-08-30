@@ -42,7 +42,7 @@ class Ground extends EntityStruct with Transform3D, Collider3D, RigidBody3D {
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    bodyType.defaultValue = BodyType3D.staticBody;
+    bodyType.initialValue = BodyType3D.staticBody;
   }
 }
 ```

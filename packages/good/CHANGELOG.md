@@ -2,6 +2,81 @@
 
 ### Breaking
 
+* **An array column names its element as an argument.** The thirty-two
+  `has*Array`/`opt*Array` methods on `DataDescriptor`, their thirty-two
+  mirrors on `Field`, and `hasPackedArray`/`optPackedArray` beside them are
+  gone, replaced by three methods that take a `DataElement<T>` (#262):
+
+  | before | after |
+  |---|---|
+  | `data.hasUint16Array(8)` | `data.hasArray(.uint16, 8)` |
+  | `data.hasFloat64Array(4, 1.5)` | `data.hasArray(.float64, 4, 1.5)` |
+  | `data.hasFloat64ArrayOf(4, [1.5, 2.5])` | `data.hasArrayOf(.float64, 4, [1.5, 2.5])` |
+  | `data.optInt32Array(3, -42)` | `data.optArray(.int32, 3, -42)` |
+  | `data.hasPackedArray(table, 3, first)` | `data.hasArray(table, 3, first)` |
+  | `Field.uint16Array(8)` | `Field.array(.uint16, 8)` |
+  | `Field.packedArray(table, 3, first)` | `Field.array(table, 3, first)` |
+
+  The element is a value, so the pointer's `T` follows from it -
+  `data.hasArray(.float64, 8)` is a `DataArrayPointer<double>` - and the
+  fourteen widths are static constants on `DataElement`, which is what makes
+  the dot shorthand above resolve. `IntRepresentation` implements
+  `DataElement` directly, with nothing wrapping it, so a representation and a
+  native width are the same argument. Adding a width is one constant, where
+  it was three declarations across two files.
+
+  Two things follow that are not renames. `hasArrayOf` covers **every**
+  element kind, so an integer array can start its elements apart, which only
+  the two float widths could do (#35). And a representation element with no
+  initial value is refused where the column is declared, naming `optArray`:
+  the bits an unwritten element holds are 0, which a representation is under
+  no obligation to have a value for.
+
+  There is no nested-element form. The shape compiles - a static
+  `DataElement.array(element, length)` types as
+  `DataArrayPointer<ArrayView<ArrayView<int>>>` on the pinned SDK - but
+  nothing in #262 spells out how a nested element is *read*, and
+  `DataArrayPointer`'s own doc rules out the obvious answer: an extension
+  type carries one value, so it cannot know which array field produced it.
+  That is what two-argument `get`/`set` exists to avoid.
+
+* **`DefaultPointer` is `InitialPointer`, and `defaultValue` is
+  `initialValue`.** The value is stamped into the prototype row at `seal` and
+  memcpy'd into every row allocated afterwards; nothing consults it on a read,
+  so `hp[e] = null` reads back `null` and does not restore anything (#210).
+
+  | before | after |
+  |---|---|
+  | `DefaultPointer<T>` | `InitialPointer<T>` |
+  | `near.defaultValue = 10` | `near.initialValue = 10` |
+  | `ArchetypeField.writeDefault(row)` | `ArchetypeField.writeInitialValue(row)` |
+
+  The two comments that existed only to deny the reading the old name invited
+  are gone with it - the file-level note in `data.dart` and the
+  "stamped, not consulted" paragraph. The mechanism they were guarding is
+  still written down where it belongs, on `initialValue` itself.
+
+  `Track.defaultValue` does **not** move. A track's value really is consulted
+  wherever no clip keys it, which is the meaning the other name never had.
+
+* **`ParamDescriptor` gains `hasBool`, `hasInt1`, `hasInt2`, `hasInt4` and
+  `hasUint64`**, with `Param.boolean`, `Param.int1`, `Param.int2`,
+  `Param.int4` and `Param.uint64` beside them (#35). A command or a network
+  message could not declare a bool at all; the documented way round it was
+  `hasUint1` and a `? 1 : 0` at both ends.
+
+  A `bool` parameter is one bit, the storage `hasUint1` takes, and carries its
+  own code in the layout signature - so a declaration changed from one to the
+  other is a handshake mismatch rather than a value read back as the wrong
+  type. The code is added at the end of `_FieldKind` and no existing
+  signature moves, so a peer built before this change still handshakes with
+  one built after it as long as neither declaration list changed.
+
+  What each descriptor does *not* offer is now written where the descriptor
+  is: `DataDescriptor` has no `hasString` and cannot, `ParamDescriptor` has
+  no heap objects, packed values, enums or arrays, and `StateDescriptor` has
+  no sub-byte widths or entity handles. Each says why in place.
+
 * **`AudioBackend` gains `setVoiceVolume`, and `AudioBus` gains four members.**
   A backend implemented outside this repository has one method to add (#17):
 

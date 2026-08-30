@@ -137,8 +137,8 @@ final class BitmapFont {
 ///   @override
 ///   void describeStruct(DataDescriptor data) {
 ///     super.describeStruct(data);
-///     textCellWidth.defaultValue = 8;
-///     textCellHeight.defaultValue = 12;
+///     textCellWidth.initialValue = 8;
+///     textCellHeight.initialValue = 12;
 ///   }
 /// }
 ///
@@ -318,7 +318,7 @@ mixin Text2D on Component {
         'must be between 1 and 65535 - it is storage reserved in every row',
       );
     }
-    textCodeUnits = data.hasUint16Array(capacity);
+    textCodeUnits = data.hasArray(.uint16, capacity);
     textFontResolved = textFont;
   }
 }

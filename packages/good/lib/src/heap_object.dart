@@ -33,7 +33,7 @@ import 'package:meta/meta.dart';
 /// entity or a subtree, and `SceneStruct.unmountEntitiesOf` for a scene coming
 /// down or a game stopping - walks the row's heap-object fields and
 /// [unregister]s each. A row that never wrote the field is left alone, because
-/// it carries the one address `writeDefault` registered at seal time and every
+/// it carries the one address `writeInitialValue` registered at seal time and every
 /// other entity of that archetype is still reading it.
 ///
 /// This carried a `TODO(despawn)` for a long time saying the leak was

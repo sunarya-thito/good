@@ -211,18 +211,18 @@ typedef Blow = ({int amount, bool crit});
 
 class Damage extends GameCommand<Blow, int> {
   final amount = Param.uint16();
-  final crit = Param.uint1();      // (1)!
+  final crit = Param.boolean();    // (1)!
   final dealt = Param.uint16();    // (2)!
 
   @override
   void bufferFromParams(ParamBuffer call, Blow params) {
     amount[call] = params.amount;
-    crit[call] = params.crit ? 1 : 0;  // (3)!
+    crit[call] = params.crit;
   }
 
   @override
   Blow paramsFromBuffer(ParamBuffer call) =>
-      (amount: amount[call], crit: crit[call] == 1);
+      (amount: amount[call], crit: crit[call]);
 
   @override
   void bufferFromResult(ParamBuffer call, int result) => dealt[call] = result;
@@ -232,11 +232,12 @@ class Damage extends GameCommand<Blow, int> {
 }
 ```
 
-1. One bit, not a byte. Field widths are wire bandwidth.
+1. One bit, not a byte, and typed `bool` — the same storage `Param.uint1()`
+   takes, with the type saying what it holds. It goes on the wire as its own
+   field kind, so a build that changed one to the other is caught at the
+   handshake.
 2. The **result** shares the same record as the parameters — one layout, one
    reservation, both directions.
-3. `ParamPointer` is integer-typed, so a `bool` is marshalled explicitly, not by
-   an implicit conversion you cannot see.
 
 Call it with a record literal, and the field names are checked at the call site:
 
@@ -304,7 +305,7 @@ of every variable-length one — and, if it declares any variable-length field, 
   record on the way across. A batch too big for that ring is refused at
   `send()`, naming the bound and `Game.commandBufferBytes`. It is never
   truncated.
-- **Field widths are bandwidth.** `Param.uint1()` for a flag and
+- **Field widths are bandwidth.** `Param.boolean()` for a flag and
   `Param.uint4()` for a small enum are not micro-optimisation here — a batch of
   a few hundred commands per frame pays for every byte.
 

@@ -49,7 +49,7 @@ class _Floor extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    bodyType.defaultValue = BodyType2D.staticBody;
+    bodyType.initialValue = BodyType2D.staticBody;
   }
 }
 
@@ -78,7 +78,7 @@ class _Platform extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    bodyType.defaultValue = BodyType2D.kinematicBody;
+    bodyType.initialValue = BodyType2D.kinematicBody;
   }
 }
 
@@ -95,7 +95,7 @@ class _Pinned extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    bodyFixedRotation.defaultValue = true;
+    bodyFixedRotation.initialValue = true;
   }
 }
 

@@ -235,10 +235,10 @@ class _Label extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    textCellWidth.defaultValue = 8;
-    textCellHeight.defaultValue = 8;
-    textColor.defaultValue = _labelColor;
-    textZIndex.defaultValue = 9000;
+    textCellWidth.initialValue = 8;
+    textCellHeight.initialValue = 8;
+    textColor.initialValue = _labelColor;
+    textZIndex.initialValue = 9000;
   }
 }
 

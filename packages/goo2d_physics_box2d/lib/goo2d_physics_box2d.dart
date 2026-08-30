@@ -21,7 +21,7 @@
 /// `describeStruct`:
 ///
 /// ```dart
-/// bodyType.defaultValue = BodyType2D.staticBody;
+/// bodyType.initialValue = BodyType2D.staticBody;
 /// ```
 ///
 /// The shapes themselves are declared through `goo2d`'s existing

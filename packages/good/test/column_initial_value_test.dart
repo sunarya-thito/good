@@ -28,13 +28,13 @@ class _Captain extends EntityStruct with _Body {
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    speed.defaultValue = 9.5;
-    hp.defaultValue = 250;
-    alive.defaultValue = false;
-    stance.defaultValue = _Stance.running;
-    leader.defaultValue = Entity(77);
-    shield.defaultValue = 30;
-    aim.defaultValue = null;
+    speed.initialValue = 9.5;
+    hp.initialValue = 250;
+    alive.initialValue = false;
+    stance.initialValue = _Stance.running;
+    leader.initialValue = Entity(77);
+    shield.initialValue = 30;
+    aim.initialValue = null;
   }
 }
 
@@ -51,17 +51,17 @@ class _Lieutenant extends EntityStruct with _Body {
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    sawSpeed = speed.defaultValue;
-    sawHp = hp.defaultValue;
-    sawShield = shield.defaultValue;
-    sawAim = aim.defaultValue;
+    sawSpeed = speed.initialValue;
+    sawHp = hp.initialValue;
+    sawShield = shield.initialValue;
+    sawAim = aim.initialValue;
 
-    speed.defaultValue *= 2;
-    hp.defaultValue += 50;
-    alive.defaultValue = !alive.defaultValue;
-    stance.defaultValue = _Stance.values[stance.defaultValue.index + 1];
-    leader.defaultValue = Entity(leader.defaultValue.value + 1);
-    aim.defaultValue = aim.defaultValue! + 0.25;
+    speed.initialValue *= 2;
+    hp.initialValue += 50;
+    alive.initialValue = !alive.initialValue;
+    stance.initialValue = _Stance.values[stance.initialValue.index + 1];
+    leader.initialValue = Entity(leader.initialValue.value + 1);
+    aim.initialValue = aim.initialValue! + 0.25;
   }
 }
 
@@ -158,7 +158,7 @@ void main() {
     final squad = _squad();
 
     expect(
-      () => squad.captain.hp.defaultValue = 5,
+      () => squad.captain.hp.initialValue = 5,
       throwsA(
         isA<StateError>().having(
           (e) => e.message,
@@ -166,7 +166,7 @@ void main() {
           allOf(
             contains('sealed'),
             contains('_Captain'),
-            contains('defaultValue'),
+            contains('initialValue'),
             contains('near[entity]'),
           ),
         ),
@@ -177,15 +177,15 @@ void main() {
   test('the throw catches every column kind, wrappers included', () {
     final squad = _squad();
 
-    expect(() => squad.grunt.speed.defaultValue = 1, throwsStateError);
-    expect(() => squad.grunt.alive.defaultValue = false, throwsStateError);
+    expect(() => squad.grunt.speed.initialValue = 1, throwsStateError);
+    expect(() => squad.grunt.alive.initialValue = false, throwsStateError);
     expect(
-      () => squad.grunt.stance.defaultValue = _Stance.walking,
+      () => squad.grunt.stance.initialValue = _Stance.walking,
       throwsStateError,
     );
-    expect(() => squad.grunt.leader.defaultValue = Entity(2), throwsStateError);
-    expect(() => squad.grunt.shield.defaultValue = 1, throwsStateError);
-    expect(() => squad.grunt.aim.defaultValue = null, throwsStateError);
+    expect(() => squad.grunt.leader.initialValue = Entity(2), throwsStateError);
+    expect(() => squad.grunt.shield.initialValue = 1, throwsStateError);
+    expect(() => squad.grunt.aim.initialValue = null, throwsStateError);
   });
 
   test('the getter answers the declared default while describing, before '
@@ -215,24 +215,24 @@ void main() {
 
     // Only the write becomes a lie at seal; the stored value is exactly what
     // every row allocated from here on gets.
-    expect(squad.captain.hp.defaultValue, 250);
-    expect(squad.grunt.hp.defaultValue, 100);
-    expect(squad.captain.alive.defaultValue, isFalse);
-    expect(squad.captain.stance.defaultValue, _Stance.running);
-    expect(squad.captain.leader.defaultValue, Entity(77));
-    expect(squad.captain.shield.defaultValue, 30);
-    expect(squad.captain.aim.defaultValue, isNull);
-    expect(squad.grunt.aim.defaultValue, 0.5);
+    expect(squad.captain.hp.initialValue, 250);
+    expect(squad.grunt.hp.initialValue, 100);
+    expect(squad.captain.alive.initialValue, isFalse);
+    expect(squad.captain.stance.initialValue, _Stance.running);
+    expect(squad.captain.leader.initialValue, Entity(77));
+    expect(squad.captain.shield.initialValue, 30);
+    expect(squad.captain.aim.initialValue, isNull);
+    expect(squad.grunt.aim.initialValue, 0.5);
 
     final e = squad.handle.addEntity(squad.captain);
-    expect(squad.captain.hp[e], squad.captain.hp.defaultValue);
+    expect(squad.captain.hp[e], squad.captain.hp.initialValue);
   });
 
   test('a rejected set leaves the sealed default alone', () {
     final squad = _squad();
 
     try {
-      squad.captain.hp.defaultValue = 5;
+      squad.captain.hp.initialValue = 5;
     } on StateError {
       // expected
     }

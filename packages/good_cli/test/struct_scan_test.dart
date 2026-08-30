@@ -89,6 +89,99 @@ class Player extends EntityStruct with Velocity, Momentum {}
     expect(message, contains('engine_bits.dart'));
   });
 
+  // #262 moved an array's element from the method name into an argument, and
+  // the argument is written as a dot shorthand: `Field.array(.uint16, 4)`.
+  // `_isColumn` recognises the first shape by the *receiver's* name, so what
+  // matters here is that the shorthand sits in the argument list and leaves
+  // `Field` where it was. The pair below is the discriminating one - the
+  // second case is what the design would have looked like had the shorthand
+  // reached the receiver too.
+  test('an array declared with an element shorthand is still seen', () {
+    final dir = _project(<String, String>{
+      'grid.dart': '''
+mixin Grid on Component {
+  final cells = Field.array(.uint16, 16);
+}
+''',
+      'tiles.dart': '''
+mixin Tiles on Component {
+  final cells = Field.array(.uint8, 4);
+}
+''',
+      'board.dart': '''
+class Board extends EntityStruct with Grid, Tiles {}
+''',
+    });
+
+    final scan = scanStructRules(dir);
+    expect(
+      scan.shadowed,
+      hasLength(1),
+      reason: 'the dot shorthand is an argument; the receiver is still Field',
+    );
+    expect(scan.shadowed.single.field, 'cells');
+    expect(scan.shadowed.single.winner, 'Tiles');
+  });
+
+  test('a declaration with no receiver at all falls through, and is why '
+      'the element shorthand stayed in the argument list', () {
+    final dir = _project(<String, String>{
+      'grid.dart': '''
+mixin Grid on Component {
+  final cells = .array(.uint16, 16);
+}
+''',
+      'tiles.dart': '''
+mixin Tiles on Component {
+  final cells = .array(.uint8, 4);
+}
+''',
+      'board.dart': '''
+class Board extends EntityStruct with Grid, Tiles {}
+''',
+    });
+
+    expect(
+      scanStructRules(dir).shadowed,
+      isEmpty,
+      reason: 'there is no receiver identifier to match, so the shadow check '
+          'cannot see either declaration - a spelling this pass would have to '
+          'learn before it could be used',
+    );
+  });
+
+  test('the older bare-declaration form is seen when it names InitialPointer',
+      () {
+    // Both sides have to be `InitialPointer`. A collision is reported when
+    // *either* declaration is a column (`_readStructs` ors the two), so a
+    // `DataPointer` on the other side would carry this test on its own and
+    // it would pass with `InitialPointer` missing from the set entirely.
+    final dir = _project(<String, String>{
+      'a.dart': '''
+mixin Velocity on Component {
+  late final InitialPointer<double> speed;
+}
+''',
+      'b.dart': '''
+mixin Momentum on Component {
+  late final InitialPointer<double> speed;
+}
+''',
+      'player.dart': '''
+class Player extends EntityStruct with Velocity, Momentum {}
+''',
+    });
+
+    final scan = scanStructRules(dir);
+    expect(
+      scan.shadowed,
+      hasLength(1),
+      reason: 'InitialPointer is what hasFloat64 returns, so a declaration '
+          'written with it has to count as a column',
+    );
+    expect(scan.shadowed.single.field, 'speed');
+  });
+
   test('distinct column names on the same struct are left alone', () {
     final dir = _project(<String, String>{
       'game.dart': '''

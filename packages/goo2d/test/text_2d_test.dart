@@ -118,10 +118,10 @@ class _Damage extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    textCellWidth.defaultValue = _cell;
-    textCellHeight.defaultValue = _cell;
-    textColor.defaultValue = _labelColor;
-    textZIndex.defaultValue = 10;
+    textCellWidth.initialValue = _cell;
+    textCellHeight.initialValue = _cell;
+    textColor.initialValue = _labelColor;
+    textZIndex.initialValue = 10;
   }
 }
 
@@ -131,9 +131,9 @@ class _Silent extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    textCellWidth.defaultValue = _cell;
-    textCellHeight.defaultValue = _cell;
-    textZIndex.defaultValue = 40;
+    textCellWidth.initialValue = _cell;
+    textCellHeight.initialValue = _cell;
+    textZIndex.initialValue = 40;
   }
 }
 

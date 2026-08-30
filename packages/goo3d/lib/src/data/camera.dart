@@ -19,8 +19,8 @@ import 'package:good/good.dart';
 ///   @override
 ///   void describeStruct(DataDescriptor data) {
 ///     super.describeStruct(data);
-///     cameraFieldOfView.defaultValue = 90;
-///     cameraNear.defaultValue = 10;
+///     cameraFieldOfView.initialValue = 90;
+///     cameraNear.initialValue = 10;
 ///   }
 /// }
 /// ```

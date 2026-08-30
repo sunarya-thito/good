@@ -66,8 +66,8 @@ class LongLens extends EntityStruct
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    cameraFieldOfView.defaultValue = 20;
-    cameraFar.defaultValue = 5000;
+    cameraFieldOfView.initialValue = 20;
+    cameraFar.initialValue = 5000;
   }
 }
 ```

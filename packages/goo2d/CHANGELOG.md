@@ -1,5 +1,15 @@
 ## Unreleased
 
+### Breaking
+
+* **`textCellWidth.defaultValue` is `textCellWidth.initialValue`.** The
+  accessor a prefab adjusts an inherited column through is renamed in `good`
+  0.3.0-dev, because the value is stamped into a fresh row and never consulted
+  on a read (#210). `Text2D`, `Camera2D` and every other component here are
+  reached through it, and nothing about the columns themselves moves - names,
+  order, widths and `strideBytes` are unchanged.
+
+
 ### Fixed
 
 * **A frame over the record budget drops its furthest layers, not its
