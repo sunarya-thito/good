@@ -154,6 +154,13 @@ class PackCommand extends Command with Verbose {
       return;
     }
 
+    // Through the bundle package, which is where every generated file lives
+    // now. Resolving it proves the directory is good's, and it happens before
+    // the chunk directory below is created: a refusal that has already made a
+    // directory in the project is a refusal that changed the tree it declined
+    // to touch.
+    final keyFile = resolveBundle(project).assetKeyFile;
+
     // Created even in development mode, where nothing is written into it.
     // `flutter: assets:` has to list this directory for the chunks to ship,
     // and Flutter refuses to build over a listed directory that does not
@@ -161,10 +168,6 @@ class PackCommand extends Command with Verbose {
     // every `flutter run` until its first release build.
     chunkDir.createSync(recursive: true);
 
-    // Through the bundle package, which is where every generated file lives
-    // now. Resolving it also proves the directory is good's before the mapping
-    // below is written back into a file inside it.
-    final keyFile = resolveBundle(project).assetKeyFile;
     List<int> key = const <int>[];
     if (mode.value == AssetMode.release &&
         encryption.value == AssetEncryption.aes) {
