@@ -112,6 +112,15 @@ a `Renderable2D` with `MouseReceiver`, and `NineSliceBorder` for panels and
 bars. If it sits in screen space and never has to know where the camera is, it
 is a widget, and making it an entity buys nothing but work.
 
+There is one thing a widget cannot do, and it is depth. The painter replays the
+whole batch in a single call, so a widget is above or below the entire
+`GameView` and never between two of its sprites. Art that has to sit *inside*
+the world's depth order while staying put against the view — a backdrop behind
+everything, a vignette or a frame over everything — is
+[`ScreenTransform2D`](rendering.md#screen-space) on an entity. It has no text,
+no layout and no accessibility, so it is the answer for a picture and not for a
+score.
+
 Text splits the same way. A damage number, a name over a character and a sign in
 the scene are `Text2D` labels on entities, drawn from a grid font you supply
 (see [Text](rendering.md#text)). A score in the corner is a `Text` widget, and

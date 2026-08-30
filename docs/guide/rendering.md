@@ -379,7 +379,9 @@ number wants two entities. Parent one to the other and it follows.
 **There is no screen-space text.** A HUD is Flutter widgets over the `GameView`
 — see [Where your UI belongs](flutter-bridge.md#where-your-ui-belongs) — and
 that is the first thing to reach for when what you want is a score in the
-corner. `Text2D` is for text the world owns.
+corner. `Text2D` is for text the world owns, and a prefab mixing it in beside
+[`ScreenTransform2D`](#screen-space) trips a debug assert instead of drawing its
+label through the camera.
 
 Not built, and named here so you do not go looking: proportional metrics,
 kerning, line wrapping, and shaping for scripts that need it. `\n` is not a line
@@ -458,6 +460,127 @@ black screen.
 
 `GameView.headless(game: game)` is the other legitimate shape: a HUD-only or
 headless-plus-Flutter game, with no camera and nothing painted.
+
+## Screen space
+
+`ScreenTransform2D` places an entity against the **view** instead of against
+the world. Mix it in beside `Transform2D` and the same offset columns become
+view units measured from an anchor on the view, the camera's zoom stops scaling
+it, and the camera's position stops moving it.
+
+```dart
+class Backdrop extends EntityStruct
+    with Transform2D, ScreenTransform2D, Renderable2D {
+  late final Sprite fill;
+
+  @override
+  final screenLayer = ScreenLayer.behind;
+
+  @override
+  final screenWidthAxis = ScreenAxis.fraction;
+
+  @override
+  final screenHeightAxis = ScreenAxis.fraction;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    fill = descriptor.has(width: 1, height: 1, color: 0xFF203040);
+  }
+}
+```
+
+That draws a rectangle covering the whole viewport, behind everything the world
+draws, at whatever size the view happens to be.
+
+### Which mixin decides which space
+
+| mixins | space |
+|---|---|
+| `Transform2D` | flat world — the offsets are world units, nothing composes them |
+| `Transform2D, WorldTransform2D` | composed world — the offsets compose with every ancestor's |
+| `Transform2D, ScreenTransform2D` | screen — the offsets are view units from an anchor |
+
+`ScreenTransform2D` and `WorldTransform2D` on one prefab trips a debug assert.
+They mean two different things by an offset and there is no composition that
+reconciles them: an ancestor's offset is world units, this entity's is view
+units, and a parent and a child anchored to two different corners share no
+origin to compose through. Group screen-space art with several `Sprite`s on one
+entity instead.
+
+A screen-space entity may still be a `Child` — nothing composes it, so it draws
+where its own offsets put it and a parent that moves or turns takes it nowhere.
+
+### Where it lands
+
+```text
+viewX = anchor.fractionX * viewWidth  + transformOffsetX
+viewY = anchor.fractionY * viewHeight - transformOffsetY
+```
+
+`ScreenAnchor` names the nine corners, edges and centre of the view. `+y` is up
+here as everywhere else, which is where the second minus sign comes from, and
+`ScreenAnchor.center` with no offsets is the middle of the view.
+
+The sprite's own `pivot` is a separate thing and keeps its default: anchoring to
+`bottomRight` puts the sprite's *centre* on the corner, so half of it is off
+screen. Set `pivot: RelativeOffset2D.zero` and the sprite's top-left corner goes
+on the anchor instead.
+
+A view nothing has laid out reports a size of zero, so every anchor collapses
+onto its top-left corner. That is what a headless test and the first tick of a
+real game both see.
+
+### Sizing per axis
+
+`ScreenAxis` says what a `Sprite`'s width and height mean, one axis at a time:
+
+- `units` — a length in view units, the same number at every view size.
+- `fraction` — a fraction of the view's own width or height. `1` fills the view
+  on that axis, `0.5` covers half of it.
+
+The two axes are independent, so a banner half the view wide and a fixed twenty
+units tall is `screenWidthAxis = fraction` with `width: 0.5` and the height left
+alone. Aspect-preserving fit is not built — see
+[Implementation status](../reference/roadmap.md).
+
+### Nothing per view is in the row
+
+Two views can show one scene at two sizes in the same instant, so there is no
+single pixel width to store. Every `ScreenTransform2D` member is an overridable
+field on the prefab, read once per archetype per view, and the renderer turns it
+into pixels inside its own per-view walk where that view's size is in scope. One
+backdrop is correct in a 400-pixel minimap and a 1920-pixel main view at once,
+and the row grows by nothing.
+
+The cost is the other half of that: an entity cannot change its anchor, layer or
+sizing mode at run time. Offsets, scale, rotation and every `Sprite` field still
+move; two anchors means two prefabs.
+
+### Layers, not a large `zIndex`
+
+`ScreenLayer.behind` draws before every world sprite, `ScreenLayer.front` after
+every world sprite and every label. Within a layer, `zIndex` orders as usual.
+
+Screen-space entities do not interleave with world sprites by `zIndex`, and the
+reason is the sort. `zIndex` is a plain `int32` a game may use as a sparse key,
+and the renderer buckets its whole queue over the range between the smallest and
+largest z it sees: one HUD element at `1 << 20` pushes every sprite in the frame
+onto the fallback merge sort, and a "safe" 60,000 grows the bucket array to
+60,001 ints that are never released. A layer costs three comparisons per queued
+sprite and a frame with no screen-space entity in it costs two in total.
+
+The budget spends from the front of the scene backwards, so the front layer is
+admitted first: a pinned element does not vanish because twenty thousand
+particles were queued ahead of it. A backdrop is the first thing a frame over
+budget drops.
+
+### What is not here
+
+No parallax, no texture tiling, no `auto`/`cover`/`contain` fit, and no
+screen-space text — `Text2D` on a `ScreenTransform2D` entity is refused at
+declare time, and not drawn through the camera. See
+[Implementation status](../reference/roadmap.md).
 
 ## Coordinate conversion
 
@@ -681,6 +804,12 @@ ordinary widgets over the `GameView`; make a UI element an entity only when it
 is as interactive as the game itself — pinned to a world position, occluded by
 the world, or hit tested in world coordinates. See
 [Where your UI belongs](flutter-bridge.md#where-your-ui-belongs).
+
+The exception is art that has to sit *between* world sprites by depth. The
+painter replays the whole batch in one call, so a widget is above or below the
+entire `GameView` and never inside it. A backdrop behind the world and a layer
+over it are both [screen space](#screen-space); anything with text, layout or
+accessibility in it is a widget.
 
 ## Mouse picking
 

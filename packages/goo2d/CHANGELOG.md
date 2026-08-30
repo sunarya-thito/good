@@ -176,6 +176,52 @@
 
 ### Added
 
+* **`ScreenTransform2D` places an entity against the view instead of the
+  world.** Mix it in beside `Transform2D` and the same offset columns become
+  view units measured from a `ScreenAnchor` - one of the view's nine corners,
+  edges or centre - with the camera's zoom and the camera's position both out
+  of the arithmetic. A backdrop that fills the viewport and a badge tucked into
+  a corner are both one prefab and no system (#132).
+
+  **Sizing is per axis.** `screenWidthAxis` and `screenHeightAxis` say what a
+  `Sprite`'s width and height mean: `ScreenAxis.units` is a length in view
+  pixels, `ScreenAxis.fraction` is a fraction of the view's own width or
+  height, so `width: 1` fills the view and `0.5` covers half of it. The two are
+  independent, so a banner half the view wide and a fixed twenty units tall
+  needs no second mechanism.
+
+  **Nothing per view is stored in the row.** Two views can show one scene at
+  two sizes in the same instant, so the anchor, the layer and the two axis
+  modes are overridable fields on the prefab and not columns - read once
+  per archetype per view, and turned into pixels inside the renderer's own
+  per-view walk. One backdrop comes out correct in a 400-pixel minimap and a
+  1920-pixel main view in the same tick, and the row grows by nothing at all.
+  The cost is the other half of that: an entity cannot change its anchor,
+  layer or sizing mode at run time, so two anchors means two prefabs.
+
+  **`ScreenLayer` is a layer, not a large `zIndex`.** `behind` draws before
+  every world sprite and `front` after every world sprite and every label, with
+  `zIndex` ordering inside each layer. A HUD that had to out-rank the world by
+  z would need a value above whatever the scene uses, and the draw queue
+  buckets over the range between the smallest and largest z it sees: one
+  element at `1 << 20` drops the whole frame onto the fallback merge sort, and
+  a "safe" 60,000 grows the bucket array to 60,001 ints that are never
+  released. The record budget spends from the front of the scene backwards, so
+  the front layer is admitted first and a backdrop is what a frame over budget
+  drops.
+
+  **`ScreenTransform2D` and `WorldTransform2D` on one prefab trip a debug
+  assert**, and so do `ScreenTransform2D` and `Text2D`. The first pair means
+  two different things by an offset - view units from an anchor, world units
+  composed with every ancestor - and would draw a HUD carrying an ancestor's
+  position and rotation. The second has no screen-space path at all, and would
+  draw the sprites against the view and the label through the camera. A
+  screen-space entity may still be a `Child`: nothing composes it, so a parent
+  that moves or turns takes it nowhere.
+
+  Not built, and named so nobody goes looking: parallax, texture tiling, and
+  the aspect-driven `auto`/`cover`/`contain` fit modes.
+
 * **`debugDraw` draws lines, circles and labels over the world from a game
   system**, so a system can show what it is thinking - a steering vector, a
   search radius, the name of a state - where the thing it is describing is.

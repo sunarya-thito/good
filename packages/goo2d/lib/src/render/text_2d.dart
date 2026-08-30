@@ -1,4 +1,5 @@
 import 'package:good/good.dart';
+import 'package:goo2d/src/data/screen_transform.dart';
 import 'package:goo2d/src/render/render_2d.dart';
 import 'package:goo2d/src/render/texture.dart';
 import 'package:meta/meta.dart';
@@ -289,6 +290,20 @@ mixin Text2D on Component {
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
+    // A label draws through the camera projection and has no screen-space
+    // path, so a prefab that asked for both would render its text in world
+    // space while its sprites sat in the corner of the view - art in the
+    // wrong place and nothing anywhere saying why. Refused at declare time
+    // instead. See `ScreenTransform2D`, and the rendering guide for what a
+    // score in the corner should be.
+    assert(
+      this is! ScreenTransform2D,
+      '$runtimeType mixes in both Text2D and ScreenTransform2D, and there is '
+      'no screen-space text. A label is placed through the camera, so this '
+      'entity would draw its text in the world and its sprites against the '
+      'view. Put the text in a Flutter widget over the GameView, or drop '
+      'ScreenTransform2D and let the label live in the world.',
+    );
     component.has<Text2D>();
   }
 
