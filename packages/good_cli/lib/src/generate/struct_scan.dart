@@ -6,6 +6,8 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
+import 'package:analyzer/dart/analysis/features.dart';
+import 'package:pub_semver/pub_semver.dart';
 
 /// One column that another declaration hides under the same name.
 @immutable
@@ -149,6 +151,7 @@ StructScan scanStructRules(Directory projectDir) {
       try {
         unit = parseString(
           content: file.readAsStringSync(),
+          featureSet: _featureSet,
           throwIfDiagnostics: false,
         ).unit;
       } on ArgumentError {
@@ -770,6 +773,20 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
   }
 }
 
+/// The language the engine is written in, spelled out rather than left to
+/// `parseString`'s default.
+///
+/// Without it a column declared as `Field.array(.uint16, 4)` parses to the
+/// right AST but reports `EXPERIMENT_NOT_ENABLED`, because the default
+/// feature set for a bare `parseString` does not carry `dot-shorthands` on
+/// analyzer 7.7.1. This pass sets `throwIfDiagnostics: false` and never reads
+/// the diagnostics, so today that costs nothing - but a pass that did read
+/// them would see an error on every element-spelled array in the tree.
+final FeatureSet _featureSet = FeatureSet.fromEnableFlags2(
+  sdkLanguageVersion: Version(3, 13, 0),
+  flags: const <String>['dot-shorthands'],
+);
+
 /// Whether a field declaration allocates a row column.
 ///
 /// Three shapes, all syntactic. `final speed = Field.float64()` is the one
@@ -777,6 +794,14 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
 /// takes a column for the child's handle. The third is the older form, a bare
 /// `DataPointer` declaration that a `describeStruct` body assigns into, which
 /// the engine still supports.
+///
+/// **The first shape matches on the receiver's name**, so a declaration
+/// static added to any type other than `Field` or `EntityStruct` is invisible
+/// here until that set is edited. `Field.array(.uint16, 4)` is safe: the dot
+/// shorthand is an *argument*, and the receiver is still the identifier
+/// `Field`. A spelling that dropped the receiver as well would have no name
+/// to match and would fall through this check silently -
+/// `test/struct_scan_test.dart` pins both halves.
 bool _isColumn(VariableDeclaration variable, TypeAnnotation? declaredType) {
   final initializer = variable.initializer;
   if (initializer is MethodInvocation) {
@@ -791,6 +816,10 @@ bool _isColumn(VariableDeclaration variable, TypeAnnotation? declaredType) {
       'DataPointer',
       'DataArrayPointer',
       'PackedPointer',
+      // `InitialPointer` is what `hasFloat64` and the rest actually return,
+      // so a `late final InitialPointer<double> speed;` written in the older
+      // form was falling through this check entirely.
+      'InitialPointer',
     };
     if (columnTypes.contains(declaredType.name2.lexeme)) return true;
   }

@@ -404,14 +404,12 @@ class ArchetypeStorage {
   /// that `Entity` has no spare bits to make safe.
   final Map<int, int> _currentPageBySlot = <int, int>{};
 
-  /// A prototype row holding every field's declared default, built once at
-  /// [seal] and memcpy'd into each newly allocated row. Rows get recycled
-  /// (`MemoryPage.free`) and the triple buffer copies the previous tick
-  /// forward, so a fresh row is *not* zeroed - stamping the prototype is
-  /// what makes `hasUint8(7)` actually read back 7, and matches data.dart's
-  /// "default value is stored to the memory pool during object creation,
-  /// NOT accessed through `hasValue ? value : defaultValue`".
-  Pointer<Uint8> _defaultRow = nullptr;
+  /// A prototype row holding every field's declared initial value, built
+  /// once at [seal] and memcpy'd into each newly allocated row. Rows get
+  /// recycled (`MemoryPage.free`) and the triple buffer copies the previous
+  /// tick forward, so a fresh row is *not* zeroed - stamping the prototype
+  /// is what makes `hasUint8(7)` actually read back 7.
+  Pointer<Uint8> _initialRow = nullptr;
 
   /// Row size in bytes: the bit cursor rounded up to a whole byte.
   ///
@@ -624,9 +622,9 @@ class ArchetypeStorage {
   void seal() {
     if (_sealed) return;
     _sealed = true;
-    _defaultRow = calloc<Uint8>(strideBytes);
+    _initialRow = calloc<Uint8>(strideBytes);
     for (final field in _fields) {
-      field.writeDefault(_defaultRow.address);
+      field.writeInitialValue(_initialRow.address);
     }
   }
 
@@ -720,7 +718,7 @@ class ArchetypeStorage {
     // view is itself a heap object, and this runs once per spawn.
     final row = page.resolveWrite(rowOffset);
     for (var i = 0; i < stride; i++) {
-      row[i] = _defaultRow[i];
+      row[i] = _initialRow[i];
     }
 
     // A new row is stamped into the *published* snapshot as well, not just
@@ -743,7 +741,7 @@ class ArchetypeStorage {
     final published = page.resolveRead(rowOffset);
     if (published != null) {
       for (var i = 0; i < stride; i++) {
-        published[i] = _defaultRow[i];
+        published[i] = _initialRow[i];
       }
     }
     return Entity.pack(archetypeId, current, rowOffset);
@@ -758,7 +756,7 @@ class ArchetypeStorage {
   /// the life of the process (#49). Nothing else a row owns needs this: every
   /// other field kind is bytes in the page, and the page goes.
   ///
-  /// **A row that never wrote the field is left alone.** `writeDefault` runs
+  /// **A row that never wrote the field is left alone.** `writeInitialValue` runs
   /// once, at [seal], and `allocateRow` memcpys that prototype row into every
   /// entity - so an untouched `hasHeapObject` field carries *the prototype's*
   /// address, one slot shared by every entity of this archetype. Unregistering
@@ -778,16 +776,16 @@ class ArchetypeStorage {
     final row = pool.isTickOpen
         ? page.resolveWrite(rowOffset).address
         : page.resolveRow(rowOffset).address;
-    final prototype = _defaultRow.address;
+    final prototype = _initialRow.address;
     for (var i = 0; i < _heapFields.length; i++) {
       _heapFields[i].releaseRow(row, prototype);
     }
   }
 
   void _dispose() {
-    if (_defaultRow != nullptr) {
-      calloc.free(_defaultRow);
-      _defaultRow = nullptr;
+    if (_initialRow != nullptr) {
+      calloc.free(_initialRow);
+      _initialRow = nullptr;
     }
   }
 }
@@ -813,7 +811,7 @@ abstract interface class HeapArchetypeField {
   ///
   /// [prototype] is the address of the archetype's default row. A field whose
   /// value in [row] equals its value in [prototype] was never written by this
-  /// entity and shares the one slot `writeDefault` registered, so it must be
+  /// entity and shares the one slot `writeInitialValue` registered, so it must be
   /// left alone - see `ArchetypeStorage.releaseHeapSlots`.
   void releaseRow(int row, int prototype);
 }
@@ -825,5 +823,5 @@ abstract interface class ArchetypeField {
   /// here. This particular call is cold (once per archetype, in [seal]); it
   /// takes an address purely so field implementations have one row-addressing
   /// convention instead of two.
-  void writeDefault(int row);
+  void writeInitialValue(int row);
 }

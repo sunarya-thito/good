@@ -602,11 +602,13 @@ class ColliderDescriptor {
       density: _data.hasFloat64(density),
       friction: _data.hasFloat64(friction),
       restitution: _data.hasFloat64(restitution),
-      pointsX: _data.hasFloat64ArrayOf(
+      pointsX: _data.hasArrayOf(
+        .float64,
         capacity,
         List<double>.generate(outline.length, (i) => outline[i].$1),
       ),
-      pointsY: _data.hasFloat64ArrayOf(
+      pointsY: _data.hasArrayOf(
+        .float64,
         capacity,
         List<double>.generate(outline.length, (i) => outline[i].$2),
       ),

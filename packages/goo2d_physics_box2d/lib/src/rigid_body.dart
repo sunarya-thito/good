@@ -74,7 +74,7 @@ enum BodyType2D {
 ///   @override
 ///   void describeStruct(DataDescriptor data) {
 ///     super.describeStruct(data);
-///     bodyType.defaultValue = BodyType2D.staticBody;
+///     bodyType.initialValue = BodyType2D.staticBody;
 ///   }
 /// }
 /// ```

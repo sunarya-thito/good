@@ -41,7 +41,7 @@ class _Wall extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    bodyType.defaultValue = BodyType2D.staticBody;
+    bodyType.initialValue = BodyType2D.staticBody;
   }
 }
 

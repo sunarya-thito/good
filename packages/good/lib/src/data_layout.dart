@@ -209,28 +209,28 @@ abstract base class _Field<T> extends DataPointer<T> implements ArchetypeField {
 }
 
 /// A field whose stamped default can still be changed - see
-/// [DefaultPointer.defaultValue] for which column kinds get one and why the
+/// [InitialPointer.initialValue] for which column kinds get one and why the
 /// rest do not.
 ///
 /// Every width already held its default in a `_default` of its own; this
-/// hoists them into one mutable field. `writeDefault` reads it at `seal`, so
+/// hoists them into one mutable field. `writeInitialValue` reads it at `seal`, so
 /// a change made before then simply lands in the prototype row and a change
 /// made after cannot land anywhere - which is what [_requireUnsealed] is
 /// for.
 abstract base class _ValueField<T> extends _Field<T>
-    implements DefaultPointer<T> {
+    implements InitialPointer<T> {
   _ValueField(super.storage, this._default);
 
-  /// What [writeDefault] stamps. Held here rather than once per width so the
+  /// What [writeInitialValue] stamps. Held here rather than once per width so the
   /// setter and its guard are written once, and so [_DefaultableOptionalField]
   /// can reach the value half of a nullable column's default.
   T _default;
 
   @override
-  T get defaultValue => _default;
+  T get initialValue => _default;
 
   @override
-  set defaultValue(T newValue) {
+  set initialValue(T newValue) {
     _requireUnsealed(_storage);
     _default = newValue;
   }
@@ -239,7 +239,7 @@ abstract base class _ValueField<T> extends _Field<T>
 /// Rejects a default set after [ArchetypeStorage.seal] has already stamped
 /// the prototype row.
 ///
-/// The message names both spellings on purpose. `near.defaultValue = 10` and
+/// The message names both spellings on purpose. `near.initialValue = 10` and
 /// `near[entity] = 10` are one keystroke apart and mean entirely different
 /// things, and a caller who reaches here has almost certainly typed the
 /// first while meaning the second.
@@ -251,7 +251,7 @@ void _requireUnsealed(ArchetypeStorage storage) {
     'stamped once: seal() builds a prototype row holding every column\'s '
     'default and copies it into each row allocated after that, and nothing '
     'consults the default again.\n'
-    '  near.defaultValue = 10;  // declare time - a field initialiser, or a '
+    '  near.initialValue = 10;  // declare time - a field initialiser, or a '
     'prefab\'s describeStruct\n'
     '  near[entity] = 10;       // run time - this one entity, right now\n'
     'If you meant to change what new entities of this prefab start with, '
@@ -273,10 +273,10 @@ void _requireUnsealed(ArchetypeStorage storage) {
 /// one virtual call and a compare per access - but it is only ever used for
 /// flags, which are read once per entity per tick at most, never in the
 /// per-field inner loops the `int` accessors were tuned for.
-class _BoolField extends DefaultPointer<bool> {
+class _BoolField extends InitialPointer<bool> {
   const _BoolField(this._raw);
 
-  final DefaultPointer<int> _raw;
+  final InitialPointer<int> _raw;
 
   @override
   bool operator [](Entity entity) => _raw[entity] != 0;
@@ -291,10 +291,10 @@ class _BoolField extends DefaultPointer<bool> {
   /// Delegated for the same reason everything else here is: the seal guard
   /// and the stamped value both live in the field being wrapped.
   @override
-  bool get defaultValue => _raw.defaultValue != 0;
+  bool get initialValue => _raw.initialValue != 0;
 
   @override
-  set defaultValue(bool newValue) => _raw.defaultValue = newValue ? 1 : 0;
+  set initialValue(bool newValue) => _raw.initialValue = newValue ? 1 : 0;
 }
 
 /// An `Entity` view over the `int64` field `hasEntity` declares.
@@ -312,10 +312,10 @@ class _BoolField extends DefaultPointer<bool> {
 /// `readPending` is deliberately not delegated - `_Int64Field` does not
 /// implement it, so forwarding would only move the `UnsupportedError` to a
 /// message naming the wrong class.
-class _EntityHandleField extends DefaultPointer<Entity> {
+class _EntityHandleField extends InitialPointer<Entity> {
   const _EntityHandleField(this._raw);
 
-  final DefaultPointer<int> _raw;
+  final InitialPointer<int> _raw;
 
   @override
   Entity operator [](Entity entity) => Entity(_raw[entity]);
@@ -325,10 +325,10 @@ class _EntityHandleField extends DefaultPointer<Entity> {
       _raw[entity] = newValue.value;
 
   @override
-  Entity get defaultValue => Entity(_raw.defaultValue);
+  Entity get initialValue => Entity(_raw.initialValue);
 
   @override
-  set defaultValue(Entity newValue) => _raw.defaultValue = newValue.value;
+  set initialValue(Entity newValue) => _raw.initialValue = newValue.value;
 }
 
 /// An `Entity?` view over the nullable `int64` field `optEntity` declares -
@@ -346,19 +346,19 @@ class _EntityHandleField extends DefaultPointer<Entity> {
 /// than relabelling an `UnsupportedError`. `data/hierarchy.dart` splices its
 /// child lists through it, so this path is load-bearing: two `addChild`
 /// calls in one tick need the second to see the link the first wrote.
-class _OptionalEntityHandleField extends DefaultPointer<Entity?> {
+class _OptionalEntityHandleField extends InitialPointer<Entity?> {
   const _OptionalEntityHandleField(this._raw);
 
-  final DefaultPointer<int?> _raw;
+  final InitialPointer<int?> _raw;
 
   @override
-  Entity? get defaultValue {
-    final value = _raw.defaultValue;
+  Entity? get initialValue {
+    final value = _raw.initialValue;
     return value == null ? null : Entity(value);
   }
 
   @override
-  set defaultValue(Entity? newValue) => _raw.defaultValue = newValue?.value;
+  set initialValue(Entity? newValue) => _raw.initialValue = newValue?.value;
 
   @override
   Entity? operator [](Entity entity) {
@@ -390,10 +390,10 @@ class _OptionalEntityHandleField extends DefaultPointer<Entity?> {
 /// `readPending` is deliberately not delegated - the narrow int fields this
 /// wraps do not implement it, so forwarding would only move the
 /// `UnsupportedError` to a message naming the wrong class.
-class _EnumField<E extends Enum> extends DefaultPointer<E> {
+class _EnumField<E extends Enum> extends InitialPointer<E> {
   const _EnumField(this._raw, this._values);
 
-  final DefaultPointer<int> _raw;
+  final InitialPointer<int> _raw;
   final List<E> _values;
 
   @override
@@ -403,10 +403,10 @@ class _EnumField<E extends Enum> extends DefaultPointer<E> {
   void operator []=(Entity entity, E newValue) => _raw[entity] = newValue.index;
 
   @override
-  E get defaultValue => _values[_raw.defaultValue];
+  E get initialValue => _values[_raw.initialValue];
 
   @override
-  set defaultValue(E newValue) => _raw.defaultValue = newValue.index;
+  set initialValue(E newValue) => _raw.initialValue = newValue.index;
 }
 
 /// The narrowest unsigned width that can index [count] members.
@@ -441,7 +441,7 @@ base class _SubByteUintField extends _ValueField<int> {
     super.storage,
     int bitOffset,
     int bitWidth,
-    super.defaultValue,
+    super.initialValue,
   ) : _byte = bitOffset >> 3,
       _shift = bitOffset & 7,
       _valueMask = (1 << bitWidth) - 1,
@@ -476,7 +476,7 @@ base class _SubByteUintField extends _ValueField<int> {
   }
 
   @override
-  void writeDefault(int row) => _store(row, _default);
+  void writeInitialValue(int row) => _store(row, _default);
 }
 
 /// Two's-complement variant. Note `hasInt1` therefore holds -1 or 0, which
@@ -487,7 +487,7 @@ final class _SubByteIntField extends _SubByteUintField {
     super.storage,
     super.bitOffset,
     super.bitWidth,
-    super.defaultValue,
+    super.initialValue,
   );
 
   @override
@@ -504,7 +504,7 @@ final class _SubByteIntField extends _SubByteUintField {
 // advances a Pointer<Uint8> by bytes, so the cast lands where it should.
 
 final class _Uint8Field extends _ValueField<int> {
-  _Uint8Field(super.storage, this._byte, super.defaultValue);
+  _Uint8Field(super.storage, this._byte, super.initialValue);
   final int _byte;
 
   @override
@@ -516,12 +516,12 @@ final class _Uint8Field extends _ValueField<int> {
       Pointer<Uint8>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(int row) =>
+  void writeInitialValue(int row) =>
       Pointer<Uint8>.fromAddress(row + _byte).value = _default;
 }
 
 final class _Int8Field extends _ValueField<int> {
-  _Int8Field(super.storage, this._byte, super.defaultValue);
+  _Int8Field(super.storage, this._byte, super.initialValue);
   final int _byte;
 
   @override
@@ -533,12 +533,12 @@ final class _Int8Field extends _ValueField<int> {
       Pointer<Int8>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(int row) =>
+  void writeInitialValue(int row) =>
       Pointer<Int8>.fromAddress(row + _byte).value = _default;
 }
 
 final class _Uint16Field extends _ValueField<int> {
-  _Uint16Field(super.storage, this._byte, super.defaultValue);
+  _Uint16Field(super.storage, this._byte, super.initialValue);
   final int _byte;
 
   @override
@@ -550,12 +550,12 @@ final class _Uint16Field extends _ValueField<int> {
       Pointer<Uint16>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(int row) =>
+  void writeInitialValue(int row) =>
       Pointer<Uint16>.fromAddress(row + _byte).value = _default;
 }
 
 final class _Int16Field extends _ValueField<int> {
-  _Int16Field(super.storage, this._byte, super.defaultValue);
+  _Int16Field(super.storage, this._byte, super.initialValue);
   final int _byte;
 
   @override
@@ -567,12 +567,12 @@ final class _Int16Field extends _ValueField<int> {
       Pointer<Int16>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(int row) =>
+  void writeInitialValue(int row) =>
       Pointer<Int16>.fromAddress(row + _byte).value = _default;
 }
 
 final class _Uint32Field extends _ValueField<int> {
-  _Uint32Field(super.storage, this._byte, super.defaultValue);
+  _Uint32Field(super.storage, this._byte, super.initialValue);
   final int _byte;
 
   @override
@@ -584,12 +584,12 @@ final class _Uint32Field extends _ValueField<int> {
       Pointer<Uint32>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(int row) =>
+  void writeInitialValue(int row) =>
       Pointer<Uint32>.fromAddress(row + _byte).value = _default;
 }
 
 final class _Int32Field extends _ValueField<int> {
-  _Int32Field(super.storage, this._byte, super.defaultValue);
+  _Int32Field(super.storage, this._byte, super.initialValue);
   final int _byte;
 
   @override
@@ -601,7 +601,7 @@ final class _Int32Field extends _ValueField<int> {
       Pointer<Int32>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(int row) =>
+  void writeInitialValue(int row) =>
       Pointer<Int32>.fromAddress(row + _byte).value = _default;
 }
 
@@ -612,7 +612,7 @@ final class _Int32Field extends _ValueField<int> {
 // plain aligned load/store exactly like the narrower widths, no different
 // handling needed for values that "look negative".
 final class _Uint64Field extends _ValueField<int> {
-  _Uint64Field(super.storage, this._byte, super.defaultValue);
+  _Uint64Field(super.storage, this._byte, super.initialValue);
   final int _byte;
 
   @override
@@ -624,12 +624,12 @@ final class _Uint64Field extends _ValueField<int> {
       Pointer<Uint64>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(int row) =>
+  void writeInitialValue(int row) =>
       Pointer<Uint64>.fromAddress(row + _byte).value = _default;
 }
 
 final class _Int64Field extends _ValueField<int> {
-  _Int64Field(super.storage, this._byte, super.defaultValue);
+  _Int64Field(super.storage, this._byte, super.initialValue);
   final int _byte;
 
   @override
@@ -647,13 +647,13 @@ final class _Int64Field extends _ValueField<int> {
       Pointer<Int64>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(int row) =>
+  void writeInitialValue(int row) =>
       Pointer<Int64>.fromAddress(row + _byte).value = _default;
 }
 
 // dart:ffi names the IEEE-754 types Float/Double, not Float32/Float64.
 final class _Float32Field extends _ValueField<double> {
-  _Float32Field(super.storage, this._byte, super.defaultValue);
+  _Float32Field(super.storage, this._byte, super.initialValue);
   final int _byte;
 
   @override
@@ -665,12 +665,12 @@ final class _Float32Field extends _ValueField<double> {
       Pointer<Float>.fromAddress(_write(entity) + _byte).value = newValue;
 
   @override
-  void writeDefault(int row) =>
+  void writeInitialValue(int row) =>
       Pointer<Float>.fromAddress(row + _byte).value = _default;
 }
 
 final class _Float64Field extends _ValueField<double> {
-  _Float64Field(super.storage, this._byte, super.defaultValue);
+  _Float64Field(super.storage, this._byte, super.initialValue);
   final int _byte;
 
   @override
@@ -696,7 +696,7 @@ final class _Float64Field extends _ValueField<double> {
       Pointer<Double>.fromAddress(_write(entity) + _byte).value;
 
   @override
-  void writeDefault(int row) =>
+  void writeInitialValue(int row) =>
       Pointer<Double>.fromAddress(row + _byte).value = _default;
 }
 
@@ -719,29 +719,50 @@ final class _Float64Field extends _ValueField<double> {
 // own width: every rung of the 1..64 ladder, sub-byte included, comes for
 // free because `_declareInt` already built them.
 
-final class _PackedField<T extends IntRepresentable> extends _Field<T>
-    implements PackedPointer<T> {
+/// The bits, the packing and the unpacking, with **no bound on [T]**.
+///
+/// `hasArray` reaches a representation through `DataElement<T>`, whose `T` is
+/// unbounded, and Dart cannot recover `T extends IntRepresentable` from a
+/// `switch` that matched an `IntRepresentation`. So the bound lives where it
+/// is actually needed - on the public signatures, and on
+/// [_PackedPointerField] below - and this class holds the representation
+/// covariantly as `IntRepresentation<IntRepresentable>`, which every
+/// `IntRepresentation<X>` is. Nothing constructs one except the two declare
+/// paths that already checked the element is a representation, so the two
+/// casts here cannot fail.
+base class _PackedField<T> extends _Field<T> {
   _PackedField(super.storage, this._bits, this._repr);
 
   /// The integer field holding the packed bits. Declared and owned here, and
   /// deliberately **not** registered with the storage itself - this field's
-  /// own [writeDefault] drives it, so registering both would stamp the
-  /// default twice.
+  /// own [writeInitialValue] drives it, so registering both would stamp the
+  /// initial value twice.
   final _Field<int> _bits;
-  final IntRepresentation<T> _repr;
+  final IntRepresentation<IntRepresentable> _repr;
 
   @override
-  T operator [](Entity entity) => _repr.unpack(_bits[entity]);
+  T operator [](Entity entity) => _repr.unpack(_bits[entity]) as T;
 
   @override
   void operator []=(Entity entity, T newValue) =>
-      _bits[entity] = newValue.pack();
+      _bits[entity] = (newValue as IntRepresentable).pack();
+
+  @override
+  void writeInitialValue(int row) => _bits.writeInitialValue(row);
+}
+
+/// [_PackedField] with the bound back on, which is what lets it be the
+/// [PackedPointer] `hasPacked` hands out. `packedAt` lives here and not on
+/// the base because only the scalar declaration exposes it - an array
+/// element is read through `DataArrayPointer`, which has no such escape
+/// hatch.
+final class _PackedPointerField<T extends IntRepresentable>
+    extends _PackedField<T>
+    implements PackedPointer<T> {
+  _PackedPointerField(super.storage, super.bits, super.repr);
 
   @override
   int packedAt(Entity entity) => _bits[entity];
-
-  @override
-  void writeDefault(int row) => _bits.writeDefault(row);
 }
 
 /// `hasHeapObject`/`optHeapObject`: the same Uint32-address-in-the-row shape
@@ -764,12 +785,12 @@ final class _PackedField<T extends IntRepresentable> extends _Field<T>
 /// wrote the field is told apart from one that did.
 ///
 /// **The default is a factory, and it is called exactly once.**
-/// [writeDefault] runs once, at `ArchetypeStorage.seal`, to build the
+/// [writeInitialValue] runs once, at `ArchetypeStorage.seal`, to build the
 /// prototype row; `allocateRow` then *memcpy*s that row into every spawned
 /// entity. A memcpy copies the 4-byte address, not the object - so every
 /// entity that does not overwrite the field shares one default instance.
 /// That is the intended behaviour: it is exactly what
-/// `hasObject<T extends GlobalObject>(T defaultValue)` already does, and the
+/// `hasObject<T extends GlobalObject>(T initialValue)` already does, and the
 /// alternative (a fresh instance per entity) is not expressible here at all,
 /// because there is no per-spawn hook to run a factory in - only the memcpy.
 /// The factory exists so the default can be *built* at seal time rather than
@@ -777,12 +798,12 @@ final class _PackedField<T extends IntRepresentable> extends _Field<T>
 /// make the default per-entity.
 final class _HeapObjectField<T> extends _Field<T>
     implements HeapArchetypeField {
-  _HeapObjectField(super.storage, this._byte, this._defaultFactory);
+  _HeapObjectField(super.storage, this._byte, this._initialFactory);
   final int _byte;
 
   /// `null` for the `optHeapObject` case, whose wrapper never asks for a
   /// default (its has-bit defaults to clear, i.e. `null`).
-  final T Function()? _defaultFactory;
+  final T Function()? _initialFactory;
 
   @override
   T operator [](Entity entity) => HeapObjectRegistry.resolve<T>(
@@ -797,8 +818,8 @@ final class _HeapObjectField<T> extends _Field<T>
       );
 
   @override
-  void writeDefault(int row) {
-    final factory = _defaultFactory;
+  void writeInitialValue(int row) {
+    final factory = _initialFactory;
     Pointer<Uint32>.fromAddress(row + _byte).value = factory == null
         ? 0
         : HeapObjectRegistry.register(factory());
@@ -834,7 +855,7 @@ base class _OptionalField<T> extends _Field<T?> {
     super.storage,
     int flagBitOffset,
     this._value,
-    this._defaultPresent,
+    this._initialPresent,
   ) : _flagByte = flagBitOffset >> 3,
       _flagMask = 1 << (flagBitOffset & 7);
 
@@ -845,7 +866,7 @@ base class _OptionalField<T> extends _Field<T?> {
   /// Whether a fresh row starts with the flag set. Not `final` because
   /// [_DefaultableOptionalField] moves it - a nullable column's default has
   /// two halves, and `null` is the one that is only the flag.
-  bool _defaultPresent;
+  bool _initialPresent;
 
   @override
   T? operator [](Entity entity) {
@@ -889,11 +910,11 @@ base class _OptionalField<T> extends _Field<T?> {
   }
 
   @override
-  void writeDefault(int row) {
-    if (_defaultPresent) {
+  void writeInitialValue(int row) {
+    if (_initialPresent) {
       Pointer<Uint8>.fromAddress(row + _flagByte).value =
           Pointer<Uint8>.fromAddress(row + _flagByte).value | _flagMask;
-      _value.writeDefault(row);
+      _value.writeInitialValue(row);
     } else {
       Pointer<Uint8>.fromAddress(row + _flagByte).value =
           Pointer<Uint8>.fromAddress(row + _flagByte).value & ~_flagMask & 0xFF;
@@ -906,13 +927,13 @@ base class _OptionalField<T> extends _Field<T?> {
 ///
 /// A separate class because [_OptionalField] also wraps a packed field
 /// (`optPacked`) and a heap-object one (`optHeapObject`), neither of which
-/// has a default to offer - see [DefaultPointer.defaultValue].
+/// has a default to offer - see [InitialPointer.initialValue].
 ///
 /// Setting `null` clears the presence flag and leaves the value half alone,
 /// exactly as writing `null` to an entity does, because nothing reads the
 /// value without first seeing the flag.
 final class _DefaultableOptionalField<T> extends _OptionalField<T>
-    implements DefaultPointer<T?> {
+    implements InitialPointer<T?> {
   _DefaultableOptionalField(
     ArchetypeStorage storage,
     int flagBitOffset,
@@ -929,12 +950,12 @@ final class _DefaultableOptionalField<T> extends _OptionalField<T>
   /// hold - the value bits are don't-care while the flag is down, exactly as
   /// they are for a row.
   @override
-  T? get defaultValue => _defaultPresent ? _defaultableValue._default : null;
+  T? get initialValue => _initialPresent ? _defaultableValue._default : null;
 
   @override
-  set defaultValue(T? newValue) {
+  set initialValue(T? newValue) {
     _requireUnsealed(_storage);
-    _defaultPresent = newValue != null;
+    _initialPresent = newValue != null;
     if (newValue != null) _defaultableValue._default = newValue;
   }
 }
@@ -1015,7 +1036,7 @@ base class _SubByteUintArrayField extends _ArrayField<int> {
     super.length,
     this._baseBit,
     this._bitWidth,
-    this._default,
+    this._defaults,
   ) : _valueMask = (1 << _bitWidth) - 1,
       _signBit = 1 << (_bitWidth - 1),
       _range = 1 << _bitWidth;
@@ -1023,7 +1044,9 @@ base class _SubByteUintArrayField extends _ArrayField<int> {
   final int _baseBit;
   final int _bitWidth;
   final int _valueMask;
-  final int _default;
+
+  /// One entry per element, exactly as in [_Float64ArrayField].
+  final List<int> _defaults;
 
   // Only [_SubByteIntArrayField] reads these; same arrangement as the
   // scalar pair, so the signed variant stays a super-parameter subclass.
@@ -1056,9 +1079,9 @@ base class _SubByteUintArrayField extends _ArrayField<int> {
   }
 
   @override
-  void writeDefault(int row) {
+  void writeInitialValue(int row) {
     for (var i = 0; i < length; i++) {
-      _store(row, i, _default);
+      _store(row, i, _defaults[i]);
     }
   }
 }
@@ -1071,7 +1094,7 @@ final class _SubByteIntArrayField extends _SubByteUintArrayField {
     super.length,
     super.baseBit,
     super.bitWidth,
-    super.defaultValue,
+    super.defaults,
   );
 
   @override
@@ -1087,9 +1110,11 @@ final class _SubByteIntArrayField extends _SubByteUintArrayField {
 // `baseByte + i * elementBytes` layout declareField produced.
 
 final class _Uint8ArrayField extends _ArrayField<int> {
-  _Uint8ArrayField(super.storage, super.length, this._baseByte, this._default);
+  _Uint8ArrayField(super.storage, super.length, this._baseByte, this._defaults);
   final int _baseByte;
-  final int _default;
+
+  /// One entry per element, exactly as in [_Float64ArrayField].
+  final List<int> _defaults;
 
   @override
   int get(Entity entity, int index) {
@@ -1105,17 +1130,19 @@ final class _Uint8ArrayField extends _ArrayField<int> {
   }
 
   @override
-  void writeDefault(int row) {
+  void writeInitialValue(int row) {
     for (var i = 0; i < length; i++) {
-      Pointer<Uint8>.fromAddress(row + _baseByte + i).value = _default;
+      Pointer<Uint8>.fromAddress(row + _baseByte + i).value = _defaults[i];
     }
   }
 }
 
 final class _Int8ArrayField extends _ArrayField<int> {
-  _Int8ArrayField(super.storage, super.length, this._baseByte, this._default);
+  _Int8ArrayField(super.storage, super.length, this._baseByte, this._defaults);
   final int _baseByte;
-  final int _default;
+
+  /// One entry per element, exactly as in [_Float64ArrayField].
+  final List<int> _defaults;
 
   @override
   int get(Entity entity, int index) {
@@ -1130,18 +1157,20 @@ final class _Int8ArrayField extends _ArrayField<int> {
   }
 
   @override
-  void writeDefault(int row) {
+  void writeInitialValue(int row) {
     final elements = Pointer<Int8>.fromAddress(row + _baseByte);
     for (var i = 0; i < length; i++) {
-      elements[i] = _default;
+      elements[i] = _defaults[i];
     }
   }
 }
 
 final class _Uint16ArrayField extends _ArrayField<int> {
-  _Uint16ArrayField(super.storage, super.length, this._baseByte, this._default);
+  _Uint16ArrayField(super.storage, super.length, this._baseByte, this._defaults);
   final int _baseByte;
-  final int _default;
+
+  /// One entry per element, exactly as in [_Float64ArrayField].
+  final List<int> _defaults;
 
   @override
   int get(Entity entity, int index) {
@@ -1156,18 +1185,20 @@ final class _Uint16ArrayField extends _ArrayField<int> {
   }
 
   @override
-  void writeDefault(int row) {
+  void writeInitialValue(int row) {
     final elements = Pointer<Uint16>.fromAddress(row + _baseByte);
     for (var i = 0; i < length; i++) {
-      elements[i] = _default;
+      elements[i] = _defaults[i];
     }
   }
 }
 
 final class _Int16ArrayField extends _ArrayField<int> {
-  _Int16ArrayField(super.storage, super.length, this._baseByte, this._default);
+  _Int16ArrayField(super.storage, super.length, this._baseByte, this._defaults);
   final int _baseByte;
-  final int _default;
+
+  /// One entry per element, exactly as in [_Float64ArrayField].
+  final List<int> _defaults;
 
   @override
   int get(Entity entity, int index) {
@@ -1182,18 +1213,20 @@ final class _Int16ArrayField extends _ArrayField<int> {
   }
 
   @override
-  void writeDefault(int row) {
+  void writeInitialValue(int row) {
     final elements = Pointer<Int16>.fromAddress(row + _baseByte);
     for (var i = 0; i < length; i++) {
-      elements[i] = _default;
+      elements[i] = _defaults[i];
     }
   }
 }
 
 final class _Uint32ArrayField extends _ArrayField<int> {
-  _Uint32ArrayField(super.storage, super.length, this._baseByte, this._default);
+  _Uint32ArrayField(super.storage, super.length, this._baseByte, this._defaults);
   final int _baseByte;
-  final int _default;
+
+  /// One entry per element, exactly as in [_Float64ArrayField].
+  final List<int> _defaults;
 
   @override
   int get(Entity entity, int index) {
@@ -1208,18 +1241,20 @@ final class _Uint32ArrayField extends _ArrayField<int> {
   }
 
   @override
-  void writeDefault(int row) {
+  void writeInitialValue(int row) {
     final elements = Pointer<Uint32>.fromAddress(row + _baseByte);
     for (var i = 0; i < length; i++) {
-      elements[i] = _default;
+      elements[i] = _defaults[i];
     }
   }
 }
 
 final class _Int32ArrayField extends _ArrayField<int> {
-  _Int32ArrayField(super.storage, super.length, this._baseByte, this._default);
+  _Int32ArrayField(super.storage, super.length, this._baseByte, this._defaults);
   final int _baseByte;
-  final int _default;
+
+  /// One entry per element, exactly as in [_Float64ArrayField].
+  final List<int> _defaults;
 
   @override
   int get(Entity entity, int index) {
@@ -1234,10 +1269,10 @@ final class _Int32ArrayField extends _ArrayField<int> {
   }
 
   @override
-  void writeDefault(int row) {
+  void writeInitialValue(int row) {
     final elements = Pointer<Int32>.fromAddress(row + _baseByte);
     for (var i = 0; i < length; i++) {
-      elements[i] = _default;
+      elements[i] = _defaults[i];
     }
   }
 }
@@ -1269,7 +1304,7 @@ final class _Float32ArrayField extends _ArrayField<double> {
   }
 
   @override
-  void writeDefault(int row) {
+  void writeInitialValue(int row) {
     final elements = Pointer<Float>.fromAddress(row + _baseByte);
     for (var i = 0; i < length; i++) {
       elements[i] = _defaults[i];
@@ -1302,7 +1337,7 @@ final class _Float64ArrayField extends _ArrayField<double> {
   }
 
   @override
-  void writeDefault(int row) {
+  void writeInitialValue(int row) {
     final elements = Pointer<Double>.fromAddress(row + _baseByte);
     for (var i = 0; i < length; i++) {
       elements[i] = _defaults[i];
@@ -1310,7 +1345,8 @@ final class _Float64ArrayField extends _ArrayField<double> {
   }
 }
 
-/// `hasPackedArray` - the per-element repeat of [_PackedField], holding one
+/// A representation element of [DataDescriptor.hasArray] - the per-element
+/// repeat of [_PackedField], holding one
 /// integer element field and packing/unpacking around it.
 ///
 /// Delegating to an integer *array* field rather than to `Pointer<Uint32>`
@@ -1318,27 +1354,28 @@ final class _Float64ArrayField extends _ArrayField<double> {
 /// sub-byte packing and bounds checking are all already solved there, and a
 /// representation narrower than 32 bits pays for itself `length` times over
 /// here.
-final class _PackedArrayField<T extends IntRepresentable>
-    extends _ArrayField<T> {
+/// [T] is unbounded here for [_PackedField]'s reason, and the two casts
+/// cannot fail for the same one.
+final class _PackedArrayField<T> extends _ArrayField<T> {
   _PackedArrayField(super.storage, super.length, this._bits, this._repr);
 
   final _ArrayField<int> _bits;
-  final IntRepresentation<T> _repr;
+  final IntRepresentation<IntRepresentable> _repr;
 
   @override
   T get(Entity entity, int index) {
     assert(_checkIndex(index));
-    return _repr.unpack(_bits.get(entity, index));
+    return _repr.unpack(_bits.get(entity, index)) as T;
   }
 
   @override
   void set(Entity entity, int index, T newValue) {
     assert(_checkIndex(index));
-    _bits.set(entity, index, newValue.pack());
+    _bits.set(entity, index, (newValue as IntRepresentable).pack());
   }
 
   @override
-  void writeDefault(int row) => _bits.writeDefault(row);
+  void writeInitialValue(int row) => _bits.writeInitialValue(row);
 }
 
 /// Nullable element array: [_OptionalField]'s one-bit has-flag repeated per
@@ -1362,7 +1399,7 @@ final class _OptionalArrayField<T> extends _ArrayField<T?> {
     super.length,
     this._flagBits,
     this._values,
-    this._defaultPresent,
+    this._initialPresent,
   );
 
   /// Bit offset of element `i`'s has-flag.
@@ -1373,7 +1410,7 @@ final class _OptionalArrayField<T> extends _ArrayField<T?> {
   /// element's value default gets stamped at all.
   final List<_Field<T>> _values;
 
-  final bool _defaultPresent;
+  final bool _initialPresent;
 
   @override
   T? get(Entity entity, int index) {
@@ -1405,15 +1442,15 @@ final class _OptionalArrayField<T> extends _ArrayField<T?> {
   }
 
   @override
-  void writeDefault(int row) {
+  void writeInitialValue(int row) {
     for (var i = 0; i < length; i++) {
       final flagBit = _flagBits[i];
       final byte = flagBit >> 3;
       final mask = 1 << (flagBit & 7);
-      if (_defaultPresent) {
+      if (_initialPresent) {
         Pointer<Uint8>.fromAddress(row + byte).value =
             Pointer<Uint8>.fromAddress(row + byte).value | mask;
-        _values[i].writeDefault(row);
+        _values[i].writeInitialValue(row);
       } else {
         Pointer<Uint8>.fromAddress(row + byte).value =
             Pointer<Uint8>.fromAddress(row + byte).value & ~mask & 0xFF;
@@ -1429,134 +1466,134 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
 
   final ArchetypeStorage _storage;
 
-  _ValueField<int> _declareInt(int bitWidth, bool signed, int defaultValue) {
+  _ValueField<int> _declareInt(int bitWidth, bool signed, int initialValue) {
     final bitOffset = _storage.declareField(bitWidth);
     if (bitWidth < 8) {
       return signed
-          ? _SubByteIntField(_storage, bitOffset, bitWidth, defaultValue)
-          : _SubByteUintField(_storage, bitOffset, bitWidth, defaultValue);
+          ? _SubByteIntField(_storage, bitOffset, bitWidth, initialValue)
+          : _SubByteUintField(_storage, bitOffset, bitWidth, initialValue);
     }
     final byte = bitOffset >> 3;
     return switch ((bitWidth, signed)) {
-      (8, false) => _Uint8Field(_storage, byte, defaultValue),
-      (8, true) => _Int8Field(_storage, byte, defaultValue),
-      (16, false) => _Uint16Field(_storage, byte, defaultValue),
-      (16, true) => _Int16Field(_storage, byte, defaultValue),
-      (32, false) => _Uint32Field(_storage, byte, defaultValue),
-      (32, true) => _Int32Field(_storage, byte, defaultValue),
-      (64, false) => _Uint64Field(_storage, byte, defaultValue),
-      (64, true) => _Int64Field(_storage, byte, defaultValue),
+      (8, false) => _Uint8Field(_storage, byte, initialValue),
+      (8, true) => _Int8Field(_storage, byte, initialValue),
+      (16, false) => _Uint16Field(_storage, byte, initialValue),
+      (16, true) => _Int16Field(_storage, byte, initialValue),
+      (32, false) => _Uint32Field(_storage, byte, initialValue),
+      (32, true) => _Int32Field(_storage, byte, initialValue),
+      (64, false) => _Uint64Field(_storage, byte, initialValue),
+      (64, true) => _Int64Field(_storage, byte, initialValue),
       _ => throw ArgumentError('unsupported integer bit width $bitWidth'),
     };
   }
 
-  _ValueField<double> _declareFloat(int bitWidth, double defaultValue) {
+  _ValueField<double> _declareFloat(int bitWidth, double initialValue) {
     final byte = _storage.declareField(bitWidth) >> 3;
     return bitWidth == 32
-        ? _Float32Field(_storage, byte, defaultValue)
-        : _Float64Field(_storage, byte, defaultValue);
+        ? _Float32Field(_storage, byte, initialValue)
+        : _Float64Field(_storage, byte, initialValue);
   }
 
-  DefaultPointer<int> _has(int bitWidth, bool signed, int defaultValue) {
-    final field = _declareInt(bitWidth, signed, defaultValue);
+  InitialPointer<int> _has(int bitWidth, bool signed, int initialValue) {
+    final field = _declareInt(bitWidth, signed, initialValue);
     _storage.registerField(field);
     return field;
   }
 
-  DefaultPointer<double> _hasFloat(int bitWidth, double defaultValue) {
-    final field = _declareFloat(bitWidth, defaultValue);
+  InitialPointer<double> _hasFloat(int bitWidth, double initialValue) {
+    final field = _declareFloat(bitWidth, initialValue);
     _storage.registerField(field);
     return field;
   }
 
-  DefaultPointer<int?> _opt(int bitWidth, bool signed, int? defaultValue) {
+  InitialPointer<int?> _opt(int bitWidth, bool signed, int? initialValue) {
     // Flag first, then the value - but the flag takes a bit an earlier
     // field's byte-rounding stranded when there is one, so it usually costs
     // the row nothing (see `ArchetypeStorage.declareFlagBit`). The value
     // still comes from the cursor, so its own alignment rule is unchanged.
     final flagBit = _storage.declareFlagBit();
-    final value = _declareInt(bitWidth, signed, defaultValue ?? 0);
+    final value = _declareInt(bitWidth, signed, initialValue ?? 0);
     final field = _DefaultableOptionalField<int>(
       _storage,
       flagBit,
       value,
-      defaultValue != null,
+      initialValue != null,
     );
     _storage.registerField(field);
     return field;
   }
 
-  DefaultPointer<double?> _optFloat(int bitWidth, double? defaultValue) {
+  InitialPointer<double?> _optFloat(int bitWidth, double? initialValue) {
     final flagBit = _storage.declareFlagBit();
-    final value = _declareFloat(bitWidth, defaultValue ?? 0.0);
+    final value = _declareFloat(bitWidth, initialValue ?? 0.0);
     final field = _DefaultableOptionalField<double>(
       _storage,
       flagBit,
       value,
-      defaultValue != null,
+      initialValue != null,
     );
     _storage.registerField(field);
     return field;
   }
 
   @override
-  DefaultPointer<bool> hasBool([bool defaultValue = false]) =>
-      _BoolField(_has(1, false, defaultValue ? 1 : 0));
+  InitialPointer<bool> hasBool([bool initialValue = false]) =>
+      _BoolField(_has(1, false, initialValue ? 1 : 0));
 
   @override
-  DefaultPointer<int> hasUint1([int defaultValue = 0]) =>
-      _has(1, false, defaultValue);
+  InitialPointer<int> hasUint1([int initialValue = 0]) =>
+      _has(1, false, initialValue);
   @override
-  DefaultPointer<int> hasInt1([int defaultValue = 0]) =>
-      _has(1, true, defaultValue);
+  InitialPointer<int> hasInt1([int initialValue = 0]) =>
+      _has(1, true, initialValue);
   @override
-  DefaultPointer<int> hasUint2([int defaultValue = 0]) =>
-      _has(2, false, defaultValue);
+  InitialPointer<int> hasUint2([int initialValue = 0]) =>
+      _has(2, false, initialValue);
   @override
-  DefaultPointer<int> hasInt2([int defaultValue = 0]) =>
-      _has(2, true, defaultValue);
+  InitialPointer<int> hasInt2([int initialValue = 0]) =>
+      _has(2, true, initialValue);
   @override
-  DefaultPointer<int> hasUint4([int defaultValue = 0]) =>
-      _has(4, false, defaultValue);
+  InitialPointer<int> hasUint4([int initialValue = 0]) =>
+      _has(4, false, initialValue);
   @override
-  DefaultPointer<int> hasInt4([int defaultValue = 0]) =>
-      _has(4, true, defaultValue);
+  InitialPointer<int> hasInt4([int initialValue = 0]) =>
+      _has(4, true, initialValue);
   @override
-  DefaultPointer<int> hasUint8([int defaultValue = 0]) =>
-      _has(8, false, defaultValue);
+  InitialPointer<int> hasUint8([int initialValue = 0]) =>
+      _has(8, false, initialValue);
   @override
-  DefaultPointer<int> hasInt8([int defaultValue = 0]) =>
-      _has(8, true, defaultValue);
+  InitialPointer<int> hasInt8([int initialValue = 0]) =>
+      _has(8, true, initialValue);
   @override
-  DefaultPointer<int> hasUint16([int defaultValue = 0]) =>
-      _has(16, false, defaultValue);
+  InitialPointer<int> hasUint16([int initialValue = 0]) =>
+      _has(16, false, initialValue);
   @override
-  DefaultPointer<int> hasInt16([int defaultValue = 0]) =>
-      _has(16, true, defaultValue);
+  InitialPointer<int> hasInt16([int initialValue = 0]) =>
+      _has(16, true, initialValue);
   @override
-  DefaultPointer<int> hasUint32([int defaultValue = 0]) =>
-      _has(32, false, defaultValue);
+  InitialPointer<int> hasUint32([int initialValue = 0]) =>
+      _has(32, false, initialValue);
   @override
-  DefaultPointer<int> hasInt32([int defaultValue = 0]) =>
-      _has(32, true, defaultValue);
+  InitialPointer<int> hasInt32([int initialValue = 0]) =>
+      _has(32, true, initialValue);
   @override
-  DefaultPointer<int> hasUint64([int defaultValue = 0]) =>
-      _has(64, false, defaultValue);
+  InitialPointer<int> hasUint64([int initialValue = 0]) =>
+      _has(64, false, initialValue);
   @override
-  DefaultPointer<int> hasInt64([int defaultValue = 0]) =>
-      _has(64, true, defaultValue);
+  InitialPointer<int> hasInt64([int initialValue = 0]) =>
+      _has(64, true, initialValue);
 
   /// Signed 64-bit, like [hasInt64] and for its reason: `Entity.pack` shifts
   /// the archetype id up into the sign position, so only a signed slot
   /// round-trips every handle unchanged.
   @override
-  DefaultPointer<Entity> hasEntity([Entity? defaultValue]) =>
-      _EntityHandleField(_has(64, true, defaultValue?.value ?? 0));
+  InitialPointer<Entity> hasEntity([Entity? initialValue]) =>
+      _EntityHandleField(_has(64, true, initialValue?.value ?? 0));
 
   /// Unsigned, and as narrow as the member count allows - see
   /// [_enumIndexWidth].
   @override
-  DefaultPointer<E> hasEnum<E extends Enum>(List<E> values, [E? defaultValue]) {
+  InitialPointer<E> hasEnum<E extends Enum>(List<E> values, [E? initialValue]) {
     // The write stores `Enum.index` and the read is `values[index]`, so the
     // two address the same member only when `values` is the enum's whole
     // list in declaration order. Checked here, at declare time, because a
@@ -1573,73 +1610,73 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     );
 
     return _EnumField<E>(
-      _has(_enumIndexWidth(values.length), false, defaultValue?.index ?? 0),
+      _has(_enumIndexWidth(values.length), false, initialValue?.index ?? 0),
       values,
     );
   }
 
   @override
-  DefaultPointer<double> hasFloat32([double defaultValue = 0.0]) =>
-      _hasFloat(32, defaultValue);
+  InitialPointer<double> hasFloat32([double initialValue = 0.0]) =>
+      _hasFloat(32, initialValue);
   @override
-  DefaultPointer<double> hasFloat64([double defaultValue = 0.0]) =>
-      _hasFloat(64, defaultValue);
+  InitialPointer<double> hasFloat64([double initialValue = 0.0]) =>
+      _hasFloat(64, initialValue);
 
   @override
-  DefaultPointer<int?> optUint1([int? defaultValue]) =>
-      _opt(1, false, defaultValue);
+  InitialPointer<int?> optUint1([int? initialValue]) =>
+      _opt(1, false, initialValue);
   @override
-  DefaultPointer<int?> optInt1([int? defaultValue]) =>
-      _opt(1, true, defaultValue);
+  InitialPointer<int?> optInt1([int? initialValue]) =>
+      _opt(1, true, initialValue);
   @override
-  DefaultPointer<int?> optUint2([int? defaultValue]) =>
-      _opt(2, false, defaultValue);
+  InitialPointer<int?> optUint2([int? initialValue]) =>
+      _opt(2, false, initialValue);
   @override
-  DefaultPointer<int?> optInt2([int? defaultValue]) =>
-      _opt(2, true, defaultValue);
+  InitialPointer<int?> optInt2([int? initialValue]) =>
+      _opt(2, true, initialValue);
   @override
-  DefaultPointer<int?> optUint4([int? defaultValue]) =>
-      _opt(4, false, defaultValue);
+  InitialPointer<int?> optUint4([int? initialValue]) =>
+      _opt(4, false, initialValue);
   @override
-  DefaultPointer<int?> optInt4([int? defaultValue]) =>
-      _opt(4, true, defaultValue);
+  InitialPointer<int?> optInt4([int? initialValue]) =>
+      _opt(4, true, initialValue);
   @override
-  DefaultPointer<int?> optUint8([int? defaultValue]) =>
-      _opt(8, false, defaultValue);
+  InitialPointer<int?> optUint8([int? initialValue]) =>
+      _opt(8, false, initialValue);
   @override
-  DefaultPointer<int?> optInt8([int? defaultValue]) =>
-      _opt(8, true, defaultValue);
+  InitialPointer<int?> optInt8([int? initialValue]) =>
+      _opt(8, true, initialValue);
   @override
-  DefaultPointer<int?> optUint16([int? defaultValue]) =>
-      _opt(16, false, defaultValue);
+  InitialPointer<int?> optUint16([int? initialValue]) =>
+      _opt(16, false, initialValue);
   @override
-  DefaultPointer<int?> optInt16([int? defaultValue]) =>
-      _opt(16, true, defaultValue);
+  InitialPointer<int?> optInt16([int? initialValue]) =>
+      _opt(16, true, initialValue);
   @override
-  DefaultPointer<int?> optUint32([int? defaultValue]) =>
-      _opt(32, false, defaultValue);
+  InitialPointer<int?> optUint32([int? initialValue]) =>
+      _opt(32, false, initialValue);
   @override
-  DefaultPointer<int?> optInt32([int? defaultValue]) =>
-      _opt(32, true, defaultValue);
+  InitialPointer<int?> optInt32([int? initialValue]) =>
+      _opt(32, true, initialValue);
   @override
-  DefaultPointer<int?> optUint64([int? defaultValue]) =>
-      _opt(64, false, defaultValue);
+  InitialPointer<int?> optUint64([int? initialValue]) =>
+      _opt(64, false, initialValue);
   @override
-  DefaultPointer<int?> optInt64([int? defaultValue]) =>
-      _opt(64, true, defaultValue);
+  InitialPointer<int?> optInt64([int? initialValue]) =>
+      _opt(64, true, initialValue);
 
   /// Signed 64-bit beside a presence flag, the signedness for [hasEntity]'s
   /// reason.
   @override
-  DefaultPointer<Entity?> optEntity([Entity? defaultValue]) =>
-      _OptionalEntityHandleField(_opt(64, true, defaultValue?.value));
+  InitialPointer<Entity?> optEntity([Entity? initialValue]) =>
+      _OptionalEntityHandleField(_opt(64, true, initialValue?.value));
 
   @override
-  DefaultPointer<double?> optFloat32([double? defaultValue]) =>
-      _optFloat(32, defaultValue);
+  InitialPointer<double?> optFloat32([double? initialValue]) =>
+      _optFloat(32, initialValue);
   @override
-  DefaultPointer<double?> optFloat64([double? defaultValue]) =>
-      _optFloat(64, defaultValue);
+  InitialPointer<double?> optFloat64([double? initialValue]) =>
+      _optFloat(64, initialValue);
 
   // --- array declaration helpers ---------------------------------------
 
@@ -1694,86 +1731,35 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     int length,
     int bitWidth,
     bool signed,
-    int defaultValue,
+    List<int> defaults,
   ) {
     final baseBit = _declareElements(length, bitWidth);
     if (bitWidth < 8) {
       return signed
-          ? _SubByteIntArrayField(
-              _storage,
-              length,
-              baseBit,
-              bitWidth,
-              defaultValue,
-            )
+          ? _SubByteIntArrayField(_storage, length, baseBit, bitWidth, defaults)
           : _SubByteUintArrayField(
               _storage,
               length,
               baseBit,
               bitWidth,
-              defaultValue,
+              defaults,
             );
     }
     final byte = baseBit >> 3;
     return switch ((bitWidth, signed)) {
-      (8, false) => _Uint8ArrayField(_storage, length, byte, defaultValue),
-      (8, true) => _Int8ArrayField(_storage, length, byte, defaultValue),
-      (16, false) => _Uint16ArrayField(_storage, length, byte, defaultValue),
-      (16, true) => _Int16ArrayField(_storage, length, byte, defaultValue),
-      (32, false) => _Uint32ArrayField(_storage, length, byte, defaultValue),
-      (32, true) => _Int32ArrayField(_storage, length, byte, defaultValue),
+      (8, false) => _Uint8ArrayField(_storage, length, byte, defaults),
+      (8, true) => _Int8ArrayField(_storage, length, byte, defaults),
+      (16, false) => _Uint16ArrayField(_storage, length, byte, defaults),
+      (16, true) => _Int16ArrayField(_storage, length, byte, defaults),
+      (32, false) => _Uint32ArrayField(_storage, length, byte, defaults),
+      (32, true) => _Int32ArrayField(_storage, length, byte, defaults),
       _ => throw ArgumentError('unsupported integer bit width $bitWidth'),
     };
   }
 
-  DataArrayPointer<int> _hasIntArray(
-    int length,
-    int bitWidth,
-    bool signed,
-    int defaultValue,
-  ) {
-    _checkArrayLength(length);
-    final field = _declareIntArray(length, bitWidth, signed, defaultValue);
-    _storage.registerField(field);
-    return field;
-  }
-
-  DataArrayPointer<double> _hasFloatArray(
-    int length,
-    int bitWidth,
-    double defaultValue,
-  ) {
-    _checkArrayLength(length);
-    return _declareFloatArray(
-      length,
-      bitWidth,
-      List<double>.filled(length, defaultValue),
-    );
-  }
-
-  /// The per-element form. [defaultValues] covers the first elements and the
-  /// rest start at `0.0` - the slots a caller reserved beyond the values it
-  /// declared.
-  DataArrayPointer<double> _hasFloatArrayOf(
-    int length,
-    int bitWidth,
-    List<double> defaultValues,
-  ) {
-    _checkArrayLength(length);
-    if (defaultValues.length > length) {
-      throw ArgumentError.value(
-        defaultValues.length,
-        'defaultValues',
-        'is more defaults than the array holds ($length)',
-      );
-    }
-    final defaults = List<double>.filled(length, 0.0);
-    defaults.setRange(0, defaultValues.length, defaultValues);
-    return _declareFloatArray(length, bitWidth, defaults);
-  }
-
   /// Reserves the elements and registers the field. [defaults] holds one
-  /// entry per element already, so both spellings of the default meet here.
+  /// entry per element already, so both spellings of the initial value meet
+  /// here.
   DataArrayPointer<double> _declareFloatArray(
     int length,
     int bitWidth,
@@ -1787,56 +1773,171 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     return field;
   }
 
+  /// One entry per element, from whichever of the two spellings the caller
+  /// used: [initialValues] covers the first elements and the rest fall back
+  /// to [zero], the element's own unwritten value.
+  ///
+  /// More values than the array holds is an error, for [_checkArrayLength]'s
+  /// reason: it can only be a caller mistake, and each extra one names a slot
+  /// that was never reserved.
+  List<V> _elementDefaults<V>(int length, List<V> initialValues, V zero) {
+    if (initialValues.length > length) {
+      throw ArgumentError.value(
+        initialValues.length,
+        'initialValues',
+        'is more values than the array holds ($length)',
+      );
+    }
+    final defaults = List<V>.filled(length, zero);
+    defaults.setRange(0, initialValues.length, initialValues);
+    return defaults;
+  }
+
+  /// The single place [hasArray] and [hasArrayOf] decide what an element
+  /// *is*.
+  ///
+  /// An exhaustive `switch` and not an `is` chain: [DataElement] is sealed,
+  /// so a fourth element kind is a compile error here instead of a case that
+  /// falls through. The representation case is spelled
+  /// `IntRepresentation<IntRepresentable>()`, because a bare
+  /// `IntRepresentation()` does not satisfy exhaustiveness against an
+  /// unbounded `DataElement<T>`.
+  ///
+  /// [initials] holds one value per element already. `null` reaches here only
+  /// from [hasArray] with no initial value given, and asks for the element's
+  /// own zero - which a native width has and a representation does not, so
+  /// the representation branch refuses it by name.
+  DataArrayPointer<T> _declareArray<T>(
+    DataElement<T> element,
+    int length,
+    List<T>? initials,
+  ) {
+    switch (element) {
+      case IntElement(:final bitWidth, :final signed):
+        final defaults = _elementDefaults<int>(
+          length,
+          (initials as List<int>?) ?? const <int>[],
+          0,
+        );
+        final field = _declareIntArray(length, bitWidth, signed, defaults);
+        _storage.registerField(field);
+        return field as DataArrayPointer<T>;
+      case FloatElement(:final bitWidth):
+        final defaults = _elementDefaults<double>(
+          length,
+          (initials as List<double>?) ?? const <double>[],
+          0.0,
+        );
+        return _declareFloatArray(length, bitWidth, defaults)
+            as DataArrayPointer<T>;
+      case IntRepresentation<IntRepresentable>():
+        final repr = element as IntRepresentation<IntRepresentable>;
+        if (initials == null) {
+          throw ArgumentError.value(
+            null,
+            'initialValue',
+            'a ${repr.runtimeType} array needs one. The bits an unwritten '
+                'element holds are 0, which a representation is under no '
+                'obligation to have a value for, so the first read would '
+                'throw out of unpack. Pass the value every element starts '
+                'at, or declare the column with optArray and let unwritten '
+                'elements read null.',
+          );
+        }
+        final bits = _declareIntArray(
+          length,
+          _checkBitWidth(repr),
+          false,
+          _elementDefaults<int>(
+            length,
+            <int>[for (final v in initials) (v as IntRepresentable).pack()],
+            0,
+          ),
+        );
+        final field = _PackedArrayField<T>(_storage, length, bits, repr);
+        _storage.registerField(field);
+        return field;
+    }
+  }
+
+  @override
+  DataArrayPointer<T> hasArray<T>(
+    DataElement<T> element,
+    int length, [
+    T? initialValue,
+  ]) {
+    _checkArrayLength(length);
+    return _declareArray<T>(
+      element,
+      length,
+      initialValue == null ? null : List<T>.filled(length, initialValue),
+    );
+  }
+
+  @override
+  DataArrayPointer<T> hasArrayOf<T>(
+    DataElement<T> element,
+    int length,
+    List<T> initialValues,
+  ) {
+    _checkArrayLength(length);
+    return _declareArray<T>(element, length, initialValues);
+  }
+
   /// The nullable case declares per element - flag, then value - which is
   /// why it cannot share [_declareElements]: the two widths interleave, so
   /// the elements are not evenly spaced. See [_OptionalArrayField].
-  DataArrayPointer<int?> _optIntArray(
-    int length,
-    int bitWidth,
-    bool signed,
-    int? defaultValue,
-  ) {
+  @override
+  DataArrayPointer<T?> optArray<T>(
+    DataElement<T> element,
+    int length, [
+    T? initialValue,
+  ]) {
     _checkArrayLength(length);
     final flagBits = List<int>.filled(length, 0);
-    final values = <_Field<int>>[];
+    final values = <_Field<T>>[];
     for (var i = 0; i < length; i++) {
       flagBits[i] = _storage.declareFlagBit();
-      values.add(_declareInt(bitWidth, signed, defaultValue ?? 0));
+      values.add(_declareElement<T>(element, initialValue));
     }
-    final field = _OptionalArrayField<int>(
+    final field = _OptionalArrayField<T>(
       _storage,
       length,
       flagBits,
       values,
-      defaultValue != null,
+      initialValue != null,
     );
     _storage.registerField(field);
     return field;
   }
 
-  DataArrayPointer<double?> _optFloatArray(
-    int length,
-    int bitWidth,
-    double? defaultValue,
-  ) {
-    _checkArrayLength(length);
-    final flagBits = List<int>.filled(length, 0);
-    final values = <_Field<double>>[];
-    for (var i = 0; i < length; i++) {
-      flagBits[i] = _storage.declareFlagBit();
-      values.add(_declareFloat(bitWidth, defaultValue ?? 0.0));
+  /// One element of an [optArray], as a scalar field.
+  ///
+  /// The value bits are don't-care while the element's flag is clear, so an
+  /// absent [initialValue] is the element's zero here and a representation
+  /// needs no value of its own - which is why this switch has no counterpart
+  /// to the refusal in [_declareArray].
+  _Field<T> _declareElement<T>(DataElement<T> element, T? initialValue) {
+    switch (element) {
+      case IntElement(:final bitWidth, :final signed):
+        return _declareInt(bitWidth, signed, (initialValue as int?) ?? 0)
+            as _Field<T>;
+      case FloatElement(:final bitWidth):
+        return _declareFloat(bitWidth, (initialValue as double?) ?? 0.0)
+            as _Field<T>;
+      case IntRepresentation<IntRepresentable>():
+        final repr = element as IntRepresentation<IntRepresentable>;
+        return _PackedField<T>(
+          _storage,
+          _declareInt(
+            _checkBitWidth(repr),
+            false,
+            (initialValue as IntRepresentable?)?.pack() ?? 0,
+          ),
+          repr,
+        );
     }
-    final field = _OptionalArrayField<double>(
-      _storage,
-      length,
-      flagBits,
-      values,
-      defaultValue != null,
-    );
-    _storage.registerField(field);
-    return field;
   }
-
   /// Rejects a width the row cannot hold, before it becomes silent
   /// truncation. A representation's width is a declare-time constant, so this
   /// fires once per field at bring-up and never on a hot path.
@@ -1856,17 +1957,17 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
 
   PackedPointer<T> _hasPacked<T extends IntRepresentable>(
     IntRepresentation<T> repr,
-    T defaultValue,
+    T initialValue,
   ) {
-    final bits = _declareInt(_checkBitWidth(repr), false, defaultValue.pack());
-    final field = _PackedField<T>(_storage, bits, repr);
+    final bits = _declareInt(_checkBitWidth(repr), false, initialValue.pack());
+    final field = _PackedPointerField<T>(_storage, bits, repr);
     _storage.registerField(field);
     return field;
   }
 
   DataPointer<T?> _optPacked<T extends IntRepresentable>(
     IntRepresentation<T> repr,
-    T? defaultValue,
+    T? initialValue,
   ) {
     // Flag first, then the value - but the flag takes a bit an earlier
     // field's byte-rounding stranded when there is one, so it usually costs
@@ -1876,197 +1977,33 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     final bits = _declareInt(
       _checkBitWidth(repr),
       false,
-      defaultValue?.pack() ?? 0,
+      initialValue?.pack() ?? 0,
     );
     final value = _PackedField<T>(_storage, bits, repr);
     final field = _OptionalField<T>(
       _storage,
       flagBit,
       value,
-      defaultValue != null,
+      initialValue != null,
     );
     _storage.registerField(field);
     return field;
   }
-
-  DataArrayPointer<T> _hasPackedArray<T extends IntRepresentable>(
-    IntRepresentation<T> repr,
-    int length,
-    T defaultValue,
-  ) {
-    _checkArrayLength(length);
-    final bits = _declareIntArray(
-      length,
-      _checkBitWidth(repr),
-      false,
-      defaultValue.pack(),
-    );
-    final field = _PackedArrayField<T>(_storage, length, bits, repr);
-    _storage.registerField(field);
-    return field;
-  }
-
-  DataArrayPointer<T?> _optPackedArray<T extends IntRepresentable>(
-    IntRepresentation<T> repr,
-    int length,
-    T? defaultValue,
-  ) {
-    _checkArrayLength(length);
-    final bitWidth = _checkBitWidth(repr);
-    final defaultBits = defaultValue?.pack() ?? 0;
-    final flagBits = List<int>.filled(length, 0);
-    final values = <_Field<T>>[];
-    for (var i = 0; i < length; i++) {
-      flagBits[i] = _storage.declareFlagBit();
-      values.add(
-        _PackedField<T>(
-          _storage,
-          _declareInt(bitWidth, false, defaultBits),
-          repr,
-        ),
-      );
-    }
-    final field = _OptionalArrayField<T>(
-      _storage,
-      length,
-      flagBits,
-      values,
-      defaultValue != null,
-    );
-    _storage.registerField(field);
-    return field;
-  }
-
-  @override
-  DataArrayPointer<int> hasUint1Array(int length, [int defaultValue = 0]) =>
-      _hasIntArray(length, 1, false, defaultValue);
-  @override
-  DataArrayPointer<int> hasInt1Array(int length, [int defaultValue = 0]) =>
-      _hasIntArray(length, 1, true, defaultValue);
-  @override
-  DataArrayPointer<int> hasUint2Array(int length, [int defaultValue = 0]) =>
-      _hasIntArray(length, 2, false, defaultValue);
-  @override
-  DataArrayPointer<int> hasInt2Array(int length, [int defaultValue = 0]) =>
-      _hasIntArray(length, 2, true, defaultValue);
-  @override
-  DataArrayPointer<int> hasUint4Array(int length, [int defaultValue = 0]) =>
-      _hasIntArray(length, 4, false, defaultValue);
-  @override
-  DataArrayPointer<int> hasInt4Array(int length, [int defaultValue = 0]) =>
-      _hasIntArray(length, 4, true, defaultValue);
-  @override
-  DataArrayPointer<int> hasUint8Array(int length, [int defaultValue = 0]) =>
-      _hasIntArray(length, 8, false, defaultValue);
-  @override
-  DataArrayPointer<int> hasInt8Array(int length, [int defaultValue = 0]) =>
-      _hasIntArray(length, 8, true, defaultValue);
-  @override
-  DataArrayPointer<int> hasUint16Array(int length, [int defaultValue = 0]) =>
-      _hasIntArray(length, 16, false, defaultValue);
-  @override
-  DataArrayPointer<int> hasInt16Array(int length, [int defaultValue = 0]) =>
-      _hasIntArray(length, 16, true, defaultValue);
-  @override
-  DataArrayPointer<int> hasUint32Array(int length, [int defaultValue = 0]) =>
-      _hasIntArray(length, 32, false, defaultValue);
-  @override
-  DataArrayPointer<int> hasInt32Array(int length, [int defaultValue = 0]) =>
-      _hasIntArray(length, 32, true, defaultValue);
-  @override
-  DataArrayPointer<double> hasFloat32Array(
-    int length, [
-    double defaultValue = 0.0,
-  ]) => _hasFloatArray(length, 32, defaultValue);
-  @override
-  DataArrayPointer<double> hasFloat64Array(
-    int length, [
-    double defaultValue = 0.0,
-  ]) => _hasFloatArray(length, 64, defaultValue);
-  @override
-  DataArrayPointer<double> hasFloat32ArrayOf(
-    int length,
-    List<double> defaultValues,
-  ) => _hasFloatArrayOf(length, 32, defaultValues);
-  @override
-  DataArrayPointer<double> hasFloat64ArrayOf(
-    int length,
-    List<double> defaultValues,
-  ) => _hasFloatArrayOf(length, 64, defaultValues);
-  @override
-  DataArrayPointer<int?> optUint1Array(int length, [int? defaultValue]) =>
-      _optIntArray(length, 1, false, defaultValue);
-  @override
-  DataArrayPointer<int?> optInt1Array(int length, [int? defaultValue]) =>
-      _optIntArray(length, 1, true, defaultValue);
-  @override
-  DataArrayPointer<int?> optUint2Array(int length, [int? defaultValue]) =>
-      _optIntArray(length, 2, false, defaultValue);
-  @override
-  DataArrayPointer<int?> optInt2Array(int length, [int? defaultValue]) =>
-      _optIntArray(length, 2, true, defaultValue);
-  @override
-  DataArrayPointer<int?> optUint4Array(int length, [int? defaultValue]) =>
-      _optIntArray(length, 4, false, defaultValue);
-  @override
-  DataArrayPointer<int?> optInt4Array(int length, [int? defaultValue]) =>
-      _optIntArray(length, 4, true, defaultValue);
-  @override
-  DataArrayPointer<int?> optUint8Array(int length, [int? defaultValue]) =>
-      _optIntArray(length, 8, false, defaultValue);
-  @override
-  DataArrayPointer<int?> optInt8Array(int length, [int? defaultValue]) =>
-      _optIntArray(length, 8, true, defaultValue);
-  @override
-  DataArrayPointer<int?> optUint16Array(int length, [int? defaultValue]) =>
-      _optIntArray(length, 16, false, defaultValue);
-  @override
-  DataArrayPointer<int?> optInt16Array(int length, [int? defaultValue]) =>
-      _optIntArray(length, 16, true, defaultValue);
-  @override
-  DataArrayPointer<int?> optUint32Array(int length, [int? defaultValue]) =>
-      _optIntArray(length, 32, false, defaultValue);
-  @override
-  DataArrayPointer<int?> optInt32Array(int length, [int? defaultValue]) =>
-      _optIntArray(length, 32, true, defaultValue);
-  @override
-  DataArrayPointer<double?> optFloat32Array(
-    int length, [
-    double? defaultValue,
-  ]) => _optFloatArray(length, 32, defaultValue);
-  @override
-  DataArrayPointer<double?> optFloat64Array(
-    int length, [
-    double? defaultValue,
-  ]) => _optFloatArray(length, 64, defaultValue);
 
   @override
   PackedPointer<T> hasPacked<T extends IntRepresentable>(
     IntRepresentation<T> repr,
-    T defaultValue,
-  ) => _hasPacked(repr, defaultValue);
+    T initialValue,
+  ) => _hasPacked(repr, initialValue);
   @override
   DataPointer<T?> optPacked<T extends IntRepresentable>(
     IntRepresentation<T> repr, [
-    T? defaultValue,
-  ]) => _optPacked(repr, defaultValue);
+    T? initialValue,
+  ]) => _optPacked(repr, initialValue);
   @override
-  DataArrayPointer<T> hasPackedArray<T extends IntRepresentable>(
-    IntRepresentation<T> repr,
-    int length,
-    T defaultValue,
-  ) => _hasPackedArray(repr, length, defaultValue);
-  @override
-  DataArrayPointer<T?> optPackedArray<T extends IntRepresentable>(
-    IntRepresentation<T> repr,
-    int length, [
-    T? defaultValue,
-  ]) => _optPackedArray(repr, length, defaultValue);
-
-  @override
-  DataPointer<T> hasHeapObject<T>(T Function() defaultValue) {
+  DataPointer<T> hasHeapObject<T>(T Function() initialValue) {
     final byte = _storage.declareField(32) >> 3;
-    final field = _HeapObjectField<T>(_storage, byte, defaultValue);
+    final field = _HeapObjectField<T>(_storage, byte, initialValue);
     _storage.registerField(field);
     return field;
   }
@@ -2076,7 +2013,7 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     final flagBit = _storage.declareFlagBit();
     final byte = _storage.declareField(32) >> 3;
     // No default factory: the wrapper's has-bit defaults to clear, so
-    // `_OptionalField.writeDefault` never asks the value field for one and
+    // `_OptionalField.writeInitialValue` never asks the value field for one and
     // a fresh entity reads `null`.
     final value = _HeapObjectField<T>(_storage, byte, null);
     final field = _OptionalField<T>(_storage, flagBit, value, false);

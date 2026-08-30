@@ -2,6 +2,11 @@
 
 ### Breaking
 
+* **`bodyType.defaultValue` is `bodyType.initialValue`.** The accessor is
+  renamed in `good` 0.3.0-dev, because the value is stamped into a fresh row
+  rather than consulted on a read (#210). `RigidBody2D`'s columns do not
+  move.
+
 * **`RigidBody2D` finishes the prefix its first two columns already had.**
   `bodyHandle` and `bodyType` were prefixed; the other twelve were not, and
   `linearVelocityX`, `gravityScale` and `fixedRotation` are all plausible

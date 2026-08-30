@@ -660,7 +660,7 @@ import 'package:$package/$package.dart';
 /// @override
 /// void describeStruct(DataDescriptor data) {
 ///   super.describeStruct(data);
-///   cameraFieldOfView.defaultValue = 90;
+///   cameraFieldOfView.initialValue = 90;
 /// }
 /// ```
 ///

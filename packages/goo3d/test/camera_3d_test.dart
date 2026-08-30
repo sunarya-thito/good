@@ -11,9 +11,9 @@ class _WideEye extends EntityStruct
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    cameraFieldOfView.defaultValue = 90;
-    cameraNear.defaultValue = 0.5;
-    cameraFar.defaultValue = 250;
+    cameraFieldOfView.initialValue = 90;
+    cameraNear.initialValue = 0.5;
+    cameraFar.initialValue = 250;
   }
 }
 

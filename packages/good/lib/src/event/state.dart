@@ -89,6 +89,26 @@ abstract class StateChannel<T> implements ValueListenable<T> {
 /// something writes to it. It is published as soon as the storage exists -
 /// before the first tick and before `start()` completes - so no reader on
 /// either copy ever observes an unpublished channel.
+/// # What this offers, and what it does not
+///
+/// The byte-and-wider widths `DataDescriptor` has, plus `bool`. What is
+/// absent is absent because a channel is **its own** fixed run of bytes in
+/// shared memory, not a slice of a packed row:
+///
+///  * **The sub-byte widths** (`uint1`..`int4`) would each take a whole byte
+///    here, since there is no neighbouring field to share one with, so they
+///    would buy nothing over [hasUint8] and would only add a second spelling
+///    for the same storage. The one case worth its own name is the flag, and
+///    that is [hasBool].
+///  * **Arrays, packed values and heap objects** have no counterpart. A
+///    channel is published whole and compared for equality on every write
+///    (see [StateChannel]), which a run of elements and a registry index do
+///    not support; a value with an `IntRepresentation` goes in a component
+///    column, which is where entity-scoped state belongs anyway.
+///  * **`hasEntity`** is deliberately absent, and not for a storage reason: a
+///    handle names a row that is recycled, so a channel holding one across
+///    ticks would come to name a different entity - the warning
+///    `DataDescriptor.hasEntity` carries, with nothing here to bound it.
 abstract class StateDescriptor {
   /// See [Channel.uint8].
   StateChannel<int> hasUint8([int initial = 0]);

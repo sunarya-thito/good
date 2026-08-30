@@ -2,6 +2,12 @@
 
 ### Breaking
 
+* **`cameraFar.defaultValue` is `cameraFar.initialValue`.** `DefaultPointer`
+  is `InitialPointer` in `good` 0.3.0-dev and its accessor is renamed with it
+  (#210). `Camera3D`'s columns do not move - names, order and widths are
+  unchanged - but a prefab written as `cameraFieldOfView.defaultValue = 90`
+  has one word to change.
+
 * **`Camera3D` columns carry the component's name.** `near`, `far`,
   `fieldOfView` and `view` sat in the namespace every component on the entity
   shares, and `view` was the same name `goo2d`'s `Camera` declared (#133).

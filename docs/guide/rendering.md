@@ -285,8 +285,8 @@ class DamageNumber extends EntityStruct
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    textCellWidth.defaultValue = 8;
-    textCellHeight.defaultValue = 12;
+    textCellWidth.initialValue = 8;
+    textCellHeight.initialValue = 12;
   }
 }
 ```

@@ -717,13 +717,62 @@ abstract interface class ParamLayouts {
 /// that does not fit is an error instead of a resize. Reach for them when
 /// the field really does have a bound - a four-character country code, a
 /// 16-byte digest - and for anything else declare the length-free kind.
+/// # What this offers, and what it does not
+///
+/// Every width `DataDescriptor` has is here, because a record packs its head
+/// with the same bit cursor a row uses ([ParamLayout._declare] says so) - so
+/// what fits in a column fits in a parameter. The four that are absent are
+/// absent for a reason that holds:
+///
+///  * **`hasHeapObject`** cannot cross a socket. Its payload is an index into
+///    the writing isolate's `HeapObjectRegistry` and means nothing anywhere
+///    else, which is exactly what `DataDescriptor.hasHeapObject` says of it.
+///  * **`hasPacked`** would carry, since it is one integer, but the
+///    `IntRepresentation` that gives that integer meaning is named at the
+///    declare site on each end and nothing checks the two are the same one.
+///    Declare the width and pack at the call site until that is settled.
+///  * **`hasEnum`** is the same question one step down: a column's enum
+///    default is an index into a `List<E>` both ends must agree on, and a
+///    record has no place to record which list it meant.
+///  * **Arrays** have no counterpart here. A run of values goes in the tail
+///    through [hasBytes], which is length-free, or inline through
+///    [hasFixedBytes] where the bound is real.
+///
+/// Going the other way, [hasString], [hasFixedString], [hasBytes] and
+/// [hasFixedBytes] have no counterpart on `DataDescriptor`, and cannot: a row
+/// is reached by multiplying a stride, so it has no tail to grow into. See
+/// this class's note above on why a record does.
 abstract class ParamDescriptor {
+  /// A boolean flag - one bit of the record's head, the same storage
+  /// [hasUint1] takes, with a type on it.
+  ///
+  /// `DataDescriptor.hasBool` was added for the flags that had been `uint1`,
+  /// and until #35 it never reached here - so a command or a network message
+  /// declared `hasUint1` and marshalled `1`/`0` by hand at both ends. It goes
+  /// on the wire as its own field kind and not as a `uint1`, so a build that
+  /// changed one to the other is caught at the handshake rather than read
+  /// back as a number.
+  ParamPointer<bool> hasBool();
+
   ParamPointer<int> hasUint1();
   ParamPointer<int> hasUint2();
   ParamPointer<int> hasUint4();
   ParamPointer<int> hasUint8();
   ParamPointer<int> hasUint16();
   ParamPointer<int> hasUint32();
+
+  /// Unsigned 64-bit. Dart's `int` is signed 64-bit, so this reads back the
+  /// same bits [hasInt64] does and differs only in what the declaration says
+  /// it means - the symmetry `DataDescriptor.hasUint64` is kept for.
+  ParamPointer<int> hasUint64();
+
+  /// Signed sub-byte widths, two's complement over [hasUint1]'s storage: a
+  /// 1-bit signed field holds -1 or 0, exactly as
+  /// `DataDescriptor.hasInt1` does.
+  ParamPointer<int> hasInt1();
+  ParamPointer<int> hasInt2();
+  ParamPointer<int> hasInt4();
+
   ParamPointer<int> hasInt8();
   ParamPointer<int> hasInt16();
   ParamPointer<int> hasInt32();
@@ -836,8 +885,24 @@ abstract class ParamDescriptor {
 /// either, and one that declares through both gets its fields first and its
 /// hook's second.
 abstract final class Param {
+  /// See [ParamDescriptor.hasBool]. Named for the Dart type and not the
+  /// width, the way `Field.boolean` and `Channel.boolean` are.
+  static ParamPointer<bool> boolean() => DeclarationContext.params.hasBool();
+
   /// See [ParamDescriptor.hasUint1].
   static ParamPointer<int> uint1() => DeclarationContext.params.hasUint1();
+
+  /// See [ParamDescriptor.hasInt1].
+  static ParamPointer<int> int1() => DeclarationContext.params.hasInt1();
+
+  /// See [ParamDescriptor.hasInt2].
+  static ParamPointer<int> int2() => DeclarationContext.params.hasInt2();
+
+  /// See [ParamDescriptor.hasInt4].
+  static ParamPointer<int> int4() => DeclarationContext.params.hasInt4();
+
+  /// See [ParamDescriptor.hasUint64].
+  static ParamPointer<int> uint64() => DeclarationContext.params.hasUint64();
 
   /// See [ParamDescriptor.hasUint2].
   static ParamPointer<int> uint2() => DeclarationContext.params.hasUint2();
@@ -1055,9 +1120,22 @@ final class ParamLayout implements ParamDescriptor {
     _note(kind ?? (signed ? _FieldKind.sint : _FieldKind.uint), bitWidth);
     final index = _fieldCount++;
     if (bitWidth < 8) {
-      return _SubBytePointer(index, bitOffset >> 3, bitOffset & 7, bitWidth);
+      final byte = bitOffset >> 3;
+      final shift = bitOffset & 7;
+      return signed
+          ? _SubByteIntPointer(index, byte, shift, bitWidth)
+          : _SubBytePointer(index, byte, shift, bitWidth);
     }
     return _IntPointer(index, bitOffset >> 3, bitWidth, signed);
+  }
+
+  @override
+  ParamPointer<bool> hasBool() {
+    final bitOffset = _declare(1);
+    _note(_FieldKind.boolean, 1);
+    return _BoolPointer(
+      _SubBytePointer(_fieldCount++, bitOffset >> 3, bitOffset & 7, 1),
+    );
   }
 
   @override
@@ -1072,6 +1150,14 @@ final class ParamLayout implements ParamDescriptor {
   ParamPointer<int> hasUint16() => _int(16, false);
   @override
   ParamPointer<int> hasUint32() => _int(32, false);
+  @override
+  ParamPointer<int> hasUint64() => _int(64, false);
+  @override
+  ParamPointer<int> hasInt1() => _int(1, true);
+  @override
+  ParamPointer<int> hasInt2() => _int(2, true);
+  @override
+  ParamPointer<int> hasInt4() => _int(4, true);
   @override
   ParamPointer<int> hasInt8() => _int(8, true);
   @override
@@ -1172,6 +1258,11 @@ abstract final class _FieldKind {
   static const int stringTail = 5;
   static const int bytesFixed = 6;
   static const int bytesTail = 7;
+
+  /// Added at the end, per the rule above. A `bool` is one bit of storage
+  /// like a `uint1`, and a code of its own so that swapping one declaration
+  /// for the other is a handshake mismatch and not a silent reinterpretation.
+  static const int boolean = 8;
 }
 
 /// Shared bookkeeping: every pointer knows its own index in the written-mask
@@ -1265,7 +1356,7 @@ final class _EntityPointer implements ParamPointer<Entity> {
   void operator []=(ParamBuffer call, Entity value) => _raw[call] = value.value;
 }
 
-final class _SubBytePointer extends _Pointer<int> {
+base class _SubBytePointer extends _Pointer<int> {
   const _SubBytePointer(super.index, this.byte, this.shift, this.bitWidth);
 
   final int byte;
@@ -1290,6 +1381,39 @@ final class _SubBytePointer extends _Pointer<int> {
     data.setUint8(at, (raw & ~_mask) | ((value << shift) & _mask));
     call._markWritten(index);
   }
+}
+
+/// Two's-complement variant of [_SubBytePointer] - the command-side twin of
+/// `data_layout.dart`'s `_SubByteIntField`, and it means the same thing: a
+/// 1-bit signed field holds -1 or 0.
+final class _SubByteIntPointer extends _SubBytePointer {
+  const _SubByteIntPointer(super.index, super.byte, super.shift,
+      super.bitWidth);
+
+  @override
+  int operator [](ParamBuffer call) {
+    final raw = super[call];
+    final signBit = 1 << (bitWidth - 1);
+    return raw >= signBit ? raw - (1 << bitWidth) : raw;
+  }
+}
+
+/// A `bool` view over the one-bit field [ParamDescriptor.hasBool] declares.
+///
+/// Delegation, not a fifth `_Pointer` subclass, for [_EntityPointer]'s
+/// reason: the byte offset, the read-modify-write of the shared byte and the
+/// written-mask bookkeeping are already right in the [_SubBytePointer] this
+/// wraps.
+final class _BoolPointer implements ParamPointer<bool> {
+  const _BoolPointer(this._raw);
+
+  final ParamPointer<int> _raw;
+
+  @override
+  bool operator [](ParamBuffer call) => _raw[call] != 0;
+
+  @override
+  void operator []=(ParamBuffer call, bool value) => _raw[call] = value ? 1 : 0;
 }
 
 final class _FloatPointer extends _Pointer<double> {

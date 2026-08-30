@@ -23,7 +23,7 @@
 //
 // # The trap these tests are shaped around
 //
-// `writeDefault` runs once, at `ArchetypeStorage.seal`, and `allocateRow`
+// `writeInitialValue` runs once, at `ArchetypeStorage.seal`, and `allocateRow`
 // memcpys that prototype row into every spawn - so an entity that never writes
 // a `hasHeapObject` field carries *the prototype's* address, one slot shared by
 // every entity of the archetype. A teardown that freed it on the first destroy
@@ -212,7 +212,7 @@ void main() {
       final doomed = level.add();
 
       // Neither wrote `owned`, so both rows carry the one address
-      // `writeDefault` registered at seal.
+      // `writeInitialValue` registered at seal.
       expect(level.thing.owned[keeper], same(sharedDefault));
       doomed.destroy();
 

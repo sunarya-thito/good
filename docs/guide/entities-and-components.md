@@ -215,24 +215,31 @@ instead of eight is 7 bits per entity per frame of bandwidth saved.
 | `Field.packed<T>(table, [default])` | `T` | a value with an `int` representation |
 | `Field.optPacked<T>(table, [default])` | `T?` | nullable packed — how `Sprite.texture` and `Camera.cameraView` are stored |
 | `Field.heapObject<T>()` / `Field.optHeapObject<T>()` | `T` / `T?` | an arbitrary Dart object, by registry address |
-| `Field.*Array(length, [default])` | `DataArrayPointer<T>` | fixed-length inline array |
+| `Field.array(element, length, [initial])` | `DataArrayPointer<T>` | fixed-length inline array — the element is an argument, so `Field.array(.uint16, 8)` and `Field.array(table, 4, first)` are the same method |
+| `Field.arrayOf(element, length, initials)` | `DataArrayPointer<T>` | the same, with each element starting at its own value |
+| `Field.optArray(element, length, [initial])` | `DataArrayPointer<T?>` | every element a value or `null`, independently |
 
 `Field.boolean` and not `Field.bool`, and `Field` and not `Column`: `bool` is a
 type and `Column` is a Flutter widget, and neither name can be reused without
 breaking the file that uses it.
 
-Every one takes an optional **default**, which is what a freshly allocated row
-starts at:
+Every one takes an optional **initial value**, which is what a freshly
+allocated row starts at:
 
 ```dart
 final scale = Field.float64(1);   // not 0 — a zero scale is a degenerate transform
 ```
 
-!!! tip "Choose the default carefully"
-    `Transform2D` defaults scale to `1` and offset/rotation to `0`, because `0`
+It is stamped once and never consulted again: `seal` builds one prototype row
+holding every column's initial value and memcpy's it into each row allocated
+afterwards. So writing `null` into a nullable column reads back `null` and does
+not restore anything.
+
+!!! tip "Choose it carefully"
+    `Transform2D` starts scale at `1` and offset/rotation at `0`, because `0`
     *is* the identity for the latter two and is a collapse-to-nothing for the
-    first. A wrong default shows up as an entity that is invisible or at the
-    origin with nothing anywhere saying why.
+    first. A wrong one shows up as an entity that is invisible or at the origin
+    with nothing anywhere saying why.
 
 ### Heap objects
 

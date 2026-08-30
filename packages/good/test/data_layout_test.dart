@@ -428,7 +428,7 @@ void main() {
     test('an optional array packs its per-element flags together too', () {
       late DataArrayPointer<double?> slots;
       final h = _Harness((data) {
-        slots = data.optFloat64Array(4);
+        slots = data.optArray(.float64, 4);
       });
       addTearDown(h.dispose);
 
@@ -945,7 +945,7 @@ void main() {
   group('array fields', () {
     test('a byte-aligned int array round-trips every index independently', () {
       late DataArrayPointer<int> values;
-      final h = _Harness((data) => values = data.hasUint16Array(4));
+      final h = _Harness((data) => values = data.hasArray(.uint16, 4));
       addTearDown(h.dispose);
 
       expect(values.length, 4);
@@ -981,7 +981,7 @@ void main() {
       late DataArrayPointer<int> flags;
       late DataPointer<int> nibble;
       final h = _Harness((data) {
-        flags = data.hasUint1Array(8);
+        flags = data.hasArray(.uint1, 8);
         nibble = data.hasUint4();
       });
       addTearDown(h.dispose);
@@ -1003,7 +1003,7 @@ void main() {
 
     test('4-bit elements pack two to a byte', () {
       late DataArrayPointer<int> nibbles;
-      final h = _Harness((data) => nibbles = data.hasUint4Array(4));
+      final h = _Harness((data) => nibbles = data.hasArray(.uint4, 4));
       addTearDown(h.dispose);
 
       expect(h.bitLength, 16, reason: '4 x 4 bits, two per byte, no padding');
@@ -1033,7 +1033,7 @@ void main() {
         late DataPointer<int> trailer;
         final h = _Harness((data) {
           flag = data.hasUint1();
-          nibbles = data.hasUint4Array(4);
+          nibbles = data.hasArray(.uint4, 4);
           trailer = data.hasUint4();
         });
         addTearDown(h.dispose);
@@ -1073,8 +1073,8 @@ void main() {
       () {
         late DataArrayPointer<int> nibbles, bytes;
         final h = _Harness((data) {
-          nibbles = data.hasInt4Array(3);
-          bytes = data.hasInt16Array(2);
+          nibbles = data.hasArray(.int4, 3);
+          bytes = data.hasArray(.int16, 2);
         });
         addTearDown(h.dispose);
 
@@ -1095,8 +1095,8 @@ void main() {
     test('float arrays round-trip both widths', () {
       late DataArrayPointer<double> f32, f64;
       final h = _Harness((data) {
-        f32 = data.hasFloat32Array(3);
-        f64 = data.hasFloat64Array(2);
+        f32 = data.hasArray(.float32, 3);
+        f64 = data.hasArray(.float64, 2);
       });
       addTearDown(h.dispose);
       expect(h.strideBytes, 3 * 4 + 2 * 8);
@@ -1120,7 +1120,7 @@ void main() {
         // an adjacent field or - past the end of the row - the next entity's
         // row entirely, since rows are packed back to back in a page.
         late DataArrayPointer<int> values;
-        final h = _Harness((data) => values = data.hasUint8Array(3));
+        final h = _Harness((data) => values = data.hasArray(.uint8, 3));
         addTearDown(h.dispose);
 
         final e = h.spawn();
@@ -1145,18 +1145,18 @@ void main() {
       late List<DataArrayPointer<Object?>> widths;
       final h = _Harness((data) {
         widths = <DataArrayPointer<Object?>>[
-          data.hasUint2Array(3), // sub-byte unsigned
-          data.hasInt2Array(3), // sub-byte signed
-          data.hasUint8Array(3),
-          data.hasInt8Array(3),
-          data.hasUint16Array(3),
-          data.hasInt16Array(3),
-          data.hasUint32Array(3),
-          data.hasInt32Array(3),
-          data.hasFloat32Array(3),
-          data.hasFloat64Array(3),
-          data.hasPackedArray(assets.of<_Texture>(), 3, _loaded()),
-          data.optUint8Array(3),
+          data.hasArray(.uint2, 3), // sub-byte unsigned
+          data.hasArray(.int2, 3), // sub-byte signed
+          data.hasArray(.uint8, 3),
+          data.hasArray(.int8, 3),
+          data.hasArray(.uint16, 3),
+          data.hasArray(.int16, 3),
+          data.hasArray(.uint32, 3),
+          data.hasArray(.int32, 3),
+          data.hasArray(.float32, 3),
+          data.hasArray(.float64, 3),
+          data.hasArray(assets.of<_Texture>(), 3, _loaded()),
+          data.optArray(.uint8, 3),
         ];
       });
       addTearDown(h.dispose);
@@ -1186,18 +1186,25 @@ void main() {
       late Object? error;
       final h = _Harness((data) {
         try {
-          data.hasUint8Array(0);
+          data.hasArray(.uint8, 0);
         } catch (e) {
           error = e;
         }
       });
       addTearDown(h.dispose);
+
+      // On the message, for the reason the per-element case above gives.
       expect(error, isA<ArgumentError>());
+      expect(
+        (error! as ArgumentError).message.toString(),
+        contains('must be at least 1'),
+      );
+      expect((error! as ArgumentError).name, 'length');
     });
 
     test('nullable array elements carry their own has-bit', () {
       late DataArrayPointer<int?> maybe;
-      final h = _Harness((data) => maybe = data.optInt32Array(4));
+      final h = _Harness((data) => maybe = data.optArray(.int32, 4));
       addTearDown(h.dispose);
 
       final e = h.spawn();
@@ -1234,7 +1241,7 @@ void main() {
         // most - each element's flag and value are found through their own
         // recorded offsets, not a uniform stride.
         late DataArrayPointer<int?> maybe;
-        final h = _Harness((data) => maybe = data.optUint2Array(5));
+        final h = _Harness((data) => maybe = data.optArray(.uint2, 5));
         addTearDown(h.dispose);
 
         final e = h.spawn();
@@ -1257,13 +1264,13 @@ void main() {
       late DataArrayPointer<double> floats;
       late DataArrayPointer<int?> present, absent;
       final h = _Harness((data) {
-        plain = data.hasUint8Array(3, 7);
+        plain = data.hasArray(.uint8, 3, 7);
         // A negative default has to survive truncation into 4 bits on the
         // way in and sign extension on the way out, per element.
-        nibbles = data.hasInt4Array(3, -3);
-        floats = data.hasFloat64Array(2, 3.5);
-        present = data.optInt32Array(3, -42);
-        absent = data.optInt32Array(3);
+        nibbles = data.hasArray(.int4, 3, -3);
+        floats = data.hasArray(.float64, 2, 3.5);
+        present = data.optArray(.int32, 3, -42);
+        absent = data.optArray(.int32, 3);
       });
       addTearDown(h.dispose);
 
@@ -1298,8 +1305,8 @@ void main() {
       final h = _Harness((data) {
         // Four slots for three values - the tail is room a caller reserved
         // for elements it writes per entity later.
-        outline = data.hasFloat64ArrayOf(4, const [1.5, -2.5, 3.25]);
-        narrow = data.hasFloat32ArrayOf(2, const [0.5, 0.25]);
+        outline = data.hasArrayOf(.float64, 4, const [1.5, -2.5, 3.25]);
+        narrow = data.hasArrayOf(.float32, 2, const [0.5, 0.25]);
       });
       addTearDown(h.dispose);
 
@@ -1321,21 +1328,93 @@ void main() {
       expect(outline.get(second, 0), 1.5);
     });
 
-    test('more defaults than the array holds is rejected at declare time', () {
+    test('per-element initial values work for an integer element too', () {
+      // The `...Of` form used to exist for the two float widths only, because
+      // that is what `hasPolygonCollider` needed. The element being an
+      // argument is what makes one method cover every width, so this is the
+      // case #35 asked for: an int array whose elements start apart.
+      late DataArrayPointer<int> ramp;
+      late DataArrayPointer<int> nibbles;
+      final h = _Harness((data) {
+        ramp = data.hasArrayOf(.int16, 4, const [-2, 0, 5, 300]);
+        nibbles = data.hasArrayOf(.uint4, 3, const [1, 2]);
+      });
+      addTearDown(h.dispose);
+
+      final e = h.spawn();
+      expect(
+        [ramp.get(e, 0), ramp.get(e, 1), ramp.get(e, 2), ramp.get(e, 3)],
+        [-2, 0, 5, 300],
+      );
+      expect(
+        [nibbles.get(e, 0), nibbles.get(e, 1), nibbles.get(e, 2)],
+        [1, 2, 0],
+        reason: 'the slot past the values given starts at the element zero',
+      );
+    });
+
+    test('a representation element without an initial value is refused at '
+        'declare time', () {
+      // The bits an unwritten element holds are 0, and a representation is
+      // under no obligation to have a value for 0 - so the alternative to
+      // this throw is a read that blows up out of `unpack`, per entity, a
+      // long way from the declaration that caused it.
       late Object? error;
       final h = _Harness((data) {
         try {
-          data.hasFloat64ArrayOf(2, const [1.0, 2.0, 3.0]);
+          data.hasArray(assets.of<_Texture>(), 2);
         } catch (e) {
           error = e;
         }
       });
       addTearDown(h.dispose);
+
       expect(error, isA<ArgumentError>());
+      expect((error! as ArgumentError).name, 'initialValue');
+      expect(
+        (error! as ArgumentError).message.toString(),
+        contains('optArray'),
+        reason: 'the message has to name the way out, not just refuse',
+      );
+    });
+
+    test('a nullable representation element needs no initial value', () {
+      // The discriminating half of the test above: the same element, the same
+      // absent value, and no throw - because a clear flag means the value
+      // bits are never read.
+      late DataArrayPointer<Asset<_Texture>?> textures;
+      final h = _Harness(
+        (data) => textures = data.optArray(assets.of<_Texture>(), 2),
+      );
+      addTearDown(h.dispose);
+      expect(textures.get(h.spawn(), 0), isNull);
+    });
+
+    test('more values than the array holds is rejected at declare time', () {
+      late Object? error;
+      final h = _Harness((data) {
+        try {
+          data.hasArrayOf(.float64, 2, const [1.0, 2.0, 3.0]);
+        } catch (e) {
+          error = e;
+        }
+      });
+      addTearDown(h.dispose);
+
+      // Not `isA<ArgumentError>()` on its own: `RangeError` is an
+      // `ArgumentError`, and with this guard removed the `setRange` behind it
+      // throws one - so the type alone cannot tell the guard from the failure
+      // it exists to pre-empt. The message is what discriminates.
+      expect(error, isA<ArgumentError>());
+      expect(
+        (error! as ArgumentError).message.toString(),
+        contains('more values than the array holds (2)'),
+      );
+      expect((error! as ArgumentError).name, 'initialValues');
     });
 
     test(
-      'hasPackedArray round-trips through its declared table, by address',
+      'a representation element round-trips through its declared table',
       () {
         final placeholder = _loaded();
         final grass = _loaded();
@@ -1343,7 +1422,7 @@ void main() {
 
         late DataArrayPointer<Asset<_Texture>> textures;
         final h = _Harness(
-          (data) => textures = data.hasPackedArray(
+          (data) => textures = data.hasArray(
             assets.of<_Texture>(),
             3,
             placeholder,
@@ -1375,13 +1454,13 @@ void main() {
     );
 
     test(
-      'optPackedArray defaults to null per element and round-trips null',
+      'a nullable representation element starts null and round-trips it',
       () {
         final grass = _loaded();
 
         late DataArrayPointer<Asset<_Texture>?> textures;
         final h = _Harness(
-          (data) => textures = data.optPackedArray(assets.of<_Texture>(), 2),
+          (data) => textures = data.optArray(assets.of<_Texture>(), 2),
         );
         addTearDown(h.dispose);
 
@@ -1432,10 +1511,10 @@ void main() {
     );
 
     test('the declared default is one shared instance, not one per entity', () {
-      // writeDefault runs once, to build the prototype row, and allocateRow
+      // writeInitialValue runs once, to build the prototype row, and allocateRow
       // memcpys that row into every spawn - copying the 4-byte address, not
       // the object. So a factory default is shared, exactly as
-      // hasPacked<T extends IntRepresentable>(T defaultValue) already is. This
+      // hasPacked<T extends IntRepresentable>(T initialValue) already is. This
       // test exists to pin that semantic down rather than leave a future
       // reader guessing which way it went.
       var factoryCalls = 0;
@@ -1716,9 +1795,9 @@ void main() {
 
     test('array columns are guarded on the same path', () {
       late DataArrayPointer<int> mine;
-      final ours = _Harness((data) => mine = data.hasUint16Array(4, 7));
+      final ours = _Harness((data) => mine = data.hasArray(.uint16, 4, 7));
       addTearDown(ours.dispose);
-      final theirs = _Harness((data) => data.hasUint16Array(4, 0));
+      final theirs = _Harness((data) => data.hasArray(.uint16, 4, 0));
       addTearDown(theirs.dispose);
 
       final foreign = theirs.spawn();

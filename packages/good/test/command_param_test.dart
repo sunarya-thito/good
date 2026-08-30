@@ -96,6 +96,65 @@ class _Wide extends GameCommand<int, int> {
   int resultFromBuffer(ParamBuffer call) => u8[call];
 }
 
+/// The widths #35 added, so a parameter can say the same things a component
+/// column can. Every one of them was a `hasUint1`-plus-a-manual-marshal or an
+/// absence before.
+class _Vocabulary extends GameCommand<int, int> {
+  final on = Param.boolean();
+  final off = Param.boolean();
+  final s1 = Param.int1();
+  final s2 = Param.int2();
+  final s4 = Param.int4();
+  final u64 = Param.uint64();
+
+  @override
+  void bufferFromParams(ParamBuffer call, int params) => u64[call] = params;
+
+  @override
+  int paramsFromBuffer(ParamBuffer call) => u64[call];
+
+  @override
+  void bufferFromResult(ParamBuffer call, int result) => u64[call] = result;
+
+  @override
+  int resultFromBuffer(ParamBuffer call) => u64[call];
+}
+
+/// The same one bit of storage, declared as a number. Only used to compare
+/// signatures with [_Vocabulary].
+class _OneBitAsNumber extends GameCommand<int, int> {
+  final on = Param.uint1();
+
+  @override
+  void bufferFromParams(ParamBuffer call, int params) => on[call] = params;
+
+  @override
+  int paramsFromBuffer(ParamBuffer call) => on[call];
+
+  @override
+  void bufferFromResult(ParamBuffer call, int result) => on[call] = result;
+
+  @override
+  int resultFromBuffer(ParamBuffer call) => on[call];
+}
+
+/// [_OneBitAsNumber]'s twin, declared as a flag.
+class _OneBitAsFlag extends GameCommand<bool, bool> {
+  final on = Param.boolean();
+
+  @override
+  void bufferFromParams(ParamBuffer call, bool params) => on[call] = params;
+
+  @override
+  bool paramsFromBuffer(ParamBuffer call) => on[call];
+
+  @override
+  void bufferFromResult(ParamBuffer call, bool result) => on[call] = result;
+
+  @override
+  bool resultFromBuffer(ParamBuffer call) => on[call];
+}
+
 typedef _Order = ({Entity unit, int waypoint});
 
 /// A command that carries an entity handle, to pin down the field kind that
@@ -675,6 +734,60 @@ void main() {
       expect(wide.f32[call], 0.5);
       expect(wide.f64[call], 1e-300);
       expect(wide.name[call], 'hello');
+    });
+
+    test('a bool parameter round-trips as a bool', () async {
+      final r = _registry();
+      final v = r.registry.declare(_Vocabulary.new);
+      GameCommandDescriptor(r.registry).hasHandler(v, (p) => p);
+
+      final batch = r.registry.createCommandBatch();
+      final call = v.execute(1, batch);
+      v.on[call] = true;
+      v.off[call] = false;
+      await batch.send();
+
+      expect(v.on[call], isTrue);
+      expect(v.off[call], isFalse, reason: 'neighbours share the byte');
+    });
+
+    test('signed sub-byte parameters sign-extend on the way out', () {
+      // The discriminating case: an unsigned reader would answer 1, 3 and 15
+      // for these three. Only the two-s complement path answers -1, -1, -1.
+      final r = _registry();
+      final v = r.registry.declare(_Vocabulary.new);
+      GameCommandDescriptor(r.registry).hasHandler(v, (p) => p);
+
+      final call = v.execute(0);
+      v.s1[call] = -1;
+      v.s2[call] = -1;
+      v.s4[call] = -1;
+      expect([v.s1[call], v.s2[call], v.s4[call]], [-1, -1, -1]);
+
+      v.s2[call] = 1;
+      v.s4[call] = -8;
+      expect([v.s2[call], v.s4[call]], [1, -8]);
+    });
+
+    test('a uint64 parameter carries the full 64 bits', () {
+      final r = _registry();
+      final v = r.registry.declare(_Vocabulary.new);
+      GameCommandDescriptor(r.registry).hasHandler(v, (p) => p);
+
+      final call = v.execute(0);
+      v.u64[call] = -9000000000000000000;
+      expect(v.u64[call], -9000000000000000000);
+    });
+
+    test('a bool and a uint1 are different fields on the wire', () {
+      // Both are one bit of the same storage, so nothing about the bytes
+      // separates them. The signature is what does, which is what makes
+      // swapping one declaration for the other a handshake mismatch instead
+      // of a value read back as the wrong type.
+      final asNumber = _registry().registry.declare(_OneBitAsNumber.new);
+      final asFlag = _registry().registry.declare(_OneBitAsFlag.new);
+
+      expect(asNumber.layout.signature, isNot(asFlag.layout.signature));
     });
 
     test('sub-byte fields share a byte without disturbing each other', () {

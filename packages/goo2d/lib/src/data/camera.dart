@@ -35,7 +35,7 @@ import 'package:goo2d/src/data/world_transform.dart';
 ///   @override
 ///   void describeStruct(DataDescriptor data) {
 ///     super.describeStruct(data);
-///     cameraZoom.defaultValue = 2;
+///     cameraZoom.initialValue = 2;
 ///   }
 /// }
 /// ```
