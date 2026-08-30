@@ -72,21 +72,3 @@ mixin Transform2D on Component {
   double forwardY(Entity entity) =>
       math.sin(entity.get<Transform2D>().transformRotation[entity]);
 }
-
-class Transform2DSystem extends GameSystem with FixedTickable {
-  final query = Query.where().withAll(Transform2D).withOptional(Child).build();
-
-  @override
-  void onFixedUpdate() {
-    // just example
-    for (final instance in query.run()) {
-      final transform = instance.get<Transform2D>();
-      transform.transformOffsetX[instance] += 1;
-      transform.transformOffsetY[instance] += 1;
-      final optChildren = instance.tryGet<Child>();
-      if (optChildren != null) {
-        optChildren.childParent[instance] = null;
-      }
-    }
-  }
-}

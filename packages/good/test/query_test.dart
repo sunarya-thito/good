@@ -11,8 +11,8 @@ import 'package:flutter_test/flutter_test.dart';
 // Small fixture set covering: a component two archetypes share (_Position),
 // one only some have (_Health), and the hierarchy's Child mixin (already
 // implemented) so OptWith<Child>() has something real to combine with -
-// mirrors Transform2DSystem's actual `With<Transform2D>() & OptWith<Child>()`
-// query shape.
+// the `withAll(...).withOptional(Child)` shape a system walking a hierarchy
+// declares.
 mixin _Position on Component {
   final x = Field.float64();
   final y = Field.float64();

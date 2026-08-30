@@ -3512,8 +3512,12 @@ final class _GameSceneDescriptor implements GameSceneDescriptor {
 ///
 /// Records declaration order, which *is* execution order - see the class doc
 /// on [Game]. Systems are keyed by `runtimeType`, not by the type argument, so
-/// `descriptor.has(Transform2DSystem())` and `getSystem<Transform2DSystem>()`
-/// agree without the caller having to spell the type argument twice.
+/// `descriptor.has(WorldTransformSystem.new)` and
+/// `getSystem<WorldTransformSystem>()` agree without the caller having to
+/// spell the type argument twice. That pair is live in `goo2d`:
+/// `Game2D.describeSystems` (`goo2d/lib/src/render/game_2d.dart`) declares it,
+/// and `WorldTransformSystem` (`goo2d/lib/src/data/world_transform.dart`) is
+/// the system it hands back.
 final class _SystemDescriptor implements SystemDescriptor {
   _SystemDescriptor(this._state);
 

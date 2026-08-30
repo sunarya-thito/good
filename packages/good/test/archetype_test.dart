@@ -292,7 +292,7 @@ void main() {
       expect(foe.get<_Transform>().offsetX[foe], -100.0);
     });
 
-    test('the Transform2DSystem pattern accumulates one step per tick', () {
+    test('a fixed-tick step accumulates one step per tick', () {
       final level = _level();
       final p = level.player;
 

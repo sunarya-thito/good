@@ -59,6 +59,27 @@
 
 ### Breaking
 
+* **`Transform2DSystem` is removed.** Its `onFixedUpdate` opened `// just
+  example` and, on every entity matching
+  `withAll(Transform2D).withOptional(Child)`, added 1 to `transformOffsetX`
+  and `transformOffsetY` and set `childParent` to null. At the default fixed
+  step that is 60 world units a second of drift down-right, and a hierarchy
+  torn down on the first tick it ran. The class was exported from
+  `goo2d.dart`, and `good`'s own dartdoc named it as the worked example for
+  `descriptor.has` and `getSystem`, so the engine pointed at it while nothing
+  in the tree declared it (#185).
+
+  Nothing replaces it. `Transform2D` is data a game writes;
+  `WorldTransformSystem` composes it down the hierarchy into
+  `WorldTransform2D` and is declared for you by `Game2D.describeSystems`.
+  There is no per-tick work a `Transform2D` needs done for it, so a scene that
+  declared this system has a per-tick step to write itself, matching what
+  `goo2d/example`'s `SpinSystem` does.
+
+  `Transform2D` and everything else in `src/data/transform.dart` are
+  unchanged. A scene declaring `Transform2DSystem` was already losing its
+  hierarchy every tick, so there is no working code to migrate.
+
 * **`Camera` columns carry the component's name.** `zoom` and `view` were two
   of the shortest, most guessable names in the engine, sitting in a namespace
   every other component on the entity shares. `Camera3D` declared its own

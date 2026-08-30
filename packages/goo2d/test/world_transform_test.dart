@@ -190,6 +190,59 @@ void main() {
     ComponentTypeRegistry.reset();
   });
 
+  group('the declared systems write no local transform', () {
+    test('thirty ticks leave Transform2D and the parent link as set', () async {
+      await _game();
+      final scene = run.state.singleScene<_Scene>();
+
+      final parent = scene.addEntity(scene.node);
+      scene.node
+        ..transformOffsetX[parent] = 100
+        ..transformOffsetY[parent] = 100
+        ..transformScaleX[parent] = 2
+        ..transformScaleY[parent] = 2;
+
+      final child = scene.addEntity(scene.node, parent: parent);
+      scene.node
+        ..transformOffsetX[child] = 10
+        ..transformOffsetY[child] = -10
+        ..transformRotation[child] = 0.5;
+
+      for (var tick = 0; tick < 30; tick++) {
+        run.state.advance(_step);
+      }
+
+      // The composed answer first, so a run that ticked nothing fails here
+      // instead of passing every assertion below by doing no work at all.
+      // Child at parent-local (10, -10) under a 2x scale and no parent
+      // rotation: world = (100 + 20, 100 - 20).
+      expect(scene.node.worldX[child], 120);
+      expect(scene.node.worldY[child], 80);
+      expect(scene.node.worldScaleX[child], 2);
+      expect(scene.node.worldRotation[child], 0.5);
+
+      // A local `Transform2D` is the game's input. The systems goo2d declares
+      // read it and compose into `WorldTransform2D`; none of them writes back,
+      // so thirty ticks with no game code running leave every column holding
+      // what was assigned.
+      expect(scene.node.transformOffsetX[parent], 100);
+      expect(scene.node.transformOffsetY[parent], 100);
+      expect(scene.node.transformScaleX[parent], 2);
+      expect(scene.node.transformOffsetX[child], 10);
+      expect(scene.node.transformOffsetY[child], -10);
+      expect(scene.node.transformRotation[child], 0.5);
+
+      // And the hierarchy is the one that was built. A declared system body
+      // that clears `childParent` on its matches takes the scene's whole tree
+      // out on the first tick with nothing said - #185. Ticking the declared
+      // set against a transform no game code writes is what catches that; a
+      // test walking a hand-copied loop cannot, because it owns its entities
+      // and can leave every one of them unparented.
+      expect(scene.node.childParent[child], parent);
+      expect(scene.node.childParent[parent], isNull);
+    });
+  });
+
   group('hierarchy composition matches hand-computed numbers', () {
     test('a 2-level hierarchy: offset + 2x scale composes exactly like the renderer\'s own math', () async {
       await _game();

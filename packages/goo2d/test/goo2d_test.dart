@@ -119,26 +119,35 @@ void main() {
       },
     );
 
-    test('the Transform2DSystem inner loop runs unchanged', () {
+    test('a fixed-tick inner loop steps once per tick over a query shape', () {
       final scene = _scene();
       scene.pool.beginTick();
-      final entities = <Entity>[
-        scene.addEntity(scene.playerPrefab),
-        scene.addEntity(scene.enemyPrefab),
-        scene.addEntity(scene.rockPrefab),
-      ];
+      final player = scene.addEntity(scene.playerPrefab);
+      final enemy = scene.addEntity(scene.enemyPrefab);
+      final rock = scene.addEntity(scene.rockPrefab);
+      final entities = <Entity>[player, enemy, rock];
+      // The column directly, not `addEntity(parent:)` - neither prefab here
+      // mixes in `Parent`, and what this walk needs is a `childParent` that
+      // holds something, not a spliced sibling chain.
+      scene.enemyPrefab.childParent[enemy] = player;
       scene.pool.commitTick();
 
-      // Verbatim from Transform2DSystem.onFixedUpdate.
+      // The shape a `FixedTickable` system's inner loop has over a
+      // `withAll(Transform2D).withOptional(Child)` query: resolve the
+      // component off the row, read-modify-write its columns in place, and
+      // branch on whether the optional one is there. Reads serve the last
+      // published snapshot, so `+= 1` is exactly one step per tick however
+      // many times the row is touched.
+      var parentedSeen = 0;
       for (var tick = 0; tick < 3; tick++) {
         scene.pool.beginTick();
         for (final instance in entities) {
           final transform = instance.get<Transform2D>();
           transform.transformOffsetX[instance] += 1;
           transform.transformOffsetY[instance] += 1;
-          final optChildren = instance.tryGet<Child>();
-          if (optChildren != null) {
-            optChildren.childParent[instance] = null;
+          final optChild = instance.tryGet<Child>();
+          if (optChild != null && optChild.childParent[instance] != null) {
+            parentedSeen++;
           }
         }
         scene.pool.commitTick();
@@ -149,10 +158,19 @@ void main() {
         expect(transform.transformOffsetX[instance], 3.0);
         expect(transform.transformOffsetY[instance], 3.0);
       }
+
+      // The optional branch ran against a link that was really there - one
+      // parented entity across three ticks - and the link survived the walk.
+      // An assertion that only ever sees unparented entities cannot tell a
+      // loop reading `childParent` from one clearing it: the placeholder
+      // system body deleted from `data/transform.dart` in #185 cleared the
+      // column on every match and passed this test, because nothing here
+      // had a parent to lose.
+      expect(parentedSeen, 3);
+      expect(enemy.tryGet<Child>()!.childParent[enemy], player);
+      expect(player.tryGet<Child>()!.childParent[player], isNull);
       // Rock has no Child mixin, so the optional branch was skipped for it.
-      expect(entities[0].tryGet<Child>()!.childParent[entities[0]], isNull);
-      expect(entities[1].tryGet<Child>()!.childParent[entities[1]], isNull);
-      expect(entities[2].tryGet<Child>(), isNull);
+      expect(rock.tryGet<Child>(), isNull);
     });
 
     test('Child.childParent starts absent and round-trips through null', () {
