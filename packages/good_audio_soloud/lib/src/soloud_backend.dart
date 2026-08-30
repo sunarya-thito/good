@@ -3,17 +3,23 @@ import 'dart:typed_data';
 
 // ignore_for_file: implementation_imports, invalid_use_of_internal_member
 //
-// `SoLoud`, flutter_soloud's public wrapper, gates **every** public method on
-// `_isMainIsolate`:
+// `SoLoud`, flutter_soloud's public wrapper, cannot be called from a spawned
+// isolate. The gate is one getter:
 //
 //     bool get _isMainIsolate => kIsWeb || ServicesBinding.rootIsolateToken != null;
 //
-// (soloud.dart:301). A spawned isolate has no root isolate token, so the
-// wrapper refuses to initialise, load or play from one, and this engine's
-// mixer runs on the game isolate by design - that is the whole point of the
-// arrangement, measured: a `play` from there costs one to two microseconds
-// and a native mixing thread does not care that the isolate calling it is
-// busy.
+// (soloud.dart:310). It is read in exactly one place, `isInitialized`
+// (soloud.dart:302), and 83 public methods open with
+// `if (!isInitialized) throw const SoLoudNotInitializedException()` - `init`,
+// every `load*` and every `play*` among them. So a spawned isolate has no
+// root isolate token, `isInitialized` is false there whatever the engine is
+// really doing, and the wrapper refuses to initialise, load or play. Read
+// against the 4.1.7 the pubspec pins.
+//
+// This engine's mixer runs on the game isolate, and that is the whole point
+// of the arrangement, measured: a `play` from there costs one to two
+// microseconds and a native mixing thread does not care that the isolate
+// calling it is busy.
 //
 // So this drives the FFI layer underneath the wrapper instead. It is not an
 // undocumented back door: flutter_soloud's own shipped `Bus` class imports
