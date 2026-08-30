@@ -53,7 +53,22 @@ abstract class AudioBackend {
 
   /// Starts a voice on [source] at [volume], or returns `null` if the engine
   /// refused - out of voices, or the source is gone.
+  ///
+  /// [volume] is a multiplier: 0.0 silent, 1.0 the source as it was uploaded,
+  /// above 1.0 clipping at the device. `AudioMixer` hands over the product of
+  /// the voice's bus level and the master level, so an implementation applies
+  /// this number and does no mixing of its own.
   int? play(int source, double volume);
+
+  /// Sets [voice]'s volume, on the same scale [play] takes. A no-op on a
+  /// voice that has already ended.
+  ///
+  /// `AudioMixer` calls this for every started voice on a bus whose level
+  /// moved, so a level changed mid-game moves the sound already playing. The
+  /// change is a step and an implementation must not ramp it - a fade is the
+  /// caller's to schedule, and one applied here would be one the caller
+  /// cannot see or cancel.
+  void setVoiceVolume(int voice, double volume);
 
   /// Stops [voice]. A no-op on a voice that has already ended.
   ///

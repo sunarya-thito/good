@@ -412,6 +412,29 @@ abstract class Game implements RandomOwner {
   /// and a game that ships no sound should not compile either.
   AudioBackend? createAudioBackend() => null;
 
+  /// The most voices that may sound at once on any one [AudioBus].
+  ///
+  /// An overridable member like [pageSize] and [maxPointerContacts], and for
+  /// the same reason - it is configuration a game states once.
+  ///
+  /// Counted per bus, not across the game: sixteen effects and sixteen
+  /// interface sounds are both allowed, and an effects burst cannot reach the
+  /// music. A bus at its budget does not refuse the next sound - it stops the
+  /// voice that started first on that bus and gives the slot to the new one,
+  /// because the newest sound is the one the player just caused. See
+  /// `AudioMixer` for why oldest-first is the policy and what the alternatives
+  /// cost.
+  ///
+  /// Raise it for a game that layers many short sounds; lower it to make the
+  /// stealing audible while tuning. Below one is refused: every play would
+  /// stop the sound started on the line above it.
+  ///
+  /// Read **once**, when `GameState.audio` builds the mixer. Nothing in a
+  /// backend enforces this - flutter_soloud 4.1.7's own cap limits how many
+  /// voices are mixed and not how many are alive - so the count is the
+  /// engine's.
+  int get maxVoicesPerBus => 16;
+
   // `describeSystems` is **not** here. It is `GameState.describeSystems`.
   //
   // A system exists only on the isolate that ticks it, so the pass that

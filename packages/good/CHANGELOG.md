@@ -2,6 +2,29 @@
 
 ### Breaking
 
+* **`AudioBackend` gains `setVoiceVolume`, and `AudioBus` gains four members.**
+  A backend implemented outside this repository has one method to add (#17):
+
+  ```dart
+  @override
+  void setVoiceVolume(int voice, double volume) =>
+      engine.setVolume(voice, volume);
+  ```
+
+  `AudioMixer` calls it for every started voice on a bus whose level moved, so
+  a level changed mid-game moves the sound already playing. An implementation
+  applies the number as a step and does not ramp it.
+
+  `AudioBus` was `master` alone; it is now `master`, `music`, `effects`,
+  `dialogue` and `interface`. Existing calls still compile - `AudioBus.master`
+  is unchanged and is still what everything else mixes into - but a `switch`
+  over `AudioBus` with no default stops being exhaustive.
+
+  The bus a voice plays on no longer reaches a backend as a bus at all.
+  `AudioMixer` multiplies the voice's bus level by the master level and hands
+  the product to `play`, so a backend that meant to route on the enum has
+  nothing to route: it applies `volume` and mixes nothing itself.
+
 * **`Child` and `Parent` columns carry their component's name.** An entity's
   columns share one namespace - a component is a mixin, so two of them
   declaring the same field is an override, not an error, and since #57 made
@@ -331,6 +354,51 @@
   ever asked how long it was.
 
 ### Added
+
+* **Per-bus audio levels, and a voice budget with a stated stealing policy**
+  (#17).
+
+  `AudioBus` carries five buses and each one carries a level, starting at 1.0.
+  `AudioMixer.setLevel` writes one and applies it to the voices already
+  sounding on that bus, so a slider moved mid-game moves the sound already
+  playing; `levelOf` reads one back. `AudioBus.master` multiplies the other
+  four, so zero there is a global mute, and a voice played on `master` itself
+  is scaled by the master level once.
+
+  ```dart
+  state.audio.setLevel(AudioBus.music, 0.4);
+  state.audio.setLevel(AudioBus.master, 0.0);   // mute everything
+  final voice = state.audio.play(clip, AudioBus.effects);
+  ```
+
+  A level change lands as a step with no ramp, and costs one backend call per
+  started voice on the bus that moved. Nothing is scaled by a bus twice, and
+  no native mixing bus is involved.
+
+* **`Game.maxVoicesPerBus` caps each bus, and a full bus stops its oldest
+  voice** (#17). Sixteen by default, overridable like `Game.pageSize`, and
+  read once when `GameState.audio` builds the mixer. Below one is refused.
+
+  ```dart
+  @override
+  int get maxVoicesPerBus => 8;
+  ```
+
+  A bus at its budget does not refuse the next sound: `play` stops the voice
+  that started first on that bus, releases its asset claim, and hands the slot
+  to the new one. `AudioMixer.oldestVoiceOn` names the voice that goes next
+  and `voiceCountOn` says how close a bus is. Dropping the newest is the wrong
+  answer, since the newest sound is the one the player just caused; stealing
+  the quietest has nothing to sort by, since `play` takes no per-voice volume
+  and every voice on a bus sounds at that bus's level.
+
+  Counting per bus is what keeps music out of an effects burst's way without a
+  protected flag on it. The count is the engine's: `flutter_soloud` 4.1.7's
+  `setMaxActiveVoiceCount` caps how many voices are *mixed* per buffer and not
+  how many may be alive, so a cap of 4 reads back as 4 and then permits 59
+  concurrent voices.
+
+  `AudioMixer.liveVoiceCount` is unchanged and still counts every bus.
 
 * **An on-screen analog stick, as three widgets.** A finger dragging one
   produces a continuous vector a game reads through a `StickBinding`, and

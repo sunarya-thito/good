@@ -119,6 +119,9 @@ class _ReportingBackend extends AudioBackend {
   int? play(int source, double volume) => 42;
 
   @override
+  void setVoiceVolume(int voice, double volume) {}
+
+  @override
   void stop(int voice) {}
 
   @override
