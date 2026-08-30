@@ -2,6 +2,38 @@
 
 ### Fixed
 
+* **A joiner on another protocol version is told so, instead of timing out.**
+  The prologue check at the top of the receive loop discarded every datagram
+  whose version byte was not this build's, join requests included. A peer on
+  another version therefore got no answer at all: it waited out
+  `handshakeTimeout` and then reported that nobody was hosting at that address.
+  That is a version problem reported as a network problem, and checking the
+  network is the wrong repair. A join request on another version is now refused
+  with a reason naming both versions, and the join fails in one round trip with
+  `the host speaks network protocol version N and this build speaks version M`
+  (#281).
+
+  Every other packet type on another version is still discarded, and so is
+  every datagram whose two magic bytes are not this protocol's. A payload, an
+  accept or a goodbye has no handshake waiting to hear a refusal, and its body
+  is laid out by a version this build cannot read. Answering a datagram that is
+  not this protocol at all would turn the socket into a reflector for anything
+  that forges a source address at it.
+
+  **The reject wears the joiner's version byte, not the host's.** A reject
+  stamped the usual way is thrown away by the same prologue check it is about,
+  which puts the defect one layer up. The two body bytes it carries — the
+  reason, then the sending peer's version — are fixed for the life of the
+  format so that a peer on a version this build has never heard of can still
+  read them.
+
+  What to change: nothing. `protocolVersion` stays at 1 and no packet two peers
+  on version 1 exchange changed shape, so this is not a wire break and peers do
+  not have to be upgraded together. A host with this change answering a joiner
+  without it gets that joiner as far as
+  `the host refused the connection (reason 4)` — no version numbers, but a
+  refusal in a round trip instead of a five-second wait.
+
 * **A datagram the socket refused is now kept and sent, not thrown away.**
   `RawDatagramSocket.send` returns `0` to say the send would have blocked and
   should be tried again; it is not a short write, and there is no partial
