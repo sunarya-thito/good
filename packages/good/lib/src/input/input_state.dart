@@ -614,7 +614,47 @@ final class InputDevice {
     return false;
   }
 
+  /// The dispatch [claimPointerEvent] handed to a caller, or null before any
+  /// pointer has arrived.
+  ///
+  /// One reference, held until the next event replaces it. It is the event
+  /// object itself and not an id, because nothing on a `PointerEvent`
+  /// distinguishes the copies of one dispatch: they share a pointer id, a
+  /// timestamp and a position, and two fingers landing in the same frame
+  /// arrive as two dispatches that agree on the frame.
+  PointerEvent? _claimedDispatch;
+
+  /// Whether the caller is the one that gets to write [event] to this device.
+  /// True for the first caller of a dispatch and false for every later one.
+  ///
+  /// A `GameView`'s `Listener` is `HitTestBehavior.translucent`, so a pointer
+  /// over two of them stacked - a HUD layer over a world layer - is handed to
+  /// both, front to back. Both writing means one finger opens two contacts
+  /// under one id, which the contact table has no way to tell from two
+  /// fingers, and it means the view furthest back names itself as the one the
+  /// cursor is in by writing last.
+  ///
+  /// `PointerEvent.original` is the same object for every copy the hit test
+  /// makes of one dispatch, and null on a copy that was never transformed, so
+  /// `original ?? event` names the dispatch either way. Comparing that
+  /// reference is the whole test: no allocation and no map, on a path that
+  /// runs for every pointer move.
+  ///
+  /// Hit test order is front to back, so the caller that claims is the view
+  /// the pointer visibly landed in.
+  @internal
+  bool claimPointerEvent(PointerEvent event) {
+    final dispatch = event.original ?? event;
+    if (identical(dispatch, _claimedDispatch)) return false;
+    _claimedDispatch = dispatch;
+    return true;
+  }
+
   /// Translates one Flutter pointer event's *button mask*.
+  ///
+  /// Callers reached by a hit test ask [claimPointerEvent] first: this writes
+  /// whatever it is given, and two views handed one dispatch would each write
+  /// it.
   ///
   /// The whole mouse's state comes off `PointerEvent.buttons` in one go
   /// instead of being inferred from which event class arrived, because

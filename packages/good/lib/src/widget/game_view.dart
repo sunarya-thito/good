@@ -144,6 +144,14 @@ class _GameViewState extends State<GameView> {
   void _onPointerEvent(PointerEvent event) {
     final device = widget.game.inputDevice;
     if (device == null) return;
+    // Only the front-most view the pointer passed through writes it. The
+    // `Listener` below is translucent, so a `GameView` behind another one is
+    // handed the same dispatch, and a second write of it is a second contact
+    // under one id and a view address claimed by whichever view was hit last.
+    // Hit test order is front to back, so the first caller here is the view
+    // the pointer visibly landed in - and the size written just below has to
+    // be behind the same gate, or the view behind names the surface.
+    if (!device.claimPointerEvent(event)) return;
     final camera = widget.camera;
     if (camera != null) {
       // The size of *this* view, refreshed as the pointer enters it, so
