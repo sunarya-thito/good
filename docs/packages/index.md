@@ -69,7 +69,7 @@ The 2D engine, and the one dependency a 2D game needs.
 - `Renderable2D`, `Sprite`, `SpriteFrame`, `NineSliceBorder`, `Texture`
 - `GameRenderer2D` on the game isolate, batching into one `drawVertices` per
   frame on the Flutter one
-- `MouseReceiver` and `MousePickingSystem`
+- `PointerReceiver`, `HoverReceiver` and `PointerPickingSystem`
 - `AudioClip` and its loader
 - `Game2D`/`GameState2D` — the pair whose narrowing *is* the 2D opt-in
 

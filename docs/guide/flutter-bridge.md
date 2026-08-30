@@ -108,7 +108,7 @@ tested against the same things the game is.
 
 The test: **does it need the camera?** If it has to move when the world moves,
 be occluded by the world, or be picked in world coordinates, make it an entity —
-a `Renderable2D` with `MouseReceiver`, and `NineSliceBorder` for panels and
+a `Renderable2D` with `PointerReceiver`, and `NineSliceBorder` for panels and
 bars. If it sits in screen space and never has to know where the camera is, it
 is a widget, and making it an entity buys nothing but work.
 

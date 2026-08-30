@@ -240,7 +240,7 @@ class CameraProjection {
   ///
   /// The rule lives here, not at each call site, because there are two call
   /// sites and they have to agree: `GameRenderer2D` decides what to draw with
-  /// it and `MousePickingSystem` decides what is clickable with it. Split the
+  /// it and `PointerPickingSystem` decides what is clickable with it. Split the
   /// rule between them and a click lands on an entity that was never drawn.
   @pragma('vm:prefer-inline')
   bool shows(Entity entity) => sceneSlot < 0 || entity.sceneSlot == sceneSlot;

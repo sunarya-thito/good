@@ -59,6 +59,75 @@
 
 ### Breaking
 
+* **Mouse picking is pointer picking, and the callback surface is two mixins.**
+  A tap now picks. `MouseReceiver` carried five callbacks, three of which a
+  finger can never produce - there is no hover state for a contact to enter or
+  leave - so renaming the mixin alone would have promised a touch-driven game
+  events it could not receive (#164).
+
+  Every name in `src/input/mouse.dart` changed, and the file is now
+  `src/input/pointer.dart`. `goo2d.dart` exports it in place of the old one:
+
+  | before | after |
+  |---|---|
+  | `MouseEvent` | `PointerPickEvent` |
+  | `MouseListener` | `PointerListener` and `HoverListener` |
+  | `MouseReceiver` | `PointerReceiver` and `HoverReceiver` |
+  | `MousePickingSystem` | `PointerPickingSystem` |
+  | `MousePickingAccess` | `PointerPickingAccess` |
+  | `MousePickingAccessForSystems` | `PointerPickingAccessForSystems` |
+  | `mousePicking` | `pointerPicking` |
+  | `onMousePressed` / `onMouseReleased` | `onPointerDown` / `onPointerUp` |
+  | `onMouseEnter` / `onMouseHover` / `onMouseExit` | `onHoverEnter` / `onHover` / `onHoverExit` |
+
+  A prefab that applied `MouseReceiver` and overrode all five applies
+  `PointerReceiver, HoverReceiver` and renames its overrides. One that only
+  ever handled clicks applies `PointerReceiver` alone.
+
+  The split is along what a device can produce. `ContactKind`'s doc already
+  said it: a contact is a press, and a mouse merely over the window is not
+  pressing. So press and release are what every pointer device has and they
+  are `PointerReceiver`; enter, hover and exit need a device that reports a
+  position without pressing, and they are `HoverReceiver`, which a touch-only
+  game does not apply.
+
+  The two are separate queries. An entity carrying only `HoverReceiver` is no
+  longer a candidate for a press, so a hover-only overlay above a button no
+  longer swallows the click; an entity carrying only `PointerReceiver`
+  receives no hover.
+
+  `PointerPickEvent.position` does not exist. `MouseEvent.position` was the
+  `CursorPosition` instance, and a finger does not move the cursor, so the
+  event carries its own `screenSpace`, `viewSpace` and `worldSpace` vectors
+  instead, filled from whichever pointer drove the callback. It is still
+  borrowed and still reused between dispatches. It also carries `pointerId`
+  (the contact id, `0` for the cursor), `kind`, and `cancelled`.
+
+  `PointerPickingSystem` gains a `contacts` action bound to `ContactBinding`
+  and dispatches one press or release per contact per tick, each projected
+  through the view that contact landed in - so two fingers on two entities
+  fire on the same tick, and two fingers on two `GameView`s project through
+  two cameras. `cursor`, `click`, `projection`, `worldSpace` and `hovered` are
+  unchanged in name and meaning; `projection` and `worldSpace` still describe
+  the cursor at the end of a tick, because the cursor pass runs second.
+
+  A mouse button produces both a contact and a button bit. The contact pass
+  skips `ContactKind.mouse`, so one click fires one `onPointerDown` and
+  `click` stays the rebindable thing that decides which button it is.
+
+  There is no `onPointerCancel`. A contact ended without a lift fires
+  `onPointerUp` with `PointerPickEvent.cancelled` set, which keeps every
+  callback on both mixins reachable by every device that can apply the mixin -
+  the cursor's press and release come off a button bit, which carries no
+  cancellation.
+
+  No per-tick "still down on this" callback exists, matching the cursor, where
+  a drag with the button held across an entity fired nothing before either.
+  Read `Input<PointerContacts>` for a drag.
+
+  `test/mouse_picking_test.dart` and `tool/mouse_picking_bench.dart` are
+  `pointer_picking_test.dart` and `pointer_picking_bench.dart`.
+
 * **`Transform2DSystem` is removed.** Its `onFixedUpdate` opened `// just
   example` and, on every entity matching
   `withAll(Transform2D).withOptional(Child)`, added 1 to `transformOffsetX`

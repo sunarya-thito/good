@@ -1,4 +1,4 @@
-// What does `MousePickingSystem` cost per receiver per fixed tick?
+// What does `PointerPickingSystem` cost per receiver per fixed tick?
 //
 //   cd packages/goo2d && flutter test tool/mouse_picking_bench.dart
 //
@@ -65,7 +65,12 @@ double _colliderOffset = 0;
 /// `_depthOf` short-circuits - that path runs once per *hit*, not per
 /// candidate, and is not what this measures.
 class _Target extends EntityStruct
-    with Transform2D, WorldTransform2D, Collider2D, MouseReceiver {
+    with
+        Transform2D,
+        WorldTransform2D,
+        Collider2D,
+        PointerReceiver,
+        HoverReceiver {
   late final CircleBody hitArea;
 
   @override
@@ -106,7 +111,7 @@ class _BenchState extends GameState<_BenchGame> {
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
     descriptor.has(WorldTransformSystem.new);
-    descriptor.has(MousePickingSystem.new);
+    descriptor.has(PointerPickingSystem.new);
   }
 }
 
@@ -196,7 +201,7 @@ void main() {
         }
         final on = timeTicks();
 
-        run.state.disableSystem<MousePickingSystem>();
+        run.state.disableSystem<PointerPickingSystem>();
         for (var i = 0; i < _warmTicks; i++) {
           run.state.runFixedStep();
         }
@@ -209,8 +214,10 @@ void main() {
 
   tearDownAll(() {
     final report = StringBuffer()
-      ..writeln('\nMousePickingSystem, ns per receiver per fixed tick')
-      ..writeln('(picker enabled minus disabled, best of $_repeats x $_timedTicks ticks)\n')
+      ..writeln('\nPointerPickingSystem, ns per receiver per fixed tick')
+      ..writeln(
+        '(picker enabled minus disabled, best of $_repeats x $_timedTicks ticks)\n',
+      )
       ..write('  receivers');
     for (final spread in _spreads) {
       report.write('spread $spread'.padLeft(16));

@@ -99,7 +99,7 @@ sealed class ColliderBody {
   /// *entity*, while a shape test is one per *body*, and an entity can carry
   /// several bodies. Taking a world point here would redo that work once per
   /// body and make each shape test carry a copy of the same inverse.
-  /// `MousePickingSystem` is the worked example - it inverts once, then calls
+  /// `PointerPickingSystem` is the worked example - it inverts once, then calls
   /// this for every body the entity declared.
   ///
   /// [enable] is *not* checked here: this answers a question about geometry,
@@ -116,7 +116,7 @@ sealed class ColliderBody {
   /// may be a lower bound and not the exact one: a caller holding the
   /// cursor in world space can divide its squared world distance by the
   /// square of the entity's largest scale factor and pass that, which is
-  /// what `MousePickingSystem._pick` does. Rotation does not change a length
+  /// what `PointerPickingSystem._pick` does. Rotation does not change a length
   /// and scaling stretches one by at most the larger factor, so that number
   /// never exceeds the real local distance - and a bound test fed something
   /// too small can only answer `true` too often.
@@ -656,8 +656,8 @@ mixin Collider2D on MultiComponent {
 /// **A single instance is reused for every dispatch.** A physics step can
 /// produce hundreds of contacts, and every framework event is hot path
 /// (the hot-path rules), so allocating one of these per contact is
-/// exactly the cost the rule forbids. `MousePickingSystem` already
-/// established the shape with its own reused `MouseEvent`.
+/// exactly the cost the rule forbids. `PointerPickingSystem` already
+/// established the shape with its own reused `PointerPickEvent`.
 ///
 /// The consequence for a listener: **do not keep this object.** Its fields
 /// are overwritten before the next call. Read what you need during the

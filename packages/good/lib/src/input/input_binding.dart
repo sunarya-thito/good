@@ -519,10 +519,10 @@ Map<String, Object?> _map(Map<String, Object?> json, String field) {
 /// the dependency the `good`/`goo2d` split exists to avoid - the same reason
 /// `GameView` paints nothing and lets a declared render system do it. `goo2d`
 /// supplies the projection, against the camera it already resolves every
-/// frame: `MousePickingSystem` keeps the cursor's world position in
+/// frame: `PointerPickingSystem` keeps the cursor's world position in
 /// `worldSpace` and its `CameraProjection` in `projection`, and its
-/// `MousePickingAccess` extension puts a `mousePicking` shortcut on every
-/// component so nothing has to spell out `getSystem<MousePickingSystem>()`.
+/// `PointerPickingAccess` extension puts a `pointerPicking` shortcut on every
+/// component so nothing has to spell out `getSystem<PointerPickingSystem>()`.
 final class CursorPosition {
   @internal
   CursorPosition();
