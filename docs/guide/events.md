@@ -118,8 +118,8 @@ declare on your own struct or your own system can, as long as you let the
 framework build it.
 
 That caveat is worth reading twice for a system, because the failure is quiet.
-Every `has` takes a `T Function()`, and a closure may hand back an object that
-already existed:
+`SceneDescriptor.has` and `SystemDescriptor.has` both take a `T Function()`, and
+a closure may hand back an object that already existed:
 
 <!-- snippet: skip the wrong half of a before/after, and deliberately so -->
 ```dart

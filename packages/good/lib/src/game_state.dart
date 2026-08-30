@@ -352,8 +352,8 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// @override
   /// void describeSystems(SystemDescriptor descriptor) {
   ///   super.describeSystems(descriptor);
-  ///   descriptor.has(MovementSystem());
-  ///   descriptor.has(CombatSystem());
+  ///   descriptor.has(MovementSystem.new);
+  ///   descriptor.has(CombatSystem.new);
   /// }
   /// ```
   ///

@@ -438,11 +438,25 @@ abstract class Game implements RandomOwner {
   /// }
   /// ```
   ///
-  /// Like every other declare pass this hands back the instance it was given,
-  /// to keep in a `late final` field (the typed-handle rule) - there is no
-  /// separate handle type, and `descriptor.has(MainScene())` reads the same as
-  /// `descriptor.has(MySystem())` and `descriptor.has(_Unit())` because it is
-  /// the same idea.
+  /// Like every other declare pass this hands back what it declared, to keep
+  /// in a `late final` field (the typed-handle rule) - there is no separate
+  /// handle type.
+  ///
+  /// **A scene is passed as an instance; a system, a prefab and a command are
+  /// not.** Those three descriptors take the constructor and build the object
+  /// themselves - `SystemDescriptor.has(SpinSystem.new)`,
+  /// `SceneDescriptor.has(Mote.new)`, `CommandDescriptor.has(Damage.new)` -
+  /// because those objects declare from their field initialisers, which run
+  /// during construction and need a window open around it. A `SceneStruct`
+  /// declares from [SceneStruct.describeAssets] and
+  /// [SceneStruct.describeScene], which this pass runs through
+  /// `initializeScene` once it already holds the object, so nothing has to be
+  /// open before the object exists. `descriptor.has(MainScene.new)` does not
+  /// compile here, and `descriptor.has(Mote())` does not compile there.
+  ///
+  /// What the instance form costs is that a scene has no declaration window
+  /// of its own: `Event.of` in a `SceneStruct` field initialiser throws, and
+  /// a scene declares its events in `describeEvents` instead. See [Event].
   ///
   /// # What declaring buys, and what it does not
   ///
@@ -491,7 +505,7 @@ abstract class Game implements RandomOwner {
   /// void describeCommands(CommandDescriptor descriptor) {
   ///   super.describeCommands(descriptor);
   ///   damage = descriptor.has(Damage.new);   // handled on the game isolate
-  ///   save = descriptor.has(SaveGame());
+  ///   save = descriptor.has(SaveGame.new);
   ///   descriptor.hasSink(save, _writeSaveFile);  // ...but this one here
   /// }
   /// ```
