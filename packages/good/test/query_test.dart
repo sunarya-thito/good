@@ -34,6 +34,20 @@ mixin _Health on Component {
   }
 }
 
+/// Named by a query below and mixed into no prefab in this file, so its bit
+/// is assigned and no archetype signature ever carries it. That is what
+/// separates "the query matched nothing" from "the query matched everything":
+/// a required mask that collapsed to zero would match every archetype here.
+mixin _Cloaked on Component {
+  final phase = Field.uint8(1);
+
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<_Cloaked>();
+  }
+}
+
 class _Player extends EntityStruct with _Position, _Health, Child {}
 
 class _Rock extends EntityStruct with _Position {}
@@ -456,6 +470,114 @@ void main() {
           .build();
       expect(query.groups(), isEmpty);
     });
+  });
+
+  // The query pass reads `ComponentTypeRegistry` for one bit per named type
+  // and never reaches `ArchetypeRegistry`. Four comments in `game.dart` and
+  // `scene.dart` said the opposite and made it the reason `describeScenes`
+  // has to run before `describeSystems` (#225). These pin the mechanism the
+  // comments now describe: compiling a query is independent of what is
+  // registered when it runs, in both directions.
+  group('a compiled query resolves archetypes after the fact', () {
+    Query positioned() =>
+        ArchetypeQueryDescriptor().query().withAll(_Position).build();
+
+    test(
+      'one compiled against an empty registry matches what a later one '
+      'matches, and no more',
+      () {
+        expect(
+          ArchetypeRegistry.count,
+          0,
+          reason: 'the state a describeQuery pass would see if it ran first',
+        );
+        final early = positioned();
+
+        final level = _level();
+        level.pool.beginTick();
+        final player = level.addEntity(level.player);
+        final rock = level.addEntity(level.rock);
+        final trigger = level.addEntity(level.trigger);
+        level.pool.commitTick();
+
+        final later = positioned();
+
+        expect(
+          ArchetypeRegistry.count,
+          3,
+          reason:
+              'three archetypes, so "matched everything" is distinguishable '
+              'from "matched the two that carry _Position"',
+        );
+        expect(early.run().toSet(), {player, rock});
+        expect(later.run().toSet(), {player, rock});
+        expect(early.groups().length, 2);
+        expect(later.groups().length, 2);
+        expect(
+          early.run().toSet().contains(trigger),
+          isFalse,
+          reason: '_Trigger has _Health and no _Position',
+        );
+      },
+    );
+
+    test(
+      'a scene registered after the first walk is picked up, and only where '
+      'it matches',
+      () {
+        _level(); // registers three archetypes, holds no rows
+        final query = positioned();
+        expect(
+          query.groups().length,
+          2,
+          reason: 'the group list is built and cached by this walk',
+        );
+
+        final second = _level();
+        second.pool.beginTick();
+        final player = second.addEntity(second.player);
+        final trigger = second.addEntity(second.trigger);
+        second.pool.commitTick();
+
+        expect(
+          query.groups().length,
+          4,
+          reason:
+              'two _Position archetypes per scene, and a cached list that '
+              'never rebuilt would still report two',
+        );
+        expect(query.run().toSet(), {player});
+        expect(
+          query.run().toSet().contains(trigger),
+          isFalse,
+          reason: 'picking the new scene up must not widen the match',
+        );
+      },
+    );
+
+    test(
+      'a component no archetype declares matches nothing, not everything',
+      () {
+        final level = _level();
+        level.pool.beginTick();
+        level.addEntity(level.player);
+        level.addEntity(level.rock);
+        level.addEntity(level.trigger);
+        level.pool.commitTick();
+
+        final cloaked = ArchetypeQueryDescriptor()
+            .query()
+            .withAll(_Cloaked)
+            .build();
+
+        expect(cloaked.groups(), isEmpty);
+        expect(cloaked.run(), isEmpty);
+        // Same registry, same walk: "empty" here is the query, not an empty
+        // world. A required mask of zero would have matched all three.
+        expect(positioned().groups().length, 2);
+        expect(ArchetypeRegistry.count, 3);
+      },
+    );
   });
 
   group('Scene scoping', () {

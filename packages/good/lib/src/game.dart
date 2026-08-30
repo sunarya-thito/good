@@ -484,10 +484,10 @@ abstract class Game implements RandomOwner {
   /// # What declaring buys, and what it does not
   ///
   /// Declaring a scene here **registers its archetypes and declares its
-  /// assets, at boot** - before the game isolate is spawned, and before any
-  /// system's `describeQuery` runs, so this pass comes first.
-  /// `GameState.loadScene(game.mainScene)` then costs no registration at all:
-  /// it allocates rows and mounts.
+  /// assets, at boot** - from [_bootGame], on the game isolate, because the
+  /// registries it fills are statics and statics do not cross
+  /// `Isolate.spawn`. `GameState.loadScene(game.mainScene)` then costs no
+  /// registration at all: it allocates rows and mounts.
   ///
   /// That matters because registration is the half of loading that *cannot*
   /// happen freely at runtime - archetype ids are process-global and never
@@ -1739,19 +1739,24 @@ abstract class Game implements RandomOwner {
   ///    Running the pass here is what saves hand-carrying the registries
   ///    across in a snapshot: one registrar means there is no second numbering
   ///    to keep in agreement.
-  ///  * `describeQuery` resolves against those archetypes, so it has to follow
-  ///    them, so it is not up in [_bootMain] with the rest of the
-  ///    per-system passes. Queries are read only by ticking systems, and only
-  ///    this copy ticks.
+  ///  * `describeQuery` runs against the system objects, and those are
+  ///    constructed here because only this copy ticks them. It reads
+  ///    `ComponentTypeRegistry` to turn each named type into a bit, and
+  ///    nothing else: a compiled query holds masks, and resolves archetypes
+  ///    lazily in `Query.groups`, which rebuilds whenever
+  ///    `ArchetypeRegistry.count` moves. So it carries no ordering
+  ///    requirement of its own against [describeScenes], and a query still
+  ///    picks up a scene loaded at runtime, long after this pass has run.
   ///
   /// Inline runs this immediately after [_bootMain], on the one copy that does
   /// both jobs.
   void _bootGame(GameRuntime runtime) {
     final state = runtime.state!;
 
-    // Scenes before systems, and it has to be that way round: a system's
-    // `describeQuery` resolves against registered archetypes, and registering
-    // them is exactly what declaring a scene does.
+    // Scenes before systems. Not for the query pass, which holds masks and
+    // resolves archetypes lazily. What this order settles is that no system
+    // exists yet while a scene registers, so a scene declared here cannot
+    // bind its own events and waits for [_bindEvents] instead.
     describeScenes(_GameSceneDescriptor(runtime));
 
     // Declared and held by the state, so the system objects only ever exist on
@@ -1921,11 +1926,11 @@ abstract class Game implements RandomOwner {
   /// Runs after **all** the declaration passes, and that ordering is
   /// load-bearing: a prefab's `collectListeners` may offer a system into its
   /// own dispatcher (`collector.offer(getSystem<T>())`), which needs the
-  /// systems to exist. `describeScenes` necessarily runs before
-  /// `describeSystems` - `describeQuery` resolves against registered
-  /// archetypes - so a scene cannot bind its own events at registration time
-  /// and waits for this instead. `SceneStruct.bindEvents` is idempotent, so
-  /// calling it here is safe whichever path already ran.
+  /// systems to exist. [_bootGame] declares scenes before systems, so at the
+  /// moment a scene registers there is no system to offer - a scene cannot
+  /// bind its own events at registration time and waits for this instead.
+  /// `SceneStruct.bindEvents` is idempotent, so calling it here is safe
+  /// whichever path already ran.
   ///
   /// Binding is per owner, and that is what scopes an event: a dispatcher only
   /// ever sees what its own owner offered.
