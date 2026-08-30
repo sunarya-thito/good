@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:meta/meta.dart';
 
 import 'package:good/src/game_state.dart';
+import 'package:good/src/time.dart';
 
 /// A resumable piece of gameplay logic, written as a `sync*` generator.
 ///
@@ -69,7 +70,7 @@ typedef CoroutineWithParam<T> = Iterable Function(T param);
 abstract class YieldInstruction {
   /// Called once per fixed step with the simulated time that passed. Returns
   /// true when the wait is over; the coroutine resumes on that same step.
-  bool advance(double seconds);
+  bool advance(Seconds elapsed);
 }
 
 /// Waits until [condition] first returns true, checked once per fixed step.
@@ -79,7 +80,7 @@ final class WaitUntil implements YieldInstruction {
   final bool Function() condition;
 
   @override
-  bool advance(double seconds) => condition();
+  bool advance(Seconds elapsed) => condition();
 }
 
 /// Waits while [condition] keeps returning true - the mirror of [WaitUntil],
@@ -91,7 +92,7 @@ final class WaitWhile implements YieldInstruction {
   final bool Function() condition;
 
   @override
-  bool advance(double seconds) => !condition();
+  bool advance(Seconds elapsed) => !condition();
 }
 
 /// Waits for a real `Future` - an asset load, a network reply.
@@ -122,7 +123,7 @@ final class WaitForFuture implements YieldInstruction {
   StackTrace? _stack;
 
   @override
-  bool advance(double seconds) {
+  bool advance(Seconds elapsed) {
     final error = _error;
     if (error != null) {
       _error = null;
@@ -202,14 +203,15 @@ final class _Running {
   /// Innermost last. A `yield someOtherCoroutine()` pushes; running out pops.
   final List<Iterator> _stack = <Iterator>[];
 
-  /// Simulated seconds still to wait, for a bare `yield 1.5`. A field rather
-  /// than a `WaitForSeconds` object so the overwhelmingly common wait costs no
-  /// allocation at all - the exception granted for *starting* a coroutine does
-  /// not need to extend to every yield inside one.
-  double _wait = 0;
+  /// How much simulated time is still to wait, for a bare `yield 1.5`. A
+  /// field rather than a `WaitForSeconds` object so the overwhelmingly common
+  /// wait costs no allocation at all - the exception granted for *starting* a
+  /// coroutine does not need to extend to every yield inside one. A [Seconds]
+  /// is a `double`, so holding one here keeps that.
+  Seconds _wait = Seconds.zero;
   YieldInstruction? _blocked;
 
-  /// Runs this coroutine forward by [seconds]. Returns false when it is done.
+  /// Runs this coroutine forward by [elapsed]. Returns false when it is done.
   ///
   /// Resumes at most once per step even if the yielded wait was shorter than
   /// one: a coroutine that yielded `0.001` must not run a hundred times in a
@@ -221,14 +223,14 @@ final class _Running {
   /// two - rounding the other way would let a "quarter second" fire at 0.2s,
   /// which is the kind of thing that makes a tuned animation land wrong on one
   /// tick rate and right on another.
-  bool step(double seconds) {
-    if (_wait > 0) {
-      _wait -= seconds;
-      if (_wait > 0) return true;
+  bool step(Seconds elapsed) {
+    if (_wait > Seconds.zero) {
+      _wait -= elapsed;
+      if (_wait > Seconds.zero) return true;
     }
     final blocked = _blocked;
     if (blocked != null) {
-      if (!blocked.advance(seconds)) return true;
+      if (!blocked.advance(elapsed)) return true;
       _blocked = null;
     }
 
@@ -244,12 +246,12 @@ final class _Running {
       if (yielded is num) {
         // A non-positive wait is still "next step", not "keep going": a
         // `yield 0` inside a loop would otherwise never give the tick back.
-        _wait = yielded.toDouble();
+        _wait = Seconds(yielded.toDouble());
         return true;
       }
       if (yielded is YieldInstruction) {
         // Polled immediately, so `WaitUntil(() => true)` costs no extra step.
-        if (yielded.advance(0)) continue;
+        if (yielded.advance(Seconds.zero)) continue;
         _blocked = yielded;
         return true;
       }
@@ -325,11 +327,11 @@ final class CoroutineScheduler {
     _running.clear();
   }
 
-  /// Advances every live coroutine by [seconds] of simulated time.
+  /// Advances every live coroutine by [elapsed] of simulated time.
   ///
   /// Called from `GameState.runFixedStep`, inside `beginTick`/`commitTick`,
   /// which is the whole point - see [Coroutine]'s doc on `sync*`.
-  void step(double seconds) {
+  void step(Seconds elapsed) {
     if (_running.isEmpty) return;
     _stepping
       ..clear()
@@ -340,7 +342,7 @@ final class CoroutineScheduler {
       if (running.handle.isDone) continue; // stopped mid-step by someone else
       bool alive;
       try {
-        alive = running.step(seconds);
+        alive = running.step(elapsed);
       } catch (error, stack) {
         _remove(running);
         // Surfaced on the handle rather than rethrown into the tick: one

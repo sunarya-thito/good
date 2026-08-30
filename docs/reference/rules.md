@@ -30,7 +30,8 @@ live in [Engine design rules](design-rules.md).
 
 Including records, wrapper classes, and anything that quietly builds a list.
 Extension types over a non-heap value are fine, which is why `Entity`, `Scene`,
-`TimelineSample` and `Joint` are all `extension type ... (int)`.
+`TimelineSample` and `Joint` are all `extension type ... (int)`, and `Seconds`
+is `extension type ... (double)`.
 
 ```dart
 // no — allocates a Vector2 per entity per tick

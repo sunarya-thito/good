@@ -39,7 +39,7 @@ class Breath extends TimelineStruct {
     // Half a second up. `WrapMode.pingPong` at sample time plays it back down
     // again, so the shape is authored once rather than twice and cannot go
     // asymmetric when someone edits one half.
-    pulse = descriptor.has()..track(scale).key(1.0).key(1.12, 0.5);
+    pulse = descriptor.has()..track(scale).key(1.0).key(1.12, Seconds(0.5));
   }
 }
 

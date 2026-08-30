@@ -38,6 +38,46 @@
   Two messages change with the spelling they suggest. A missing component on an
   entity ends `Write Transform2D? if that is expected.`, and on a group
   `Add it to the query (withAll) or ask for Transform2D?.`
+* **A time is a `Seconds`, not a bare `double`.** Every member that took or
+  returned a span of simulated time in seconds now spells it, and a bare
+  `double` in its place is a compile error (#196):
+
+  | before | after |
+  |---|---|
+  | `.key(3, 1.0)` | `.key(3, Seconds(1.0))` |
+  | `.hold(2.0)` | `.hold(Seconds(2.0))` |
+  | `animate(offset: -startedAt[e])` | `animate(offset: -Seconds(startedAt[e]))` |
+  | `animate(duration: 2.0)` | `animate(duration: Seconds(2.0))` |
+  | `startAnimation(clip, b, duration: 2.0)` | `startAnimation(clip, b, duration: Seconds(2.0))` |
+  | `double get TimelineAnimation.length` | `Seconds get length` |
+  | `double get TimelineSample.seconds` | `Seconds get elapsed` |
+  | `double get GameState.time` | `Seconds get time` |
+  | `YieldInstruction.advance(double seconds)` | `advance(Seconds elapsed)` |
+  | `CoroutineScheduler.step(double seconds)` | `step(Seconds elapsed)` |
+
+  `Seconds` is `extension type const Seconds(double inSeconds)`, so it erases
+  to the `double` it wraps and costs nothing to pass, return or hold - which is
+  what a `Duration` could not do here. `Game.fixedTimeStep` can be a `Duration`
+  because it is a constant read for its microseconds; `GameState.time` is
+  computed per read and `animate(offset:)` is handed a column value per entity
+  per frame, so a class in either place is a heap object on the hot path.
+
+  It carries no `implements` clause, so neither direction converts on its own:
+  a bare `1.5` is not a `Seconds`, and a `Seconds` is not a `double`. Read the
+  number back with `inSeconds`, or `inMicroseconds` for the unit the engine
+  stores. `Seconds.ofMicroseconds`, `Seconds.ofMilliseconds` and
+  `Seconds.ofDuration` construct one, `Seconds.zero` is none, and `+`, `-`,
+  unary `-`, `*`, `/` and the four comparisons are declared on it.
+
+  A coroutine's `yield` is unchanged. It goes through a dynamic element and is
+  read with `is num`, and a `Seconds` **is** a `double` at run time, so both
+  `yield 1.5` and `yield Seconds(1.5)` work and neither is checked.
+
+  There is no `1.0.s` extension on `num`. An extension member is resolved
+  across every extension in scope at the use site, so one shipped here becomes
+  a compile error in a file that never mentioned this engine as soon as the
+  project also has `flutter_animate`, `dartx` or `time`, each of which defines
+  `.ms` and `.seconds` on `num`.
 
 * **An array column names its element as an argument.** The thirty-two
   `has*Array`/`opt*Array` methods on `DataDescriptor`, their thirty-two

@@ -207,6 +207,26 @@ entity<Transform3D>().upZ;
     undone. That pass is not written yet, so for now every tier spells the
     column.
 
+## A unit belongs in the type, not in the name
+
+A parameter that carries a quantity is named for what it **is**. The unit is
+the type's job:
+
+<!-- snippet: skip two signatures, not calls -->
+```dart
+void cast(double xTaskInSeconds) {}   // no
+void cast(Seconds xTaskDuration) {}   // yes
+```
+
+`xTaskInSeconds: 10` reads at the call site as `cast(10)`, and the reader has
+to open the signature to learn what `10` is. A bare number forces the unit into
+the parameter name, where nothing checks it and a caller who never types the
+name never sees it. `Seconds` puts it in front of the number itself —
+`cast(Seconds(10))` — and the analyzer refuses a bare `10` in its place.
+
+The type is an extension type over the storage, so this costs nothing: see
+`Seconds` in `time.dart` and rule 1.
+
 ## A component's columns carry the component's name
 
 `Transform2D` declares `transformOffsetX`, not `offsetX`. `Child` declares
