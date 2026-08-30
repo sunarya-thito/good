@@ -3,17 +3,23 @@ import 'dart:typed_data';
 
 // ignore_for_file: implementation_imports, invalid_use_of_internal_member
 //
-// `SoLoud`, flutter_soloud's public wrapper, gates **every** public method on
-// `_isMainIsolate`:
+// `SoLoud`, flutter_soloud's public wrapper, cannot be called from a spawned
+// isolate. The gate is one getter:
 //
 //     bool get _isMainIsolate => kIsWeb || ServicesBinding.rootIsolateToken != null;
 //
-// (soloud.dart:301). A spawned isolate has no root isolate token, so the
-// wrapper refuses to initialise, load or play from one, and this engine's
-// mixer runs on the game isolate by design - that is the whole point of the
-// arrangement, measured: a `play` from there costs one to two microseconds
-// and a native mixing thread does not care that the isolate calling it is
-// busy.
+// (soloud.dart:310). It is read in exactly one place, `isInitialized`
+// (soloud.dart:302), and 83 public methods open with
+// `if (!isInitialized) throw const SoLoudNotInitializedException()` - `init`,
+// every `load*` and every `play*` among them. So a spawned isolate has no
+// root isolate token, `isInitialized` is false there whatever the engine is
+// really doing, and the wrapper refuses to initialise, load or play. Read
+// against the 4.1.7 the pubspec pins.
+//
+// This engine's mixer runs on the game isolate, and that is the whole point
+// of the arrangement, measured: a `play` from there costs one to two
+// microseconds and a native mixing thread does not care that the isolate
+// calling it is busy.
 //
 // So this drives the FFI layer underneath the wrapper instead. It is not an
 // undocumented back door: flutter_soloud's own shipped `Bus` class imports
@@ -66,27 +72,36 @@ import 'package:good/good.dart';
 /// one backend. That is also true of a `SoLoud.instance` used elsewhere in the
 /// same app - do not mix the two.
 ///
-/// # There is no voice cap here, and there is none underneath either
+/// # The voice cap is `AudioMixer`'s, and this layer supplies none
 ///
-/// `setMaxActiveVoiceCount` is not called, and would not help if it were.
-/// Measured on flutter_soloud 4.1.7's supported public API on the main
-/// isolate: a cap of 4, set before any play, reads back as 4 and then permits
-/// 59 concurrent voices, and `setProtectVoice` does not stop a protected
-/// looping music voice being destroyed by the first burst of effects. The
-/// native policy is right - `soloud.cpp` sorts protected voices first and then
-/// by volume - it is simply not reaching the mixer in this version. So a cap
-/// and a stealing policy have to be counted in the engine, above this
-/// interface, and nothing should be written that assumes this layer enforces
-/// one.
+/// `setMaxActiveVoiceCount` is not called, and it would not do the job if it
+/// were. It caps how many voices SoLoud **mixes** per buffer, not how many may
+/// be alive: `Soloud::calcActiveVoices_internal` sets `mActiveVoiceCount` to
+/// the cap and culls the rest, leaving each culled voice in its slot, while
+/// `play` goes on minting handles up to `VOICE_COUNT`. Measured on
+/// flutter_soloud 4.1.7's supported public API on the main isolate, a cap of 4
+/// reads back as 4 and then permits 59 concurrent voices, and
+/// `setProtectVoice` does not stop a protected looping music voice being
+/// destroyed by the first burst of effects.
+///
+/// So `AudioMixer` counts a budget per [AudioBus] and stops the oldest voice
+/// on a full one. Nothing here is asked about it, and nothing written against
+/// this layer should assume it enforces a cap.
+///
+/// # Bus levels are volumes on this layer, not SoLoud mixing buses
+///
+/// `AudioMixer` multiplies a voice's bus level by the master level and hands
+/// the product to [play], and calls [setVoiceVolume] on the voices of a bus
+/// whose level moves. `busId` stays 0 - SoLoud's own main bus - so a level
+/// change costs one `setVolume` per sounding voice on that bus and no
+/// routing. A real SoLoud mixing bus per [AudioBus] would move that cost into
+/// the engine and buys nothing until there are filters to hang on one.
 ///
 /// # What this slice implements
 ///
-/// Uploading a clip, starting a voice at full volume, stopping it, and being
-/// told when one ends. No looping, no loop points, no per-voice volume after
-/// the fact, no pan, no bus routing: `busId` is left at 0 - SoLoud's own main
-/// bus - because the engine has one [AudioBus] and it is the master. Routing
-/// to a real SoLoud mixing bus is what the next slice is for, and it changes
-/// this file and nothing above it.
+/// Uploading a clip, starting a voice at a volume, changing that volume,
+/// stopping it, and being told when one ends. No looping, no loop points, no
+/// pan, no fades.
 final class SoLoudAudioBackend extends AudioBackend {
   /// [sampleRate], [bufferSize] and [channels] are handed straight to
   /// `initEngine`. The defaults are flutter_soloud's own.
@@ -188,13 +203,24 @@ final class SoLoudAudioBackend extends AudioBackend {
   int? play(int source, double volume) {
     final hash = _sources[source];
     if (hash == null || !_open) return null;
-    // busId 0 is SoLoud's main bus. See the class doc: this engine has one
-    // bus and it is the master, so there is nothing else to route to yet.
+    // busId 0 is SoLoud's main bus. See the class doc: an `AudioBus` is a
+    // level `AudioMixer` has already folded into `volume`, so there is
+    // nothing to route to.
     final result = _ffi.play(hash, volume: volume);
     if (result.error != PlayerErrors.noError || result.newHandle.isError) {
       return null;
     }
     return result.newHandle.id;
+  }
+
+  @override
+  void setVoiceVolume(int voice, double volume) {
+    if (!_open) return;
+    // The error code is not read: the one failure it reports here is a handle
+    // the engine has already finished with, which is the documented no-op.
+    // `AudioMixer` calls this over every voice on a bus whose level moved,
+    // and a voice can end between the walk starting and reaching it.
+    _ffi.setVolume(SoundHandle(voice), volume);
   }
 
   @override

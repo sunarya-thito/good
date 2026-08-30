@@ -816,7 +816,11 @@ abstract class GameState<T extends Game> extends GameListenerBase
         'and a game that ships no sound should not have to compile one.',
       );
     }
-    return _mixer = AudioMixer(backend, this);
+    return _mixer = AudioMixer(
+      backend,
+      this,
+      maxVoicesPerBus: game.maxVoicesPerBus,
+    );
   }
 
   /// The bytes of [clip], on this isolate, for a backend to upload.

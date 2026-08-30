@@ -61,4 +61,11 @@ void main() {
     expect(() => backend.stop(1), returnsNormally);
     expect(() => backend.discard(1), returnsNormally);
   });
+
+  test('setting a volume before the engine is open is inert', () {
+    // `AudioMixer.setLevel` walks a bus and calls this for every started
+    // voice. A mixer whose device never came up has no started voices, but a
+    // guard missing here is a `DynamicLibrary.open` on a settings slider.
+    expect(() => SoLoudAudioBackend().setVoiceVolume(1, 0.5), returnsNormally);
+  });
 }
