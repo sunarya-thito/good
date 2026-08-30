@@ -10,6 +10,8 @@ import 'package:good_cli/src/config.dart';
 import 'package:good_cli/src/verbosable.dart';
 import 'package:test/test.dart';
 
+import '_temp.dart';
+
 // What `good assets compact` produces, read back out of the file it wrote.
 //
 // compact_test.dart asserts the ffmpeg argument list and runs nothing. That is
@@ -28,10 +30,7 @@ bool get _hasFfmpeg {
 }
 
 Directory _tempDir() {
-  final dir = Directory.systemTemp.createTempSync('good_encode');
-  addTearDown(() {
-    if (dir.existsSync()) dir.deleteSync(recursive: true);
-  });
+  final dir = testTempDir('good_encode');
   return dir;
 }
 

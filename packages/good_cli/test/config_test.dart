@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:good_cli/src/config.dart';
 import 'package:test/test.dart';
 
+import '_temp.dart';
+
 // The `good:` section of a project's pubspec.
 //
 // `strip-originals` decides whether a release build may delete an asset
@@ -10,10 +12,7 @@ import 'package:test/test.dart';
 // is the difference between a refused build and destroyed art.
 
 Directory _project(String pubspec) {
-  final dir = Directory.systemTemp.createTempSync('good_config');
-  addTearDown(() {
-    if (dir.existsSync()) dir.deleteSync(recursive: true);
-  });
+  final dir = testTempDir('good_config');
   File('${dir.path}/pubspec.yaml').writeAsStringSync(pubspec);
   return dir;
 }

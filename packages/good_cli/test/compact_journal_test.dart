@@ -7,6 +7,7 @@ import 'package:good_cli/src/assets/compact.dart';
 import 'package:test/test.dart';
 
 import '_cli.dart';
+import '_temp.dart';
 
 // Where the compaction journal lives, and how a project already carrying one
 // at the old path gets moved over.
@@ -17,10 +18,7 @@ import '_cli.dart';
 // so it went into every release in plaintext beside the encrypted chunks.
 
 Directory _tempDir() {
-  final dir = Directory.systemTemp.createTempSync('good_journal');
-  addTearDown(() {
-    if (dir.existsSync()) dir.deleteSync(recursive: true);
-  });
+  final dir = testTempDir('good_journal');
   return dir;
 }
 
@@ -33,8 +31,6 @@ bool get _hasFfmpeg {
 }
 
 void main() {
-  tearDownAll(GoodCli.disposeAll);
-
   group('readCompactJournal', () {
     test('reads the journal when nothing is at the old path', () {
       final dir = _tempDir();

@@ -10,6 +10,7 @@ import 'package:good_cli/src/runner.dart';
 import 'package:test/test.dart';
 
 import '_cli.dart';
+import '_temp.dart';
 
 // Who owns the files `good create` writes over.
 //
@@ -25,10 +26,7 @@ import '_cli.dart';
 // real project; what is here is the half that can do damage.
 
 Directory _existingProject({String extraDependencies = ''}) {
-  final dir = Directory.systemTemp.createTempSync('good_create_test');
-  addTearDown(() {
-    if (dir.existsSync()) dir.deleteSync(recursive: true);
-  });
+  final dir = testTempDir('good_create_test');
   File('${dir.path}/demo/pubspec.yaml')
     ..parent.createSync(recursive: true)
     ..writeAsStringSync('''
@@ -60,8 +58,6 @@ Future<void> _create(Directory parent, List<String> args) =>
     CommandRunner(CreateCommand(), out: StringBuffer()).run(args);
 
 void main() {
-  tearDownAll(GoodCli.disposeAll);
-
   test('a file in a project it did not create is never replaced', () async {
     final parent = _existingProject();
     final main = File('${parent.path}/demo/lib/main.dart')

@@ -10,6 +10,8 @@ import 'package:good_cli/src/verbosable.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
+import '_temp.dart';
+
 // The generated sibling package: who owns it, what proves it, and what happens
 // to a project that still keeps its generated code in `lib/`.
 //
@@ -40,10 +42,7 @@ flutter:
 ''';
 
 Directory _project([String pubspec = _pubspec]) {
-  final dir = Directory.systemTemp.createTempSync('good_bundle_test');
-  addTearDown(() {
-    if (dir.existsSync()) dir.deleteSync(recursive: true);
-  });
+  final dir = testTempDir('good_bundle_test');
   File('${dir.path}/pubspec.yaml').writeAsStringSync(pubspec);
   Directory('${dir.path}/assets').createSync();
   return dir;
