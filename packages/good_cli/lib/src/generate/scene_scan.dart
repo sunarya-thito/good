@@ -35,10 +35,10 @@ class SceneUsage {
 /// A scene's asset set is not written in one place. `SceneStruct.describeAssets`
 /// declares what the scene itself needs; `describeScene` registers prefabs, and
 /// each prefab's own `describeAssets` adds to the same set. Following that
-/// means resolving `descriptor.has(Player())` to the `Player` class and reading
-/// *its* declarations - which is a type resolution, not a text match. Scenes
-/// also arrive as mixins (`mixin FieldScene on SceneStruct`), so "is this a
-/// scene" is a supertype question.
+/// means resolving `descriptor.has(Player.new)` to the `Player` class and
+/// reading *its* declarations - which is a type resolution, not a text match.
+/// Scenes also arrive as mixins (`mixin FieldScene on SceneStruct`), so "is
+/// this a scene" is a supertype question.
 ///
 /// # What it cannot see, and what happens then
 ///
@@ -142,7 +142,7 @@ class _Declarer {
 
   final Set<String> assets = <String>{};
 
-  /// Prefabs registered via `descriptor.has(Prefab())`.
+  /// Prefabs registered via `descriptor.has(Prefab.new)`.
   final Set<String> registers = <String>{};
 
   /// Mixins applied with `with`, since a scene's assets are often declared in
@@ -157,7 +157,7 @@ class _Declarer {
 /// Parsed, not resolved. Resolution would need every dependency's summary and
 /// a `pub get` in the target project, and would take seconds per run; the
 /// shapes that matter here - `extends SceneStruct`, `with FieldScene`,
-/// `descriptor.has(Textures.x)`, `descriptor.has(Player())` - are all
+/// `descriptor.has(Textures.x)`, `descriptor.has(Player.new)` - are all
 /// syntactic. What that costs is listed on [scanScenes].
 class _DeclarerVisitor extends RecursiveAstVisitor<void> {
   _DeclarerVisitor(this._byEnum);
@@ -227,13 +227,14 @@ class _HasVisitor extends RecursiveAstVisitor<void> {
         node.argumentList.arguments.isNotEmpty) {
       final argument = node.argumentList.arguments.first;
       if (_method == 'describeScene') {
-        // `descriptor.has(Player())` - the prefab's own describeAssets is
+        // `descriptor.has(Player.new)` - the prefab's own describeAssets is
         // walked separately and folded in by `_collect`.
         //
-        // Two shapes, because this unit is parsed and not resolved: without
-        // resolution the parser cannot tell a constructor call from a function
-        // call, so `Player()` arrives as a MethodInvocation and only an
-        // explicit `new Player()` is an InstanceCreationExpression. The
+        // The instance spellings are read as well, and they take two shapes
+        // because this unit is parsed and not resolved: without resolution the
+        // parser cannot tell a constructor call from a function call, so
+        // `Player()` arrives as a MethodInvocation and only an explicit
+        // `new Player()` is an InstanceCreationExpression. The
         // uppercase-initial name is what separates them, which is a
         // convention rather than a rule - but it is a lint-enforced one, and
         // the cost of guessing wrong is an asset in the shared chunk rather
