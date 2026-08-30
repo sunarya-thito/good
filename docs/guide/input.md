@@ -358,12 +358,12 @@ that reason, which is also when a real tap gesture fires.
 
 A contact reports in window and view coordinates. Turning that into world
 coordinates needs the active camera, which is a `goo2d` component, so the
-projection lives there — `MousePickingSystem.projection` is the same
-`CameraProjection` mouse picking already inverts every tick:
+projection lives there — `PointerPickingSystem.projection` is the same
+`CameraProjection` picking already inverts every tick:
 
 <!-- snippet: skip CameraProjection is goo2d, and this page is the kernel guide -->
 ```dart
-final projection = getSystem<MousePickingSystem>().projection;
+final projection = getSystem<PointerPickingSystem>().projection;
 final worldX = projection.viewToWorldX(contact.viewSpace.x);
 final worldY = projection.viewToWorldY(contact.viewSpace.y);
 ```

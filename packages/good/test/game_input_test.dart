@@ -975,7 +975,7 @@ void main() {
 
         // `Game.viewWidth` reads `InputState` *live*, so this is the path any
         // system takes when it asks the view size mid-tick - CameraProjection
-        // and MousePickingSystem both do. Meanwhile the Flutter isolate keeps
+        // and PointerPickingSystem both do. Meanwhile the Flutter isolate keeps
         // publishing: InputDevice publishes on every change, and three of them
         // walk TripleBuffer's slots all the way back around to the one this
         // tick attached to.

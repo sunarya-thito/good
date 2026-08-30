@@ -39,7 +39,8 @@ class _Target extends EntityStruct
         WorldTransform2D,
         Renderable2D,
         Collider2D,
-        MouseReceiver {
+        PointerReceiver,
+        HoverReceiver {
   late final Sprite quad;
   late final BoxBody hitArea;
 
@@ -56,13 +57,19 @@ class _Target extends EntityStruct
   }
 
   @override
-  void onMouseEnter(MouseEvent event) => events.add('enter');
+  void onHoverEnter(PointerPickEvent event) => events.add('enter');
 
   @override
-  void onMouseHover(MouseEvent event) => events.add('hover');
+  void onHover(PointerPickEvent event) => events.add('hover');
 
   @override
-  void onMouseExit(MouseEvent event) => events.add('exit');
+  void onHoverExit(PointerPickEvent event) => events.add('exit');
+
+  /// Records the entity, because the point of the two-view contact test is
+  /// which entity each finger reached.
+  @override
+  void onPointerDown(PointerPickEvent event) =>
+      events.add('down ${event.entity.value} at ${event.worldSpace.x}');
 }
 
 class _Level extends SceneStruct {
@@ -73,12 +80,14 @@ class _Level extends SceneStruct {
 
   late final _Sprite sprite;
   late final _Eye eye;
+  late final _Target target;
 
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
     sprite = descriptor.has(_Sprite.new);
     eye = descriptor.has(_Eye.new);
+    target = descriptor.has(_Target.new);
   }
 }
 
@@ -119,7 +128,7 @@ class _MultiState extends GameState2D<_MultiGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(MousePickingSystem.new);
+    descriptor.has(PointerPickingSystem.new);
   }
 }
 
@@ -336,7 +345,7 @@ void main() {
     game.minimap.setViewport(400, 400);
     run.state.runFixedStep();
 
-    final picking = run.state.getSystem<MousePickingSystem>();
+    final picking = run.state.getSystem<PointerPickingSystem>();
 
     game.inputDevice!.movePointer(
       screenX: 0,
@@ -408,7 +417,7 @@ void main() {
     );
     run.state.advance(_step);
 
-    final picking = run.state.getSystem<MousePickingSystem>();
+    final picking = run.state.getSystem<PointerPickingSystem>();
     expect(_publishedQuads(game, game.defaultCamera), 0);
     expect(picking.hovered, isNull);
     expect(
@@ -503,5 +512,66 @@ void main() {
         .toList();
     expect(painters, hasLength(2));
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('two contacts in two views project through two cameras', (
+    tester,
+  ) async {
+    final game = await _start();
+    final state = run.state as _MultiState;
+
+    // One camera per view, a thousand units apart, and one target parked
+    // under each - so the *same* view-space pixel means two different world
+    // points and two different entities. Resolving one view for the whole
+    // system sends both fingers to the same camera, and only one of the two
+    // targets can be found that way.
+    final levelEye = state.level.handle.addEntity(state.level.eye);
+    state.level.eye.cameraView[levelEye] = game.defaultCamera;
+    final overlayEye = state.overlay.handle.addEntity(state.overlay.eye);
+    state.overlay.eye
+      ..cameraView[overlayEye] = game.minimap
+      ..transformOffsetX[overlayEye] = 1000;
+
+    final levelTarget = state.level.handle.addEntity(state.level.target);
+    final overlayTarget = state.overlay.handle.addEntity(state.overlay.target);
+    state.overlay.target.transformOffsetX[overlayTarget] = 1000;
+
+    game.defaultCamera.setViewport(400, 400);
+    game.minimap.setViewport(400, 400);
+    run.state.advance(_step);
+    events.clear();
+
+    // Both down before a step runs, each named against the view whose pixels
+    // it landed on.
+    game.inputDevice!.pressContact(
+      1,
+      screenX: 0,
+      screenY: 0,
+      viewX: 200,
+      viewY: 200,
+      view: game.defaultCamera,
+    );
+    game.inputDevice!.pressContact(
+      2,
+      screenX: 0,
+      screenY: 0,
+      viewX: 200,
+      viewY: 200,
+      view: game.minimap,
+    );
+    run.state.advance(_step);
+
+    expect(
+      events,
+      <String>[
+        'down ${levelTarget.value} at 0.0',
+        'down ${overlayTarget.value} at 1000.0',
+      ],
+      reason:
+          'the same pixel in two views is two world points, and the view '
+          'address rides on the contact - Game.pointerView answers for the '
+          'cursor and cannot answer for two fingers at once',
+    );
+    expect(levelTarget.value, isNot(overlayTarget.value));
   });
 }

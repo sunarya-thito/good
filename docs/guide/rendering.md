@@ -588,7 +588,7 @@ Going between a `GameView` pixel and world space is a first-class operation —
 picking, placing UI at a world position, dragging:
 
 ```dart
-final projection = getSystem<MousePickingSystem>().projection;
+final projection = getSystem<PointerPickingSystem>().projection;
 final worldX = projection.viewToWorldX(localX);
 final worldY = projection.viewToWorldY(localY);
 final viewX  = projection.worldToViewX(entityWorldX);
@@ -613,7 +613,7 @@ comparison silently.
 thinks it is heading, a circle for a search radius, a label for the state it is
 in. A steering vector is a picture and not a value, so a channel or a log
 cannot show it. Reach it from any `GameSystem` or `Component`, the way you
-reach `mousePicking`.
+reach `pointerPicking`.
 
 ```dart
 class Navigation extends GameSystem with FixedTickable {
@@ -797,7 +797,7 @@ fixes and one number cannot direct any of them. See
 ## In-game UI, and when to avoid it
 
 The engine can draw buttons and panels — `NineSliceBorder` stretches borders for
-exactly that, and `MouseReceiver` below gives an entity pointer events.
+exactly that, and `PointerReceiver` below gives an entity pointer events.
 
 **Prefer Flutter widgets anyway.** Your HUD, menus and inventories should be
 ordinary widgets over the `GameView`; make a UI element an entity only when it
@@ -811,13 +811,14 @@ entire `GameView` and never inside it. A backdrop behind the world and a layer
 over it are both [screen space](#screen-space); anything with text, layout or
 accessibility in it is a widget.
 
-## Mouse picking
+## Pointer picking
 
-`MouseReceiver` gives an entity pointer events, and `MousePickingSystem`
-resolves them against its **colliders**. It matches `MouseReceiver`,
-`Collider2D` and `WorldTransform2D` together, and tests the cursor against every
-enabled body in the entity's own local space — so a rotated, scaled entity
-hit-tests as the shape you can see:
+`PointerReceiver` gives an entity press and release events, `HoverReceiver`
+gives it enter, hover and exit, and `PointerPickingSystem` resolves both against
+its **colliders**. It matches either receiver with `Collider2D` and
+`WorldTransform2D` together, and tests the pointer against every enabled body in
+the entity's own local space — so a rotated, scaled entity hit-tests as the
+shape you can see:
 
 ```dart
 class Button extends EntityStruct
@@ -826,7 +827,8 @@ class Button extends EntityStruct
         WorldTransform2D,
         Renderable2D,
         Collider2D,
-        MouseReceiver {
+        PointerReceiver,
+        HoverReceiver {
   late final Sprite sprite;
   late final CircleBody hitArea;
 
@@ -843,36 +845,61 @@ class Button extends EntityStruct
   }
 
   @override
-  void onMouseEnter(MouseEvent event) { }
+  void onPointerDown(PointerPickEvent event) { }
   @override
-  void onMouseHover(MouseEvent event) { }
+  void onPointerUp(PointerPickEvent event) { }
   @override
-  void onMouseExit(MouseEvent event) { }
+  void onHoverEnter(PointerPickEvent event) { }
   @override
-  void onMousePressed(MouseEvent event) { }
+  void onHover(PointerPickEvent event) { }
   @override
-  void onMouseReleased(MouseEvent event) { }
+  void onHoverExit(PointerPickEvent event) { }
 }
 ```
 
-**A receiver with no collider is never picked, and nothing says so** — it fails
-the query, so it is not a candidate at all. That is deliberate rather than an
-assert: `Renderable2D`'s bounds are the obvious fallback and the wrong one, since
-a sprite is a rectangle even when what it draws is a coin, and clicking the
-corner of a coin should miss. The button above carries both, and they disagree:
-the cursor 42 units out from the origin is inside the 64×64 sprite, outside the
-radius-32 circle, and picks nothing.
+### Two mixins, because a finger cannot hover
 
-Enter, hover, exit, pressed and released are separate phases, so hover feedback
-does not have to be reconstructed from raw positions.
+A contact is a press. A finger is either down on an entity or absent from it,
+with no state in between to enter or leave, so the pressing pair and the
+hovering trio are separate mixins. A game built for touch applies
+`PointerReceiver` alone and gets a surface where every callback fires; the name
+`HoverReceiver` says what it needs before you mix it in.
+
+Apply both for a prefab a mouse should highlight and a finger should tap. The
+two are queried separately, so an entity carrying only `HoverReceiver` does not
+swallow a press aimed at what is beneath it, and one carrying only
+`PointerReceiver` does not block a highlight.
+
+Presses come from contacts, one dispatch per contact per tick, each projected
+through the view that contact landed in — so two fingers on two entities both
+fire on the same tick, and two fingers on two `GameView`s project through two
+cameras. A mouse button produces both a contact and a button bit, and the picker
+takes the bit, so one click fires one `onPointerDown`. Which button that is
+stays rebindable through `PointerPickingSystem.click`.
+
+A contact taken away without a lift — a call arrives, a widget wins the gesture
+arena — still fires `onPointerUp`, with `PointerPickEvent.cancelled` set. A
+handler that commits an action on release reads that and abandons instead.
+
+Hover belongs to the cursor, and one entity hovers at a time. Enter, hover and
+exit are separate phases, so hover feedback does not have to be reconstructed
+from raw positions.
+
+**A receiver with no collider is never picked, and nothing says so** — it fails
+the query, so it is not a candidate at all. No assert stands in for it, because
+`Renderable2D`'s bounds are the obvious fallback and the wrong one: a sprite is
+a rectangle even when what it draws is a coin, and clicking the corner of a coin
+should miss. The button above carries both, and they disagree: the cursor 42
+units out from the origin is inside the 64×64 sprite, outside the radius-32
+circle, and picks nothing.
 
 Each candidate gets a cheap reject before the exact test: a circle about the
 entity's **origin**, wide enough to reach the far side of every body it
-declared. Measured from the origin rather than from each body's own offset,
-because the origin is the point rotation turns about — a bound measured from
-anywhere else swings as the entity spins, and one that comes out too small
-drops a click the player aimed correctly. A hit zone hung far off the origin
-therefore costs you a looser reject, never a wrong answer.
+declared. Measured from the origin and not from each body's own offset, because
+the origin is the point rotation turns about — a bound measured from anywhere
+else swings as the entity spins, and one that comes out too small drops a click
+the player aimed correctly. A hit zone hung far off the origin therefore costs
+you a looser reject, never a wrong answer.
 
 Picking is scoped the way drawing is: the pointer hits only entities in the
 scene the view's camera is in. A second scene resident behind the one on screen

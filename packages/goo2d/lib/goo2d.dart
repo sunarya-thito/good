@@ -17,7 +17,7 @@ export 'src/data/camera.dart';
 export 'src/data/collider.dart';
 export 'src/data/screen_transform.dart';
 export 'src/data/transform.dart';
-export 'src/input/mouse.dart';
+export 'src/input/pointer.dart';
 export 'src/data/world_transform.dart';
 export 'src/render/debug_draw_2d.dart';
 export 'src/render/draw/draw_2d.dart';
