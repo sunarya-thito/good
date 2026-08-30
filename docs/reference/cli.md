@@ -77,6 +77,15 @@ replacing a `main.dart` someone has worked in is the one unrecoverable thing it
 could do. **Refuses an existing directory** unless `--no-flutter-create`, because
 `flutter create` rewrites platform folders.
 
+**Stops before writing when the bundle package's name is taken.** Under
+`--no-flutter-create` the name can already belong to a directory, or to a
+`dependencies:` entry pointing elsewhere. Either exits 65 and names the path
+before the first scaffold file and before the pubspec patch. Set `good: bundle:`
+to a free name and run it again.
+
+`--dry-run` reports the recorded name when the project has one, so the directory
+it names is the one a real run would write.
+
 See [Create a project](../getting-started/create-a-project.md).
 
 ---
@@ -96,6 +105,12 @@ first time it is written, so renaming the project later points at the directory
 that already exists rather than building a second one beside it. A
 `.good_bundle` marker inside proves the directory is good's; without it the
 command refuses to write or delete anything there and names the path.
+
+The marker is written before anything else in the directory. A run that stops
+after it leaves a package the next run can finish; a run that stops before it
+leaves no directory at all. `good build` and `good assets pack` ask the same
+question at their first step, so a refusal costs no compaction pass and creates
+no chunk directory.
 
 | Option | Default | Description |
 |---|---|---|

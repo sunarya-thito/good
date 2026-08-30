@@ -121,6 +121,14 @@ abstract class BuildSubCommand extends Command with Verbose, Resolving {
     // a build that is subtly stale rather than one that fails, which is
     // exactly the mistake worth removing.
 
+    // Which package the bundle is, and whether it is good's, before step 1
+    // rather than inside step 2. Compaction re-encodes every source asset and
+    // writes the results into the project, and a build that spends minutes
+    // doing that and then refuses has already written to a tree it was about
+    // to say it would not touch. The answer is read off the pubspec and the
+    // marker, so asking early costs nothing.
+    final bundle = resolveBundle(project);
+
     info.println('');
     info.println('[1/4] compacting assets');
     final compacted = await _compact(project, config);
@@ -136,7 +144,9 @@ abstract class BuildSubCommand extends Command with Verbose, Resolving {
     );
 
     info.println('[3/4] packing assets');
-    if (!await _pack(project, config, compacted)) throw const CommandFailure();
+    if (!await _pack(project, config, compacted, bundle)) {
+      throw const CommandFailure();
+    }
 
     info.printf('[4/4] flutter build %s\n', [flutterTarget]);
     if (!_flutterBuild(project)) throw const CommandFailure();
@@ -203,6 +213,7 @@ abstract class BuildSubCommand extends Command with Verbose, Resolving {
     Directory project,
     GoodConfig config,
     CompactPlan compacted,
+    BundlePackage bundle,
   ) async {
     final scan = scanAssets(project);
     final paths = <String>[
@@ -210,7 +221,8 @@ abstract class BuildSubCommand extends Command with Verbose, Resolving {
       for (final asset in scan.audio) asset.path,
     ]..sort();
     // The bundle package's, which is where every generated file lives now.
-    final keyFile = resolveBundle(project).assetKeyFile;
+    // Resolved at the top of the command, before compaction wrote anything.
+    final keyFile = bundle.assetKeyFile;
 
     if (paths.isEmpty) {
       debug.println('  no declared assets - nothing to pack');

@@ -74,6 +74,34 @@
 
 ### Fixed
 
+* **The `.good_bundle` marker is written before anything else in the generated
+  package.** `good generate` created the package's `lib/` first, so a run that
+  stopped in between - a closed terminal, a full disk - left a directory with
+  nothing in it proving good had created it. Every later good command refuses
+  such a directory by name, so the only way forward was deleting the package by
+  hand. The order is the directory, the marker, then `lib/` and the files, and
+  an interrupted run now leaves a package the next run finishes (#113).
+
+* **`good create --no-flutter-create` stops before writing when the bundle
+  package's name is taken.** A directory of that name carrying no marker, and a
+  `dependencies:` entry of that name pointing somewhere else, were both found by
+  the generate step at the end of the command - after the scaffold had written
+  `lib/game/` and patched the pubspec into a project the command then declined
+  to touch. Both are checked before the first file, and the project is left as
+  it was (#113).
+
+* **`good build` and `good assets pack` ask who owns the bundle package at their
+  first step.** A build resolved it inside step 2, so a project whose bundle
+  directory is not good's paid a whole compaction pass - every source asset
+  re-encoded into `assets/` - before the refusal. Packing created the chunk
+  directory before asking. Neither writes anything now until the question is
+  answered (#113).
+
+* **`good create --dry-run` reports the recorded bundle name.** It built the
+  name from the `<project_name>` argument, so a dry run over a project whose
+  pubspec records something else named a directory a real run would not write
+  (#113).
+
 * **`good build` no longer deletes files from `assets/` when `strip-originals`
   is not set.** The default (`strip-originals: false`) now leaves every file in
   the asset output directory untouched. Assets declared with

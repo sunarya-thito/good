@@ -1,9 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:good_cli/src/commands/assets/pack.dart';
+import 'package:good_cli/src/commands/build/windows.dart';
 import 'package:good_cli/src/generate/bundle.dart';
 import 'package:good_cli/src/generate/run.dart';
+import 'package:good_cli/src/runner.dart';
 import 'package:good_cli/src/verbosable.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 // The generated sibling package: who owns it, what proves it, and what happens
@@ -75,6 +79,62 @@ final Map<String, String> assetMapping = <String, String>{
   'assets/player.png': 'assets/packed/chunk_0.dat',
 };
 ''';
+
+/// What was in the bundle directory each time the run said something.
+///
+/// The output is the one seam a caller has inside `runGenerate`, and every
+/// `Wrote %s` comes straight after the write it names - so a listing taken
+/// here is the directory as it stood at that write. Nothing else can see the
+/// order: the files are all there by the time the call returns, and a
+/// timestamp on two writes a millisecond apart says nothing.
+class _Watching implements VerboseOutput {
+  _Watching(this.directory);
+
+  final Directory directory;
+  final List<Set<String>> snapshots = <Set<String>>[];
+
+  void _look() {
+    if (!directory.existsSync()) return;
+    snapshots.add(<String>{
+      for (final entity in directory.listSync(recursive: true))
+        p.relative(entity.path, from: directory.path).replaceAll('\\', '/'),
+    });
+  }
+
+  @override
+  void println(Object? object) => _look();
+  @override
+  void print(Object? object) => _look();
+  @override
+  void printf(String format, List<Object?> args) => _look();
+}
+
+/// A run that dies the moment it says it has written something in the bundle.
+///
+/// A closed terminal, a full disk, a killed process - what they have in common
+/// is that they land between two of these writes, and what the directory looks
+/// like afterwards is the whole of what the next run has to go on. The throw
+/// keys off the path being inside the bundle, not off the wording, so it fires
+/// at the first write there and at nothing said before it.
+class _Interrupt implements VerboseOutput {
+  _Interrupt(this.directory);
+
+  final Directory directory;
+
+  @override
+  void println(Object? object) {}
+  @override
+  void print(Object? object) {}
+  @override
+  void printf(String format, List<Object?> args) {
+    if (args.isEmpty) return;
+    if (p.isWithin(directory.path, '${args.first}')) throw const _Died();
+  }
+}
+
+class _Died implements Exception {
+  const _Died();
+}
 
 final VerboseOutput _quiet = _NullOutput();
 
@@ -617,6 +677,130 @@ void main() {
         reason:
             'the entry existing is not the question - a stale one resolves and '
             'ships whatever is at the other end, or nothing',
+      );
+    });
+  });
+
+  group('the ownership check comes before the first write', () {
+    test('the marker is in the directory before any file beside it', () {
+      final project = _project();
+      final watching = _Watching(Directory('${project.path}/demo_bundle'));
+
+      runGenerate(
+        projectDir: project,
+        command: 'good generate',
+        out: watching,
+        verbose: watching,
+        pubGet: false,
+      );
+
+      final whileWriting = watching.snapshots
+          .where(
+            (snapshot) => snapshot.any(
+              (entry) => entry != bundleMarkerName && entry != 'lib',
+            ),
+          )
+          .toList();
+      expect(
+        whileWriting,
+        isNotEmpty,
+        reason:
+            'nothing was watched while the directory had anything in it, so '
+            'this could not have failed however the marker was ordered',
+      );
+      for (final snapshot in whileWriting) {
+        expect(
+          snapshot,
+          contains(bundleMarkerName),
+          reason:
+              'the claim has to cover the first file, not follow it - a marker '
+              'written last is one the run never had while it was writing',
+        );
+      }
+    });
+
+    test('an interrupted run leaves a directory the next run finishes', () {
+      final project = _project();
+      final directory = Directory('${project.path}/demo_bundle');
+
+      expect(
+        () => runGenerate(
+          projectDir: project,
+          command: 'good generate',
+          out: _Interrupt(directory),
+          verbose: _quiet,
+          pubGet: false,
+        ),
+        throwsA(isA<_Died>()),
+      );
+
+      expect(
+        File('${directory.path}/$bundleMarkerName').existsSync(),
+        isTrue,
+        reason:
+            'this is what the ordering buys: the half-written directory is '
+            'still provably good\'s',
+      );
+
+      final bundle = _generate(project).bundle;
+      for (final name in generatedFileNames) {
+        expect(
+          File('${bundle.libDir.path}/$name').existsSync(),
+          isTrue,
+          reason:
+              'an unmarked half-written directory would be refused from here '
+              'on, and the only way out of it is deleting a package by hand',
+        );
+      }
+    });
+
+    test('packing refuses before it makes the chunk directory', () async {
+      final project = _project();
+      File('${project.path}/assets/a.png').writeAsBytesSync(<int>[1, 2, 3]);
+      Directory('${project.path}/demo_bundle').createSync();
+
+      final runner = CommandRunner(PackCommand(), out: StringBuffer());
+      await expectLater(
+        runner.run(<String>['--project-dir=${project.path}']),
+        _refusesWith(contains(bundleMarkerName)),
+      );
+
+      expect(
+        Directory('${project.path}/assets/packed').existsSync(),
+        isFalse,
+        reason:
+            'a refusal that has already made a directory in the project has '
+            'changed the tree it declined to touch',
+      );
+    });
+
+    test('good build refuses before it compacts anything', () async {
+      final project = _project();
+      File('${project.path}/assets_src/a.png')
+        ..parent.createSync(recursive: true)
+        ..writeAsBytesSync(<int>[1, 2, 3]);
+      Directory('${project.path}/demo_bundle').createSync();
+
+      final runner = CommandRunner(WindowsBuildCommand(), out: StringBuffer());
+      await expectLater(
+        runner.run(<String>[
+          '--project-dir=${project.path}',
+          '--no-download',
+          '--no-pub-get',
+        ]),
+        _refusesWith(contains(bundleMarkerName)),
+        reason:
+            'reached inside step 2 instead, the command spends step 1 on '
+            'ffmpeg and fails as a build that could not finish rather than as '
+            'a directory it may not write to',
+      );
+
+      expect(
+        Directory('${project.path}/assets').listSync(),
+        isEmpty,
+        reason:
+            'compaction writes the canonical files into assets/, and it ran '
+            'before the refusal if anything is there',
       );
     });
   });

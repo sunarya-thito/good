@@ -235,10 +235,14 @@ GenerateResult runGenerate({
     return GenerateResult(bundle: bundle, fileCount: writes.length);
   }
 
-  // The marker first, and not last. A run interrupted halfway leaves a
-  // directory good can prove it created, which is what the next run needs in
-  // order to finish the job rather than refuse it.
-  bundle.libDir.createSync(recursive: true);
+  // The directory, then the marker, then everything else. The order is the
+  // guarantee: a marker written after the first file does not cover that
+  // file, and a run that dies in between - a full disk, a closed terminal -
+  // leaves a directory good made and can no longer prove it made. Every later
+  // command refuses that directory by name, so the way out of it is deleting
+  // a package by hand. `lib/` is part of what a later run writes into, so it
+  // comes after the claim and not with it.
+  bundle.directory.createSync(recursive: true);
   bundle.marker.writeAsStringSync(
     bundleMarkerContents(
       bundleName: bundle.name,
@@ -246,6 +250,7 @@ GenerateResult runGenerate({
       command: command,
     ),
   );
+  bundle.libDir.createSync(recursive: true);
   for (final entry in writes.entries) {
     File(entry.key).writeAsStringSync(entry.value);
     out.printf('Wrote %s\n', [entry.key]);

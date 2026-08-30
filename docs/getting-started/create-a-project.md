@@ -95,6 +95,9 @@ command could do. A file that already exists is kept, and the run says so:
 rewrites platform folders. Use `--no-flutter-create` to add the good files to a
 project that is already there.
 
+**A taken bundle name stops the command before it writes.** See
+[Adding good to a project that already exists](#adding-good-to-a-project-that-already-exists).
+
 ## What gets written
 
 ```
@@ -125,6 +128,13 @@ file it is, so "may this be overwritten" has one answer instead of two. The
 command refuses to write to that directory or delete anything in it, which is
 what stops a routine regeneration from emptying a package you wrote by hand.
 
+The marker is the first file written into the directory — before the generated
+pubspec, before `lib/`. A run that stops partway, on a closed terminal or a full
+disk, leaves a package good can still prove it created, and the next `good
+generate` finishes it. Written last, the same interruption leaves an unmarked
+directory that every later command refuses, and the way out of that is deleting
+a package by hand.
+
 Three of the four generated files are rewritten on every `good generate`.
 `asset_key.dart` is written **once** and then left alone — it holds the keys
 your asset packs were encrypted with, so regenerating it would orphan every pack
@@ -134,6 +144,25 @@ already built. See [`--rotate-keys`](../reference/cli.md#good-generate).
     It is generated, but it is also the only record of your encryption keys.
     Losing `asset_key.dart` means every previously shipped pack stops
     decrypting.
+
+### Adding good to a project that already exists
+
+`good create <name> --no-flutter-create` writes the good files into a Flutter
+project that is already laid out. The bundle package is being introduced into a
+tree good did not create, so its name may already be taken. Three ways, all
+checked before the first file is written:
+
+- a directory of that name carrying no `.good_bundle`;
+- a `dependencies:` entry of that name pointing somewhere else;
+- a marked directory whose name is not the one `good: bundle:` records.
+
+Any of them stops the command with exit code 65 and names the path. No scaffold
+file is written and the pubspec is not patched, so the project is as it was.
+
+good does not pick a different name for you. The recorded name is worth having
+because it is stable and knowable, and one chosen on your behalf during a
+command you ran for something else is neither. Set `good: bundle:` in the
+pubspec to the name you want and run the command again.
 
 ### The pubspec patch
 

@@ -83,6 +83,13 @@ class CreateCommand extends Command with Verbose, Resolving {
     );
 
     if (dryRun.value) {
+      // The name a real run would use, which for a project that already has
+      // one is the recorded name and not one derived from the argument. A dry
+      // run naming `<argument>_bundle` over a project whose pubspec records
+      // something else reports a directory the real run would not write.
+      final bundleName = File('${root.path}/pubspec.yaml').existsSync()
+          ? bundleNameFor(root)
+          : defaultBundleName(projectName);
       if (!noFlutterCreate.value) {
         info.printf('Would run: flutter create %s\n', [root.path]);
       }
@@ -95,11 +102,9 @@ class CreateCommand extends Command with Verbose, Resolving {
       info.printf('Would add to %s/pubspec.yaml:\n%s\n%s', [
         root.path,
         pubspecPatch(engine.package),
-        bundlePubspecPatch(defaultBundleName(projectName)),
+        bundlePubspecPatch(bundleName),
       ]);
-      info.printf('Would generate %s/ beside it.\n', [
-        defaultBundleName(projectName),
-      ]);
+      info.printf('Would generate %s/ beside it.\n', [bundleName]);
       return;
     }
 
@@ -136,6 +141,23 @@ class CreateCommand extends Command with Verbose, Resolving {
       );
       throw const CommandFailure();
     }
+
+    // Which package the bundle would be, and whether that directory is good's
+    // - asked here, before the first scaffold file is written and before the
+    // pubspec is patched.
+    //
+    // The three ways an existing project can already be using the name are a
+    // real dependency of that name, a directory of that name somebody wrote,
+    // and a `good: bundle:` naming something else; all three are refusals, and
+    // `resolveBundle` is where they live. Reaching them through `runGenerate`
+    // at the end of the command instead means the same refusal after this has
+    // put a `lib/game/` and a patched pubspec into a project it is about to
+    // tell the person it will not touch.
+    //
+    // The project's own pubspec is the name it reads, not the argument: a
+    // `--no-flutter-create` run names the directory, and a directory whose
+    // pubspec says something else has already been renamed once.
+    resolveBundle(root);
 
     // Whether the tree below is one this command just made.
     //

@@ -43,6 +43,20 @@ const String bundleMarkerName = '.good_bundle';
 /// nothing saying which.
 String defaultBundleName(String projectName) => '${projectName}_bundle';
 
+/// Which package [projectDir] calls its bundle, reading and writing nothing.
+///
+/// The recorded name when there is one, and the derived name only for a
+/// project that has never had a bundle generated. Separate from
+/// [resolveBundle] because two callers want the name without the ownership
+/// question: a dry run reports what would be written, and neither of them
+/// should refuse.
+///
+/// Throws when the pubspec is missing or records something that is not a
+/// package name, which are conditions no caller can proceed past.
+String bundleNameFor(Directory projectDir) =>
+    GoodConfig.read(projectDir).bundle ??
+    defaultBundleName(projectNameOf(projectDir));
+
 /// A project's bundle package: the name that is recorded and the directory it
 /// names.
 @immutable
@@ -141,7 +155,7 @@ List<Directory> markedBundles(Directory projectDir) {
 /// moment the person did not ask for anything to move.
 BundlePackage resolveBundle(Directory projectDir) {
   final recorded = GoodConfig.read(projectDir).bundle;
-  final name = recorded ?? defaultBundleName(projectNameOf(projectDir));
+  final name = bundleNameFor(projectDir);
   final bundle = BundlePackage(
     name: name,
     directory: Directory(p.join(projectDir.path, name)),
