@@ -117,9 +117,10 @@ class StructScan {
 /// A name that resolves to two different files is not guessed at. Both land in
 /// [StructScan.unresolved], because a build error that fires wrongly is worse
 /// than the bug it is looking for.
-StructScan scanStructRules(Directory projectDir) {
-  final roots = _scanRoots(projectDir);
-  if (roots.isEmpty) {
+StructScan scanStructRules(Directory projectDir, {ScanSources? sources}) {
+  final read = sources ?? readSources(projectDir);
+  final byName = read.byName;
+  if (byName.isEmpty && read.roots.isEmpty) {
     return const StructScan(
       shadowed: <ShadowedField>[],
       missingSuper: <MissingSuperCall>[],
@@ -127,18 +128,171 @@ StructScan scanStructRules(Directory projectDir) {
     );
   }
 
-  // By bare name, and a list rather than one entry: two libraries can each
-  // declare a `Velocity`, and this pass has no resolution to tell which one a
-  // `with Velocity` means. Ambiguity is reported, never picked.
-  //
-  // `parseString` on each file, not an `AnalysisContextCollection`. The
-  // collection resolves packages, reads every pubspec and builds a context per
-  // root before it hands back a syntax tree, and none of that is used here -
-  // this pass only ever looks at tokens. Against the demo project - 49 engine
-  // files plus its own - dropping it took the scan from 826ms to 272ms on a
-  // second run and from 563ms to 136ms warm, against 1-7ms for everything
-  // `good generate` did before this check existed.
-  final byName = <String, List<_Owner>>{};
+  final shadowed = <ShadowedField>[];
+  final missingSuper = <MissingSuperCall>[];
+  final unresolved = <String, String>{};
+  for (final owners in byName.values) {
+    for (final owner in owners) {
+      if (owner.isStruct) {
+        _check(owner, byName, shadowed, unresolved, projectDir);
+      }
+      _checkHooks(owner, byName, missingSuper, unresolved, projectDir);
+    }
+  }
+  return StructScan(
+    shadowed: shadowed,
+    missingSuper: missingSuper,
+    unresolved: unresolved,
+  );
+}
+
+/// Everything one parse of the project and its engine packages produced.
+///
+/// Two passes read it, and they are in different packages. [scanStructRules] is
+/// looking for defects and runs on a user's project; `scanAccessors` in
+/// `good_tool` is looking for columns to generate a property for and runs over
+/// this repository. Both need the same declarations marked the same way - which
+/// classes are structs, which mixins end up on a `Component` - so the walk and
+/// the marking live here once, and only the questions differ.
+///
+/// Which is why several fields below have no reader inside this package. They
+/// describe a declaration rather than answer a question, and the cost of
+/// recording them is a walk over tokens already parsed; the alternative is
+/// `good_tool` parsing the same trees a second time to ask about the same
+/// files.
+@immutable
+class ScanSources {
+  const ScanSources({
+    required this.byName,
+    required this.units,
+    required this.interfaceMembers,
+    required this.accessorExtensions,
+    required this.packageLibs,
+    required this.roots,
+  });
+
+  /// Every class and mixin read, by bare name.
+  ///
+  /// A list rather than one entry: two libraries can each declare a `Velocity`,
+  /// and this pass has no resolution to tell which one a `with Velocity` means.
+  /// Ambiguity is reported, never picked.
+  final Map<String, List<Owner>> byName;
+
+  /// The directives and top-level names of each file read, by normalised path.
+  ///
+  /// The `export` half is what a barrel walk needs; `declaredNames` is what
+  /// answers "which file declares this type", which is how `good_tool` writes
+  /// an import for a generated file.
+  final Map<String, ScannedUnit> units;
+
+  /// Every member name each named declaration declares, by declaration name -
+  /// classes, mixins, enums and extension types alike.
+  ///
+  /// `Entity` and `Accessor` are extension types, so this is the only place
+  /// their members appear; [byName] holds classes and mixins. A declaration
+  /// name that two libraries both use has both sets folded together, which
+  /// over-reports rather than under-reports, and over-reporting is the safe
+  /// direction for the one thing that reads it.
+  final Map<String, Set<String>> interfaceMembers;
+
+  /// The members of every hand-written `extension ... on Accessor<T>`, by the
+  /// component `T` names.
+  ///
+  /// `Accessor`'s own doc tells people to put a component's helpers in one of
+  /// these, and the engine has five. A generated property sharing a name with
+  /// one of them is not silent - two applicable extensions declaring one member
+  /// is an ambiguity error at the use site - but it is an error in *shipped*
+  /// code, raised nowhere near the column that caused it, so `good_tool`
+  /// refuses rather than emitting it.
+  ///
+  /// Keyed on the exact component named in the type argument. An extension on a
+  /// supertype of it applies to the same receiver and is not seen here; that is
+  /// a subtype question, and this pass resolves nothing.
+  final Map<String, Set<String>> accessorExtensions;
+
+  /// Every package the project's package config named, as package name to the
+  /// normalised path of its `lib/`.
+  final Map<String, String> packageLibs;
+
+  /// The directories walked - the project's own `lib/`, plus the engine
+  /// packages it resolves. Empty when there is nothing to read at all.
+  final List<String> roots;
+}
+
+/// One file's directives and the top-level names it declares.
+@immutable
+class ScannedUnit {
+  ScannedUnit({
+    required this.exports,
+    required this.declaredNames,
+    required this.exportedNames,
+  });
+
+  /// Every `export` this file carries, in source order.
+  final List<ScannedExport> exports;
+
+  /// Every top-level name declared here - classes, mixins, enums, extension
+  /// types, typedefs, functions and variables.
+  final Set<String> declaredNames;
+
+  /// Every name this file re-exports under `export ... show`, which is not the
+  /// same question: a `show` list can name something the exported library
+  /// declares and this file does not.
+  final Set<String> exportedNames;
+}
+
+/// One `export` directive: where it points and what it lets through.
+@immutable
+class ScannedExport {
+  const ScannedExport({
+    required this.uri,
+    required this.shown,
+    required this.hidden,
+  });
+
+  /// The URI as written - relative, `package:` or `dart:`.
+  final String uri;
+
+  /// The `show` list, or empty when there is none. A non-empty list is the
+  /// whole of what this directive exports.
+  final Set<String> shown;
+
+  /// The `hide` list, or empty when there is none.
+  final Set<String> hidden;
+}
+
+/// Parses the project and its engine packages once.
+///
+/// `parseString` on each file, not an `AnalysisContextCollection`. The
+/// collection resolves packages, reads every pubspec and builds a context per
+/// root before it hands back a syntax tree, and none of that is used here -
+/// these passes only ever look at tokens. Against the demo project - 49 engine
+/// files plus its own - dropping it took the scan from 826ms to 272ms on a
+/// second run and from 563ms to 136ms warm, against 1-7ms for everything
+/// `good generate` did before this check existed.
+///
+/// [rootOverride] replaces the directories walked. `good_tool` passes the
+/// `lib/` of every package in this repository, which is not a set any one
+/// project's package config describes - a project resolves the engine packages
+/// it depends on, and the repository is all of them at once.
+///
+/// [exclude] drops individual files from the walk, by normalised path. What
+/// needs it is a generator reading the tree it writes into: `good_tool` emits
+/// an `extension ... on Accessor<Transform2D>`, and on the next run that file
+/// is an ordinary part of `packages/goo2d/lib/` declaring a member named
+/// `offsetX`. Without this the tool's second run reports its own first run as a
+/// collision - measured, on all ten components at once.
+ScanSources readSources(
+  Directory projectDir, {
+  List<String>? rootOverride,
+  Set<String> exclude = const <String>{},
+}) {
+  final roots = rootOverride ?? _scanRoots(projectDir);
+  final skip = <String>{for (final path in exclude) p.normalize(path)};
+  final byName = <String, List<Owner>>{};
+  final units = <String, ScannedUnit>{};
+  final interfaceMembers = <String, Set<String>>{};
+  final accessorExtensions = <String, Set<String>>{};
 
   // Which library file each part file belongs to, taken from the `part`
   // directives of the units below. Collected here and applied afterwards,
@@ -147,6 +301,7 @@ StructScan scanStructRules(Directory projectDir) {
   for (final root in roots) {
     for (final file in Directory(root).listSync(recursive: true)) {
       if (file is! File || !file.path.endsWith('.dart')) continue;
+      if (skip.contains(p.normalize(file.path))) continue;
       final CompilationUnit unit;
       try {
         unit = parseString(
@@ -164,8 +319,19 @@ StructScan scanStructRules(Directory projectDir) {
       final visitor = _OwnerVisitor(file.path);
       unit.accept(visitor);
       for (final owner in visitor.owners) {
-        byName.putIfAbsent(owner.name, () => <_Owner>[]).add(owner);
+        byName.putIfAbsent(owner.name, () => <Owner>[]).add(owner);
       }
+      visitor.members.forEach((declaration, names) {
+        interfaceMembers.putIfAbsent(declaration, () => <String>{}).addAll(
+          names,
+        );
+      });
+      visitor.accessorExtensions.forEach((component, names) {
+        accessorExtensions.putIfAbsent(component, () => <String>{}).addAll(
+          names,
+        );
+      });
+      units[p.normalize(file.path)] = _readUnit(unit);
     }
   }
 
@@ -173,21 +339,69 @@ StructScan scanStructRules(Directory projectDir) {
   _markStructs(byName);
   _markComponentMixins(byName);
 
-  final shadowed = <ShadowedField>[];
-  final missingSuper = <MissingSuperCall>[];
-  final unresolved = <String, String>{};
-  for (final owners in byName.values) {
-    for (final owner in owners) {
-      if (owner.isStruct) {
-        _check(owner, byName, shadowed, unresolved, projectDir);
+  // A part's declarations belong to its library's namespace, so an `export` of
+  // the library reaches them. The engine has no parts today; this is here so
+  // the export walk answers for a project that does, rather than quietly
+  // deciding one of its components is not exported.
+  partOwner.forEach((part, library) {
+    final from = units[part];
+    final into = units[p.normalize(library)];
+    if (from == null || into == null) return;
+    into.declaredNames.addAll(from.declaredNames);
+  });
+
+  return ScanSources(
+    byName: byName,
+    units: units,
+    interfaceMembers: interfaceMembers,
+    accessorExtensions: accessorExtensions,
+    packageLibs: _packageLibs(projectDir),
+    roots: roots,
+  );
+}
+
+/// Reads one file's `export` directives and the top-level names it declares.
+ScannedUnit _readUnit(CompilationUnit unit) {
+  final exports = <ScannedExport>[];
+  final exportedNames = <String>{};
+  for (final directive in unit.directives) {
+    if (directive is! ExportDirective) continue;
+    final uri = directive.uri.stringValue;
+    if (uri == null) continue;
+    final shown = <String>{};
+    final hidden = <String>{};
+    for (final combinator in directive.combinators) {
+      if (combinator is ShowCombinator) {
+        for (final name in combinator.shownNames) {
+          shown.add(name.name);
+        }
+      } else if (combinator is HideCombinator) {
+        for (final name in combinator.hiddenNames) {
+          hidden.add(name.name);
+        }
       }
-      _checkHooks(owner, byName, missingSuper, unresolved, projectDir);
+    }
+    exportedNames.addAll(shown);
+    exports.add(ScannedExport(uri: uri, shown: shown, hidden: hidden));
+  }
+
+  final declared = <String>{};
+  for (final declaration in unit.declarations) {
+    switch (declaration) {
+      case NamedCompilationUnitMember(:final name):
+        declared.add(name.lexeme);
+      case TopLevelVariableDeclaration(:final variables):
+        for (final variable in variables.variables) {
+          declared.add(variable.name.lexeme);
+        }
+      default:
+        break;
     }
   }
-  return StructScan(
-    shadowed: shadowed,
-    missingSuper: missingSuper,
-    unresolved: unresolved,
+  return ScannedUnit(
+    exports: exports,
+    declaredNames: declared,
+    exportedNames: exportedNames,
   );
 }
 
@@ -230,7 +444,7 @@ void _readParts(
 /// over a handful of tokens per file - the element model would give the same
 /// answer for the seconds of resolution [scanStructRules] exists to avoid.
 void _markLibraries(
-  Map<String, List<_Owner>> byName,
+  Map<String, List<Owner>> byName,
   Map<String, String> partOwner,
 ) {
   if (partOwner.isEmpty) return;
@@ -263,8 +477,8 @@ void _markLibraries(
 /// from one that does. That second half needs a fixed point: `class Player
 /// extends Base` is a struct only once `Base` is known to be one, and the files
 /// arrive in no particular order.
-void _markStructs(Map<String, List<_Owner>> byName) {
-  bool declaresColumn(_Owner owner) =>
+void _markStructs(Map<String, List<Owner>> byName) {
+  bool declaresColumn(Owner owner) =>
       owner.fields.any((field) => field.isColumn);
 
   for (final owners in byName.values) {
@@ -307,7 +521,7 @@ void _markStructs(Map<String, List<_Owner>> byName) {
 /// another component mixin - `mixin Aimed on Transform2D` - is one too, and
 /// needs a fixed point for the same reason [_markStructs] does: the files
 /// arrive in no order, so `Aimed` can only be settled once `Transform2D` is.
-void _markComponentMixins(Map<String, List<_Owner>> byName) {
+void _markComponentMixins(Map<String, List<Owner>> byName) {
   for (final owners in byName.values) {
     for (final owner in owners) {
       owner.isComponentMixin =
@@ -355,8 +569,8 @@ bool _isComponentRoot(String name) =>
 /// override that leaves the call out is a defect, and the engine's own eleven
 /// component mixins all chain, so this fires on nothing that ships today.
 void _checkHooks(
-  _Owner owner,
-  Map<String, List<_Owner>> byName,
+  Owner owner,
+  Map<String, List<Owner>> byName,
   List<MissingSuperCall> into,
   Map<String, String> unresolved,
   Directory projectDir,
@@ -404,13 +618,13 @@ bool _isStructRoot(String? name) =>
 /// earlier one. So the last declaration of a name wins and every earlier one is
 /// what gets reported as hidden.
 void _check(
-  _Owner struct,
-  Map<String, List<_Owner>> byName,
+  Owner struct,
+  Map<String, List<Owner>> byName,
   List<ShadowedField> shadowed,
   Map<String, String> unresolved,
   Directory projectDir,
 ) {
-  final applied = <_Owner>[];
+  final applied = <Owner>[];
   _linearize(struct, byName, applied, <String>{}, unresolved, struct.name);
 
   // member -> the declaration that most recently claimed it.
@@ -425,7 +639,7 @@ void _check(
   // found. With `_dirty` declared by A and C in one library and by B in
   // another, applied A, B, C, a name-keyed map holds B by the time C is read,
   // the libraries differ, and the real A/C collision goes unreported.
-  final claimed = <String, _Owner>{};
+  final claimed = <String, Owner>{};
   for (final part in applied) {
     for (final field in part.fields) {
       final member = _member(part, field.name);
@@ -453,14 +667,14 @@ void _check(
 
 /// What a field name resolves as: a private one only within its library, a
 /// public one anywhere.
-String _member(_Owner owner, String name) =>
+String _member(Owner owner, String name) =>
     name.startsWith('_') ? '${owner.library}::$name' : name;
 
 /// Appends [owner]'s parts in applied order, base first.
 void _linearize(
-  _Owner owner,
-  Map<String, List<_Owner>> byName,
-  List<_Owner> into,
+  Owner owner,
+  Map<String, List<Owner>> byName,
+  List<Owner> into,
   Set<String> seen,
   Map<String, String> unresolved,
   String rootName,
@@ -486,8 +700,8 @@ void _linearize(
 
 void _resolveInto(
   String name,
-  Map<String, List<_Owner>> byName,
-  List<_Owner> into,
+  Map<String, List<Owner>> byName,
+  List<Owner> into,
   Set<String> seen,
   Map<String, String> unresolved,
   String rootName,
@@ -554,26 +768,39 @@ List<String> _scanRoots(Directory projectDir) {
 /// Absent before a `pub get`, and that is not an error here: the mixins go to
 /// [StructScan.unresolved] and are reported, which is the same answer this pass
 /// gives for any other declaration it cannot read.
-List<String> _enginePackageLibs(Directory projectDir) {
+List<String> _enginePackageLibs(Directory projectDir) => <String>[
+  for (final entry in _packageLibs(projectDir).entries)
+    if (_isEnginePackage(entry.key)) entry.value,
+];
+
+/// Every package the config names, as package name to the absolute,
+/// normalised path of its `lib/`.
+///
+/// Every package and not only the engine's, because this is also what turns a
+/// `package:` URI in an `export` directive into a file - and a barrel is
+/// perfectly entitled to re-export something from a package this pass does not
+/// walk. Only directories that exist are listed, so a config left over from a
+/// deleted dependency drops out here rather than at every use.
+Map<String, String> _packageLibs(Directory projectDir) {
   final file = File(
     p.join(projectDir.path, '.dart_tool', 'package_config.json'),
   );
-  if (!file.existsSync()) return const <String>[];
+  if (!file.existsSync()) return const <String, String>{};
   final Object? doc;
   try {
     doc = jsonDecode(file.readAsStringSync());
   } on FormatException {
-    return const <String>[];
+    return const <String, String>{};
   }
-  if (doc is! Map<String, Object?>) return const <String>[];
+  if (doc is! Map<String, Object?>) return const <String, String>{};
   final packages = doc['packages'];
-  if (packages is! List<Object?>) return const <String>[];
+  if (packages is! List<Object?>) return const <String, String>{};
 
-  final roots = <String>[];
+  final libs = <String, String>{};
   for (final entry in packages) {
     if (entry is! Map<String, Object?>) continue;
     final name = entry['name'];
-    if (name is! String || !_isEnginePackage(name)) continue;
+    if (name is! String) continue;
     final rootUri = entry['rootUri'];
     if (rootUri is! String) continue;
     final packageUri = entry['packageUri'];
@@ -583,9 +810,11 @@ List<String> _enginePackageLibs(Directory projectDir) {
     final libDir = Directory(
       p.normalize(p.join(base, packageUri is String ? packageUri : 'lib/')),
     );
-    if (libDir.existsSync()) roots.add(p.normalize(p.absolute(libDir.path)));
+    if (libDir.existsSync()) {
+      libs[name] = p.normalize(p.absolute(libDir.path));
+    }
   }
-  return roots;
+  return libs;
 }
 
 /// Whether [name] is one of the engine's own packages.
@@ -609,8 +838,8 @@ String _display(String file, Directory projectDir) {
 
 /// One field a declaration contributes.
 @immutable
-class _Field {
-  const _Field(this.name, {required this.isColumn});
+class ColumnField {
+  const ColumnField(this.name, {required this.isColumn, this.valueType});
 
   final String name;
 
@@ -618,10 +847,25 @@ class _Field {
   /// `EntityStruct.of`, or the `late final DataPointer<...>` shape a
   /// `describeStruct` body fills in.
   final bool isColumn;
+
+  /// What `column[entity]` hands back, written as Dart source, or `null` where
+  /// this pass cannot say.
+  ///
+  /// `null` for three different things, and the caller has to treat them alike
+  /// because a parse cannot tell them apart with certainty: a field that is not
+  /// a column at all; a column whose value type is a type argument nothing in
+  /// the source spells (`Field.heapObject(Foo.new)`); and an array column,
+  /// which has no `column[entity]` to hand anything back from - it is read
+  /// `get(entity, index)`. `good_tool` generates a property only where this is
+  /// set, so all three are skipped the same way.
+  ///
+  /// This is a *name*, not a resolved type. Whether a generated file can spell
+  /// it is a separate question, answered where the file is written.
+  final String? valueType;
 }
 
-extension on List<_Field> {
-  _Field? byName(String name) {
+extension on List<ColumnField> {
+  ColumnField? byName(String name) {
     for (final field in this) {
       if (field.name == name) return field;
     }
@@ -630,8 +874,8 @@ extension on List<_Field> {
 }
 
 /// One class or mixin that can contribute fields to a struct.
-class _Owner {
-  _Owner(this.name, this.file) : library = p.normalize(file);
+class Owner {
+  Owner(this.name, this.file) : library = p.normalize(file);
 
   final String name;
   final String file;
@@ -659,16 +903,16 @@ class _Owner {
   final List<String> onConstraints = <String>[];
 
   final List<String> mixes = <String>[];
-  final List<_Field> fields = <_Field>[];
+  final List<ColumnField> fields = <ColumnField>[];
 
   /// The declare-time hooks this declaration overrides with a body.
-  final List<_HookOverride> hooks = <_HookOverride>[];
+  final List<HookOverride> hooks = <HookOverride>[];
 }
 
 /// One `describeX` override, and whether it chains.
 @immutable
-class _HookOverride {
-  const _HookOverride(this.hook, {required this.callsSuper});
+class HookOverride {
+  const HookOverride(this.hook, {required this.callsSuper});
 
   final String hook;
   final bool callsSuper;
@@ -707,30 +951,124 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
   _OwnerVisitor(this._file);
 
   final String _file;
-  final List<_Owner> owners = <_Owner>[];
+  final List<Owner> owners = <Owner>[];
+
+  /// Every member name each named declaration in this file declares, by
+  /// declaration name.
+  ///
+  /// Wider than [owners] on purpose: it covers extension types too, and
+  /// `Entity` and `Accessor` are both extension types. What reads it is the
+  /// collision check in `good_tool`, which has to know every name an accessor
+  /// property would lose to - and losing to one is silent, because an
+  /// extension member never wins against a member the receiver's own type
+  /// already has.
+  ///
+  /// Kept apart from [owners] rather than folded into it. An extension type is
+  /// not a struct and cannot be mixed into one, so adding it to the by-name map
+  /// could only ever make a real declaration look ambiguous to
+  /// [_resolveInto] - a false build failure on correct code.
+  final Map<String, Set<String>> members = <String, Set<String>>{};
+
+  /// The members of each `extension ... on Accessor<T>` in this file, keyed by
+  /// the component `T` names.
+  final Map<String, Set<String>> accessorExtensions = <String, Set<String>>{};
+
+  @override
+  void visitExtensionDeclaration(ExtensionDeclaration node) {
+    final onType = node.onClause?.extendedType;
+    if (onType is NamedType && onType.name2.lexeme == 'Accessor') {
+      final arguments = onType.typeArguments?.arguments;
+      if (arguments != null && arguments.length == 1) {
+        final argument = arguments.single;
+        if (argument is NamedType) {
+          // The nullable spelling names the same component: `Accessor<Health?>`
+          // and `Accessor<Health>` differ in what `component` hands back, not
+          // in which extensions apply.
+          final component = argument.name2.lexeme;
+          final into = accessorExtensions.putIfAbsent(
+            component,
+            () => <String>{},
+          );
+          for (final member in node.members) {
+            switch (member) {
+              case MethodDeclaration(:final name):
+                into.add(name.lexeme);
+              case FieldDeclaration(:final fields):
+                for (final variable in fields.variables) {
+                  into.add(variable.name.lexeme);
+                }
+              default:
+                break;
+            }
+          }
+        }
+      }
+    }
+    super.visitExtensionDeclaration(node);
+  }
 
   @override
   void visitClassDeclaration(ClassDeclaration node) {
     final superName = node.extendsClause?.superclass.name2.lexeme;
-    final owner = _Owner(node.name.lexeme, _file)..superName = superName;
+    final owner = Owner(node.name.lexeme, _file)..superName = superName;
     for (final type in node.withClause?.mixinTypes ?? const <NamedType>[]) {
       owner.mixes.add(type.name2.lexeme);
     }
     _readFields(node.members, owner);
     _readHooks(node.members, owner);
+    _readMembers(node.name.lexeme, node.members);
     owners.add(owner);
     super.visitClassDeclaration(node);
   }
 
+  // `ExtensionTypeDeclaration` carries analyzer's `@experimental`, which is
+  // about the shape of that AST class and not about the language feature -
+  // extension types shipped in Dart 3.3 and `Entity` is one. The pin on
+  // analyzer 7.7.1 is what makes taking the warning safe: a version that
+  // changed this node would have to be resolved deliberately.
+  @override
+  // ignore: experimental_member_use
+  void visitExtensionTypeDeclaration(ExtensionTypeDeclaration node) {
+    _readMembers(node.name.lexeme, node.members);
+    // The representation field is a member like any other, and it is the one
+    // that matters here: `Accessor`'s is `entity` and `Entity`'s is `value`.
+    members[node.name.lexeme]!.add(node.representation.fieldName.lexeme);
+    super.visitExtensionTypeDeclaration(node);
+  }
+
+  @override
+  void visitEnumDeclaration(EnumDeclaration node) {
+    _readMembers(node.name.lexeme, node.members);
+    super.visitEnumDeclaration(node);
+  }
+
+  /// Records every name [members] declares under [declaration].
+  void _readMembers(String declaration, List<ClassMember> body) {
+    final into = members.putIfAbsent(declaration, () => <String>{});
+    for (final member in body) {
+      switch (member) {
+        case MethodDeclaration(:final name):
+          into.add(name.lexeme);
+        case FieldDeclaration(:final fields):
+          for (final variable in fields.variables) {
+            into.add(variable.name.lexeme);
+          }
+        default:
+          break;
+      }
+    }
+  }
+
   @override
   void visitMixinDeclaration(MixinDeclaration node) {
-    final owner = _Owner(node.name.lexeme, _file)..isMixin = true;
+    final owner = Owner(node.name.lexeme, _file)..isMixin = true;
     for (final type
         in node.onClause?.superclassConstraints ?? const <NamedType>[]) {
       owner.onConstraints.add(type.name2.lexeme);
     }
     _readFields(node.members, owner);
     _readHooks(node.members, owner);
+    _readMembers(node.name.lexeme, node.members);
     owners.add(owner);
     super.visitMixinDeclaration(node);
   }
@@ -741,7 +1079,7 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
   /// A bodiless declaration is skipped. `Component` itself declares all three
   /// with no body, and re-declaring one abstract overrides nothing at run
   /// time - there is no call to leave out.
-  void _readHooks(List<ClassMember> members, _Owner owner) {
+  void _readHooks(List<ClassMember> members, Owner owner) {
     for (final member in members) {
       if (member is! MethodDeclaration) continue;
       final hook = member.name.lexeme;
@@ -750,11 +1088,11 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
       if (body is EmptyFunctionBody) continue;
       final visitor = _SuperCallVisitor(hook);
       body.accept(visitor);
-      owner.hooks.add(_HookOverride(hook, callsSuper: visitor.found));
+      owner.hooks.add(HookOverride(hook, callsSuper: visitor.found));
     }
   }
 
-  void _readFields(List<ClassMember> members, _Owner owner) {
+  void _readFields(List<ClassMember> members, Owner owner) {
     for (final member in members) {
       if (member is! FieldDeclaration) continue;
       // An explicit override is somebody stating the intent this checks for,
@@ -763,9 +1101,10 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
       if (member.isStatic) continue;
       for (final variable in member.fields.variables) {
         owner.fields.add(
-          _Field(
+          ColumnField(
             variable.name.lexeme,
             isColumn: _isColumn(variable, member.fields.type),
+            valueType: columnValueType(variable, member.fields.type),
           ),
         );
       }
@@ -825,6 +1164,158 @@ bool _isColumn(VariableDeclaration variable, TypeAnnotation? declaredType) {
   }
   return false;
 }
+
+/// What `column[entity]` on this declaration hands back, or `null` where a
+/// parse cannot say.
+///
+/// This is the whole of what a generated accessor property needs, and the
+/// reason #99 is not blocked by what stopped #18: a property calls through the
+/// existing `DataPointer`, so it wants the column's **type**, never its byte
+/// offset. An offset is the running total of a `declareField` sequence that
+/// reads values only available at run time; a type is written in the source.
+///
+/// # Why it is a table and not a rule
+///
+/// `Field.uint16` yields an `int` and `Field.optUint16` an `int?`, and nothing
+/// in the two names says so - the width is in the name and the Dart type is
+/// not. Deriving it would mean re-deriving `Field`'s own signatures, which are
+/// the fact this is a copy of; the table is that copy made explicit, and
+/// [_isColumn]'s note applies here too - **a constructor added to `Field` is
+/// invisible until this map is edited**. That failure is safe in one direction
+/// only, and it is the right one: an unknown name yields `null`, the property
+/// is not generated, and the use site gets *"The getter isn't defined for the
+/// type `Accessor<T>`"*. A wrong entry would generate a property that does not
+/// compile, which the bundle's own analysis catches on the same run.
+///
+/// Three shapes deliberately answer `null`:
+///
+///  * `array`, `arrayOf` and `optArray` return a `DataArrayPointer`, which has
+///    no `operator []` at all - an element is read `get(entity, index)`. There
+///    is no property to be had, only a method, and that is a different feature.
+///  * `packed`, `optPacked`, `heapObject` and `optHeapObject` carry their value
+///    type in a type argument. Written explicitly (`Field.heapObject<Sprite>`)
+///    it is read below; inferred from a `T Function()` argument it is not
+///    spelled anywhere a parse can reach.
+///  * `EntityStruct.of` is not a column pointer. It returns the child *prefab*,
+///    one object for the whole archetype, and the column is reached by indexing
+///    that - so a property on the parent's accessor would be naming the wrong
+///    thing entirely.
+String? columnValueType(
+  VariableDeclaration variable,
+  TypeAnnotation? declaredType,
+) {
+  final initializer = variable.initializer;
+  if (initializer is MethodInvocation) {
+    final target = initializer.target;
+    if (target is SimpleIdentifier && target.name == 'Field') {
+      return _fieldValueType(initializer);
+    }
+    return null;
+  }
+  // The older form, a bare pointer declaration a `describeStruct` body assigns
+  // into. Nothing is inferred here - the type argument is written out.
+  if (declaredType is NamedType) {
+    const pointers = <String>{
+      'DataPointer',
+      'InitialPointer',
+      'PackedPointer',
+    };
+    if (!pointers.contains(declaredType.name2.lexeme)) return null;
+    final arguments = declaredType.typeArguments?.arguments;
+    if (arguments == null || arguments.length != 1) return null;
+    return arguments.single.toSource();
+  }
+  return null;
+}
+
+/// The value type behind one `Field.<name>(...)` call.
+String? _fieldValueType(MethodInvocation initializer) {
+  final name = initializer.methodName.name;
+  final scalar = _fieldValueTypes[name];
+  if (scalar != null) return scalar;
+
+  final typeArguments = initializer.typeArguments?.arguments;
+  final explicit = typeArguments != null && typeArguments.length == 1
+      ? typeArguments.single.toSource()
+      : null;
+  switch (name) {
+    case 'enumOf':
+      // `Field.enumOf(OrcState.values, OrcState.idle)` is how every call in the
+      // tree is written, and the type argument is inferred from the first one.
+      // `OrcState.values` is a property access on the enum's own name, so the
+      // name is right there - but only under that exact spelling. A list held
+      // in a variable, or built by a getter, resolves to the same thing and
+      // says nothing about which enum it holds, so it answers `null` rather
+      // than a guess.
+      return explicit ?? _enumOfValues(initializer);
+    case 'packed':
+    case 'heapObject':
+      return explicit;
+    case 'optPacked':
+    case 'optHeapObject':
+      return explicit == null ? null : '$explicit?';
+    default:
+      return null;
+  }
+}
+
+/// The enum named by a `<Enum>.values` argument, or `null` for anything else.
+String? _enumOfValues(MethodInvocation initializer) {
+  final arguments = initializer.argumentList.arguments;
+  if (arguments.isEmpty) return null;
+  return switch (arguments.first) {
+    PrefixedIdentifier(
+      prefix: final SimpleIdentifier prefix,
+      identifier: SimpleIdentifier(name: 'values'),
+    ) =>
+      prefix.name,
+    _ => null,
+  };
+}
+
+/// What each `Field` constructor's column hands back, for the ones whose value
+/// type is fixed by the constructor alone.
+///
+/// Transcribed from `Field` in `packages/good/lib/src/data.dart`. See
+/// [columnValueType] for why this is a copy and what happens when it falls
+/// behind.
+const Map<String, String> _fieldValueTypes = <String, String>{
+  'boolean': 'bool',
+  'uint1': 'int',
+  'int1': 'int',
+  'uint2': 'int',
+  'int2': 'int',
+  'uint4': 'int',
+  'int4': 'int',
+  'uint8': 'int',
+  'int8': 'int',
+  'uint16': 'int',
+  'int16': 'int',
+  'uint32': 'int',
+  'int32': 'int',
+  'uint64': 'int',
+  'int64': 'int',
+  'float32': 'double',
+  'float64': 'double',
+  'entity': 'Entity',
+  'optUint1': 'int?',
+  'optInt1': 'int?',
+  'optUint2': 'int?',
+  'optInt2': 'int?',
+  'optUint4': 'int?',
+  'optInt4': 'int?',
+  'optUint8': 'int?',
+  'optInt8': 'int?',
+  'optUint16': 'int?',
+  'optInt16': 'int?',
+  'optUint32': 'int?',
+  'optInt32': 'int?',
+  'optUint64': 'int?',
+  'optInt64': 'int?',
+  'optFloat32': 'double?',
+  'optFloat64': 'double?',
+  'optEntity': 'Entity?',
+};
 
 /// What `good generate` prints when it refuses to proceed.
 String shadowedFieldsMessage(StructScan scan) {

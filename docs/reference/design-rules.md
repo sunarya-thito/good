@@ -143,7 +143,6 @@ that touches one entity gets to write it that way.
 Engine code does not, and neither does a system walking many entities. Both
 resolve the component once per group and index the column:
 
-<!-- snippet: skip the per-column properties are not generated yet -->
 ```dart
 // no - a property per entity, inside a loop over a group
 for (final entity in group) {
@@ -200,12 +199,52 @@ entity<Transform3D>().upZ;
 ```
 
 !!! info "Nobody writes the properties by hand"
-    They come out of the same analyzer pass that computes the row layout, off
-    the `Field` declarations it already reads. `Transform3D` alone is ten
-    columns and so twenty members, and the tree holds 53 `Field` declarations —
-    a hundred-odd members held in step by memory is *One fact, one place*
-    undone. That pass is not written yet, so for now every tier spells the
-    column.
+    `good_tool` writes them, into `lib/src/accessors.g.dart` inside each engine
+    package, and the result is committed and shipped — so they arrive with
+    `package:goo2d/goo2d.dart` and there is nothing for you to run.
+    `Transform3D` alone is ten columns and so twenty members, and the tree holds
+    128 `Field` declarations; a couple of hundred members held in step by memory
+    is *One fact, one place* undone.
+
+    It is a **parse** of the `Field.*` declarations, and that is the whole of
+    what it needs: a property calls through the existing `DataPointer`, so it
+    wants the column's name and its type, both of which are written in the
+    source. It is emphatically *not* the pass that computes the row layout,
+    which no scan can be — a byte offset is the running total of a
+    `declareField` sequence that depends on values only available at run time.
+    `Text2D.describeStruct` reads `textCapacity`, an overridable getter;
+    `SpriteDescriptor.has` declares twenty-one columns per call and prefabs
+    override `describeSprites`; `hasEnum` widens by `values.length`. Offsets are
+    unobtainable and are not wanted here.
+
+    What it cannot generate for, it leaves alone, and the omission is a compile
+    error at the use site rather than a wrong read: an array column, a private
+    one, a column whose type the generated file cannot name. The single
+    exception is a column whose property name is already a member of `Accessor`,
+    `Entity` or `int` — `sign`, `component`, `sceneSlot`. A Dart extension member
+    loses to one the receiver already has, so that property would compile, never
+    be reached, and quietly answer about the entity handle. The tool refuses and
+    names the column.
+
+!!! warning "Your own components do not get these"
+    Only the engine's do. The generator runs over this repository and writes
+    into packages that are published from it; a component in your game's `lib/`
+    is in neither, and nothing in `good_cli` generates properties into your
+    project. Index the column — `transform.transformOffsetX[entity]` — or write
+    the accessor extension by hand, which is the shape `Accessor`'s own
+    documentation describes:
+
+    <!-- snippet: skip declares a component the surrounding page does not -->
+    ```dart
+    extension HealthAccessor on Accessor<Health> {
+      int get hp => component.healthHp[this];
+      set hp(int value) => component.healthHp[this] = value;
+    }
+    ```
+
+    Doing it by hand is the thing *One fact, one place* warns about, which is
+    why the engine's own are generated. Making it unnecessary for a game's
+    components is a separate design and is not solved here.
 
 ## A unit belongs in the type, not in the name
 

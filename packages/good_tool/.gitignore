@@ -1,0 +1,10 @@
+# Files and directories created by pub.
+.dart_tool/
+.packages
+
+# Anchored. Unanchored it would also match a nested source directory called
+# `build/`, which is how every source file of `good build` once went missing
+# from `git status`.
+/build/
+
+/pubspec.lock
