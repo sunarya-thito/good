@@ -1,0 +1,8 @@
+# Local development resolves sibling packages from this repository instead of
+# pub.dev. This is the full transitive closure: resolving good_cli by path pulls
+# in ITS hosted constraint on good, which does not exist yet.
+dependency_overrides:
+  good_cli:
+    path: ../good_cli
+  good:
+    path: ../good

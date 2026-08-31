@@ -82,6 +82,9 @@ jobs:
           echo "::group::dart pub get good_cli"
           (cd packages/good_cli && dart pub get)
           echo "::endgroup::"
+          echo "::group::dart pub get good_tool"
+          (cd packages/good_tool && dart pub get)
+          echo "::endgroup::"
           echo "::group::flutter pub get doc_snippets"
           (cd packages/doc_snippets && flutter pub get)
           echo "::endgroup::"
@@ -111,6 +114,9 @@ jobs:
           echo "::group::dart analyze good_cli"
           (cd packages/good_cli && dart analyze)
           echo "::endgroup::"
+          echo "::group::dart analyze good_tool"
+          (cd packages/good_tool && dart analyze)
+          echo "::endgroup::"
 
       - name: Test
         run: |
@@ -126,6 +132,23 @@ jobs:
           echo "::group::dart test good_cli"
           (cd packages/good_cli && dart test)
           echo "::endgroup::"
+          echo "::group::dart test good_tool"
+          (cd packages/good_tool && dart test)
+          echo "::endgroup::"
+
+      # The accessor properties are generated once and committed, because they
+      # ship inside good and goo2d - a published package carries what is in its
+      # lib/ and nothing runs a build step there. A committed generated file can
+      # go stale, and this is the step that says so.
+      #
+      # `--check` and not "regenerate, then git diff": it reports without
+      # writing, so the failure names the file and nothing later in the job
+      # reads a tree this step modified. The box2d step below does it the other
+      # way round and has to be last for exactly that reason.
+      - name: Check the accessor properties are what good_tool generates
+        run: |
+          set -e
+          (cd packages/good_tool && dart run good_tool --check)
 
       # ffigen's function filter is a regex nothing re-runs, so it can stop
       # matching with nothing going red. `good.*` matched none of the shim's 60
