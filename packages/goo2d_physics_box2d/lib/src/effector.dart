@@ -24,13 +24,7 @@ import 'package:meta/meta.dart';
 ///
 /// `sealed` so the dispatch in the physics system is exhaustiveness-checked by
 /// the compiler - the same reason [ColliderBody] is sealed.
-sealed class Effector {
-  Effector({
-    required this.region,
-    required this.enable,
-    required this.layerMask,
-  });
-
+sealed class Effector({
   /// The collider this effector acts through.
   ///
   /// A plain object reference, not a per-entity field: an archetype's
@@ -42,7 +36,7 @@ sealed class Effector {
   /// Declare it `isTrigger: true` unless the region is meant to be solid too.
   /// Nothing here requires it, but a force field you can stand on is rarely
   /// what was meant.
-  final ColliderBody region;
+  required final ColliderBody region,
 
   /// Off means skipped entirely - no query, no force.
   ///
@@ -50,10 +44,11 @@ sealed class Effector {
   /// this through the published snapshot, like every other component read in
   /// this engine. Disabling a force field and seeing one more frame of force
   /// is the pipeline, not a bug.
-  final DataPointer<bool> enable;
+  required final DataPointer<bool> enable,
 
   /// Which layers this affects, as a bit mask. -1 is everything.
-  final DataPointer<int> layerMask;
+  required final DataPointer<int> layerMask,
+}) {
 }
 
 /// A uniform force on everything in the region - Unity's Area Effector 2D.
@@ -61,37 +56,30 @@ sealed class Effector {
 ///
 /// The force is in world space, where +y is up, so an updraught is a positive
 /// [forceY].
-final class AreaEffector extends Effector {
-  AreaEffector({
-    required super.region,
-    required super.enable,
-    required super.layerMask,
-    required this.forceX,
-    required this.forceY,
-    required this.torque,
-  });
+final class AreaEffector({
+  required super.region,
+  required super.enable,
+  required super.layerMask,
 
-  final DataPointer<double> forceX;
-  final DataPointer<double> forceY;
-  final DataPointer<double> torque;
+  required final DataPointer<double> forceX,
+  required final DataPointer<double> forceY,
+  required final DataPointer<double> torque,
+}) extends Effector {
 }
 
 /// Attraction or repulsion about the region's centre - Unity's Point Effector
 /// 2D. Negative [force] attracts, positive repels.
-final class PointEffector extends Effector {
-  PointEffector({
-    required super.region,
-    required super.enable,
-    required super.layerMask,
-    required this.force,
-    required this.minDistance,
-  });
+final class PointEffector({
+  required super.region,
+  required super.enable,
+  required super.layerMask,
 
-  final DataPointer<double> force;
+  required final DataPointer<double> force,
 
   /// Floor on the distance used in the falloff, so a body sitting exactly on
   /// the centre does not take an unbounded impulse.
-  final DataPointer<double> minDistance;
+  required final DataPointer<double> minDistance,
+}) extends Effector {
 }
 
 /// Buoyancy and drag for bodies below the region's top edge - Unity's
@@ -101,46 +89,37 @@ final class PointEffector extends Effector {
 /// instead of given as a number. That is the one place this abstraction fits
 /// worse than the function it wraps: a rotated region still has a horizontal
 /// surface, because a water line that tilts is not what anyone means by one.
-final class BuoyancyEffector extends Effector {
-  BuoyancyEffector({
-    required super.region,
-    required super.enable,
-    required super.layerMask,
-    required this.density,
-    required this.linearDrag,
-    required this.angularDrag,
-  });
+final class BuoyancyEffector({
+  required super.region,
+  required super.enable,
+  required super.layerMask,
 
-  final DataPointer<double> density;
-  final DataPointer<double> linearDrag;
-  final DataPointer<double> angularDrag;
+  required final DataPointer<double> density,
+  required final DataPointer<double> linearDrag,
+  required final DataPointer<double> angularDrag,
+}) extends Effector {
 }
 
 /// A conveyor - everything in the region is pushed toward a target velocity.
 /// Unity's Surface Effector 2D.
-final class SurfaceEffector extends Effector {
-  SurfaceEffector({
-    required super.region,
-    required super.enable,
-    required super.layerMask,
-    required this.speed,
-    required this.speedY,
-    required this.force,
-  });
+final class SurfaceEffector({
+  required super.region,
+  required super.enable,
+  required super.layerMask,
 
-  final DataPointer<double> speed;
-  final DataPointer<double> speedY;
-  final DataPointer<double> force;
+  required final DataPointer<double> speed,
+  required final DataPointer<double> speedY,
+  required final DataPointer<double> force,
+}) extends Effector {
 }
 
 /// Declares one entity's effectors, mirroring `ColliderDescriptor`: the named
 /// parameters double as that archetype's default row state, so the common case
 /// needs no `onEntityMounted` write.
-class EffectorDescriptor {
-  EffectorDescriptor(this._data, this._effectors);
-
-  final DataDescriptor _data;
-  final List<Effector> _effectors;
+class EffectorDescriptor(
+  final DataDescriptor _data,
+  final List<Effector> _effectors,
+) {
 
   AreaEffector hasAreaEffector(
     ColliderBody region, {

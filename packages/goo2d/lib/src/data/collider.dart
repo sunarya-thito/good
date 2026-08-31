@@ -15,25 +15,13 @@ import 'package:meta/meta.dart';
 ///
 /// `enable`/`isTrigger` are `DataPointer<bool>`, stored as a `uint1` - see
 /// `DataDescriptor.hasBool`.
-sealed class ColliderBody {
-  ColliderBody({
-    required this.offsetX,
-    required this.offsetY,
-    required this.enable,
-    required this.isTrigger,
-    required this.layer,
-    required this.excludeLayers,
-    required this.density,
-    required this.friction,
-    required this.restitution,
-  });
-
+sealed class ColliderBody({
   /// Local x offset from the entity's `WorldTransform2D` origin.
-  final DataPointer<double> offsetX;
+  required final DataPointer<double> offsetX,
 
   /// Local y offset from the entity's `WorldTransform2D` origin. Positive is
   /// up - see [containsLocalPoint].
-  final DataPointer<double> offsetY;
+  required final DataPointer<double> offsetY,
 
   // --- surface material ---------------------------------------------------
   //
@@ -51,33 +39,34 @@ sealed class ColliderBody {
   /// Mass per unit area. A body's mass is the sum over its shapes, so a
   /// zero-density shape contributes none - which is how a dynamic body ends
   /// up with a collider that participates in collision but not in mass.
-  final DataPointer<double> density;
+  required final DataPointer<double> density,
 
   /// Coulomb friction coefficient, `0` (frictionless) upward. Combined
   /// between two touching shapes by the physics backend, not by either
   /// shape alone.
-  final DataPointer<double> friction;
+  required final DataPointer<double> friction,
 
   /// Bounciness, `0` (inelastic) to `1` (no energy lost).
-  final DataPointer<double> restitution;
+  required final DataPointer<double> restitution,
 
   /// Whether this body takes part in collision. Set it false and the body
   /// stays where it is - its fields are still declared, still readable and
   /// writable - while every pass that walks colliders looking for hits steps
   /// over it. `Sprite.visible` is the same "exists but inert" shape for
   /// sprites.
-  final DataPointer<bool> enable;
+  required final DataPointer<bool> enable,
 
   /// Whether this body passes through what it touches. A trigger keeps the
   /// shape it was given and reports the same enter/exit/stay events; what it
   /// drops is the physical response.
-  final DataPointer<bool> isTrigger;
+  required final DataPointer<bool> isTrigger,
 
   /// Bit index into a layer mask - which layer this body belongs to.
-  final DataPointer<int> layer;
+  required final DataPointer<int> layer,
 
   /// Bitmask - which layers this body ignores.
-  final DataPointer<int> excludeLayers;
+  required final DataPointer<int> excludeLayers,
+}) {
 
   /// Whether this body, on [entity], covers the point ([x], [y]) given in
   /// the **entity's own local space** - the space the body's
@@ -184,21 +173,19 @@ sealed class ColliderBody {
   // system that can actually back them.
 }
 
-final class CircleBody extends ColliderBody {
-  CircleBody({
-    required super.offsetX,
-    required super.offsetY,
-    required super.enable,
-    required super.isTrigger,
-    required super.layer,
-    required super.excludeLayers,
-    required super.density,
-    required super.friction,
-    required super.restitution,
-    required this.radius,
-  });
+final class CircleBody({
+  required super.offsetX,
+  required super.offsetY,
+  required super.enable,
+  required super.isTrigger,
+  required super.layer,
+  required super.excludeLayers,
+  required super.density,
+  required super.friction,
+  required super.restitution,
 
-  final DataPointer<double> radius;
+  required final DataPointer<double> radius,
+}) extends ColliderBody {
 
   @override
   bool containsLocalPoint(Entity entity, double x, double y) {
@@ -220,23 +207,20 @@ final class CircleBody extends ColliderBody {
   }
 }
 
-final class BoxBody extends ColliderBody {
-  BoxBody({
-    required super.offsetX,
-    required super.offsetY,
-    required super.enable,
-    required super.isTrigger,
-    required super.layer,
-    required super.excludeLayers,
-    required super.density,
-    required super.friction,
-    required super.restitution,
-    required this.halfWidth,
-    required this.halfHeight,
-  });
+final class BoxBody({
+  required super.offsetX,
+  required super.offsetY,
+  required super.enable,
+  required super.isTrigger,
+  required super.layer,
+  required super.excludeLayers,
+  required super.density,
+  required super.friction,
+  required super.restitution,
 
-  final DataPointer<double> halfWidth;
-  final DataPointer<double> halfHeight;
+  required final DataPointer<double> halfWidth,
+  required final DataPointer<double> halfHeight,
+}) extends ColliderBody {
 
   @override
   bool containsLocalPoint(Entity entity, double x, double y) {
@@ -272,23 +256,20 @@ final class BoxBody extends ColliderBody {
 /// capsule whose `halfHeight` is at most its `radius` is simply a circle and
 /// not an error - the degenerate case has an obvious right answer, so it gets
 /// it instead of an assert.
-final class CapsuleBody extends ColliderBody {
-  CapsuleBody({
-    required super.offsetX,
-    required super.offsetY,
-    required super.enable,
-    required super.isTrigger,
-    required super.layer,
-    required super.excludeLayers,
-    required super.density,
-    required super.friction,
-    required super.restitution,
-    required this.radius,
-    required this.halfHeight,
-  });
+final class CapsuleBody({
+  required super.offsetX,
+  required super.offsetY,
+  required super.enable,
+  required super.isTrigger,
+  required super.layer,
+  required super.excludeLayers,
+  required super.density,
+  required super.friction,
+  required super.restitution,
 
-  final DataPointer<double> radius;
-  final DataPointer<double> halfHeight;
+  required final DataPointer<double> radius,
+  required final DataPointer<double> halfHeight,
+}) extends ColliderBody {
 
   @override
   bool containsLocalPoint(Entity entity, double x, double y) {
@@ -345,31 +326,27 @@ final class CapsuleBody extends ColliderBody {
 /// vector-math dependency, matching `Transform2D`'s own established
 /// convention of separate x/y `double` fields throughout this engine, never
 /// a point/vector type.
-final class PolygonBody extends ColliderBody {
-  PolygonBody({
-    required super.offsetX,
-    required super.offsetY,
-    required super.enable,
-    required super.isTrigger,
-    required super.layer,
-    required super.excludeLayers,
-    required super.density,
-    required super.friction,
-    required super.restitution,
-    required this.pointsX,
-    required this.pointsY,
-    required this.pointCount,
-  });
+final class PolygonBody({
+  required super.offsetX,
+  required super.offsetY,
+  required super.enable,
+  required super.isTrigger,
+  required super.layer,
+  required super.excludeLayers,
+  required super.density,
+  required super.friction,
+  required super.restitution,
 
-  final DataArrayPointer<double> pointsX;
-  final DataArrayPointer<double> pointsY;
+  required final DataArrayPointer<double> pointsX,
+  required final DataArrayPointer<double> pointsY,
 
   /// How many of `pointsX`/`pointsY`'s declared capacity are actually used
   /// for a given entity, `0..pointsX.length`. Defaults to the number of
   /// points `hasPolygonCollider` was declared with, or to `0` (an empty
   /// polygon) for a prefab that declared none and populates its outline from
   /// `onEntityMounted` instead.
-  final DataPointer<int> pointCount;
+  required final DataPointer<int> pointCount,
+}) extends ColliderBody {
 
   /// Even-odd (crossing-number) containment, which handles convex and
   /// concave polygons alike - Box2D's own shapes are convex, but nothing
@@ -449,11 +426,10 @@ final class PolygonBody extends ColliderBody {
 /// the standing `MultiComponent` convention (see `Renderable2D.Sprite`'s
 /// `SpriteDescriptor.has` for the same shape) - so the common case needs no
 /// separate `onEntityMounted` write.
-class ColliderDescriptor {
-  ColliderDescriptor._(this._data, this._bodies);
-
-  final DataDescriptor _data;
-  final List<ColliderBody> _bodies;
+class ColliderDescriptor._(
+  final DataDescriptor _data,
+  final List<ColliderBody> _bodies,
+) {
 
   CircleBody hasCircleCollider({
     double radius = 0,
