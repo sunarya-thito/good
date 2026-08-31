@@ -265,6 +265,86 @@ class _ShorthandGame extends Game {
   GameState createState() => _ShorthandState();
 }
 
+// --- the constructor body as a subscription site (#221) --------------------
+
+/// Subscribes in its **constructor body**, which is the second site where a
+/// listener can be an ordinary instance method - `this` is in scope there,
+/// unlike in a field initialiser.
+///
+/// `new() { ... }` is the unnamed constructor written with the `new` keyword;
+/// `_CtorSubSystem() { ... }` is the same declaration spelled the older way.
+/// One of each here, so neither spelling is left untested.
+class _CtorSubSystem extends GameSystem {
+  final fire = Input.of(.trigger(.spacebar));
+
+  new() {
+    fire.pressed += onFire;
+    fire.released += onFireEnd;
+  }
+
+  final List<String> heard = <String>[];
+
+  void onFire(InputEvent<bool> event) => heard.add('fire ${event.value}');
+  void onFireEnd(InputEvent<bool> event) => heard.add('end ${event.value}');
+}
+
+class _CtorSubOldSpelling extends GameSystem {
+  final jump = Input.of(.trigger(.enter));
+  final List<String> heard = <String>[];
+
+  _CtorSubOldSpelling() {
+    jump.pressed += onJump;
+  }
+
+  void onJump(InputEvent<bool> event) => heard.add('jump');
+}
+
+/// The counter-case, and the reason the recommendation is conditional: an
+/// action declared in `describeInputs` is a `late final` field that has not
+/// been assigned when the constructor body runs.
+class _LateFieldCtorSystem extends GameSystem {
+  late final Input<bool> fire;
+
+  Object? constructionError;
+
+  _LateFieldCtorSystem() {
+    try {
+      fire.pressed += onFire;
+    } catch (error) {
+      constructionError = error;
+    }
+  }
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    fire = input.has<bool>(const TriggerBinding(.spacebar));
+  }
+
+  void onFire(InputEvent<bool> event) {}
+}
+
+class _CtorSubState extends GameState<_CtorSubGame> {
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_CtorSubSystem.new);
+    descriptor.has(_CtorSubOldSpelling.new);
+    descriptor.has(_LateFieldCtorSystem.new);
+  }
+}
+
+class _CtorSubGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 10);
+
+  @override
+  GameState createState() => _CtorSubState();
+}
+
 // --- default-value fixtures ----------------------------------------------
 
 /// A game that **forgets `super.describeInputs`**, which is the silent
@@ -847,6 +927,76 @@ void main() {
             'the setter exists only so `+=` compiles; a real assignment '
             'would silently drop every listener already subscribed',
       );
+    });
+  });
+
+  group('subscribing from a constructor body', () {
+    test('an instance method subscribed in new() is called', () async {
+      final game = await _boot(_CtorSubGame.new);
+      final system = run.state.getSystem<_CtorSubSystem>();
+
+      _pressAndStep(game, [InputKey.spacebar]);
+      expect(
+        system.heard,
+        ['fire true'],
+        reason:
+            'the constructor body is the second site where a listener can be '
+            'an ordinary instance method - `this` is in scope there, which is '
+            'exactly what a field initialiser refuses',
+      );
+
+      _releaseAndStep(game, [InputKey.spacebar]);
+      expect(system.heard, ['fire true', 'end false']);
+    });
+
+    test('the older constructor spelling does the same', () async {
+      final game = await _boot(_CtorSubGame.new);
+      final system = run.state.getSystem<_CtorSubOldSpelling>();
+
+      _pressAndStep(game, [InputKey.enter]);
+      expect(system.heard, ['jump']);
+    });
+
+    test('a subscription made before boot survives sealing', () async {
+      final game = await _boot(_CtorSubGame.new);
+      final system = run.state.getSystem<_CtorSubSystem>();
+
+      expect(
+        system.fire.pressed.hasListeners,
+        isTrue,
+        reason:
+            'the subscription happens while the input registry is still open '
+            'and boot seals it afterwards; sealing gives an action its '
+            'default and its storage and does not touch its listener lists',
+      );
+      _pressAndStep(game, [InputKey.spacebar]);
+      expect(system.heard, isNotEmpty);
+    });
+
+    test('a describeInputs action cannot be reached from there', () async {
+      await _boot(_CtorSubGame.new);
+      final system = run.state.getSystem<_LateFieldCtorSystem>();
+
+      expect(
+        system.constructionError,
+        isA<Error>(),
+        reason:
+            'an action declared in describeInputs is a late final field, and '
+            'the hook runs long after the constructor body - so the two '
+            'spellings are not interchangeable, which is why the guide '
+            'recommends the constructor body only for the field form',
+      );
+      expect(
+        system.constructionError.toString(),
+        contains('fire'),
+        reason:
+            'the diagnostic has to name the field: asserting only that some '
+            'Error was thrown would pass on any unrelated failure in the '
+            'constructor body',
+      );
+      // And the action itself is fine - only the early subscription failed.
+      expect(system.fire.pressed.hasListeners, isFalse);
+      expect(system.fire.value, isFalse);
     });
   });
 

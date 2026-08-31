@@ -77,10 +77,42 @@ import 'package:good/src/triple_buffer.dart';
 /// [Input.of] already names: the initialiser runs on the first *read*, by
 /// which point boot has sealed the registry.
 ///
-/// So the action is declared on the field and subscribed from `onMounted`,
-/// where an instance method is an ordinary name again. Nothing about the
-/// no-closure rule forces this - a listener body is hot, but building one at
-/// mount is boot-time work and explicitly fine. It is the compiler.
+/// Two sites do work, because in both of them `this` is in scope:
+///
+/// ```dart
+/// class PlayerSystem extends GameSystem {
+///   final fire = Input.of(.trigger(.spacebar));
+///
+///   new() {
+///     fire.pressed += onFire;      // the constructor body - prefer this
+///   }
+///
+///   void onFire(InputEvent<bool> event) => cast();
+/// }
+/// ```
+///
+/// The constructor body is the one to reach for: the subscription sits beside
+/// the declaration, which is what the shorter form was wanted for, and it
+/// needs no mixin. `onMounted` is the other, and it is **required** when the
+/// action is declared in `describeInputs` instead of on a field - that makes
+/// it a `late final` the constructor body cannot read yet, which throws.
+///
+/// Nothing about the no-closure rule forces any of this - a listener body is
+/// hot, but building one at construction or at mount is boot-time work and
+/// explicitly fine. It is the compiler.
+///
+/// # `action += listener` cannot work either, and not for that reason
+///
+/// The subscription is on [pressed]/[released] and not on the action itself,
+/// and a `final` field is why. `a += b` is `a = a + b`, so it needs a setter;
+/// an action lives in a `final` field, because the typed-handle rule is what
+/// keeps anything from reassigning it. `fire += onFire` is
+/// `assignment_to_final`, and adding an `operator +` to this class would not
+/// change that - the analyzer reports the two independently.
+///
+/// [pressed] is a getter with a setter beside it for exactly this reason, so
+/// `fire.pressed += onFire` compiles where `fire += onFire` cannot. It also
+/// has to say *which edge*, which one operator on the action could not.
 ///
 /// # When any of this updates
 ///
@@ -165,14 +197,15 @@ abstract class Input<T> {
   /// `+=` is the subscription: [InputEventStream.operator +] appends and
   /// returns the same stream, which the setter then accepts back.
   ///
-  /// Subscribe from `onMounted`, not from a tick - `+=` in `onFixedUpdate`
-  /// adds a subscriber sixty times a second. A `GameSystem` gets `onMounted`
-  /// by mixing in `GameSystemLifecycleListener`; `GameState.mount` fires
-  /// every system's `mountEvent` after the game's own `onMounted` has run.
+  /// Subscribe from a constructor body or from `onMounted`, **not from a
+  /// tick** - `+=` in `onFixedUpdate` adds a subscriber sixty times a second.
+  /// A `GameSystem` gets `onMounted` by mixing in
+  /// `GameSystemLifecycleListener`; `GameState.mount` fires every system's
+  /// `mountEvent` after the game's own `onMounted` has run.
   ///
-  /// It is also the only site where the listener can be an ordinary instance
-  /// method - see this class's doc for why the declaration itself cannot
-  /// take one.
+  /// Those two are the only sites where the listener can be an ordinary
+  /// instance method - see this class's doc for why the declaration itself
+  /// cannot take one, and why the `+=` goes here rather than on the action.
   InputEventStream<T> get pressed;
 
   /// Only exists so `pressed += listener` compiles - `a.b += c` is

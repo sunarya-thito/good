@@ -202,9 +202,8 @@ final attack = Input.of(
 | `.composite(primary, secondary, [...])` | `CompositeBinding` |
 | `.compositeFromList(sources)` | `CompositeBinding.fromList` |
 
-Each is its constructor and nothing else, so the two cannot drift apart. The
-sections below spell the class out, because that is where each binding's own
-behaviour is explained — either spelling builds the same object.
+Either spelling builds the same object. The sections below spell the class
+out, because that is where each binding's own behaviour is explained.
 
 **A shorthand call is not `const`.** A static method is not a constant
 expression, so a `static const` table of default bindings for a rebinding
@@ -735,28 +734,31 @@ void stopListening() => fire.pressed -= onFire;   // a different tear-off, equal
 A closure cannot: two closures written the same way are never equal, so
 unsubscribing one means keeping the reference the `+=` used.
 
-### The subscription cannot move onto the declaration
+### Subscribing in the constructor body
 
-An action is declared on a field and subscribed in `onMounted`, and those two
-halves cannot be folded into one line. Dart will not let a field initialiser
-name an instance member, by any spelling:
+A constructor body works too, and puts the subscription right under the
+declaration it belongs to:
 
-<!-- snippet: skip shows the shapes the compiler rejects -->
+<!-- snippet: top -->
 ```dart
-final fire = Input.of(binding) + onFire;                    // implicit_this_reference_in_initializer
-final fire = Input.of(binding) + ((e) => onFire(e));        // the same error - the restriction reaches into the closure
-final fire = Input.of(binding) + ((e) => this.onFire(e));   // invalid_reference_to_this
+class PlayerSystem extends GameSystem {
+  final fire = Input.of(.trigger(.spacebar));
+
+  new() {
+    fire.pressed += onFire;
+  }
+
+  void onFire(InputEvent<bool> event) => shoot();
+}
 ```
 
-What compiles there is a `static` method, a top-level function, or a closure
-that captures nothing — three spellings of one answer, and it is the wrong one:
-the handler cannot reach the object that declared the action, which is the state
-an input handler exists to change. `late final` compiles and is the trap
-`Input.of` already names, because the initialiser runs on the first read, after
-boot has sealed the registry.
+`new() { … }` is the unnamed constructor; `PlayerSystem() { … }` is the same
+declaration spelled the older way and works identically.
 
-This is a compiler fact, not the no-closure rule. A listener *body* is hot, but
-one built at mount is boot-time work and explicitly fine.
+**Prefer this when the action is declared on a field**, which is the normal
+case. Use `onMounted` when it is declared in `describeInputs` instead — that
+makes it a `late final`, and a constructor body runs long before the hook does,
+so reading it there throws.
 
 ## Rebinding
 
