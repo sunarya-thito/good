@@ -192,12 +192,22 @@ abstract class Input<T> {
   ///
   /// ```dart
   /// class PlayerSystem extends GameSystem with FixedTickable {
-  ///   final fire = Input.of(const TriggerBinding(.spacebar));
-  ///   final movement = Input.of(
-  ///     const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
+  ///   final fire = Input.of(.trigger(.spacebar));
+  ///   final movement = Input.of(.vec2(up: .w, down: .s, left: .a, right: .d));
+  ///   final attack = Input.of(
+  ///     .composite(.trigger(.leftMouseButton), .trigger(.spacebar)),
   ///   );
   /// }
   /// ```
+  ///
+  /// [binding] is statically an `InputBinding<V>?`, so a **dot shorthand**
+  /// resolves against it: `InputBinding` carries one static per concrete
+  /// binding - `.trigger`, `.vec2`, `.axis`, `.stick`, `.mouse`, `.contact`,
+  /// `.composite`, `.compositeFromList` - and `V` is inferred from the one
+  /// you name, so no type argument is written here at all. The long form
+  /// (`const TriggerBinding(.spacebar)`) still works and is what a
+  /// `static const` table of defaults wants, since a shorthand call is a
+  /// method call and cannot be `const`.
   ///
   /// The same action [InputDescriptor.has] declares in a `describeInputs`
   /// body - on a `Game` or on a `GameSystem` - said where it is read. The

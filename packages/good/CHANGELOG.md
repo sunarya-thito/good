@@ -507,6 +507,49 @@
 
 ### Added
 
+* **A dot shorthand for every binding, so an action names its source without
+  naming its type** (#221).
+
+  `InputBinding` now carries one static per concrete binding. Everywhere a
+  binding is expected the context type is an `InputBinding<T>` or an
+  `InputBinding<T>?` - `Input.of`, `Input.binding`, `InputDescriptor.has`, and
+  a composite's own sources - so a dot shorthand resolves there, and the
+  action's value type is inferred from the factory's return type:
+
+  ```dart
+  final fire = Input.of(.trigger(.spacebar));                    // Input<bool>
+  final move = Input.of(.vec2(up: .w, down: .s, left: .a, right: .d));
+  final attack = Input.of(
+    .composite(.trigger(.leftMouseButton), .trigger(.spacebar)),
+  );
+
+  fire.binding = .trigger(.enter);
+  ```
+
+  | shorthand | binding |
+  |---|---|
+  | `.trigger(key)` | `TriggerBinding` |
+  | `.vec2(up:, down:, left:, right:)` | `Vec2Binding` |
+  | `.axis(axis)` | `AxisBinding` |
+  | `.stick(x:, y:)` | `StickBinding` |
+  | `.mouse` | `MouseBinding` |
+  | `.contact` | `ContactBinding` |
+  | `.composite(primary, secondary, [...])` | `CompositeBinding` |
+  | `.compositeFromList(sources)` | `CompositeBinding.fromList` |
+
+  Each is its constructor and nothing more - no defaults, no validation, no
+  second way to spell an argument - so there is nothing to keep in step.
+
+  Nothing is removed and no call site has to change. The one thing the
+  shorthand cannot do is be `const`: a static method call is not a constant
+  expression, so a `static const` table of bindings for a rebinding screen
+  still names the concrete class, which is also where `copyWith` and
+  `fromJson` live. The cost of the short form is one small object per declared
+  action at boot, and nothing per tick.
+
+  `.mouse` and `.contact` take no arguments, so they are `const` fields rather
+  than methods and every reference is the same instance.
+
 * **Per-bus audio levels, and a voice budget with a stated stealing policy**
   (#17).
 

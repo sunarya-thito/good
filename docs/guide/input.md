@@ -176,6 +176,41 @@ and a release can never land on the same resolution.
 
 ## Bindings
 
+Every binding has a **dot shorthand**. A binding is always expected somewhere
+typed `InputBinding<T>` or `InputBinding<T>?` — `Input.of`, `action.binding`,
+`descriptor.has`, and a composite's own sources — and `InputBinding` carries one
+static per concrete binding, so the short form resolves in all of them. The
+action's value type comes from the factory's return type, so nothing writes a
+type argument:
+
+```dart
+final fire = Input.of(.trigger(.spacebar));
+final move = Input.of(.vec2(up: .w, down: .s, left: .a, right: .d));
+final attack = Input.of(
+  .composite(.trigger(.leftMouseButton), .trigger(.spacebar)),
+);
+```
+
+| shorthand | binding |
+|---|---|
+| `.trigger(key)` | `TriggerBinding` |
+| `.vec2(up:, down:, left:, right:)` | `Vec2Binding` |
+| `.axis(axis)` | `AxisBinding` |
+| `.stick(x:, y:)` | `StickBinding` |
+| `.mouse` | `MouseBinding` |
+| `.contact` | `ContactBinding` |
+| `.composite(primary, secondary, [...])` | `CompositeBinding` |
+| `.compositeFromList(sources)` | `CompositeBinding.fromList` |
+
+Each is its constructor and nothing else, so the two cannot drift apart. The
+sections below spell the class out, because that is where each binding's own
+behaviour is explained — either spelling builds the same object.
+
+**A shorthand call is not `const`.** A static method is not a constant
+expression, so a `static const` table of default bindings for a rebinding
+screen names the concrete class — which is also where `copyWith` and `fromJson`
+live. `.mouse` and `.contact` take no arguments and *are* constants.
+
 ### `TriggerBinding` — one key, held or not
 
 <!-- snippet-setup

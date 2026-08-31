@@ -13,6 +13,7 @@ import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/input.dart';
 import 'package:good/src/input/input_binding.dart';
+import 'package:good/src/input/input_axis.dart';
 import 'package:good/src/input/input_key.dart';
 import 'package:good/src/system.dart';
 
@@ -208,6 +209,60 @@ class _ListenerGame extends Game {
 
   @override
   GameState createState() => _ListenerState();
+}
+
+// --- binding shorthands (#221) --------------------------------------------
+
+/// Every action here is declared on its field with a **dot shorthand**, which
+/// is the spelling #221 asked for and the reason `InputBinding` carries a
+/// static per concrete binding: a shorthand resolves against the context
+/// type, and `Input.of`'s parameter is an `InputBinding<V>?`.
+///
+/// The type arguments are not written anywhere. `attack` being an
+/// `Input<bool>` and `movement` an `Input<Vector2>` is inferred from each
+/// factory's return type, which is what the typed locals in
+/// 'the shorthand infers the action type' check - at compile time, so a
+/// regression there fails this file rather than one test in it.
+class _ShorthandSystem extends GameSystem with GameSystemLifecycleListener {
+  /// The issue body's example, character for character.
+  final attack = Input.of(
+    .composite(.trigger(.leftMouseButton), .trigger(.spacebar)),
+  );
+
+  final movement = Input.of(.vec2(up: .w, down: .s, left: .a, right: .d));
+  final jump = Input.of(.trigger(.enter));
+  final cursor = Input.of(.mouse);
+
+  final List<String> heard = <String>[];
+
+  @override
+  void onMounted() {
+    super.onMounted();
+    attack.pressed += onAttack;
+    attack.released += onAttackReleased;
+  }
+
+  void onAttack(InputEvent<bool> event) => heard.add('attack pressed');
+  void onAttackReleased(InputEvent<bool> event) => heard.add('attack released');
+}
+
+class _ShorthandState extends GameState<_ShorthandGame> {
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_ShorthandSystem.new);
+  }
+}
+
+class _ShorthandGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 10);
+
+  @override
+  GameState createState() => _ShorthandState();
 }
 
 // --- default-value fixtures ----------------------------------------------
@@ -572,35 +627,32 @@ void main() {
       );
     });
 
-    test(
-      'the value is one Vector2 the action owns, mutated in place',
-      () async {
-        final game = await _boot(_InputGame.new);
-        final movement = run.state.getSystem<_PlayerSystem>().movement;
+    test('the value is one Vector2 the action owns, mutated in place', () async {
+      final game = await _boot(_InputGame.new);
+      final movement = run.state.getSystem<_PlayerSystem>().movement;
 
-        _pressAndStep(game, [InputKey.d]);
-        final first = movement.value;
-        _releaseAndStep(game, [InputKey.d]);
-        _pressAndStep(game, [InputKey.a]);
+      _pressAndStep(game, [InputKey.d]);
+      final first = movement.value;
+      _releaseAndStep(game, [InputKey.d]);
+      _pressAndStep(game, [InputKey.a]);
 
-        expect(
-          identical(movement.value, first),
-          isTrue,
-          reason:
-              'a fresh Vector2 per read (or per resolution) would be a '
-              'heap allocation per action per tick - the no-allocation rule. The '
-              'reference is stable and its contents are what change',
-        );
-        expect(
-          first,
-          Vector2(-1, 0),
-          reason:
-              'and the reference a caller kept from last tick now reads '
-              'this tick\'s value, which is exactly why the doc says not to '
-              'hold it',
-        );
-      },
-    );
+      expect(
+        identical(movement.value, first),
+        isTrue,
+        reason:
+            'a fresh Vector2 per read (or per resolution) would be a '
+            'heap allocation per action per tick - the no-allocation rule. The '
+            'reference is stable and its contents are what change',
+      );
+      expect(
+        first,
+        Vector2(-1, 0),
+        reason:
+            'and the reference a caller kept from last tick now reads '
+            'this tick\'s value, which is exactly why the doc says not to '
+            'hold it',
+      );
+    });
   });
 
   group('edge detection', () {
@@ -795,6 +847,157 @@ void main() {
             'the setter exists only so `+=` compiles; a real assignment '
             'would silently drop every listener already subscribed',
       );
+    });
+  });
+
+  group('binding shorthands', () {
+    test('each shorthand is its constructor and nothing else', () {
+      // A mis-forwarded or dropped argument shows up here, because every
+      // binding's `==` is by content.
+      expect(
+        InputBinding.trigger(InputKey.spacebar),
+        const TriggerBinding(InputKey.spacebar),
+      );
+      expect(
+        InputBinding.vec2(
+          up: InputKey.w,
+          down: InputKey.s,
+          left: InputKey.a,
+          right: InputKey.d,
+        ),
+        const Vec2Binding(
+          up: InputKey.w,
+          down: InputKey.s,
+          left: InputKey.a,
+          right: InputKey.d,
+        ),
+      );
+      expect(
+        InputBinding.axis(InputAxis.padLeftTrigger),
+        const AxisBinding(InputAxis.padLeftTrigger),
+      );
+      expect(
+        InputBinding.stick(
+          x: InputAxis.padRightStickX,
+          y: InputAxis.padRightStickY,
+        ),
+        const StickBinding(
+          x: InputAxis.padRightStickX,
+          y: InputAxis.padRightStickY,
+        ),
+      );
+      expect(InputBinding.mouse, const MouseBinding());
+      expect(InputBinding.contact, const ContactBinding());
+      expect(
+        InputBinding.composite(
+          const TriggerBinding(InputKey.a),
+          const TriggerBinding(InputKey.b),
+        ),
+        CompositeBinding<bool>(
+          const TriggerBinding(InputKey.a),
+          const TriggerBinding(InputKey.b),
+        ),
+      );
+      expect(
+        InputBinding.compositeFromList(<InputBinding<bool>>[
+          const TriggerBinding(InputKey.a),
+          const TriggerBinding(InputKey.b),
+        ]),
+        CompositeBinding<bool>.fromList(<InputBinding<bool>>[
+          const TriggerBinding(InputKey.a),
+          const TriggerBinding(InputKey.b),
+        ]),
+      );
+    });
+
+    test('the argument-free ones are shared constants', () {
+      expect(
+        identical(InputBinding.mouse, InputBinding.mouse),
+        isTrue,
+        reason:
+            'they take nothing, so a method returning a fresh instance would '
+            'be an allocation with nothing to vary - they are const fields',
+      );
+      expect(identical(InputBinding.contact, InputBinding.contact), isTrue);
+    });
+
+    test("the issue's composite spelling declares and fires", () async {
+      final game = await _boot(_ShorthandGame.new);
+      final system = run.state.getSystem<_ShorthandSystem>();
+
+      _pressAndStep(game, [InputKey.spacebar]);
+      expect(
+        system.heard,
+        ['attack pressed'],
+        reason:
+            'the whole chain: a dot shorthand resolved to a static on '
+            'InputBinding, built a CompositeBinding of two TriggerBindings, '
+            'and the action it declared actuated on one of them',
+      );
+      expect(system.attack.value, isTrue);
+
+      _releaseAndStep(game, [InputKey.spacebar]);
+      expect(system.heard, ['attack pressed', 'attack released']);
+
+      // The other source of the same composite.
+      _pressAndStep(game, [InputKey.leftMouseButton]);
+      expect(
+        system.heard,
+        ['attack pressed', 'attack released', 'attack pressed'],
+        reason: 'either source holds the action - that is what composite means',
+      );
+    });
+
+    test('a vec2 shorthand keeps each key on its own axis', () async {
+      final game = await _boot(_ShorthandGame.new);
+      final system = run.state.getSystem<_ShorthandSystem>();
+
+      _pressAndStep(game, [InputKey.d]);
+      expect(
+        _xy(system.movement.value),
+        '1,0',
+        reason:
+            'right drives +x - a named argument forwarded to the wrong slot '
+            'lands the key on another axis and is invisible to a == check '
+            'that used the same wrong order',
+      );
+
+      _releaseAndStep(game, [InputKey.d]);
+      _pressAndStep(game, [InputKey.w]);
+      expect(_xy(system.movement.value), '0,1', reason: 'up is +y');
+    });
+
+    test('a shorthand action is a normal action', () async {
+      final game = await _boot(_ShorthandGame.new);
+      final system = run.state.getSystem<_ShorthandSystem>();
+
+      expect(system.jump.value, isFalse, reason: 'it reads the bool default');
+      _pressAndStep(game, [InputKey.enter]);
+      expect(system.jump.wasPressedThisFrame, isTrue);
+      expect(system.attack.wasPressedThisFrame, isFalse);
+    });
+
+    test('the shorthand infers the action type', () async {
+      await _boot(_ShorthandGame.new);
+      final system = run.state.getSystem<_ShorthandSystem>();
+      // One resolution first: a MouseBinding has no declared default (a
+      // position with no pointer behind it is not a place), so `cursor.value`
+      // only exists once a tick has filled it.
+      run.state.runFixedStep();
+
+      // Statically typed locals: no type argument is written at any
+      // declaration in _ShorthandSystem, so if inference through a factory's
+      // return type ever stopped working these four lines stop compiling and
+      // the whole file fails rather than this one test.
+      final Input<bool> attack = system.attack;
+      final Input<Vector2> movement = system.movement;
+      final Input<bool> jump = system.jump;
+      final Input<CursorPosition> cursor = system.cursor;
+
+      expect(attack.value, isA<bool>());
+      expect(movement.value, isA<Vector2>());
+      expect(jump.value, isA<bool>());
+      expect(cursor.value, isA<CursorPosition>());
     });
   });
 
