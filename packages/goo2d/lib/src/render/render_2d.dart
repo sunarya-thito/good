@@ -414,30 +414,7 @@ class NineSliceBorder {
 /// for writes; reads are the four fields, by design (see
 /// [RelativeOffset2D]'s doc - a read that returned a fresh value object would
 /// allocate per read, on the hot path).
-class Sprite {
-  Sprite({
-    required this.texture,
-    required this.filter,
-    required this.frame,
-    required this.color,
-    required this.width,
-    required this.height,
-    required this.zIndex,
-    required this.visible,
-    required this.pivotFractionX,
-    required this.pivotFractionY,
-    required this.pivotOffsetX,
-    required this.pivotOffsetY,
-    required this.borderLeft,
-    required this.borderTop,
-    required this.borderRight,
-    required this.borderBottom,
-    required this.insetLeft,
-    required this.insetTop,
-    required this.insetRight,
-    required this.insetBottom,
-  });
-
+class Sprite({
   /// The image this sprite samples, or `null` for "no texture - draw the flat
   /// [color]".
   ///
@@ -449,7 +426,7 @@ class Sprite {
   /// Stored as the asset's address (`optPacked`), which is the same
   /// integer on both isolates - see `Texture`'s own doc on why the game
   /// isolate holds an addressed-but-never-decoded copy.
-  final DataPointer<TextureAsset?> texture;
+  required final DataPointer<TextureAsset?> texture,
 
   /// How this sprite samples [texture] - a [TextureFilter] index.
   ///
@@ -461,40 +438,40 @@ class Sprite {
   ///
   /// Two bits, because there are three [TextureFilter] values and a row pays
   /// for every one of them per entity.
-  final DataPointer<int> filter;
+  required final DataPointer<int> filter,
 
   /// Which part of [texture] this sprite samples - see [SpriteFrame].
   ///
   /// A [PackedPointer], so the renderer can read the packed integer without
   /// building a `SpriteFrame` per sprite per frame. Write it with [setFrame],
   /// which takes the value object.
-  final PackedPointer<SpriteFrame> frame;
+  required final PackedPointer<SpriteFrame> frame,
 
   /// Packed ARGB, the same encoding `Color.value` and `Vertices.raw`'s colour
   /// list use. A plain `uint32`, never a `Color` object - a component row
   /// holds no Dart heap reference.
   ///
   /// With a [texture] set this is the tint; with none it is the fill.
-  final DataPointer<int> color;
+  required final DataPointer<int> color,
 
   /// Width in world units, before the transform's scale. Zero on either axis
   /// (the declared default) means "nothing to draw" and is skipped, so a
   /// declared-but-unsized sprite costs one branch per tick.
-  final DataPointer<double> width;
+  required final DataPointer<double> width,
 
   /// Height in world units, before the transform's scale. See [width].
-  final DataPointer<double> height;
+  required final DataPointer<double> height,
 
   /// Painter's-algorithm depth. Lower draws first (further back), higher
   /// draws later (in front); equal values keep query/declaration order. See
   /// [GameRenderer2D]'s ordering section.
-  final DataPointer<int> zIndex;
+  required final DataPointer<int> zIndex,
 
   /// Whether this sprite draws. Set it false and the sprite produces no draw
   /// record at all - not a transparent one - so it costs the one branch that
   /// skips it and nothing downstream: no sort slot, no budget, no bytes on
   /// the ring.
-  final DataPointer<bool> visible;
+  required final DataPointer<bool> visible,
 
   /// Where the transform origin sits *within this sprite's own bounds*,
   /// resolved against `(width, height)` as `fraction * size + offset`.
@@ -503,17 +480,17 @@ class Sprite {
   /// act about the sprite's middle. `fractionX: 0, fractionY: 0` puts the
   /// origin on the top-left corner, so the sprite extends right and down from
   /// the entity's position.
-  final DataPointer<double> pivotFractionX;
+  required final DataPointer<double> pivotFractionX,
 
   /// The pivot's y fraction. See [pivotFractionX].
-  final DataPointer<double> pivotFractionY;
+  required final DataPointer<double> pivotFractionY,
 
   /// The pivot's absolute x offset, added after the fraction. See
   /// [pivotFractionX].
-  final DataPointer<double> pivotOffsetX;
+  required final DataPointer<double> pivotOffsetX,
 
   /// The pivot's absolute y offset. See [pivotFractionX].
-  final DataPointer<double> pivotOffsetY;
+  required final DataPointer<double> pivotOffsetY,
 
   /// Where the nine-slice cuts the **source**, as a fraction `0..1` of this
   /// sprite's [frame]. All zero by default.
@@ -522,16 +499,16 @@ class Sprite {
   /// fraction with precision to spare there, and it is four more columns on
   /// every sprite row. See [NineSliceBorder] for why the cut is relative and
   /// the inset below is not.
-  final DataPointer<double> borderLeft;
+  required final DataPointer<double> borderLeft,
 
   /// Where the nine-slice cuts the source at the top. See [borderLeft].
-  final DataPointer<double> borderTop;
+  required final DataPointer<double> borderTop,
 
   /// Where the nine-slice cuts the source on the right. See [borderLeft].
-  final DataPointer<double> borderRight;
+  required final DataPointer<double> borderRight,
 
   /// Where the nine-slice cuts the source at the bottom. See [borderLeft].
-  final DataPointer<double> borderBottom;
+  required final DataPointer<double> borderBottom,
 
   /// How wide the nine-slice corners are drawn, in this sprite's own units.
   /// All zero by default, which means "plain single quad".
@@ -540,16 +517,17 @@ class Sprite {
   /// corners with it, which is a stretch and not a nine-slice.
   /// [GameRenderer2D] branches on these to decide whether there are nine
   /// rectangles to draw at all.
-  final DataPointer<double> insetLeft;
+  required final DataPointer<double> insetLeft,
 
   /// How tall the top nine-slice corner is drawn. See [insetLeft].
-  final DataPointer<double> insetTop;
+  required final DataPointer<double> insetTop,
 
   /// How wide the right nine-slice corner is drawn. See [insetLeft].
-  final DataPointer<double> insetRight;
+  required final DataPointer<double> insetRight,
 
   /// How tall the bottom nine-slice corner is drawn. See [insetLeft].
-  final DataPointer<double> insetBottom;
+  required final DataPointer<double> insetBottom,
+}) {
 
   /// Writes all four pivot fields at once. The declared default (from
   /// [SpriteDescriptor.has]) already covers the common case; this is for
@@ -598,17 +576,16 @@ class Sprite {
 /// the standing `MultiComponent` convention (`ColliderDescriptor`'s
 /// `has*Collider` methods are the same shape) - so the common case needs no
 /// `onEntityMounted` write at all.
-class SpriteDescriptor {
-  SpriteDescriptor._(this._data, this._assets, this._sprites);
-
-  final DataDescriptor _data;
+class SpriteDescriptor._(
+  final DataDescriptor _data,
 
   /// The table [Sprite.texture] resolves through. Threaded in from
   /// `Renderable2D.describeStruct` and not assumed, because an object
   /// field's address only means anything against the table that issued it -
   /// there is no shared registry to fall back on.
-  final IntRepresentation<TextureAsset> _assets;
-  final List<Sprite> _sprites;
+  final IntRepresentation<TextureAsset> _assets,
+  final List<Sprite> _sprites,
+) {
 
   /// Declares one sprite and returns the handle to keep in a field
   /// (the typed-handle rule - never a name to quote again later).
