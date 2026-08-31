@@ -13,6 +13,7 @@ import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/input.dart';
 import 'package:good/src/input/input_binding.dart';
+import 'package:good/src/input/input_axis.dart';
 import 'package:good/src/input/input_key.dart';
 import 'package:good/src/system.dart';
 
@@ -38,11 +39,16 @@ final List<String> events = <String>[];
 /// The shape from the design sketch: a movement vector, a trigger, an
 /// unbound action, and one action of each type that nothing ever binds.
 ///
-/// Subscriptions happen in `describeInputs` rather than in `onMounted`,
-/// because a `GameSystem` does not currently receive `MountEvent` - see the
-/// note on `Input.pressed`. A closure created during a one-shot declaration
-/// pass is explicitly fine (the no-closure rule).
-class _PlayerSystem extends GameSystem with FixedTickable {
+/// Subscriptions happen in `onMounted`, which is where `Input.pressed` says
+/// they go. An earlier version of this fixture subscribed from
+/// `describeInputs` and said it had to, because "a `GameSystem` does not
+/// currently receive `MountEvent`" - that was wrong when it was written and
+/// is wrong now: `GameState.mount` calls `mountEvent` on every system, and
+/// mixing in `GameSystemLifecycleListener` is all it takes to hear it.
+/// 'a system hears its own onMounted' pins that so the claim cannot come
+/// back.
+class _PlayerSystem extends GameSystem
+    with FixedTickable, GameSystemLifecycleListener {
   late final Input<Vector2> movement;
   late final Input<bool> triggerSkill;
   late final Input<bool> ping;
@@ -55,6 +61,11 @@ class _PlayerSystem extends GameSystem with FixedTickable {
   bool lastSeenPressed = false;
   int ticks = 0;
 
+  /// Whether this system's own `onMounted` ran at all - the half of a
+  /// subscription that a test asserting "the listener fired" cannot tell
+  /// apart from the listener itself being broken.
+  bool mountedRan = false;
+
   @override
   void describeInputs(InputDescriptor input) {
     super.describeInputs(input);
@@ -64,7 +75,12 @@ class _PlayerSystem extends GameSystem with FixedTickable {
     triggerSkill = input.has<bool>(const TriggerBinding(.spacebar));
     ping = input.has<bool>();
     aim = input.has<Vector2>();
+  }
 
+  @override
+  void onMounted() {
+    super.onMounted();
+    mountedRan = true;
     triggerSkill.pressed += (event) =>
         events.add('skill pressed ${event.value}');
     triggerSkill.released += (event) =>
@@ -112,6 +128,221 @@ class _InputGame extends Game {
     super.describeInputs(input);
     capturedDescriptor = input;
   }
+}
+
+// --- what a listener is (#221) --------------------------------------------
+
+/// Two systems that each subscribe an **ordinary instance method** - not a
+/// static, not a top-level function, not a closure - and each write only into
+/// their own field.
+///
+/// This is the shape #221 asked to move onto the declaration itself, as
+/// `final fire = Input.of(binding) + onFire`. Dart refuses that outright: an
+/// instance member cannot be named from a field initialiser, by tear-off
+/// (`implicit_this_reference_in_initializer`), from inside a function
+/// literal in the initialiser (the same error - the restriction reaches into
+/// the closure body), or through an explicit `this`
+/// (`invalid_reference_to_this`). So the declaration says what exists and
+/// `onMounted` says what happens, and these two fixtures are what pins that
+/// the second half actually runs.
+///
+/// Separate `heard` lists rather than the file-level `events`, so a listener
+/// delivered to the wrong action shows up as an entry on the other system's
+/// list instead of being swallowed by a shared collector.
+class _ListenerSystemA extends GameSystem with GameSystemLifecycleListener {
+  final List<String> heard = <String>[];
+  late final Input<bool> fire;
+  bool mountedRan = false;
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    fire = input.has<bool>(const TriggerBinding(.spacebar));
+  }
+
+  @override
+  void onMounted() {
+    super.onMounted();
+    mountedRan = true;
+    fire.pressed += onFire;
+  }
+
+  /// An instance method, and the point of the fixture: it reaches [heard],
+  /// which a static tear-off or a top-level function could not.
+  void onFire(InputEvent<bool> event) => heard.add('A ${event.value}');
+}
+
+class _ListenerSystemB extends GameSystem with GameSystemLifecycleListener {
+  final List<String> heard = <String>[];
+  late final Input<bool> fire;
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    fire = input.has<bool>(const TriggerBinding(.enter));
+  }
+
+  @override
+  void onMounted() {
+    super.onMounted();
+    fire.pressed += onFire;
+  }
+
+  void onFire(InputEvent<bool> event) => heard.add('B ${event.value}');
+}
+
+class _ListenerState extends GameState<_ListenerGame> {
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_ListenerSystemA.new);
+    descriptor.has(_ListenerSystemB.new);
+  }
+}
+
+class _ListenerGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 10);
+
+  @override
+  GameState createState() => _ListenerState();
+}
+
+// --- binding shorthands (#221) --------------------------------------------
+
+/// Every action here is declared on its field with a **dot shorthand**, which
+/// is the spelling #221 asked for and the reason `InputBinding` carries a
+/// static per concrete binding: a shorthand resolves against the context
+/// type, and `Input.of`'s parameter is an `InputBinding<V>?`.
+///
+/// The type arguments are not written anywhere. `attack` being an
+/// `Input<bool>` and `movement` an `Input<Vector2>` is inferred from each
+/// factory's return type, which is what the typed locals in
+/// 'the shorthand infers the action type' check - at compile time, so a
+/// regression there fails this file rather than one test in it.
+class _ShorthandSystem extends GameSystem with GameSystemLifecycleListener {
+  /// The issue body's example, character for character.
+  final attack = Input.of(
+    .composite(.trigger(.leftMouseButton), .trigger(.spacebar)),
+  );
+
+  final movement = Input.of(.vec2(up: .w, down: .s, left: .a, right: .d));
+  final jump = Input.of(.trigger(.enter));
+  final cursor = Input.of(.mouse);
+
+  final List<String> heard = <String>[];
+
+  @override
+  void onMounted() {
+    super.onMounted();
+    attack.pressed += onAttack;
+    attack.released += onAttackReleased;
+  }
+
+  void onAttack(InputEvent<bool> event) => heard.add('attack pressed');
+  void onAttackReleased(InputEvent<bool> event) => heard.add('attack released');
+}
+
+class _ShorthandState extends GameState<_ShorthandGame> {
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_ShorthandSystem.new);
+  }
+}
+
+class _ShorthandGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 10);
+
+  @override
+  GameState createState() => _ShorthandState();
+}
+
+// --- the constructor body as a subscription site (#221) --------------------
+
+/// Subscribes in its **constructor body**, which is the second site where a
+/// listener can be an ordinary instance method - `this` is in scope there,
+/// unlike in a field initialiser.
+///
+/// `new() { ... }` is the unnamed constructor written with the `new` keyword;
+/// `_CtorSubSystem() { ... }` is the same declaration spelled the older way.
+/// One of each here, so neither spelling is left untested.
+class _CtorSubSystem extends GameSystem {
+  final fire = Input.of(.trigger(.spacebar));
+
+  new() {
+    fire.pressed += onFire;
+    fire.released += onFireEnd;
+  }
+
+  final List<String> heard = <String>[];
+
+  void onFire(InputEvent<bool> event) => heard.add('fire ${event.value}');
+  void onFireEnd(InputEvent<bool> event) => heard.add('end ${event.value}');
+}
+
+class _CtorSubOldSpelling extends GameSystem {
+  final jump = Input.of(.trigger(.enter));
+  final List<String> heard = <String>[];
+
+  _CtorSubOldSpelling() {
+    jump.pressed += onJump;
+  }
+
+  void onJump(InputEvent<bool> event) => heard.add('jump');
+}
+
+/// The counter-case, and the reason the recommendation is conditional: an
+/// action declared in `describeInputs` is a `late final` field that has not
+/// been assigned when the constructor body runs.
+class _LateFieldCtorSystem extends GameSystem {
+  late final Input<bool> fire;
+
+  Object? constructionError;
+
+  _LateFieldCtorSystem() {
+    try {
+      fire.pressed += onFire;
+    } catch (error) {
+      constructionError = error;
+    }
+  }
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    fire = input.has<bool>(const TriggerBinding(.spacebar));
+  }
+
+  void onFire(InputEvent<bool> event) {}
+}
+
+class _CtorSubState extends GameState<_CtorSubGame> {
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_CtorSubSystem.new);
+    descriptor.has(_CtorSubOldSpelling.new);
+    descriptor.has(_LateFieldCtorSystem.new);
+  }
+}
+
+class _CtorSubGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 10);
+
+  @override
+  GameState createState() => _CtorSubState();
 }
 
 // --- default-value fixtures ----------------------------------------------
@@ -476,35 +707,32 @@ void main() {
       );
     });
 
-    test(
-      'the value is one Vector2 the action owns, mutated in place',
-      () async {
-        final game = await _boot(_InputGame.new);
-        final movement = run.state.getSystem<_PlayerSystem>().movement;
+    test('the value is one Vector2 the action owns, mutated in place', () async {
+      final game = await _boot(_InputGame.new);
+      final movement = run.state.getSystem<_PlayerSystem>().movement;
 
-        _pressAndStep(game, [InputKey.d]);
-        final first = movement.value;
-        _releaseAndStep(game, [InputKey.d]);
-        _pressAndStep(game, [InputKey.a]);
+      _pressAndStep(game, [InputKey.d]);
+      final first = movement.value;
+      _releaseAndStep(game, [InputKey.d]);
+      _pressAndStep(game, [InputKey.a]);
 
-        expect(
-          identical(movement.value, first),
-          isTrue,
-          reason:
-              'a fresh Vector2 per read (or per resolution) would be a '
-              'heap allocation per action per tick - the no-allocation rule. The '
-              'reference is stable and its contents are what change',
-        );
-        expect(
-          first,
-          Vector2(-1, 0),
-          reason:
-              'and the reference a caller kept from last tick now reads '
-              'this tick\'s value, which is exactly why the doc says not to '
-              'hold it',
-        );
-      },
-    );
+      expect(
+        identical(movement.value, first),
+        isTrue,
+        reason:
+            'a fresh Vector2 per read (or per resolution) would be a '
+            'heap allocation per action per tick - the no-allocation rule. The '
+            'reference is stable and its contents are what change',
+      );
+      expect(
+        first,
+        Vector2(-1, 0),
+        reason:
+            'and the reference a caller kept from last tick now reads '
+            'this tick\'s value, which is exactly why the doc says not to '
+            'hold it',
+      );
+    });
   });
 
   group('edge detection', () {
@@ -698,6 +926,319 @@ void main() {
         reason:
             'the setter exists only so `+=` compiles; a real assignment '
             'would silently drop every listener already subscribed',
+      );
+    });
+  });
+
+  group('subscribing from a constructor body', () {
+    test('an instance method subscribed in new() is called', () async {
+      final game = await _boot(_CtorSubGame.new);
+      final system = run.state.getSystem<_CtorSubSystem>();
+
+      _pressAndStep(game, [InputKey.spacebar]);
+      expect(
+        system.heard,
+        ['fire true'],
+        reason:
+            'the constructor body is the second site where a listener can be '
+            'an ordinary instance method - `this` is in scope there, which is '
+            'exactly what a field initialiser refuses',
+      );
+
+      _releaseAndStep(game, [InputKey.spacebar]);
+      expect(system.heard, ['fire true', 'end false']);
+    });
+
+    test('the older constructor spelling does the same', () async {
+      final game = await _boot(_CtorSubGame.new);
+      final system = run.state.getSystem<_CtorSubOldSpelling>();
+
+      _pressAndStep(game, [InputKey.enter]);
+      expect(system.heard, ['jump']);
+    });
+
+    test('a subscription made before boot survives sealing', () async {
+      final game = await _boot(_CtorSubGame.new);
+      final system = run.state.getSystem<_CtorSubSystem>();
+
+      expect(
+        system.fire.pressed.hasListeners,
+        isTrue,
+        reason:
+            'the subscription happens while the input registry is still open '
+            'and boot seals it afterwards; sealing gives an action its '
+            'default and its storage and does not touch its listener lists',
+      );
+      _pressAndStep(game, [InputKey.spacebar]);
+      expect(system.heard, isNotEmpty);
+    });
+
+    test('a describeInputs action cannot be reached from there', () async {
+      await _boot(_CtorSubGame.new);
+      final system = run.state.getSystem<_LateFieldCtorSystem>();
+
+      expect(
+        system.constructionError,
+        isA<Error>(),
+        reason:
+            'an action declared in describeInputs is a late final field, and '
+            'the hook runs long after the constructor body - so the two '
+            'spellings are not interchangeable, which is why the guide '
+            'recommends the constructor body only for the field form',
+      );
+      expect(
+        system.constructionError.toString(),
+        contains('fire'),
+        reason:
+            'the diagnostic has to name the field: asserting only that some '
+            'Error was thrown would pass on any unrelated failure in the '
+            'constructor body',
+      );
+      // And the action itself is fine - only the early subscription failed.
+      expect(system.fire.pressed.hasListeners, isFalse);
+      expect(system.fire.value, isFalse);
+    });
+  });
+
+  group('binding shorthands', () {
+    test('each shorthand is its constructor and nothing else', () {
+      // A mis-forwarded or dropped argument shows up here, because every
+      // binding's `==` is by content.
+      expect(
+        InputBinding.trigger(InputKey.spacebar),
+        const TriggerBinding(InputKey.spacebar),
+      );
+      expect(
+        InputBinding.vec2(
+          up: InputKey.w,
+          down: InputKey.s,
+          left: InputKey.a,
+          right: InputKey.d,
+        ),
+        const Vec2Binding(
+          up: InputKey.w,
+          down: InputKey.s,
+          left: InputKey.a,
+          right: InputKey.d,
+        ),
+      );
+      expect(
+        InputBinding.axis(InputAxis.padLeftTrigger),
+        const AxisBinding(InputAxis.padLeftTrigger),
+      );
+      expect(
+        InputBinding.stick(
+          x: InputAxis.padRightStickX,
+          y: InputAxis.padRightStickY,
+        ),
+        const StickBinding(
+          x: InputAxis.padRightStickX,
+          y: InputAxis.padRightStickY,
+        ),
+      );
+      expect(InputBinding.mouse, const MouseBinding());
+      expect(InputBinding.contact, const ContactBinding());
+      expect(
+        InputBinding.composite(
+          const TriggerBinding(InputKey.a),
+          const TriggerBinding(InputKey.b),
+        ),
+        CompositeBinding<bool>(
+          const TriggerBinding(InputKey.a),
+          const TriggerBinding(InputKey.b),
+        ),
+      );
+      expect(
+        InputBinding.compositeFromList(<InputBinding<bool>>[
+          const TriggerBinding(InputKey.a),
+          const TriggerBinding(InputKey.b),
+        ]),
+        CompositeBinding<bool>.fromList(<InputBinding<bool>>[
+          const TriggerBinding(InputKey.a),
+          const TriggerBinding(InputKey.b),
+        ]),
+      );
+    });
+
+    test('the argument-free ones are shared constants', () {
+      expect(
+        identical(InputBinding.mouse, InputBinding.mouse),
+        isTrue,
+        reason:
+            'they take nothing, so a method returning a fresh instance would '
+            'be an allocation with nothing to vary - they are const fields',
+      );
+      expect(identical(InputBinding.contact, InputBinding.contact), isTrue);
+    });
+
+    test("the issue's composite spelling declares and fires", () async {
+      final game = await _boot(_ShorthandGame.new);
+      final system = run.state.getSystem<_ShorthandSystem>();
+
+      _pressAndStep(game, [InputKey.spacebar]);
+      expect(
+        system.heard,
+        ['attack pressed'],
+        reason:
+            'the whole chain: a dot shorthand resolved to a static on '
+            'InputBinding, built a CompositeBinding of two TriggerBindings, '
+            'and the action it declared actuated on one of them',
+      );
+      expect(system.attack.value, isTrue);
+
+      _releaseAndStep(game, [InputKey.spacebar]);
+      expect(system.heard, ['attack pressed', 'attack released']);
+
+      // The other source of the same composite.
+      _pressAndStep(game, [InputKey.leftMouseButton]);
+      expect(
+        system.heard,
+        ['attack pressed', 'attack released', 'attack pressed'],
+        reason: 'either source holds the action - that is what composite means',
+      );
+    });
+
+    test('a vec2 shorthand keeps each key on its own axis', () async {
+      final game = await _boot(_ShorthandGame.new);
+      final system = run.state.getSystem<_ShorthandSystem>();
+
+      _pressAndStep(game, [InputKey.d]);
+      expect(
+        _xy(system.movement.value),
+        '1,0',
+        reason:
+            'right drives +x - a named argument forwarded to the wrong slot '
+            'lands the key on another axis and is invisible to a == check '
+            'that used the same wrong order',
+      );
+
+      _releaseAndStep(game, [InputKey.d]);
+      _pressAndStep(game, [InputKey.w]);
+      expect(_xy(system.movement.value), '0,1', reason: 'up is +y');
+    });
+
+    test('a shorthand action is a normal action', () async {
+      final game = await _boot(_ShorthandGame.new);
+      final system = run.state.getSystem<_ShorthandSystem>();
+
+      expect(system.jump.value, isFalse, reason: 'it reads the bool default');
+      _pressAndStep(game, [InputKey.enter]);
+      expect(system.jump.wasPressedThisFrame, isTrue);
+      expect(system.attack.wasPressedThisFrame, isFalse);
+    });
+
+    test('the shorthand infers the action type', () async {
+      await _boot(_ShorthandGame.new);
+      final system = run.state.getSystem<_ShorthandSystem>();
+      // One resolution first: a MouseBinding has no declared default (a
+      // position with no pointer behind it is not a place), so `cursor.value`
+      // only exists once a tick has filled it.
+      run.state.runFixedStep();
+
+      // Statically typed locals: no type argument is written at any
+      // declaration in _ShorthandSystem, so if inference through a factory's
+      // return type ever stopped working these four lines stop compiling and
+      // the whole file fails rather than this one test.
+      final Input<bool> attack = system.attack;
+      final Input<Vector2> movement = system.movement;
+      final Input<bool> jump = system.jump;
+      final Input<CursorPosition> cursor = system.cursor;
+
+      expect(attack.value, isA<bool>());
+      expect(movement.value, isA<Vector2>());
+      expect(jump.value, isA<bool>());
+      expect(cursor.value, isA<CursorPosition>());
+    });
+  });
+
+  group('a listener is an instance method', () {
+    test('a system hears its own onMounted', () async {
+      await _boot(_ListenerGame.new);
+      final a = run.state.getSystem<_ListenerSystemA>();
+      expect(
+        a.mountedRan,
+        isTrue,
+        reason:
+            'GameState.mount calls mountEvent on every system, so a system '
+            'that mixes in GameSystemLifecycleListener hears onMounted - '
+            'which is the site Input.pressed sends subscriptions to, and the '
+            'only site where an instance method can be named at all',
+      );
+    });
+
+    test('an instance-method tear-off subscribed at mount is called', () async {
+      final game = await _boot(_ListenerGame.new);
+      final a = run.state.getSystem<_ListenerSystemA>();
+
+      _pressAndStep(game, [InputKey.spacebar]);
+      expect(
+        a.heard,
+        ['A true'],
+        reason:
+            'registering is not delivering - this fails if the subscription '
+            'is made and the stream never fires it, which is the whole of '
+            'what += buys',
+      );
+    });
+
+    test('the listener writes to its own receiver', () async {
+      final game = await _boot(_ListenerGame.new);
+      final a = run.state.getSystem<_ListenerSystemA>();
+      final b = run.state.getSystem<_ListenerSystemB>();
+
+      _pressAndStep(game, [InputKey.spacebar]);
+      expect(a.heard, ['A true']);
+      expect(
+        b.heard,
+        isEmpty,
+        reason:
+            'each action owns its own listener list, so an edge on one is '
+            'not delivered through the other - and `heard` is an instance '
+            'field, so an entry landing here at all is proof the tear-off '
+            'carried the right receiver',
+      );
+
+      _pressAndStep(game, [InputKey.enter]);
+      expect(a.heard, ['A true'], reason: 'A heard nothing new');
+      expect(b.heard, ['B true']);
+    });
+
+    test('the pressed listener does not hear the release edge', () async {
+      final game = await _boot(_ListenerGame.new);
+      final a = run.state.getSystem<_ListenerSystemA>();
+
+      _pressAndStep(game, [InputKey.spacebar]);
+      _releaseAndStep(game, [InputKey.spacebar]);
+      expect(
+        a.heard,
+        ['A true'],
+        reason:
+            'pressed and released are two lists, not one stream a listener '
+            'has to disambiguate',
+      );
+    });
+
+    test('-= removes an instance method by a fresh tear-off', () async {
+      final game = await _boot(_ListenerGame.new);
+      final a = run.state.getSystem<_ListenerSystemA>();
+
+      _pressAndStep(game, [InputKey.spacebar]);
+      expect(a.heard, ['A true']);
+
+      // A *different* tear-off object of the same method on the same
+      // receiver. #221 says this cannot be relied on; Dart says two such
+      // tear-offs are `==` (not `identical`), and List.remove uses `==`.
+      a.fire.pressed -= a.onFire;
+
+      _releaseAndStep(game, [InputKey.spacebar]);
+      _pressAndStep(game, [InputKey.spacebar]);
+      expect(
+        a.heard,
+        ['A true'],
+        reason:
+            'the subscription is gone - which is what makes -= usable for a '
+            'method tear-off, and exactly what it cannot do for a closure, '
+            'since two closures written the same way are never equal',
       );
     });
   });

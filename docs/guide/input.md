@@ -176,6 +176,40 @@ and a release can never land on the same resolution.
 
 ## Bindings
 
+Every binding has a **dot shorthand**. A binding is always expected somewhere
+typed `InputBinding<T>` or `InputBinding<T>?` — `Input.of`, `action.binding`,
+`descriptor.has`, and a composite's own sources — and `InputBinding` carries one
+static per concrete binding, so the short form resolves in all of them. The
+action's value type comes from the factory's return type, so nothing writes a
+type argument:
+
+```dart
+final fire = Input.of(.trigger(.spacebar));
+final move = Input.of(.vec2(up: .w, down: .s, left: .a, right: .d));
+final attack = Input.of(
+  .composite(.trigger(.leftMouseButton), .trigger(.spacebar)),
+);
+```
+
+| shorthand | binding |
+|---|---|
+| `.trigger(key)` | `TriggerBinding` |
+| `.vec2(up:, down:, left:, right:)` | `Vec2Binding` |
+| `.axis(axis)` | `AxisBinding` |
+| `.stick(x:, y:)` | `StickBinding` |
+| `.mouse` | `MouseBinding` |
+| `.contact` | `ContactBinding` |
+| `.composite(primary, secondary, [...])` | `CompositeBinding` |
+| `.compositeFromList(sources)` | `CompositeBinding.fromList` |
+
+Either spelling builds the same object. The sections below spell the class
+out, because that is where each binding's own behaviour is explained.
+
+**A shorthand call is not `const`.** A static method is not a constant
+expression, so a `static const` table of default bindings for a rebinding
+screen names the concrete class — which is also where `copyWith` and `fromJson`
+live. `.mouse` and `.contact` take no arguments and *are* constants.
+
 ### `TriggerBinding` — one key, held or not
 
 <!-- snippet-setup
@@ -677,6 +711,54 @@ void onMounted() {
 `+=` is the subscription — the stream appends and returns itself, which the
 setter accepts back. Subscribe from `onMounted`, **not from a tick**: `+=` in
 `onFixedUpdate` adds a subscriber sixty times a second.
+
+`GameSystemLifecycleListener` is what supplies `onMounted`; `GameState.mount`
+fires every system's `mountEvent` once the game's own `onMounted` has returned.
+
+`-=` removes one. It compares by `==`, so a **method tear-off** can be removed
+by writing it again:
+
+<!-- snippet: in GameSystem with GameSystemLifecycleListener -->
+```dart
+@override
+void onMounted() {
+  super.onMounted();
+  fire.pressed += onFire;      // an ordinary instance method
+}
+
+void onFire(InputEvent<bool> event) => shoot();
+
+void stopListening() => fire.pressed -= onFire;   // a different tear-off, equal
+```
+
+A closure cannot: two closures written the same way are never equal, so
+unsubscribing one means keeping the reference the `+=` used.
+
+### Subscribing in the constructor body
+
+A constructor body works too, and puts the subscription right under the
+declaration it belongs to:
+
+<!-- snippet: top -->
+```dart
+class PlayerSystem extends GameSystem {
+  final fire = Input.of(.trigger(.spacebar));
+
+  new() {
+    fire.pressed += onFire;
+  }
+
+  void onFire(InputEvent<bool> event) => shoot();
+}
+```
+
+`new() { … }` is the unnamed constructor; `PlayerSystem() { … }` is the same
+declaration spelled the older way and works identically.
+
+**Prefer this when the action is declared on a field**, which is the normal
+case. Use `onMounted` when it is declared in `describeInputs` instead — that
+makes it a `late final`, and a constructor body runs long before the hook does,
+so reading it there throws.
 
 ## Rebinding
 

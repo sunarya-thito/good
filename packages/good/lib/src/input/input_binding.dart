@@ -63,6 +63,95 @@ import 'package:good/src/input/input_state.dart';
 abstract class InputBinding<T> {
   const InputBinding();
 
+  // --- the shorthand surface ----------------------------------------------
+  //
+  // One static per concrete binding, so that every position typed
+  // `InputBinding<T>` can be written with a dot shorthand and the binding's
+  // type argument is inferred from the factory's return type:
+  //
+  //   final fire = Input.of(.trigger(.spacebar));                // Input<bool>
+  //   final move = Input.of(.vec2(up: .w, down: .s, left: .a, right: .d));
+  //   final attack = Input.of(.composite(.trigger(.leftMouseButton),
+  //                                      .trigger(.spacebar)));
+  //
+  // They live on this class and not on the concrete ones because a dot
+  // shorthand resolves against the *context type*, and every context that
+  // wants one is an `InputBinding<T>` or an `InputBinding<T>?` -
+  // `Input.of`, `Input.binding`, `InputDescriptor.has`, and a composite's own
+  // sources. A static on `TriggerBinding` would only be reachable from a
+  // position already typed `TriggerBinding`, which is no position at all.
+  //
+  // Each one is its constructor and nothing else. Adding a default, a
+  // validation or a second way to spell an argument here would make the
+  // shorthand and the constructor two things to keep in step, which is the
+  // one-fact-one-place rule; they are a shorter name for the same call.
+  //
+  // **A shorthand call is not `const`.** A static method cannot be, so
+  // `.trigger(.spacebar)` allocates where `const TriggerBinding(.spacebar)`
+  // does not. That is one small object per declared action at boot, and
+  // nothing per tick - a binding is built once and read in place forever
+  // after. Where a binding really has to be a compile-time constant - a
+  // `static const` table of defaults for a rebinding screen - name the
+  // concrete class, which is also where `copyWith` and `fromJson` live.
+  // `mouse` and `contact` carry no arguments, so they *are* constants and are
+  // fields rather than methods.
+
+  /// [TriggerBinding]: one key, one bool.
+  static TriggerBinding trigger(InputKey key) => TriggerBinding(key);
+
+  /// [Vec2Binding]: four keys, one vector, with up as +y.
+  static Vec2Binding vec2({
+    required InputKey up,
+    required InputKey down,
+    required InputKey left,
+    required InputKey right,
+  }) => Vec2Binding(up: up, down: down, left: left, right: right);
+
+  /// [AxisBinding]: one analog axis, read as a double.
+  static AxisBinding axis(InputAxis axis) => AxisBinding(axis);
+
+  /// [StickBinding]: two analog axes, read as a vector.
+  static StickBinding stick({required InputAxis x, required InputAxis y}) =>
+      StickBinding(x: x, y: y);
+
+  /// [MouseBinding]: the pointer's position in both spaces.
+  ///
+  /// A field, not a method: it takes nothing, so one shared constant is the
+  /// whole of it.
+  static const MouseBinding mouse = MouseBinding();
+
+  /// [ContactBinding]: every live touch contact at once.
+  ///
+  /// A field, for the reason [mouse] is.
+  static const ContactBinding contact = ContactBinding();
+
+  /// [CompositeBinding]: two to ten sources folded into one action, which is
+  /// how "space **or** left click" is spelled.
+  ///
+  /// `T` is inferred from the sources, so the inner shorthands resolve too:
+  /// `.composite(.trigger(.leftMouseButton), .trigger(.spacebar))`.
+  static CompositeBinding<T> composite<T>(
+    InputBinding<T> primary,
+    InputBinding<T> secondary, [
+    InputBinding<T>? c,
+    InputBinding<T>? d,
+    InputBinding<T>? e,
+    InputBinding<T>? f,
+    InputBinding<T>? g,
+    InputBinding<T>? h,
+    InputBinding<T>? i,
+    InputBinding<T>? j,
+  ]) => CompositeBinding<T>(primary, secondary, c, d, e, f, g, h, i, j);
+
+  /// [CompositeBinding.fromList]: a composite whose source count is only
+  /// known at run time - a rebinding screen, or a restored save.
+  ///
+  /// Named for the constructor rather than shortened, because the two forms
+  /// differ in what they take and the reader is choosing between them.
+  static CompositeBinding<T> compositeFromList<T>(
+    List<InputBinding<T>> sources,
+  ) => CompositeBinding<T>.fromList(sources);
+
   /// Fresh scratch for an action to own and [resolve] to write into.
   ///
   /// Called **once**, at declare time (or the moment an action that was

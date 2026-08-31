@@ -53,6 +53,67 @@ import 'package:good/src/triple_buffer.dart';
 /// `Vec2Binding` changes value constantly while held without either edge
 /// happening, so "changed" is not even a useful proxy.
 ///
+/// # A listener is an instance method, and it is bound after construction
+///
+/// The declaration and the subscription are two lines and two moments, and
+/// they cannot be folded into one. `final fire = Input.of(binding) + onFire`
+/// is the shape that keeps being proposed (#221); Dart refuses every spelling
+/// of it, because an instance member cannot be named from a field
+/// initialiser:
+///
+/// - `+ onFire`, a tear-off, is `implicit_this_reference_in_initializer`;
+/// - `+ ((event) => onFire(event))` is the *same* error - the restriction
+///   reaches inside the function literal, so a closure does not defer the
+///   reference;
+/// - `+ ((event) => this.onFire(event))` is `invalid_reference_to_this`.
+///
+/// What does compile in that position is a `static` method, a top-level
+/// function, or a closure that captures nothing - and all three are the same
+/// answer wearing three hats: the callback cannot reach the object that
+/// declared the action. That is almost always what an input handler wants,
+/// so the field-initialiser form buys one line and gives up the receiver.
+///
+/// `late final fire = Input.of(...) + onFire` does compile, and is the trap
+/// [Input.of] already names: the initialiser runs on the first *read*, by
+/// which point boot has sealed the registry.
+///
+/// Two sites do work, because in both of them `this` is in scope:
+///
+/// ```dart
+/// class PlayerSystem extends GameSystem {
+///   final fire = Input.of(.trigger(.spacebar));
+///
+///   new() {
+///     fire.pressed += onFire;      // the constructor body - prefer this
+///   }
+///
+///   void onFire(InputEvent<bool> event) => cast();
+/// }
+/// ```
+///
+/// The constructor body is the one to reach for: the subscription sits beside
+/// the declaration, which is what the shorter form was wanted for, and it
+/// needs no mixin. `onMounted` is the other, and it is **required** when the
+/// action is declared in `describeInputs` instead of on a field - that makes
+/// it a `late final` the constructor body cannot read yet, which throws.
+///
+/// Nothing about the no-closure rule forces any of this - a listener body is
+/// hot, but building one at construction or at mount is boot-time work and
+/// explicitly fine. It is the compiler.
+///
+/// # `action += listener` cannot work either, and not for that reason
+///
+/// The subscription is on [pressed]/[released] and not on the action itself,
+/// and a `final` field is why. `a += b` is `a = a + b`, so it needs a setter;
+/// an action lives in a `final` field, because the typed-handle rule is what
+/// keeps anything from reassigning it. `fire += onFire` is
+/// `assignment_to_final`, and adding an `operator +` to this class would not
+/// change that - the analyzer reports the two independently.
+///
+/// [pressed] is a getter with a setter beside it for exactly this reason, so
+/// `fire.pressed += onFire` compiles where `fire += onFire` cannot. It also
+/// has to say *which edge*, which one operator on the action could not.
+///
 /// # When any of this updates
 ///
 /// Once per fixed tick, at the top of `GameState.runFixedStep`, before
@@ -134,8 +195,17 @@ abstract class Input<T> {
   /// ```
   ///
   /// `+=` is the subscription: [InputEventStream.operator +] appends and
-  /// returns the same stream, which the setter then accepts back. Subscribe
-  /// from `onMounted`, not from a tick.
+  /// returns the same stream, which the setter then accepts back.
+  ///
+  /// Subscribe from a constructor body or from `onMounted`, **not from a
+  /// tick** - `+=` in `onFixedUpdate` adds a subscriber sixty times a second.
+  /// A `GameSystem` gets `onMounted` by mixing in
+  /// `GameSystemLifecycleListener`; `GameState.mount` fires every system's
+  /// `mountEvent` after the game's own `onMounted` has run.
+  ///
+  /// Those two are the only sites where the listener can be an ordinary
+  /// instance method - see this class's doc for why the declaration itself
+  /// cannot take one, and why the `+=` goes here rather than on the action.
   InputEventStream<T> get pressed;
 
   /// Only exists so `pressed += listener` compiles - `a.b += c` is
@@ -155,12 +225,22 @@ abstract class Input<T> {
   ///
   /// ```dart
   /// class PlayerSystem extends GameSystem with FixedTickable {
-  ///   final fire = Input.of(const TriggerBinding(.spacebar));
-  ///   final movement = Input.of(
-  ///     const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
+  ///   final fire = Input.of(.trigger(.spacebar));
+  ///   final movement = Input.of(.vec2(up: .w, down: .s, left: .a, right: .d));
+  ///   final attack = Input.of(
+  ///     .composite(.trigger(.leftMouseButton), .trigger(.spacebar)),
   ///   );
   /// }
   /// ```
+  ///
+  /// [binding] is statically an `InputBinding<V>?`, so a **dot shorthand**
+  /// resolves against it: `InputBinding` carries one static per concrete
+  /// binding - `.trigger`, `.vec2`, `.axis`, `.stick`, `.mouse`, `.contact`,
+  /// `.composite`, `.compositeFromList` - and `V` is inferred from the one
+  /// you name, so no type argument is written here at all. The long form
+  /// (`const TriggerBinding(.spacebar)`) still works and is what a
+  /// `static const` table of defaults wants, since a shorthand call is a
+  /// method call and cannot be `const`.
   ///
   /// The same action [InputDescriptor.has] declares in a `describeInputs`
   /// body - on a `Game` or on a `GameSystem` - said where it is read. The
@@ -248,6 +328,14 @@ final class InputEventStream<T> {
 
   /// Removes [listener], the inverse of [operator +]:
   /// `action.pressed -= listener`.
+  ///
+  /// Compared by `==`, which is what makes this usable for the listeners
+  /// that matter. Two tear-offs of the same instance method on the same
+  /// receiver are `==` (never `identical`), so `fire.pressed -= onFire`
+  /// removes what `fire.pressed += onFire` added even though the two
+  /// expressions built different objects. Two closures written the same way
+  /// are never equal, so a closure subscription can only be undone through a
+  /// reference kept from the `+=`.
   InputEventStream<T> operator -(InputListener<T> listener) {
     _listeners.remove(listener);
     return this;
