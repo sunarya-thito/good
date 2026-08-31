@@ -53,6 +53,35 @@ import 'package:good/src/triple_buffer.dart';
 /// `Vec2Binding` changes value constantly while held without either edge
 /// happening, so "changed" is not even a useful proxy.
 ///
+/// # A listener is an instance method, and it is bound after construction
+///
+/// The declaration and the subscription are two lines and two moments, and
+/// they cannot be folded into one. `final fire = Input.of(binding) + onFire`
+/// is the shape that keeps being proposed (#221); Dart refuses every spelling
+/// of it, because an instance member cannot be named from a field
+/// initialiser:
+///
+/// - `+ onFire`, a tear-off, is `implicit_this_reference_in_initializer`;
+/// - `+ ((event) => onFire(event))` is the *same* error - the restriction
+///   reaches inside the function literal, so a closure does not defer the
+///   reference;
+/// - `+ ((event) => this.onFire(event))` is `invalid_reference_to_this`.
+///
+/// What does compile in that position is a `static` method, a top-level
+/// function, or a closure that captures nothing - and all three are the same
+/// answer wearing three hats: the callback cannot reach the object that
+/// declared the action. That is almost always what an input handler wants,
+/// so the field-initialiser form buys one line and gives up the receiver.
+///
+/// `late final fire = Input.of(...) + onFire` does compile, and is the trap
+/// [Input.of] already names: the initialiser runs on the first *read*, by
+/// which point boot has sealed the registry.
+///
+/// So the action is declared on the field and subscribed from `onMounted`,
+/// where an instance method is an ordinary name again. Nothing about the
+/// no-closure rule forces this - a listener body is hot, but building one at
+/// mount is boot-time work and explicitly fine. It is the compiler.
+///
 /// # When any of this updates
 ///
 /// Once per fixed tick, at the top of `GameState.runFixedStep`, before
@@ -134,8 +163,16 @@ abstract class Input<T> {
   /// ```
   ///
   /// `+=` is the subscription: [InputEventStream.operator +] appends and
-  /// returns the same stream, which the setter then accepts back. Subscribe
-  /// from `onMounted`, not from a tick.
+  /// returns the same stream, which the setter then accepts back.
+  ///
+  /// Subscribe from `onMounted`, not from a tick - `+=` in `onFixedUpdate`
+  /// adds a subscriber sixty times a second. A `GameSystem` gets `onMounted`
+  /// by mixing in `GameSystemLifecycleListener`; `GameState.mount` fires
+  /// every system's `mountEvent` after the game's own `onMounted` has run.
+  ///
+  /// It is also the only site where the listener can be an ordinary instance
+  /// method - see this class's doc for why the declaration itself cannot
+  /// take one.
   InputEventStream<T> get pressed;
 
   /// Only exists so `pressed += listener` compiles - `a.b += c` is
@@ -248,6 +285,14 @@ final class InputEventStream<T> {
 
   /// Removes [listener], the inverse of [operator +]:
   /// `action.pressed -= listener`.
+  ///
+  /// Compared by `==`, which is what makes this usable for the listeners
+  /// that matter. Two tear-offs of the same instance method on the same
+  /// receiver are `==` (never `identical`), so `fire.pressed -= onFire`
+  /// removes what `fire.pressed += onFire` added even though the two
+  /// expressions built different objects. Two closures written the same way
+  /// are never equal, so a closure subscription can only be undone through a
+  /// reference kept from the `+=`.
   InputEventStream<T> operator -(InputListener<T> listener) {
     _listeners.remove(listener);
     return this;

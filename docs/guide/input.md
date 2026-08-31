@@ -678,6 +678,51 @@ void onMounted() {
 setter accepts back. Subscribe from `onMounted`, **not from a tick**: `+=` in
 `onFixedUpdate` adds a subscriber sixty times a second.
 
+`GameSystemLifecycleListener` is what supplies `onMounted`; `GameState.mount`
+fires every system's `mountEvent` once the game's own `onMounted` has returned.
+
+`-=` removes one. It compares by `==`, so a **method tear-off** can be removed
+by writing it again:
+
+<!-- snippet: in GameSystem with GameSystemLifecycleListener -->
+```dart
+@override
+void onMounted() {
+  super.onMounted();
+  fire.pressed += onFire;      // an ordinary instance method
+}
+
+void onFire(InputEvent<bool> event) => shoot();
+
+void stopListening() => fire.pressed -= onFire;   // a different tear-off, equal
+```
+
+A closure cannot: two closures written the same way are never equal, so
+unsubscribing one means keeping the reference the `+=` used.
+
+### The subscription cannot move onto the declaration
+
+An action is declared on a field and subscribed in `onMounted`, and those two
+halves cannot be folded into one line. Dart will not let a field initialiser
+name an instance member, by any spelling:
+
+<!-- snippet: skip shows the shapes the compiler rejects -->
+```dart
+final fire = Input.of(binding) + onFire;                    // implicit_this_reference_in_initializer
+final fire = Input.of(binding) + ((e) => onFire(e));        // the same error - the restriction reaches into the closure
+final fire = Input.of(binding) + ((e) => this.onFire(e));   // invalid_reference_to_this
+```
+
+What compiles there is a `static` method, a top-level function, or a closure
+that captures nothing — three spellings of one answer, and it is the wrong one:
+the handler cannot reach the object that declared the action, which is the state
+an input handler exists to change. `late final` compiles and is the trap
+`Input.of` already names, because the initialiser runs on the first read, after
+boot has sealed the registry.
+
+This is a compiler fact, not the no-closure rule. A listener *body* is hot, but
+one built at mount is boot-time work and explicitly fine.
+
 ## Rebinding
 
 An action's binding is a plain settable property, which is the whole point of

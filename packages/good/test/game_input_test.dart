@@ -38,11 +38,16 @@ final List<String> events = <String>[];
 /// The shape from the design sketch: a movement vector, a trigger, an
 /// unbound action, and one action of each type that nothing ever binds.
 ///
-/// Subscriptions happen in `describeInputs` rather than in `onMounted`,
-/// because a `GameSystem` does not currently receive `MountEvent` - see the
-/// note on `Input.pressed`. A closure created during a one-shot declaration
-/// pass is explicitly fine (the no-closure rule).
-class _PlayerSystem extends GameSystem with FixedTickable {
+/// Subscriptions happen in `onMounted`, which is where `Input.pressed` says
+/// they go. An earlier version of this fixture subscribed from
+/// `describeInputs` and said it had to, because "a `GameSystem` does not
+/// currently receive `MountEvent`" - that was wrong when it was written and
+/// is wrong now: `GameState.mount` calls `mountEvent` on every system, and
+/// mixing in `GameSystemLifecycleListener` is all it takes to hear it.
+/// 'a system hears its own onMounted' pins that so the claim cannot come
+/// back.
+class _PlayerSystem extends GameSystem
+    with FixedTickable, GameSystemLifecycleListener {
   late final Input<Vector2> movement;
   late final Input<bool> triggerSkill;
   late final Input<bool> ping;
@@ -55,6 +60,11 @@ class _PlayerSystem extends GameSystem with FixedTickable {
   bool lastSeenPressed = false;
   int ticks = 0;
 
+  /// Whether this system's own `onMounted` ran at all - the half of a
+  /// subscription that a test asserting "the listener fired" cannot tell
+  /// apart from the listener itself being broken.
+  bool mountedRan = false;
+
   @override
   void describeInputs(InputDescriptor input) {
     super.describeInputs(input);
@@ -64,7 +74,12 @@ class _PlayerSystem extends GameSystem with FixedTickable {
     triggerSkill = input.has<bool>(const TriggerBinding(.spacebar));
     ping = input.has<bool>();
     aim = input.has<Vector2>();
+  }
 
+  @override
+  void onMounted() {
+    super.onMounted();
+    mountedRan = true;
     triggerSkill.pressed += (event) =>
         events.add('skill pressed ${event.value}');
     triggerSkill.released += (event) =>
@@ -112,6 +127,87 @@ class _InputGame extends Game {
     super.describeInputs(input);
     capturedDescriptor = input;
   }
+}
+
+// --- what a listener is (#221) --------------------------------------------
+
+/// Two systems that each subscribe an **ordinary instance method** - not a
+/// static, not a top-level function, not a closure - and each write only into
+/// their own field.
+///
+/// This is the shape #221 asked to move onto the declaration itself, as
+/// `final fire = Input.of(binding) + onFire`. Dart refuses that outright: an
+/// instance member cannot be named from a field initialiser, by tear-off
+/// (`implicit_this_reference_in_initializer`), from inside a function
+/// literal in the initialiser (the same error - the restriction reaches into
+/// the closure body), or through an explicit `this`
+/// (`invalid_reference_to_this`). So the declaration says what exists and
+/// `onMounted` says what happens, and these two fixtures are what pins that
+/// the second half actually runs.
+///
+/// Separate `heard` lists rather than the file-level `events`, so a listener
+/// delivered to the wrong action shows up as an entry on the other system's
+/// list instead of being swallowed by a shared collector.
+class _ListenerSystemA extends GameSystem with GameSystemLifecycleListener {
+  final List<String> heard = <String>[];
+  late final Input<bool> fire;
+  bool mountedRan = false;
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    fire = input.has<bool>(const TriggerBinding(.spacebar));
+  }
+
+  @override
+  void onMounted() {
+    super.onMounted();
+    mountedRan = true;
+    fire.pressed += onFire;
+  }
+
+  /// An instance method, and the point of the fixture: it reaches [heard],
+  /// which a static tear-off or a top-level function could not.
+  void onFire(InputEvent<bool> event) => heard.add('A ${event.value}');
+}
+
+class _ListenerSystemB extends GameSystem with GameSystemLifecycleListener {
+  final List<String> heard = <String>[];
+  late final Input<bool> fire;
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    fire = input.has<bool>(const TriggerBinding(.enter));
+  }
+
+  @override
+  void onMounted() {
+    super.onMounted();
+    fire.pressed += onFire;
+  }
+
+  void onFire(InputEvent<bool> event) => heard.add('B ${event.value}');
+}
+
+class _ListenerState extends GameState<_ListenerGame> {
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_ListenerSystemA.new);
+    descriptor.has(_ListenerSystemB.new);
+  }
+}
+
+class _ListenerGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 10);
+
+  @override
+  GameState createState() => _ListenerState();
 }
 
 // --- default-value fixtures ----------------------------------------------
@@ -698,6 +794,98 @@ void main() {
         reason:
             'the setter exists only so `+=` compiles; a real assignment '
             'would silently drop every listener already subscribed',
+      );
+    });
+  });
+
+  group('a listener is an instance method', () {
+    test('a system hears its own onMounted', () async {
+      await _boot(_ListenerGame.new);
+      final a = run.state.getSystem<_ListenerSystemA>();
+      expect(
+        a.mountedRan,
+        isTrue,
+        reason:
+            'GameState.mount calls mountEvent on every system, so a system '
+            'that mixes in GameSystemLifecycleListener hears onMounted - '
+            'which is the site Input.pressed sends subscriptions to, and the '
+            'only site where an instance method can be named at all',
+      );
+    });
+
+    test('an instance-method tear-off subscribed at mount is called', () async {
+      final game = await _boot(_ListenerGame.new);
+      final a = run.state.getSystem<_ListenerSystemA>();
+
+      _pressAndStep(game, [InputKey.spacebar]);
+      expect(
+        a.heard,
+        ['A true'],
+        reason:
+            'registering is not delivering - this fails if the subscription '
+            'is made and the stream never fires it, which is the whole of '
+            'what += buys',
+      );
+    });
+
+    test('the listener writes to its own receiver', () async {
+      final game = await _boot(_ListenerGame.new);
+      final a = run.state.getSystem<_ListenerSystemA>();
+      final b = run.state.getSystem<_ListenerSystemB>();
+
+      _pressAndStep(game, [InputKey.spacebar]);
+      expect(a.heard, ['A true']);
+      expect(
+        b.heard,
+        isEmpty,
+        reason:
+            'each action owns its own listener list, so an edge on one is '
+            'not delivered through the other - and `heard` is an instance '
+            'field, so an entry landing here at all is proof the tear-off '
+            'carried the right receiver',
+      );
+
+      _pressAndStep(game, [InputKey.enter]);
+      expect(a.heard, ['A true'], reason: 'A heard nothing new');
+      expect(b.heard, ['B true']);
+    });
+
+    test('the pressed listener does not hear the release edge', () async {
+      final game = await _boot(_ListenerGame.new);
+      final a = run.state.getSystem<_ListenerSystemA>();
+
+      _pressAndStep(game, [InputKey.spacebar]);
+      _releaseAndStep(game, [InputKey.spacebar]);
+      expect(
+        a.heard,
+        ['A true'],
+        reason:
+            'pressed and released are two lists, not one stream a listener '
+            'has to disambiguate',
+      );
+    });
+
+    test('-= removes an instance method by a fresh tear-off', () async {
+      final game = await _boot(_ListenerGame.new);
+      final a = run.state.getSystem<_ListenerSystemA>();
+
+      _pressAndStep(game, [InputKey.spacebar]);
+      expect(a.heard, ['A true']);
+
+      // A *different* tear-off object of the same method on the same
+      // receiver. #221 says this cannot be relied on; Dart says two such
+      // tear-offs are `==` (not `identical`), and List.remove uses `==`.
+      a.fire.pressed -= a.onFire;
+
+      _releaseAndStep(game, [InputKey.spacebar]);
+      _pressAndStep(game, [InputKey.spacebar]);
+      expect(
+        a.heard,
+        ['A true'],
+        reason:
+            'the subscription is gone - which is what makes -= usable for a '
+            'method tear-off, and exactly what it cannot do for a closure, '
+            'since two closures written the same way are never equal',
       );
     });
   });
