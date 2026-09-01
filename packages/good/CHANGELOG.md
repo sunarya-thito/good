@@ -94,6 +94,122 @@
 
 ### Breaking
 
+* **`describeQuery` is gone. A query is a value, so it goes on the field that
+  holds it** (#287):
+
+  ```dart
+  class SwirlSystem extends GameSystem with FixedTickable {
+    final motes = Query.all(Transform2D, Mote);
+    final roots = Query.where().withAll(WorldTransform2D).withNone(Child).build();
+    final cameras = Query.has<Camera>();
+  }
+  ```
+
+  | before | after |
+  |---|---|
+  | `void describeQuery(QueryDescriptor d) { q = d.query().withAll(A, B).build(); }` | `final q = Query.all(A, B);` |
+  | `d.has<Camera>()` | `Query.has<Camera>()` |
+  | `d.query()` | `Query.where()` |
+
+  `QueryDescriptor` and `ArchetypeQueryDescriptor` go with it. Neither was a
+  registrar: a query holds masks and resolves archetypes lazily in
+  `Query.groups`, so building one needs no open declaration window and the
+  descriptor added nothing but a second spelling.
+
+* **`describeState` is gone. A `Game` declares its channels in fields**
+  (#287):
+
+  ```dart
+  class MyGame extends Game {
+    final score = Channel.int32();
+    final alive = Channel.boolean(true);
+  }
+  ```
+
+  | before | after |
+  |---|---|
+  | `void describeState(StateDescriptor d) { score = d.hasInt32(); }` | `final score = Channel.int32();` |
+
+  `Channel.*` reads the descriptor `Game.start` opens around the constructor,
+  which is the same descriptor the hook was handed. `StateDescriptor` stays as
+  the registrar behind it.
+
+  The seal on that descriptor goes too. It refused a declaration made through a
+  descriptor held past boot, and there is no way to hold one now: the window is
+  open only around the constructor, so a `late final score = Channel.int32()`
+  reaches an empty stack in `DeclarationContext.channels` and throws there
+  instead.
+
+* **`describeParams` is gone, on a `Command` and on a `NetMessage` both**
+  (#287):
+
+  ```dart
+  class SpawnEnemy extends SinkCommand<int> {
+    final flags = Param.uint2();
+  }
+  ```
+
+  | before | after |
+  |---|---|
+  | `void describeParams(ParamDescriptor d) { flags = d.hasUint2(); }` | `final flags = Param.uint2();` |
+
+  `CommandRegistry.declare` and `good_net`'s `NetRegistry.declare` already
+  opened the layout around the constructor through `ParamLayout.open`, so the
+  fields were always declared before the hook ran. `bind` now fixes the index
+  and seals. `ParamDescriptor` stays as the registrar behind `Param.*`, and the
+  record vocabulary is unchanged, so a build's schema hash is unchanged.
+
+* **A component's `describeAssets` is gone. A prefab declares an asset in the
+  field that holds it** (#287):
+
+  ```dart
+  class Player extends EntityStruct with Transform2D, Renderable2D {
+    final texture = Asset.of(Textures.player);
+  }
+  ```
+
+  | before | after |
+  |---|---|
+  | `void describeAssets(AssetDescriptor d) { texture = d.has(Textures.player); }` | `final texture = Asset.of(Textures.player);` |
+
+  `Asset.of` has been the field form since #194 and makes the same
+  registration into the same descriptor, so a scene's footprint, its addresses
+  and its decode count are what they were.
+
+  `SceneStruct.describeAssets` **stays**. A scene is constructed by the caller
+  and has no `Assets` until `initializeScene`, so its own field initialisers
+  run before there is anything to declare into.
+
+  What this costs is `descriptor.has(() => alreadyBuiltPrefab)` for a prefab
+  with assets: the window is open only for the duration of that call, so a
+  prefab that declares one has to be built inside it. A prefab that needs a
+  constructor argument to pick its key declares in the initializer list, where
+  the argument is in scope:
+
+  ```dart
+  class Prop extends EntityStruct with Transform2D, Renderable2D {
+    Prop(TextureKey skin) : texture = Asset.of(skin);
+
+    final TextureAsset texture;
+  }
+  ```
+
+  Field initialisers run before the initializer list, so a prefab written that
+  way declares its columns first and its asset after them. Both isolate copies
+  run the same code, so the addresses agree either way.
+
+  `good generate`'s missing-`super` check is down to `describeStruct`. A field
+  initialiser is not a chain, so there is no `super` to leave out.
+
+  `describeEvents` is **not** part of this. `Event.of` and `Event.signal` ship,
+  but `GameSystem`, `EntityStruct` and `good_net`'s `NetSystem` each declare a
+  base pair of dispatchers that every subclass inherits however it was built -
+  and a subclass handed to `descriptor.has(() => prebuilt)` has no window of
+  its own. Measured on this tree: a system declaring a dispatcher on a field,
+  built in a `GameState`'s field initialiser and handed over through a closure,
+  collected three listeners - the state's whole composition - where its own
+  binder would have offered it one.
+
 * **`describeType` is gone. A component declares its own type in a field**
   (#287):
 
@@ -124,8 +240,9 @@
   overrode the hook and left out `super` contributed no bit, so
   `withAll(ThatComponent)` matched every archetype instead of none. A field
   initialiser has no `super` to leave out. `good generate` stops checking
-  `describeType` for a missing `super` because there is nothing left to check;
-  `describeStruct` and `describeAssets` are still checked.
+  `describeType` for a missing `super` because there is nothing left to check.
+  `describeAssets` left the same set in the entry above; `describeStruct` is
+  what remains.
 
   Bit assignment order moves with it. Mixin field initialisers run in reverse
   `with` order and the prefab's own type is added last, where the `super` chain

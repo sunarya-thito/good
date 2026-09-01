@@ -11,6 +11,26 @@
 
 ### Breaking
 
+* **`NetMessageBase.describeParams` is gone. A message declares its fields on
+  the fields that hold them** (#287):
+
+  ```dart
+  class Fire extends NetMessage<({double angle, int weapon})> {
+    final angle = Param.float32();
+    final weapon = Param.uint4();
+  }
+  ```
+
+  | before | after |
+  |---|---|
+  | `void describeParams(ParamDescriptor d) { angle = d.hasFloat32(); }` | `final angle = Param.float32();` |
+
+  `NetRegistry.declare` already opened the layout around the constructor, so
+  the fields were always declared before the hook ran and the record they
+  produce is unchanged - a build's schema hash is the same on both sides of
+  this. Deleted together with `GameCommandBase.describeParams` in `good`,
+  because the two share one record vocabulary and one `ParamLayout`.
+
 * **`NetDescriptor.has` takes a constructor, not an instance.**
   `descriptor.has(Fire(), id: 'fire')` becomes
   `descriptor.has(Fire.new, id: 'fire')`. `id`, `to` and `channel` stay on the

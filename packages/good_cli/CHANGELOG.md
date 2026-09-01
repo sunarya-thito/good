@@ -2,10 +2,18 @@
 
 ### Breaking
 
-* **`good generate` no longer checks `describeType` for a missing `super`**
-  (#287). A component declares its type in a field initialiser, which no chain
-  runs through, so the defect the check exists for cannot be written. The check
-  still covers `describeStruct` and `describeAssets`.
+* **`good generate` checks only `describeStruct` for a missing `super`**
+  (#287). `describeType` and then a component's `describeAssets` both left the
+  set, because what they declared moved onto a field initialiser and no chain
+  runs through one, so the defect the check exists for cannot be written.
+
+* **An asset key `good build` cannot read is named where it was written**
+  (#287). A prefab declaring `Asset.of(keys[i])` is reported as
+  `Plane.Asset.of` rather than `Plane.describeAssets`, which no longer exists
+  on a prefab. A scene's hook is still reported as `S.describeAssets`.
+
+* **The scaffolded `lib/game.dart` teaches `Asset.of`** (#287). Its comment
+  showed a `describeAssets` override; it shows the field now.
 
   The component-type scan reads `Component.type<T>()` field initialisers
   instead of `has<T>()` calls inside a `describeType` body. It matches on the
