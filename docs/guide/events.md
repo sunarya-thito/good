@@ -93,14 +93,16 @@ MainScene();` — so nothing is open while its fields initialise and `Event.of`
 in one throws. A constructor body has `this`, and `EventBus.events` is the
 owner's own registrar, so that is where a scene declares:
 
-<!-- snippet: in SceneStruct -->
+<!-- snippet: top -->
 ```dart
-late final EventDispatcher<WaveListener, int> waveSpotted;
+class MainScene extends SceneStruct {
+  late final EventDispatcher<WaveListener, int> waveSpotted;
 
-MainScene() {
-  waveSpotted = events.has(
-    (listener, wave) => listener.onWaveCleared(wave),
-  );
+  MainScene() {
+    waveSpotted = events.has(
+      (listener, wave) => listener.onWaveCleared(wave),
+    );
+  }
 }
 ```
 
@@ -256,22 +258,19 @@ Teardown has to run the other way. A listener told the world is going away
 `reverse: true` and the dispatcher reads its collected list backwards, which is
 one list serving both orders instead of two that could drift apart:
 
-<!-- snippet-setup
-final descriptor = given<EventDescriptor>();
-late SignalDispatcher<GameSystemLifecycleListener> unmountEvent;
--->
+<!-- snippet: in EntityStruct -->
 ```dart
-unmountEvent = descriptor.hasSignal(
-  (listener) => listener.onUnmounted(),
+final wilted = Event.signal<ChirpListener>(
+  (listener) => listener.onChirp(),
   reverse: true,
 );
 ```
 
-That is `GameSystem`'s own teardown signal, declared in the hook because a
-system is one of the two owners that has to. On a field it is the same
-argument in the same place — `Event.signal(..., reverse: true)`, which is how
-`GameState.sceneUnloadedEvent` does it with a payload. The rule for your own events: forward for anything
-meaning "this now exists", reverse for anything meaning "this is going away".
+`GameSystem`'s own `unmountEvent` carries the same flag, declared from its
+constructor body because a base class pair cannot assume a window; so does
+`GameState.sceneUnloadedEvent`, with a payload. The rule for your own events:
+forward for anything meaning "this now exists", reverse for anything meaning
+"this is going away".
 
 ## Declaring an event of your own
 
