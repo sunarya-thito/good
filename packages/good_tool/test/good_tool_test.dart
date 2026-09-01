@@ -419,10 +419,16 @@ void main() {
     }, timeout: const Timeout(Duration(minutes: 3)));
 
     test('refuses a --dir naming a directory that is not there', () async {
+      // On the absent directory itself, and not on the empty result it
+      // produces. Both exit 65 and both name `plugins`, so an assertion on
+      // either would pass with this guard gone - and the two say different
+      // things: one is a typo in the argument, the other is a tree with
+      // nothing in it.
       final repo = _runnableRepo();
       final result = await _tool(repo, const <String>['--dir', 'plugins']);
       expect(result.exitCode, 65);
-      expect(result.stderr, contains('plugins'));
+      expect(result.stderr, contains('No such directory: plugins'));
+      expect(result.stderr, isNot(contains('No package to generate into')));
     }, timeout: const Timeout(Duration(minutes: 3)));
 
     test('refuses a run that matches no package, rather than exiting 0', () async {
