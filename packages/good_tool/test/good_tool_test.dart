@@ -371,6 +371,27 @@ void main() {
       );
     }, timeout: const Timeout(Duration(minutes: 3)));
 
+    test('refuses a column that would shadow Entity.has', () async {
+      // `has<T>()` is a member of `Entity`, so a column stripping to `has`
+      // would generate a property no receiver ever reaches - an extension
+      // member loses to one the type already has. The reserved list is read
+      // out of the parse rather than transcribed, so this is what says the
+      // new member landed in it.
+      final repo = _runnableRepo();
+      _write(
+        repo,
+        'packages/goo2d/lib/src/transform.dart',
+        "import 'package:good/good.dart';\n\n"
+            'mixin Marker on Component {\n'
+            '  final markerHas = Field.int32();\n}\n',
+      );
+
+      final result = await _tool(repo, const <String>[]);
+      expect(result.exitCode, 65);
+      expect(result.stderr, contains('Marker.markerHas'));
+      expect(result.stderr, contains('Entity already has has'));
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
     test('rejects an argument it does not know', () async {
       final repo = _runnableRepo();
       final result = await _tool(repo, const <String>['--wrIte']);

@@ -101,8 +101,8 @@ extension Effectors2D on Box2DPhysicsSystem {
     var affected = 0;
     for (var i = 0; i < found; i++) {
       final entity = overlapEntityAt(i);
-      final body = entity<RigidBody2D?>().component;
-      if (body == null) continue;
+      if (!entity.has<RigidBody2D>()) continue;
+      final body = entity<RigidBody2D>().component;
       if (forceX != 0 || forceY != 0) body.applyForce(entity, forceX, forceY);
       if (torque != 0) body.applyTorque(entity, torque);
       affected++;
@@ -144,9 +144,9 @@ extension Effectors2D on Box2DPhysicsSystem {
     var affected = 0;
     for (var i = 0; i < found; i++) {
       final entity = overlapEntityAt(i);
-      final body = entity<RigidBody2D?>().component;
-      final transform = entity<Transform2D?>().component;
-      if (body == null || transform == null) continue;
+      if (!entity.has<RigidBody2D>() || !entity.has<Transform2D>()) continue;
+      final body = entity<RigidBody2D>().component;
+      final transform = entity<Transform2D>().component;
 
       final dx = transform.transformOffsetX[entity] - x;
       final dy = transform.transformOffsetY[entity] - y;
@@ -201,9 +201,9 @@ extension Effectors2D on Box2DPhysicsSystem {
     var affected = 0;
     for (var i = 0; i < found; i++) {
       final entity = overlapEntityAt(i);
-      final body = entity<RigidBody2D?>().component;
-      final transform = entity<Transform2D?>().component;
-      if (body == null || transform == null) continue;
+      if (!entity.has<RigidBody2D>() || !entity.has<Transform2D>()) continue;
+      final body = entity<RigidBody2D>().component;
+      final transform = entity<Transform2D>().component;
 
       final submerged = surfaceY - transform.transformOffsetY[entity];
       if (submerged <= 0) continue;
@@ -259,8 +259,8 @@ extension Effectors2D on Box2DPhysicsSystem {
     var affected = 0;
     for (var i = 0; i < found; i++) {
       final entity = overlapEntityAt(i);
-      final body = entity<RigidBody2D?>().component;
-      if (body == null) continue;
+      if (!entity.has<RigidBody2D>()) continue;
+      final body = entity<RigidBody2D>().component;
 
       final dvx = speed - body.bodyLinearVelocityX[entity];
       final dvy = speedY - body.bodyLinearVelocityY[entity];

@@ -129,7 +129,7 @@ class WorldTransformSystem extends GameSystem
   void onEntitySpawned(Entity entity) {
     // Cheap filter: only entities this system would compose at all. The
     // listener hears every spawn in the game.
-    if (entity<WorldTransform2D?>().component != null) _spawned.add(entity);
+    if (entity.has<WorldTransform2D>()) _spawned.add(entity);
   }
 
   @override
@@ -145,7 +145,7 @@ class WorldTransformSystem extends GameSystem
   void onFixedUpdate() {
     // Grouped, not `run()`, and **all four components resolved per group,
     // not per entity**. A component belongs to an archetype, so
-    // `entity<Child?>().component` hands back the same object for every row in
+    // `entity<Child>().component` hands back the same object for every row in
     // the group - and each resolve is a registry lookup plus an `is T` against
     // a type *variable*, which is a runtime subtype test and not a compare.
     // Four of those per entity, on the system that owns two thirds of the
@@ -233,8 +233,8 @@ class WorldTransformSystem extends GameSystem
     // time [_pendingWorldOf] reads it back below. A `Set` literal is a
     // `LinkedHashSet`, which iterates in insertion order, so that holds.
     for (final entity in _spawned) {
-      final world = entity<WorldTransform2D?>().component;
-      if (world == null) continue;
+      if (!entity.has<WorldTransform2D>()) continue;
+      final world = entity<WorldTransform2D>().component;
       _pendingWorldOf(entity, 0);
       world
         ..worldX[entity] = _pendingX
@@ -267,7 +267,9 @@ class WorldTransformSystem extends GameSystem
   /// that matter - composed by the main pass earlier this tick, skipped by it
   /// as unchanged, or written by an earlier iteration of [_composeSpawned].
   void _pendingWorldOf(Entity entity, int depth) {
-    final local = entity<Transform2D?>().component;
+    final local = entity.has<Transform2D>()
+        ? entity<Transform2D>().component
+        : null;
     // A bare grouping node contributes identity, exactly as in [_resolve].
     final offsetX = local == null
         ? 0.0
@@ -285,8 +287,9 @@ class WorldTransformSystem extends GameSystem
         ? 1.0
         : local.transformScaleY.readPending(entity);
 
-    final childLink = entity<Child?>().component;
-    final parent = childLink?.childParent.readPending(entity);
+    final parent = entity.has<Child>()
+        ? entity<Child>().component.childParent.readPending(entity)
+        : null;
     if (parent == null || depth >= maxHierarchyDepth) {
       assert(
         parent == null,
@@ -303,8 +306,8 @@ class WorldTransformSystem extends GameSystem
     }
 
     final double parentX, parentY, parentRotation, parentScaleX, parentScaleY;
-    final parentWorld = parent<WorldTransform2D?>().component;
-    if (parentWorld != null) {
+    if (parent.has<WorldTransform2D>()) {
+      final parentWorld = parent<WorldTransform2D>().component;
       parentX = parentWorld.worldX.readPending(parent);
       parentY = parentWorld.worldY.readPending(parent);
       parentRotation = parentWorld.worldRotation.readPending(parent);
@@ -550,10 +553,12 @@ class WorldTransformSystem extends GameSystem
       // it could not simply be hoisted out of this one too.
       _resolve(
         next,
-        next<Transform2D?>().component,
-        next<WorldTransform2D?>().component,
-        next<Child?>().component,
-        next<Parent?>().component,
+        next.has<Transform2D>() ? next<Transform2D>().component : null,
+        next.has<WorldTransform2D>()
+            ? next<WorldTransform2D>().component
+            : null,
+        next.has<Child>() ? next<Child>().component : null,
+        next.has<Parent>() ? next<Parent>().component : null,
         parentChanged: changed,
         hasParent: true,
         parentWorldX: thisWorldX,

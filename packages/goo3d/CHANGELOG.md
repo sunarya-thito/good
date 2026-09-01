@@ -34,12 +34,33 @@
 
 ### Breaking
 
+* **`entity<T?>()` is gone; `entity.has<T>()` answers whether the component is
+  there.** `Entity.call` takes `T extends Component` in `good` 0.3.0-dev and
+  the nullable spelling is removed with it (#302), because it reached
+  `.component` and none of the accessor extensions - extension types are
+  covariant, so `Accessor<Transform3D?>` was the supertype and an extension
+  written `on Accessor<Transform3D>` never applied to it.
+
+  ```dart
+  final local = entity<Transform3D?>().component;                    // before
+  if (entity.has<Transform3D>()) entity<Transform3D>().setEuler();   // after
+  ```
+
+  `Transform3D`, `WorldTransform3D` and `Camera3D` are unchanged, and
+  `group<Transform3D?>()` still answers `null` - only the entity spelling
+  moves.
+
+  A component the archetype lacks now fails on an assertion naming it, and on
+  the cast under that assertion in a release build, rather than throwing a
+  `StateError`.
+
 * **Components are reached by calling the receiver, not by `get`/`tryGet`.**
   `Entity.get`/`tryGet`, `QueryGroup.get`/`tryGet` and `Scene.get`/`tryGet` are
   removed in `good` 0.3.0-dev, and the type argument now says whether the
   component may be absent (#220). `entity.get<Transform3D>()` becomes
-  `entity<Transform3D>().component`, `entity.tryGet<Transform3D>()` becomes
-  `entity<Transform3D?>().component`, and `group.get<Transform3D>()` becomes
+  `entity<Transform3D>().component`, `entity.tryGet<Transform3D>()` becomes an
+  `entity.has<Transform3D>()` guard around it (#302), and
+  `group.get<Transform3D>()` becomes
   `group<Transform3D>()`. `Transform3D`, `WorldTransform3D` and `Camera3D` are
   unchanged, and `entity<Transform3D>().setEuler(...)` reads as it did.
 

@@ -35,12 +35,34 @@
 
 ### Breaking
 
+* **`entity<T?>()` is gone; `entity.has<T>()` answers whether the component is
+  there.** `Entity.call` takes `T extends Component` in `good` 0.3.0-dev and
+  the nullable spelling is removed with it (#302), because it reached
+  `.component` and none of the accessor extensions - extension types are
+  covariant, so `Accessor<RigidBody2D?>` was the supertype and an extension
+  written `on Accessor<RigidBody2D>` never applied to it.
+
+  ```dart
+  final body = entity<RigidBody2D?>().component;      // before
+  if (!entity.has<RigidBody2D>()) continue;           // after
+  final body = entity<RigidBody2D>().component;
+  ```
+
+  `RigidBody2D`, `Collider2D` and `Effector2D` are unchanged. The effectors and
+  the physics system are written this way internally now, which is the shape
+  the guard is meant to read as.
+
+  A component the archetype lacks now fails on an assertion naming it, and on
+  the cast under that assertion in a release build, rather than throwing a
+  `StateError`.
+
 * **Components are reached by calling the receiver, not by `get`/`tryGet`.**
   `Entity.get`/`tryGet`, `QueryGroup.get`/`tryGet` and `Scene.get`/`tryGet` are
   removed in `good` 0.3.0-dev, and the type argument now says whether the
   component may be absent (#220). `entity.get<RigidBody2D>()` becomes
   `entity<RigidBody2D>().component` and `entity.tryGet<Collider2D>()` becomes
-  `entity<Collider2D?>().component`. `RigidBody2D`, `Collider2D` and
+  an `entity.has<Collider2D>()` guard around it (#302). `RigidBody2D`,
+  `Collider2D` and
   `Effector2D` are unchanged.
 
 * **`bodyType.defaultValue` is `bodyType.initialValue`.** The accessor is

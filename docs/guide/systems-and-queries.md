@@ -153,9 +153,9 @@ Each clause takes up to ten types.
     "any of these four".
 
 `withOptional` narrows nothing; it signals to the reader that the loop body
-branches on `entity<T?>().component`. `WorldTransformSystem` is the reference
-usage: it matches every `Transform2D` entity, hierarchy-linked or not, and
-tests `entity<Child?>().component` inside.
+branches on whether an entity has the component. `WorldTransformSystem` is the
+reference usage: it matches every `Transform2D` entity, hierarchy-linked or
+not, and asks `entity.has<Child>()` inside.
 
 ## Walking results
 

@@ -527,10 +527,9 @@ class Box2DPhysicsSystem extends GameSystem
 
   @override
   void onEntitySpawned(Entity entity) {
-    final body = entity<RigidBody2D?>().component;
-    if (body == null) return;
+    if (!entity.has<RigidBody2D>()) return;
 
-    if (entity<Transform2D?>().component == null) {
+    if (!entity.has<Transform2D>()) {
       assert(
         false,
         'A prefab mixing in RigidBody2D must also mix in Transform2D - a '
@@ -595,12 +594,12 @@ class Box2DPhysicsSystem extends GameSystem
     if (_pendingCreate.isEmpty) return;
     for (var i = 0; i < _pendingCreate.length; i++) {
       final entity = _pendingCreate[i];
-      final body = entity<RigidBody2D?>().component;
-      final transform = entity<Transform2D?>().component;
       // Destroyed before it ever got a body - `onEntityDespawned` clears the
       // queue, but an entity whose whole scene went away does not come
       // through there with a resolvable archetype.
-      if (body == null || transform == null) continue;
+      if (!entity.has<RigidBody2D>() || !entity.has<Transform2D>()) continue;
+      final body = entity<RigidBody2D>().component;
+      final transform = entity<Transform2D>().component;
       // Its scene unloaded between the spawn and this step, so there is no
       // world to build it in and no entity left to build it for.
       if (entity.sceneSlot < 0) continue;
@@ -611,8 +610,8 @@ class Box2DPhysicsSystem extends GameSystem
 
   @override
   void onEntityDespawned(Entity entity) {
-    final body = entity<RigidBody2D?>().component;
-    if (body == null) return;
+    if (!entity.has<RigidBody2D>()) return;
+    final body = entity<RigidBody2D>().component;
 
     // Spawned and destroyed inside one tick, before its body was ever made.
     // Leaving it queued would create a body for a freed row on the next step.
@@ -707,9 +706,8 @@ class Box2DPhysicsSystem extends GameSystem
     body.bodySyncedY[entity] = transform.transformOffsetY[entity];
     body.bodySyncedAngle[entity] = transform.transformRotation[entity];
 
-    final collider = entity<Collider2D?>().component;
-    if (collider != null) {
-      final shapes = collider.bodies;
+    if (entity.has<Collider2D>()) {
+      final shapes = entity<Collider2D>().component.bodies;
       for (var i = 0; i < shapes.length; i++) {
         _createShape(entity, handle, shapes[i]);
       }
@@ -739,7 +737,9 @@ class Box2DPhysicsSystem extends GameSystem
     _shapeOwners[slot] = _ShapeOwner(
       entity,
       shape,
-      entity<CollisionListener?>().component,
+      entity.has<CollisionListener>()
+          ? entity<CollisionListener>().component
+          : null,
     );
   }
 
@@ -1529,8 +1529,9 @@ class Box2DPhysicsSystem extends GameSystem
 
   /// The body behind an entity, or 0 if it has none yet.
   int _bodyHandleOf(Entity entity) {
-    final body = entity<RigidBody2D?>().component;
-    return body == null ? 0 : body.bodyHandle[entity];
+    if (!entity.has<RigidBody2D>()) return 0;
+    final body = entity<RigidBody2D>().component;
+    return body.bodyHandle[entity];
   }
 
   // --- spatial queries -------------------------------------------------------
@@ -1947,8 +1948,9 @@ class Box2DPhysicsSystem extends GameSystem
 /// that entity's collision listener if it has one.
 ///
 /// [listener] is resolved **once, at shape creation**, and that is a real
-/// optimisation, not tidiness. `entity<CollisionListener?>().component` costs an
-/// archetype resolve and a subtype test, and dispatch calls it twice per
+/// optimisation, not tidiness. Resolving it costs an archetype lookup and a
+/// subtype test - two of them here, since the listener may be absent and
+/// `has` asks the same question first - and dispatch would pay that twice per
 /// touching pair per tick - a settled pile of 20 000 bodies is tens of
 /// thousands of contacts, so resolving on the fly is tens of thousands of
 /// resolves every tick. The answer cannot change: the lookup returns the

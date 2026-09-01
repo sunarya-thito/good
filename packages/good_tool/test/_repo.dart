@@ -159,10 +159,12 @@ Prefab? mounted;
 extension type const Entity(int value) implements int {
   int get archetypeId => (value >> 48) & 0xFFFF;
 
-  Accessor<T> call<T extends Component?>() => Accessor<T>(this);
+  Accessor<T> call<T extends Component>() => Accessor<T>(this);
+
+  bool has<T extends Component>() => mounted is T;
 }
 
-extension type const Accessor<T extends Component?>(Entity entity)
+extension type const Accessor<T extends Component>(Entity entity)
     implements Entity {
   T get component => mounted as T;
 }

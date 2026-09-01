@@ -458,7 +458,7 @@ abstract class SceneStruct extends GameListenerBase
         '$T does not mix in Child - cannot be attached to a parent',
       );
     }
-    if (parent<Parent?>().component == null) {
+    if (!parent.has<Parent>()) {
       throw ArgumentError.value(
         parent,
         'parent',
@@ -967,11 +967,10 @@ extension EntityLifetime on Entity {
     final page = storage.pageAt(pageIndex);
     if (page == null) return; // its scene was already unloaded
 
-    final parentComponent = this<Parent?>().component;
-    if (parentComponent != null) {
+    if (has<Parent>()) {
       // The next sibling is read *before* the child is destroyed, because
       // destroying it clears the link this walk would need next.
-      var child = parentComponent.parentFirstChild.readPending(this);
+      var child = this<Parent>().component.parentFirstChild.readPending(this);
       while (child != null) {
         final after = child<Child>().component.childNextSibling.readPending(child);
         child.destroy();
@@ -979,9 +978,10 @@ extension EntityLifetime on Entity {
       }
     }
 
-    final childComponent = this<Child?>().component;
-    final parent = childComponent?.childParent.readPending(this);
-    if (parent != null) parent<Parent>().unlinkChild(this);
+    if (has<Child>()) {
+      final parent = this<Child>().component.childParent.readPending(this);
+      if (parent != null) parent<Parent>().unlinkChild(this);
+    }
 
     // Broad first, then narrow - the same order `unmountEntitiesOf` uses, so
     // an entity that goes away one at a time is indistinguishable from one

@@ -78,25 +78,28 @@ Passing one around costs an `int`. It is also self-describing — given only the
 integer, the engine finds the archetype, the page, and the row.
 
 ```dart
-final transform = entity<Transform2D>().component;  // throws if absent
-final child = entity<Child?>().component;           // null if absent
+final transform = entity<Transform2D>().component;  // fails if absent
+if (entity.has<Child>()) entity<Child>().detach();  // only if it has one
 entity.destroy();                                   // it and its subtree
 ```
 
 `entity<T>()` resolves the *prefab* that declared the archetype, so the
 component it hands back has all its columns bound to that archetype's layout.
 
-The type argument says whether absence is expected, and there is one spelling
-for both. `entity<Transform2D>()` is a claim that the archetype has the
-component: reading `.component` off it throws a `StateError` naming the
-archetype when it does not. `entity<Transform2D?>()` makes no claim, and
-`.component` answers `null`. The bound is `Component?`, so `String` and `int`
-are still rejected where the type argument is written.
+Naming a component is a claim that the archetype carries it. When it does not,
+`.component` fails: an assertion naming the archetype and the component in
+debug, and the cast under it in release, which throws either way. Ask
+`entity.has<T>()` first when absence is a case you handle — it is the same
+lookup, answering `true` or `false` instead of a component.
 
-The accessor itself is never `null` in either form. It is an extension type
-over `Entity` and erases to an `int`, and a nullable one would not; the
-nullability lives on `.component`, which hands back an object the archetype
-already holds.
+There is no nullable spelling. `Accessor<Transform2D?>` would be the
+*supertype* of `Accessor<Transform2D>`, because extension types are covariant
+in their type parameter, so an extension written `on Accessor<Transform2D>`
+would not apply to it: it would reach `.component` and not one generated
+property, `addChild`, or `setEuler`.
+
+The accessor itself is never `null`. It is an extension type over `Entity` and
+erases to an `int`, and a nullable one would not.
 
 !!! warning "Resolve components per group, not per entity"
     `entity<T>().component` is a registry lookup. In a loop over thousands of

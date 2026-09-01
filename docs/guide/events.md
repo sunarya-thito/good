@@ -371,8 +371,8 @@ actions come back as [commands](flutter-bridge.md#commands).
 **The physics callbacks.** `CollisionListener` — `onCollisionEnter2D` and its
 five siblings — is bound `on Component`, not `on GameListener`, so none of the
 machinery on this page touches it. The physics system resolves it at the
-contact with `entity<CollisionListener?>().component` and calls your override
-directly. Same "no-op defaults, override what you need" shape; different
+contact with `entity<CollisionListener>().component`, on the entities that
+have one, and calls your override directly. Same "no-op defaults, override what you need" shape; different
 delivery. See [Physics](physics.md).
 
 **`GameState.onMounted()`.** A plain virtual method. One receiver, the

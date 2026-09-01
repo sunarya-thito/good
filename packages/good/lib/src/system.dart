@@ -557,9 +557,10 @@ abstract class QueryBuilder {
   /// Declares that a match *may* have these components, without requiring
   /// or forbidding them. Pure documentation - it does not narrow the query.
   /// Its role is signalling to the reader (and, later, to codegen) that the
-  /// loop body branches on `entity<T?>().component`; `WorldTransformSystem` is
-  /// the reference usage, matching every `Transform2D` entity whether
-  /// hierarchy-linked or not and testing `entity<Child?>().component` inside.
+  /// loop body branches on whether an entity has the component;
+  /// `WorldTransformSystem` is the reference usage, matching every
+  /// `Transform2D` entity whether hierarchy-linked or not and asking
+  /// `entity.has<Child>()` inside.
   QueryBuilder withOptional(
     Type a, [
     Type? b,

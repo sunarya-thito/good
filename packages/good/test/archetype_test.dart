@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/archetype.dart';
 import 'package:good/src/data.dart';
@@ -206,8 +208,8 @@ void main() {
     });
   });
 
-  group('entity<T>() and entity<T?>()', () {
-    test('both spellings return the prefab for a component it has', () {
+  group('entity<T>() and entity.has<T>()', () {
+    test('the accessor answers the prefab for a component it has', () {
       final level = _level();
       level.pool.beginTick();
       final entity = level.addEntity(level.player);
@@ -216,44 +218,79 @@ void main() {
       expect(entity<_Transform>().component, same(level.player));
       expect(entity<_Health>().component, same(level.player));
       expect(entity<_Player>().component, same(level.player));
-
-      // The nullable spelling is not "always null" - present is still the
-      // prefab, and only that tells a working optional form from one that
-      // has stopped resolving at all.
-      expect(entity<_Transform?>().component, same(level.player));
-      expect(entity<_Health?>().component, same(level.player));
     });
 
-    test('the nullable spelling answers null for a component it lacks', () {
+    test('has<T>() is true for a component the archetype carries', () {
+      final level = _level();
+      level.pool.beginTick();
+      final entity = level.addEntity(level.player);
+      level.pool.commitTick();
+
+      expect(entity.has<_Transform>(), isTrue);
+      expect(entity.has<_Health>(), isTrue);
+      expect(entity.has<_Player>(), isTrue);
+    });
+
+    test('has<T>() is false for a component the archetype lacks', () {
       final level = _level();
       level.pool.beginTick();
       final enemy = level.addEntity(level.enemy);
       level.pool.commitTick();
 
-      expect(enemy<_Health?>().component, isNull);
-      expect(enemy<_Player?>().component, isNull);
-      // Same entity, same call shape, a component it does have.
-      expect(enemy<_Transform?>().component, same(level.enemy));
+      expect(enemy.has<_Health>(), isFalse);
+      expect(enemy.has<_Player>(), isFalse);
+      // Same entity, same call shape, a component it does have - without this
+      // a `has` that had stopped resolving anything would pass the two above.
+      expect(enemy.has<_Transform>(), isTrue);
     });
 
-    test('the non-nullable spelling throws, naming the component', () {
+    test('has<T>() answers what component will do, on the same entity', () {
       final level = _level();
       level.pool.beginTick();
       final enemy = level.addEntity(level.enemy);
       level.pool.commitTick();
 
-      // The message and not only the type: a `StateError` from anywhere else
-      // in the resolve would satisfy `throwsStateError` just as well.
+      // The guard is only worth writing if it agrees with the thing it
+      // guards. True means the read lands; false means it fails.
+      expect(enemy.has<_Transform>(), isTrue);
+      expect(enemy<_Transform>().component, same(level.enemy));
+      expect(enemy.has<_Health>(), isFalse);
+      expect(() => enemy<_Health>().component, throwsA(isA<Error>()));
+    });
+
+    test('has<T>() reads through an accessor too', () {
+      final level = _level();
+      level.pool.beginTick();
+      final entity = level.addEntity(level.player);
+      level.pool.commitTick();
+
+      // `Accessor` implements `Entity`, so the guard is one declaration and
+      // not two. The type argument it is asked about is not its own.
+      expect(entity<_Transform>().has<_Health>(), isTrue);
+      expect(entity<_Transform>().has<_Enemy>(), isFalse);
+    });
+
+    test('a component the archetype lacks fails, naming it and the way '
+        'to test for it', () {
+      final level = _level();
+      level.pool.beginTick();
+      final enemy = level.addEntity(level.enemy);
+      level.pool.commitTick();
+
+      // The message and not only the type: an `AssertionError` from anywhere
+      // else in the resolve would satisfy `isA<AssertionError>()` just as
+      // well. `message` and not `toString`, so a change that stops
+      // interpolating is visible.
       expect(
         () => enemy<_Health>().component,
         throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
+          isA<AssertionError>().having(
+            (e) => e.message.toString(),
             'message',
             allOf(
               contains('_Health'),
               contains('_Enemy'),
-              contains('Write _Health? if that is expected'),
+              contains('entity.has<_Health>()'),
             ),
           ),
         ),
@@ -261,18 +298,114 @@ void main() {
       expect(enemy<_Transform>().component, same(level.enemy));
     });
 
-    test('the accessor is an int, in both spellings', () {
+    test('the failure survives the assertion being stripped', () {
+      // The assertion is the diagnostic; the cast under it is the failure.
+      // Release removes the first and keeps the second, and this suite runs
+      // with assertions on, so nothing here can reach the cast - a test that
+      // only checked "something throws" would pass on the assertion alone and
+      // say nothing about a shipped build.
+      //
+      // So the getter's own body is lifted out of `struct.dart` - lifted, not
+      // transcribed, so it cannot drift from what ships - dropped into a
+      // one-file harness around a stub registry, and run by `dart run`, which
+      // has assertions **off**. The harness says which build it got, and this
+      // fails if it reports the wrong one.
+      final source = File(
+        'lib/src/struct.dart',
+      ).readAsStringSync().replaceAll('\r', '');
+      final open = source.indexOf('  T get component {');
+      expect(open, isNonNegative, reason: 'Accessor.component moved');
+      final body = source.substring(open, source.indexOf('\n  }\n', open) + 4);
+
+      final dir = Directory.systemTemp.createTempSync('good_asserts_off');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final harness = File('${dir.path}/component.dart')
+        ..writeAsStringSync('''
+class Absent {}
+
+class Present {}
+
+class Storage {
+  Storage(this.prefab);
+  final Object prefab;
+}
+
+class ArchetypeRegistry {
+  static Storage byId(int id) => Storage(Absent());
+}
+
+class Entity {
+  Entity(this.archetypeId);
+  final int archetypeId;
+}
+
+class Accessor<T> {
+  Accessor(this.entity);
+  final Entity entity;
+
+$body}
+
+void main() {
+  var enabled = false;
+  assert(() {
+    enabled = true;
+    return true;
+  }());
+  if (enabled) {
+    print('ASSERTS_ON');
+    return;
+  }
+  print(Accessor<Absent>(Entity(7)).component is Absent
+      ? 'PRESENT_OK'
+      : 'PRESENT_WRONG');
+  try {
+    Accessor<Present>(Entity(7)).component;
+    print('ABSENT_RETURNED');
+  } on TypeError {
+    print('ABSENT_TYPE_ERROR');
+  } catch (e) {
+    print('ABSENT_OTHER \${e.runtimeType}');
+  }
+}
+''');
+
+      final run = Process.runSync('dart', [
+        'run',
+        harness.path,
+      ], runInShell: true);
+      final out = '${run.stdout}${run.stderr}';
+
+      expect(
+        out,
+        isNot(contains('ASSERTS_ON')),
+        reason: 'the harness must run with assertions off or it proves nothing',
+      );
+      expect(
+        out,
+        contains('PRESENT_OK'),
+        reason: 'a component the archetype has still comes back, so the '
+            'result below is the cast failing and not the getter being broken',
+      );
+      expect(
+        out,
+        contains('ABSENT_TYPE_ERROR'),
+        reason: 'with the assertion stripped the cast is what fails, and it '
+            'must still fail: no build may hand back a component the entity '
+            'does not have',
+      );
+    });
+
+    test('the accessor is an int', () {
       final level = _level();
       level.pool.beginTick();
       final entity = level.addEntity(level.player);
       level.pool.commitTick();
 
-      // What keeps the optional form off the allocation path: nullability
-      // rides on `component`, so neither accessor is itself nullable.
+      // What keeps the accessor off the allocation path: it is the entity,
+      // and asking about a component it lacks does not change that.
       expect(identical(entity<_Transform>().entity, entity), isTrue);
-      expect(identical(entity<_Transform?>().entity, entity), isTrue);
       expect(entity<_Transform>(), entity);
-      expect(entity<_Health?>(), entity);
+      expect(entity<_Enemy>(), entity);
     });
   });
 
