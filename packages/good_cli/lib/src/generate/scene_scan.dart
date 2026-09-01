@@ -34,11 +34,25 @@ class SceneUsage {
 ///
 /// A scene's asset set is not written in one place. `SceneStruct.describeAssets`
 /// declares what the scene itself needs; `describeScene` registers prefabs, and
-/// each prefab's own `describeAssets` adds to the same set. Following that
-/// means resolving `descriptor.has(Player.new)` to the `Player` class and
-/// reading *its* declarations - which is a type resolution, not a text match.
+/// each prefab's own declarations add to the same set. Following that means
+/// getting from `descriptor.has(Player.new)` to `Player`'s own body, which is
+/// a whole-project question rather than a per-file one - a scene routinely
+/// registers a prefab declared in a file this pass reads later, so every
+/// declarer is collected first and the references joined up afterwards.
 /// Scenes also arrive as mixins (`mixin FieldScene on SceneStruct`), so "is
 /// this a scene" is a supertype question.
+///
+/// The join is by **bare name**, not by element, because the units here are
+/// parsed and not resolved - `_Declarer.isScene` says the same of its own
+/// answer, and [scanScenes] uses `getParsedUnit`. Resolution is what
+/// `struct_scan` measured at 826 ms against 272 ms and dropped.
+///
+/// # Where a declaration is written
+///
+/// Both places. `describeAssets` and `describeScene` bodies, and **field
+/// initialisers** - `final texture = Asset.of(Textures.player)` and
+/// `final barrel = EntityStruct.of(Barrel.new)` - which are not method bodies
+/// and were invisible here until they were read directly.
 ///
 /// # What it cannot see, and what happens then
 ///
@@ -205,12 +219,93 @@ class _DeclarerVisitor extends RecursiveAstVisitor<void> {
 
   void _readBody(List<ClassMember> members, _Declarer declarer) {
     for (final member in members) {
+      if (member is FieldDeclaration) {
+        // Instance field initialisers only. A `static final` one is lazy in
+        // Dart, so it runs on first read rather than during the pass both
+        // isolate copies replay - it is refused at run time and declares
+        // nothing to attribute.
+        if (member.isStatic) continue;
+        for (final variable in member.fields.variables) {
+          variable.initializer?.accept(_FieldVisitor(declarer, _byEnum));
+        }
+        continue;
+      }
       if (member is! MethodDeclaration) continue;
       final method = member.name.lexeme;
       if (method != 'describeAssets' && method != 'describeScene') continue;
       member.body.accept(_HasVisitor(declarer, _byEnum, method));
     }
   }
+}
+
+/// Collects `Asset.of(...)` and `EntityStruct.of(...)` out of one field
+/// initialiser.
+///
+/// A declaration written where it is used is not a `MethodDeclaration`, so
+/// nothing above reaches it and the asset would be attributed to no scene.
+/// That is not a missing asset - `_planByScene` puts an unattributed asset in
+/// the shared chunk and it still ships - but it is a build that reads a chunk
+/// it did not need to, and it gets worse the more declarations move.
+///
+/// `EntityStruct.of` is read for the same reason and closes a gap that
+/// predates the ambient asset form: a child prefab declared in a field
+/// initialiser contributed nothing here, so *its* assets were unattributed
+/// too.
+///
+/// Matched on the receiver's name, which is what a parsed unit can see - the
+/// same trade `struct_scan._isColumn` makes, and with the same consequence
+/// when it misses: an asset in the shared chunk, never a wrong build.
+class _FieldVisitor extends RecursiveAstVisitor<void> {
+  _FieldVisitor(this._declarer, this._byEnum);
+
+  final _Declarer _declarer;
+  final Map<String, Map<String, String>> _byEnum;
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    final target = node.target;
+    if (target is SimpleIdentifier &&
+        node.methodName.name == 'of' &&
+        node.argumentList.arguments.isNotEmpty) {
+      final argument = node.argumentList.arguments.first;
+      if (target.name == 'Asset') {
+        _readAssetKey(argument, _declarer, _byEnum);
+      } else if (target.name == 'EntityStruct') {
+        final type = _constructedTypeName(argument);
+        if (type != null) {
+          _declarer.registers.add(type);
+        } else {
+          _declarer.unresolved['${_declarer.name}.EntityStruct.of'] =
+              '$argument';
+        }
+      }
+    }
+    // Recursed into, not returned from: an asset named inside another
+    // declaration - `Sprite.of(texture: Asset.of(Textures.x))` - is still a
+    // declaration this scene makes.
+    super.visitMethodInvocation(node);
+  }
+}
+
+/// Files [argument] as an asset of [declarer], or records why it could not be
+/// read.
+///
+/// The one place `Textures.planePlayerBlue` is turned into a path, so the
+/// method form and the field-initialiser form cannot drift about what counts
+/// as readable.
+void _readAssetKey(
+  Expression argument,
+  _Declarer declarer,
+  Map<String, Map<String, String>> byEnum,
+) {
+  if (argument is PrefixedIdentifier) {
+    final path = byEnum[argument.prefix.name]?[argument.identifier.name];
+    if (path != null) {
+      declarer.assets.add(path);
+      return;
+    }
+  }
+  declarer.unresolved['${declarer.name}.describeAssets'] = '$argument';
 }
 
 /// Collects `descriptor.has(...)` arguments inside one method body.
@@ -245,17 +340,10 @@ class _HasVisitor extends RecursiveAstVisitor<void> {
         } else {
           _declarer.unresolved['${_declarer.name}.describeScene'] = '$argument';
         }
-      } else if (argument is PrefixedIdentifier) {
-        // `Textures.planePlayerBlue`
-        final path = _byEnum[argument.prefix.name]?[argument.identifier.name];
-        if (path != null) {
-          _declarer.assets.add(path);
-        } else {
-          _declarer.unresolved['${_declarer.name}.describeAssets'] =
-              '$argument';
-        }
       } else {
-        _declarer.unresolved['${_declarer.name}.describeAssets'] = '$argument';
+        // `Textures.planePlayerBlue`, read by the same function the field
+        // form uses so the two cannot disagree about what is readable.
+        _readAssetKey(argument, _declarer, _byEnum);
       }
     }
     super.visitMethodInvocation(node);

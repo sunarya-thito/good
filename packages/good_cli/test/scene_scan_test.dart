@@ -200,6 +200,131 @@ class B extends EntityStruct {
     expect(_scan(dir).byScene['S'], {'assets/bg.webp'});
   });
 
+  test('an asset named in a field initialiser lands in its scene', () {
+    // #194: the declaration is not in a method body at all. Read from the
+    // field or the asset is attributed to no scene, and `_planByScene` puts
+    // it in the shared chunk - which still ships, and still costs the scene a
+    // chunk read it did not need.
+    final dir = _project(
+      '''
+class FieldScene extends SceneStruct {
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    descriptor.has(Plane.new);
+  }
+}
+
+class Plane extends EntityStruct {
+  final texture = Asset.of(Textures.plane);
+}
+''',
+      assets: <String>['plane.webp', 'other.webp'],
+    );
+    final usage = _scan(dir);
+    expect(usage.byScene, {
+      'FieldScene': {'assets/plane.webp'},
+    });
+    expect(usage.unresolved, isEmpty);
+  });
+
+  test('a child prefab declared in a field initialiser is followed', () {
+    // Predates #194: `EntityStruct.of` in an initialiser ships and is used,
+    // and its child contributed nothing here, so the child's own assets were
+    // attributed to no scene.
+    final dir = _project(
+      '''
+class FieldScene extends SceneStruct {
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    descriptor.has(Turret.new);
+  }
+}
+
+class Turret extends EntityStruct {
+  final barrel = EntityStruct.of(Barrel.new);
+  final texture = Asset.of(Textures.turret);
+}
+
+class Barrel extends EntityStruct {
+  final texture = Asset.of(Textures.barrel);
+}
+''',
+      assets: <String>['turret.webp', 'barrel.webp'],
+    );
+    expect(_scan(dir).byScene['FieldScene'], {
+      'assets/turret.webp',
+      'assets/barrel.webp',
+    });
+  });
+
+  test('an asset named inside another declaration is still read', () {
+    final dir = _project(
+      '''
+class FieldScene extends SceneStruct {
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    descriptor.has(Plane.new);
+  }
+}
+
+class Plane extends EntityStruct {
+  final sprite = Sprite.of(width: 64, texture: Asset.of(Textures.plane));
+}
+''',
+      assets: <String>['plane.webp'],
+    );
+    expect(_scan(dir).byScene['FieldScene'], {'assets/plane.webp'});
+  });
+
+  test('a static field initialiser is not read as a declaration', () {
+    // A static initialiser is lazy, so it runs on first read rather than in
+    // the pass both isolate copies replay - it is refused at run time, and
+    // reading it here would attribute an asset no scene ever declares.
+    final dir = _project(
+      '''
+class FieldScene extends SceneStruct {
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    descriptor.has(Plane.new);
+  }
+}
+
+class Plane extends EntityStruct {
+  static final shared = Asset.of(Textures.plane);
+}
+''',
+      assets: <String>['plane.webp'],
+    );
+    expect(_scan(dir).byScene['FieldScene'], isEmpty);
+  });
+
+  test('an unreadable key in a field initialiser is reported', () {
+    final dir = _project(
+      '''
+class FieldScene extends SceneStruct {
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    descriptor.has(Plane.new);
+  }
+}
+
+class Plane extends EntityStruct {
+  final texture = Asset.of(keys[index]);
+}
+''',
+      assets: <String>['plane.webp'],
+    );
+    final usage = _scan(dir);
+    expect(usage.byScene['FieldScene'], isEmpty);
+    expect(
+      usage.unresolved,
+      contains('Plane.describeAssets'),
+      reason:
+          'an asset this pass cannot attribute has to be reported, so it '
+          'lands in the shared chunk on purpose rather than by accident',
+    );
+  });
+
   test('a key it cannot read is reported, never silently dropped', () {
     final dir = _project(
       '''

@@ -2,6 +2,37 @@
 
 ### Added
 
+* **An asset is declarable in the field that holds it.** `Asset.of(key)` reads
+  the descriptor `SceneStruct.initializeScene` opens around a scene's
+  declaration passes, so a prefab names a texture where it uses it instead of
+  overriding `describeAssets` and carrying the handle in a `late final` (#194):
+
+  ```dart
+  class Player extends EntityStruct with Transform2D, Renderable2D {
+    final texture = Asset.of(Textures.player);
+  }
+  ```
+
+  It is `AssetDescriptor.has` reached without being handed the descriptor - the
+  same call making the same registration, so the scene loads exactly what it
+  loaded before, and `has` stays. `Field.float64` is the same move made for
+  columns.
+
+  Idempotence carries over unchanged, and it is what stops a declaration at the
+  use site multiplying the asset: two prefabs writing
+  `Asset.of(Textures.player)` get the *identical* handle, one address and one
+  decode.
+
+  `DeclarationContext.assets` is the seventh level of the declaration stack and
+  the only one scoped to a scene rather than to a constructor, because that is
+  what an asset belongs to. One `_AssetDescriptor` serves the scene's own
+  `describeAssets` and every prefab it registers, so no prefab has an asset
+  list of its own and there is no attribution to get wrong - which is why this
+  level has no barrier and needs none. A `SceneStruct`'s own field initialisers
+  still cannot declare: a scene is constructed by the caller and has no
+  `Assets` until `initializeScene`, the same fact `Field.*` and `Event.of`
+  state for scenes.
+
 * **A component type's query bit can be fixed at build time.** `good_tool`
   writes `goodComponentBits` into `lib/src/component_bits.g.dart`, exported
   from `good.dart`. A game that names it - along with the tables of the other
