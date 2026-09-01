@@ -258,6 +258,15 @@ class _BodySceneState extends GameState<_BodySceneGame> with _Noted {
   }
 }
 
+/// A system built by hand, with nothing open above it. Its inherited pair has
+/// to land on its own registrar, the way a prefab's does.
+class _BareSystem extends GameSystem with GameSystemLifecycleListener {
+  int mounts = 0;
+
+  @override
+  void onMounted() => mounts++;
+}
+
 /// A system built in a `GameState` field initialiser and handed over through
 /// a closure. Its one field dispatcher declared into the state's window.
 class _Prebuilt extends GameSystem with _Noted {
@@ -470,6 +479,31 @@ void main() {
             'and it delivers: the pair is declared during construction, so '
             'it is filled by the same collect pass every other dispatcher is',
       );
+    });
+
+    test('a system built with no window has its pair too', () {
+      final system = _BareSystem();
+
+      expect(
+        system.mountEvent.listenerCount,
+        0,
+        reason:
+            'constructing it did not throw and the pair is assigned. A pair '
+            'read off the declaration stack would have found it empty here',
+      );
+
+      EventBinder.bind(system);
+
+      expect(
+        system.mountEvent.listenerCount,
+        1,
+        reason:
+            'the system itself, offered by the collect pass into the '
+            'registrar its own constructor declared against',
+      );
+
+      system.mountEvent();
+      expect(system.mounts, 1);
     });
 
     test('a scene held on a state field keeps its own base pair', () async {
