@@ -145,8 +145,8 @@ void main() {
           final transform = instance<Transform2D>().component;
           transform.transformOffsetX[instance] += 1;
           transform.transformOffsetY[instance] += 1;
-          final optChild = instance<Child?>().component;
-          if (optChild != null && optChild.childParent[instance] != null) {
+          if (instance.has<Child>() &&
+              instance<Child>().component.childParent[instance] != null) {
             parentedSeen++;
           }
         }
@@ -167,10 +167,10 @@ void main() {
       // column on every match and passed this test, because nothing here
       // had a parent to lose.
       expect(parentedSeen, 3);
-      expect(enemy<Child?>().component!.childParent[enemy], player);
-      expect(player<Child?>().component!.childParent[player], isNull);
+      expect(enemy<Child>().component.childParent[enemy], player);
+      expect(player<Child>().component.childParent[player], isNull);
       // Rock has no Child mixin, so the optional branch was skipped for it.
-      expect(rock<Child?>().component, isNull);
+      expect(rock.has<Child>(), isFalse);
     });
 
     test('Child.childParent starts absent and round-trips through null', () {

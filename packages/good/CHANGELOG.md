@@ -94,41 +94,80 @@
 
 ### Breaking
 
-* **`get` and `tryGet` are gone; the receiver is called instead, and `T`
-  carries whether the component may be absent.** `Entity`, `QueryGroup` and
-  `Scene` each had a throwing `get<T>()` and a nullable `tryGet<T>()`. Both are
-  removed and the receiver's own call takes their place, with the type argument
-  saying which one you meant (#220):
+* **`entity<T?>()` is gone. `Entity.call` takes `T extends Component` and
+  `entity.has<T>()` answers whether the component is there** (#302):
+
+  ```dart
+  if (entity.has<Transform2D>()) entity<Transform2D>().offsetX = 10;
+  ```
+
+  The nullable spelling reached `.component` and nothing else. Extension types
+  are covariant in their type parameter, so `Accessor<Transform2D?>` is the
+  *supertype* of `Accessor<Transform2D>`, and an extension declared
+  `on Accessor<Transform2D>` needs a subtype receiver. Every generated property
+  and every hand-written accessor extension - `addChild`, `detach`, `setEuler`,
+  `setText`, `lookAt` - was therefore unreachable from it, and
+  `entity<Parent?>().addChild(kid)` did not compile.
+
+  | before | after |
+  |---|---|
+  | `entity<Transform2D?>().component` | `entity.has<Transform2D>()`, then `entity<Transform2D>().component` |
+  | `entity<Transform2D?>().component != null` | `entity.has<Transform2D>()` |
+
+  `Accessor`'s bound reverts to `T extends Component` with it. `QueryGroup` and
+  `Scene` are unaffected: their calls return the component or the scene struct
+  directly rather than an accessor, so `group<Transform2D?>()` and
+  `scene<Level?>()` go null and short-circuit as they always did.
+
+  `has<T>()` is declared on `Entity`, so an `Accessor` has it too - it resolves
+  the archetype prefab and tests it against `T`, the same lookup `.component`
+  makes, and allocates nothing. It answers for the *archetype*, so hoist it out
+  of a loop over one group rather than asking per entity.
+
+* **A component the archetype lacks is an assertion, not a `StateError`.**
+  `Accessor.component` asserts, then casts (#302):
+
+  ```
+  Failed assertion: Entity of archetype Player (id 3) does not have component
+  Transform2D. Use entity.has<Transform2D>() to test for it.
+  ```
+
+  A release build strips the assertion and is left with the cast, which throws
+  a `TypeError` on the same rows: stripping it removes the diagnostic, not the
+  failure, and no build hands back a component the entity does not have. Code
+  that caught the `StateError` should ask `has<T>()` instead - neither of these
+  is meant to be caught.
+
+* **`get` and `tryGet` are gone; the receiver is called instead.**
+  `Entity`, `QueryGroup` and `Scene` each had a throwing `get<T>()` and a
+  nullable `tryGet<T>()`. Both are removed and the receiver's own call takes
+  their place (#220):
 
   | before | after |
   |---|---|
   | `entity.get<Transform2D>()` | `entity<Transform2D>().component` |
-  | `entity.tryGet<Transform2D>()` | `entity<Transform2D?>().component` |
+  | `entity.tryGet<Transform2D>()` | `entity.has<Transform2D>()`, then `entity<Transform2D>().component` |
   | `group.get<Transform2D>()` | `group<Transform2D>()` |
   | `group.tryGet<Transform2D>()` | `group<Transform2D?>()` |
   | `scene.get<Level>()` | `scene<Level>()` |
   | `scene.tryGet<Level>()` | `scene<Level?>()` |
 
-  The bounds widen to admit the nullable spelling: `Entity.call` and
-  `Accessor` take `T extends Component?`, `QueryGroup.call` takes
-  `T extends Component?`, and `Scene.call` takes `T extends SceneStruct?`.
-  `Component?` and not `Object?`, so `entity<String>()` is still refused where
-  the type argument is written. `null is T` is the whole dispatch: it is true
-  exactly for the nullable spelling, and it is read only on the path where the
-  archetype turns out to lack the component.
+`QueryGroup.call` takes `T extends Component?` and `Scene.call` takes
+  `T extends SceneStruct?`, so those two say absence with a nullable type
+  argument; `null is T` is the whole dispatch, and it is read only on the path
+  where the component or the scene turns out not to be there. `Component?` and
+  not `Object?`, so `group<String>()` is still refused where the type argument
+  is written. `Entity` says it with `has<T>()` instead - see the entry above.
 
-  `Entity` keeps returning an `Accessor<T>` and the component is reached
-  through `.component`, which is where the nullability now lives. The accessor
-  itself is never null in either spelling, so it goes on erasing to an `int`
-  and neither form allocates; a nullable extension type would not have. On
+  `Entity` returns an `Accessor<T>` and the component is reached through
+  `.component`. The accessor erases to an `int` and never allocates. On
   `QueryGroup` and `Scene` the call returns the component or the scene struct
   directly, so those return `null` themselves.
 
   A null-aware call has no sugar - `scene?<SceneStruct>()` does not parse - so
   the one site that needs it spells `scene?.call<SceneStruct>()`.
 
-  Two messages change with the spelling they suggest. A missing component on an
-  entity ends `Write Transform2D? if that is expected.`, and on a group
+  A group asked for a component its archetype lacks ends
   `Add it to the query (withAll) or ask for Transform2D?.`
 * **A time is a `Seconds`, not a bare `double`.** Every member that took or
   returned a span of simulated time in seconds now spells it, and a bare

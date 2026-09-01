@@ -204,12 +204,12 @@ class SpinSystem extends GameSystem with FixedTickable {
       transform.transformRotation[entity] =
           transform.transformRotation[entity] + 0.01;
 
-      // `tryGet` rather than a type test on the entity: only the player has a
+      // `has` rather than a type test on the entity: only the player has a
       // Breath, and asking the row whether it has the component is the
       // sanctioned lookup (the never-dispatch-on-`is` rule names it
       // explicitly).
-      final player = entity<Player?>().component;
-      if (player == null) continue;
+      if (!entity.has<Player>()) continue;
+      final player = entity<Player>().component;
       // Sampled fresh every tick from the clock - no per-entity animation
       // state anywhere, and nothing to keep in step.
       final at = player.breath.pulse.animate(wrapMode: WrapMode.pingPong);

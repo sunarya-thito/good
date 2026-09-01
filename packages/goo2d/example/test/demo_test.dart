@@ -120,7 +120,7 @@ void main() {
         // The case's whole claim: an unparented sprite carries no
         // `WorldTransform2D`, so it is not in `WorldTransformSystem`'s query
         // and the renderer reads its local transform directly.
-        expect(entity<WorldTransform2D?>().component, isNull);
+        expect(entity.has<WorldTransform2D>(), isFalse);
         seen++;
       }
       expect(seen, greaterThan(0));

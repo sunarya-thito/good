@@ -73,7 +73,7 @@ class _Observer extends GameSystem with EntitySpawnListener, SceneLoadListener {
     despawned.add(entity);
     order.add('world.despawned');
     // The contract says the row is still readable here.
-    if (entity<Component?>().component == null && entity.archetypeId < 0) {
+    if (!entity.has<Component>() && entity.archetypeId < 0) {
       rowsReadableOnDespawn = false;
     }
   }

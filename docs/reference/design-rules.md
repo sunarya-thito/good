@@ -346,8 +346,9 @@ silently getting a second scheduler.
 
 !!! info "Legitimate `is`"
     Narrowing a value whose type genuinely varies at run time (`yielded is num`,
-    `listener is EventBus`), and `entity<T?>()`-style lookups that return null.
-    The rule is about *dispatching on the receiver's own type*.
+    `listener is EventBus`), and `entity.has<T>()`, which is that same test
+    against the archetype prefab. The rule is about *dispatching on the
+    receiver's own type*.
 
 ## Nothing is resolved by name
 

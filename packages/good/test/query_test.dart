@@ -719,7 +719,7 @@ void main() {
       var healthA = 0;
       for (final entity in query.run(handleA)) {
         runsA++;
-        if (entity<_Health?>().component != null) healthA++;
+        if (entity.has<_Health>()) healthA++;
       }
       expect(runsA, 5, reason: 'scene A holds 2 players and 3 rocks');
       expect(healthA, 2, reason: 'only the players carry _Health');
@@ -728,7 +728,7 @@ void main() {
       var healthB = 0;
       for (final entity in query.run(handleB)) {
         runsB++;
-        if (entity<_Health?>().component != null) healthB++;
+        if (entity.has<_Health>()) healthB++;
       }
       expect(runsB, 6, reason: 'scene B holds 5 players and 1 rock');
       expect(healthB, 5);

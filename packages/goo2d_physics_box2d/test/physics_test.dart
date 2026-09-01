@@ -99,6 +99,10 @@ class _Pinned extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
   }
 }
 
+/// A prefab with no `RigidBody2D`, so the physics system never gives it a
+/// body. What the joint calls decline on.
+class _Marker extends EntityStruct with Transform2D {}
+
 class _Scene extends SceneStruct {
   late Scene handle;
 
@@ -107,6 +111,7 @@ class _Scene extends SceneStruct {
   late final _Ball ball;
   late final _Pinned pinned;
   late final _Platform platform;
+  late final _Marker marker;
 
   @override
   void onSceneMounted(Scene scene) => handle = scene;
@@ -122,6 +127,7 @@ class _Scene extends SceneStruct {
     ball = descriptor.has(_Ball.new);
     pinned = descriptor.has(_Pinned.new);
     platform = descriptor.has(_Platform.new);
+    marker = descriptor.has(_Marker.new);
   }
 }
 
@@ -1012,6 +1018,35 @@ void main() {
       _advance(1);
       return (scene, anchor, crate);
     }
+
+    test('a joint declines an entity that has no body', () async {
+      // `_bodyHandleOf` answers 0 for an entity with no `RigidBody2D`, and
+      // every joint call turns that into `Joint.none` rather than reaching
+      // Box2D with a null handle. The guard is load-bearing now that
+      // `entity<RigidBody2D>()` is a claim: without it the lookup fails on
+      // the marker instead of the call declining.
+      final (scene, anchor, crate) = await pair();
+      final marker = scene.addEntity(scene.marker);
+      _advance(1);
+
+      expect(marker.has<RigidBody2D>(), isFalse);
+      expect(
+        physics.createDistanceJoint(anchor, marker, length: 10),
+        Joint.none,
+      );
+      expect(
+        physics.createDistanceJoint(marker, anchor, length: 10),
+        Joint.none,
+        reason: 'either end declines, so both handles are tested',
+      );
+      // The control: two real bodies in the same scene still make a joint,
+      // so the two above are the marker being refused and not the call
+      // having stopped working.
+      expect(
+        physics.createDistanceJoint(anchor, crate, length: 10),
+        isNot(Joint.none),
+      );
+    });
 
     test('a distance joint stops a body falling past its length', () async {
       // The mechanism, not the call. A joint that was created and then did

@@ -167,7 +167,7 @@ extension ParentAccessor on Accessor<Parent> {
   /// parent still naming it, its old siblings still pointing at it - and the
   /// corruption is silent. Use [adopt] to move something that has a parent.
   ///
-  /// [child] must mix in [Child] - checked at runtime (`child<Child?>()`)
+  /// [child] must mix in [Child] - checked at runtime (`child.has<Child>()`)
   /// since the type system has no way to require "some component that
   /// mixes in Child" as a constraint on a bare `Entity`.
   void addChild(Entity child) {
@@ -371,15 +371,14 @@ extension ParentAccessor on Accessor<Parent> {
   }
 
   Child _requireChild(Entity child) {
-    final childComponent = child<Child?>().component;
-    if (childComponent == null) {
+    if (!child.has<Child>()) {
       throw ArgumentError.value(
         child,
         'child',
         'does not mix in Child - cannot be attached to a parent',
       );
     }
-    return childComponent;
+    return child<Child>().component;
   }
 
   /// Refuses a link that would close a loop, by walking up from the
@@ -416,9 +415,10 @@ extension ParentAccessor on Accessor<Parent> {
                     'would close a loop in the hierarchy',
         );
       }
-      final link = ancestor<Child?>().component;
-      if (link == null) break;
-      final above = link.childParent.readPending(ancestor);
+      if (!ancestor.has<Child>()) break;
+      final above = ancestor<Child>().component.childParent.readPending(
+        ancestor,
+      );
       if (above == null) break;
       ancestor = above;
     }

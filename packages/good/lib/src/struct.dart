@@ -367,18 +367,44 @@ extension type const Entity(int value) implements int {
   /// ```dart
   /// entity<Transform3D>().distanceTo(other)
   /// final local = entity<Transform2D>().component;
-  /// final maybe = entity<Transform2D?>().component;   // null if absent
   /// ```
   ///
-  /// Write [T] nullable to say absence is expected. That choice is read by
-  /// [Accessor.component], which throws for a non-nullable [T] the archetype
-  /// lacks and answers `null` for a nullable one; the accessor itself is
-  /// always returned, so neither form allocates.
+  /// Naming a component is a claim that the archetype carries it. When it does
+  /// not, [Accessor.component] fails - an assertion in debug, the cast behind
+  /// it in release. Ask [has] first when absence is a case you handle:
+  ///
+  /// ```dart
+  /// if (entity.has<Transform2D>()) entity<Transform2D>().offsetX = 10;
+  /// ```
   ///
   /// See [Accessor], which is what this returns and where a component's
   /// helpers live.
   @pragma('vm:prefer-inline')
-  Accessor<T> call<T extends Component?>() => Accessor<T>(this);
+  Accessor<T> call<T extends Component>() => Accessor<T>(this);
+
+  /// Whether this entity's archetype carries [T].
+  ///
+  /// ```dart
+  /// if (entity.has<Transform2D>()) entity<Transform2D>().offsetX = 10;
+  /// ```
+  ///
+  /// The guard for the claim `entity<T>()` makes. It resolves exactly the way
+  /// [Accessor.component] does - one list index and an `is` test against the
+  /// archetype prefab - so a `true` here is the same answer `component` will
+  /// give, and nothing is allocated to ask.
+  ///
+  /// It is a question about the *archetype*, not the row: every entity of one
+  /// archetype answers the same, because an archetype is its component set
+  /// (see [ComponentDescriptor], whose own `has<T>()` is what declares the
+  /// membership this reads back). Hoist it out of a loop over one group rather
+  /// than asking per entity.
+  ///
+  /// Reading through [T] costs a second resolve, so a guard followed by a use
+  /// resolves twice. That is the price of the branch; a system that wants one
+  /// resolve queries for the component instead of testing for it.
+  @pragma('vm:prefer-inline')
+  bool has<T extends Component>() =>
+      ArchetypeRegistry.byId(archetypeId).prefab is T;
 }
 
 /// One entity seen as its [T] component - what `entity<Transform3D>()`
@@ -431,16 +457,20 @@ extension type const Entity(int value) implements int {
 ///
 /// # Naming a component that may not be there
 ///
-/// [T] carries whether absence is expected, so one spelling covers both:
+/// There is one spelling, and it is a claim. `Entity.has` is how the claim is
+/// checked first:
 ///
 /// ```dart
-/// entity<Health>().component      // Health  - throws if the archetype lacks it
-/// entity<Health?>().component     // Health? - null if the archetype lacks it
+/// entity<Health>().component                  // Health - fails if absent
+/// if (entity.has<Health>()) entity<Health>().damage(3);
 /// ```
 ///
-/// The bound is `Component?` and not `Component` so that `Health?` is a legal
-/// argument; `String` and `int` are still rejected at the call. `Accessor<T>`
-/// itself is never null in either form, which keeps it erasing to an `int`.
+/// [T] is not nullable and cannot be: an extension declared
+/// `on Accessor<Health>` does not apply to an `Accessor<Health?>` receiver,
+/// because extension types are covariant in their type parameter and the
+/// nullable spelling is the *supertype*. So a nullable [T] would reach
+/// [component] and nothing else - not one generated property, and not one of
+/// the accessor extensions this class exists to hold.
 ///
 /// # Why the helpers go here and not on the component
 ///
@@ -453,26 +483,31 @@ extension type const Entity(int value) implements int {
 /// It costs nothing: `Accessor<T>` erases to [Entity], which erases to `int`,
 /// so `identical(entity<T>().entity, entity)` holds and nothing is allocated
 /// to reach a helper.
-extension type const Accessor<T extends Component?>(Entity entity)
+extension type const Accessor<T extends Component>(Entity entity)
     implements Entity {
   /// This entity's archetype prefab, seen as [T].
   ///
-  /// One list index plus an `is` test; no allocation on the success path.
-  /// When the archetype does not have [T] the nullability of [T] decides:
-  /// a nullable one answers `null`, a non-nullable one throws.
+  /// One list index and a cast; no allocation.
+  ///
+  /// An archetype without [T] is a bug at the call site, not a case to
+  /// branch on, so it is an assertion. Debug names the archetype, the
+  /// component and the remedy; release, with assertions stripped, is left with
+  /// the cast, which throws a `TypeError` on the same rows. Stripping the
+  /// assertion removes the *diagnostic*, not the failure - there is no build
+  /// in which this hands back a component the entity does not have.
+  ///
+  /// Use [Entity.has] to test for the component instead of catching either.
   @pragma('vm:prefer-inline')
   T get component {
     // Widened to `Object` first: `prefab` is an `EntityStruct` and [T] is a
-    // `Component?`, and Dart will not promote between two class types neither
+    // `Component`, and Dart will not promote between two class types neither
     // of which is a subtype of the other.
     final Object prefab = ArchetypeRegistry.byId(entity.archetypeId).prefab;
-    if (prefab is T) return prefab as T;
-    // Reached only when the archetype lacks [T]. `null is T` is the whole
-    // dispatch: it is true exactly for the nullable spelling.
-    if (null is T) return null as T;
-    throw StateError(
+    assert(
+      prefab is T,
       'Entity of archetype ${prefab.runtimeType} (id ${entity.archetypeId}) '
-      'does not have component $T. Write $T? if that is expected.',
+      'does not have component $T. Use entity.has<$T>() to test for it.',
     );
+    return prefab as T;
   }
 }

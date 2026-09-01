@@ -43,13 +43,34 @@
 
 ### Breaking
 
+* **`entity<T?>()` is gone; `entity.has<T>()` answers whether the component is
+  there.** `Entity.call` takes `T extends Component` in `good` 0.3.0-dev and
+  the nullable spelling is removed with it (#302), because it reached
+  `.component` and none of the accessor extensions - extension types are
+  covariant, so `Accessor<Transform2D?>` was the supertype and an extension
+  written `on Accessor<Transform2D>` never applied to it.
+
+  ```dart
+  final child = entity<Child?>().component;              // before
+  if (entity.has<Child>()) entity<Child>().detach();     // after
+  ```
+
+  `Transform2D`, `WorldTransform2D`, `Camera` and `Text2D` are unchanged, and
+  `group<Transform2D?>()` still answers `null` - only the entity spelling
+  moves.
+
+  A component the archetype lacks now fails on an assertion naming it, and on
+  the cast under that assertion in a release build, rather than throwing a
+  `StateError`.
+
 * **Components are reached by calling the receiver, not by `get`/`tryGet`.**
   `Entity.get`/`tryGet`, `QueryGroup.get`/`tryGet` and `Scene.get`/`tryGet` are
   removed in `good` 0.3.0-dev, and the type argument now says whether the
   component may be absent (#220). `Transform2D`, `Renderable2D`, `Camera2D` and
   every other component here are read through that call, so
   `entity.get<Transform2D>()` becomes `entity<Transform2D>().component`,
-  `entity.tryGet<Transform2D>()` becomes `entity<Transform2D?>().component`,
+  `entity.tryGet<Transform2D>()` becomes an `entity.has<Transform2D>()`
+  guard around `entity<Transform2D>().component` (#302),
   and `group.get<Transform2D>()` becomes `group<Transform2D>()`. The components
   themselves are unchanged - names, columns and layout all stay where they
   were, and `entity<Text2D>().setText(...)` and the other accessor extensions

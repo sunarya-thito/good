@@ -426,7 +426,7 @@ void main() {
       final notAChild = level.addEntity(level.noChild);
       level.pool.commitTick();
 
-      expect(notAChild<Child?>().component, isNull);
+      expect(notAChild.has<Child>(), isFalse);
       expect(() => parent<Parent>().addChild(notAChild), throwsArgumentError);
     });
 
@@ -625,8 +625,8 @@ void main() {
       expect(level.turret.parentLastChild[turret], barrel);
       expect(barrel<Child>().component.childParent[barrel], turret);
       expect(
-        barrel<_Barrel?>().component,
-        isNotNull,
+        barrel.has<_Barrel>(),
+        isTrue,
         reason: 'the child is an entity of the declared prefab',
       );
     });

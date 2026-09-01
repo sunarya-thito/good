@@ -255,8 +255,9 @@ subtree. See [Transforms and hierarchy](transforms-and-hierarchy.md).
 Events deliver one as their payload: `onEntityMounted(Entity entity)`,
 `onEntitySpawned`, and `sourceEntity`/`targetEntity` on a collision event.
 
-Once you hold one, `entity<T>().component` and `entity<T?>().component` reach
-every component its prefab declared, which is the next section.
+Once you hold one, `entity<T>().component` reaches every component its prefab
+declared - and `entity.has<T>()` says whether it declared one - which is the
+next section.
 
 !!! danger "There is no `Find`"
     No `FindObjectOfType`, no lookup by name, no lookup by tag. An entity has
@@ -386,9 +387,13 @@ for (final group in missiles.groups()) {
     if (raw == null) continue;
 
     final target = Entity(raw);
-    final orc = target<Orc?>().component;
-    if (orc == null || orc.stamp[target] != missile.targetStamp[entity]) {
+    if (!target.has<Orc>()) {
       missile.target[entity] = null;      // whatever it named is gone
+      continue;
+    }
+    final orc = target<Orc>().component;
+    if (orc.stamp[target] != missile.targetStamp[entity]) {
+      missile.target[entity] = null;      // the orc it named is gone
       continue;
     }
 
@@ -482,7 +487,7 @@ Per-kind hooks are the exception, and they cover more ground than you would
 guess. `onEntityMounted` and `onEntityUnmounted` are events your prefab hears
 by mixing in `EntityLifecycleListener`; `onCollisionEnter2D` and its five
 siblings arrive through `CollisionListener`, which the physics system resolves
-at the contact with `entity<CollisionListener?>().component`. Different
+at the contact with `entity<CollisionListener>().component`. Different
 machinery, same result at the call site: one override on the prefab class, run
 once per event. Polymorphism survives at prefab granularity. It does not
 survive inside the walk.
@@ -692,8 +697,8 @@ class Orc extends EntityStruct
   @override
   void onTriggerEnter2D(Collision2DEvent event) {
     final self = event.sourceEntity;
-    final bullet = event.targetEntity<Bullet?>().component;
-    if (bullet == null) return;
+    if (!event.targetEntity.has<Bullet>()) return;
+    final bullet = event.targetEntity<Bullet>().component;
 
     healthHp[self] -= bullet.damage[event.targetEntity];
     event.targetEntity.destroy();
@@ -769,8 +774,8 @@ DamageSystem? _damage;
 
 @override
 void onTriggerEnter2D(Collision2DEvent event) {
-  final bullet = event.targetEntity<Bullet?>().component;
-  if (bullet == null) return;
+  if (!event.targetEntity.has<Bullet>()) return;
+  final bullet = event.targetEntity<Bullet>().component;
   (_damage ??= getSystem<DamageSystem>())
       .report(event.sourceEntity, bullet.damage[event.targetEntity]);
   event.targetEntity.destroy();
@@ -796,7 +801,7 @@ final _index = given<SpatialIndex>();
 class SpatialIndexSystem extends GameSystem with EntitySpawnListener {
   @override
   void onEntitySpawned(Entity entity) {
-    if (entity<Collider2D?>().component != null) _index.insert(entity);
+    if (entity.has<Collider2D>()) _index.insert(entity);
   }
 
   @override
