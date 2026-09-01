@@ -50,6 +50,10 @@ class _Plain extends EntityStruct with _Untyped {}
 
 class _Clash extends EntityStruct with _Solid, _Cloaked {}
 
+/// Carries the half of the refused pair that declares the refusal, and not the
+/// half it names.
+class _Shielded extends EntityStruct with _Solid {}
+
 /// Declares a component type from a `describeStruct` body, which runs after
 /// the constructor and so has no registrar open.
 class _LateDeclarer extends EntityStruct with _Armour {
@@ -210,18 +214,19 @@ void main() {
       );
     });
 
-    test('spends no bit on a component the game never mixes in', () {
-      // `_Solid` names `_Cloaked` in its refusal. Asking whether an archetype
-      // carries `_Cloaked` must not be what gives `_Cloaked` its bit: a
-      // signature holds sixty-four, and a refusal is a question, not a
-      // declaration.
+    test('spends no bit on the component it names', () {
+      // `_Shielded` mixes in `_Solid`, so the refusal of `_Cloaked` is
+      // recorded and the check does ask about `_Cloaked`. Nothing in this
+      // scene declares `_Cloaked`, so it must still hold no bit: a signature
+      // holds sixty-four, and a refusal is a question, not a declaration.
       expect(ComponentTypeRegistry.declaredBitFor(_Cloaked), 0);
-      final level = _level(<EntityStruct Function()>[_Plain.new]);
-      expect(level.registered, hasLength(1));
+      final level = _level(<EntityStruct Function()>[_Shielded.new]);
+      expect(_carries(level.registered.single, _Solid), isTrue);
       expect(
         ComponentTypeRegistry.declaredBitFor(_Cloaked),
         0,
-        reason: 'nothing in this scene declares _Cloaked',
+        reason: 'asking whether the archetype carries _Cloaked must not be '
+            'what gives _Cloaked a bit',
       );
     });
   });
