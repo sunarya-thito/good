@@ -516,7 +516,8 @@ abstract class Game implements RandomOwner {
   ///
   /// What the instance form costs is that a scene has no declaration window
   /// of its own: `Event.of` in a `SceneStruct` field initialiser throws, and
-  /// a scene declares its events in `describeEvents` instead. See [Event].
+  /// a scene declares its events from its constructor body against
+  /// `EventBus.events` instead. See [Event].
   ///
   /// # What declaring buys, and what it does not
   ///
@@ -1737,13 +1738,13 @@ abstract class Game implements RandomOwner {
     // copy that ticks, and main only ever *writes* that block.
     _inputs.seal();
 
-    // --- events: declare, then collect ---------------------------------
+    // --- events: collect ------------------------------------------------
     //
-    // Two passes, and the order is the whole design. `describeEvents` creates
-    // every dispatcher; `collectListeners` then walks the composition once and
-    // fills them. After this, dispatching an event is an indexed loop over a
-    // list that is already correct - the walk that used to happen per event,
-    // at runtime, testing every candidate, has happened exactly once.
+    // Every dispatcher already exists - each was created while its owner was
+    // constructed. `collectListeners` walks the composition once and fills
+    // them. After this, dispatching an event is an indexed loop over a list
+    // that is already correct: the walk a dispatch would otherwise do per
+    // event, testing every candidate, happens exactly once here.
     //
     // Runs after the scenes and systems are declared, because those are what
     // there is to collect - and on this copy only, because dispatching an

@@ -201,14 +201,55 @@
   `good generate`'s missing-`super` check is down to `describeStruct`. A field
   initialiser is not a chain, so there is no `super` to leave out.
 
-  `describeEvents` is **not** part of this. `Event.of` and `Event.signal` ship,
-  but `GameSystem`, `EntityStruct` and `good_net`'s `NetSystem` each declare a
-  base pair of dispatchers that every subclass inherits however it was built -
-  and a subclass handed to `descriptor.has(() => prebuilt)` has no window of
-  its own. Measured on this tree: a system declaring a dispatcher on a field,
-  built in a `GameState`'s field initialiser and handed over through a closure,
-  collected three listeners - the state's whole composition - where its own
-  binder would have offered it one.
+  `describeEvents` followed in its own commit, once the base pairs had a
+  registrar that does not come off the declaration stack. See its entry below.
+
+* **`describeEvents` is gone. An owner declares its dispatchers where it is
+  built** (#287):
+
+  ```dart
+  class Orc extends EntityStruct {
+    final wounded = Event.of<WoundListener, int>(
+      (listener, damage) => listener.onWounded(damage),
+    );
+  }
+  ```
+
+  | before | after |
+  |---|---|
+  | `void describeEvents(EventDescriptor d) { wounded = d.has((l, n) => l.onWounded(n)); }` | `final wounded = Event.of<WoundListener, int>((l, n) => l.onWounded(n));` |
+  | `void describeEvents(EventDescriptor d) { ... }` on a `SceneStruct` | `MainScene() { waveSpotted = events.has((l, w) => l.onWave(w)); }` |
+
+  `Event.of` and `Event.signal` read the window the framework opens around a
+  constructor call, and two declarations cannot: a pair a base class declares
+  for every subclass, which is inherited however the subclass was built, and a
+  declaration on a `SceneStruct`, which the caller constructs with no window
+  open. Both have `this`, so both declare from a **constructor body** against
+  `EventBus.events` - the owner's own registrar, read off the object and never
+  off the stack. That is where `EntityStruct.mountedEvent`/`unmountedEvent`,
+  `GameSystem.mountEvent`/`unmountEvent` and `SceneStruct.mountedEvent`/
+  `unmountedEvent` are now declared.
+
+  A scene declaring an event of its own writes it the same way, so a
+  `SceneStruct` no longer needs a hook for events at all. Its assets still do -
+  `describeAssets` stays.
+
+  Every dispatcher now exists by the end of the constructor rather than at
+  boot. `EventBinder.bind` is one pass, `collectListeners`, and a prefab built
+  by hand (`_Rock()`) has a readable `mountedEvent` before any game exists.
+
+* **A prebuilt owner handed to `descriptor.has(() => built)` is refused when it
+  was built inside another owner's declaration window** (#287).
+
+  `final _spawner = Spawner();` in a `GameState` field runs while the state's
+  window is open, so an `Event.of` on a `Spawner` field declares into the
+  state. Measured before this refusal: such a system collected the state,
+  itself and two unrelated systems, and firing its own event reached all four.
+  It boots and ticks, so it is now a `StateError` at boot naming the class.
+
+  A prefab a fixture built with nothing open above it stays legal to hand over:
+  `Event.*` throws on an empty stack, so it declared nothing anywhere else, and
+  its base pair went to a registrar of its own.
 
 * **`describeType` is gone. A component declares its own type in a field**
   (#287):

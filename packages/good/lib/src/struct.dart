@@ -134,32 +134,30 @@ abstract class EntityStruct extends GameListenerBase
   /// paths fire this. Its row is still readable during dispatch.
   late final EventDispatcher<EntityLifecycleListener, Entity> unmountedEvent;
 
-  // These two stay in the hook while `GameState`'s ten moved onto their
-  // fields, and the reason is that an `EntityStruct` does not have to be
-  // built by the framework.
+  // Declared from the constructor body against this struct's own registrar,
+  // where `GameState`'s ten are `Event.of` on fields. The difference is that
+  // an `EntityStruct` does not have to be built by the framework.
   //
   // `SceneDescriptor.has` takes a `T Function()`, and a closure may hand back
   // an object that already existed - `descriptor.has(() => _prefab)` is how a
   // fixture keeps a reference to the prefab it is about to register, and how a
-  // prefab taking a constructor argument gets one. No binder is open around
+  // prefab taking a constructor argument gets one. No window is open around
   // that construction, so a dispatcher declared on a field of this class would
   // throw for every one of them. `archetype_test`'s `_Rock().archetype`
   // pins the sharper version: an `EntityStruct` with no scene at all is a
   // supported state with its own error message, and it has to stay reachable.
   //
+  // `EventBus.events` reads this object rather than the declaration stack, so
+  // the pair lands on this struct whichever way the struct was built.
+  //
   // A prefab the framework *does* build - `descriptor.has(Mote.new)`,
-  // `EntityStruct.of(Barrel.new)` - has a binder open around it, so `Event.*`
-  // on a subclass's field works and is the shape to reach for. It is only
-  // this base pair, which every struct inherits however it was built, that
-  // cannot assume one.
-  @override
-  @mustCallSuper
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    mountedEvent = descriptor.has(
+  // `EntityStruct.of(Barrel.new)` - has a window open around it, so `Event.*`
+  // on a subclass's field works and is the shape to reach for.
+  EntityStruct() {
+    mountedEvent = events.has(
       (listener, entity) => listener.onEntityMounted(entity),
     );
-    unmountedEvent = descriptor.has(
+    unmountedEvent = events.has(
       (listener, entity) => listener.onEntityUnmounted(entity),
     );
   }

@@ -21,7 +21,7 @@ late Game run;
 // Dispatch used to be a *walk*: from object to object at runtime, type-testing
 // every candidate on the way, so a class that could never accept an event was
 // still visited and still checked, every single time one was fired. The walk
-// now happens once, at boot - `describeEvents` creates the dispatchers and
+// now happens once, at boot - the constructor creates the dispatchers and
 // `collectListeners` fills them - so by the time an event is dispatched the
 // receiver list is already correct and dispatch is an indexed `for`.
 //
