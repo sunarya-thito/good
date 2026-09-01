@@ -81,7 +81,7 @@ class GenerateResult {
 /// turn it off - see the comment at the call below for why leaving it to the
 /// next build is not safe.
 ///
-/// [enginePackage] names the package the generated files import. Left out, it
+/// [enginePackage] names the project's entry package. Left out, it
 /// is read from the project dependencies by [enginePackageOf]. `good create`
 /// passes it: it has just written the pubspec line declaring the engine, and
 /// the project has not been resolved since, so the dependency is in no package
@@ -163,6 +163,14 @@ GenerateResult runGenerate({
     draws ? 'Texture' : 'Object? - $package does not reach goo2d',
   ]);
 
+  // What the generated files import, which is a question about who declares
+  // the names in them and not about which package the project entered the
+  // engine through (#316). The entry package need not re-export anything -
+  // `goo2d_physics_box2d` exports its own `src/` and nothing else - so the
+  // bundle names the kernel and the renderer directly.
+  final imports = generatedImports(drawsTextures: draws);
+  verbose.printf('Generated imports: %s\n', [imports.join(', ')]);
+
   // Said out loud because the generated size is `0` for a file whose
   // header did not state one, and a zero divisor draws nothing rather
   // than failing.
@@ -187,26 +195,26 @@ GenerateResult runGenerate({
     bundle.pubspec.path: emitBundlePubspec(
       bundleName: bundle.name,
       projectName: projectName,
-      enginePackage: package,
-      engineDependency: engineDependencyFor(project, package),
+      // The entry package as well as the imports. It is the version the
+      // project asked for, and dropping it would let the bundle resolve a
+      // renderer the project never named.
+      dependencies: <String, String>{
+        for (final name in <String>{package, ...imports})
+          name: engineDependencyFor(project, name),
+      },
       sdkConstraint: sdkConstraintOf(project),
       command: command,
     ),
     p.join(bundle.libDir.path, 'textures.dart'): emitTextures(
       scan,
       command: command,
-      package: package,
       drawsTextures: draws,
     ),
     p.join(bundle.libDir.path, 'audios.dart'): emitAudios(
       scan,
       command: command,
-      package: package,
     ),
-    p.join(bundle.libDir.path, 'good.dart'): emitReadiness(
-      command: command,
-      package: package,
-    ),
+    p.join(bundle.libDir.path, 'good.dart'): emitReadiness(command: command),
   };
 
   // The keys, which are the one generated file that is not a function of the
@@ -291,7 +299,7 @@ GenerateResult runGenerate({
   final problems = bundleProblems(
     projectDir: project,
     bundle: bundle,
-    enginePackage: package,
+    importedPackages: imports,
     writtenFiles: writes.keys,
     checkResolution: pubGet,
   );

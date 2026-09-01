@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:good_cli/src/generate/assets.dart';
+import 'package:good_cli/src/generate/engine_dependency.dart';
 
 /// The banner every generated file carries.
 ///
@@ -12,6 +13,13 @@ String header(String command) =>
     '// Regenerate with `$command`. Edits here are lost on the next run;\n'
     '// change the pubspec\'s `flutter: assets:` list instead.\n';
 
+/// The one import line a generated file writes, for [package].
+///
+/// A package's public library is `lib/<name>.dart` by convention and the
+/// engine packages follow it, so the URI is the name twice.
+String importLine(String package) =>
+    "import 'package:$package/$package.dart';";
+
 /// `good.generated/textures.dart` - one enum value per shipped image.
 ///
 /// An enum, not a list of `static final` keys, because `LocalEnumAssetKey`
@@ -19,17 +27,21 @@ String header(String command) =>
 /// already the identity `descriptor.has` wants, with no lookup and nothing to
 /// keep in sync. It also gives the set a `.values`, which is what lets the
 /// readiness check below walk every asset the game ships.
+///
+/// [drawsTextures] settles both the payload type and the import: a file whose
+/// keys carry a `Texture` names it through `package:goo2d/goo2d.dart`, and one
+/// whose keys carry `Object?` names nothing but kernel types and imports the
+/// kernel. See `generatedImport`.
 String emitTextures(
   AssetScan scan, {
   required String command,
-  required String package,
   required bool drawsTextures,
 }) => _emitEnum(
   assets: scan.textures,
   enumName: 'Textures',
   payload: rendererPayloadType(drawsTextures, 'Texture'),
   command: command,
-  package: package,
+  package: generatedImport(namesTexture: drawsTextures),
   emptyNote: 'image',
   sizeClassName: 'TextureSize',
 );
@@ -39,21 +51,21 @@ String emitTextures(
 /// Identical in shape to the texture enum, and that is the point: the asset
 /// pipeline is uniform over asset *kinds*, so a second kind costs a payload
 /// type, a loader, and one more call to the same emitter.
-String emitAudios(
-  AssetScan scan, {
-  required String command,
-  required String package,
-}) => _emitEnum(
+///
+/// `AudioClip` is a kernel type (#93), so this file imports the kernel in
+/// every project - a 2D one, a 3D one, and one whose entry package renders
+/// with something nobody here has heard of.
+String emitAudios(AssetScan scan, {required String command}) => _emitEnum(
   assets: scan.audio,
   enumName: 'Audios',
   payload: 'AudioClip',
   command: command,
-  package: package,
+  package: generatedImport(namesTexture: false),
   emptyNote: 'audio',
 );
 
-/// What a **renderer's** asset kind loads to, named as the project's engine
-/// package spells it - or `Object?` where that package cannot draw.
+/// What a **renderer's** asset kind loads to, or `Object?` in a project whose
+/// engine package cannot draw.
 ///
 /// `Texture` is declared in `goo2d` and exported from `package:goo2d/goo2d.dart`.
 /// It is what the texture loader produces, and it is a `ui.Image` behind a
@@ -77,7 +89,7 @@ String emitAudios(
 /// and still has code that wants to know how big they are.
 ///
 /// Audio does **not** come through here. `AudioClip` moved into the kernel
-/// (#93), which every engine package re-exports, so an audio key is typed for
+/// (#93), and the audio file imports the kernel, so an audio key is typed for
 /// a 3D project exactly as it is for a 2D one - it is bytes and a container
 /// name, with no canvas or dimension anywhere in it.
 String rendererPayloadType(bool drawsTextures, String rendererType) =>
@@ -108,7 +120,7 @@ String _emitEnum({
 }) {
   final buffer = StringBuffer(header(command))
     ..writeln()
-    ..writeln("import 'package:$package/$package.dart';")
+    ..writeln(importLine(package))
     ..writeln();
 
   if (assets.isEmpty) {
@@ -232,10 +244,13 @@ String _emptySizeClass(String name) => (StringBuffer()
 /// ... WITHOUT LOADING THE ASSET". `AssetSource.check` is exactly that - a
 /// manifest lookup and at most a stat, never a decode - so this can run over
 /// every shipped asset at startup without paying for any of them.
-String emitReadiness({required String command, required String package}) =>
+/// The names in it - `AssetKey`, `AssetSource`, `AssetAvailability`,
+/// `AssetMounts` and `AssetPack` - are all kernel types, so this file imports
+/// the kernel whatever the project renders with.
+String emitReadiness({required String command}) =>
     '''
 ${header(command)}
-import 'package:$package/$package.dart';
+${importLine(generatedImport(namesTexture: false))}
 
 import 'asset_key.dart';
 import 'audios.dart';

@@ -201,6 +201,26 @@
 
 ### Fixed
 
+* **Each generated file imports the package that declares the names in it.**
+  `good generate` wrote one import for the entry package and named every engine
+  type through it, which holds only where that package re-exports what it is
+  built on. `goo2d_physics_box2d` exports its own `src/` and re-exports neither
+  `goo2d` nor the kernel, and a project declaring it beside `goo2d` resolves it
+  as the entry package (#309) - so the bundle failed to resolve at `AssetKey`,
+  which is every asset kind and not the textures alone.
+
+  `audios.dart` and `good.dart` import `package:good`, whatever the project
+  renders with. `textures.dart` imports `package:goo2d` where its keys carry a
+  `Texture` and `package:good` where they carry `Object?`; `goo2d` re-exports
+  the kernel, so that file writes one import and not two. The bundle's pubspec
+  declares both of those beside the entry package, each version copied from the
+  project's own pubspec (#316).
+
+  A `goo2d` project generates the imports it generated before. A `goo3d`
+  project's three files name `package:good` where they named `package:goo3d`,
+  and resolve the same declarations through it. A project on a package that
+  re-exports nothing generates a bundle that compiles.
+
 * **The `.good_bundle` marker is written before anything else in the generated
   package.** `good generate` created the package's `lib/` first, so a run that
   stopped in between - a closed terminal, a full disk - left a directory with

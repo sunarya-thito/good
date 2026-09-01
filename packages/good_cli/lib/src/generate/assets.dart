@@ -395,13 +395,14 @@ String identifierFor(String path) {
   return identifier;
 }
 
-/// Which good package the project depends on, and therefore what the generated
-/// files import.
+/// Which good package the project entered the engine through - the entry
+/// package.
 ///
-/// `goo2d` and `goo3d` both re-export the `good` kernel, so a project must
-/// import the one it depends on and nothing else: importing `package:good`
-/// directly in generated code names a package the pubspec does not depend on,
-/// which pub warns about and a stricter analysis setup rejects outright.
+/// It is the version the bundle's pubspec asks for, and it is what
+/// `enginePackageDrawsTextures` walks to decide whether the project has a
+/// renderer at all. It is **not** what the generated files import: a package
+/// can depend on the engine and re-export none of it, so the imports are the
+/// packages that declare the names, by `generatedImport` (#316).
 ///
 /// # How the package is chosen
 ///
@@ -414,15 +415,14 @@ String identifierFor(String path) {
 /// renderer nobody here has heard of is.
 ///
 /// Then to the most specific of those. One candidate depending on another
-/// means the second is what the first is built on, and the generated code
-/// names the surface of the outer package: a project declaring a renderer and
-/// the kernel imports the renderer, and a project declaring a renderer built
-/// on `goo2d` imports that renderer and not `goo2d`. No list of package names
-/// takes part (#309).
+/// means the second is what the first is built on: a project declaring a
+/// renderer and the kernel answers the renderer, and a project declaring a
+/// renderer built on `goo2d` answers that renderer and not `goo2d`. No list of
+/// package names takes part (#309).
 ///
 /// Two candidates neither of which depends on the other - a project declaring
-/// two renderers side by side - are ordered by name, so the import a project
-/// generates does not change between runs.
+/// two renderers side by side - are ordered by name, so the answer does not
+/// change between runs.
 ///
 /// # What it reads, and what it answers without
 ///
@@ -433,9 +433,9 @@ String identifierFor(String path) {
 /// with everything else that cannot be read.
 ///
 /// Falls back to [engineRootPackage] when no direct dependency reaches the
-/// engine. The generated files sit in the bundle package, whose own pubspec is
-/// written from this same answer - see `engineDependencyFor` - so the import
-/// resolves against what the bundle declares whatever the project says.
+/// engine. The bundle's pubspec is written from this answer - see
+/// `engineDependencyFor` - so a project that names no engine still gets a
+/// bundle that resolves.
 /// `good create` does not come through here: it scaffolded the project and
 /// passes the engine it wrote to [runGenerate] directly.
 String enginePackageOf(Directory projectDir) {

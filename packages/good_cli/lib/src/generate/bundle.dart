@@ -243,17 +243,23 @@ project: $projectName
 
 /// The bundle package's pubspec - every line of it generated.
 ///
-/// The engine dependency is copied from the **project's**, rather than being
+/// Each engine dependency is copied from the **project's**, rather than being
 /// a constant here. A project pinned to one version would otherwise get a
 /// bundle asking for another, and the two halves of one game's generated code
 /// would resolve against different engines. A relative path dependency is
 /// re-based by one directory, which is the difference between the project root
 /// and this package sitting inside it.
+///
+/// [dependencies] maps a package name to the text that follows its key, as
+/// [engineDependencyFor] writes it. It holds the project's entry package and
+/// every package the generated files import - which are not the same set: the
+/// entry package can be one that re-exports nothing, and the imports are then
+/// the kernel and the renderer directly (#316). Written in sorted order, so
+/// two runs over one project produce the same file.
 String emitBundlePubspec({
   required String bundleName,
   required String projectName,
-  required String enginePackage,
-  required String engineDependency,
+  required Map<String, String> dependencies,
   required String sdkConstraint,
   required String command,
 }) =>
@@ -276,8 +282,13 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  $enginePackage:$engineDependency
-''';
+${_dependencyLines(dependencies)}''';
+
+/// [dependencies] as pubspec lines, sorted by name, each ending in a newline.
+String _dependencyLines(Map<String, String> dependencies) {
+  final names = dependencies.keys.toList()..sort();
+  return names.map((name) => '  $name:${dependencies[name]}\n').join();
+}
 
 /// How the bundle's pubspec should spell its dependency on [enginePackage],
 /// given what the project's own pubspec says.
@@ -665,10 +676,15 @@ String? runFlutterPubGet(Directory projectDir) {
 /// [checkResolution] is what `--no-pub-get` turns off, and only that. The
 /// files, the marker and the two pubspecs are asserted either way, because
 /// those are this command's own output rather than pub's.
+/// [importedPackages] is every package the generated files name a type
+/// through, from `generatedImports`. All of them, and not the entry package
+/// alone: the entry package is whatever the dependency graph resolves and it
+/// need not re-export anything, so it is the imports that have to be declared
+/// (#316).
 List<String> bundleProblems({
   required Directory projectDir,
   required BundlePackage bundle,
-  required String enginePackage,
+  required Iterable<String> importedPackages,
   required Iterable<String> writtenFiles,
   required bool checkResolution,
 }) {
@@ -710,16 +726,18 @@ List<String> bundleProblems({
         'records `good: bundle: ${bundle.name}`.',
       );
     }
-    // Every generated file imports the engine, so a bundle that does not
-    // depend on it is a package that cannot be analysed and a project that
+    // Every generated file imports one of these, so a bundle that does not
+    // depend on them is a package that cannot be analysed and a project that
     // will not build - and one wrong indent in the emitter is all it takes,
     // because a dependency at column 0 is still valid YAML.
     final bundleDeps = doc is YamlMap ? doc['dependencies'] : null;
-    if (bundleDeps is! YamlMap || !bundleDeps.containsKey(enginePackage)) {
-      problems.add(
-        '${bundle.pubspec.path} does not depend on $enginePackage, which '
-        'everything generated into it imports.',
-      );
+    for (final package in importedPackages) {
+      if (bundleDeps is! YamlMap || !bundleDeps.containsKey(package)) {
+        problems.add(
+          '${bundle.pubspec.path} does not depend on $package, which '
+          'something generated into it imports.',
+        );
+      }
     }
   }
 

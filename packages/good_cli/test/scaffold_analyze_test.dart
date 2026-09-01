@@ -2,10 +2,13 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:good_cli/src/generate/assets.dart';
+import 'package:good_cli/src/generate/run.dart';
 import 'package:good_cli/src/generate/scaffold.dart';
 import 'package:good_cli/src/generate/templates.dart';
+import 'package:good_cli/src/verbosable.dart';
 import 'package:test/test.dart';
 
+import '_resolved.dart';
 import '_temp.dart';
 
 // Whether a scaffolded project compiles - asked of the analyzer, not of the
@@ -26,6 +29,18 @@ import '_temp.dart';
 // relative entries made absolute and itself added. `dart analyze` then resolves
 // the real API out of the real source tree. Fifteen seconds per project,
 // against minutes for a real `flutter create` plus `flutter pub get`.
+
+/// `runGenerate` prints; nothing here reads what it printed.
+final VerboseOutput _quiet = _NullOutput();
+
+class _NullOutput implements VerboseOutput {
+  @override
+  void println(Object? object) {}
+  @override
+  void print(Object? object) {}
+  @override
+  void printf(String format, List<Object?> args) {}
+}
 
 /// The repository root, found by walking up from wherever the suite was run.
 Directory _repoRoot() {
@@ -171,15 +186,10 @@ flutter:
     final scan = scanAssets(dir);
     final lib = Directory('${dir.path}/lib')..createSync(recursive: true);
     File('${lib.path}/textures.dart').writeAsStringSync(
-      emitTextures(
-        scan,
-        command: 'good generate',
-        package: 'goo2d',
-        drawsTextures: true,
-      ),
+      emitTextures(scan, command: 'good generate', drawsTextures: true),
     );
     File('${lib.path}/audios.dart').writeAsStringSync(
-      emitAudios(scan, command: 'good generate', package: 'goo2d'),
+      emitAudios(scan, command: 'good generate'),
     );
     // The constants where the guide puts them: inside a const expression, in a
     // file that names goo2d's own API. `TextureSize.sheetWidth` compiles here
@@ -240,5 +250,114 @@ int get pixels => Textures.sheet.width * Textures.sheet.height;
           'the generated bindings are what every project compiles against:\n'
           '${result.stdout}${result.stderr}',
     );
+  }, timeout: const Timeout(Duration(minutes: 5)));
+
+  test('a bundle generated for an entry package that re-exports nothing '
+      'analyzes clean', () async {
+    // #316, end to end and with the two lints a real project runs under.
+    //
+    // The project declares a physics backend and goo2d, so #309 resolves the
+    // backend as the entry package - and that package's library exports its
+    // own `src/` and re-exports neither goo2d nor the kernel. A bundle that
+    // named every type through the entry package failed at `AssetKey`, which
+    // is every asset kind and not the textures alone.
+    //
+    // `depend_on_referenced_packages` and `unnecessary_import` are the two
+    // ways the fix can be wrong in the other direction: an import the bundle's
+    // pubspec does not declare, and a second import of a library the first one
+    // already re-exports. Both are infos, `flutter analyze` fails a project on
+    // an info, and `dart analyze` exits 0 on one - so this reads the output.
+    final root = _repoRoot();
+    final dir = testTempDir('good_bundle_analyze');
+    File('${dir.path}/pubspec.yaml').writeAsStringSync('''
+name: bundle_probe
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  demo_physics: ^0.1.0
+  goo2d: ^0.3.0
+
+flutter:
+  assets:
+    - assets/
+''');
+    File('${dir.path}/analysis_options.yaml').writeAsStringSync('''
+linter:
+  rules:
+    - depend_on_referenced_packages
+    - unnecessary_import
+''');
+    // A 24-byte PNG: signature and IHDR, which is all a header read needs.
+    File('${dir.path}/assets/sheet.png')
+      ..parent.createSync(recursive: true)
+      ..writeAsBytesSync(<int>[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, //
+        0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52,
+        0, 0, 2, 0,
+        0, 0, 1, 0,
+      ]);
+    File('${dir.path}/assets/theme.ogg').writeAsBytesSync(<int>[0]);
+
+    // Stubs, so the entry package is resolved out of a graph the way a
+    // `pub get` leaves one, and the struct scan has nothing to walk.
+    resolvePackages(dir, <String, List<String>>{
+      'demo_physics': <String>['goo2d'],
+      'goo2d': <String>['good'],
+      'good': <String>[],
+    });
+    runGenerate(
+      projectDir: dir,
+      command: 'good generate',
+      out: _quiet,
+      verbose: _quiet,
+      pubGet: false,
+    );
+    final bundle = Directory('${dir.path}/bundle_probe_bundle');
+    expect(
+      bundle.existsSync(),
+      isTrue,
+      reason: 'the bundle package is what is about to be analyzed',
+    );
+
+    // Now the real packages, so `AssetKey`, `AudioClip` and `Texture` are the
+    // declarations this repository ships rather than empty stub directories.
+    final config = _absolutePackageConfig(root, 'goo2d');
+    File('${dir.path}/.dart_tool/package_config.json').writeAsStringSync(
+      jsonEncode(<String, Object?>{
+        ...config,
+        'packages': <Object?>[
+          ...config['packages']! as List<Object?>,
+          <String, Object?>{
+            'name': 'bundle_probe',
+            'rootUri': dir.uri.toString(),
+            'packageUri': 'lib/',
+            'languageVersion': '3.13',
+          },
+          <String, Object?>{
+            'name': 'bundle_probe_bundle',
+            'rootUri': bundle.uri.toString(),
+            'packageUri': 'lib/',
+            'languageVersion': '3.13',
+          },
+        ],
+      }),
+    );
+
+    final result = await Process.run(
+      Platform.resolvedExecutable,
+      <String>['analyze', bundle.path],
+      stdoutEncoding: utf8,
+      stderrEncoding: utf8,
+    );
+    expect(
+      '${result.stdout}${result.stderr}',
+      contains('No issues found'),
+      reason:
+          'every name in the bundle has to resolve through an import the '
+          'bundle declares, and through one import and not two',
+    );
+    expect(result.exitCode, 0);
   }, timeout: const Timeout(Duration(minutes: 5)));
 }

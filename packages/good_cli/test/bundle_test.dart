@@ -313,7 +313,7 @@ void main() {
         bundleProblems(
           projectDir: project,
           bundle: bundle,
-          enginePackage: 'goo2d',
+          importedPackages: const <String>['goo2d'],
           writtenFiles: const <String>[],
           checkResolution: false,
         ),
@@ -593,7 +593,7 @@ void main() {
         bundleProblems(
           projectDir: project,
           bundle: bundle,
-          enginePackage: 'goo2d',
+          importedPackages: const <String>['goo2d'],
           writtenFiles: <String>[textures.path],
           checkResolution: false,
         ),
@@ -612,7 +612,7 @@ void main() {
         bundleProblems(
           projectDir: project,
           bundle: bundle,
-          enginePackage: 'goo2d',
+          importedPackages: const <String>['goo2d'],
           writtenFiles: const <String>[],
           checkResolution: false,
         ),
@@ -635,7 +635,7 @@ void main() {
         bundleProblems(
           projectDir: project,
           bundle: bundle,
-          enginePackage: 'goo2d',
+          importedPackages: const <String>['goo2d'],
           writtenFiles: const <String>[],
           checkResolution: true,
         ),

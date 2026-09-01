@@ -330,7 +330,6 @@ flutter:
       final source = emitTextures(
         scanAssets(dir),
         command: 'good generate',
-        package: 'goo2d',
         drawsTextures: true,
       );
       expect(
@@ -349,7 +348,6 @@ flutter:
       final source = emitTextures(
         scanAssets(dir),
         command: 'good generate',
-        package: 'goo2d',
         drawsTextures: true,
       );
       expect(
@@ -371,7 +369,6 @@ flutter:
       final source = emitTextures(
         scanAssets(dir),
         command: 'good generate',
-        package: 'goo2d',
         drawsTextures: true,
       );
       expect(
@@ -392,23 +389,42 @@ flutter:
       );
     });
 
-    test('the generated import names the package the project depends on', () {
-      // `package:good` in a project that only depends on `goo2d` is a warning
-      // on every new project, and an error under a stricter analysis setup.
+    test('each generated file imports what declares the names in it', () {
+      // Two questions, and each file asks the one it needs: `Texture` is
+      // goo2d's, and `AssetKey`, `AudioClip` and the pack API are the
+      // kernel's. The readiness check names none of the first kind, so it
+      // imports the kernel in a 2D project as much as in a 3D one (#316).
       final dir = _project('name: demo\n', <String>[]);
       final scan = scanAssets(dir);
       expect(
-        emitTextures(
-          scan,
-          command: 'good generate',
-          package: 'goo2d',
-          drawsTextures: true,
-        ),
+        emitTextures(scan, command: 'good generate', drawsTextures: true),
         contains("import 'package:goo2d/goo2d.dart';"),
       );
       expect(
-        emitReadiness(command: 'good generate', package: 'goo2d'),
-        contains("import 'package:goo2d/goo2d.dart';"),
+        emitTextures(scan, command: 'good generate', drawsTextures: false),
+        contains("import 'package:good/good.dart';"),
+      );
+      expect(
+        emitReadiness(command: 'good generate'),
+        contains("import 'package:good/good.dart';"),
+      );
+    });
+
+    test('a file naming Texture imports goo2d once, and not good as well', () {
+      // Both imports resolve - two URIs delivering one declaration are not
+      // ambiguous - and the second is still wrong. goo2d re-exports the
+      // kernel, so naming it too is an `unnecessary_import`, which
+      // `flutter analyze` reports and a project's CI fails on.
+      final source = emitTextures(
+        scanAssets(_project('name: demo\n', <String>[])),
+        command: 'good generate',
+        drawsTextures: true,
+      );
+      expect(source, isNot(contains("import 'package:good/good.dart';")));
+      expect(
+        'import '.allMatches(source).length,
+        1,
+        reason: 'one import line, and it is goo2d',
       );
     });
 
@@ -418,10 +434,9 @@ flutter:
         emitTextures(
           scanAssets(dir),
           command: 'good generate',
-          package: 'goo2d',
           drawsTextures: true,
         ),
-        emitReadiness(command: 'good generate', package: 'goo2d'),
+        emitReadiness(command: 'good generate'),
         emitAssetKeys(command: 'good generate', random: Random(1)),
       ]) {
         expect(source, contains('GENERATED - do not edit'));
@@ -648,27 +663,26 @@ flutter:
       );
     });
 
-    test('an audio key is typed in a 3D project too', () {
-      // AudioClip moved into the kernel (#93), and every engine package
-      // re-exports the kernel - so this one needs no per-package answer. It
-      // used to come back `Object?` for goo3d, which is why a 3D project could
-      // declare a sound and never load it.
-      for (final package in <String>['goo2d', 'goo3d', 'good']) {
-        expect(
-          emitAudios(
-            const AssetScan(
-              textures: <DiscoveredAsset>[],
-              audio: <DiscoveredAsset>[],
-              unsupported: <String, String>{},
-              declaredEntries: <String>[],
-            ),
-            command: 'good generate',
-            package: package,
-          ),
-          contains('LocalEnumAssetKey<AudioClip>'),
-          reason: '$package re-exports the kernel, so it names AudioClip',
-        );
-      }
+    test('an audio key is typed through the kernel, in any project', () {
+      // AudioClip moved into the kernel (#93), so an audio key is the same in
+      // a 2D project and a 3D one - it came back `Object?` for goo3d once,
+      // which is how a 3D project could declare a sound and never load it.
+      //
+      // The import is the kernel for the same reason: nothing in this file
+      // names a renderer type, so nothing about it depends on which package
+      // the project entered the engine through (#316).
+      final source = emitAudios(
+        const AssetScan(
+          textures: <DiscoveredAsset>[],
+          audio: <DiscoveredAsset>[],
+          unsupported: <String, String>{},
+          declaredEntries: <String>[],
+        ),
+        command: 'good generate',
+      );
+      expect(source, contains('LocalEnumAssetKey<AudioClip>'));
+      expect(source, contains("import 'package:good/good.dart';"));
+      expect(source, isNot(contains('goo2d')));
     });
   });
 
@@ -1286,7 +1300,6 @@ flutter:
         emitTextures(
           scanAssets(dir),
           command: 'good generate',
-          package: 'goo2d',
           drawsTextures: true,
         ),
         contains("sheet('assets/sheet.png', 512, 256)"),
@@ -1309,7 +1322,6 @@ flutter:
           }),
         ),
         command: 'good generate',
-        package: 'goo2d',
         drawsTextures: true,
       );
       expect(source, contains('abstract final class TextureSize'));
@@ -1335,7 +1347,6 @@ flutter:
           }),
         ),
         command: 'good generate',
-        package: 'goo2d',
         drawsTextures: true,
       );
       expect(source, contains("tall('assets/tall.png', 3, 97)"));
@@ -1348,7 +1359,6 @@ flutter:
       final source = emitTextures(
         scanAssets(dir),
         command: 'good generate',
-        package: 'goo2d',
         drawsTextures: true,
       );
       expect(source, contains("broken('assets/broken.png', 0, 0)"));
@@ -1365,7 +1375,6 @@ flutter:
           }),
         ),
         command: 'good generate',
-        package: 'goo3d',
         drawsTextures: false,
       );
       expect(source, contains('LocalEnumAssetKey<Object?>'));
@@ -1378,7 +1387,6 @@ flutter:
           _project(_pubspecWithAssets, <String>['assets/theme.ogg']),
         ),
         command: 'good generate',
-        package: 'goo2d',
       );
       expect(source, contains("theme('assets/theme.ogg')"));
       expect(source, isNot(contains('TextureSize')));
@@ -1393,7 +1401,6 @@ flutter:
       final source = emitTextures(
         scanAssets(_project('name: demo\n', <String>[])),
         command: 'good generate',
-        package: 'goo2d',
         drawsTextures: true,
       );
       expect(
@@ -1432,7 +1439,6 @@ flutter:
         emitTextures(
           scanAssets(dir),
           command: 'good generate',
-          package: 'goo2d',
           drawsTextures: true,
         ),
         contains("sheetWidth('assets/sheet_width.png', 8, 4)"),
@@ -1583,6 +1589,130 @@ flutter:
             'goo2d is where Texture is declared, and that needs no graph - '
             'which is what keeps `good create` working before its first '
             'pub get',
+      );
+    });
+  });
+
+  group('what the generated files import', () {
+    test('an entry package that re-exports nothing is not imported', () {
+      // #316. A project declaring a physics backend and goo2d has two engine
+      // candidates; #309 drops goo2d as the less specific of the two, so the
+      // entry package is the backend - whose library exports its own `src/`
+      // and re-exports neither goo2d nor the kernel. Naming every type
+      // through it stopped resolving at `AssetKey`, so every asset kind broke
+      // and not the textures alone.
+      final dir = _project(
+        'name: demo\n'
+        'dependencies:\n'
+        '  demo_physics: ^0.1.0\n'
+        '  goo2d: ^0.3.0\n\n'
+        'flutter:\n  assets:\n    - assets/\n',
+        <String>['assets/player.png', 'assets/theme.ogg'],
+      );
+      resolvePackages(dir, <String, List<String>>{
+        'demo_physics': <String>['goo2d'],
+        'goo2d': <String>['good'],
+        'good': <String>[],
+      });
+
+      expect(
+        enginePackageOf(dir),
+        'demo_physics',
+        reason: 'goo2d is what the backend is built on, so it is dropped',
+      );
+
+      runGenerate(
+        projectDir: dir,
+        command: 'good generate',
+        out: _quiet,
+        verbose: _quiet,
+        pubGet: false,
+      );
+
+      final lib = '${dir.path}/demo_bundle/lib';
+      final textures = File('$lib/textures.dart').readAsStringSync();
+      final audios = File('$lib/audios.dart').readAsStringSync();
+      final readiness = File('$lib/good.dart').readAsStringSync();
+
+      for (final source in <String>[textures, audios, readiness]) {
+        expect(
+          source,
+          isNot(contains('demo_physics')),
+          reason: 'nothing generated names a type the backend declares',
+        );
+      }
+      expect(textures, contains("import 'package:goo2d/goo2d.dart';"));
+      expect(textures, contains('LocalEnumAssetKey<Texture>'));
+      expect(audios, contains("import 'package:good/good.dart';"));
+      expect(readiness, contains("import 'package:good/good.dart';"));
+    });
+
+    test('the bundle declares every package the generated files import', () {
+      // An import the bundle's pubspec does not name is what
+      // `depend_on_referenced_packages` reports, and `flutter analyze` fails a
+      // project on an info.
+      final dir = _project(
+        'name: demo\n'
+        'dependencies:\n'
+        '  demo_physics: ^0.1.0\n\n'
+        'flutter:\n  assets:\n    - assets/\n',
+        <String>['assets/player.png'],
+      );
+      resolvePackages(dir, <String, List<String>>{
+        'demo_physics': <String>['goo2d'],
+        'goo2d': <String>['good'],
+        'good': <String>[],
+      });
+      runGenerate(
+        projectDir: dir,
+        command: 'good generate',
+        out: _quiet,
+        verbose: _quiet,
+        pubGet: false,
+      );
+      final pubspec = File(
+        '${dir.path}/demo_bundle/pubspec.yaml',
+      ).readAsStringSync();
+      expect(pubspec, matches(RegExp(r'^  good:', multiLine: true)));
+      expect(pubspec, matches(RegExp(r'^  goo2d:', multiLine: true)));
+      expect(
+        pubspec,
+        matches(RegExp(r'^  demo_physics:', multiLine: true)),
+        reason: 'the entry package is the version the project asked for',
+      );
+    });
+
+    test('a project that cannot draw declares and imports the kernel', () {
+      // The other half of the same question: `Object?` on the keys, and the
+      // kernel names still have to come from somewhere.
+      final dir = _project(
+        'name: demo\n'
+        'dependencies:\n'
+        '  goo3d: ^0.1.0\n\n'
+        'flutter:\n  assets:\n    - assets/\n',
+        <String>['assets/player.png'],
+      );
+      resolvePackages(dir, <String, List<String>>{
+        'goo3d': <String>['good'],
+        'good': <String>[],
+      });
+      runGenerate(
+        projectDir: dir,
+        command: 'good generate',
+        out: _quiet,
+        verbose: _quiet,
+        pubGet: false,
+      );
+      final textures = File(
+        '${dir.path}/demo_bundle/lib/textures.dart',
+      ).readAsStringSync();
+      expect(textures, contains("import 'package:good/good.dart';"));
+      expect(textures, contains('LocalEnumAssetKey<Object?>'));
+      expect(textures, isNot(contains('goo2d')));
+      expect(
+        File('${dir.path}/demo_bundle/pubspec.yaml').readAsStringSync(),
+        isNot(matches(RegExp(r'^  goo2d:', multiLine: true))),
+        reason: 'a project with no renderer depends on none',
       );
     });
   });

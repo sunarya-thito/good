@@ -114,20 +114,26 @@ no chunk directory.
 
 ### Which package the generated files import
 
-`textures.dart`, `audios.dart` and `good.dart` import one engine package, and the
-bundle's own pubspec depends on that same package. The project's dependencies
-decide which: the direct ones that reach `package:good` through their own
+Each generated file imports the package that declares the names in it.
+`audios.dart` and `good.dart` name `AssetKey`, `AudioClip` and the pack API, so
+they import `package:good`. `textures.dart` imports `package:goo2d` where its
+keys carry a `Texture`, and `package:good` where they carry `Object?` — see
+[Which payload type a texture key carries](#which-payload-type-a-texture-key-carries).
+Nothing generated imports the project's own renderer, so a package that depends
+on the engine and re-exports none of it works as well as one that re-exports all
+of it.
+
+The bundle's pubspec depends on both of those and on the project's entry
+package — the direct dependencies that reach `package:good` through their own
 pubspecs, narrowed to the one none of the others is built on. A project
-depending on `goo2d` gets `package:goo2d`. A project depending on a renderer
-that depends on `goo2d` gets that renderer, and `goo2d` is what it is built on.
-No package name takes part, so a renderer somebody else publishes is found the
-same way `goo2d` is.
+depending on `goo2d` and a physics backend built on it names the backend. Each
+version is copied from the project's own pubspec, so the bundle and the project
+resolve one engine between them.
 
 The graph is read from `.dart_tool/package_config.json`. A dependency added
 since the last `flutter pub get` appears in no package config, so nothing says
-it is an engine package and the generated files import `package:good`. Resolve
-the project and run `good generate` again. `good create` names the engine it
-scaffolded and does not go through this.
+it is an engine package. Resolve the project and run `good generate` again.
+`good create` names the engine it scaffolded and does not go through this.
 
 | Option | Default | Description |
 |---|---|---|
@@ -200,7 +206,9 @@ names it. Re-export it in one of the five formats above.
 project's engine package reaches `goo2d` through its `dependencies:`, and
 `Object?` where it does not. A renderer published on top of `goo2d` gets typed
 keys the same way `goo2d` does; a `goo3d` project gets `Object?`, which is what
-keeps `Texture isn't a type` out of its first `flutter analyze`.
+keeps `Texture isn't a type` out of its first `flutter analyze`. The same answer
+settles `textures.dart`'s import: `package:goo2d` for a `Texture` payload, which
+carries the kernel names with it, and `package:good` for an `Object?` one.
 
 The graph is read from `.dart_tool/package_config.json`. An entry package added
 since the last `flutter pub get` is in no package config, so the keys come out
