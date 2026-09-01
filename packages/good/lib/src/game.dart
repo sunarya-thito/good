@@ -159,7 +159,7 @@ enum _ControlMessage {
   // half stops applying; the half above still stands.
 
   /// Game -> main: decode these addresses, whose keys ride along because main
-  /// ran no `describeAssets` and has nothing to resolve an address against.
+  /// declared no asset and has nothing to resolve an address against.
   loadAssets,
 
   /// Main -> game: one address finished, with the running counts and whatever
@@ -3130,8 +3130,8 @@ final class GameRuntime {
   /// Asks main to decode every asset in [addresses], completing when it has.
   ///
   /// [keys] is parallel to [addresses] and is what makes the request
-  /// self-contained: main does not run `describeAssets` and therefore has no
-  /// declaration of its own to resolve an address against, so the request
+  /// self-contained: main declares no asset and therefore has no declaration
+  /// of its own to resolve an address against, so the request
   /// carries both halves of the identity and main adopts the pair (see
   /// `GameAssets.adoptAt`). A `GameAsset` key is plain sendable data; the
   /// *instance* is what would not cross, because a decoded one owns a
@@ -3242,9 +3242,9 @@ final class GameRuntime {
     final keys = (parts[3] as List).cast<AssetKey<Object?>>();
     final assets = game.assets;
 
-    // Adopt first, decode second. This copy never ran a `describeAssets` pass
-    // - scenes and prefabs live on the other isolate - so until this line
-    // there is nothing here for the address to name. Adopting is idempotent,
+    // Adopt first, decode second. This copy declared no asset - scenes and
+    // prefabs live on the other isolate - so until this line there is nothing
+    // here for the address to name. Adopting is idempotent,
     // so an asset a previous request already brought over keeps its payload.
     for (var i = 0; i < addresses.length; i++) {
       assets.adoptAt(addresses[i], keys[i]);

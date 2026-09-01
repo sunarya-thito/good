@@ -342,10 +342,10 @@ abstract class DataDescriptor {
 /// # When a field still needs `describeStruct`
 ///
 /// A field initialiser cannot read another field, so a column whose default
-/// comes from a handle declared in an earlier pass - an asset from
-/// `describeAssets`, a sprite built from a texture - keeps its `describeStruct`
-/// body. The two forms coexist: constructor-time declarations run first, then
-/// the passes `SceneDescriptor.has` drives, in the order they already ran.
+/// comes from a handle another field holds - an asset from `Asset.of`, a
+/// sprite built from a texture - keeps its `describeStruct` body. The two
+/// forms coexist: constructor-time declarations run first, then the passes
+/// `SceneDescriptor.has` drives, in the order they already ran.
 ///
 /// A prefab that wants a *different* default for a column one of its mixins
 /// declared also uses `describeStruct`, but to move the default, not to

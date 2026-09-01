@@ -49,7 +49,7 @@ class MissingSuperCall {
   /// The mixin whose override drops the call.
   final String mixin;
 
-  /// `describeAssets` or `describeStruct`.
+  /// Which pass the override drops - `describeStruct` today.
   final String hook;
 
   final String file;
@@ -916,16 +916,18 @@ class HookOverride {
 
 /// The declare-time passes a component contributes to, each chained through
 /// every mixin on the entity.
-const Set<String> _describeHooks = <String>{
-  'describeAssets',
-  'describeStruct',
-};
+///
+/// One member, and it stays a set: `describeType` left it in #314 and
+/// `describeAssets` in the stage after, both because the thing they declared
+/// moved onto a field initialiser, which nothing chains through and so
+/// nothing can leave out.
+const Set<String> _describeHooks = <String>{'describeStruct'};
 
 /// Looks for `super.<hook>(...)` anywhere in one method body.
 ///
 /// Matched on the AST and not the text, so a mention inside a comment or a
-/// string is not a call, and `super.describeStruct(data)` inside a
-/// `describeAssets` body does not count as chaining `describeAssets`.
+/// string is not a call, and a `super.somethingElse(data)` inside a
+/// `describeStruct` body does not count as chaining `describeStruct`.
 class _SuperCallVisitor extends RecursiveAstVisitor<void> {
   _SuperCallVisitor(this._hook);
 

@@ -28,9 +28,9 @@ import 'package:goo2d/src/render/texture.dart';
 ///
 /// # It takes the handle, not a key and not a path
 ///
-/// [texture] is the [TextureAsset] a `describeAssets` pass returned and the
-/// declarer kept in a field - the same handle a [Sprite] points at. There is
-/// nothing to look up and no name to spell twice.
+/// [texture] is the [TextureAsset] a declaration returned and the declarer
+/// kept in a field - the same handle a [Sprite] points at. There is nothing
+/// to look up and no name to spell twice.
 ///
 /// The alternative is `Image.asset` with a hand-written path, which decodes a
 /// **second** copy into Flutter's `imageCache` and leaves the engine's copy
@@ -65,8 +65,8 @@ class SpriteWidget extends StatelessWidget {
     this.filter = TextureFilter.mipmap,
   });
 
-  /// The decoded image to draw, as the handle a `describeAssets` pass
-  /// returned.
+  /// The decoded image to draw, as the handle `Asset.of` or a scene's
+  /// `describeAssets` returned.
   final TextureAsset texture;
 
   /// Which part of [texture] to draw. Defaults to all of it.

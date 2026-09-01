@@ -34,7 +34,7 @@ class SceneUsage {
 ///
 /// A scene's asset set is not written in one place. `SceneStruct.describeAssets`
 /// declares what the scene itself needs; `describeScene` registers prefabs, and
-/// each prefab's own declarations add to the same set. Following that means
+/// each prefab's own `Asset.of` fields add to the same set. Following that means
 /// getting from `descriptor.has(Player.new)` to `Player`'s own body, which is
 /// a whole-project question rather than a per-file one - a scene routinely
 /// registers a prefab declared in a file this pass reads later, so every
@@ -49,10 +49,11 @@ class SceneUsage {
 ///
 /// # Where a declaration is written
 ///
-/// Both places. `describeAssets` and `describeScene` bodies, and **field
-/// initialisers** - `final texture = Asset.of(Textures.player)` and
+/// Both places. A scene's `describeAssets` and `describeScene` bodies, and
+/// **field initialisers** - `final texture = Asset.of(Textures.player)` and
 /// `final barrel = EntityStruct.of(Barrel.new)` - which are not method bodies
-/// and were invisible here until they were read directly.
+/// and were invisible here until they were read directly. A prefab has only
+/// the second kind.
 ///
 /// # What it cannot see, and what happens then
 ///
@@ -269,7 +270,7 @@ class _FieldVisitor extends RecursiveAstVisitor<void> {
         node.argumentList.arguments.isNotEmpty) {
       final argument = node.argumentList.arguments.first;
       if (target.name == 'Asset') {
-        _readAssetKey(argument, _declarer, _byEnum);
+        _readAssetKey(argument, _declarer, _byEnum, 'Asset.of');
       } else if (target.name == 'EntityStruct') {
         final type = _constructedTypeName(argument);
         if (type != null) {
@@ -292,11 +293,13 @@ class _FieldVisitor extends RecursiveAstVisitor<void> {
 ///
 /// The one place `Textures.planePlayerBlue` is turned into a path, so the
 /// method form and the field-initialiser form cannot drift about what counts
-/// as readable.
+/// as readable. [site] is how an unreadable one is named back to the user -
+/// `describeAssets` for a scene's hook, `Asset.of` for a field initialiser.
 void _readAssetKey(
   Expression argument,
   _Declarer declarer,
   Map<String, Map<String, String>> byEnum,
+  String site,
 ) {
   if (argument is PrefixedIdentifier) {
     final path = byEnum[argument.prefix.name]?[argument.identifier.name];
@@ -305,7 +308,7 @@ void _readAssetKey(
       return;
     }
   }
-  declarer.unresolved['${declarer.name}.describeAssets'] = '$argument';
+  declarer.unresolved['${declarer.name}.$site'] = '$argument';
 }
 
 /// Collects `descriptor.has(...)` arguments inside one method body.
@@ -322,8 +325,8 @@ class _HasVisitor extends RecursiveAstVisitor<void> {
         node.argumentList.arguments.isNotEmpty) {
       final argument = node.argumentList.arguments.first;
       if (_method == 'describeScene') {
-        // `descriptor.has(Player.new)` - the prefab's own describeAssets is
-        // walked separately and folded in by `_collect`.
+        // `descriptor.has(Player.new)` - the prefab's own `Asset.of` fields
+        // are walked separately and folded in by `_collect`.
         //
         // The instance spellings are read as well, and they take two shapes
         // because this unit is parsed and not resolved: without resolution the
@@ -343,7 +346,7 @@ class _HasVisitor extends RecursiveAstVisitor<void> {
       } else {
         // `Textures.planePlayerBlue`, read by the same function the field
         // form uses so the two cannot disagree about what is readable.
-        _readAssetKey(argument, _declarer, _byEnum);
+        _readAssetKey(argument, _declarer, _byEnum, _method);
       }
     }
     super.visitMethodInvocation(node);

@@ -154,13 +154,7 @@ class Wheel extends EntityStruct
   late final Sprite body;
   late final Sprite spoke;
   late final CircleBody circle;
-  late final TextureAsset disc;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    disc = descriptor.has(discTexture);
-  }
+  final disc = Asset.of(discTexture);
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {

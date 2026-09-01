@@ -525,7 +525,7 @@ class _InputProbeGame extends Game {
 
 // --- asset fixtures -------------------------------------------------------
 //
-// The claim under test: `describeAssets` runs on both copies and assigns the
+// The claim under test: asset declaration runs on both copies and assigns the
 // same address on each, while only the copy that can decode ever pulls bytes.
 // Nothing here can be checked by comparing two objects - they are on two
 // heaps - so the game isolate *writes what it sees* (its own copy's address,
@@ -581,7 +581,7 @@ class _IsolateTextureLoader extends AssetLoader<_IsolateTexture> {
 }
 
 class _Textured extends EntityStruct {
-  late final Asset<_IsolateTexture> texture;
+  final texture = Asset.of(_isolateTexture);
 
   // Both seeded to a value the writer can never legitimately produce, so a row
   // that was never written fails the test instead of accidentally matching
@@ -592,12 +592,6 @@ class _Textured extends EntityStruct {
 
   /// And whether that copy has a decoded payload - `0` there, always.
   final seenLoaded = Field.int32(-1);
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    texture = descriptor.has(_isolateTexture);
-  }
 }
 
 class _TexturedScene extends SceneStruct {
@@ -699,13 +693,7 @@ const AssetKey<_IsolateTexture> _lateTexture = AssetKey<_IsolateTexture>(
 );
 
 class _LateProp extends EntityStruct {
-  late final Asset<_IsolateTexture> texture;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    texture = descriptor.has(_lateTexture);
-  }
+  final texture = Asset.of(_lateTexture);
 }
 
 class _LateScene extends SceneStruct {
@@ -2473,7 +2461,7 @@ void main() {
         isTrue,
       );
 
-      // Resolved by address, not by key: main never ran a `describeAssets`
+      // Resolved by address, not by key: main never ran an asset declaration
       // pass, and its own `_isolateTexture` object is not the one that was
       // declared - a key crossing a port arrives as a copy.
       final here = game.assets.of<_IsolateTexture>().tryUnpack(
@@ -2484,7 +2472,7 @@ void main() {
         isNotNull,
         reason:
             'main adopted the declaration when it was asked to decode - '
-            'it never ran a describeAssets pass of its own',
+            'it declared no asset of its own',
       );
       expect(
         reporter.reportedAddress.value,

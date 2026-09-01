@@ -185,17 +185,12 @@ class _Textured extends EntityStruct
   static const int texturedColor = 0xFF00FF00;
   static const int untexturedColor = 0xFF0000FF;
 
-  late final TextureAsset tile;
+  // Declared in a field initialiser, so the handle is already addressed by
+  // the time describeStruct runs and can be a declared row default rather
+  // than something an onMounted has to write.
+  final tile = Asset.of(tileAsset);
   late final Sprite textured;
   late final Sprite plain;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    // Runs before describeStruct, which is what lets the handle below be a
-    // declared row default rather than something an onMounted has to write.
-    tile = descriptor.has(tileAsset);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -239,14 +234,8 @@ class _Panel extends EntityStruct
   static const double inset = 4;
   static const double drawSize = 40;
 
-  late final TextureAsset skin;
+  final skin = Asset.of(asset);
   late final Sprite frame;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    skin = descriptor.has(asset);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -268,14 +257,8 @@ class _Panel extends EntityStruct
 /// a 6-unit axis. Exists to pin the collapse behaviour.
 class _UnsizedPanel extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final TextureAsset skin;
+  final skin = Asset.of(_Panel.asset);
   late final Sprite frame;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    skin = descriptor.has(_Panel.asset);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -299,14 +282,8 @@ class _UnsizedPanel extends EntityStruct
 /// is called and nine after.
 class _PlainPanel extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final TextureAsset skin;
+  final skin = Asset.of(_Panel.asset);
   late final Sprite frame;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    skin = descriptor.has(_Panel.asset);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -329,14 +306,8 @@ class _PlainPanel extends EntityStruct
 /// Three cells, not nine, and it was charged nine anyway until #252.
 class _HorizontalBar extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final TextureAsset skin;
+  final skin = Asset.of(_Panel.asset);
   late final Sprite bar;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    skin = descriptor.has(_Panel.asset);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -367,14 +338,8 @@ class _HorizontalBar extends EntityStruct
 /// cut names, and the plain-quad path would hand it the whole image.
 class _SingleCellPanel extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final TextureAsset skin;
+  final skin = Asset.of(_Panel.asset);
   late final Sprite frame;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    skin = descriptor.has(_Panel.asset);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -2194,7 +2159,7 @@ void main() {
           reason:
               'the record carries the GlobalObject address, which is the '
               'same integer on both isolates because both ran the same '
-              'describeAssets pass - it is what the main isolate resolves back '
+              'asset declaration - it is what the main isolate resolves back '
               'into a ui.Image, and the only form a ui.Image can take here',
         );
         expect(textured.texture, isNonNegative);

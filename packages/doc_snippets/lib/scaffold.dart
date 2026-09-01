@@ -102,17 +102,11 @@ enum Audios with LocalEnumAssetKey<AudioClip> {
 
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D, Collider2D {
-  late final TextureAsset texture;
+  final texture = Asset.of(Textures.spritesPlayer);
   late final Sprite sprite;
   late final CircleBody hitbox;
   final speed = Field.float64(120);
   final shielded = Field.boolean();
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    texture = descriptor.has(Textures.spritesPlayer);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {

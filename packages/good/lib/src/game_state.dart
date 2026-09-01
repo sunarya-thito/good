@@ -462,7 +462,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   ///
   /// The registration half above also declares every asset the incoming scene
   /// needs - its own `SceneStruct.describeAssets` plus every registered
-  /// prefab's `Component.describeAssets` - which is what assigns each one its
+  /// prefab's `Asset.of` fields - which is what assigns each one its
   /// process-global address, identically on both copies (see `GameAssets`). The
   /// asynchronous half then reconciles the two scenes' footprints:
   ///
@@ -839,8 +839,8 @@ abstract class GameState<T extends Game> extends GameListenerBase
       throw StateError(
         '${clip.debugLabel} is declared but not loaded, so there is nothing '
         'to play. An audio clip is loaded by the scene that declares it: put '
-        "it in a SceneStruct's or a Component's describeAssets and play it "
-        'from a scene that is loaded.',
+        "it on a prefab field with Asset.of, or in a SceneStruct's "
+        'describeAssets, and play it from a scene that is loaded.',
       );
     }
     return clip.value.bytes;

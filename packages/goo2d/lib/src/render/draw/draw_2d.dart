@@ -103,7 +103,7 @@ abstract class DrawData2D {
 /// game isolate, which has no Flutter engine and whose `Texture` copies are
 /// declared-but-never-decoded (see `Texture`'s own doc). What crosses the ring
 /// is the `GlobalObject` registry address - the same integer on both isolates,
-/// because both ran the same `describeAssets` pass in the same order - and
+/// because both ran the same asset declarations in the same order - and
 /// [DrawCanvas2D] turns it back into a live `Texture` with
 /// the asset table's `resolve` at replay time.
 ///

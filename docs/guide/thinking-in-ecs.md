@@ -484,12 +484,12 @@ prefabs that happen to have identically named fields share nothing; identity
 comes from the declaration, never from the field names.
 
 **`super` discipline is load-bearing where a hook is still involved.** A
-`describeStruct` or `describeAssets` override must call `super`, because each
-mixin in the chain contributes. Skipping it silently drops everything below it,
-and the failure surfaces much later. There is no equivalent footgun in a class
-hierarchy, where the compiler wires the base constructor for you. Columns and
-component types are exempt: they are field initialisers, and Dart runs the
-whole chain of those without being asked.
+`describeStruct` override must call `super`, because each mixin in the chain
+contributes. Skipping it silently drops everything below it, and the failure
+surfaces much later. There is no equivalent footgun in a class hierarchy, where
+the compiler wires the base constructor for you. Columns, component types and
+assets are exempt: they are field initialisers, and Dart runs the whole chain
+of those without being asked.
 
 ### When to stop and write a second prefab
 
