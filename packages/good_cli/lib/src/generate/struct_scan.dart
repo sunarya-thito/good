@@ -1,9 +1,9 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:good_cli/src/generate/engine_dependency.dart';
 import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:analyzer/dart/analysis/features.dart';
@@ -768,10 +768,24 @@ List<String> _scanRoots(Directory projectDir) {
 /// Absent before a `pub get`, and that is not an error here: the mixins go to
 /// [StructScan.unresolved] and are reported, which is the same answer this pass
 /// gives for any other declaration it cannot read.
-List<String> _enginePackageLibs(Directory projectDir) => <String>[
-  for (final entry in _packageLibs(projectDir).entries)
-    if (_isEnginePackage(entry.key)) entry.value,
-];
+///
+/// Which of them count as engine packages is [EngineDependencies]' question and
+/// not a name test (#305). The prefix that used to stand here -
+/// `name == 'good' || name.startsWith('goo')` - walked `google_fonts`,
+/// `google_sign_in`, `googleapis`, `goodies` and `gooey` on every generate, and
+/// missed a third-party component package outright.
+List<String> _enginePackageLibs(Directory projectDir) {
+  final resolved = resolvedPackages(projectDir);
+  final engine = EngineDependencies(
+    roots: <String, Directory>{
+      for (final entry in resolved.entries) entry.key: entry.value.root,
+    },
+  );
+  return <String>[
+    for (final entry in _packageLibs(projectDir).entries)
+      if (engine.contains(entry.key)) entry.value,
+  ];
+}
 
 /// Every package the config names, as package name to the absolute,
 /// normalised path of its `lib/`.
@@ -781,49 +795,10 @@ List<String> _enginePackageLibs(Directory projectDir) => <String>[
 /// perfectly entitled to re-export something from a package this pass does not
 /// walk. Only directories that exist are listed, so a config left over from a
 /// deleted dependency drops out here rather than at every use.
-Map<String, String> _packageLibs(Directory projectDir) {
-  final file = File(
-    p.join(projectDir.path, '.dart_tool', 'package_config.json'),
-  );
-  if (!file.existsSync()) return const <String, String>{};
-  final Object? doc;
-  try {
-    doc = jsonDecode(file.readAsStringSync());
-  } on FormatException {
-    return const <String, String>{};
-  }
-  if (doc is! Map<String, Object?>) return const <String, String>{};
-  final packages = doc['packages'];
-  if (packages is! List<Object?>) return const <String, String>{};
-
-  final libs = <String, String>{};
-  for (final entry in packages) {
-    if (entry is! Map<String, Object?>) continue;
-    final name = entry['name'];
-    if (name is! String) continue;
-    final rootUri = entry['rootUri'];
-    if (rootUri is! String) continue;
-    final packageUri = entry['packageUri'];
-    final base = rootUri.startsWith('file:')
-        ? File.fromUri(Uri.parse(rootUri)).path
-        : p.normalize(p.join(file.parent.path, rootUri));
-    final libDir = Directory(
-      p.normalize(p.join(base, packageUri is String ? packageUri : 'lib/')),
-    );
-    if (libDir.existsSync()) {
-      libs[name] = p.normalize(p.absolute(libDir.path));
-    }
-  }
-  return libs;
-}
-
-/// Whether [name] is one of the engine's own packages.
-///
-/// The kernel plus anything built on it - `goo2d`, `goo3d`, a physics backend.
-/// A third-party component package is not covered and lands in
-/// [StructScan.unresolved]; widening this to every dependency would mean
-/// parsing Flutter itself on every generate.
-bool _isEnginePackage(String name) => name == 'good' || name.startsWith('goo');
+Map<String, String> _packageLibs(Directory projectDir) => <String, String>{
+  for (final entry in resolvedPackages(projectDir).entries)
+    if (Directory(entry.value.lib).existsSync()) entry.key: entry.value.lib,
+};
 
 String _display(String file, Directory projectDir) {
   final root = p.normalize(p.absolute(projectDir.path));

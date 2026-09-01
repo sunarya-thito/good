@@ -223,16 +223,15 @@ class AccessorScan {
 /// `lib/` is not in this repository and nothing here can reach it. #300 records
 /// that as a separate design and so does this.
 AccessorScan scanAccessors(
-  Directory repoRoot, {
-  List<EnginePackage>? packages,
+{
+  required List<EnginePackage> packages,
   ScanSources? sources,
 }) {
-  final targets = packages ?? enginePackages(repoRoot);
   final read =
       sources ??
       readSources(
-        repoRoot,
-        rootOverride: <String>[for (final target in targets) target.libDir],
+        Directory.current,
+        rootOverride: <String>[for (final target in packages) target.libDir],
         // A generator must not read its own output. What this writes is an
         // `extension ... on Accessor<Transform2D>` inside `packages/goo2d/lib/`,
         // which on the next run is an ordinary hand-written extension declaring
@@ -240,12 +239,12 @@ AccessorScan scanAccessors(
         // properties as colliding with itself. The guard was right and the
         // input was wrong.
         exclude: <String>{
-          for (final target in targets) target.accessorFile.path,
+          for (final target in packages) target.accessorFile.path,
         },
       );
 
   final byLibDir = <String, EnginePackage>{
-    for (final target in targets) target.libDir: target,
+    for (final target in packages) target.libDir: target,
   };
   final declarations = declaredIn(read);
   final reserved = _reservedNames(read);
@@ -253,7 +252,7 @@ AccessorScan scanAccessors(
     declaredIn: declarations,
     byLibDir: byLibDir,
     units: read.units,
-    packages: targets,
+    packages: packages,
   );
 
   final extensions = <AccessorExtension>[];

@@ -3,7 +3,7 @@ import 'dart:io';
 // good_cli's `lib/src` is private by convention and this reaches into it, for
 // the reason `accessor_scan.dart` states beside its own copy of this line. One
 // `readSources` here, shared by both scans, because both ask about the same
-// trees and neither has any reason to parse the repository a second time.
+// trees and neither has any reason to parse the same packages a second time.
 // ignore: implementation_imports
 import 'package:good_cli/src/generate/struct_scan.dart';
 import 'package:good_tool/src/accessor_emit.dart';
@@ -14,19 +14,39 @@ import 'package:good_tool/src/engine_packages.dart';
 import 'package:good_tool/src/imports.dart';
 import 'package:path/path.dart' as p;
 
-/// This repository's own code generator.
+/// The code generator for a package built on this engine.
 ///
 /// ```console
 /// $ cd packages/good_tool
-/// $ dart run good_tool            # write
-/// $ dart run good_tool --check    # fail if what is committed is stale
-/// $ dart run good_tool --verbose  # say what got no property, and why
+/// $ dart run good_tool --dir ../../packages            # write
+/// $ dart run good_tool --dir ../../packages --check    # fail if stale
+/// $ dart run good_tool --dir ../../packages --verbose  # say what got nothing
 /// ```
 ///
-/// From this package's own directory, because `dart run <package>` resolves
-/// packages from the working directory and the repository root has no pubspec.
-/// The root itself is then found by walking up, so the paths it prints and the
-/// files it writes do not depend on where it was started.
+/// From a package's own directory, because `dart run <package>` resolves
+/// packages from the working directory.
+///
+/// # Why `--dir` has no default (#305)
+///
+/// Because the only default that could exist is `packages/`, and that is this
+/// repository's layout rather than anybody's. A third-party author writing
+/// `good_physics_foo` has their `lib/` at their package root, so the default
+/// would find nothing for them - and finding nothing while reporting success is
+/// the defect #305 opens with. A default fails quietly for every caller it was
+/// not written for; a required argument fails the same way for all of them, at
+/// the point where it can say what is missing.
+///
+/// It may be given more than once, and that is not a convenience. The
+/// component-bit table is numbered over every package one run sees, so two runs
+/// over halves of a monorepo produce two numberings neither of which is the one
+/// the engine would assign. A layout with packages in two places has to be one
+/// run.
+///
+/// # Which of those directories' packages are handled
+///
+/// The ones that depend on the engine - see [enginePackages]. Not the ones
+/// whose name starts with `goo`, which is what `good_cli` used to ask and which
+/// reads `google_fonts` as an engine package.
 ///
 /// # Why the output is committed
 ///
@@ -34,7 +54,9 @@ import 'package:path/path.dart' as p;
 /// code **ships**: `entity<Transform2D>().offsetX` has to work for somebody who
 /// installed `goo2d` from pub.dev and has never heard of this tool. A published
 /// package carries what is in its `lib/`, so a build-time step would have to run
-/// during `dart pub publish`, and nothing makes it.
+/// during `dart pub publish`, and nothing makes it. That is the same fact that
+/// makes this tool worth pointing at somebody else's package: whatever it
+/// generates for them has to be inside their `lib/` to be published with it.
 ///
 /// Two things follow, and both are the point rather than a cost. A change to
 /// the generator shows its effect in the same diff as the change - the
@@ -47,48 +69,118 @@ import 'package:path/path.dart' as p;
 Future<void> main(List<String> arguments) async {
   final check = arguments.contains('--check');
   final verbose = arguments.contains('--verbose') || arguments.contains('-v');
-  final unknown = arguments.where(
-    (argument) =>
-        argument != '--check' && argument != '--verbose' && argument != '-v',
-  );
-  if (unknown.isNotEmpty) {
-    stderr.writeln('Unknown argument(s): ${unknown.join(', ')}');
-    stderr.writeln('Usage: dart run good_tool [--check] [--verbose]');
+  final directories = <String>[];
+  final unknown = <String>[];
+  var wantsDirectory = false;
+  for (final argument in arguments) {
+    if (wantsDirectory) {
+      directories.add(argument);
+      wantsDirectory = false;
+      continue;
+    }
+    if (argument == '--dir') {
+      wantsDirectory = true;
+      continue;
+    }
+    if (argument.startsWith('--dir=')) {
+      directories.add(argument.substring('--dir='.length));
+      continue;
+    }
+    if (argument == '--check' || argument == '--verbose' || argument == '-v') {
+      continue;
+    }
+    unknown.add(argument);
+  }
+  if (unknown.isNotEmpty || wantsDirectory || directories.isEmpty) {
+    if (unknown.isNotEmpty) {
+      stderr.writeln('Unknown argument(s): ${unknown.join(', ')}');
+    }
+    if (wantsDirectory) stderr.writeln('--dir takes a directory.');
+    if (directories.isEmpty && !wantsDirectory) {
+      stderr.writeln(
+        'Nothing to look in. --dir names a directory holding the packages to '
+        'generate into, and may be given more than once.',
+      );
+    }
+    stderr.writeln(
+      'Usage: dart run good_tool --dir <directory> [--dir <directory>] '
+      '[--check] [--verbose]',
+    );
+    stderr.writeln(
+      '  --dir .              the package in this directory\n'
+      '  --dir packages       every package directly under packages/',
+    );
     exitCode = 64;
     return;
   }
 
-  final root = _repoRoot();
-  if (root == null) {
+  final missing = directories.where(
+    (directory) => !Directory(directory).existsSync(),
+  );
+  if (missing.isNotEmpty) {
+    stderr.writeln('No such directory: ${missing.join(', ')}');
+    exitCode = 65;
+    return;
+  }
+
+  final scan = enginePackages(<Directory>[
+    for (final directory in directories) Directory(directory),
+  ]);
+  final packages = scan.packages;
+
+  // The failure #305 is named for. A run that generated nothing used to exit 0
+  // saying nothing at all, and the report it read as was "my components produce
+  // no accessors" with no thread to pull.
+  if (packages.isEmpty) {
+    stderr.writeln(_nothingMatched(scan));
+    exitCode = 65;
+    return;
+  }
+  final duplicates = scan.duplicates;
+  if (duplicates.isNotEmpty) {
+    duplicates.forEach((name, roots) {
+      stderr.writeln('Two packages are called $name: ${roots.join(', ')}');
+    });
     stderr.writeln(
-      'Run this from inside the repository - it looks for mkdocs.yml beside a '
-      'packages/ directory. `cd packages/good_tool && dart run good_tool`.',
+      '\nOne generated component-bit table is written per package name, so a '
+      'run holding two of a name would write one table over the other and no '
+      'reader of a query signature could tell which numbering it came from.',
     );
     exitCode = 65;
     return;
   }
 
-  final packages = enginePackages(root);
+  // Every package read, which is the packages being written into plus the
+  // engine packages they depend on. In this repository those are the same set;
+  // a standalone package's engine dependencies come from a pub cache, and
+  // without them `Component` and `Field` are undeclared names and the run
+  // produces nothing (#305).
+  final readable = <EnginePackage>[...packages, ...scan.dependencies];
   final sources = readSources(
-    root,
-    rootOverride: <String>[for (final package in packages) package.libDir],
+    Directory.current,
+    rootOverride: <String>[for (final package in readable) package.libDir],
     // A generator must not read its own output. What this writes is an
     // `extension ... on Accessor<Transform2D>` inside `packages/goo2d/lib/`,
     // which on the next run is an ordinary hand-written extension declaring
     // `offsetX` - so the second run reported every one of its own properties
     // as colliding with itself. The guard was right and the input was wrong.
+    //
+    // Its own output, and only its own: an upstream package's committed
+    // `accessors.g.dart` is input like any other hand-written extension, and a
+    // property this run would generate under a name that file already declares
+    // on the same component is a real collision.
     exclude: <String>{
       for (final package in packages) package.accessorFile.path,
       for (final package in packages) package.componentBitsFile.path,
     },
   );
-  final scan = scanAccessors(root, packages: packages, sources: sources);
-  final bits = scanComponentBits(root, packages: packages, sources: sources);
+  final accessors = scanAccessors(packages: readable, sources: sources);
+  final bits = scanComponentBits(packages: readable, sources: sources);
 
   if (verbose) {
-    final skipped = scan.skipped.keys.toList()..sort();
+    final skipped = accessors.skipped.keys.toList()..sort();
     for (final key in skipped) {
-      stdout.writeln('No accessor property: $key - ${scan.skipped[key]}');
+      stdout.writeln('No accessor property: $key - ${accessors.skipped[key]}');
     }
     final unbitted = bits.skipped.keys.toList()..sort();
     for (final key in unbitted) {
@@ -100,7 +192,7 @@ Future<void> main(List<String> arguments) async {
   // moved here at all. A registry that fills up at run time throws naming
   // whichever type happened to arrive last, which is whichever scene was
   // declared last; this names every type competing for the last bit, before
-  // anything is built. It counts the repository alone, so a table that exactly
+  // anything is built. It counts the packages alone, so a table that exactly
   // fills the word has already taken every slot a game had.
   if (bits.bits.length > maxComponentTypes) {
     stderr.writeln(componentBitCeilingMessage(bits, maxComponentTypes));
@@ -115,8 +207,8 @@ Future<void> main(List<String> arguments) async {
   // would answer about the entity handle instead of the column, with nothing
   // said anywhere - and this file is committed and shipped, so nothing
   // downstream would ever say it either.
-  if (scan.collisions.isNotEmpty) {
-    stderr.writeln(accessorCollisionMessage(scan));
+  if (accessors.collisions.isNotEmpty) {
+    stderr.writeln(accessorCollisionMessage(accessors));
     exitCode = 65;
     return;
   }
@@ -124,54 +216,92 @@ Future<void> main(List<String> arguments) async {
   final imports = Imports(
     declaredIn: declaredIn(sources),
     byLibDir: <String, EnginePackage>{
-      for (final package in packages) package.libDir: package,
+      for (final package in readable) package.libDir: package,
     },
     units: sources.units,
-    packages: packages,
+    packages: readable,
   );
+  // Written into [packages] alone, resolved against everything read: an
+  // upstream package generates its own files in its own run.
   final files = <GeneratedFile>[
-    ...accessorFiles(scan, packages),
-    ...componentBitsFiles(bits, packages, imports),
+    ...accessorFiles(accessors, packages),
+    ...componentBitsFiles(bits, packages, imports, known: readable),
   ];
   final absent = <EnginePackage, String>{
     for (final package in missingExports(
-      accessorFiles(scan, packages),
+      accessorFiles(accessors, packages),
       packages,
     ))
       package: package.accessorExport,
     for (final package in missingComponentBitsExports(
-      componentBitsFiles(bits, packages, imports),
+      componentBitsFiles(bits, packages, imports, known: readable),
       packages,
     ))
       package: package.componentBitsExport,
   };
 
   if (check) {
-    _check(root, files, absent);
+    _check(packages, files, absent, directories);
     return;
   }
 
   for (final file in files) {
     if (file.isCurrent) {
-      stdout.writeln('Unchanged ${_display(root, file.file)}');
+      stdout.writeln('Unchanged ${_display(packages, file.file)}');
       continue;
     }
     file.file.parent.createSync(recursive: true);
     file.file.writeAsStringSync(file.contents);
-    stdout.writeln('Wrote ${_display(root, file.file)}');
+    stdout.writeln('Wrote ${_display(packages, file.file)}');
   }
   absent.forEach((package, export) {
     stdout.writeln(
-      'Add `$export` to ${_display(root, package.barrel)} - the generated file '
-      'is not exported, so nothing outside that package can reach anything in '
-      'it.',
+      'Add `$export` to ${_display(packages, package.barrel)} - the generated '
+      'file is not exported, so nothing outside that package can reach '
+      'anything in it.',
     );
   });
   stdout.writeln(
-    '${scan.propertyCount} propert(ies) over ${scan.extensions.length} '
-    'component(s), and ${bits.bits.length} component bit(s), in '
-    '${files.length} file(s).',
+    '${accessors.propertyCount} propert(ies) over '
+    '${accessors.extensions.length} component(s), and ${bits.bits.length} '
+    'component bit(s), in ${files.length} file(s) across '
+    '${packages.length} package(s).',
   );
+}
+
+/// What a run that matched no package says instead of exiting quietly (#305).
+///
+/// It names the directories, and every package it did find and turned down
+/// with the reason. "There was nothing there" and "there were four things and
+/// none of them qualified" send somebody to two different places, and a run
+/// that only said neither is the failure this exists to end.
+String _nothingMatched(PackageScan scan) {
+  final lines = StringBuffer()
+    ..writeln(
+      'No package to generate into under '
+      '${scan.looked.map((where) => '`$where`').join(', ')}. A package is '
+      'handled when it has a lib/, is not publish_to: none, and depends on '
+      'package:$engineRootPackage - directly or through anything it depends '
+      'on.',
+    );
+  if (scan.rejected.isEmpty) {
+    lines
+      ..writeln()
+      ..writeln(
+        'Nothing there holds a pubspec.yaml. --dir takes the package itself '
+        '(`--dir .`) or a directory whose immediate children are packages '
+        '(`--dir packages`), and looks no deeper than that.',
+      );
+    return lines.toString();
+  }
+  lines
+    ..writeln()
+    ..writeln('What was there:');
+  final names = scan.rejected.keys.toList()..sort();
+  for (final name in names) {
+    lines.writeln('  $name - ${scan.rejected[name]}');
+  }
+  return lines.toString();
 }
 
 /// Fails when a committed file is not what the generator would write now.
@@ -180,9 +310,10 @@ Future<void> main(List<String> arguments) async {
 /// git whether anything moved would leave a modified tree behind on failure,
 /// and on a developer's machine that is somebody's working copy.
 void _check(
-  Directory root,
+  List<EnginePackage> packages,
   List<GeneratedFile> files,
   Map<EnginePackage, String> absent,
+  List<String> directories,
 ) {
   final stale = files.where((file) => !file.isCurrent).toList();
   if (stale.isEmpty && absent.isEmpty) {
@@ -192,37 +323,38 @@ void _check(
   for (final file in stale) {
     stderr.writeln(
       file.file.existsSync()
-          ? 'Stale: ${_display(root, file.file)}'
-          : 'Missing: ${_display(root, file.file)}',
+          ? 'Stale: ${_display(packages, file.file)}'
+          : 'Missing: ${_display(packages, file.file)}',
     );
   }
   absent.forEach((package, export) {
     stderr.writeln(
-      'Not exported: ${_display(root, package.barrel)} does not carry '
+      'Not exported: ${_display(packages, package.barrel)} does not carry '
       '`$export`',
     );
   });
-  stderr.writeln(
-    '\nRun `dart run good_tool` from the repository root and commit the '
-    'result.',
-  );
+  final where = <String>[
+    for (final directory in directories) '--dir $directory',
+  ].join(' ');
+  stderr.writeln('\nRun `dart run good_tool $where` and commit the result.');
   exitCode = 65;
 }
 
-String _display(Directory root, File file) =>
-    p.split(p.relative(file.path, from: root.path)).join('/');
-
-/// The repository root, found by walking up from the working directory.
-Directory? _repoRoot() {
-  var dir = Directory.current;
-  for (var i = 0; i < 6; i++) {
-    if (File(p.join(dir.path, 'mkdocs.yml')).existsSync() &&
-        Directory(p.join(dir.path, 'packages')).existsSync()) {
-      return dir;
+/// A generated file named as `<package>/lib/src/<file>`.
+///
+/// Relative to the package rather than to the working directory, because the
+/// working directory is now whichever one `--dir` was resolved from and a path
+/// through `../` says nothing a reader wants. This form is the same on every
+/// machine and in every invocation, which is what the printed name is for.
+String _display(List<EnginePackage> packages, File file) {
+  final full = p.normalize(p.absolute(file.path));
+  for (final package in packages) {
+    final root = p.normalize(p.absolute(package.root.path));
+    if (p.isWithin(root, full)) {
+      return p.split(
+        p.join(package.name, p.relative(full, from: root)),
+      ).join('/');
     }
-    final parent = dir.parent;
-    if (parent.path == dir.path) break;
-    dir = parent;
   }
-  return null;
+  return full;
 }

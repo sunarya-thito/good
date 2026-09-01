@@ -151,7 +151,7 @@ jobs:
       - name: Check the generated files are what good_tool would write
         run: |
           set -e
-          (cd packages/good_tool && dart run good_tool --check)
+          (cd packages/good_tool && dart run good_tool --check --dir ../../packages)
 
       # ffigen's function filter is a regex nothing re-runs, so it can stop
       # matching with nothing going red. `good.*` matched none of the shim's 60
