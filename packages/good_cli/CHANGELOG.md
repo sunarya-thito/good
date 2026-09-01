@@ -1,5 +1,18 @@
 ## Unreleased
 
+### Breaking
+
+* **`good generate` no longer checks `describeType` for a missing `super`**
+  (#287). A component declares its type in a field initialiser, which no chain
+  runs through, so the defect the check exists for cannot be written. The check
+  still covers `describeStruct` and `describeAssets`.
+
+  The component-type scan reads `Component.type<T>()` field initialisers
+  instead of `has<T>()` calls inside a `describeType` body. It matches on the
+  receiver name `Component`, exactly as the column check matches on `Field`,
+  with the same liability: a declaration static on some other type is invisible
+  until that is edited.
+
 ### Changed
 
 * **The scene scan reads field initialisers, not only method bodies.** It kept

@@ -377,10 +377,9 @@ abstract class Game implements RandomOwner {
   ///     const <GeneratedComponentBits>[goo2dComponentBits];
   /// ```
   ///
-  /// Empty by default, and an empty list is exactly today's behaviour: every
-  /// component type takes the next free bit the first time
-  /// `ComponentDescriptor.has<T>()` names it, in whatever order the scenes
-  /// declare things.
+  /// Empty by default, and an empty list leaves the numbering as it is: every
+  /// component type takes the next free bit the first time a declaration names
+  /// it, in whatever order the scenes declare things.
   ///
   /// Naming a table pins the bits of every type in it, and of every table it
   /// depends on - `goo2dComponentBits` brings `goodComponentBits` with it - so

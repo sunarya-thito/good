@@ -18,21 +18,13 @@ mixin _Transform on Component {
   final offsetY = Field.float64();
   final rotation = Field.float64();
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Transform>();
-  }
+  final transformType = Component.type<_Transform>();
 }
 
 mixin _Health on Component {
   final hitPoints = Field.uint16(100);
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Health>();
-  }
+  final healthType = Component.type<_Health>();
 }
 
 mixin _Flags on Component {

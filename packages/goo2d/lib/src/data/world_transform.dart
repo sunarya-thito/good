@@ -46,11 +46,7 @@ mixin WorldTransform2D on Component {
   final _cachedScaleY = Field.float64(double.nan);
   final _cachedParent = Field.optEntity();
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<WorldTransform2D>();
-  }
+  final worldTransform2DType = Component.type<WorldTransform2D>();
 }
 
 /// Keeps every [WorldTransform2D] current, once per `FixedTickEvent`.

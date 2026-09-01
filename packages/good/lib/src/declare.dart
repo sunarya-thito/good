@@ -25,6 +25,20 @@ abstract interface class PrefabRegistrar {
   T declareChild<T extends EntityStruct>(T Function() create);
 }
 
+/// What `Component.type` declares against: the archetype whose prefab is
+/// being constructed right now.
+///
+/// Separate from [DataDescriptor] because a component type is not a column. A
+/// column is bytes in every row; a component type is one bit in the
+/// archetype's query signature, and an archetype carries at most one of each.
+@internal
+abstract interface class ComponentRegistrar {
+  /// ORs [type]'s bit into the archetype's signature and records what it
+  /// refuses to share an archetype with. Returns the bit, which is what
+  /// `ComponentType` carries. See `Component.type`, the only caller.
+  int declareComponent(Type type, Map<Type, String> conflictsWith);
+}
+
 /// The descriptor a field initialiser declares against, for the duration of
 /// one object's construction.
 ///
@@ -98,6 +112,52 @@ abstract final class DeclarationContext {
       );
     }
     return descriptor;
+  }
+
+  /// The open component registrars, innermost last - the eighth level of the
+  /// stack, and the one `Component.type` declares against. A `null` entry is
+  /// a barrier, exactly as in [_data].
+  ///
+  /// Opened and closed in lockstep with [_data], around the same constructor
+  /// call, because the two declare the two halves of one archetype: the
+  /// columns a row carries and the bits its signature carries. Kept apart
+  /// because [DataDescriptor] is the public row-layout surface a
+  /// `describeStruct` body is handed, and a component bit is not a column.
+  static final List<ComponentRegistrar?> _components = <ComponentRegistrar?>[];
+
+  static void pushComponents(ComponentRegistrar registrar) =>
+      _components.add(registrar);
+
+  /// Closes the component stack for a pass that is not a constructor, for
+  /// [pushBarrier]'s reason: a nested prefab's post-construction passes run
+  /// while its declarer's constructor is still on the stack, so a
+  /// `Component.type` call in one would put a bit on the declarer's
+  /// signature and read it back from the child's.
+  static void pushComponentBarrier() => _components.add(null);
+
+  static void popComponents() => _components.removeLast();
+
+  static ComponentRegistrar get components {
+    final registrar = _components.isEmpty ? null : _components.last;
+    if (registrar == null) {
+      throw StateError(
+        'A component type was declared with no struct being constructed. '
+        'Component.type reads the registrar the framework opens around a '
+        'constructor call, so the struct has to be built by the framework:\n'
+        '  descriptor.has(MyStruct.new)   // not descriptor.has(MyStruct())\n'
+        'It belongs in a field initialiser of the component mixin itself, '
+        'where it is written once for every prefab that mixes the component '
+        'in:\n'
+        '  mixin Health on Component {\n'
+        '    final healthType = Component.type<Health>();\n'
+        '  }\n'
+        'A `late final` initialiser lands here too: it runs on first read, '
+        'after the archetype was sealed, so the bit would never reach the '
+        'signature a query matches against. Field initialisers here are '
+        'eager, always.',
+      );
+    }
+    return registrar;
   }
 
   /// The open prefab registrations, innermost last - the second level of the

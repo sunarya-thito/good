@@ -65,11 +65,7 @@ mixin _Position on Component {
   final x = Field.float64();
   final y = Field.float64();
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Position>();
-  }
+  final positionType = Component.type<_Position>();
 }
 
 class _Mote extends EntityStruct with _Position {}

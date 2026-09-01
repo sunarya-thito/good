@@ -223,11 +223,7 @@ mixin RigidBody2D on Component {
     BodyType2D.dynamicBody,
   );
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<RigidBody2D>();
-  }
+  final rigidBody2DType = Component.type<RigidBody2D>();
 
   // --- forces ---------------------------------------------------------------
   //

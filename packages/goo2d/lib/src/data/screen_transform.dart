@@ -151,7 +151,7 @@ mixin ScreenTransform2D on Component {
   /// What every one of this entity's `Sprite.height` values means.
   ScreenAxis get screenHeightAxis => ScreenAxis.units;
 
-  // Registering the type is what sets this component's bit in the archetype
+  // Declaring the type is what sets this component's bit in the archetype
   // signature, and therefore the only reason `withAll(ScreenTransform2D)`
   // matches anything and `withNone(ScreenTransform2D)` excludes anything.
   // Without it `ComponentTypeRegistry.bitFor` still hands the type a fresh
@@ -159,23 +159,19 @@ mixin ScreenTransform2D on Component {
   // does, and they fail in opposite directions: the world query forbids it and
   // takes every archetype in the game, the screen query requires it and takes
   // none.
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    // Asking what else this prefab mixes in, once, at declare time. Nothing
-    // downstream branches on the answer - it is a validity check, and the
-    // combination it rejects is silently wrong rather than loudly wrong if it
-    // is allowed through: the renderer would read composed world coordinates
-    // as view offsets and put the art somewhere plausible and incorrect.
-    assert(
-      this is! WorldTransform2D,
-      '$runtimeType mixes in both ScreenTransform2D and WorldTransform2D. '
-      'They mean two different things by an entity offset - view units from '
-      'an anchor, and world units composed with every ancestor - and only one '
-      'of them can be true. Drop WorldTransform2D and put the parts that move '
-      'together on one entity as several Sprites, or drop ScreenTransform2D '
-      'and place the entity in the world.',
-    );
-    component.has<ScreenTransform2D>();
-  }
+  //
+  // The refusal is a validity check and nothing downstream branches on it. The
+  // combination it rejects is silently wrong rather than loudly wrong if it is
+  // allowed through: the renderer would read composed world coordinates as
+  // view offsets and put the art somewhere plausible and incorrect.
+  final screenTransform2DType = Component.type<ScreenTransform2D>(
+    conflictsWith: <Type, String>{
+      WorldTransform2D:
+          'They mean two different things by an entity offset - view units '
+          'from an anchor, and world units composed with every ancestor - and '
+          'only one of them can be true. Drop WorldTransform2D and put the '
+          'parts that move together on one entity as several Sprites, or drop '
+          'ScreenTransform2D and place the entity in the world.',
+    },
+  );
 }

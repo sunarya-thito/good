@@ -43,11 +43,7 @@ mixin _Counter on Component {
   /// that a row was allocated.
   final marker = Field.uint8();
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Counter>();
-  }
+  final counterType = Component.type<_Counter>();
 }
 
 class _Unit extends EntityStruct with _Counter, EntityLifecycleListener {

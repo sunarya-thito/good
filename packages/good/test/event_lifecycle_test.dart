@@ -38,11 +38,7 @@ late Game run;
 mixin _Marked on Component {
   final mark = Field.uint8(7);
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Marked>();
-  }
+  final markedType = Component.type<_Marked>();
 }
 
 class _Unit extends EntityStruct with _Marked {}

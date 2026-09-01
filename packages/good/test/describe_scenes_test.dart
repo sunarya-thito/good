@@ -24,11 +24,7 @@ late Game run;
 mixin _Marked on Component {
   final mark = Field.uint8(3);
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Marked>();
-  }
+  final markedType = Component.type<_Marked>();
 }
 
 class _Unit extends EntityStruct with _Marked {}
@@ -36,11 +32,7 @@ class _Unit extends EntityStruct with _Marked {}
 mixin _Unmarked on Component {
   final tag = Field.uint8(7);
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Unmarked>();
-  }
+  final unmarkedType = Component.type<_Unmarked>();
 }
 
 class _Prop extends EntityStruct with _Unmarked {}

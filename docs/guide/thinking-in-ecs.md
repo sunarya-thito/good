@@ -4,13 +4,9 @@
 // The page's running cast. Health is the only component it names without
 // declaring; the rest are the queries, columns and handles the fragments read.
 mixin Health on Component {
-  final healthHp = Field.int32(100);
+  final healthType = Component.type<Health>();
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<Health>();
-  }
+  final healthHp = Field.int32(100);
 }
 
 class Bullet extends EntityStruct with Transform2D, Renderable2D {
@@ -429,26 +425,17 @@ mixins, each contributing columns and a queryable type.
 
 ```dart
 mixin Character on Component {
+  final characterType = Component.type<Character>();
+
   final characterMoveSpeed = Field.float64(120);
   final characterTurnSpeed = Field.float64(4);
-
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<Character>();
-  }
-
 }
 
 mixin Hostile on Component {
+  final hostileType = Component.type<Hostile>();
+
   final hostileAggroRadius = Field.float64(220);
   final hostileContactDamage = Field.int32(5);
-
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<Hostile>();
-  }
 }
 ```
 
@@ -497,12 +484,13 @@ health" needs `Character` to be a real mixin that every prefab applies. Two
 prefabs that happen to have identically named fields share nothing; identity
 comes from the declaration, never from the field names.
 
-**`super` discipline is load-bearing.** Every `describeType` override must call
-`super`, because each mixin in the chain contributes. Skipping it silently drops
-everything below it, and the failure surfaces much later as a query matching
-nothing. There is no equivalent footgun in a class hierarchy, where the compiler
-wires the base constructor for you. Columns are exempt now that they are field
-initialisers - Dart runs the whole chain of those without being asked.
+**`super` discipline is load-bearing where a hook is still involved.** A
+`describeStruct` or `describeAssets` override must call `super`, because each
+mixin in the chain contributes. Skipping it silently drops everything below it,
+and the failure surfaces much later. There is no equivalent footgun in a class
+hierarchy, where the compiler wires the base constructor for you. Columns and
+component types are exempt: they are field initialisers, and Dart runs the
+whole chain of those without being asked.
 
 ### When to stop and write a second prefab
 

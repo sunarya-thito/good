@@ -537,9 +537,9 @@ final class Asset<T> implements IntRepresentable {
   String toString() => 'Asset($debugLabel @$_address)';
 }
 
-/// Declares [key] and returns the handle to keep in a field - the third
-/// `describe*` hook alongside `describeType`/`describeStruct`, and the
-/// typed-handle rule applied to assets.
+/// Declares [key] and returns the handle to keep in a field - the
+/// `describe*` hook alongside `describeStruct`, and the typed-handle rule
+/// applied to assets.
 ///
 /// There is no asset name and nothing to look up at use time: [has] returns
 /// the handle, the declarer keeps it in a `late final` field, and that field

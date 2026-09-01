@@ -14,20 +14,13 @@ mixin Child on Component {
   final childNextSibling = Field.optEntity();
   final childPrevSibling = Field.optEntity();
 
-  // Every other mixin (Transform2D, and this file's own callers in
-  // query_test.dart) registers itself via `component.has<Self>()` in
-  // describeType - this one didn't, which meant `With<Child>()`/
-  // `Without<Child>()` compiled and ran without error but silently matched
-  // *everything*, since the bit they checked was never set in any
-  // archetype's signature (nothing ever OR'd it in). Caught by
-  // system.dart's query tests, not by inspection - see that file's tests
-  // exercising `Without<Child>()` against a real archetype.
-  @override
-  @mustCallSuper
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<Child>();
-  }
+  // Every component mixin declares its own type here. A mixin that declares
+  // none takes no bit, so `With<Child>()`/`Without<Child>()` would compile and
+  // run and silently match *everything*: the bit they check would never be set
+  // in any archetype's signature. That is the failure this line stops, and
+  // system.dart's query tests are what catch it - see the tests exercising
+  // `Without<Child>()` against a real archetype.
+  final childType = Component.type<Child>();
 
   DataPointer<Entity?>? _declaredIn;
   int _declaredInArchetype = -1;
@@ -70,12 +63,7 @@ mixin Parent on Component {
   final parentFirstChild = Field.optEntity();
   final parentLastChild = Field.optEntity();
 
-  @override
-  @mustCallSuper
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<Parent>();
-  }
+  final parentType = Component.type<Parent>();
 
   final List<EntityStruct> _declaredChildren = <EntityStruct>[];
 

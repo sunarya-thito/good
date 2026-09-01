@@ -19,42 +19,26 @@ import 'package:good/src/struct.dart';
 mixin _Alpha on Component {
   final alphaValue = Field.float64();
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Alpha>();
-  }
+  final alphaType = Component.type<_Alpha>();
 }
 
 mixin _Beta on Component {
   final betaValue = Field.float64();
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Beta>();
-  }
+  final betaType = Component.type<_Beta>();
 }
 
 mixin _Gamma on Component {
   final gammaValue = Field.float64();
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Gamma>();
-  }
+  final gammaType = Component.type<_Gamma>();
 }
 
 /// A component in a package the scan never read - somebody's own game.
 mixin _Unscanned on Component {
   final unscannedValue = Field.float64();
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Unscanned>();
-  }
+  final unscannedType = Component.type<_Unscanned>();
 }
 
 /// `kernel` sorts before `renderer`, so its two types take bits 0 and 1
@@ -369,10 +353,16 @@ void main() {
         if (game.isRunning) await game.stop();
       });
       expect(ComponentTypeRegistry.seededCount, 0);
-      // `_Player` is the first prefab the scene declares and `EntityStruct`
-      // registers its own type first, so bit 0 is a prefab's - which is the
-      // whole reason this order cannot be persisted.
-      expect(ComponentTypeRegistry.indexFor(_Player), 0);
+      // `_Player` is the first prefab the scene declares, and it is
+      // `class _Player extends EntityStruct with _Alpha, _Beta`. Mixin field
+      // initialisers run in reverse `with` order, so `_Beta` declares itself
+      // first and `_Alpha` second; the prefab's own type is added after the
+      // constructor returns, because `runtimeType` is not reachable from an
+      // initialiser. The numbering is therefore a fact about the source order
+      // of one class, which is the whole reason it cannot be persisted.
+      expect(ComponentTypeRegistry.indexFor(_Beta), 0);
+      expect(ComponentTypeRegistry.indexFor(_Alpha), 1);
+      expect(ComponentTypeRegistry.indexFor(_Player), 2);
       expect(ComponentTypeRegistry.indexFor(_Gamma), isNot(2));
     });
   });

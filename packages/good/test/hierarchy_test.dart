@@ -11,11 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 mixin _Name on Component {
   final tag = Field.uint16();
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Name>();
-  }
+  final nameType = Component.type<_Name>();
 }
 
 class _Node extends EntityStruct with _Name, Child, Parent {}
@@ -92,11 +88,7 @@ final List<String> _dispatchLog = <String>[];
 /// The shape a `Parent.onEntityMounted` would have: a component mixin that is
 /// also a lifecycle listener.
 mixin _Probe on Component, EntityLifecycleListener {
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Probe>();
-  }
+  final probeType = Component.type<_Probe>();
 
   @override
   void onEntityMounted(Entity entity) {
