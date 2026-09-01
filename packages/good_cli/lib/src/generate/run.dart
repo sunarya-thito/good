@@ -79,11 +79,18 @@ class GenerateResult {
 /// [pubGet] is the resolve step. It is on by default and only tests and CI
 /// turn it off - see the comment at the call below for why leaving it to the
 /// next build is not safe.
+///
+/// [enginePackage] names the package the generated files import. Left out, it
+/// is read from the project dependencies by [enginePackageOf]. `good create`
+/// passes it: it has just written the pubspec line declaring the engine, and
+/// the project has not been resolved since, so the dependency is in no package
+/// config for [enginePackageOf] to find.
 GenerateResult runGenerate({
   required Directory projectDir,
   required String command,
   required VerboseOutput out,
   required VerboseOutput verbose,
+  String? enginePackage,
   bool rotateKeys = false,
   bool dryRun = false,
   bool pubGet = true,
@@ -145,7 +152,7 @@ GenerateResult runGenerate({
     out.printf('Skipped %s - %s\n', [entry.key, entry.value]);
   }
 
-  final package = enginePackageOf(project);
+  final package = enginePackage ?? enginePackageOf(project);
   verbose.printf('Engine package: %s\n', [package]);
 
   // Which package is the bundle, and whether it is good's to write to. Before

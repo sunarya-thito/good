@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:good_cli/src/config.dart';
+import 'package:good_cli/src/generate/engine_dependency.dart';
 import 'package:meta/meta.dart';
 import 'package:yaml/yaml.dart';
 
@@ -364,26 +365,64 @@ String identifierFor(String path) {
 /// `goo2d` and `goo3d` both re-export the `good` kernel, so a project must
 /// import the one it depends on and nothing else: importing `package:good`
 /// directly in generated code names a package the pubspec does not depend on,
-/// which pub warns about and a stricter analysis setup rejects outright. A
-/// `goo3d` project left off this list is exactly that warning, on every
-/// generated file, from the first run.
+/// which pub warns about and a stricter analysis setup rejects outright.
 ///
-/// Falls back to `good` when none is declared. A project with no engine
-/// dependency at all has bigger problems than the import line, and guessing
-/// the kernel is the answer that is right for all of them.
+/// # How the package is chosen
+///
+/// The project's direct `dependencies:`, narrowed twice.
+///
+/// First to the engine packages among them, by [EngineDependencies] - the
+/// same test `good generate` uses to decide whose `lib/` holds declarations
+/// (#305). A dependency is an engine package when it reaches `package:good`
+/// through its own `dependencies:`, so `google_fonts` is not one and a
+/// renderer nobody here has heard of is.
+///
+/// Then to the most specific of those. One candidate depending on another
+/// means the second is what the first is built on, and the generated code
+/// names the surface of the outer package: a project declaring a renderer and
+/// the kernel imports the renderer, and a project declaring a renderer built
+/// on `goo2d` imports that renderer and not `goo2d`. No list of package names
+/// takes part (#309).
+///
+/// Two candidates neither of which depends on the other - a project declaring
+/// two renderers side by side - are ordered by name, so the import a project
+/// generates does not change between runs.
+///
+/// # What it reads, and what it answers without
+///
+/// Each candidate's own pubspec, found through
+/// `.dart_tool/package_config.json`. A project resolved before this runs has
+/// a graph to walk; one whose dependency was added since its last
+/// `flutter pub get` has that dependency in no graph at all, and it drops out
+/// with everything else that cannot be read.
+///
+/// Falls back to [engineRootPackage] when no direct dependency reaches the
+/// engine. The generated files sit in the bundle package, whose own pubspec is
+/// written from this same answer - see `engineDependencyFor` - so the import
+/// resolves against what the bundle declares whatever the project says.
+/// `good create` does not come through here: it scaffolded the project and
+/// passes the engine it wrote to [runGenerate] directly.
 String enginePackageOf(Directory projectDir) {
-  final file = File('${projectDir.path}/pubspec.yaml');
-  if (!file.existsSync()) return 'good';
-  final doc = loadYaml(file.readAsStringSync());
-  final deps = doc is YamlMap ? doc['dependencies'] : null;
-  if (deps is! YamlMap) return 'good';
-  // Most specific first: a project can depend on a renderer and the kernel
-  // both, and the renderer is then the one whose export surface covers
-  // everything the generated code names.
-  for (final candidate in const <String>['goo2d', 'goo3d', 'good']) {
-    if (deps.containsKey(candidate)) return candidate;
+  final facts = readPubspecFacts(File('${projectDir.path}/pubspec.yaml'));
+  if (facts == null) return engineRootPackage;
+  final engine = EngineDependencies(
+    roots: <String, Directory>{
+      for (final entry in resolvedPackages(projectDir).entries)
+        entry.key: entry.value.root,
+    },
+  );
+  final candidates = facts.dependencies.where(engine.contains).toList()..sort();
+  if (candidates.isEmpty) return engineRootPackage;
+  for (final candidate in candidates) {
+    final builtOn = candidates.any(
+      (other) => other != candidate && engine.dependsOn(other, candidate),
+    );
+    if (!builtOn) return candidate;
   }
-  return 'good';
+  // Every candidate is depended on by another one, which takes a cycle among
+  // them. There is no most specific package to name, and the first by name is
+  // an answer two runs agree on.
+  return candidates.first;
 }
 
 /// The `flutter: assets:` entries a project declares, verbatim.

@@ -112,6 +112,23 @@ leaves no directory at all. `good build` and `good assets pack` ask the same
 question at their first step, so a refusal costs no compaction pass and creates
 no chunk directory.
 
+### Which package the generated files import
+
+`textures.dart`, `audios.dart` and `good.dart` import one engine package, and the
+bundle's own pubspec depends on that same package. The project's dependencies
+decide which: the direct ones that reach `package:good` through their own
+pubspecs, narrowed to the one none of the others is built on. A project
+depending on `goo2d` gets `package:goo2d`. A project depending on a renderer
+that depends on `goo2d` gets that renderer, and `goo2d` is what it is built on.
+No package name takes part, so a renderer somebody else publishes is found the
+same way `goo2d` is.
+
+The graph is read from `.dart_tool/package_config.json`. A dependency added
+since the last `flutter pub get` appears in no package config, so nothing says
+it is an engine package and the generated files import `package:good`. Resolve
+the project and run `good generate` again. `good create` names the engine it
+scaffolded and does not go through this.
+
 | Option | Default | Description |
 |---|---|---|
 | `--project-dir=<dir>` | `.` | The project to generate into |

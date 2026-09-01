@@ -188,7 +188,20 @@ class EngineDependencies {
   final Map<String, bool> _answers = <String, bool>{};
 
   /// Whether [name] is the engine or reaches it through `dependencies:`.
-  bool contains(String name) => _answers[name] ??= _reaches(name);
+  bool contains(String name) =>
+      _answers[name] ??= _reaches(name, engineRootPackage);
+
+  /// Whether [name] is [target] or reaches it through `dependencies:`.
+  ///
+  /// This is [contains] with the destination left open, and it orders two
+  /// engine packages against each other: a renderer declares `goo2d`, so
+  /// `dependsOn('neon', 'goo2d')` is true and `dependsOn('goo2d', 'neon')` is
+  /// not. `dependsOn(x, x)` is true, the same way the engine counts as an
+  /// engine package.
+  ///
+  /// Not memoised. [_answers] holds answers about [engineRootPackage] alone,
+  /// and a walk to somewhere else would poison it.
+  bool dependsOn(String name, String target) => _reaches(name, target);
 
   /// A breadth-first walk, whose answer is memoised for [name] alone.
   ///
@@ -198,12 +211,12 @@ class EngineDependencies {
   /// graph is a few hundred nodes and each pubspec is read once, so asking
   /// about every package separately costs a few hundred set operations rather
   /// than a few hundred re-reads.
-  bool _reaches(String start) {
+  bool _reaches(String start, String target) {
     final seen = <String>{start};
     final queue = <String>[start];
     while (queue.isNotEmpty) {
       final name = queue.removeLast();
-      if (name == engineRootPackage) return true;
+      if (name == target) return true;
       final facts = _factsFor(name);
       if (facts == null) continue;
       for (final dependency in facts.dependencies) {
