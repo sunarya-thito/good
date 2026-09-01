@@ -29,16 +29,22 @@ import 'rigid_body.dart';
 /// `Box2DPhysicsSystem` has run lands a step late. Give the calling system a
 /// `compareTo` that sorts it before the physics system.
 ///
+/// Each call also names the scene to search - the handle `loadScene` returned.
+/// There is no default, because a query that fell back to the one loaded scene
+/// would search the wrong world the day a HUD loads.
+///
 /// ```dart
 /// class Shockwave extends GameSystem with FixedTickable {
+///   late Scene arena;
+///
 ///   @override
 ///   int compareTo(GameSystem other) =>
 ///       other is Box2DPhysicsSystem ? -1 : 0;
 ///
 ///   @override
 ///   void onFixedUpdate() {
-///     state.getSystem<Box2DPhysicsSystem>().areaEffector(
-///       -20, -20, 20, 0, forceX: 30,
+///     getSystem<Box2DPhysicsSystem>().areaEffector(
+///       arena, -20, -20, 20, 0, forceX: 30,
 ///     );
 ///   }
 /// }

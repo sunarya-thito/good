@@ -107,6 +107,53 @@ reason:
 - A fence cannot call something a later fence declares. That is a real forward
   reference and the honest answer is a `skip` with the reason.
 
+## `///` fences in the packages
+
+`--api` adds every fenced `dart` block in a `///` comment under
+`packages/*/lib` to the run, one generated library per source file, fences in
+declaration order:
+
+```bash
+dart run tool/extract.dart --api
+flutter analyze --no-pub
+```
+
+CI runs without it. That surface is **142 fences in 51 files**, half again what
+`docs/` carries, and **109 of them do not compile standalone** - a fence inside
+a `///` block names what is in scope at that declaration, and the generated
+library has none of it:
+
+| failing | cause | what clears it |
+|---:|---|---|
+| 67 | free names the declaration supplies - `descriptor`, `input`, the command the example is about | `<!-- snippet-setup -->` above the fence |
+| 21 | an `@override` fragment wrapped as a statement | `<!-- snippet: in <header> -->` |
+| 15 | not standalone Dart - two signatures, a cascade fragment, half a class body | `<!-- snippet: skip <reason> -->` |
+| 6 | a type the fence names and never introduces | `<!-- snippet-setup -->`, or `top` on the fence that declares it |
+
+Those are the tags a `docs/` page uses, written inside the `///` block, where
+dartdoc renders an HTML comment as nothing:
+
+````dart
+/// <!-- snippet-setup
+/// final CommandDescriptor descriptor = given();
+/// final Damage damage = given();
+/// -->
+/// ```dart
+/// descriptor.hasHandler(damage, (p) => p.amount * (p.crit ? 2 : 1));
+/// ```
+````
+
+A setup line spells its types without angle brackets, as above: a `<` in a
+`///` comment trips `unintended_html_in_doc_comment`, so a fence whose only
+spelling needs a type argument stays unchecked.
+
+None of the 109 is a call that fails against the signature above it. Three
+were, and each is fixed: `CommandDescriptor.hasHandler` shown taking a
+two-argument handler, `Effectors2D.areaEffector` called without its `Scene`,
+and a `Game` field named `pause` over `Game.pause`. Two of the three
+`hasHandler` fences carry a `snippet-setup` so they stay checked. Turning
+`--api` on in CI costs the 109 annotations above.
+
 ## What it will not catch
 
 That a snippet does the right thing. This is a compile, not a test: it proves

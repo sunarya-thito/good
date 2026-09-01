@@ -786,8 +786,12 @@ mixin Renderable2D on MultiComponent {
 
   // Registering the type here is not optional bookkeeping - it is what sets
   // this component's bit in the archetype signature, and therefore the only
-  // reason `withAll(Renderable2D)` matches anything at all. Omitting it leaves
-  // a query silently matching *every* archetype instead of failing loudly.
+  // reason `withAll(Renderable2D)` matches anything at all. Omitting it makes
+  // the query match *nothing*: `ComponentTypeRegistry.bitFor` hands a type it
+  // has not seen a fresh bit, so the required mask carries a bit no archetype
+  // signature does and `signature & required == required` is false everywhere.
+  // The renderer then draws nothing and reports no error, so the symptom is a
+  // system that never runs, not a declaration that is missing.
   // `test/render_2d_test.dart` checks the signature bit directly, and does not
   // trust inspection.
   @override

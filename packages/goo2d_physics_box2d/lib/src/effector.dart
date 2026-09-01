@@ -9,9 +9,9 @@ import 'package:meta/meta.dart';
 /// explosion, or a region computed from gameplay state, has no entity to hang
 /// off. What they are bad at is the *standing* case: a wind zone or a pool of
 /// water is a thing in the level, and writing it as
-/// `areaEffector(-20, -20, 20, 0, forceX: 30)` from a hand-ordered system
-/// means world-space constants a caller must recompute by hand the moment the
-/// zone moves, plus a `compareTo` every game has to get right.
+/// `areaEffector(scene, -20, -20, 20, 0, forceX: 30)` from a hand-ordered
+/// system means world-space constants a caller must recompute by hand the
+/// moment the zone moves, plus a `compareTo` every game has to get right.
 ///
 /// A declared effector puts the region on the entity's own [ColliderBody], so
 /// it travels with the entity for free, and turns every knob into a per-entity

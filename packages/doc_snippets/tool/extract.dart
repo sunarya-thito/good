@@ -7,6 +7,9 @@
 //     dart run tool/extract.dart
 //     flutter analyze --no-pub
 //
+// `--api` adds the `///` fences in packages/*/lib to the run. Most of those do
+// not compile standalone, so it is not what CI runs; README.md has the count.
+//
 // The conventions are documented in README.md. Briefly: an untagged fence is
 // checked, and the tags are HTML comments on the line above it.
 //
@@ -37,10 +40,15 @@ void main(List<String> args) {
 
   for (final file in files) {
     final rel = file.path.substring(root.path.length + 1).replaceAll(r'\', '/');
-    final page = _parse(rel, file.readAsLinesSync());
+    final page = _parse(rel, _pageLibrary(rel), file.readAsLinesSync());
     if (page.fences.isEmpty) continue;
     pages.add(page);
   }
+
+  // `///` fences are off unless asked for. They are not CI-clean: see the
+  // count and the four causes in README.md.
+  final apiPages = args.contains('--api') ? _apiPages(root) : const <_Page>[];
+  pages.addAll(apiPages);
 
   var checked = 0;
   var skipped = 0;
@@ -63,7 +71,8 @@ void main(List<String> args) {
 
   stdout.writeln(
     'doc_snippets: ${checked + skipped} dart fences in ${pages.length} pages '
-    '— $checked checked, $skipped skipped',
+    '— $checked checked, $skipped skipped'
+    '${apiPages.isEmpty ? '' : ', ${apiPages.length} of them doc comments'}',
   );
   if (skipReasons.isNotEmpty) {
     final keys = skipReasons.keys.toList()..sort();
@@ -152,9 +161,13 @@ class _Fence {
 }
 
 class _Page {
-  _Page(this.relPath);
+  _Page(this.relPath, this.libraryName);
 
   final String relPath;
+
+  /// Basename of the generated library, without `.dart`. Set by the caller
+  /// because a page and a source file name themselves differently.
+  final String libraryName;
   final fences = <_Fence>[];
   final scope = <String>[];
   final errors = <String>[];
@@ -164,12 +177,6 @@ class _Page {
   String? skipReason;
 
   List<String> get scopeDeclarations => _declarations(scope);
-
-  String get libraryName => relPath
-      .substring('docs/'.length)
-      .replaceAll('.md', '')
-      .replaceAll('/', '_')
-      .replaceAll('-', '_');
 }
 
 final _fenceStart = RegExp(r'^(\s*)```dart\b(.*)$');
@@ -177,8 +184,8 @@ final _tag = RegExp(r'^\s*<!--\s*snippet:\s*(.*?)\s*-->\s*$');
 final _scopeOpen = RegExp(r'^\s*<!--\s*snippet-(scope|setup)\s*$');
 final _pageSkip = RegExp(r'^\s*<!--\s*snippet-page:\s*skip\s+(.*?)\s*-->\s*$');
 
-_Page _parse(String relPath, List<String> lines) {
-  final page = _Page(relPath);
+_Page _parse(String relPath, String libraryName, List<String> lines) {
+  final page = _Page(relPath, libraryName);
   String? pendingTag;
   var pendingTagLine = 0;
   var pendingSetup = <String>[];
@@ -593,4 +600,80 @@ List<String> _declarations(List<String> code) => [
 String _indent(List<String> code, int n) {
   final pad = ' ' * n;
   return code.map((l) => l.isEmpty ? '' : '$pad$l').join('\n');
+}
+
+/// Library basename for a page under `docs/`.
+String _pageLibrary(String relPath) => relPath
+    .substring('docs/'.length)
+    .replaceAll('.md', '')
+    .replaceAll('/', '_')
+    .replaceAll('-', '_');
+
+/// Library basename for a source file under `packages/*/lib`.
+String _apiLibrary(String relPath) {
+  final trimmed = relPath
+      .replaceAll('packages/', '')
+      .replaceAll('/lib/', '/')
+      .replaceAll('.dart', '')
+      .replaceAll('/', '_')
+      .replaceAll('-', '_');
+  return 'api_$trimmed';
+}
+
+/// Every `.dart` file under `packages/*/lib`, read as a page of its own.
+///
+/// One page per file and not one per doc comment, so a `class Damage` that a
+/// fence declares is in scope for the fences below it the way the file reads.
+List<_Page> _apiPages(Directory root) {
+  final packages = Directory('${root.path}/packages');
+  if (!packages.existsSync()) return const [];
+  final pages = <_Page>[];
+  final dirs = packages.listSync().whereType<Directory>().toList()
+    ..sort((a, b) => a.path.compareTo(b.path));
+  for (final pkg in dirs) {
+    final name = pkg.path.replaceAll(r'\', '/').split('/').last;
+    // This package's own lib/ is where the output goes.
+    if (name == 'doc_snippets') continue;
+    final lib = Directory('${pkg.path}/lib');
+    if (!lib.existsSync()) continue;
+    final files =
+        lib
+            .listSync(recursive: true)
+            .whereType<File>()
+            .where((f) => f.path.endsWith('.dart'))
+            .toList()
+          ..sort((a, b) => a.path.compareTo(b.path));
+    for (final file in files) {
+      final rel = file.path
+          .substring(root.path.length + 1)
+          .replaceAll(r'\', '/');
+      final stream = _docCommentStream(file.readAsLinesSync());
+      if (stream.isEmpty) continue;
+      final page = _parse(rel, _apiLibrary(rel), stream);
+      if (page.fences.isEmpty) continue;
+      pages.add(page);
+    }
+  }
+  return pages;
+}
+
+final _docLine = RegExp(r'^\s*/// ?(.*)$');
+
+/// A file's `///` comments as markdown, one output line per source line.
+///
+/// Keeping the length is what makes a diagnostic point at the real file and
+/// line. A line that is not documentation becomes a `.`, which reads as prose
+/// and so closes any tag left dangling above it.
+List<String> _docCommentStream(List<String> src) {
+  final out = <String>[];
+  var any = false;
+  for (final line in src) {
+    if (_docLine.firstMatch(line) case final m?) {
+      any = true;
+      out.add(m.group(1)!);
+    } else {
+      out.add('.');
+    }
+  }
+  return any ? out : const [];
 }
