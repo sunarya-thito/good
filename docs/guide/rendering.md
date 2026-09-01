@@ -205,15 +205,32 @@ time:
 // A uniform sheet: 8 columns x 4 rows, cell 5 (row-major).
 const walk0 = SpriteFrame.grid(columns: 8, rows: 4, index: 5);
 
-// A packed atlas: a pixel rectangle on a sheet whose size you know.
+// A packed atlas: a pixel rectangle on a sheet, divided by the sheet's size.
 const buttonFace = SpriteFrame.pixels(
   x: 128, y: 64, width: 96, height: 32,
-  sheetWidth: 512, sheetHeight: 512,
+  sheetWidth: TextureSize.spritesPlayerWidth,
+  sheetHeight: TextureSize.spritesPlayerHeight,
 );
 
 // The default: the whole texture.
 const whole = SpriteFrame.full;
 ```
+
+`TextureSize` is generated beside `Textures`, from the image headers, and holds
+one `static const int` pair per texture. Re-exporting the art at a new size
+changes those constants on the next `good generate` and changes nothing you
+wrote. Typing `512` here instead is the same number in two places, and only one
+of them moves.
+
+There are two forms and they are not interchangeable:
+
+| | |
+|---|---|
+| `Textures.spritesPlayer.width` | reads well, and is **not** a constant expression |
+| `TextureSize.spritesPlayerWidth` | usable in `const`, which is what the table below needs |
+
+Field access on an enum value is never constant, so the first form cannot
+appear in a `static const List<SpriteFrame>`.
 
 Both are `const`, so a frame table costs nothing at run time:
 
@@ -238,6 +255,11 @@ class Player extends EntityStruct
   }
 }
 ```
+
+`width` and `height` on `has` are **world units**, not pixels, so they are not
+the texture's size and `TextureSize` does not belong there. Drawing a sprite at
+its native pixel size is `TextureSize.spritesPlayerWidth * unitsPerPixel` for
+whatever scale the game uses.
 
 Then advance it per entity from a system. `animTime` is a `Field.float64()`
 column on the prefab, and `12` is the frame rate:

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:good_cli/src/config.dart';
 import 'package:good_cli/src/generate/engine_dependency.dart';
+import 'package:good_cli/src/generate/image_size.dart';
 import 'package:meta/meta.dart';
 import 'package:yaml/yaml.dart';
 
@@ -12,6 +13,7 @@ class DiscoveredAsset {
     required this.identifier,
     required this.path,
     required this.kind,
+    this.size,
   });
 
   /// The Dart identifier this becomes - `planePlayerBlue`.
@@ -30,9 +32,26 @@ class DiscoveredAsset {
   /// Which pipeline this asset goes through - texture, audio, or raw bytes.
   final AssetKind kind;
 
+  /// The image's pixel dimensions, read from its header (#111).
+  ///
+  /// `null` for anything that is not an image, and for an image whose header
+  /// [readImageSize] does not recognise - a format outside the six
+  /// [AssetKind.texture] accepts, or a file truncated before its size field.
+  /// A caller emitting a number for every texture has to pick something for
+  /// those; see `emitTextures`.
+  final ImageSize? size;
+
   @override
   String toString() => '$identifier -> $path (${kind.name})';
 }
+
+/// Identifiers the generated `Textures` enum spends on its own members.
+///
+/// Enum values and instance fields share one namespace, so these are the
+/// basenames a project cannot give a texture. The set is fixed and does not
+/// grow with what a project ships: `assets/width.png` and `assets/height.png`
+/// are the only two files this rejects, whatever directory they sit in.
+const Set<String> reservedTextureMembers = <String>{'width', 'height'};
 
 /// What a file's extension says it is, which decides which generated enum it
 /// lands in and which `AssetLoader` will decode it.
@@ -182,11 +201,28 @@ AssetScan scanAssets(Directory projectDir) {
         'collide.',
       );
     }
+    if (kind == AssetKind.texture &&
+        reservedTextureMembers.contains(identifier)) {
+      // The generated enum carries `width` and `height` as instance fields, so
+      // a texture whose identifier is one of those names is a duplicate
+      // definition in a generated file. Refused here, where the message can
+      // name the file that caused it - `duplicate_definition` points at two
+      // lines of generated code and mentions no asset at all.
+      throw ArgumentError(
+        '"$path" generates the identifier "$identifier", which the Textures '
+        'enum already uses for the pixel size every texture carries. Rename '
+        'it - the identifier comes from the path with separators removed, so '
+        'a file named "$identifier" anywhere under assets/ lands on it.',
+      );
+    }
     seen[identifier] = path;
     final asset = DiscoveredAsset(
       identifier: identifier,
       path: path,
       kind: kind,
+      size: kind == AssetKind.texture
+          ? readImageSize(File('${projectDir.path}/$path'))
+          : null,
     );
     (kind == AssetKind.texture ? textures : audio).add(asset);
   }

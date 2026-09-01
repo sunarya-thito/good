@@ -13,7 +13,53 @@
   with the same liability: a declaration static on some other type is invisible
   until that is edited.
 
+### Added
+
+* **`textures.dart` carries each image's pixel size.** `good generate` reads it
+  out of the file's header - PNG, WebP, GIF, BMP and JPEG, chosen by the leading
+  bytes and not by the extension, with nothing decoded - and emits it twice:
+
+  ```dart
+  enum Textures with LocalEnumAssetKey<Texture> {
+    sheet('assets/sheet.webp', 512, 256);
+    // ...
+  }
+
+  abstract final class TextureSize {
+    static const int sheetWidth = 512;
+    static const int sheetHeight = 256;
+  }
+  ```
+
+  The two forms are not interchangeable. Field access on an enum value is never
+  a constant expression, so `Textures.sheet.width` cannot go in the
+  `static const List<SpriteFrame>` table the rendering guide teaches;
+  `TextureSize.sheetWidth` can. Pass the constants to `SpriteFrame.pixels` and
+  `NineSliceBorder.pixels` and re-exporting the art at another size needs no
+  source change (#111).
+
+  Two consequences. A texture whose path generates the identifier `width` or
+  `height` - `assets/width.png`, `assets/ui/height.png` - is refused at generate
+  time with the path in the message, because those two names are now the enum's
+  own fields; the reserved set is exactly those two and does not grow with what
+  a project ships. And a file whose header states no size generates `0` for both
+  and is named in the run's output.
+
 ### Changed
+
+* **A texture key is typed from the dependency graph, not from a package
+  name.** The payload type was `package == 'goo2d' ? 'Texture' : 'Object?'`, so
+  a project whose engine package is a renderer built on `goo2d` got `Object?`
+  for keys whose payload is the `Texture` that renderer exports - keys that
+  compile, and lose their static type. `Texture` is declared in `goo2d`, so the
+  test is now whether the engine package is `goo2d` or reaches it through its
+  `dependencies:`, read from `.dart_tool/package_config.json` (#312).
+
+  A `goo2d` project and a `goo3d` project generate what they generated before.
+  A project on a third-party renderer gets `Texture` where it got `Object?`; a
+  cast that is now unnecessary still compiles. An entry package added since the
+  last `flutter pub get` is in no package config and answers `Object?`, so
+  resolve the project and run `good generate` again.
 
 * **The scene scan reads field initialisers, not only method bodies.** It kept
   `describeAssets` and `describeScene` bodies and skipped everything else, so
