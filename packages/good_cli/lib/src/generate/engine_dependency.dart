@@ -257,14 +257,14 @@ class EngineDependencies {
 /// somebody else publishes on top of `goo2d` gets typed keys without being
 /// listed anywhere here.
 ///
-/// # What it assumes, and where that shows
+/// # What it does not answer
 ///
-/// That an entry package re-exports the engine surface it is built on. The
-/// generated files name `AssetKey`, `LocalEnumAssetKey` and `AudioClip`
-/// through the one import they write, so the assumption is already load-
-/// bearing for every asset kind; `Texture` is one more name under it. A
-/// package that depends on `goo2d` without re-exporting it generates a file
-/// that does not resolve, and it does not resolve at `AssetKey` first.
+/// Which package the generated file imports. That is [generatedImport], and
+/// the two are separate: this one asks whether a `Texture` exists in the
+/// project at all, and that one asks who declares the name. A package can
+/// reach `goo2d` and export nothing of it - `goo2d_physics_box2d` exports its
+/// own `src/` and re-exports neither `goo2d` nor the kernel - so the answer
+/// here is `true` and the import is still `package:goo2d/goo2d.dart` (#316).
 ///
 /// # An unresolved project
 ///
@@ -280,3 +280,50 @@ bool enginePackageDrawsTextures(Directory projectDir, String enginePackage) =>
           entry.key: entry.value.root,
       },
     ).dependsOn(enginePackage, textureRootPackage);
+
+/// The package a generated file imports to name the engine types in it.
+///
+/// Two packages declare those names, and which one a file needs is decided by
+/// the file's contents and nothing else: [engineRootPackage] declares
+/// `AssetKey`, `LocalEnumAssetKey`, `AudioClip` and the pack API, and
+/// [textureRootPackage] declares `Texture`. [namesTexture] says whether this
+/// file spells the renderer type - which is [enginePackageDrawsTextures] for
+/// the texture enum, and `false` for everything else generated.
+///
+/// # Why not the entry package
+///
+/// The bundle wrote one import for the package #309 resolved out of the
+/// dependency graph and named every type through it, which holds only while
+/// that package re-exports what it is built on. `goo2d_physics_box2d` does
+/// not: its library exports its own `src/` files and nothing else, and a
+/// project declaring it and `goo2d` resolves the physics package as the more
+/// specific of the two. The generated file then failed at `AssetKey`, so
+/// every asset kind broke and not only the textures (#316).
+///
+/// # One import and not two
+///
+/// A file naming `Texture` names `AssetKey` as well, and both imports would
+/// resolve - two URIs delivering the same declaration are not ambiguous. They
+/// are not both *needed*: [textureRootPackage] re-exports [engineRootPackage],
+/// so the second import is an `unnecessary_import`, which `flutter analyze`
+/// reports and a project's own CI fails on.
+String generatedImport({required bool namesTexture}) =>
+    namesTexture ? textureRootPackage : engineRootPackage;
+
+/// Every package the generated files import, which is what the bundle's
+/// pubspec has to depend on.
+///
+/// The union over the four generated files. `audios.dart` and `good.dart`
+/// name kernel types whatever the project renders with, so
+/// [engineRootPackage] is in it always; `textures.dart` adds
+/// [textureRootPackage] where the payload is a `Texture`.
+///
+/// Declared and not merely resolvable. `package:good/good.dart` resolves out
+/// of the project's package config whether or not the bundle asks for it, and
+/// `depend_on_referenced_packages` - which `flutter_lints` turns on in every
+/// project `flutter create` writes - reports the import that is not declared
+/// beside it.
+Set<String> generatedImports({required bool drawsTextures}) => <String>{
+  engineRootPackage,
+  if (drawsTextures) textureRootPackage,
+};
