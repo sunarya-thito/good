@@ -365,7 +365,8 @@ abstract final class ArchetypeRegistry {
                   '$archetypeId cannot be resolved. Reading component data is a '
                   'game-isolate act: the main copy is presentation-only, and its '
                   'registries stay empty by design. Publish the value through a '
-                  'StateChannel (Game.describeState) and read that instead.'
+                  'StateChannel (Channel.*, on a field of the Game) and read '
+                  'that instead.'
             : 'no archetype with id $archetypeId - ${_storages.length} are '
                   'registered. An `Entity` from a different process, or one '
                   'built by hand, does not resolve here.',

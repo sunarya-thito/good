@@ -836,13 +836,11 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
     // registration happens inside the declarer's constructor. Deterministic,
     // which is all the event order has ever promised.
     _scene._prefabs.add(object);
-    // There is deliberately no describeState pass here. A prefab used to be
-    // able to declare a state channel, threaded through the scene's `game`
-    // back-reference into the boot pass's shared descriptor - and it stopped
-    // working the moment scene loading moved out of boot and into
-    // `GameState.loadScene`, because a channel's index has to be fixed at
-    // boot and announced once. Publish scene-derived values from a
-    // `GameSystem` instead; see `Game.describeState`.
+    // A prefab declares no state channel. A channel's index has to be fixed
+    // at boot and announced once, and a scene is loaded from
+    // `GameState.loadScene`, after boot and possibly several times over a
+    // run. Publish scene-derived values from a `GameSystem` instead; see
+    // `Channel`.
     storage.seal();
     return object;
   }

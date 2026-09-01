@@ -32,7 +32,6 @@ class SpatialIndex {
 }
 
 late ArenaGame game;
-late QueryDescriptor descriptor;
 late Query orcs;
 late Query missiles;
 late Query motes;
@@ -451,9 +450,9 @@ And the thing an inheritance tree was really for — writing one piece of code
 that covers a whole branch of it — is a query:
 
 ```dart
-everyone  = descriptor.query().withAll(Character).build();            // all three
-enemies   = descriptor.query().withAll(Character, Hostile).build();   // two
-civilians = descriptor.query().withAll(Character).withNone(Hostile).build();
+everyone  = Query.where().withAll(Character).build();            // all three
+enemies   = Query.where().withAll(Character, Hostile).build();   // two
+civilians = Query.where().withAll(Character).withNone(Hostile).build();
 ```
 
 That last one has no clean equivalent in a class hierarchy at all. "Everything

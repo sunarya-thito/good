@@ -36,8 +36,8 @@ import 'package:good/src/triple_buffer.dart';
 /// ```
 ///
 /// This is the typed-handle rule applied to input: `describeInputs` hands back
-/// a typed handle you keep in a `late final` field, exactly like
-/// `describeState`'s `StateChannel` and `describeBuffers`' `BufferHandle`.
+/// a typed handle you keep in a `late final` field, exactly like a
+/// `StateChannel` and `describeBuffers`' `BufferHandle`.
 /// There is no `getAction('jump')`, so there is no string to misspell and
 /// nothing to search at use time.
 ///
@@ -364,8 +364,8 @@ final class InputEventStream<T> {
 /// it uses and have the actions the `Game` declared see it.
 ///
 /// **Not available on `SceneStruct` or `Component`**, for exactly the reason
-/// `describeState` is not (see `Game.describeState`): a scene is loaded after
-/// boot, and possibly several times over a run, so it can never own a stable
+/// a state channel is not (see `Channel`): a scene is loaded after boot, and
+/// possibly several times over a run, so it can never own a stable
 /// declaration index or have its declarations mirrored on the other isolate
 /// copy. A scene-scoped action is declared by a `GameSystem` instead - the
 /// system outlives the scene and is already where the per-tick work is.

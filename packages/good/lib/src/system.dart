@@ -47,15 +47,15 @@ mixin GameSystemLifecycleListener on GameListener {
 /// constructed there. There is no twin to hold anything.
 ///
 /// Most declaration passes do run on both copies, and that is what makes an
-/// index a wire identity: `describeState`, `describeBuffers`,
+/// index a wire identity: a `Game`'s `Channel.*` fields, `describeBuffers`,
 /// `describeCameras` and `describeCommands` all run on main before the spawn
 /// and again on the other side, so a channel or a buffer is the same index to
 /// both. Systems are the exception, and they can be because a system declares
-/// no shared memory of its own: [describeQuery], [describeInputs] and
-/// [describeEvents] are the three passes it has, and none of them allocates
-/// anything main has to address by index. A system that wants to publish a
-/// number reads a `StateChannel` off the `Game`, which declared it on both
-/// copies for exactly that reason.
+/// no shared memory of its own: [describeInputs] and [describeEvents] are the
+/// two passes it has, and a `Query` on a field allocates nothing main has to
+/// address by index either. A system that wants to publish a number reads a
+/// `StateChannel` off the `Game`, which declared it on both copies for
+/// exactly that reason.
 ///
 /// No system contributes to the widget tree, on either side. Exactly one
 /// object builds widgets and it is `Game.buildView` - a method, not a dispatch
@@ -156,9 +156,9 @@ abstract class GameSystem extends GameListenerBase
   @override
   int compareTo(GameSystem other) => 0; // no opinion by default
 
-  /// Called once by the boot pass on the game isolate, immediately before
-  /// [describeQuery]. Not part of the user-facing API: a system is bound by
-  /// declaring it in `Game.describeSystems`, never by hand.
+  /// Called once by the boot pass on the game isolate, before the system's
+  /// [describeInputs] pass. Not part of the user-facing API: a system is bound
+  /// by declaring it in `Game.describeSystems`, never by hand.
   @internal
   void bindState(GameState state) => _state = state;
 
@@ -221,17 +221,13 @@ abstract class GameSystem extends GameListenerBase
     );
   }
 
-  // provide a way for GameSystem to compile queries
-  @mustCallSuper
-  void describeQuery(QueryDescriptor descriptor) {}
-
-  // There is no `describeState` or `describeBuffers` here, and both used to
-  // exist. A `StateChannel` and a `BufferHandle` are backed by native memory
-  // that the **main isolate** allocates before the spawn and frees on stop,
-  // and their identity across the boundary is their index in that one
-  // declaration pass. A system is not present for it: `describeSystems` runs
-  // on the game isolate, so a system's declaration would have an index on one
-  // copy and none on the other, which is the same thing as not having one.
+  // A system declares neither a state channel nor a draw buffer. A
+  // `StateChannel` and a `BufferHandle` are backed by native memory that the
+  // **main isolate** allocates before the spawn and frees on stop, and their
+  // identity across the boundary is their index in that one declaration
+  // pass. A system is not present for it: `describeSystems` runs on the game
+  // isolate, so a system's declaration would have an index on one copy and
+  // none on the other, which is the same thing as not having one.
   //
   // Declare them on the `Game` - which is also the side that *reads* them,
   // since a channel exists to be shown and a draw buffer exists to be drained
@@ -356,22 +352,18 @@ abstract class Query {
   /// }
   /// ```
   ///
-  /// Same query `descriptor.query().withAll(...).build()` builds in a
-  /// `GameSystem.describeQuery` body, declared where it is read instead of
-  /// four lines away in a hook. Ten positional types, for the reason
-  /// `_QueryBuilder._mask` gives: Dart has no varargs, and a `List<Type>`
-  /// per call site is an allocation for nothing.
+  /// [where] covers the constraints this does not. Ten positional types, for
+  /// the reason `_QueryBuilder._mask` gives: Dart has no varargs, and a
+  /// `List<Type>` per call site is an allocation for nothing.
   ///
-  /// Nothing here needs a live declaration pass. A query holds masks and
+  /// Nothing here needs a live declaration pass, so a query is the one
+  /// declaration that works wherever it is written. A query holds masks and
   /// resolves archetypes lazily in [groups], which rebuilds whenever
   /// `ArchetypeRegistry.count` moves, so one built during a system's
   /// construction picks up every archetype a scene registers afterwards.
   /// That is also why the initialiser must be eager - `late final motes =
   /// Query.all(...)` compiles and defers the call to the first read, and the
   /// engine's declaration rules forbid that shape everywhere.
-  ///
-  /// [GameSystem.describeQuery] still works and is not going anywhere;
-  /// the two forms coexist.
   static Query all(
     Type a, [
     Type? b,
@@ -389,8 +381,7 @@ abstract class Query {
     const <int>[],
   );
 
-  /// A query requiring exactly [T], named once - the field form of
-  /// [QueryDescriptor.has].
+  /// A query requiring exactly [T], named once.
   static SingleQuery<T> has<T extends Component>() =>
       _ArchetypeSingleQuery<T>();
 
@@ -405,9 +396,6 @@ abstract class Query {
   ///     .withOptional(Child)
   ///     .build();
   /// ```
-  ///
-  /// The same builder [QueryDescriptor.query] hands out, reached without a
-  /// descriptor.
   static QueryBuilder where() => _QueryBuilder(_ArchetypeQuery.new);
 
   /// Whether an archetype with this signature (see
@@ -463,29 +451,10 @@ abstract class Query {
   Query inScene(Scene scene);
 }
 
-/// A query over exactly one component type, from [QueryDescriptor.has].
+/// A query over exactly one component type, from [Query.has].
 abstract class SingleQuery<T extends Component> implements Query {
   @override
   SingleQuery<T> inScene(Scene scene);
-}
-
-abstract class QueryDescriptor {
-  /// A query requiring exactly [T] - `query().withAll(T).build()` with the
-  /// component named once. Walk it with [Query.groups] or [Query.run].
-  SingleQuery<T> has<T extends Component>();
-
-  /// Opens a query. Chain [QueryBuilder.withAll]/[QueryBuilder.withNone]/
-  /// [QueryBuilder.withAny]/[QueryBuilder.withOptional] onto it and finish
-  /// with [QueryBuilder.build]:
-  ///
-  /// ```dart
-  /// renderables = descriptor
-  ///     .query()
-  ///     .withAll(Renderable2D, Transform2D)
-  ///     .withOptional(Child)
-  ///     .build();
-  /// ```
-  QueryBuilder query();
 }
 
 /// Builds one query out of three constraints over the archetype signature
@@ -906,16 +875,6 @@ final class _ScopedSingleQuery<T extends Component> extends _ScopedQuery
     scene<SceneStruct>();
     return _ScopedSingleQuery<T>(_query, scene);
   }
-}
-
-/// Concrete [QueryDescriptor] - built once per `GameSystem.describeQuery`
-/// call (see `Game`'s system bootstrap, a later phase).
-final class ArchetypeQueryDescriptor implements QueryDescriptor {
-  @override
-  SingleQuery<T> has<T extends Component>() => _ArchetypeSingleQuery<T>();
-
-  @override
-  QueryBuilder query() => _QueryBuilder(_ArchetypeQuery.new);
 }
 
 /// One matching archetype inside a [Query], and the rows it holds.

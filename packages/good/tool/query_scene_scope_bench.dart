@@ -216,8 +216,7 @@ void main() {
   }
   print('');
 
-  final descriptor = ArchetypeQueryDescriptor();
-  final query = descriptor.query().withAll(_Position).build();
+  final query = Query.where().withAll(_Position).build();
 
   // Correctness first. A benchmark whose passes disagree is timing three
   // different walks, and the fastest of those is the one doing least.

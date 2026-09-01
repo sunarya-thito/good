@@ -6,14 +6,14 @@ import 'package:good/good.dart';
 /// This is the rule, not a limitation waiting to be lifted, and this file is
 /// where it is asserted rather than left to be discovered.
 ///
-/// Two facts hold it up and they agree. A declaration is one-shot, because
-/// every one of them lands in a `late final` (the typed-handle rule) and a
-/// `late final` is assignable exactly once. And a declaration *is* its storage:
-/// the `StateChannel` returned by `descriptor.hasInt32()` holds the run's
-/// `TripleBuffer` directly, a `BufferHandle` its `RingBuffer`, a `GameCommand`
-/// the sender that routes it - which is what keeps reading any of them a plain
-/// field access on the tick path, with no per-access indirection to work out
-/// which run is asking.
+/// Two facts hold it up and they agree. A declaration is one-shot, because a
+/// declaration runs from a field initialiser or a `late final` (the
+/// typed-handle rule) and neither runs twice on one object. And a declaration
+/// *is* its storage: the `StateChannel` returned by `Channel.int32()` holds
+/// the run's `TripleBuffer` directly, a `BufferHandle` its `RingBuffer`, a
+/// `GameCommand` the sender that routes it - which is what keeps reading any
+/// of them a plain field access on the tick path, with no per-access
+/// indirection to work out which run is asking.
 ///
 /// Making an instance reusable means separating those: declarations become
 /// pure (index plus metadata) and each run gets a storage table, reached as
@@ -45,21 +45,18 @@ class _ReuseState extends GameState<_Reuse> {
 }
 
 class _Reuse extends Game {
-  /// A `late final` filled by a declaration pass - which is exactly what makes
-  /// the pass one-shot, and what this file is about.
-  late final StateChannel<int> score;
+  /// One of each declaration window `Game.start` opens around the
+  /// constructor. Both are needed below: a refused second start must leave
+  /// each of them holding what the first start put there.
+  final score = Channel.int32();
+
+  final fire = Input.of(const TriggerBinding(InputKey.spacebar));
 
   @override
   int get pageSize => 4096;
 
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    score = descriptor.hasInt32();
-  }
 
   @override
   GameState createState() => _ReuseState();
@@ -94,9 +91,9 @@ void main() {
           ),
         ),
         reason:
-            'the failure a user would otherwise hit is a '
-            'LateInitializationError thrown from inside their own '
-            'describeState, which names neither the cause nor the fix',
+            'the failure a user would otherwise hit is a second boot writing '
+            'over the first run pointers, which names neither the cause nor '
+            'the fix',
       );
     },
   );
@@ -109,18 +106,27 @@ void main() {
     });
 
     expect(game.stateChannelCount, 1);
+    expect(game.inputActionCount, 1);
     await expectLater(Game.startInline(() => game), throwsStateError);
 
-    // Why this is guarded in `start` rather than left to the declaration pass
-    // to throw: `describeState` appends to the declared list *before* it
-    // assigns the `late final` that blows up, so the unguarded path left this
-    // reading 2 - an instance permanently describing twice the storage it
-    // should, with the extra channels allocated and never freed. The
-    // LateInitializationError was not the damage, it was the symptom.
+    // Why the refusal has to land *between* the constructor call and the two
+    // assignments in `Game._construct`, and not after them: a closure handing
+    // back a running game runs no field initialiser, so the two windows
+    // `_construct` opened are empty, and assigning them over the live ones
+    // throws away the descriptor and the registry the running game's channel
+    // and action live in. The action is what shows it - `inputActionCount`
+    // reads the registry directly, and a refusal that landed one line later
+    // leaves it reading 0.
     expect(
       game.stateChannelCount,
       1,
       reason: 'a refused start must not have declared anything',
+    );
+    expect(
+      game.inputActionCount,
+      1,
+      reason:
+          'and must not have replaced the registry the first start filled',
     );
   });
 
@@ -184,8 +190,8 @@ void main() {
     // released, so there is nothing left to collide with - and it is refused
     // by the same rule, for the first of the two reasons alone. Declaring and
     // binding are one pass, so a second run cannot re-bind the surviving
-    // declarations without re-running the user's `describeX`, and re-running
-    // those is precisely what a `late final` forbids.
+    // declarations without re-running the field initialisers that made them,
+    // and those run once per object.
     expect(() => Game.startInline(() => game), throwsStateError);
   });
 }

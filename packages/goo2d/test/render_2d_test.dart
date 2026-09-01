@@ -691,10 +691,7 @@ void main() {
       () async {
         await _game();
         final scene = run.state.singleScene<_SpriteScene>();
-        final matcher = ArchetypeQueryDescriptor()
-            .query()
-            .withAll(Renderable2D)
-            .build();
+        final matcher = Query.where().withAll(Renderable2D).build();
         // The regression this exists for: without Renderable2D's
         // `Component.type<Renderable2D>()` field, the bit is never OR'd into
         // any archetype's signature, so the mask `withAll(Renderable2D)`

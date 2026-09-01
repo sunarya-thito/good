@@ -515,8 +515,9 @@ void main() {
 }
 
 Future<Query> _query(_Scene scene) async {
-  // A minimal standalone GameSystem, only to get a bound QueryDescriptor -
-  // ActiveCameraResolver itself takes a plain Query, not a Game/GameSystem.
+  // A minimal standalone GameSystem, only to get a query bound to a running
+  // game - ActiveCameraResolver itself takes a plain Query, not a
+  // Game/GameSystem.
   final game = await Game.startInline(() => _CamGame(scene));
   run = game;
   addTearDown(() async {

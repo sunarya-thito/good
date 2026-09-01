@@ -49,9 +49,10 @@ build widgets. Numbers it shows arrive through a state channel or a buffer; an
 
 ### How both copies agree without negotiating
 
-Main runs `createState()`, `describeState`, `describeBuffers`, `describeCameras`
-and `describeCommands` before the spawn, and the game isolate inherits the
-result in the deep copy rather than re-deriving it. That is how the two sides
+Main builds the `Game` — which is where its `Channel.*` fields declare — then
+runs `createState()`, `describeBuffers`, `describeCameras` and
+`describeCommands` before the spawn, and the game isolate inherits the result
+in the deep copy rather than re-deriving it. That is how the two sides
 agree on every id **without negotiating one**:
 
 - a command's index is its position in the declaration pass;

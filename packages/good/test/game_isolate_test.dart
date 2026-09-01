@@ -296,7 +296,7 @@ class _RandomIsolateGame extends Game {
   int get randomSeed => 777;
 
   late final RandomStream rolls;
-  late final StateChannel<int> drawn;
+  final drawn = Channel.int32(-1);
 
   @override
   GameState createState() => _RandomIsolateState();
@@ -305,12 +305,6 @@ class _RandomIsolateGame extends Game {
   void describeRandom(RandomDescriptor descriptor) {
     super.describeRandom(descriptor);
     rolls = descriptor.has();
-  }
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    drawn = descriptor.hasInt32(-1);
   }
 }
 
@@ -332,23 +326,14 @@ class _IsolateGame extends Game {
   /// What `_MoverSystem` publishes. Declared here because main is the copy
   /// that allocates the storage - and main is also the only reader, which is
   /// what a state channel is for.
-  late final StateChannel<double> firstX;
-  late final StateChannel<int> population;
-  late final StateChannel<int> firstMarker;
+  final firstX = Channel.float64();
+  final population = Channel.int32();
+  final firstMarker = Channel.int32();
 
   /// 1 when the spawn in `_onControlProbe` was refused, 2 when it went
   /// through. Starts at 0, so a handler that never ran is distinguishable
   /// from one that ran and was refused.
-  late final StateChannel<int> probeRefused;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    firstX = descriptor.hasFloat64();
-    population = descriptor.hasInt32();
-    firstMarker = descriptor.hasInt32();
-    probeRefused = descriptor.hasInt32();
-  }
+  final probeRefused = Channel.int32();
 
   @override
   GameState createState() => _IsolateState();
@@ -458,15 +443,8 @@ class _ChannelGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
-  late final StateChannel<int> ticks;
-  late final StateChannel<bool> alive;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    ticks = descriptor.hasInt32();
-    alive = descriptor.hasBool();
-  }
+  final ticks = Channel.int32();
+  final alive = Channel.boolean();
 
   @override
   GameState createState() => _ChannelState();
@@ -536,19 +514,10 @@ class _InputProbeGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
-  late final StateChannel<bool> fireHeld;
-  late final StateChannel<int> presses;
-  late final StateChannel<int> releases;
-  late final StateChannel<double> moveX;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    fireHeld = descriptor.hasBool();
-    presses = descriptor.hasInt32();
-    releases = descriptor.hasInt32();
-    moveX = descriptor.hasFloat64();
-  }
+  final fireHeld = Channel.boolean();
+  final presses = Channel.int32();
+  final releases = Channel.int32();
+  final moveX = Channel.float64();
 
   @override
   GameState createState() => _InputProbeState();
@@ -704,15 +673,8 @@ class _TexturedGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
-  late final StateChannel<int> reportedAddress;
-  late final StateChannel<int> reportedLoaded;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    reportedAddress = descriptor.hasInt32(-1);
-    reportedLoaded = descriptor.hasInt32(-1);
-  }
+  final reportedAddress = Channel.int32(-1);
+  final reportedLoaded = Channel.int32(-1);
 
   @override
   GameState createState() => _TexturedState();
@@ -814,13 +776,13 @@ class _LateGame extends Game {
   late final _LateScene lateScene;
   late final _LoadLate loadLate;
   late final _UnloadLate unloadLate;
-  late final StateChannel<double> progress;
+  final progress = Channel.float64(-1);
 
   /// The address the *game isolate* assigned this scene's texture, published
   /// so main can name it. Main cannot look the asset up by key: the key it
   /// holds is a different object from the one that was declared (see
   /// `Assets.adoptAt`), so an address is the only shared name.
-  late final StateChannel<int> lateAddress;
+  final lateAddress = Channel.int32(-1);
 
   @override
   GameState createState() => _LateState();
@@ -829,13 +791,6 @@ class _LateGame extends Game {
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
     lateScene = descriptor.has(_LateScene());
-  }
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    progress = descriptor.hasFloat64(-1);
-    lateAddress = descriptor.hasInt32(-1);
   }
 
   @override
@@ -1005,28 +960,16 @@ class _AskingGame extends Game {
   /// isolate holds the same closure and never dispatches it.
   int mainHandlerRuns = 0;
 
-  late final StateChannel<int> asked;
-  late final StateChannel<int> mainAnswered;
-  late final StateChannel<int> gameAnswered;
-  late final StateChannel<int> mainAnswer;
-  late final StateChannel<int> askedTick;
-  late final StateChannel<int> answeredTick;
-  late final StateChannel<int> answeredStopped;
+  final asked = Channel.int32();
+  final mainAnswered = Channel.int32();
+  final gameAnswered = Channel.int32();
+  final mainAnswer = Channel.int32(-1);
+  final askedTick = Channel.int32(-1);
+  final answeredTick = Channel.int32(-1);
+  final answeredStopped = Channel.int32(-1);
 
   @override
   GameState createState() => _AskingState();
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    asked = descriptor.hasInt32();
-    mainAnswered = descriptor.hasInt32();
-    gameAnswered = descriptor.hasInt32();
-    mainAnswer = descriptor.hasInt32(-1);
-    askedTick = descriptor.hasInt32(-1);
-    answeredTick = descriptor.hasInt32(-1);
-    answeredStopped = descriptor.hasInt32(-1);
-  }
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
@@ -1136,16 +1079,10 @@ class _PausedAskGame extends Game {
 
   /// Written by the tick-delivered handler on the game isolate, so this side
   /// can see whether it has run without waiting on its future.
-  late final StateChannel<int> tickRan;
+  final tickRan = Channel.int32();
 
   @override
   GameState createState() => _PausedAskState();
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    tickRan = descriptor.hasInt32();
-  }
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
@@ -1177,9 +1114,9 @@ Future<bool> _waitUntil(
 ///
 /// Through `runHandle.runtime` rather than a public hook: tick listening is
 /// framework plumbing (the state channels' own reconciliation rides it) and
-/// deliberately not API, so a test that wants to *wait for a tick* reaches for
-/// the internal spelling on purpose. A game waiting on the simulation
-/// publishes a value with `describeState` and listens to that instead.
+/// is not API, so a test that wants to *wait for a tick* reaches for the
+/// internal spelling. A game waiting on the simulation publishes a value with
+/// `Channel.*` and listens to that instead.
 Future<void> _waitTicks(Game run, int count) {
   final target = run.tick + count;
   final done = Completer<void>();
@@ -1360,13 +1297,7 @@ class _RegistrarGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
-  late final StateChannel<int> registeredHere;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    registeredHere = descriptor.hasInt32(-1);
-  }
+  final registeredHere = Channel.int32(-1);
 
   @override
   void describeAssetLoaders(AssetLoaderRegistrar loaders) {

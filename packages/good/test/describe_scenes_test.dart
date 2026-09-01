@@ -64,18 +64,11 @@ class _Mixed extends SceneStruct {
   }
 }
 
-/// The same census through the `describeQuery` hook. `_bootGame` runs that
-/// hook once, and `_HookGame` declares no scene, so it runs against an empty
-/// `ArchetypeRegistry`.
-class _HookCensusSystem extends GameSystem with FixedTickable {
-  late final Query marked;
+/// The same census in a game that declares no scene, so the query is built
+/// against an empty `ArchetypeRegistry`.
+class _EarlyCensusSystem extends GameSystem with FixedTickable {
+  final marked = Query.where().withAll(_Marked).build();
   int seen = 0;
-
-  @override
-  void describeQuery(QueryDescriptor descriptor) {
-    super.describeQuery(descriptor);
-    marked = descriptor.query().withAll(_Marked).build();
-  }
 
   @override
   void onFixedUpdate() {
@@ -87,15 +80,15 @@ class _HookCensusSystem extends GameSystem with FixedTickable {
   }
 }
 
-class _HookState extends GameState<_HookGame> {
+class _EarlyState extends GameState<_EarlyGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    descriptor.has(_HookCensusSystem.new);
+    descriptor.has(_EarlyCensusSystem.new);
   }
 }
 
-class _HookGame extends Game {
+class _EarlyGame extends Game {
   @override
   int get pageSize => 4096;
 
@@ -103,7 +96,7 @@ class _HookGame extends Game {
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
   @override
-  GameState createState() => _HookState();
+  GameState createState() => _EarlyState();
 }
 
 /// A prefab with no `Field.*` initialisers, so it can be constructed
@@ -330,20 +323,20 @@ void main() {
   });
 
   // What orders the boot passes is `collectListeners` reaching for a system,
-  // not the query pass reaching for an archetype (#225). `describeQuery` reads
+  // not a query reaching for an archetype (#225). Building one reads
   // `ComponentTypeRegistry` for a bit per named type and resolves archetypes
   // lazily, so it carries no requirement that `describeScenes` precede it.
   test(
-    'a hook-built query matches archetypes registered after the query pass',
+    'a query built with the registry empty matches archetypes registered later',
     () async {
-      await _boot(_HookGame.new);
-      final system = run.state.getSystem<_HookCensusSystem>();
+      await _boot(_EarlyGame.new);
+      final system = run.state.getSystem<_EarlyCensusSystem>();
       expect(
         ArchetypeRegistry.count,
         0,
         reason:
-            'this game declares no scene, so describeQuery ran against an '
-            'empty registry',
+            'this game declares no scene, so the system built its query '
+            'against an empty registry',
       );
 
       final struct = _Mixed();

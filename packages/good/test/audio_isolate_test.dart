@@ -163,13 +163,7 @@ class _IsolateAudioGame extends Game {
   late final _MusicScene music;
 
   /// Written on the game isolate, read here. The only way a number gets back.
-  late final StateChannel<int> uploaded;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    uploaded = descriptor.hasInt32(-1);
-  }
+  final uploaded = Channel.int32(-1);
 
   @override
   GameState createState() => _IsolateAudioState();
