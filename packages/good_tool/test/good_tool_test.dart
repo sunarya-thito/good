@@ -88,8 +88,8 @@ Directory _runnableRepo() {
 
 /// Writes what the tool would write into [repo], and returns the scan.
 AccessorScan _generate(Directory repo) {
-  final packages = enginePackages(repo);
-  final scan = scanAccessors(repo, packages: packages);
+  final packages = repoPackages(repo);
+  final scan = scanAccessors(packages: packages);
   for (final file in accessorFiles(scan, packages)) {
     file.file.parent.createSync(recursive: true);
     file.file.writeAsStringSync(file.contents);
@@ -258,16 +258,16 @@ void main() {
   group('the tool', () {
     test('writes, then reports the same files unchanged', () async {
       final repo = _runnableRepo();
-      final first = await _tool(repo, const <String>[]);
+      final first = await _tool(repo, const <String>['--dir', 'packages']);
       expect(first.exitCode, 0, reason: '${first.stdout}${first.stderr}');
-      expect(first.stdout, contains('Wrote packages/goo2d/lib/src/accessors.g.dart'));
+      expect(first.stdout, contains('Wrote goo2d/lib/src/accessors.g.dart'));
       expect(
         first.stdout,
         contains("Add `export 'src/accessors.g.dart';`"),
         reason: 'the barrel export is hand-written, so an absent one is said',
       );
 
-      final second = await _tool(repo, const <String>[]);
+      final second = await _tool(repo, const <String>['--dir', 'packages']);
       expect(second.stdout, contains('Unchanged'));
       expect(second.stdout, isNot(contains('Wrote')));
     }, timeout: const Timeout(Duration(minutes: 3)));
@@ -276,12 +276,12 @@ void main() {
         () async {
       final repo = _runnableRepo();
 
-      final missing = await _tool(repo, const <String>['--check']);
+      final missing = await _tool(repo, const <String>['--dir', 'packages', '--check']);
       expect(missing.exitCode, 65);
-      expect(missing.stderr, contains('Missing: packages/goo2d'));
+      expect(missing.stderr, contains('Missing: goo2d/'));
 
       _generate(repo);
-      final current = await _tool(repo, const <String>['--check']);
+      final current = await _tool(repo, const <String>['--dir', 'packages', '--check']);
       expect(
         current.exitCode,
         0,
@@ -296,9 +296,9 @@ void main() {
         '$_transform\nmixin Motion on Component {\n'
             '  final motionSpeed = Field.float64();\n}\n',
       );
-      final stale = await _tool(repo, const <String>['--check']);
+      final stale = await _tool(repo, const <String>['--dir', 'packages', '--check']);
       expect(stale.exitCode, 65);
-      expect(stale.stderr, contains('Stale: packages/goo2d'));
+      expect(stale.stderr, contains('Stale: goo2d/'));
       expect(stale.stderr, contains('dart run good_tool'));
     }, timeout: const Timeout(Duration(minutes: 3)));
 
@@ -306,7 +306,7 @@ void main() {
         () async {
       final repo = _runnableRepo();
       _generate(repo);
-      expect((await _tool(repo, const <String>['--check'])).exitCode, 0);
+      expect((await _tool(repo, const <String>['--dir', 'packages', '--check'])).exitCode, 0);
 
       final barrel = File(p.join(repo.path, 'packages/goo2d/lib/goo2d.dart'));
       barrel.writeAsStringSync(
@@ -316,7 +316,7 @@ void main() {
         ),
       );
 
-      final result = await _tool(repo, const <String>['--check']);
+      final result = await _tool(repo, const <String>['--dir', 'packages', '--check']);
       expect(result.exitCode, 65);
       expect(result.stderr, contains('Not exported'));
     }, timeout: const Timeout(Duration(minutes: 3)));
@@ -336,7 +336,7 @@ void main() {
         '$_transform\nmixin Motion on Component {\n'
             '  final motionSpeed = Field.float64();\n}\n',
       );
-      expect((await _tool(repo, const <String>['--check'])).exitCode, 65);
+      expect((await _tool(repo, const <String>['--dir', 'packages', '--check'])).exitCode, 65);
 
       expect(
         file.readAsStringSync(),
@@ -358,7 +358,7 @@ void main() {
             '  final markerSign = Field.int32();\n}\n',
       );
 
-      final result = await _tool(repo, const <String>[]);
+      final result = await _tool(repo, const <String>['--dir', 'packages']);
       expect(result.exitCode, 65);
       expect(result.stderr, contains('Marker.markerSign'));
       expect(result.stderr, contains('int already has sign'));
@@ -386,17 +386,162 @@ void main() {
             '  final markerHas = Field.int32();\n}\n',
       );
 
-      final result = await _tool(repo, const <String>[]);
-      expect(result.exitCode, 65);
+      final result = await _tool(repo, const <String>['--dir', 'packages']);
+      expect(
+        result.exitCode,
+        65,
+        reason:
+            'the command line was fine and the source is what the tool objects '
+            'to, which is the whole of the difference between this and 64',
+      );
       expect(result.stderr, contains('Marker.markerHas'));
       expect(result.stderr, contains('Entity already has has'));
     }, timeout: const Timeout(Duration(minutes: 3)));
 
     test('rejects an argument it does not know', () async {
       final repo = _runnableRepo();
-      final result = await _tool(repo, const <String>['--wrIte']);
+      final result = await _tool(repo, const <String>[
+        '--dir',
+        'packages',
+        '--wrIte',
+      ]);
       expect(result.exitCode, 64);
       expect(result.stderr, contains('Unknown argument'));
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('refuses to run with no --dir at all', () async {
+      // Rather than defaulting to `packages/`, which is this repository's
+      // layout and nobody else's. A default would find nothing for a
+      // standalone package and report success doing it (#305).
+      final repo = _runnableRepo();
+      final result = await _tool(repo, const <String>[]);
+      expect(result.exitCode, 64);
+      expect(result.stderr, contains('--dir'));
+      expect(
+        result.stdout,
+        isEmpty,
+        reason: 'it decides nothing before it knows where to look',
+      );
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('refuses a --dir naming a directory that is not there', () async {
+      // On the absent directory itself, and not on the empty result it
+      // produces. Both name `plugins`, so an assertion on that alone would
+      // pass with this guard gone - and the two say different things: one is a
+      // typo in the argument, the other is a tree with nothing in it. Which is
+      // also why they exit differently: nothing was read here, so it is a
+      // usage error and the usage is reprinted.
+      final repo = _runnableRepo();
+      final result = await _tool(repo, const <String>['--dir', 'plugins']);
+      expect(result.exitCode, 64);
+      expect(result.stderr, contains('No such directory: plugins'));
+      expect(result.stderr, contains('Usage: dart run good_tool'));
+      expect(result.stderr, isNot(contains('No package to generate into')));
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('separates a directory it could not read from one it read and turned '
+        'down', () async {
+      // The two failures that look alike, and the seam the exit codes run
+      // along: `plugins` absent is a typo in the command line, `plugins`
+      // holding nothing that qualifies is an answer about the tree. An
+      // assertion that both are non-zero would not tell them apart, and one
+      // code for both is what makes a caller stop reading either.
+      final repo = _runnableRepo();
+      final absent = await _tool(repo, const <String>['--dir', 'plugins']);
+
+      Directory(
+        p.join(repo.path, 'plugins', 'gooey', 'lib'),
+      ).createSync(recursive: true);
+      _write(repo, 'plugins/gooey/pubspec.yaml', 'name: gooey\n');
+      final rejected = await _tool(repo, const <String>['--dir', 'plugins']);
+
+      expect(absent.exitCode, 64);
+      expect(rejected.exitCode, 65);
+      expect(
+        rejected.stderr,
+        isNot(contains('Usage: dart run good_tool')),
+        reason:
+            'the invocation was right, so answering it with the invocation '
+            'answers a question nobody asked',
+      );
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('refuses a run that matches no package, rather than exiting 0', () async {
+      // The failure this issue opens with. `enginePackages` returned an empty
+      // list when there was no `packages/`, so the run wrote nothing and exited
+      // reporting success - and what the author saw was their components
+      // producing no accessors, with nothing to pull on.
+      final repo = _runnableRepo();
+      Directory(
+        p.join(repo.path, 'plugins', 'gooey', 'lib'),
+      ).createSync(recursive: true);
+      _write(repo, 'plugins/gooey/pubspec.yaml', 'name: gooey\n');
+
+      final result = await _tool(repo, const <String>['--dir', 'plugins']);
+      expect(result.exitCode, 65, reason: '${result.stdout}${result.stderr}');
+      expect(result.stderr, contains('No package to generate into'));
+      expect(
+        result.stderr,
+        contains('gooey'),
+        reason:
+            'it saw a package and turned it down, which is a different thing '
+            'from having seen nothing, and the run has to say which',
+      );
+      expect(result.stderr, contains('does not depend on package:good'));
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('generates into a standalone package pointed at with --dir .', () async {
+      // The invocation #305 exists for. A published package cannot carry a
+      // path dependency, so whatever is generated for it has to be inside its
+      // own `lib/` and published with it - which means the author has to be
+      // able to run this over their own package, with no `packages/` anywhere
+      // and the engine resolved from pub.
+      final tree = _standaloneTree();
+      final mine = Directory(p.join(tree.path, 'good_physics_foo'));
+
+      final result = await _tool(mine, const <String>['--dir', '.']);
+      expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
+      expect(
+        result.stdout,
+        contains('Wrote good_physics_foo/lib/src/accessors.g.dart'),
+      );
+
+      final written = File(p.join(mine.path, 'lib', 'src', 'accessors.g.dart'));
+      expect(written.existsSync(), isTrue);
+      expect(written.readAsStringSync(), contains('double get mass'));
+      expect(
+        written.readAsStringSync(),
+        contains("import 'package:goo2d/goo2d.dart';"),
+        reason:
+            'the import names the package this one depends on, which is the '
+            'only one a published copy of this file could reach',
+      );
+
+      final table = File(
+        p.join(mine.path, 'lib', 'src', 'component_bits.g.dart'),
+      );
+      expect(table.existsSync(), isTrue);
+      expect(
+        table.readAsStringSync(),
+        contains('goo2dComponentBits'),
+        reason:
+            'the table names the one upstream of it, which this run read and '
+            'did not write - a table that named nothing would leave every '
+            'goo2d type to be numbered at run time by whoever installed it',
+      );
+
+      for (final upstream in const <String>['good', 'goo2d']) {
+        expect(
+          Directory(p.join(tree.path, upstream, 'lib', 'src'))
+              .listSync()
+              .map((entry) => p.basename(entry.path)),
+          isNot(contains('accessors.g.dart')),
+          reason:
+              '$upstream was read so its declarations could be resolved, and '
+              'it generates its own files in its own run - this one has no '
+              'business writing into a copy of it in a pub cache',
+        );
+      }
     }, timeout: const Timeout(Duration(minutes: 3)));
   });
 
@@ -407,8 +552,8 @@ void main() {
     // fails on the machine that made the change.
     test('has the accessor files the generator would write', () async {
       final root = _actualRepoRoot();
-      final packages = enginePackages(root);
-      final scan = scanAccessors(root, packages: packages);
+      final packages = repoPackages(root);
+      final scan = scanAccessors(packages: packages);
 
       expect(
         scan.collisions,
@@ -464,7 +609,7 @@ void main() {
     // as two peers disagreeing about what a signature meant.
     test('has the component-bit table the generator would write', () async {
       final root = _actualRepoRoot();
-      final packages = enginePackages(root);
+      final packages = repoPackages(root);
       final sources = readSources(
         root,
         rootOverride: <String>[for (final package in packages) package.libDir],
@@ -473,7 +618,7 @@ void main() {
           for (final package in packages) package.componentBitsFile.path,
         },
       );
-      final scan = scanComponentBits(root, packages: packages, sources: sources);
+      final scan = scanComponentBits(packages: packages, sources: sources);
       final files = componentBitsFiles(
         scan,
         packages,
@@ -532,6 +677,112 @@ void main() {
       );
     });
   });
+}
+
+/// A standalone package with the engine resolved beside it, not under it.
+///
+/// `good_physics_foo` depends on `goo2d` and `goo2d` depends on `good`, so
+/// nothing here reaches the engine in one hop and nothing is inside a
+/// `packages/` directory. The package config is what a `pub get` would have
+/// written, and it is the only route from the package to either engine package
+/// - which is the difference between this and every fixture above.
+Directory _standaloneTree() {
+  final tree = testTempDir('good_tool_standalone');
+  void package(
+    String name,
+    List<String> dependencies,
+    Map<String, String> files,
+  ) {
+    final root = p.join(tree.path, name);
+    File(p.join(root, 'pubspec.yaml'))
+      ..parent.createSync(recursive: true)
+      ..writeAsStringSync(
+        <String>[
+          'name: $name',
+          '',
+          'environment:',
+          '  sdk: ^3.12.1',
+          '',
+          'dependencies:',
+          for (final dependency in dependencies) '  $dependency: ^1.0.0',
+          '',
+        ].join('\n'),
+      );
+    files.forEach((path, contents) {
+      File(p.join(root, 'lib', path))
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync(contents);
+    });
+  }
+
+  package('good', const <String>[], <String, String>{
+    'good.dart':
+        "export 'src/struct.dart';\n"
+        "export 'src/data.dart';\n"
+        "export 'src/archetype.dart';\n",
+    'src/struct.dart': kernelStruct,
+    'src/data.dart': kernelData,
+    'src/archetype.dart': kernelArchetype,
+  });
+  // Carrying a committed table of its own, the way a published engine package
+  // does - which is what `good_physics_foo` names as its own table's
+  // dependency, and what makes that name resolvable.
+  package('goo2d', const <String>['good'], <String, String>{
+    'goo2d.dart':
+        "export 'package:good/good.dart';\n"
+        "export 'src/transform.dart';\n"
+        "export 'src/component_bits.g.dart';\n",
+    'src/transform.dart':
+        "import 'package:good/good.dart';\n\n"
+        'mixin Transform2D on Component {\n'
+        '  final transformOffsetX = Field.float64();\n\n'
+        '  @override\n'
+        '  void describeType(ComponentDescriptor component) {\n'
+        '    component.has<Transform2D>();\n'
+        '  }\n'
+        '}\n',
+    'src/component_bits.g.dart':
+        "import 'package:good/good.dart';\n\n"
+        "import 'transform.dart';\n\n"
+        'const GeneratedComponentBits goo2dComponentBits = '
+        'GeneratedComponentBits(\n'
+        "  package: 'goo2d',\n"
+        '  types: <Type>[Transform2D],\n'
+        ');\n',
+  });
+  package('good_physics_foo', const <String>['goo2d'], <String, String>{
+    'good_physics_foo.dart': "export 'src/body.dart';\n",
+    'src/body.dart':
+        "import 'package:goo2d/goo2d.dart';\n\n"
+        'mixin Body on Component {\n'
+        '  final bodyMass = Field.float64();\n\n'
+        '  @override\n'
+        '  void describeType(ComponentDescriptor component) {\n'
+        '    component.has<Body>();\n'
+        '  }\n'
+        '}\n',
+  });
+
+  File(
+      p.join(tree.path, 'good_physics_foo', '.dart_tool',
+          'package_config.json'),
+    )
+    ..parent.createSync(recursive: true)
+    ..writeAsStringSync(
+      jsonEncode(<String, Object?>{
+        'configVersion': 2,
+        'packages': <Object?>[
+          for (final name in const <String>['good', 'goo2d'])
+            <String, Object?>{
+              'name': name,
+              'rootUri': Directory(p.join(tree.path, name)).uri.toString(),
+              'packageUri': 'lib/',
+              'languageVersion': '3.12',
+            },
+        ],
+      }),
+    );
+  return tree;
 }
 
 /// The repository this suite is running inside.

@@ -1,18 +1,52 @@
 # good_tool
 
-This repository's own code generator. Never published, never a dependency of
-anything a user installs.
+The code generator for a **package** built on this engine. `good_cli` is the
+other half and is the one an application developer runs: it generates into
+their project, from their assets, into a bundle package beside their source.
+The line between the two is package versus application, not this repository
+versus everyone else (#305).
 
 ```bash
 cd packages/good_tool
-dart run good_tool            # write
-dart run good_tool --check    # fail if what is committed is stale
-dart run good_tool --verbose  # say what got no property, and why
+dart run good_tool --dir ../../packages            # write
+dart run good_tool --dir ../../packages --check    # fail if committed is stale
+dart run good_tool --dir ../../packages --verbose  # say what got nothing, why
 ```
 
-It writes into `packages/*/lib/` and the output is **committed**. `good_cli` is
-the other half and is the one users run: it generates into their project, from
-their assets, into a bundle package beside their source.
+`--dir` says **where to look** and may be given more than once. A third-party
+package author runs `--dir .` from their own package root; this repository
+names its `packages/`. There is no default, because the only default there
+could be is this repository's layout — a default of `packages/` finds nothing
+in anybody else's tree and, before #305, exited reporting success while it did
+so.
+
+More than one `--dir` is not a convenience: the component-bit table is numbered
+over every package one run sees, so a tree with packages in two places has to
+be one run or the two halves get two numberings.
+
+Within those directories — each one itself, plus its immediate children — a
+package is handled when it has a `lib/`, is not `publish_to: none`, and
+**depends on the engine**: `package:good` in the transitive closure of its
+`dependencies:`. Transitive, because `goo2d_physics_box2d` names `goo2d` and
+never names `good`. A run that matches no package says what it looked at and
+what it turned down, and exits 65.
+
+Two codes, the ones `good_cli`'s runner already uses. **64** is the command
+line being wrong — an argument it does not know, a `--dir` with nothing after
+it, no `--dir` at all, or a `--dir` naming a directory that is not there — and
+every one of them reprints the usage. **65** is the command line being right and
+the source not: no package qualifies, two are called one thing, a column would
+shadow a member of `Accessor`, `Entity` or `int`, the bit table would not fit a
+signature, or `--check` found a stale file. The pair that look alike sit either
+side of it on purpose: a `--dir` that does not exist was never read, and a
+`--dir` holding no engine package was read and rejected.
+
+The packages those depend on are **read** as well, and never written into —
+without `good`, a standalone package's `Component` and `Field` are undeclared
+names and there is nothing to generate. An upstream package generates its own
+files in its own run.
+
+The output is **committed**, into the `lib/` of each package it was pointed at.
 
 ## Why the two are separate
 
@@ -27,6 +61,11 @@ depends on it.
 A package rather than a `tool/` directory at the root, because there is no root
 `tool/` and no root pubspec: this needs `analyzer` (through `good_cli`, whose
 parse it reuses) and it has tests of its own.
+
+It is still `publish_to: none`, so a third-party author reaches it by cloning
+this repository rather than by adding a dev dependency. #305 removed the
+assumptions that made it useless outside this tree; publishing it is a separate
+decision.
 
 ## Why the output is committed
 
@@ -115,8 +154,12 @@ component name two libraries both declare.
 
 ## What it does not do
 
-A game's own components get nothing. This runs over the engine's repository and
-writes into packages published from it; a component in somebody's `lib/` is in
-neither, and `good_cli` does not generate properties into a project — the bundle
-package it writes is a *dependency* of the project and cannot import the project
-back. Making that unnecessary is a separate design.
+An **application's** own components get nothing, and that is permanent. This
+writes into a package, and `good_cli` does not generate properties into a
+project — the bundle package it writes is a *dependency* of the project and
+cannot import the project back. Making that unnecessary is a separate design.
+
+A **package's** own components do get everything, whoever wrote it. That is the
+correction #305 made to what #99 recorded as a limitation: a published package
+carries what is in its `lib/`, so anything generated for it has to be generated
+before it is published, by its author, with this.

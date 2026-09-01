@@ -116,24 +116,23 @@ class ComponentBitScan {
 /// `hasEnum` widens by `values.length`. A bit index depends on none of those:
 /// it is a position in a sorted list of names.
 ComponentBitScan scanComponentBits(
-  Directory repoRoot, {
-  List<EnginePackage>? packages,
+{
+  required List<EnginePackage> packages,
   ScanSources? sources,
 }) {
-  final targets = packages ?? enginePackages(repoRoot);
   final read =
       sources ??
       readSources(
-        repoRoot,
-        rootOverride: <String>[for (final target in targets) target.libDir],
+        Directory.current,
+        rootOverride: <String>[for (final target in packages) target.libDir],
         exclude: <String>{
-          for (final target in targets) target.accessorFile.path,
-          for (final target in targets) target.componentBitsFile.path,
+          for (final target in packages) target.accessorFile.path,
+          for (final target in packages) target.componentBitsFile.path,
         },
       );
 
   final byLibDir = <String, EnginePackage>{
-    for (final target in targets) target.libDir: target,
+    for (final target in packages) target.libDir: target,
   };
 
   // Every type any scanned `describeType` names, deduplicated and sorted

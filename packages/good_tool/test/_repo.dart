@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:good_tool/src/engine_packages.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -207,3 +208,13 @@ abstract final class Field {
       DataArrayPointer<int>();
 }
 ''';
+
+/// The packages `good_tool` would generate into, given a [fakeRepo].
+///
+/// `--dir packages`, which is what this repository's own invocation is (#305).
+/// Stated here once so a fixture reads as "the packages under packages/" rather
+/// than as an argument list.
+List<EnginePackage> repoPackages(Directory repo) =>
+    enginePackages(<Directory>[
+      Directory(p.join(repo.path, 'packages')),
+    ]).packages;

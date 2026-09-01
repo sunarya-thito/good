@@ -10,11 +10,18 @@ const String generatedComponentBitsType = 'GeneratedComponentBits';
 ///
 /// One per package that registers a component type, and none for a package
 /// that registers none.
+/// [known] is every package the scan read, where [packages] is the subset being
+/// written into. They differ only when a package's engine dependencies were
+/// read from outside the run (#305): a standalone `good_physics_foo` has to
+/// name `goo2dComponentBits` as its table's dependency, and `goo2d` is not one
+/// of the packages this run writes.
 List<GeneratedFile> componentBitsFiles(
   ComponentBitScan scan,
   List<EnginePackage> packages,
-  Imports imports,
-) {
+  Imports imports, {
+  List<EnginePackage>? known,
+}) {
+  final available = known ?? packages;
   final byName = <String, EnginePackage>{
     for (final package in packages) package.name: package,
   };
@@ -33,7 +40,7 @@ List<GeneratedFile> componentBitsFiles(
           package: package,
           bitsImport: resolved.imports.single,
           dependencies: <EnginePackage>[
-            for (final candidate in packages)
+            for (final candidate in available)
               if (candidate.name != package.name &&
                   package.dependencies.contains(candidate.name) &&
                   grouped.containsKey(candidate.name))

@@ -18,6 +18,22 @@
   and the runtime refuses it - reading it here would attribute an asset no
   scene ever declares.
 
+* **`good generate` reads a package because it depends on the engine, not
+  because of its name.** The shadowed-field and chained-hook checks decided
+  which of your dependencies to parse with
+  `name == 'good' || name.startsWith('goo')`, so every project with
+  `google_fonts` - or `google_sign_in`, `googleapis`, `goodies`, `gooey` - had
+  that package's whole `lib/` walked by a component scan on every run, and a
+  third-party component package named anything else was invisible to it. A
+  package is now read when `package:good` is in the transitive closure of its
+  `dependencies:`, so a physics backend that names only `goo2d` is read and
+  `google_fonts` is not (#305).
+
+  Nothing to do about it. If you had a dependency being read for its name
+  alone, it is no longer parsed, and the run is faster; if you depend on a
+  component package this check could not see, collisions with its columns are
+  reported from now on where they were silent before.
+
 * **The scaffold emits the new component-read spelling.** `good create` wrote
   `group.get<Player>()` into the generated system; it writes `group<Player>()`,
   which is what `good` 0.3.0-dev accepts after `get`/`tryGet` folded into the

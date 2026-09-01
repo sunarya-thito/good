@@ -46,13 +46,17 @@ Directory _repo(Map<String, String> files, {String name = 'goo2d'}) =>
 List<String> _types(ComponentBitScan scan) =>
     <String>[for (final bit in scan.bits) bit.type];
 
+/// The bits of every package under a fixture repository's `packages/`.
+ComponentBitScan _scan(Directory repo) =>
+    scanComponentBits(packages: repoPackages(repo));
+
 String _emit(Directory repo, String package) {
-  final packages = enginePackages(repo);
+  final packages = repoPackages(repo);
   final sources = readSources(
     repo,
     rootOverride: <String>[for (final target in packages) target.libDir],
   );
-  final scan = scanComponentBits(repo, packages: packages, sources: sources);
+  final scan = scanComponentBits(packages: packages, sources: sources);
   final imports = Imports(
     declaredIn: declaredIn(sources),
     byLibDir: <String, EnginePackage>{
@@ -73,7 +77,7 @@ String _emit(Directory repo, String package) {
 void main() {
   group('a bit is generated', () {
     test('for every type a describeType names, ordered so a diff is stable', () {
-      final scan = scanComponentBits(
+      final scan = _scan(
         _repo(<String, String>{
           'goo2d.dart':
               "export 'src/transform.dart';\nexport 'src/render.dart';\n",
@@ -91,7 +95,7 @@ void main() {
     });
 
     test('for two types one file declares, by name', () {
-      final scan = scanComponentBits(
+      final scan = _scan(
         _repo(<String, String>{
           'goo2d.dart': "export 'src/data.dart';\n",
           'src/data.dart':
@@ -124,7 +128,7 @@ mixin Alpha on Component {
       // other rule about component mixins, that never reaches `has<T>()`. A
       // table built from "is a component mixin" would hold it, and the bit
       // would be spent on a type no archetype signature ever carries.
-      final scan = scanComponentBits(
+      final scan = _scan(
         _repo(<String, String>{
           'goo2d.dart': "export 'src/data.dart';\n",
           'src/data.dart':
@@ -151,7 +155,7 @@ mixin CollisionListener on Component {
     });
 
     test('and not for has(type: runtimeType), which only a run knows', () {
-      final scan = scanComponentBits(
+      final scan = _scan(
         _repo(<String, String>{
           'goo2d.dart': "export 'src/data.dart';\n",
           'src/data.dart':
@@ -173,7 +177,7 @@ class Prefab implements Component {
 
   group('no bit, and the run-time registry keeps the type', () {
     test('when two libraries both declare the name', () {
-      final scan = scanComponentBits(
+      final scan = _scan(
         _repo(<String, String>{
           'goo2d.dart': "export 'src/one.dart';\n",
           'src/one.dart': _mixin('Velocity'),
@@ -188,7 +192,7 @@ class Prefab implements Component {
     });
 
     test('when nothing this pass reads declares it at all', () {
-      final scan = scanComponentBits(
+      final scan = _scan(
         _repo(<String, String>{
           'goo2d.dart': "export 'src/data.dart';\n",
           'src/data.dart':
@@ -250,7 +254,7 @@ mixin Transform2D on Component {
       // tool's own run never widens the roots that far, and the guard is here
       // because `scanComponentBits` takes a `ScanSources` from its caller.
       final scan = scanComponentBits(
-        repo,
+        packages: repoPackages(repo),
         sources: readSources(
           repo,
           rootOverride: <String>[

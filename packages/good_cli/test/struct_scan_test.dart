@@ -363,6 +363,155 @@ mixin Child on Component {
     expect(scan.unresolved, isEmpty);
   });
 
+  // --- #305: what counts as an engine package is a dependency, not a name ---
+  //
+  // This used to be `name == 'good' || name.startsWith('goo')`. The false
+  // negatives were the smaller half: the false positives are `google_fonts`,
+  // `google_sign_in`, `googleapis`, `goodies` and `gooey`, and `google_fonts`
+  // is in a large share of Flutter projects - so its whole `lib/` was walked
+  // by a component scan on every `good generate`.
+
+  group('a package is read because it depends on the engine', () {
+    /// Writes a package under [dir] and returns its package-config entry.
+    String writePackage(
+      Directory dir,
+      String name,
+      List<String> dependencies,
+      String source,
+    ) {
+      final root = Directory('${dir.path}/deps/$name');
+      File('${root.path}/lib/$name.dart')
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync(source);
+      File('${root.path}/pubspec.yaml').writeAsStringSync(
+        <String>[
+          'name: $name',
+          'dependencies:',
+          for (final dependency in dependencies) '  $dependency: ^1.0.0',
+          '',
+        ].join('\n'),
+      );
+      return '{ "name": "$name", "rootUri": "../deps/$name", '
+          '"packageUri": "lib/" }';
+    }
+
+    void writeConfig(Directory dir, List<String> entries) {
+      File('${dir.path}/.dart_tool/package_config.json')
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync(
+          '{ "configVersion": 2, "packages": [ ${entries.join(', ')} ] }',
+        );
+    }
+
+    test('and google_fonts is not read, however its name starts', () {
+      final dir = _project(<String, String>{
+        'game.dart': '''
+mixin Ownership on Component {
+  final childParent = Field.optEntity();
+}
+class Crate extends EntityStruct with Ownership {}
+''',
+      });
+      // A component declaration inside `google_fonts`, which is absurd and is
+      // the point: if this pass reads the package at all it will find it, and
+      // finding it is the proof that it walked a package it had no business
+      // walking.
+      final fonts = writePackage(dir, 'google_fonts', <String>[
+        'http',
+      ], '''
+mixin GoogleFontsMarker on Component {
+  final childParent = Field.optEntity();
+}
+''');
+      writeConfig(dir, <String>[fonts]);
+
+      final scan = scanStructRules(dir);
+      expect(scan.shadowed, isEmpty);
+      expect(
+        scan.unresolved,
+        isEmpty,
+        reason: 'nothing in the project mentions anything google_fonts holds',
+      );
+      // The load-bearing half: the marker is invisible, so `lib/` was never
+      // walked. Under the prefix it was read on every generate.
+      final marker = _project(<String, String>{
+        'game.dart': '''
+class Crate extends EntityStruct with GoogleFontsMarker {}
+''',
+      });
+      writeConfig(marker, <String>[
+        writePackage(marker, 'google_fonts', <String>['http'], '''
+mixin GoogleFontsMarker on Component {
+  final childParent = Field.optEntity();
+}
+'''),
+      ]);
+      expect(
+        scanStructRules(marker).unresolved.keys,
+        contains('Crate with GoogleFontsMarker'),
+        reason:
+            'a mixin from a package this pass does not read is reported as '
+            'unread, which is what google_fonts now is',
+      );
+    });
+
+    test('and a third-party package named nothing like the engine is', () {
+      // The other direction. `myco_physics` depends on `good`, declares a
+      // component, and under the prefix was invisible - so a collision with
+      // one of its columns went unreported and its mixins landed in
+      // `unresolved` on every struct that applied one.
+      final dir = _project(<String, String>{
+        'game.dart': '''
+mixin Ownership on Component {
+  final mycoDrag = Field.float64();
+}
+class Crate extends EntityStruct with MycoBody, Ownership {}
+''',
+      });
+      writeConfig(dir, <String>[
+        writePackage(dir, 'good', const <String>[], 'mixin Nothing {}\n'),
+        writePackage(dir, 'myco_physics', const <String>['good'], '''
+mixin MycoBody on Component {
+  final mycoDrag = Field.float64();
+}
+'''),
+      ]);
+
+      final scan = scanStructRules(dir);
+      expect(scan.shadowed, hasLength(1));
+      expect(scan.shadowed.single.field, 'mycoDrag');
+      expect(scan.shadowed.single.loser, 'MycoBody');
+      expect(scan.unresolved, isEmpty);
+    });
+
+    test('and it reaches the engine through what it depends on', () {
+      // `goo2d_physics_box2d` names `goo2d` and never names `good` at all, so
+      // a one-hop test would drop it.
+      final dir = _project(<String, String>{
+        'game.dart': '''
+mixin Ownership on Component {
+  final bodyMass = Field.float64();
+}
+class Crate extends EntityStruct with Body, Ownership {}
+''',
+      });
+      writeConfig(dir, <String>[
+        writePackage(dir, 'good', const <String>[], 'mixin Nothing {}\n'),
+        writePackage(dir, 'goo2d', const <String>['good'], 'mixin Other {}\n'),
+        writePackage(dir, 'physics', const <String>['goo2d'], '''
+mixin Body on Component {
+  final bodyMass = Field.float64();
+}
+'''),
+      ]);
+
+      final scan = scanStructRules(dir);
+      expect(scan.shadowed, hasLength(1));
+      expect(scan.shadowed.single.loser, 'Body');
+      expect(scan.unresolved, isEmpty);
+    });
+  });
+
   test('an explicit override is the author saying so, and passes', () {
     final dir = _project(<String, String>{
       'game.dart': '''

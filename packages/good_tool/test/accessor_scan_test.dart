@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:good_tool/src/accessor_emit.dart';
 import 'package:good_tool/src/accessor_scan.dart';
-import 'package:good_tool/src/engine_packages.dart';
 import 'package:test/test.dart';
 
 import '_repo.dart';
@@ -31,7 +30,8 @@ mixin Transform2D on Component {
 }
 ''';
 
-AccessorScan _scan(Directory repo) => scanAccessors(repo);
+AccessorScan _scan(Directory repo) =>
+    scanAccessors(packages: repoPackages(repo));
 
 AccessorExtension _only(AccessorScan scan, String component) =>
     scan.extensions.singleWhere(
@@ -424,10 +424,20 @@ void main() {
       final scan = _scan(
         fakeRepo(<FakePackage>[
           kernelPackage(),
-          // Depends on nothing, so `Accessor` is unreachable from it however
-          // the source is written.
+          // `goo2d` is what makes `stranded` a package this tool handles at
+          // all - it reaches the engine through it (#305) - and `goo2d`'s
+          // barrel exports nothing, so `Accessor` is unreachable from
+          // `stranded` however its own source is written.
+          const FakePackage(
+            'goo2d',
+            dependencies: <String>['good'],
+            files: <String, String>{
+              'goo2d.dart': '// exports nothing\n',
+            },
+          ),
           const FakePackage(
             'stranded',
+            dependencies: <String>['goo2d'],
             files: <String, String>{
               'stranded.dart': "export 'src/body.dart';\n",
               'src/body.dart':
@@ -579,7 +589,7 @@ void main() {
 
       final first = _scan(repo);
       expect(first.collisions, isEmpty);
-      final packages = enginePackages(repo);
+      final packages = repoPackages(repo);
       for (final file in accessorFiles(first, packages)) {
         file.file.parent.createSync(recursive: true);
         file.file.writeAsStringSync(file.contents);
