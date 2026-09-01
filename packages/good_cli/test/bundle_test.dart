@@ -10,6 +10,7 @@ import 'package:good_cli/src/verbosable.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
+import '_resolved.dart';
 import '_temp.dart';
 
 // The generated sibling package: who owns it, what proves it, and what happens
@@ -45,6 +46,15 @@ Directory _project([String pubspec = _pubspec]) {
   final dir = testTempDir('good_bundle_test');
   File('${dir.path}/pubspec.yaml').writeAsStringSync(pubspec);
   Directory('${dir.path}/assets').createSync();
+  // Resolved, because the generator reads which package a project draws
+  // through out of the dependency graph and not out of the dependency name
+  // (#309). A pubspec naming goo2d over a package config that resolves
+  // nothing is a project whose engine dependency has never been fetched, and
+  // the generated files would import the kernel.
+  resolvePackages(dir, <String, List<String>>{
+    'goo2d': <String>['good'],
+    'good': <String>[],
+  });
   return dir;
 }
 

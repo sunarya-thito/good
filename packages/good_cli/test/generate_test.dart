@@ -9,6 +9,7 @@ import 'package:good_cli/src/verbosable.dart';
 import 'package:pub_semver/pub_semver.dart';
 import 'package:test/test.dart';
 
+import '_resolved.dart';
 import '_temp.dart';
 
 // Codegen: does a project's *declared* assets become the right enum, and does
@@ -406,28 +407,176 @@ flutter:
   });
 
   group('enginePackageOf', () {
-    test('names the renderer the project depends on, not the kernel', () {
+    /// A project declaring [dependencies], resolved against [graph].
+    Directory resolved(
+      List<String> dependencies,
+      Map<String, List<String>> graph,
+    ) {
+      final dir = _project(
+        'name: demo\ndependencies:\n'
+        '${dependencies.map((d) => '  $d: ^0.1.0\n').join()}',
+        <String>[],
+      );
+      resolvePackages(dir, graph);
+      return dir;
+    }
+
+    test('a renderer is named, and so is the kernel on its own', () {
       expect(
         enginePackageOf(
-          _project('name: demo\ndependencies:\n  goo2d: ^0.1.0\n', <String>[]),
+          resolved(<String>['goo2d'], <String, List<String>>{
+            'goo2d': <String>['good'],
+            'good': <String>[],
+          }),
         ),
         'goo2d',
       );
       expect(
         enginePackageOf(
-          _project('name: demo\ndependencies:\n  goo3d: ^0.1.0\n', <String>[]),
+          resolved(<String>['goo3d'], <String, List<String>>{
+            'goo3d': <String>['good'],
+            'good': <String>[],
+          }),
         ),
         'goo3d',
         reason:
-            'left off this list, a 3D project generated files importing '
-            'package:good - a package its pubspec does not depend on, which '
-            'is a lint on every generated file',
+            'goo3d reaches the kernel through its own dependencies and is a '
+            'renderer by the same test goo2d is, without being named anywhere',
       );
       expect(
         enginePackageOf(
-          _project('name: demo\ndependencies:\n  good: ^0.1.0\n', <String>[]),
+          resolved(<String>['good'], <String, List<String>>{
+            'good': <String>[],
+          }),
         ),
         'good',
+      );
+    });
+
+    test('a renderer nothing here has heard of is the entry package', () {
+      expect(
+        enginePackageOf(
+          resolved(<String>['neon'], <String, List<String>>{
+            'neon': <String>['goo2d'],
+            'goo2d': <String>['good'],
+            'good': <String>[],
+          }),
+        ),
+        'neon',
+        reason:
+            'a third-party renderer reaches the kernel through goo2d, so it '
+            'is an engine dependency and it is the one the project draws '
+            'through',
+      );
+    });
+
+    test('the renderer wins over the packages it is built on', () {
+      expect(
+        enginePackageOf(
+          resolved(<String>['neon', 'goo2d', 'good'], <String, List<String>>{
+            'neon': <String>['goo2d'],
+            'goo2d': <String>['good'],
+            'good': <String>[],
+          }),
+        ),
+        'neon',
+        reason:
+            'declaring all three, the generated code names the surface of the '
+            'outermost one - the other two are what it is built on',
+      );
+    });
+
+    test('a dependency that does not reach the engine is not a candidate', () {
+      expect(
+        enginePackageOf(
+          resolved(<String>[
+            'audioplayers',
+            'google_fonts',
+            'goo2d',
+          ], <String, List<String>>{
+            'audioplayers': <String>[],
+            'google_fonts': <String>['flutter'],
+            'goo2d': <String>['good'],
+            'good': <String>[],
+          }),
+        ),
+        'goo2d',
+        reason:
+            'audioplayers sorts first and google_fonts is the name the old '
+            'prefix test matched, and neither reaches the engine, so neither '
+            'is a package the generated code could import',
+      );
+    });
+
+    test('two renderers side by side are ordered by name', () {
+      const graph = <String, List<String>>{
+        'goo2d': <String>['good'],
+        'goo3d': <String>['good'],
+        'good': <String>[],
+      };
+      expect(
+        enginePackageOf(resolved(<String>['goo3d', 'goo2d'], graph)),
+        'goo2d',
+      );
+      expect(
+        enginePackageOf(resolved(<String>['goo2d', 'goo3d'], graph)),
+        'goo2d',
+        reason:
+            'neither is built on the other, so nothing in the graph orders '
+            'them - and the answer still cannot depend on which line of the '
+            'pubspec came first',
+      );
+    });
+
+    test('no engine dependency at all falls back to the kernel', () {
+      expect(
+        enginePackageOf(
+          resolved(<String>['google_fonts'], <String, List<String>>{
+            'google_fonts': <String>['flutter'],
+          }),
+        ),
+        'good',
+      );
+    });
+
+    test('an unresolved project falls back to the kernel', () {
+      expect(
+        enginePackageOf(
+          _project('name: demo\ndependencies:\n  goo2d: ^0.1.0\n', <String>[]),
+        ),
+        'good',
+        reason:
+            'a dependency added since the last pub get is in no package '
+            'config, so there is no pubspec of its own to read and nothing '
+            'says it is an engine package',
+      );
+    });
+
+    test('a directory with no pubspec falls back to the kernel', () {
+      expect(enginePackageOf(testTempDir('good_cli_test')), 'good');
+    });
+
+    test('the caller can name the package instead', () {
+      final dir = _project(
+        'name: demo\ndependencies:\n  goo2d: ^0.1.0\n\n'
+        'flutter:\n  assets:\n    - assets/\n',
+        <String>['assets/player.png'],
+      );
+      runGenerate(
+        projectDir: dir,
+        command: 'good generate',
+        out: _quiet,
+        verbose: _quiet,
+        enginePackage: 'goo2d',
+        pubGet: false,
+      );
+      expect(
+        File('${dir.path}/demo_bundle/lib/textures.dart').readAsStringSync(),
+        contains("import 'package:goo2d/goo2d.dart';"),
+        reason:
+            'the project is unresolved, so nothing in it says goo2d is the '
+            'engine - `good create` knows because it wrote the line, and '
+            'says so',
       );
     });
 

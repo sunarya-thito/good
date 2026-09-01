@@ -202,6 +202,11 @@ class CreateCommand extends Command with Verbose, Resolving {
       command: '${session.path.first} generate',
       out: info,
       verbose: debug,
+      // The engine is named here and not worked out from the project. The
+      // pubspec line declaring it went in a few statements ago and nothing has
+      // resolved the project since, so it is in no package config yet - and a
+      // package config is where the generator reads a dependency from.
+      enginePackage: engine.package,
       pubGet: pubGet,
     );
     info

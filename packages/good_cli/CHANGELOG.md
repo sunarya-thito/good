@@ -34,6 +34,22 @@
   component package this check could not see, collisions with its columns are
   reported from now on where they were silent before.
 
+* **The package the generated files import comes from the dependency graph.**
+  `good generate` chose it from `['goo2d', 'goo3d', 'good']`, first match wins,
+  so a project built on a renderer that is not one of those three fell through
+  to `good` and generated code importing the kernel. The choice is now the
+  project's direct dependencies narrowed by the same engine test as above, and
+  then to the one none of the others is built on: a project depending on a
+  renderer and on the kernel imports the renderer, and a project depending on
+  a renderer that depends on `goo2d` imports that renderer (#309).
+
+  It reads each candidate's own pubspec through
+  `.dart_tool/package_config.json`. A dependency added since the last
+  `flutter pub get` is in no package config, so nothing says it is an engine
+  package and the fallback to `good` applies; resolving the project and running
+  `good generate` again gives the right import. `good create` names the engine
+  it scaffolded and does not go through this, so a fresh project is unaffected.
+
 * **The scaffold emits the new component-read spelling.** `good create` wrote
   `group.get<Player>()` into the generated system; it writes `group<Player>()`,
   which is what `good` 0.3.0-dev accepts after `get`/`tryGet` folded into the
