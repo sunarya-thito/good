@@ -115,37 +115,38 @@ abstract class GameSystem extends GameListenerBase
     }
   }
 
-  late final SignalDispatcher<GameSystemLifecycleListener> mountEvent;
-  late final SignalDispatcher<GameSystemLifecycleListener> unmountEvent;
+  /// This system was mounted. See [GameSystemLifecycleListener].
+  ///
+  /// Declared through `Event.inherited`, for `EntityStruct`'s reason
+  /// (struct.dart) with a sharper edge. `SystemDescriptor.has` takes a
+  /// `T Function()`, and a closure may hand back a system that already
+  /// existed - `descriptor.has(() => _spawner)`, where `_spawner` is a field
+  /// of the `GameState`. A prefab in that shape has nothing open above it. A
+  /// system does: a `GameState` is itself framework-constructed, so its own
+  /// window is open while its field initialisers run. `Event.inherited` reads
+  /// neither, so the pair lands on this system whichever way it was built.
+  ///
+  /// A subclass's own `Event.of` fields have no such escape - they read the
+  /// window, and in that shape the window is the state's. `EventBinder.open`
+  /// refuses the system when it is handed over. Measured before that refusal:
+  /// a system holding one `Event.signal` on a field, built in a `GameState`
+  /// field initialiser and handed over through a closure, collected the state,
+  /// itself and two unrelated systems, and firing it reached all four.
+  ///
+  /// A system the framework *does* build - `descriptor.has(SpinSystem.new)`,
+  /// or a closure that constructs inside itself - owns the window, so
+  /// `Event.of` on a subclass field works and is the shape to reach for.
+  final mountEvent = Event.inheritedSignal<GameSystemLifecycleListener>(
+    (listener) => listener.onMounted(),
+  );
 
-  // Declared from the constructor body against this system's own registrar,
-  // for `EntityStruct`'s reason (struct.dart) with a sharper edge.
-  //
-  // `SystemDescriptor.has` takes a `T Function()`, and a closure may hand
-  // back a system that already existed - `descriptor.has(() => _spawner)`,
-  // where `_spawner` is a field of the `GameState`. A prefab in that shape
-  // has nothing open above it. A system does: a `GameState` is itself
-  // framework-constructed, so its own window is open while its field
-  // initialisers run. `EventBus.events` reads this system and never that
-  // window, so the pair lands here whichever way the system was built.
-  //
-  // A subclass's own `Event.of` fields have no such escape - they read the
-  // window, and in that shape the window is the state's. `EventBinder.open`
-  // refuses the system when it is handed over. Measured before that refusal:
-  // a system holding one `Event.signal` on a field, built in a `GameState`
-  // field initialiser and handed over through a closure, collected the state,
-  // itself and two unrelated systems, and firing it reached all four.
-  //
-  // A system the framework *does* build - `descriptor.has(SpinSystem.new)`,
-  // or a closure that constructs inside itself - owns the window, so
-  // `Event.*` on a subclass field works and is the shape to reach for.
-  GameSystem() {
-    mountEvent = events.hasSignal((dispatcher) => dispatcher.onMounted());
-    unmountEvent = events.hasSignal(
-      (dispatcher) => dispatcher.onUnmounted(),
-      reverse: true,
-    );
-  }
+  /// This system is being unmounted. Reverse of [mountEvent]'s order, so a
+  /// system told late can still read what the earlier ones have been warned
+  /// about - see [EventDispatcher.reverse].
+  final unmountEvent = Event.inheritedSignal<GameSystemLifecycleListener>(
+    (listener) => listener.onUnmounted(),
+    reverse: true,
+  );
 
   @override
   int compareTo(GameSystem other) => 0; // no opinion by default
