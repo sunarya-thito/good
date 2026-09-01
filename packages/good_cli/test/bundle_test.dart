@@ -321,6 +321,36 @@ void main() {
       );
     });
 
+    test('an import the bundle does not depend on is reported', () {
+      // The other half of the test above, which only says a dependency that
+      // is there is not reported missing. Every generated file imports one of
+      // these packages, so a bundle that declares the entry package alone is
+      // one the analyzer reports `depend_on_referenced_packages` on in every
+      // project that runs `flutter_lints` (#316).
+      final project = _project();
+      final bundle = _generate(project).bundle;
+      bundle.pubspec.writeAsStringSync(
+        bundle.pubspec
+            .readAsLinesSync()
+            .where((line) => !line.startsWith('  good:'))
+            .join('\n'),
+      );
+
+      expect(
+        bundleProblems(
+          projectDir: project,
+          bundle: bundle,
+          importedPackages: const <String>['good', 'goo2d'],
+          writtenFiles: const <String>[],
+          checkResolution: false,
+        ),
+        allOf(
+          contains(contains('does not depend on good')),
+          isNot(contains(contains('does not depend on goo2d'))),
+        ),
+      );
+    });
+
     test('the bundle depends on the engine the project depends on', () {
       final project = _project(
         _pubspec.replaceFirst('goo2d: ^0.3.0-dev', 'goo2d: 0.2.0'),
