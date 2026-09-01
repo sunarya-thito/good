@@ -163,6 +163,8 @@ disk — a file in an unlisted directory is invisible to it, and to Flutter.
 generate time. PNG, WebP, GIF, BMP and JPEG, from the leading bytes and not from
 the extension. Nothing is decoded.
 
+<!-- snippet: skip an excerpt of a generated file, not a whole one -->
+
 ```dart
 enum Textures with LocalEnumAssetKey<Texture> {
   sheet('assets/sheet.webp', 512, 256);

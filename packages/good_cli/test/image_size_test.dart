@@ -126,8 +126,8 @@ void main() {
     });
 
     test('reads all three WebP encodings', () {
-      // Asymmetric on purpose: a parser that swapped width for height, or
-      // read the same field twice, passes on 64x64 and fails here.
+      // Asymmetric sizes. A parser that swapped width for height, or read
+      // the same field twice, passes on 64x64 and fails here.
       expect(
         imageSizeOf(_webpVp8x(64, 32)),
         const ImageSize(64, 32),
