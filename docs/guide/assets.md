@@ -37,6 +37,20 @@ half.
 
 ## Declaring
 
+Name the asset in the field that holds it:
+
+```dart
+class Player extends EntityStruct
+    with Transform2D, WorldTransform2D, Renderable2D {
+  final texture = Asset.of(Textures.spritesPlayer);
+}
+```
+
+`Asset.of` is the same registration `describeAssets` makes, reached without
+being handed the descriptor — a scene loads the asset either way. The hook is
+still there, and a prefab that wants the handle before its own fields run, or
+that decides what to declare from something it was constructed with, uses it:
+
 ```dart
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
@@ -53,7 +67,21 @@ class Player extends EntityStruct
 Scenes declare assets the same way, and **prefabs share their scene's
 descriptor**. `has` is idempotent per identity, so declaring the same texture in
 a prefab and in its scene produces the identical handle — one address, one
-decode.
+decode. That is what makes naming a shared texture in three prefabs cost one
+decode rather than three.
+
+!!! note "A scene declares in the hook, not in a field"
+    `Asset.of` reads the descriptor a scene's bring-up opens, and a
+    `SceneStruct` is constructed by you — before it has an `Assets` to declare
+    into. So a scene's own field initialiser throws and a scene uses
+    `describeAssets`. A prefab is constructed by the scene's pass, which is why
+    its fields are inside the window. The same fact governs `Field.*` and
+    `Event.of`.
+
+    A `late final` throws too, and that is deliberate: it would run on first
+    read, long after the pass that both isolate copies replay in the same
+    order, so the asset would be addressed on whichever copy happened to touch
+    it first.
 
 !!! danger "Declare it wherever you read it"
     A prefab that uses a texture must declare it, even if its scene already

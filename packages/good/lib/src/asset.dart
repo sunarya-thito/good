@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show FlutterError;
 import 'package:flutter/services.dart' show AssetBundle, rootBundle;
 import 'package:meta/meta.dart';
 import 'package:good/src/data.dart';
+import 'package:good/src/declare.dart';
 
 // ---------------------------------------------------------------------------
 // The three-way split
@@ -453,6 +454,36 @@ abstract interface class AssetLoaderRegistrar {
 /// [value] there throws by name instead of null-dereferencing.
 final class Asset<T> implements IntRepresentable {
   Asset._(this.key, this._address);
+
+  /// Declares [key] against the scene being brought up and hands back its
+  /// handle, so a prefab names an asset in the field that holds it instead of
+  /// in a `describeAssets` pass and a `late final`.
+  ///
+  /// ```dart
+  /// class Player extends EntityStruct with Transform2D, Renderable2D {
+  ///   final texture = Asset.of(Textures.player);
+  /// }
+  /// ```
+  ///
+  /// This is [AssetDescriptor.has] reached without being handed the
+  /// descriptor - the same call, doing the same registration, so a scene
+  /// loads the asset exactly as it did before. What changes is who writes the
+  /// call, not what it does. `Field.float64` is the same move made for
+  /// columns, and the descriptor it reaches is [DeclarationContext.assets].
+  ///
+  /// **Idempotent per identity**, because [AssetDescriptor.has] is: two
+  /// prefabs writing `Asset.of(Textures.player)` get the *identical* handle,
+  /// one address and one decode. That is what stops a declaration moving to
+  /// the use site turning one shared texture into two.
+  ///
+  /// Throws when nothing is being brought up - a prefab constructed by hand,
+  /// or a `late final` that runs on first read rather than during the pass
+  /// both isolate copies run. A `SceneStruct`'s own field initialisers throw
+  /// too: a scene is constructed by the caller and has no `Assets` until
+  /// `initializeScene`, so a scene declares in `describeAssets`, which is
+  /// handed the same descriptor this reads.
+  static Asset<T> of<T>(AssetKey<T> key) =>
+      DeclarationContext.assets.has<T>(key);
 
   /// What this asset is. Readable on every copy, loaded or not.
   final AssetKey<T> key;

@@ -1,5 +1,6 @@
 import 'package:meta/meta.dart';
 
+import 'package:good/src/asset.dart';
 import 'package:good/src/command/param.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/event.dart';
@@ -321,5 +322,72 @@ abstract final class DeclarationContext {
       );
     }
     return _channels.last;
+  }
+
+  /// The open asset descriptors, innermost last - the seventh level of the
+  /// stack, and the one `Asset.of` declares against.
+  ///
+  /// # This level is scoped to a scene, not to a constructor
+  ///
+  /// Every other level here is opened around one object's constructor,
+  /// because what it declares belongs to that object: a column belongs to the
+  /// archetype being built, a dispatcher to the struct that owns it. An asset
+  /// belongs to **neither**. `_AssetDescriptor` is built once per
+  /// `SceneStruct.initializeScene` and shared by the scene's own
+  /// `describeAssets` and every prefab that pass registers, so the whole
+  /// scene contributes to one deduplicated list and no prefab has an asset
+  /// list of its own.
+  ///
+  /// That is why this level has no barrier and needs none. [pushBarrier]
+  /// exists because a child's `describeStruct` runs while its parent's
+  /// constructor is still on [_data], so an unbracketed `Field.*` there would
+  /// put a column on the parent's row and read it back from the child's.
+  /// There is no equivalent mistake to make here: the descriptor a nested
+  /// prefab reaches and the one its declarer reaches are the *same object*,
+  /// so an asset declared at the wrong moment still lands in exactly the
+  /// place `descriptor.has` would have put it. What order it lands in is
+  /// still deterministic - both isolate copies run the same code - which is
+  /// the only thing an address depends on.
+  ///
+  /// A stack rather than a slot for the reason the levels above give: scene
+  /// bring-up does not nest today, and keeping the shape means "empty" is the
+  /// same question at every level.
+  static final List<AssetDescriptor> _assets = <AssetDescriptor>[];
+
+  /// Opens a descriptor for the duration of one scene's declaration passes.
+  /// Paired with [popAssets] in a `finally` - `SceneStruct.initializeScene`
+  /// is the only caller.
+  static void pushAssets(AssetDescriptor descriptor) => _assets.add(descriptor);
+
+  static void popAssets() => _assets.removeLast();
+
+  /// The innermost open descriptor, or a `StateError` naming the two ways to
+  /// get here: declaring an asset outside a scene's bring-up, and reaching an
+  /// `Asset.of` call lazily.
+  static AssetDescriptor get assets {
+    if (_assets.isEmpty) {
+      throw StateError(
+        'An Asset was declared with no scene being brought up. Asset.of '
+        'reads the descriptor `SceneStruct.initializeScene` opens around a '
+        "scene's declaration passes, so the declaration has to happen "
+        'inside one:\n'
+        '  class Player extends EntityStruct {\n'
+        '    final texture = Asset.of(Textures.player);\n'
+        '  }\n'
+        'A prefab is constructed by that pass, so its field initialisers are '
+        'inside the window. A SceneStruct is not: it is constructed by the '
+        'caller and only gets its Assets at initializeScene, so its own '
+        'field initialisers run before there is anything to declare into - a '
+        'scene declares in describeAssets, which is handed the same '
+        'descriptor. Constructing a prefab directly, to read a field off it, '
+        'lands here too.\n'
+        'A `late final` initialiser lands here as well, and that is the '
+        'point: it runs on first read, long after the pass that had to run '
+        'on both isolate copies in the same order, so an asset declared that '
+        'way would be addressed on whichever copy happened to touch it '
+        'first. Field initialisers here are eager, always.',
+      );
+    }
+    return _assets.last;
   }
 }

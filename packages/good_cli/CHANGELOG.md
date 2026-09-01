@@ -2,6 +2,22 @@
 
 ### Changed
 
+* **The scene scan reads field initialisers, not only method bodies.** It kept
+  `describeAssets` and `describeScene` bodies and skipped everything else, so
+  `final texture = Asset.of(Textures.player)` was attributed to no scene. That
+  never lost an asset - `_planByScene` puts an unattributed asset in the shared
+  chunk and it still ships - but the scene paid a chunk read it did not need,
+  and the cost grows as declarations move to where they are used (#194).
+
+  `EntityStruct.of` in a field initialiser is read for the same reason, and
+  that closes a gap that predates it: a child prefab declared that way
+  contributed nothing here, so its own assets were unattributed too.
+
+  Static field initialisers are deliberately not read. A static is lazy, so it
+  runs on first read rather than during the pass both isolate copies replay,
+  and the runtime refuses it - reading it here would attribute an asset no
+  scene ever declares.
+
 * **The scaffold emits the new component-read spelling.** `good create` wrote
   `group.get<Player>()` into the generated system; it writes `group<Player>()`,
   which is what `good` 0.3.0-dev accepts after `get`/`tryGet` folded into the

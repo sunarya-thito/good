@@ -279,8 +279,20 @@ abstract class SceneStruct extends GameListenerBase
     if (assets != null) _assets = assets;
     if (cameraViews != null) _cameraViews = cameraViews;
     final descriptor = _AssetDescriptor(this);
-    describeAssets(descriptor);
-    describeScene(_SceneDescriptor(this, descriptor));
+    // Open around both passes, not around a constructor, because that is the
+    // span the descriptor is valid for: one `_AssetDescriptor` serves this
+    // scene's own `describeAssets` and every prefab `describeScene`
+    // registers. So a prefab's `final texture = Asset.of(Textures.player)`
+    // reaches the same object its `describeAssets` would have been handed -
+    // see `DeclarationContext.assets`, which spells out why this level has no
+    // barrier.
+    DeclarationContext.pushAssets(descriptor);
+    try {
+      describeAssets(descriptor);
+      describeScene(_SceneDescriptor(this, descriptor));
+    } finally {
+      DeclarationContext.popAssets();
+    }
     // A scene brought up by hand has no boot pass to bind its events, so it
     // does it now. One brought up by a `Game` waits: a prefab's
     // `collectListeners` may reach for a system (`getSystem<T>()`), and
