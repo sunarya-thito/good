@@ -172,14 +172,9 @@ handle to the sprite:
 ```dart
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final TextureAsset texture;
-  late final Sprite sprite;
+  final texture = Asset.of(Textures.spritesPlayer);
 
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    texture = descriptor.has(Textures.spritesPlayer);
-  }
+  late final Sprite sprite;
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -289,16 +284,10 @@ moves and scales it like anything else.
 ```dart
 class DamageNumber extends EntityStruct
     with Transform2D, WorldTransform2D, Text2D {
-  late final TextureAsset atlas;
+  final atlas = Asset.of(fontKey);
 
   @override
   int get textCapacity => 8;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    atlas = descriptor.has(fontKey);
-  }
 
   @override
   BitmapFont get textFont =>

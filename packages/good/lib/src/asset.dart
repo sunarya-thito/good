@@ -456,8 +456,7 @@ final class Asset<T> implements IntRepresentable {
   Asset._(this.key, this._address);
 
   /// Declares [key] against the scene being brought up and hands back its
-  /// handle, so a prefab names an asset in the field that holds it instead of
-  /// in a `describeAssets` pass and a `late final`.
+  /// handle, so a prefab names an asset in the field that holds it.
   ///
   /// ```dart
   /// class Player extends EntityStruct with Transform2D, Renderable2D {
@@ -466,10 +465,9 @@ final class Asset<T> implements IntRepresentable {
   /// ```
   ///
   /// This is [AssetDescriptor.has] reached without being handed the
-  /// descriptor - the same call, doing the same registration, so a scene
-  /// loads the asset exactly as it did before. What changes is who writes the
-  /// call, not what it does. `Field.float64` is the same move made for
-  /// columns, and the descriptor it reaches is [DeclarationContext.assets].
+  /// descriptor - the same call, doing the same registration. `Field.float64`
+  /// is the same move made for columns, and the descriptor it reaches is
+  /// [DeclarationContext.assets].
   ///
   /// **Idempotent per identity**, because [AssetDescriptor.has] is: two
   /// prefabs writing `Asset.of(Textures.player)` get the *identical* handle,
@@ -537,26 +535,25 @@ final class Asset<T> implements IntRepresentable {
   String toString() => 'Asset($debugLabel @$_address)';
 }
 
-/// Declares [key] and returns the handle to keep in a field - the
-/// `describe*` hook alongside `describeStruct`, and the typed-handle rule
-/// applied to assets.
+/// Declares an asset key and returns the handle to keep in a field - the
+/// typed-handle rule applied to assets.
 ///
 /// There is no asset name and nothing to look up at use time: [has] returns
-/// the handle, the declarer keeps it in a `late final` field, and that field
-/// is the only thing an asset-typed component field will accept.
+/// the handle, the declarer keeps it in a field, and that field is the only
+/// thing an asset-typed component field will accept.
+///
+/// A prefab reaches this through [Asset.of], on the field that holds the
+/// handle. A [SceneStruct] is handed the descriptor itself, in
+/// `describeAssets`, because its own field initialisers run before the scene
+/// has an [Assets] to declare into.
 ///
 /// ```dart
 /// class Player extends EntityStruct with Renderable2D {
 ///   static const playerTexture = AssetKey<Texture>(BundleSource('player.png'));
 ///
-///   late final TextureAsset texture;
-///   late final DataPointer<TextureAsset> sprite;
+///   final texture = Asset.of(playerTexture);     // typed handle, kept
 ///
-///   @override
-///   void describeAssets(AssetDescriptor descriptor) {
-///     super.describeAssets(descriptor);
-///     texture = descriptor.has(playerTexture);   // typed handle, kept
-///   }
+///   late final DataPointer<TextureAsset> sprite;
 ///
 ///   @override
 ///   void describeStruct(DataDescriptor data) {
@@ -570,7 +567,7 @@ final class Asset<T> implements IntRepresentable {
 /// `AssetKey<Texture>` (identity - which asset) and `texture` is an
 /// `Asset<Texture>` (the addressed handle a row can point at). So
 /// `sprite[e] = playerTexture` does not compile and `sprite[e] = texture`
-/// does, which is the whole point of routing every asset through this pass.
+/// does, and that is what routing every asset through a declaration buys.
 abstract class AssetDescriptor {
   /// Declares [key] and returns its handle.
   ///
@@ -603,10 +600,10 @@ abstract class AssetDescriptor {
 /// the main isolate unpacks that address into the decoded thing when it draws.
 final class Assets {
   /// Address -> handle. Append-only and never recycled, which is what keeps
-  /// the two isolate copies in agreement: both run the same `describeAssets`
-  /// passes in the same order, so both hand out the same address for the same
-  /// asset, and an [unload] on one side (which only nulls a slot) cannot shift
-  /// any address the other side already assigned.
+  /// the two isolate copies in agreement: both run the same declarations in
+  /// the same order, so both hand out the same address for the same asset,
+  /// and an [unload] on one side (which only nulls a slot) cannot shift any
+  /// address the other side already assigned.
   final List<Asset<Object?>?> _addresses = <Asset<Object?>?>[];
 
   /// Identity -> handle, for every currently declared asset.
@@ -653,10 +650,11 @@ final class Assets {
   /// Declares [key] and returns its handle, creating and addressing it on
   /// first call and returning the identical handle on every later one.
   ///
-  /// Internal because [AssetDescriptor.has] is the user-facing spelling: an
-  /// asset declared outside a `describeAssets` pass would be declared on
-  /// whichever copy happened to run that code, and a declaration that runs on
-  /// one copy and not the other is precisely what breaks address agreement.
+  /// Internal because [Asset.of] and [AssetDescriptor.has] are the
+  /// user-facing spellings: an asset declared outside a scene's bring-up
+  /// would be declared on whichever copy happened to run that code, and a
+  /// declaration that runs on one copy and not the other is precisely what
+  /// breaks address agreement.
   @internal
   Asset<T> declare<T>(AssetKey<T> key) {
     final identity = _identityOf(key);
@@ -700,7 +698,8 @@ final class Assets {
   /// Throws if [key] was never declared, and does not lazily declare it for
   /// you: declaring here would assign an address on this copy alone, and the
   /// two copies would silently disagree about every address after it. Declare
-  /// in a `describeAssets` pass, which both copies run.
+  /// on a prefab field or in a scene's `describeAssets`, both of which run on
+  /// both copies.
   ///
   /// Call this only on the isolate that can decode - `GameState.loadScene`
   /// already does exactly that for a scene's declared set.
@@ -710,9 +709,9 @@ final class Assets {
     if (asset == null) {
       throw StateError(
         '${key.debugLabel} has not been declared, so there is nothing to load '
-        'into. Declare it from a describeAssets pass '
-        '(`descriptor.has(theKey)`) on a prefab or a SceneStruct: declaring is '
-        'what assigns the asset its address, and it has to happen on both '
+        'into. Declare it on a prefab field (`Asset.of(theKey)`) or in a '
+        "SceneStruct's describeAssets (`descriptor.has(theKey)`): declaring "
+        'is what assigns the asset its address, and it has to happen on both '
         'isolate copies in the same order for that address to mean the same '
         'thing on both sides.',
       );

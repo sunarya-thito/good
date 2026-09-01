@@ -257,19 +257,13 @@ final class _Loopback implements CommandSender {
   }
 }
 
-/// Two fields on the class and a third in the hook, in that order - which is
-/// the order the record has to come out in. See [_ThreeInHook], the same
-/// three fields written the other way.
-class _TwoOnFieldsOneInHook extends SinkCommand<int> {
+/// Three fields in a fixed order. [_ThreeFieldsAgain] declares the same three
+/// in the same order and [_ThreeFieldsReordered] the same three in another,
+/// which is what makes the signature comparison below say something.
+class _ThreeFields extends SinkCommand<int> {
   final head = Param.uint16();
   final flag = Param.uint1();
-
-  late final ParamPointer<int> tail;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    tail = descriptor.hasUint32();
-  }
+  final tail = Param.uint32();
 
   @override
   void bufferFromParams(ParamBuffer call, int params) => head[call] = params;
@@ -278,17 +272,22 @@ class _TwoOnFieldsOneInHook extends SinkCommand<int> {
   int paramsFromBuffer(ParamBuffer call) => head[call];
 }
 
-class _ThreeInHook extends SinkCommand<int> {
-  late final ParamPointer<int> head;
-  late final ParamPointer<int> flag;
-  late final ParamPointer<int> tail;
+class _ThreeFieldsAgain extends SinkCommand<int> {
+  final head = Param.uint16();
+  final flag = Param.uint1();
+  final tail = Param.uint32();
 
   @override
-  void describeParams(ParamDescriptor descriptor) {
-    head = descriptor.hasUint16();
-    flag = descriptor.hasUint1();
-    tail = descriptor.hasUint32();
-  }
+  void bufferFromParams(ParamBuffer call, int params) => head[call] = params;
+
+  @override
+  int paramsFromBuffer(ParamBuffer call) => head[call];
+}
+
+class _ThreeFieldsReordered extends SinkCommand<int> {
+  final tail = Param.uint32();
+  final head = Param.uint16();
+  final flag = Param.uint1();
 
   @override
   void bufferFromParams(ParamBuffer call, int params) => head[call] = params;
@@ -394,19 +393,28 @@ void main() {
       );
     });
 
-    test('a field and a hook declare one record', () {
-      final onFields = _registry().registry.declare(_TwoOnFieldsOneInHook.new);
-      final inHook = _registry().registry.declare(_ThreeInHook.new);
+    test('the record follows the order the fields are written in', () {
+      final first = _registry().registry.declare(_ThreeFields.new);
+      final again = _registry().registry.declare(_ThreeFieldsAgain.new);
+      final swapped = _registry().registry.declare(_ThreeFieldsReordered.new);
 
-      expect(onFields.layout.signature, inHook.layout.signature);
-      expect(onFields.layout.strideBytes, inHook.layout.strideBytes);
       expect(
-        onFields.layout.fieldCount,
+        first.layout.fieldCount,
         3,
         reason:
-            'the fields are declared during the constructor and the hook runs '
-            'straight after it, so the two forms compose in the order they '
-            'are written and a command may use both',
+            'three initialisers, three fields - a dropped one would make the '
+            'comparisons below agree for the wrong reason',
+      );
+      expect(again.layout.signature, first.layout.signature);
+      expect(again.layout.strideBytes, first.layout.strideBytes);
+      expect(
+        swapped.layout.signature,
+        isNot(first.layout.signature),
+        reason:
+            'the same three widths in another order is another record: field '
+            'initialisers run top to bottom and the layout is a bit cursor, '
+            'so a signature that matched here would mean the order was not '
+            'in it',
       );
     });
 
@@ -482,8 +490,8 @@ void main() {
         pinged,
         2,
         reason:
-            'no params, no result, no describeParams body - the shape '
-            'that needs nothing should cost nothing to declare',
+            'no params, no result, no field at all - the shape that needs '
+            'nothing should cost nothing to declare',
       );
     });
 

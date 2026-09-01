@@ -32,7 +32,6 @@ class SpatialIndex {
 }
 
 late ArenaGame game;
-late QueryDescriptor descriptor;
 late Query orcs;
 late Query missiles;
 late Query motes;
@@ -451,9 +450,9 @@ And the thing an inheritance tree was really for — writing one piece of code
 that covers a whole branch of it — is a query:
 
 ```dart
-everyone  = descriptor.query().withAll(Character).build();            // all three
-enemies   = descriptor.query().withAll(Character, Hostile).build();   // two
-civilians = descriptor.query().withAll(Character).withNone(Hostile).build();
+everyone  = Query.where().withAll(Character).build();            // all three
+enemies   = Query.where().withAll(Character, Hostile).build();   // two
+civilians = Query.where().withAll(Character).withNone(Hostile).build();
 ```
 
 That last one has no clean equivalent in a class hierarchy at all. "Everything
@@ -485,12 +484,12 @@ prefabs that happen to have identically named fields share nothing; identity
 comes from the declaration, never from the field names.
 
 **`super` discipline is load-bearing where a hook is still involved.** A
-`describeStruct` or `describeAssets` override must call `super`, because each
-mixin in the chain contributes. Skipping it silently drops everything below it,
-and the failure surfaces much later. There is no equivalent footgun in a class
-hierarchy, where the compiler wires the base constructor for you. Columns and
-component types are exempt: they are field initialisers, and Dart runs the
-whole chain of those without being asked.
+`describeStruct` override must call `super`, because each mixin in the chain
+contributes. Skipping it silently drops everything below it, and the failure
+surfaces much later. There is no equivalent footgun in a class hierarchy, where
+the compiler wires the base constructor for you. Columns, component types and
+assets are exempt: they are field initialisers, and Dart runs the whole chain
+of those without being asked.
 
 ### When to stop and write a second prefab
 

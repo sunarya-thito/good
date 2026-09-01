@@ -231,34 +231,6 @@ class _FireRenamed extends NetMessage<({double angle, int weapon})> {
       (angle: angle[message], weapon: weapon[message]);
 }
 
-/// The same record as [_Fire], declared through the hook instead of on the
-/// fields. Both forms exist and both have to reach the same bytes, or a peer
-/// on one build and a peer on the other would disagree about the wire while
-/// the handshake said they agreed.
-class _FireByHook extends NetMessage<({double angle, int weapon})> {
-  late final ParamPointer<double> angle;
-  late final ParamPointer<int> weapon;
-
-  @override
-  void describeParams(ParamDescriptor descriptor) {
-    angle = descriptor.hasFloat32();
-    weapon = descriptor.hasUint4();
-  }
-
-  @override
-  void bufferFromParams(
-    ParamBuffer message,
-    ({double angle, int weapon}) params,
-  ) {
-    angle[message] = params.angle;
-    weapon[message] = params.weapon;
-  }
-
-  @override
-  ({double angle, int weapon}) paramsFromBuffer(ParamBuffer message) =>
-      (angle: angle[message], weapon: weapon[message]);
-}
-
 /// One message, declared under the id a peer agreed on.
 class _OneMessageState extends GameState<_NetGame>
     with MultiplayerState<_NetGame> {
@@ -397,21 +369,6 @@ void main() {
             'same id, same layout, same target and channel - only the Dart '
             'class name differs, and a rename is a refactor rather than a '
             'protocol change. This is the whole of #141.',
-      );
-    });
-
-    test('declaring on the field or in the hook is one wire format', () async {
-      final onFields = await boot(() => _OneMessageGame(_Fire.new, 'fire'));
-      final inHook = await boot(() => _OneMessageGame(_FireByHook.new, 'fire'));
-
-      expect(
-        hashOf(inHook),
-        hashOf(onFields),
-        reason:
-            'the hash covers the head stride, the field count and what each '
-            'field is, so two declarations that agree on all three are the '
-            'same protocol however they were written. Both forms coexist, and '
-            'this is what says they have to mean the same thing.',
       );
     });
 

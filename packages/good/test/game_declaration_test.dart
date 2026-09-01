@@ -16,11 +16,14 @@ import 'package:good/src/system.dart';
 // `Game.start` and `Game.startInline` take a constructor, so the framework
 // builds the game and two declaration windows are open while its fields
 // initialise: the state descriptor `Channel.*` reads and the input registry
-// `Input.of` reads. What this file pins is that a declaration made through a
-// field and the same declaration made through the matching `describeX` hook
-// are one declaration - same set, same order, same values - that the `late`
-// spelling of either cannot quietly get in, and that a `Game` built while
-// somebody else's window is open is refused rather than declaring into it.
+// `Input.of` reads. What this file pins is what a field declaration produces
+// - the right set, in the right order, with the declared initial values -
+// that the `late` spelling of either cannot quietly get in, and that a `Game`
+// built while somebody else's window is open is refused rather than
+// declaring into it.
+//
+// `describeInputs` is still here because `hasDefaultValue` hands nothing back
+// and so has no field form. `Channel.*` is the only way to declare a channel.
 
 abstract class _BareGame extends Game {
   @override
@@ -44,34 +47,6 @@ class _FieldGame extends _BareGame {
   final score = Channel.int32(3);
   final health = Channel.float64(1.5);
   final alive = Channel.boolean(true);
-}
-
-class _HookGame extends _BareGame {
-  late final StateChannel<int> score;
-  late final StateChannel<double> health;
-  late final StateChannel<bool> alive;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    score = descriptor.hasInt32(3);
-    health = descriptor.hasFloat64(1.5);
-    alive = descriptor.hasBool(true);
-  }
-}
-
-/// Both ways at once, with distinct initial values so the two are told apart
-/// by what they hold rather than by which object they came off.
-class _MixedGame extends _BareGame {
-  final fromField = Channel.int32(11);
-
-  late final StateChannel<int> fromHook;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    fromHook = descriptor.hasInt32(22);
-  }
 }
 
 // --- an input declared each way -------------------------------------------
@@ -173,9 +148,10 @@ class _SystemHostState extends GameState<_SystemHostGame> {
 
 // --- the isolate-crossing fixture -----------------------------------------
 
-/// One channel from a field and one from the hook, both written on the game
-/// isolate. Index is a channel's identity across the boundary, so reading a
-/// consistent pair on main is what shows the two sources share one numbering.
+/// Two channels, both written on the game isolate and stepped by different
+/// amounts. Index is a channel's identity across the boundary, so reading a
+/// consistent pair on main is what shows both copies agree about the
+/// numbering the field initialisers produced.
 class _CrossingGame extends Game {
   @override
   int get pageSize => 4096;
@@ -183,15 +159,9 @@ class _CrossingGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
-  final fromField = Channel.int32();
+  final first = Channel.int32();
 
-  late final StateChannel<int> fromHook;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    fromHook = descriptor.hasInt32();
-  }
+  final second = Channel.int32();
 
   @override
   GameState createState() => _CrossingState();
@@ -214,8 +184,8 @@ class _CrossingSystem extends GameSystem with FixedTickable {
     final game = getGame<_CrossingGame>();
     // Two different steps, so a channel reading the other one's storage shows
     // up as a mismatch rather than as a coincidence.
-    game.fromField.value = game.fromField.value + 1;
-    game.fromHook.value = game.fromHook.value + 100;
+    game.first.value = game.first.value + 1;
+    game.second.value = game.second.value + 100;
   }
 }
 
@@ -237,32 +207,23 @@ void main() {
   tearDown(_reset);
 
   group('a channel on a Game field', () {
-    test('declares the same set the describeState hook does', () async {
+    test('declares one channel per field, carrying its initial value', () async {
       final fields = await _boot(_FieldGame.new);
-      final fieldValues = <Object>[
-        fields.score.value,
-        fields.health.value,
-        fields.alive.value,
-      ];
+
       expect(
         fields.stateChannelCount,
         3,
         reason:
-            'the fields actually declared - three channels, or the two lists '
-            'below could be equal for the wrong reason',
+            'three fields, three channels - a shared or dropped declaration '
+            'shows up here before the values below are asked for',
       );
-      await fields.stop();
-      _reset();
-
-      final hook = await _boot(_HookGame.new);
       expect(
-        <Object>[hook.score.value, hook.health.value, hook.alive.value],
-        fieldValues,
+        <Object>[fields.score.value, fields.health.value, fields.alive.value],
+        <Object>[3, 1.5, true],
         reason:
-            'the same three channels carrying the same three declared '
-            'initial values, whichever way they were declared',
+            'each carrying the initial value its own declaration named, so '
+            'two channels sharing one index would read as a repeat',
       );
-      expect(hook.stateChannelCount, 3);
     });
 
     test('is storage of its own, not a view onto a neighbour', () async {
@@ -278,25 +239,8 @@ void main() {
       );
     });
 
-    test('composes with the hook', () async {
-      final game = await _boot(_MixedGame.new);
-
-      expect(game.stateChannelCount, 2);
-      expect(
-        <int>[game.fromField.value, game.fromHook.value],
-        <int>[11, 22],
-        reason:
-            'both landed, and each kept its own declared initial value - a '
-            'shared index would have one of them reading the other',
-      );
-
-      game.fromField.value = 1;
-      game.fromHook.value = 2;
-      expect(<int>[game.fromField.value, game.fromHook.value], <int>[1, 2]);
-    });
-
     test(
-      'the two sources share one numbering across the isolate boundary',
+      'the declared channels share one numbering across the isolate boundary',
       () async {
         final game = await Game.start(_CrossingGame.new);
         addTearDown(() async {
@@ -305,22 +249,22 @@ void main() {
 
         // Seeded before `ready`, so both read their declared initial value
         // the instant start() returns.
-        expect(<int>[game.fromField.value, game.fromHook.value], <int>[0, 0]);
+        expect(<int>[game.first.value, game.second.value], <int>[0, 0]);
 
         final settled = Completer<void>();
         void listener() {
-          if (!settled.isCompleted && game.fromHook.value >= 300) {
+          if (!settled.isCompleted && game.second.value >= 300) {
             settled.complete();
           }
         }
 
-        game.fromHook.addListener(listener);
-        addTearDown(() => game.fromHook.removeListener(listener));
+        game.second.addListener(listener);
+        addTearDown(() => game.second.removeListener(listener));
         await settled.future.timeout(const Duration(seconds: 20));
 
-        final steps = game.fromHook.value ~/ 100;
+        final steps = game.second.value ~/ 100;
         expect(
-          game.fromField.value,
+          game.first.value,
           steps,
           reason:
               'the game isolate added 1 to one channel and 100 to the other; '

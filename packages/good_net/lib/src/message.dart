@@ -61,16 +61,6 @@ enum NetTarget {
 /// before it means anything. Write a reply as a second message going the other
 /// way, which is also what shipped netcode overwhelmingly does.
 abstract class NetMessageBase {
-  /// Declares this message's fields. Identical in shape and vocabulary to
-  /// `GameCommandBase.describeParams` - same descriptor, same packing rule,
-  /// and the same relationship to `Param.*`: a field declares first, this
-  /// appends behind it, and a message may use either or both.
-  ///
-  /// Empty by default, for the same reason it is on a command - a message
-  /// whose fields are `final angle = Param.float32();` has nothing to put
-  /// here.
-  void describeParams(ParamDescriptor descriptor) {}
-
   /// Position in `describeNetwork`'s declaration order - the two bytes that
   /// head this message's record and route it back to this object on the
   /// receiving machine.
@@ -85,8 +75,7 @@ abstract class NetMessageBase {
   /// any variable-length tail.
   int get strideBytes => _layout.strideBytes;
 
-  /// How many fields this message declared, through `Param.*` fields,
-  /// [describeParams], or both.
+  /// How many fields this message declared through its `Param.*` fields.
   int get fieldCount => _layout.fieldCount;
 
   /// How this message's record is laid out. Kept whole, not copied fact by
@@ -165,10 +154,9 @@ abstract class NetMessageBase {
     _target = target;
     _channel = channel;
     _layout = layout;
-    // [layout] arrives holding whatever this message's `Param.*` field
+    // [layout] arrives holding what this message's `Param.*` field
     // initialisers put in it - `NetRegistry.declare` opened it around the
-    // constructor - so [describeParams] appends behind them.
-    describeParams(layout);
+    // constructor - so this only closes it.
     layout.seal();
     _sender = sender;
   }
@@ -316,9 +304,8 @@ abstract class NetMessage<P> extends NetMessageBase {
 
 /// A message that carries nothing: `void Function()`, across a network.
 ///
-/// "Ready", "I want to skip the cutscene", "round over". Two lines including
-/// the class, since the default [describeParams] declares an empty record -
-/// the same shape `SignalCommand` has.
+/// "Ready", "I want to skip the cutscene", "round over". A signal declares no
+/// field at all, which is the same shape `SignalCommand` has.
 ///
 /// ```dart
 /// class Ready extends NetSignal {}
@@ -329,12 +316,6 @@ abstract class NetMessage<P> extends NetMessageBase {
 /// ready();
 /// ```
 abstract class NetSignal extends NetMessageBase {
-  /// Nothing to declare. Overridable anyway, for a signal that grows a field
-  /// later and would otherwise have to change class.
-  @override
-  @mustCallSuper
-  void describeParams(ParamDescriptor descriptor) {}
-
   /// Sends this signal wherever its [NetTarget] says it goes. See
   /// [NetMessage.call].
   void call() {

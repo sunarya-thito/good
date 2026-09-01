@@ -168,7 +168,7 @@ class _Banner extends EntityStruct
 /// the one place a sprite can be filled in one space and drawn in another.
 class _Panel extends EntityStruct
     with Transform2D, ScreenTransform2D, Renderable2D {
-  late final TextureAsset skin;
+  final skin = Asset.of(_textureKey);
   late final Sprite frame;
 
   @override
@@ -176,12 +176,6 @@ class _Panel extends EntityStruct
 
   @override
   final screenWidthAxis = ScreenAxis.fraction;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    skin = descriptor.has(_textureKey);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -217,16 +211,10 @@ class _Spinner extends EntityStruct
 /// A world-space label sorted above every sprite in the world, so the layer
 /// split is measured against a label that would otherwise draw last.
 class _Label extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
-  late final TextureAsset atlas;
+  final atlas = Asset.of(_textureKey);
 
   @override
   int get textCapacity => 8;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    atlas = descriptor.has(_textureKey);
-  }
 
   @override
   BitmapFont get textFont =>

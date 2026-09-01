@@ -494,11 +494,15 @@ class MyGame extends Game2D {
 }
 ```
 
-`Channel.*` runs while the game is being constructed, which is why
-`Game.start` takes a constructor rather than an instance:
-`Game.start(MyGame.new)`. The `describeState` hook still works and still
-composes with the fields — a game may use both, and the fields are numbered
-first.
+`Channel.*` runs while the game is being constructed, so `Game.start` takes a
+constructor and not an instance: `Game.start(MyGame.new)`. The declaration
+reads the window the framework opens around that call, and a `Game` you built
+yourself has no window to declare into.
+
+A `Game` is the only thing that declares a channel. Its storage is allocated on
+main before the spawn and its index in that one pass is its identity on the
+wire, so a `GameState`, a `GameSystem` and a `SceneStruct` — all built or
+loaded after that allocation — publish through a channel the `Game` holds.
 
 Write from the game isolate:
 

@@ -585,17 +585,11 @@ import 'package:$package/$package.dart';
 /// final speed = Field.float64(220);   // read and written as speed[entity]
 /// ```
 ///
-/// To give it a texture, declare one in `describeAssets` and hand the handle
-/// to the sprite:
+/// To give it a texture, declare one on the field that holds the handle and
+/// hand that to the sprite:
 ///
 /// ```dart
-/// late final TextureAsset texture;
-///
-/// @override
-/// void describeAssets(AssetDescriptor descriptor) {
-///   super.describeAssets(descriptor);
-///   texture = descriptor.has(Textures.yourAsset);
-/// }
+/// final texture = Asset.of(Textures.yourAsset);
 /// ```
 ///
 /// `Textures` comes from `package:$bundle/textures.dart`, which is

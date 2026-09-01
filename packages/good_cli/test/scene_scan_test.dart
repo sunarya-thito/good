@@ -318,10 +318,11 @@ class Plane extends EntityStruct {
     expect(usage.byScene['FieldScene'], isEmpty);
     expect(
       usage.unresolved,
-      contains('Plane.describeAssets'),
+      contains('Plane.Asset.of'),
       reason:
-          'an asset this pass cannot attribute has to be reported, so it '
-          'lands in the shared chunk on purpose rather than by accident',
+          'an asset this pass cannot attribute has to be reported, and named '
+          'where it was written, so it lands in the shared chunk knowingly '
+          'rather than by accident',
     );
   });
 

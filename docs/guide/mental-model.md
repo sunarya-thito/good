@@ -33,7 +33,6 @@ class Bullet() extends EntityStruct with Transform2D, Renderable2D;
 
 class HomingBullet() extends EntityStruct with Transform2D, Renderable2D;
 
-late QueryDescriptor descriptor;
 late Query homing;
 late Query allBullets;
 -->
@@ -159,8 +158,8 @@ prefabs are two archetypes, each with exactly the fields it needs, and a query
 can match either or both:
 
 ```dart
-homing = descriptor.query().withAll(Transform2D, HomingBullet).build();
-allBullets = descriptor.query().withAny(Bullet, HomingBullet).build();
+homing = Query.where().withAll(Transform2D, HomingBullet).build();
+allBullets = Query.where().withAny(Bullet, HomingBullet).build();
 ```
 
 The rule of thumb: **a flag for a state an entity moves in and out of; a prefab

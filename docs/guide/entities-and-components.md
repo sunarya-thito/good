@@ -137,16 +137,15 @@ Mix it in, and the archetype gains those columns:
 class Enemy() extends EntityStruct with Transform2D, Renderable2D, Health;
 ```
 
-The type is declared in a field, like the columns, so there is no chain to
-keep and nothing a prefab has to remember: writing `with Health` runs the
-initialiser. `describeAssets` and `describeStruct` are still hooks, and an
-override of either must call `super` — skipping it silently drops everything
-below it.
+The type is declared in a field, like the columns and like an asset, so there
+is no chain to keep and nothing a prefab has to remember: writing `with Health`
+runs the initialiser. `describeStruct` is still a hook, and an override of it
+must call `super` — skipping it silently drops everything below it.
 
 On your own `EntityStruct` subclass the analyzer enforces that, because the
 hook it overrides carries `@mustCallSuper`. Inside a component mixin it cannot:
 that annotation reports only where there is a concrete implementation
-underneath, and `Component` declares both hooks with no body. So
+underneath, and `Component` declares the hook with no body. So
 `good generate` checks it instead, and stops:
 
 ```

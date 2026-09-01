@@ -43,16 +43,10 @@ class _Billboard extends EntityStruct
     MemorySource(_png2x1, name: 'tile.png'),
   );
 
-  late final TextureAsset tile;
+  final tile = Asset.of(tileAsset);
   late final Sprite front;
   late final Sprite middle;
   late final Sprite back;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    tile = descriptor.has(tileAsset);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {

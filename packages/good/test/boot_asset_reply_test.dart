@@ -177,13 +177,7 @@ abstract class _BootLoadGame extends Game {
   late final SceneStruct scene;
 
   /// Written on the game isolate, read here.
-  late final StateChannel<int> loaded;
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    loaded = descriptor.hasInt32(0);
-  }
+  final loaded = Channel.int32(0);
 
   @override
   void describeAssetLoaders(AssetLoaderRegistrar loaders) {

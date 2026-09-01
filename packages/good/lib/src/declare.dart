@@ -219,9 +219,7 @@ abstract final class DeclarationContext {
         'it runs on first read, long after the declaration pass closed, so a '
         'parameter declared that way would take its bit offset from whatever '
         'order something happened to touch it. Field initialisers here are '
-        'eager, always. A describeParams body is the other way in: it runs '
-        'after the constructor, so it declares through the ParamDescriptor it '
-        'is handed rather than through Param.*.',
+        'eager, always.',
       );
     }
     return _params.last;
@@ -370,10 +368,7 @@ abstract final class DeclarationContext {
         'it runs on first read, long after the descriptor was sealed and the '
         'storage allocated, so a channel declared that way would have no '
         'triple buffer and no index to be known by on the other isolate. '
-        'Field initialisers here are eager, always. A describeState body is '
-        'the other way in: it runs after the constructor, so it declares '
-        'through the StateDescriptor it is handed rather than through '
-        'Channel.*.\n'
+        'Field initialisers here are eager, always.\n'
         'A Game is the only thing that declares a channel at all - its '
         'storage is allocated on main before the spawn, so only a pass that '
         'runs there can own an index. A GameState and a GameSystem are both '

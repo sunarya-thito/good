@@ -3,7 +3,6 @@ import 'package:good/src/animation/animatable.dart';
 import 'package:good/src/archetype.dart';
 import 'package:good/src/coroutine/coroutine.dart';
 import 'package:good/src/game_state.dart';
-import 'package:good/src/asset.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/declare.dart';
 import 'package:good/src/event.dart';
@@ -66,22 +65,6 @@ abstract interface class Component {
     T,
     DeclarationContext.components.declareComponent(T, conflictsWith),
   );
-
-  /// Declares every asset this component needs, and keeps each returned
-  /// handle in a field - the second declare-time pass, chained through mixins
-  /// with `@mustCallSuper` exactly like [describeStruct].
-  ///
-  /// Runs before [describeStruct], not after: a declared
-  /// [GameAssetInstance] is already addressed by the time it returns, so
-  /// [describeStruct] can use it as a row default
-  /// (`data.hasObject(playerTexture)`) without a second pass or a late
-  /// patch-up.
-  ///
-  /// Runs on **both** isolate copies, in the same order, on every prefab a
-  /// scene registers - that ordering is what assigns each asset its address,
-  /// so it must never be made conditional on which copy is running. Only the
-  /// *decode* is main-isolate-only; see [GameAssets].
-  void describeAssets(AssetDescriptor descriptor);
 
   void describeStruct(DataDescriptor data);
 
@@ -230,9 +213,9 @@ abstract class EntityStruct extends GameListenerBase
   int get archetypeId => archetype.archetypeId;
 
   /// Called once by `SceneDescriptor.has`, immediately before the
-  /// `describeAssets`/`describeStruct` passes run against [storage]. Not
-  /// part of the user-facing API: a struct is bound by registering it with
-  /// a scene, never by hand.
+  /// `describeStruct` pass runs against [storage]. Not part of the
+  /// user-facing API: a struct is bound by registering it with a scene,
+  /// never by hand.
   @internal
   void bindArchetype(SceneStruct scene, ArchetypeStorage storage) {
     if (_bound) {
@@ -267,13 +250,6 @@ abstract class EntityStruct extends GameListenerBase
     }
     return true;
   }
-
-  /// No-op base of the `describeAssets` chain - a prefab with no assets
-  /// overrides nothing, and one with assets calls `super.describeAssets(...)`
-  /// first, exactly as with [describeStruct].
-  @override
-  @mustCallSuper
-  void describeAssets(AssetDescriptor descriptor) {}
 
   // helps find the length of the game object
   @override

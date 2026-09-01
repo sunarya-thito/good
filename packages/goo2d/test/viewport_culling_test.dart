@@ -90,14 +90,8 @@ class _Panel extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   static const double size = 100;
 
-  late final TextureAsset skin;
+  final skin = Asset.of(_panelKey);
   late final Sprite frame;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    skin = descriptor.has(_panelKey);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {

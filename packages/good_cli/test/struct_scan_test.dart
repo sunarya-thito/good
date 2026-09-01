@@ -721,15 +721,16 @@ class Player extends EntityStruct with Velocity, Fast {}
   //
   // `@mustCallSuper` cannot reach this. It reports only where the analyzer
   // finds a concrete super implementation to point at, and `Component`
-  // declares describeAssets and describeStruct with no body - so the
-  // annotation is inert exactly where mixins chain. A user's own struct
-  // subclass is covered, because the lookup walks past the mixins to
-  // `EntityStruct`. Library and third-party component mixins are the gap.
+  // declares describeStruct with no body - so the annotation is inert exactly
+  // where mixins chain. A user's own struct subclass is covered, because the
+  // lookup walks past the mixins to `EntityStruct`. Library and third-party
+  // component mixins are the gap.
   //
   // Surveyed before any of this was written: all fourteen describeX overrides
   // across the engine's eleven component mixins chain, so no legitimate
-  // pattern here overrides without calling super. `describeType` has since
-  // left the set, and the test below pins what took its place.
+  // pattern here overrides without calling super. `describeType` and
+  // `describeAssets` have both left the set, and the tests below pin what
+  // took their place.
 
   group('a component mixin has to chain its declare-time hooks', () {
     test('an override that drops the call is named with its hook and file', () {
@@ -739,8 +740,8 @@ mixin Velocity on Component {
   final speed = Field.float64();
 
   @override
-  void describeAssets(AssetDescriptor descriptor) {
-    descriptor.has(Textures.trail);
+  void describeStruct(DataDescriptor data) {
+    data.hasFloat64();
   }
 }
 ''',
@@ -750,12 +751,12 @@ mixin Velocity on Component {
       expect(scan.missingSuper, hasLength(1));
       final hit = scan.missingSuper.single;
       expect(hit.mixin, 'Velocity');
-      expect(hit.hook, 'describeAssets');
+      expect(hit.hook, 'describeStruct');
       expect(hit.file, endsWith('velocity.dart'));
       expect(
         missingSuperMessage(scan),
         contains(
-          'Velocity.describeAssets does not call super.describeAssets()',
+          'Velocity.describeStruct does not call super.describeStruct()',
         ),
       );
     });
@@ -765,9 +766,9 @@ mixin Velocity on Component {
         'game.dart': '''
 mixin Velocity on Component {
   @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    descriptor.has(Textures.trail);
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    data.hasFloat64();
   }
 }
 ''',
@@ -788,25 +789,28 @@ mixin Velocity on Component {
       expect(scan.unresolved, isEmpty);
     });
 
-    test('declaring a component type in a field is not a hook to chain', () {
-      // #287. `describeType` was in the chained set and is not any more: a
-      // component names its own type in a field initialiser, which nothing
-      // chains through and so nothing can leave out. Only the describeAssets
-      // override is a defect here, and it is the only thing reported.
+    test('a declaration in a field is not a hook to chain', () {
+      // #287. `describeType` and `describeAssets` were both in the chained
+      // set and neither is any more: a component names its own type and its
+      // own assets in field initialisers, which nothing chains through and so
+      // nothing can leave out. Only the describeStruct override is a defect
+      // here, and it is the only thing reported.
       final dir = _project(<String, String>{
         'velocity.dart': '''
 mixin Velocity on Component {
   final velocityType = Component.type<Velocity>();
 
+  final trail = Asset.of(Textures.trail);
+
   @override
-  void describeAssets(AssetDescriptor descriptor) {
-    descriptor.has(Textures.trail);
+  void describeStruct(DataDescriptor data) {
+    data.hasFloat64();
   }
 }
 ''',
       });
       final scan = scanStructRules(dir);
-      expect(scan.missingSuper.map((h) => h.hook), <String>['describeAssets']);
+      expect(scan.missingSuper.map((h) => h.hook), <String>['describeStruct']);
     });
 
     test('a MultiComponent mixin is held to the same rule', () {
@@ -828,28 +832,27 @@ mixin Renderable2D on MultiComponent {
         'game.dart': '''
 mixin Velocity on Component {
   @override
-  void describeAssets(AssetDescriptor descriptor) =>
-      super.describeAssets(descriptor);
+  void describeStruct(DataDescriptor data) => super.describeStruct(data);
 }
 ''',
       });
       expect(scanStructRules(dir).missingSuper, isEmpty);
     });
 
-    test('chaining a different hook does not count', () {
-      // Calling super.describeStruct from describeAssets leaves the
-      // describeAssets chain cut, and runs the other pass twice.
+    test('calling a different super member does not count', () {
+      // The chain is cut all the same, and the check asks for this hook by
+      // name rather than for any super call at all.
       final dir = _project(<String, String>{
         'game.dart': '''
 mixin Velocity on Component {
   @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeStruct(descriptor);
+  void describeStruct(DataDescriptor data) {
+    super.describeAnimation(data);
   }
 }
 ''',
       });
-      expect(scanStructRules(dir).missingSuper.single.hook, 'describeAssets');
+      expect(scanStructRules(dir).missingSuper.single.hook, 'describeStruct');
     });
 
     test('the call has to be code, not a comment or a string', () {
@@ -858,10 +861,10 @@ mixin Velocity on Component {
         'game.dart': '''
 mixin Velocity on Component {
   @override
-  void describeAssets(AssetDescriptor descriptor) {
-    // super.describeAssets(descriptor);
-    final note = 'super.describeAssets(descriptor)';
-    descriptor.has(Textures.trail);
+  void describeStruct(DataDescriptor data) {
+    // super.describeStruct(data);
+    final note = 'super.describeStruct(data)';
+    data.hasFloat64();
   }
 }
 ''',
@@ -874,8 +877,8 @@ mixin Velocity on Component {
         'game.dart': '''
 mixin Transform2D on Component {
   @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
   }
 }
 mixin Aimed on Transform2D {
@@ -912,8 +915,8 @@ mixin Reporting on StringBuffer {
         'game.dart': '''
 mixin Velocity on SomethingElsewhere {
   @override
-  void describeAssets(AssetDescriptor descriptor) {
-    descriptor.has(Textures.trail);
+  void describeStruct(DataDescriptor data) {
+    data.hasFloat64();
   }
 }
 ''',
@@ -956,7 +959,7 @@ class Player extends EntityStruct {
         'game.dart': '''
 mixin Velocity on Component {
   @override
-  void describeAssets(AssetDescriptor descriptor);
+  void describeStruct(DataDescriptor data);
 }
 ''',
       });

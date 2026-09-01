@@ -134,14 +134,8 @@ class _Second extends EntityStruct
 /// One nine-sliced sprite: one sprite, nine records.
 class _Panel extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final TextureAsset skin;
+  final skin = Asset.of(_panelTextureKey);
   late final Sprite frame;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    skin = descriptor.has(_panelTextureKey);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -164,14 +158,8 @@ class _Panel extends EntityStruct
 /// The whole of #252 is that the fill pass charged this nine.
 class _Bar extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final TextureAsset skin;
+  final skin = Asset.of(_panelTextureKey);
   late final Sprite bar;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    skin = descriptor.has(_panelTextureKey);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -197,14 +185,8 @@ class _Bar extends EntityStruct
 /// both would pass [_Bar] and fail this.
 class _Column extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final TextureAsset skin;
+  final skin = Asset.of(_panelTextureKey);
   late final Sprite bar;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    skin = descriptor.has(_panelTextureKey);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {

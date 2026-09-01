@@ -88,16 +88,10 @@ class _Enemy extends EntityStruct
 /// The label. Eight code units of capacity, which is deliberately small - the
 /// overflow tests need a capacity a test string can reach.
 class _Damage extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
-  late final TextureAsset atlas;
+  final atlas = Asset.of(_atlasKey);
 
   @override
   int get textCapacity => 8;
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    atlas = descriptor.has(_atlasKey);
-  }
 
   /// How many times [textFont] has been read. The override builds a font, so
   /// a read allocates one, and a frame that reached the getter would allocate

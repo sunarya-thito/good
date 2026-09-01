@@ -6,7 +6,7 @@ import 'package:good/src/asset.dart';
 ///
 /// # This is the asset, not the playback
 ///
-/// A clip is declared in `describeAssets`, addressed, pointed at from a
+/// A clip is declared like any other asset, addressed, pointed at from a
 /// component row, packed, encrypted and shipped exactly like a texture, and a
 /// readiness check can tell you it is missing before the game starts. What
 /// turns it into a sound is `AudioMixer` - `state.audio.play(clip, bus)` -

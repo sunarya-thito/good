@@ -1729,7 +1729,7 @@ final class _SpriteDrawQueue {
 ///
 /// [Sprite.texture] is read and written into every record as the asset's
 /// `GlobalObject` **address** - the integer both isolate copies agree on
-/// because both ran the same `describeAssets` pass - alongside four UV pairs
+/// because both ran the same asset declarations - alongside four UV pairs
 /// covering the whole image. A null texture writes
 /// [DrawSpriteData2D.noTexture] and the quad draws as its flat colour; there
 /// is no placeholder image and no second code path.

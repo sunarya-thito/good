@@ -120,17 +120,11 @@ enum Audios with LocalEnumAssetKey<AudioClip> {
 
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D, Collider2D {
-  late final TextureAsset texture;
+  final texture = Asset.of(Textures.spritesPlayer);
   late final Sprite sprite;
   late final CircleBody hitbox;
   final speed = Field.float64(120);
   final shielded = Field.boolean();
-
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    texture = descriptor.has(Textures.spritesPlayer);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -151,20 +145,13 @@ class Enemy() extends EntityStruct
 class Eye() extends EntityStruct with Transform2D, WorldTransform2D, Camera;
 
 class MyGame extends Game2D {
-  /// The two state channels the guide publishes to. A page that teaches
-  /// `describeState` declares its own and shadows this one.
-  late final StateChannel<int> score;
-  late final StateChannel<int> contactCount;
+  /// The two state channels the guide publishes to. A page declaring its own
+  /// shadows these.
+  final score = Channel.int32();
+  final contactCount = Channel.int32();
 
   @override
   MyState createState() => MyState();
-
-  @override
-  void describeState(StateDescriptor descriptor) {
-    super.describeState(descriptor);
-    score = descriptor.hasInt32();
-    contactCount = descriptor.hasInt32();
-  }
 }
 
 class MyState extends GameState2D<MyGame> {

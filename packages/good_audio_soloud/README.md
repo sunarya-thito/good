@@ -26,7 +26,8 @@ final voice = state.audio.play(scene.theme, AudioBus.master);
 voice.stop();
 ```
 
-`scene.theme` is an `Asset<AudioClip>` a scene declared in `describeAssets`,
+`scene.theme` is an `Asset<AudioClip>` a scene declared in `describeAssets`
+(a prefab declares one with `Asset.of` on the field),
 like a texture. The voice holds a claim on it for as long as it sounds, so the
 scene that declared it can unload without the music stopping.
 

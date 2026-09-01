@@ -119,16 +119,10 @@ final class BitmapFont {
 /// ```dart
 /// class DamageNumber extends EntityStruct
 ///     with Transform2D, WorldTransform2D, Text2D {
-///   late final TextureAsset atlas;
+///   final atlas = Asset.of(fontAtlasKey);
 ///
 ///   @override
 ///   int get textCapacity => 8;
-///
-///   @override
-///   void describeAssets(AssetDescriptor descriptor) {
-///     super.describeAssets(descriptor);
-///     atlas = descriptor.has(fontAtlasKey);
-///   }
 ///
 ///   @override
 ///   BitmapFont get textFont =>
@@ -188,9 +182,9 @@ mixin Text2D on Component {
   /// null, and a prefab with no font draws nothing at all.
   ///
   /// Read once, during `describeStruct`, and kept in [textFontResolved].
-  /// `describeStruct` runs after `describeAssets`, so a [TextureAsset] the
-  /// prefab declared for itself is already populated when an override builds
-  /// a font from it.
+  /// `describeStruct` runs after the constructor, so a [TextureAsset] the
+  /// prefab declared on a field with `Asset.of` is already populated when an
+  /// override builds a font from it.
   ///
   /// An override that constructs a `BitmapFont` allocates one per read, so
   /// anything wanting a prefab's font after the archetype is described reads

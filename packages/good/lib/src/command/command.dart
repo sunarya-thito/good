@@ -43,25 +43,6 @@ import 'package:good/src/command/param.dart';
 /// same mistake in miniature, since a handler that has to know the wire
 /// format is a handler that cannot be tested as the function it is.
 abstract class GameCommandBase {
-  /// Declares this command's fields - the parameters *and* the results, in
-  /// one record, since they are the same bytes travelling in both directions.
-  ///
-  /// Empty by default, because [Param] is the other way to declare the same
-  /// fields and a command that uses it has nothing to put here:
-  ///
-  /// ```dart
-  /// class SpawnEnemy extends SinkCommand<int> {
-  ///   final flags = Param.uint2();
-  /// }
-  /// ```
-  ///
-  /// Override it for a declaration a field initialiser cannot reach - one
-  /// that has to read something off the instance, or one built in a loop.
-  /// The two forms compose: `Param.*` fields are declared during the
-  /// constructor, this runs immediately after, so the fields take the lower
-  /// bit offsets.
-  void describeParams(ParamDescriptor descriptor) {}
-
   /// Position in the shared declaration order - what a record's header
   /// carries and what routes it back to this command on the other side.
   ///
@@ -133,16 +114,13 @@ abstract class GameCommandBase {
   /// Fixes this command's place in the declaration list and closes its
   /// layout.
   ///
-  /// [descriptor] arrives with whatever the `Param.*` field initialisers
-  /// already put in it - `CommandRegistry.declare` opens it around the
-  /// constructor - so [describeParams] appends behind them. A command that
-  /// uses both forms therefore gets its fields first and its hook's second,
-  /// which is the order they are written in.
+  /// [descriptor] arrives holding what the `Param.*` field initialisers put
+  /// in it - `CommandRegistry.declare` opens it around the constructor - so
+  /// this only fixes the index and closes the layout.
   @internal
   void bind(int index, ParamLayout descriptor, CommandSender sender) {
     _index = index;
     _layout = descriptor;
-    describeParams(descriptor);
     descriptor.seal();
     _sender = sender;
   }
@@ -369,16 +347,9 @@ abstract class SinkCommand<P> extends GameCommandBase {
 
 /// A call that takes and returns nothing: `void Function()`.
 ///
-/// "Do the thing." No [describeParams] body needed either - the default
-/// declares an empty record, so a signal is one line: `class Ping extends
-/// SignalCommand {}`.
+/// "Do the thing." A signal declares no field at all, so it is one line:
+/// `class Ping extends SignalCommand {}`.
 abstract class SignalCommand extends GameCommandBase {
-  /// Nothing to declare. Overridable anyway, for a signal that grows a field
-  /// later and would otherwise have to change class.
-  @override
-  @mustCallSuper
-  void describeParams(ParamDescriptor descriptor) {}
-
   ParamBuffer execute([CommandBatch? batch]) => _reserve(batch);
 
   Future<void> call() {
@@ -479,9 +450,7 @@ abstract class CommandDescriptor {
   /// A tear-off - `descriptor.has(Damage.new)` - and not an instance,
   /// because a `Param.*` field initialiser runs at construction and needs
   /// the layout to already be open. `ParamLayout.open` puts it there and
-  /// calls [create] inside it; a command that declares through
-  /// `describeParams` instead is built the same way and simply finds
-  /// nothing to do with the open layout.
+  /// calls [create] inside it.
   T has<T extends GameCommandBase>(T Function() create);
 
   /// Registers what runs when [command] arrives.
