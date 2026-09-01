@@ -610,11 +610,7 @@ mixin Collider2D on MultiComponent {
   @mustCallSuper
   void describeCollider(ColliderDescriptor descriptor) {}
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<Collider2D>();
-  }
+  final collider2DType = Component.type<Collider2D>();
 
   @override
   void describeStruct(DataDescriptor data) {

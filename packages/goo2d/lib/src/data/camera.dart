@@ -62,11 +62,7 @@ mixin Camera on Component {
   /// initialiser cannot reach.
   late final DataPointer<CameraView?> cameraView;
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<Camera>();
-  }
+  final cameraType = Component.type<Camera>();
 
   @override
   void describeStruct(DataDescriptor data) {

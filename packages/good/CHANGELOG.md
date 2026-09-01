@@ -94,6 +94,65 @@
 
 ### Breaking
 
+* **`describeType` is gone. A component declares its own type in a field**
+  (#287):
+
+  ```dart
+  mixin Health on Component {
+    final healthType = Component.type<Health>();
+
+    final healthHp = Field.int32(100);
+  }
+  ```
+
+  `Component.type<T>()` ORs `T`'s bit into the archetype's signature and hands
+  back a `ComponentType<T>` carrying the type and the bit. It reads the
+  registrar the framework opens around a prefab's constructor, which is the
+  seventh thing to read that window after `Field.*`, `EntityStruct.of` and
+  `Asset.of`. `ComponentDescriptor` is gone with the hook.
+
+  | before | after |
+  |---|---|
+  | `void describeType(ComponentDescriptor c) { super.describeType(c); c.has<Health>(); }` | `final healthType = Component.type<Health>();` |
+
+  A prefab writes nothing. `EntityStruct.describeType` existed to OR in
+  `has(type: runtimeType)`, and the framework now does that itself once the
+  constructor returns - `runtimeType` is not reachable from a field
+  initialiser, and it is the one bit in a signature that only a run can know.
+
+  This removes the chain and the failure the chain had: a component mixin that
+  overrode the hook and left out `super` contributed no bit, so
+  `withAll(ThatComponent)` matched every archetype instead of none. A field
+  initialiser has no `super` to leave out. `good generate` stops checking
+  `describeType` for a missing `super` because there is nothing left to check;
+  `describeStruct` and `describeAssets` are still checked.
+
+  Bit assignment order moves with it. Mixin field initialisers run in reverse
+  `with` order and the prefab's own type is added last, where the `super` chain
+  ran base-first and the prefab's type first. Within a signature this is
+  invisible - a signature is an OR - and a game naming its generated tables to
+  `Game.componentBits` has every scanned type numbered before any of this
+  happens. A game naming none sees different numbers for the same run, which is
+  the property `ComponentTypeRegistry` already says not to depend on.
+
+  **A component can refuse to share an archetype.** `conflictsWith` maps each
+  type it cannot sit beside to the sentence explaining the pair, and the pair
+  is checked once the prefab is built rather than as each component declares
+  itself:
+
+  ```dart
+  final screenTransform2DType = Component.type<ScreenTransform2D>(
+    conflictsWith: <Type, String>{
+      WorldTransform2D: 'Only one of them can be true.',
+    },
+  );
+  ```
+
+  `ScreenTransform2D` and `Text2D` in `goo2d` asked the same question with
+  `assert(this is! Other)` inside their hook bodies, which a field initialiser
+  cannot do: an initialiser has no `this`. Declaring the refusal keeps the
+  check and makes it symmetric - naming it on either of the two is enough.
+
 * **`entity<T?>()` is gone. `Entity.call` takes `T extends Component` and
   `entity.has<T>()` answers whether the component is there** (#302):
 

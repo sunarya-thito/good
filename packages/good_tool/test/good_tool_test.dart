@@ -736,10 +736,7 @@ Directory _standaloneTree() {
         "import 'package:good/good.dart';\n\n"
         'mixin Transform2D on Component {\n'
         '  final transformOffsetX = Field.float64();\n\n'
-        '  @override\n'
-        '  void describeType(ComponentDescriptor component) {\n'
-        '    component.has<Transform2D>();\n'
-        '  }\n'
+        '  final transform2DType = Component.type<Transform2D>();\n'
         '}\n',
     'src/component_bits.g.dart':
         "import 'package:good/good.dart';\n\n"
@@ -756,10 +753,7 @@ Directory _standaloneTree() {
         "import 'package:goo2d/goo2d.dart';\n\n"
         'mixin Body on Component {\n'
         '  final bodyMass = Field.float64();\n\n'
-        '  @override\n'
-        '  void describeType(ComponentDescriptor component) {\n'
-        '    component.has<Body>();\n'
-        '  }\n'
+        '  final bodyType = Component.type<Body>();\n'
         '}\n',
   });
 

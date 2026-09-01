@@ -61,11 +61,7 @@ mixin _Holder on Component {
     maybe = data.optHeapObject<List<int>>();
   }
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Holder>();
-  }
+  final holderType = Component.type<_Holder>();
 }
 
 class _Thing extends EntityStruct with _Holder, Child, Parent {}

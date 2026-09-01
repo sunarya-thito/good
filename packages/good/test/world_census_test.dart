@@ -28,21 +28,13 @@ late Game run;
 mixin _Grounded on Component {
   final weight = Field.uint16(3);
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Grounded>();
-  }
+  final groundedType = Component.type<_Grounded>();
 }
 
 mixin _Winged on Component {
   final span = Field.uint8(1);
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Winged>();
-  }
+  final wingedType = Component.type<_Winged>();
 }
 
 class _Rock extends EntityStruct with _Grounded {}

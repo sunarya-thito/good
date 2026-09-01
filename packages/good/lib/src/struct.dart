@@ -12,13 +12,66 @@ import 'package:good/src/scene.dart';
 import 'package:good/src/system.dart';
 
 abstract interface class Component {
-  void describeType(ComponentDescriptor component);
+  /// Declares that whatever is being constructed carries the component type
+  /// [T], and hands back the handle for it.
+  ///
+  /// Written once, in a field of the component mixin itself:
+  ///
+  /// ```dart
+  /// mixin Health on Component {
+  ///   final healthType = Component.type<Health>();
+  ///
+  ///   late final DataPointer<int> health;
+  /// }
+  /// ```
+  ///
+  /// Every prefab that writes `with Health` runs that initialiser, so the bit
+  /// reaches the archetype's signature with nothing for the prefab to write
+  /// and nothing for it to forget. `withAll(Health)` matches exactly the
+  /// archetypes that mix `Health` in, and the two facts cannot drift apart
+  /// because there is only one of them.
+  ///
+  /// The bit is [ComponentTypeRegistry.bitFor]'s, and the signature it lands
+  /// in is `ArchetypeStorage.componentSignature`. `Field.float64` and
+  /// `Asset.of` are the same move made for columns and for assets, and the
+  /// registrar this reaches is `DeclarationContext.components`.
+  ///
+  /// # Refusing a combination
+  ///
+  /// [conflictsWith] maps each component type this one cannot share an
+  /// archetype with to the sentence explaining the pair:
+  ///
+  /// ```dart
+  /// mixin ScreenTransform2D on Component {
+  ///   final screenTransform2DType = Component.type<ScreenTransform2D>(
+  ///     conflictsWith: <Type, String>{
+  ///       WorldTransform2D: 'They mean two different things by an offset.',
+  ///     },
+  ///   );
+  /// }
+  /// ```
+  ///
+  /// The pair is checked once the prefab is built, not when this runs: mixin
+  /// field initialisers run in reverse `with` order, so at the moment a
+  /// conflict is declared the other component may not have declared itself
+  /// yet. Declaring it on either of the two is enough, and declaring it on
+  /// both says the same thing twice.
+  ///
+  /// Throws when nothing is being constructed - a prefab built by hand, or a
+  /// `late final` that runs on first read rather than during the pass that
+  /// lays the archetype out.
+  static ComponentType<T> type<T extends Component>({
+    Map<Type, String> conflictsWith = const <Type, String>{},
+  }) => ComponentType<T>._(
+    T,
+    DeclarationContext.components.declareComponent(T, conflictsWith),
+  );
 
   /// Declares every asset this component needs, and keeps each returned
-  /// handle in a field - the third declare-time pass, chained through mixins
-  /// with `@mustCallSuper` exactly like [describeType] and [describeStruct].
+  /// handle in a field - the second declare-time pass, chained through mixins
+  /// with `@mustCallSuper` exactly like [describeStruct].
   ///
-  /// Runs between the other two, not after them: a declared
+  /// Runs before [describeStruct], not after: a declared
   /// [GameAssetInstance] is already addressed by the time it returns, so
   /// [describeStruct] can use it as a row default
   /// (`data.hasObject(playerTexture)`) without a second pass or a late
@@ -71,9 +124,8 @@ abstract interface class MultiComponent implements Component {}
 // the game, and one declared *here* reach this prefab and nothing else, which
 // is the scoping that makes a per-struct mount hook possible at all.
 
-// NOTE: No longer carries <T>
-// <T> was used to describe the type of the prefab, but it is no longer needed
-// because .has on the describeType now accepts direct Type as parameter.
+// Carries no type parameter naming itself. A prefab's own bit comes from
+// `runtimeType`, which the framework ORs in once the object is built.
 abstract class EntityStruct extends GameListenerBase
     with EventBus, Coroutines, Animations
     implements MultiComponent {
@@ -178,7 +230,7 @@ abstract class EntityStruct extends GameListenerBase
   int get archetypeId => archetype.archetypeId;
 
   /// Called once by `SceneDescriptor.has`, immediately before the
-  /// `describeType`/`describeStruct` passes run against [storage]. Not
+  /// `describeAssets`/`describeStruct` passes run against [storage]. Not
   /// part of the user-facing API: a struct is bound by registering it with
   /// a scene, never by hand.
   @internal
@@ -216,15 +268,9 @@ abstract class EntityStruct extends GameListenerBase
     return true;
   }
 
-  @override
-  @mustCallSuper
-  void describeType(ComponentDescriptor component) {
-    component.has(type: runtimeType);
-  }
-
   /// No-op base of the `describeAssets` chain - a prefab with no assets
   /// overrides nothing, and one with assets calls `super.describeAssets(...)`
-  /// first, exactly as with [describeType]/[describeStruct].
+  /// first, exactly as with [describeStruct].
   @override
   @mustCallSuper
   void describeAssets(AssetDescriptor descriptor) {}
@@ -288,19 +334,32 @@ abstract class EntityStruct extends GameListenerBase
       DeclarationContext.prefabs.declareChild<T>(create);
 }
 
-/// Declares which component *types* an archetype carries - one `has<T>()` per
-/// type, each ORing that type's bit into the archetype's signature, which is
-/// the whole of what a query matches on.
+/// What [Component.type] hands back: one component type's place in the query
+/// signature, held in the field that declared it.
 ///
-/// Returns nothing, and there is no per-component enable toggle to reach for.
-/// An archetype *is* its component set: switching a component off across the
-/// whole archetype just describes a different archetype, and switching it off
-/// for one entity needs a bit in every row plus a query that consults it, which
-/// is a different feature entirely. The enable/disable that does exist works at
-/// the level where it means something: whole systems, via
-/// `GameState.enableSystem`.
-abstract class ComponentDescriptor {
-  void has<T extends Component>({Type? type});
+/// There is no per-component enable toggle to reach for. An archetype *is* its
+/// component set: switching a component off across the whole archetype just
+/// describes a different archetype, and switching it off for one entity needs
+/// a bit in every row plus a query that consults it, which is a different
+/// feature entirely. The enable/disable that does exist works at the level
+/// where it means something: whole systems, via `GameState.enableSystem`.
+final class ComponentType<T extends Component> {
+  const ComponentType._(this.type, this.bit);
+
+  /// The type declared, which is [T]. Carried as a value so it can be passed
+  /// to `withAll` and the rest, which take a `Type`.
+  final Type type;
+
+  /// The single-bit mask this type holds in every signature in this process -
+  /// [ComponentTypeRegistry.bitFor]'s answer for [type], read once at declare
+  /// time.
+  ///
+  /// A mask, not an index, because every use of it is an AND or an OR against
+  /// `ArchetypeStorage.componentSignature`.
+  final int bit;
+
+  @override
+  String toString() => 'ComponentType<$type>(bit ${bit.toRadixString(2)})';
 }
 
 /// A handle to one row of component data, packed into a single 64-bit int:
@@ -395,9 +454,9 @@ extension type const Entity(int value) implements int {
   ///
   /// It is a question about the *archetype*, not the row: every entity of one
   /// archetype answers the same, because an archetype is its component set
-  /// (see [ComponentDescriptor], whose own `has<T>()` is what declares the
-  /// membership this reads back). Hoist it out of a loop over one group rather
-  /// than asking per entity.
+  /// (see [Component.type], which is what declares the membership this reads
+  /// back). Hoist it out of a loop over one group rather than asking per
+  /// entity.
   ///
   /// Reading through [T] costs a second resolve, so a guard followed by a use
   /// resolves twice. That is the price of the branch; a system that wants one

@@ -114,9 +114,9 @@ const GeneratedComponentBits goo2dComponentBits = GeneratedComponentBits(
 );
 ```
 
-`ComponentTypeRegistry` hands each component type a bit the first time
-`ComponentDescriptor.has<T>()` names it, so which bit a type holds follows the
-order the scenes were declared in. A game that names these tables to
+`ComponentTypeRegistry` hands each component type a bit the first time a
+`Component.type<T>()` field initialiser names it, so which bit a type holds
+follows the order the scenes were declared in. A game that names these tables to
 `Game.componentBits` has them numbered before that, in an order this tool fixes
 — the package name, then the declaring file, then the type name — so two
 processes running the same engine packages read a query signature the same way.
@@ -126,12 +126,12 @@ against the whole repository, and a game on `goo2d` but not `goo3d` would then
 install a table full of holes out of sixty-four; an order lets the registry
 number whatever set it is given, contiguously from zero.
 
-The set is the types some `describeType` in this repository calls `has<T>()` on,
-which is exactly the set `bitFor` is called with. Not every component mixin:
-`CollisionListener` is a mixin on `Component` that registers nothing, and a bit
-for it would be one of sixty-four spent on a type no signature carries. Not
-`EntityStruct`'s own `has(type: runtimeType)` either — the type is the value of
-an expression, so a prefab's bit stays a run-time assignment.
+The set is the types some `Component.type<T>()` field initialiser in this
+repository names, which is exactly the set `bitFor` is called with. Not every
+component mixin: `CollisionListener` is a mixin on `Component` that declares no
+type, and a bit for it would be one of sixty-four spent on a type no signature
+carries. Not a prefab's own type either — the framework ORs that in from
+`runtimeType`, so a prefab's bit stays a run-time assignment.
 
 Sixteen entries today, out of sixty-four. The tool refuses to write a table
 larger than that and names every type in it, which is the failure #18 wanted

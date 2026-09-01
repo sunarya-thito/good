@@ -8,7 +8,7 @@ import 'package:good/src/struct.dart';
 
 /// Assigns every distinct `Component` type (a concrete `EntityStruct`
 /// subclass, or a mixin like `Transform2D`/`Child`) one stable bit, the
-/// first time `ComponentDescriptor.has<T>()` sees it.
+/// first time a declaration names it.
 ///
 /// The bit is what makes archetype matching a single machine instruction
 /// later: a query compiles to a required-mask/forbidden-mask pair, and
@@ -60,6 +60,18 @@ abstract final class ComponentTypeRegistry {
   /// int). That is harmless: every use is bitwise AND/OR, never a
   /// comparison or an arithmetic shift of the signature itself.
   static int bitFor(Type type) => 1 << indexFor(type);
+
+  /// The mask [type] already holds, or `0` if nothing has declared it.
+  ///
+  /// Asking does not assign one, which is the whole difference from [bitFor]
+  /// and the reason this exists. `ArchetypeComponentDescriptor.checkConflicts`
+  /// asks whether an archetype carries a component that refuses it, and a
+  /// game that never mentions that component would otherwise spend one of
+  /// [maxComponentTypes] on the question.
+  static int declaredBitFor(Type type) {
+    final index = _indices[type];
+    return index == null ? 0 : 1 << index;
+  }
 
   /// The bit *index* (0..63) for [type]. Exposed for diagnostics and for
   /// the future multi-word widening; [bitFor] is what callers normally
@@ -544,9 +556,9 @@ class ArchetypeStorage {
   @internal
   void bindPrefab(EntityStruct struct) => prefab = struct;
 
-  /// OR of [ComponentTypeRegistry.bitFor] over every type declared through
-  /// `ComponentDescriptor.has<T>()` during this archetype's `describeType`
-  /// pass. Consumed by the query system (not yet written).
+  /// OR of [ComponentTypeRegistry.bitFor] over every type this archetype
+  /// carries: one per `Component.type` field initialiser its prefab ran, plus
+  /// the prefab's own `runtimeType`. What a query matches on.
   int componentSignature = 0;
 
   /// Bit-granular allocation cursor for [declareField]. Bits, not bytes -

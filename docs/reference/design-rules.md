@@ -118,7 +118,7 @@ Two things this buys that the first spelling cannot:
   and "don't import both" is no answer when they are in one package.
 
 !!! info "What stays where it is"
-    - **Declaration hooks.** `describeType`, `describeStruct`, `describeSprites`
+    - **Declarations.** `Component.type`, `describeStruct`, `describeSprites`
       and `describeCollider` act on the *archetype*, take no entity, and belong
       on the mixin. That is the same test, answered the other way, and it is
       why `EntityStruct.of` returns a prefab rather than something per-entity.

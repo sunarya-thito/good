@@ -17,21 +17,13 @@ mixin _Position on Component {
   final x = Field.float64();
   final y = Field.float64();
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Position>();
-  }
+  final positionType = Component.type<_Position>();
 }
 
 mixin _Health on Component {
   final hitPoints = Field.uint16(100);
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Health>();
-  }
+  final healthType = Component.type<_Health>();
 }
 
 /// Named by a query below and mixed into no prefab in this file, so its bit
@@ -41,11 +33,7 @@ mixin _Health on Component {
 mixin _Cloaked on Component {
   final phase = Field.uint8(1);
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Cloaked>();
-  }
+  final cloakedType = Component.type<_Cloaked>();
 }
 
 class _Player extends EntityStruct with _Position, _Health, Child {}

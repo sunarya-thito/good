@@ -49,7 +49,7 @@ class MissingSuperCall {
   /// The mixin whose override drops the call.
   final String mixin;
 
-  /// `describeType`, `describeAssets` or `describeStruct`.
+  /// `describeAssets` or `describeStruct`.
   final String hook;
 
   final String file;
@@ -561,9 +561,13 @@ bool _isComponentRoot(String name) =>
 /// analyzer enforces it for anything that overrides them - a user's own struct
 /// subclass is already covered. It cannot be made to cover a component mixin:
 /// `@mustCallSuper` reports only where there is a concrete super implementation
-/// to point at, and `Component` declares all three hooks with no body. So the
+/// to point at, and `Component` declares both hooks with no body. So the
 /// annotation is inert exactly where mixins chain, which is the whole of the
 /// gap and the reason this is here.
+///
+/// `describeType` is not in the set any more and needs nothing here: a
+/// component declares its type in a field initialiser, which no chain runs
+/// through and so none can be left out of.
 ///
 /// A mixin that never overrides a hook is fine and is not mentioned. Only an
 /// override that leaves the call out is a defect, and the engine's own eleven
@@ -883,20 +887,21 @@ class Owner {
   /// The declare-time hooks this declaration overrides with a body.
   final List<HookOverride> hooks = <HookOverride>[];
 
-  /// The type arguments of every `has<T>()` call inside this declaration's
-  /// `describeType` body, in source order.
+  /// The `T` of every `Component.type<T>()` field initialiser in this
+  /// declaration, in source order.
   ///
   /// These are exactly the types `ComponentTypeRegistry.bitFor` is called
   /// with, which is what `good_tool` writes the generated bit table from
-  /// (#18). Read from the hook body rather than from [isComponentMixin],
+  /// (#18). Read from the initialisers rather than from [isComponentMixin],
   /// because the two sets are not the same: `CollisionListener` is a mixin on
-  /// `Component` that registers no bit, and giving it one would spend a slot
+  /// `Component` that declares no type, and giving it a bit would spend a slot
   /// out of sixty-four on a type no signature ever carries.
   ///
-  /// `has(type: runtimeType)` contributes nothing here and cannot - the type
-  /// is the value of an expression, so only the running program knows it. That
-  /// is `EntityStruct`'s own line, and it is why a prefab's bit stays a
-  /// run-time assignment however much of this is generated.
+  /// A prefab's own type contributes nothing here and cannot: it is
+  /// `runtimeType`, the value of an expression, so only the running program
+  /// knows it. The framework adds that bit once the prefab is built, and that
+  /// is why a prefab's bit stays a run-time assignment however much of this is
+  /// generated.
   final List<String> componentTypes = <String>[];
 }
 
@@ -912,7 +917,6 @@ class HookOverride {
 /// The declare-time passes a component contributes to, each chained through
 /// every mixin on the entity.
 const Set<String> _describeHooks = <String>{
-  'describeType',
   'describeAssets',
   'describeStruct',
 };
@@ -921,7 +925,7 @@ const Set<String> _describeHooks = <String>{
 ///
 /// Matched on the AST and not the text, so a mention inside a comment or a
 /// string is not a call, and `super.describeStruct(data)` inside a
-/// `describeType` body does not count as chaining `describeType`.
+/// `describeAssets` body does not count as chaining `describeAssets`.
 class _SuperCallVisitor extends RecursiveAstVisitor<void> {
   _SuperCallVisitor(this._hook);
 
@@ -937,25 +941,29 @@ class _SuperCallVisitor extends RecursiveAstVisitor<void> {
   }
 }
 
-/// Collects the `T` of every `has<T>()` in one `describeType` body.
+/// The `T` of a `Component.type<T>()` field initialiser, or `null` for
+/// anything else.
 ///
-/// Matched on the AST: one type argument, spelled as a name. Nothing here is
-/// resolved, so a name two libraries both declare is left for the caller to
-/// reject - the same treatment every other name in this pass gets.
-class _ComponentTypeVisitor extends RecursiveAstVisitor<void> {
-  final List<String> types = <String>[];
-
-  @override
-  void visitMethodInvocation(MethodInvocation node) {
-    if (node.methodName.name == 'has') {
-      final arguments = node.typeArguments?.arguments;
-      if (arguments != null && arguments.length == 1) {
-        final argument = arguments.single;
-        if (argument is NamedType) types.add(argument.name2.lexeme);
-      }
-    }
-    super.visitMethodInvocation(node);
-  }
+/// Matched on the AST: the receiver is the identifier `Component`, the method
+/// is `type`, and there is exactly one type argument spelled as a name.
+/// Nothing here is resolved, so a name two libraries both declare is left for
+/// the caller to reject - the same treatment every other name in this pass
+/// gets.
+///
+/// **This matches on the receiver's name**, exactly as [_isColumn] does and
+/// with the same liability: a declaration static added to some other type is
+/// invisible here until this is edited, and a spelling that dropped the
+/// receiver would have no name to match at all.
+String? _componentTypeOf(VariableDeclaration variable) {
+  final initializer = variable.initializer;
+  if (initializer is! MethodInvocation) return null;
+  final target = initializer.target;
+  if (target is! SimpleIdentifier || target.name != 'Component') return null;
+  if (initializer.methodName.name != 'type') return null;
+  final arguments = initializer.typeArguments?.arguments;
+  if (arguments == null || arguments.length != 1) return null;
+  final argument = arguments.single;
+  return argument is NamedType ? argument.name2.lexeme : null;
 }
 
 /// Collects declarations and the fields they declare.
@@ -1101,11 +1109,6 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
       final visitor = _SuperCallVisitor(hook);
       body.accept(visitor);
       owner.hooks.add(HookOverride(hook, callsSuper: visitor.found));
-      if (hook == 'describeType') {
-        final registrations = _ComponentTypeVisitor();
-        body.accept(registrations);
-        owner.componentTypes.addAll(registrations.types);
-      }
     }
   }
 
@@ -1124,6 +1127,8 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
             valueType: columnValueType(variable, member.fields.type),
           ),
         );
+        final componentType = _componentTypeOf(variable);
+        if (componentType != null) owner.componentTypes.add(componentType);
       }
     }
   }

@@ -64,11 +64,7 @@ mixin Camera3D on Component {
   /// `ActiveCameraResolver`.
   late final DataPointer<CameraView?> cameraView;
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<Camera3D>();
-  }
+  final camera3DType = Component.type<Camera3D>();
 
   @override
   void describeStruct(DataDescriptor data) {

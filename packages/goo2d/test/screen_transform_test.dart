@@ -655,7 +655,7 @@ void main() {
     );
 
     test('ScreenTransform2D and WorldTransform2D cannot both be mixed in', () {
-      // Declared headless: `describeType` runs when a scene declares the
+      // Declared headless: the refusal is checked when a scene declares the
       // prefab, which is inside `initializeScene`, so this is the failure a
       // game would hit at boot with no game to boot.
       Object? caught;

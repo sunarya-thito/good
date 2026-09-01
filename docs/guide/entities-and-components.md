@@ -121,14 +121,10 @@ A `Component` is a mixin on an `EntityStruct`. It contributes two things: a
 
 ```dart
 mixin Health on Component {
+  final healthType = Component.type<Health>();   // (1)!
+
   final healthHp = Field.int32(100);
   final healthMaxHp = Field.int32(100);
-
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<Health>();          // (1)!
-  }
 }
 ```
 
@@ -141,24 +137,46 @@ Mix it in, and the archetype gains those columns:
 class Enemy() extends EntityStruct with Transform2D, Renderable2D, Health;
 ```
 
-`describeType` must call `super` — each mixin in the chain contributes, and
-skipping `super` silently drops everything below it. The same goes for
-`describeAssets` and `describeStruct`. Columns declared as fields need no such
-discipline: Dart runs every initialiser in the chain itself.
+The type is declared in a field, like the columns, so there is no chain to
+keep and nothing a prefab has to remember: writing `with Health` runs the
+initialiser. `describeAssets` and `describeStruct` are still hooks, and an
+override of either must call `super` — skipping it silently drops everything
+below it.
 
-On your own `EntityStruct` subclass the analyzer enforces this, because the
+On your own `EntityStruct` subclass the analyzer enforces that, because the
 hook it overrides carries `@mustCallSuper`. Inside a component mixin it cannot:
 that annotation reports only where there is a concrete implementation
-underneath, and `Component` declares all three hooks with no body. So
+underneath, and `Component` declares both hooks with no body. So
 `good generate` checks it instead, and stops:
 
 ```
-Velocity.describeType does not call super.describeType()
+Velocity.describeStruct does not call super.describeStruct()
   lib/velocity.dart
 ```
 
 A mixin that never overrides a hook is fine and is not mentioned. Only an
 override that leaves the call out is the defect.
+
+### Refusing a pair of components
+
+A component that cannot share an archetype with another says so where it
+declares its type, and the pair is refused when a scene registers a prefab
+carrying both:
+
+```dart
+mixin ScreenTransform2D on Component {
+  final screenTransform2DType = Component.type<ScreenTransform2D>(
+    conflictsWith: <Type, String>{
+      WorldTransform2D:
+          'They mean two different things by an entity offset, and only one '
+          'of them can be true.',
+    },
+  );
+}
+```
+
+Declaring it on either of the two is enough. The check runs once the prefab is
+built, so it sees the whole composition however the mixins are ordered.
 
 ### Prefix a component's columns with the component
 
@@ -417,7 +435,7 @@ an event: `EntityStruct` declares a dispatcher for it, and the boot pass
 collects your prefab into that dispatcher because it is an
 `EntityLifecycleListener`. Leave the mixin off and the override compiles, is
 never collected, and never runs. Call `super` for the same reason you do in
-`describeType` — another mixin on the same prefab may override the same hook.
+`describeStruct` — another mixin on the same prefab may override the same hook.
 
 Related mixins: `EntitySpawnListener` (a broad "something spawned" signal, which
 is what the physics system listens to), `SceneLifecycleListener`,

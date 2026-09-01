@@ -4,14 +4,10 @@
 // The component the movement example walks, and the systems the enable /
 // disable example names.
 mixin Velocity on Component {
+  final velocityType = Component.type<Velocity>();
+
   final velocityX = Field.float64();
   final velocityY = Field.float64();
-
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<Velocity>();
-  }
 }
 
 class AiSystem extends GameSystem {}

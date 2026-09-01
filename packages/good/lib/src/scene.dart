@@ -249,9 +249,9 @@ abstract class SceneStruct extends GameListenerBase
 
   /// Drives the one-time declaration passes: this scene's own
   /// [describeAssets], then [describeScene], where each `descriptor.has(...)`
-  /// registers an archetype, walks the struct's `describeType`/
-  /// `describeAssets`/`describeStruct` chain to build its layout, and freezes
-  /// it.
+  /// registers an archetype, constructs the struct with a descriptor open
+  /// around it, walks its [describeAssets]/`describeStruct` chain to finish
+  /// the layout, and freezes it.
   ///
   /// The scene's own assets come first so the whole ordering is one readable
   /// sequence - and, like every other declaration order in this engine, it
@@ -765,17 +765,20 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
     // is a declaration too, and it has to reach the binder [bindEvents] will
     // hand the collect pass however much later.
     final storage = ArchetypeRegistry.reserve(_scene.pool);
+    final components = ArchetypeComponentDescriptor(storage);
     final T object;
     final children = <EntityStruct>[];
     _open.add(T);
     _children.add(children);
     _storages.add(storage);
     DeclarationContext.pushData(ArchetypeDataDescriptor(storage));
+    DeclarationContext.pushComponents(components);
     DeclarationContext.pushPrefabs(this);
     try {
       object = EventBinder.open(create);
     } finally {
       DeclarationContext.popPrefabs();
+      DeclarationContext.popComponents();
       DeclarationContext.popData();
       _storages.removeLast();
       _children.removeLast();
@@ -795,13 +798,22 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
     }
     storage.bindPrefab(object);
     object.bindArchetype(_scene, storage);
+    // The prefab's own type, and the framework's line rather than the user's:
+    // `runtimeType` is not reachable from a field initialiser, and it is the
+    // one bit in a signature only a run can know. Then the pairs a component
+    // refused, once every `Component.type` field has run.
+    components
+      ..declareSelf(object.runtimeType)
+      ..checkConflicts(object.runtimeType);
     // Barrier, not a descriptor: these passes are not constructors, so
     // `Field.*` inside one has always been an error - and once registration
     // nests, "no context" is no longer the same as "an empty stack". Without
     // it a child's describeStruct body would declare onto its parent's row.
+    // `Component.type` is barriered with it, for the same reason and against
+    // the same mistake one level over: a bit on the declarer's signature.
     DeclarationContext.pushBarrier();
+    DeclarationContext.pushComponentBarrier();
     try {
-      object.describeType(ArchetypeComponentDescriptor(storage));
       // Before describeStruct, not after: `has` returns an already-addressed
       // instance, so describeStruct can hand one straight to `data.hasObject`
       // as this archetype's default row value.
@@ -813,6 +825,7 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
       // nothing.
       object.describeAnimation(_AnimationTypeDescriptor(_scene));
     } finally {
+      DeclarationContext.popComponents();
       DeclarationContext.popData();
     }
     // Recorded for the event passes: `Game._bindEvents` gives each prefab its

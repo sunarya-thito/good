@@ -695,10 +695,10 @@ void main() {
             .query()
             .withAll(Renderable2D)
             .build();
-        // The regression this exists for: without describeType calling
-        // component.has<Renderable2D>(), the bit is never OR'd into any
-        // archetype's signature, so the mask `withAll(Renderable2D)` builds
-        // carries a bit nothing has and `matches` returns false for
+        // The regression this exists for: without Renderable2D's
+        // `Component.type<Renderable2D>()` field, the bit is never OR'd into
+        // any archetype's signature, so the mask `withAll(Renderable2D)`
+        // builds carries a bit nothing has and `matches` returns false for
         // *everything*. The positive case below is the half that catches
         // that; the negative one keeps a required mask of zero from passing.
         expect(

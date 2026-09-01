@@ -794,11 +794,7 @@ mixin Renderable2D on MultiComponent {
   // system that never runs, not a declaration that is missing.
   // `test/render_2d_test.dart` checks the signature bit directly, and does not
   // trust inspection.
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<Renderable2D>();
-  }
+  final renderable2DType = Component.type<Renderable2D>();
 
   @override
   void describeStruct(DataDescriptor data) {

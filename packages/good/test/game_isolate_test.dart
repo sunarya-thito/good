@@ -64,11 +64,7 @@ mixin _Moving on Component {
   /// on the game isolate, for both mount-time and command-time spawns.
   final marker = Field.uint8();
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Moving>();
-  }
+  final movingType = Component.type<_Moving>();
 }
 
 class _Mover extends EntityStruct with _Moving, EntityLifecycleListener {
@@ -1211,11 +1207,7 @@ Future<void> _waitTicks(Game run, int count) {
 mixin _Counted on Component {
   final weight = Field.uint16(2);
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<_Counted>();
-  }
+  final countedType = Component.type<_Counted>();
 }
 
 class _Pebble extends EntityStruct with _Counted {}

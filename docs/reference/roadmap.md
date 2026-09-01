@@ -3,7 +3,7 @@
 The rest of this documentation describes the engine as a whole. **This page says which parts of it
 are built**, so that nobody follows a guide for code that is not there yet.
 
-Last verified: **2026-08-30**, on `master`.
+Last verified: **2026-09-02**, on `master`.
 
 ## Packages
 
@@ -155,6 +155,11 @@ Things that work but will catch you out:
   line slips past it and you get two `goo2d:` entries and two `assets:` blocks.
 - **`test/widget_test.dart`** from `flutter create` references `MyApp`, which no
   longer exists once `main.dart` is the good one.
+- **A component declares its type in a field, and the rest still declare in a
+  hook.** `Component.type<T>()` replaced `describeType`; `describeStruct`,
+  `describeAssets`, `describeSprites` and `describeCollider` are still hooks
+  that have to chain `super`. The two spellings sit side by side until the
+  remaining hooks follow.
 
 ## Contributing to this page
 

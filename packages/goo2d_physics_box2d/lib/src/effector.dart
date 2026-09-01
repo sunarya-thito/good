@@ -245,11 +245,7 @@ mixin Effector2D on MultiComponent {
   @mustCallSuper
   void describeEffector(EffectorDescriptor descriptor) {}
 
-  @override
-  void describeType(ComponentDescriptor component) {
-    super.describeType(component);
-    component.has<Effector2D>();
-  }
+  final effector2DType = Component.type<Effector2D>();
 
   @override
   void describeStruct(DataDescriptor data) {
