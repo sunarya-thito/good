@@ -1,8 +1,17 @@
 import 'dart:io';
 
+// good_cli's `lib/src` is private by convention and this reaches into it, for
+// the reason `accessor_scan.dart` states beside its own copy of this line. One
+// `readSources` here, shared by both scans, because both ask about the same
+// trees and neither has any reason to parse the repository a second time.
+// ignore: implementation_imports
+import 'package:good_cli/src/generate/struct_scan.dart';
 import 'package:good_tool/src/accessor_emit.dart';
 import 'package:good_tool/src/accessor_scan.dart';
+import 'package:good_tool/src/component_emit.dart';
+import 'package:good_tool/src/component_scan.dart';
 import 'package:good_tool/src/engine_packages.dart';
+import 'package:good_tool/src/imports.dart';
 import 'package:path/path.dart' as p;
 
 /// This repository's own code generator.
@@ -60,13 +69,43 @@ Future<void> main(List<String> arguments) async {
   }
 
   final packages = enginePackages(root);
-  final scan = scanAccessors(root, packages: packages);
+  final sources = readSources(
+    root,
+    rootOverride: <String>[for (final package in packages) package.libDir],
+    // A generator must not read its own output. What this writes is an
+    // `extension ... on Accessor<Transform2D>` inside `packages/goo2d/lib/`,
+    // which on the next run is an ordinary hand-written extension declaring
+    // `offsetX` - so the second run reported every one of its own properties
+    // as colliding with itself. The guard was right and the input was wrong.
+    exclude: <String>{
+      for (final package in packages) package.accessorFile.path,
+      for (final package in packages) package.componentBitsFile.path,
+    },
+  );
+  final scan = scanAccessors(root, packages: packages, sources: sources);
+  final bits = scanComponentBits(root, packages: packages, sources: sources);
 
   if (verbose) {
     final skipped = scan.skipped.keys.toList()..sort();
     for (final key in skipped) {
       stdout.writeln('No accessor property: $key - ${scan.skipped[key]}');
     }
+    final unbitted = bits.skipped.keys.toList()..sort();
+    for (final key in unbitted) {
+      stdout.writeln('No generated bit: $key - ${bits.skipped[key]}');
+    }
+  }
+
+  // The second thing that refuses, and the reason #18 wanted the assignment
+  // moved here at all. A registry that fills up at run time throws naming
+  // whichever type happened to arrive last, which is whichever scene was
+  // declared last; this names every type competing for the last bit, before
+  // anything is built. It counts the repository alone, so a table that exactly
+  // fills the word has already taken every slot a game had.
+  if (bits.bits.length > maxComponentTypes) {
+    stderr.writeln(componentBitCeilingMessage(bits, maxComponentTypes));
+    exitCode = 65;
+    return;
   }
 
   // Before anything is written, and it is the only thing here that refuses. A
@@ -82,8 +121,30 @@ Future<void> main(List<String> arguments) async {
     return;
   }
 
-  final files = accessorFiles(scan, packages);
-  final absent = missingExports(files, packages);
+  final imports = Imports(
+    declaredIn: declaredIn(sources),
+    byLibDir: <String, EnginePackage>{
+      for (final package in packages) package.libDir: package,
+    },
+    units: sources.units,
+    packages: packages,
+  );
+  final files = <GeneratedFile>[
+    ...accessorFiles(scan, packages),
+    ...componentBitsFiles(bits, packages, imports),
+  ];
+  final absent = <EnginePackage, String>{
+    for (final package in missingExports(
+      accessorFiles(scan, packages),
+      packages,
+    ))
+      package: package.accessorExport,
+    for (final package in missingComponentBitsExports(
+      componentBitsFiles(bits, packages, imports),
+      packages,
+    ))
+      package: package.componentBitsExport,
+  };
 
   if (check) {
     _check(root, files, absent);
@@ -99,16 +160,17 @@ Future<void> main(List<String> arguments) async {
     file.file.writeAsStringSync(file.contents);
     stdout.writeln('Wrote ${_display(root, file.file)}');
   }
-  for (final package in absent) {
+  absent.forEach((package, export) {
     stdout.writeln(
-      'Add `${package.accessorExport}` to '
-      '${_display(root, package.barrel)} - the generated file is not exported, '
-      'so nothing outside that package can reach a single property in it.',
+      'Add `$export` to ${_display(root, package.barrel)} - the generated file '
+      'is not exported, so nothing outside that package can reach anything in '
+      'it.',
     );
-  }
+  });
   stdout.writeln(
     '${scan.propertyCount} propert(ies) over ${scan.extensions.length} '
-    'component(s), in ${files.length} file(s).',
+    'component(s), and ${bits.bits.length} component bit(s), in '
+    '${files.length} file(s).',
   );
 }
 
@@ -120,7 +182,7 @@ Future<void> main(List<String> arguments) async {
 void _check(
   Directory root,
   List<GeneratedFile> files,
-  List<EnginePackage> absent,
+  Map<EnginePackage, String> absent,
 ) {
   final stale = files.where((file) => !file.isCurrent).toList();
   if (stale.isEmpty && absent.isEmpty) {
@@ -134,12 +196,12 @@ void _check(
           : 'Missing: ${_display(root, file.file)}',
     );
   }
-  for (final package in absent) {
+  absent.forEach((package, export) {
     stderr.writeln(
       'Not exported: ${_display(root, package.barrel)} does not carry '
-      '`${package.accessorExport}`',
+      '`$export`',
     );
-  }
+  });
   stderr.writeln(
     '\nRun `dart run good_tool` from the repository root and commit the '
     'result.',

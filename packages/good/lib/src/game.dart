@@ -368,6 +368,44 @@ abstract class Game implements RandomOwner {
   /// there is no boundary to cross.
   int get commandBufferBytes => 64 * 1024;
 
+  /// The generated component-bit tables this game's engine packages ship
+  /// (#18), which decide what a query signature's bits mean.
+  ///
+  /// ```dart
+  /// @override
+  /// List<GeneratedComponentBits> get componentBits =>
+  ///     const <GeneratedComponentBits>[goo2dComponentBits];
+  /// ```
+  ///
+  /// Empty by default, and an empty list is exactly today's behaviour: every
+  /// component type takes the next free bit the first time
+  /// `ComponentDescriptor.has<T>()` names it, in whatever order the scenes
+  /// declare things.
+  ///
+  /// Naming a table pins the bits of every type in it, and of every table it
+  /// depends on - `goo2dComponentBits` brings `goodComponentBits` with it - so
+  /// two processes running the same engine packages agree on what a signature
+  /// means. That is what makes one worth sending: #230's replicated events and
+  /// #282's dedicated server both need a client and a server to read the same
+  /// bitmask the same way.
+  ///
+  /// A prefab's own type is not in any table and cannot be: `EntityStruct`
+  /// registers it with `has(type: runtimeType)`, and only the running program
+  /// knows what that is. It takes the next bit after the seeded ones, so
+  /// nothing a table pins ever moves because of it.
+  ///
+  /// The cost is a bit per type in every table named, mounted or not - sixteen
+  /// of sixty-four for `goo2d`, `goo3d` and the physics package together. Name
+  /// only the tables the game uses.
+  ///
+  /// # Why a getter and not a constructor argument
+  ///
+  /// It is read on the game isolate, from [_bootGame], and a getter is
+  /// re-evaluated there rather than copied across with the `Game` - see
+  /// `ComponentTypeRegistry`'s note on statics not surviving `Isolate.spawn`.
+  List<GeneratedComponentBits> get componentBits =>
+      const <GeneratedComponentBits>[];
+
   // --- declaration hooks ------------------------------------------------
 
   /// Builds this game's [GameState] - the simulation-side half. Called once
@@ -1755,6 +1793,13 @@ abstract class Game implements RandomOwner {
   /// both jobs.
   void _bootGame(GameRuntime runtime) {
     final state = runtime.state!;
+
+    // First, ahead of everything: the generated component bits (#18). This is
+    // the copy that registers archetypes and compiles queries, and seeding
+    // has to finish before the first of either - a type that already took a
+    // bit at run time cannot be given a different one. Empty unless the game
+    // overrides [componentBits], and then this does nothing at all.
+    ComponentTypeRegistry.installGenerated(componentBits);
 
     // Scenes before systems. Not for the query pass, which holds masks and
     // resolves archetypes lazily. What this order settles is that no system

@@ -101,6 +101,50 @@ FakePackage kernelPackage({
   },
 );
 
+/// The `good` stand-in a component-bit fixture needs.
+///
+/// [kernelPackage] plus the two declarations table generation reads:
+/// `ComponentDescriptor`, which a `describeType` body takes, and
+/// `GeneratedComponentBits`, which the generated table is an instance of.
+/// Separate from [kernelPackage] so the accessor fixtures keep reading exactly
+/// what they always read.
+FakePackage componentKernel({String name = 'good'}) => FakePackage(
+  name,
+  files: <String, String>{
+    '$name.dart': _componentBarrel,
+    'src/struct.dart': kernelStruct,
+    'src/data.dart': kernelData,
+    'src/archetype.dart': kernelArchetype,
+  },
+);
+
+/// What [componentKernel]'s entry library exports.
+const String _componentBarrel = '''
+export 'src/struct.dart';
+export 'src/data.dart';
+export 'src/archetype.dart';
+''';
+
+const String kernelArchetype = '''
+import 'struct.dart';
+
+class GeneratedComponentBits {
+  const GeneratedComponentBits({
+    required this.package,
+    required this.types,
+    this.dependencies = const <GeneratedComponentBits>[],
+  });
+
+  final String package;
+  final List<Type> types;
+  final List<GeneratedComponentBits> dependencies;
+}
+
+abstract class ComponentDescriptor {
+  void has<T extends Component>({Type? type});
+}
+''';
+
 const String kernelStruct = '''
 import 'data.dart';
 

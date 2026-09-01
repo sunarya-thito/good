@@ -907,6 +907,22 @@ class Owner {
 
   /// The declare-time hooks this declaration overrides with a body.
   final List<HookOverride> hooks = <HookOverride>[];
+
+  /// The type arguments of every `has<T>()` call inside this declaration's
+  /// `describeType` body, in source order.
+  ///
+  /// These are exactly the types `ComponentTypeRegistry.bitFor` is called
+  /// with, which is what `good_tool` writes the generated bit table from
+  /// (#18). Read from the hook body rather than from [isComponentMixin],
+  /// because the two sets are not the same: `CollisionListener` is a mixin on
+  /// `Component` that registers no bit, and giving it one would spend a slot
+  /// out of sixty-four on a type no signature ever carries.
+  ///
+  /// `has(type: runtimeType)` contributes nothing here and cannot - the type
+  /// is the value of an expression, so only the running program knows it. That
+  /// is `EntityStruct`'s own line, and it is why a prefab's bit stays a
+  /// run-time assignment however much of this is generated.
+  final List<String> componentTypes = <String>[];
 }
 
 /// One `describeX` override, and whether it chains.
@@ -941,6 +957,27 @@ class _SuperCallVisitor extends RecursiveAstVisitor<void> {
   void visitMethodInvocation(MethodInvocation node) {
     if (node.target is SuperExpression && node.methodName.name == _hook) {
       found = true;
+    }
+    super.visitMethodInvocation(node);
+  }
+}
+
+/// Collects the `T` of every `has<T>()` in one `describeType` body.
+///
+/// Matched on the AST: one type argument, spelled as a name. Nothing here is
+/// resolved, so a name two libraries both declare is left for the caller to
+/// reject - the same treatment every other name in this pass gets.
+class _ComponentTypeVisitor extends RecursiveAstVisitor<void> {
+  final List<String> types = <String>[];
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    if (node.methodName.name == 'has') {
+      final arguments = node.typeArguments?.arguments;
+      if (arguments != null && arguments.length == 1) {
+        final argument = arguments.single;
+        if (argument is NamedType) types.add(argument.name2.lexeme);
+      }
     }
     super.visitMethodInvocation(node);
   }
@@ -1089,6 +1126,11 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
       final visitor = _SuperCallVisitor(hook);
       body.accept(visitor);
       owner.hooks.add(HookOverride(hook, callsSuper: visitor.found));
+      if (hook == 'describeType') {
+        final registrations = _ComponentTypeVisitor();
+        body.accept(registrations);
+        owner.componentTypes.addAll(registrations.types);
+      }
     }
   }
 

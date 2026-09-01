@@ -64,6 +64,41 @@ was not blocked by what stopped #18: a property calls through the existing
 `DataPointer`, and an offset is the running total of a `declareField` sequence
 that reads values only available at run time.
 
+And the component-bit table (#18), one per package, into
+`lib/src/component_bits.g.dart` and exported the same way:
+
+```dart
+const GeneratedComponentBits goo2dComponentBits = GeneratedComponentBits(
+  package: 'goo2d',
+  types: <Type>[Camera, Collider2D, ScreenTransform2D, Transform2D, ...],
+  dependencies: <GeneratedComponentBits>[goodComponentBits],
+);
+```
+
+`ComponentTypeRegistry` hands each component type a bit the first time
+`ComponentDescriptor.has<T>()` names it, so which bit a type holds follows the
+order the scenes were declared in. A game that names these tables to
+`Game.componentBits` has them numbered before that, in an order this tool fixes
+— the package name, then the declaring file, then the type name — so two
+processes running the same engine packages read a query signature the same way.
+
+An order and not an index. A table saying `Transform2D` is bit 12 would fix that
+against the whole repository, and a game on `goo2d` but not `goo3d` would then
+install a table full of holes out of sixty-four; an order lets the registry
+number whatever set it is given, contiguously from zero.
+
+The set is the types some `describeType` in this repository calls `has<T>()` on,
+which is exactly the set `bitFor` is called with. Not every component mixin:
+`CollisionListener` is a mixin on `Component` that registers nothing, and a bit
+for it would be one of sixty-four spent on a type no signature carries. Not
+`EntityStruct`'s own `has(type: runtimeType)` either — the type is the value of
+an expression, so a prefab's bit stays a run-time assignment.
+
+Sixteen entries today, out of sixty-four. The tool refuses to write a table
+larger than that and names every type in it, which is the failure #18 wanted
+moved off the run: a full registry throws at run time naming whichever type
+arrived last, and that is whichever scene was declared last.
+
 ## What it refuses, and what it merely skips
 
 It **refuses** exactly one thing: a column whose property name is already a

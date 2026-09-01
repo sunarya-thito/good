@@ -18,10 +18,15 @@ import 'package:good/src/struct.dart';
 /// tick. That is the whole reason the registry exists here, ahead of the
 /// query system that will consume it.
 ///
-/// Assignment order is first-seen order, which means it depends on scene
-/// declaration order. That is fine *within* a process (signatures are only
-/// ever compared to other signatures produced in the same process) but
-/// makes a signature meaningless to serialize - don't persist one.
+/// Assignment order is first-seen order unless a game names its generated
+/// tables - see [ComponentTypeRegistry.installGenerated] and
+/// `Game.componentBits`. First-seen order depends on scene declaration order,
+/// which is fine *within* a process (signatures are only ever compared to
+/// other signatures produced in the same process) and makes a signature
+/// meaningless to serialize. A seeded registry numbers every scanned type
+/// before any of that happens, so the seeded part of a signature does mean the
+/// same thing in two processes; the part a prefab's own `runtimeType`
+/// contributes never can, because that bit is assigned when the program runs.
 abstract final class ComponentTypeRegistry {
   /// One 64-bit `int` per signature word, and we currently use exactly one
   /// word - so 64 distinct component types is the hard ceiling. Widening
@@ -75,12 +80,196 @@ abstract final class ComponentTypeRegistry {
     return index;
   }
 
+  /// The package names [installGenerated] seeded from, in the order it
+  /// numbered them, or `null` if nothing has been seeded.
+  static List<String>? _seeded;
+
+  /// How many types came from a generated table, which is the index run-time
+  /// assignment starts from.
+  static int get seededCount => _seededCount;
+  static int _seededCount = 0;
+
+  /// Assigns [tables]' types their bits, before anything else takes one.
+  ///
+  /// # What it buys
+  ///
+  /// The bit a type gets stops being a fact about the run. Assignment order is
+  /// the package name, then the order inside each table, and `good_tool` fixes
+  /// the second at build time - so two processes given the same set of tables
+  /// number the same types the same way, whatever order their scenes declare
+  /// things in and whatever order the tables arrive in here.
+  ///
+  /// That is what a signature has to have before it can be sent anywhere: it
+  /// is a bitmask, and a peer reading one is asking what each bit meant on the
+  /// machine that wrote it.
+  ///
+  /// # What it costs, plainly
+  ///
+  /// Every type in every table takes a bit whether the game mounts it or not.
+  /// A game on `goo2d`, `goo3d` and the physics package seeds sixteen of the
+  /// sixty-four a signature holds, before it declares one component or prefab
+  /// of its own. Naming fewer tables is what shrinks that, and naming none
+  /// leaves the registry exactly as it was.
+  ///
+  /// # Order
+  ///
+  /// The reachable tables - [tables] plus, transitively, each table's own
+  /// [GeneratedComponentBits.dependencies] - are collected by package name,
+  /// sorted, and numbered in that order. So `installGenerated([a, b])` and
+  /// `installGenerated([b, a])` produce the same table, and a package reached
+  /// twice through two routes is seeded once.
+  ///
+  /// # When
+  ///
+  /// Before the first [indexFor], which is why `Game._bootGame` calls it as
+  /// its first act on the isolate that registers anything. Seeding afterwards
+  /// would renumber types that already hold a bit, and every signature built
+  /// before it would silently stop matching the archetypes it was built
+  /// against - so it throws instead. Calling it again with the same packages
+  /// is a no-op, which is what a second `Game` in one process does.
+  static void installGenerated(Iterable<GeneratedComponentBits> tables) {
+    final reachable = <String, GeneratedComponentBits>{};
+    void walk(GeneratedComponentBits table) {
+      final existing = reachable[table.package];
+      if (existing != null) {
+        if (!_sameTypes(existing.types, table.types)) {
+          throw StateError(
+            'Two different generated tables both call themselves '
+            "'${table.package}'. One of them is from another build of that "
+            'package, and seeding either would number the other one\'s types '
+            'wrong. Regenerate, or depend on one version of it.',
+          );
+        }
+        return;
+      }
+      reachable[table.package] = table;
+      for (final dependency in table.dependencies) {
+        walk(dependency);
+      }
+    }
+
+    for (final table in tables) {
+      walk(table);
+    }
+    if (reachable.isEmpty) return;
+
+    final packages = reachable.keys.toList()..sort();
+    final seeded = _seeded;
+    if (seeded != null) {
+      if (_sameNames(seeded, packages)) return;
+      throw StateError(
+        'ComponentTypeRegistry was already seeded from ${seeded.join(', ')} '
+        'and this call names ${packages.join(', ')}. The two number the same '
+        'types differently, and every signature built against the first would '
+        'stop matching.',
+      );
+    }
+    if (_indices.isNotEmpty) {
+      throw StateError(
+        'ComponentTypeRegistry has already assigned ${_indices.length} bit(s) '
+        'at run time, so seeding now would give ${_indices.keys.join(', ')} a '
+        'second number and leave every signature built so far reading the '
+        'wrong bits. Seed before anything registers - Game._bootGame does it '
+        'first, ahead of describeScenes.',
+      );
+    }
+
+    final ordered = <Type>[];
+    final from = <Type, String>{};
+    for (final package in packages) {
+      for (final type in reachable[package]!.types) {
+        final earlier = from[type];
+        if (earlier != null) {
+          throw StateError(
+            'Both $earlier and $package claim $type in their generated '
+            'component table. One type is one bit, so there is no numbering '
+            'that satisfies both.',
+          );
+        }
+        from[type] = package;
+        ordered.add(type);
+      }
+    }
+    if (ordered.length > maxComponentTypes) {
+      throw StateError(
+        'Seeding ${packages.join(', ')} would take ${ordered.length} of the '
+        '$maxComponentTypes bits a query signature holds, leaving a game none '
+        'of its own: ${ordered.join(', ')}. Name fewer tables, or widen the '
+        'signature past one word (see maxComponentTypes).',
+      );
+    }
+    for (var i = 0; i < ordered.length; i++) {
+      _indices[ordered[i]] = i;
+    }
+    _seededCount = ordered.length;
+    _seeded = packages;
+  }
+
+  static bool _sameTypes(List<Type> a, List<Type> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  static bool _sameNames(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
   /// Test-only escape hatch: this registry is process-global by design, so
   /// a test suite that declares many throwaway component types would
   /// otherwise march into [maxComponentTypes] for reasons that have nothing
   /// to do with the code under test.
   @visibleForTesting
-  static void reset() => _indices.clear();
+  static void reset() {
+    _indices.clear();
+    _seeded = null;
+    _seededCount = 0;
+  }
+}
+
+/// One package's component types, in the order their bits are assigned.
+///
+/// Written by `good_tool` into `lib/src/component_bits.g.dart` in each engine
+/// package that registers any, and reached through that package's entry
+/// library - `goodComponentBits`, `goo2dComponentBits`. A game names the ones
+/// it uses to `Game.componentBits`; importing one installs nothing.
+///
+/// # Why an order and not an index
+///
+/// A table saying `Transform2D` is bit 12 would fix that against the whole
+/// engine repository, and a game using `goo2d` but not `goo3d` would then
+/// install a table full of holes - bits nothing can reach, out of sixty-four.
+/// An order lets [ComponentTypeRegistry.installGenerated] number whatever set
+/// it is given, contiguously from zero.
+///
+/// # Why it names its dependencies
+///
+/// `goo2dComponentBits` names `goodComponentBits`, so a game on `goo2d` gets
+/// `Child` and `Parent` numbered without having to know that `goo2d` is built
+/// on `good`.
+@immutable
+class GeneratedComponentBits {
+  const GeneratedComponentBits({
+    required this.package,
+    required this.types,
+    this.dependencies = const <GeneratedComponentBits>[],
+  });
+
+  /// The package this table was generated for, and the key it is deduplicated
+  /// and sorted by.
+  final String package;
+
+  /// Its component types, in the order their bits are assigned within it.
+  final List<Type> types;
+
+  /// The tables of the engine packages this one is built on.
+  final List<GeneratedComponentBits> dependencies;
 }
 
 /// Process-global table of every [ArchetypeStorage], indexed by its
