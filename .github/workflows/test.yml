@@ -136,16 +136,19 @@ jobs:
           (cd packages/good_tool && dart test)
           echo "::endgroup::"
 
-      # The accessor properties are generated once and committed, because they
-      # ship inside good and goo2d - a published package carries what is in its
-      # lib/ and nothing runs a build step there. A committed generated file can
-      # go stale, and this is the step that says so.
+      # The accessor properties and the component-bit tables are generated once
+      # and committed, because they ship inside good and goo2d - a published
+      # package carries what is in its lib/ and nothing runs a build step
+      # there. A committed generated file can go stale, and this is the step
+      # that says so. Staleness matters more for the bit table than for the
+      # properties: a stale table is a numbering two builds do not share, and a
+      # signature is only worth sending because they do.
       #
       # `--check` and not "regenerate, then git diff": it reports without
       # writing, so the failure names the file and nothing later in the job
       # reads a tree this step modified. The box2d step below does it the other
       # way round and has to be last for exactly that reason.
-      - name: Check the accessor properties are what good_tool generates
+      - name: Check the generated files are what good_tool would write
         run: |
           set -e
           (cd packages/good_tool && dart run good_tool --check)

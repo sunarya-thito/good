@@ -43,6 +43,35 @@ class EnginePackage {
 
   /// The `export` line [barrel] has to carry for [accessorFile] to be reachable.
   String get accessorExport => "export 'src/accessors.g.dart';";
+
+  /// Where this package's generated component-bit table goes (#18).
+  ///
+  /// Beside [accessorFile] and written the same way, for the same reason: it
+  /// ships inside the package, so it is committed and read in a diff.
+  File get componentBitsFile =>
+      File(p.join(libDir, 'src', 'component_bits.g.dart'));
+
+  /// The `export` line [barrel] has to carry for [componentBitsFile] to be
+  /// reachable.
+  ///
+  /// It has to be reachable from *outside* the package as well as inside it:
+  /// a game names its table to `Game.componentBits`, and a downstream engine
+  /// package's table names this one as a dependency.
+  String get componentBitsExport => "export 'src/component_bits.g.dart';";
+
+  /// What this package's generated table is called - `goo2dComponentBits`.
+  ///
+  /// Derived from the package name, so it is unique across the repository by
+  /// construction and needs no list to keep in step.
+  String get componentBitsName {
+    final words = name.split('_');
+    final camel = <String>[
+      words.first,
+      for (final word in words.skip(1))
+        if (word.isNotEmpty) word[0].toUpperCase() + word.substring(1),
+    ].join();
+    return '${camel}ComponentBits';
+  }
 }
 
 /// Every package under `packages/` that is published from this repository.

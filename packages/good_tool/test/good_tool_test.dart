@@ -1,9 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 
+// ignore: implementation_imports
+import 'package:good_cli/src/generate/struct_scan.dart';
 import 'package:good_tool/src/accessor_emit.dart';
 import 'package:good_tool/src/accessor_scan.dart';
+import 'package:good_tool/src/component_emit.dart';
+import 'package:good_tool/src/component_scan.dart';
 import 'package:good_tool/src/engine_packages.dart';
+import 'package:good_tool/src/imports.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -428,6 +433,81 @@ void main() {
           'offsetY <- transformOffsetY',
           'rotation <- transformRotation',
         ]),
+      );
+    });
+
+    // The same test for the other generated file (#18), and it carries one
+    // more thing: the order below is what every bit index in the engine is,
+    // so it is written out rather than derived. A regeneration that moved
+    // anything fails here, in the commit that moved it, instead of arriving
+    // as two peers disagreeing about what a signature meant.
+    test('has the component-bit table the generator would write', () async {
+      final root = _actualRepoRoot();
+      final packages = enginePackages(root);
+      final sources = readSources(
+        root,
+        rootOverride: <String>[for (final package in packages) package.libDir],
+        exclude: <String>{
+          for (final package in packages) package.accessorFile.path,
+          for (final package in packages) package.componentBitsFile.path,
+        },
+      );
+      final scan = scanComponentBits(root, packages: packages, sources: sources);
+      final files = componentBitsFiles(
+        scan,
+        packages,
+        Imports(
+          declaredIn: declaredIn(sources),
+          byLibDir: <String, EnginePackage>{
+            for (final package in packages) package.libDir: package,
+          },
+          units: sources.units,
+          packages: packages,
+        ),
+      );
+      expect(files, isNotEmpty);
+      for (final file in files) {
+        expect(
+          file.isCurrent,
+          isTrue,
+          reason:
+              '${file.file.path} is not what the generator would write. Run '
+              '`dart run good_tool` from packages/good_tool and commit it.',
+        );
+      }
+      expect(missingComponentBitsExports(files, packages), isEmpty);
+
+      expect(
+        scan.bits.map((bit) => '${bit.package}:${bit.type}').toList(),
+        <String>[
+          'goo2d:Camera',
+          'goo2d:Collider2D',
+          'goo2d:ScreenTransform2D',
+          'goo2d:Transform2D',
+          'goo2d:WorldTransform2D',
+          'goo2d:HoverReceiver',
+          'goo2d:PointerReceiver',
+          'goo2d:Renderable2D',
+          'goo2d:Text2D',
+          'goo2d_physics_box2d:Effector2D',
+          'goo2d_physics_box2d:RigidBody2D',
+          'goo3d:Camera3D',
+          'goo3d:Transform3D',
+          'goo3d:WorldTransform3D',
+          'good:Child',
+          'good:Parent',
+        ],
+      );
+      // `CollisionListener` is a mixin on `Component` in `goo2d` that never
+      // reaches `has<T>()`, so it holds no bit and spends none.
+      expect(
+        scan.bits.map((bit) => bit.type),
+        isNot(contains('CollisionListener')),
+      );
+      expect(
+        scan.bits.length,
+        lessThan(maxComponentTypes),
+        reason: 'a game needs bits of its own after these',
       );
     });
   });
