@@ -53,10 +53,9 @@ final wounded = Event.of<WoundListener, int>(
 );
 ```
 
-Write the type arguments out. `descriptor.has(...)` reads `L` and `E` off the
-field it is assigned to; an initialiser has no such context, so the listener
-type and the payload type are stated at the call — which is all the separate
-`late final EventDispatcher<L, E>` line used to say.
+Write the type arguments out. An initialiser has no assignment context to read
+`L` and `E` from, so the listener type and the payload type are stated at the
+call.
 
 The initialiser is eager, and `late final wounded = Event.of(...)` is the one
 way to get this wrong. A `late` initialiser runs on the first *read*, by which
@@ -87,39 +86,39 @@ different name on it:
 final chirped = Event.signal<ChirpListener>((listener) => listener.onChirp());
 ```
 
-### The hook, and who still needs it
+### When there is no window: declare from the constructor body
 
 A `SceneStruct` is constructed by you, not by the framework — `final level =
-MainScene();` — so nothing is open while its fields initialise. It declares in
-`describeEvents`, which runs once at boot and is handed a descriptor to declare
-into:
+MainScene();` — so nothing is open while its fields initialise and `Event.of`
+in one throws. A constructor body has `this`, and `EventBus.events` is the
+owner's own registrar, so that is where a scene declares:
 
-<!-- snippet: in SceneStruct -->
+<!-- snippet: top -->
 ```dart
-late final EventDispatcher<WaveListener, int> waveSpotted;
+class MainScene extends SceneStruct {
+  late final EventDispatcher<WaveListener, int> waveSpotted;
 
-@override
-void describeEvents(EventDescriptor descriptor) {
-  super.describeEvents(descriptor);
-  waveSpotted = descriptor.has(
-    (listener, wave) => listener.onWaveCleared(wave),
-  );
+  MainScene() {
+    waveSpotted = events.has(
+      (listener, wave) => listener.onWaveCleared(wave),
+    );
+  }
 }
 ```
 
 `late final` with no initialiser is right here and only here: the field is
-assigned from the hook, which runs after the constructor.
+assigned from the constructor body, after the initialisers have run.
 
 Two base-class pairs are declared this way too, for a narrower reason.
 `EntityStruct`'s `mountedEvent`/`unmountedEvent` and `GameSystem`'s
 `mountEvent`/`unmountEvent` are inherited by every struct and every system
-however it was built, so neither can assume a binder of its own. A pair you
-declare on your own struct or your own system can, as long as you let the
-framework build it.
+however it was built, so neither can assume a window. `events` reads the owner
+instead, so the pair lands on the object that declared it either way. A pair
+you declare on your own struct or your own system can use a field initialiser,
+as long as you let the framework build it.
 
-That caveat is worth reading twice for a system, because the failure is quiet.
-`SceneDescriptor.has` and `SystemDescriptor.has` both take a `T Function()`, and
-a closure may hand back an object that already existed:
+`SceneDescriptor.has` and `SystemDescriptor.has` both take a `T Function()`,
+and a closure may hand back an object that already existed:
 
 <!-- snippet: skip the wrong half of a before/after, and deliberately so -->
 ```dart
@@ -128,12 +127,11 @@ final _spawner = Spawner();                 // built here, in a state field
 descriptor.has(() => _spawner);             // handed over, not built
 ```
 
-A prefab handed over that way throws, because nothing was open above it. A
-system does not: a `GameState` is itself framework-built, so *its* binder is
-open while its fields initialise, and the system's dispatcher is created
-against the state. It then reaches the state's entire composition — every
-sibling system, every scene, every prefab — rather than the system's own
-listeners. Build inside the closure, or pass the constructor:
+`Spawner` was constructed while the state's own window was open, so an
+`Event.of` on one of its fields declared into the state. A dispatcher created
+there reaches the state's entire composition — every sibling system, every
+scene, every prefab. The engine refuses that at boot and names the class.
+Build inside the closure, or pass the constructor:
 
 <!-- snippet: skip two fragments of one class body, not a class -->
 ```dart
@@ -142,13 +140,15 @@ late final Spawner spawner;
 spawner = descriptor.has(Spawner.new);
 ```
 
-The hook works on all four owners and is not going anywhere. An owner may use
-both forms at once: its fields' dispatchers are declared first, its hook's
-second, and one collect pass fills them all.
+A prefab a fixture built with nothing open above it is fine to hand over:
+`Event.*` throws on an empty stack, so it declared nothing anywhere else, and
+its base pair went to a registrar of its own.
+
+An owner may use both forms at once: its fields' dispatchers and its
+constructor body's end up in one binder, and one collect pass fills them all.
 
 Keep the handle, whichever way you declared it. Nothing is addressable by name,
-so there is nothing to look up later — the same shape every other `describe*`
-pass uses.
+so there is nothing to look up later.
 
 ## Who can declare one
 
@@ -156,7 +156,7 @@ Anything that mixes in `EventBus`, whose bound is `on GameListener`. Four
 framework types qualify — `GameState`, `SceneStruct`, `EntityStruct` and
 `GameSystem` — and they are exactly the four that live on the game isolate.
 `GameState`, `EntityStruct` and `GameSystem` declare on a field; `SceneStruct`
-declares in `describeEvents`, for the construction reason above.
+declares from its constructor body, for the construction reason above.
 
 `Game` is not a `GameListener`, so it cannot declare or receive an event. Every
 event in the engine happens on the simulating isolate; traffic to Flutter goes
@@ -184,13 +184,14 @@ the same way.
 
 ## How listeners are collected
 
-Two passes run over each owner at boot, in this order:
+Two passes run over each owner, in this order:
 
-1. **The declaration pass** creates every dispatcher that owner declares — the
-   ones in its field initialisers first, then the ones in `describeEvents`.
-2. **`collectListeners`** walks that owner's composition and offers each
-   candidate to every dispatcher it just created. A dispatcher accepts a
-   candidate when it is an `L`, and ignores it otherwise.
+1. **The declaration pass** runs while the owner is constructed — the
+   dispatchers in its field initialisers, then the ones its constructor body
+   declares.
+2. **`collectListeners`** runs at boot. It walks that owner's composition and
+   offers each candidate to every dispatcher. A dispatcher accepts a candidate
+   when it is an `L`, and ignores it otherwise.
 
 After that the lists are settled. Dispatch is then an indexed `for` over a
 plain list — no walking, no type tests, no allocation, and no work at all for
@@ -257,22 +258,19 @@ Teardown has to run the other way. A listener told the world is going away
 `reverse: true` and the dispatcher reads its collected list backwards, which is
 one list serving both orders instead of two that could drift apart:
 
-<!-- snippet-setup
-final descriptor = given<EventDescriptor>();
-late SignalDispatcher<GameSystemLifecycleListener> unmountEvent;
--->
+<!-- snippet: in EntityStruct -->
 ```dart
-unmountEvent = descriptor.hasSignal(
-  (listener) => listener.onUnmounted(),
+final wilted = Event.signal<ChirpListener>(
+  (listener) => listener.onChirp(),
   reverse: true,
 );
 ```
 
-That is `GameSystem`'s own teardown signal, declared in the hook because a
-system is one of the two owners that has to. On a field it is the same
-argument in the same place — `Event.signal(..., reverse: true)`, which is how
-`GameState.sceneUnloadedEvent` does it with a payload. The rule for your own events: forward for anything
-meaning "this now exists", reverse for anything meaning "this is going away".
+`GameSystem`'s own `unmountEvent` carries the same flag, declared from its
+constructor body because a base class pair cannot assume a window; so does
+`GameState.sceneUnloadedEvent`, with a payload. The rule for your own events:
+forward for anything meaning "this now exists", reverse for anything meaning
+"this is going away".
 
 ## Declaring an event of your own
 

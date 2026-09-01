@@ -574,7 +574,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // dispatcher: only this scene and its prefabs are told.
     // Dispatched in reverse collection order, so the scene itself is told
     // last and can still read what its prefabs have already been warned
-    // about - see `SceneStruct.describeEvents`.
+    // about - see `SceneStruct.unmountedEvent`.
     sceneUnloadedEvent.call(scene);
     struct.unmountedEvent.call(scene);
     // Innermost last: the scene has said its piece, now each entity in it

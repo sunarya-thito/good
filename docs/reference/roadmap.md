@@ -161,15 +161,18 @@ Things that work but will catch you out:
   line slips past it and you get two `goo2d:` entries and two `assets:` blocks.
 - **`test/widget_test.dart`** from `flutter create` references `MyApp`, which no
   longer exists once `main.dart` is the good one.
-- **A component declares its type and its assets in fields, and the rest still
-  declare in a hook.** `Component.type<T>()` replaced `describeType` and
-  `Asset.of` replaced a prefab's `describeAssets`; `describeStruct`,
-  `describeSprites` and `describeCollider` are still hooks that have to chain
-  `super`. The two spellings sit side by side until the remaining hooks follow.
-- **A scene still declares its own assets in `describeAssets`.** A scene is
-  constructed by the caller, so its field initialisers run before it has an
-  `Assets` to declare into. The hook is where a scene declares until scene
-  construction moves under the framework.
+- **A component declares its type, its assets and its events in fields, and
+  the rest still declare in a hook.** `Component.type<T>()` replaced
+  `describeType`, `Asset.of` replaced a prefab's `describeAssets`, and
+  `Event.of` replaced `describeEvents`; `describeStruct`, `describeSprites`
+  and `describeCollider` are still hooks that have to chain `super`. The two
+  spellings sit side by side until the remaining hooks follow.
+- **A scene declares its events from its constructor body and its assets in
+  `describeAssets`.** A scene is constructed by the caller, so its field
+  initialisers run before it has an `Assets` to declare into. `EventBus.events`
+  reads the owner rather than the declaration stack, so events have a route a
+  constructor body can take; assets do not, and the hook is where a scene
+  declares them until scene construction moves under the framework.
 
 ## Contributing to this page
 

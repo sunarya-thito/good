@@ -16,9 +16,10 @@ import 'package:good/src/system.dart';
 // `SystemDescriptor.has` takes a constructor, so the framework builds the
 // system and two declaration windows are open while its fields initialise:
 // the event binder and the input registry. What this file pins is that a
-// declaration made through a field and the same declaration made through the
-// matching `describeX` hook are one declaration - same set, same order, same
-// delivery - and that the `late` spelling of either cannot quietly get in.
+// declaration made through a field and the same declaration made another way
+// - an event from the constructor body, an input from `describeInputs` - are
+// one declaration: same set, same order, same delivery. And that the `late`
+// spelling of either cannot quietly get in.
 
 /// The listener half of the event tests. Writes into a shared log so *order*
 /// is observable and not just membership.
@@ -60,27 +61,29 @@ class _FieldSystem extends GameSystem with _Noted {
   );
 }
 
-/// The same two dispatchers, both in the hook.
-class _HookSystem extends GameSystem with _Noted {
+/// The same two dispatchers, both from the constructor body.
+class _BodySystem extends GameSystem with _Noted {
+  _BodySystem() {
+    alpha = events.has((listener, event) => listener.onNoted(event));
+    beta = events.has(
+      (listener, event) => listener.onNoted(event),
+      reverse: true,
+    );
+  }
+
   @override
   String get noted => 'source';
 
   late final EventDispatcher<_Noted, String> alpha;
   late final EventDispatcher<_Noted, String> beta;
-
-  @override
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    alpha = descriptor.has((listener, event) => listener.onNoted(event));
-    beta = descriptor.has(
-      (listener, event) => listener.onNoted(event),
-      reverse: true,
-    );
-  }
 }
 
-/// One of each on one system: `alpha` on a field, `beta` in the hook.
+/// One of each on one system: `alpha` on a field, `beta` in the body.
 class _MixedSystem extends GameSystem with _Noted {
+  _MixedSystem() {
+    beta = events.has((listener, event) => listener.onNoted(event));
+  }
+
   @override
   String get noted => 'source';
 
@@ -89,12 +92,6 @@ class _MixedSystem extends GameSystem with _Noted {
   );
 
   late final EventDispatcher<_Noted, String> beta;
-
-  @override
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    beta = descriptor.has((listener, event) => listener.onNoted(event));
-  }
 }
 
 class _EventState<G extends Game> extends GameState<G> {
@@ -121,9 +118,9 @@ class _FieldEventGame extends _BareGame {
   GameState createState() => _EventState<_FieldEventGame>(_FieldSystem.new);
 }
 
-class _HookEventGame extends _BareGame {
+class _BodyEventGame extends _BareGame {
   @override
-  GameState createState() => _EventState<_HookEventGame>(_HookSystem.new);
+  GameState createState() => _EventState<_BodyEventGame>(_BodySystem.new);
 }
 
 class _MixedEventGame extends _BareGame {
@@ -289,7 +286,7 @@ void main() {
       expect(source.beta.listenerCount, source.alpha.listenerCount);
     });
 
-    test('delivery is identical to the hook form, both directions', () async {
+    test('delivery is identical to the body form, both directions', () async {
       final fieldRun = await _boot(_FieldEventGame.new);
       final fieldSource =
           (fieldRun.state as _EventState<_FieldEventGame>).source
@@ -302,11 +299,11 @@ void main() {
       _reset();
       _Noted.log.clear();
 
-      final hookRun = await _boot(_HookEventGame.new);
-      final hookSource =
-          (hookRun.state as _EventState<_HookEventGame>).source as _HookSystem;
-      hookSource.alpha('alpha');
-      hookSource.beta('beta');
+      final bodyRun = await _boot(_BodyEventGame.new);
+      final bodySource =
+          (bodyRun.state as _EventState<_BodyEventGame>).source as _BodySystem;
+      bodySource.alpha('alpha');
+      bodySource.beta('beta');
 
       expect(
         fromFields,
@@ -333,7 +330,7 @@ void main() {
         source.beta.listenerCount,
         source.alpha.listenerCount,
         reason:
-            'the hook appended to the binder the field declaration already '
+            'the body appended to the binder the field declaration already '
             'filled rather than getting one of its own',
       );
       expect(source.alpha.listenerCount, 1);

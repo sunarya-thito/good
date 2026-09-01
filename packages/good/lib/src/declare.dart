@@ -242,6 +242,14 @@ abstract final class DeclarationContext {
 
   static void popEvents() => _events.removeLast();
 
+  /// The innermost open binder, or null when nothing is being constructed.
+  ///
+  /// Read by `GameListenerBase`, which takes the open window as the owner's
+  /// registrar and has an answer for there not being one - an owner the
+  /// framework did not construct makes a registrar of its own.
+  static EventBinder? get eventsOrNull =>
+      _events.isEmpty ? null : _events.last;
+
   /// The innermost open binder, or a `StateError` naming the two ways to get
   /// here: constructing the owner yourself, and reaching an `Event.*` call
   /// lazily.
@@ -260,10 +268,9 @@ abstract final class DeclarationContext {
         'it runs on first read, long after the binder was closed, so a '
         'dispatcher declared that way would never be offered a listener and '
         'would deliver to nobody. Field initialisers here are eager, always. '
-        'A describeEvents body is the other way in: it runs after the '
-        'constructor, so it declares through the EventDescriptor it is '
-        'handed rather than through Event.*. A SceneStruct is still '
-        'constructed by the caller, so it declares there.',
+        'An owner the framework does not construct - a SceneStruct, which '
+        'the caller builds - declares from its constructor body against '
+        'EventBus.events instead.',
       );
     }
     return _events.last;

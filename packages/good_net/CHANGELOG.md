@@ -11,6 +11,23 @@
 
 ### Breaking
 
+* **`MultiplayerState.describeEvents` is gone. Its four dispatchers are
+  fields** (#287):
+
+  ```dart
+  final peerJoinedEvent = Event.of<NetPeerListener, NetPeerId>(
+    (listener, peer) => listener.onPeerJoined(peer),
+  );
+  ```
+
+  `peerJoinedEvent`, `peerLeftEvent`, `sessionOpenedEvent` and
+  `sessionClosedEvent` are `final` rather than `late final`, and stop being
+  assigned from a hook the kernel no longer drives. `MultiplayerState` mixes
+  into a `GameState`, which `Game.createState` builds inside a declaration
+  window, so `Event.of` on one of its fields declares into that state's binder
+  - the same binder the hook wrote to. Same listeners, same order, same
+  delivery.
+
 * **`NetMessageBase.describeParams` is gone. A message declares its fields on
   the fields that hold them** (#287):
 

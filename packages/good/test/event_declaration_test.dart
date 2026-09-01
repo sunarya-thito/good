@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart' hide EventDispatcher;
 
 import 'package:good/src/archetype.dart';
 import 'package:good/src/event.dart';
+import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/scene.dart';
@@ -12,18 +13,18 @@ import 'package:good/src/scene_handle.dart';
 import 'package:good/src/struct.dart';
 import 'package:good/src/system.dart';
 
-// Declaring an event on the field that holds it, beside declaring it in
-// `describeEvents`.
+// Declaring an event on the field that holds it, beside declaring it from a
+// constructor body against `EventBus.events`.
 //
-// The two forms have to be the same declaration. A dispatcher built from a
-// field initialiser runs during the constructor, one built from the hook runs
-// after it, and between those two moments sit a scene registration and an
-// `Isolate.spawn` - so the binder that catches the first has to be the one the
-// second appends to, or an owner mixing the forms would end up with two
-// listener lists that disagree.
+// The two forms have to be the same declaration. `Event.of` reads the window
+// the framework opens around the constructor call; `events` reads the owner.
+// For an owner the framework builds, those are one binder, and this file pins
+// that they are: same owners, same composition, same delivery, whichever way
+// each dispatcher was declared.
 //
-// What this file pins is that it does not: same owners, same composition,
-// same delivery, whichever way each dispatcher was declared.
+// The second form is what a `SceneStruct` declares through, and what the two
+// base pairs on `EntityStruct` and `GameSystem` are declared through, since
+// neither can assume a window.
 
 /// The listener half. Writes into a shared log so *order* is observable and
 /// not just membership.
@@ -90,23 +91,21 @@ class _FieldState extends GameState<_FieldGame> with _Noted {
   }
 }
 
-/// The same two dispatchers, both in the hook.
-class _HookState extends GameState<_HookGame> with _Noted {
+/// The same two dispatchers, both from the constructor body.
+class _BodyState extends GameState<_BodyGame> with _Noted {
+  _BodyState() {
+    alpha = events.has((listener, event) => listener.onNoted(event));
+    beta = events.has(
+      (listener, event) => listener.onNoted(event),
+      reverse: true,
+    );
+  }
+
   @override
   String get noted => 'state';
 
   late final EventDispatcher<_Noted, String> alpha;
   late final EventDispatcher<_Noted, String> beta;
-
-  @override
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    alpha = descriptor.has((listener, event) => listener.onNoted(event));
-    beta = descriptor.has(
-      (listener, event) => listener.onNoted(event),
-      reverse: true,
-    );
-  }
 
   @override
   void describeSystems(SystemDescriptor descriptor) {
@@ -115,8 +114,12 @@ class _HookState extends GameState<_HookGame> with _Noted {
   }
 }
 
-/// One of each, on one owner: `alpha` on a field, `beta` in the hook.
+/// One of each, on one owner: `alpha` on a field, `beta` in the body.
 class _MixedState extends GameState<_MixedGame> with _Noted {
+  _MixedState() {
+    beta = events.has((listener, event) => listener.onNoted(event));
+  }
+
   @override
   String get noted => 'state';
 
@@ -127,16 +130,171 @@ class _MixedState extends GameState<_MixedGame> with _Noted {
   late final EventDispatcher<_Noted, String> beta;
 
   @override
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    beta = descriptor.has((listener, event) => listener.onNoted(event));
-  }
-
-  @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
     descriptor.has(_NotedSystem.new);
   }
+}
+
+/// A scene the state holds in a field, so it is constructed while the state's
+/// own declaration window is open. Its base pair still has to reach this
+/// scene and its prefabs, not the state's whole composition.
+class _HeldScene extends SceneStruct with _Noted {
+  @override
+  String get noted => 'heldScene';
+
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
+    descriptor.has(_UnitA.new);
+  }
+}
+
+/// Two more `SceneLifecycleListener`s, in the state's composition rather than
+/// the scene's - so they are in the scene's list only if the pair landed on
+/// the state. Two, so that a pair landing on the state collects a different
+/// number from a pair landing on the scene.
+class _SceneEarA extends GameSystem with SceneLifecycleListener {}
+
+class _SceneEarB extends GameSystem with SceneLifecycleListener {}
+
+class _HeldState extends GameState<_HeldGame> with _Noted {
+  @override
+  String get noted => 'state';
+
+  final level = _HeldScene();
+
+  /// Declared on the state, so it collects the state's composition - which is
+  /// what the scene's own pair must not be.
+  final sceneMounts = Event.of<SceneLifecycleListener, Scene>(
+    (listener, scene) => listener.onSceneMounted(scene),
+  );
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_SceneEarA.new);
+    descriptor.has(_SceneEarB.new);
+  }
+
+  @override
+  void onMounted() {
+    loadScene(level);
+  }
+}
+
+class _HeldGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  GameState createState() => _HeldState();
+}
+
+/// A prefab built by a fixture and handed to the scene already constructed -
+/// `descriptor.has(() => _handed)`. Nothing was open above it, so its base
+/// pair went to a registrar of its own.
+class _Handed extends EntityStruct with _Noted, EntityLifecycleListener {
+  @override
+  String get noted => 'handed';
+
+  final List<Entity> mounts = <Entity>[];
+
+  @override
+  void onEntityMounted(Entity entity) => mounts.add(entity);
+}
+
+/// A scene declaring its own event from its constructor body, which is the
+/// route an owner the framework does not construct has.
+class _BodyScene extends SceneStruct with _Noted {
+  _BodyScene(this._handed) {
+    swept = events.has((listener, event) => listener.onNoted(event));
+  }
+
+  final _Handed _handed;
+
+  @override
+  String get noted => 'bodyScene';
+
+  late final EventDispatcher<_Noted, String> swept;
+
+  late final _UnitA a;
+
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
+    a = descriptor.has(_UnitA.new);
+    descriptor.has(() => _handed);
+  }
+}
+
+class _BodySceneGame extends Game {
+  _BodySceneGame(this.handed);
+
+  final _Handed handed;
+
+  @override
+  int get pageSize => 4096;
+
+  late final _BodyScene level;
+
+  @override
+  void describeScenes(GameSceneDescriptor descriptor) {
+    super.describeScenes(descriptor);
+    level = descriptor.has(_BodyScene(handed));
+  }
+
+  @override
+  GameState createState() => _BodySceneState();
+}
+
+class _BodySceneState extends GameState<_BodySceneGame> with _Noted {
+  @override
+  String get noted => 'state';
+
+  @override
+  void onMounted() {
+    loadScene(game.level);
+  }
+}
+
+/// A system built by hand, with nothing open above it. Its inherited pair has
+/// to land on its own registrar, the way a prefab's does.
+class _BareSystem extends GameSystem with GameSystemLifecycleListener {
+  int mounts = 0;
+
+  @override
+  void onMounted() => mounts++;
+}
+
+/// A system built in a `GameState` field initialiser and handed over through
+/// a closure. Its one field dispatcher declared into the state's window.
+class _Prebuilt extends GameSystem with _Noted {
+  @override
+  String get noted => 'prebuilt';
+
+  final own = Event.signal<_Noted>((listener) => listener.onNoted('own'));
+}
+
+class _PrebuiltState extends GameState<_PrebuiltGame> with _Noted {
+  @override
+  String get noted => 'state';
+
+  final _spawner = _Prebuilt();
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(() => _spawner);
+  }
+}
+
+class _PrebuiltGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  GameState createState() => _PrebuiltState();
 }
 
 abstract class _NotedGame extends Game {
@@ -157,9 +315,9 @@ class _FieldGame extends _NotedGame {
   GameState createState() => _FieldState();
 }
 
-class _HookGame extends _NotedGame {
+class _BodyGame extends _NotedGame {
   @override
-  GameState createState() => _HookState();
+  GameState createState() => _BodyState();
 }
 
 class _MixedGame extends _NotedGame {
@@ -183,6 +341,14 @@ class _Pair extends GameListenerBase with EventBus, _Noted {
   final eager = Event.signal<_Noted>((listener) => listener.onNoted('eager'));
 }
 
+Future<T> _bootAny<T extends Game>(T Function() create) async {
+  final run = await Game.startInline(create);
+  addTearDown(() async {
+    if (run.isRunning) await run.stop();
+  });
+  return run;
+}
+
 Future<T> _boot<T extends _NotedGame>(T Function() create) async {
   final run = await Game.startInline(create);
   addTearDown(() async {
@@ -200,7 +366,7 @@ void main() {
     ComponentTypeRegistry.reset();
   });
 
-  group('a field and a hook declare the same thing', () {
+  group('a field and a constructor body declare the same thing', () {
     test('the collected lists are the same size', () async {
       final run = await _boot(_FieldGame.new);
       final state = run.state as _FieldState;
@@ -210,7 +376,7 @@ void main() {
         5,
         reason:
             'the state, the one system, the scene and its two prefabs - the '
-            'same composition walk a hook-declared dispatcher gets, reached '
+            'same composition walk a body-declared dispatcher gets, reached '
             'through a binder that was open during the constructor',
       );
       expect(state.beta.listenerCount, state.alpha.listenerCount);
@@ -228,9 +394,9 @@ void main() {
       ComponentTypeRegistry.reset();
       _Noted.log.clear();
 
-      final hookRun = await _boot(_HookGame.new);
-      (hookRun.state as _HookState).alpha('alpha');
-      (hookRun.state as _HookState).beta('beta');
+      final bodyRun = await _boot(_BodyGame.new);
+      (bodyRun.state as _BodyState).alpha('alpha');
+      (bodyRun.state as _BodyState).beta('beta');
 
       expect(
         fromFields,
@@ -258,7 +424,7 @@ void main() {
         state.beta.listenerCount,
         state.alpha.listenerCount,
         reason:
-            'the hook appended to the binder the field declarations already '
+            'the body appended to the binder the field declarations already '
             'filled rather than getting one of its own',
       );
 
@@ -286,6 +452,138 @@ void main() {
       );
       game.level.b.own.call();
       expect(_Noted.log, <String>['own:unitB']);
+    });
+  });
+
+  group('an owner the framework did not construct', () {
+    test('keeps its base pair on a registrar of its own', () async {
+      final handed = _Handed();
+      final run = await _bootAny(() => _BodySceneGame(handed));
+
+      expect(
+        handed.mountedEvent.listenerCount,
+        1,
+        reason:
+            'the prefab itself, which is an EntityLifecycleListener, and '
+            'nothing else. It was built with nothing open above it and '
+            'registered through a closure, so the pair came off '
+            'EventBus.events rather than off any window',
+      );
+
+      final entity = run.state.loadedScenes.single.addEntity(handed);
+
+      expect(
+        handed.mounts,
+        <Entity>[entity],
+        reason:
+            'and it delivers: the pair is declared during construction, so '
+            'it is filled by the same collect pass every other dispatcher is',
+      );
+    });
+
+    test('a system built with no window has its pair too', () {
+      final system = _BareSystem();
+
+      expect(
+        system.mountEvent.listenerCount,
+        0,
+        reason:
+            'constructing it did not throw and the pair is assigned. A pair '
+            'read off the declaration stack would have found it empty here',
+      );
+
+      EventBinder.bind(system);
+
+      expect(
+        system.mountEvent.listenerCount,
+        1,
+        reason:
+            'the system itself, offered by the collect pass into the '
+            'registrar its own constructor declared against',
+      );
+
+      system.mountEvent();
+      expect(system.mounts, 1);
+    });
+
+    test('a scene held on a state field keeps its own base pair', () async {
+      final run = await _bootAny(_HeldGame.new);
+      final state = run.state as _HeldState;
+
+      expect(
+        state.level.mountedEvent.listenerCount,
+        1,
+        reason:
+            'the scene itself. It was constructed inside the state window, '
+            'so a pair taken off that window would have collected the state '
+            'composition - which holds a second SceneLifecycleListener',
+      );
+
+      expect(
+        state.sceneMounts.listenerCount,
+        2,
+        reason:
+            'the two systems, which are the SceneLifecycleListeners in the '
+            'state composition. So the count above is one because the pair '
+            'is on the scene, and not a number the state binder could have '
+            'produced as well',
+      );
+    });
+
+    test('a scene declares its own event from its constructor body', () async {
+      final handed = _Handed();
+      final run = await _bootAny(() => _BodySceneGame(handed));
+
+      expect(
+        run.level.swept.listenerCount,
+        3,
+        reason:
+            'the scene and the two prefabs it registered. A scene has no '
+            'declaration window - the caller constructs it - so events is '
+            'the route, and it collects the scene composition and not the '
+            'game one',
+      );
+
+      run.level.swept('swept');
+      expect(_Noted.log, <String>[
+        'swept:bodyScene',
+        'swept:unitA',
+        'swept:handed',
+      ]);
+    });
+
+    test('a prefab built with no window has its pair before any boot', () {
+      final rock = _Handed();
+
+      expect(
+        rock.mountedEvent.listenerCount,
+        0,
+        reason:
+            'assigned by the constructor, so it is readable without a game. '
+            'The list is empty until the collect pass runs',
+      );
+    });
+  });
+
+  group('an owner built inside another owner window', () {
+    test('is refused rather than collecting that owner composition', () async {
+      await expectLater(
+        Game.startInline(_PrebuiltGame.new),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            allOf(
+              contains('_Prebuilt was built inside another owner'),
+              contains('descriptor.has(Spawner.new)'),
+            ),
+          ),
+        ),
+        reason:
+            'the field dispatcher declared into the state window while the '
+            'state field initialiser ran. Measured before this refused it: '
+            'it collected the state, itself and two unrelated systems',
+      );
     });
   });
 

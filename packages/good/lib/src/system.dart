@@ -51,11 +51,11 @@ mixin GameSystemLifecycleListener on GameListener {
 /// `describeCameras` and `describeCommands` all run on main before the spawn
 /// and again on the other side, so a channel or a buffer is the same index to
 /// both. Systems are the exception, and they can be because a system declares
-/// no shared memory of its own: [describeInputs] and [describeEvents] are the
-/// two passes it has, and a `Query` on a field allocates nothing main has to
-/// address by index either. A system that wants to publish a number reads a
-/// `StateChannel` off the `Game`, which declared it on both copies for
-/// exactly that reason.
+/// no shared memory of its own: [describeInputs] is the one pass it has, its
+/// events are dispatchers on its own binder, and a `Query` on a field
+/// allocates nothing main has to address by index either. A system that wants
+/// to publish a number reads a `StateChannel` off the `Game`, which declared
+/// it on both copies for exactly that reason.
 ///
 /// No system contributes to the widget tree, on either side. Exactly one
 /// object builds widgets and it is `Game.buildView` - a method, not a dispatch
@@ -118,36 +118,30 @@ abstract class GameSystem extends GameListenerBase
   late final SignalDispatcher<GameSystemLifecycleListener> mountEvent;
   late final SignalDispatcher<GameSystemLifecycleListener> unmountEvent;
 
-  // These two stay in the hook while a subclass's events move onto their
-  // fields, and the reason is sharper than the matching one on `EntityStruct`
-  // (struct.dart:95-129).
+  // Declared from the constructor body against this system's own registrar,
+  // for `EntityStruct`'s reason (struct.dart) with a sharper edge.
   //
   // `SystemDescriptor.has` takes a `T Function()`, and a closure may hand
   // back a system that already existed - `descriptor.has(() => _spawner)`,
-  // where `_spawner` is a field of the `GameState`. For a prefab that shape
-  // throws, because nothing is open above it and `DeclarationContext.events`
-  // finds an empty stack. For a system it does not throw: a `GameState` is
-  // itself framework-constructed now, so its *own* binder is open while its
-  // field initialisers run, and a dispatcher declared by a system built there
-  // is created against the state. It then collects the state's entire
-  // composition - every sibling system, every scene, every prefab - where the
-  // system's own binder would have offered it only the system.
+  // where `_spawner` is a field of the `GameState`. A prefab in that shape
+  // has nothing open above it. A system does: a `GameState` is itself
+  // framework-constructed, so its own window is open while its field
+  // initialisers run. `EventBus.events` reads this system and never that
+  // window, so the pair lands here whichever way the system was built.
   //
-  // A pair on this base class is inherited by every system however it was
-  // built, so it cannot assume a binder of its own. Measured, not reasoned:
-  // a system holding `Event.signal` on a field, built in a `GameState` field
-  // initialiser and handed over through a closure, collected two listeners
-  // that belonged to two unrelated systems and none of its own.
+  // A subclass's own `Event.of` fields have no such escape - they read the
+  // window, and in that shape the window is the state's. `EventBinder.open`
+  // refuses the system when it is handed over. Measured before that refusal:
+  // a system holding one `Event.signal` on a field, built in a `GameState`
+  // field initialiser and handed over through a closure, collected the state,
+  // itself and two unrelated systems, and firing it reached all four.
   //
   // A system the framework *does* build - `descriptor.has(SpinSystem.new)`,
-  // or a closure that constructs inside itself - has its own binder open, so
+  // or a closure that constructs inside itself - owns the window, so
   // `Event.*` on a subclass field works and is the shape to reach for.
-  @override
-  @mustCallSuper
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    mountEvent = descriptor.hasSignal((dispatcher) => dispatcher.onMounted());
-    unmountEvent = descriptor.hasSignal(
+  GameSystem() {
+    mountEvent = events.hasSignal((dispatcher) => dispatcher.onMounted());
+    unmountEvent = events.hasSignal(
       (dispatcher) => dispatcher.onUnmounted(),
       reverse: true,
     );

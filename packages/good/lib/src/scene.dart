@@ -38,11 +38,13 @@ abstract class SceneStruct extends GameListenerBase
   /// readable. Same scope as [mountedEvent].
   late final EventDispatcher<SceneLifecycleListener, Scene> unmountedEvent;
 
-  @override
-  @mustCallSuper
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    mountedEvent = descriptor.has(
+  // A scene is constructed by the caller - `final level = MainScene();` -
+  // so no declaration window is open while its fields initialise and
+  // `Event.*` in one throws. `EventBus.events` reads this scene instead of
+  // the stack, and a constructor body has `this`, so this is where a scene
+  // declares. A subclass declares its own the same way.
+  SceneStruct() {
+    mountedEvent = events.has(
       (listener, scene) => listener.onSceneMounted(scene),
     );
     // `reverse: true` is what lets the owning struct stop being a
@@ -52,7 +54,7 @@ abstract class SceneStruct extends GameListenerBase
     // entities already spawned. Reading the same list backwards at
     // unmount puts the scene *last*, so it can still read the world when
     // everything below it has been told. Two orders, one list.
-    unmountedEvent = descriptor.has(
+    unmountedEvent = events.has(
       (listener, scene) => listener.onSceneUnmounted(scene),
       reverse: true,
     );
@@ -62,13 +64,13 @@ abstract class SceneStruct extends GameListenerBase
   ///
   /// Typed as [EventBus], not `EntityStruct`, because that is exactly the
   /// capability this list exists to serve: the prefabs in it are collected as
-  /// listeners and get their own `describeEvents` pass. Nothing here needs them
-  /// to be entity structs specifically.
+  /// listeners and get their own collect pass. Nothing here needs them to be
+  /// entity structs specifically.
   final List<EventBus> _prefabs = <EventBus>[];
 
   /// [_prefabs] - the live list, walked at boot by `Game._bindEvents` so each
-  /// prefab gets its own `describeEvents` pass. Internal: user code holds the
-  /// typed instances `describeScene` gave it, never this.
+  /// prefab gets its own collect pass. Internal: user code holds the typed
+  /// instances `describeScene` gave it, never this.
   @internal
   List<EventBus> get declaredPrefabs => _prefabs;
 
@@ -827,9 +829,10 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
       DeclarationContext.popComponents();
       DeclarationContext.popData();
     }
-    // Recorded for the event passes: `Game._bindEvents` gives each prefab its
-    // own `describeEvents`, and `SceneStruct.collectListeners` walks this list
-    // so an event declared above reaches every struct the scene can spawn.
+    // Recorded for the event pass: `Game._bindEvents` collects into each
+    // prefab's own dispatchers, and `SceneStruct.collectListeners` walks this
+    // list so an event declared above reaches every struct the scene can
+    // spawn.
     //
     // A declared child lands here before its declarer does, because its whole
     // registration happens inside the declarer's constructor. Deterministic,
