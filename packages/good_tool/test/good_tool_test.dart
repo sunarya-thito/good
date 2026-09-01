@@ -386,8 +386,14 @@ void main() {
             '  final markerHas = Field.int32();\n}\n',
       );
 
-      final result = await _tool(repo, const <String>[]);
-      expect(result.exitCode, 65);
+      final result = await _tool(repo, const <String>['--dir', 'packages']);
+      expect(
+        result.exitCode,
+        65,
+        reason:
+            'the command line was fine and the source is what the tool objects '
+            'to, which is the whole of the difference between this and 64',
+      );
       expect(result.stderr, contains('Marker.markerHas'));
       expect(result.stderr, contains('Entity already has has'));
     }, timeout: const Timeout(Duration(minutes: 3)));
@@ -420,15 +426,44 @@ void main() {
 
     test('refuses a --dir naming a directory that is not there', () async {
       // On the absent directory itself, and not on the empty result it
-      // produces. Both exit 65 and both name `plugins`, so an assertion on
-      // either would pass with this guard gone - and the two say different
-      // things: one is a typo in the argument, the other is a tree with
-      // nothing in it.
+      // produces. Both name `plugins`, so an assertion on that alone would
+      // pass with this guard gone - and the two say different things: one is a
+      // typo in the argument, the other is a tree with nothing in it. Which is
+      // also why they exit differently: nothing was read here, so it is a
+      // usage error and the usage is reprinted.
       final repo = _runnableRepo();
       final result = await _tool(repo, const <String>['--dir', 'plugins']);
-      expect(result.exitCode, 65);
+      expect(result.exitCode, 64);
       expect(result.stderr, contains('No such directory: plugins'));
+      expect(result.stderr, contains('Usage: dart run good_tool'));
       expect(result.stderr, isNot(contains('No package to generate into')));
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('separates a directory it could not read from one it read and turned '
+        'down', () async {
+      // The two failures that look alike, and the seam the exit codes run
+      // along: `plugins` absent is a typo in the command line, `plugins`
+      // holding nothing that qualifies is an answer about the tree. An
+      // assertion that both are non-zero would not tell them apart, and one
+      // code for both is what makes a caller stop reading either.
+      final repo = _runnableRepo();
+      final absent = await _tool(repo, const <String>['--dir', 'plugins']);
+
+      Directory(
+        p.join(repo.path, 'plugins', 'gooey', 'lib'),
+      ).createSync(recursive: true);
+      _write(repo, 'plugins/gooey/pubspec.yaml', 'name: gooey\n');
+      final rejected = await _tool(repo, const <String>['--dir', 'plugins']);
+
+      expect(absent.exitCode, 64);
+      expect(rejected.exitCode, 65);
+      expect(
+        rejected.stderr,
+        isNot(contains('Usage: dart run good_tool')),
+        reason:
+            'the invocation was right, so answering it with the invocation '
+            'answers a question nobody asked',
+      );
     }, timeout: const Timeout(Duration(minutes: 3)));
 
     test('refuses a run that matches no package, rather than exiting 0', () async {

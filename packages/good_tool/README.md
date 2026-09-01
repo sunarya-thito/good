@@ -31,6 +31,16 @@ package is handled when it has a `lib/`, is not `publish_to: none`, and
 never names `good`. A run that matches no package says what it looked at and
 what it turned down, and exits 65.
 
+Two codes, the ones `good_cli`'s runner already uses. **64** is the command
+line being wrong — an argument it does not know, a `--dir` with nothing after
+it, no `--dir` at all, or a `--dir` naming a directory that is not there — and
+every one of them reprints the usage. **65** is the command line being right and
+the source not: no package qualifies, two are called one thing, a column would
+shadow a member of `Accessor`, `Entity` or `int`, the bit table would not fit a
+signature, or `--check` found a stale file. The pair that look alike sit either
+side of it on purpose: a `--dir` that does not exist was never read, and a
+`--dir` holding no engine package was read and rejected.
+
 The packages those depend on are **read** as well, and never written into —
 without `good`, a standalone package's `Component` and `Field` are undeclared
 names and there is nothing to generate. An upstream package generates its own

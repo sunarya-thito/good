@@ -66,6 +66,31 @@ import 'package:path/path.dart' as p;
 ///
 /// The thing that goes wrong with a committed generated file is that it goes
 /// stale, which is what [_check] is for and what CI runs.
+///
+/// # What each refusal exits with
+///
+/// The two codes `good_cli`'s `runner.dart` already uses, meaning what it says
+/// there. There is no third: `EX_NOINPUT` would fit an absent `--dir` by the
+/// letter of `sysexits.h`, and a vocabulary of three where the rest of the
+/// repository speaks two is a distinction nobody downstream would read.
+///
+/// **64, `EX_USAGE` - the command line is wrong.** An argument this does not
+/// know, a `--dir` with nothing after it, no `--dir` at all, or a `--dir`
+/// naming a directory that is not there. Nothing has been read in any of them;
+/// what is wrong is what was typed, and the fix is to type something else. All
+/// four reprint the usage, which is the point of the code.
+///
+/// **65, `EX_DATAERR` - the command line was fine and the source is not.** No
+/// package under those directories qualifies, two of them are called one thing,
+/// a column would shadow a member of `Accessor`, `Entity` or `int`, the
+/// component-bit table would not fit a query signature, or `--check` found a
+/// committed file that is not what would be written now. None of them reprint
+/// the usage: the invocation was right, so answering it with the invocation
+/// answers a question nobody asked.
+///
+/// The seam between the two runs through the pair that look alike. A `--dir`
+/// that does not exist is 64 and a `--dir` holding no engine package is 65,
+/// because the first was never read and the second was read and rejected.
 Future<void> main(List<String> arguments) async {
   final check = arguments.contains('--check');
   final verbose = arguments.contains('--verbose') || arguments.contains('-v');
@@ -102,24 +127,22 @@ Future<void> main(List<String> arguments) async {
         'generate into, and may be given more than once.',
       );
     }
-    stderr.writeln(
-      'Usage: dart run good_tool --dir <directory> [--dir <directory>] '
-      '[--check] [--verbose]',
-    );
-    stderr.writeln(
-      '  --dir .              the package in this directory\n'
-      '  --dir packages       every package directly under packages/',
-    );
+    _usage();
     exitCode = 64;
     return;
   }
 
+  // Also usage, and not the data error below it. Nothing here has been read:
+  // what is wrong is the value of an argument, and the fix is to edit the
+  // command line - which is what separates the two codes, and why this one
+  // reprints the usage and `--check`'s stale-file report does not.
   final missing = directories.where(
     (directory) => !Directory(directory).existsSync(),
   );
   if (missing.isNotEmpty) {
     stderr.writeln('No such directory: ${missing.join(', ')}');
-    exitCode = 65;
+    _usage();
+    exitCode = 64;
     return;
   }
 
@@ -266,6 +289,21 @@ Future<void> main(List<String> arguments) async {
     '${accessors.extensions.length} component(s), and ${bits.bits.length} '
     'component bit(s), in ${files.length} file(s) across '
     '${packages.length} package(s).',
+  );
+}
+
+/// The invocation, on stderr, under whichever message named the problem.
+///
+/// Written by every 64 and by nothing else - see [main] for why that is the
+/// line, and not a matter of how long the message already is.
+void _usage() {
+  stderr.writeln(
+    'Usage: dart run good_tool --dir <directory> [--dir <directory>] '
+    '[--check] [--verbose]',
+  );
+  stderr.writeln(
+    '  --dir .              the package in this directory\n'
+    '  --dir packages       every package directly under packages/',
   );
 }
 
