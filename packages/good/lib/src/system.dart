@@ -129,14 +129,12 @@ abstract class GameSystem extends GameListenerBase
   // initialisers run. `EventBus.events` reads this system and never that
   // window, so the pair lands here whichever way the system was built.
   //
-  // The window itself is now claimed by whatever is constructed inside it,
-  // and a second claim throws - so `_spawner = Spawner()` in a state field
-  // is refused at construction rather than booting with a system whose own
-  // field dispatchers collect the state's whole composition. Measured before
-  // that guard went in: a system holding `Event.signal` on a field, built in
-  // a `GameState` field initialiser and handed over through a closure,
-  // collected the state, itself and two unrelated systems, and firing it
-  // reached all four.
+  // A subclass's own `Event.of` fields have no such escape - they read the
+  // window, and in that shape the window is the state's. `EventBinder.open`
+  // refuses the system when it is handed over. Measured before that refusal:
+  // a system holding one `Event.signal` on a field, built in a `GameState`
+  // field initialiser and handed over through a closure, collected the state,
+  // itself and two unrelated systems, and firing it reached all four.
   //
   // A system the framework *does* build - `descriptor.has(SpinSystem.new)`,
   // or a closure that constructs inside itself - owns the window, so
