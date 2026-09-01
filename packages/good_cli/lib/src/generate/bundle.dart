@@ -111,6 +111,20 @@ String projectNameOf(Directory projectDir) {
   return name;
 }
 
+/// Whether [packageRoot] is a package good generated.
+///
+/// The marker and nothing else, so the answer holds for a directory this
+/// project did not write: a bundle belonging to another project, reached
+/// through a `path:` dependency, is generated code by the same test. `null`
+/// is a package with no directory to look in - one the package config does not
+/// resolve - and the answer for it is no.
+///
+/// Every caller that asks "is this good's" goes through here, including
+/// [markedBundles] and `enginePackageOf`.
+bool isGeneratedBundle(Directory? packageRoot) =>
+    packageRoot != null &&
+    File(p.join(packageRoot.path, bundleMarkerName)).existsSync();
+
 /// Every directory directly under the project that carries the marker.
 ///
 /// Immediate children only. A marker further down is not a bundle package this
@@ -121,9 +135,7 @@ List<Directory> markedBundles(Directory projectDir) {
   final found = <Directory>[];
   for (final entity in projectDir.listSync()) {
     if (entity is! Directory) continue;
-    if (File(p.join(entity.path, bundleMarkerName)).existsSync()) {
-      found.add(entity);
-    }
+    if (isGeneratedBundle(entity)) found.add(entity);
   }
   found.sort((a, b) => a.path.compareTo(b.path));
   return found;

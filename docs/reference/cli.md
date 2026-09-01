@@ -130,6 +130,14 @@ depending on `goo2d` and a physics backend built on it names the backend. Each
 version is copied from the project's own pubspec, so the bundle and the project
 resolve one engine between them.
 
+A dependency whose directory carries a `.good_bundle` marker is not a
+candidate. `good generate` records the bundle under the project's
+`dependencies:` and the bundle depends on the engine, so a resolved project
+offers it as the narrowest candidate and the bundle's pubspec would list
+itself. The marker is what excludes it, so a bundle generated for another
+project and reached through a `path:` dependency is excluded too, and a package
+that merely carries the recorded bundle name is read like any other dependency.
+
 The graph is read from `.dart_tool/package_config.json`. A dependency added
 since the last `flutter pub get` appears in no package config, so nothing says
 it is an engine package. Resolve the project and run `good generate` again.
