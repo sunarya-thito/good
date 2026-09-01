@@ -927,9 +927,12 @@ abstract class Game implements RandomOwner {
   ///
   /// ```dart
   /// class MyGame extends Game {
-  ///   final pause = Input.of(const TriggerBinding(.escape));
+  ///   final togglePause = Input.of(const TriggerBinding(.escape));
   /// }
   /// ```
+  ///
+  /// The field name is the action's name, and it has to clear what [Game]
+  /// already declares - a field called `pause` collides with [Game.pause].
   ///
   /// This hook is the other way, and it stays: it is what
   /// [InputDescriptor.hasDefaultValue] needs, since that hands nothing back

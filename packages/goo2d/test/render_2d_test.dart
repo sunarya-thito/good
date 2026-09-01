@@ -697,9 +697,10 @@ void main() {
             .build();
         // The regression this exists for: without describeType calling
         // component.has<Renderable2D>(), the bit is never OR'd into any
-        // archetype's signature, and `matches` returns true for *everything*
-        // (required mask 0). Both halves are needed to catch that - the
-        // positive case passes either way.
+        // archetype's signature, so the mask `withAll(Renderable2D)` builds
+        // carries a bit nothing has and `matches` returns false for
+        // *everything*. The positive case below is the half that catches
+        // that; the negative one keeps a required mask of zero from passing.
         expect(
           matcher.matches(scene.sprite.archetype.componentSignature),
           isTrue,

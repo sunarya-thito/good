@@ -154,8 +154,11 @@ mixin ScreenTransform2D on Component {
   // Registering the type is what sets this component's bit in the archetype
   // signature, and therefore the only reason `withAll(ScreenTransform2D)`
   // matches anything and `withNone(ScreenTransform2D)` excludes anything.
-  // Without it the renderer's world query would forbid a bit no archetype
-  // ever sets, and its screen query would match every archetype in the game.
+  // Without it `ComponentTypeRegistry.bitFor` still hands the type a fresh
+  // bit, so both of the renderer's queries carry a bit no archetype signature
+  // does, and they fail in opposite directions: the world query forbids it and
+  // takes every archetype in the game, the screen query requires it and takes
+  // none.
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);

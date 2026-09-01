@@ -13,13 +13,17 @@ import 'package:good/src/command/param.dart';
 ///
 /// # Where the pointer code lives, and where it does not
 ///
-/// Four one-line methods per command, and they are the same four idea twice:
+/// Two marshalling methods per direction, and a shape declares only the
+/// directions it has. [GameCommand] carries both:
 /// [GameCommand.bufferFromParams] / [GameCommand.paramsFromBuffer] for the
 /// parameters, [GameCommand.bufferFromResult] /
-/// [GameCommand.resultFromBuffer] for the result. Nothing else - `execute`
-/// and `call` are provided, so no command's own code ever touches the
-/// framework's own machinery. All written **once**, and what matters is where
-/// they are *absent* - every call site, and the handler:
+/// [GameCommand.resultFromBuffer] for the result. [SinkCommand] declares the
+/// parameter pair, [SupplierCommand] the result pair, and [SignalCommand]
+/// neither - `class Ping extends SignalCommand {}` is the whole command.
+/// Each method is one line per field of the record it moves. Nothing else -
+/// `execute` and `call` are provided, so no command's own code ever touches
+/// the framework's own machinery. All written **once**, and what matters is
+/// where they are *absent* - every call site, and the handler:
 ///
 /// ```dart
 /// final result = await damage((amount: 25, crit: true));
@@ -240,13 +244,17 @@ abstract class GameCommandBase {
 /// final dealt = await damage((amount: 25, crit: true));
 /// ```
 ///
-/// The handler is registered against the command and reads the record
-/// directly, because unlike a call site there is exactly one of it:
+/// The handler is registered against the command and takes the record, not
+/// the buffer. [CommandDescriptor.hasHandler] wants an `R Function(P)`;
+/// [paramsFromBuffer] and [bufferFromResult] run either side of it, so the
+/// body is the function the command claims to be and nothing more:
 ///
+/// <!-- snippet-setup
+/// final CommandDescriptor descriptor = given();
+/// final Damage damage = given();
+/// -->
 /// ```dart
-/// descriptor.hasHandler(damage, (c, call) {
-///   c.dealt[call] = c.amount[call] * (c.crit[call] == 1 ? 2 : 1);
-/// });
+/// descriptor.hasHandler(damage, (p) => p.amount * (p.crit ? 2 : 1));
 /// ```
 abstract class GameCommand<P, R> extends GameCommandBase {
   /// Writes [params] into the record. One line per field.
@@ -362,7 +370,8 @@ abstract class SinkCommand<P> extends GameCommandBase {
 /// A call that takes and returns nothing: `void Function()`.
 ///
 /// "Do the thing." No [describeParams] body needed either - the default
-/// declares an empty record, so a signal is three lines including the class.
+/// declares an empty record, so a signal is one line: `class Ping extends
+/// SignalCommand {}`.
 abstract class SignalCommand extends GameCommandBase {
   /// Nothing to declare. Overridable anyway, for a signal that grows a field
   /// later and would otherwise have to change class.
@@ -453,9 +462,7 @@ extension CommandBatchCalls on CommandBatch {
 ///     descriptor.hasHandler(damage, _onDamage);
 ///   }
 ///
-///   void _onDamage(Damage c, ParamBuffer call) {
-///     c.dealt[call] = c.amount[call] * 2;
-///   }
+///   int _onDamage(({int amount, bool crit}) p) => p.amount * 2;
 /// }
 /// ```
 ///
@@ -483,6 +490,10 @@ abstract class CommandDescriptor {
   /// claims to be**, with no buffer in its signature and no pointer in its
   /// body.
   ///
+  /// <!-- snippet-setup
+  /// final CommandDescriptor descriptor = given();
+  /// final Damage damage = given();
+  /// -->
   /// ```dart
   /// descriptor.hasHandler(damage, (p) => p.amount * (p.crit ? 2 : 1));
   /// ```
