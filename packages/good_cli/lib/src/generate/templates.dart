@@ -23,13 +23,15 @@ String emitTextures(
   AssetScan scan, {
   required String command,
   required String package,
+  required bool drawsTextures,
 }) => _emitEnum(
   assets: scan.textures,
   enumName: 'Textures',
-  payload: rendererPayloadType(package, 'Texture'),
+  payload: rendererPayloadType(drawsTextures, 'Texture'),
   command: command,
   package: package,
   emptyNote: 'image',
+  sizeClassName: 'TextureSize',
 );
 
 /// `good.generated/audios.dart` - one enum value per shipped audio file.
@@ -51,26 +53,50 @@ String emitAudios(
 );
 
 /// What a **renderer's** asset kind loads to, named as the project's engine
-/// package spells it - or `Object?` where that package has no name for it.
+/// package spells it - or `Object?` where that package cannot draw.
 ///
-/// `Texture` is a `goo2d` type: it is what its loader produces, and it is a
-/// `ui.Image` behind a handle, which is only meaningful to something that can
-/// draw one. `goo3d` has no renderer until #43, so a 3D project has nothing
-/// for a texture key to be typed to. Naming the 2D type anyway puts four
-/// `Texture isn't a type` errors into the first `flutter analyze` a 3D
-/// project runs.
+/// `Texture` is declared in `goo2d` and exported from `package:goo2d/goo2d.dart`.
+/// It is what the texture loader produces, and it is a `ui.Image` behind a
+/// handle, so it is only meaningful to something that can draw one. `goo3d`
+/// has no renderer until #43, and it depends on `good` alone, so a 3D project
+/// has nothing for a texture key to be typed to. Naming the 2D type anyway
+/// puts four `Texture isn't a type` errors into the first `flutter analyze` a
+/// 3D project runs.
+///
+/// [drawsTextures] is that question answered from the dependency graph, by
+/// `enginePackageDrawsTextures`, and not from the entry package's name. A
+/// renderer somebody else publishes on top of `goo2d` gets a typed key the
+/// same way `goo2d` does.
 ///
 /// `Object?` and not a refusal to generate: the keys still compile, `.values`
 /// still walks them for the readiness check, and nothing claims a payload type
 /// that does not exist. It narrows on its own the day `goo3d` can draw.
 ///
-/// Audio does **not** come through here any more. `AudioClip` moved into the
-/// kernel (#93), which every engine package re-exports, so an audio key is
-/// typed for a 3D project exactly as it is for a 2D one - it is bytes and a
-/// container name, with no canvas or dimension anywhere in it.
-String rendererPayloadType(String package, String rendererType) =>
-    package == 'goo2d' ? rendererType : 'Object?';
+/// The sizes below are emitted either way. A pixel dimension is an `int` and
+/// names no engine type, and a project that cannot draw still ships images
+/// and still has code that wants to know how big they are.
+///
+/// Audio does **not** come through here. `AudioClip` moved into the kernel
+/// (#93), which every engine package re-exports, so an audio key is typed for
+/// a 3D project exactly as it is for a 2D one - it is bytes and a container
+/// name, with no canvas or dimension anywhere in it.
+String rendererPayloadType(bool drawsTextures, String rendererType) =>
+    drawsTextures ? rendererType : 'Object?';
 
+/// The one file both asset kinds are emitted from.
+///
+/// [sizeClassName] is the class the pixel sizes go in, and passing it is what
+/// makes this the texture emitter: an audio file has no dimensions, so audio
+/// passes `null` and gets none of it.
+///
+/// The sizes are emitted twice, in two forms, because the two forms are not
+/// interchangeable. Instance-field access is never a constant expression, so
+/// `Textures.sheet.width` cannot appear in the `static const List<SpriteFrame>`
+/// the rendering guide teaches; a `static const int` can, and cannot be
+/// reached from an enum value. Enum values and static members share one
+/// namespace, so the constants live in their own class, where the only way to
+/// collide is two textures with the same identifier - which `scanAssets`
+/// already refuses by name.
 String _emitEnum({
   required List<DiscoveredAsset> assets,
   required String enumName,
@@ -78,6 +104,7 @@ String _emitEnum({
   required String command,
   required String package,
   required String emptyNote,
+  String? sizeClassName,
 }) {
   final buffer = StringBuffer(header(command))
     ..writeln()
@@ -109,24 +136,95 @@ String _emitEnum({
             '<AssetKey<$payload>>[];',
           )
           ..writeln('}'))
-        .toString();
+        .toString() +
+        (sizeClassName == null ? '' : _emptySizeClass(sizeClassName));
   }
 
+  final sized = sizeClassName != null;
   buffer.writeln('enum $enumName with LocalEnumAssetKey<$payload> {');
   for (var i = 0; i < assets.length; i++) {
     final asset = assets[i];
     final terminator = i == assets.length - 1 ? ';' : ',';
-    buffer.writeln("  ${asset.identifier}('${asset.path}')$terminator");
+    final size = sized ? ', ${_width(asset)}, ${_height(asset)}' : '';
+    buffer.writeln("  ${asset.identifier}('${asset.path}'$size)$terminator");
   }
   buffer
     ..writeln()
-    ..writeln('  const $enumName(this.path);')
+    ..writeln(
+      sized
+          ? '  const $enumName(this.path, this.width, this.height);'
+          : '  const $enumName(this.path);',
+    )
     ..writeln()
     ..writeln('  @override')
-    ..writeln('  final String path;')
-    ..writeln('}');
+    ..writeln('  final String path;');
+  if (sized) {
+    buffer
+      ..writeln()
+      ..writeln("  /// The image's width in pixels, read from its header when")
+      ..writeln('  /// this file was generated.')
+      ..writeln('  ///')
+      ..writeln('  /// `0` where the header could not be read - `$command`')
+      ..writeln('  /// names the file when that happens.')
+      ..writeln('  ///')
+      ..writeln('  /// Not usable in a `const` expression: field access on an')
+      ..writeln('  /// enum value never is. Name `$sizeClassName.<asset>Width`')
+      ..writeln('  /// where a constant is wanted.')
+      ..writeln('  final int width;')
+      ..writeln()
+      ..writeln("  /// The image's height in pixels. See [width].")
+      ..writeln('  final int height;');
+  }
+  buffer.writeln('}');
+  if (sized) {
+    buffer
+      ..writeln()
+      ..writeln("/// Every texture's pixel size, as constants.")
+      ..writeln('///')
+      ..writeln('/// The same numbers [$enumName] carries, in the one form')
+      ..writeln('/// that can appear in a `const` expression - a')
+      ..writeln('/// `static const List<SpriteFrame>` table, or a')
+      ..writeln('/// `SpriteFrame.pixels` divisor. Re-exporting the art at a')
+      ..writeln('/// different size changes these and nothing else.')
+      ..writeln('abstract final class $sizeClassName {');
+    for (var i = 0; i < assets.length; i++) {
+      final asset = assets[i];
+      final name = asset.identifier;
+      if (i > 0) buffer.writeln();
+      buffer
+        ..writeln('  /// `${asset.path}` is ${_width(asset)} pixels wide.')
+        ..writeln('  static const int ${name}Width = ${_width(asset)};')
+        ..writeln()
+        ..writeln('  /// `${asset.path}` is ${_height(asset)} pixels tall.')
+        ..writeln('  static const int ${name}Height = ${_height(asset)};');
+    }
+    buffer.writeln('}');
+  }
   return buffer.toString();
 }
+
+/// The width to write, and `0` where the header did not state one.
+///
+/// A number and not an omission because every enum value has to pass one to
+/// the same constructor. `good generate` prints the file it could not read, so
+/// the zero is never the first anybody hears of it.
+int _width(DiscoveredAsset asset) => asset.size?.width ?? 0;
+
+/// The height to write. See [_width].
+int _height(DiscoveredAsset asset) => asset.size?.height ?? 0;
+
+/// The size class for a project that ships no images yet.
+///
+/// Emitted so the name resolves from the first run. It has no members, and
+/// gains one pair per texture as soon as one is declared.
+String _emptySizeClass(String name) => (StringBuffer()
+      ..writeln()
+      ..writeln('/// No texture sizes, because no images are declared yet.')
+      ..writeln('///')
+      ..writeln('/// Declare one and this gains a `static const int')
+      ..writeln('/// <asset>Width` and `<asset>Height` pair for it.')
+      ..writeln('abstract final class $name {}'))
+    .toString();
 
 /// `good.generated/good.dart` - the startup check.
 ///

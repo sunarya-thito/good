@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:good_cli/src/command.dart';
 import 'package:good_cli/src/generate/assets.dart';
 import 'package:good_cli/src/generate/bundle.dart';
+import 'package:good_cli/src/generate/engine_dependency.dart';
 import 'package:good_cli/src/generate/struct_scan.dart';
 import 'package:good_cli/src/generate/templates.dart';
 import 'package:good_cli/src/verbosable.dart';
@@ -155,6 +156,25 @@ GenerateResult runGenerate({
   final package = enginePackage ?? enginePackageOf(project);
   verbose.printf('Engine package: %s\n', [package]);
 
+  // Whether a texture key can be typed `Texture`, asked of the dependency
+  // graph and not of the package's name (#312).
+  final draws = enginePackageDrawsTextures(project, package);
+  verbose.printf('Texture payload: %s\n', [
+    draws ? 'Texture' : 'Object? - $package does not reach goo2d',
+  ]);
+
+  // Said out loud because the generated size is `0` for a file whose
+  // header did not state one, and a zero divisor draws nothing rather
+  // than failing.
+  for (final texture in scan.textures) {
+    if (texture.size != null) continue;
+    out.printf(
+      'Could not read the pixel size of %s - its width and height '
+      'generate as 0. Re-export it as PNG, WebP, GIF, BMP or JPEG.\n',
+      [texture.path],
+    );
+  }
+
   // Which package is the bundle, and whether it is good's to write to. Before
   // the first byte: everything below either creates that directory or writes
   // over what is in it, and a directory this cannot prove it created is one
@@ -176,6 +196,7 @@ GenerateResult runGenerate({
       scan,
       command: command,
       package: package,
+      drawsTextures: draws,
     ),
     p.join(bundle.libDir.path, 'audios.dart'): emitAudios(
       scan,

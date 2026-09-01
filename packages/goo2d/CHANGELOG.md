@@ -143,6 +143,14 @@
 
 ### Changed
 
+* **The pixel-size parameters say where the number comes from.**
+  `SpriteFrame.pixels`, `NineSliceBorder.pixels`, `NineSliceBorder.all` and
+  `SpriteDescriptor.has` take the same arguments they took; their reference
+  documentation now points `sheetWidth`, `sheetHeight`, `sourceWidth`,
+  `sourceHeight` and `sourceSize` at the `TextureSize` constants `good generate`
+  emits, and says that `has`'s `width`/`height` are world units and are not one
+  of them (#111).
+
 * **`Game2D.maxSpritesPerTick` defaults to 16384, up from 4096.** A
   full-screen layer of 16 px tiles is 8228 records on its own, so 4096 was a
   figure a first tilemap walked past on its first frame - and until the

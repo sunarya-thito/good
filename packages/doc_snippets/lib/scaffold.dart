@@ -80,15 +80,33 @@ double get fixedDelta => 1 / 60;
 // ---------------------------------------------------------------------------
 
 enum Textures with LocalEnumAssetKey<Texture> {
-  spritesPlayer('assets/sprites/player.webp'),
-  uiButton('assets/ui/button.webp'),
-  worldTileset('assets/world/tileset.webp'),
-  worldGrass('assets/world/grass.webp');
+  spritesPlayer('assets/sprites/player.webp', 512, 512),
+  uiButton('assets/ui/button.webp', 64, 64),
+  worldTileset('assets/world/tileset.webp', 256, 256),
+  worldGrass('assets/world/grass.webp', 32, 32);
 
-  const Textures(this.path);
+  const Textures(this.path, this.width, this.height);
 
   @override
   final String path;
+
+  final int width;
+
+  final int height;
+}
+
+// The sizes again, as constants. `good generate` emits both forms because they
+// are not interchangeable: field access on an enum value is never a constant
+// expression, so only these can appear in a `static const List<SpriteFrame>`.
+abstract final class TextureSize {
+  static const int spritesPlayerWidth = 512;
+  static const int spritesPlayerHeight = 512;
+  static const int uiButtonWidth = 64;
+  static const int uiButtonHeight = 64;
+  static const int worldTilesetWidth = 256;
+  static const int worldTilesetHeight = 256;
+  static const int worldGrassWidth = 32;
+  static const int worldGrassHeight = 32;
 }
 
 enum Audios with LocalEnumAssetKey<AudioClip> {

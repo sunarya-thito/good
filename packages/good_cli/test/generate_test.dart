@@ -1,7 +1,10 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'dart:typed_data';
+
 import 'package:good_cli/src/generate/assets.dart';
+import 'package:good_cli/src/generate/engine_dependency.dart';
 import 'package:good_cli/src/generate/run.dart';
 import 'package:good_cli/src/generate/scaffold.dart';
 import 'package:good_cli/src/generate/templates.dart';
@@ -53,6 +56,71 @@ Directory _project(String pubspec, List<String> files) {
     file.parent.createSync(recursive: true);
     file.writeAsStringSync('');
   }
+  return dir;
+}
+
+/// A project whose declared assets are real PNGs of the stated size.
+///
+/// The size is written into the header here, so a generated `512` can only
+/// have come from the header being read - [_project] writes empty files, which
+/// is what every test above wants and what no test of a dimension can use.
+Directory _projectWithImages(String pubspec, Map<String, List<int>> images) {
+  final dir = testTempDir('good_cli_test');
+  File('${dir.path}/pubspec.yaml').writeAsStringSync(pubspec);
+  images.forEach((path, size) {
+    File('${dir.path}/$path')
+      ..parent.createSync(recursive: true)
+      ..writeAsBytesSync(_pngBytes(size[0], size[1]));
+  });
+  return dir;
+}
+
+/// A 24-byte PNG: the signature and an `IHDR` chunk, and nothing after it.
+///
+/// Enough for a header read and for nothing else. Encoding an actual image
+/// would need a compressor and would leave the dimension in two places.
+Uint8List _pngBytes(int width, int height) {
+  final bytes = Uint8List(24)
+    ..setRange(0, 8, const <int>[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A,
+      0x0A])
+    ..setRange(12, 16, 'IHDR'.codeUnits);
+  for (var i = 0; i < 4; i++) {
+    bytes[16 + i] = (width >> (24 - 8 * i)) & 0xFF;
+    bytes[20 + i] = (height >> (24 - 8 * i)) & 0xFF;
+  }
+  return bytes;
+}
+
+/// A project directory whose package config resolves [graph], each entry a
+/// package name and the `dependencies:` its pubspec declares.
+///
+/// What `flutter pub get` leaves behind, in the shape the generator reads it.
+Directory _projectWithGraph(
+  String pubspec,
+  Map<String, List<String>> graph,
+) {
+  final dir = testTempDir('good_cli_graph');
+  File('${dir.path}/pubspec.yaml').writeAsStringSync(pubspec);
+  final entries = <String>[];
+  graph.forEach((name, dependencies) {
+    final root = Directory('${dir.path}/packages/$name')
+      ..createSync(recursive: true);
+    final deps = dependencies
+        .map((d) => '  $d: ^1.0.0')
+        .join('\n');
+    File('${root.path}/pubspec.yaml').writeAsStringSync(
+      'name: $name\n${dependencies.isEmpty ? '' : 'dependencies:\n$deps\n'}',
+    );
+    entries.add(
+      '{ "name": "$name", "rootUri": "../packages/$name", '
+      '"packageUri": "lib/" }',
+    );
+  });
+  File('${dir.path}/.dart_tool/package_config.json')
+    ..parent.createSync(recursive: true)
+    ..writeAsStringSync(
+      '{ "configVersion": 2, "packages": [${entries.join(', ')}] }',
+    );
   return dir;
 }
 
@@ -285,10 +353,11 @@ flutter:
         scanAssets(dir),
         command: 'good generate',
         package: 'goo2d',
+        drawsTextures: true,
       );
       expect(
         source,
-        contains("planePlayerBlue('assets/plane_player_blue.png')"),
+        contains("planePlayerBlue('assets/plane_player_blue.png', "),
       );
       expect(
         source,
@@ -303,6 +372,7 @@ flutter:
         scanAssets(dir),
         command: 'good generate',
         package: 'goo2d',
+        drawsTextures: true,
       );
       expect(
         source,
@@ -324,6 +394,7 @@ flutter:
         scanAssets(dir),
         command: 'good generate',
         package: 'goo2d',
+        drawsTextures: true,
       );
       expect(
         source.split('\n').where((line) => line.startsWith('enum ')),
@@ -349,7 +420,12 @@ flutter:
       final dir = _project('name: demo\n', <String>[]);
       final scan = scanAssets(dir);
       expect(
-        emitTextures(scan, command: 'good generate', package: 'goo2d'),
+        emitTextures(
+          scan,
+          command: 'good generate',
+          package: 'goo2d',
+          drawsTextures: true,
+        ),
         contains("import 'package:goo2d/goo2d.dart';"),
       );
       expect(
@@ -365,6 +441,7 @@ flutter:
           scanAssets(dir),
           command: 'good generate',
           package: 'goo2d',
+          drawsTextures: true,
         ),
         emitReadiness(command: 'good generate', package: 'goo2d'),
         emitAssetKeys(command: 'good generate', random: Random(1)),
@@ -581,9 +658,9 @@ flutter:
     });
 
     test('a renderer payload is typed only where the engine draws', () {
-      expect(rendererPayloadType('goo2d', 'Texture'), 'Texture');
+      expect(rendererPayloadType(true, 'Texture'), 'Texture');
       expect(
-        rendererPayloadType('goo3d', 'Texture'),
+        rendererPayloadType(false, 'Texture'),
         'Object?',
         reason:
             'Texture is a goo2d type - a ui.Image behind a handle, meaningful '
@@ -1218,7 +1295,291 @@ flutter:
       final textures = File(
         '${dir.path}/demo_bundle/lib/textures.dart',
       ).readAsStringSync();
-      expect(textures, contains("uiButton('assets/ui/button.png')"));
+      expect(textures, contains("uiButton('assets/ui/button.png'"));
+    });
+  });
+
+  group('texture sizes', () {
+    test('an enum value carries the size read from the image header', () {
+      final dir = _projectWithImages(_pubspecWithAssets, <String, List<int>>{
+        'assets/sheet.png': <int>[512, 256],
+      });
+      expect(
+        emitTextures(
+          scanAssets(dir),
+          command: 'good generate',
+          package: 'goo2d',
+          drawsTextures: true,
+        ),
+        contains("sheet('assets/sheet.png', 512, 256)"),
+        reason:
+            'the numbers are in the file and nowhere else - restating them at '
+            'a call site is what re-exporting art at a new size then has to '
+            'go and find',
+      );
+    });
+
+    test('the size class holds constants, not enum members', () {
+      // The whole point of the second form. Instance-field access is never a
+      // constant expression, so `Textures.sheet.width` cannot appear in the
+      // `static const List<SpriteFrame>` the rendering guide teaches; a
+      // `static const int` can.
+      final source = emitTextures(
+        scanAssets(
+          _projectWithImages(_pubspecWithAssets, <String, List<int>>{
+            'assets/sheet.png': <int>[512, 256],
+          }),
+        ),
+        command: 'good generate',
+        package: 'goo2d',
+        drawsTextures: true,
+      );
+      expect(source, contains('abstract final class TextureSize'));
+      expect(source, contains('static const int sheetWidth = 512;'));
+      expect(source, contains('static const int sheetHeight = 256;'));
+      expect(
+        source.indexOf('abstract final class TextureSize'),
+        greaterThan(source.indexOf('enum Textures')),
+        reason:
+            'enum values and static members share one namespace, so the '
+            'constants have to be a separate declaration - a texture named '
+            'sheet_width.png would otherwise land on sheetWidth',
+      );
+    });
+
+    test('width and height are told apart', () {
+      // A generator that wrote the width twice, or read one field for both,
+      // passes on a square image.
+      final source = emitTextures(
+        scanAssets(
+          _projectWithImages(_pubspecWithAssets, <String, List<int>>{
+            'assets/tall.png': <int>[3, 97],
+          }),
+        ),
+        command: 'good generate',
+        package: 'goo2d',
+        drawsTextures: true,
+      );
+      expect(source, contains("tall('assets/tall.png', 3, 97)"));
+      expect(source, contains('static const int tallWidth = 3;'));
+      expect(source, contains('static const int tallHeight = 97;'));
+    });
+
+    test('a file whose header says nothing generates 0, not a guess', () {
+      final dir = _project(_pubspecWithAssets, <String>['assets/broken.png']);
+      final source = emitTextures(
+        scanAssets(dir),
+        command: 'good generate',
+        package: 'goo2d',
+        drawsTextures: true,
+      );
+      expect(source, contains("broken('assets/broken.png', 0, 0)"));
+      expect(source, contains('static const int brokenWidth = 0;'));
+    });
+
+    test('sizes are emitted where the payload is Object? too', () {
+      // A project that cannot draw still ships images, and a pixel dimension
+      // is an int that names no engine type.
+      final source = emitTextures(
+        scanAssets(
+          _projectWithImages(_pubspecWithAssets, <String, List<int>>{
+            'assets/sheet.png': <int>[512, 256],
+          }),
+        ),
+        command: 'good generate',
+        package: 'goo3d',
+        drawsTextures: false,
+      );
+      expect(source, contains('LocalEnumAssetKey<Object?>'));
+      expect(source, contains('static const int sheetWidth = 512;'));
+    });
+
+    test('audio gets no dimensions', () {
+      final source = emitAudios(
+        scanAssets(
+          _project(_pubspecWithAssets, <String>['assets/theme.ogg']),
+        ),
+        command: 'good generate',
+        package: 'goo2d',
+      );
+      expect(source, contains("theme('assets/theme.ogg')"));
+      expect(source, isNot(contains('TextureSize')));
+      expect(
+        source,
+        isNot(contains('final int width;')),
+        reason: 'a sound has no canvas, and the emitter is shared',
+      );
+    });
+
+    test('a project with no images still declares the size class', () {
+      final source = emitTextures(
+        scanAssets(_project('name: demo\n', <String>[])),
+        command: 'good generate',
+        package: 'goo2d',
+        drawsTextures: true,
+      );
+      expect(
+        source,
+        contains('abstract final class TextureSize'),
+        reason:
+            'the name has to resolve from the first run, the same reason the '
+            'empty Textures class exists at all',
+      );
+    });
+
+    test('a texture named width collides with the field every one carries', () {
+      // `duplicate_definition` points at two lines of a generated file and
+      // names no asset. This has to fail here, where the message can.
+      final dir = _project(_pubspecWithAssets, <String>['assets/width.png']);
+      expect(
+        () => scanAssets(dir),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('assets/width.png'), contains('Rename')),
+          ),
+        ),
+      );
+    });
+
+    test('a name that merely ends in Width is a texture like any other', () {
+      // The reserved set is two basenames and does not grow with what a
+      // project ships. A check written as a pattern over identifiers would
+      // reject this one.
+      final dir = _projectWithImages(_pubspecWithAssets, <String, List<int>>{
+        'assets/sheet_width.png': <int>[8, 4],
+      });
+      expect(
+        emitTextures(
+          scanAssets(dir),
+          command: 'good generate',
+          package: 'goo2d',
+          drawsTextures: true,
+        ),
+        contains("sheetWidth('assets/sheet_width.png', 8, 4)"),
+      );
+    });
+
+    test('an audio file named width is not reserved', () {
+      // The fields are on the texture enum. Audios and Textures are separate
+      // types, the same reason click.png and click.ogg do not collide.
+      final dir = _project(_pubspecWithAssets, <String>['assets/width.ogg']);
+      expect(scanAssets(dir).audio.single.identifier, 'width');
+    });
+  });
+
+  group('enginePackageDrawsTextures', () {
+    test('the entry package that declares Texture draws', () {
+      expect(
+        enginePackageDrawsTextures(
+          _projectWithGraph('name: demo\n', <String, List<String>>{
+            'goo2d': <String>['good'],
+            'good': <String>[],
+          }),
+          'goo2d',
+        ),
+        isTrue,
+      );
+    });
+
+    test('a renderer built on goo2d draws, though it is not named goo2d', () {
+      // #312: the payload type was chosen by comparing the entry package's
+      // name to 'goo2d', so a renderer somebody else publishes on top of
+      // goo2d got Object? for keys whose payload is a Texture.
+      expect(
+        enginePackageDrawsTextures(
+          _projectWithGraph('name: demo\n', <String, List<String>>{
+            'neon': <String>['goo2d'],
+            'goo2d': <String>['good'],
+            'good': <String>[],
+          }),
+          'neon',
+        ),
+        isTrue,
+        reason:
+            'neon reaches goo2d, which is where Texture is declared, so its '
+            'texture keys carry a payload type',
+      );
+    });
+
+    test('an engine package that never reaches goo2d does not draw', () {
+      // goo3d depends on good and never on goo2d, so naming Texture in a 3D
+      // project puts `Texture isn't a type` into its first flutter analyze.
+      expect(
+        enginePackageDrawsTextures(
+          _projectWithGraph('name: demo\n', <String, List<String>>{
+            'goo3d': <String>['good'],
+            'good': <String>[],
+          }),
+          'goo3d',
+        ),
+        isFalse,
+      );
+      expect(
+        enginePackageDrawsTextures(
+          _projectWithGraph('name: demo\n', <String, List<String>>{
+            'good': <String>[],
+          }),
+          'good',
+        ),
+        isFalse,
+        reason: 'the kernel has no renderer either',
+      );
+    });
+
+    test('the walk is transitive, not one hop', () {
+      expect(
+        enginePackageDrawsTextures(
+          _projectWithGraph('name: demo\n', <String, List<String>>{
+            'studio_kit': <String>['neon'],
+            'neon': <String>['goo2d'],
+            'goo2d': <String>['good'],
+            'good': <String>[],
+          }),
+          'studio_kit',
+        ),
+        isTrue,
+      );
+    });
+
+    test('a dev dependency on goo2d is not a draw', () {
+      final dir = testTempDir('good_cli_graph');
+      File('${dir.path}/pubspec.yaml').writeAsStringSync('name: demo\n');
+      final root = Directory('${dir.path}/packages/tool')
+        ..createSync(recursive: true);
+      File('${root.path}/pubspec.yaml').writeAsStringSync(
+        'name: tool\ndev_dependencies:\n  goo2d: ^1.0.0\n',
+      );
+      File('${dir.path}/.dart_tool/package_config.json')
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync(
+          '{ "configVersion": 2, "packages": [ { "name": "tool", '
+          '"rootUri": "../packages/tool", "packageUri": "lib/" } ] }',
+        );
+      expect(
+        enginePackageDrawsTextures(dir, 'tool'),
+        isFalse,
+        reason:
+            "a dev dependency is not on lib/'s import path, so the generated "
+            'file could not name Texture through it',
+      );
+    });
+
+    test('an unresolved project answers Object?, not a name that fails', () {
+      // No package config, so nothing says what the renderer is built on.
+      // Object? compiles; `Texture` would not resolve.
+      final dir = testTempDir('good_cli_graph');
+      File('${dir.path}/pubspec.yaml').writeAsStringSync('name: demo\n');
+      expect(enginePackageDrawsTextures(dir, 'neon'), isFalse);
+      expect(
+        enginePackageDrawsTextures(dir, 'goo2d'),
+        isTrue,
+        reason:
+            'goo2d is where Texture is declared, and that needs no graph - '
+            'which is what keeps `good create` working before its first '
+            'pub get',
+      );
     });
   });
 }

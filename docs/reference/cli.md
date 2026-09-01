@@ -157,6 +157,55 @@ scaffolded and does not go through this.
 Scans what the pubspec **declares** under `flutter: assets:`, not what is on
 disk — a file in an unlisted directory is invisible to it, and to Flutter.
 
+### Texture sizes
+
+`textures.dart` carries each image's pixel size, read from its header at
+generate time. PNG, WebP, GIF, BMP and JPEG, from the leading bytes and not from
+the extension. Nothing is decoded.
+
+```dart
+enum Textures with LocalEnumAssetKey<Texture> {
+  sheet('assets/sheet.webp', 512, 256);
+  // ...
+}
+
+abstract final class TextureSize {
+  static const int sheetWidth = 512;
+  static const int sheetHeight = 256;
+}
+```
+
+Two forms, because they are not interchangeable. `Textures.sheet.width` reads
+well; field access on an enum value is never a constant expression, so it cannot
+appear in the `static const List<SpriteFrame>` tables
+[Rendering](../guide/rendering.md#atlases-and-sprite-sheets) teaches.
+`TextureSize.sheetWidth` can. Feed `SpriteFrame.pixels` and
+`NineSliceBorder.pixels` from the constants and re-exporting the art at another
+size needs no edit.
+
+`Textures` and `TextureSize` are separate declarations because enum values and
+static members share one namespace. That leaves the enum's own two field names
+reserved: a texture whose path generates the identifier `width` or `height` —
+`assets/width.png`, `assets/ui/height.png` — is refused at generate time, with
+the path in the message.
+
+A file whose header states no size generates `0` for both, and `good generate`
+names it. Re-export it in one of the five formats above.
+
+### Which payload type a texture key carries
+
+`Texture` is declared in `goo2d`. A texture key is typed `Texture` where the
+project's engine package reaches `goo2d` through its `dependencies:`, and
+`Object?` where it does not. A renderer published on top of `goo2d` gets typed
+keys the same way `goo2d` does; a `goo3d` project gets `Object?`, which is what
+keeps `Texture isn't a type` out of its first `flutter analyze`.
+
+The graph is read from `.dart_tool/package_config.json`. An entry package added
+since the last `flutter pub get` is in no package config, so the keys come out
+`Object?`; resolve the project and run `good generate` again. The sizes above
+are emitted either way — a pixel dimension is an `int` and names no engine
+type.
+
 ---
 
 ## `good assets`

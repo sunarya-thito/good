@@ -26,7 +26,9 @@ These were actually run:
 
 - `good create` → `flutter analyze` clean → `flutter run`
 - `good assets compact` on a real image, with ffmpeg auto-download
-- `good generate` producing a populated `Textures` enum
+- `good generate` producing a populated `Textures` enum, each value carrying
+  the pixel size read from the image header, and a `TextureSize` class of the
+  same numbers as `static const int`
 - `good assets pack` writing an encrypted chunk and the mapping
 - `good build windows` producing a launchable application whose bundle contains
   the chunk — and, with `strip-originals` unset, the loose copy beside it
@@ -107,6 +109,10 @@ Deferred, and documented in place instead of left as silent gaps.
   larger piece of work, and emitting a stub would make it look done.
 - **`good build macos`** — run the pipeline steps and `flutter build macos`.
 - **`good run`** — use `flutter run`.
+- **A texture size the generator could not read.** `good generate` parses PNG,
+  WebP, GIF, BMP and JPEG headers. Anything else with a texture extension
+  generates `0` for its width and height, named in the run's output. An SVG or
+  an AVIF is the case that reaches this.
 
 ### Networking
 

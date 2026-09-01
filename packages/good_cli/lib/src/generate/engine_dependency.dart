@@ -14,6 +14,15 @@ import 'package:yaml/yaml.dart';
 /// found - they already wrote the dependency.
 const String engineRootPackage = 'good';
 
+/// The package that declares `Texture` (#312).
+///
+/// The second name written down here, and the same kind of name as
+/// [engineRootPackage]: the root of a package graph, not a key anything is
+/// looked up by. `Texture` is declared in `goo2d/lib/src/render/texture.dart`
+/// and exported from `package:goo2d/goo2d.dart`, so a package that draws is
+/// one that reaches `goo2d` - see [enginePackageDrawsTextures].
+const String textureRootPackage = 'goo2d';
+
 /// The parts of a `pubspec.yaml` anything here asks about.
 @immutable
 class PubspecFacts {
@@ -234,3 +243,40 @@ class EngineDependencies {
         : readPubspecFacts(File(p.join(root.path, 'pubspec.yaml')));
   }
 }
+
+/// Whether generated code importing [enginePackage] can name `Texture`.
+///
+/// The question the texture enum's payload type turns on. `Texture` lives in
+/// [textureRootPackage], so a project draws when its entry package is that
+/// package or reaches it through `dependencies:`. `goo3d` depends on `good`
+/// and never on `goo2d`, so a 3D project answers `false` and its texture keys
+/// carry `Object?` - which is what keeps `Texture isn't a type` out of its
+/// first `flutter analyze`.
+///
+/// Answered from the graph and not from [enginePackage]'s name, so a renderer
+/// somebody else publishes on top of `goo2d` gets typed keys without being
+/// listed anywhere here.
+///
+/// # What it assumes, and where that shows
+///
+/// That an entry package re-exports the engine surface it is built on. The
+/// generated files name `AssetKey`, `LocalEnumAssetKey` and `AudioClip`
+/// through the one import they write, so the assumption is already load-
+/// bearing for every asset kind; `Texture` is one more name under it. A
+/// package that depends on `goo2d` without re-exporting it generates a file
+/// that does not resolve, and it does not resolve at `AssetKey` first.
+///
+/// # An unresolved project
+///
+/// The graph comes from `.dart_tool/package_config.json`, so a project that
+/// has not run `flutter pub get` has no graph and a third-party renderer in it
+/// answers `false`. That is `Object?` on keys that could have been typed, and
+/// not a name that fails to resolve. Resolving the project and running
+/// `good generate` again types them.
+bool enginePackageDrawsTextures(Directory projectDir, String enginePackage) =>
+    EngineDependencies(
+      roots: <String, Directory>{
+        for (final entry in resolvedPackages(projectDir).entries)
+          entry.key: entry.value.root,
+      },
+    ).dependsOn(enginePackage, textureRootPackage);

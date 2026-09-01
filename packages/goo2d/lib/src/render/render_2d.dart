@@ -128,8 +128,22 @@ class SpriteFrame implements IntRepresentable {
   /// any region a grid cannot describe.
   ///
   /// The division happens here, at declare time. [sheetWidth]/[sheetHeight]
-  /// are the *source image's* dimensions, which the author knows; nothing at
-  /// draw time has to.
+  /// are the *source image's* dimensions; nothing at draw time has to know
+  /// them.
+  ///
+  /// Pass them from the generated `TextureSize`, which `good generate` fills
+  /// from the image headers:
+  ///
+  /// ```dart
+  /// const face = SpriteFrame.pixels(
+  ///   x: 128, y: 64, width: 96, height: 32,
+  ///   sheetWidth: TextureSize.uiButtonWidth,
+  ///   sheetHeight: TextureSize.uiButtonHeight,
+  /// );
+  /// ```
+  ///
+  /// Those are `static const int`, so this stays a `const` expression and a
+  /// re-export at a new size needs no edit here.
   const SpriteFrame.pixels({
     required int x,
     required int y,
@@ -319,6 +333,11 @@ class NineSliceBorder {
   /// unitsPerPixel`. Nothing at draw time needs the source size, which is the
   /// whole point.
   ///
+  /// [sourceWidth]/[sourceHeight] are the texture's pixel dimensions. Pass
+  /// them from the generated `TextureSize.<asset>Width` and
+  /// `TextureSize.<asset>Height`, which are `static const int` and keep this a
+  /// `const` expression.
+  ///
   /// [unitsPerPixel] converts source pixels to the sprite's own units, and
   /// defaults to `1`.
   const NineSliceBorder.pixels({
@@ -340,6 +359,10 @@ class NineSliceBorder {
 
   /// The common case for a symmetric frame: the same pixel inset on all four
   /// edges of a square source.
+  ///
+  /// [sourceSize] is that square's side in pixels -
+  /// `TextureSize.<asset>Width` from the generated bindings, where the texture
+  /// is one the project ships.
   const NineSliceBorder.all(
     double inset, {
     required int sourceSize,
@@ -589,6 +612,12 @@ class SpriteDescriptor._(
 
   /// Declares one sprite and returns the handle to keep in a field
   /// (the typed-handle rule - never a name to quote again later).
+  ///
+  /// [width] and [height] are **world units**, not pixels, so they are not the
+  /// texture's dimensions and the generated `TextureSize` constants do not go
+  /// here directly. Drawing at the art's native size is
+  /// `TextureSize.<asset>Width * unitsPerPixel` for whatever scale the game
+  /// works in.
   ///
   /// [pivot] and [nineSliceBorder] arrive as value objects purely for
   /// readability at the call site; each is unpacked into its own separate
