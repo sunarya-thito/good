@@ -91,36 +91,14 @@ Uint8List _pngBytes(int width, int height) {
   return bytes;
 }
 
-/// A project directory whose package config resolves [graph], each entry a
-/// package name and the `dependencies:` its pubspec declares.
+/// A project resolved against [graph], each entry a package and the
+/// `dependencies:` its own pubspec declares.
 ///
-/// What `flutter pub get` leaves behind, in the shape the generator reads it.
-Directory _projectWithGraph(
-  String pubspec,
-  Map<String, List<String>> graph,
-) {
-  final dir = testTempDir('good_cli_graph');
-  File('${dir.path}/pubspec.yaml').writeAsStringSync(pubspec);
-  final entries = <String>[];
-  graph.forEach((name, dependencies) {
-    final root = Directory('${dir.path}/packages/$name')
-      ..createSync(recursive: true);
-    final deps = dependencies
-        .map((d) => '  $d: ^1.0.0')
-        .join('\n');
-    File('${root.path}/pubspec.yaml').writeAsStringSync(
-      'name: $name\n${dependencies.isEmpty ? '' : 'dependencies:\n$deps\n'}',
-    );
-    entries.add(
-      '{ "name": "$name", "rootUri": "../packages/$name", '
-      '"packageUri": "lib/" }',
-    );
-  });
-  File('${dir.path}/.dart_tool/package_config.json')
-    ..parent.createSync(recursive: true)
-    ..writeAsStringSync(
-      '{ "configVersion": 2, "packages": [${entries.join(', ')}] }',
-    );
+/// [resolvePackages] writes it the way a `pub get` leaves one, which is where
+/// the generator reads a dependency's pubspec from.
+Directory _graph(Map<String, List<String>> graph) {
+  final dir = _project('name: demo\n', <String>[]);
+  resolvePackages(dir, graph);
   return dir;
 }
 
@@ -1473,7 +1451,7 @@ flutter:
     test('the entry package that declares Texture draws', () {
       expect(
         enginePackageDrawsTextures(
-          _projectWithGraph('name: demo\n', <String, List<String>>{
+          _graph(<String, List<String>>{
             'goo2d': <String>['good'],
             'good': <String>[],
           }),
@@ -1489,7 +1467,7 @@ flutter:
       // goo2d got Object? for keys whose payload is a Texture.
       expect(
         enginePackageDrawsTextures(
-          _projectWithGraph('name: demo\n', <String, List<String>>{
+          _graph(<String, List<String>>{
             'neon': <String>['goo2d'],
             'goo2d': <String>['good'],
             'good': <String>[],
@@ -1508,7 +1486,7 @@ flutter:
       // project puts `Texture isn't a type` into its first flutter analyze.
       expect(
         enginePackageDrawsTextures(
-          _projectWithGraph('name: demo\n', <String, List<String>>{
+          _graph(<String, List<String>>{
             'goo3d': <String>['good'],
             'good': <String>[],
           }),
@@ -1518,7 +1496,7 @@ flutter:
       );
       expect(
         enginePackageDrawsTextures(
-          _projectWithGraph('name: demo\n', <String, List<String>>{
+          _graph(<String, List<String>>{
             'good': <String>[],
           }),
           'good',
@@ -1531,7 +1509,7 @@ flutter:
     test('the walk is transitive, not one hop', () {
       expect(
         enginePackageDrawsTextures(
-          _projectWithGraph('name: demo\n', <String, List<String>>{
+          _graph(<String, List<String>>{
             'studio_kit': <String>['neon'],
             'neon': <String>['goo2d'],
             'goo2d': <String>['good'],
@@ -1563,6 +1541,32 @@ flutter:
         reason:
             "a dev dependency is not on lib/'s import path, so the generated "
             'file could not name Texture through it',
+      );
+    });
+
+    test('the resolved entry package is the one asked about', () {
+      // The two halves in sequence: #309 picks the entry package out of the
+      // graph, #312 asks that package whether it draws. Each half is checked
+      // on its own above and in `enginePackageOf`, and neither says what the
+      // pair answers for a project built on a renderer nobody here has heard
+      // of - which is the project both changes exist for.
+      final dir = _project(
+        'name: demo\ndependencies:\n  neon: ^0.1.0\n  goo2d: ^0.3.0\n',
+        <String>[],
+      );
+      resolvePackages(dir, <String, List<String>>{
+        'neon': <String>['goo2d'],
+        'goo2d': <String>['good'],
+        'good': <String>[],
+      });
+      final package = enginePackageOf(dir);
+      expect(package, 'neon', reason: 'goo2d is what neon is built on');
+      expect(
+        rendererPayloadType(
+          enginePackageDrawsTextures(dir, package),
+          'Texture',
+        ),
+        'Texture',
       );
     });
 
