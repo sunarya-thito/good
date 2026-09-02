@@ -49,7 +49,7 @@ import 'package:good/src/system.dart';
 import 'package:good/src/triple_buffer.dart';
 
 /*
-GameAsset, GameState, and everything simulation-side must be called under our
+GameState and everything simulation-side must be called under our
 game isolate. Prefer dart:ffi calloc when running on native platform.
 
 If its on web, we don't use isolate nor ffi - start(inline: true) runs the
@@ -127,7 +127,7 @@ enum _ControlMessage {
 
   // Asset decoding: the game isolate declares assets but cannot decode them
   // (a decode needs Flutter), so it asks. Assets are named by their
-  // **address** - the index `GameAssets` assigns at declare time, which both
+  // **address** - the index `Assets` assigns at declare time, which both
   // copies agree on because both run the same declarations in the same order.
   // That is already the integer a component row stores to point at an asset,
   // so no second identity is invented for the wire.
@@ -272,7 +272,7 @@ enum _ControlMessage {
 /// cannot be `FixedTickable` - the `on GameListener` bound says so at compile
 /// time - so put the tick on the [GameState], a `SceneStruct` or a
 /// `GameSystem`. What `Game` does for Flutter it does through a plain method,
-/// [buildView]. See `GameEvent`'s doc.
+/// [buildView]. See [EventDispatcher].
 abstract class Game implements RandomOwner {
   /// A body, on a class that wanted no constructor at all, for one reason:
   /// this is the moment a `Game` has finished being built, and it is the only
@@ -2378,7 +2378,7 @@ final class GameRuntime {
   /// `GameState.loadScene` reads this to decide whether to actually pull
   /// bytes. It never gates *declaring* on it: an asset is declared on both
   /// copies in the same order or its address means two different things on
-  /// the two sides. See `GameAssets`.
+  /// the two sides. See [Assets].
   bool get decodesAssets => inline || !simulates;
 
   // --- bring-up -----------------------------------------------------------
@@ -2833,7 +2833,7 @@ final class GameRuntime {
   /// read before: start game A, stop it, start game B, stop it, start game A
   /// again - and A's second run re-registers an archetype that is *already
   /// there* from its first, so it gets back the **first run's prefab**, whose
-  /// asset handles belong to a `GameAssets` that was torn down two runs ago.
+  /// asset handles belong to an [Assets] table torn down two runs ago.
   /// It surfaces as "declared (address 0) but was never loaded on this
   /// isolate", pointing at the asset layer, which is not where the problem is.
   ///
@@ -2843,9 +2843,10 @@ final class GameRuntime {
   /// isolate whose registry entries this could pull out from under.
   void _resetGlobalRegistries() {
     // The run's own asset table, before the registries that name into it.
-    // `reset` calls `onUnloaded` on every instance, which is what releases the
-    // decoded `ui.Image`s - nothing else ever did, so each stopped run left
-    // its textures alive on main and the next run decoded its own on top.
+    // `reset` calls `AssetLoader.unload` on every loaded payload, which is
+    // what releases the decoded `ui.Image`s - nothing else ever did, so each
+    // stopped run left its textures alive on main and the next run decoded its
+    // own on top.
     // ignore: invalid_use_of_visible_for_testing_member
     game.assets.reset();
     // `@visibleForTesting` because a test's tearDown was the only caller there
@@ -3200,9 +3201,8 @@ final class GameRuntime {
   /// self-contained: main declares no asset and therefore has no declaration
   /// of its own to resolve an address against, so the request
   /// carries both halves of the identity and main adopts the pair (see
-  /// `GameAssets.adoptAt`). A `GameAsset` key is plain sendable data; the
-  /// *instance* is what would not cross, because a decoded one owns a
-  /// `dart:ui.Image`.
+  /// [Assets.adoptAt]). An [AssetKey] is plain sendable data; the decoded
+  /// payload is what would not cross, because it owns a `dart:ui.Image`.
   ///
   /// [onLoaded] fires once per asset that actually needed decoding, carrying
   /// the running `completed`/`pending` counts so the caller can report

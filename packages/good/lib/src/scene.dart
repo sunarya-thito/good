@@ -842,7 +842,7 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
       // A prefab's own assets are already declared and already addressed:
       // `Asset.of` runs from a field initialiser, inside the constructor
       // above, and the descriptor it reaches is the scene's. So describeStruct
-      // can hand one straight to `data.hasObject` as this archetype's default
+      // can hand one straight to `data.hasPacked` as this archetype's default
       // row value.
       object.describeStruct(ArchetypeDataDescriptor(storage));
       // Timelines last, because keying a clip is pure declaration and depends

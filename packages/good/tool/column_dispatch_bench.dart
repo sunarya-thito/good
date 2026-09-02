@@ -17,7 +17,7 @@
 // Two separate things could be hiding in there, and they have different fixes:
 //
 //   * **Dispatch.** Many `DataPointer` subclasses exist (`_Int64Field`,
-//     `_OptionalField`, `_HeapObjectField`, `_EntityField`, ...), so
+//     `_OptionalField`, `_HeapObjectField`, `_EntityHandleField`, ...), so
 //     `operator []` is a megamorphic call site the compiler cannot inline.
 //   * **Boxing.** `operator []` returns `T`. A `double` returned through a
 //     generic interface does not reliably stay unboxed - every access would

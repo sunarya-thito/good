@@ -31,8 +31,8 @@ import 'package:meta/meta.dart';
 ///
 /// # This is a parameter type, never a storage type
 ///
-/// A `DataPointer<T>` holds a `num` or a `GlobalObject` and nothing else (see
-/// `good`'s `data.dart`), so no component row anywhere stores a
+/// A `DataPointer<T>` holds a `num` or an [IntRepresentable] and nothing
+/// else (see `good`'s `data.dart`), so no component row anywhere stores a
 /// `RelativeOffset2D`. This type exists to make *declaring* a default
 /// readable (`pivot: RelativeOffset2D.center`) and to make a runtime change
 /// one call instead of four (`sprite.setPivot(entity, ...)`); the storage
@@ -432,8 +432,8 @@ class NineSliceBorder {
 /// [pivotFractionX]/[pivotFractionY]/[pivotOffsetX]/[pivotOffsetY] are one
 /// conceptual [RelativeOffset2D] stored as four `DataPointer<double>`s, and
 /// the border group likewise. That is forced, not stylistic: a
-/// `DataPointer<T>` stores a `num` or a `GlobalObject` and cannot hold a value
-/// object of any kind. [setPivot] and [setNineSliceBorder] hide the unpacking
+/// `DataPointer<T>` stores a `num` or an [IntRepresentable] and cannot hold
+/// a value object of any kind. [setPivot] and [setNineSliceBorder] hide the unpacking
 /// for writes; reads are the four fields, by design (see
 /// [RelativeOffset2D]'s doc - a read that returned a fresh value object would
 /// allocate per read, on the hot path).
@@ -708,7 +708,7 @@ class _TransformSource {
 /// term for term, with the camera's own numbers hoisted out of the loop. It
 /// is spelled as `(x - originX) * zoom + anchorX` and not as a fused
 /// multiply-add so that it stays that mapping exactly, down to the bit, and
-/// the renderer and `MousePickingSystem` cannot drift apart.
+/// the renderer and [PointerPickingSystem] cannot drift apart.
 ///
 /// The screen case sets `originX`, `originY` to zero and `zoom` to one, which
 /// reduces the identical expression to `x + anchorX` with no rounding of its
@@ -1707,8 +1707,8 @@ final class _SpriteDrawQueue {
 /// # Textures
 ///
 /// [Sprite.texture] is read and written into every record as the asset's
-/// `GlobalObject` **address** - the integer both isolate copies agree on
-/// because both ran the same asset declarations - alongside four UV pairs
+/// **address** - the integer both isolate copies agree on because both ran
+/// the same asset declarations - alongside four UV pairs
 /// covering the whole image. A null texture writes
 /// [DrawSpriteData2D.noTexture] and the quad draws as its flat colour; there
 /// is no placeholder image and no second code path.
@@ -1906,7 +1906,7 @@ class GameRenderer2D extends GameSystem
   /// the hot path for no reason. Shared logic, not a local
   /// reimplementation, so "where is the camera, and where does that put a
   /// world point on screen" means exactly the same thing here as it does to
-  /// `MousePickingSystem`.
+  /// [PointerPickingSystem].
   final CameraProjection _projection = CameraProjection();
 
   /// The space the fill pass is currently reading, refilled once per
@@ -2832,7 +2832,7 @@ class GameRenderer2D extends GameSystem
     DrawData2D.writeBatchTick(view, state.tick);
 
     // Through `CameraProjection`, not by reading the camera's fields
-    // here, so this and `MousePickingSystem` cannot end up applying two
+    // here, so this and `PointerPickingSystem` cannot end up applying two
     // slightly different mappings - picking that disagreed with drawing by a
     // constant would mean clicking next to what you can see. No camera is
     // not an error: the projection resolves to the identity plus centring.

@@ -273,11 +273,10 @@ abstract class Input<T> {
 /// # One instance per stream, reused
 ///
 /// The engine fires these from inside the fixed tick, so a fresh event per
-/// firing would be a heap allocation on the hot path - the same reason
-/// `GameState` keeps one `FixedTickEvent` for every tick
-/// of every system. [value] is therefore only meaningful *during* the
-/// callback: keeping the event and reading it later reads whatever the next
-/// edge put there.
+/// firing would be a heap allocation on the hot path, which the
+/// no-allocation rule forbids. [value] is therefore only meaningful
+/// *during* the callback: keeping the event and reading it later reads
+/// whatever the next edge put there.
 final class InputEvent<T> {
   InputEvent._();
 

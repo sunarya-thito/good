@@ -251,9 +251,10 @@ void main() {
   // process-global registries in between. Nothing exercised that until the
   // menu existed, and it did not work: the third run re-registered an
   // archetype the first run had left in `ArchetypeRegistry`, got back the
-  // *first* run's prefab, and read an asset handle belonging to a `GameAssets`
-  // torn down two runs earlier. It surfaced as "declared (address 0) but was
-  // never loaded on this isolate", which points at the asset layer and not at
+  // *first* run's prefab, and read an asset handle belonging to an `Assets`
+  // table torn down two runs earlier. It surfaced as "declared (address 0)
+  // but was never loaded on this isolate", which points at the asset layer
+  // and not at
   // the registry that actually held the stale entry.
   group('running several games in one process', () {
     test('inline: galaxy, then swarm, then galaxy again', () async {

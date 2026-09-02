@@ -61,7 +61,7 @@ mixin GameSystemLifecycleListener on GameListener {
 /// No system contributes to the widget tree, on either side. Exactly one
 /// object builds widgets and it is `Game.buildView` - a method, not a dispatch
 /// mechanism built for several contributors to a problem that has one. See
-/// `GameEvent`'s doc.
+/// [EventDispatcher].
 abstract class GameSystem extends GameListenerBase
     with EventBus, Coroutines
     implements Comparable<GameSystem> {
@@ -449,7 +449,7 @@ abstract class SingleQuery<T extends Component> implements Query {
 ///
 /// Matching is therefore two masked compares plus one per `withAny` group -
 /// no per-entity type tests, no closures, no allocation (see
-/// `_CompiledQuery.matches`). The previous sum-of-products `&`/`|` form was
+/// `_ArchetypeQuery.matches`). The previous sum-of-products `&`/`|` form was
 /// strictly more expressive on paper, but nothing in the engine ever used a
 /// real disjunction of conjunctions, and its `matches` allocated a closure
 /// per call (`clauses.any((c) => ...)`) on the hottest path there is -

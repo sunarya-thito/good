@@ -338,9 +338,9 @@ void main() {
         prop.spriteField[entity],
         same(prop.texture),
         reason:
-            'the row stores the declared address and resolves it through '
-            'GlobalObjectRegistry - no heap reference in the row, and no '
-            'asset manager threaded through the read',
+            'the row stores the declared address and unpacks it through the '
+            'Assets table - no heap reference in the row, and no asset '
+            'manager threaded through the read',
       );
     });
   });
@@ -482,7 +482,7 @@ void main() {
         second.pack(),
         isNot(firstAddress),
         reason:
-            'GlobalObjectRegistry only ever appends and nulls; recycling '
+            'the Assets table only ever appends and nulls; recycling '
             'an address would let a stale row silently resolve to whatever '
             'was declared next',
       );

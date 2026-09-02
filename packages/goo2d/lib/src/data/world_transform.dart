@@ -11,7 +11,7 @@ import 'package:goo2d/src/data/transform.dart';
 /// construction and does not need the extra fields.
 ///
 /// Fields are read-only from every other system's perspective - only
-/// [WorldTransformSystem] ever writes them, once per `FixedTickEvent`, the
+/// [WorldTransformSystem] ever writes them, once per fixed tick, the
 /// same cadence local `Transform2D` fields themselves only ever change at.
 /// Cached, not recomputed on every read: an unchanged subtree costs one
 /// flat comparison per entity per tick, not a re-walk to the root - see
@@ -49,7 +49,7 @@ mixin WorldTransform2D on Component {
   final worldTransform2DType = Component.type<WorldTransform2D>();
 }
 
-/// Keeps every [WorldTransform2D] current, once per `FixedTickEvent`.
+/// Keeps every [WorldTransform2D] current, once per fixed tick.
 ///
 /// Walks the hierarchy **top-down** using the intrusive
 /// `Parent.parentFirstChild`/`Child.childNextSibling` linked list

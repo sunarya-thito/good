@@ -15,7 +15,7 @@ import 'package:goo3d/src/data/transform.dart';
 /// nothing here.
 ///
 /// Fields are read-only from every other system's perspective - only
-/// [WorldTransform3DSystem] ever writes them, once per `FixedTickEvent`, the
+/// [WorldTransform3DSystem] ever writes them, once per fixed tick, the
 /// same cadence local `Transform3D` fields themselves only ever change at.
 /// Cached, not recomputed on every read: an unchanged subtree costs one flat
 /// comparison per entity per tick, not a re-walk to the root.
@@ -61,7 +61,7 @@ mixin WorldTransform3D on Component {
   final worldTransform3DType = Component.type<WorldTransform3D>();
 }
 
-/// Keeps every [WorldTransform3D] current, once per `FixedTickEvent`.
+/// Keeps every [WorldTransform3D] current, once per fixed tick.
 ///
 /// The 3D counterpart of `goo2d`'s `WorldTransformSystem`, and the same
 /// machinery: it walks the hierarchy **top-down** through the intrusive
