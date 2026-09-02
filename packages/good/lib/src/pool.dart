@@ -281,9 +281,14 @@ class MemoryPool {
   /// only meaningful in the writing isolate.
   bool get isTickOpen => _tickOpen;
 
-  /// Read-oriented lookup by index (the order pages were allocated in) -
-  /// expects the caller not to call `MemoryPage.allocate()`/`free()` on the
-  /// result. Throws if [page] hasn't been allocated yet.
+  /// The page at [page] - the index it was allocated at - or null once that
+  /// page has been freed. The slot is tombstoned, so an index names the same
+  /// page after its neighbours go as it named before.
+  ///
+  /// Throws a `RangeError` for an index no page has ever held, i.e. one at or
+  /// past [pageCount]. Allocating rows in the result belongs to
+  /// `ArchetypeStorage`: a row taken straight from `MemoryPage.allocate()` is
+  /// not an `Entity`, and the query walk over that page yields it anyway.
   MemoryPage? getPage(int page) => _pages[page];
 
   /// Always allocates a brand-new page (up to [maxPages]) - never searches
@@ -356,10 +361,12 @@ class MemoryPool {
   ///
   /// The per-scene half of [dispose]: unloading a `Scene` frees exactly the
   /// pages tagged with its slot, and leaves every other page - and therefore
-  /// every live `Entity` handle into them - untouched. The pool's own list is
-  /// compacted, but `ArchetypeStorage` **tombstones** its slot instead of
-  /// removing it, because `Entity.pageIndex` is an index into *that* list and
-  /// shifting it would silently repoint every handle after the hole.
+  /// every live `Entity` handle into them - untouched. Both page lists
+  /// **tombstone** the freed slot instead of removing it. This pool's list
+  /// keeps it because a page index is what [getPage] takes;
+  /// `ArchetypeStorage` keeps its own because `Entity.pageIndex` is an index
+  /// into *that* list, and shifting it would silently repoint every handle
+  /// after the hole.
   void freePage(MemoryPage page) {
     _bumpEpoch();
     final index = _pages.indexOf(page);
