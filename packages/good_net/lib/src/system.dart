@@ -85,11 +85,26 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
   /// copy only, because that is the one place `describeSystems` is invoked.
   /// The main-isolate copy of the state never runs it and never builds a
   /// transport, so there is no second socket to keep shut.
+  ///
+  /// # A hook and not a field
+  ///
+  /// Two facts hold it here. The descriptor is a [NetBinder] over
+  /// `NetworkSystem.registry`, so it exists only once the system does, and a
+  /// system exists only on the copy that ticks - see
+  /// `GameState.describeSystems` for why that copy is not the one that runs a
+  /// `GameState` field initialiser. And [NetDescriptor.hasHandler] and
+  /// [NetDescriptor.hasSignal] take an instance member of the state, which a
+  /// field initialiser cannot name; that is the same shape as the handler half
+  /// of `describeCommands`.
   void describeNetwork(NetDescriptor descriptor);
 
   /// The system carrying this game's traffic - `network.host(...)`,
   /// `network.join(code)`, `network.session`.
-  late final NetworkSystem network;
+  ///
+  /// A read of what [describeSystems] declared, not a second declaration of
+  /// it: the system is named once, by `descriptor.has(NetworkSystem.new)`, and
+  /// this looks that one up.
+  NetworkSystem get network => getSystem<NetworkSystem>();
 
   /// A peer joined the session. See [NetPeerListener].
   final peerJoinedEvent = Event.of<NetPeerListener, NetPeerId>(
@@ -126,26 +141,25 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
   /// Declares the system, runs [describeNetwork] into it, and seals what that
   /// declared.
   ///
-  /// The order matters and is the reason this is not two passes: a message
-  /// binds to the thing that will send it at declare time, so the system has
-  /// to exist before the pass runs - and the pass has to have run before the
-  /// registry can be sealed and hashed.
+  /// The order is one pass and not three: a message binds to the thing that
+  /// will send it at declare time, so the system has to exist before the pass
+  /// runs, and the pass has to have run before the registry can be sealed and
+  /// hashed.
   ///
-  /// The declaration is what builds it, which is why it comes first here and
-  /// did not used to. `SystemDescriptor.has` opens the event binder and the
-  /// input registry around the constructor call, and a `NetworkSystem` built
-  /// beside it and handed over afterwards would have had neither - so its
-  /// four dispatchers could not move onto their fields. Everything after this
-  /// line reads `network` back off the handle rather than off a local.
+  /// The declaration is what builds it, so it comes first. `SystemDescriptor
+  /// .has` opens the event binder and the input registry around the
+  /// constructor call, and a `NetworkSystem` built beside it and handed over
+  /// afterwards has neither - its four dispatchers cannot move onto their
+  /// fields.
   ///
   /// Declared **before** `super.describeSystems`, so that in the absence of
   /// any `compareTo` opinion it is also first in declaration order.
   @override
   @mustCallSuper
   void describeSystems(SystemDescriptor descriptor) {
-    network = descriptor.has(NetworkSystem.new);
-    describeNetwork(NetBinder(network.registry, network));
-    network.registry.seal();
+    final system = descriptor.has(NetworkSystem.new);
+    describeNetwork(NetBinder(system.registry, system));
+    system.registry.seal();
     super.describeSystems(descriptor);
   }
 }

@@ -1,5 +1,22 @@
 ## Unreleased
 
+### Fixed
+
+* **Eight comments and two error messages named `Game.describeSystems`**, which
+  no class declares — the pass is `GameState.describeSystems` (#287).
+  `getSystem` and `setSystemEnabled` named the game's `runtimeType` in their
+  diagnostics and now name the state's, and `GameSystem.state` points at
+  `GameState.describeSystems`.
+
+* **`GameState.describeSystems` and `docs/guide/architecture.md` say why the
+  pass is a hook.** A `GameState` field initialiser runs inside `createState`,
+  which `Game._bootMain` calls before `Isolate.spawn`; `describeSystems` runs
+  from `Game._bootGame`. A system built on main would take its `Query.all`
+  masks from a `ComponentTypeRegistry` that only the game isolate fills, and
+  every query would match nothing without reporting it. Pinned by *the game
+  isolate assigns every component bit, and main assigns none* in
+  `game_isolate_test.dart`.
+
 ### Added
 
 * **`Command.of()`**, a command declared on the field that holds it (#287):

@@ -324,6 +324,9 @@ class _SkewedGame extends _NetGame {
 
 const Duration _step = Duration(milliseconds: 16);
 
+/// A system no state in this file declares.
+class _Unmixed extends GameSystem {}
+
 void main() {
   final running = <Game>[];
 
@@ -816,5 +819,38 @@ void main() {
           'one extra message shifts every index after it, so the peers would '
           'read each other records as the wrong message entirely',
     );
+  });
+
+  // #287. `network` is a read of the one declaration
+  // `MultiplayerState.describeSystems` makes, not a field the pass fills in
+  // afterwards.
+  group('the network handle', () {
+    test('is the declared system itself', () async {
+      final game = await boot(_NetGame.new);
+      expect(
+        identical(
+          stateOf(game).network,
+          stateOf(game).getSystem<NetworkSystem>(),
+        ),
+        isTrue,
+      );
+    });
+
+    test('names the pass when nothing declared the system', () async {
+      final game = await boot(_NetGame.new);
+      expect(
+        () => stateOf(game).getSystem<_Unmixed>(),
+        throwsA(
+          isA<ArgumentError>().having(
+            (error) => error.message,
+            'message',
+            contains('describeSystems'),
+          ),
+        ),
+        reason:
+            'the handle is a lookup, so a system nothing declared reports the '
+            'pass that would have declared it',
+      );
+    });
   });
 }
