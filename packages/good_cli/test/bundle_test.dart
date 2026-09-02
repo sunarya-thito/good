@@ -260,6 +260,30 @@ void main() {
       );
     });
 
+    test('a sibling package named like a bundle is not one', () {
+      // The marker is the whole claim, so a directory called `<x>_bundle` that
+      // carries none is somebody's package. Nothing here refuses it and
+      // nothing here writes into it - it is not the recorded name, and the
+      // guard that catches a package at the recorded path never sees it.
+      final project = _project();
+      File('${project.path}/other_bundle/pubspec.yaml')
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync('name: other_bundle\n');
+      File('${project.path}/other_bundle/lib/mine.dart')
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync('// mine');
+
+      expect(_generate(project).bundle.name, 'demo_bundle');
+      expect(
+        File('${project.path}/other_bundle/lib/mine.dart').readAsStringSync(),
+        '// mine',
+      );
+      expect(
+        File('${project.path}/other_bundle/$bundleMarkerName').existsSync(),
+        isFalse,
+      );
+    });
+
     test('refuses a dependency of that name pointing somewhere else', () {
       final project = _project(
         _pubspec.replaceFirst(

@@ -209,6 +209,26 @@
 
 ### Fixed
 
+* **The generated bundle is not a candidate for the project's entry package.**
+  `good generate` records the bundle under the project's `dependencies:`, and
+  the bundle depends on the engine. A resolved project therefore offered it as
+  a direct dependency that reaches `package:good` and that nothing else depends
+  on - the narrowest candidate - so the bundle's own pubspec listed the bundle.
+  The run that wrote it exited 0, because the bundle already resolved and there
+  was no `pub get` left to run. The next resolve is where it landed:
+  `flutter pub get` answered `A package may not list itself as a dependency`
+  and stopped, and so did every Flutter command that resolves, `good build`
+  among them. The first `good generate` on a project was clean and every one
+  after it left the project unbuildable.
+
+  A dependency whose directory carries a `.good_bundle` marker is dropped from
+  the candidate set. The marker and not the package name, so a bundle
+  generated for another project and reached through a `path:` dependency is
+  dropped as well, and a package that merely carries the recorded name is read
+  like any other dependency. A project already in this state is repaired by one
+  `good generate` - the bundle's pubspec is written end to end on every run
+  (#320).
+
 * **Each generated file imports the package that declares the names in it.**
   `good generate` wrote one import for the entry package and named every engine
   type through it, which holds only where that package re-exports what it is

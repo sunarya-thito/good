@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:good_cli/src/config.dart';
+import 'package:good_cli/src/generate/bundle.dart';
 import 'package:good_cli/src/generate/engine_dependency.dart';
 import 'package:good_cli/src/generate/image_size.dart';
 import 'package:meta/meta.dart';
@@ -424,6 +425,21 @@ String identifierFor(String path) {
 /// two renderers side by side - are ordered by name, so the answer does not
 /// change between runs.
 ///
+/// # Generated packages are not candidates
+///
+/// A dependency whose directory carries `bundleMarkerName` is dropped before
+/// either narrowing (#320). `good generate` adds the bundle to the project's
+/// `dependencies:`, so from the second run on it is a resolved direct
+/// dependency that reaches the engine and that nothing else depends on - the
+/// most specific candidate by both tests above. Naming it here put the bundle
+/// in its own `dependencies:`, and `pub get` answered "A package may not list
+/// itself as a dependency" for the whole project.
+///
+/// The marker and not the recorded name, on the same argument as #305 and
+/// #309: it asks what the directory is. That also covers a bundle the project
+/// did not generate - one belonging to a second project, reached through a
+/// `path:` dependency - which holds nothing but generated code either way.
+///
 /// # What it reads, and what it answers without
 ///
 /// Each candidate's own pubspec, found through
@@ -441,13 +457,18 @@ String identifierFor(String path) {
 String enginePackageOf(Directory projectDir) {
   final facts = readPubspecFacts(File('${projectDir.path}/pubspec.yaml'));
   if (facts == null) return engineRootPackage;
+  final resolved = resolvedPackages(projectDir);
   final engine = EngineDependencies(
     roots: <String, Directory>{
-      for (final entry in resolvedPackages(projectDir).entries)
-        entry.key: entry.value.root,
+      for (final entry in resolved.entries) entry.key: entry.value.root,
     },
   );
-  final candidates = facts.dependencies.where(engine.contains).toList()..sort();
+  final candidates =
+      facts.dependencies
+          .where((name) => !isGeneratedBundle(resolved[name]?.root))
+          .where(engine.contains)
+          .toList()
+        ..sort();
   if (candidates.isEmpty) return engineRootPackage;
   for (final candidate in candidates) {
     final builtOn = candidates.any(

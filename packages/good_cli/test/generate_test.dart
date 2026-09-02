@@ -4,13 +4,16 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:good_cli/src/generate/assets.dart';
+import 'package:good_cli/src/generate/bundle.dart';
 import 'package:good_cli/src/generate/engine_dependency.dart';
 import 'package:good_cli/src/generate/run.dart';
 import 'package:good_cli/src/generate/scaffold.dart';
 import 'package:good_cli/src/generate/templates.dart';
 import 'package:good_cli/src/verbosable.dart';
+import 'package:path/path.dart' as p;
 import 'package:pub_semver/pub_semver.dart';
 import 'package:test/test.dart';
+import 'package:yaml/yaml.dart';
 
 import '_resolved.dart';
 import '_temp.dart';
@@ -684,6 +687,180 @@ flutter:
       expect(source, contains("import 'package:good/good.dart';"));
       expect(source, isNot(contains('goo2d')));
     });
+  });
+
+  group('generating into a project that has already been generated into', () {
+    /// A generated bundle package at [root], declaring [dependencies] and
+    /// carrying the marker that says the directory is good's.
+    Directory markedBundleAt(Directory root, List<String> dependencies) {
+      final name = p.basename(root.path);
+      Directory('${root.path}/lib').createSync(recursive: true);
+      File('${root.path}/pubspec.yaml').writeAsStringSync(
+        'name: $name\ndependencies:\n'
+        '${dependencies.map((d) => '  $d: any\n').join()}',
+      );
+      File(
+        p.join(root.path, bundleMarkerName),
+      ).writeAsStringSync('bundle: $name\n');
+      return root;
+    }
+
+    const engineGraph = <String, List<String>>{
+      'goo2d': <String>['good'],
+      'good': <String>[],
+    };
+
+    test('the second run does not name the bundle as the entry package', () {
+      // The shape no fixture had: `_recordBundle` puts the bundle in
+      // `dependencies:`, a pub get resolves it, and it then reaches the engine
+      // and has nothing depending on it - the most specific candidate by both
+      // narrowings.
+      final dir = _project(
+        'name: demo\ndependencies:\n'
+        '  demo_bundle:\n    path: demo_bundle\n'
+        '  goo2d: ^0.3.0\n',
+        <String>[],
+      );
+      resolvePackages(
+        dir,
+        engineGraph,
+        at: <String, Directory>{
+          'demo_bundle': markedBundleAt(
+            Directory('${dir.path}/demo_bundle'),
+            <String>['goo2d', 'good'],
+          ),
+        },
+      );
+      expect(
+        enginePackageOf(dir),
+        'goo2d',
+        reason:
+            'demo_bundle sorts before goo2d and is built on it, so it wins '
+            'both the sort and the most-specific test - the marker is what '
+            'takes it out of the running',
+      );
+    });
+
+    test('a bundle belonging to another project is not a candidate', () {
+      // Not this project's bundle: a different name, a directory outside the
+      // project, reached the way a `path:` dependency on a sibling checkout
+      // reaches anything. Generated code either way, so not something the
+      // generated files can be written against.
+      final root = testTempDir('good_cli_test');
+      final dir = Directory('${root.path}/demo')..createSync();
+      File('${dir.path}/pubspec.yaml').writeAsStringSync(
+        'name: demo\ndependencies:\n'
+        '  alpha_bundle:\n    path: ../alpha_bundle\n'
+        '  goo2d: ^0.3.0\n',
+      );
+      resolvePackages(
+        dir,
+        engineGraph,
+        at: <String, Directory>{
+          'alpha_bundle': markedBundleAt(
+            Directory('${root.path}/alpha_bundle')..createSync(),
+            <String>['good'],
+          ),
+        },
+      );
+      expect(
+        enginePackageOf(dir),
+        'goo2d',
+        reason:
+            'alpha_bundle reaches the kernel and sorts first, and neither it '
+            'nor goo2d is built on the other, so first-by-name would answer '
+            'alpha_bundle',
+      );
+    });
+
+    test('a package carrying the recorded name and no marker still counts', () {
+      // The marker and not the name. `zed_bundle` is what `good: bundle:`
+      // records, and the directory the config resolves it to holds no marker,
+      // so it is somebody's package and is read like any other dependency. It
+      // sorts last, so naming it cannot be the sort talking.
+      final dir = _project(
+        'name: demo\ndependencies:\n'
+        '  goo2d: ^0.3.0\n'
+        '  zed_bundle: ^1.0.0\n\n'
+        'good:\n  bundle: zed_bundle\n',
+        <String>[],
+      );
+      resolvePackages(dir, <String, List<String>>{
+        'zed_bundle': <String>['goo2d'],
+        'goo2d': <String>['good'],
+        'good': <String>[],
+      });
+      expect(
+        enginePackageOf(dir),
+        'zed_bundle',
+        reason:
+            "nothing on disk says the directory is good's, and the name it "
+            'happens to carry is not evidence - the same argument that took '
+            '#305 and #309 off names',
+      );
+    });
+
+    test(
+      'two runs with a resolve between them leave a bundle that does not '
+      'depend on itself',
+      () {
+        final dir = _project(
+          'name: demo\ndependencies:\n  goo2d: ^0.3.0\n\n'
+          'flutter:\n  assets:\n    - assets/\n',
+          <String>['assets/player.png'],
+        );
+        resolvePackages(dir, engineGraph);
+
+        runGenerate(
+          projectDir: dir,
+          command: 'good generate',
+          out: _quiet,
+          verbose: _quiet,
+          pubGet: false,
+        );
+
+        // What `flutter pub get` does with the dependency that run added:
+        // demo_bundle resolves to the directory it wrote, marker and all.
+        resolvePackages(
+          dir,
+          engineGraph,
+          at: <String, Directory>{
+            'demo_bundle': Directory('${dir.path}/demo_bundle'),
+          },
+        );
+
+        runGenerate(
+          projectDir: dir,
+          command: 'good generate',
+          out: _quiet,
+          verbose: _quiet,
+          pubGet: false,
+        );
+
+        final pubspec = File('${dir.path}/demo_bundle/pubspec.yaml');
+        final doc = loadYaml(pubspec.readAsStringSync()) as YamlMap;
+        final dependencies = doc['dependencies'] as YamlMap;
+        expect(
+          dependencies.keys,
+          isNot(contains('demo_bundle')),
+          reason:
+              '`pub get` answers "A package may not list itself as a '
+              'dependency" and refuses the whole project, so the second '
+              '`good generate` on any resolved project failed here',
+        );
+        expect(
+          dependencies.keys,
+          containsAll(<String>['goo2d', 'good']),
+          reason:
+              'the entry package and the packages the generated files import '
+              'are still what the bundle asks for',
+        );
+        expect(
+          File('${dir.path}/demo_bundle/lib/textures.dart').readAsStringSync(),
+          contains("import 'package:goo2d/goo2d.dart';"),
+        );
+      },
+    );
   });
 
   group('scaffoldFiles', () {
