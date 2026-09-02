@@ -226,19 +226,12 @@ an integer, with no per-entity animation object anywhere.
 
 ```dart
 class EnemyTimeline extends TimelineStruct {
-  late final Track<double> x;
-  late final Track<double> y;
-  late final Track<int> frame;
+  final x = Track.of<double>(0);        // default outside any clip
+  final y = Track.of<double>(-1);
+  final frame = Track.of<int>(0);
 
   late final TimelineAnimation entrance;
   late final TimelineAnimation blink;
-
-  @override
-  void describeTrack(TimelineDescriptor descriptor) {
-    x = descriptor.has<double>(0);        // default outside any clip
-    y = descriptor.has<double>(-1);
-    frame = descriptor.has<int>(0);
-  }
 
   @override
   void describeAnimation(TimelineAnimationDescriptor descriptor) {
@@ -261,16 +254,13 @@ Declare it on a prefab:
 
 ```dart
 class Enemy extends EntityStruct with Transform2D, Renderable2D {
-  late final EnemyTimeline timeline;
+  final timeline = TimelineStruct.of(EnemyTimeline());
   final startedAt = Field.float64();
-
-  @override
-  void describeAnimation(AnimationTypeDescriptor descriptor) {
-    super.describeAnimation(descriptor);
-    timeline = descriptor.has(EnemyTimeline());
-  }
 }
 ```
+
+A clip keys the tracks the timeline holds, so it names sibling fields and stays
+in `describeAnimation`. A track names nothing and is a field.
 
 Several clips can drive the **same** tracks. A track with no keys in the clip
 being sampled reports its declared default, so a clip only has to mention the

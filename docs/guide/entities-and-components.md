@@ -224,11 +224,13 @@ whatever you like.
 
 ### Multi-components
 
-Some components are declared through their own descriptor instead of by
-contributing fields directly — `Renderable2D` (sprites) and `Collider2D`
-(shapes) are `on MultiComponent`, which lets one entity declare several sprites
-or several collider shapes. You use them the same way; the difference is the
-extra `describeSprites`/`describeCollider` pass.
+Some components hold several named instances of themselves on one entity —
+`Renderable2D` (sprites) and `Collider2D` (shapes) are `on MultiComponent`, so
+one entity can draw as a body and a hat, or carry a hitbox and a pickup range.
+Each instance is a field like any other: `final hat = Sprite.of(...)`, `final
+hitbox = CircleBody.of(...)`. The component keeps all of them in a list
+(`sprites`, `bodies`) for anything that walks them without knowing your field
+names.
 
 ## Field kinds
 

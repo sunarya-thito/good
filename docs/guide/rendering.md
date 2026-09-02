@@ -47,13 +47,7 @@ Two mixins and one declaration:
 ```dart
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final Sprite sprite;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    sprite = descriptor.has(width: 64, height: 64, color: 0xFF4FC3F7);
-  }
+  final sprite = Sprite.of(width: 64, height: 64, color: 0xFF4FC3F7);
 }
 ```
 
@@ -62,12 +56,12 @@ ones.
 
 ## `Sprite`
 
-Everything `descriptor.has` takes becomes a **column**, so every one of these is
+Everything `Sprite.of` takes becomes a **column**, so every one of these is
 per-entity and writable at run time:
 
 <!-- snippet: skip a signature, not a call -->
 ```dart
-Sprite has({
+static Sprite of({
   TextureAsset? texture,
   TextureFilter filter = TextureFilter.mipmap,
   SpriteFrame frame = SpriteFrame.full,
@@ -144,20 +138,16 @@ box.offsetY[entity] = 20; // matches, and +20 is up for both
 
 `Renderable2D` is a multi-component, so a prefab can declare more than one:
 
-<!-- snippet: in EntityStruct with Renderable2D -->
-<!-- snippet-setup
-late Sprite body;
-late Sprite muzzleFlash;
-late TextureAsset bodyTexture;
-late TextureAsset flashTexture;
--->
 ```dart
-@override
-void describeSprites(SpriteDescriptor descriptor) {
-  super.describeSprites(descriptor);
-  body = descriptor.has(width: 64, height: 64, texture: bodyTexture);
-  muzzleFlash = descriptor.has(width: 32, height: 32, texture: flashTexture,
-                               visible: false, zIndex: 10);
+class Turret extends EntityStruct
+    with Transform2D, WorldTransform2D, Renderable2D {
+  final body = Sprite.of(
+    width: 64, height: 64, texture: Asset.of(Textures.spritesPlayer),
+  );
+  final muzzleFlash = Sprite.of(
+    width: 32, height: 32, texture: Asset.of(Textures.uiButton),
+    visible: false, zIndex: 10,
+  );
 }
 ```
 
@@ -166,28 +156,24 @@ destroying an entity.
 
 ## Textures
 
-A texture comes from the generated asset enum. Declare the asset, then hand the
-handle to the sprite:
+A texture comes from the generated asset enum. Declare the asset where the
+sprite names it:
 
 ```dart
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  final texture = Asset.of(Textures.spritesPlayer);
-
-  late final Sprite sprite;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    sprite = descriptor.has(width: 64, height: 64, texture: texture);
-  }
+  final sprite = Sprite.of(
+    width: 64,
+    height: 64,
+    texture: Asset.of(Textures.spritesPlayer),
+  );
 }
 ```
 
-Declare the asset on **whatever uses it**. `has` is idempotent per identity and
-prefabs share their scene's descriptor, so declaring the same texture in a
-prefab and its scene yields the identical handle — one address, one decode. See
-[Assets](assets.md).
+Declare the asset on **whatever uses it**. `Asset.of` is idempotent per
+identity and prefabs share their scene's descriptor, so declaring the same
+texture in a prefab and its scene yields the identical handle — one address,
+one decode. See [Assets](assets.md).
 
 ### Atlases and sprite sheets
 
@@ -234,7 +220,7 @@ class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   final animTime = Field.float64();
 
-  late final Sprite sprite;
+  final sprite = Sprite.of(width: 64, height: 64);
 
   static const List<SpriteFrame> walkCycle = <SpriteFrame>[
     SpriteFrame.grid(columns: 8, rows: 4, index: 0),
@@ -242,16 +228,10 @@ class Player extends EntityStruct
     SpriteFrame.grid(columns: 8, rows: 4, index: 2),
     SpriteFrame.grid(columns: 8, rows: 4, index: 3),
   ];
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    sprite = descriptor.has(width: 64, height: 64);
-  }
 }
 ```
 
-`width` and `height` on `has` are **world units**, not pixels, so they are not
+`width` and `height` on `Sprite.of` are **world units**, not pixels, so they are not
 the texture's size and `TextureSize` does not belong there. Drawing a sprite at
 its native pixel size is `TextureSize.spritesPlayerWidth * unitsPerPixel` for
 whatever scale the game uses.
@@ -482,7 +462,7 @@ it, and the camera's position stops moving it.
 ```dart
 class Backdrop extends EntityStruct
     with Transform2D, ScreenTransform2D, Renderable2D {
-  late final Sprite fill;
+  final fill = Sprite.of(width: 1, height: 1, color: 0xFF203040);
 
   @override
   final screenLayer = ScreenLayer.behind;
@@ -492,12 +472,6 @@ class Backdrop extends EntityStruct
 
   @override
   final screenHeightAxis = ScreenAxis.fraction;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    fill = descriptor.has(width: 1, height: 1, color: 0xFF203040);
-  }
 }
 ```
 
@@ -840,20 +814,8 @@ class Button extends EntityStruct
         Collider2D,
         PointerReceiver,
         HoverReceiver {
-  late final Sprite sprite;
-  late final CircleBody hitArea;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    sprite = descriptor.has(width: 64, height: 64);
-  }
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    hitArea = descriptor.hasCircleCollider(radius: 32);
-  }
+  final sprite = Sprite.of(width: 64, height: 64);
+  final hitArea = CircleBody.of(radius: 32);
 
   @override
   void onPointerDown(PointerPickEvent event) { }

@@ -1,10 +1,5 @@
 # good
 
-<!-- snippet-scope
-late Sprite sprite;
-late SpriteDescriptor descriptor;
--->
-
 GOOD — **G**ame **O**verdrive **O**n **D**art — is an ECS game engine for
 Flutter.
 
@@ -37,13 +32,7 @@ rebuild nor the garbage collector can stall it.
 
 ```dart
 class Player extends EntityStruct with Transform2D, WorldTransform2D, Renderable2D {
-  late final Sprite sprite;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    sprite = descriptor.has(width: 64, height: 64, color: 0xFF4FC3F7);
-  }
+  final sprite = Sprite.of(width: 64, height: 64, color: 0xFF4FC3F7);
 }
 ```
 
@@ -118,13 +107,15 @@ across the boundary, so both sides agree on every id without negotiating.
 See [Architecture](guide/architecture.md).
 
 **Everything is declared once, and hands back a typed handle.** There are no
-string keys anywhere in the API. A `describe*` pass returns an object you keep
-in a `late final` field, and the analyzer catches a misspelling that a map
+string keys anywhere in the API. A declaration returns the object you keep in
+the field that declares it, and the analyzer catches a misspelling that a map
 lookup would not.
 
+<!-- snippet: in EntityStruct with Renderable2D -->
 ```dart
-sprite = descriptor.has(width: 64, height: 64);  // keep the handle
-sprite.color[entity] = 0xFFFF0000;               // use it per entity
+final sprite = Sprite.of(width: 64, height: 64);  // keep the handle
+
+void hit(Entity entity) => sprite.color[entity] = 0xFFFF0000;
 ```
 
 **Components are storage, not objects.** An `EntityStruct` subclass is a

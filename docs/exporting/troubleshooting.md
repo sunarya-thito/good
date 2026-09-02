@@ -231,9 +231,9 @@ In order of likelihood:
 ### `LateInitializationError` on mount
 
 A `late final` handle was read by a `describe*` pass that never assigned it —
-almost always an asset used in `describeSprites` but not declared with
-`Asset.of` on that same prefab. The scene declaring it does not fill *your*
-field. Declare it in both places; it costs nothing.
+almost always an asset used by a sprite but not declared with `Asset.of` on
+that same prefab. The scene declaring it does not fill *your* field. Declare it
+in both places; it costs nothing.
 
 ### Entities appear at the origin for one frame, then snap
 

@@ -847,7 +847,7 @@ mixin Velocity on Component {
 mixin Velocity on Component {
   @override
   void describeStruct(DataDescriptor data) {
-    super.describeAnimation(data);
+    super.describeAssets(data);
   }
 }
 ''',

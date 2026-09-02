@@ -2,6 +2,11 @@
 
 ### Breaking
 
+* **The scaffolded `Player` declares its sprite in a field** (#287). It
+  overrode `describeSprites`, which no longer exists; it carries
+  `final sprite = Sprite.of(width: 64, height: 64, color: 0xFF4FC3F7);` now,
+  and its comment shows a texture as `Sprite.of(texture: Asset.of(...))`.
+
 * **`good generate` checks only `describeStruct` for a missing `super`**
   (#287). `describeType` and then a component's `describeAssets` both left the
   set, because what they declared moved onto a field initialiser and no chain

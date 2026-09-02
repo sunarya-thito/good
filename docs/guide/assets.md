@@ -83,9 +83,8 @@ shared texture in three prefabs cost one decode rather than three.
 
 !!! danger "Declare it wherever you read it"
     A prefab that uses a texture must declare it, even if its scene already
-    does. The scene declaring it does not fill *your* field, and a field read
-    in `describeSprites` that nothing assigned is a `LateInitializationError`
-    on mount. Declaring in both places costs nothing.
+    does. The scene declaring it does not fill *your* field. Declaring in both
+    places costs nothing, because `Asset.of` is idempotent per identity.
 
 ## The generated enums
 
@@ -198,13 +197,13 @@ exactly where it is most useful.
 
 ### Textures
 
-<!-- snippet-setup
-final descriptor = given<SpriteDescriptor>();
-late Sprite sprite;
-final texture = given<TextureAsset>();
--->
+<!-- snippet: in EntityStruct with Renderable2D -->
 ```dart
-sprite = descriptor.has(texture: texture, width: 64, height: 64);
+final sprite = Sprite.of(
+  texture: Asset.of(Textures.spritesPlayer),
+  width: 64,
+  height: 64,
+);
 ```
 
 `TextureFilter` chooses sampling — `mipmap` by default, and the crisp option for
