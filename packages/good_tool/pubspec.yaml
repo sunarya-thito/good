@@ -13,6 +13,10 @@ environment:
   sdk: ^3.12.1
 
 dependencies:
+  # The doc-reference check parses on its own: what it reads is the token
+  # stream and the doc comments hanging off it, and `readSources` keeps
+  # neither. The constraints match good_cli's, so one resolution serves both.
+  analyzer: ^7.4.0
   # A path dependency, not the hosted-constraint-plus-override pattern the
   # published packages use. This one is never resolved from pub.dev by anybody,
   # so the indirection would buy nothing.
@@ -25,6 +29,7 @@ dependencies:
     path: ../good_cli
   meta: ^1.15.0
   path: ^1.9.0
+  pub_semver: ^2.1.4
 
 dev_dependencies:
   lints: ^5.0.0

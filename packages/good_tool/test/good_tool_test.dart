@@ -7,6 +7,7 @@ import 'package:good_tool/src/accessor_emit.dart';
 import 'package:good_tool/src/accessor_scan.dart';
 import 'package:good_tool/src/component_emit.dart';
 import 'package:good_tool/src/component_scan.dart';
+import 'package:good_tool/src/doc_references.dart';
 import 'package:good_tool/src/engine_packages.dart';
 import 'package:good_tool/src/imports.dart';
 import 'package:path/path.dart' as p;
@@ -348,6 +349,54 @@ void main() {
       expect(file.lastModifiedSync(), stamp);
     }, timeout: const Timeout(Duration(minutes: 3)));
 
+    test('--doc-references fails on a dead reference and writes nothing',
+        () async {
+      final repo = _runnableRepo();
+      _write(
+        repo,
+        'packages/goo2d/lib/src/transform.dart',
+        "$_transform\n/// Read through [transformOffsetZ].\nint depth = 0;\n",
+      );
+
+      final result = await _tool(repo, const <String>[
+        '--dir',
+        'packages',
+        '--doc-references',
+      ]);
+      expect(result.exitCode, 65);
+      expect(
+        result.stderr,
+        contains('goo2d/lib/src/transform.dart:10: [transformOffsetZ]'),
+      );
+      // The mode reports and writes nothing. A run that also generated the
+      // accessor file would leave a tree behind for a failure nothing in
+      // that file caused.
+      expect(
+        File(
+          p.join(repo.path, 'packages/goo2d/lib/src/accessors.g.dart'),
+        ).existsSync(),
+        isFalse,
+      );
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('--doc-references passes a tree whose references all resolve',
+        () async {
+      final repo = _runnableRepo();
+      _write(
+        repo,
+        'packages/goo2d/lib/src/transform.dart',
+        "$_transform\n/// Read through [transformOffsetX].\nint depth = 0;\n",
+      );
+
+      final result = await _tool(repo, const <String>[
+        '--dir',
+        'packages',
+        '--doc-references',
+      ]);
+      expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
+      expect(result.stdout, contains('name something the packages write'));
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
     test('refuses a colliding column before it writes anything', () async {
       final repo = _runnableRepo();
       _write(
@@ -600,6 +649,33 @@ void main() {
           'rotation <- transformRotation',
         ]),
       );
+    });
+
+    // The doc comments this repository publishes, asked the same way and for
+    // the same reason (#330). `comment_references` is not enabled anywhere:
+    // most of what it reports is a name the package declares and the file
+    // naming it does not import, which dartdoc resolves through the entry
+    // library. What is left is a name written nowhere at all, and this is
+    // what says so.
+    test('has no doc reference naming something written nowhere', () async {
+      final root = _actualRepoRoot();
+      final found = enginePackages(<Directory>[
+        Directory(p.join(root.path, 'packages')),
+      ]);
+      final scan = scanDocReferences(
+        packages: found.packages,
+        known: <EnginePackage>[...found.packages, ...found.dependencies],
+      );
+
+      expect(
+        scan.dangling.map(danglingReferenceLine),
+        isEmpty,
+        reason: danglingReferenceSummary(scan),
+      );
+      // The pass has to be able to fail. A run that read no file, or one whose
+      // parse fell over, reports nothing dangling for the wrong reason.
+      expect(scan.files, greaterThan(100));
+      expect(scan.checked, greaterThan(1000));
     });
 
     // The same test for the other generated file (#18), and it carries one
