@@ -185,8 +185,9 @@ this is `comment_references`, and it is not enabled anywhere here: over the
 them name something the package declares and the file naming it does not
 import. `good.dart` exports those from one library, so dartdoc resolves them
 and the reader lands where the reference meant. Enabling the lint costs 90
-`// ignore` comments or 90 imports for names those files do not otherwise use.
-This reports the other seven and none of the 90.
+`// ignore` comments or 90 imports for names those files do not otherwise
+use, to reach the seven that were pointing at nothing. Of those 97 sites,
+the rule below selects those seven and none of the 90.
 
 ### The rule
 
