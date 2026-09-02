@@ -26,26 +26,14 @@ class _Sprite extends EntityStruct
   /// One sprite, declared with nothing but the defaults, so every geometry
   /// test below states the size it wants per entity and inherits the default
   /// centred pivot.
-  late final Sprite quad;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    quad = descriptor.has();
-  }
+  final quad = Sprite.of();
 }
 
 /// A renderable with **no `WorldTransform2D`** - the shape a sprite that is
 /// never parented should be free to have, and the reason the renderer treats
 /// that mixin as optional. It is drawn straight from its local `Transform2D`.
 class _Flat extends EntityStruct with Transform2D, Renderable2D {
-  late final Sprite quad;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    quad = descriptor.has(width: 10, height: 10, color: 0xFF223344);
-  }
+  final quad = Sprite.of(width: 10, height: 10, color: 0xFF223344);
 }
 
 /// Same fields minus Renderable2D - the negative case for the signature bit.
@@ -61,25 +49,18 @@ class _Group extends EntityStruct with Child, Parent {}
 /// configuration.
 class _TwoSprite extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final Sprite body;
-  late final Sprite hat;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    body = descriptor.has(width: 10, height: 10, color: 0xFF111111);
-    hat = descriptor.has(
-      width: 4,
-      height: 2,
-      color: 0xFF222222,
-      zIndex: 5,
-      // Fraction *and* offset together: "centred, then 6 further up" cannot
-      // be said with a fraction of the hat's own 2-unit height alone.
-      pivot: const RelativeOffset2D(fractionX: 0.5, fractionY: 0.5, offsetY: 6),
-      nineSliceBorder: const NineSliceBorder.all(2, sourceSize: 16),
-      visible: true,
-    );
-  }
+  final body = Sprite.of(width: 10, height: 10, color: 0xFF111111);
+  final hat = Sprite.of(
+    width: 4,
+    height: 2,
+    color: 0xFF222222,
+    zIndex: 5,
+    // Fraction *and* offset together: "centred, then 6 further up" cannot
+    // be said with a fraction of the hat's own 2-unit height alone.
+    pivot: const RelativeOffset2D(fractionX: 0.5, fractionY: 0.5, offsetY: 6),
+    nineSliceBorder: const NineSliceBorder.all(2, sourceSize: 16),
+    visible: true,
+  );
 }
 
 /// One visible sprite and one declared `visible: false`, on the same entity -
@@ -87,20 +68,13 @@ class _TwoSprite extends EntityStruct
 /// happens to be transparent.
 class _HalfHidden extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final Sprite shown;
-  late final Sprite hidden;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    shown = descriptor.has(width: 4, height: 4, color: 0xFF00FF00);
-    hidden = descriptor.has(
-      width: 4,
-      height: 4,
-      color: 0xFFFF0000,
-      visible: false,
-    );
-  }
+  final shown = Sprite.of(width: 4, height: 4, color: 0xFF00FF00);
+  final hidden = Sprite.of(
+    width: 4,
+    height: 4,
+    color: 0xFFFF0000,
+    visible: false,
+  );
 }
 
 /// Two sprites declared *out* of depth order - the high one first - so a pass
@@ -110,32 +84,19 @@ class _Stack extends EntityStruct
   static const int highColor = 0xFFAA0000;
   static const int lowColor = 0xFF0000AA;
 
-  late final Sprite high;
-  late final Sprite low;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    high = descriptor.has(width: 2, height: 2, color: highColor, zIndex: 3);
-    low = descriptor.has(width: 2, height: 2, color: lowColor, zIndex: 1);
-  }
+  final high = Sprite.of(width: 2, height: 2, color: highColor, zIndex: 3);
+  final low = Sprite.of(width: 2, height: 2, color: lowColor, zIndex: 1);
 }
 
 /// A sprite pivoted on its own top-left corner instead of its centre.
 class _TopLeft extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final Sprite quad;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    quad = descriptor.has(
-      width: 40,
-      height: 20,
-      color: 0xFF334455,
-      pivot: RelativeOffset2D.zero,
-    );
-  }
+  final quad = Sprite.of(
+    width: 40,
+    height: 20,
+    color: 0xFF334455,
+    pivot: RelativeOffset2D.zero,
+  );
 }
 
 /// A camera. An ordinary entity - the renderer finds it by query. `Child` so
@@ -189,25 +150,18 @@ class _Textured extends EntityStruct
   // the time describeStruct runs and can be a declared row default rather
   // than something an onMounted has to write.
   final tile = Asset.of(tileAsset);
-  late final Sprite textured;
-  late final Sprite plain;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    textured = descriptor.has(
-      texture: tile,
-      width: 4,
-      height: 4,
-      color: texturedColor,
-    );
-    plain = descriptor.has(
-      width: 4,
-      height: 4,
-      color: untexturedColor,
-      zIndex: 1,
-    );
-  }
+  final textured = Sprite.of(
+    texture: Asset.of(tileAsset),
+    width: 4,
+    height: 4,
+    color: texturedColor,
+  );
+  final plain = Sprite.of(
+    width: 4,
+    height: 4,
+    color: untexturedColor,
+    zIndex: 1,
+  );
 }
 
 /// The nine-sliceable panel texture.
@@ -235,22 +189,16 @@ class _Panel extends EntityStruct
   static const double drawSize = 40;
 
   final skin = Asset.of(asset);
-  late final Sprite frame;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    frame = descriptor.has(
-      texture: skin,
-      width: drawSize,
-      height: drawSize,
-      // Top-left pivot so the grid lines below are the sprite's own local
-      // coordinates, unshifted - the arithmetic under test is the slicing,
-      // not the pivot, which has its own tests.
-      pivot: RelativeOffset2D.zero,
-      nineSliceBorder: NineSliceBorder.all(inset, sourceSize: 16),
-    );
-  }
+  final frame = Sprite.of(
+    texture: Asset.of(asset),
+    width: drawSize,
+    height: drawSize,
+    // Top-left pivot so the grid lines below are the sprite's own local
+    // coordinates, unshifted - the arithmetic under test is the slicing,
+    // not the pivot, which has its own tests.
+    pivot: RelativeOffset2D.zero,
+    nineSliceBorder: NineSliceBorder.all(inset, sourceSize: 16),
+  );
 }
 
 /// The same panel drawn smaller than its own insets can fit: 4+4 of border on
@@ -258,19 +206,13 @@ class _Panel extends EntityStruct
 class _UnsizedPanel extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   final skin = Asset.of(_Panel.asset);
-  late final Sprite frame;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    frame = descriptor.has(
-      texture: skin,
-      width: 6,
-      height: 40,
-      pivot: RelativeOffset2D.zero,
-      nineSliceBorder: const NineSliceBorder.all(4, sourceSize: 16),
-    );
-  }
+  final frame = Sprite.of(
+    texture: Asset.of(_Panel.asset),
+    width: 6,
+    height: 40,
+    pivot: RelativeOffset2D.zero,
+    nineSliceBorder: const NineSliceBorder.all(4, sourceSize: 16),
+  );
 }
 
 /// The panel with **no border declared** - identical to [_Panel] in every
@@ -283,18 +225,12 @@ class _UnsizedPanel extends EntityStruct
 class _PlainPanel extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   final skin = Asset.of(_Panel.asset);
-  late final Sprite frame;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    frame = descriptor.has(
-      texture: skin,
-      width: _Panel.drawSize,
-      height: _Panel.drawSize,
-      pivot: RelativeOffset2D.zero,
-    );
-  }
+  final frame = Sprite.of(
+    texture: Asset.of(_Panel.asset),
+    width: _Panel.drawSize,
+    height: _Panel.drawSize,
+    pivot: RelativeOffset2D.zero,
+  );
 }
 
 /// Sliced on the horizontal axis only - a capsule button, a progress bar, a
@@ -307,24 +243,18 @@ class _PlainPanel extends EntityStruct
 class _HorizontalBar extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   final skin = Asset.of(_Panel.asset);
-  late final Sprite bar;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    bar = descriptor.has(
-      texture: skin,
-      width: _Panel.drawSize,
-      height: _Panel.drawSize,
-      pivot: RelativeOffset2D.zero,
-      nineSliceBorder: const NineSliceBorder(
-        left: 0.25,
-        right: 0.25,
-        insetLeft: _Panel.inset,
-        insetRight: _Panel.inset,
-      ),
-    );
-  }
+  final bar = Sprite.of(
+    texture: Asset.of(_Panel.asset),
+    width: _Panel.drawSize,
+    height: _Panel.drawSize,
+    pivot: RelativeOffset2D.zero,
+    nineSliceBorder: const NineSliceBorder(
+      left: 0.25,
+      right: 0.25,
+      insetLeft: _Panel.inset,
+      insetRight: _Panel.inset,
+    ),
+  );
 }
 
 /// A sliced sprite whose grid leaves exactly **one** live cell: the left inset
@@ -339,40 +269,28 @@ class _HorizontalBar extends EntityStruct
 class _SingleCellPanel extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   final skin = Asset.of(_Panel.asset);
-  late final Sprite frame;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    frame = descriptor.has(
-      texture: skin,
-      width: _Panel.drawSize,
-      height: _Panel.drawSize,
-      pivot: RelativeOffset2D.zero,
-      nineSliceBorder: const NineSliceBorder(
-        left: 0.25,
-        insetLeft: _Panel.drawSize,
-      ),
-    );
-  }
+  final frame = Sprite.of(
+    texture: Asset.of(_Panel.asset),
+    width: _Panel.drawSize,
+    height: _Panel.drawSize,
+    pivot: RelativeOffset2D.zero,
+    nineSliceBorder: const NineSliceBorder(
+      left: 0.25,
+      insetLeft: _Panel.drawSize,
+    ),
+  );
 }
 
 /// Insets declared, no texture. Slicing subdivides image space, so with no
 /// image there is nothing to subdivide.
 class _BorderedUntextured extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final Sprite frame;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    frame = descriptor.has(
-      width: 40,
-      height: 40,
-      pivot: RelativeOffset2D.zero,
-      nineSliceBorder: const NineSliceBorder.all(4, sourceSize: 16),
-    );
-  }
+  final frame = Sprite.of(
+    width: 40,
+    height: 40,
+    pivot: RelativeOffset2D.zero,
+    nineSliceBorder: const NineSliceBorder.all(4, sourceSize: 16),
+  );
 }
 
 /// A sprite and a box collider on one entity, for the question #84 asked:
@@ -385,20 +303,8 @@ class _BorderedUntextured extends EntityStruct
 /// the two spans can be compared edge for edge.
 class _PivotBody extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D, Collider2D {
-  late final Sprite quad;
-  late final BoxBody box;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    quad = descriptor.has(width: 40, height: 100);
-  }
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    box = descriptor.hasBoxCollider(halfWidth: 20, halfHeight: 50);
-  }
+  final quad = Sprite.of(width: 40, height: 100);
+  final box = BoxBody.of(halfWidth: 20, halfHeight: 50);
 }
 
 class _SpriteScene extends SceneStruct {

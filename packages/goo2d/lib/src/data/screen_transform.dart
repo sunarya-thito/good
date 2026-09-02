@@ -65,7 +65,7 @@ enum ScreenLayer {
 /// ```dart
 /// class Backdrop extends EntityStruct
 ///     with Transform2D, ScreenTransform2D, Renderable2D {
-///   late final Sprite fill;
+///   final fill = Sprite.of(texture: sky, width: 1, height: 1);
 ///
 ///   @override
 ///   ScreenLayer get screenLayer => ScreenLayer.behind;
@@ -75,12 +75,6 @@ enum ScreenLayer {
 ///
 ///   @override
 ///   ScreenAxis get screenHeightAxis => ScreenAxis.fraction;
-///
-///   @override
-///   void describeSprites(SpriteDescriptor descriptor) {
-///     super.describeSprites(descriptor);
-///     fill = descriptor.has(texture: sky, width: 1, height: 1);
-///   }
 /// }
 /// ```
 ///

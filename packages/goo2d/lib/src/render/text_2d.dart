@@ -202,7 +202,7 @@ mixin Text2D on Component {
   /// Override it; the default is 32.
   ///
   /// This is storage, reserved in every row of the archetype whether or not
-  /// an entity uses it, so it is `describeCollider`'s `maxPoints` and not a
+  /// an entity uses it, so it is `PolygonBody.of`'s `maxPoints` and not a
   /// soft limit. [Text2DAccessor.setText] asserts on a longer string in
   /// debug and truncates in release - see there.
   int get textCapacity => 32;

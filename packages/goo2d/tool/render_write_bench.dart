@@ -84,7 +84,7 @@ const Duration _step = Duration(milliseconds: 16);
 /// never parented, so the renderer reads its local `Transform2D` directly.
 class _Mote extends EntityStruct
     with Transform2D, Renderable2D, EntityLifecycleListener {
-  late final Sprite body;
+  final body = Sprite.of(width: 14, height: 14);
 
   final angle = Field.float64();
   final radius = Field.float64();
@@ -94,12 +94,6 @@ class _Mote extends EntityStruct
   final baseSize = Field.float64();
 
   int _spawned = 0;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    body = descriptor.has(width: 14, height: 14);
-  }
 
   @override
   void onEntityMounted(Entity entity) {

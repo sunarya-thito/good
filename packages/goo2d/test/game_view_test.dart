@@ -24,13 +24,7 @@ class _Sprite extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   /// Declared unsized, so each test states the extent it cares about - this
   /// file is about the widget-side plumbing, not about geometry.
-  late final Sprite quad;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    quad = descriptor.has();
-  }
+  final quad = Sprite.of();
 }
 
 class _Scene extends SceneStruct {

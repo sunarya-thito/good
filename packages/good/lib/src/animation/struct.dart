@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart' show Curve, Curves;
 import 'package:meta/meta.dart';
 
 import 'package:good/src/data.dart';
+import 'package:good/src/declare.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/time.dart';
@@ -53,14 +54,35 @@ typedef TimelineLerp<T> = T Function(T a, T b, double t);
 
 /// A curve of values over time, sampled by [operator[]].
 ///
-/// Declared in [TimelineStruct.describeTrack] and animated by one or more
+/// Declared with [of] on a [TimelineStruct] field and animated by one or more
 /// clips: the same `positionX` track can be driven by an `enter` animation and
 /// a `die` animation, and the [TimelineSample] says which one is being asked
 /// about. A track with no keys in the clip being sampled reports its declared
 /// default, so a clip only has to mention the tracks it actually moves.
 final class Track<T> {
-  @internal
-  Track(this.defaultValue, this._lerp);
+  Track._(this.defaultValue, this._lerp);
+
+  /// Declares a track whose value is [defaultValue] wherever no clip keys it,
+  /// and returns the handle to keep in a field.
+  ///
+  /// ```dart
+  /// class EnemyTimeline extends TimelineStruct {
+  ///   final x = Track.of(0.0);
+  ///   final frame = Track.of(0);
+  /// }
+  /// ```
+  ///
+  /// [lerp] blends two keyframes. Leave it off for `double`, `int` and
+  /// `bool`, which are resolved here, at declare time, once per track - a
+  /// per-sample type test would be a branch on the hottest path in the
+  /// system. Any other type without a [lerp] becomes a **discrete** track: it
+  /// holds each value until the next key, which is right for a sprite index
+  /// or an enum and is the honest answer for a type with no arithmetic.
+  ///
+  /// Declares nothing outside the timeline that holds it, so a
+  /// [TimelineStruct] can be constructed anywhere.
+  static Track<T> of<T>(T defaultValue, {TimelineLerp<T>? lerp}) =>
+      Track<T>._(defaultValue, lerp ?? _defaultLerp<T>());
 
   /// What this track reads as outside any clip that animates it, and before
   /// its first keyframe.
@@ -121,7 +143,7 @@ final class Track<T> {
     final lerp = _lerp;
     // No lerp means a discrete track: hold the previous value until the next
     // key is reached. Correct for a sprite index or an enum, and the honest
-    // fallback for a type with no arithmetic - see `TimelineDescriptor.has`.
+    // fallback for a type with no arithmetic - see `Track.of`.
     if (lerp == null) return from.value;
     return lerp(from.value, to.value, t);
   }
@@ -333,19 +355,6 @@ final class TrackAnimator<T> {
   }
 }
 
-/// Declares a timeline's tracks - see [TimelineStruct.describeTrack].
-abstract class TimelineDescriptor {
-  /// Declares a track whose value is [defaultValue] wherever no clip keys it.
-  ///
-  /// [lerp] blends two keyframes. Leave it off for `double`, `int` and `bool`,
-  /// which are resolved here, at declare time, once per track - a per-sample
-  /// type test would be rule 11's mistake on the hottest path in the system.
-  /// Any other type without a [lerp] becomes a **discrete** track: it holds
-  /// each value until the next key, which is right for a sprite index or an
-  /// enum and is the honest answer for a type with no arithmetic.
-  Track<T> has<T>(T defaultValue, {TimelineLerp<T>? lerp});
-}
-
 /// Declares a timeline's clips - see [TimelineStruct.describeAnimation].
 abstract class TimelineAnimationDescriptor {
   TimelineAnimation has();
@@ -353,12 +362,45 @@ abstract class TimelineAnimationDescriptor {
 
 /// A set of tracks and the clips that animate them.
 ///
-/// Declared on an `EntityStruct` through `Animations.describeAnimation`, and
-/// shared by every entity of that archetype - exactly like the struct itself.
-/// Per-entity progress is one `double` of start time in the entity's own row;
-/// see [TimelineAnimation.animate].
+/// Declared on an `EntityStruct` field with [of], and shared by every entity
+/// of that archetype - exactly like the struct itself. Per-entity progress is
+/// one `double` of start time in the entity's own row; see
+/// [TimelineAnimation.animate].
+///
+/// ```dart
+/// class EnemyTimeline extends TimelineStruct {
+///   final x = Track.of(0.0);
+///
+///   late final TimelineAnimation entrance;
+///
+///   @override
+///   void describeAnimation(TimelineAnimationDescriptor descriptor) {
+///     entrance = descriptor.has()..track(x).key(0).key(100, Seconds(1));
+///   }
+/// }
+/// ```
 abstract class TimelineStruct {
-  void describeTrack(TimelineDescriptor descriptor);
+  /// Declares [timeline] on the prefab being constructed and returns it, so
+  /// the prefab keeps the typed handle in its field.
+  ///
+  /// ```dart
+  /// class Enemy extends EntityStruct with Transform2D {
+  ///   final timeline = TimelineStruct.of(EnemyTimeline());
+  /// }
+  /// ```
+  ///
+  /// Takes an instance and not a constructor: a timeline declares nothing
+  /// outside itself - a [Track] is a value and a clip is keyed against tracks
+  /// the timeline already holds - so there is no window to build it inside
+  /// of. What the declaration buys it is the scene, and therefore the clock
+  /// [TimelineAnimation.animate] samples against.
+  ///
+  /// Throws when no prefab is being constructed.
+  static T of<T extends TimelineStruct>(T timeline) {
+    DeclarationContext.addDeclared(timeline);
+    return timeline;
+  }
+
   void describeAnimation(TimelineAnimationDescriptor descriptor);
 
   SceneStruct? _scene;
@@ -378,7 +420,7 @@ abstract class TimelineStruct {
     if (scene == null) {
       throw StateError(
         '$runtimeType has not been declared yet. A TimelineStruct is bound by '
-        'being returned from `descriptor.has(...)` in describeAnimation; one '
+        'being handed to `TimelineStruct.of(...)` on a prefab field; one '
         'constructed by hand has no clock to sample against.',
       );
     }
@@ -397,17 +439,8 @@ abstract class TimelineStruct {
   void initializeTimeline(SceneStruct scene) {
     if (_scene != null) return;
     _scene = scene;
-    describeTrack(const _TrackDescriptor());
     describeAnimation(_AnimationDescriptor(this));
   }
-}
-
-final class _TrackDescriptor implements TimelineDescriptor {
-  const _TrackDescriptor();
-
-  @override
-  Track<T> has<T>(T defaultValue, {TimelineLerp<T>? lerp}) =>
-      Track<T>(defaultValue, lerp ?? _defaultLerp<T>());
 }
 
 /// Picks the blend for [T] **once, at declare time**.

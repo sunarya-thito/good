@@ -161,12 +161,17 @@ Things that work but will catch you out:
   line slips past it and you get two `goo2d:` entries and two `assets:` blocks.
 - **`test/widget_test.dart`** from `flutter create` references `MyApp`, which no
   longer exists once `main.dart` is the good one.
-- **A component declares its type, its assets and its events in fields, and
-  the rest still declare in a hook.** `Component.type<T>()` replaced
-  `describeType`, `Asset.of` replaced a prefab's `describeAssets`, and
-  `Event.of` replaced `describeEvents`; `describeStruct`, `describeSprites`
-  and `describeCollider` are still hooks that have to chain `super`. The two
-  spellings sit side by side until the remaining hooks follow.
+- **A prefab declares in fields; three declarations still need a hook.**
+  `Component.type<T>()` replaced `describeType`, `Asset.of` replaced a
+  prefab's `describeAssets`, `Event.of` replaced `describeEvents`, and
+  `Sprite.of`, `<Shape>Body.of`, `<Kind>Effector.of`, `Track.of` and
+  `TimelineStruct.of` replaced `describeSprites`, `describeCollider`,
+  `describeEffector`, `describeTrack` and `Animations.describeAnimation`.
+  What is left of `describeStruct` is `Camera.cameraView`, which needs the
+  scene's camera-view table, and `Text2D.textCodeUnits`, which sizes an array
+  from the overridable `textCapacity` getter - neither of which a field
+  initialiser can read. `TimelineStruct.describeAnimation` stays as well: a
+  clip keys the tracks the timeline holds, so it names sibling fields.
 - **A scene declares its assets in `describeAssets`.** `GameSceneDescriptor.has`
   takes the constructor now, so a declared scene's events go on fields like
   every other owner's. Assets do not: the `AssetDescriptor` is opened inside

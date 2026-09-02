@@ -84,16 +84,59 @@ abstract interface class Component {
 
 /// A stricter [Component]: opts a mixin into declaring *several* named,
 /// independently-addressable instances of itself on one entity (several
-/// sprites, several colliders) instead of exactly one. Dart disallows mixing
-/// in the same mixin twice (`with Renderable2D, Renderable2D`), so a
-/// multi-instance mixin doesn't declare its fields directly the way a
-/// single-instance one does - it declares its own dedicated hook (see
-/// `Renderable2D.describeSprites`/`Collider2D.describeCollider`, `goo2d`/
-/// `goo2d_render`), called once from its own `describeStruct` override, and
-/// every `has()`-style call inside that hook allocates one more instance's
-/// worth of fields. Both markers are pure - no members of their own beyond
-/// what [Component] already declares.
-abstract interface class MultiComponent implements Component {}
+/// sprites, several colliders) instead of exactly one.
+///
+/// Each instance is a field on the prefab, declared the way every other
+/// field is:
+///
+/// ```dart
+/// class Player extends EntityStruct with Transform2D, Renderable2D {
+///   final body = Sprite.of(width: 32, height: 48);
+///   final hat = Sprite.of(width: 20, height: 8, zIndex: 1);
+/// }
+/// ```
+///
+/// The component also needs all of them in one list - a renderer walks every
+/// sprite an entity has and cannot know this prefab's field names. That list
+/// is not built by the fields that fill it, because a mixin's own
+/// initialisers run **after** the applying class's: `class Sub extends Base
+/// with M1, M2` runs `Sub`, then `M2`, then `M1`, then `Base`, so the
+/// prefab's two `Sprite.of` calls happen while `Renderable2D` has no fields.
+/// Each call records itself with [declare] instead, and the component takes
+/// its own kind back with [declared]:
+///
+/// ```dart
+/// mixin Renderable2D on MultiComponent {
+///   final List<Sprite> sprites = MultiComponent.declared<Sprite>();
+/// }
+/// ```
+///
+/// [Component] is the marker for the single-instance case and adds nothing of
+/// its own beyond what a component already declares.
+abstract interface class MultiComponent implements Component {
+  /// Records [declaration] against the prefab being constructed and hands it
+  /// back, so the call site keeps the typed handle in its field.
+  ///
+  /// Called by the declaration itself - `Sprite.of`, `BoxBody.of` - and never
+  /// by a prefab.
+  ///
+  /// Throws when nothing is being constructed: a prefab built by hand, or a
+  /// `late final` that runs on first read rather than during the pass that
+  /// lays the archetype out.
+  static T declare<T extends Object>(T declaration) {
+    DeclarationContext.addDeclared(declaration);
+    return declaration;
+  }
+
+  /// Every [T] the prefab being constructed has declared so far, in
+  /// declaration order, and removes them from the collection.
+  ///
+  /// Belongs in a field initialiser of the component mixin itself, which is
+  /// where it runs late enough to see the whole prefab. Anything a prefab
+  /// declares that no component takes fails the registration by name.
+  static List<T> declared<T extends Object>() =>
+      DeclarationContext.takeDeclared<T>();
+}
 
 // game object is just a structure of data, it doesn't hold the actual data it
 // describes the data structure of the game object, and let the framework

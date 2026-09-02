@@ -9,20 +9,8 @@ class Player extends EntityStruct
   final shielded = Field.boolean();
   final shieldEnergy = Field.float64();
 
-  late final Sprite sprite;
-  late final CircleBody hitbox;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    sprite = descriptor.has(width: 64, height: 64);
-  }
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    hitbox = descriptor.hasCircleCollider(radius: 0.5);
-  }
+  final sprite = Sprite.of(width: 64, height: 64);
+  final hitbox = CircleBody.of(radius: 0.5);
 }
 
 late Player player;

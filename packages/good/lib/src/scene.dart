@@ -1,11 +1,11 @@
 import 'package:meta/meta.dart';
 
 import 'package:good/src/coroutine/coroutine.dart';
-import 'package:good/src/animation/animatable.dart';
 import 'package:good/src/animation/struct.dart';
 import 'package:good/src/archetype.dart';
 import 'package:good/src/asset.dart';
 import 'package:good/src/camera_view.dart';
+import 'package:good/src/data.dart';
 import 'package:good/src/data/hierarchy.dart';
 import 'package:good/src/data_layout.dart';
 import 'package:good/src/declare.dart';
@@ -772,9 +772,29 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
     DeclarationContext.pushData(ArchetypeDataDescriptor(storage));
     DeclarationContext.pushComponents(components);
     DeclarationContext.pushPrefabs(this);
+    // Opened around the whole registration and not only the constructor: a
+    // multi-instance component takes its own declarations from inside the
+    // constructor, and what nothing took is read one line after it returns.
+    DeclarationContext.pushDeclared();
+    final List<TimelineStruct> timelines;
     try {
       object = EventBinder.open(create);
+      // Taken before the leftover check, because `Animations` is on every
+      // prefab and has no field of its own to take them with - a timeline
+      // belongs to the prefab, not to one component of it.
+      timelines = DeclarationContext.takeDeclared<TimelineStruct>();
+      final leftover = DeclarationContext.undeclaredLeftovers;
+      if (leftover.isNotEmpty) {
+        throw StateError(
+          '$T declares a ${leftover.first.runtimeType} that no component '
+          'takes. A multi-instance declaration is collected by the component '
+          'mixin that owns it while the prefab is being constructed, so this '
+          'prefab is missing that mixin - a Sprite needs `with Renderable2D`, '
+          'a ColliderBody needs `with Collider2D`.',
+        );
+      }
     } finally {
+      DeclarationContext.popDeclared();
       DeclarationContext.popPrefabs();
       DeclarationContext.popComponents();
       DeclarationContext.popData();
@@ -819,10 +839,13 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
       // row value.
       object.describeStruct(ArchetypeDataDescriptor(storage));
       // Timelines last, because keying a clip is pure declaration and depends
-      // on nothing above it. Unconditional and with no `is Animations` test:
-      // every `EntityStruct` has `Animations`, and its default declares
-      // nothing.
-      object.describeAnimation(_AnimationTypeDescriptor(_scene));
+      // on nothing above it. This is the scene reaching a declaration that
+      // was made before there was a scene to reach: `TimelineStruct.of` runs
+      // in a field initialiser and records the timeline, and the clock it
+      // samples against is settled here.
+      for (var i = 0; i < timelines.length; i++) {
+        timelines[i].initializeTimeline(_scene);
+      }
     } finally {
       DeclarationContext.popComponents();
       DeclarationContext.popData();
@@ -859,6 +882,9 @@ final class _AssetDescriptor implements AssetDescriptor {
   final SceneStruct _scene;
 
   @override
+  IntRepresentation<Asset<T>> representationOf<T>() => _scene.assets.of<T>();
+
+  @override
   Asset<T> has<T>(AssetKey<T> key) {
     // Game-wide, not scene-local: two scenes that both use the UI atlas share
     // one handle and one address, which is what makes a transition between
@@ -883,21 +909,6 @@ final class _AssetDescriptor implements AssetDescriptor {
 }
 
 /// Runs each declared timeline's own two passes and binds it to the clock.
-final class _AnimationTypeDescriptor implements AnimationTypeDescriptor {
-  _AnimationTypeDescriptor(this._scene);
-
-  /// The **scene**, not its `GameState`: a scene can legitimately be brought
-  /// up without one (see `SceneStruct.initializeScene`), and a timeline that
-  /// grabbed the clock here would make declaring one impossible headlessly.
-  final SceneStruct _scene;
-
-  @override
-  T has<T extends TimelineStruct>(T struct) {
-    struct.initializeTimeline(_scene);
-    return struct;
-  }
-}
-
 /// Destroying an entity, which is a property of the **entity** and not a
 /// choice of scene.
 ///

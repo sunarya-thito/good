@@ -2,6 +2,44 @@
 
 ### Added
 
+* **A multi-instance component takes its declarations from the prefab's own
+  fields.** `MultiComponent.declare` records one, `MultiComponent.declared<T>()`
+  takes every `T` recorded so far, and the pair is what lets `goo2d` spell a
+  sprite or a collider as a field (#287):
+
+  ```dart
+  mixin Renderable2D on MultiComponent {
+    final List<Sprite> sprites = MultiComponent.declared<Sprite>();
+  }
+  ```
+
+  The list cannot be built by the initialisers that fill it: a mixin's own
+  fields run **after** the applying class's - `class Sub extends Base with M1,
+  M2` runs `Sub`, `M2`, `M1`, `Base` - so a prefab's `Sprite.of` calls happen
+  while `Renderable2D` has no fields at all. `DeclarationContext` holds one
+  collection per object under construction, and the component takes its own
+  kind out of it on the way past. A list per construction, not one flat list,
+  because `EntityStruct.of(Barrel.new)` builds a child prefab inside its
+  parent's field initialisers and the child's sprites are the child's.
+
+  A declaration nothing takes fails the registration by name, so a prefab that
+  declares a `Sprite` without `with Renderable2D` is told which mixin is
+  missing rather than drawing nothing.
+
+* **`Asset.representation<T>()`**, the `IntRepresentation` an asset-typed
+  column binds to for the scene being brought up (#287):
+
+  ```dart
+  final skin = Field.optPacked(Asset.representation<Texture>(), texture);
+  ```
+
+  A row stores an asset as its address and an address only means anything
+  against the table that issued it, so the column names the table. Reaching it
+  used to mean `getScene<SceneStruct>().assets.of<Texture>()` from a
+  `describeStruct` body, which is an instance call. `AssetDescriptor` vends the
+  same view through `representationOf<T>()`, and `Sprite.of` is the first
+  caller.
+
 * **An asset is declarable in the field that holds it.** `Asset.of(key)` reads
   the descriptor `SceneStruct.initializeScene` opens around a scene's
   declaration passes, so a prefab names a texture where it uses it instead of
@@ -124,6 +162,31 @@
   A scene the caller builds and passes to `GameState.loadScene` is unchanged:
   it has no window, and `EventBus.events` in its constructor body is still its
   route.
+
+* **`Animations.describeAnimation` and `TimelineStruct.describeTrack` are
+  gone** (#287). A timeline goes on the field that holds it and a track carries
+  its own default:
+
+  ```dart
+  class EnemyTimeline extends TimelineStruct {
+    final x = Track.of(0.0);
+    final frame = Track.of(0);
+  }
+
+  class Enemy extends EntityStruct {
+    final timeline = TimelineStruct.of(EnemyTimeline());
+  }
+  ```
+
+  `AnimationTypeDescriptor` and `TimelineDescriptor` go with them.
+  `TimelineStruct.of` takes an instance and not a constructor, because a
+  timeline declares nothing outside itself; what the declaration buys it is the
+  scene, and therefore the clock `TimelineAnimation.animate` samples against.
+  That is settled when the prefab finishes constructing, where
+  `describeAnimation` used to settle it.
+
+  `TimelineStruct.describeAnimation` stays. A clip keys the tracks its timeline
+  holds, so it names sibling fields, and a field initialiser cannot read one.
 
 * **`describeQuery` is gone. A query is a value, so it goes on the field that
   holds it** (#287):

@@ -6,13 +6,7 @@
 /// ```dart
 /// class Crate extends EntityStruct
 ///     with Transform2D, WorldTransform2D, Collider2D, RigidBody2D {
-///   late final BoxBody box;
-///
-///   @override
-///   void describeCollider(ColliderDescriptor d) {
-///     super.describeCollider(d);
-///     box = d.hasBoxCollider(halfWidth: 0.5, halfHeight: 0.5, friction: 0.4);
-///   }
+///   final box = BoxBody.of(halfWidth: 0.5, halfHeight: 0.5, friction: 0.4);
 /// }
 /// ```
 ///
@@ -55,8 +49,8 @@
 ///
 /// **Box2D has no effectors** - Unity's are gameplay code that finds bodies in
 /// a region and applies a force - so this package supplies them two ways.
-/// Declare one with [Effector2D] and [EffectorDescriptor] and the physics
-/// system walks it before each step, which is the better default. `Effectors2D`
+/// Declare one with [Effector2D] and an `<Kind>Effector.of` field and the
+/// physics system walks it before each step, which is the better default. `Effectors2D`
 /// exposes the same four as one-shot calls for a region computed per tick.
 /// Area, Point, Buoyancy and Surface are there; Platform (one-way) is not, and
 /// `src/effectors.dart` says why.
@@ -68,7 +62,6 @@ export 'src/effector.dart'
         BuoyancyEffector,
         Effector,
         Effector2D,
-        EffectorDescriptor,
         PointEffector,
         SurfaceEffector;
 export 'src/effectors.dart' show Effectors2D;

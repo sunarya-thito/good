@@ -58,31 +58,19 @@ const double _cell = 8;
 /// order, which is what an equal-`zIndex` tie would fall back on.
 class _Back extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final Sprite quad;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    quad = descriptor.has(
-      width: 8,
-      height: 8,
-      color: _backColor,
-      zIndex: -10,
-    );
-  }
+  final quad = Sprite.of(
+    width: 8,
+    height: 8,
+    color: _backColor,
+    zIndex: -10,
+  );
 }
 
 /// The thing a damage number goes over. 16x16 at the world origin puts its
 /// top edge at view y 292.
 class _Enemy extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final Sprite quad;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    quad = descriptor.has(width: 16, height: 16, color: _enemyColor);
-  }
+  final quad = Sprite.of(width: 16, height: 16, color: _enemyColor);
 }
 
 /// The label. Eight code units of capacity, which is deliberately small - the
@@ -134,13 +122,7 @@ class _Silent extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
 /// In front of the label.
 class _Front extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  late final Sprite quad;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    quad = descriptor.has(width: 4, height: 4, color: _frontColor, zIndex: 20);
-  }
+  final quad = Sprite.of(width: 4, height: 4, color: _frontColor, zIndex: 20);
 }
 
 class _Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}

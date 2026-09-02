@@ -30,13 +30,7 @@ late _PhysScene _declaration;
 
 /// Static, one unit half-height, so its top face is at y = +1.
 class _Wall extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor d) {
-    super.describeCollider(d);
-    box = d.hasBoxCollider(halfWidth: 4, halfHeight: 1);
-  }
+  final box = BoxBody.of(halfWidth: 4, halfHeight: 1);
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -47,13 +41,7 @@ class _Wall extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
 /// Dynamic, half a unit high, so it comes to rest at y = 1.5 on the wall.
 class _Ball extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor d) {
-    super.describeCollider(d);
-    box = d.hasBoxCollider(halfWidth: 0.5, halfHeight: 0.5);
-  }
+  final box = BoxBody.of(halfWidth: 0.5, halfHeight: 0.5);
 }
 
 class _PhysScene extends SceneStruct {

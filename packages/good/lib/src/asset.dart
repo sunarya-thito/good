@@ -483,6 +483,27 @@ final class Asset<T> implements IntRepresentable {
   static Asset<T> of<T>(AssetKey<T> key) =>
       DeclarationContext.assets.has<T>(key);
 
+  /// The [IntRepresentation] an asset-typed column binds to, for the scene
+  /// being brought up.
+  ///
+  /// A row stores an asset as its address, and an address only means anything
+  /// against the table that issued it - so a field holding one names the
+  /// table:
+  ///
+  /// ```dart
+  /// class Player extends EntityStruct {
+  ///   final texture = Asset.of(Textures.player);
+  ///   final skin = Field.optPacked(Asset.representation<Texture>(), texture);
+  /// }
+  /// ```
+  ///
+  /// One view per payload type, so two prefabs declaring a `Texture` column
+  /// bind to the same object.
+  ///
+  /// Throws where [of] throws, and for the same reasons.
+  static IntRepresentation<Asset<T>> representation<T>() =>
+      DeclarationContext.assets.representationOf<T>();
+
   /// What this asset is. Readable on every copy, loaded or not.
   final AssetKey<T> key;
 
@@ -576,6 +597,10 @@ abstract class AssetDescriptor {
   /// - returns the *identical* handle, so a shared asset is one decode and one
   /// address, never two.
   Asset<T> has<T>(AssetKey<T> key);
+
+  /// The representation an asset-typed column binds to - see
+  /// [Asset.representation], which is how a field initialiser reaches it.
+  IntRepresentation<Asset<T>> representationOf<T>();
 }
 
 /// One game's assets: which keys have been declared, the [Asset] handle each

@@ -160,6 +160,89 @@ abstract final class DeclarationContext {
     return registrar;
   }
 
+  /// Declarations waiting for the component that owns them, innermost list
+  /// last - one list per object being constructed.
+  ///
+  /// A multi-instance component holds several named instances of itself on
+  /// one entity: several sprites, several colliders. Each instance is
+  /// declared on its own field (`final body = Sprite.of(...)`) and the
+  /// component also needs all of them in one list, so that a renderer can
+  /// walk every sprite an entity has without knowing this prefab's field
+  /// names. The list cannot be built by the field initialisers that fill it,
+  /// because a mixin's own initialisers run **after** the applying class's -
+  /// `class Sub extends Base with M1, M2` runs `Sub`, `M2`, `M1`, `Base` - so
+  /// the prefab's `Sprite.of` calls happen while `Renderable2D` has no fields
+  /// at all.
+  ///
+  /// So the calls land here and the component takes them:
+  ///
+  /// ```dart
+  /// mixin Renderable2D on MultiComponent {
+  ///   final List<Sprite> sprites = MultiComponent.declared<Sprite>();
+  /// }
+  /// ```
+  ///
+  /// [takeDeclared] takes by type, so a prefab mixing in three of these
+  /// components hands each one its own kind and the order inside each kind is
+  /// declaration order.
+  ///
+  /// A list per construction rather than one flat list, for the reason
+  /// [_data] is a stack: `EntityStruct.of(Barrel.new)` builds a child prefab
+  /// from inside its parent's field initialisers, and the child's sprites are
+  /// the child's.
+  static final List<List<Object>> _declared = <List<Object>>[];
+
+  /// Opens a collection for the duration of one object's registration.
+  /// Paired with [popDeclared] in a `finally` - `SceneDescriptor.has` is the
+  /// only caller.
+  static void pushDeclared() => _declared.add(<Object>[]);
+
+  static void popDeclared() => _declared.removeLast();
+
+  /// Records one declaration, or a `StateError` naming the one thing that
+  /// puts a caller here.
+  static void addDeclared(Object declaration) {
+    if (_declared.isEmpty) {
+      throw StateError(
+        '${declaration.runtimeType} was declared with no struct being '
+        'constructed. A multi-instance declaration is collected by the '
+        'component that owns it while the framework constructs the prefab, '
+        'so the prefab has to be built by the framework:\n'
+        '  descriptor.has(MyStruct.new)   // not descriptor.has(MyStruct())\n'
+        'A `late final` initialiser lands here too: it runs on first read, '
+        'after the archetype was sealed, so the declaration would reach '
+        'neither the row nor the component list. Field initialisers here are '
+        'eager, always.',
+      );
+    }
+    _declared.last.add(declaration);
+  }
+
+  /// Removes every declaration of type [T] made so far by the object being
+  /// constructed, in declaration order.
+  ///
+  /// Empty rather than an error when nothing is open: a component mixin is
+  /// applied to classes the framework never constructs - a test reading a
+  /// field off a prefab it built by hand - and the declaration call is the
+  /// half that reports that, with the sentence above.
+  static List<T> takeDeclared<T extends Object>() {
+    if (_declared.isEmpty) return <T>[];
+    final open = _declared.last;
+    final taken = <T>[];
+    open.removeWhere((declaration) {
+      if (declaration is! T) return false;
+      taken.add(declaration);
+      return true;
+    });
+    return taken;
+  }
+
+  /// What the object being constructed declared and no component took.
+  ///
+  /// Read once, after construction, by `SceneDescriptor.has` - see the error
+  /// it raises, which is the only thing this is for.
+  static List<Object> get undeclaredLeftovers => _declared.last;
+
   /// The open prefab registrations, innermost last - the second level of the
   /// stack, and the one `EntityStruct.of` declares against.
   static final List<PrefabRegistrar> _prefabs = <PrefabRegistrar>[];

@@ -1,7 +1,6 @@
 # Physics
 
 <!-- snippet-scope
-late ColliderDescriptor descriptor;
 late CircleBody circle;
 late BoxBody box;
 late CapsuleBody pill;
@@ -31,22 +30,8 @@ dependencies:
 ```dart
 class Crate extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D, Collider2D, RigidBody2D {
-  late final BoxBody box;
-  late final Sprite sprite;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    box = descriptor.hasBoxCollider(
-      halfWidth: 0.5, halfHeight: 0.5, friction: 0.4,
-    );
-  }
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    sprite = descriptor.has(width: 1, height: 1, color: 0xFFCC8844);
-  }
+  final box = BoxBody.of(halfWidth: 0.5, halfHeight: 0.5, friction: 0.4);
+  final sprite = Sprite.of(width: 1, height: 1, color: 0xFFCC8844);
 }
 ```
 
@@ -106,11 +91,12 @@ they despawn — the system listens to spawn events instead of needing to be tol
 `Collider2D` lives in `goo2d`, not in the physics package — a collider describes
 an entity's geometry whether or not it is ever simulated. Four shapes:
 
+<!-- snippet: in EntityStruct with Collider2D -->
 ```dart
-circle = descriptor.hasCircleCollider(radius: 0.5);
-box    = descriptor.hasBoxCollider(halfWidth: 0.5, halfHeight: 0.5);
-pill   = descriptor.hasCapsuleCollider(radius: 0.25, halfHeight: 0.5);
-poly   = descriptor.hasPolygonCollider(points: [(-0.5, 0.5), (0.5, 0.5), (0, -0.5)]);
+final circle = CircleBody.of(radius: 0.5);
+final box    = BoxBody.of(halfWidth: 0.5, halfHeight: 0.5);
+final pill   = CapsuleBody.of(radius: 0.25, halfHeight: 0.5);
+final poly   = PolygonBody.of(points: [(-0.5, 0.5), (0.5, 0.5), (0, -0.5)]);
 ```
 
 A polygon states its outline where it declares the field, and every entity of
@@ -118,16 +104,10 @@ the prefab starts with those vertices:
 
 ```dart
 class Wedge extends EntityStruct with Transform2D, Collider2D {
-  late final PolygonBody outline;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    outline = descriptor.hasPolygonCollider(
-      points: const [(-0.5, 0.5), (0.5, 0.5), (0.0, -0.5)],
-      maxPoints: 4,      // (1)!
-    );
-  }
+  final outline = PolygonBody.of(
+    points: const [(-0.5, 0.5), (0.5, 0.5), (0.0, -0.5)],
+    maxPoints: 4,      // (1)!
+  );
 }
 ```
 
@@ -338,22 +318,12 @@ its shape.
 
 ```dart
 class WindZone extends EntityStruct with Transform2D, Collider2D, Effector2D {
-  late final BoxBody region;
-  late final AreaEffector wind;
+  final wind = AreaEffector.of(
+    BoxBody.of(halfWidth: 50, halfHeight: 50, isTrigger: true),
+    forceY: 400,
+  );
 
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    region = descriptor.hasBoxCollider(
-      halfWidth: 50, halfHeight: 50, isTrigger: true,
-    );
-  }
-
-  @override
-  void describeEffector(EffectorDescriptor descriptor) {
-    super.describeEffector(descriptor);
-    wind = descriptor.hasAreaEffector(region, forceY: 400);
-  }
+  BoxBody get region => wind.region as BoxBody;
 }
 ```
 

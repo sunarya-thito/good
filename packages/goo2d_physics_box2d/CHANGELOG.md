@@ -2,6 +2,35 @@
 
 ### Breaking
 
+* **`describeEffector` is gone. An effector goes on the field that holds it**
+  (#287):
+
+  ```dart
+  class Updraught extends EntityStruct
+      with Transform2D, Collider2D, Effector2D {
+    final wind = AreaEffector.of(
+      BoxBody.of(halfWidth: 20, halfHeight: 10, isTrigger: true),
+      forceY: 30,
+    );
+  }
+  ```
+
+  | before | after |
+  |---|---|
+  | `d.hasAreaEffector(region, ...)` | `AreaEffector.of(region, ...)` |
+  | `d.hasPointEffector(region, ...)` | `PointEffector.of(region, ...)` |
+  | `d.hasBuoyancyEffector(region, ...)` | `BuoyancyEffector.of(region, ...)` |
+  | `d.hasSurfaceEffector(region, ...)` | `SurfaceEffector.of(region, ...)` |
+
+  `EffectorDescriptor` goes with it, along with `Effector2D`'s `describeStruct`
+  override. `Effector2D.effectors` still holds every declaration in declaration
+  order.
+
+  The region is declared inline, because a field initialiser cannot read a
+  sibling field. It is still a declaration of its own and still lands in
+  `Collider2D.bodies`; a prefab that wants it under a name of its own reads
+  `wind.region`.
+
 * **The `describeType` overrides are gone; each component declares its type in
   a field** (#287). `RigidBody2D` and `Effector2D` each carry one
   `Component.type<Self>()` field instead.

@@ -585,11 +585,10 @@ import 'package:$package/$package.dart';
 /// final speed = Field.float64(220);   // read and written as speed[entity]
 /// ```
 ///
-/// To give it a texture, declare one on the field that holds the handle and
-/// hand that to the sprite:
+/// To give it a texture, declare one where the sprite names it:
 ///
 /// ```dart
-/// final texture = Asset.of(Textures.yourAsset);
+/// final sprite = Sprite.of(texture: Asset.of(Textures.yourAsset));
 /// ```
 ///
 /// `Textures` comes from `package:$bundle/textures.dart`, which is
@@ -597,15 +596,9 @@ import 'package:$package/$package.dart';
 /// in the pubspec, and run `good generate`. Everything good writes lands in
 /// that package; every file under `lib/` here is one you wrote.
 class Player extends EntityStruct with Transform2D, WorldTransform2D, Renderable2D {
-  late final Sprite sprite;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    // Untextured to start with: a flat colour is one branch in the renderer
-    // and needs no asset, so a new project draws something on the first run.
-    sprite = descriptor.has(width: 64, height: 64, color: 0xFF4FC3F7);
-  }
+  // Untextured to start with: a flat colour is one branch in the renderer and
+  // needs no asset, so a new project draws something on the first run.
+  final sprite = Sprite.of(width: 64, height: 64, color: 0xFF4FC3F7);
 }
 ''';
 
