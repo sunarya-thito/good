@@ -54,8 +54,8 @@ mixin Camera on Component {
   /// player.camera.cameraView[entity] = game.mainCamera;
   /// ```
   ///
-  /// Typed, and not an int: `CameraView` is a `GlobalObject`, so a stray
-  /// integer does not compile here.
+  /// Typed, and not an int: [CameraView] is an [IntRepresentable], so a
+  /// stray integer does not compile here.
   ///
   /// The table it is declared against is the declaring game's own, not a
   /// shared registry: an address read out of this field means nothing except

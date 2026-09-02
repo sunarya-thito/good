@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:goo2d/goo2d.dart';
 
-// Solid-colour quads, not textures: no image-decoding GameAsset type exists
-// in the engine yet, so DrawSpriteData2D carries a colour and a world-space
-// quad. See draw_2d.dart's doc on DrawSpriteData2D.
+// Solid-colour quads, not textures: this demo leaves every sprite's texture
+// unset, so each DrawSpriteData2D record carries a colour and a world-space
+// quad and nothing else. See draw_2d.dart's doc on DrawSpriteData2D.
 const int _playerColor = 0xFF4FC3F7;
 const int _visorColor = 0xFF1A237E;
 const int _enemyColor = 0xFFEF5350;

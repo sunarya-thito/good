@@ -39,7 +39,7 @@
 //
 //  * `groups(scene)` / `run(scene)` - the #145 path, one compare per page.
 //  * the hand-written filter it replaces - walk everything, keep rows whose
-//    `Entity.sceneSlot` matches. This is `Camera2DView.shows` in goo2d
+//    `Entity.sceneSlot` matches. This is `CameraProjection.shows` in goo2d
 //    (`data/camera.dart`), the obvious first consumer.
 //  * an unscoped walk over both scenes - the control, and what tells you
 //    whether either number above is a saving or noise.
@@ -103,7 +103,7 @@ double scopedRun(Query query, Scene scene) {
 
 /// What #145 replaces: walk every row, test each one's scene.
 ///
-/// The shape `Camera2DView.shows` has today.
+/// The shape `CameraProjection.shows` has today.
 double perRowFilter(Query query, int sceneSlot) {
   var sum = 0.0;
   for (final group in query.groups()) {

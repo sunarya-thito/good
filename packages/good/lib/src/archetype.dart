@@ -535,10 +535,10 @@ class ArchetypeStorage {
 
   // There is no `assets` field either. It existed for exactly one reason -
   // an object-valued field read had no other way to reach a table - and that
-  // reason is gone: `hasObject`/`optObject` now take their `ObjectTable` at
-  // the declare site and each field holds its own. Keeping it would have made
-  // assets the one privileged population, which is the thing `ObjectTable`
-  // exists to stop.
+  // reason is gone: `hasPacked`/`optPacked` now take their
+  // `IntRepresentation` at the declare site and each field holds its own.
+  // Keeping it would have made assets the one privileged population, which is
+  // the thing `IntRepresentation` exists to stop.
 
   /// The single shared struct instance that describes this archetype -
   /// what `entity<T>().component` returns. It holds no per-entity state; its

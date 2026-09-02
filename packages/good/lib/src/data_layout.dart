@@ -792,7 +792,7 @@ final class _PackedPointerField<T extends IntRepresentable>
 /// entity. A memcpy copies the 4-byte address, not the object - so every
 /// entity that does not overwrite the field shares one default instance.
 /// That is the intended behaviour: it is exactly what
-/// `hasObject<T extends GlobalObject>(T initialValue)` already does, and the
+/// [DataDescriptor.hasPacked] already does with its `initialValue`, and the
 /// alternative (a fresh instance per entity) is not expressible here at all,
 /// because there is no per-spawn hook to run a factory in - only the memcpy.
 /// The factory exists so the default can be *built* at seal time rather than
@@ -1288,9 +1288,9 @@ final class _Float32ArrayField extends _ArrayField<double> {
   );
   final int _baseByte;
 
-  /// One entry per element, so `hasFloat32ArrayOf` can start each element at
-  /// its own value; the broadcast form fills this with `length` copies of
-  /// the one default. Built once at declare time and read once at seal.
+  /// One entry per element, so [DataDescriptor.hasArrayOf] can start each
+  /// element at its own value; the broadcast form fills this with `length`
+  /// copies of the one default. Built once at declare time and read once at seal.
   final List<double> _defaults;
 
   @override
@@ -1701,7 +1701,7 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
   /// widths divide 8, so `declareField`'s byte-rounding never fires
   /// mid-array" is only true once the array's *base* is a multiple of the
   /// element width. It is not true in general: `hasUint1()` followed by
-  /// `hasUint4Array(4)` leaves the cursor at bit 1, so element 0 lands at
+  /// `hasArray(.uint4, 4)` leaves the cursor at bit 1, so element 0 lands at
   /// bit 1 (1 + 4 <= 8, no rounding) but element 1 would need bits 5..8,
   /// straddles the byte, and gets pushed to bit 8 - a 3-bit gap that
   /// `baseBit + i * bitWidth` does not know about. Every later element would

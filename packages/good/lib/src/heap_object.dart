@@ -5,24 +5,24 @@ import 'package:meta/meta.dart';
 /// address so a component row - which is native memory and cannot hold a
 /// Dart heap pointer (the no-allocation rule) - can refer to it as a `Uint32`.
 ///
-/// The sibling of an `ObjectTable` such as `GameAssets` (asset.dart), and
-/// *not* the same table, for two reasons:
+/// The sibling of an [IntRepresentation] such as the [Assets] table
+/// (asset.dart), and *not* the same table, for two reasons:
 ///
-///  * **No `GlobalObject` requirement.** Entries here are ordinary objects -
-///    a closure, a `List`, an instance of a class you don't own - that carry
-///    no address of their own. An `ObjectTable` exists to hand out the
-///    describe-time address a `GlobalObject` then remembers; nothing here
-///    remembers anything, the address lives only in the row.
-///  * **Real slot reuse.** `GameAssets` only ever appends and
+///  * **No [IntRepresentable] requirement.** Entries here are ordinary
+///    objects - a closure, a `List`, an instance of a class you don't own -
+///    that cannot pack themselves into an int. An [IntRepresentation] pairs
+///    every value in its population with an int and reads it back; nothing
+///    here remembers anything, the address lives only in the row.
+///  * **Real slot reuse.** [Assets] only ever appends and
 ///    nulls out, never reclaims an index - fine for assets, which are few
 ///    and long-lived. Heap-object fields are written dynamically at runtime,
 ///    so an append-only table would grow without bound. This one keeps an
 ///    explicit free list and reuses freed addresses.
 ///
 /// Addresses are meaningful **only on the isolate that produced them**.
-/// Two isolates running the same scene registration agree on every
-/// `GlobalObject` address because both re-ran the same registration in the
-/// same order; they agree on nothing here, because registration happens at
+/// Two isolates running the same scene registration agree on every asset
+/// address because both re-ran the same declarations in the same order;
+/// they agree on nothing here, because registration happens at
 /// arbitrary times in response to whatever each isolate happened to write.
 /// A heap-object field read from a second isolate is a bug, not a feature.
 ///
@@ -111,7 +111,7 @@ abstract final class HeapObjectRegistry {
 
   /// [tryResolve], but throws instead of returning `null` - what a
   /// non-nullable `hasHeapObject` read uses, matching
-  /// `GameAssets.resolve`: a row holding a stale or
+  /// [IntRepresentation.unpack]: a row holding a stale or
   /// never-registered address is a real bug worth failing loudly on.
   ///
   /// Written as an explicit `is!` test, not `tryResolve(...) == null`,
@@ -137,7 +137,7 @@ abstract final class HeapObjectRegistry {
     return object;
   }
 
-  /// Test-only escape hatch, matching `GameAssets`'s own reset /
+  /// Test-only escape hatch, matching [Assets.reset] and
   /// `ArchetypeRegistry.reset`: this registry is process-global, so a test
   /// suite registering many throwaway objects needs a way to start over.
   @visibleForTesting

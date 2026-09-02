@@ -31,8 +31,7 @@ import 'package:good/src/declare.dart';
 /// `BundleSource('a.png')` must be equal or the same file becomes two assets,
 /// two addresses and two decodes. It also has to survive `Isolate.spawn`,
 /// which copies: an identity-compared source arrives on the other side equal
-/// to nothing, which is precisely the bug the old `GameAsset` worked around
-/// with an address-keyed adopt path.
+/// to nothing, so one file would become two assets across the spawn.
 @immutable
 abstract class AssetSource {
   const AssetSource();

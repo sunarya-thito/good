@@ -71,7 +71,7 @@ import 'package:good/src/time.dart';
 /// `GameState` is a [GameListener], and it lives where the tick loop does -
 /// an isolate with no Flutter engine attached. So it can be `FixedTickable`
 /// and `LifecycleListener`, and it builds no widgets: the whole Flutter-facing
-/// surface is `Game.buildView`, on the other copy. See `GameEvent`'s doc.
+/// surface is `Game.buildView`, on the other copy. See [EventDispatcher].
 abstract class GameState<T extends Game> extends GameListenerBase
     with EventBus, Coroutines {
   /// The simulation tick, dispatched once per fixed step to every declared
@@ -464,8 +464,8 @@ abstract class GameState<T extends Game> extends GameListenerBase
   ///
   /// The registration half above also declares every asset the incoming scene
   /// needs - its own `SceneStruct.describeAssets` plus every registered
-  /// prefab's `Asset.of` fields - which is what assigns each one its
-  /// process-global address, identically on both copies (see `GameAssets`). The
+  /// prefab's `Asset.of` fields - which is what assigns each one its address
+  /// in the run's [Assets] table, identically on both copies. The
   /// asynchronous half then reconciles the two scenes' footprints:
   ///
   ///  * an asset **both** scenes declare stays loaded, untouched - a UI atlas
@@ -1402,7 +1402,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   List<GameSystem> get declaredSystems => _systems;
 
   /// Where [type] sits in execution order, or null if it was never declared -
-  /// what `GameSystemDescriptor` checks a duplicate against.
+  /// what [SystemDescriptor] checks a duplicate against.
   @internal
   int? systemIndexOf(Type type) => _systemIndex[type];
 
@@ -1615,7 +1615,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
 class SceneLoadProgress {
   const SceneLoadProgress(this.label, this.progress);
 
-  /// What is being loaded right now - an asset's `GameAsset.debugLabel`
+  /// What is being loaded right now - an asset's [AssetKey.debugLabel]
   /// while assets are decoding, the scene's own type name on the terminal
   /// report. Diagnostics and loading-screen text; nothing keys off it.
   final String label;

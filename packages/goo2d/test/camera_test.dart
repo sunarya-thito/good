@@ -30,7 +30,7 @@ class _Scene extends SceneStruct {
 }
 
 /// The fixture's own view table - a headless scene has no `Game`, so it owns
-/// one, exactly as it owns its own `GameAssets`.
+/// one, exactly as it owns its own `Assets`.
 late CameraViewTable views;
 late CameraView mainView;
 

@@ -2063,7 +2063,7 @@ void main() {
           textured.texture,
           prefab.tile.pack(),
           reason:
-              'the record carries the GlobalObject address, which is the '
+              'the record carries the asset address, which is the '
               'same integer on both isolates because both ran the same '
               'asset declaration - it is what the main isolate resolves back '
               'into a ui.Image, and the only form a ui.Image can take here',

@@ -766,9 +766,9 @@ void main() {
         tex.pack(),
         0,
         reason:
-            'GlobalObjectRegistry appends from zero, so the first asset '
-            'a process declares owns address 0 - which is why the untextured '
-            'sentinel has to be -1 and the field has to be signed',
+            'the Assets table appends from zero, so the first asset a run '
+            'declares owns address 0; the untextured sentinel is therefore -1 '
+            'and the field is signed',
       );
       expect(DrawSpriteData2D.noTexture, -1);
       expect(DrawSpriteData2D.noTexture, isNot(tex.pack()));
