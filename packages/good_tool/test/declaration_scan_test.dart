@@ -398,7 +398,19 @@ class Player {
   });
 
   group('the entry points come from the packages read', () {
-    test('the closure reaches a seed, a caller, and a caller of that', () {
+    test('a seed, a hop, and nothing an instance method contributes', () {
+      // An exact count, because this is the only assertion that can see the
+      // static-only filter at all. Nothing a call site writes can reach an
+      // instance method - `Registry.declare()` does not compile and
+      // `registry.declare()` reads as a different pair - so the filter cannot
+      // change what is reported, only what the set holds. Counted here so it
+      // is not a mechanism nothing measures.
+      //
+      // Four seeds name the registrar: Field.float64, Field.int32,
+      // Event.signal and Component.declare. CircleBody.of is the hop.
+      // Registry.declare names the registrar too and is an instance method, so
+      // it is the one left out. DeclarationContext.data and .events are static
+      // getters, which are not declarations either.
       final scan = _over('''
 import 'package:good/good.dart';
 
@@ -407,12 +419,7 @@ class Player {
 }
 ''');
 
-      expect(
-        scan.entryPoints,
-        greaterThanOrEqualTo(5),
-        reason: 'Field.float64, Field.int32, Event.signal and '
-            'Component.declare are seeds, and CircleBody.of is the hop',
-      );
+      expect(scan.entryPoints, 5);
     });
 
     test('a scan with no engine package under it finds nothing', () {

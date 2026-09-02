@@ -278,9 +278,13 @@ class _StaticBody {
 
 /// Collects every static method of a unit, keyed `Type.member`.
 ///
-/// Static only. An instance method reaching a registrar - `RandomRegistry
-/// .declare`, `CameraViewTable._add` - is the registrar's own side of the
-/// declaration and is never what a field initialiser writes.
+/// Static only, which narrows the set rather than changing what is reported.
+/// An instance method reaching a registrar - `RandomRegistry.declare`,
+/// `CameraViewTable._add` - is the registrar's own side of the declaration, and
+/// no call site can reach it through this pass anyway: `RandomRegistry
+/// .declare()` does not compile, and `registry.declare()` reads as the pair
+/// `registry.declare`. Leaving them in cost seven extra entry points over this
+/// repository and reported the same 215 calls and the same nothing deferred.
 ///
 /// The enclosing type comes from the member's parent rather than from a visit
 /// per declaration kind. A class member is a direct child of the declaration
