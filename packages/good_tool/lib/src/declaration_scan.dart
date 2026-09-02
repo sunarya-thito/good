@@ -149,11 +149,13 @@ class DeclarationScan {
 /// pass would add nothing there.
 ///
 /// **A declaration in a method or getter body.** `Field.array` in
-/// `TextLabel._declare` is correct, and 74 sites across this repository's
-/// `lib/` are the same shape - 71 of them in the three files named on
-/// [DeclarationScan.unparsed] - so location alone does not separate a factory
-/// from a mistake. The entry-point closure recognises a factory that is
-/// `static`; an instance getter returning a declaration is not decided here.
+/// `TextLabel._declare` is correct, and so is every declaration in the four
+/// files that hold this repository's factories - `collider.dart`,
+/// `render_2d.dart`, `text_2d.dart` and `effector.dart` - which is 106 calls
+/// between them. Location alone does not separate a factory from a mistake, so
+/// a rule keyed on it fires on all of them. The entry-point closure recognises
+/// a factory that is `static`; an instance getter returning a declaration is
+/// not decided here.
 ///
 /// **A call through a variable or a tear-off.** `final make = Field.float64;`
 /// then `make()` reads as neither. The pass matches a `Type.member(...)`

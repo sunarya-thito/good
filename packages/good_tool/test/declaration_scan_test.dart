@@ -335,9 +335,9 @@ class Player {
     });
 
     test('a declaration inside the static factory that exists to make one', () {
-      // 74 sites across this repository's `lib/` are this shape. A rule
-      // that read location instead of what holds the call would report every
-      // one of them.
+      // The four files holding this repository's factories are this shape,
+      // and 106 declaration calls sit inside them. A rule that read location
+      // instead of what holds the call would report every one.
       final scan = _over('''
 import 'package:good/good.dart';
 
