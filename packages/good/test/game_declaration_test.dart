@@ -67,9 +67,14 @@ class _MixedInputGame extends _BareGame {
 
   final secondThrottle = Input.of<double>();
 
+  /// A second type, so the getter is read as a *list*. With one entry a
+  /// registration that stopped after the first would look identical.
+  final gear = Input.of<int>();
+
   @override
   List<InputDefault<Object?>> get inputDefaults => <InputDefault<Object?>>[
     const InputDefault<double>(0.75),
+    const InputDefault<int>(3),
   ];
 }
 
@@ -310,7 +315,7 @@ void main() {
     test('takes a type default from the getter beside it', () async {
       final game = await _boot(_MixedInputGame.new);
 
-      expect(game.inputActionCount, 2);
+      expect(game.inputActionCount, 3);
       expect(
         game.throttleField.value,
         0.75,
@@ -321,6 +326,14 @@ void main() {
             'same place or in any particular order',
       );
       expect(game.secondThrottle.value, 0.75);
+      expect(
+        game.gear.value,
+        3,
+        reason:
+            'every entry in the list is registered, not just the first - and '
+            'each keeps its own T, which is what a Map<Type, Object?> getter '
+            'would have lost',
+      );
     });
   });
 
