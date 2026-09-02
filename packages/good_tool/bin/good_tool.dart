@@ -10,6 +10,7 @@ import 'package:good_tool/src/accessor_emit.dart';
 import 'package:good_tool/src/accessor_scan.dart';
 import 'package:good_tool/src/component_emit.dart';
 import 'package:good_tool/src/component_scan.dart';
+import 'package:good_tool/src/doc_references.dart';
 import 'package:good_tool/src/engine_packages.dart';
 import 'package:good_tool/src/imports.dart';
 import 'package:path/path.dart' as p;
@@ -21,7 +22,13 @@ import 'package:path/path.dart' as p;
 /// $ dart run good_tool --dir ../../packages            # write
 /// $ dart run good_tool --dir ../../packages --check    # fail if stale
 /// $ dart run good_tool --dir ../../packages --verbose  # say what got nothing
+/// $ dart run good_tool --dir ../../packages --doc-references
 /// ```
+///
+/// `--doc-references` generates nothing. It reads the doc comments in the
+/// packages it was pointed at and fails on a `[Reference]` whose name is
+/// written nowhere in the packages read. [scanDocReferences] states the rule
+/// and what it leaves alone.
 ///
 /// From a package's own directory, because `dart run <package>` resolves
 /// packages from the working directory.
@@ -83,16 +90,18 @@ import 'package:path/path.dart' as p;
 /// **65, `EX_DATAERR` - the command line was fine and the source is not.** No
 /// package under those directories qualifies, two of them are called one thing,
 /// a column would shadow a member of `Accessor`, `Entity` or `int`, the
-/// component-bit table would not fit a query signature, or `--check` found a
-/// committed file that is not what would be written now. None of them reprint
-/// the usage: the invocation was right, so answering it with the invocation
-/// answers a question nobody asked.
+/// component-bit table would not fit a query signature, `--check` found a
+/// committed file that is not what would be written now, or
+/// `--doc-references` found a doc comment naming something that is written
+/// nowhere. None of them reprint the usage: the invocation was right, so
+/// answering it with the invocation answers a question nobody asked.
 ///
 /// The seam between the two runs through the pair that look alike. A `--dir`
 /// that does not exist is 64 and a `--dir` holding no engine package is 65,
 /// because the first was never read and the second was read and rejected.
 Future<void> main(List<String> arguments) async {
   final check = arguments.contains('--check');
+  final docReferences = arguments.contains('--doc-references');
   final verbose = arguments.contains('--verbose') || arguments.contains('-v');
   final directories = <String>[];
   final unknown = <String>[];
@@ -111,7 +120,10 @@ Future<void> main(List<String> arguments) async {
       directories.add(argument.substring('--dir='.length));
       continue;
     }
-    if (argument == '--check' || argument == '--verbose' || argument == '-v') {
+    if (argument == '--check' ||
+        argument == '--doc-references' ||
+        argument == '--verbose' ||
+        argument == '-v') {
       continue;
     }
     unknown.add(argument);
@@ -170,6 +182,11 @@ Future<void> main(List<String> arguments) async {
       'reader of a query signature could tell which numbering it came from.',
     );
     exitCode = 65;
+    return;
+  }
+
+  if (docReferences) {
+    _docReferences(packages, scan.dependencies);
     return;
   }
 
@@ -299,7 +316,7 @@ Future<void> main(List<String> arguments) async {
 void _usage() {
   stderr.writeln(
     'Usage: dart run good_tool --dir <directory> [--dir <directory>] '
-    '[--check] [--verbose]',
+    '[--check] [--doc-references] [--verbose]',
   );
   stderr.writeln(
     '  --dir .              the package in this directory\n'
@@ -375,6 +392,39 @@ void _check(
     for (final directory in directories) '--dir $directory',
   ].join(' ');
   stderr.writeln('\nRun `dart run good_tool $where` and commit the result.');
+  exitCode = 65;
+}
+
+/// Fails when a doc comment names something that is written nowhere.
+///
+/// A separate mode and not a step inside [_check], because the two say
+/// different things about the same tree and are fixed by different edits. A
+/// stale generated file is fixed by running the tool; a dead doc reference is
+/// fixed by editing the comment, and a run that reported both under one exit
+/// code would tell whoever reads it to regenerate.
+///
+/// [dependencies] are read and never reported on. A `goo2d_physics_box2d`
+/// comment naming a `good` type is a resolved reference, and a scan holding
+/// only the package under it would call that name missing.
+void _docReferences(
+  List<EnginePackage> packages,
+  List<EnginePackage> dependencies,
+) {
+  final scan = scanDocReferences(
+    packages: packages,
+    known: <EnginePackage>[...packages, ...dependencies],
+  );
+  if (scan.dangling.isEmpty) {
+    stdout.writeln(
+      '${scan.checked} of ${scan.references} doc reference(s) in '
+      '${scan.files} file(s) name something the packages write.',
+    );
+    return;
+  }
+  for (final reference in scan.dangling) {
+    stderr.writeln(danglingReferenceLine(reference));
+  }
+  stderr.writeln(danglingReferenceSummary(scan));
   exitCode = 65;
 }
 

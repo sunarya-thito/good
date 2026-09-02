@@ -544,7 +544,7 @@ abstract class QueryBuilder {
 }
 
 /// The one [QueryBuilder] implementation. Accumulates masks as it is
-/// chained, then hands them to a [_CompiledQuery] at [build].
+/// chained, then hands them to an [_ArchetypeQuery] at [build].
 final class _QueryBuilder implements QueryBuilder {
   _QueryBuilder(this._storageOf);
 

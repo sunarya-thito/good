@@ -153,6 +153,18 @@ jobs:
           set -e
           (cd packages/good_tool && dart run good_tool --check --dir ../../packages)
 
+      # Doc comments are the published API reference, and nothing resolves the
+      # `[Reference]` links in them. `comment_references` reports 97 sites over
+      # these packages and 90 of them name something the package declares and
+      # the file naming it does not import, which dartdoc resolves through the
+      # entry library. This asks the narrower question - a name written nowhere
+      # at all - and a reference like that leaves a reader following a link to
+      # nothing.
+      - name: Check that every doc reference names something
+        run: |
+          set -e
+          (cd packages/good_tool && dart run good_tool --doc-references --dir ../../packages)
+
       # ffigen's function filter is a regex nothing re-runs, so it can stop
       # matching with nothing going red. `good.*` matched none of the shim's 60
       # symbols, and regenerating produced 19 lines - three constants, no

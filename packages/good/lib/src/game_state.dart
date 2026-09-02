@@ -151,8 +151,8 @@ abstract class GameState<T extends Game> extends GameListenerBase
   ///
   /// The explicit composition walk: the event API does not know a `GameState`
   /// has systems, so this says so. A system that is a `FixedTickable` lands in
-  /// [fixedTick]; one that is a `Tickable` lands in [tick]; one that is
-  /// neither lands nowhere and is never visited again.
+  /// [fixedTickEvent]; one that is a `Tickable` lands in [tickEvent]; one
+  /// that is neither lands nowhere and is never visited again.
   @override
   void collectListeners(ListenerCollector collector) {
     super.collectListeners(collector);
@@ -922,7 +922,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
 
   /// The game is going down. The pool is disposed immediately afterwards.
   ///
-  /// Runs *after* [GameUnmountedEvent] has been dispatched and after every
+  /// Runs *after* [gameUnmountedEvent] has been dispatched and after every
   /// loaded scene has come down, so the world is already gone by here. A
   /// listener that needs to read something out of it wants
   /// [GameLifecycleListener.onGameUnmounted].

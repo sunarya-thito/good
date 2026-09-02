@@ -38,7 +38,7 @@ import 'package:good/src/game.dart';
 /// view, and whether any does, stays entirely dynamic. A view with no camera
 /// entity draws nothing; it does not fall back to another camera's.
 ///
-/// # It is a [GlobalObject], so a row can name it
+/// # It is an [IntRepresentable], so a row can name it
 ///
 /// A camera entity records which view it belongs to, and a row holds a `num`
 /// or an [IntRepresentable] and nothing else. Being one makes that field

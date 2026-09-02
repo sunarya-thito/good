@@ -766,8 +766,9 @@ final class _PackedPointerField<T extends IntRepresentable>
   int packedAt(Entity entity) => _bits[entity];
 }
 
-/// `hasHeapObject`/`optHeapObject`: the same Uint32-address-in-the-row shape
-/// as [_GlobalObjectField], resolving through [HeapObjectRegistry] instead.
+/// `hasHeapObject`/`optHeapObject`: a Uint32 address in the row, resolved
+/// through [HeapObjectRegistry] instead of through the [IntRepresentation] a
+/// [_PackedPointerField] carries.
 /// See `DataDescriptor.hasHeapObject`'s doc for when to reach for which.
 ///
 /// **Every write registers a new slot.** There is no attempt to notice that

@@ -11,6 +11,7 @@ cd packages/good_tool
 dart run good_tool --dir ../../packages            # write
 dart run good_tool --dir ../../packages --check    # fail if committed is stale
 dart run good_tool --dir ../../packages --verbose  # say what got nothing, why
+dart run good_tool --dir ../../packages --doc-references  # check doc links
 ```
 
 `--dir` says **where to look** and may be given more than once. A third-party
@@ -37,7 +38,8 @@ it, no `--dir` at all, or a `--dir` naming a directory that is not there — and
 every one of them reprints the usage. **65** is the command line being right and
 the source not: no package qualifies, two are called one thing, a column would
 shadow a member of `Accessor`, `Entity` or `int`, the bit table would not fit a
-signature, or `--check` found a stale file. The pair that look alike sit either
+signature, `--check` found a stale file, or `--doc-references` found a doc
+comment naming something written nowhere. The pair that look alike sit either
 side of it on purpose: a `--dir` that does not exist was never read, and a
 `--dir` holding no engine package was read and rejected.
 
@@ -163,3 +165,57 @@ A **package's** own components do get everything, whoever wrote it. That is the
 correction #305 made to what #99 recorded as a limitation: a published package
 carries what is in its `lib/`, so anything generated for it has to be generated
 before it is published, by its author, with this.
+
+## The doc-reference check
+
+```bash
+dart run good_tool --dir ../../packages --doc-references
+```
+
+Reads every doc comment under the `lib/` of the packages it was pointed at, and
+fails on a `[Reference]` whose name is written nowhere in those packages or in
+the engine packages they depend on. It generates nothing and writes nothing. CI
+runs it, and `test/good_tool_test.dart` runs it against these packages too, so
+it fails on the machine that made the change.
+
+Doc comments are the published API reference, so a reference to a member that
+does not exist is a link a reader follows to nothing. The analyzer's lint for
+this is `comment_references`, and it is not enabled anywhere here: over the
+`lib/` of the eight packages this tool handles it reports 97 sites, and 90 of
+them name something the package declares and the file naming it does not
+import. `good.dart` exports those from one library, so dartdoc resolves them
+and the reader lands where the reference meant. Enabling the lint costs 90
+`// ignore` comments or 90 imports for names those files do not otherwise
+use, to reach the seven that were pointing at nothing. Of those 97 sites,
+the rule below selects those seven and none of the 90.
+
+### The rule
+
+A name counts as written when it appears as an identifier token anywhere in the
+`lib/` of a package the run read, outside comments. Not a list of declarations:
+a reference may name a member, a constructor, a named parameter, a library
+prefix or a private field, and the token stream is the one place that holds all
+of them. `[Future]` passes because the packages write `Future` in code, not
+because anything here reads `dart:async`.
+
+A reference is a chain of names — `Game`, or `Game.addTickListener`. The first
+is looked up always. A later one is looked up only when the name in front of it
+is a top-level declaration of a package the run read, where the type is one of
+ours and its members are all in the token stream.
+
+A reference holding anything that is not an identifier is left alone.
+`[operator +]` reaches the check with `+` as its name.
+
+### What it does not find
+
+**A name that is written somewhere and named where it makes no sense.** "A
+system that is a `Tickable` lands in [tick]" pointed at `GameState.tick`, the
+tick number, where the dispatcher it meant is `tickEvent`. That reference
+resolves, so nothing short of a resolved analysis tells it from a correct one.
+
+**A member of a type declared outside the packages read.** `[Canvas.drawRect]`
+is left alone, because nothing here can say what a Flutter type's members are.
+
+**A name another package in the run writes and this one does not.** The word
+list is the whole run, so `[Entity]` passes in a package that documents one
+without naming it in code.

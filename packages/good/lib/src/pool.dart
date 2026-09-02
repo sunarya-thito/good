@@ -172,7 +172,7 @@ class MemoryPool {
   /// component data is legitimate, so a running game compares exactly what it
   /// compared before - same field load, same branch, same cache hits.
   ///
-  /// While a handler that may not write is running (see [handlerWindow]) this
+  /// While a handler that may not write is running (see [HandlerWindow]) this
   /// holds [_sealedEpoch], which no cache can be holding. Every write then
   /// misses and lands in `_refreshWriteCache`, the cold path that already
   /// exists, and that is where the refusal is a real `throw` rather than an
