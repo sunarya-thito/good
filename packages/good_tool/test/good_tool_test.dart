@@ -450,6 +450,62 @@ void main() {
       expect(result.stdout, contains('name something the packages write'));
     }, timeout: const Timeout(Duration(minutes: 3)));
 
+    // #348. Both modes used to walk whatever the parser recovered out of a
+    // file it could not finish, and print a count over it. The count is the
+    // part that made it dangerous: it looked like an answer.
+    test('--doc-references fails on a file it could not parse', () async {
+      final repo = _runnableRepo();
+      _write(
+        repo,
+        'packages/goo2d/lib/src/broken.dart',
+        '/// Reads a [Transform2D].\n'
+        'class Player {\n'
+        '  int speed = 0\n',
+      );
+
+      final result = await _tool(repo, const <String>[
+        '--dir',
+        'packages',
+        '--doc-references',
+      ]);
+      expect(result.exitCode, 65);
+      expect(
+        result.stderr,
+        contains('goo2d/lib/src/broken.dart: not parsed, and so not checked'),
+      );
+      expect(
+        result.stdout,
+        isNot(contains('name something the packages write')),
+        reason: 'the count is the thing that read as success',
+      );
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('--declarations fails on a file it could not parse', () async {
+      final repo = _declaringRepo(deferred: false);
+      _write(
+        repo,
+        'packages/goo2d/lib/src/broken.dart',
+        'class Player {\n'
+        '  int speed = 0\n',
+      );
+
+      final result = await _tool(repo, const <String>[
+        '--dir',
+        'packages',
+        '--declarations',
+      ]);
+      expect(result.exitCode, 65);
+      expect(
+        result.stderr,
+        contains('goo2d/lib/src/broken.dart: not parsed, and so not checked'),
+      );
+      expect(
+        result.stdout,
+        isNot(contains('declaration(s) in')),
+        reason: 'the count is the thing that read as success',
+      );
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
     test('--declarations fails on a deferred declaration and writes nothing',
         () async {
       final repo = _declaringRepo(deferred: true);
@@ -771,6 +827,14 @@ void main() {
       );
       // The pass has to be able to fail. A run that read no file, or one whose
       // parse fell over, reports nothing dangling for the wrong reason.
+      //
+      // `unparsed` is the third of those, and it is the one that was true:
+      // three files used primary constructors, the parser recovered, and this
+      // test passed over trees holding a fraction of their doc comments
+      // (#348). Empty means every file under packages/*/lib parsed, so a
+      // fourth one the tool's `analyzer` cannot read fails here rather than
+      // going quiet.
+      expect(scan.unparsed, isEmpty, reason: scan.unparsed.join(', '));
       expect(scan.files, greaterThan(100));
       expect(scan.checked, greaterThan(1000));
     });

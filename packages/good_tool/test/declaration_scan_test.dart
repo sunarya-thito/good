@@ -18,10 +18,13 @@ import '_repo.dart';
 // shape that must pass: an eager field, a `late` field with no initialiser at
 // all, a declaration inside the static factory that exists to make one, a lazy
 // variable holding something that is not a declaration, and a call on a value
-// rather than on a type. Measured against this repository's own tree: 138
-// declaration calls across 130 files in `packages/*/lib`, and none of them
-// deferred. Three more files are named rather than read - see
-// `DeclarationScan.unparsed`.
+// rather than on a type. Measured against this repository's own tree: 237
+// declaration calls across 133 files in `packages/*/lib`, and none of them
+// deferred.
+//
+// It was 138 across 130 while three of those files did not parse (#348). The
+// group at the bottom is what says the pass reads them now, and what says a
+// file it cannot read is named instead of counted.
 //
 // Every fixture is a real package tree, because the scan reads pubspecs and
 // walks lib/.
@@ -460,6 +463,51 @@ class Player {
 
       final seeing = scanDeferredDeclarations(packages: only, known: found);
       expect(seeing.deferred, hasLength(1));
+    });
+  });
+
+  group('a class written with a primary constructor', () {
+    // #348. `parseString` under an analyzer that does not implement the syntax
+    // recovers rather than refusing, and the tree it recovers has no members
+    // under the class whose header it could not read - so the pass reported
+    // nothing deferred over a file full of declarations, and said so at exit
+    // 0. Both of these assert on a member of such a class, which is the thing
+    // a recovered tree does not have.
+    test('hands over the fields in its body', () {
+      final scan = _over('''
+import 'package:good/good.dart';
+
+class Ball({required final Object radius}) {
+  late final speed = Field.float64(1);
+}
+''');
+
+      expect(scan.unparsed, isEmpty);
+      expect(scan.deferred, hasLength(1));
+      expect(scan.deferred.single.holder, 'speed');
+    });
+
+    test('hands over a static factory in its body, as an entry point', () {
+      // The entry point has to come out of the class body for the call site
+      // below to be a declaration at all: `Ball.of` reaches the registrar
+      // through `Component.declare`, and nothing else in this fixture does.
+      final scan = _over('''
+import 'package:good/good.dart';
+
+class Ball({required final Object radius}) {
+  static Ball of({double radius = 0}) =>
+      Component.declare(Ball(radius: Field.float64(radius)));
+}
+
+class Level {
+  late final ball = Ball.of();
+}
+''');
+
+      expect(scan.unparsed, isEmpty);
+      expect(scan.deferred, hasLength(1));
+      expect(scan.deferred.single.call, 'Ball.of');
+      expect(scan.deferred.single.holder, 'ball');
     });
   });
 
