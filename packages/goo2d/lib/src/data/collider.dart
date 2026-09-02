@@ -208,7 +208,7 @@ final class CircleBody({
     double density = 1,
     double friction = 0.6,
     double restitution = 0,
-  }) => MultiComponent.declare(
+  }) => Component.declare(
     CircleBody(
       offsetX: Field.float64(offsetX),
       offsetY: Field.float64(offsetY),
@@ -281,7 +281,7 @@ final class BoxBody({
     double density = 1,
     double friction = 0.6,
     double restitution = 0,
-  }) => MultiComponent.declare(
+  }) => Component.declare(
     BoxBody(
       offsetX: Field.float64(offsetX),
       offsetY: Field.float64(offsetY),
@@ -370,7 +370,7 @@ final class CapsuleBody({
     double density = 1,
     double friction = 0.6,
     double restitution = 0,
-  }) => MultiComponent.declare(
+  }) => Component.declare(
     CapsuleBody(
       offsetX: Field.float64(offsetX),
       offsetY: Field.float64(offsetY),
@@ -525,7 +525,7 @@ final class PolygonBody({
         'must hold every declared point (${outline.length})',
       );
     }
-    return MultiComponent.declare(
+    return Component.declare(
       PolygonBody(
         offsetX: Field.float64(offsetX),
         offsetY: Field.float64(offsetY),

@@ -591,7 +591,7 @@ class Sprite({
     bool visible = true,
     RelativeOffset2D pivot = RelativeOffset2D.center,
     NineSliceBorder nineSliceBorder = NineSliceBorder.none,
-  }) => MultiComponent.declare(
+  }) => Component.declare(
     Sprite(
       // The scene's own asset table, reached through the descriptor open
       // around the whole of its bring-up. An address read out of this column
@@ -1334,7 +1334,7 @@ final class _SpriteDrawQueue {
     final slot = _order[i];
     final entity = _entities[slot];
     final text = _owners[slot]! as Text2D;
-    final font = text.textFontResolved!;
+    final font = text.textLabel.font!;
     final columns = font.columns;
     final cellU = font.cellU;
     final cellV = font.cellV;
@@ -1354,7 +1354,7 @@ final class _SpriteDrawQueue {
     final color = _colorAddress[k];
     final address = _colorAddress[k + 1];
     final filter = _colorAddress[k + 2];
-    final units = text.textCodeUnits;
+    final units = text.textLabel.codeUnits;
     final length = text.textLength[entity];
     for (var g = 0; g < length; g++) {
       final cell = font.cellOf(units.get(entity, g));
@@ -2675,11 +2675,11 @@ class GameRenderer2D extends GameSystem
       // Per archetype, so a prefab that declared no font is skipped once for
       // every entity of it rather than once each. A font is the atlas and the
       // grid together and there is nothing to draw without one.
-      final font = text.textFontResolved;
+      final font = text.textLabel.font;
       if (font == null) continue;
       final address = font.texture.pack();
       final source = _sourceOf(group);
-      final units = text.textCodeUnits;
+      final units = text.textLabel.codeUnits;
       for (final entity in group) {
         if (!projection.shows(entity)) continue;
         if (!text.textVisible[entity]) continue;

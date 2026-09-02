@@ -32,7 +32,7 @@ import 'package:meta/meta.dart';
 /// A `BitmapFont` is held by the component, which is one instance per
 /// archetype, so it costs a label's row nothing at all: no texture address,
 /// no metrics, no packing. Two fonts in one scene are two prefabs. See
-/// [Text2D.textFont].
+/// [TextLabel.font].
 @immutable
 final class BitmapFont {
   BitmapFont({
@@ -113,20 +113,98 @@ final class BitmapFont {
   }
 }
 
+/// One prefab's label: the font its glyphs are cut from and the code units
+/// every row of the archetype reserves for them.
+///
+/// Declared on a field of the prefab, the way a sprite and a collider are:
+///
+/// ```dart
+/// class DamageNumber extends EntityStruct
+///     with Transform2D, WorldTransform2D, Text2D {
+///   final label = TextLabel.of(
+///     font: BitmapFont(texture: Asset.of(fontAtlasKey), columns: 16, rows: 6),
+///     capacity: 8,
+///   );
+/// }
+/// ```
+///
+/// [Text2D] takes the declaration back into its own [Text2D.textLabel], so
+/// the prefab that names the font and the renderer that reads it hold the
+/// same object. A prefab that declares none gets an empty 32-unit label,
+/// which draws nothing.
+///
+/// The capacity is per prefab and not per entity: it is bytes in every row of
+/// the archetype, so it is settled while the archetype is laid out and no
+/// spawn can raise it.
+final class TextLabel {
+  TextLabel._(this.font, this.capacity, this.codeUnits);
+
+  /// Declares this prefab's label and hands back the handle to keep in a
+  /// field.
+  ///
+  /// [font] is the grid the glyphs are cut from; a label with none draws
+  /// nothing, whatever its text says. [capacity] is the most UTF-16 code
+  /// units one label holds, `1..65535` - storage reserved in every row of the
+  /// archetype whether an entity uses it or not, so it is `PolygonBody.of`'s
+  /// `maxPoints` and not a soft limit. [Text2DAccessor.setText] asserts on a
+  /// longer string in debug and truncates in release.
+  ///
+  /// The prefab has to mix in [Text2D], which is what takes the declaration,
+  /// and it takes one: a second label on one entity is a second entity, or a
+  /// child.
+  static TextLabel of({BitmapFont? font, int capacity = 32}) =>
+      Component.declare(_declare(font, capacity));
+
+  static TextLabel _declare(BitmapFont? font, int capacity) {
+    if (capacity < 1 || capacity > 0xFFFF) {
+      throw ArgumentError.value(
+        capacity,
+        'capacity',
+        'must be between 1 and 65535 - it is storage reserved in every row',
+      );
+    }
+    // `uint16` and not `uint8`: a `uint8` array cannot hold a code unit above
+    // 255, so writing one would have to either corrupt it silently or refuse
+    // text a game legitimately has. At two bytes a code unit the whole BMP
+    // stores exactly, and the font decides what draws.
+    return TextLabel._(font, capacity, Field.array(.uint16, capacity));
+  }
+
+  /// What the prefab being constructed declared, or a fontless 32-unit label
+  /// if it declared none. [Text2D]'s own field initialiser is the only
+  /// caller.
+  @internal
+  static TextLabel declared() =>
+      Component.declared<TextLabel>() ?? _declare(null, 32);
+
+  /// The grid this label's glyphs are cut from, or null for a label that
+  /// draws nothing.
+  ///
+  /// The frame path's copy: the renderer reads it once per archetype per
+  /// frame, and it allocates nothing because the prefab built it once at
+  /// declaration.
+  final BitmapFont? font;
+
+  /// How many UTF-16 code units one row holds. The same number as
+  /// `codeUnits.length`, kept here so the declaration reads back what it was
+  /// given.
+  final int capacity;
+
+  /// The label's characters, as UTF-16 code units, `Text2D.textLength` of
+  /// them live. Written through [Text2DAccessor.setText].
+  final DataArrayPointer<int> codeUnits;
+}
+
 /// Draws one line of text in the world, from a grid font, sorted and moved
 /// with the sprites around it.
 ///
 /// ```dart
 /// class DamageNumber extends EntityStruct
 ///     with Transform2D, WorldTransform2D, Text2D {
-///   final atlas = Asset.of(fontAtlasKey);
-///
-///   @override
-///   int get textCapacity => 8;
-///
-///   @override
-///   BitmapFont get textFont =>
-///       BitmapFont(texture: atlas, columns: 16, rows: 6);
+///   final label = TextLabel.of(
+///     font: BitmapFont(texture: Asset.of(fontAtlasKey), columns: 16, rows: 6),
+///     capacity: 8,
+///   );
 ///
 ///   @override
 ///   void describeStruct(DataDescriptor data) {
@@ -159,8 +237,9 @@ final class BitmapFont {
 ///
 /// # What a label costs
 ///
-/// The row holds [textCapacity] `uint16` code units and about fifty more
-/// bytes; the font, its metrics and the atlas address are on the component,
+/// The row holds the declared capacity in `uint16` code units and about fifty
+/// more bytes; the font, its metrics and the atlas address are on the
+/// component,
 /// which is per archetype. So a 16-character label is roughly a 220-byte row.
 /// Declared as sixteen sprites it would be a 2.5 KiB row, and
 /// `_SpriteDrawQueue`'s own doc records what rows that size did to the write
@@ -178,45 +257,13 @@ final class BitmapFont {
 /// a cell for it and skipped if not, and it advances either way. Two lines
 /// are two entities.
 mixin Text2D on Component {
-  /// The font this prefab's labels draw with. Override it; the default is
-  /// null, and a prefab with no font draws nothing at all.
-  ///
-  /// Read once, during `describeStruct`, and kept in [textFontResolved].
-  /// `describeStruct` runs after the constructor, so a [TextureAsset] the
-  /// prefab declared on a field with `Asset.of` is already populated when an
-  /// override builds a font from it.
-  ///
-  /// An override that constructs a `BitmapFont` allocates one per read, so
-  /// anything wanting a prefab's font after the archetype is described reads
-  /// [textFontResolved].
-  BitmapFont? get textFont => null;
+  /// The font this prefab's labels draw with and the code units they are
+  /// stored in - what the prefab declared with [TextLabel.of], or an empty
+  /// 32-unit label for a prefab that declared none.
+  final textLabel = TextLabel.declared();
 
-  /// What [textFont] answered, stored while the archetype was described, or
-  /// null for a prefab that declares no font.
-  ///
-  /// This is the frame path's copy: the renderer reads it once per archetype
-  /// per frame and never calls [textFont].
-  BitmapFont? textFontResolved;
-
-  /// The most UTF-16 code units a label of this prefab holds, `1..65535`.
-  /// Override it; the default is 32.
-  ///
-  /// This is storage, reserved in every row of the archetype whether or not
-  /// an entity uses it, so it is `PolygonBody.of`'s `maxPoints` and not a
-  /// soft limit. [Text2DAccessor.setText] asserts on a longer string in
-  /// debug and truncates in release - see there.
-  int get textCapacity => 32;
-
-  /// The label's characters, as UTF-16 code units, `textLength` of them
-  /// live. Written through [Text2DAccessor.setText].
-  ///
-  /// `uint16` and not `uint8`: a `uint8` array cannot hold a code unit above
-  /// 255, so writing one would have to either corrupt it silently or refuse
-  /// text a game legitimately has. At two bytes a code unit the whole BMP
-  /// stores exactly, and the font decides what draws.
-  late final DataArrayPointer<int> textCodeUnits;
-
-  /// How many of [textCodeUnits] are the label. Zero is an empty label, which
+  /// How many of `textLabel.codeUnits` are the label. Zero is an empty label,
+  /// which
   /// draws nothing and costs no record.
   final textLength = Field.uint16(0);
 
@@ -270,13 +317,14 @@ mixin Text2D on Component {
   final textPivotOffsetY = Field.float64(0);
 
   /// How many code units [Text2DAccessor.setText] has dropped for want of
-  /// [textCapacity], summed over every entity of this archetype since the run
+  /// capacity, summed over every entity of this archetype since the run
   /// started.
   ///
   /// Overflow is a programming error and trips an assert, but an assert is
   /// compiled out of the build people ship, so the count is here as well:
   /// zero means no label has ever been cut, and anything else is how much
-  /// text is missing and by how much [textCapacity] is short. Same reason
+  /// text is missing and by how much the declared capacity is short. Same
+  /// reason
   /// `GameRenderer2D.lastRecordsOverBudget` reports instead of dropping
   /// quietly.
   int textCodeUnitsDropped = 0;
@@ -298,26 +346,12 @@ mixin Text2D on Component {
     },
   );
 
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    final capacity = textCapacity;
-    if (capacity < 1 || capacity > 0xFFFF) {
-      throw ArgumentError.value(
-        capacity,
-        'textCapacity',
-        'must be between 1 and 65535 - it is storage reserved in every row',
-      );
-    }
-    textCodeUnits = data.hasArray(.uint16, capacity);
-    textFontResolved = textFont;
-  }
 }
 
 /// Reading and writing one entity's label.
 extension Text2DAccessor on Accessor<Text2D> {
-  /// Replaces this label with [value], keeping its first `textCapacity` code
-  /// units if it is longer.
+  /// Replaces this label with [value], keeping its first `TextLabel.capacity`
+  /// code units if it is longer.
   ///
   /// **Overflow is a programming error.** The capacity is declared on the
   /// prefab, so a string that does not fit means the prefab reserved too
@@ -336,7 +370,7 @@ extension Text2DAccessor on Accessor<Text2D> {
   /// changes every frame, [setInt] builds no string at all.
   void setText(String value) {
     final text = component;
-    final units = text.textCodeUnits;
+    final units = text.textLabel.codeUnits;
     final capacity = units.length;
     final length = value.length;
     final kept = length < capacity ? length : capacity;
@@ -349,7 +383,8 @@ extension Text2DAccessor on Accessor<Text2D> {
       assert(
         false,
         'a label of $capacity code units cannot hold "$value" ($length). '
-        'Raise textCapacity on the prefab - it is storage reserved per row. '
+        'Raise the capacity TextLabel.of declares - it is storage reserved '
+        'per row. '
         'A release build keeps the first $capacity and counts the rest in '
         'Text2D.textCodeUnitsDropped.',
       );
@@ -366,7 +401,7 @@ extension Text2DAccessor on Accessor<Text2D> {
   /// number too long for its capacity keeps its sign and leading digits.
   void setInt(int value) {
     final text = component;
-    final units = text.textCodeUnits;
+    final units = text.textLabel.codeUnits;
     final capacity = units.length;
     // Counted before anything is written, because the digits come out
     // backwards and the leading ones are the ones worth keeping.
@@ -398,7 +433,7 @@ extension Text2DAccessor on Accessor<Text2D> {
       assert(
         false,
         'a label of $capacity code units cannot hold $value ($length). Raise '
-        'textCapacity on the prefab. A release build keeps the first '
+        'the capacity TextLabel.of declares. A release build keeps the first '
         '$capacity and counts the rest in Text2D.textCodeUnitsDropped.',
       );
     }
@@ -410,7 +445,7 @@ extension Text2DAccessor on Accessor<Text2D> {
   /// walking a group every tick.
   String get text {
     final component = this.component;
-    final units = component.textCodeUnits;
+    final units = component.textLabel.codeUnits;
     final length = component.textLength[this];
     final buffer = StringBuffer();
     for (var i = 0; i < length; i++) {

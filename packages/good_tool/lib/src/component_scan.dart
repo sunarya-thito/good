@@ -111,11 +111,11 @@ class ComponentBitScan {
 /// # No offset is produced here either
 ///
 /// The same reason `accessor_scan.dart` gives. An offset is the running total
-/// of a `declareField` sequence that reads values only a run can supply -
-/// a prefab declares its own sprites, `Text2D.describeStruct` reads an
-/// overridable `textCapacity`, `hasPacked` reads an instance getter and
-/// `hasEnum` widens by `values.length`. A bit index depends on none of those:
-/// it is a position in a sorted list of names.
+/// of a `declareField` sequence that reads values only a run can supply - a
+/// prefab declares its own sprites, `TextLabel.of` sizes an array from the
+/// capacity the prefab passed it, and `hasEnum` widens by `values.length`. A
+/// bit index depends on none of those: it is a position in a sorted list of
+/// names.
 ComponentBitScan scanComponentBits(
 {
   required List<EnginePackage> packages,

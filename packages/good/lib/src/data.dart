@@ -166,7 +166,7 @@ abstract class DataDescriptor {
   /// [IntRepresentation]:
   ///
   /// ```dart
-  /// textCodeUnits = data.hasArray(.uint16, capacity);   // DataArrayPointer<int>
+  /// codeUnits = data.hasArray(.uint16, capacity);      // DataArrayPointer<int>
   /// vertices      = data.hasArray(.float64, 8);         // DataArrayPointer<double>
   /// frames        = data.hasArray(const SpriteFrames(), 4, SpriteFrame.full);
   /// ```
@@ -339,18 +339,30 @@ abstract class DataDescriptor {
 /// member named `bool` hides the *type* `bool` inside this class body, so its
 /// own signature stops compiling.
 ///
-/// # When a field still needs `describeStruct`
+/// # What `describeStruct` is still for
 ///
-/// A field initialiser cannot read another field, so a column whose default
-/// comes from a handle another field holds - an asset from `Asset.of`, a
-/// sprite built from a texture - keeps its `describeStruct` body. The two
-/// forms coexist: constructor-time declarations run first, then the passes
-/// `SceneDescriptor.has` drives, in the order they already ran.
+/// Moving a default. A prefab that wants a *different* starting value for a
+/// column one of its mixins declared sets it there - see
+/// [InitialPointer.initialValue]. Declaring the name a second time would not
+/// do it. No package in this repository overrides the hook for anything else.
 ///
-/// A prefab that wants a *different* default for a column one of its mixins
-/// declared also uses `describeStruct`, but to move the default, not to
-/// declare anything - see [InitialPointer.initialValue]. Declaring the name a
-/// second time would not do it.
+/// A field initialiser cannot read another field, so a column whose default is
+/// a handle names the handle again instead of reaching for the field that
+/// holds it. `Asset.of` is idempotent per identity, so the second call hands
+/// back the same object and the same address:
+///
+/// ```dart
+/// class Player extends EntityStruct {
+///   final texture = Asset.of(playerTexture);
+///   final sprite = Field.packed(
+///     Asset.representation<Texture>(),
+///     Asset.of(playerTexture),
+///   );
+/// }
+/// ```
+///
+/// The two forms coexist: constructor-time declarations run first, then the
+/// passes `SceneDescriptor.has` drives, in the order they already ran.
 ///
 /// # Two mixins declaring the same field name are silent here
 ///

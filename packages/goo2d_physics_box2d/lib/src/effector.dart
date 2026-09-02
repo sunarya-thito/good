@@ -93,7 +93,7 @@ final class AreaEffector({
     double torque = 0,
     bool enable = true,
     int layerMask = -1,
-  }) => MultiComponent.declare(
+  }) => Component.declare(
     AreaEffector(
       region: region,
       enable: Field.boolean(enable),
@@ -146,7 +146,7 @@ final class PointEffector({
     double minDistance = 0.5,
     bool enable = true,
     int layerMask = -1,
-  }) => MultiComponent.declare(
+  }) => Component.declare(
     PointEffector(
       region: region,
       enable: Field.boolean(enable),
@@ -202,7 +202,7 @@ final class BuoyancyEffector({
     double angularDrag = 1,
     bool enable = true,
     int layerMask = -1,
-  }) => MultiComponent.declare(
+  }) => Component.declare(
     BuoyancyEffector(
       region: region,
       enable: Field.boolean(enable),
@@ -254,7 +254,7 @@ final class SurfaceEffector({
     double force = 20,
     bool enable = true,
     int layerMask = -1,
-  }) => MultiComponent.declare(
+  }) => Component.declare(
     SurfaceEffector(
       region: region,
       enable: Field.boolean(enable),

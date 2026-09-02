@@ -2,10 +2,33 @@
 
 ### Added
 
-* **A multi-instance component takes its declarations from the prefab's own
-  fields.** `MultiComponent.declare` records one, `MultiComponent.declared<T>()`
-  takes every `T` recorded so far, and the pair is what lets `goo2d` spell a
-  sprite or a collider as a field (#287):
+* **`CameraView.representation()`**, the `IntRepresentation` a camera-view
+  column binds to for the scene being brought up (#287):
+
+  ```dart
+  mixin Camera on Component {
+    final cameraView = Field.optPacked<CameraView>(CameraView.representation());
+  }
+  ```
+
+  A row stores a view as its address, and an address only means anything
+  against the table that issued it, so the column names the table. The table
+  belongs to the game: `SceneStruct.initializeScene` opens it over the same
+  span it opens the asset descriptor over, one of it serves every prefab the
+  scene registers, and a nested prefab reaches the same object its declarer
+  does. Throws outside a scene's declaration passes, and for a `late final`
+  that runs on first read.
+
+* **`Component.declared<T>()`**, the single-instance twin of
+  `MultiComponent.declared` (#287). It hands back the one `T` the prefab being
+  constructed declared, or null where it declared none, and refuses a second by
+  count - a component holding one field would store the second nowhere. It is
+  what `goo2d`'s `Text2D` takes its `TextLabel` with.
+
+* **A component takes its declarations from the prefab's own fields.**
+  `Component.declare` records one, `MultiComponent.declared<T>()` takes every
+  `T` recorded so far, and the pair is what lets `goo2d` spell a sprite or a
+  collider as a field (#287):
 
   ```dart
   mixin Renderable2D on MultiComponent {
@@ -163,6 +186,12 @@
   A game that sized `maxPages` around the churn is holding a number larger
   than it needs. Nothing breaks at a larger value; it caps a live population
   now.
+
+* **`MultiComponent.declare` is `Component.declare`** (#287). It records a
+  declaration against the prefab being constructed, and nothing about that is
+  multi-instance - a single-instance component records the same way and takes
+  it back with `Component.declared<T>()`. Statics do not inherit in Dart, so
+  the old spelling no longer resolves; rename the call.
 
 * **`GameSceneDescriptor.has` takes the constructor, not an instance** (#287):
 

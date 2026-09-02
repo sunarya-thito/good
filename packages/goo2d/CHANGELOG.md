@@ -2,6 +2,43 @@
 
 ### Breaking
 
+* **`Text2D.textFont` and `Text2D.textCapacity` are gone. A label is declared
+  on a field with `TextLabel.of`** (#287):
+
+  ```dart
+  class DamageNumber extends EntityStruct
+      with Transform2D, WorldTransform2D, Text2D {
+    final label = TextLabel.of(
+      font: BitmapFont(texture: Asset.of(fontKey), columns: 16, rows: 6),
+      capacity: 8,
+    );
+  }
+  ```
+
+  | before | after |
+  |---|---|
+  | `@override BitmapFont get textFont => ...` | `TextLabel.of(font: ...)` |
+  | `@override int get textCapacity => 8` | `TextLabel.of(capacity: 8)` |
+  | `text.textFontResolved` | `text.textLabel.font` |
+  | `text.textCodeUnits` | `text.textLabel.codeUnits` |
+
+  `Text2D.describeStruct` goes with them. The capacity sizes a column, which
+  makes it a declaration and not configuration - it is `PolygonBody.of`'s
+  `maxPoints`, and it is now spelled the same way. The font is built once, by
+  the initialiser that declares it, instead of once per archetype by a getter
+  the framework called; a prefab that declares no label gets 32 code units and
+  no font, which draws nothing, exactly as an unset `textFont` did. A capacity
+  outside `1..65535` is refused where it is written.
+
+  A prefab may declare one label. Two is refused by name at registration - a
+  second label is a second entity, or a child.
+
+* **`Camera.cameraView` is declared on its field.** `Camera.describeStruct` is
+  gone (#287). The column binds to the same table it always did, named with
+  `CameraView.representation()` in `package:good` instead of read off the scene
+  through `getScene`. Nothing at a use site changes: `cameraView[entity]` and
+  `entity<Camera>().view` are unchanged.
+
 * **`describeSprites` and `describeCollider` are gone. A sprite and a collider
   go on the fields that hold them** (#287):
 
