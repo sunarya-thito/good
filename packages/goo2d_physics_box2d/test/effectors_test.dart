@@ -19,13 +19,7 @@ late Game run;
 late Box2DPhysicsSystem physics;
 
 class _Box extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    box = descriptor.hasBoxCollider(halfWidth: 0.5, halfHeight: 0.5);
-  }
+  final box = BoxBody.of(halfWidth: 0.5, halfHeight: 0.5);
 }
 
 class _Scene extends SceneStruct {

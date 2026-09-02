@@ -1,4 +1,4 @@
-// Declared effectors - the `describeEffector` half of the API, where
+// Declared effectors - the `<Kind>Effector.of` half of the API, where
 // `effectors_test.dart` covers the `Effectors2D` functions underneath.
 //
 // Requires the native library. packages/goo2d_ffi_box2d/README.md has the
@@ -34,24 +34,15 @@ late Box2DPhysicsSystem physics;
 /// A wind zone: a region, and an effector acting through it. No rigid body of
 /// its own - a force field is not a thing that falls.
 class _Zone extends EntityStruct with Transform2D, Collider2D, Effector2D {
-  late final BoxBody region;
-  late final AreaEffector wind;
+  // The region is declared inside the effector, because a field initialiser
+  // cannot read a sibling field. It is still a declaration of its own and
+  // still lands in `bodies`.
+  final wind = AreaEffector.of(
+    BoxBody.of(halfWidth: 50, halfHeight: 50, isTrigger: true),
+    forceY: -400,
+  );
 
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    region = descriptor.hasBoxCollider(
-      halfWidth: 50,
-      halfHeight: 50,
-      isTrigger: true,
-    );
-  }
-
-  @override
-  void describeEffector(EffectorDescriptor descriptor) {
-    super.describeEffector(descriptor);
-    wind = descriptor.hasAreaEffector(region, forceY: -400);
-  }
+  BoxBody get region => wind.region as BoxBody;
 }
 
 /// A pool of water, 100 wide and 20 tall. Declared at the origin its fluid is
@@ -61,34 +52,16 @@ class _Zone extends EntityStruct with Transform2D, Collider2D, Effector2D {
 /// `density: 3` against the boxes' own 1, so a submerged box is pushed up
 /// harder than gravity pulls it down and the lift is unmistakable.
 class _Pool extends EntityStruct with Transform2D, Collider2D, Effector2D {
-  late final BoxBody region;
-  late final BuoyancyEffector water;
+  final water = BuoyancyEffector.of(
+    BoxBody.of(halfWidth: 50, halfHeight: 10, isTrigger: true),
+    density: 3,
+  );
 
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    region = descriptor.hasBoxCollider(
-      halfWidth: 50,
-      halfHeight: 10,
-      isTrigger: true,
-    );
-  }
-
-  @override
-  void describeEffector(EffectorDescriptor descriptor) {
-    super.describeEffector(descriptor);
-    water = descriptor.hasBuoyancyEffector(region, density: 3);
-  }
+  BoxBody get region => water.region as BoxBody;
 }
 
 class _Box extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    box = descriptor.hasBoxCollider(halfWidth: 0.5, halfHeight: 0.5);
-  }
+  final box = BoxBody.of(halfWidth: 0.5, halfHeight: 0.5);
 }
 
 class _Scene extends SceneStruct {

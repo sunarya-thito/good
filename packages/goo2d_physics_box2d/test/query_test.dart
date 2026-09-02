@@ -12,13 +12,7 @@ late Box2DPhysicsSystem physics;
 
 /// A static wall, so nothing moves while a query runs.
 class _Wall extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor d) {
-    super.describeCollider(d);
-    box = d.hasBoxCollider(halfWidth: 1, halfHeight: 1);
-  }
+  final box = BoxBody.of(halfWidth: 1, halfHeight: 1);
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -29,13 +23,7 @@ class _Wall extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
 /// On layer 3, for the mask tests.
 class _Hidden extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor d) {
-    super.describeCollider(d);
-    box = d.hasBoxCollider(halfWidth: 1, halfHeight: 1, layer: 3);
-  }
+  final box = BoxBody.of(halfWidth: 1, halfHeight: 1, layer: 3);
 
   @override
   void describeStruct(DataDescriptor data) {

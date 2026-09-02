@@ -34,13 +34,7 @@ void record(String phase, Collision2DEvent event) {
 /// A falling crate that reports what it touches.
 class _Crate extends EntityStruct
     with Transform2D, Collider2D, RigidBody2D, CollisionListener {
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor d) {
-    super.describeCollider(d);
-    box = d.hasBoxCollider(halfWidth: 0.5, halfHeight: 0.5);
-  }
+  final box = BoxBody.of(halfWidth: 0.5, halfHeight: 0.5);
 
   @override
   void onCollisionEnter2D(Collision2DEvent event) => record('enter', event);
@@ -64,13 +58,7 @@ class _Crate extends EntityStruct
 
 /// A static floor that says nothing - so a test can tell which side heard.
 class _Floor extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor d) {
-    super.describeCollider(d);
-    box = d.hasBoxCollider(halfWidth: 50, halfHeight: 1);
-  }
+  final box = BoxBody.of(halfWidth: 50, halfHeight: 1);
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -81,13 +69,7 @@ class _Floor extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
 /// A static trigger volume.
 class _Zone extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  late final BoxBody box;
-
-  @override
-  void describeCollider(ColliderDescriptor d) {
-    super.describeCollider(d);
-    box = d.hasBoxCollider(halfWidth: 5, halfHeight: 0.5, isTrigger: true);
-  }
+  final box = BoxBody.of(halfWidth: 5, halfHeight: 0.5, isTrigger: true);
 
   @override
   void describeStruct(DataDescriptor data) {
