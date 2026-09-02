@@ -265,5 +265,14 @@ void main() {
     );
     final e = handle.addEntity(level.after);
     expect(level.after.mark.size[e], 5);
+    // The abandoned prefab's collection has to come off the stack as well as
+    // stop being read: a leaked one is still "something being constructed",
+    // and every later declaration outside a window would land in it silently.
+    expect(
+      () => _Gadget.of('loose'),
+      throwsStateError,
+      reason: 'the collection the abandoned prefab opened is still on the '
+          'stack if this passes silently',
+    );
   });
 }
