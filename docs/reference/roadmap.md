@@ -167,14 +167,14 @@ Things that work but will catch you out:
   `Event.of` replaced `describeEvents`; `describeStruct`, `describeSprites`
   and `describeCollider` are still hooks that have to chain `super`. The two
   spellings sit side by side until the remaining hooks follow.
-- **A scene declares its own events from its constructor body and its assets
-  in `describeAssets`.** A scene is constructed by the caller, so its field
-  initialisers run before it has an `Assets` to declare into. `EventBus.events`
-  reads the owner rather than the declaration stack, so events have a route a
-  constructor body can take; assets do not, and the hook is where a scene
-  declares them until scene construction moves under the framework. The
-  mount/unmount pair every scene, prefab and system inherits is a field
-  initialiser either way.
+- **A scene declares its assets in `describeAssets`.** `GameSceneDescriptor.has`
+  takes the constructor now, so a declared scene's events go on fields like
+  every other owner's. Assets do not: the `AssetDescriptor` is opened inside
+  `initializeScene`, which runs after the constructor returns, so a scene's own
+  field initialiser has nothing to declare into. A scene you build yourself and
+  hand to `loadScene` has no window at all and declares its events from its
+  constructor body against `EventBus.events`. The mount/unmount pair every
+  scene, prefab and system inherits is a field initialiser either way.
 
 ## Contributing to this page
 

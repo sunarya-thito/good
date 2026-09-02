@@ -132,7 +132,7 @@ class _CensusGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    habitat = descriptor.has(_Habitat());
+    habitat = descriptor.has(_Habitat.new);
   }
 
   @override

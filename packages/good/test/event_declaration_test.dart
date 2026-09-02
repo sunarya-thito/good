@@ -242,7 +242,7 @@ class _BodySceneGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    level = descriptor.has(_BodyScene(handed));
+    level = descriptor.has(() => _BodyScene(handed));
   }
 
   @override
@@ -258,6 +258,155 @@ class _BodySceneState extends GameState<_BodySceneGame> with _Noted {
     loadScene(game.level);
   }
 }
+
+/// A scene declaring its own event on a field, which works because the game
+/// builds it: `descriptor.has(_SweptScene.new)` opens a binder around the
+/// constructor call the way every other descriptor does.
+class _SweptScene extends SceneStruct with _Noted {
+  @override
+  String get noted => 'sweptScene';
+
+  final swept = Event.of<_Noted, String>(
+    (listener, event) => listener.onNoted(event),
+  );
+
+  late final _UnitA a;
+
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
+    a = descriptor.has(_UnitA.new);
+  }
+}
+
+class _SweptState extends GameState<_SweptGame> with _Noted {
+  @override
+  String get noted => 'state';
+
+  /// A second `_Noted` in the state composition and not the scene's, so a
+  /// dispatcher that had landed on the state collects a different number
+  /// from one that landed on the scene.
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_NotedSystem.new);
+  }
+
+  @override
+  void onMounted() {
+    loadScene(game.level);
+  }
+}
+
+class _SweptGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  late final _SweptScene level;
+
+  @override
+  void describeScenes(GameSceneDescriptor descriptor) {
+    super.describeScenes(descriptor);
+    level = descriptor.has(_SweptScene.new);
+  }
+
+  @override
+  GameState createState() => _SweptState();
+}
+
+/// A scene with a field declaration and no framework construction anywhere -
+/// the shape `Event.of` has to refuse, because a dispatcher declared with
+/// nothing open would be offered no listener at all.
+class _UnbuiltScene extends SceneStruct with _Noted {
+  @override
+  String get noted => 'unbuilt';
+
+  final swept = Event.signal<_Noted>((listener) => listener.onNoted('swept'));
+}
+
+/// A scene the caller builds and hands to `loadScene`. It has no window, so
+/// its own event comes off `EventBus.events` in its constructor body.
+class _RuntimeScene extends SceneStruct with _Noted {
+  _RuntimeScene() {
+    swept = events.has((listener, event) => listener.onNoted(event));
+  }
+
+  @override
+  String get noted => 'runtimeScene';
+
+  late final EventDispatcher<_Noted, String> swept;
+
+  late final _UnitA a;
+
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
+    a = descriptor.has(_UnitA.new);
+  }
+}
+
+class _RuntimeState extends GameState<_RuntimeGame> with _Noted {
+  @override
+  String get noted => 'state';
+
+  final _RuntimeScene level = _RuntimeScene();
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_NotedSystem.new);
+  }
+
+  @override
+  void onMounted() {
+    loadScene(level);
+  }
+}
+
+class _RuntimeGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  GameState createState() => _RuntimeState();
+}
+
+/// A scene built inside another scene's window and handed over already
+/// constructed. Its field dispatcher landed on the outer scene, so the outer
+/// scene's whole composition would receive it.
+class _InnerScene extends SceneStruct with _Noted {
+  @override
+  String get noted => 'inner';
+
+  final own = Event.signal<_Noted>((listener) => listener.onNoted('own'));
+}
+
+class _OuterScene extends SceneStruct with _Noted {
+  @override
+  String get noted => 'outer';
+}
+
+class _HandoverGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  late final _InnerScene inner;
+
+  @override
+  void describeScenes(GameSceneDescriptor descriptor) {
+    super.describeScenes(descriptor);
+    descriptor.has(() {
+      inner = _InnerScene();
+      return _OuterScene();
+    });
+    descriptor.has(() => inner);
+  }
+
+  @override
+  GameState createState() => _HandoverState();
+}
+
+class _HandoverState extends GameState<_HandoverGame> {}
 
 /// A system built by hand, with nothing open above it. Its inherited pair has
 /// to land on its own registrar, the way a prefab's does.
@@ -337,7 +486,7 @@ class _NestedGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    level = descriptor.has(_NestedScene());
+    level = descriptor.has(_NestedScene.new);
   }
 
   @override
@@ -408,7 +557,7 @@ abstract class _NotedGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    level = descriptor.has(_NotedScene());
+    level = descriptor.has(_NotedScene.new);
   }
 }
 
@@ -654,6 +803,45 @@ void main() {
       ]);
     });
 
+    test('a scene the framework did not build cannot declare on a field', () {
+      expect(
+        _UnbuiltScene.new,
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            allOf(
+              contains('no event owner being constructed'),
+              contains('descriptor.has(MainScene.new)'),
+            ),
+          ),
+        ),
+        reason:
+            'Event.of reads the window, and reading it is the check. A '
+            'dispatcher built with nothing open would collect nobody and '
+            'deliver to nobody, every time, silently',
+      );
+    });
+
+    test('a scene loaded at runtime declares from its '
+        'constructor body', () async {
+      final run = await _bootAny(_RuntimeGame.new);
+      final state = run.state as _RuntimeState;
+
+      expect(
+        state.level.swept.listenerCount,
+        2,
+        reason:
+            'the scene and the prefab it registered. The caller built this '
+            'scene, so events is the route, and it reads the owner and never '
+            'the stack - the system in the state composition is a _Noted too '
+            'and is not in this list',
+      );
+
+      state.level.swept('swept');
+      expect(_Noted.log, <String>['swept:runtimeScene', 'swept:unitA']);
+    });
+
     test('a prefab built with no window has its pair before any boot', () {
       final rock = _Handed();
 
@@ -664,6 +852,25 @@ void main() {
             'assigned by the constructor, so it is readable without a game. '
             'The list is empty until the collect pass runs',
       );
+    });
+  });
+
+  group('a scene the framework builds', () {
+    test('declares its own event on a field', () async {
+      final run = await _bootAny(_SweptGame.new);
+
+      expect(
+        run.level.swept.listenerCount,
+        2,
+        reason:
+            'the scene and the prefab it registered. The game builds the '
+            'scene, so a binder is open while its fields initialise, and the '
+            'binder is the scene own - the state holds a _NotedSystem that '
+            'would be in this list had the declaration landed on the state',
+      );
+
+      run.level.swept('swept');
+      expect(_Noted.log, <String>['swept:sweptScene', 'swept:unitA']);
     });
   });
 
@@ -685,6 +892,26 @@ void main() {
             'the field dispatcher declared into the state window while the '
             'state field initialiser ran. Measured before this refused it: '
             'it collected the state, itself and two unrelated systems',
+      );
+    });
+
+    test('a scene handed over from another scene window is refused', () async {
+      await expectLater(
+        Game.startInline(_HandoverGame.new),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            allOf(
+              contains('_InnerScene was built inside another owner'),
+              contains('descriptor.has(Spawner.new)'),
+            ),
+          ),
+        ),
+        reason:
+            'it was constructed inside the outer scene binder, so its own '
+            'field dispatcher reaches the outer scene and every prefab under '
+            'it. That boots and ticks, so it is refused here',
       );
     });
   });

@@ -778,7 +778,7 @@ class _LateGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    lateScene = descriptor.has(_LateScene());
+    lateScene = descriptor.has(_LateScene.new);
   }
 
   @override

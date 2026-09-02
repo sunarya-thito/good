@@ -283,10 +283,10 @@ class _LifecycleGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    level = descriptor.has(_Level());
-    observer = descriptor.has(_Observer());
-    nosyScene = descriptor.has(_NosyScene());
-    trackedScene = descriptor.has(_TrackedScene());
+    level = descriptor.has(_Level.new);
+    observer = descriptor.has(_Observer.new);
+    nosyScene = descriptor.has(_NosyScene.new);
+    trackedScene = descriptor.has(_TrackedScene.new);
   }
 }
 

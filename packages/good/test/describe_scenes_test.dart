@@ -145,18 +145,18 @@ class _DeclaringGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    level = descriptor.has(_Level());
-    menu = descriptor.has(_Menu());
+    level = descriptor.has(_Level.new);
+    menu = descriptor.has(_Menu.new);
   }
 }
 
-/// Declares the same scene type twice - one instance is one declaration.
+/// Declares the same scene type twice - one declaration is one scene.
 class _DoubleDeclaringGame extends _DeclaringGame {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     // `_DeclaringGame` already declared a `_Level`; this is the second.
     super.describeScenes(descriptor);
-    descriptor.has(_Level());
+    descriptor.has(_Level.new);
   }
 }
 

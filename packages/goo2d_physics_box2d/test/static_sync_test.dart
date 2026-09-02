@@ -87,7 +87,7 @@ class _Game extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    arena = descriptor.has(_Scene());
+    arena = descriptor.has(_Scene.new);
   }
 
   @override
