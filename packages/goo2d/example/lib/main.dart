@@ -52,11 +52,7 @@ class Player extends EntityStruct
     // Sitting the visor above the body's centre: half a body-height up is
     // not expressible as a fraction of the *visor's* own bounds, which is
     // why the pivot carries an absolute offset alongside its fraction.
-    pivot: const RelativeOffset2D(
-      fractionX: 0.5,
-      fractionY: 0.5,
-      offsetY: 18,
-    ),
+    pivot: const RelativeOffset2D(fractionX: 0.5, fractionY: 0.5, offsetY: 18),
   );
 
   /// Declared with no `with Animations` in sight: every `EntityStruct` can
@@ -256,16 +252,10 @@ class MyGameState extends GameState2D<MyAwesomeGame> {
 class MyAwesomeGame extends Game2D {
   /// Declared here, handled in [MyGameState]: the declaration site is whoever
   /// has to *hold* the handle, and it is the UI that calls this one.
-  late final SpawnEnemy spawnEnemy;
+  final spawnEnemy = Command.of(SpawnEnemy.new);
 
   @override
   GameState2D<MyAwesomeGame> createState() => MyGameState();
-
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    spawnEnemy = descriptor.has(SpawnEnemy.new);
-  }
 }
 
 void main() {

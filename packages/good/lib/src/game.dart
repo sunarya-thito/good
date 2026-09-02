@@ -543,52 +543,67 @@ abstract class Game implements RandomOwner {
   @mustCallSuper
   void describeScenes(GameSceneDescriptor descriptor) {}
 
-  /// The engine's own control commands, declared so both copies agree about
-  /// them before a game declares anything of its own. See
-  /// [_SetVisibleCommand] for why the four that reach the tick are
+  /// The engine's own control commands, declared by [_construct] into the
+  /// registrar it opens and hung on the game afterwards.
+  ///
+  /// Not five `Command.of` fields on this class, and the reason is the same one
+  /// that moved a component's per-mixin list onto its registrar: a field
+  /// initialiser here runs *last*, after every subclass's, and a `Game` built
+  /// inside another `Game`'s field initialiser would run these against the
+  /// outer game's registrar. That is the case [DeclarationContext.gamesConstructed]
+  /// exists to name, and it can only name it if nothing at this level has
+  /// already declared into the wrong registrar and reported a duplicate
+  /// instead. Declaring them ahead of `create()` also keeps them at indices
+  /// 0..4, where the `super`-first hook had them.
+  ///
+  /// See [_SetVisibleCommand] for why the four that reach the tick are
   /// receipt-delivered.
-  late final _SetVisibleCommand _setVisibleCommand;
-  late final _SetPausedCommand _setPausedCommand;
-  late final _SetTimeScaleCommand _setTimeScaleCommand;
-  late final _StepOnceCommand _stepOnceCommand;
-  late final _ReportDisabledSystemCommand _reportDisabledSystemCommand;
+  _EngineCommands? _engineCommands;
 
-  /// Declares every command this game understands, and registers the handlers
-  /// that run on the **Flutter** isolate.
+  _EngineCommands get _engine {
+    final engine = _engineCommands;
+    if (engine == null) {
+      throw StateError(
+        '$runtimeType was not built by Game.start, so it has none of the '
+        "engine's own control commands - pause, time scale, visibility and "
+        'step are all sent through one. `await Game.start($runtimeType.new)` '
+        'builds and boots one.',
+      );
+    }
+    return engine;
+  }
+
+  /// Registers the handlers that run on the **Flutter** isolate.
+  ///
+  /// The command itself is declared on a field with [Command.of]; this says
+  /// which side runs it:
   ///
   /// ```dart
-  /// late final Damage damage;
-  /// late final SaveGame save;
+  /// final damage = Command.of(Damage.new);   // handled on the game isolate
+  /// final save = Command.of(SaveGame.new);
   ///
   /// @override
   /// void describeCommands(CommandDescriptor descriptor) {
   ///   super.describeCommands(descriptor);
-  ///   damage = descriptor.has(Damage.new);   // handled on the game isolate
-  ///   save = descriptor.has(SaveGame.new);
   ///   descriptor.hasSink(save, _writeSaveFile);  // ...but this one here
   /// }
   /// ```
   ///
-  /// **Every command is declared here, whichever isolate handles it.** Runs
-  /// on both copies, in the same order, which is what makes a command's index
-  /// mean the same thing on both sides - the same argument that makes
-  /// archetype ids agree. `GameState.describeCommands` runs immediately after
-  /// this one and may only *handle* what this pass declared; a command
-  /// declared there would have an index on the game isolate and none on the
-  /// Flutter one, which is the same as having none.
+  /// A hook and not a field, because a handler is an instance member named
+  /// twice over - the command on this object and the function on it - and a
+  /// field initialiser can name neither.
   ///
-  /// Registering the handler *here* is what makes a command run on the
-  /// Flutter isolate, so the declaration site is the whole answer to "where
-  /// does this execute" and there is no second thing to keep in sync with it.
-  /// Because both copies run both passes, the sending side already knows
-  /// whether anything will read a command and refuses to send one nothing
+  /// Registering the handler here is what makes a command run on the Flutter
+  /// isolate; registering it in `GameState.describeCommands`, which runs
+  /// immediately after this, is what makes it run on the game isolate. Every
+  /// command has exactly one, and the sending side refuses to send one nothing
   /// handles - no boot-time handshake required.
   ///
   /// # Spawning from the Flutter isolate
   ///
-  /// There is no framework spawn command; the first command declared here is
-  /// index 0. A HUD button that adds an enemy is the canonical case this lane
-  /// exists for, and it is written as a command that says what it *means*:
+  /// There is no framework spawn command. A HUD button that adds an enemy is
+  /// the canonical case this lane exists for, and it is written as a command
+  /// that says what it *means*:
   ///
   /// ```dart
   /// final class SpawnEnemy extends GameCommand<Vector2, Entity> { ... }
@@ -606,19 +621,7 @@ abstract class Game implements RandomOwner {
   /// makes it name something that isolate cannot see. Naming the *intent*
   /// leaves the prefab lookup on the side that owns the memory.
   @mustCallSuper
-  void describeCommands(CommandDescriptor descriptor) {
-    _setVisibleCommand = descriptor.has(_SetVisibleCommand.new);
-    _setPausedCommand = descriptor.has(_SetPausedCommand.new);
-    _setTimeScaleCommand = descriptor.has(_SetTimeScaleCommand.new);
-    _stepOnceCommand = descriptor.has(_StepOnceCommand.new);
-    _reportDisabledSystemCommand = descriptor.has(
-      _ReportDisabledSystemCommand.new,
-    );
-    descriptor.hasSink(
-      _reportDisabledSystemCommand,
-      _onSystemDisabledReport,
-    );
-  }
+  void describeCommands(CommandDescriptor descriptor) {}
 
   void _onSystemDisabledReport(_DisabledSystemReport params) {
     onSystemDisabled(params.systemName, params.error, params.stackTrace);
@@ -673,7 +676,7 @@ abstract class Game implements RandomOwner {
     String error,
     String stackTrace,
   ) {
-    _reportDisabledSystemCommand((
+    _engine.reportDisabledSystem((
       systemName: systemName,
       error: error,
       stackTrace: stackTrace,
@@ -698,16 +701,16 @@ abstract class Game implements RandomOwner {
     GameState<Game> state,
   ) {
     descriptor
-      ..hasControlSink<bool>(_setVisibleCommand, state.setVisible)
+      ..hasControlSink<bool>(_engine.setVisible, state.setVisible)
       ..hasControlSink<bool>(
-        _setPausedCommand,
+        _engine.setPaused,
         (bool value) => state.paused = value,
       )
       ..hasControlSink<double>(
-        _setTimeScaleCommand,
+        _engine.setTimeScale,
         (double value) => state.timeScale = value,
       )
-      ..hasControlSignal(_stepOnceCommand, state.stepOnce);
+      ..hasControlSignal(_engine.stepOnce, state.stepOnce);
   }
 
   /// Declares this game's **auxiliary ring buffers** - shared-memory SPSC
@@ -983,6 +986,14 @@ abstract class Game implements RandomOwner {
   // puts it here afterwards.
   RandomRegistry _randoms = RandomRegistry();
 
+  // Where `Command.of` on a field of this game landed. **Not final**, for
+  // [_states]'s reason and replaced at the same moment: a subclass's field
+  // initialisers run before this class's, so at the moment
+  // `final damage = Command.of(Damage.new)` runs there is no `Game` yet to
+  // hold anything. `Game.start` opens a registrar ahead of the constructor
+  // call and puts it here afterwards.
+  CommandRegistrar _declaredCommands = CommandRegistrar();
+
   // Every input action declared this boot, plus the type-level defaults and
   // the one raw device-state buffer they all resolve against. Unlike the
   // buffers and channels above, an action's index is *not* a wire identity -
@@ -1041,6 +1052,11 @@ abstract class Game implements RandomOwner {
   /// `RandomStream.of()` field. A stream's index is mixed into its seed, so
   /// this is part of what makes a run replay.
   int get randomStreamCount => _randoms.streamCount;
+
+  /// How many commands this copy has declared - one per `Command.of()` field,
+  /// including the five the engine declares for itself. A command's position
+  /// in that order is its identity on the wire.
+  int get commandCount => _declaredCommands.commandCount;
 
   /// How many input actions this copy has declared - one per [Input.of]
   /// field, plus every system's on the copy that ticks.
@@ -1270,17 +1286,23 @@ abstract class Game implements RandomOwner {
     final inputs = InputRegistry()..source = '$G';
     final randoms = RandomRegistry();
     final views = CameraViewTable()..open();
+    final commands = CommandRegistrar();
+    // Before `create()`, so the engine's five take indices 0..4 and nothing at
+    // `Game`'s own field level declares into a registrar that may not be its.
+    final engine = _EngineCommands(commands);
     final restoreCount = DeclarationContext.gamesConstructed;
     DeclarationContext.gamesConstructed = 0;
     DeclarationContext.pushChannels(states);
     DeclarationContext.pushInputs(inputs);
     DeclarationContext.pushRandoms(randoms);
     DeclarationContext.pushCameraViews(views);
+    DeclarationContext.pushCommands(commands);
     final G game;
     final int built;
     try {
       game = create();
     } finally {
+      DeclarationContext.popCommands();
       DeclarationContext.popCameraViews();
       DeclarationContext.popRandoms();
       DeclarationContext.popInputs();
@@ -1314,6 +1336,8 @@ abstract class Game implements RandomOwner {
     game._states = states;
     game._inputs = inputs;
     game._randoms = randoms;
+    game._declaredCommands = commands;
+    game._engineCommands = engine;
     game._cameraViews = views;
     // Closes the table and hands every declared view the game it belongs to.
     // A view is drawn by a `GameView`, which needs to name its game, and a
@@ -1483,7 +1507,7 @@ abstract class Game implements RandomOwner {
       'timeScale must not be negative (got $scale). Nothing in this engine '
       'is reversible.',
     );
-    _sendControl(() => _setTimeScaleCommand(scale));
+    _sendControl(() => _engine.setTimeScale(scale));
   }
 
   /// Stops the fixed tick without disturbing [setTimeScale], so a game paused
@@ -1492,17 +1516,17 @@ abstract class Game implements RandomOwner {
   /// Presentation keeps running, which is what lets a pause menu draw itself.
   /// Unrelated to [pauseWhenHidden]: a game paused here stays paused across
   /// being hidden and shown again.
-  void pause() => _sendControl(() => _setPausedCommand(true));
+  void pause() => _sendControl(() => _engine.setPaused(true));
 
   /// Undoes [pause]. A game that was never paused is unaffected.
-  void resume() => _sendControl(() => _setPausedCommand(false));
+  void resume() => _sendControl(() => _engine.setPaused(false));
 
   /// Advances exactly one fixed step, whatever the clock and scale say.
   ///
   /// For stepping a paused game - a debugger, a replay. Leaves the
   /// accumulator untouched, so unpausing afterwards resumes from where it
   /// was. See `GameState.stepOnce`.
-  void stepOnce() => _sendControl(_stepOnceCommand.call);
+  void stepOnce() => _sendControl(_engine.stepOnce.call);
 
   /// Sends one of the engine's control commands, if there is a run to send it
   /// to.
@@ -1839,16 +1863,19 @@ abstract class Game implements RandomOwner {
   void _bootFinalize(GameRuntime runtime) {
     final state = runtime.state!;
 
-    // --- describeCommands, both call sites ------------------------------
+    // --- commands: resolve what the fields collected --------------------
     //
-    // Same index-is-identity story as the buffers and channels above, and the
-    // same reason both copies run both passes: a command's position in this
-    // shared declaration order is what a record's header carries and what
-    // routes it back to the right command on the other side.
+    // Same index-is-identity story as the buffers and channels above: a
+    // command's position in the declaration order is what a record's header
+    // carries and what routes it back to the right command on the other side.
+    // The fields ran once, on main, while the constructor was running, and the
+    // game isolate inherits the numbering through the deep copy.
     //
-    // The framework declares none of its own, so index 0 is the game's first
-    // command. There used to be a built-in `SpawnEntityCommand` here, and it
-    // was deleted rather than moved: it took an `archetypeId`, which is a
+    // The engine's own five are still the first five: `_construct` declares
+    // them into the registrar before it calls the constructor, so a game's own
+    // fields number from 5 exactly as they did behind a `super`-first hook.
+    // There used to be a built-in `SpawnEntityCommand` too, and it was deleted
+    // rather than moved: it took an `archetypeId`, which is a
     // game-isolate identifier main has no business naming. A game that wants
     // main-triggered spawning declares a command that says what it *means*
     // ("spawn an enemy at x,y") and resolves it to a prefab in its own
@@ -1868,10 +1895,20 @@ abstract class Game implements RandomOwner {
     runtime.commands = commands;
     runtime.commandTransport = transport;
 
-    // The Game declares (and may handle on the Flutter isolate); the
-    // GameState may only handle, on the game isolate. Order matters only in
-    // that declaration has to precede handling, which this guarantees.
-    describeCommands(MainCommandDescriptor(commands));
+    // Numbering first: a handler is registered against a command's index, so
+    // every declaration has to be in the list before anything asks to handle
+    // one.
+    _declaredCommands.resolveInto(commands);
+    final main = MainCommandDescriptor(commands);
+    // The engine's own main-side handler, here and not in [describeCommands],
+    // because it names an instance method (`_onSystemDisabledReport`) and a
+    // base implementation a game is asked to `super` through is one more thing
+    // to forget. Before a game's, so a game overriding [onSystemDisabled] is
+    // what changes where a report goes, not the order it registered in.
+    main.hasSink(_engine.reportDisabledSystem, _onSystemDisabledReport);
+    // The Game handles on the Flutter isolate; the GameState handles on the
+    // game isolate. Each command has exactly one handler between the two.
+    describeCommands(main);
     state.describeCommands(GameCommandDescriptor(commands));
     commands.seal();
     // Attaches whichever rings this copy already has. Inline has none; the
@@ -4150,6 +4187,31 @@ final class _StateDescriptor implements StateDescriptor {
 // declares. Both copies run the same pass in the same order, so the indices
 // agree the way they do for a game's own commands.
 
+/// The five commands the engine declares for every game, built by
+/// `Game._construct` into the registrar it opens around the constructor.
+///
+/// A holder and not five fields on `Game`, for the reason `Game._engine`
+/// gives: `Game`'s own field initialisers run after every subclass's, so a
+/// `Game` built inside another `Game`'s field initialiser would declare these
+/// into the outer game's registrar and be refused as a duplicate - in place of
+/// the message that actually explains what happened.
+final class _EngineCommands {
+  _EngineCommands(CommandRegistrar registrar)
+    : setVisible = registrar.declare(_SetVisibleCommand.new),
+      setPaused = registrar.declare(_SetPausedCommand.new),
+      setTimeScale = registrar.declare(_SetTimeScaleCommand.new),
+      stepOnce = registrar.declare(_StepOnceCommand.new),
+      reportDisabledSystem = registrar.declare(
+        _ReportDisabledSystemCommand.new,
+      );
+
+  final _SetVisibleCommand setVisible;
+  final _SetPausedCommand setPaused;
+  final _SetTimeScaleCommand setTimeScale;
+  final _StepOnceCommand stepOnce;
+  final _ReportDisabledSystemCommand reportDisabledSystem;
+}
+
 final class _SetVisibleCommand extends SinkCommand<bool> {
   final visible = Param.uint1();
 
@@ -4355,6 +4417,6 @@ class _VisibilityObserver with WidgetsBindingObserver {
     // `GameState.setVisible` is idempotent, which it has to be: the walk down
     // is `inactive -> hidden -> paused` and the walk back up reverses it, so
     // "not visible" arrives twice around any real backgrounding.
-    game._sendControl(() => game._setVisibleCommand(visible));
+    game._sendControl(() => game._engine.setVisible(visible));
   }
 }

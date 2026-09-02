@@ -302,13 +302,7 @@ class ParticlesState extends DemoState<ParticlesGame> {
 }
 
 class ParticlesGame extends DemoGame {
-  late final SetAblations setAblations;
-
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    setAblations = descriptor.has(SetAblations.new);
-  }
+  final setAblations = Command.of(SetAblations.new);
 
   @override
   ParticlesState createState() => ParticlesState();

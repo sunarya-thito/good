@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:meta/meta.dart';
 
 import 'package:good/src/command/param.dart';
+import 'package:good/src/declare.dart';
 
 /// What every command shape has in common: an identity on the wire, a record
 /// layout, and somewhere to send to.
@@ -170,10 +171,11 @@ abstract class GameCommandBase {
     final sender = _sender;
     if (sender == null) {
       throw StateError(
-        '$runtimeType was never declared. Add it to describeCommands - '
-        '`myCommand = descriptor.has($runtimeType.new)` - and keep the handle '
-        'it returns; a command built with `new` and called directly has no '
-        'index, no layout and nowhere to send to.',
+        '$runtimeType has no index and nowhere to send to. Declare it on a '
+        'Game field - `final myCommand = Command.of($runtimeType.new)` - and '
+        'call it through that handle; a command built with `new` was never in '
+        'anyone\'s declaration order. A game that has not been started has '
+        'not numbered its commands yet either.',
       );
     }
     if (!hasHandler) {
@@ -419,40 +421,52 @@ extension CommandBatchCalls on CommandBatch {
   void signal(SignalCommand command) => command.execute(this);
 }
 
-/// Declares a game's commands, and who handles them.
+/// Declares a game's commands.
 ///
 /// ```dart
 /// class MyGame extends Game {
-///   late final Damage damage;
-///
-///   @override
-///   void describeCommands(CommandDescriptor descriptor) {
-///     super.describeCommands(descriptor);
-///     damage = descriptor.has(Damage.new);
-///     // handled on the Flutter isolate, so callable from the game isolate
-///     descriptor.hasHandler(damage, _onDamage);
-///   }
-///
-///   int _onDamage(({int amount, bool crit}) p) => p.amount * 2;
+///   final damage = Command.of(Damage.new);
 /// }
 /// ```
 ///
-/// **Commands are declared on `Game` only.** Both isolate copies run that
-/// pass, in the same order, which is what makes an index mean the same thing
-/// on both sides - the same argument that makes archetype ids agree.
-/// `GameState.describeCommands` may only *handle* commands the `Game`
-/// declared; a command declared there would have an index on one isolate and
-/// none on the other, which is the same as having none.
-abstract class CommandDescriptor {
-  /// Builds one command with [create], declares it, and returns it for the
-  /// field to keep.
+/// **A command is declared on a `Game` field and nowhere else.** Its storage
+/// is the command ring, allocated on main before the spawn, and its index in
+/// the declaration order is what a record's header carries - the same argument
+/// that makes archetype ids agree. A `GameState` and a `GameSystem` are both
+/// built on the game isolate, after that; they *handle* commands, in
+/// `describeCommands`.
+abstract final class Command {
+  /// Builds one command with [create], declares it on the game being
+  /// constructed, and returns it for the field to keep.
   ///
-  /// A tear-off - `descriptor.has(Damage.new)` - and not an instance,
-  /// because a `Param.*` field initialiser runs at construction and needs
-  /// the layout to already be open. `ParamLayout.open` puts it there and
-  /// calls [create] inside it.
-  T has<T extends GameCommandBase>(T Function() create);
+  /// A tear-off - `Command.of(Damage.new)` - and not an instance, because a
+  /// `Param.*` field initialiser runs at construction and needs the layout to
+  /// already be open. `ParamLayout.open` puts it there and calls [create]
+  /// inside it.
+  ///
+  /// **Collect only.** The command comes back with no index and no sender:
+  /// both are handed out at boot, once every field has declared, because the
+  /// ring the sender writes into does not exist while the game is being built.
+  /// Calling one before then says so.
+  ///
+  /// Declaring two commands of one type is refused here: one instance is one
+  /// command and its position is its identity on the wire, so a second would
+  /// be a different command with the same name.
+  ///
+  /// # Eager, always
+  ///
+  /// `late final damage = Command.of(Damage.new)` compiles and is wrong. The
+  /// call runs on the first *read*, after boot numbered and sealed the
+  /// declared list, so the command would have no index at all. It does not get
+  /// that far: `DeclarationContext.commands` throws first, naming the shape.
+  static T of<T extends GameCommandBase>(T Function() create) =>
+      DeclarationContext.commands.declare(create);
+}
 
+/// Registers what runs when a command arrives - see `Game.describeCommands`
+/// for the Flutter-isolate side and `GameState.describeCommands` for the game
+/// isolate's.
+abstract class CommandDescriptor {
   /// Registers what runs when [command] arrives.
   ///
   /// Registers what runs when [command] arrives: **the function the command
@@ -699,28 +713,13 @@ final class CommandRegistry implements ParamLayouts {
     }
   }
 
-  T declare<T extends GameCommandBase>(T Function() create) {
+  /// Takes one collected command, gives it its index and its sender, and
+  /// closes its layout. `CommandRegistrar.resolveInto` is the only caller -
+  /// the command itself was built by the field initialiser that declared it.
+  void adopt(GameCommandBase command, ParamLayout layout) {
     _requireOpen();
-    // Built before the duplicate check, not after: the check reads
-    // `runtimeType`, and a tear-off's type argument is the *static* type,
-    // which a factory returning a subtype would not pin down. A command
-    // constructed and then rejected costs one throwaway layout on a path
-    // that ends in a throw.
-    final layout = ParamLayout();
-    final command = layout.open(create);
-    for (var i = 0; i < _commands.length; i++) {
-      if (_commands[i].runtimeType == command.runtimeType) {
-        throw StateError(
-          '${command.runtimeType} is declared twice. One instance is one '
-          'command, and its position in this pass is its identity on the '
-          'wire, so a second one would be a different command with the same '
-          'name.',
-        );
-      }
-    }
     command.bind(_commands.length, layout, sender);
     _commands.add(command);
-    return command;
   }
 
   void declareHandler(
@@ -758,10 +757,60 @@ final class CommandRegistry implements ParamLayouts {
   void _requireOpen() {
     if (!_sealed) return;
     throw StateError(
-      'commands can only be declared during boot, in describeCommands - the '
-      'index a command gets is its identity on the wire, and both isolate '
-      'copies have already agreed on the list.',
+      'commands can only be declared during boot, on a Game field - the index '
+      'a command gets is its identity on the wire, and both isolate copies '
+      'have already agreed on the list.',
     );
+  }
+}
+
+/// Collects a game's commands from the fields that declare one.
+///
+/// **Collect only.** [declare] builds the command inside its own open
+/// [ParamLayout] and appends it with no index and no sender; [resolveInto]
+/// numbers the lot afterwards and hands them the ring to send through. That
+/// split is what a field initialiser needs: it runs while the `Game` is still
+/// being constructed, and the command ring is allocated a phase later.
+///
+/// One registrar per game, because a command's index is its identity on the
+/// wire.
+@internal
+final class CommandRegistrar {
+  final List<GameCommandBase> _collected = <GameCommandBase>[];
+  final List<ParamLayout> _layouts = <ParamLayout>[];
+
+  /// How many commands were declared. Diagnostics and tests.
+  int get commandCount => _collected.length;
+
+  T declare<T extends GameCommandBase>(T Function() create) {
+    // Built before the duplicate check, not after: the check reads
+    // `runtimeType`, and a tear-off's type argument is the *static* type,
+    // which a factory returning a subtype would not pin down. A command
+    // constructed and then rejected costs one throwaway layout on a path that
+    // ends in a throw.
+    final layout = ParamLayout();
+    final command = layout.open(create);
+    for (var i = 0; i < _collected.length; i++) {
+      if (_collected[i].runtimeType == command.runtimeType) {
+        throw StateError(
+          '${command.runtimeType} is declared twice. One instance is one '
+          'command, and its position in the declaration order is its identity '
+          'on the wire, so a second one would be a different command with the '
+          'same name.',
+        );
+      }
+    }
+    _collected.add(command);
+    _layouts.add(layout);
+    return command;
+  }
+
+  /// Numbers every collected command against [registry], in declaration
+  /// order. Called once, from `Game._bootFinalize`.
+  void resolveInto(CommandRegistry registry) {
+    for (var i = 0; i < _collected.length; i++) {
+      registry.adopt(_collected[i], _layouts[i]);
+    }
   }
 }
 
@@ -794,17 +843,13 @@ Never _readOnlyDoesNothing(Type command, String method) {
   );
 }
 
-/// `CommandDescriptor` as seen by `Game.describeCommands` - may declare
-/// commands, and registers handlers that run on the **Flutter** isolate.
+/// `CommandDescriptor` as seen by `Game.describeCommands` - registers handlers
+/// that run on the **Flutter** isolate.
 @internal
 final class MainCommandDescriptor implements CommandDescriptor {
   MainCommandDescriptor(this._registry);
 
   final CommandRegistry _registry;
-
-  @override
-  T has<T extends GameCommandBase>(T Function() create) =>
-      _registry.declare(create);
 
   @override
   void hasHandler<P, R>(GameCommand<P, R> command, R Function(P) handler) =>
@@ -884,26 +929,12 @@ final class MainCommandDescriptor implements CommandDescriptor {
 }
 
 /// `CommandDescriptor` as seen by `GameState.describeCommands` - registers
-/// handlers that run on the **game** isolate, and refuses to declare.
+/// handlers that run on the **game** isolate.
 @internal
 final class GameCommandDescriptor implements CommandDescriptor {
   GameCommandDescriptor(this._registry);
 
   final CommandRegistry _registry;
-
-  @override
-  T has<T extends GameCommandBase>(T Function() create) {
-    // [create] is never called. The type argument names the command without
-    // building one, and building one here would run its Param.* initialisers
-    // against a layout nothing opened - a second, less useful error in front
-    // of this one.
-    throw StateError(
-      'commands are declared on the Game, not the GameState: '
-      '$T declared here would have an index on the game '
-      'isolate and none on the Flutter one, which is the same thing as not '
-      'having one. Declare it in Game.describeCommands and handle it here.',
-    );
-  }
 
   @override
   void hasHandler<P, R>(GameCommand<P, R> command, R Function(P) handler) =>

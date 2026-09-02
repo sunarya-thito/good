@@ -152,13 +152,7 @@ Declare it on the `Game`, and handle it on the `GameState`:
 
 ```dart
 class MyGame extends Game2D {
-  late final SetPopulation setPopulation;
-
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    setPopulation = descriptor.has(SetPopulation.new);
-  }
+  final setPopulation = Command.of(SetPopulation.new);
 }
 
 class MyState extends GameState2D<MyGame> {
@@ -182,12 +176,13 @@ Send it from anywhere on the Flutter side:
 onPressed: () => game.setPopulation(400),
 ```
 
-!!! info "Every command is declared on the `Game`, whichever side handles it"
-    `describeCommands` runs on **both** copies in the same order, which is what
-    makes a command's index mean the same thing on both sides. `GameState`'s
-    pass may only *handle* what the `Game`'s pass declared — a command declared
-    there would have an index on the game isolate and none on the Flutter one,
-    which is the same as having none.
+!!! info "Every command is declared on a `Game` field, whichever side handles it"
+    The fields run once, on main, before the spawn, and the game isolate
+    inherits the numbering — which is what makes a command's index mean the
+    same thing on both sides. `Command.of` anywhere else is refused: a command
+    declared on a `GameState` or a `GameSystem`, both built on the game
+    isolate, would have an index there and none on the Flutter one, which is
+    the same as having none.
 
 ### The four shapes
 
@@ -320,17 +315,20 @@ Some commands belong on main — writing a save file, opening a URL. Register th
 handler in the `Game`'s own pass:
 
 <!-- snippet: in Game2D -->
-<!-- snippet-setup
-late SaveGame save;
--->
 ```dart
+final save = Command.of(SaveGame.new);
+
 @override
 void describeCommands(CommandDescriptor descriptor) {
   super.describeCommands(descriptor);
-  save = descriptor.has(SaveGame.new);
   descriptor.hasSink(save, _writeSaveFile);   // handled here, not on the game isolate
 }
 ```
+
+The command is declared on the field either way; `describeCommands` only says
+which isolate runs it. It is a hook and not a field because a handler names an
+instance member twice over — the command on this object and the function on it
+— and a field initialiser can name neither.
 
 ### Asking a game that is paused
 

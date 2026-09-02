@@ -2,6 +2,7 @@ import 'package:meta/meta.dart';
 
 import 'package:good/src/asset.dart';
 import 'package:good/src/camera_view.dart';
+import 'package:good/src/command/command.dart';
 import 'package:good/src/command/param.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/event.dart';
@@ -445,6 +446,44 @@ abstract final class DeclarationContext {
       );
     }
     return _inputs.last;
+  }
+
+  /// The open command registrars, innermost last - the eleventh level of the
+  /// stack, and the one `Command.of` declares against.
+  ///
+  /// A `Game` is the only thing that declares a command, and a `Game` is the
+  /// first object the framework builds, so this is either empty or one deep -
+  /// kept a stack anyway, so that "empty" is the same question at every level.
+  static final List<CommandRegistrar> _commands = <CommandRegistrar>[];
+
+  /// Opens a registrar for the duration of one game's constructor. Paired with
+  /// [popCommands] in a `finally` - `Game._construct` is the only caller.
+  static void pushCommands(CommandRegistrar registrar) =>
+      _commands.add(registrar);
+
+  static void popCommands() => _commands.removeLast();
+
+  /// The innermost open registrar, or a `StateError` naming the two ways to
+  /// get here: constructing the game yourself, and reaching a `Command.of`
+  /// call lazily.
+  static CommandRegistrar get commands {
+    if (_commands.isEmpty) {
+      throw StateError(
+        'A Command was declared with no game being constructed. Command.of '
+        'reads the registrar the framework opens around a constructor call, '
+        'so the framework has to be the one constructing:\n'
+        '  Game.start(MyGame.new)   // not Game.start(MyGame())\n'
+        'A `late final` initialiser lands here too, and that is the point: it '
+        'runs on first read, after boot numbered and sealed the declared '
+        'list, so the command would have no index and nowhere to send to. '
+        'Field initialisers here are eager, always.\n'
+        'A Game is the only thing that declares a command at all - the ring a '
+        'call travels through is allocated on main before the spawn, so only '
+        'a declaration that runs there can own an index. A GameState and a '
+        'GameSystem handle commands the Game declared, in describeCommands.',
+      );
+    }
+    return _commands.last;
   }
 
   /// The open random registries, innermost last - the tenth level of the

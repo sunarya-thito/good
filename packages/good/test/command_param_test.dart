@@ -312,6 +312,22 @@ class _LateParam extends SinkCommand<int> {
   int paramsFromBuffer(ParamBuffer call) => eager[call];
 }
 
+/// Declares one command the way a `Game` field does and hands it to this
+/// registry the way boot does.
+///
+/// Two steps in the engine - a field initialiser collects, `_bootFinalize`
+/// numbers - and one here, because almost every case below wants a command
+/// that is wired end to end. A case that is about the collecting half makes
+/// its own [CommandRegistrar].
+extension on CommandRegistry {
+  T declare<T extends GameCommandBase>(T Function() create) {
+    final registrar = CommandRegistrar();
+    final command = registrar.declare(create);
+    registrar.resolveInto(this);
+    return command;
+  }
+}
+
 ({CommandRegistry registry, _Loopback sender}) _registry({
   bool simulating = true,
 }) {
@@ -341,9 +357,12 @@ void main() {
     });
 
     test('declaring the same command twice is refused', () {
-      final r = _registry().registry;
-      r.declare(_Damage.new);
-      expect(() => r.declare(_Damage.new), throwsStateError);
+      // One registrar, because that is what one game's fields declare into -
+      // the refusal is about a single declaration order, and two registrars
+      // are two games.
+      final registrar = CommandRegistrar();
+      registrar.declare(_Damage.new);
+      expect(() => registrar.declare(_Damage.new), throwsStateError);
     });
 
     test('declaring after boot is refused', () {
@@ -352,20 +371,31 @@ void main() {
       expect(() => r.declare(_Damage.new), throwsStateError);
     });
 
-    test('the state descriptor cannot declare, only handle', () {
+    test('a command declared outside a game constructor is refused', () {
+      expect(
+        () => Command.of(_Damage.new),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('no game being constructed'),
+              contains('Game.start(MyGame.new)'),
+            ),
+          ),
+        ),
+        reason:
+            'a command declared anywhere but a Game field would have an '
+            'index on one isolate and none on the other, which is the same '
+            'as not having one',
+      );
+    });
+
+    test('the state descriptor handles what the game declared', () {
       final r = _registry().registry;
       final damage = r.declare(_Damage.new);
-      final descriptor = GameCommandDescriptor(r);
 
-      expect(
-        () => descriptor.has(_Ping.new),
-        throwsStateError,
-        reason:
-            'a command declared on the GameState would have an index on '
-            'the game isolate and none on the Flutter one, which is the '
-            'same as not having one',
-      );
-      descriptor.hasHandler(damage, (p) => 0);
+      GameCommandDescriptor(r).hasHandler(damage, (p) => 0);
       expect(damage.hasHandler, isTrue);
     });
 

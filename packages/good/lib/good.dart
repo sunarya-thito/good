@@ -38,6 +38,7 @@ export 'src/coroutine/coroutine.dart';
 // both sides.
 export 'src/command/command.dart'
     show
+        Command,
         CommandBatchCalls,
         CommandDescriptor,
         CommandKey,

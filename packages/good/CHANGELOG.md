@@ -2,6 +2,24 @@
 
 ### Added
 
+* **`Command.of()`**, a command declared on the field that holds it (#287):
+
+  ```dart
+  class MyGame extends Game {
+    final spawnEnemy = Command.of(SpawnEnemy.new);
+  }
+  ```
+
+  A tear-off and not an instance, because a `Param.*` field initialiser runs at
+  construction and needs the layout already open. The command comes back with
+  no index and no sender: both are handed out at boot, once every field has
+  declared, because the ring a call travels through does not exist while the
+  game is being built. Declaring two commands of one type is refused at the
+  declaration, and so is `Command.of` anywhere but a `Game` being constructed.
+
+* **`Game.commandCount`**, how many commands this copy declared, the engine's
+  five included (#287).
+
 * **`InputDefault<T>`, and `inputDefaults` on `Game` and `GameSystem`** (#287).
   The value every action of a type falls back to, as configuration:
 
@@ -208,6 +226,36 @@
   own repository; a component in your game's `lib/` is not in it.
 
 ### Breaking
+
+* **`CommandDescriptor.has` is gone; a command is declared with `Command.of` on
+  a `Game` field** (#287). `describeCommands` survives on both `Game` and
+  `GameState` and now does one thing on each: register the handlers that run on
+  that side.
+
+  ```dart
+  class MyGame extends Game2D {
+    final spawnEnemy = Command.of(SpawnEnemy.new);
+  }
+  ```
+
+  | before | after |
+  |---|---|
+  | `late final SpawnEnemy spawnEnemy;` plus `spawnEnemy = descriptor.has(SpawnEnemy.new)` | `final spawnEnemy = Command.of(SpawnEnemy.new)` |
+  | `descriptor.hasSink(save, _write)` | unchanged |
+
+  A handler stays in the hook because it names an instance member twice over -
+  the command on the object and the function on it - and a field initialiser
+  can name neither.
+
+  Indices do not move: the engine's own five are declared by `Game.start` into
+  the registrar it opens *before* the constructor runs, so a game's own
+  commands number from 5 exactly as they did behind a `super`-first hook.
+  `Game.describeCommands` declares nothing any more, so its `super` call
+  carries only whatever mixins a game was assembled from.
+
+  `GameCommandDescriptor.has`, which existed to refuse a declaration on the
+  `GameState`, is gone with the rest: there is no method left to call there.
+  The refusal is `Command.of`'s, and it names the window it wanted.
 
 * **`Game.describeInputs`, `GameSystem.describeInputs` and `InputDescriptor`
   are gone** (#287). An action goes on the field that holds it and a
