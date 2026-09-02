@@ -409,9 +409,11 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// dispatched inside the fixed tick window, before any system runs, so an
   /// entity it spawns is visible to every system on the tick it lands.
   ///
-  /// Runs on both copies, immediately after `Game.describeCommands`, so both
-  /// agree about which commands have a handler at all - which is what lets
-  /// the sending side refuse a handler-less command without a round trip.
+  /// Runs once, on main, immediately after `Game.describeCommands`, against the
+  /// declaration mirror `_bootMain` builds - so the registry that rides the
+  /// spawn already knows which commands have a handler at all, which is what
+  /// lets the sending side refuse a handler-less command without a round
+  /// trip.
   @mustCallSuper
   void describeCommands(CommandDescriptor descriptor) {
     // The engine's own four, registered by the `Game` that declared them so

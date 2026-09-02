@@ -2,6 +2,78 @@
 
 ### Added
 
+* **`Command.of()`**, a command declared on the field that holds it (#287):
+
+  ```dart
+  class MyGame extends Game {
+    final spawnEnemy = Command.of(SpawnEnemy.new);
+  }
+  ```
+
+  A tear-off and not an instance, because a `Param.*` field initialiser runs at
+  construction and needs the layout already open. The command comes back with
+  no index and no sender: both are handed out at boot, once every field has
+  declared, because the ring a call travels through does not exist while the
+  game is being built. Declaring two commands of one type is refused at the
+  declaration, and so is `Command.of` anywhere but a `Game` being constructed.
+
+* **`Game.commandCount`**, how many commands this copy declared, the engine's
+  five included (#287).
+
+* **`InputDefault<T>`, and `inputDefaults` on `Game` and `GameSystem`** (#287).
+  The value every action of a type falls back to, as configuration:
+
+  ```dart
+  class MyGame extends Game {
+    @override
+    List<InputDefault<Object?>> get inputDefaults => <InputDefault<Object?>>[
+      const InputDefault<double>(0),
+    ];
+
+    final throttle = Input.of<double>();
+  }
+  ```
+
+  Order still does not matter: defaults are matched to actions when the
+  registry seals, once every source has spoken.
+
+* **`CameraView.of()`**, a camera view declared on the field that holds it
+  (#287):
+
+  ```dart
+  class MyGame extends Game2D {
+    final minimap = CameraView.of();
+  }
+  ```
+
+  It takes nothing - the field name is the identity - and hands back the view,
+  addressed from zero in field order. The game it belongs to is hung on once
+  the constructor returns, so `CameraView.game` answers from that point and
+  `GameView` can show it. Refused outside a game's construction: the table is
+  on the declaration stack for the whole of a scene's bring-up so that
+  `CameraView.representation()` can read it, and a view declared there would
+  have no viewport memory.
+
+* **`RandomStream.of()`**, a random stream declared on the field that holds it
+  (#287):
+
+  ```dart
+  class MyGame extends Game {
+    final loot = RandomStream.of();
+    final terrain = RandomStream.of();
+  }
+  ```
+
+  It takes nothing and returns the stream, with no index and no seed. Both
+  arrive at boot, on main, before the spawn: `Game.randomSeed` is an
+  overridable getter, so it is read once every field has declared, and the
+  declaration index is mixed into the seed there. Throws for a `Game` built by
+  hand and for a `late final` that runs on first read, and a stream drawn from
+  before its game has started says so.
+
+* **`Game.randomStreamCount`**, how many streams this copy declared (#287).
+  Sits beside `stateChannelCount` and `bufferCount`.
+
 * **`CameraView.representation()`**, the `IntRepresentation` a camera-view
   column binds to for the scene being brought up (#287):
 
@@ -154,6 +226,111 @@
   own repository; a component in your game's `lib/` is not in it.
 
 ### Breaking
+
+* **`CommandDescriptor.has` is gone; a command is declared with `Command.of` on
+  a `Game` field** (#287). `describeCommands` survives on both `Game` and
+  `GameState` and now does one thing on each: register the handlers that run on
+  that side.
+
+  ```dart
+  class MyGame extends Game2D {
+    final spawnEnemy = Command.of(SpawnEnemy.new);
+  }
+  ```
+
+  | before | after |
+  |---|---|
+  | `late final SpawnEnemy spawnEnemy;` plus `spawnEnemy = descriptor.has(SpawnEnemy.new)` | `final spawnEnemy = Command.of(SpawnEnemy.new)` |
+  | `descriptor.hasSink(save, _write)` | unchanged |
+
+  A handler stays in the hook because it names an instance member twice over -
+  the command on the object and the function on it - and a field initialiser
+  can name neither.
+
+  Indices do not move: the engine's own five are declared by `Game.start` into
+  the registrar it opens *before* the constructor runs, so a game's own
+  commands number from 5 exactly as they did behind a `super`-first hook.
+  `Game.describeCommands` declares nothing any more, so its `super` call
+  carries only whatever mixins a game was assembled from.
+
+  `GameCommandDescriptor.has`, which existed to refuse a declaration on the
+  `GameState`, is gone with the rest: there is no method left to call there.
+  The refusal is `Command.of`'s, and it names the window it wanted.
+
+* **`Game.describeInputs`, `GameSystem.describeInputs` and `InputDescriptor`
+  are gone** (#287). An action goes on the field that holds it and a
+  type-level fallback goes in `inputDefaults`:
+
+  | before | after |
+  |---|---|
+  | `late final Input<bool> fire;` plus `fire = input.has<bool>(b)` | `final fire = Input.of<bool>(b)` |
+  | `input.hasDefaultValue<double>(0)` | `InputDefault<double>(0)` in `inputDefaults` |
+
+  `Input.of` has shipped since the field form landed, so most of this is
+  deleting the second spelling.
+
+  **The engine's own three fallbacks moved out of the overridable half.**
+  `bool -> false`, `Vector2 -> zero` and an empty `PointerContacts` are
+  registered by boot, before any source's `inputDefaults` is read. Overriding
+  the getter cannot drop them, which is what the `@mustCallSuper` on the hook
+  was guarding - and that failure was silent: nothing broke at declaration
+  time and the game ran until the first read of an unbound action.
+
+  **A listener subscribed from a constructor body works on every action now.**
+  It was conditional while an action could be a `late final` the hook filled
+  in; a field initialiser has run by the time the constructor body does.
+
+* **`Game.describeCameras` and `CameraDescriptor` are gone** (#287). A view is
+  declared on the field that holds it:
+
+  ```dart
+  class MyGame extends Game2D {
+    final minimap = CameraView.of();
+  }
+  ```
+
+  | before | after |
+  |---|---|
+  | `late final CameraView minimap;` plus `minimap = descriptor.has()` | `final minimap = CameraView.of()` |
+
+  **Addresses move.** Field initialisers run most-derived first and a mixin's
+  run after the class applying it, where the hook ran `super` first. A game on
+  `Game2D` declaring one view of its own now holds address 0 while
+  `Renderer2D.defaultCamera` holds 1; under the hook it was the other way
+  round. Nothing in the engine reads a literal address - a frame buffer is
+  found by `view.pack()` - but a game that hard-coded 0 for the default camera
+  has to stop.
+
+  **A `Game2D` can no longer be constructed by hand.** `Renderer2D` declares
+  `defaultCamera` on a field, so `MyGame()` outside `Game.start` is refused the
+  same way a `Channel.*` field already refuses it.
+
+* **`Game.cameraViews` is a getter, not a final field** (#287). It reads the
+  table `Game.start` opened around the constructor. Nothing that only reads it
+  changes.
+
+* **`Game.describeRandom` and `RandomDescriptor` are gone** (#287). A stream is
+  declared on the field that holds it:
+
+  ```dart
+  class MyGame extends Game {
+    @override
+    int get randomSeed => 777;
+
+    final loot = RandomStream.of();
+  }
+  ```
+
+  | before | after |
+  |---|---|
+  | `late final RandomStream loot;` plus `loot = descriptor.has()` | `final loot = RandomStream.of()` |
+
+  Declaration order still is a stream's identity, and it is now the order the
+  fields run in: a subclass's initialisers run before its superclass's, so a
+  game that declared streams on both sides of a hierarchy gets a different
+  numbering than the `super`-first hook produced, and therefore different
+  sequences from the same seed. Nothing else moves - one class declaring its
+  own streams in one place keeps the order it had.
 
 * **`MemoryPool.getPage` and `MemoryPage.ownerArchetypeId` are gone, and
   `MemoryPool.allocatePage` no longer takes `ownerArchetypeId`** (#332, #335).

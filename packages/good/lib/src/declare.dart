@@ -2,11 +2,13 @@ import 'package:meta/meta.dart';
 
 import 'package:good/src/asset.dart';
 import 'package:good/src/camera_view.dart';
+import 'package:good/src/command/command.dart';
 import 'package:good/src/command/param.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/event.dart';
 import 'package:good/src/event/state.dart';
 import 'package:good/src/input.dart';
+import 'package:good/src/random.dart';
 import 'package:good/src/struct.dart';
 
 /// What `EntityStruct.of` declares against: whoever is registering prefabs
@@ -413,19 +415,19 @@ abstract final class DeclarationContext {
   /// open one, and neither runs inside the other - a system is built on the
   /// game isolate, long after the game itself was. Keeping the shape means
   /// "empty" is the same question at every level.
-  static final List<InputDescriptor> _inputs = <InputDescriptor>[];
+  static final List<InputRegistry> _inputs = <InputRegistry>[];
 
   /// Opens a registry for the duration of one constructor call. Paired with
   /// [popInputs] in a `finally` - `Game.start` and `SystemDescriptor.has`
   /// are the callers.
-  static void pushInputs(InputDescriptor registry) => _inputs.add(registry);
+  static void pushInputs(InputRegistry registry) => _inputs.add(registry);
 
   static void popInputs() => _inputs.removeLast();
 
   /// The innermost open registry, or a `StateError` naming the two ways to
   /// get here: constructing the owner yourself, and reaching an `Input.of`
   /// call lazily.
-  static InputDescriptor get inputs {
+  static InputRegistry get inputs {
     if (_inputs.isEmpty) {
       throw StateError(
         'An Input was declared with no game or system being constructed. '
@@ -437,15 +439,88 @@ abstract final class DeclarationContext {
         'A `late final` initialiser lands here too, and that is the point: '
         'it runs on first read, long after boot sealed the registry, so an '
         'action declared that way is refused outright by the seal. Field '
-        'initialisers here are eager, always. A describeInputs body is the '
-        'other way in: it runs after the constructor, so it declares through '
-        'the InputDescriptor it is handed rather than through Input.of - '
-        'which is where InputDescriptor.hasDefaultValue still has to go, on '
-        'a Game as much as on a system, because it hands nothing back for a '
-        'field to hold.',
+        'initialisers here are eager, always.\n'
+        'A type-level fallback is the other half of input and does not come '
+        'through here at all: it hands nothing back, so it is configuration - '
+        'the inputDefaults getter, on a Game as much as on a system.',
       );
     }
     return _inputs.last;
+  }
+
+  /// The open command registrars, innermost last - the eleventh level of the
+  /// stack, and the one `Command.of` declares against.
+  ///
+  /// A `Game` is the only thing that declares a command, and a `Game` is the
+  /// first object the framework builds, so this is either empty or one deep -
+  /// kept a stack anyway, so that "empty" is the same question at every level.
+  static final List<CommandRegistrar> _commands = <CommandRegistrar>[];
+
+  /// Opens a registrar for the duration of one game's constructor. Paired with
+  /// [popCommands] in a `finally` - `Game._construct` is the only caller.
+  static void pushCommands(CommandRegistrar registrar) =>
+      _commands.add(registrar);
+
+  static void popCommands() => _commands.removeLast();
+
+  /// The innermost open registrar, or a `StateError` naming the two ways to
+  /// get here: constructing the game yourself, and reaching a `Command.of`
+  /// call lazily.
+  static CommandRegistrar get commands {
+    if (_commands.isEmpty) {
+      throw StateError(
+        'A Command was declared with no game being constructed. Command.of '
+        'reads the registrar the framework opens around a constructor call, '
+        'so the framework has to be the one constructing:\n'
+        '  Game.start(MyGame.new)   // not Game.start(MyGame())\n'
+        'A `late final` initialiser lands here too, and that is the point: it '
+        'runs on first read, after boot numbered and sealed the declared '
+        'list, so the command would have no index and nowhere to send to. '
+        'Field initialisers here are eager, always.\n'
+        'A Game is the only thing that declares a command at all - the ring a '
+        'call travels through is allocated on main before the spawn, so only '
+        'a declaration that runs there can own an index. A GameState and a '
+        'GameSystem handle commands the Game declared, in describeCommands.',
+      );
+    }
+    return _commands.last;
+  }
+
+  /// The open random registries, innermost last - the tenth level of the
+  /// stack, and the one `RandomStream.of` declares against.
+  ///
+  /// A `Game` is the only thing that declares a stream, and a `Game` is the
+  /// first object the framework builds, so this is either empty or one deep -
+  /// kept a stack anyway, so that "empty" is the same question at every level.
+  static final List<RandomRegistry> _randoms = <RandomRegistry>[];
+
+  /// Opens a registry for the duration of one game's constructor. Paired with
+  /// [popRandoms] in a `finally` - `Game._construct` is the only caller.
+  static void pushRandoms(RandomRegistry registry) => _randoms.add(registry);
+
+  static void popRandoms() => _randoms.removeLast();
+
+  /// The innermost open registry, or a `StateError` naming the two ways to get
+  /// here: constructing the game yourself, and reaching a `RandomStream.of`
+  /// call lazily.
+  static RandomRegistry get randoms {
+    if (_randoms.isEmpty) {
+      throw StateError(
+        'A RandomStream was declared with no game being constructed. '
+        'RandomStream.of reads the registry the framework opens around a '
+        'constructor call, so the framework has to be the one constructing:\n'
+        '  Game.start(MyGame.new)   // not Game.start(MyGame())\n'
+        'A `late final` initialiser lands here too, and that is the point: it '
+        'runs on first read, long after boot derived every declared stream '
+        'from the seed, so a stream declared that way would have no seed and '
+        'no index. Field initialisers here are eager, always.\n'
+        'A Game is the only thing that declares a stream at all - the seed '
+        'every stream is derived from is Game.randomSeed, and it is read once, '
+        'on main, before the spawn. A GameSystem draws from a stream the Game '
+        'declared: `state.game.loot.nextInt(6)`.',
+      );
+    }
+    return _randoms.last;
   }
 
   /// How many `Game`s have finished constructing since whoever is watching
@@ -608,6 +683,15 @@ abstract final class DeclarationContext {
   /// The innermost open table, or a `StateError` naming the two ways to get
   /// here: declaring a camera column outside a scene's bring-up, and reaching
   /// the call lazily.
+  /// The innermost open table, or null when nothing is being declared.
+  ///
+  /// Read by `CameraView.of`, which has its own sentence for there being no
+  /// table: the one below is written for the *other* caller of this level,
+  /// `CameraView.representation`, and the two are refused for different
+  /// reasons at different points in a boot.
+  static CameraViewTable? get cameraViewsOrNull =>
+      _cameraViews.isEmpty ? null : _cameraViews.last;
+
   static CameraViewTable get cameraViews {
     if (_cameraViews.isEmpty) {
       throw StateError(

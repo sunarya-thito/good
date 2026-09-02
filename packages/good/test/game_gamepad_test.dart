@@ -48,26 +48,17 @@ pads.NormalizedGamepadEvent _event(
 }
 
 class _PadSystem extends GameSystem with FixedTickable {
-  late final Input<bool> confirm;
-  late final Input<bool> p1Confirm;
-  late final Input<bool> p2Confirm;
-  late final Input<Vector2> move;
-
-  @override
-  void describeInputs(InputDescriptor descriptor) {
-    super.describeInputs(descriptor);
-    confirm = descriptor.has<bool>(const TriggerBinding(.padA));
-    p1Confirm = descriptor.has<bool>(TriggerBinding(InputKey.padA(1)));
-    p2Confirm = descriptor.has<bool>(TriggerBinding(InputKey.padA(2)));
-    move = descriptor.has<Vector2>(
-      const Vec2Binding(
-        up: .padLeftStickUp,
-        down: .padLeftStickDown,
-        left: .padLeftStickLeft,
-        right: .padLeftStickRight,
-      ),
-    );
-  }
+  final confirm = Input.of<bool>(const TriggerBinding(.padA));
+  final p1Confirm = Input.of<bool>(TriggerBinding(InputKey.padA(1)));
+  final p2Confirm = Input.of<bool>(TriggerBinding(InputKey.padA(2)));
+  final move = Input.of<Vector2>(
+    const Vec2Binding(
+      up: .padLeftStickUp,
+      down: .padLeftStickDown,
+      left: .padLeftStickLeft,
+      right: .padLeftStickRight,
+    ),
+  );
 
   @override
   void onFixedUpdate() {}

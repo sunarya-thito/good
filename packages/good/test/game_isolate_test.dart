@@ -295,17 +295,11 @@ class _RandomIsolateGame extends Game {
   @override
   int get randomSeed => 777;
 
-  late final RandomStream rolls;
+  final rolls = RandomStream.of();
   final drawn = Channel.int32(-1);
 
   @override
   GameState createState() => _RandomIsolateState();
-
-  @override
-  void describeRandom(RandomDescriptor descriptor) {
-    super.describeRandom(descriptor);
-    rolls = descriptor.has();
-  }
 }
 
 class _IsolateGame extends Game {
@@ -317,11 +311,11 @@ class _IsolateGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
-  late final _SpawnMover spawnMover;
-  late final _PauseMover pauseMover;
-  late final _ResumeByControl resumeByControl;
-  late final _ResumeByTick resumeByTick;
-  late final _ControlProbe controlProbe;
+  final spawnMover = Command.of(_SpawnMover.new);
+  final pauseMover = Command.of(_PauseMover.new);
+  final resumeByControl = Command.of(_ResumeByControl.new);
+  final resumeByTick = Command.of(_ResumeByTick.new);
+  final controlProbe = Command.of(_ControlProbe.new);
 
   /// What `_MoverSystem` publishes. Declared here because main is the copy
   /// that allocates the storage - and main is also the only reader, which is
@@ -337,16 +331,6 @@ class _IsolateGame extends Game {
 
   @override
   GameState createState() => _IsolateState();
-
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    spawnMover = descriptor.has(_SpawnMover.new);
-    pauseMover = descriptor.has(_PauseMover.new);
-    resumeByControl = descriptor.has(_ResumeByControl.new);
-    resumeByTick = descriptor.has(_ResumeByTick.new);
-    controlProbe = descriptor.has(_ControlProbe.new);
-  }
 }
 
 // --- auxiliary buffer fixtures -------------------------------------------
@@ -462,28 +446,21 @@ class _ChannelGame extends Game {
 // and this isolate reads those back out of shared memory.
 
 class _InputProbeSystem extends GameSystem with FixedTickable {
-  late final Input<bool> fire;
-  late final Input<Vector2> move;
+  final fire = Input.of<bool>(const TriggerBinding(.spacebar));
+  final move = Input.of<Vector2>(
+    const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
+  );
 
-  /// Declared on the `Game`; written here. `describeInputs` below *stays* on
-  /// the system, and the contrast is the point: an action allocates nothing -
-  /// the raw block is a fixed size whatever a game declares, and only this
-  /// copy ever resolves against it - while a channel is native memory main
-  /// reserves before the spawn.
+  /// The channels are declared on the `Game`; the actions above are declared
+  /// here, and the contrast is the point: an action allocates nothing - the
+  /// raw block is a fixed size whatever a game declares, and only this copy
+  /// ever resolves against it - while a channel is native memory main reserves
+  /// before the spawn.
   _InputProbeGame get _own => game as _InputProbeGame;
   StateChannel<bool> get fireHeld => _own.fireHeld;
   StateChannel<int> get presses => _own.presses;
   StateChannel<int> get releases => _own.releases;
   StateChannel<double> get moveX => _own.moveX;
-
-  @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    fire = input.has<bool>(const TriggerBinding(.spacebar));
-    move = input.has<Vector2>(
-      const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
-    );
-  }
 
   @override
   void onFixedUpdate() {
@@ -762,8 +739,8 @@ class _LateGame extends Game {
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
   late final _LateScene lateScene;
-  late final _LoadLate loadLate;
-  late final _UnloadLate unloadLate;
+  final loadLate = Command.of(_LoadLate.new);
+  final unloadLate = Command.of(_UnloadLate.new);
   final progress = Channel.float64(-1);
 
   /// The address the *game isolate* assigned this scene's texture, published
@@ -779,13 +756,6 @@ class _LateGame extends Game {
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
     lateScene = descriptor.has(_LateScene.new);
-  }
-
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    loadLate = descriptor.has(_LoadLate.new);
-    unloadLate = descriptor.has(_UnloadLate.new);
   }
 }
 
@@ -835,16 +805,10 @@ class _UnloadGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
-  late final _DropScene dropScene;
+  final dropScene = Command.of(_DropScene.new);
 
   @override
   GameState createState() => _UnloadState();
-
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    dropScene = descriptor.has(_DropScene.new);
-  }
 }
 
 // --- #165 slice 0: adopting a reply while the fixed tick is stopped --------
@@ -940,9 +904,9 @@ class _AskingGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
-  late final _AskMain askMain;
-  late final _AskGame askGame;
-  late final _StartAsking startAsking;
+  final askMain = Command.of(_AskMain.new);
+  final askGame = Command.of(_AskGame.new);
+  final startAsking = Command.of(_StartAsking.new);
 
   /// Counted on this copy, because this is where the handler runs - the game
   /// isolate holds the same closure and never dispatches it.
@@ -962,9 +926,6 @@ class _AskingGame extends Game {
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
-    askMain = descriptor.has(_AskMain.new);
-    askGame = descriptor.has(_AskGame.new);
-    startAsking = descriptor.has(_StartAsking.new);
     descriptor.hasSupplier(askMain, () {
       mainHandlerRuns++;
       return 41 + mainHandlerRuns;
@@ -1061,9 +1022,9 @@ class _PausedAskGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
-  late final _ReadPaused readPaused;
-  late final _ReadOrder readOrder;
-  late final _NeedsTick needsTick;
+  final readPaused = Command.of(_ReadPaused.new);
+  final readOrder = Command.of(_ReadOrder.new);
+  final needsTick = Command.of(_NeedsTick.new);
 
   /// Written by the tick-delivered handler on the game isolate, so this side
   /// can see whether it has run without waiting on its future.
@@ -1071,14 +1032,6 @@ class _PausedAskGame extends Game {
 
   @override
   GameState createState() => _PausedAskState();
-
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    readPaused = descriptor.has(_ReadPaused.new);
-    readOrder = descriptor.has(_ReadOrder.new);
-    needsTick = descriptor.has(_NeedsTick.new);
-  }
 }
 
 /// Polls [ready] once per reported tick, up to [within] ticks.
@@ -1176,7 +1129,8 @@ class _TakeWorldCensus extends SupplierCommand<Uint8List> {
       blob[call] = result;
 
   @override
-  Uint8List resultFromBuffer(ParamBuffer call) => Uint8List.fromList(blob[call]);
+  Uint8List resultFromBuffer(ParamBuffer call) =>
+      Uint8List.fromList(blob[call]);
 }
 
 /// Disables one system on the game isolate, so the enabled bits this side
@@ -1218,18 +1172,11 @@ class _CensusIsolateGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 5);
 
-  late final _TakeWorldCensus censusBlob;
-  late final _SleepASystem sleepASystem;
+  final censusBlob = Command.of(_TakeWorldCensus.new);
+  final sleepASystem = Command.of(_SleepASystem.new);
 
   @override
   GameState createState() => _CensusIsolateState();
-
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    censusBlob = descriptor.has(_TakeWorldCensus.new);
-    sleepASystem = descriptor.has(_SleepASystem.new);
-  }
 }
 
 // --- #123: which isolate registers an asset decoder ------------------------
@@ -1734,9 +1681,11 @@ void main() {
       var tickBoundDone = false;
       final tickBound = game.needsTick();
       unawaited(
-        tickBound.then((_) {
-          tickBoundDone = true;
-        }).catchError((Object _) {}),
+        tickBound
+            .then((_) {
+              tickBoundDone = true;
+            })
+            .catchError((Object _) {}),
       );
 
       final answer = await game.readPaused().timeout(
@@ -1876,23 +1825,31 @@ void main() {
         await game.censusBlob().timeout(const Duration(seconds: 5)),
       );
 
-      expect(census.tick, stopped, reason: 'it counted the world standing still');
-      expect(run.tick, stopped, reason: 'and the tick did not move to serve it');
-      expect(census.entityCount, 5);
       expect(
-        census.scenes.map((s) => (s.slot, s.typeName, s.entityCount)),
-        [(0, '_CensusScene', 5)],
-        reason: 'one scene, mounted with five entities in onSceneMounted',
+        census.tick,
+        stopped,
+        reason: 'it counted the world standing still',
       );
       expect(
-        census.archetypes.map((a) => (a.typeName, a.entityCount, a.strideBytes)),
+        run.tick,
+        stopped,
+        reason: 'and the tick did not move to serve it',
+      );
+      expect(census.entityCount, 5);
+      expect(census.scenes.map((s) => (s.slot, s.typeName, s.entityCount)), [
+        (0, '_CensusScene', 5),
+      ], reason: 'one scene, mounted with five entities in onSceneMounted');
+      expect(
+        census.archetypes.map(
+          (a) => (a.typeName, a.entityCount, a.strideBytes),
+        ),
         [('_Pebble', 5, 2)],
       );
       expect(census.archetypes.single.componentSignature, isNot(0));
-      expect(
-        census.systems.map((s) => (s.index, s.typeName, s.enabled)),
-        [(0, '_IdleSystem', true), (1, '_SleepySystem', true)],
-      );
+      expect(census.systems.map((s) => (s.index, s.typeName, s.enabled)), [
+        (0, '_IdleSystem', true),
+        (1, '_SleepySystem', true),
+      ]);
     });
 
     test('reports an enabled bit this side changed', () async {
@@ -2028,10 +1985,7 @@ void main() {
             'naming two different rows - the encode/apply lane this '
             'replaces could not return anything at all',
       );
-      expect(
-        await _waitUntil(run, () => mover.population.value == 3),
-        isTrue,
-      );
+      expect(await _waitUntil(run, () => mover.population.value == 3), isTrue);
 
       // And the entity that came back is deliberately **not** readable here.
       // It is a valid handle on the isolate that made it and meaningless on
@@ -2195,6 +2149,7 @@ void main() {
           observed.complete();
         }
       }
+
       counter.ticks.addListener(listener);
       addTearDown(() => counter.ticks.removeListener(listener));
 

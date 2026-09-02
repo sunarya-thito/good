@@ -282,9 +282,9 @@ the widget tree first.
 
 ### `StateError` reading an input's value
 
-The action has no default anywhere and has never resolved. Give it one, or call
-`super.describeInputs(input)` — dropping the shipped `bool`/`Vector2` defaults
-is a silent failure until the first read.
+The action has no default anywhere and has never resolved. Give it one at the
+declaration — `Input.of(binding, someDefault)` — or add an `InputDefault<T>` to
+the declaring object's `inputDefaults` so every action of that type has one.
 
 ## Physics
 

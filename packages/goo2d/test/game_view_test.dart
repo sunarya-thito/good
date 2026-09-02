@@ -264,10 +264,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a Game that has not started is refused with a reason', (
+  testWidgets('a Game that is not running is refused with a reason', (
     tester,
   ) async {
-    _ViewGame();
+    // Started and stopped rather than never started: a Game2D declares a
+    // camera view on a field, so one built outside `Game.start` is refused at
+    // the constructor. To this guard the two are the same game - neither has
+    // the frame buffers a view paints from.
+    final game = await _start(_ViewGame.new);
+    await game.stop();
+
     await tester.pumpWidget(GameView.headless(game: run));
     final error = tester.takeException();
     expect(error, isStateError);

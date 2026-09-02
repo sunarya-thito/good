@@ -118,9 +118,11 @@ mixin Renderer2D on Game {
   /// game that had to remember a second declaration before anything appeared
   /// would hit exactly the black screen that arrangement exists to prevent.
   ///
-  /// A game wanting several views declares them itself and calls
-  /// `super.describeCameras(descriptor)`, so this one keeps address 0.
-  late final CameraView defaultCamera;
+  /// A game wanting several views declares them on its own fields. Those run
+  /// before this one - a subclass's initialisers run before the mixins it
+  /// applies - so this is the *last* view, not address 0. Nothing indexes the
+  /// table by a literal: a frame buffer is looked up by `view.pack()`.
+  final defaultCamera = CameraView.of();
 
   /// Registers the texture decoder, since a 2D renderer is what makes a
   /// texture something worth decoding.
@@ -136,13 +138,6 @@ mixin Renderer2D on Game {
   void describeAssetLoaders(AssetLoaderRegistrar loaders) {
     super.describeAssetLoaders(loaders);
     loaders.register<Texture>(const TextureLoader());
-  }
-
-  @override
-  @mustCallSuper
-  void describeCameras(CameraDescriptor descriptor) {
-    super.describeCameras(descriptor);
-    defaultCamera = descriptor.has();
   }
 
   /// Draw records past this many in a single tick are dropped. A hard bound
@@ -248,7 +243,7 @@ mixin Renderer2D on Game {
   @mustCallSuper
   void describeBuffers(BufferDescriptor descriptor) {
     super.describeBuffers(descriptor);
-    // `describeCameras` runs before `describeBuffers` in `Game._bootMain`, so
+    // Every `CameraView.of()` ran while the game was constructed, so
     // the views are known by the time this asks how many buffers it needs.
     _viewFrames = <HandoffHandle>[
       for (var i = 0; i < cameraViews.length; i++)

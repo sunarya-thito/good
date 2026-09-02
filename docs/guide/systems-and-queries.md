@@ -253,8 +253,8 @@ class PlayerSystem extends GameSystem with FixedTickable {
 
 Keeping the action beside the loop that reads it is usually better than
 declaring every input on the `Game` — the declaration and its only consumer stay
-in one file. See [input](input.md) for when the `describeInputs` hook is still
-the answer.
+in one file. See [input](input.md) for where a type-level fallback goes, which
+is the one part of input that is not a field.
 
 ## Lifecycle
 

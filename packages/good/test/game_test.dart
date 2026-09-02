@@ -159,11 +159,7 @@ class _ReportingThrowGame extends _ThrowGame {
 
   @override
   void onSystemDisabled(String systemName, String error, String stackTrace) {
-    reports.add((
-      systemName: systemName,
-      error: error,
-      stackTrace: stackTrace,
-    ));
+    reports.add((systemName: systemName, error: error, stackTrace: stackTrace));
     super.onSystemDisabled(systemName, error, stackTrace);
   }
 }
@@ -435,16 +431,10 @@ class _TestGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
-  late final _SpawnUnit spawnUnit;
+  final spawnUnit = Command.of(_SpawnUnit.new);
 
   @override
   GameState createState() => _TestState();
-
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    spawnUnit = descriptor.has(_SpawnUnit.new);
-  }
 }
 
 /// A control command whose handler does the one thing a control handler must
@@ -473,16 +463,10 @@ class _BadControlState extends _FixtureState {
 }
 
 class _BadControlGame extends _TestGame {
-  late final _WriteOutsideTick writeOutsideTick;
+  final writeOutsideTick = Command.of(_WriteOutsideTick.new);
 
   @override
   GameState createState() => _BadControlState();
-
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    writeOutsideTick = descriptor.has(_WriteOutsideTick.new);
-  }
 }
 
 /// Registers a command that *returns* something as a control handler, which
@@ -506,28 +490,21 @@ class _AnsweringState extends _FixtureState {
 }
 
 class _AnsweringGame extends _TestGame {
-  late final _Answering answering;
+  final answering = Command.of(_Answering.new);
 
   @override
   GameState createState() => _AnsweringState();
-
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    answering = descriptor.has(_Answering.new);
-  }
 }
 
 /// The same refusal, asked of the **main** descriptor. Both sides share one
 /// message function, so this exists to prove the shared call is actually
 /// wired on both rather than only on the side that happened to be tested.
 class _AnsweringMainGame extends _TestGame {
-  late final _Answering answeringMain;
+  final answeringMain = Command.of(_Answering.new);
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
-    answeringMain = descriptor.has(_Answering.new);
     descriptor.hasControlSupplier(answeringMain, () => 1);
   }
 }
@@ -593,20 +570,12 @@ class _ReadOnlyState extends _FixtureState {
 }
 
 class _ReadOnlyGame extends _TestGame {
-  late final _Inspect inspect;
-  late final _Arrival arrival;
-  late final _TickBound tickBound;
+  final inspect = Command.of(_Inspect.new);
+  final arrival = Command.of(_Arrival.new);
+  final tickBound = Command.of(_TickBound.new);
 
   @override
   GameState createState() => _ReadOnlyState();
-
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    inspect = descriptor.has(_Inspect.new);
-    arrival = descriptor.has(_Arrival.new);
-    tickBound = descriptor.has(_TickBound.new);
-  }
 }
 
 /// A shape that answers with nothing, registered on the lane whose handlers
@@ -623,16 +592,10 @@ class _MuteReadOnlyState extends _FixtureState {
 }
 
 class _MuteReadOnlyGame extends _TestGame {
-  late final _Mute mute;
+  final mute = Command.of(_Mute.new);
 
   @override
   GameState createState() => _MuteReadOnlyState();
-
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    mute = descriptor.has(_Mute.new);
-  }
 }
 
 // --- #245: a handler that runs with no tick window open --------------------
@@ -735,10 +698,7 @@ class _WindowState extends _FixtureState {
         _channel();
         return 1;
       })
-      ..hasReadOnlySupplier(
-        game.readOnlyRead,
-        () => level.unit.marker[victim],
-      );
+      ..hasReadOnlySupplier(game.readOnlyRead, () => level.unit.marker[victim]);
   }
 
   /// Plain Dart state, touched by a receipt handler. Nothing in #245 is about
@@ -762,36 +722,20 @@ class _WindowState extends _FixtureState {
 class _WindowGame extends _TestGame {
   final score = Channel.int32();
 
-  late final _ControlWrite controlWrite;
-  late final _ControlSpawn controlSpawn;
-  late final _ControlDestroy controlDestroy;
-  late final _ControlUnload controlUnload;
-  late final _ControlChannelWrite controlChannelWrite;
-  late final _ControlStateWrite controlStateWrite;
-  late final _ReadOnlyComponentWrite readOnlyWrite;
-  late final _ReadOnlySpawn readOnlySpawn;
-  late final _ReadOnlyUnload readOnlyUnload;
-  late final _ReadOnlyChannelWrite readOnlyChannelWrite;
-  late final _ReadOnlyRead readOnlyRead;
+  final controlWrite = Command.of(_ControlWrite.new);
+  final controlSpawn = Command.of(_ControlSpawn.new);
+  final controlDestroy = Command.of(_ControlDestroy.new);
+  final controlUnload = Command.of(_ControlUnload.new);
+  final controlChannelWrite = Command.of(_ControlChannelWrite.new);
+  final controlStateWrite = Command.of(_ControlStateWrite.new);
+  final readOnlyWrite = Command.of(_ReadOnlyComponentWrite.new);
+  final readOnlySpawn = Command.of(_ReadOnlySpawn.new);
+  final readOnlyUnload = Command.of(_ReadOnlyUnload.new);
+  final readOnlyChannelWrite = Command.of(_ReadOnlyChannelWrite.new);
+  final readOnlyRead = Command.of(_ReadOnlyRead.new);
 
   @override
   GameState createState() => _WindowState();
-
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    controlWrite = descriptor.has(_ControlWrite.new);
-    controlSpawn = descriptor.has(_ControlSpawn.new);
-    controlDestroy = descriptor.has(_ControlDestroy.new);
-    controlUnload = descriptor.has(_ControlUnload.new);
-    controlChannelWrite = descriptor.has(_ControlChannelWrite.new);
-    controlStateWrite = descriptor.has(_ControlStateWrite.new);
-    readOnlyWrite = descriptor.has(_ReadOnlyComponentWrite.new);
-    readOnlySpawn = descriptor.has(_ReadOnlySpawn.new);
-    readOnlyUnload = descriptor.has(_ReadOnlyUnload.new);
-    readOnlyChannelWrite = descriptor.has(_ReadOnlyChannelWrite.new);
-    readOnlyRead = descriptor.has(_ReadOnlyRead.new);
-  }
 }
 
 /// The same refusal asked of the **main** descriptor, and through the sink
@@ -808,12 +752,11 @@ class _MuteSink extends SinkCommand<int> {
 }
 
 class _MuteReadOnlyMainGame extends _TestGame {
-  late final _MuteSink muteSink;
+  final muteSink = Command.of(_MuteSink.new);
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
-    muteSink = descriptor.has(_MuteSink.new);
     descriptor.hasReadOnlySink(muteSink, (_) {});
   }
 }
@@ -853,18 +796,13 @@ class _RandomGame extends _TestGame {
   @override
   final int randomSeed;
 
-  late final RandomStream a;
-  late final RandomStream b;
+  final a = RandomStream.of();
+  final b = RandomStream.of();
 
   @override
-  GameState createState() => _RandomState();
-
-  @override
-  void describeRandom(RandomDescriptor descriptor) {
-    super.describeRandom(descriptor);
+  GameState createState() {
     _randomGame = this;
-    a = descriptor.has();
-    b = descriptor.has();
+    return _RandomState();
   }
 }
 
@@ -891,16 +829,10 @@ class _NudgeCommand extends SinkCommand<_Nudge> {
 /// handled on the `GameState` - so it runs on the game isolate, inside the
 /// tick window, which is what the test below actually checks.
 class _CommandGame extends _TestGame {
-  late final _NudgeCommand nudge;
+  final nudge = Command.of(_NudgeCommand.new);
 
   @override
   GameState createState() => _CommandState();
-
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    nudge = descriptor.has(_NudgeCommand.new);
-  }
 }
 
 class _CommandState extends GameState<_CommandGame> {
@@ -917,17 +849,16 @@ class _CommandState extends GameState<_CommandGame> {
 
   // The handler is the plain function the command claims to be: no buffer in
   // the signature, no pointer in the body.
-  void _onNudge(_Nudge p) => p.entity<_Counter>().component.x[p.entity] = p.amount;
+  void _onNudge(_Nudge p) =>
+      p.entity<_Counter>().component.x[p.entity] = p.amount;
 }
 
-/// Declares a command from the `GameState`, which is refused: its index would
-/// exist on the game isolate and not on the Flutter one.
+/// Declares a command from the `GameState`, which is refused: the registrar is
+/// open around the `Game`'s constructor and closed by the time a state is
+/// built, and a command numbered here would have an index on the game isolate
+/// and none on the Flutter one.
 class _BadCommandState extends _TestState {
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    descriptor.has(_NudgeCommand.new);
-  }
+  final nudge = Command.of(_NudgeCommand.new);
 }
 
 class _BadCommandGame extends _TestGame {
@@ -1756,11 +1687,8 @@ void main() {
       expect(state.advance(_step * 3), 0);
 
       expect(
-        await Future.wait(<Future<int>>[
-          first,
-          second,
-          third,
-        ]).timeout(const Duration(seconds: 5)),
+        await Future.wait(<Future<int>>[first, second, third])
+            .timeout(const Duration(seconds: 5)),
         <int>[1, 2, 3],
         reason:
             'one queue fed in arrival order and drained from the front, so '
@@ -1922,7 +1850,8 @@ void main() {
       expect(
         game.reports.first.stackTrace,
         contains('_ThrowingSystem.onFixedUpdate'),
-        reason: 'the stack is what says which line threw, and #143 asks for '
+        reason:
+            'the stack is what says which line threw, and #143 asks for '
             'it by name',
       );
 
@@ -1944,66 +1873,73 @@ void main() {
       expect(game.reports, hasLength(1));
     });
 
-    test('a report too long for its fields is truncated, not refused', () async {
-      final previousOnError = FlutterError.onError;
-      FlutterError.onError = (_) {};
-      addTearDown(() => FlutterError.onError = previousOnError);
+    test(
+      'a report too long for its fields is truncated, not refused',
+      () async {
+        final previousOnError = FlutterError.onError;
+        FlutterError.onError = (_) {};
+        addTearDown(() => FlutterError.onError = previousOnError);
 
-      final game = await _game(_ReportingThrowGame.new);
-      final state = _state(game);
-      _thrower
-        ..ran = 0
-        ..throwOnTick = 1
-        // Longer than the 1024-byte error field, and not ASCII: a cut through
-        // the middle of a multi-byte character has to come back inside the
-        // cap, not one replacement character over it. `Param.fixedString`
-        // refuses an oversized write, and a throw from inside the reporting
-        // path would take out the report of the throw.
-        ..throwMessage = 'é' * 4000;
-      addTearDown(() => _thrower.throwMessage = 'system boom');
+        final game = await _game(_ReportingThrowGame.new);
+        final state = _state(game);
+        _thrower
+          ..ran = 0
+          ..throwOnTick = 1
+          // Longer than the 1024-byte error field, and not ASCII: a cut through
+          // the middle of a multi-byte character has to come back inside the
+          // cap, not one replacement character over it. `Param.fixedString`
+          // refuses an oversized write, and a throw from inside the reporting
+          // path would take out the report of the throw.
+          ..throwMessage = 'é' * 4000;
+        addTearDown(() => _thrower.throwMessage = 'system boom');
 
-      expect(() => state.advance(_step), throwsA(isA<AssertionError>()));
-      expect(game.reports, hasLength(1));
-      expect(
-        utf8.encode(game.reports.first.error).length,
-        lessThanOrEqualTo(1024),
-        reason: 'the cap _ReportDisabledSystemCommand declares for the field',
-      );
-      expect(
-        utf8.encode(game.reports.first.stackTrace).length,
-        lessThanOrEqualTo(2048),
-      );
-      expect(
-        game.reports.first.error,
-        startsWith('Bad state: '),
-        reason: 'truncated at the end, so the front of the message survives',
-      );
-    });
+        expect(() => state.advance(_step), throwsA(isA<AssertionError>()));
+        expect(game.reports, hasLength(1));
+        expect(
+          utf8.encode(game.reports.first.error).length,
+          lessThanOrEqualTo(1024),
+          reason: 'the cap _ReportDisabledSystemCommand declares for the field',
+        );
+        expect(
+          utf8.encode(game.reports.first.stackTrace).length,
+          lessThanOrEqualTo(2048),
+        );
+        expect(
+          game.reports.first.error,
+          startsWith('Bad state: '),
+          reason: 'truncated at the end, so the front of the message survives',
+        );
+      },
+    );
 
-    test('a report that cannot be sent does not take the tick with it', () async {
-      final game = await _game(_BadReportGame.new);
-      final state = _state(game);
-      _thrower
-        ..ran = 0
-        ..throwOnTick = 1
-        ..throwMessage = 'system boom';
-      _afterThrower.ran = 0;
+    test(
+      'a report that cannot be sent does not take the tick with it',
+      () async {
+        final game = await _game(_BadReportGame.new);
+        final state = _state(game);
+        _thrower
+          ..ran = 0
+          ..throwOnTick = 1
+          ..throwMessage = 'system boom';
+        _afterThrower.ran = 0;
 
-      // Still the assert, and nothing else: the report handler threw on this
-      // stack, and that must not become the failure the tick reports, nor
-      // stop the listeners declared after the thrower.
-      expect(() => state.advance(_step), throwsA(isA<AssertionError>()));
-      expect(game.calls, 1, reason: 'the handler really did run, and throw');
-      expect(
-        _afterThrower.ran,
-        1,
-        reason: 'the guard promises one bad listener does not stop the rest, '
-            'and the reporting path runs inside the catch that keeps it',
-      );
+        // Still the assert, and nothing else: the report handler threw on this
+        // stack, and that must not become the failure the tick reports, nor
+        // stop the listeners declared after the thrower.
+        expect(() => state.advance(_step), throwsA(isA<AssertionError>()));
+        expect(game.calls, 1, reason: 'the handler really did run, and throw');
+        expect(
+          _afterThrower.ran,
+          1,
+          reason:
+              'the guard promises one bad listener does not stop the rest, '
+              'and the reporting path runs inside the catch that keeps it',
+        );
 
-      state.advance(_step);
-      expect(_afterThrower.ran, 2, reason: 'and the game goes on ticking');
-    });
+        state.advance(_step);
+        expect(_afterThrower.ran, 2, reason: 'and the game goes on ticking');
+      },
+    );
 
     test('a throwing coroutine is unaffected by any of this', () async {
       // Coroutines were already guarded, in CoroutineScheduler.step, and this
@@ -2576,7 +2512,16 @@ void main() {
     });
 
     test('a command declared on the GameState is refused at boot', () {
-      expect(Game.startInline(_BadCommandGame.new), throwsStateError);
+      expect(
+        Game.startInline(_BadCommandGame.new),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('no game being constructed'),
+          ),
+        ),
+      );
     });
 
     // "reaching the command channel before start throws" was asserted here

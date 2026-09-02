@@ -76,7 +76,7 @@ abstract class DemoGame extends Game2D {
   /// like the renderer getting slower unless you can see it.
   final spritesDrawn = Channel.int32();
 
-  late final SetPopulation setPopulation;
+  final setPopulation = Command.of(SetPopulation.new);
 
   /// A megabyte per page - big enough that a 20k-entity case is a handful of
   /// pages rather than hundreds, small enough that a case holding one camera
@@ -86,12 +86,6 @@ abstract class DemoGame extends Game2D {
 
   @override
   int get maxSpritesPerTick => 24000;
-
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    setPopulation = descriptor.has(SetPopulation.new);
-  }
 
   @override
   DemoState createState();
@@ -349,8 +343,9 @@ class DemoStats extends GameSystem with Tickable {
       ..bestSystemMicros.value = profile.bestSystemMicros
       // Zero on a frame that ran no step, rather than a stamp difference
       // against a `stepEndedAt` left over from the last frame that did.
-      ..stepMicros.value =
-          profile.steps == 0 ? 0 : profile.stepEndedAt - profile.frameStartedAt
+      ..stepMicros.value = profile.steps == 0
+          ? 0
+          : profile.stepEndedAt - profile.frameStartedAt
       ..presentMicros.value = now - profile.presentStartedAt
       ..renderMicros.value = profile.renderMicros
       ..advanceMicros.value = now - profile.frameStartedAt

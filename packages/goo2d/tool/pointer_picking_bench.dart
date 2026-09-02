@@ -110,13 +110,7 @@ class _BenchState extends GameState<_BenchGame> {
 }
 
 class _BenchGame extends Game {
-  late final CameraView view;
-
-  @override
-  void describeCameras(CameraDescriptor descriptor) {
-    super.describeCameras(descriptor);
-    view = descriptor.has();
-  }
+  final view = CameraView.of();
 
   @override
   int get pageSize => 1 << 20;

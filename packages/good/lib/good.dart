@@ -38,6 +38,7 @@ export 'src/coroutine/coroutine.dart';
 // both sides.
 export 'src/command/command.dart'
     show
+        Command,
         CommandBatchCalls,
         CommandDescriptor,
         CommandKey,
@@ -79,7 +80,7 @@ export 'src/data/hierarchy.dart';
 export 'src/event.dart' hide EventBinder;
 export 'src/event/fixed_loop.dart';
 export 'src/event/lifecycle.dart';
-export 'src/random.dart' hide RandomOwner;
+export 'src/random.dart' hide RandomOwner, RandomRegistry;
 export 'src/event/state.dart';
 export 'src/event/tick_loop.dart';
 // `GameRuntime` is hidden rather than exported: it is one run's internals -
@@ -107,10 +108,10 @@ export 'src/heap_object.dart';
 // vector is going to be added to.
 export 'package:vector_math/vector_math_64.dart' show Vector2;
 
-// InputRegistry is the engine-side plumbing behind InputDescriptor - a Game
-// owns one and drives it through boot, each tick and shutdown. Users declare
-// against InputDescriptor and hold Inputs; nothing outside the kernel has a
-// reason to name it.
+// InputRegistry is the engine-side plumbing behind Input.of - a Game owns one
+// and drives it through boot, each tick and shutdown. Users declare with
+// Input.of and hold Inputs; nothing outside the kernel has a reason to name
+// it.
 export 'src/input.dart' hide InputRegistry;
 export 'src/input/gamepad.dart';
 export 'src/input/input_axis.dart';
@@ -120,7 +121,7 @@ export 'src/input/input_state.dart';
 export 'src/pool.dart';
 export 'src/ring_buffer.dart';
 export 'src/scene.dart';
-export 'src/camera_view.dart' hide GameCameraDescriptor;
+export 'src/camera_view.dart';
 export 'src/scene_handle.dart';
 export 'src/struct.dart';
 export 'src/time.dart';

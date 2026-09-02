@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:good/src/archetype.dart';
+import 'package:good/src/command/command.dart';
 import 'package:good/src/event/fixed_loop.dart';
 import 'package:good/src/event/state.dart';
 import 'package:good/src/game.dart';
@@ -10,6 +11,7 @@ import 'package:good/src/game_state.dart';
 import 'package:good/src/input.dart';
 import 'package:good/src/input/input_binding.dart';
 import 'package:good/src/input/input_key.dart';
+import 'package:good/src/random.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/system.dart';
 
@@ -22,8 +24,10 @@ import 'package:good/src/system.dart';
 // built while somebody else's window is open is refused rather than
 // declaring into it.
 //
-// `describeInputs` is still here because `hasDefaultValue` hands nothing back
-// and so has no field form. `Channel.*` is the only way to declare a channel.
+// `Channel.*`, `Input.of`, `RandomStream.of` and `CameraView.of` are the only
+// ways to declare their four kinds of thing. A type-level input fallback hands
+// nothing back, so it is configuration - the `inputDefaults` getter - and this
+// file pins that the two halves compose.
 
 abstract class _BareGame extends Game {
   @override
@@ -56,32 +60,66 @@ class _FieldInputGame extends _BareGame {
   final unbound = Input.of<bool>();
 }
 
-class _HookInputGame extends _BareGame {
-  late final Input<bool> fire;
-  late final Input<bool> unbound;
-
-  @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    fire = input.has<bool>(const TriggerBinding(InputKey.spacebar));
-    unbound = input.has<bool>();
-  }
-}
-
-/// The one shape with no field form at all: `hasDefaultValue` hands nothing
-/// back, so there is nothing to hold. It keeps `describeInputs` alive on a
-/// `Game` however much else moves onto fields.
+/// The shape with no field form at all: a type-level fallback hands nothing
+/// back, so there is nothing to hold and it is a getter instead. The action it
+/// applies to is still a field, and the two are declared in different places.
 class _MixedInputGame extends _BareGame {
   final throttleField = Input.of<double>();
 
-  late final Input<double> throttleHook;
+  final secondThrottle = Input.of<double>();
+
+  /// A second type, so the getter is read as a *list*. With one entry a
+  /// registration that stopped after the first would look identical.
+  final gear = Input.of<int>();
 
   @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    input.hasDefaultValue<double>(0.75);
-    throttleHook = input.has<double>();
-  }
+  List<InputDefault<Object?>> get inputDefaults => <InputDefault<Object?>>[
+    const InputDefault<double>(0.75),
+    const InputDefault<int>(3),
+  ];
+}
+
+// --- a command declared on a field -----------------------------------------
+
+class _First extends SignalCommand {}
+
+class _Second extends SignalCommand {}
+
+/// Two commands of its own, so the numbering the engine's five leave behind is
+/// observable.
+class _CommandFieldGame extends _BareGame {
+  final first = Command.of(_First.new);
+  final second = Command.of(_Second.new);
+}
+
+/// A command written `late`, ahead of the eager one, for [_LateGame]'s reason.
+class _LateCommandGame extends _BareGame {
+  late final lazyCommand = Command.of(_Second.new);
+
+  final eagerCommand = Command.of(_First.new);
+}
+
+// --- a random stream declared on a field -----------------------------------
+
+/// Two streams and a seed the game states, so a second run of the same class
+/// has to produce the same two sequences and the two streams have to differ
+/// from each other.
+class _RandomFieldGame extends _BareGame {
+  _RandomFieldGame({this.randomSeed = 4242});
+
+  @override
+  final int randomSeed;
+
+  final first = RandomStream.of();
+  final second = RandomStream.of();
+}
+
+/// A stream written *before* the eager one, `late`, so a `late` initialiser
+/// that ran where it is written would take index 0.
+class _LateRandomGame extends _BareGame {
+  late final lazyStream = RandomStream.of();
+
+  final eagerStream = RandomStream.of();
 }
 
 // --- the eager guard ------------------------------------------------------
@@ -189,6 +227,12 @@ class _CrossingSystem extends GameSystem with FixedTickable {
   }
 }
 
+/// Thrown out of a constructor tear-off to stop a boot after the fields
+/// have declared and before anything resolves.
+class _AbandonBoot implements Exception {
+  const _AbandonBoot();
+}
+
 Future<T> _boot<T extends Game>(T Function() create) async {
   final game = await Game.startInline(create);
   addTearDown(() async {
@@ -277,42 +321,40 @@ void main() {
   });
 
   group('an input on a Game field', () {
-    test('declares the same set the describeInputs hook does', () async {
+    test('declares one action per field, bound and unbound', () async {
       final fields = await _boot(_FieldInputGame.new);
       expect(
         fields.inputActionCount,
         2,
-        reason:
-            'the fields actually declared, so the comparison below means '
-            'something',
+        reason: 'two fields, two actions',
       );
       expect(fields.fire.binding, isNotNull);
       expect(fields.unbound.binding, isNull);
       expect(fields.fire.value, isFalse, reason: 'the shipped bool default');
-      await fields.stop();
-      _reset();
-
-      final hook = await _boot(_HookInputGame.new);
-      expect(hook.inputActionCount, 2);
-      expect(hook.fire.binding, isNotNull);
-      expect(hook.unbound.binding, isNull);
-      expect(hook.fire.value, isFalse);
     });
 
-    test('takes a type default the hook registers after it', () async {
+    test('takes a type default from the getter beside it', () async {
       final game = await _boot(_MixedInputGame.new);
 
-      expect(game.inputActionCount, 2);
+      expect(game.inputActionCount, 3);
       expect(
         game.throttleField.value,
         0.75,
         reason:
-            'the field declared before describeInputs ran at all, and '
-            'defaults are matched at seal() once every source has spoken - '
-            'which is what keeps hasDefaultValue usable from the hook while '
-            'the actions themselves move onto fields',
+            'the field declared while the constructor ran, and defaults are '
+            'matched at seal() once every source has spoken - so an action '
+            'and the fallback for its type do not have to be declared in the '
+            'same place or in any particular order',
       );
-      expect(game.throttleHook.value, 0.75);
+      expect(game.secondThrottle.value, 0.75);
+      expect(
+        game.gear.value,
+        3,
+        reason:
+            'every entry in the list is registered, not just the first - and '
+            'each keeps its own T, which is what a Map<Type, Object?> getter '
+            'would have lost',
+      );
     });
   });
 
@@ -375,6 +417,174 @@ void main() {
       );
 
       expect(game.inputActionCount, declared);
+    });
+  });
+
+  group('a random stream on a Game field', () {
+    test('is numbered and seeded from the game, not from the field', () async {
+      final game = await _boot(_RandomFieldGame.new);
+
+      expect(
+        game.randomStreamCount,
+        2,
+        reason:
+            'two fields, two streams - a dropped declaration shows up here '
+            'before the sequences below are asked for',
+      );
+
+      final first = <int>[for (var i = 0; i < 8; i++) game.first.nextInt(1000)];
+      final second = <int>[
+        for (var i = 0; i < 8; i++) game.second.nextInt(1000),
+      ];
+
+      expect(
+        first,
+        isNot(second),
+        reason:
+            'the declaration index is mixed into the seed, so two streams '
+            'from one seed are independent - equal sequences would mean both '
+            'fields resolved to the same index',
+      );
+
+      await game.stop();
+      _reset();
+
+      final again = await _boot(_RandomFieldGame.new);
+      expect(
+        <int>[for (var i = 0; i < 8; i++) again.first.nextInt(1000)],
+        first,
+        reason:
+            'the same seed and the same declaration order replay identically '
+            '- that is the whole contract of a declared stream',
+      );
+      expect(
+        <int>[for (var i = 0; i < 8; i++) again.second.nextInt(1000)],
+        second,
+      );
+    });
+
+    test('a different seed moves both streams', () async {
+      final game = await _boot(_RandomFieldGame.new);
+      final base = <int>[for (var i = 0; i < 8; i++) game.first.nextInt(1000)];
+      await game.stop();
+      _reset();
+
+      final other = await _boot(() => _RandomFieldGame(randomSeed: 99));
+      expect(
+        <int>[for (var i = 0; i < 8; i++) other.first.nextInt(1000)],
+        isNot(base),
+        reason:
+            'randomSeed is an overridable getter, so it is read at boot and '
+            'not by the field initialiser that declared the stream',
+      );
+    });
+
+    test('a stream is unusable before its game has started', () async {
+      late _RandomFieldGame built;
+      // Constructed by the framework, so the window is open and the fields
+      // declare - and then the boot is abandoned before anything resolves.
+      await expectLater(
+        Game.startInline(() {
+          built = _RandomFieldGame();
+          throw const _AbandonBoot();
+        }),
+        throwsA(isA<_AbandonBoot>()),
+      );
+
+      expect(
+        () => built.first.nextInt(6),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('before the game that declared it started'),
+          ),
+        ),
+        reason:
+            'a declaration collects and nothing else: the seed and the index '
+            'arrive at boot, and a draw before that has no sequence to be on',
+      );
+    });
+
+    test('a late stream is missing from the declared list', () async {
+      final game = await _boot(_LateRandomGame.new);
+
+      expect(
+        game.randomStreamCount,
+        1,
+        reason:
+            'the eager one declared, so the registry was open and working '
+            'and the throw below is the closed-window guard',
+      );
+      expect(game.eagerStream.nextInt(1000), isA<int>());
+
+      expect(
+        () => game.lazyStream,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('no game being constructed'),
+          ),
+        ),
+        reason:
+            'written first and still not in the list: a late initialiser '
+            'runs on first read, long after boot derived every stream',
+      );
+
+      expect(game.randomStreamCount, 1);
+    });
+  });
+
+  group('a command on a Game field', () {
+    test('numbers after the five the engine declares for itself', () async {
+      final game = await _boot(_CommandFieldGame.new);
+
+      expect(
+        game.commandCount,
+        7,
+        reason:
+            'the engine declares five control commands for every game and '
+            'this one declares two',
+      );
+      expect(
+        <int>[game.first.index, game.second.index],
+        <int>[5, 6],
+        reason:
+            'Game.start declares the five the engine owns into the '
+            'registrar before it calls the constructor, so a game holds '
+            'its own from five - where a super-first hook put them. An index '
+            'is what a record header carries, so this is on the wire',
+      );
+    });
+
+    test('a late command is missing from the declared list', () async {
+      final game = await _boot(_LateCommandGame.new);
+
+      expect(
+        game.commandCount,
+        6,
+        reason:
+            'the eager one declared, so the registrar was open and working '
+            'and the throw below is the closed-window guard',
+      );
+      expect(game.eagerCommand.index, 5);
+
+      expect(
+        () => game.lazyCommand,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('no game being constructed'),
+          ),
+        ),
+        reason:
+            'written first and still not in the list: a late initialiser '
+            'runs on first read, after boot numbered and sealed the list',
+      );
+
+      expect(game.commandCount, 6);
     });
   });
 

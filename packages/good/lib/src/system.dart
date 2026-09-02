@@ -46,14 +46,15 @@ mixin GameSystemLifecycleListener on GameListener {
 /// copy that ticks. Main never calls it, so no system object is ever
 /// constructed there. There is no twin to hold anything.
 ///
-/// Most declaration passes do run on both copies, and that is what makes an
-/// index a wire identity: a `Game`'s `Channel.*` fields, `describeBuffers`,
-/// `describeCameras` and `describeCommands` all run on main before the spawn
-/// and again on the other side, so a channel or a buffer is the same index to
-/// both. Systems are the exception, and they can be because a system declares
-/// no shared memory of its own: [describeInputs] is the one pass it has, its
-/// events are dispatchers on its own binder, and a `Query` on a field
-/// allocates nothing main has to address by index either. A system that wants
+/// A `Game`'s declarations all happen on main, before the spawn, and ride the
+/// deep copy: `Channel.*`, `CameraView.of`, `RandomStream.of`,
+/// `describeBuffers` and `describeCommands` are numbered once and the game
+/// isolate inherits the numbering, which is what makes an index a wire
+/// identity. Systems are the exception, and they can be because a system
+/// declares no shared memory of its own: an `Input.of` field resolves against
+/// a block that is the same size whatever anyone declared, its events are
+/// dispatchers on its own binder, and a `Query` on a field allocates nothing
+/// main has to address by index either. A system that wants
 /// to publish a number reads a `StateChannel` off the `Game`, which declared
 /// it on both copies for exactly that reason.
 ///
@@ -152,8 +153,8 @@ abstract class GameSystem extends GameListenerBase
   int compareTo(GameSystem other) => 0; // no opinion by default
 
   /// Called once by the boot pass on the game isolate, before the system's
-  /// [describeInputs] pass. Not part of the user-facing API: a system is bound
-  /// by declaring it in `Game.describeSystems`, never by hand.
+  /// [inputDefaults] is read. Not part of the user-facing API: a system is
+  /// bound by declaring it in `Game.describeSystems`, never by hand.
   @internal
   void bindState(GameState state) => _state = state;
 
@@ -230,16 +231,17 @@ abstract class GameSystem extends GameListenerBase
   // reference shape for a library doing this: the `Game` mixin declares the
   // frame buffers and `GameRenderer2D` fills them.
 
-  /// Declares this system's input actions - see `Game.describeInputs`.
+  /// The type-level fallbacks this system adds - see `Game.inputDefaults`,
+  /// which is the same getter on the other side.
   ///
-  /// Unlike the two passes deleted above this one survives, because it
-  /// allocates nothing: the raw input block is a fixed size derived from
-  /// `InputKey.count`, identical whatever a game declares, and an *action* is
-  /// resolved against that block by the copy that ticks - which is this one.
-  /// Main writes the block and never reads an action.
+  /// A system can declare input at all - unlike a state channel or a buffer -
+  /// because a fallback allocates nothing: the raw input block is a fixed size
+  /// derived from `InputKey.count`, identical whatever a game declares, and an
+  /// *action* is resolved against that block by the copy that ticks, which is
+  /// this one. Main writes the block and never reads an action.
   ///
-  /// Reach for [Input.of] first - a system is framework-built, so an action
-  /// goes on the field that holds it:
+  /// An action itself goes on the field that holds it - a system is
+  /// framework-built, so [Input.of] has a registry to declare into:
   ///
   /// ```dart
   /// final movement = Input.of(
@@ -248,40 +250,28 @@ abstract class GameSystem extends GameListenerBase
   /// final triggerSkill = Input.of(const TriggerBinding(.spacebar));
   /// ```
   ///
-  /// This hook is the other way, and it stays: it is what
-  /// [InputDescriptor.hasDefaultValue] needs, since that hands nothing back
-  /// and so has no field to live on.
+  /// A *type-level* fallback hands nothing back, so it has no field to sit on
+  /// and is configuration instead:
   ///
   /// ```dart
-  /// late final Input<double> throttle;
-  ///
   /// @override
-  /// void describeInputs(InputDescriptor input) {
-  ///   super.describeInputs(input);
-  ///   input.hasDefaultValue<double>(0);
-  ///   throttle = input.has<double>();
-  /// }
+  /// List<InputDefault<Object?>> get inputDefaults => <InputDefault<Object?>>[
+  ///   const InputDefault<double>(0),
+  /// ];
+  ///
+  /// final throttle = Input.of<double>();
   /// ```
   ///
-  /// Keep the returned [Input] in a field either way; there is no
-  /// `getAction(name)` to look one up by (the typed-handle rule). A field
-  /// assigned from this hook is `late final` because the hook runs after the
-  /// constructor; one initialised by [Input.of] is a plain `final`, and must
-  /// be - see [Input.of] on why `late` is wrong there.
-  ///
-  /// The base here declares nothing - unlike `Game.describeInputs`, which
-  /// declares the framework's own actions - so the `super` call carries only
-  /// whatever mixins a system was assembled from. Both forms compose: a
-  /// system's field declarations land first, its hook's second.
-  ///
-  /// Runs on the simulating copy only, because that is the only copy a system
-  /// exists on at all. Main's `InputRegistry` therefore holds just the
-  /// `Game`'s own actions and is never sealed, which is harmless: an action's
-  /// index is not a wire identity - what crosses the boundary is the raw
-  /// device block, the same 16 bytes whatever anyone declared. See `Input`'s
-  /// doc for what resolution is and when it happens.
-  @mustCallSuper
-  void describeInputs(InputDescriptor descriptor) {}
+  /// Read on the simulating copy only, because that is the only copy a system
+  /// exists on at all, and after every system has been built - so a fallback
+  /// registered here is visible to an action the `Game` declared. Main's
+  /// `InputRegistry` therefore holds just the `Game`'s own actions and is
+  /// never sealed, which is harmless: an action's index is not a wire identity
+  /// - what crosses the boundary is the raw device block, the same 16 bytes
+  /// whatever anyone declared. See `Input`'s doc for what resolution is and
+  /// when it happens.
+  List<InputDefault<Object?>> get inputDefaults =>
+      const <InputDefault<Object?>>[];
 
   /// A sibling system declared in the same `describeSystems`. Reaching one
   /// directly is the escape hatch for cross-system state; note it says

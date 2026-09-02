@@ -251,13 +251,7 @@ class _GameState extends GameState<_Game> {
 
 class _Game extends Game {
   /// Picking projects through a declared view, so this fixture declares one.
-  late final CameraView view;
-
-  @override
-  void describeCameras(CameraDescriptor descriptor) {
-    super.describeCameras(descriptor);
-    view = descriptor.has();
-  }
+  final view = CameraView.of();
 
   @override
   int get pageSize => 4096;

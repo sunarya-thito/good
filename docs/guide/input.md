@@ -2,7 +2,6 @@
 
 <!-- snippet-scope
 // The actions and the game's own helpers this page reads without introducing.
-late InputDescriptor descriptor;
 late InputBinding<double> binding;
 late Input<bool> attack;
 late Input<bool> fire;
@@ -67,31 +66,32 @@ declaration instead, naming the shape.
 
 Declare inputs on a **`GameSystem`** (keeping the action beside the loop that
 reads it) or on the **`Game`** (for actions several systems share). All sources
-share one descriptor, so a type-level default registered anywhere is visible
+share one registry, so a type-level default registered anywhere is visible
 everywhere.
 
 `Input.of` works on both, and for the same reason: `SystemDescriptor.has` and
 `Game.start` each take a constructor, so the framework does the building and
 the registry is open while the fields initialise.
 
-The hook survives on both as well, and there is one thing that needs it:
-`hasDefaultValue` hands nothing back, so it has no field to live on. Either
-owner may use both forms at once — its fields declare first, its hook second:
+A **type-level fallback** is the other half of input, and it goes somewhere
+else: it hands nothing back, so there is no handle and no field to hold one.
+It is configuration, which here means an overridable getter:
 
 ```dart
 class MyGame extends Game {
   final openMenu = Input.of(const TriggerBinding(InputKey.escape));
 
-  late final Input<double> throttle;
+  final throttle = Input.of<double>();
 
   @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    input.hasDefaultValue<double>(0);
-    throttle = input.has<double>();
-  }
+  List<InputDefault<Object?>> get inputDefaults => <InputDefault<Object?>>[
+    const InputDefault<double>(0),
+  ];
 }
 ```
+
+Order does not matter between the two: defaults are matched to actions when the
+registry seals, once every source has spoken.
 
 That game starts as `Game.start(MyGame.new)` — a constructor, not an instance.
 Building it yourself leaves `Input.of` with no registry to declare into, and it
@@ -177,8 +177,8 @@ and a release can never land on the same resolution.
 ## Bindings
 
 Every binding has a **dot shorthand**. A binding is always expected somewhere
-typed `InputBinding<T>` or `InputBinding<T>?` — `Input.of`, `action.binding`,
-`descriptor.has`, and a composite's own sources — and `InputBinding` carries one
+typed `InputBinding<T>` or `InputBinding<T>?` — `Input.of`, `action.binding`
+and a composite's own sources — and `InputBinding` carries one
 static per concrete binding, so the short form resolves in all of them. The
 action's value type comes from the factory's return type, so nothing writes a
 type argument:
@@ -216,8 +216,8 @@ live. `.mouse` and `.contact` take no arguments and *are* constants.
 late Input<bool> shoot;
 -->
 ```dart
-jump = descriptor.has<bool>(const TriggerBinding(InputKey.spacebar));
-shoot = descriptor.has<bool>(const TriggerBinding(InputKey.leftMouseButton));
+jump = Input.of<bool>(const TriggerBinding(InputKey.spacebar));
+shoot = Input.of<bool>(const TriggerBinding(InputKey.leftMouseButton));
 ```
 
 A mouse button binds exactly like a keyboard key — from an action's point of
@@ -226,7 +226,7 @@ view there is no difference, both are one bit.
 ### `Vec2Binding` — four keys composed into a vector
 
 ```dart
-movement = descriptor.has<Vector2>(
+movement = Input.of<Vector2>(
   const Vec2Binding(
     up: InputKey.padLeftStickUp,
     down: InputKey.padLeftStickDown,
@@ -252,7 +252,7 @@ movement = descriptor.has<Vector2>(
 ### `StickBinding` — two axes composed into a vector
 
 ```dart
-movement = descriptor.has<Vector2>(
+movement = Input.of<Vector2>(
   const StickBinding(x: InputAxis.padLeftStickX, y: InputAxis.padLeftStickY),
 );
 ```
@@ -271,7 +271,7 @@ because how an analog value should be shaped is the game's question.
 ### `AxisBinding` — one axis as a `double`
 
 ```dart
-throttle = descriptor.has<double>(const AxisBinding(InputAxis.padRightTrigger), 0.0);
+throttle = Input.of<double>(const AxisBinding(InputAxis.padRightTrigger), 0.0);
 ```
 
 A trigger bound as a `TriggerBinding` is pulled or not; bound as an axis it is
@@ -287,7 +287,7 @@ type-level default for `double` — see [Defaults](#defaults).
 ### `MouseBinding` — pointer position
 
 ```dart
-pointer = descriptor.has<CursorPosition>(const MouseBinding());
+pointer = Input.of<CursorPosition>(const MouseBinding());
 ```
 
 `CursorPosition` carries `screenSpace` (window coordinates), `viewSpace` (within
@@ -299,7 +299,7 @@ relative to a pointer.
 ### `ContactBinding` — fingers on the screen
 
 ```dart
-contacts = descriptor.has<PointerContacts>(const ContactBinding());
+contacts = Input.of<PointerContacts>(const ContactBinding());
 ```
 
 A **contact** is one thing pressing on the screen: a finger, a stylus, or a
@@ -451,14 +451,14 @@ late Input<Vector2> move;
 late List<InputKey> savedKeys;
 -->
 ```dart
-attack = descriptor.has<bool>(
+attack = Input.of<bool>(
   CompositeBinding(
     const TriggerBinding(InputKey.spacebar),
     const TriggerBinding(InputKey.leftMouseButton),
   ),
 );
 
-move = descriptor.has<Vector2>(
+move = Input.of<Vector2>(
   CompositeBinding(
     const StickBinding(x: InputAxis.padLeftStickX, y: InputAxis.padLeftStickY),
     const Vec2Binding(
@@ -562,13 +562,9 @@ cannot tell the thumb from a thumbstick:
 
 <!-- snippet: in GameSystem -->
 ```dart
-@override
-void describeInputs(InputDescriptor input) {
-  super.describeInputs(input);
-  move = input.has<Vector2>(
-    const StickBinding(x: .virtualLeftStickX, y: .virtualLeftStickY),
-  );
-}
+final move = Input.of<Vector2>(
+  const StickBinding(x: .virtualLeftStickX, y: .virtualLeftStickY),
+);
 ```
 
 ### The axis pair is the address
@@ -678,17 +674,20 @@ resolution, or with no `GameView` — where it has no value:
 
 <!-- snippet: in Game2D -->
 ```dart
+// `bool -> false`, `Vector2 -> zero` and an empty `PointerContacts` are
+// registered by boot, before any of these.
 @override
-void describeInputs(InputDescriptor input) {
-  super.describeInputs(input);        // registers bool -> false, Vector2 -> zero
-  input.hasDefaultValue<double>(0);   // a type-level default for your own T
-  throttle = input.has<double>(binding, 0.5);   // this action's own default
-}
+List<InputDefault<Object?>> get inputDefaults => <InputDefault<Object?>>[
+  const InputDefault<double>(0),          // a type-level default for your own T
+];
+
+final throttle = Input.of<double>(binding, 0.5);   // this action's own default
 ```
 
-`super.describeInputs` is `@mustCallSuper` because dropping the shipped defaults
-is a *silent* failure: nothing breaks at declaration time, and the game runs
-until the first read of an unbound action, which then throws.
+The engine's own three are not in that list and cannot be dropped by an
+override of it. They used to be, behind a `super` call, and forgetting the call
+was a *silent* failure: nothing broke at declaration time and the game ran until
+the first read of an unbound action.
 
 The engine does **not** infer a default from `T`. Zero and false
 are real, meaningful values to a game, and inventing one turns a forgotten
@@ -755,10 +754,10 @@ class PlayerSystem extends GameSystem {
 `new() { … }` is the unnamed constructor; `PlayerSystem() { … }` is the same
 declaration spelled the older way and works identically.
 
-**Prefer this when the action is declared on a field**, which is the normal
-case. Use `onMounted` when it is declared in `describeInputs` instead — that
-makes it a `late final`, and a constructor body runs long before the hook does,
-so reading it there throws.
+**Prefer this**, which is what the constructor body is for: `this` is in scope
+there, so the listener can be an ordinary instance method. Use `onMounted` when
+the listener needs the rest of the object — a scene, a query, a sibling system —
+since none of that exists while the constructor runs.
 
 ## Rebinding
 
@@ -814,8 +813,8 @@ A button on the first real controller, and there are three seats plus the
 aggregate.
 
 ```dart
-p1Jump = descriptor.has<bool>(TriggerBinding(InputKey.padA(1)));
-p2Jump = descriptor.has<bool>(TriggerBinding(InputKey.padA(2)));
+p1Jump = Input.of<bool>(TriggerBinding(InputKey.padA(1)));
+p2Jump = Input.of<bool>(TriggerBinding(InputKey.padA(2)));
 ```
 
 A slotted key is built at run time instead of being a `const`, so two calls

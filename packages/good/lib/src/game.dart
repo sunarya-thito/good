@@ -543,52 +543,67 @@ abstract class Game implements RandomOwner {
   @mustCallSuper
   void describeScenes(GameSceneDescriptor descriptor) {}
 
-  /// The engine's own control commands, declared so both copies agree about
-  /// them before a game declares anything of its own. See
-  /// [_SetVisibleCommand] for why the four that reach the tick are
+  /// The engine's own control commands, declared by [_construct] into the
+  /// registrar it opens and hung on the game afterwards.
+  ///
+  /// Not five `Command.of` fields on this class, and the reason is the same one
+  /// that moved a component's per-mixin list onto its registrar: a field
+  /// initialiser here runs *last*, after every subclass's, and a `Game` built
+  /// inside another `Game`'s field initialiser would run these against the
+  /// outer game's registrar. That is the case [DeclarationContext.gamesConstructed]
+  /// exists to name, and it can only name it if nothing at this level has
+  /// already declared into the wrong registrar and reported a duplicate
+  /// instead. Declaring them ahead of `create()` also keeps them at indices
+  /// 0..4, where the `super`-first hook had them.
+  ///
+  /// See [_SetVisibleCommand] for why the four that reach the tick are
   /// receipt-delivered.
-  late final _SetVisibleCommand _setVisibleCommand;
-  late final _SetPausedCommand _setPausedCommand;
-  late final _SetTimeScaleCommand _setTimeScaleCommand;
-  late final _StepOnceCommand _stepOnceCommand;
-  late final _ReportDisabledSystemCommand _reportDisabledSystemCommand;
+  _EngineCommands? _engineCommands;
 
-  /// Declares every command this game understands, and registers the handlers
-  /// that run on the **Flutter** isolate.
+  _EngineCommands get _engine {
+    final engine = _engineCommands;
+    if (engine == null) {
+      throw StateError(
+        '$runtimeType was not built by Game.start, so it has none of the '
+        "engine's own control commands - pause, time scale, visibility and "
+        'step are all sent through one. `await Game.start($runtimeType.new)` '
+        'builds and boots one.',
+      );
+    }
+    return engine;
+  }
+
+  /// Registers the handlers that run on the **Flutter** isolate.
+  ///
+  /// The command itself is declared on a field with [Command.of]; this says
+  /// which side runs it:
   ///
   /// ```dart
-  /// late final Damage damage;
-  /// late final SaveGame save;
+  /// final damage = Command.of(Damage.new);   // handled on the game isolate
+  /// final save = Command.of(SaveGame.new);
   ///
   /// @override
   /// void describeCommands(CommandDescriptor descriptor) {
   ///   super.describeCommands(descriptor);
-  ///   damage = descriptor.has(Damage.new);   // handled on the game isolate
-  ///   save = descriptor.has(SaveGame.new);
   ///   descriptor.hasSink(save, _writeSaveFile);  // ...but this one here
   /// }
   /// ```
   ///
-  /// **Every command is declared here, whichever isolate handles it.** Runs
-  /// on both copies, in the same order, which is what makes a command's index
-  /// mean the same thing on both sides - the same argument that makes
-  /// archetype ids agree. `GameState.describeCommands` runs immediately after
-  /// this one and may only *handle* what this pass declared; a command
-  /// declared there would have an index on the game isolate and none on the
-  /// Flutter one, which is the same as having none.
+  /// A hook and not a field, because a handler is an instance member named
+  /// twice over - the command on this object and the function on it - and a
+  /// field initialiser can name neither.
   ///
-  /// Registering the handler *here* is what makes a command run on the
-  /// Flutter isolate, so the declaration site is the whole answer to "where
-  /// does this execute" and there is no second thing to keep in sync with it.
-  /// Because both copies run both passes, the sending side already knows
-  /// whether anything will read a command and refuses to send one nothing
+  /// Registering the handler here is what makes a command run on the Flutter
+  /// isolate; registering it in `GameState.describeCommands`, which runs
+  /// immediately after this, is what makes it run on the game isolate. Every
+  /// command has exactly one, and the sending side refuses to send one nothing
   /// handles - no boot-time handshake required.
   ///
   /// # Spawning from the Flutter isolate
   ///
-  /// There is no framework spawn command; the first command declared here is
-  /// index 0. A HUD button that adds an enemy is the canonical case this lane
-  /// exists for, and it is written as a command that says what it *means*:
+  /// There is no framework spawn command. A HUD button that adds an enemy is
+  /// the canonical case this lane exists for, and it is written as a command
+  /// that says what it *means*:
   ///
   /// ```dart
   /// final class SpawnEnemy extends GameCommand<Vector2, Entity> { ... }
@@ -606,19 +621,7 @@ abstract class Game implements RandomOwner {
   /// makes it name something that isolate cannot see. Naming the *intent*
   /// leaves the prefab lookup on the side that owns the memory.
   @mustCallSuper
-  void describeCommands(CommandDescriptor descriptor) {
-    _setVisibleCommand = descriptor.has(_SetVisibleCommand.new);
-    _setPausedCommand = descriptor.has(_SetPausedCommand.new);
-    _setTimeScaleCommand = descriptor.has(_SetTimeScaleCommand.new);
-    _stepOnceCommand = descriptor.has(_StepOnceCommand.new);
-    _reportDisabledSystemCommand = descriptor.has(
-      _ReportDisabledSystemCommand.new,
-    );
-    descriptor.hasSink(
-      _reportDisabledSystemCommand,
-      _onSystemDisabledReport,
-    );
-  }
+  void describeCommands(CommandDescriptor descriptor) {}
 
   void _onSystemDisabledReport(_DisabledSystemReport params) {
     onSystemDisabled(params.systemName, params.error, params.stackTrace);
@@ -673,7 +676,7 @@ abstract class Game implements RandomOwner {
     String error,
     String stackTrace,
   ) {
-    _reportDisabledSystemCommand((
+    _engine.reportDisabledSystem((
       systemName: systemName,
       error: error,
       stackTrace: stackTrace,
@@ -698,16 +701,16 @@ abstract class Game implements RandomOwner {
     GameState<Game> state,
   ) {
     descriptor
-      ..hasControlSink<bool>(_setVisibleCommand, state.setVisible)
+      ..hasControlSink<bool>(_engine.setVisible, state.setVisible)
       ..hasControlSink<bool>(
-        _setPausedCommand,
+        _engine.setPaused,
         (bool value) => state.paused = value,
       )
       ..hasControlSink<double>(
-        _setTimeScaleCommand,
+        _engine.setTimeScale,
         (double value) => state.timeScale = value,
       )
-      ..hasControlSignal(_stepOnceCommand, state.stepOnce);
+      ..hasControlSignal(_engine.stepOnce, state.stepOnce);
   }
 
   /// Declares this game's **auxiliary ring buffers** - shared-memory SPSC
@@ -742,9 +745,24 @@ abstract class Game implements RandomOwner {
   /// (see the class doc's "Two copies of one object"); which end does what
   /// is a convention between the two halves of whoever declared it.
   ///
-  /// Runs on both copies, before the spawn and again after it, so both agree
-  /// on the declared set *and on its order* - which is the handle's identity
-  /// on the wire.
+  /// Runs once, on main, before the spawn: `_bootMain` is main's half of boot
+  /// and the game isolate runs only `_bootGame`. The declared set and its
+  /// order - which is the handle's identity on the wire - reach the other copy
+  /// through the deep copy, already numbered, so there is nothing for the two
+  /// to disagree about.
+  ///
+  /// # Why this is still a hook
+  ///
+  /// Every other declaration a `Game` makes has moved onto the field that
+  /// holds it. A buffer has not, and the reason is `Renderer2D`, the only
+  /// override in any package's `lib`: it declares *one handoff per declared
+  /// camera view*, at a size derived from `spriteBatchBytes`. Both halves are
+  /// reads off `this` - the finished camera table and an overridable getter -
+  /// and a field initialiser has no `this` to read either from. Registering "a
+  /// buffer per view, sized later" and resolving it afterwards would settle
+  /// the count; the size is the half that does not, because it is per-subclass
+  /// configuration and `maxSpritesPerTick` is the documented place to raise
+  /// it.
   ///
   /// **A system cannot declare one**, and there is no
   /// `GameSystem.describeBuffers` to reach for. Systems are constructed on the
@@ -756,30 +774,6 @@ abstract class Game implements RandomOwner {
   /// `Game`.
   @mustCallSuper
   void describeBuffers(BufferDescriptor descriptor) {}
-
-  /// Declares this game's camera views - the places it can be drawn.
-  ///
-  /// ```dart
-  /// late final CameraView mainCamera;
-  ///
-  /// @override
-  /// void describeCameras(CameraDescriptor descriptor) {
-  ///   super.describeCameras(descriptor);
-  ///   mainCamera = descriptor.has();
-  /// }
-  /// ```
-  ///
-  /// Runs **before** [describeBuffers], and that ordering is what the split
-  /// of responsibility rests on: `good` knows a view exists and how big it is,
-  /// while whatever draws it (`goo2d`'s renderer, a future `goo3d`'s) sizes
-  /// and allocates its own per-view storage in its `describeBuffers`. This
-  /// kernel never learns what a frame is.
-  ///
-  /// A game that declares none draws nothing and is shown with
-  /// `GameView.headless` - a HUD-only or headless-plus-Flutter setup, which
-  /// is a first-class shape here, not a degenerate one.
-  @mustCallSuper
-  void describeCameras(CameraDescriptor descriptor) {}
 
   /// Registers the decoders for every payload type this game loads.
   ///
@@ -826,10 +820,31 @@ abstract class Game implements RandomOwner {
     loaders.register<AudioClip>(const AudioLoader());
   }
 
-  /// This game's declared camera views. Empty until [describeCameras] has
-  /// run; both isolate copies see the same table, because it rides the deep
-  /// copy like every other piece of declared state.
-  final CameraViewTable cameraViews = CameraViewTable();
+  /// This game's declared camera views - the places it can be drawn.
+  ///
+  /// One entry per `CameraView.of()` field, in the order the initialisers ran.
+  /// Both isolate copies see the same table, because it rides the deep copy
+  /// like every other piece of declared state.
+  ///
+  /// A game that declares none draws nothing and is shown with
+  /// `GameView.headless` - a HUD-only or headless-plus-Flutter setup, which is
+  /// a first-class shape here, not a degenerate one.
+  ///
+  /// `good` knows a view exists and how big it is; whatever draws it
+  /// (`goo2d`'s renderer, a future `goo3d`'s) sizes and allocates its own
+  /// per-view storage in [describeBuffers], which runs at boot with the whole
+  /// table already in hand. This kernel never learns what a frame is.
+  CameraViewTable get cameraViews => _cameraViews;
+
+  // **Not final**, for [_states]'s reason and replaced at the same moment: a
+  // subclass's field initialisers run before this class's, so at the moment
+  // `final mainCamera = CameraView.of()` runs there is no `Game` yet to hold
+  // a table. `Game.start` opens one ahead of the constructor call and puts it
+  // here afterwards.
+  //
+  // The one created here is what a `Game` constructed some other way gets:
+  // empty, closed, and the game will not boot anyway.
+  CameraViewTable _cameraViews = CameraViewTable();
 
   /// The seed every [RandomStream] this game declares is derived from.
   ///
@@ -856,24 +871,6 @@ abstract class Game implements RandomOwner {
   /// nothing.
   int get randomSeed => 0;
 
-  /// Declares this game's random streams - see [RandomStream].
-  ///
-  /// ```dart
-  /// late final RandomStream loot;
-  ///
-  /// @override
-  /// void describeRandom(RandomDescriptor descriptor) {
-  ///   super.describeRandom(descriptor);
-  ///   loot = descriptor.has();
-  /// }
-  /// ```
-  ///
-  /// Runs on main before the spawn, so the streams a game keeps in fields
-  /// cross to the game isolate already built. Declaration order is a stream's
-  /// identity, exactly as it is for a command.
-  @mustCallSuper
-  void describeRandom(RandomDescriptor descriptor) {}
-
   @override
   bool get randomDrawAllowed => runtimeOrNull?.state?.isSimulating ?? false;
 
@@ -885,11 +882,11 @@ abstract class Game implements RandomOwner {
       ? 'a $runtimeType that has not been started'
       : "the main isolate's copy of $runtimeType";
 
-  /// Declares this game's **input actions**, and the default value every
-  /// action of a given type falls back to.
+  /// The type-level fallbacks this game adds, on top of the three the engine
+  /// registers first.
   ///
-  /// Reach for [Input.of] first - a game is framework-built, so an action
-  /// goes on the field that holds it:
+  /// An action itself goes on the field that holds it - a game is
+  /// framework-built, so [Input.of] has a registry to declare into:
   ///
   /// ```dart
   /// class MyGame extends Game {
@@ -900,36 +897,29 @@ abstract class Game implements RandomOwner {
   /// The field name is the action's name, and it has to clear what [Game]
   /// already declares - a field called `pause` collides with [Game.pause].
   ///
-  /// This hook is the other way, and it stays: it is what
-  /// [InputDescriptor.hasDefaultValue] needs, since that hands nothing back
-  /// and so has no field to live on. The framework's own two defaults are
-  /// registered here for exactly that reason. Both forms compose, fields
-  /// first and hook second.
-  ///
-  /// Runs first in the boot pass's `describeInputs` sequence, before every
-  /// declared system's (see `GameSystem.describeInputs`), and all of them
-  /// share one [InputDescriptor] - so a type-level default registered by any
-  /// source is visible to every action, whoever declared it and in whatever
-  /// order.
-  ///
-  /// # The shipped defaults, and why `super` is not optional
-  ///
-  /// The implementation here registers `false` for `bool` and
-  /// `Vector2.zero()` for `Vector2`, which is what makes `TriggerBinding` and
-  /// `Vec2Binding` work with no ceremony. It is [mustCallSuper] because
-  /// dropping them is a *silent* failure: nothing breaks at declaration
-  /// time, and the game runs until the first read of an unbound action, which
-  /// then throws instead of returning `false`. An override that adds a
-  /// default for its own type looks like this:
+  /// A *type-level* fallback hands nothing back, so it has no field to sit on
+  /// and is configuration instead - an overridable getter, like [pageSize] and
+  /// [randomSeed]:
   ///
   /// ```dart
   /// @override
-  /// void describeInputs(InputDescriptor input) {
-  ///   super.describeInputs(input);
-  ///   input.hasDefaultValue<double>(0);
-  ///   throttle = input.has<double>();
-  /// }
+  /// List<InputDefault<Object?>> get inputDefaults => <InputDefault<Object?>>[
+  ///   const InputDefault<double>(0),
+  /// ];
+  ///
+  /// final throttle = Input.of<double>();
   /// ```
+  ///
+  /// The engine's own `false` for `bool`, `Vector2.zero()` for `Vector2` and
+  /// empty `PointerContacts` are registered by boot and are not in this list,
+  /// so an override replacing it wholesale cannot drop them. That is the whole
+  /// reason they are not here: the failure was silent - nothing broke at
+  /// declaration time and the game ran until the first read of an unbound
+  /// action.
+  ///
+  /// Read once, at boot, before every declared system's, and all of them go
+  /// into one registry - so a type-level default from any source is visible to
+  /// every action, whoever declared it and in whatever order.
   ///
   /// # Where the values come from
   ///
@@ -939,12 +929,8 @@ abstract class Game implements RandomOwner {
   /// A game with no `GameView` in the widget tree has nothing feeding it, so
   /// every action reads its default forever - correct, not broken, and spelled
   /// out in `InputDevice`'s doc.
-  @mustCallSuper
-  void describeInputs(InputDescriptor input) {
-    input.hasDefaultValue<bool>(false);
-    input.hasDefaultValue<Vector2>(Vector2.zero());
-    input.hasDefaultValue<PointerContacts>(PointerContacts.empty());
-  }
+  List<InputDefault<Object?>> get inputDefaults =>
+      const <InputDefault<Object?>>[];
 
   // --- declarations -------------------------------------------------------
   //
@@ -1007,15 +993,30 @@ abstract class Game implements RandomOwner {
   // thing that boots one.
   _StateDescriptor _states = _StateDescriptor();
 
-  // Every input action declared through a describeInputs pass this boot, plus
-  // the type-level defaults and the one raw device-state buffer they all
-  // resolve against. Unlike the buffers and channels above, an action's index
-  // is *not* a wire identity - what crosses the boundary is the fixed-size
-  // block of raw key bits, which is the same 16 bytes whatever a game
-  // declares. Which is why the two copies are allowed to disagree about what
-  // is in here: main runs `Game.describeInputs` and stops, while the
-  // simulating copy also runs every system's and then seals. Empty at spawn
-  // time like every other field here.
+  // Where `RandomStream.of` on a field of this game landed. **Not final**, for
+  // [_states]'s reason and replaced at the same moment: a subclass's field
+  // initialisers run before this class's, so at the moment
+  // `final loot = RandomStream.of()` runs there is no `Game` yet to hold
+  // anything. `Game.start` opens a registry ahead of the constructor call and
+  // puts it here afterwards.
+  RandomRegistry _randoms = RandomRegistry();
+
+  // Where `Command.of` on a field of this game landed. **Not final**, for
+  // [_states]'s reason and replaced at the same moment: a subclass's field
+  // initialisers run before this class's, so at the moment
+  // `final damage = Command.of(Damage.new)` runs there is no `Game` yet to
+  // hold anything. `Game.start` opens a registrar ahead of the constructor
+  // call and puts it here afterwards.
+  CommandRegistrar _declaredCommands = CommandRegistrar();
+
+  // Every input action declared this boot, plus the type-level defaults and
+  // the one raw device-state buffer they all resolve against. Unlike the
+  // buffers and channels above, an action's index is *not* a wire identity -
+  // what crosses the boundary is the fixed-size block of raw key bits, which
+  // is the same 16 bytes whatever a game declares. Which is why the two copies
+  // are allowed to disagree about what is in here: main collects the game's
+  // own `Input.of` fields and stops, while the simulating copy also builds
+  // every system and then seals.
   //
   // **Not final**, for [_states]'s reason and replaced at the same moment: an
   // `Input.of` on a field of this game runs before this class's own
@@ -1062,7 +1063,18 @@ abstract class Game implements RandomOwner {
   /// field. Same index-is-identity story as [bufferCount].
   int get stateChannelCount => _stateChannels.length;
 
-  /// How many input actions this copy has declared - see [describeInputs].
+  /// How many [RandomStream]s this copy has declared - one per
+  /// `RandomStream.of()` field. A stream's index is mixed into its seed, so
+  /// this is part of what makes a run replay.
+  int get randomStreamCount => _randoms.streamCount;
+
+  /// How many commands this copy has declared - one per `Command.of()` field,
+  /// including the five the engine declares for itself. A command's position
+  /// in that order is its identity on the wire.
+  int get commandCount => _declaredCommands.commandCount;
+
+  /// How many input actions this copy has declared - one per [Input.of]
+  /// field, plus every system's on the copy that ticks.
   int get inputActionCount => _inputs.actionCount;
 
   /// Where raw device state is written, on the copy that has Flutter
@@ -1273,8 +1285,8 @@ abstract class Game implements RandomOwner {
   /// `InputRegistry.source` is set from `G`, the tear-off's static type,
   /// because there is no object to ask for a `runtimeType` yet. That is the
   /// type at the call site, which is what a diagnostic naming the declaring
-  /// source wants. `_bootMain` sets it again from `runtimeType` before
-  /// `describeInputs`.
+  /// source wants. `_bootMain` sets it again from `runtimeType` before it
+  /// reads [inputDefaults].
   ///
   /// The pops are in a `finally`: a constructor that throws must not leave
   /// the next declaration writing into a window nobody owns.
@@ -1287,15 +1299,27 @@ abstract class Game implements RandomOwner {
   static G _construct<G extends Game>(G Function() create) {
     final states = _StateDescriptor();
     final inputs = InputRegistry()..source = '$G';
+    final randoms = RandomRegistry();
+    final views = CameraViewTable()..open();
+    final commands = CommandRegistrar();
+    // Before `create()`, so the engine's five take indices 0..4 and nothing at
+    // `Game`'s own field level declares into a registrar that may not be its.
+    final engine = _EngineCommands(commands);
     final restoreCount = DeclarationContext.gamesConstructed;
     DeclarationContext.gamesConstructed = 0;
     DeclarationContext.pushChannels(states);
     DeclarationContext.pushInputs(inputs);
+    DeclarationContext.pushRandoms(randoms);
+    DeclarationContext.pushCameraViews(views);
+    DeclarationContext.pushCommands(commands);
     final G game;
     final int built;
     try {
       game = create();
     } finally {
+      DeclarationContext.popCommands();
+      DeclarationContext.popCameraViews();
+      DeclarationContext.popRandoms();
       DeclarationContext.popInputs();
       DeclarationContext.popChannels();
       built = DeclarationContext.gamesConstructed;
@@ -1326,6 +1350,14 @@ abstract class Game implements RandomOwner {
     game._requireNotYetDescribed();
     game._states = states;
     game._inputs = inputs;
+    game._randoms = randoms;
+    game._declaredCommands = commands;
+    game._engineCommands = engine;
+    game._cameraViews = views;
+    // Closes the table and hands every declared view the game it belongs to.
+    // A view is drawn by a `GameView`, which needs to name its game, and a
+    // field initialiser had none to name.
+    views.bindGame(game);
     // After the game exists and before anything sizes the raw input block:
     // the contact table's length is the one part of that block a game gets to
     // choose, and the registry has to be open through `create()` for field
@@ -1490,7 +1522,7 @@ abstract class Game implements RandomOwner {
       'timeScale must not be negative (got $scale). Nothing in this engine '
       'is reversible.',
     );
-    _sendControl(() => _setTimeScaleCommand(scale));
+    _sendControl(() => _engine.setTimeScale(scale));
   }
 
   /// Stops the fixed tick without disturbing [setTimeScale], so a game paused
@@ -1499,17 +1531,17 @@ abstract class Game implements RandomOwner {
   /// Presentation keeps running, which is what lets a pause menu draw itself.
   /// Unrelated to [pauseWhenHidden]: a game paused here stays paused across
   /// being hidden and shown again.
-  void pause() => _sendControl(() => _setPausedCommand(true));
+  void pause() => _sendControl(() => _engine.setPaused(true));
 
   /// Undoes [pause]. A game that was never paused is unaffected.
-  void resume() => _sendControl(() => _setPausedCommand(false));
+  void resume() => _sendControl(() => _engine.setPaused(false));
 
   /// Advances exactly one fixed step, whatever the clock and scale say.
   ///
   /// For stepping a paused game - a debugger, a replay. Leaves the
   /// accumulator untouched, so unpausing afterwards resumes from where it
   /// was. See `GameState.stepOnce`.
-  void stepOnce() => _sendControl(_stepOnceCommand.call);
+  void stepOnce() => _sendControl(_engine.stepOnce.call);
 
   /// Sends one of the engine's control commands, if there is a run to send it
   /// to.
@@ -1533,14 +1565,11 @@ abstract class Game implements RandomOwner {
   // A `Game` instance may be started **once**, and that is the design rather
   // than a limitation waiting to be lifted. Two things say so, and they agree:
   //
-  //  * The declaration passes are not re-runnable, and that follows from the
-  //    API's own shape rather than from any implementation choice. The
-  //    typed-handle rule has every declaration land in a `late final` field
-  //    (`views = descriptor.has()`), and a `late final` is assignable exactly
-  //    once. A second pass throws `LateInitializationError` from inside the
-  //    user's own `describeCameras` - and does it *after* appending a second
-  //    set of views to the declared list, so an unguarded retry leaves the
-  //    instance permanently describing twice the storage it should.
+  //  * The declaration passes are not re-runnable. Every declaration is a
+  //    field initialiser (`final mainView = CameraView.of()`), and a field
+  //    initialiser runs exactly once, when the object is built. There is no
+  //    second pass to run: starting the same instance again would allocate
+  //    storage for the handles the first run is already using.
   //  * A declared handle **is** its run's storage. A `StateChannel` holds the
   //    `TripleBuffer`, a `BufferHandle` the `RingBuffer`, a `GameCommand` the
   //    sender that routes it. That is what keeps every one of them a plain
@@ -1646,24 +1675,39 @@ abstract class Game implements RandomOwner {
     // it; after it, `_bootAllocate` has a numbered list to allocate storage
     // for.
     _states.resolveInto(this, runtime);
-    // Here for the state channels' reason: this runs on main before the
-    // spawn, so the streams ride the object graph already built and both
-    // copies derive identically without a message.
-    describeRandom(RandomDescriptor(this, randomSeed));
+    // --- random streams: resolve what the fields collected ----------------
+    //
+    // Here for the state channels' reason: this runs on main before the spawn,
+    // so the streams ride the object graph already built and both copies
+    // derive identically without a message. A `RandomStream.of()` on a field
+    // of this game collected into `_randoms` while the constructor ran; this
+    // is where each one takes its index and the seed derived for it from
+    // [randomSeed], which is an overridable getter and so unreadable from the
+    // field initialiser that declared the stream.
+    _randoms.resolveInto(this, randomSeed);
 
-    // Before describeBuffers, deliberately: a 2D renderer declares one frame
-    // buffer *per declared view*, so the views have to exist by the time
-    // anything is asked what storage it needs.
-    describeCameras(GameCameraDescriptor(this, cameraViews));
+    // Every camera view was declared while the constructor ran, so the table
+    // is complete before this line: a 2D renderer declares one frame buffer
+    // *per declared view*, and asks how many there are here.
     describeBuffers(_BufferDescriptor(this));
-    // The framework's own shipped hasDefaultValue<bool>/<Vector2> are
-    // registered here, before any system can declare an action that needs
-    // them. (Not that the order actually matters for *reading* a default -
-    // defaults are matched to actions at seal(), once every source has spoken
-    // - but a duplicate registration should name the source that came second,
-    // and that reads better when the framework's own is first.)
+    // The framework's own three fallbacks, before any source can register one
+    // of its own. They are the engine's and not the game's, so they are here
+    // and not in [inputDefaults]: an override of that getter cannot drop them,
+    // which is the failure a `super` call used to be the only guard against -
+    // silent, and only visible at the first read of an unbound action.
+    //
+    // (Order does not matter for *reading* a default - defaults are matched to
+    // actions at seal(), once every source has spoken - but a duplicate
+    // registration should name the source that came second, and that reads
+    // better when the framework's own is first.)
+    _inputs.source = 'the engine';
+    const InputDefault<bool>(false).registerInto(_inputs);
+    InputDefault<Vector2>(Vector2.zero()).registerInto(_inputs);
+    InputDefault<PointerContacts>(PointerContacts.empty()).registerInto(
+      _inputs,
+    );
     _inputs.source = '$runtimeType';
-    describeInputs(_inputs);
+    _registerInputDefaults(inputDefaults);
 
     // Every user-supplied declaration has now run against this instance, and
     // none of them may run again - see [_requireNotYetDescribed]. Set before
@@ -1724,16 +1768,16 @@ abstract class Game implements RandomOwner {
       final system = systems[i];
       system.bindState(state);
       _inputs.source = '${system.runtimeType}';
-      system.describeInputs(_inputs);
+      _registerInputDefaults(system.inputDefaults);
     }
     // Closes the input declaration window, and matches each action with the
     // type-level default that applies to it - which cannot happen any earlier
-    // because the *last* system's describeInputs may be what registers it.
+    // because the *last* system's inputDefaults may be what registers it.
     //
-    // On this copy only. Main declared the `Game`'s own actions in [_bootMain]
-    // and never seals, because a system's declarations are not there to be
-    // sealed against: an action is resolved against the raw input block by the
-    // copy that ticks, and main only ever *writes* that block.
+    // On this copy only. Main collected the `Game`'s own actions while the
+    // constructor ran and never seals, because a system's declarations are not
+    // there to be sealed against: an action is resolved against the raw input
+    // block by the copy that ticks, and main only ever *writes* that block.
     _inputs.seal();
 
     // --- events: collect ------------------------------------------------
@@ -1755,6 +1799,17 @@ abstract class Game implements RandomOwner {
     // is the line that brings a scene into being - all of it, on one copy.
     // There is no longer a declarative half on main to leave undone.
     state.mount();
+  }
+
+  /// Puts one source's type-level fallbacks in the registry, in list order.
+  ///
+  /// A loop and not a spread, so the duplicate check in
+  /// `InputRegistry.hasDefaultValue` runs per entry and names the source that
+  /// came second.
+  void _registerInputDefaults(List<InputDefault<Object?>> defaults) {
+    for (var i = 0; i < defaults.length; i++) {
+      defaults[i].registerInto(_inputs);
+    }
   }
 
   /// Phase 2: shared memory, on the copy that owns it.
@@ -1823,16 +1878,19 @@ abstract class Game implements RandomOwner {
   void _bootFinalize(GameRuntime runtime) {
     final state = runtime.state!;
 
-    // --- describeCommands, both call sites ------------------------------
+    // --- commands: resolve what the fields collected --------------------
     //
-    // Same index-is-identity story as the buffers and channels above, and the
-    // same reason both copies run both passes: a command's position in this
-    // shared declaration order is what a record's header carries and what
-    // routes it back to the right command on the other side.
+    // Same index-is-identity story as the buffers and channels above: a
+    // command's position in the declaration order is what a record's header
+    // carries and what routes it back to the right command on the other side.
+    // The fields ran once, on main, while the constructor was running, and the
+    // game isolate inherits the numbering through the deep copy.
     //
-    // The framework declares none of its own, so index 0 is the game's first
-    // command. There used to be a built-in `SpawnEntityCommand` here, and it
-    // was deleted rather than moved: it took an `archetypeId`, which is a
+    // The engine's own five are still the first five: `_construct` declares
+    // them into the registrar before it calls the constructor, so a game's own
+    // fields number from 5 exactly as they did behind a `super`-first hook.
+    // There used to be a built-in `SpawnEntityCommand` too, and it was deleted
+    // rather than moved: it took an `archetypeId`, which is a
     // game-isolate identifier main has no business naming. A game that wants
     // main-triggered spawning declares a command that says what it *means*
     // ("spawn an enemy at x,y") and resolves it to a prefab in its own
@@ -1852,10 +1910,20 @@ abstract class Game implements RandomOwner {
     runtime.commands = commands;
     runtime.commandTransport = transport;
 
-    // The Game declares (and may handle on the Flutter isolate); the
-    // GameState may only handle, on the game isolate. Order matters only in
-    // that declaration has to precede handling, which this guarantees.
-    describeCommands(MainCommandDescriptor(commands));
+    // Numbering first: a handler is registered against a command's index, so
+    // every declaration has to be in the list before anything asks to handle
+    // one.
+    _declaredCommands.resolveInto(commands);
+    final main = MainCommandDescriptor(commands);
+    // The engine's own main-side handler, here and not in [describeCommands],
+    // because it names an instance method (`_onSystemDisabledReport`) and a
+    // base implementation a game is asked to `super` through is one more thing
+    // to forget. Before a game's, so a game overriding [onSystemDisabled] is
+    // what changes where a report goes, not the order it registered in.
+    main.hasSink(_engine.reportDisabledSystem, _onSystemDisabledReport);
+    // The Game handles on the Flutter isolate; the GameState handles on the
+    // game isolate. Each command has exactly one handler between the two.
+    describeCommands(main);
     state.describeCommands(GameCommandDescriptor(commands));
     commands.seal();
     // Attaches whichever rings this copy already has. Inline has none; the
@@ -3383,9 +3451,10 @@ abstract class BufferDescriptor {
 /// back and the declarer keeps in a `late final` field.
 ///
 /// This is the typed-handle rule applied to buffers. There is no name and no
-/// registry to search: the handle carries its own declaration index, and both
-/// copies of the `Game` produce the same handles in the same order because
-/// both run the same `describeBuffers` passes. So `drawBuffer.ring` is a
+/// registry to search: the handle carries its own declaration index, and the
+/// pass that assigns it runs once, on main, before the spawn - so the game
+/// isolate inherits the same handles in the same order. So `drawBuffer.ring`
+/// is a
 /// field read plus a null check, the analyzer catches a typo in the field
 /// name immediately, and there is no way to spell a buffer that does not
 /// exist.
@@ -3441,8 +3510,8 @@ final class BufferHandle {
 /// and the declarer keeps in a `late final` field.
 ///
 /// Same discipline as [BufferHandle] (the typed-handle rule): no name, no
-/// registry, and both copies produce the same handles in the same order because
-/// both run the same `describeBuffers` passes.
+/// registry, and one declaration pass on main whose result rides the spawn, so
+/// both copies hold the same handles in the same order.
 final class HandoffHandle {
   HandoffHandle._(this.index, this.slotBytes);
 
@@ -4134,6 +4203,31 @@ final class _StateDescriptor implements StateDescriptor {
 // declares. Both copies run the same pass in the same order, so the indices
 // agree the way they do for a game's own commands.
 
+/// The five commands the engine declares for every game, built by
+/// `Game._construct` into the registrar it opens around the constructor.
+///
+/// A holder and not five fields on `Game`, for the reason `Game._engine`
+/// gives: `Game`'s own field initialisers run after every subclass's, so a
+/// `Game` built inside another `Game`'s field initialiser would declare these
+/// into the outer game's registrar and be refused as a duplicate - in place of
+/// the message that actually explains what happened.
+final class _EngineCommands {
+  _EngineCommands(CommandRegistrar registrar)
+    : setVisible = registrar.declare(_SetVisibleCommand.new),
+      setPaused = registrar.declare(_SetPausedCommand.new),
+      setTimeScale = registrar.declare(_SetTimeScaleCommand.new),
+      stepOnce = registrar.declare(_StepOnceCommand.new),
+      reportDisabledSystem = registrar.declare(
+        _ReportDisabledSystemCommand.new,
+      );
+
+  final _SetVisibleCommand setVisible;
+  final _SetPausedCommand setPaused;
+  final _SetTimeScaleCommand setTimeScale;
+  final _StepOnceCommand stepOnce;
+  final _ReportDisabledSystemCommand reportDisabledSystem;
+}
+
 final class _SetVisibleCommand extends SinkCommand<bool> {
   final visible = Param.uint1();
 
@@ -4339,6 +4433,6 @@ class _VisibilityObserver with WidgetsBindingObserver {
     // `GameState.setVisible` is idempotent, which it has to be: the walk down
     // is `inactive -> hidden -> paused` and the walk back up reverses it, so
     // "not visible" arrives twice around any real backgrounding.
-    game._sendControl(() => game._setVisibleCommand(visible));
+    game._sendControl(() => game._engine.setVisible(visible));
   }
 }
