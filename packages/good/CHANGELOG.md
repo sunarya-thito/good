@@ -891,6 +891,22 @@
   both `@internal`, and nothing but the registry that allocates the buffer
   ever asked how long it was.
 
+* **`MemoryPool.adoptPage` is gone, and with it every way to hold a page this
+  isolate did not allocate** (#168).
+
+  It built a read-only `MemoryPage` over addresses another isolate published,
+  so a second copy of the engine could resolve an `Entity` into the writer's
+  memory. Nothing announces page addresses, and no copy but the simulating one
+  holds archetypes to resolve against, so the method had no caller in any
+  package.
+
+  `ArchetypeStorage.adoptPage`, the half that appended such a page to an
+  archetype's list, goes with it. It is `@internal` and was never public API.
+
+  Every `MemoryPage` now owns its own triple buffer. `MemoryPage.dispose`
+  frees it in every case, and `MemoryPage.allocate` has no borrowed-page
+  branch to reject.
+
 ### Added
 
 * **A dot shorthand for every binding, so an action names its source without

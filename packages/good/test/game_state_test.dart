@@ -425,6 +425,19 @@ void main() {
       run = game;
       await run.stop();
       expect(() => game.gameCount.value, throwsStateError);
+      // The message names the channel by its declaration index, so the
+      // number is the channel's own and not a constant. `alive` is declared
+      // sixth on _StateGame; gameCount above is first.
+      expect(
+        () => game.alive.value,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            startsWith('state channel #5 '),
+          ),
+        ),
+      );
     });
   });
 }

@@ -639,39 +639,12 @@ class ArchetypeStorage {
   @pragma('vm:prefer-inline')
   MemoryPage? pageAt(int index) => _pages[index];
 
-  /// Appends a page this storage did **not** allocate - the mirror half of
-  /// [allocateRow]'s `pool.allocatePage()`, and, like `MemoryPool.adoptPage`,
-  /// **called from nowhere in the engine**. It served a reading isolate that
-  /// re-ran the same scene registration and had to line its page list up with
-  /// the writer's; there is no such reader any more.
-  ///
-  /// Correctness rested on one thing: the writer announced its pages in
-  /// allocation order, one archetype at a time, and a `SendPort` preserves
-  /// message order - so appending here reproduced the writer's list index for
-  /// index, which is exactly what `Entity.pageIndex` addresses.
-  @internal
-  void adoptPage(MemoryPage page) {
-    // The same bound as the allocating side, for the same reason: this list
-    // is what `Entity.pageIndex` addresses, and a reader that silently wrapped
-    // would resolve handles to the wrong page while the writer was still
-    // correct - a divergence between the two copies, which is worse than
-    // either failing alone.
-    if (_pages.length >= ArchetypeRegistry.maxPagesPerArchetype) {
-      throw StateError(
-        'Archetype ${prefab.runtimeType} cannot adopt another page: the '
-        "${ArchetypeRegistry.maxPagesPerArchetype} an Entity's 16-bit page "
-        'index can address are all taken.',
-      );
-    }
-    _pages.add(page);
-  }
-
   /// Frees every page belonging to the scene at [sceneSlot] and tombstones
   /// its slot. Called by `GameState.unloadScene`.
   ///
-  /// Only the copy that allocated the pages may call this; the other holds
-  /// views and must be told to drop them first (the un-adopt handshake,
-  /// which does not exist yet - see `GameState.unloadScene`).
+  /// Only the copy that allocated the pages may call this. One copy allocates
+  /// and no other holds a view, so freeing here races nothing - see
+  /// `GameState.unloadScene`.
   @internal
   void releaseScene(int sceneSlot, MemoryPool pool) {
     for (var i = 0; i < _pages.length; i++) {

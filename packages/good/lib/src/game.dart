@@ -3644,8 +3644,8 @@ final class _BufferDescriptor implements BufferDescriptor {
 ///
 /// A non-generic interface, not `_StateChannelBase<Object?>` in the list: the
 /// whole point of these operations is that they are type-erased plumbing
-/// (allocate, announce, adopt, poll, free), and none of them wants to expose or
-/// launder the channel's value type.
+/// (allocate, poll, free), and none of them wants to expose or launder the
+/// channel's value type.
 abstract class _ChannelSlot {
   int get encodedBytes;
 
@@ -3659,16 +3659,9 @@ abstract class _ChannelSlot {
   /// `_StateDescriptor.resolveInto`, before anything allocates.
   void resolve(GameRuntime runtime, int index);
 
-  /// The live storage, non-null on the simulating copy from the moment
-  /// [allocateAndSeed] runs.
-  TripleBuffer? get liveBuffer;
-
   /// Simulating copy: allocate the triple buffer and publish the initial
   /// value.
   void allocateAndSeed();
-
-  /// Handle copy: take a view over the simulating copy's allocation.
-  void adopt({required int latestAddress, required List<int> slotAddresses});
 
   /// Rebuilds the cached `ByteData` views from the pointers they came from.
   ///
@@ -3724,8 +3717,12 @@ abstract class _StateChannelBase<T>
   _StateChannelBase({required this.format, required this.initialValue})
     : _lastSeen = initialValue;
 
-  /// Position in the shared declaration order - this channel's identity on
-  /// the wire, and what diagnostics name it by.
+  /// Position in the shared declaration order, and what this channel's error
+  /// messages name it by.
+  ///
+  /// Both isolate copies run the same declarations and so number the channels
+  /// the same way. Correspondence across the boundary comes from that shared
+  /// order; nothing sends this field.
   ///
   /// `-1` until [resolve], which is not a state a caller can observe: a
   /// channel is numbered in `Game._bootMain`, before the storage exists and
@@ -3798,9 +3795,6 @@ abstract class _StateChannelBase<T>
   @override
   int get encodedBytes => format.bytes;
 
-  @override
-  TripleBuffer? get liveBuffer => _buffer;
-
   /// Reads this channel's value out of [view], which is exactly
   /// [encodedBytes] long.
   T readFrom(ByteData view);
@@ -3818,17 +3812,6 @@ abstract class _StateChannelBase<T>
           Pointer<Uint8>.fromAddress(address).asTypedList(encodedBytes),
         ),
     ];
-  }
-
-  @override
-  void adopt({required int latestAddress, required List<int> slotAddresses}) {
-    _attach(
-      TripleBuffer.fromAddresses(
-        slotBytes: encodedBytes,
-        latestAddress: latestAddress,
-        slotAddresses: slotAddresses,
-      ),
-    );
   }
 
   @override
@@ -3893,7 +3876,7 @@ abstract class _StateChannelBase<T>
     if (!_mayWrite) {
       assert(
         false,
-        'state channel #\$index was written on the Game copy that does not '
+        'state channel #$index was written on the Game copy that does not '
         'simulate. A state channel is written by the copy that runs the tick '
         'loop (the game isolate, or the single copy under '
         'start(inline: true)) and read by both; a write from the handle the '

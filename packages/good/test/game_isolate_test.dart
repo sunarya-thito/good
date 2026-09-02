@@ -2547,7 +2547,7 @@ void main() {
   // scene had to negotiate - free the memory while a widget was mid-repaint
   // over it and you get wrong numbers, silently, which is the one failure a
   // shared-memory design cannot report. That was `_msgPageGone` /
-  // `_msgPagesDropped`, a deferred-free set, and `MemoryPool.adoptPage`.
+  // `_msgPagesDropped`, a deferred-free set, and a pool-side adoption call.
   //
   // Main holds no archetypes now and resolves no `Entity`, so it never had a
   // view to drop and the whole handshake is gone. The property that replaced

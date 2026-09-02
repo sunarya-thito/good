@@ -131,10 +131,9 @@ class MemoryPool {
   /// Allocated pages by index, **tombstoned and not removed** when one is
   /// freed.
   ///
-  /// The index is an identity, not a position: `Game._announceNewPages` walks
-  /// this list with a monotonic cursor so the reading isolate adopts pages in
-  /// the same order, and compacting it would make that cursor re-announce or
-  /// skip. `ArchetypeStorage._pages` tombstones for the same class of reason
+  /// The index is an identity, not a position: it is what [getPage] takes,
+  /// and compacting the list would renumber every page after the hole.
+  /// `ArchetypeStorage._pages` tombstones for the same class of reason
   /// (`Entity.pageIndex` indexes *it*), so the two agree by construction.
   final List<MemoryPage?> _pages = [];
 
@@ -296,9 +295,8 @@ class MemoryPool {
   /// `ArchetypeStorage`'s job (see archetype.dart) - it keeps its own page
   /// list and only calls this when none of its own pages have room.
   ///
-  /// [ownerArchetypeId] is carried purely so the page can be announced to a
-  /// reading isolate later (see [MemoryPage.ownerArchetypeId]); this pool
-  /// never interprets it.
+  /// [ownerArchetypeId] is recorded on the page (see
+  /// [MemoryPage.ownerArchetypeId]); this pool never interprets it.
   MemoryPage allocatePage({
     int ownerArchetypeId = -1,
     int ownerSceneSlot = -1,
@@ -309,45 +307,6 @@ class MemoryPool {
       );
     }
     final page = MemoryPage._(pageSize, ownerArchetypeId, ownerSceneSlot);
-    _pages.add(page);
-    return page;
-  }
-
-  /// Adds a read-only *view* of a page some other isolate allocated, from
-  /// the addresses that page published (see [MemoryPage.latestAddress] /
-  /// [MemoryPage.slotAddresses]).
-  ///
-  /// **Nothing in the engine calls this.** It was the pool half of a
-  /// cross-isolate handoff: pages are allocated lazily, by the writing
-  /// isolate, long after the spawn message has been copied, so a reader could
-  /// not be handed the whole pool up front - the writer announced each new
-  /// page as it appeared and the reader adopted it here, in the same order,
-  /// so page indices lined up on both sides. Main stopped reading component
-  /// data and the announcements went with it (see
-  /// `GameRuntime.releaseScenePages`). This method, `ArchetypeStorage`'s half
-  /// of it and `pool_test.dart`'s cover of both are what survives, and nobody
-  /// has decided yet whether a second reader is worth having again - #122
-  /// is where that gets settled.
-  ///
-  /// The returned page knows nothing about row occupancy - [MemoryPage]'s
-  /// stride, high-water mark and free list are writer-local Dart state, not
-  /// shared memory. An adopted page therefore supports [MemoryPage.resolveRead]
-  /// (resolving an `Entity` handle the reader was told about) and nothing
-  /// else: no `allocate`, no `rowOffsets`, no queries. It also never frees
-  /// the memory it points at - the allocating pool owns that.
-  MemoryPage adoptPage({
-    required int ownerArchetypeId,
-    required int latestAddress,
-    required List<int> slotAddresses,
-    int ownerSceneSlot = -1,
-  }) {
-    final page = MemoryPage._adopted(
-      pageSize,
-      ownerArchetypeId,
-      ownerSceneSlot,
-      latestAddress,
-      slotAddresses,
-    );
     _pages.add(page);
     return page;
   }
@@ -405,9 +364,7 @@ class MemoryPool {
     _bumpEpoch();
     final index = _pages.indexOf(page);
     if (index < 0) return;
-    // Tombstoned, not removed - see [_pages]. `dispose` is a no-op on an
-    // adopted page, so the reading isolate drops its view through the same
-    // call the writing isolate frees through.
+    // Tombstoned, not removed - see [_pages].
     _pages[index] = null;
     page.dispose();
   }
@@ -423,22 +380,7 @@ class MemoryPool {
 class MemoryPage {
   MemoryPage._(int capacity, this.ownerArchetypeId, this.ownerSceneSlot)
     : _buffer = TripleBuffer(capacity),
-      _capacity = capacity,
-      _ownsMemory = true;
-
-  MemoryPage._adopted(
-    int capacity,
-    this.ownerArchetypeId,
-    this.ownerSceneSlot,
-    int latestAddress,
-    List<int> slotAddresses,
-  ) : _buffer = TripleBuffer.fromAddresses(
-        slotBytes: capacity,
-        latestAddress: latestAddress,
-        slotAddresses: slotAddresses,
-      ),
-      _capacity = capacity,
-      _ownsMemory = false;
+      _capacity = capacity;
 
   final TripleBuffer _buffer;
   final int _capacity;
@@ -456,23 +398,15 @@ class MemoryPage {
   /// The `ArchetypeStorage.archetypeId` that asked [MemoryPool.allocatePage]
   /// for this page, or -1 if it was allocated without one.
   ///
-  /// Not used for anything on the writing side - the archetype already knows
-  /// its own pages. It existed so a page announcement crossing to a reading
-  /// isolate could say *which* archetype's page list to append the adopted
-  /// view to. Nothing announces pages any more; the field stays because
-  /// [MemoryPool.adoptPage] takes it.
+  /// Recorded at allocation and read by nothing in the engine - the archetype
+  /// already holds its own page list. It is here for a caller inspecting a
+  /// pool that wants to attribute a page to an archetype.
   final int ownerArchetypeId;
-
-  /// False for a page adopted from another isolate (see
-  /// [MemoryPool.adoptPage]) - such a page must never free the memory it
-  /// points at, and cannot allocate rows.
-  final bool _ownsMemory;
 
   int get capacityBytes => _capacity;
 
-  /// The addresses another isolate needs to reconstruct a read-only view of
-  /// this page via [MemoryPool.adoptPage] - the same raw-address handoff
-  /// `TripleBuffer.fromAddresses`/`RingBuffer.fromAddresses` use.
+  /// Where this page's triple-buffer slots live, as raw addresses - the same
+  /// form `TripleBuffer.fromAddresses`/`RingBuffer.fromAddresses` take.
   int get latestAddress => _buffer.latestAddress;
   List<int> get slotAddresses => _buffer.slotAddresses;
 
@@ -652,7 +586,6 @@ class MemoryPage {
   /// page. Every call on a given page must pass the same [size] - see the
   /// class doc.
   int allocate(int size) {
-    assert(_ownsMemory || _notAdopted());
     _strideBytes ??= size;
     assert(size == _strideBytes || _wrongStride(size));
     if (_freeOffsets.isNotEmpty) {
@@ -678,18 +611,6 @@ class MemoryPage {
     if (_deferring) _pendingOffsets.add(offset);
     return offset;
   }
-
-  /// Rejects a row allocated in a page this isolate only borrowed.
-  ///
-  /// Which isolate adopted which page is decided by the handoff code, not by
-  /// anything a player does, so [allocate] asserts it. The page-full check
-  /// below is the opposite kind of thing and stays: a page filling up is a
-  /// real runtime condition that depends on how many entities exist.
-  bool _notAdopted() => throw StateError(
-    'MemoryPage was adopted from another isolate (see '
-    'MemoryPool.adoptPage) - only the isolate that allocated it may '
-    'create rows in it.',
-  );
 
   /// Rejects a second stride on a page already locked to one.
   ///
@@ -749,9 +670,8 @@ class MemoryPage {
     return latest == null ? null : latest + offset;
   }
 
-  /// Frees this page's native memory - a no-op for an adopted page, which
-  /// only holds addresses into another isolate's allocation.
+  /// Frees this page's native memory.
   void dispose() {
-    if (_ownsMemory) _buffer.dispose();
+    _buffer.dispose();
   }
 }
