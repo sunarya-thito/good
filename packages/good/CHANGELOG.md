@@ -201,8 +201,8 @@
   `good generate`'s missing-`super` check is down to `describeStruct`. A field
   initialiser is not a chain, so there is no `super` to leave out.
 
-  `describeEvents` followed in its own commit, once the base pairs had a
-  registrar that does not come off the declaration stack. See its entry below.
+  `describeEvents` followed in its own commit, once the base pairs had a route
+  that does not come off the declaration stack. See its entry below.
 
 * **`describeEvents` is gone. An owner declares its dispatchers where it is
   built** (#287):
@@ -221,18 +221,25 @@
   | `void describeEvents(EventDescriptor d) { ... }` on a `SceneStruct` | `MainScene() { waveSpotted = events.has((l, w) => l.onWave(w)); }` |
 
   `Event.of` and `Event.signal` read the window the framework opens around a
-  constructor call, and two declarations cannot: a pair a base class declares
-  for every subclass, which is inherited however the subclass was built, and a
-  declaration on a `SceneStruct`, which the caller constructs with no window
-  open. Both have `this`, so both declare from a **constructor body** against
-  `EventBus.events` - the owner's own registrar, read off the object and never
-  off the stack. That is where `EntityStruct.mountedEvent`/`unmountedEvent`,
-  `GameSystem.mountEvent`/`unmountEvent` and `SceneStruct.mountedEvent`/
-  `unmountedEvent` are now declared.
+  constructor call, and a declaration on a `SceneStruct` cannot: the caller
+  constructs it, so no window is open while its fields initialise. A scene has
+  `this` in its constructor body, so that is where it declares its own events,
+  against `EventBus.events` - the owner's own registrar, read off the object
+  and never off the stack. A `SceneStruct` no longer needs a hook for events at
+  all. Its assets still do - `describeAssets` stays.
 
-  A scene declaring an event of its own writes it the same way, so a
-  `SceneStruct` no longer needs a hook for events at all. Its assets still do -
-  `describeAssets` stays.
+  The three pairs the framework declares for every subclass -
+  `SceneStruct.mountedEvent`/`unmountedEvent`,
+  `EntityStruct.mountedEvent`/`unmountedEvent` and
+  `GameSystem.mountEvent`/`unmountEvent` - are fields with their own
+  initialisers, through `Event.inherited` and `Event.inheritedSignal`. Those
+  build the dispatcher, record it, and return it: they read no window, so the
+  initialiser works whichever way the subclass was built. Which owner the
+  declaration belongs to is settled after every field initialiser in the
+  hierarchy has run, in `GameListenerBase`'s constructor body, which takes what
+  was recorded. Taking it there and not off the open window is what keeps the
+  scoping - a `SceneStruct` held on a `GameState` field is constructed inside
+  the state's window, and its pair still reaches that scene's composition.
 
   Every dispatcher now exists by the end of the constructor rather than at
   boot. `EventBinder.bind` is one pass, `collectListeners`, and a prefab built
@@ -249,7 +256,7 @@
 
   A prefab a fixture built with nothing open above it stays legal to hand over:
   `Event.*` throws on an empty stack, so it declared nothing anywhere else, and
-  its base pair went to a registrar of its own.
+  its inherited pair landed on the prefab as it always does.
 
 * **`describeType` is gone. A component declares its own type in a field**
   (#287):
@@ -1264,10 +1271,11 @@
   excluded because it was constructed by the caller, and the change above is
   what removes that (#91).
 
-  `GameSystem`'s own `mountEvent` and `unmountEvent` stay in `describeEvents`,
-  the way `EntityStruct`'s pair does. A base-class pair is inherited by every
+  `GameSystem`'s own `mountEvent` and `unmountEvent` did not move with it, the
+  way `EntityStruct`'s pair did not: a base-class pair is inherited by every
   system however it was built, and a system handed over pre-built through a
-  closure declares into whatever binder happens to be open above it.
+  closure declares into whatever binder happens to be open above it. The
+  `describeEvents` entry above is where both pairs ended up.
 
 * **An event is declared on the field that holds it.** `Event.of` carries a
   payload and `Event.signal` carries nothing, so a `GameState` or an

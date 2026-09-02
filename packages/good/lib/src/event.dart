@@ -396,10 +396,9 @@ abstract final class Event {
   /// constructor body, which runs once every field initialiser in the
   /// hierarchy has.
   ///
-  /// [of] is the route for a declaration a *user* writes, and it reads the
-  /// window on purpose: it is what refuses `late final wounded =
-  /// Event.of(...)` and a prefab built with nothing open above it, neither of
-  /// which this can see.
+  /// [of] is the route for a declaration a *user* writes. It reads the window,
+  /// and that read is what refuses `late final wounded = Event.of(...)` and a
+  /// prefab built with nothing open above it - neither of which this can see.
   @internal
   static EventDispatcher<L, E> inherited<L extends GameListener, E>(
     void Function(L listener, E payload) deliver, {
