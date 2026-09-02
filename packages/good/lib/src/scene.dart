@@ -118,7 +118,7 @@ abstract class SceneStruct extends GameListenerBase
   /// scenes possible at once: a `SceneStruct` is a *declaration* that may back
   /// many loaded [Scene]s, so it cannot own the storage those instances
   /// allocate out of. Pool identity therefore says nothing about scene
-  /// identity - see the check inside [addToSceneById].
+  /// identity - see the check inside [addEntityIn].
   ///
   /// Still injectable, just one level up: `Game.pageSize`/`Game.maxPages`
   /// configure it, and a test or headless harness that brings a scene up by
