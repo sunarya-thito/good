@@ -137,14 +137,16 @@ A command is a declared message with typed parameters, carried on a shared ring
 buffer — not a `SendPort` message per call.
 
 ```dart
-class SetPopulation extends ValueSink<int> {
+class SetPopulation extends SinkCommand<int> {
+  final count = Param.uint16();
+
   @override
-  final value = Param.uint16();
+  void bufferFromParams(ParamBuffer call, int params) => count[call] = params;
+
+  @override
+  int paramsFromBuffer(ParamBuffer call) => count[call];
 }
 ```
-
-The field is the whole declaration. `Param.uint16()` says how wide the number
-travels; `ValueSink<int>` says it is carried in and nothing comes back.
 
 Declare it on the `Game`, and handle it on the `GameState`:
 
@@ -193,37 +195,6 @@ onPressed: () => game.setPopulation(400),
 
 All four are awaitable — `await game.saveGame()` completes when the far side has
 handled it.
-
-### One value: `ValueSink` and `ValueSupplier`
-
-A command carrying one number, one flag, one string or one entity declares the
-field and nothing else. `ValueSink<P>` and `ValueSupplier<R>` supply the pair
-that `SinkCommand` and `SupplierCommand` leave abstract:
-
-<!-- snippet: top -->
-```dart
-class SetVolume extends ValueSink<double> {
-  @override
-  final value = Param.float32();
-}
-
-class CountAlive extends ValueSupplier<int> {
-  @override
-  final value = Param.uint16();
-}
-```
-
-The field still picks the width, and the width is on the wire: one Dart `int`
-is eleven declarations from `Param.uint1()` to `Param.int64()`. The type
-argument says what the call carries.
-
-`value`'s type joins the two halves, so the analyzer refuses what is not a
-carry. `Param.uint1()` is a `ParamPointer<int>` and will not satisfy a
-`ValueSink<bool>` — packing a `bool` into a bit is `params ? 1 : 0`, a
-conversion, and it belongs in a marshalling body. `Param.boolean()` is a
-`ParamPointer<bool>`, takes the same one bit, and carries a `bool` as it is.
-Two values are a record, and building a record names its fields, which is also
-a body. Anything outside both writes the pair itself.
 
 ### More than one parameter: use a record
 
@@ -336,9 +307,7 @@ of every variable-length one — and, if it declares any variable-length field, 
 The schema is separate from `P`: `P` is what your *code* passes, and
 the schema is what crosses the wire. `bufferFromParams` and `paramsFromBuffer`
 are the two places that translate between them, and they are the only places
-that mention a `ParamPointer` at all. When the translation is a copy of one
-field, `ValueSink` and `ValueSupplier` supply both and the command mentions
-none.
+that mention a `ParamPointer` at all.
 
 ### Handling on the Flutter side
 
@@ -419,15 +388,19 @@ buffer on the way back:
 
 <!-- snippet: top -->
 ```dart
-class TakeCensus extends ValueSupplier<Uint8List> {
+class TakeCensus extends SupplierCommand<Uint8List> {
+  final blob = Param.bytes();
+
   @override
-  final value = Param.bytes();
+  void bufferFromResult(ParamBuffer call, Uint8List result) =>
+      blob[call] = result;
+
+  // A copy, not the view: reading a `hasBytes` field hands back a window onto
+  // the batch's own buffer, and the transport reuses those bytes.
+  @override
+  Uint8List resultFromBuffer(ParamBuffer call) => Uint8List.fromList(blob[call]);
 }
 ```
-
-`ValueSupplier` copies the bytes out. Reading a `hasBytes` field hands back a
-window onto the batch's own buffer and the transport reuses those bytes, so a
-hand-written `resultFromBuffer` ends in `Uint8List.fromList(blob[call])`.
 
 Handle it on the read-only lane, and read it back on main:
 
@@ -593,9 +566,15 @@ An `Entity` still crosses perfectly well as a *value*, which is what
 `Param.entity()` is for:
 
 ```dart
-class WhoIsPlayer extends ValueSupplier<Entity> {
+class WhoIsPlayer extends SupplierCommand<Entity> {
+  final entity = Param.entity();
+
   @override
-  final value = Param.entity();
+  void bufferFromResult(ParamBuffer call, Entity result) =>
+      entity[call] = result;
+
+  @override
+  Entity resultFromBuffer(ParamBuffer call) => entity[call];
 }
 ```
 

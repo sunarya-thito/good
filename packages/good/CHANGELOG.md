@@ -19,37 +19,6 @@
 
 ### Added
 
-* **`ValueSink<P>` and `ValueSupplier<R>`**, a command carrying one value
-  declared as the field it travels in (#56):
-
-  ```dart
-  class SetPopulation extends ValueSink<int> {
-    @override
-    final value = Param.uint16();
-  }
-
-  class CountAlive extends ValueSupplier<int> {
-    @override
-    final value = Param.uint16();
-  }
-  ```
-
-  They supply the marshalling pair `SinkCommand` and `SupplierCommand` leave
-  abstract, in terms of `value`. What `SignalCommand` gives a command with no
-  field, these give a command with one.
-
-  The field still picks the width, and the width is on the wire: one Dart `int`
-  is eleven declarations from `Param.uint1()` to `Param.int64()`. `value`'s
-  type joins the two halves, so the analyzer refuses what is not a carry -
-  `Param.uint1()` is a `ParamPointer<int>` and does not satisfy a
-  `ValueSink<bool>`, since packing a `bool` into a bit is a conversion and a
-  different layout signature from `Param.boolean()`. Two fields are a record,
-  and building a record names its fields. Both write the pair themselves.
-
-  A `Uint8List` read off a record is a view onto the batch's own buffer and the
-  transport reuses that buffer, so both shapes copy it out. Every other pointer
-  kind already hands back a value of its own.
-
 * **`Command.of()`**, a command declared on the field that holds it (#287):
 
   ```dart

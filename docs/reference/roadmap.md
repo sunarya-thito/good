@@ -214,21 +214,6 @@ Things that work but will catch you out:
   `MultiplayerState.network` is a lookup of the one system that pass declares,
   not a second field naming it.
 
-- **A command carrying one value is a field; the rest write two methods.**
-  `ValueSink<P>` and `ValueSupplier<R>` supply the marshalling pair for a
-  command whose record is a single field, so its declaration is the `Param.*`
-  field and nothing else — what `SignalCommand` already gives a command with no
-  field at all. `ValueSupplier<Uint8List>` copies on the way out, since reading
-  a `Param.bytes()` field hands back a view onto the batch the transport
-  reuses.
-
-  Everything else writes the pair. A record-typed `P` names its fields to build
-  one, a `bool` travelling over `Param.uint1()` converts, and
-  `GameCommand<P, R>` has two directions to fill. The record type cannot supply
-  any of it: it carries no width, and one Dart `int` is eleven declarations
-  from `Param.uint1()` to `Param.int64()` that are different records on the
-  wire.
-
 - **A scene declares its assets in `describeAssets`.** `GameSceneDescriptor.has`
   takes the constructor now, so a declared scene's events go on fields like
   every other owner's. Assets do not: the `AssetDescriptor` is opened inside
