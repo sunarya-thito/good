@@ -9,6 +9,7 @@ import 'package:good/src/event.dart';
 import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
+import 'package:good/src/pool.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/struct.dart';
@@ -451,14 +452,26 @@ class _PrebuiltGame extends Game {
 /// construction finishes while the declarer is still being built. Both hear
 /// their own entities, so a pair that reached the wrong owner shows up as a
 /// listener count.
-class _NestedChild extends EntityStruct with Child, EntityLifecycleListener {
+class _NestedChild extends EntityStruct
+    with Child, EntityLifecycleListener, _Noted {
+  @override
+  String get noted => 'nestedChild';
+
+  /// Declared while the parent's window is open under this one, so which
+  /// window `Event.of` reads decides which prefab this dispatcher belongs to.
+  final own = Event.signal<_Noted>((listener) => listener.onNoted('own'));
+
   final List<Entity> mounts = <Entity>[];
 
   @override
   void onEntityMounted(Entity entity) => mounts.add(entity);
 }
 
-class _NestedParent extends EntityStruct with Parent, EntityLifecycleListener {
+class _NestedParent extends EntityStruct
+    with Parent, EntityLifecycleListener, _Noted {
+  @override
+  String get noted => 'nestedParent';
+
   final child = EntityStruct.of(_NestedChild.new);
 
   final List<Entity> mounts = <Entity>[];
@@ -1042,6 +1055,25 @@ void main() {
         parent.child.mounts.single,
         isNot(entity),
         reason: 'and what it heard is the child entity, not the parent one',
+      );
+    });
+
+    test('a nested prefab field declaration belongs to the nested prefab',
+        () {
+      final scene = _NestedScene();
+      scene.initializeScene(MemoryPool(pageSize: 4096, maxPages: 4));
+      final parent = scene.parent;
+
+      parent.child.own();
+
+      expect(
+        _Noted.log,
+        <String>['own:nestedChild'],
+        reason:
+            'Event.of reads the innermost open window, and the child window '
+            'is open inside the parent one while the child field initialisers '
+            'run. Read outermost-first this dispatcher would sit on the '
+            'parent binder and reach the parent instead',
       );
     });
 
