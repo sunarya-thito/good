@@ -587,25 +587,6 @@ the other side. What main can do with the handle it gets back is name that
 entity in a later command. To *watch* one, publish its fields: see
 [debugging without an inspector](thinking-in-ecs.md#debugging-without-an-inspector).
 
-## Frames and ticks
-
-<!-- snippet: plain -->
-<!-- snippet-setup
-void setState(void Function() fn) {}
-final listener = given<void Function(int)>();
--->
-<!-- snippet: skip GameRuntime.addTickListener is @internal and unreachable from a game -->
-```dart
-game.runtimeOrNull?.addTickListener((tick) => setState(() {}));
-game.runtimeOrNull?.removeTickListener(listener);
-```
-
-The listeners hang off the `GameRuntime`, which exists only while the game is
-running — hence the `?.`. `GameView` repaints from a `SchedulerBinding` frame
-callback and not from these, so you rarely need them: reach for one when
-something must react to the published snapshot moving rather than to the next
-frame.
-
 ## The widget surface
 
 `Game.buildView` is the game's *whole* Flutter surface. There is no second event

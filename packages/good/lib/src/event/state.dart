@@ -24,8 +24,8 @@ import 'package:good/src/declare.dart';
 ///    synchronously, inside the same call - the writer is right there.
 ///  * On the **main isolate**, the copy has no idea a write happened until
 ///    the game isolate's tick-completed message lands. So its listeners fire
-///    on the next tick notification, reconciled *before* `addTickListener`'s
-///    own callbacks run - a widget repainting off a tick sees this channel
+///    on the next tick notification, reconciled *before* the runtime's own
+///    tick listeners run - a widget repainting off a tick sees this channel
 ///    already up to date for the tick it is about to draw, never one tick
 ///    behind.
 ///

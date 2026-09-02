@@ -18,20 +18,21 @@ import 'package:good/src/game.dart';
 /// draw buffer, and a future `goo3d` would override with a native surface.
 /// Neither package needs its own `GameView`.
 ///
-/// # Push-driven, not vsync-polling
+/// # Where the repaint comes from
 ///
-/// There is no ticker and no `SchedulerBinding.addPersistentFrameCallback`.
-/// [Game.addTickListener] already fires on this isolate once per completed
-/// fixed tick - the "the published snapshot moved" signal - so a rebuild is
-/// scheduled from that and nothing polls. Note the rebuild here is of the
-/// *widget*; a renderer that only needs to repaint pixels (not rebuild the
-/// tree) should hang a `Listenable` off the same tick signal instead, which
-/// is what `Game2D`'s painter does - see its `repaint` wiring. This widget
-/// rebuilding per tick would defeat that, so it does **not** `setState` on
-/// every tick: it rebuilds only when what [Game.buildView]
-/// returns could have changed, which today means never automatically. The
-/// tick listener exists so a subclass or a future scene-change signal has
-/// somewhere to hook.
+/// This widget registers no frame callback of its own and calls `setState`
+/// nowhere. `initState` attaches the view, and attaching calls
+/// [Game.onViewAttached]; that is the hook a renderer arms its per-frame work
+/// from. `dispose` detaches, and [Game.onViewDetached] is where the renderer
+/// disarms it. `Game2D` arms a transient `SchedulerBinding` frame callback
+/// there, which samples the newest published frame and pulses each view's
+/// repaint signal - `GameRenderer2D._onFrame` documents that choice against a
+/// repaint scheduled off the game isolate's tick ping.
+///
+/// So the repaint signal belongs to the renderer, and a renderer that needs
+/// new pixels pulses a `Listenable` its painter listens to without rebuilding
+/// the tree. What this widget rebuilds is whatever [Game.buildView] returns,
+/// on the rebuilds Flutter already gives it.
 class GameView extends StatefulWidget {
   /// Shows [camera] - one of the views the game declared in
   /// [Game.describeCameras].

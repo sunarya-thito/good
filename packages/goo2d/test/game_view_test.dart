@@ -9,12 +9,12 @@ import 'package:goo2d/goo2d.dart';
 /// one inline run per isolate means one binding is enough.
 late Game run;
 
-// GameView, lane 3's main-isolate end: tick ping -> drain -> ingest ->
+// GameView, lane 3's main-isolate end: frame callback -> sample -> ingest ->
 // repaint, and nothing in paint() but a replay.
 //
 // The Game here runs through start(inline: true, autoTick: false) rather than
-// a real isolate: this widget only ever talks to a Game through
-// addTickListener and the renderer system's BufferHandle, both of which behave
+// a real isolate: this widget only ever talks to a Game through attachView
+// and the renderer system's BufferHandle, both of which behave
 // identically on the inline path, and driving GameState.advance() by hand is
 // what makes "a tick happened" a fact the test states rather than a race it
 // waits on. The isolate handoff itself is covered in good's
