@@ -13,19 +13,12 @@ late Game run;
 // that into a `TimelineSample`, which is an int. Everything else is derived.
 
 class _EnemyTimeline extends TimelineStruct {
-  late final Track<double> x;
-  late final Track<double> y;
-  late final Track<int> frame;
+  final x = Track.of<double>(0);
+  final y = Track.of<double>(-1);
+  final frame = Track.of<int>(0);
 
   late final TimelineAnimation entrance;
   late final TimelineAnimation blink;
-
-  @override
-  void describeTrack(TimelineDescriptor descriptor) {
-    x = descriptor.has<double>(0);
-    y = descriptor.has<double>(-1);
-    frame = descriptor.has<int>(0);
-  }
 
   @override
   void describeAnimation(TimelineAnimationDescriptor descriptor) {
@@ -45,23 +38,14 @@ class _EnemyTimeline extends TimelineStruct {
 }
 
 class _Enemy extends EntityStruct {
-  late final _EnemyTimeline timeline;
+  final timeline = TimelineStruct.of(_EnemyTimeline());
   final startedAt = Field.float64();
   final px = Field.float64();
-
-  @override
-  void describeAnimation(AnimationTypeDescriptor descriptor) {
-    super.describeAnimation(descriptor);
-    timeline = descriptor.has(_EnemyTimeline());
-  }
 }
 
 /// A timeline whose clip is declared and never keyed.
 class _Bare extends TimelineStruct {
   late final TimelineAnimation empty;
-
-  @override
-  void describeTrack(TimelineDescriptor descriptor) {}
 
   @override
   void describeAnimation(TimelineAnimationDescriptor descriptor) {
@@ -167,7 +151,7 @@ void main() {
       // microseconds. A seconds round-trip cannot see this: it would pass with
       // the milliseconds factor set to anything, because nothing on that path
       // divides by a thousand.
-      final track = Track<double>(0, (a, b, t) => a + (b - a) * t);
+      final track = Track.of<double>(0, lerp: (a, b, t) => a + (b - a) * t);
       _timeline().blink
           .track(track)
           .key(0.0)
@@ -208,7 +192,7 @@ void main() {
       // assertion is on the message and the argument name, not on the type:
       // `RangeError` is an `ArgumentError`, so `throwsArgumentError` would
       // pass on a range failure raised somewhere else entirely.
-      final track = Track<double>(0, (a, b, t) => a + (b - a) * t);
+      final track = Track.of<double>(0, lerp: (a, b, t) => a + (b - a) * t);
       expect(
         () => _timeline().blink.track(track).key(0.0, Seconds(-1.0)),
         throwsA(
@@ -220,6 +204,22 @@ void main() {
               )
               .having((e) => e.name, 'name', 'duration')
               .having((e) => e.invalidValue, 'invalidValue', -1.0),
+        ),
+      );
+    });
+
+    test('a timeline declared with nothing being constructed says why', () {
+      expect(
+        () => TimelineStruct.of(_Bare()),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('_Bare'),
+              contains('descriptor.has(MyStruct.new)'),
+            ),
+          ),
         ),
       );
     });
@@ -291,7 +291,7 @@ void main() {
       // A discrete track: no arithmetic on String, and no lerp supplied, so
       // it steps rather than guessing. Declared here rather than on the
       // fixture because the fallback is what is under test.
-      final track = Track<String>('idle', null);
+      final track = Track.of<String>('idle');
       final clip = _timeline().blink;
       clip.track(track).key('a').key('b', Seconds(1.0));
 
@@ -307,7 +307,7 @@ void main() {
     test('the curve belongs to the key being moved towards', () async {
       run = await _boot();
       final timeline = _timeline();
-      final eased = Track<double>(0, (a, b, t) => a + (b - a) * t);
+      final eased = Track.of<double>(0, lerp: (a, b, t) => a + (b - a) * t);
       timeline.blink
           .track(eased)
           .key(0.0)
