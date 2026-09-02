@@ -412,7 +412,9 @@ class _CallVisitor extends RecursiveAstVisitor<void> {
       final held = _HeldVisitor(entryPoints);
       initializer.accept(held);
       for (final call in held.found) {
-        sites.add(_Site(call.offset, call.name, variable.name.lexeme, deferral));
+        sites.add(
+          _Site(call.offset, call.name, variable.name.lexeme, deferral),
+        );
       }
     }
   }

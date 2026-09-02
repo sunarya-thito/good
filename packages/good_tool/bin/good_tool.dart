@@ -102,9 +102,9 @@ import 'package:path/path.dart' as p;
 /// component-bit table would not fit a query signature, `--check` found a
 /// committed file that is not what would be written now, or
 /// `--doc-references` found a doc comment naming something that is written
-/// nowhere, or `--declarations` found one held by a lazy variable. None of them
-/// reprint the usage: the invocation was right, so
-/// answering it with the invocation answers a question nobody asked.
+/// nowhere, or `--declarations` found a declaration held by a lazy variable.
+/// None of them reprint the usage: the invocation was right, so answering it
+/// with the invocation answers a question nobody asked.
 ///
 /// The seam between the two runs through the pair that look alike. A `--dir`
 /// that does not exist is 64 and a `--dir` holding no engine package is 65,
