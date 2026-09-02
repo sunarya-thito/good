@@ -415,14 +415,14 @@ class NineSliceBorder {
       insetLeft == 0 && insetTop == 0 && insetRight == 0 && insetBottom == 0;
 }
 
-/// One drawable rectangle belonging to an entity - what a single
-/// [SpriteDescriptor.has] call declares and returns.
+/// One drawable rectangle belonging to an entity - what a single [of] call
+/// declares and returns.
 ///
 /// An entity draws as many of these as it declared: a body plus a hat is two
-/// `has()` calls, two independent sets of row fields, and two draw records.
-/// That is the whole reason [Renderable2D] is a `MultiComponent` and these
-/// fields do not live on the mixin itself - Dart cannot mix a mixin in twice,
-/// so a second sprite has to come from a second `has()` and not from a
+/// `Sprite.of` fields, two independent sets of row fields, and two draw
+/// records. That is the whole reason [Renderable2D] is a `MultiComponent` and
+/// these fields do not live on the mixin itself - Dart cannot mix a mixin in
+/// twice, so a second sprite has to come from a second field and not from a
 /// second `with Renderable2D` (see `MultiComponent`'s own doc in `good`, and
 /// `Collider2D`/`ColliderBody`, which are the same shape for the same
 /// reason).
@@ -552,9 +552,76 @@ class Sprite({
   required final DataPointer<double> insetBottom,
 }) {
 
-  /// Writes all four pivot fields at once. The declared default (from
-  /// [SpriteDescriptor.has]) already covers the common case; this is for
-  /// changing a pivot at runtime without poking four fields by hand.
+  /// Declares one sprite on the prefab being constructed and returns the
+  /// handle to keep in a field.
+  ///
+  /// ```dart
+  /// class Player extends EntityStruct with Transform2D, Renderable2D {
+  ///   final body = Sprite.of(width: 32, height: 48);
+  ///   final hat = Sprite.of(width: 20, height: 8, zIndex: 1);
+  /// }
+  /// ```
+  ///
+  /// A named parameter for every field the returned sprite exposes, and each
+  /// one is that archetype's declared row default - so the common case needs
+  /// no `onEntityMounted` write at all.
+  ///
+  /// [width] and [height] are **world units**, not pixels, so they are not the
+  /// texture's dimensions and the generated `TextureSize` constants do not go
+  /// here directly. Drawing at the art's native size is
+  /// `TextureSize.<asset>Width * unitsPerPixel` for whatever scale the game
+  /// works in.
+  ///
+  /// [pivot] and [nineSliceBorder] arrive as value objects purely for
+  /// readability at the call site; each is unpacked into its own separate
+  /// `DataPointer<double>` fields here, because a row cannot store a value
+  /// object (see [Sprite]'s doc). That unpacking happens once, while the
+  /// prefab is constructed, so the value objects never touch a hot path.
+  ///
+  /// The prefab has to mix in [Renderable2D], which is what takes the
+  /// declaration; a prefab without it fails its registration by name.
+  static Sprite of({
+    TextureAsset? texture,
+    TextureFilter filter = TextureFilter.mipmap,
+    SpriteFrame frame = SpriteFrame.full,
+    int color = 0xFFFFFFFF,
+    double width = 0,
+    double height = 0,
+    int zIndex = 0,
+    bool visible = true,
+    RelativeOffset2D pivot = RelativeOffset2D.center,
+    NineSliceBorder nineSliceBorder = NineSliceBorder.none,
+  }) => MultiComponent.declare(
+    Sprite(
+      // The scene's own asset table, reached through the descriptor open
+      // around the whole of its bring-up. An address read out of this column
+      // means nothing except against that table, so the column names it.
+      texture: Field.optPacked(Asset.representation<Texture>(), texture),
+      filter: Field.uint2(filter.index),
+      frame: Field.packed(const SpriteFrames(), frame),
+      color: Field.uint32(color),
+      width: Field.float64(width),
+      height: Field.float64(height),
+      zIndex: Field.int32(zIndex),
+      visible: Field.boolean(visible),
+      pivotFractionX: Field.float64(pivot.fractionX),
+      pivotFractionY: Field.float64(pivot.fractionY),
+      pivotOffsetX: Field.float64(pivot.offsetX),
+      pivotOffsetY: Field.float64(pivot.offsetY),
+      borderLeft: Field.float32(nineSliceBorder.left),
+      borderTop: Field.float32(nineSliceBorder.top),
+      borderRight: Field.float32(nineSliceBorder.right),
+      borderBottom: Field.float32(nineSliceBorder.bottom),
+      insetLeft: Field.float64(nineSliceBorder.insetLeft),
+      insetTop: Field.float64(nineSliceBorder.insetTop),
+      insetRight: Field.float64(nineSliceBorder.insetRight),
+      insetBottom: Field.float64(nineSliceBorder.insetBottom),
+    ),
+  );
+
+  /// Writes all four pivot fields at once. The declared default (from [of])
+  /// already covers the common case; this is for changing a pivot at runtime
+  /// without poking four fields by hand.
   void setPivot(Entity entity, RelativeOffset2D pivot) {
     pivotFractionX[entity] = pivot.fractionX;
     pivotFractionY[entity] = pivot.fractionY;
@@ -569,7 +636,7 @@ class Sprite({
   /// Writes the whole nine-slice at once - both the four source cuts and the
   /// four destination insets. See [setPivot].
   ///
-  /// Both halves, and from the same fields [SpriteDescriptor.has] reads,
+  /// Both halves, and from the same fields [of] reads,
   /// because the insets are what decide whether the sprite is sliced at all
   /// (see [NineSliceBorder.isEmpty]). Writing only the cuts could neither
   /// turn slicing on for a sprite declared plain nor turn it off for one
@@ -588,79 +655,6 @@ class Sprite({
     insetTop[entity] = border.insetTop;
     insetRight[entity] = border.insetRight;
     insetBottom[entity] = border.insetBottom;
-  }
-}
-
-/// Declares one entity's sprites. One [has] call per sprite; a prefab that
-/// draws a body and a hat calls it twice and keeps both handles in fields.
-///
-/// [has] takes a named parameter for **every** field the returned [Sprite]
-/// exposes, and each one doubles as that archetype's declared row default -
-/// the standing `MultiComponent` convention (`ColliderDescriptor`'s
-/// `has*Collider` methods are the same shape) - so the common case needs no
-/// `onEntityMounted` write at all.
-class SpriteDescriptor._(
-  final DataDescriptor _data,
-
-  /// The table [Sprite.texture] resolves through. Threaded in from
-  /// `Renderable2D.describeStruct` and not assumed, because an object
-  /// field's address only means anything against the table that issued it -
-  /// there is no shared registry to fall back on.
-  final IntRepresentation<TextureAsset> _assets,
-  final List<Sprite> _sprites,
-) {
-
-  /// Declares one sprite and returns the handle to keep in a field
-  /// (the typed-handle rule - never a name to quote again later).
-  ///
-  /// [width] and [height] are **world units**, not pixels, so they are not the
-  /// texture's dimensions and the generated `TextureSize` constants do not go
-  /// here directly. Drawing at the art's native size is
-  /// `TextureSize.<asset>Width * unitsPerPixel` for whatever scale the game
-  /// works in.
-  ///
-  /// [pivot] and [nineSliceBorder] arrive as value objects purely for
-  /// readability at the call site; each is unpacked into its own separate
-  /// `DataPointer<double>` fields here, because a row cannot store a value
-  /// object (see [Sprite]'s doc). That unpacking happens once, during
-  /// the declare-time `describeStruct` pass, so the value objects never touch
-  /// a hot path.
-  Sprite has({
-    TextureAsset? texture,
-    TextureFilter filter = TextureFilter.mipmap,
-    SpriteFrame frame = SpriteFrame.full,
-    int color = 0xFFFFFFFF,
-    double width = 0,
-    double height = 0,
-    int zIndex = 0,
-    bool visible = true,
-    RelativeOffset2D pivot = RelativeOffset2D.center,
-    NineSliceBorder nineSliceBorder = NineSliceBorder.none,
-  }) {
-    final sprite = Sprite(
-      texture: _data.optPacked(_assets, texture),
-      filter: _data.hasUint2(filter.index),
-      frame: _data.hasPacked(const SpriteFrames(), frame),
-      color: _data.hasUint32(color),
-      width: _data.hasFloat64(width),
-      height: _data.hasFloat64(height),
-      zIndex: _data.hasInt32(zIndex),
-      visible: _data.hasBool(visible),
-      pivotFractionX: _data.hasFloat64(pivot.fractionX),
-      pivotFractionY: _data.hasFloat64(pivot.fractionY),
-      pivotOffsetX: _data.hasFloat64(pivot.offsetX),
-      pivotOffsetY: _data.hasFloat64(pivot.offsetY),
-      borderLeft: _data.hasFloat32(nineSliceBorder.left),
-      borderTop: _data.hasFloat32(nineSliceBorder.top),
-      borderRight: _data.hasFloat32(nineSliceBorder.right),
-      borderBottom: _data.hasFloat32(nineSliceBorder.bottom),
-      insetLeft: _data.hasFloat64(nineSliceBorder.insetLeft),
-      insetTop: _data.hasFloat64(nineSliceBorder.insetTop),
-      insetRight: _data.hasFloat64(nineSliceBorder.insetRight),
-      insetBottom: _data.hasFloat64(nineSliceBorder.insetBottom),
-    );
-    _sprites.add(sprite);
-    return sprite;
   }
 }
 
@@ -795,23 +789,20 @@ final class _ViewPlacement {
 /// A `MultiComponent`, because one entity commonly draws as several
 /// rectangles (a body and a hat, a panel and its icon) that move together but
 /// have their own size, colour, depth and visibility. Those per-sprite fields
-/// therefore live on [Sprite], one instance per [SpriteDescriptor.has] call
-/// inside [describeSprites], not on this mixin - the identical arrangement
+/// therefore live on [Sprite], one instance per [Sprite.of] call,
+/// not on this mixin - the identical arrangement
 /// `Collider2D`/`ColliderBody` uses for compound colliders, and for the
 /// identical reason (`with Renderable2D, Renderable2D` is not a thing Dart
 /// allows).
 mixin Renderable2D on MultiComponent {
-  /// Populated automatically as each [SpriteDescriptor.has] call inside
-  /// [describeSprites] runs, in declaration order. This is what
-  /// [GameRenderer2D] iterates - the generic path for anything that needs to
-  /// walk every sprite an entity has without knowing this prefab's own field
-  /// names, exactly as `Collider2D.bodies` is for colliders.
-  final List<Sprite> sprites = [];
-
-  /// Implemented by the concrete prefab - declares this entity type's sprites
-  /// via the [SpriteDescriptor] passed in.
-  @mustCallSuper
-  void describeSprites(SpriteDescriptor descriptor) {}
+  /// Every [Sprite.of] the prefab declared, in declaration order. This is
+  /// what [GameRenderer2D] iterates - the generic path for anything that
+  /// needs to walk every sprite an entity has without knowing this prefab's
+  /// own field names, exactly as `Collider2D.bodies` is for colliders.
+  ///
+  /// A mixin's field initialisers run after the applying class's, so this one
+  /// runs once every `Sprite.of` on the prefab has - see [MultiComponent].
+  final List<Sprite> sprites = MultiComponent.declared<Sprite>();
 
   // Registering the type here is not optional bookkeeping - it is what sets
   // this component's bit in the archetype signature, and therefore the only
@@ -824,18 +815,6 @@ mixin Renderable2D on MultiComponent {
   // `test/render_2d_test.dart` checks the signature bit directly, and does not
   // trust inspection.
   final renderable2DType = Component.type<Renderable2D>();
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    describeSprites(
-      SpriteDescriptor._(
-        data,
-        getScene<SceneStruct>().assets.of<Texture>(),
-        sprites,
-      ),
-    );
-  }
 }
 
 /// The renderer's per-tick working set: which (entity, sprite) pairs are

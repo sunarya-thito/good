@@ -56,7 +56,7 @@ const List<int> _counts = <int>[5000, 20000];
 /// all under the cursor - the control leg, where nothing can be rejected.
 const List<double> _spreads = <double>[0, 40];
 
-/// Set before the scene is described, read by [_Target.describeCollider]. A
+/// Set before the scene is described, read by [_Target]'s collider. A
 /// global because the prefab is built inside `describeScene` and the point is
 /// to vary it between runs, each of which resets the registries anyway.
 double _colliderOffset = 0;
@@ -71,17 +71,11 @@ class _Target extends EntityStruct
         Collider2D,
         PointerReceiver,
         HoverReceiver {
-  late final CircleBody hitArea;
-
-  @override
-  void describeCollider(ColliderDescriptor descriptor) {
-    super.describeCollider(descriptor);
-    hitArea = descriptor.hasCircleCollider(
-      radius: 20,
-      offsetX: _colliderOffset,
-      offsetY: _colliderOffset,
-    );
-  }
+  final hitArea = CircleBody.of(
+    radius: 20,
+    offsetX: _colliderOffset,
+    offsetY: _colliderOffset,
+  );
 }
 
 class _Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}

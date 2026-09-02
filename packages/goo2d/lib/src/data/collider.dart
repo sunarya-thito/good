@@ -1,13 +1,12 @@
 import 'dart:math' as math;
 
 import 'package:good/good.dart';
-import 'package:meta/meta.dart';
 
 /// One collider shape, plus the fields every shape shares (offset, enable,
 /// trigger flag, layer mask). Not instantiated directly - a concrete
-/// subtype ([CircleBody]/[BoxBody]/[CapsuleBody]/[PolygonBody]) is what
-/// [ColliderDescriptor]'s `has*Collider` methods return, so a caller only
-/// ever sees the fields the shape it asked for actually has - no dead
+/// subtype ([CircleBody]/[BoxBody]/[CapsuleBody]/[PolygonBody]) is declared
+/// through its own `of`, so a caller only ever sees the fields the shape it
+/// asked for actually has - no dead
 /// `halfWidth` on a circle, no branching on a shape-kind enum to know which
 /// fields are live. `sealed` so a `switch` over a `ColliderBody` (a future
 /// narrow-phase dispatch in Phase 2 physics) is exhaustiveness-checked by
@@ -187,6 +186,43 @@ final class CircleBody({
   required final DataPointer<double> radius,
 }) extends ColliderBody {
 
+  /// Declares a circle collider on the prefab being constructed and returns
+  /// the handle to keep in a field.
+  ///
+  /// ```dart
+  /// class Ball extends EntityStruct with Transform2D, Collider2D {
+  ///   final hull = CircleBody.of(radius: 8);
+  /// }
+  /// ```
+  ///
+  /// Every parameter is that archetype's declared row default. The prefab has
+  /// to mix in [Collider2D], which is what takes the declaration.
+  static CircleBody of({
+    double radius = 0,
+    double offsetX = 0,
+    double offsetY = 0,
+    bool enable = true,
+    bool isTrigger = false,
+    int layer = 0,
+    int excludeLayers = 0,
+    double density = 1,
+    double friction = 0.6,
+    double restitution = 0,
+  }) => MultiComponent.declare(
+    CircleBody(
+      offsetX: Field.float64(offsetX),
+      offsetY: Field.float64(offsetY),
+      enable: Field.boolean(enable),
+      isTrigger: Field.boolean(isTrigger),
+      layer: Field.int32(layer),
+      excludeLayers: Field.int32(excludeLayers),
+      density: Field.float64(density),
+      friction: Field.float64(friction),
+      restitution: Field.float64(restitution),
+      radius: Field.float64(radius),
+    ),
+  );
+
   @override
   bool containsLocalPoint(Entity entity, double x, double y) {
     final dx = x - offsetX[entity];
@@ -221,6 +257,46 @@ final class BoxBody({
   required final DataPointer<double> halfWidth,
   required final DataPointer<double> halfHeight,
 }) extends ColliderBody {
+
+  /// Declares an axis-aligned box collider on the prefab being constructed
+  /// and returns the handle to keep in a field.
+  ///
+  /// ```dart
+  /// class Crate extends EntityStruct with Transform2D, Collider2D {
+  ///   final hull = BoxBody.of(halfWidth: 8, halfHeight: 8);
+  /// }
+  /// ```
+  ///
+  /// Every parameter is that archetype's declared row default. The prefab has
+  /// to mix in [Collider2D], which is what takes the declaration.
+  static BoxBody of({
+    double halfWidth = 0,
+    double halfHeight = 0,
+    double offsetX = 0,
+    double offsetY = 0,
+    bool enable = true,
+    bool isTrigger = false,
+    int layer = 0,
+    int excludeLayers = 0,
+    double density = 1,
+    double friction = 0.6,
+    double restitution = 0,
+  }) => MultiComponent.declare(
+    BoxBody(
+      offsetX: Field.float64(offsetX),
+      offsetY: Field.float64(offsetY),
+      enable: Field.boolean(enable),
+      isTrigger: Field.boolean(isTrigger),
+      layer: Field.int32(layer),
+      excludeLayers: Field.int32(excludeLayers),
+      density: Field.float64(density),
+      friction: Field.float64(friction),
+      restitution: Field.float64(restitution),
+      halfWidth: Field.float64(halfWidth),
+      halfHeight: Field.float64(halfHeight),
+    ),
+  );
+
 
   @override
   bool containsLocalPoint(Entity entity, double x, double y) {
@@ -271,6 +347,46 @@ final class CapsuleBody({
   required final DataPointer<double> halfHeight,
 }) extends ColliderBody {
 
+  /// Declares a capsule collider on the prefab being constructed and returns
+  /// the handle to keep in a field.
+  ///
+  /// ```dart
+  /// class Actor extends EntityStruct with Transform2D, Collider2D {
+  ///   final hull = CapsuleBody.of(radius: 4, halfHeight: 12);
+  /// }
+  /// ```
+  ///
+  /// Every parameter is that archetype's declared row default. The prefab has
+  /// to mix in [Collider2D], which is what takes the declaration.
+  static CapsuleBody of({
+    double radius = 0,
+    double halfHeight = 0,
+    double offsetX = 0,
+    double offsetY = 0,
+    bool enable = true,
+    bool isTrigger = false,
+    int layer = 0,
+    int excludeLayers = 0,
+    double density = 1,
+    double friction = 0.6,
+    double restitution = 0,
+  }) => MultiComponent.declare(
+    CapsuleBody(
+      offsetX: Field.float64(offsetX),
+      offsetY: Field.float64(offsetY),
+      enable: Field.boolean(enable),
+      isTrigger: Field.boolean(isTrigger),
+      layer: Field.int32(layer),
+      excludeLayers: Field.int32(excludeLayers),
+      density: Field.float64(density),
+      friction: Field.float64(friction),
+      restitution: Field.float64(restitution),
+      radius: Field.float64(radius),
+      halfHeight: Field.float64(halfHeight),
+    ),
+  );
+
+
   @override
   bool containsLocalPoint(Entity entity, double x, double y) {
     final dx = x - offsetX[entity];
@@ -318,8 +434,8 @@ final class CapsuleBody({
 /// [ColliderBody.offsetX]/[offsetY]. `pointCount` (0..`pointsX.length`) is
 /// how many of the declared slots are actually in use per entity - the
 /// polygon's real vertex count can vary per entity even though the storage
-/// capacity is fixed per archetype (declared once, at `describeCollider`
-/// time).
+/// capacity is fixed per archetype (declared once, when the prefab is
+/// constructed).
 ///
 /// Points are two parallel `DataArrayPointer<double>` arrays (x, then y),
 /// not a single array of some `Vector2`-shaped element - `goo2d` has no
@@ -347,6 +463,94 @@ final class PolygonBody({
   /// `onEntityMounted` instead.
   required final DataPointer<int> pointCount,
 }) extends ColliderBody {
+
+  /// Declares a polygon collider on the prefab being constructed and returns
+  /// the handle to keep in a field.
+  ///
+  /// ```dart
+  /// class Ramp extends EntityStruct with Transform2D, Collider2D {
+  ///   final hull = PolygonBody.of(points: [(0, 0), (10, 0), (10, 5)]);
+  /// }
+  /// ```
+  ///
+  /// [points] is the outline in local space, `(x, y)` per vertex, and it
+  /// doubles as the archetype's default row state: every entity of this
+  /// prefab starts with those vertices and `pointCount` set to
+  /// `points.length`. Writing `pointsX`/`pointsY` per entity still gives an
+  /// entity its own shape.
+  ///
+  /// [maxPoints] is the storage capacity, fixed per archetype at declare
+  /// time, and defaults to `points.length` - or to 8 for a prefab that
+  /// declares no outline. Reserving more than [points] fills leaves slots an
+  /// entity can grow into, `pointCount` saying how many it currently uses.
+  ///
+  /// The default of 8 is Box2D's hard cap on a single convex polygon
+  /// (`b2_maxPolygonVertices`). A larger capacity is allowed: containment
+  /// here is even-odd crossing, which handles any outline, so a polygon used
+  /// for picking is not bound by what a solver can simulate. A physics
+  /// backend that cannot take the shape says so itself.
+  ///
+  /// An outline of one or two points is rejected: it encloses no area, so
+  /// [PolygonBody.containsLocalPoint] and any solver alike read it as nothing
+  /// at all.
+  ///
+  /// The prefab has to mix in [Collider2D], which is what takes the
+  /// declaration.
+  static PolygonBody of({
+    List<(double, double)>? points,
+    int? maxPoints,
+    double offsetX = 0,
+    double offsetY = 0,
+    bool enable = true,
+    bool isTrigger = false,
+    int layer = 0,
+    int excludeLayers = 0,
+    double density = 1,
+    double friction = 0.6,
+    double restitution = 0,
+  }) {
+    final outline = points ?? const <(double, double)>[];
+    if (points != null && outline.length < 3) {
+      throw ArgumentError.value(
+        points,
+        'points',
+        'a polygon needs at least three points',
+      );
+    }
+    final capacity = maxPoints ?? (points == null ? 8 : outline.length);
+    if (capacity < outline.length) {
+      throw ArgumentError.value(
+        capacity,
+        'maxPoints',
+        'must hold every declared point (${outline.length})',
+      );
+    }
+    return MultiComponent.declare(
+      PolygonBody(
+        offsetX: Field.float64(offsetX),
+        offsetY: Field.float64(offsetY),
+        enable: Field.boolean(enable),
+        isTrigger: Field.boolean(isTrigger),
+        layer: Field.int32(layer),
+        excludeLayers: Field.int32(excludeLayers),
+        density: Field.float64(density),
+        friction: Field.float64(friction),
+        restitution: Field.float64(restitution),
+        pointsX: Field.arrayOf(
+          .float64,
+          capacity,
+          List<double>.generate(outline.length, (i) => outline[i].$1),
+        ),
+        pointsY: Field.arrayOf(
+          .float64,
+          capacity,
+          List<double>.generate(outline.length, (i) => outline[i].$2),
+        ),
+        pointCount: Field.int32(outline.length),
+      ),
+    );
+  }
+
 
   /// Even-odd (crossing-number) containment, which handles convex and
   /// concave polygons alike - Box2D's own shapes are convex, but nothing
@@ -416,207 +620,20 @@ final class PolygonBody({
   }
 }
 
-/// Declares one entity's colliders. `Collider2D` (below) is a
-/// `MultiComponent` - an entity can declare several bodies, one call per
-/// `has*Collider` invocation, and a compound collider is simply calling
-/// more than one of them, not a separate shape kind.
-///
-/// Every `has*Collider` method takes named parameters for every field its
-/// returned body exposes, doubling as that archetype's default row state -
-/// the standing `MultiComponent` convention (see `Renderable2D.Sprite`'s
-/// `SpriteDescriptor.has` for the same shape) - so the common case needs no
-/// separate `onEntityMounted` write.
-class ColliderDescriptor._(
-  final DataDescriptor _data,
-  final List<ColliderBody> _bodies,
-) {
-
-  CircleBody hasCircleCollider({
-    double radius = 0,
-    double offsetX = 0,
-    double offsetY = 0,
-    bool enable = true,
-    bool isTrigger = false,
-    int layer = 0,
-    int excludeLayers = 0,
-    double density = 1,
-    double friction = 0.6,
-    double restitution = 0,
-  }) {
-    final body = CircleBody(
-      offsetX: _data.hasFloat64(offsetX),
-      offsetY: _data.hasFloat64(offsetY),
-      enable: _data.hasBool(enable),
-      isTrigger: _data.hasBool(isTrigger),
-      layer: _data.hasInt32(layer),
-      excludeLayers: _data.hasInt32(excludeLayers),
-      density: _data.hasFloat64(density),
-      friction: _data.hasFloat64(friction),
-      restitution: _data.hasFloat64(restitution),
-      radius: _data.hasFloat64(radius),
-    );
-    _bodies.add(body);
-    return body;
-  }
-
-  BoxBody hasBoxCollider({
-    double halfWidth = 0,
-    double halfHeight = 0,
-    double offsetX = 0,
-    double offsetY = 0,
-    bool enable = true,
-    bool isTrigger = false,
-    int layer = 0,
-    int excludeLayers = 0,
-    double density = 1,
-    double friction = 0.6,
-    double restitution = 0,
-  }) {
-    final body = BoxBody(
-      offsetX: _data.hasFloat64(offsetX),
-      offsetY: _data.hasFloat64(offsetY),
-      enable: _data.hasBool(enable),
-      isTrigger: _data.hasBool(isTrigger),
-      layer: _data.hasInt32(layer),
-      excludeLayers: _data.hasInt32(excludeLayers),
-      density: _data.hasFloat64(density),
-      friction: _data.hasFloat64(friction),
-      restitution: _data.hasFloat64(restitution),
-      halfWidth: _data.hasFloat64(halfWidth),
-      halfHeight: _data.hasFloat64(halfHeight),
-    );
-    _bodies.add(body);
-    return body;
-  }
-
-  CapsuleBody hasCapsuleCollider({
-    double radius = 0,
-    double halfHeight = 0,
-    double offsetX = 0,
-    double offsetY = 0,
-    bool enable = true,
-    bool isTrigger = false,
-    int layer = 0,
-    int excludeLayers = 0,
-    double density = 1,
-    double friction = 0.6,
-    double restitution = 0,
-  }) {
-    final body = CapsuleBody(
-      offsetX: _data.hasFloat64(offsetX),
-      offsetY: _data.hasFloat64(offsetY),
-      enable: _data.hasBool(enable),
-      isTrigger: _data.hasBool(isTrigger),
-      layer: _data.hasInt32(layer),
-      excludeLayers: _data.hasInt32(excludeLayers),
-      density: _data.hasFloat64(density),
-      friction: _data.hasFloat64(friction),
-      restitution: _data.hasFloat64(restitution),
-      radius: _data.hasFloat64(radius),
-      halfHeight: _data.hasFloat64(halfHeight),
-    );
-    _bodies.add(body);
-    return body;
-  }
-
-  /// [points] is the outline in local space, `(x, y)` per vertex, and it
-  /// doubles as the archetype's default row state: every entity of this
-  /// prefab starts with those vertices and `pointCount` set to
-  /// `points.length`. Writing `pointsX`/`pointsY` per entity still gives an
-  /// entity its own shape.
-  ///
-  /// [maxPoints] is the storage capacity, fixed per archetype at declare
-  /// time, and defaults to `points.length` - or to 8 for a prefab that
-  /// declares no outline. Reserving more than [points] fills leaves slots an
-  /// entity can grow into, `pointCount` saying how many it currently uses.
-  ///
-  /// The default of 8 is Box2D's hard cap on a single convex polygon
-  /// (`b2_maxPolygonVertices`). A larger capacity is allowed: containment
-  /// here is even-odd crossing, which handles any outline, so a polygon used
-  /// for picking is not bound by what a solver can simulate. A physics
-  /// backend that cannot take the shape says so itself.
-  ///
-  /// An outline of one or two points is rejected: it encloses no area, so
-  /// [PolygonBody.containsLocalPoint] and any solver alike read it as nothing
-  /// at all.
-  PolygonBody hasPolygonCollider({
-    List<(double, double)>? points,
-    int? maxPoints,
-    double offsetX = 0,
-    double offsetY = 0,
-    bool enable = true,
-    bool isTrigger = false,
-    int layer = 0,
-    int excludeLayers = 0,
-    double density = 1,
-    double friction = 0.6,
-    double restitution = 0,
-  }) {
-    final outline = points ?? const <(double, double)>[];
-    if (points != null && outline.length < 3) {
-      throw ArgumentError.value(
-        points,
-        'points',
-        'a polygon needs at least three points',
-      );
-    }
-    final capacity = maxPoints ?? (points == null ? 8 : outline.length);
-    if (capacity < outline.length) {
-      throw ArgumentError.value(
-        capacity,
-        'maxPoints',
-        'must hold every declared point (${outline.length})',
-      );
-    }
-    final body = PolygonBody(
-      offsetX: _data.hasFloat64(offsetX),
-      offsetY: _data.hasFloat64(offsetY),
-      enable: _data.hasBool(enable),
-      isTrigger: _data.hasBool(isTrigger),
-      layer: _data.hasInt32(layer),
-      excludeLayers: _data.hasInt32(excludeLayers),
-      density: _data.hasFloat64(density),
-      friction: _data.hasFloat64(friction),
-      restitution: _data.hasFloat64(restitution),
-      pointsX: _data.hasArrayOf(
-        .float64,
-        capacity,
-        List<double>.generate(outline.length, (i) => outline[i].$1),
-      ),
-      pointsY: _data.hasArrayOf(
-        .float64,
-        capacity,
-        List<double>.generate(outline.length, (i) => outline[i].$2),
-      ),
-      pointCount: _data.hasInt32(outline.length),
-    );
-    _bodies.add(body);
-    return body;
-  }
-}
-
 /// A `MultiComponent`: an entity can declare several bodies (a compound
-/// collider is just calling `has*Collider` more than once), reached
+/// collider is two `<Shape>Body.of` fields), reached
 /// generically via [bodies] by anything that needs to walk every collider
 /// an entity has without knowing this prefab's own field names - the same
 /// role `Renderable2D.sprites` plays for sprites.
 mixin Collider2D on MultiComponent {
-  /// Populated automatically as each `has*Collider` call inside
-  /// [describeCollider] runs.
-  final List<ColliderBody> bodies = [];
-
-  /// Implemented by the concrete prefab - declares this entity type's
-  /// colliders via the [ColliderDescriptor] passed in.
-  @mustCallSuper
-  void describeCollider(ColliderDescriptor descriptor) {}
+  /// Every `<Shape>Body.of` the prefab declared, in declaration order.
+  ///
+  /// A mixin's field initialisers run after the applying class's, so this one
+  /// runs once every body on the prefab has been declared - see
+  /// `MultiComponent`.
+  final List<ColliderBody> bodies = MultiComponent.declared<ColliderBody>();
 
   final collider2DType = Component.type<Collider2D>();
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    describeCollider(ColliderDescriptor._(data, bodies));
-  }
 }
 
 /// One collider's involvement in a collision or trigger event - what a
@@ -624,8 +641,8 @@ mixin Collider2D on MultiComponent {
 /// [ColliderBody] base type (a collision can involve any shape); cast to
 /// the concrete subtype (`event.source as BoxBody`) for shape-specific
 /// fields, or skip the cast entirely when the listener already knows the
-/// concrete type of the body it declared (see `describeCollider`'s own
-/// `late final BoxBody boxCollider` style fields).
+/// concrete type of the body it declared (`final hull = BoxBody.of(...)`
+/// keeps the concrete type).
 ///
 /// **A single instance is reused for every dispatch.** A physics step can
 /// produce hundreds of contacts, and every framework event is hot path

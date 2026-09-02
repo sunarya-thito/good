@@ -70,7 +70,7 @@ int _hsv(double hue, double saturation, double value) {
 /// scene-graph case, which does use one.
 class Mote extends EntityStruct
     with Transform2D, Renderable2D, EntityLifecycleListener {
-  late final Sprite body;
+  final body = Sprite.of(width: 14, height: 14, texture: Asset.of(discTexture));
   final texture = Asset.of(discTexture);
 
   /// Polar coordinates, kept per entity because the movement is a function of
@@ -97,12 +97,6 @@ class Mote extends EntityStruct
   /// Plain Dart state on the prefab: it lives on the game isolate and is never
   /// shared, so it costs nothing across the boundary.
   int _spawned = 0;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    body = descriptor.has(width: 14, height: 14, texture: texture);
-  }
 
   @override
   void onEntityMounted(Entity entity) {

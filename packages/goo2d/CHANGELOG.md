@@ -2,6 +2,46 @@
 
 ### Breaking
 
+* **`describeSprites` and `describeCollider` are gone. A sprite and a collider
+  go on the fields that hold them** (#287):
+
+  ```dart
+  class Player extends EntityStruct with Transform2D, Renderable2D, Collider2D {
+    final body = Sprite.of(width: 64, height: 64, color: 0xFF4FC3F7);
+    final hat = Sprite.of(width: 20, height: 8, zIndex: 1);
+    final hitbox = CircleBody.of(radius: 32);
+  }
+  ```
+
+  | before | after |
+  |---|---|
+  | `void describeSprites(SpriteDescriptor d) { s = d.has(...); }` | `final s = Sprite.of(...);` |
+  | `d.hasCircleCollider(...)` | `CircleBody.of(...)` |
+  | `d.hasBoxCollider(...)` | `BoxBody.of(...)` |
+  | `d.hasCapsuleCollider(...)` | `CapsuleBody.of(...)` |
+  | `d.hasPolygonCollider(...)` | `PolygonBody.of(...)` |
+
+  `SpriteDescriptor` and `ColliderDescriptor` go with them, and so do
+  `Renderable2D`'s and `Collider2D`'s `describeStruct` overrides. Every named
+  parameter, every default and every returned handle is unchanged.
+  `Renderable2D.sprites` and `Collider2D.bodies` still hold every declaration
+  in declaration order; they are taken from the prefab's own fields now - see
+  `MultiComponent.declared` in `package:good`.
+
+  A sprite's texture is named where the sprite is, and a field initialiser
+  cannot read a sibling field, so a prefab that kept the handle in one passes
+  the key instead:
+
+  ```dart
+  final sprite = Sprite.of(texture: Asset.of(Textures.player), width: 64);
+  ```
+
+  `Asset.of` is idempotent per identity, so naming one key twice still gives
+  one handle, one address and one decode.
+
+  A prefab declaring a `Sprite` without `with Renderable2D`, or a body without
+  `with Collider2D`, fails its registration by name.
+
 * **The `describeType` overrides are gone; each component declares its type in
   a field** (#287). `Transform2D`, `WorldTransform2D`, `ScreenTransform2D`,
   `Camera`, `Collider2D`, `Renderable2D`, `Text2D`, `PointerReceiver` and

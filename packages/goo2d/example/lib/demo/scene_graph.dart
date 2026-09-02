@@ -22,7 +22,7 @@ class Critter extends EntityStruct
         Parent,
         Renderable2D,
         EntityLifecycleListener {
-  late final Sprite body;
+  final body = Sprite.of(width: 22, height: 22, texture: Asset.of(discTexture));
   final texture = Asset.of(discTexture);
 
   final angle = Field.float64();
@@ -35,12 +35,6 @@ class Critter extends EntityStruct
   final life = Field.float64();
 
   int _spawned = 0;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    body = descriptor.has(width: 22, height: 22, texture: texture);
-  }
 
   @override
   void onEntityMounted(Entity entity) {
@@ -87,16 +81,10 @@ class Limb extends EntityStruct
         Child,
         Renderable2D,
         EntityLifecycleListener {
-  late final Sprite body;
+  final body = Sprite.of(width: 11, height: 11, texture: Asset.of(discTexture));
   final texture = Asset.of(discTexture);
 
   int _spawned = 0;
-
-  @override
-  void describeSprites(SpriteDescriptor descriptor) {
-    super.describeSprites(descriptor);
-    body = descriptor.has(width: 11, height: 11, texture: texture);
-  }
 
   @override
   void onEntityMounted(Entity entity) {
