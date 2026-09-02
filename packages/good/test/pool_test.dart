@@ -102,6 +102,95 @@ void main() {
     });
   });
 
+  group('freeing a page', () {
+    test('gives its memory back, so a later page can land on it', () {
+      // `MemoryPage.dispose` releases the triple buffer's four native blocks,
+      // and freed memory reports nothing about itself. What it leaves is an
+      // address the allocator may hand out again - and two live allocations
+      // can never share one, so an address coming back is proof the first
+      // block was released.
+      //
+      // Rounds, so the result does not rest on one allocator decision. With
+      // nothing freed, every address below is distinct.
+      const rounds = 32;
+      var landedOnFreedMemory = 0;
+
+      for (var round = 0; round < rounds; round++) {
+        final pool = MemoryPool(pageSize: 4096, maxPages: 4);
+        final first = pool.allocatePage();
+        final held = <int>{...first.slotAddresses, first.latestAddress};
+        pool.freePage(first);
+
+        final second = pool.allocatePage();
+        final taken = <int>{...second.slotAddresses, second.latestAddress};
+        if (taken.intersection(held).isNotEmpty) landedOnFreedMemory++;
+        pool.dispose();
+      }
+
+      expect(
+        landedOnFreedMemory,
+        greaterThan(0),
+        reason:
+            'across $rounds rounds no page ever landed on an address a freed '
+            'page had held. Two live allocations cannot share an address, so '
+            'that says dispose released nothing',
+      );
+    });
+
+    test("the pool keeps the freed page's slot", () {
+      final pool = MemoryPool(pageSize: 64, maxPages: 8);
+      addTearDown(pool.dispose);
+
+      pool.allocatePage();
+      final second = pool.allocatePage();
+      pool.allocatePage();
+      expect(pool.pageCount, 3);
+
+      pool.freePage(second);
+
+      expect(
+        pool.pageCount,
+        3,
+        reason:
+            'the slot is tombstoned, not removed. A compacted list reports 2 '
+            'and shifts every page after the hole down one index',
+      );
+    });
+
+    test('the pages after it keep the index they had', () {
+      final pool = MemoryPool(pageSize: 64, maxPages: 8);
+      addTearDown(pool.dispose);
+
+      final first = pool.allocatePage();
+      final second = pool.allocatePage();
+      final third = pool.allocatePage();
+      expect(pool.getPage(2), same(third));
+
+      pool.freePage(second);
+
+      expect(pool.getPage(0), same(first));
+      expect(
+        pool.getPage(1),
+        isNull,
+        reason:
+            'the freed index answers with nothing, not with the page that '
+            'follows it',
+      );
+      expect(
+        pool.getPage(2),
+        same(third),
+        reason:
+            'index 2 named this page before the free and names it after - a '
+            'page index is an identity, and that is what the tombstone keeps',
+      );
+      expect(
+        () => pool.getPage(3),
+        throwsRangeError,
+        reason: 'an index no page has ever held is out of range, not null',
+      );
+    });
+  });
+
   // Structural changes made *while a query is walking* - the rule being that
   // a row created during a walk is never seen by that walk.
   //
