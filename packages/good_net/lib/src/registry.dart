@@ -90,8 +90,9 @@ abstract class NetDescriptor {
   void hasSignal(NetSignal signal, void Function(NetPeerId from) handler);
 }
 
-/// The registry behind [NetDescriptor], owned by the `MultiplayerState` mixin
-/// and handed to `NetworkSystem`.
+/// The registry behind [NetDescriptor]. A field on `NetworkSystem`, built with
+/// it: `MultiplayerState.describeSystems` declares the system and then runs
+/// `describeNetwork` into this.
 ///
 /// Implements [ParamLayouts] so `ParamBatch` can walk a batch of records that
 /// arrived as bytes - the same interface `CommandRegistry` implements for the

@@ -194,6 +194,26 @@ Things that work but will catch you out:
   declared camera view, sized from `spriteBatchBytes`, and both the count and
   the size are reads off `this`.
 
+- **A game's systems are declared in `describeSystems`, and that one stays.**
+  Every other pass a game runs is now fields, and this one cannot be, because a
+  `GameState` field initialiser runs on the wrong copy: `createState` is called
+  from `Game._bootMain`, before `Isolate.spawn`, while `describeSystems` is
+  called from `Game._bootGame`, on the copy that ticks. A system built on main
+  would compile its `Query.all` masks against a `ComponentTypeRegistry` that
+  only the game isolate ever fills, so every query would match nothing with no
+  line to report it. Two more facts stand behind that one:
+  `Renderer2DState` declares its renderer with `descriptor.has(createRenderer)`,
+  naming an instance member a field initialiser cannot see, and field
+  initialisers run subclass-first while `super.describeSystems(...)` runs
+  base-first — and declaration order is execution order.
+
+  `describeNetwork` is held by the same fact plus one of its own. Its descriptor
+  is a binder over `NetworkSystem.registry`, so it exists only once that system
+  does, and `hasHandler`/`hasSignal` name an instance member of the state, which
+  is the shape that keeps the handler half of `describeCommands` too.
+  `MultiplayerState.network` is a lookup of the one system that pass declares,
+  not a second field naming it.
+
 - **A scene declares its assets in `describeAssets`.** `GameSceneDescriptor.has`
   takes the constructor now, so a declared scene's events go on fields like
   every other owner's. Assets do not: the `AssetDescriptor` is opened inside

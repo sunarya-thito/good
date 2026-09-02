@@ -57,7 +57,7 @@ import 'package:good/src/time.dart';
 /// that shifts underneath them (see `Input`).
 ///
 /// Ordering starts from declaration order - the order the systems were
-/// declared in `Game.describeSystems` - and is then constrained by
+/// declared in [describeSystems] - and is then constrained by
 /// whatever `GameSystem.compareTo` states. "Run me after physics" is spelled
 /// there, as `other is PhysicsSystem ? 1 : 0`, and it is a constraint, not a
 /// rank: [sortSystems] collects every pair's answer into a graph and
@@ -363,22 +363,36 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// runtime - [enableSystem]/[disableSystem] only pause and resume one that
   /// was declared here.
   ///
-  /// # Why here and not on `Game`
+  /// # Here and not on `Game`
   ///
-  /// It was on `Game` until the systems themselves moved to this isolate, and
-  /// the argument for keeping it there was real: a `Game` *mixin* has to be
-  /// able to contribute a system, or `extends Game2D` stops being a single
-  /// opt-in for rendering and forgetting the second half paints nothing. But
-  /// "which object declares it" and "which isolate holds it" were being
-  /// answered by one placement, and only the second is a hard constraint. A
-  /// system is created here, ticks here, and is reachable from nowhere else -
-  /// so this is where the pass belongs.
+  /// A system is created here, ticks here, and is reachable from nowhere else.
+  /// A library that has to contribute one mixes into the *state*:
+  /// `Game2D.createState()` is narrowed to `GameState2D`, so `extends Game2D`
+  /// is a single opt-in for rendering and a `Game2D` whose state is a plain
+  /// `GameState` is a compile error rather than a black screen.
   ///
-  /// The mixin case is served by narrowing instead: `Game2D.createState()`
-  /// returns a `GameState2D`, which declares the two systems 2D rendering
-  /// needs. A `Game2D` whose state is a plain `GameState` is a **compile
-  /// error**, which is strictly better than the silent black screen the old
-  /// arrangement was guarding against.
+  /// # A hook and not a field
+  ///
+  /// The rest of a game's declarations are fields - `Channel.*`,
+  /// `RandomStream.of`, `CameraView.of`, `Input.of`, `Command.of`. This one is
+  /// not, and the fact that stops it is which copy runs a field initialiser.
+  /// `createState` is called from `Game._bootMain`, before `Isolate.spawn`, so
+  /// every `GameState` field initialiser runs on **main**. A system's own
+  /// field initialisers call `Query.all` and `Query.has`, which resolve each
+  /// named `Type` through `ComponentTypeRegistry.bitFor` and bake the mask
+  /// into the query. That registry is a per-isolate static seeded on the game
+  /// isolate by `installGenerated` and `describeScenes`; main's stays empty
+  /// (see `ComponentTypeRegistry`). A mask taken from main's table and an
+  /// archetype signature taken from the game isolate's share no numbering, so
+  /// every query would match nothing and no line would report it.
+  ///
+  /// Two more facts stand behind that one. `Renderer2DState` declares its
+  /// renderer with `descriptor.has(createRenderer)`, and `createRenderer` is
+  /// an instance member, which a field initialiser cannot name. And field
+  /// initialisers run subclass-first, then mixins in reverse `with` order,
+  /// then the superclass - the reverse of what `super.describeSystems(...)`
+  /// spells - so a base class's systems would always be declared last, and
+  /// declaration order is execution order (see [sortSystems]).
   ///
   /// Runs on the simulating copy only, from `Game._bootGame`.
   @mustCallSuper
@@ -1383,15 +1397,13 @@ abstract class GameState<T extends Game> extends GameListenerBase
 
   // --- systems ----------------------------------------------------------
   //
-  // Declared by `Game.describeSystems` and held here, which is the split the
-  // whole isolate design turns on: *where a pass is written* is an API
-  // question (a `Game` mixin has to be able to contribute a system - that is
-  // what makes `extends Game2D` the whole opt-in for rendering), while *where
-  // its results live* is an isolate question. The pass runs inside
+  // Declared by [describeSystems] and held here. A library contributes a
+  // system by mixing into the *state* - `Renderer2DState` is the 2D renderer's
+  // half, and `Game2D.createState()` is narrowed to `GameState2D` so that
+  // `extends Game2D` stays a single opt-in. The pass runs inside
   // `Game._bootGame`, so every system object exists on this copy and on no
-  // other. A `Game` has no `getSystem` at all any more: on the presentation
-  // isolate it would have compiled, read as though it worked, and found
-  // nothing.
+  // other, and `Game` has no `getSystem`: on the presentation isolate it would
+  // compile, read as though it worked, and find nothing.
 
   final List<GameSystem> _systems = <GameSystem>[];
   final Map<Type, int> _systemIndex = <Type, int>{};
@@ -1421,7 +1433,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// Orders [declaredSystems] so that every constraint `GameSystem.compareTo`
   /// states is honoured, breaking ties on original declaration index - a system
   /// that expresses no opinion keeps its declared position relative to every
-  /// other opinion-less system. Runs once, right after `Game.describeSystems`.
+  /// other opinion-less system. Runs once, right after [describeSystems].
   ///
   /// # Why this is a graph and not a `List.sort`
   ///
@@ -1522,12 +1534,12 @@ abstract class GameState<T extends Game> extends GameListenerBase
     );
   }
 
-  /// A system declared in `Game.describeSystems`.
+  /// A system declared in [describeSystems].
   S getSystem<S extends GameSystem>() {
     final index = _systemIndex[S];
     if (index == null) {
       throw ArgumentError(
-        '$S is not declared in ${game.runtimeType}.describeSystems - systems '
+        '$S is not declared in $runtimeType.describeSystems - systems '
         'are declared once, up front, and cannot be added at runtime.',
       );
     }
@@ -1545,7 +1557,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   bool isSystemEnabled<S extends GameSystem>() =>
       _systems[_requireSystemIndex(S)].listensToEvents;
 
-  /// Resumes a system already declared in `Game.describeSystems` - a runtime
+  /// Resumes a system already declared in [describeSystems] - a runtime
   /// pause/resume toggle, not registration.
   ///
   /// **Synchronous, and no wire index.** This runs on the isolate that holds
@@ -1554,7 +1566,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// this in the handler.
   void enableSystem<S extends GameSystem>() => setSystemEnabled(S, true);
 
-  /// Pauses a system already declared in `Game.describeSystems` - it stops
+  /// Pauses a system already declared in [describeSystems] - it stops
   /// ticking until re-enabled, but is not removed from the declared set.
   void disableSystem<S extends GameSystem>() => setSystemEnabled(S, false);
 
@@ -1580,7 +1592,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
     final index = _systemIndex[type];
     if (index == null) {
       throw ArgumentError(
-        '$type is not declared in ${game.runtimeType}.describeSystems.',
+        '$type is not declared in $runtimeType.describeSystems.',
       );
     }
     return index;

@@ -2,6 +2,18 @@
 
 ### Changed
 
+* **`MultiplayerState.network` is a getter over the declared system** (#287).
+  It was a `late final` field that `describeSystems` filled in after declaring
+  the system, which named one system twice. `descriptor.has(NetworkSystem.new)`
+  is the declaration; `network` looks it up. A read before the pass has run now
+  reports the pass by name instead of a `LateInitializationError`.
+
+* **`describeNetwork` documents why it is a hook.** Its descriptor is a binder
+  over `NetworkSystem.registry`, so it exists only once that system does, and a
+  system exists only on the copy that ticks — which is not the copy that runs a
+  `GameState` field initialiser. `hasHandler` and `hasSignal` also name an
+  instance member of the state, which a field initialiser cannot.
+
 * **`MultiplayerState` declares its `NetworkSystem` before describing it.**
   `describeSystems` used to build the system, run `describeNetwork` into it
   and hand the finished object to `descriptor.has`. `SystemDescriptor.has`

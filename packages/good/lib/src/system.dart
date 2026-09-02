@@ -154,7 +154,7 @@ abstract class GameSystem extends GameListenerBase
 
   /// Called once by the boot pass on the game isolate, before the system's
   /// [inputDefaults] is read. Not part of the user-facing API: a system is
-  /// bound by declaring it in `Game.describeSystems`, never by hand.
+  /// bound by declaring it in [GameState.describeSystems], never by hand.
   @internal
   void bindState(GameState state) => _state = state;
 
@@ -171,8 +171,8 @@ abstract class GameSystem extends GameListenerBase
     if (state == null) {
       throw StateError(
         '$runtimeType is not bound to a GameState. Declare it in '
-        'Game.describeSystems - a system constructed by hand has no scene to '
-        'query and no tick to run on.',
+        'GameState.describeSystems - a system constructed by hand has no '
+        'scene to query and no tick to run on.',
       );
     }
     return state;

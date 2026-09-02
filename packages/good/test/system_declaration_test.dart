@@ -228,6 +228,23 @@ abstract class _BareGame extends Game {
   int get pageSize => 4096;
 }
 
+/// A system nothing declares, for the diagnostics `getSystem` and
+/// `setSystemEnabled` produce when asked for one.
+class _Undeclared extends GameSystem {}
+
+class _NamingState extends GameState<_NamingGame> {
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_EarA.new);
+  }
+}
+
+class _NamingGame extends Game {
+  @override
+  GameState createState() => _NamingState();
+}
+
 Future<Game> _boot(Game Function() create) async {
   final run = await Game.startInline(create);
   addTearDown(() async {
@@ -439,6 +456,60 @@ void main() {
         reason:
             'and it added nothing on the way out - the throw is the guard, '
             'not a half-declaration that landed anyway',
+      );
+    });
+  });
+
+  group('asking for a system nobody declared', () {
+    test('names the state that holds the pass, not the game', () async {
+      final run = await _boot(_NamingGame.new);
+      final state = run.state as _NamingState;
+
+      expect(state.getSystem<_EarA>(), isA<_EarA>());
+
+      expect(
+        () => state.getSystem<_Undeclared>(),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('_Undeclared is not declared in'),
+              contains('_NamingState.describeSystems'),
+              isNot(contains('_NamingGame.describeSystems')),
+            ),
+          ),
+        ),
+        reason:
+            'describeSystems is declared on GameState. A message naming the '
+            'Game sends a reader to a class that has no such method',
+      );
+
+      expect(
+        () => state.disableSystem<_Undeclared>(),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.message,
+            'message',
+            contains('_NamingState.describeSystems'),
+          ),
+        ),
+      );
+    });
+
+    test('a system built by hand names the pass that binds one', () {
+      expect(
+        () => _Undeclared().state,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('GameState.describeSystems'),
+              isNot(contains('Game.describeSystems')),
+            ),
+          ),
+        ),
       );
     });
   });

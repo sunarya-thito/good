@@ -1225,6 +1225,97 @@ class _RegistrarState extends GameState<_RegistrarGame> {
   }
 }
 
+// --- #287: which copy assigns a component bit -----------------------------
+//
+// `ComponentTypeRegistry` is a per-isolate static, and the pass that fills it
+// is `Game._bootGame`: the generated tables first, then the archetypes
+// `describeScenes` registers, then the queries `describeSystems` compiles. All
+// three run on the game isolate, so main's table stays empty for the life of
+// the game.
+//
+// That is what holds `describeSystems` in a hook. A `GameState` field
+// initialiser runs inside `createState`, which `_bootMain` calls before
+// `Isolate.spawn` - so a system declared on a field would be *built* on main,
+// and `Query.all` would take its mask from an empty table while the archetype
+// signatures it is matched against are numbered over here. The masks ride the
+// deep copy already baked, nothing throws, and every query matches nothing.
+//
+// Asserted from both sides, for the reason the asset-decoder pair above is:
+// main reporting zero is also what a game that never declared anything
+// reports, so the game isolate has to say what it counted.
+
+mixin _Numbered on Component {
+  final value = Field.int32();
+
+  final numberedType = Component.type<_Numbered>();
+}
+
+class _NumberedThing extends EntityStruct with _Numbered {}
+
+class _NumberedScene extends SceneStruct {
+  late final _NumberedThing thing;
+
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
+    thing = descriptor.has(_NumberedThing.new);
+  }
+
+  @override
+  void onSceneMounted(Scene scene) {
+    scene.addEntity(thing);
+  }
+}
+
+/// Publishes what the *game* isolate can see of the bit table, and whether the
+/// query compiled against it matches the archetype the scene registered.
+class _BitCountSystem extends GameSystem with FixedTickable {
+  final query = Query.all(_Numbered);
+
+  _BitCountGame get _own => game as _BitCountGame;
+
+  @override
+  void onFixedUpdate() {
+    var matched = 0;
+    for (final entity in query.run()) {
+      final numbered = entity<_Numbered>().component;
+      numbered.value[entity] = numbered.value[entity] + 1;
+      matched++;
+    }
+    _own.assignedThere.value = ComponentTypeRegistry.assignedCount;
+    _own.matchedThere.value = matched;
+  }
+}
+
+class _BitCountState extends GameState<_BitCountGame> {
+  final _NumberedScene level = _NumberedScene();
+
+  @override
+  void onMounted() {
+    loadScene(level);
+  }
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_BitCountSystem.new);
+  }
+}
+
+class _BitCountGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 5);
+
+  final assignedThere = Channel.int32(-1);
+  final matchedThere = Channel.int32(-1);
+
+  @override
+  GameState createState() => _BitCountState();
+}
+
 class _RegistrarGame extends Game {
   @override
   int get pageSize => 4096;
@@ -2491,6 +2582,42 @@ void main() {
           'for nothing - that copy holds payload-free declarations and '
           'never decodes. A hook wired into one of the two passes both '
           'copies run would report 1 here and still look correct from main',
+    );
+  }, timeout: const Timeout(Duration(seconds: 60)));
+
+  test('the game isolate assigns every component bit, and main assigns none', () async {
+    final game = await Game.start(_BitCountGame.new);
+    run = game;
+    addTearDown(() async {
+      if (run.isRunning) await run.stop();
+    });
+
+    expect(
+      await _waitUntil(run, () => game.assignedThere.value > 0),
+      isTrue,
+      reason:
+          'the game isolate should have registered its archetype and '
+          'compiled its query by the first fixed tick',
+    );
+
+    expect(
+      game.matchedThere.value,
+      1,
+      reason:
+          'the query names _Numbered and the scene mounts one entity carrying '
+          'it. A mask and a signature numbered by the same table agree',
+    );
+
+    expect(
+      ComponentTypeRegistry.assignedCount,
+      0,
+      reason:
+          'and this copy numbered nothing. _bootMain declares the channels, '
+          'the randoms, the cameras, the inputs and the commands and stops - '
+          'the archetypes and the queries belong to _bootGame, on the copy '
+          'that ticks them. A declaration moved onto a GameState field would '
+          'run here and take its bits from this empty table, numbered with no '
+          'reference to the table the archetypes over there are numbered in',
     );
   }, timeout: const Timeout(Duration(seconds: 60)));
 
