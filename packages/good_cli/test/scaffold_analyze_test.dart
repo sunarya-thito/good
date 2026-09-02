@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:good_cli/src/generate/assets.dart';
+import 'package:good_cli/src/generate/engine_dependency.dart';
 import 'package:good_cli/src/generate/run.dart';
 import 'package:good_cli/src/generate/scaffold.dart';
 import 'package:good_cli/src/generate/templates.dart';
@@ -29,6 +30,22 @@ import '_temp.dart';
 // relative entries made absolute and itself added. `dart analyze` then resolves
 // the real API out of the real source tree. Fifteen seconds per project,
 // against minutes for a real `flutter create` plus `flutter pub get`.
+//
+// # Every case here runs the analyzer the way the project's owner will
+//
+// `dart analyze` exits 0 on an info, and `flutter analyze` fails a project on
+// one, so an exit code alone says nothing about the diagnostics a user meets
+// first (#321). Two things close that gap and both are needed:
+// [_analyzeClean] passes `--fatal-infos`, and every fixture below writes the
+// `analysis_options.yaml` `flutter create` writes, so the rules in force are
+// the ones the project ships with.
+//
+// The fixture pubspecs matter for the same reason. `depend_on_referenced
+// _packages` reads the `dependencies:` map, so a fixture that declares nothing
+// reports every import in it and a fixture that declares everything reports
+// none. Each one below declares what the real project declares, and the
+// generated-bindings case builds that list out of [generatedImports] - the
+// function whose job is to name what the emitters import.
 
 /// `runGenerate` prints; nothing here reads what it printed.
 final VerboseOutput _quiet = _NullOutput();
@@ -40,6 +57,40 @@ class _NullOutput implements VerboseOutput {
   void print(Object? object) {}
   @override
   void printf(String format, List<Object?> args) {}
+}
+
+/// The analysis options every fixture here is analyzed under, which is the
+/// file `flutter create` writes and nothing else.
+///
+/// That one line is what brings in `depend_on_referenced_packages`, through
+/// `package:lints/core.yaml`. The other lint these fixtures exist to catch,
+/// `unnecessary_import`, needs no line: it is not a lint rule in this SDK -
+/// naming it under `linter: rules:` is an `undefined_lint` warning - and the
+/// analyzer reports it on its own, at info severity, whatever the options file
+/// says.
+const String _analysisOptions = 'include: package:flutter_lints/flutter.yaml\n';
+
+/// Runs the analyzer over [path] and fails on anything it reports.
+///
+/// `--fatal-infos` is the whole point: without it `dart analyze` exits 0 on an
+/// info, and the two lints a generated file is most likely to trip -
+/// `unnecessary_import` and `depend_on_referenced_packages` - are both infos.
+/// The alternative is reading `stdout` for `No issues found`, which works and
+/// needs the expected text kept in step with the analyzer's wording.
+///
+/// The VM running this suite, so nothing here depends on `dart` being on PATH.
+Future<void> _analyzeClean(String path, {required String reason}) async {
+  final result = await Process.run(
+    Platform.resolvedExecutable,
+    <String>['analyze', '--fatal-infos', path],
+    stdoutEncoding: utf8,
+    stderrEncoding: utf8,
+  );
+  expect(
+    result.exitCode,
+    0,
+    reason: '$reason:\n${result.stdout}${result.stderr}',
+  );
 }
 
 /// The repository root, found by walking up from wherever the suite was run.
@@ -106,14 +157,30 @@ void main() {
       }
 
       // `flutter create` writes the pubspec and `patchedPubspecLines` covers
-      // what good adds to it. Only the two things the analyzer reads are
-      // needed here: the package's name and its language version.
+      // what good adds to it. What is needed here is the package's name, its
+      // language version, and the dependencies the lints read: an import the
+      // pubspec does not declare is a `depend_on_referenced_packages` info,
+      // and the point of this case is the templates' imports and not the
+      // fixture's.
       File('${dir.path}/pubspec.yaml').writeAsStringSync('''
 name: $projectName
 
 environment:
   sdk: ^3.13.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ${engine.package}: $engineConstraint
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: any
 ''');
+      File(
+        '${dir.path}/analysis_options.yaml',
+      ).writeAsStringSync(_analysisOptions);
 
       final config = _absolutePackageConfig(root, engine.package);
       File('${dir.path}/.dart_tool/package_config.json')
@@ -135,21 +202,11 @@ environment:
           }),
         );
 
-      // The VM running this suite, so nothing here depends on `dart` being on
-      // PATH.
-      final result = await Process.run(
-        Platform.resolvedExecutable,
-        <String>['analyze', dir.path],
-        stdoutEncoding: utf8,
-        stderrEncoding: utf8,
-      );
-
-      expect(
-        result.exitCode,
-        0,
+      await _analyzeClean(
+        dir.path,
         reason:
             'a project `good create` writes has to compile before its author '
-            'has touched it:\n${result.stdout}${result.stderr}',
+            'has touched it, and analyze clean under the lints it ships with',
       );
     }, timeout: const Timeout(Duration(minutes: 5)));
   }
@@ -161,16 +218,32 @@ environment:
     // exports, or an enum whose constructor no longer matches its fields.
     final root = _repoRoot();
     final dir = testTempDir('good_generated_analyze');
+    // The dependencies are `generatedImports`', which is the set the bundle's
+    // own pubspec declares. An emitter that starts importing a package that
+    // set does not name reports `depend_on_referenced_packages` here, the way
+    // it would in a project whose bundle pubspec was written from the same
+    // set.
+    final imports = generatedImports(drawsTextures: true).toList()..sort();
     File('${dir.path}/pubspec.yaml').writeAsStringSync('''
 name: generated_probe
 
 environment:
   sdk: ^3.13.0
 
+dependencies:
+  flutter:
+    sdk: flutter
+${imports.map((String p) => '  $p: any\n').join()}
+dev_dependencies:
+  flutter_lints: any
+
 flutter:
   assets:
     - assets/
 ''');
+    File(
+      '${dir.path}/analysis_options.yaml',
+    ).writeAsStringSync(_analysisOptions);
     // A 24-byte PNG: signature and IHDR, which is all a header read needs.
     final png = <int>[
       0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
@@ -188,9 +261,9 @@ flutter:
     File('${lib.path}/textures.dart').writeAsStringSync(
       emitTextures(scan, command: 'good generate', drawsTextures: true),
     );
-    File('${lib.path}/audios.dart').writeAsStringSync(
-      emitAudios(scan, command: 'good generate'),
-    );
+    File(
+      '${lib.path}/audios.dart',
+    ).writeAsStringSync(emitAudios(scan, command: 'good generate'));
     // The constants where the guide puts them: inside a const expression, in a
     // file that names goo2d's own API. `TextureSize.sheetWidth` compiles here
     // and `Textures.sheet.width` would not.
@@ -237,24 +310,15 @@ int get pixels => Textures.sheet.width * Textures.sheet.height;
         }),
       );
 
-    final result = await Process.run(
-      Platform.resolvedExecutable,
-      <String>['analyze', dir.path],
-      stdoutEncoding: utf8,
-      stderrEncoding: utf8,
-    );
-    expect(
-      result.exitCode,
-      0,
-      reason:
-          'the generated bindings are what every project compiles against:\n'
-          '${result.stdout}${result.stderr}',
+    await _analyzeClean(
+      dir.path,
+      reason: 'the generated bindings are what every project compiles against',
     );
   }, timeout: const Timeout(Duration(minutes: 5)));
 
   test('a bundle generated for an entry package that re-exports nothing '
       'analyzes clean', () async {
-    // #316, end to end and with the two lints a real project runs under.
+    // #316, end to end and with the lints a real project runs under.
     //
     // The project declares a physics backend and goo2d, so #309 resolves the
     // backend as the entry package - and that package's library exports its
@@ -265,8 +329,12 @@ int get pixels => Textures.sheet.width * Textures.sheet.height;
     // `depend_on_referenced_packages` and `unnecessary_import` are the two
     // ways the fix can be wrong in the other direction: an import the bundle's
     // pubspec does not declare, and a second import of a library the first one
-    // already re-exports. Both are infos, `flutter analyze` fails a project on
-    // an info, and `dart analyze` exits 0 on one - so this reads the output.
+    // already re-exports. Both are infos, so `--fatal-infos` is what makes
+    // this case able to see either of them.
+    //
+    // The options file sits in the project and the bundle sits under it, which
+    // is where the analyzer looks for one: a generated package inherits the
+    // rules of the project it was generated into.
     final root = _repoRoot();
     final dir = testTempDir('good_bundle_analyze');
     File('${dir.path}/pubspec.yaml').writeAsStringSync('''
@@ -279,16 +347,16 @@ dependencies:
   demo_physics: ^0.1.0
   goo2d: ^0.3.0
 
+dev_dependencies:
+  flutter_lints: any
+
 flutter:
   assets:
     - assets/
 ''');
-    File('${dir.path}/analysis_options.yaml').writeAsStringSync('''
-linter:
-  rules:
-    - depend_on_referenced_packages
-    - unnecessary_import
-''');
+    File(
+      '${dir.path}/analysis_options.yaml',
+    ).writeAsStringSync(_analysisOptions);
     // A 24-byte PNG: signature and IHDR, which is all a header read needs.
     File('${dir.path}/assets/sheet.png')
       ..parent.createSync(recursive: true)
@@ -345,19 +413,11 @@ linter:
       }),
     );
 
-    final result = await Process.run(
-      Platform.resolvedExecutable,
-      <String>['analyze', bundle.path],
-      stdoutEncoding: utf8,
-      stderrEncoding: utf8,
-    );
-    expect(
-      '${result.stdout}${result.stderr}',
-      contains('No issues found'),
+    await _analyzeClean(
+      bundle.path,
       reason:
           'every name in the bundle has to resolve through an import the '
           'bundle declares, and through one import and not two',
     );
-    expect(result.exitCode, 0);
   }, timeout: const Timeout(Duration(minutes: 5)));
 }
