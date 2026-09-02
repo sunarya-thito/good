@@ -349,6 +349,13 @@ class _Census extends ValueSupplier<Uint8List> {
   final value = Param.bytes();
 }
 
+/// A blob in. The same view, on the arriving side: what a handler is handed
+/// has to outlive the record it was read from.
+class _Upload extends ValueSink<Uint8List> {
+  @override
+  final value = Param.bytes();
+}
+
 /// Declares one command the way a `Game` field does and hands it to this
 /// registry the way boot does.
 ///
@@ -1387,6 +1394,32 @@ void main() {
             'Param.bytes hands back a Uint8List view onto the batch, so the '
             'shape copies - a caller that keeps what a supplier gave it is '
             'not making a mistake',
+      );
+    });
+
+    test('bytes going the other way are copied too', () async {
+      final r = _registry();
+      final upload = r.registry.declare(_Upload.new);
+      GameCommandDescriptor(r.registry).hasSink(upload, (_) {});
+
+      // paramsFromBuffer is what `invoke` hands the handler, read here
+      // directly so the record it read from is still in reach.
+      final batch = r.sender.newBatch();
+      final buffer = upload.execute(
+        Uint8List.fromList(<int>[9, 8, 7, 6]),
+        batch,
+      );
+      final got = upload.paramsFromBuffer(buffer);
+      expect(got, <int>[9, 8, 7, 6]);
+
+      buffer.batch.bytes.fillRange(0, buffer.batch.bytes.length, 0xAA);
+
+      expect(
+        got,
+        <int>[9, 8, 7, 6],
+        reason:
+            'the arriving side has the same view, and a handler that keeps '
+            'the bytes it was given is not making a mistake either',
       );
     });
   });
