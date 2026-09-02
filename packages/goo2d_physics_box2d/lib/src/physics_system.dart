@@ -473,8 +473,21 @@ class Box2DPhysicsSystem extends GameSystem
     }
   }
 
-  @override
-  int compareTo(GameSystem other) => other is Box2DPhysicsSystem ? 0 : -1;
+  /// Runs ahead of every system that states no opinion about it: what a
+  /// fixed step is for is that the rest of the tick sees the world the solver
+  /// has already left.
+  ///
+  /// Weak, and it has to be. A profiling probe that stamps the clock
+  /// immediately before the step says `before<Box2DPhysicsSystem>()`, and
+  /// read as an absolute this would contradict it and the game would not
+  /// boot. `Order.first()` means *before everything that does not name me*,
+  /// so the probe wins its own pair and this still precedes everything else.
+  ///
+  /// The `other is Box2DPhysicsSystem ? 0 : -1` override this replaces said
+  /// the same thing but could not be weak: it was one opinion in a pair, and
+  /// which of the two opinions survived depended on which was declared first
+  /// (#187).
+  final order = Order.of().first();
 
   /// The Box2D world [scene]'s bodies live in, created on first use.
   ///
