@@ -104,6 +104,32 @@ void main() {
     });
   });
 
+  test('a camera in a loaded scene binds to the view table the game owns',
+      () async {
+    final game = await Game.startInline(_BoundGame.new);
+    run = game;
+    addTearDown(() async {
+      if (game.isRunning) await game.stop();
+    });
+    final state = game.state as _BoundState;
+    final scene = state.level;
+    final handle = state.loadedScenes.first;
+
+    // No tick management: the row's page has never published, so the write
+    // straight after the spawn is allowed - the idiom render_2d_test uses.
+    final camera = handle.addEntity(scene.cam);
+    scene.cam.cameraView[camera] = game.minimap;
+
+    expect(
+      scene.cam.cameraView[camera],
+      same(game.minimap),
+      reason:
+          'loadScene hands the table the game owns to initializeScene, so '
+          'the column binds to it - one built against any other table '
+          'unpacks address 1 to null',
+    );
+  });
+
   group('CameraProjection', () {
     test('defaults to identity at origin with zero viewport', () {
       final projection = CameraProjection();
@@ -565,4 +591,49 @@ class _CamGame extends Game {
 
   @override
   GameState createState() => _CamState(_scene);
+}
+
+/// The route a game takes, as opposed to the headless one every case above
+/// uses: a `Game` declares two views, its state loads a scene, and the scene's
+/// `Camera` prefab binds its column while `loadScene` brings the scene up.
+///
+/// Two views and not one, because an address is an index: a column bound to
+/// some other table still stores `0`, and only a second view tells the two
+/// apart.
+class _BoundScene extends SceneStruct {
+  late final _CamEntity cam;
+
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
+    cam = descriptor.has(_CamEntity.new);
+  }
+}
+
+class _BoundState extends GameState<_BoundGame> {
+  late final _BoundScene level;
+
+  @override
+  void onMounted() {
+    level = _BoundScene();
+    loadScene(level);
+  }
+}
+
+class _BoundGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  late final CameraView main;
+  late final CameraView minimap;
+
+  @override
+  void describeCameras(CameraDescriptor descriptor) {
+    super.describeCameras(descriptor);
+    main = descriptor.has();
+    minimap = descriptor.has();
+  }
+
+  @override
+  GameState createState() => _BoundState();
 }

@@ -23,17 +23,31 @@ final class _Widget {
   _Widget._(this.tag, this.size);
 
   static _Widget of(String tag, {int size = 0}) =>
-      MultiComponent.declare(_Widget._(tag, Field.int32(size)));
+      Component.declare(_Widget._(tag, Field.int32(size)));
 
   final String tag;
   final DataPointer<int> size;
+}
+
+/// A single-instance kind: one per prefab, held in one field on the component
+/// rather than in a list. `TextLabel` is the shipped one.
+final class _Badge {
+  _Badge._(this.tag);
+
+  static _Badge of(String tag) => Component.declare(_Badge._(tag));
+
+  final String tag;
+}
+
+mixin _Badged on Component {
+  final _Badge? badge = Component.declared<_Badge>();
 }
 
 /// A second kind, so a prefab carrying both proves the take is by type.
 final class _Gadget {
   _Gadget._(this.tag);
 
-  static _Gadget of(String tag) => MultiComponent.declare(_Gadget._(tag));
+  static _Gadget of(String tag) => Component.declare(_Gadget._(tag));
 
   final String tag;
 }
@@ -83,6 +97,20 @@ class _Child extends EntityStruct with _Widgets, Child {
   final own = _Widget.of('child');
 }
 
+class _OneBadge extends EntityStruct with _Badged {
+  final own = _Badge.of('own');
+}
+
+/// Mixes in the component and declares nothing, so the component's field has
+/// to hold null rather than fail.
+class _NoBadge extends EntityStruct with _Badged {}
+
+/// Two of a kind the component holds one of.
+class _TwoBadges extends EntityStruct with _Badged {
+  final first = _Badge.of('first');
+  final second = _Badge.of('second');
+}
+
 /// Declares a widget and mixes in nothing that takes one.
 class _Orphan extends EntityStruct {
   final stray = _Widget.of('stray');
@@ -108,6 +136,8 @@ class _Level extends SceneStruct {
   late final _Mixed mixed;
   late final _Derived derived;
   late final _Parent parent;
+  late final _OneBadge oneBadge;
+  late final _NoBadge noBadge;
 
   @override
   void describeScene(SceneDescriptor descriptor) {
@@ -116,6 +146,17 @@ class _Level extends SceneStruct {
     mixed = descriptor.has(_Mixed.new);
     derived = descriptor.has(_Derived.new);
     parent = descriptor.has(_Parent.new);
+    oneBadge = descriptor.has(_OneBadge.new);
+    noBadge = descriptor.has(_NoBadge.new);
+  }
+}
+
+/// Registers the prefab that declares two of a single-instance kind.
+class _TwoBadgeScene extends SceneStruct {
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
+    descriptor.has(_TwoBadges.new);
   }
 }
 
@@ -271,6 +312,41 @@ void main() {
     expect(
       <String>[for (final w in level.parent.child.widgets) w.tag],
       <String>['child'],
+    );
+  });
+
+  test('a single-instance component takes the one that was declared', () {
+    final level = _level();
+    expect(level.oneBadge.badge, same(level.oneBadge.own));
+  });
+
+  test('a prefab that declares none leaves the component holding null', () {
+    final level = _level();
+    expect(
+      level.noBadge.badge,
+      isNull,
+      reason:
+          'the component has a default to fall back on, so declaring none is '
+          'a prefab that wants the default and not a mistake',
+    );
+  });
+
+  test('a second declaration of a single-instance kind is refused', () {
+    expect(
+      () {
+        _TwoBadgeScene().initializeScene(MemoryPool(pageSize: 4096));
+      },
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          allOf(contains('2 _Badges'), contains('a component holds one')),
+        ),
+      ),
+      reason:
+          'the component has one field, so the second would be stored nowhere '
+          '- and the leftover check cannot report it, because the take '
+          'removed both',
     );
   });
 

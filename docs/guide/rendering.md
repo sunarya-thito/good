@@ -264,14 +264,15 @@ moves and scales it like anything else.
 ```dart
 class DamageNumber extends EntityStruct
     with Transform2D, WorldTransform2D, Text2D {
-  final atlas = Asset.of(fontKey);
-
-  @override
-  int get textCapacity => 8;
-
-  @override
-  BitmapFont get textFont =>
-      BitmapFont(texture: atlas, columns: 16, rows: 6, glyphCount: 95);
+  final label = TextLabel.of(
+    font: BitmapFont(
+      texture: Asset.of(fontKey),
+      columns: 16,
+      rows: 6,
+      glyphCount: 95,
+    ),
+    capacity: 8,
+  );
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -281,6 +282,11 @@ class DamageNumber extends EntityStruct
   }
 }
 ```
+
+`TextLabel.of` is the declaration, on a field, the way `Sprite.of` and
+`BoxBody.of` are. `Text2D` takes it back into `textLabel`, so the prefab that
+names the font and the renderer that reads it hold one object. A prefab that
+declares no label gets 32 code units and no font, and draws nothing.
 
 Then write the text per entity:
 
@@ -315,15 +321,17 @@ ordinary texture asset and goes through the same pipeline as every other image.
 **The engine ships no font.** Supply your own PNG grid — one texture, one
 `TextureKey`, and the three numbers above.
 
-The font belongs to the prefab, not to the row: `textFont` is read once per
-archetype, when the archetype is described, and the renderer draws from the
-stored answer in `textFontResolved`. Two fonts in one scene are two prefabs.
+The font belongs to the prefab, not to the row: the `BitmapFont` is built once,
+by the field initialiser that declares the label, and the renderer reads it from
+`textLabel.font` once per archetype per frame. Two fonts in one scene are two
+prefabs.
 
 ### Capacity is storage, not a limit you can bend
 
-`textCapacity` reserves that many UTF-16 code units in **every row of the
-archetype**, the same way `hasPolygonCollider`'s `maxPoints` does. Pick it for
-the longest text that prefab will ever show.
+`TextLabel.of`'s `capacity` reserves that many UTF-16 code units in **every row
+of the archetype**, the same way `PolygonBody.of`'s `maxPoints` does. Pick it
+for the longest text that prefab will ever show. It is `1..65535`, and a number
+outside that is refused where it is written.
 
 A string that does not fit is a programming error, so a debug run stops on it.
 A release build has no assert to stop it: it keeps what fits and adds the rest
@@ -357,7 +365,8 @@ suggests, and a label is admitted all or nothing: one that does not fit closes
 the budget for everything behind it. A code unit the font has no cell for is
 charged nothing, and an empty label is not a candidate at all.
 
-The row stays small — `textCapacity` code units and about fifty more bytes,
+The row stays small — the declared capacity in code units and about fifty
+more bytes,
 because the font, its metrics and the atlas address are on the component. The
 same sixteen glyphs declared as sixteen sprites would be a 2.5 KiB row, which is
 ten times the row size that already cost this renderer 42% of its write pass.

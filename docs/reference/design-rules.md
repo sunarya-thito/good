@@ -212,7 +212,7 @@ entity<Transform3D>().upZ;
     source. It is emphatically *not* the pass that computes the row layout,
     which no scan can be — a byte offset is the running total of a
     `declareField` sequence that depends on values only available at run time.
-    `Text2D.describeStruct` reads `textCapacity`, an overridable getter;
+    `TextLabel.of` sizes an array from the capacity the prefab passed it;
     `Sprite.of` declares twenty-one columns per call and a prefab declares as
     many sprites as it likes; `hasEnum` widens by `values.length`. Offsets are
     unobtainable and are not wanted here.

@@ -4,6 +4,7 @@ import 'package:ffi/ffi.dart';
 import 'package:meta/meta.dart';
 
 import 'package:good/src/data.dart';
+import 'package:good/src/declare.dart';
 import 'package:good/src/game.dart';
 
 /// One addressable place a game is drawn - what a `GameView` shows and what a
@@ -56,6 +57,29 @@ import 'package:good/src/game.dart';
 /// with only one reference there is nothing for a second to disagree with.
 final class CameraView implements IntRepresentable {
   CameraView._(this._index, this._game);
+
+  /// The [IntRepresentation] a camera-view column binds to, for the scene
+  /// being brought up.
+  ///
+  /// A row stores a view as its address, and an address only means anything
+  /// against the table that issued it - so a component holding one names the
+  /// table:
+  ///
+  /// ```dart
+  /// mixin Camera on Component {
+  ///   final cameraView = Field.optPacked(CameraView.representation());
+  /// }
+  /// ```
+  ///
+  /// The table belongs to the game, not to the prefab, so there is one of
+  /// them for a whole scene's bring-up and every camera component binds to
+  /// the same object. `Asset.representation` is the same move for the asset
+  /// table.
+  ///
+  /// Throws outside a scene's declaration passes - a prefab constructed by
+  /// hand, or a `late final` that runs on first read.
+  static IntRepresentation<CameraView> representation() =>
+      DeclarationContext.cameraViews;
 
   final int _index;
   final Game? _game;

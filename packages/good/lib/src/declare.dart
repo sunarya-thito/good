@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 
 import 'package:good/src/asset.dart';
+import 'package:good/src/camera_view.dart';
 import 'package:good/src/command/param.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/event.dart';
@@ -579,5 +580,50 @@ abstract final class DeclarationContext {
       );
     }
     return _assets.last;
+  }
+
+  /// The open camera-view tables, innermost last - the ninth level of the
+  /// stack, and the one `CameraView.representation` reads.
+  ///
+  /// # Scoped to a scene, like [_assets]
+  ///
+  /// A camera-view table belongs to the game, not to the prefab that names
+  /// one, so it is opened around a scene's declaration passes rather than
+  /// around a constructor. `SceneStruct.initializeScene` opens both in the
+  /// same `try`, and a prefab's `final cameraView =
+  /// Field.optPacked(CameraView.representation())` reads this one while its
+  /// `Asset.of` fields read that one.
+  ///
+  /// No barrier, for [_assets]'s reason: a nested prefab and its declarer
+  /// reach the *same table*, so there is no wrong table to land in.
+  static final List<CameraViewTable> _cameraViews = <CameraViewTable>[];
+
+  /// Opens a table for the duration of one scene's declaration passes.
+  /// Paired with [popCameraViews] in a `finally` -
+  /// `SceneStruct.initializeScene` is the only caller.
+  static void pushCameraViews(CameraViewTable table) => _cameraViews.add(table);
+
+  static void popCameraViews() => _cameraViews.removeLast();
+
+  /// The innermost open table, or a `StateError` naming the two ways to get
+  /// here: declaring a camera column outside a scene's bring-up, and reaching
+  /// the call lazily.
+  static CameraViewTable get cameraViews {
+    if (_cameraViews.isEmpty) {
+      throw StateError(
+        'A camera view column was declared with no scene being brought up. '
+        'CameraView.representation reads the table '
+        '`SceneStruct.initializeScene` opens around a scene\'s declaration '
+        'passes, so the declaration has to happen inside one:\n'
+        '  class Eye extends EntityStruct with Transform2D, Camera {}\n'
+        'A prefab is constructed by that pass, so its field initialisers are '
+        'inside the window. Constructing a prefab directly, to read a field '
+        'off it, lands here.\n'
+        'A `late final` initialiser lands here as well: it runs on first '
+        'read, after the archetype was sealed, so the column would never '
+        'reach the row. Field initialisers here are eager, always.',
+      );
+    }
+    return _cameraViews.last;
   }
 }

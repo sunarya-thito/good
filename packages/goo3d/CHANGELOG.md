@@ -2,6 +2,13 @@
 
 ### Breaking
 
+* **`Camera3D.cameraView` is declared on its field.** `Camera3D.describeStruct`
+  is gone, and it was the last `describeStruct` override in this package (#287).
+  The column binds to the same table it always did, named with
+  `CameraView.representation()` in `package:good` instead of read off the scene
+  through `getScene`. Nothing at a use site changes: `cameraView[entity]` and
+  `entity<Camera3D>().view` are unchanged.
+
 * **The `describeType` overrides are gone; each component declares its type in
   a field** (#287). `Transform3D`, `WorldTransform3D` and `Camera3D` each carry
   one `Component.type<Self>()` field instead.

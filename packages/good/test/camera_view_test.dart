@@ -42,6 +42,25 @@ class _NoCameraGame extends Game {
 
 class _State extends GameState<Game> {}
 
+/// A prefab holding a camera-view column, declared from a field initialiser.
+/// `good` has no camera component of its own - `goo2d`'s `Camera` and
+/// `goo3d`'s `Camera3D` are this line - so the fixture is the column.
+class _Viewer extends EntityStruct {
+  final view = Field.optPacked<CameraView>(CameraView.representation());
+}
+
+class _ViewerScene extends SceneStruct {
+  late final Scene handle;
+
+  late final _Viewer viewer;
+
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
+    viewer = descriptor.has(_Viewer.new);
+  }
+}
+
 Future<T> _start<T extends Game>(T Function() create) async {
   final game = await Game.startInline(create);
   run = game;
@@ -177,6 +196,68 @@ void main() {
         reason:
             'and a late layout pass from a widget still being torn down '
             'is a no-op, not a crash',
+      );
+    });
+  });
+
+  group('the table a column binds to', () {
+    test('is the one initializeScene was handed', () {
+      final table = CameraViewTable();
+      table.declareDetached();
+      final second = table.declareDetached();
+      final scene = _ViewerScene()
+        ..initializeScene(MemoryPool(pageSize: 4096), cameraViews: table);
+      scene.handle = SceneRegistry.register(scene);
+      addTearDown(scene.pool.dispose);
+
+      final entity = scene.handle.addEntity(scene.viewer);
+      scene.pool.beginTick();
+      scene.viewer.view[entity] = second;
+      scene.pool.commitTick();
+
+      expect(
+        scene.viewer.view[entity],
+        same(second),
+        reason:
+            'the row holds an address, and an address only unpacks against '
+            'the table that issued it - a column bound to any other table '
+            'reads back null here',
+      );
+    });
+
+    test('outside a scene bring-up it names the pass that opens one', () {
+      expect(
+        () {
+          CameraView.representation();
+        },
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('no scene being brought up'),
+              contains('initializeScene'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('the window closes again when initializeScene returns', () {
+      final scene = _ViewerScene()
+        ..initializeScene(MemoryPool(pageSize: 4096));
+      addTearDown(scene.pool.dispose);
+      SceneRegistry.register(scene);
+
+      expect(
+        () {
+          CameraView.representation();
+        },
+        throwsStateError,
+        reason:
+            'a table left on the stack would be read by whatever declared '
+            'next, and a second scene would bind its cameras to the first '
+            "scene's table",
       );
     });
   });

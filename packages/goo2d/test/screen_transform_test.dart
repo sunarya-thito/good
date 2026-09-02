@@ -165,12 +165,15 @@ class _Spinner extends EntityStruct
 class _Label extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
   final atlas = Asset.of(_textureKey);
 
-  @override
-  int get textCapacity => 8;
-
-  @override
-  BitmapFont get textFont =>
-      BitmapFont(texture: atlas, columns: 16, rows: 6, glyphCount: 95);
+  final label = TextLabel.of(
+    font: BitmapFont(
+      texture: Asset.of(_textureKey),
+      columns: 16,
+      rows: 6,
+      glyphCount: 95,
+    ),
+    capacity: 8,
+  );
 
   @override
   void describeStruct(DataDescriptor data) {

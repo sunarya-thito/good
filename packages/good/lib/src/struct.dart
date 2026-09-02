@@ -20,7 +20,7 @@ abstract interface class Component {
   /// mixin Health on Component {
   ///   final healthType = Component.type<Health>();
   ///
-  ///   late final DataPointer<int> health;
+  ///   final healthHp = Field.int32(100);
   /// }
   /// ```
   ///
@@ -66,6 +66,55 @@ abstract interface class Component {
     DeclarationContext.components.declareComponent(T, conflictsWith),
   );
 
+  /// Records [declaration] against the prefab being constructed and hands it
+  /// back, so the call site keeps the typed handle in its field.
+  ///
+  /// Called by the declaration itself - `Sprite.of`, `BoxBody.of`,
+  /// `TextLabel.of` - and never by a prefab. The component that owns the kind
+  /// takes it back with [declared], or with [MultiComponent.declared] where
+  /// an entity carries several.
+  ///
+  /// Throws when nothing is being constructed: a prefab built by hand, or a
+  /// `late final` that runs on first read rather than during the pass that
+  /// lays the archetype out.
+  static T declare<T extends Object>(T declaration) {
+    DeclarationContext.addDeclared(declaration);
+    return declaration;
+  }
+
+  /// The one [T] the prefab being constructed declared, or null if it
+  /// declared none, and removes it from the collection.
+  ///
+  /// The single-instance twin of [MultiComponent.declared], for a component
+  /// that holds one field rather than a list:
+  ///
+  /// ```dart
+  /// mixin Text2D on Component {
+  ///   final textLabel = TextLabel.declared();
+  /// }
+  /// ```
+  ///
+  /// Belongs in a field initialiser of the component mixin itself, which is
+  /// where it runs late enough to see the whole prefab - a mixin's own
+  /// initialisers run after the applying class's. Anything a prefab declares
+  /// that no component takes fails the registration by name.
+  ///
+  /// Two declarations of one kind is refused here. The component has one
+  /// field to keep them in, so the second would be stored nowhere and read by
+  /// nothing; a second of anything is a second entity.
+  static T? declared<T extends Object>() {
+    final taken = DeclarationContext.takeDeclared<T>();
+    if (taken.length > 1) {
+      throw StateError(
+        'A prefab declares ${taken.length} ${T}s, and a component holds one. '
+        'Only the first would ever be read, so the rest would draw nothing '
+        'and answer nothing. Declare one, and spawn a second entity for a '
+        'second.',
+      );
+    }
+    return taken.isEmpty ? null : taken.first;
+  }
+
   void describeStruct(DataDescriptor data);
 
   /// The scene the entity this component instance describes was registered
@@ -102,8 +151,8 @@ abstract interface class Component {
 /// initialisers run **after** the applying class's: `class Sub extends Base
 /// with M1, M2` runs `Sub`, then `M2`, then `M1`, then `Base`, so the
 /// prefab's two `Sprite.of` calls happen while `Renderable2D` has no fields.
-/// Each call records itself with [declare] instead, and the component takes
-/// its own kind back with [declared]:
+/// Each call records itself with [Component.declare] instead, and the
+/// component takes its own kind back with [declared]:
 ///
 /// ```dart
 /// mixin Renderable2D on MultiComponent {
@@ -111,23 +160,10 @@ abstract interface class Component {
 /// }
 /// ```
 ///
-/// [Component] is the marker for the single-instance case and adds nothing of
-/// its own beyond what a component already declares.
+/// [Component] is the marker for the single-instance case, and
+/// [Component.declared] is how one of those takes its own declaration back -
+/// one value where this hands back a list.
 abstract interface class MultiComponent implements Component {
-  /// Records [declaration] against the prefab being constructed and hands it
-  /// back, so the call site keeps the typed handle in its field.
-  ///
-  /// Called by the declaration itself - `Sprite.of`, `BoxBody.of` - and never
-  /// by a prefab.
-  ///
-  /// Throws when nothing is being constructed: a prefab built by hand, or a
-  /// `late final` that runs on first read rather than during the pass that
-  /// lays the archetype out.
-  static T declare<T extends Object>(T declaration) {
-    DeclarationContext.addDeclared(declaration);
-    return declaration;
-  }
-
   /// Every [T] the prefab being constructed has declared so far, in
   /// declaration order, and removes them from the collection.
   ///
@@ -494,13 +530,7 @@ extension type const Entity(int value) implements int {
 ///
 /// ```dart
 /// mixin Health on Component {
-///   late final DataPointer<int> healthHp;
-///
-///   @override
-///   void describeStruct(DataDescriptor data) {
-///     super.describeStruct(data);
-///     healthHp = data.hasInt32(100);
-///   }
+///   final healthHp = Field.int32(100);
 /// }
 ///
 /// extension HealthAccessor on Accessor<Health> {

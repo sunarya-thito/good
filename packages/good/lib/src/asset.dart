@@ -441,8 +441,8 @@ abstract interface class AssetLoaderRegistrar {
 /// ```dart
 /// typedef TextureAsset = Asset<Texture>;
 ///
-/// late final TextureAsset texture;                // Asset<Texture>
-/// late final DataPointer<TextureAsset> sprite;
+/// final texture = Asset.of(playerTexture);        // TextureAsset
+/// final sprite = Field.packed(Asset.representation<Texture>(), texture);
 /// ```
 ///
 /// # It is normal for this to hold no payload
@@ -574,13 +574,7 @@ final class Asset<T> implements IntRepresentable {
 ///
 ///   final texture = Asset.of(playerTexture);     // typed handle, kept
 ///
-///   late final DataPointer<TextureAsset> sprite;
-///
-///   @override
-///   void describeStruct(DataDescriptor data) {
-///     super.describeStruct(data);
-///     sprite = data.hasPacked(assets.of<Texture>(), texture);
-///   }
+///   final sprite = Field.packed(Asset.representation<Texture>(), texture);
 /// }
 /// ```
 ///

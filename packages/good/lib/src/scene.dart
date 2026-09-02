@@ -291,10 +291,17 @@ abstract class SceneStruct extends GameListenerBase
     // `DeclarationContext.assets`, which spells out why this level has no
     // barrier.
     DeclarationContext.pushAssets(descriptor);
+    // The camera-view table is opened over the same span and for the same
+    // reason: it belongs to the game, one of it serves every prefab this
+    // pass registers, and a `Camera` component's
+    // `Field.optPacked(CameraView.representation())` reads it from a field
+    // initialiser inside `describeScene`.
+    DeclarationContext.pushCameraViews(this.cameraViews);
     try {
       describeAssets(descriptor);
       describeScene(_SceneDescriptor(this));
     } finally {
+      DeclarationContext.popCameraViews();
       DeclarationContext.popAssets();
     }
     // A scene brought up by hand has no boot pass to bind its events, so it
