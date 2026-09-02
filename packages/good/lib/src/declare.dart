@@ -250,6 +250,50 @@ abstract final class DeclarationContext {
   static EventBinder? get eventsOrNull =>
       _events.isEmpty ? null : _events.last;
 
+  /// Dispatchers a base class declared on a field, waiting for the object
+  /// being constructed to take them.
+  ///
+  /// **Not a level of the stack.** Every level above is a window a
+  /// construction site opens, and a declaration in one asks "which window is
+  /// innermost". `EntityStruct.mountedEvent` asks a different question -
+  /// "which object is being constructed" - and the two differ whenever an
+  /// owner is built inside another owner's window: a `SceneStruct` held on a
+  /// `GameState` field is constructed while the state's window is open, and
+  /// its pair belongs to the scene.
+  ///
+  /// So `Event.inherited` appends here and does nothing else. The object
+  /// takes what is here from `GameListenerBase`'s constructor body, which
+  /// runs after every field initialiser in the hierarchy and before any
+  /// subclass constructor body - see [takeInheritedEvents].
+  static final List<void Function(GameListener)> _inheritedEvents =
+      <void Function(GameListener)>[];
+
+  /// Records one declaration. `Event.inherited` and `Event.inheritedSignal`
+  /// are the only callers, and the framework's three base pairs are the only
+  /// callers of those.
+  static void registerInheritedEvent(void Function(GameListener) offer) =>
+      _inheritedEvents.add(offer);
+
+  /// Hands over every declaration made since the last call, and empties the
+  /// list.
+  ///
+  /// Called once per `GameListenerBase` construction, so what is here is
+  /// exactly what the object under construction declared: a base class
+  /// declares its pair from a field initialiser, and the only code that runs
+  /// between that initialiser and this call is the remaining field
+  /// initialisers of the framework classes below it, none of which builds
+  /// another listener. A nested owner - `EntityStruct.of(Barrel.new)` in a
+  /// parent's field initialiser - finishes constructing, and so empties this
+  /// list, before the parent's own pair is declared.
+  static List<void Function(GameListener)> takeInheritedEvents() {
+    if (_inheritedEvents.isEmpty) {
+      return const <void Function(GameListener)>[];
+    }
+    final taken = List<void Function(GameListener)>.of(_inheritedEvents);
+    _inheritedEvents.clear();
+    return taken;
+  }
+
   /// The innermost open binder, or a `StateError` naming the two ways to get
   /// here: constructing the owner yourself, and reaching an `Event.*` call
   /// lazily.

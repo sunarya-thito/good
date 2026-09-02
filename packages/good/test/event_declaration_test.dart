@@ -4,6 +4,7 @@
 import 'package:flutter_test/flutter_test.dart' hide EventDispatcher;
 
 import 'package:good/src/archetype.dart';
+import 'package:good/src/data/hierarchy.dart';
 import 'package:good/src/event.dart';
 import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/game.dart';
@@ -295,6 +296,107 @@ class _PrebuiltGame extends Game {
 
   @override
   GameState createState() => _PrebuiltState();
+}
+
+/// A prefab declared from another prefab's field initialiser, so its
+/// construction finishes while the declarer is still being built. Both hear
+/// their own entities, so a pair that reached the wrong owner shows up as a
+/// listener count.
+class _NestedChild extends EntityStruct with Child, EntityLifecycleListener {
+  final List<Entity> mounts = <Entity>[];
+
+  @override
+  void onEntityMounted(Entity entity) => mounts.add(entity);
+}
+
+class _NestedParent extends EntityStruct with Parent, EntityLifecycleListener {
+  final child = EntityStruct.of(_NestedChild.new);
+
+  final List<Entity> mounts = <Entity>[];
+
+  @override
+  void onEntityMounted(Entity entity) => mounts.add(entity);
+}
+
+class _NestedScene extends SceneStruct {
+  late final _NestedParent parent;
+
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
+    parent = descriptor.has(_NestedParent.new);
+  }
+}
+
+class _NestedGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  late final _NestedScene level;
+
+  @override
+  void describeScenes(GameSceneDescriptor descriptor) {
+    super.describeScenes(descriptor);
+    level = descriptor.has(_NestedScene());
+  }
+
+  @override
+  GameState createState() => _NestedState();
+}
+
+class _NestedState extends GameState<_NestedGame> {
+  @override
+  void onMounted() {
+    loadScene(game.level);
+  }
+}
+
+/// A listener a system offers alongside itself, so the system's inherited
+/// pair collects more than one candidate and its order is observable at all.
+class _Ear extends GameListenerBase with GameSystemLifecycleListener {
+  _Ear(this.mark);
+
+  final String mark;
+
+  @override
+  void onMounted() => _Noted.log.add('mount:$mark');
+
+  @override
+  void onUnmounted() => _Noted.log.add('unmount:$mark');
+}
+
+class _EarSystem extends GameSystem with GameSystemLifecycleListener {
+  final _Ear first = _Ear('first');
+  final _Ear second = _Ear('second');
+
+  @override
+  void collectListeners(ListenerCollector collector) {
+    super.collectListeners(collector);
+    collector.offer(first);
+    collector.offer(second);
+  }
+
+  @override
+  void onMounted() => _Noted.log.add('mount:system');
+
+  @override
+  void onUnmounted() => _Noted.log.add('unmount:system');
+}
+
+class _EarState extends GameState<_EarGame> {
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_EarSystem.new);
+  }
+}
+
+class _EarGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  GameState createState() => _EarState();
 }
 
 abstract class _NotedGame extends Game {
@@ -650,6 +752,79 @@ void main() {
             'the eager field runs during the constructor, and there is no '
             'binder open around a bare `_Pair()` - the same rule Field.* and '
             'Param.* state, said in the same place',
+      );
+    });
+  });
+
+  group('the inherited pair belongs to the object being constructed', () {
+    test('a nested prefab does not hand its pair to its declarer', () async {
+      final run = await _bootAny(_NestedGame.new);
+      final parent = run.level.parent;
+
+      expect(
+        parent.child.mountedEvent.listenerCount,
+        1,
+        reason:
+            'the child alone. It is constructed from the parent field '
+            'initialiser, so its pair is declared while the parent is still '
+            'being built - a pair the parent then took as well would put two '
+            'listeners here',
+      );
+      expect(
+        parent.mountedEvent.listenerCount,
+        1,
+        reason:
+            'and the parent alone, so the count above is one because the two '
+            'declarations were separated and not because nothing was '
+            'collected at all',
+      );
+
+      final entity = run.state.loadedScenes.single.addEntity(parent);
+
+      expect(
+        parent.mounts,
+        <Entity>[entity],
+        reason: 'the parent hears its own entity, and the count above is a '
+            'list that delivers',
+      );
+      expect(
+        parent.child.mounts.length,
+        1,
+        reason:
+            'and the child hears the child entity the spawn created, once. '
+            'A pair the parent had also taken would deliver it twice',
+      );
+      expect(
+        parent.child.mounts.single,
+        isNot(entity),
+        reason: 'and what it heard is the child entity, not the parent one',
+      );
+    });
+
+    test('the system pair is collected in declaration order, and '
+        'unmount reads it backwards', () async {
+      final run = await _bootAny(_EarGame.new);
+      final mounted = List<String>.of(_Noted.log);
+
+      expect(
+        mounted,
+        <String>['mount:system', 'mount:first', 'mount:second'],
+        reason:
+            'collection order: the system offers itself first and its two '
+            'ears after, and mountEvent delivers in that order',
+      );
+
+      _Noted.log.clear();
+      await run.stop();
+
+      expect(
+        _Noted.log,
+        <String>['unmount:second', 'unmount:first', 'unmount:system'],
+        reason:
+            'unmountEvent carries reverse: true, so the same list is read '
+            'backwards and the system is told last - after everything it '
+            'offered has been. Without the flag this would be the mount '
+            'order again',
       );
     });
   });

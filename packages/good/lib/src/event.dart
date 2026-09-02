@@ -36,21 +36,29 @@ abstract interface class GameListener {
 /// `implements` clause - so `class X with EventBus implements GameListener`
 /// does not compile. Extending this satisfies it.
 abstract class GameListenerBase implements GameListener {
-  /// Records the declaration window open around this construction, if there
-  /// was one.
+  /// Takes the dispatchers a base class declared for this object, and records
+  /// the declaration window open around the construction.
   ///
-  /// Runs after every field initialiser and before any subclass constructor
-  /// body, so by here an `Event.of` on a field has already written into that
-  /// window. `EventBinder.open` reads it back to check that the owner it was
-  /// handed is the one built inside the window it opened - see its refusal.
+  /// This body runs after every field initialiser in the hierarchy and before
+  /// any subclass constructor body, which is what makes it the point where an
+  /// inherited declaration finds its owner. `EntityStruct.mountedEvent`,
+  /// `SceneStruct.mountedEvent` and `GameSystem.mountEvent` are declared on
+  /// fields against no owner at all - `Event.inherited` appends and returns -
+  /// and the object under construction takes them here. See
+  /// [DeclarationContext.takeInheritedEvents].
   ///
-  /// Not the owner's registrar. An owner constructed inside someone else's
-  /// window - a `SceneStruct` held on a `GameState` field - keeps a registrar
-  /// of its own, so its base pair reaches its own composition and not the
-  /// state's. See [EventBus.events].
+  /// Taking them here and not off the open window is what scopes them. An
+  /// owner constructed inside someone else's window - a `SceneStruct` held on
+  /// a `GameState` field - takes its own pair, so the pair reaches that
+  /// scene's composition and not the state's.
+  ///
+  /// [_builtIn] is the window, kept for a different question:
+  /// `EventBinder.open` reads it back to check that the owner it was handed is
+  /// the one built inside the window it opened - see its refusal.
   GameListenerBase() {
     if (this case final EventBus self) {
       self._builtIn = DeclarationContext.eventsOrNull;
+      EventBinder._takeInherited(self);
     }
   }
 
@@ -316,8 +324,7 @@ abstract class EventDescriptor {
 ///
 /// `descriptor.has(...)` reads `L` and `E` off the field it is assigned to.
 /// An initialiser has no such context, so the dispatcher's listener type and
-/// payload type are written at the call - which is the whole of what the
-/// separate `late final EventDispatcher<L, E>` declaration used to say.
+/// payload type are written at the call.
 ///
 /// # Who can declare this way, and who cannot
 ///
@@ -331,8 +338,11 @@ abstract class EventDescriptor {
 /// so no binder is open while its fields initialise and `Event.*` in one
 /// throws out of [DeclarationContext.events]. It declares from its constructor
 /// body instead, against [EventBus.events], which reads the owner rather than
-/// the stack. So does a pair a base class declares for every subclass, which
-/// is inherited however the subclass was built.
+/// the stack.
+///
+/// [inherited] and [inheritedSignal] are the framework's own route, for the
+/// pair a base class declares on every subclass's behalf. They read no window
+/// and no owner - see their doc.
 ///
 /// # Let the framework build it, and mean it
 ///
@@ -373,6 +383,46 @@ abstract final class Event {
     void Function(L listener) deliver, {
     bool reverse = false,
   }) => DeclarationContext.events.hasSignal<L>(deliver, reverse: reverse);
+
+  /// A dispatcher a base class declares on a field for every subclass that
+  /// inherits it - `EntityStruct.mountedEvent` and its two siblings.
+  ///
+  /// The declaration and nothing else: it builds the dispatcher, records it
+  /// in [DeclarationContext.registerInheritedEvent], and returns it. It reads
+  /// no window, so the field initialiser works whichever way the subclass was
+  /// built - by `SceneDescriptor.has(Mote.new)`, by a fixture writing
+  /// `_Rock()`, or by a `GameState` field initialiser holding a scene. Which
+  /// owner it belongs to is settled afterwards, in `GameListenerBase`'s
+  /// constructor body, which runs once every field initialiser in the
+  /// hierarchy has.
+  ///
+  /// [of] is the route for a declaration a *user* writes. It reads the window,
+  /// and that read is what refuses `late final wounded = Event.of(...)` and a
+  /// prefab built with nothing open above it - neither of which this can see.
+  @internal
+  static EventDispatcher<L, E> inherited<L extends GameListener, E>(
+    void Function(L listener, E payload) deliver, {
+    bool reverse = false,
+  }) {
+    final dispatcher = EventDispatcher<L, E>(deliver, reverse: reverse);
+    DeclarationContext.registerInheritedEvent((candidate) {
+      if (candidate is L) dispatcher.add(candidate);
+    });
+    return dispatcher;
+  }
+
+  /// [inherited], for an event that carries nothing - `GameSystem.mountEvent`.
+  @internal
+  static SignalDispatcher<L> inheritedSignal<L extends GameListener>(
+    void Function(L listener) deliver, {
+    bool reverse = false,
+  }) {
+    final dispatcher = SignalDispatcher<L>(deliver, reverse: reverse);
+    DeclarationContext.registerInheritedEvent((candidate) {
+      if (candidate is L) dispatcher.add(candidate);
+    });
+    return dispatcher;
+  }
 }
 
 /// One owner's dispatchers, and the collector that fills them.
@@ -405,8 +455,8 @@ final class EventBinder implements EventDescriptor, ListenerCollector {
   /// The binder has to outlive the constructor: field declarations happen at
   /// construction and the collect pass happens at boot, and between those two
   /// moments sits a scene registration or an `Isolate.spawn`. It becomes the
-  /// object's registrar here, or is folded into the one the object made for
-  /// itself while a base class declared its pair - see [EventBus.events].
+  /// object's registrar here, or is folded into the one [_takeInherited]
+  /// already made for the object's inherited pair.
   ///
   /// The pop is in a `finally`: a constructor that throws must not leave the
   /// next declaration writing into a binder nobody owns.
@@ -467,9 +517,9 @@ final class EventBinder implements EventDescriptor, ListenerCollector {
   /// is the whole of binding one owner's events.
   ///
   /// Every dispatcher exists by now. They are created while the owner is
-  /// constructed - by `Event.*` in a field initialiser, or by a base class
-  /// declaring against [EventBus.events] in its constructor body - and this
-  /// pass only decides who receives them.
+  /// constructed - by `Event.of` on a field, by `Event.inherited` on a base
+  /// class's field, or by a scene declaring against [EventBus.events] in its
+  /// constructor body - and this pass only decides who receives them.
   ///
   /// Binding twice is an error, and has to stay one: the second pass would
   /// offer every candidate to the dispatchers the first one filled, and each
@@ -519,11 +569,27 @@ final class EventBinder implements EventDescriptor, ListenerCollector {
     });
   }
 
+  /// Moves the dispatchers a base class declared for [bus] onto [bus]'s own
+  /// registrar, making one if it has none yet.
+  ///
+  /// The resolve half of an inherited declaration - see [Event.inherited] for
+  /// the register half, and `GameListenerBase`'s constructor body for why
+  /// this is the moment the owner is known.
+  ///
+  /// The registrar it makes here is the same one [open] finds and absorbs
+  /// into, and the same one [bind] falls back to for an owner no window was
+  /// ever open around.
+  static void _takeInherited(EventBus bus) {
+    final declared = DeclarationContext.takeInheritedEvents();
+    if (declared.isEmpty) return;
+    (bus._binder ??= EventBinder())._offers.addAll(declared);
+  }
+
   /// Folds [other]'s declarations into this one.
   ///
-  /// Two binders exist for one owner whenever a base class declares a pair
-  /// from its constructor body: that pair goes to the owner's own registrar,
-  /// and a subclass's `Event.*` fields went to the window `open` pushed.
+  /// Two binders exist for one owner whenever a base class declares a pair:
+  /// that pair goes to the owner's own registrar, made by [_takeInherited],
+  /// and a subclass's `Event.of` fields went to the window `open` pushed.
   /// Position in this list is not delivery order - an entry decides for
   /// itself whether a candidate fits, and the order listeners arrive in is
   /// the order [offer] is called - so appending is the whole of the merge.
@@ -565,8 +631,9 @@ abstract class ListenerCollector {
 /// That is what makes an event declared high up reach everything below it
 /// while one declared on a prefab reaches only that prefab.
 mixin EventBus on GameListener {
-  /// This owner's registrar, made on first use by [events] and set by
-  /// `EventBinder.open` for an owner whose fields declared into a window.
+  /// This owner's registrar, made on first use by [events] or by
+  /// `EventBinder._takeInherited`, and set by `EventBinder.open` for an owner
+  /// whose fields declared into a window.
   ///
   /// Not an initialiser: a mixin's fields initialise *after* the subclass's,
   /// so a binder created here would arrive too late for the very declarations
@@ -585,15 +652,9 @@ mixin EventBus on GameListener {
   /// make.
   ///
   /// `Event.of` and `Event.signal` read the window the framework opens around
-  /// a constructor call, and there are two declarations that cannot:
-  ///
-  ///  * a pair a base class declares for every subclass, which is inherited
-  ///    however the subclass was built and so cannot assume a window;
-  ///  * a declaration on a [SceneStruct], which the caller constructs with no
-  ///    window open at all.
-  ///
-  /// Both have `this`, so both declare from a **constructor body** against
-  /// this getter, which reads the owner and never the stack:
+  /// a constructor call, and a [SceneStruct] has none - the caller constructs
+  /// it. A scene has `this` in its constructor body, so that is where it
+  /// declares, against this getter, which reads the owner and never the stack:
   ///
   /// ```dart
   /// class MainScene extends SceneStruct {
@@ -607,7 +668,8 @@ mixin EventBus on GameListener {
   ///
   /// Reach for `Event.of` on a field wherever the framework builds the owner.
   /// This is the same declaration, made where a field initialiser cannot
-  /// reach.
+  /// reach. The pair every scene, prefab and system inherits takes a third
+  /// route, [Event.inherited], which needs neither a window nor an owner.
   @protected
   EventDescriptor get events => _binder ??= EventBinder();
 

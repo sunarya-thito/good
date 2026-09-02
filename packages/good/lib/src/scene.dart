@@ -32,33 +32,31 @@ abstract class SceneStruct extends GameListenerBase
   ///
   /// The payload is still the [Scene], because one `SceneStruct` backs however
   /// many loaded instances: "which of mine" is a real question even here.
-  late final EventDispatcher<SceneLifecycleListener, Scene> mountedEvent;
+  ///
+  /// Declared through `Event.inherited`, which reads no declaration window.
+  /// A scene is constructed by the caller - `final level = MainScene();` - so
+  /// there is none to read, and `Event.of` on a field here throws. A scene's
+  /// own events declare from its constructor body against [EventBus.events];
+  /// this pair is inherited by every scene however it was built, and the scene
+  /// takes it when its construction finishes.
+  final mountedEvent = Event.inherited<SceneLifecycleListener, Scene>(
+    (listener, scene) => listener.onSceneMounted(scene),
+  );
 
   /// An instance of this scene is being unloaded, while its entities are still
   /// readable. Same scope as [mountedEvent].
-  late final EventDispatcher<SceneLifecycleListener, Scene> unmountedEvent;
-
-  // A scene is constructed by the caller - `final level = MainScene();` -
-  // so no declaration window is open while its fields initialise and
-  // `Event.*` in one throws. `EventBus.events` reads this scene instead of
-  // the stack, and a constructor body has `this`, so this is where a scene
-  // declares. A subclass declares its own the same way.
-  SceneStruct() {
-    mountedEvent = events.has(
-      (listener, scene) => listener.onSceneMounted(scene),
-    );
-    // `reverse: true` is what lets the owning struct stop being a
-    // separate virtual. One collect pass offers this scene *first* and
-    // its prefabs after, so at mount the scene's own onSceneMounted runs
-    // before anything it composes - a listener still finds the starting
-    // entities already spawned. Reading the same list backwards at
-    // unmount puts the scene *last*, so it can still read the world when
-    // everything below it has been told. Two orders, one list.
-    unmountedEvent = events.has(
-      (listener, scene) => listener.onSceneUnmounted(scene),
-      reverse: true,
-    );
-  }
+  ///
+  /// `reverse: true` is what lets the owning struct stop being a separate
+  /// virtual. One collect pass offers this scene *first* and its prefabs
+  /// after, so at mount the scene's own `onSceneMounted` runs before anything
+  /// it composes - a listener still finds the starting entities already
+  /// spawned. Reading the same list backwards at unmount puts the scene
+  /// *last*, so it can still read the world when everything below it has been
+  /// told. Two orders, one list.
+  final unmountedEvent = Event.inherited<SceneLifecycleListener, Scene>(
+    (listener, scene) => listener.onSceneUnmounted(scene),
+    reverse: true,
+  );
 
   /// Every prefab [describeScene] registered, in declaration order.
   ///

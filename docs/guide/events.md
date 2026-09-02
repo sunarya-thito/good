@@ -109,13 +109,13 @@ class MainScene extends SceneStruct {
 `late final` with no initialiser is right here and only here: the field is
 assigned from the constructor body, after the initialisers have run.
 
-Two base-class pairs are declared this way too, for a narrower reason.
-`EntityStruct`'s `mountedEvent`/`unmountedEvent` and `GameSystem`'s
-`mountEvent`/`unmountEvent` are inherited by every struct and every system
-however it was built, so neither can assume a window. `events` reads the owner
-instead, so the pair lands on the object that declared it either way. A pair
-you declare on your own struct or your own system can use a field initialiser,
-as long as you let the framework build it.
+The three pairs the framework declares for you — `SceneStruct`'s and
+`EntityStruct`'s `mountedEvent`/`unmountedEvent`, and `GameSystem`'s
+`mountEvent`/`unmountEvent` — are fields with their own initialisers, and they
+work however the subclass was built. They go through an internal route that
+reads no window: the declaration is recorded, and the object takes it once its
+construction finishes. A pair you declare on your own struct or your own system
+uses `Event.of` on a field, as long as you let the framework build it.
 
 `SceneDescriptor.has` and `SystemDescriptor.has` both take a `T Function()`,
 and a closure may hand back an object that already existed:
@@ -142,7 +142,7 @@ spawner = descriptor.has(Spawner.new);
 
 A prefab a fixture built with nothing open above it is fine to hand over:
 `Event.*` throws on an empty stack, so it declared nothing anywhere else, and
-its base pair went to a registrar of its own.
+its base pair landed on the prefab as it always does.
 
 An owner may use both forms at once: its fields' dispatchers and its
 constructor body's end up in one binder, and one collect pass fills them all.
@@ -155,8 +155,9 @@ so there is nothing to look up later.
 Anything that mixes in `EventBus`, whose bound is `on GameListener`. Four
 framework types qualify — `GameState`, `SceneStruct`, `EntityStruct` and
 `GameSystem` — and they are exactly the four that live on the game isolate.
-`GameState`, `EntityStruct` and `GameSystem` declare on a field; `SceneStruct`
-declares from its constructor body, for the construction reason above.
+`GameState`, `EntityStruct` and `GameSystem` declare on a field; a
+`SceneStruct` declares its own events from its constructor body, for the
+construction reason above.
 
 `Game` is not a `GameListener`, so it cannot declare or receive an event. Every
 event in the engine happens on the simulating isolate; traffic to Flutter goes
@@ -266,11 +267,10 @@ final wilted = Event.signal<ChirpListener>(
 );
 ```
 
-`GameSystem`'s own `unmountEvent` carries the same flag, declared from its
-constructor body because a base class pair cannot assume a window; so does
-`GameState.sceneUnloadedEvent`, with a payload. The rule for your own events:
-forward for anything meaning "this now exists", reverse for anything meaning
-"this is going away".
+`GameSystem`'s own `unmountEvent` carries the same flag, and so do
+`SceneStruct.unmountedEvent` and `GameState.sceneUnloadedEvent`. The rule for
+your own events: forward for anything meaning "this now exists", reverse for
+anything meaning "this is going away".
 
 ## Declaring an event of your own
 
