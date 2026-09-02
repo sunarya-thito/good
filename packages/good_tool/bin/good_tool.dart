@@ -10,6 +10,7 @@ import 'package:good_tool/src/accessor_emit.dart';
 import 'package:good_tool/src/accessor_scan.dart';
 import 'package:good_tool/src/component_emit.dart';
 import 'package:good_tool/src/component_scan.dart';
+import 'package:good_tool/src/declaration_scan.dart';
 import 'package:good_tool/src/doc_references.dart';
 import 'package:good_tool/src/engine_packages.dart';
 import 'package:good_tool/src/imports.dart';
@@ -23,12 +24,20 @@ import 'package:path/path.dart' as p;
 /// $ dart run good_tool --dir ../../packages --check    # fail if stale
 /// $ dart run good_tool --dir ../../packages --verbose  # say what got nothing
 /// $ dart run good_tool --dir ../../packages --doc-references
+/// $ dart run good_tool --dir ../../packages --declarations
 /// ```
 ///
 /// `--doc-references` generates nothing. It reads the doc comments in the
 /// packages it was pointed at and fails on a `[Reference]` whose name is
 /// written nowhere in the packages read. [scanDocReferences] states the rule
 /// and what it leaves alone.
+///
+/// `--declarations` generates nothing either. It fails on a declaration held by
+/// a variable Dart initialises lazily - a `late` field, a `static` field, a
+/// top-level variable - because the declaration then lands on whichever owner
+/// is under construction when the variable is first read rather than on the one
+/// that wrote it. [scanDeferredDeclarations] states the rule and the four
+/// things it does not decide.
 ///
 /// From a package's own directory, because `dart run <package>` resolves
 /// packages from the working directory.
@@ -93,7 +102,8 @@ import 'package:path/path.dart' as p;
 /// component-bit table would not fit a query signature, `--check` found a
 /// committed file that is not what would be written now, or
 /// `--doc-references` found a doc comment naming something that is written
-/// nowhere. None of them reprint the usage: the invocation was right, so
+/// nowhere, or `--declarations` found one held by a lazy variable. None of them
+/// reprint the usage: the invocation was right, so
 /// answering it with the invocation answers a question nobody asked.
 ///
 /// The seam between the two runs through the pair that look alike. A `--dir`
@@ -102,6 +112,7 @@ import 'package:path/path.dart' as p;
 Future<void> main(List<String> arguments) async {
   final check = arguments.contains('--check');
   final docReferences = arguments.contains('--doc-references');
+  final declarations = arguments.contains('--declarations');
   final verbose = arguments.contains('--verbose') || arguments.contains('-v');
   final directories = <String>[];
   final unknown = <String>[];
@@ -122,6 +133,7 @@ Future<void> main(List<String> arguments) async {
     }
     if (argument == '--check' ||
         argument == '--doc-references' ||
+        argument == '--declarations' ||
         argument == '--verbose' ||
         argument == '-v') {
       continue;
@@ -187,6 +199,11 @@ Future<void> main(List<String> arguments) async {
 
   if (docReferences) {
     _docReferences(packages, scan.dependencies);
+    return;
+  }
+
+  if (declarations) {
+    _declarations(packages, scan.dependencies);
     return;
   }
 
@@ -316,7 +333,7 @@ Future<void> main(List<String> arguments) async {
 void _usage() {
   stderr.writeln(
     'Usage: dart run good_tool --dir <directory> [--dir <directory>] '
-    '[--check] [--doc-references] [--verbose]',
+    '[--check] [--doc-references] [--declarations] [--verbose]',
   );
   stderr.writeln(
     '  --dir .              the package in this directory\n'
@@ -425,6 +442,37 @@ void _docReferences(
     stderr.writeln(danglingReferenceLine(reference));
   }
   stderr.writeln(danglingReferenceSummary(scan));
+  exitCode = 65;
+}
+
+/// A separate mode and not a step inside [_docReferences], for the reason that
+/// one is separate from [_check]: the two read different things and are fixed
+/// by different edits, and one exit code over both would name the wrong fix.
+///
+/// [dependencies] are read and never reported on, and here they carry more than
+/// they do for doc references. The entry points a call site is matched against
+/// are derived from the packages read, and `Field`, `Event` and `Component`
+/// live in `good` - a scan holding only the package under it would find no
+/// entry points and report a clean run over code full of them.
+void _declarations(
+  List<EnginePackage> packages,
+  List<EnginePackage> dependencies,
+) {
+  final scan = scanDeferredDeclarations(
+    packages: packages,
+    known: <EnginePackage>[...packages, ...dependencies],
+  );
+  if (scan.deferred.isEmpty) {
+    stdout.writeln(
+      '${scan.calls} declaration(s) in ${scan.files} file(s) are eager, '
+      'against ${scan.entryPoints} declaring member(s).',
+    );
+    return;
+  }
+  for (final deferred in scan.deferred) {
+    stderr.writeln(deferredDeclarationLine(deferred));
+  }
+  stderr.writeln(deferredDeclarationSummary(scan));
   exitCode = 65;
 }
 
