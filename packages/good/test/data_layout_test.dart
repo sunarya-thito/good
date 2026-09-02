@@ -942,6 +942,158 @@ void main() {
     });
   });
 
+  // `DataPointer.readPending` is public API and partial: three column kinds
+  // answer and every other throws. Nothing here measured which was which, and
+  // the two ways it was wrong are the two halves of this group - a kind that
+  // reported its failure under the wrong class, and the outside-a-tick
+  // fallback the base doc states that one implementation did not make.
+  group('readPending', () {
+    test('float64 answers the slot this tick is writing', () {
+      late DataPointer<double> x;
+      final h = _Harness((data) => x = data.hasFloat64());
+      addTearDown(h.dispose);
+
+      h.pool.beginTick();
+      final e = h.spawn();
+      x[e] = 1.0;
+      h.pool.commitTick();
+
+      h.pool.beginTick();
+      x[e] = 2.0;
+      expect(x[e], 1.0, reason: 'an ordinary read stays on the published slot');
+      expect(x.readPending(e), 2.0);
+      h.pool.commitTick();
+    });
+
+    test('optInt64 answers the slot this tick is writing', () {
+      late DataPointer<int?> x;
+      final h = _Harness((data) => x = data.optInt64());
+      addTearDown(h.dispose);
+
+      h.pool.beginTick();
+      final e = h.spawn();
+      x[e] = 1;
+      h.pool.commitTick();
+
+      h.pool.beginTick();
+      x[e] = 2;
+      expect(x[e], 1);
+      expect(x.readPending(e), 2);
+      // The flag and the value come from one slot, so a column cleared this
+      // tick reads back absent rather than as the published 1.
+      x[e] = null;
+      expect(x.readPending(e), isNull);
+      expect(x[e], 1);
+      h.pool.commitTick();
+    });
+
+    test('optEntity answers the slot this tick is writing', () {
+      late DataPointer<Entity?> link;
+      final h = _Harness((data) => link = data.optEntity());
+      addTearDown(h.dispose);
+
+      h.pool.beginTick();
+      final a = h.spawn();
+      final b = h.spawn();
+      h.pool.commitTick();
+
+      h.pool.beginTick();
+      link[a] = b;
+      expect(link[a], isNull, reason: 'nothing published into this column');
+      expect(link.readPending(a), b);
+      h.pool.commitTick();
+    });
+
+    // Stated on `DataPointer.readPending`: outside a tick the write slot holds
+    // whatever sat there before `beginWrite` copied, so an implementation
+    // answers with the published read instead. `_OptionalField` guarded;
+    // `_Float64Field` reached for the write slot, which on a page that has
+    // published trips the lost-write assertion - reporting a write this call
+    // never makes.
+    test('outside a tick float64 answers the published slot', () {
+      late DataPointer<double> x;
+      final h = _Harness((data) => x = data.hasFloat64());
+      addTearDown(h.dispose);
+
+      h.pool.beginTick();
+      final e = h.spawn();
+      x[e] = 1.0;
+      h.pool.commitTick();
+
+      h.pool.beginTick();
+      x[e] = 2.0;
+      h.pool.commitTick();
+
+      expect(x.readPending(e), 2.0);
+    });
+
+    test('outside a tick optInt64 answers the published slot', () {
+      late DataPointer<int?> x;
+      final h = _Harness((data) => x = data.optInt64());
+      addTearDown(h.dispose);
+
+      h.pool.beginTick();
+      final e = h.spawn();
+      x[e] = 1;
+      h.pool.commitTick();
+
+      h.pool.beginTick();
+      x[e] = 2;
+      h.pool.commitTick();
+
+      expect(x.readPending(e), 2);
+    });
+
+    // A kind that cannot answer names the column the caller declared.
+    // `hasBool` forwarded the call into the one-bit field it wraps, so the
+    // failure arrived under `_SubByteUintField` - a name no declaration
+    // writes and no caller can act on.
+    test('a column kind that cannot answer names itself', () {
+      late DataPointer<bool> flag;
+      final h = _Harness((data) => flag = data.hasBool());
+      addTearDown(h.dispose);
+
+      h.pool.beginTick();
+      final e = h.spawn();
+      expect(
+        () => flag.readPending(e),
+        throwsA(
+          isA<UnsupportedError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('_BoolField'),
+              contains('readPending'),
+              isNot(contains('_SubByteUintField')),
+            ),
+          ),
+        ),
+      );
+      h.pool.commitTick();
+    });
+
+    test('an unsupported width refuses rather than answering published', () {
+      late DataPointer<double> x;
+      final h = _Harness((data) => x = data.hasFloat32());
+      addTearDown(h.dispose);
+
+      h.pool.beginTick();
+      final e = h.spawn();
+      x[e] = 3.5;
+      expect(
+        () => x.readPending(e),
+        throwsA(
+          isA<UnsupportedError>().having(
+            (e) => e.message,
+            'message',
+            contains('_Float32Field'),
+          ),
+        ),
+      );
+      h.pool.commitTick();
+    });
+  });
+
   group('array fields', () {
     test('a byte-aligned int array round-trips every index independently', () {
       late DataArrayPointer<int> values;

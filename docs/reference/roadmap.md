@@ -79,6 +79,17 @@ Deferred, and documented in place instead of left as silent gaps.
   `WorldCensus` answers the counting half on the game isolate already; nothing
   renders it, no component or field carries a name at runtime, and there is no
   per-system timing to report
+- **A caller-owned buffer for same-tick reads.** An ordinary read answers from
+  the published slot, which is what makes system order irrelevant. Code that
+  has to read back what it wrote earlier in the same tick reaches
+  `DataPointer.readPending` instead, and that is a second read path on the
+  pointer with three column kinds behind it — `float64`, `optInt64`,
+  `optEntity` — and a throw on every other. The engine has 47 calls to it, in
+  `data/hierarchy.dart`, `scene.dart` and both `world_transform.dart` files.
+  What is not there is a receiver whose type says which slot it reads, so the
+  choice stops being a second method on the pointer. Most of the 47 read what
+  *another* caller wrote earlier in the same tick, so a buffer scoped to one
+  caller does not serve them, and `readPending` cannot be deleted (#258)
 - **`goo2d`'s transform helpers are still on the mixin.** `Transform2D.lookAt`,
   `distanceTo` and the rest take the entity as an argument
   (`transform.lookAt(entity, x, y)`). The accessor form the guide teaches,

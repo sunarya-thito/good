@@ -549,11 +549,25 @@ abstract class DataPointer<T> {
   /// copied - so implementations fall back to the published read, which
   /// outside a tick is the only correct answer anyway.
   ///
-  /// Only implemented where a structural mutation actually needs it (the
-  /// optional-entity fields the hierarchy links are made of, and `float64`
-  /// for composing a just-spawned transform). Anywhere else it throws rather
-  /// than quietly returning the published value, because a silently-published
-  /// answer here is exactly the bug this exists to fix.
+  /// # Which columns answer
+  ///
+  /// Three, and only these three:
+  ///
+  /// - `float64`, for composing a just-spawned transform.
+  /// - `optInt64`.
+  /// - `optEntity`, the optional-entity fields the hierarchy links are made
+  ///   of.
+  ///
+  /// Every other column kind throws [UnsupportedError], including the ones
+  /// that look like the three above - `optFloat64` and `optInt32` are
+  /// optional columns whose value half cannot answer, and `hasInt64` is an
+  /// `int64` without the optional wrapper. Reach for one of those and the
+  /// failure names the field class that could not answer.
+  ///
+  /// Refusing rather than quietly returning the published value is the point:
+  /// a silently-published answer here is exactly the bug this exists to fix.
+  /// A new structural field that needs this gets an implementation, not a
+  /// fallback.
   ///
   /// **Not `@internal`, and that is not an invitation.** It was, until
   /// `WorldTransformSystem` needed it - and that lives in `goo2d`, a

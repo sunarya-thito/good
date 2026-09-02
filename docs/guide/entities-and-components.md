@@ -447,7 +447,7 @@ to declare one of your own.
 ## Same-tick reads
 
 An ordinary read returns the **last published snapshot**, not what you wrote a
-moment ago in the same tick. That is correct and deliberate — see
+moment ago in the same tick. That is what makes system order irrelevant — see
 [the tick phases](architecture.md#phases-within-one-advance) — but it has one
 sharp consequence worth knowing:
 
@@ -464,6 +464,10 @@ but the last. The hierarchy code reads the pending slot for exactly this reason.
 If you write a linked structure across component rows yourself, you will meet
 the same problem — and the fix is placement (a later phase), not a second read
 method.
+
+`DataPointer.readPending` is what the hierarchy reads through. Three column
+kinds implement it — `float64`, `optInt64` and `optEntity` — and every other
+throws, so it is not a general escape from the published read.
 
 ---
 

@@ -36,6 +36,11 @@ class _Turret extends EntityStruct with _Name, Child, Parent {
 
 /// Three declared children, which is the shape `Parent.addChild`'s
 /// `readPending` comment was written about - three links spliced in one tick.
+///
+/// Spawned on the first tick this reproduces nothing: the page has never
+/// published, so an ordinary read falls through to the write slot and the
+/// splice comes out right either way. It takes a rig spawned after a publish
+/// to tell the two reads apart.
 class _Rig extends EntityStruct with _Name, Parent {
   final left = EntityStruct.of(_Barrel.new);
   final middle = EntityStruct.of(_Barrel.new);
@@ -623,10 +628,10 @@ void main() {
       );
     });
 
-    // The hazard `Parent.addChild`'s `readPending` comment was written about,
-    // reached by declaration rather than by three calls at a call site: three
-    // links spliced into one chain inside a single tick. Through an ordinary
-    // read it keeps one child and orphans two, with no error anywhere.
+    // Declaration order over one chain, reached by declaring three children
+    // rather than by three calls at a call site. On the first tick this holds
+    // whichever slot `_append` reads - the page has never published - so the
+    // test after it is the one that tells them apart.
     test('a prefab declaring three children keeps all three', () {
       final level = _level();
       level.pool.beginTick();
@@ -653,6 +658,48 @@ void main() {
       );
       expect(level.rig.parentLastChild[rig], right);
     });
+
+    // The same three links, spliced after the rig's page has published once.
+    // That is what separates the two reads: `parentLastChild[rig]` now
+    // resolves a published slot and answers null for all three appends, so an
+    // ordinary read leaves the parent holding only the last child. The test
+    // above cannot see it - a page that has never published falls through to
+    // the write slot, and both reads agree there.
+    test(
+      'a prefab declaring three children keeps all three after a publish',
+      () {
+        final level = _level();
+
+        // Give the rig archetype's page a published slot to read.
+        level.pool.beginTick();
+        level.addEntity(level.rig);
+        level.pool.commitTick();
+
+        level.pool.beginTick();
+        final rig = level.addEntity(level.rig);
+        level.pool.commitTick();
+
+        final left = rig<Parent>()[level.rig.left];
+        final middle = rig<Parent>()[level.rig.middle];
+        final right = rig<Parent>()[level.rig.right];
+        expect(<Entity>{left, middle, right}, hasLength(3));
+
+        final walked = <Entity>[];
+        Entity? cursor = level.rig.parentFirstChild[rig];
+        while (cursor != null) {
+          walked.add(cursor);
+          cursor = cursor<Child>().component.childNextSibling[cursor];
+        }
+        expect(
+          walked,
+          <Entity>[left, middle, right],
+          reason:
+              'all three declared children stay on the chain in declaration '
+              'order once the parent page has a published slot to read',
+        );
+        expect(level.rig.parentLastChild[rig], right);
+      },
+    );
 
     test('declared children nest to whatever depth is declared', () {
       final level = _level();

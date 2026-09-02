@@ -33,6 +33,15 @@ belongs in a later phase. Unity DOTS does this by running
 `LocalToWorld`. Same here — `WorldTransformSystem` writes during the fixed tick,
 and consumers run after it commits.
 
+`DataPointer.readPending` is the one variant in the engine, and it is the
+exception this rule is written around rather than a counter-example to it. A
+structural mutation reads back the structure it is itself editing inside one
+call: `Parent.addChild` needs the `parentLastChild` the previous `addChild`
+wrote a moment ago, and no later phase exists to move that into. Three column
+kinds implement it — `float64`, `optInt64`, `optEntity` — and every other
+throws, so the second read path cannot spread past the callers that need it.
+A system reading uncommitted state is still what the rule forbids.
+
 ## One fact, one place
 
 If two structures have to agree and only your memory keeps them agreeing, they

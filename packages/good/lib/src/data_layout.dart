@@ -190,8 +190,8 @@ abstract base class _Field<T> extends DataPointer<T> implements ArchetypeField {
   ///
   /// Only implemented by the field kinds a structural mutation reads back
   /// inside its own tick; see `DataPointer.readPending`, which is the only
-  /// caller and which explains why the rest deliberately throw rather than
-  /// answer with the published value.
+  /// caller and which explains why the rest throw rather than answer with
+  /// the published value.
   T readFrom(int row) => throw UnsupportedError(
     '$runtimeType does not implement readFrom - see DataPointer.readPending.',
   );
@@ -263,17 +263,22 @@ void _requireUnsealed(ArchetypeStorage storage) {
 
 /// A `bool` view over a one-bit field.
 ///
-/// Delegation rather than a new `_Field` subclass, and that is deliberate: the
-/// bit-packing, the default handling and the row resolution are already right
-/// in the `uint1` field this wraps, and a parallel implementation would be a
-/// second copy of them to keep in step (the one-fact-one-place rule).
-/// [_EntityHandleField] and [_OptionalEntityHandleField] wrap the int64
-/// fields the same way for the same reason.
+/// Delegation rather than a new `_Field` subclass: the bit-packing, the
+/// default handling and the row resolution are already right in the `uint1`
+/// field this wraps, and a parallel implementation would be a second copy of
+/// them to keep in step (the one-fact-one-place rule). [_EntityHandleField]
+/// and [_OptionalEntityHandleField] wrap the int64 fields the same way for
+/// the same reason.
 ///
 /// The wrapper is not free at the call site the way a raw field is - it adds
 /// one virtual call and a compare per access - but it is only ever used for
 /// flags, which are read once per entity per tick at most, never in the
 /// per-field inner loops the `int` accessors were tuned for.
+///
+/// `readPending` is not delegated - the one-bit field this wraps does not
+/// implement it, so forwarding reported the failure under
+/// `_SubByteUintField`, a class no declaration names and no caller asks for.
+/// [_EntityHandleField] and [_EnumField] leave it alone for the same reason.
 class _BoolField extends InitialPointer<bool> {
   const _BoolField(this._raw);
 
@@ -285,9 +290,6 @@ class _BoolField extends InitialPointer<bool> {
   @override
   void operator []=(Entity entity, bool newValue) =>
       _raw[entity] = newValue ? 1 : 0;
-
-  @override
-  bool readPending(Entity entity) => _raw.readPending(entity) != 0;
 
   /// Delegated for the same reason everything else here is: the seal guard
   /// and the stamped value both live in the field being wrapped.
@@ -310,9 +312,9 @@ class _BoolField extends InitialPointer<bool> {
 /// back is the very `int` the field read, and `Entity(...)` compiles to
 /// nothing. The wrapper costs one virtual call per access and no allocation.
 ///
-/// `readPending` is deliberately not delegated - `_Int64Field` does not
-/// implement it, so forwarding would only move the `UnsupportedError` to a
-/// message naming the wrong class.
+/// `readPending` is not delegated - `_Int64Field` does not implement it, so
+/// forwarding would only move the `UnsupportedError` to a message naming the
+/// wrong class.
 class _EntityHandleField extends InitialPointer<Entity> {
   const _EntityHandleField(this._raw);
 
@@ -388,9 +390,9 @@ class _OptionalEntityHandleField extends InitialPointer<Entity?> {
 /// [_values] is the enum's own `values` list, so a read is one load out of a
 /// const list and allocates nothing.
 ///
-/// `readPending` is deliberately not delegated - the narrow int fields this
-/// wraps do not implement it, so forwarding would only move the
-/// `UnsupportedError` to a message naming the wrong class.
+/// `readPending` is not delegated - the narrow int fields this wraps do not
+/// implement it, so forwarding would only move the `UnsupportedError` to a
+/// message naming the wrong class.
 class _EnumField<E extends Enum> extends InitialPointer<E> {
   const _EnumField(this._raw, this._values);
 
@@ -693,8 +695,17 @@ final class _Float64Field extends _ValueField<double> {
   /// which on a recycled row is the previous occupant's value. That produced
   /// one frame of a sprite at the world origin.
   @override
-  double readPending(Entity entity) =>
-      Pointer<Double>.fromAddress(_write(entity) + _byte).value;
+  double readPending(Entity entity) {
+    // Outside a tick there is no meaningful write slot: the one the buffer
+    // hands back holds whatever sat there before `beginWrite` copied, so the
+    // published read is the only correct answer - which is what
+    // `DataPointer.readPending` states and what `_OptionalField.readPending`
+    // already did. Reaching for `_write` here also tripped the lost-write
+    // assertion on a page that has published, reporting a write this call
+    // never makes.
+    if (!_storage.pool.isTickOpen) return this[entity];
+    return Pointer<Double>.fromAddress(_write(entity) + _byte).value;
+  }
 
   @override
   void writeInitialValue(int row) =>
