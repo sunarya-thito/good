@@ -310,7 +310,8 @@ typedef InputListener<T> = void Function(InputEvent<T> event);
 /// microtask per listener, which is the wrong shape for something dispatched
 /// from inside a fixed tick - and it would deliver the callback *after* the
 /// tick that produced it had already finished. This is a plain listener list
-/// called synchronously, the same trade `Game.addTickListener` makes.
+/// called synchronously, the same trade the runtime's tick notification
+/// makes.
 final class InputEventStream<T> {
   InputEventStream._();
 

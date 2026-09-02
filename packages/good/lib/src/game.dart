@@ -194,7 +194,7 @@ enum _ControlMessage {
 /// A `Game` declares what a game *is* - its systems, its commands, its
 /// buffers, its state channels, its timing - and owns everything that talks
 /// to the outside world: the isolate handoff, the command ring's producer
-/// end, tick notifications, and the widget tree ([buildWidget]). It runs no
+/// end, tick notifications, and the widget tree ([buildView]). It runs no
 /// simulation itself. That is [GameState]'s job (see [createState]), and the
 /// two split cleanly along the isolate boundary:
 ///
@@ -234,8 +234,8 @@ enum _ControlMessage {
 ///    `await game.start()` - is an inert *handle*. Its systems never tick, it
 ///    registers no archetypes and it owns no pages. It exists to (a) send and
 ///    handle commands ([describeCommands]), (b) receive tick-complete
-///    notifications ([addTickListener]) and state-channel updates, and (c)
-///    build widgets ([buildView]). It does **not** read component data:
+///    notifications and state-channel updates, and (c) build widgets
+///    ([buildView]). It does **not** read component data:
 ///    `Entity.get` on this copy throws saying so. See
 ///    `GameRuntime.releaseScenePages` for what a second reader would cost.
 ///
@@ -711,7 +711,7 @@ abstract class Game implements RandomOwner {
   /// the same way the command ring and the pool's pages already are.
   ///
   /// `good` knows nothing about what travels through them. The command ring
-  /// ([dispatchCommand]) is the framework's own, hardcoded, main -> game
+  /// ([describeCommands]) is the framework's own, hardcoded, main -> game
   /// lane; this is the generic escape hatch for every *other* lane-2-shaped
   /// channel a layer above wants - the one that motivated it is
   /// `goo2d_render`'s per-tick draw-command buffer (game -> main), which
@@ -1054,8 +1054,8 @@ abstract class Game implements RandomOwner {
   /// what identifies it on the wire.
   int get bufferCount => _bufferHandles.length;
 
-  /// How many [StateChannel]s this copy has declared - see
-  /// [bootStateDescriptor]. Same index-is-identity story as [bufferCount].
+  /// How many [StateChannel]s this copy has declared - one per [Channel]
+  /// field. Same index-is-identity story as [bufferCount].
   int get stateChannelCount => _stateChannels.length;
 
   /// How many input actions this copy has declared - see [describeInputs].
@@ -2175,8 +2175,8 @@ abstract class Game implements RandomOwner {
 ///
 /// The same rule as ever applies to what may be reachable from here at spawn
 /// time: a `Pointer` is sendable and arrives at the same address, a
-/// `ReceivePort` or a `Completer` is not sendable at all. [fromGame] and
-/// [stopping] are therefore assigned only *after* the spawn - see [boot].
+/// `ReceivePort` or a `Completer` is not sendable at all. `_fromGame` and
+/// `_stopping` are therefore assigned only *after* the spawn - see [boot].
 @internal
 final class GameRuntime {
   GameRuntime(this.game);
@@ -3659,8 +3659,8 @@ abstract class _ChannelSlot {
   /// `_StateDescriptor.resolveInto`, before anything allocates.
   void resolve(GameRuntime runtime, int index);
 
-  /// The live storage, non-null on the simulating copy from `_boot()`
-  /// onwards - what [Game._announceStateChannels] reads addresses off.
+  /// The live storage, non-null on the simulating copy from the moment
+  /// [allocateAndSeed] runs.
   TripleBuffer? get liveBuffer;
 
   /// Simulating copy: allocate the triple buffer and publish the initial

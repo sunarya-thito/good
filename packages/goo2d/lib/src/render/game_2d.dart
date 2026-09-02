@@ -301,7 +301,7 @@ mixin Renderer2D on Game {
   /// # Why a frame callback and not the tick ping
   ///
   /// `notifyListeners` only marks the painter dirty; the actual paint waits
-  /// for the next vsync. Hung off `Game.addTickListener`, a repaint would be
+  /// for the next vsync. Hung off the tick ping, a repaint would be
   /// scheduled whenever the game isolate's message happened to land, so a
   /// message arriving just after Flutter began a frame would wait most of a
   /// frame interval - and the renderer would have no say in it, because it
