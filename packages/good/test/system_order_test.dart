@@ -409,17 +409,19 @@ void main() {
     });
 
     test('first() and last() on one declaration is refused where it is '
-        'written', () {
-      declare = (descriptor) => descriptor.has(_BothEnds.new);
+        'written', () async {
+      // Awaited, not `expect(() => Game.startInline(...), throwsA(...))`.
+      // The refusal happens in a field initialiser, inside the async body of
+      // startInline, so it arrives as a rejected Future and the closure form
+      // sees a function that returned normally - it passed just as happily
+      // with the refusal deleted.
+      final error = await _bootError(
+        (descriptor) => descriptor.has(_BothEnds.new),
+      );
+      expect(error, isA<StateError>());
       expect(
-        () => Game.startInline(_OrderGame.new),
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            allOf(contains('Order.first()'), contains('Order.last()')),
-          ),
-        ),
+        (error as StateError).message,
+        allOf(contains('Order.first()'), contains('Order.last()')),
       );
     });
   });
@@ -487,8 +489,10 @@ void main() {
           isA<StateError>().having(
             (e) => e.message,
             'message',
-            contains('An Order was declared with no system being '
-                'constructed'),
+            contains(
+              'An Order was declared with no system being '
+              'constructed',
+            ),
           ),
         ),
       );
