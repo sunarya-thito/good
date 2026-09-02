@@ -304,17 +304,18 @@ abstract final class DeclarationContext {
         'Event.of and Event.signal read the binder the framework opens '
         'around a constructor call, so the framework has to be the one '
         'constructing. It is for a GameState, which Game.createState hands '
-        'back, for an EntityStruct, which a scene declares, and for a '
-        'GameSystem, which describeSystems declares:'
+        'back, and for a SceneStruct, an EntityStruct and a GameSystem, '
+        'which their descriptors declare:'
+        '\n  descriptor.has(MainScene.new)   // not MainScene()'
         '\n  descriptor.has(Mote.new)        // not Mote()'
         '\n  descriptor.has(SpinSystem.new)  // not SpinSystem()\n'
         'A `late final` initialiser lands here too, and that is the point: '
         'it runs on first read, long after the binder was closed, so a '
         'dispatcher declared that way would never be offered a listener and '
         'would deliver to nobody. Field initialisers here are eager, always. '
-        'An owner the framework does not construct - a SceneStruct, which '
-        'the caller builds - declares from its constructor body against '
-        'EventBus.events instead.',
+        'An owner the framework does not construct - a scene the caller '
+        'builds and hands to loadScene - declares from its constructor '
+        'body against EventBus.events instead.',
       );
     }
     return _events.last;

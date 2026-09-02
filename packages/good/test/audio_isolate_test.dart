@@ -174,7 +174,7 @@ class _IsolateAudioGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    music = descriptor.has(_MusicScene());
+    music = descriptor.has(_MusicScene.new);
   }
 }
 

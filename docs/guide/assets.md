@@ -68,12 +68,14 @@ identity, so declaring the same texture in a prefab and in its scene produces
 the identical handle — one address, one decode. That is what makes naming a
 shared texture in three prefabs cost one decode rather than three.
 
-!!! note "A scene declares in a hook, not in a field"
-    A `SceneStruct` is constructed by you — before it has an `Assets` to
-    declare into. So a scene's own field initialiser throws and a scene uses
-    `describeAssets`, which is handed the same descriptor `Asset.of` reads. A
-    prefab is constructed by the scene's pass, so its fields are inside the
-    window. The same fact governs `Field.*` and `Event.of`.
+!!! note "A scene declares assets in a hook, not in a field"
+    A `SceneStruct` has no `Assets` until `initializeScene`, which runs after
+    the constructor returns. So a scene's own field initialiser throws and a
+    scene uses `describeAssets`, which is handed the same descriptor `Asset.of`
+    reads. A prefab is constructed by the scene's pass, so its fields are
+    inside the window. `Event.of` is not in this bucket: the event binder *is*
+    open around a declared scene's construction, so a scene's own events go on
+    fields.
 
     A `late final` throws too: it would run on first read, long after the pass
     that both isolate copies replay in the same order, so the asset would be

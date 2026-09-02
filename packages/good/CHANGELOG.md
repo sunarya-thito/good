@@ -29,9 +29,9 @@
   `describeAssets` and every prefab it registers, so no prefab has an asset
   list of its own and there is no attribution to get wrong - which is why this
   level has no barrier and needs none. A `SceneStruct`'s own field initialisers
-  still cannot declare: a scene is constructed by the caller and has no
-  `Assets` until `initializeScene`, the same fact `Field.*` and `Event.of`
-  state for scenes.
+  still cannot declare: a scene has no `Assets` until `initializeScene`, which
+  runs after the constructor returns, the same fact `Field.*` states for
+  scenes.
 
 * **A component type's query bit can be fixed at build time.** `good_tool`
   writes `goodComponentBits` into `lib/src/component_bits.g.dart`, exported
@@ -93,6 +93,37 @@
   own repository; a component in your game's `lib/` is not in it.
 
 ### Breaking
+
+* **`GameSceneDescriptor.has` takes the constructor, not an instance** (#287):
+
+  ```dart
+  class MyGame extends Game {
+    late final MainScene mainScene;
+
+    @override
+    void describeScenes(GameSceneDescriptor descriptor) {
+      super.describeScenes(descriptor);
+      mainScene = descriptor.has(MainScene.new);
+    }
+  }
+  ```
+
+  | before | after |
+  |---|---|
+  | `descriptor.has(MainScene())` | `descriptor.has(MainScene.new)` |
+  | `descriptor.has(MainScene(seed: 7))` | `descriptor.has(() => MainScene(seed: 7))` |
+
+  The framework builds the scene inside `EventBinder.open`, the same as the
+  other three descriptors. Two things follow. A scene declares its own events
+  on a field - `final waveCleared = Event.of(...)` - so the `late final` a
+  constructor body had to assign is gone. And a scene handed over already
+  constructed - `descriptor.has(() => _level)` - is refused when it was built
+  inside another owner's window, because its field dispatchers landed there and
+  would collect that owner's whole composition.
+
+  A scene the caller builds and passes to `GameState.loadScene` is unchanged:
+  it has no window, and `EventBus.events` in its constructor body is still its
+  route.
 
 * **`describeQuery` is gone. A query is a value, so it goes on the field that
   holds it** (#287):

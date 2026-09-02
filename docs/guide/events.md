@@ -41,10 +41,11 @@ An event is an `EventDispatcher<L, E>` held in a field. `L` is the listener
 type it delivers to, `E` is the payload it carries, and you fire it by calling
 it.
 
-On a `GameState` or an `EntityStruct` the declaration goes in the field's own
-initialiser. Both are built by the framework — `Game.createState` for one,
-`descriptor.has(Orc.new)` for the other — so there is a constructor call for
-the declaration to happen inside:
+The declaration goes in the field's own initialiser. Every owner that can
+declare one is built by the framework — `Game.createState` for a `GameState`,
+`descriptor.has(Level1.new)` for a `SceneStruct`, `descriptor.has(Orc.new)` for
+an `EntityStruct`, `descriptor.has(SpinSystem.new)` for a `GameSystem` — so
+there is a constructor call for the declaration to happen inside:
 
 <!-- snippet: in EntityStruct -->
 ```dart
@@ -88,17 +89,23 @@ final chirped = Event.signal<ChirpListener>((listener) => listener.onChirp());
 
 ### When there is no window: declare from the constructor body
 
-A `SceneStruct` is constructed by you, not by the framework — `final level =
-MainScene();` — so nothing is open while its fields initialise and `Event.of`
-in one throws. A constructor body has `this`, and `EventBus.events` is the
-owner's own registrar, so that is where a scene declares:
+Nothing is open while the fields of an owner **you** construct initialise, and
+`Event.of` in one throws. A scene you build yourself and hand to `loadScene` is
+that shape:
+
+```dart
+await state.loadScene(BonusRound());
+```
+
+A constructor body has `this`, and `EventBus.events` is the owner's own
+registrar, so that is where such an owner declares:
 
 <!-- snippet: top -->
 ```dart
-class MainScene extends SceneStruct {
+class BonusRound extends SceneStruct {
   late final EventDispatcher<WaveListener, int> waveSpotted;
 
-  MainScene() {
+  BonusRound() {
     waveSpotted = events.has(
       (listener, wave) => listener.onWaveCleared(wave),
     );
@@ -107,7 +114,8 @@ class MainScene extends SceneStruct {
 ```
 
 `late final` with no initialiser is right here and only here: the field is
-assigned from the constructor body, after the initialisers have run.
+assigned from the constructor body, after the initialisers have run. Declare
+the scene in `describeScenes` and the field form works instead.
 
 The three pairs the framework declares for you — `SceneStruct`'s and
 `EntityStruct`'s `mountedEvent`/`unmountedEvent`, and `GameSystem`'s
@@ -117,8 +125,9 @@ reads no window: the declaration is recorded, and the object takes it once its
 construction finishes. A pair you declare on your own struct or your own system
 uses `Event.of` on a field, as long as you let the framework build it.
 
-`SceneDescriptor.has` and `SystemDescriptor.has` both take a `T Function()`,
-and a closure may hand back an object that already existed:
+`GameSceneDescriptor.has`, `SceneDescriptor.has` and `SystemDescriptor.has`
+all take a `T Function()`, and a closure may hand back an object that already
+existed:
 
 <!-- snippet: skip the wrong half of a before/after, and deliberately so -->
 ```dart
@@ -155,9 +164,8 @@ so there is nothing to look up later.
 Anything that mixes in `EventBus`, whose bound is `on GameListener`. Four
 framework types qualify — `GameState`, `SceneStruct`, `EntityStruct` and
 `GameSystem` — and they are exactly the four that live on the game isolate.
-`GameState`, `EntityStruct` and `GameSystem` declare on a field; a
-`SceneStruct` declares its own events from its constructor body, for the
-construction reason above.
+All four declare on a field, as long as the framework builds them; an owner you
+construct yourself declares from its constructor body, for the reason above.
 
 `Game` is not a `GameListener`, so it cannot declare or receive an event. Every
 event in the engine happens on the simulating isolate; traffic to Flutter goes

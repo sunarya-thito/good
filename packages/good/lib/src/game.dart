@@ -493,8 +493,8 @@ abstract class Game implements RandomOwner {
   /// @override
   /// void describeScenes(GameSceneDescriptor descriptor) {
   ///   super.describeScenes(descriptor);
-  ///   mainScene = descriptor.has(MainScene());
-  ///   hudScene = descriptor.has(HudScene());
+  ///   mainScene = descriptor.has(MainScene.new);
+  ///   hudScene = descriptor.has(HudScene.new);
   /// }
   /// ```
   ///
@@ -502,22 +502,16 @@ abstract class Game implements RandomOwner {
   /// in a `late final` field (the typed-handle rule) - there is no separate
   /// handle type.
   ///
-  /// **A scene is passed as an instance; a system, a prefab and a command are
-  /// not.** Those three descriptors take the constructor and build the object
-  /// themselves - `SystemDescriptor.has(SpinSystem.new)`,
-  /// `SceneDescriptor.has(Mote.new)`, `CommandDescriptor.has(Damage.new)` -
-  /// because those objects declare from their field initialisers, which run
-  /// during construction and need a window open around it. A `SceneStruct`
-  /// declares from [SceneStruct.describeAssets] and
-  /// [SceneStruct.describeScene], which this pass runs through
-  /// `initializeScene` once it already holds the object, so nothing has to be
-  /// open before the object exists. `descriptor.has(MainScene.new)` does not
-  /// compile here, and `descriptor.has(Mote())` does not compile there.
+  /// **The constructor, not an instance**, the same as
+  /// `SystemDescriptor.has(SpinSystem.new)`, `SceneDescriptor.has(Mote.new)`
+  /// and `CommandDescriptor.has(Damage.new)`. The framework builds the scene
+  /// with a declaration window open around the call, so a scene declares its
+  /// own events on a field - `final waveCleared = Event.of(...)` - like every
+  /// other owner. See [Event].
   ///
-  /// What the instance form costs is that a scene has no declaration window
-  /// of its own: `Event.of` in a `SceneStruct` field initialiser throws, and
-  /// a scene declares its events from its constructor body against
-  /// `EventBus.events` instead. See [Event].
+  /// A scene the caller builds and hands to [GameState.loadScene] is still a
+  /// supported shape, and it has no window: its own events go through
+  /// `EventBus.events` from its constructor body.
   ///
   /// # What declaring buys, and what it does not
   ///
@@ -3324,8 +3318,21 @@ void _gameIsolateEntryPoint(List<Object> message) {
 /// which *prefabs* a scene has. One names scenes to the game; the other names
 /// entity structs to a scene.
 abstract class GameSceneDescriptor {
-  /// Declares [scene] and returns it, for the `late final` field to keep.
-  T has<T extends SceneStruct>(T scene);
+  /// Builds [create]'s scene, declares it, and returns it.
+  ///
+  /// A **constructor**, not an instance: `descriptor.has(MainScene.new)`. The
+  /// framework builds the scene so that the declaration window a field
+  /// initialiser needs is open while it does - `final waveCleared =
+  /// Event.of(...)` on a scene reads a binder that only exists for the
+  /// duration of this call.
+  ///
+  /// A scene taking constructor arguments goes through a closure:
+  /// `descriptor.has(() => MainScene(seed: 7))`. The window is open while the
+  /// closure runs. A closure handing back an object built somewhere else -
+  /// `descriptor.has(() => _level)` - is refused when that somewhere else was
+  /// another owner's window, because the scene's field dispatchers landed
+  /// there. Keep the handle this returns instead.
+  T has<T extends SceneStruct>(T Function() create);
 }
 
 /// Declares the systems a game runs, in the order it runs them - see
@@ -3479,16 +3486,22 @@ final class _GameSceneDescriptor implements GameSceneDescriptor {
   Game get _game => _runtime.game;
 
   @override
-  T has<T extends SceneStruct>(T scene) {
+  T has<T extends SceneStruct>(T Function() create) {
+    // The scene is built with an event binder open around the call, the same
+    // way a system, a prefab and the state are. That is what lets
+    // `final waveCleared = Event.of(...)` sit on a scene's own field: the
+    // binder outlives the constructor and becomes the scene's registrar, and
+    // `EventBinder.open` refuses a scene handed over from another owner's
+    // window.
+    final scene = EventBinder.open(create);
     for (var i = 0; i < _game._declaredScenes.length; i++) {
       if (_game._declaredScenes[i].runtimeType != scene.runtimeType) continue;
       throw StateError(
         '${scene.runtimeType} is declared twice in '
-        '${_game.runtimeType}.describeScenes. One instance is one scene '
-        'declaration - and it already backs as many loaded Scenes as you '
-        'load, so a second instance would register a second set of '
-        'archetypes for the same prefabs rather than giving you a second '
-        'world.',
+        '${_game.runtimeType}.describeScenes. One declaration is one scene '
+        '- and it already backs as many loaded Scenes as you load, so a '
+        'second declaration would register a second set of archetypes for '
+        'the same prefabs rather than giving you a second world.',
       );
     }
     final state = _runtime.state!;

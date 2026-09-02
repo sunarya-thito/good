@@ -99,7 +99,7 @@ class _PingGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    level = descriptor.has(_PingScene());
+    level = descriptor.has(_PingScene.new);
   }
 }
 

@@ -477,9 +477,9 @@ final class Asset<T> implements IntRepresentable {
   /// Throws when nothing is being brought up - a prefab constructed by hand,
   /// or a `late final` that runs on first read rather than during the pass
   /// both isolate copies run. A `SceneStruct`'s own field initialisers throw
-  /// too: a scene is constructed by the caller and has no `Assets` until
-  /// `initializeScene`, so a scene declares in `describeAssets`, which is
-  /// handed the same descriptor this reads.
+  /// too: a scene has no `Assets` until `initializeScene`, which runs after
+  /// the constructor returns, so a scene declares in `describeAssets`, which
+  /// is handed the same descriptor this reads.
   static Asset<T> of<T>(AssetKey<T> key) =>
       DeclarationContext.assets.has<T>(key);
 

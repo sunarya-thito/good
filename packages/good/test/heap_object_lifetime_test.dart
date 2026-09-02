@@ -139,7 +139,7 @@ class _HeapGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    level = descriptor.has(_GameLevel());
+    level = descriptor.has(_GameLevel.new);
   }
 }
 

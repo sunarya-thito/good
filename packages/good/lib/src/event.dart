@@ -328,17 +328,18 @@ abstract class EventDescriptor {
 ///
 /// # Who can declare this way, and who cannot
 ///
-/// A [GameState], an [EntityStruct] and a [GameSystem]. All three are built
-/// by the framework - `Game.createState` for the first,
-/// `SceneDescriptor.has(Mote.new)` or `EntityStruct.of(Barrel.new)` for the
-/// second, `SystemDescriptor.has(SpinSystem.new)` for the third - so there is
-/// a constructor call for the binder to be open around.
+/// All four hosts, as long as the framework builds them -
+/// `Game.createState` for a [GameState],
+/// `GameSceneDescriptor.has(MainScene.new)` for a [SceneStruct],
+/// `SceneDescriptor.has(Mote.new)` or `EntityStruct.of(Barrel.new)` for an
+/// [EntityStruct], `SystemDescriptor.has(SpinSystem.new)` for a [GameSystem].
+/// Each is a constructor call for the binder to be open around.
 ///
-/// A [SceneStruct] is constructed by the caller (`final level = MainScene();`),
-/// so no binder is open while its fields initialise and `Event.*` in one
-/// throws out of [DeclarationContext.events]. It declares from its constructor
-/// body instead, against [EventBus.events], which reads the owner rather than
-/// the stack.
+/// An owner the caller builds has no binder open while its fields initialise,
+/// and `Event.*` in one throws out of [DeclarationContext.events]. A scene
+/// handed straight to `GameState.loadScene` is that shape, and so is a prefab
+/// a fixture constructs. Such an owner declares from its constructor body
+/// against [EventBus.events], which reads the owner and never the stack.
 ///
 /// [inherited] and [inheritedSignal] are the framework's own route, for the
 /// pair a base class declares on every subclass's behalf. They read no window
@@ -648,28 +649,28 @@ mixin EventBus on GameListener {
   /// a second pass has to throw rather than quietly double every list.
   bool _didBind = false;
 
-  /// This owner's own registrar, for a declaration a field initialiser cannot
-  /// make.
+  /// This owner's own registrar, which reads the owner and never the stack.
   ///
-  /// `Event.of` and `Event.signal` read the window the framework opens around
-  /// a constructor call, and a [SceneStruct] has none - the caller constructs
-  /// it. A scene has `this` in its constructor body, so that is where it
-  /// declares, against this getter, which reads the owner and never the stack:
+  /// One declaration on a field is the shape to write, and the framework
+  /// builds all four hosts so that it works:
   ///
   /// ```dart
   /// class MainScene extends SceneStruct {
-  ///   late final EventDispatcher<WaveListener, int> waveCleared;
-  ///
-  ///   MainScene() {
-  ///     waveCleared = events.has((listener, wave) => listener.onWave(wave));
-  ///   }
+  ///   final waveCleared = Event.of<WaveListener, int>(
+  ///     (listener, wave) => listener.onWave(wave),
+  ///   );
   /// }
   /// ```
   ///
-  /// Reach for `Event.of` on a field wherever the framework builds the owner.
-  /// This is the same declaration, made where a field initialiser cannot
-  /// reach. The pair every scene, prefab and system inherits takes a third
-  /// route, [Event.inherited], which needs neither a window nor an owner.
+  /// This getter is the route left for an owner nothing built - a scene the
+  /// caller constructs and hands to `GameState.loadScene`, a prefab a fixture
+  /// holds. `Event.of` reads the window the framework opens around a
+  /// constructor call and throws when there is none; a constructor body has
+  /// `this`, so it can declare here instead. Both forms land in one binder and
+  /// one collect pass fills them.
+  ///
+  /// The pair every scene, prefab and system inherits takes a third route,
+  /// [Event.inherited], which needs neither a window nor an owner.
   @protected
   EventDescriptor get events => _binder ??= EventBinder();
 

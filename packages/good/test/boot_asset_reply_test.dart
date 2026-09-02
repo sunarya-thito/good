@@ -193,7 +193,7 @@ class _SynchronousGame extends _BootLoadGame {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    scene = descriptor.has(_SynchronousScene());
+    scene = descriptor.has(_SynchronousScene.new);
   }
 }
 
@@ -201,7 +201,7 @@ class _YieldingGame extends _BootLoadGame {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    scene = descriptor.has(_YieldingScene());
+    scene = descriptor.has(_YieldingScene.new);
   }
 }
 

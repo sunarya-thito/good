@@ -34,10 +34,10 @@ abstract class SceneStruct extends GameListenerBase
   /// many loaded instances: "which of mine" is a real question even here.
   ///
   /// Declared through `Event.inherited`, which reads no declaration window.
-  /// A scene is constructed by the caller - `final level = MainScene();` - so
-  /// there is none to read, and `Event.of` on a field here throws. A scene's
-  /// own events declare from its constructor body against [EventBus.events];
-  /// this pair is inherited by every scene however it was built, and the scene
+  /// A scene the framework builds - `descriptor.has(MainScene.new)` - has one,
+  /// and `Event.of` on a subclass's own field is the shape to reach for there.
+  /// A scene the caller builds and hands to [GameState.loadScene] has none.
+  /// This pair is inherited by every scene however it was built, and the scene
   /// takes it when its construction finishes.
   final mountedEvent = Event.inherited<SceneLifecycleListener, Scene>(
     (listener, scene) => listener.onSceneMounted(scene),
@@ -237,8 +237,8 @@ abstract class SceneStruct extends GameListenerBase
   /// background music, UI chrome, a loading backdrop.
   ///
   /// A prefab declares its own with `Asset.of` on the field that holds the
-  /// handle. A scene cannot: it is constructed by the caller and has no
-  /// [Assets] until [initializeScene], so its field initialisers run before
+  /// handle. A scene cannot: it has no [Assets] until [initializeScene], which
+  /// runs after the constructor returns, so its field initialisers run before
   /// there is anything to declare into. This hook is handed the same
   /// descriptor `Asset.of` reads, at the point where one exists.
   ///
