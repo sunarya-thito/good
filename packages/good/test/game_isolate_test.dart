@@ -295,17 +295,11 @@ class _RandomIsolateGame extends Game {
   @override
   int get randomSeed => 777;
 
-  late final RandomStream rolls;
+  final rolls = RandomStream.of();
   final drawn = Channel.int32(-1);
 
   @override
   GameState createState() => _RandomIsolateState();
-
-  @override
-  void describeRandom(RandomDescriptor descriptor) {
-    super.describeRandom(descriptor);
-    rolls = descriptor.has();
-  }
 }
 
 class _IsolateGame extends Game {

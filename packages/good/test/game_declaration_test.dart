@@ -10,6 +10,7 @@ import 'package:good/src/game_state.dart';
 import 'package:good/src/input.dart';
 import 'package:good/src/input/input_binding.dart';
 import 'package:good/src/input/input_key.dart';
+import 'package:good/src/random.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/system.dart';
 
@@ -82,6 +83,29 @@ class _MixedInputGame extends _BareGame {
     input.hasDefaultValue<double>(0.75);
     throttleHook = input.has<double>();
   }
+}
+
+// --- a random stream declared on a field -----------------------------------
+
+/// Two streams and a seed the game states, so a second run of the same class
+/// has to produce the same two sequences and the two streams have to differ
+/// from each other.
+class _RandomFieldGame extends _BareGame {
+  _RandomFieldGame({this.randomSeed = 4242});
+
+  @override
+  final int randomSeed;
+
+  final first = RandomStream.of();
+  final second = RandomStream.of();
+}
+
+/// A stream written *before* the eager one, `late`, so a `late` initialiser
+/// that ran where it is written would take index 0.
+class _LateRandomGame extends _BareGame {
+  late final lazyStream = RandomStream.of();
+
+  final eagerStream = RandomStream.of();
 }
 
 // --- the eager guard ------------------------------------------------------
@@ -187,6 +211,12 @@ class _CrossingSystem extends GameSystem with FixedTickable {
     game.first.value = game.first.value + 1;
     game.second.value = game.second.value + 100;
   }
+}
+
+/// Thrown out of a constructor tear-off to stop a boot after the fields
+/// have declared and before anything resolves.
+class _AbandonBoot implements Exception {
+  const _AbandonBoot();
 }
 
 Future<T> _boot<T extends Game>(T Function() create) async {
@@ -375,6 +405,122 @@ void main() {
       );
 
       expect(game.inputActionCount, declared);
+    });
+  });
+
+  group('a random stream on a Game field', () {
+    test('is numbered and seeded from the game, not from the field', () async {
+      final game = await _boot(_RandomFieldGame.new);
+
+      expect(
+        game.randomStreamCount,
+        2,
+        reason:
+            'two fields, two streams - a dropped declaration shows up here '
+            'before the sequences below are asked for',
+      );
+
+      final first = <int>[for (var i = 0; i < 8; i++) game.first.nextInt(1000)];
+      final second = <int>[
+        for (var i = 0; i < 8; i++) game.second.nextInt(1000),
+      ];
+
+      expect(
+        first,
+        isNot(second),
+        reason:
+            'the declaration index is mixed into the seed, so two streams '
+            'from one seed are independent - equal sequences would mean both '
+            'fields resolved to the same index',
+      );
+
+      await game.stop();
+      _reset();
+
+      final again = await _boot(_RandomFieldGame.new);
+      expect(
+        <int>[for (var i = 0; i < 8; i++) again.first.nextInt(1000)],
+        first,
+        reason:
+            'the same seed and the same declaration order replay identically '
+            '- that is the whole contract of a declared stream',
+      );
+      expect(
+        <int>[for (var i = 0; i < 8; i++) again.second.nextInt(1000)],
+        second,
+      );
+    });
+
+    test('a different seed moves both streams', () async {
+      final game = await _boot(_RandomFieldGame.new);
+      final base = <int>[for (var i = 0; i < 8; i++) game.first.nextInt(1000)];
+      await game.stop();
+      _reset();
+
+      final other = await _boot(() => _RandomFieldGame(randomSeed: 99));
+      expect(
+        <int>[for (var i = 0; i < 8; i++) other.first.nextInt(1000)],
+        isNot(base),
+        reason:
+            'randomSeed is an overridable getter, so it is read at boot and '
+            'not by the field initialiser that declared the stream',
+      );
+    });
+
+    test('a stream is unusable before its game has started', () async {
+      late _RandomFieldGame built;
+      // Constructed by the framework, so the window is open and the fields
+      // declare - and then the boot is abandoned before anything resolves.
+      await expectLater(
+        Game.startInline(() {
+          built = _RandomFieldGame();
+          throw const _AbandonBoot();
+        }),
+        throwsA(isA<_AbandonBoot>()),
+      );
+
+      expect(
+        () => built.first.nextInt(6),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('before the game that declared it started'),
+          ),
+        ),
+        reason:
+            'a declaration collects and nothing else: the seed and the index '
+            'arrive at boot, and a draw before that has no sequence to be on',
+      );
+    });
+
+    test('a late stream is missing from the declared list', () async {
+      final game = await _boot(_LateRandomGame.new);
+
+      expect(
+        game.randomStreamCount,
+        1,
+        reason:
+            'the eager one declared, so the registry was open and working '
+            'and the throw below is the closed-window guard',
+      );
+      expect(game.eagerStream.nextInt(1000), isA<int>());
+
+      expect(
+        () => game.lazyStream,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('no game being constructed'),
+          ),
+        ),
+        reason:
+            'written first and still not in the list: a late initialiser '
+            'runs on first read, long after boot derived every stream',
+      );
+
+      expect(game.randomStreamCount, 1);
     });
   });
 

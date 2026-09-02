@@ -1,3 +1,4 @@
+import 'package:good/src/declare.dart';
 import 'package:good/src/struct.dart';
 import 'package:meta/meta.dart';
 
@@ -19,18 +20,13 @@ abstract interface class RandomOwner {
 
 /// A seeded stream of random numbers that replays identically.
 ///
-/// Declared in `Game.describeRandom` and kept in a field, like every other
-/// handle in this engine - there are no stream names and nothing to look up:
+/// Declared on a field of the `Game` that owns it, like every other handle in
+/// this engine - there are no stream names and nothing to look up:
 ///
 /// ```dart
-/// late final RandomStream loot;
-/// late final RandomStream terrain;
-///
-/// @override
-/// void describeRandom(RandomDescriptor descriptor) {
-///   super.describeRandom(descriptor);
-///   loot = descriptor.has();
-///   terrain = descriptor.has();
+/// class MyGame extends Game {
+///   final loot = RandomStream.of();
+///   final terrain = RandomStream.of();
 /// }
 /// ```
 ///
@@ -57,30 +53,73 @@ abstract interface class RandomOwner {
 /// reproducible either. See #63; this issue is the random numbers and nothing
 /// more.
 final class RandomStream {
-  RandomStream._(this._owner, this._index, this._seed) : _state = _seed;
+  RandomStream._();
 
-  final RandomOwner _owner;
+  /// Declares one stream, independent of every other one.
+  ///
+  /// Takes nothing: the field it is assigned to is the identity (the
+  /// typed-handle rule), and the seed belongs to the `Game`, which supplies it
+  /// once every field has declared.
+  ///
+  /// # Eager, always
+  ///
+  /// `late final loot = RandomStream.of()` compiles and is wrong. The call
+  /// runs on the first *read*, long after boot handed the collected streams
+  /// their numbering, so the stream would have no seed at all. It does not get
+  /// that far: `DeclarationContext.randoms` throws first, naming the shape.
+  static RandomStream of() => DeclarationContext.randoms.declare();
+
+  /// Null until boot resolves the declaration - see [RandomRegistry].
+  RandomOwner? _owner;
 
   /// Declaration order, which is this stream's identity. Two streams declared
   /// from one seed differ because this is mixed into their starting state.
-  final int _index;
+  /// Negative until resolved.
+  int _index = -1;
 
-  final int _seed;
+  int _seed = 0;
 
   /// Where the stream has got to. Both copies of the `Game` carry one, having
   /// ridden the spawn together, and only the simulating copy ever moves it.
-  int _state;
+  int _state = 0;
+
+  /// Gives this stream its declaration index and the seed derived for it - the
+  /// resolve half of the collect-then-resolve split. Called once, from
+  /// [RandomRegistry.resolveInto].
+  void _resolve(RandomOwner owner, int index, int seed) {
+    _owner = owner;
+    _index = index;
+    _seed = seed;
+    _state = seed;
+  }
+
+  RandomOwner get _resolvedOwner {
+    final owner = _owner;
+    if (owner == null) {
+      throw StateError(
+        'a RandomStream was used before the game that declared it started. '
+        'RandomStream.of() collects the declaration, and the seed and the '
+        'numbering are handed out by Game.start - a stream has neither until '
+        'then. Await Game.start(MyGame.new) first.',
+      );
+    }
+    return owner;
+  }
 
   /// Puts the stream back where it started.
   ///
   /// For a replay, and for a test that wants two runs to line up. It does not
   /// reseed - the seed is the `Game`'s.
-  void reset() => _state = _seed;
+  void reset() {
+    _resolvedOwner;
+    _state = _seed;
+  }
 
   int _advance() {
-    if (!_owner.randomDrawAllowed) {
+    final owner = _resolvedOwner;
+    if (!owner.randomDrawAllowed) {
       throw StateError(
-        'a RandomStream was drawn from on ${_owner.randomOwnerLabel}, which '
+        'a RandomStream was drawn from on ${owner.randomOwnerLabel}, which '
         'does not own the simulation. Randomness is simulation state: a draw '
         'here would advance a stream the game isolate knows nothing about, '
         'and the two copies would stop agreeing. Draw from a system, a '
@@ -128,43 +167,53 @@ final class RandomStream {
   double doubleFor(Entity entity) => (_hashFor(entity) >>> 11) * _doubleUnit;
 
   int _hashFor(Entity entity) {
-    if (!_owner.randomDrawAllowed) {
+    final owner = _resolvedOwner;
+    if (!owner.randomDrawAllowed) {
       throw StateError(
-        'a RandomStream was read for an entity on ${_owner.randomOwnerLabel}, '
+        'a RandomStream was read for an entity on ${owner.randomOwnerLabel}, '
         'which does not own the simulation - and does not have the tick that '
         'would make the answer mean anything.',
       );
     }
     var h = _seed ^ _mix(_index + _gamma);
-    h = _mix(h ^ _mix(_owner.randomTick + _gamma));
+    h = _mix(h ^ _mix(owner.randomTick + _gamma));
     return _mix(h ^ _mix(entity.value + _gamma));
   }
 }
 
-/// Declares a game's random streams - see `Game.describeRandom`.
-final class RandomDescriptor {
-  @internal
-  RandomDescriptor(this._owner, this._seed);
-
-  final RandomOwner _owner;
-  final int _seed;
-  final List<RandomStream> _streams = <RandomStream>[];
+/// Collects a game's random streams from the fields that declare one.
+///
+/// **Collect only.** [declare] creates a stream with no index, no seed and no
+/// owner and appends it; [resolveInto] numbers the lot afterwards and derives
+/// each one's seed. That split is what a field initialiser needs: it runs
+/// while the `Game` is still being constructed, so at the moment
+/// `RandomStream.of()` is called there is no owner to draw against and
+/// `Game.randomSeed` - an overridable getter - cannot be read.
+///
+/// One registry per game, because a stream's index is mixed into its seed and
+/// so is part of the sequence it produces.
+@internal
+final class RandomRegistry {
+  final List<RandomStream> _collected = <RandomStream>[];
 
   /// How many streams were declared. Diagnostics and tests.
-  int get streamCount => _streams.length;
+  int get streamCount => _collected.length;
 
-  /// A new stream, independent of every other one.
-  RandomStream has() {
-    final index = _streams.length;
-    // Mixed rather than added: two streams one apart should not produce
-    // sequences one step apart.
-    final stream = RandomStream._(
-      _owner,
-      index,
-      _mix(_seed ^ _mix(index + _gamma)),
-    );
-    _streams.add(stream);
+  /// A new stream, independent of every other one, with nothing resolved yet.
+  RandomStream declare() {
+    final stream = RandomStream._();
+    _collected.add(stream);
     return stream;
+  }
+
+  /// Numbers every collected stream and derives its seed from [seed], in
+  /// declaration order. Called once, from `Game._bootMain`.
+  void resolveInto(RandomOwner owner, int seed) {
+    for (var i = 0; i < _collected.length; i++) {
+      // Mixed rather than added: two streams one apart should not produce
+      // sequences one step apart.
+      _collected[i]._resolve(owner, i, _mix(seed ^ _mix(i + _gamma)));
+    }
   }
 }
 

@@ -856,24 +856,6 @@ abstract class Game implements RandomOwner {
   /// nothing.
   int get randomSeed => 0;
 
-  /// Declares this game's random streams - see [RandomStream].
-  ///
-  /// ```dart
-  /// late final RandomStream loot;
-  ///
-  /// @override
-  /// void describeRandom(RandomDescriptor descriptor) {
-  ///   super.describeRandom(descriptor);
-  ///   loot = descriptor.has();
-  /// }
-  /// ```
-  ///
-  /// Runs on main before the spawn, so the streams a game keeps in fields
-  /// cross to the game isolate already built. Declaration order is a stream's
-  /// identity, exactly as it is for a command.
-  @mustCallSuper
-  void describeRandom(RandomDescriptor descriptor) {}
-
   @override
   bool get randomDrawAllowed => runtimeOrNull?.state?.isSimulating ?? false;
 
@@ -1007,6 +989,14 @@ abstract class Game implements RandomOwner {
   // thing that boots one.
   _StateDescriptor _states = _StateDescriptor();
 
+  // Where `RandomStream.of` on a field of this game landed. **Not final**, for
+  // [_states]'s reason and replaced at the same moment: a subclass's field
+  // initialisers run before this class's, so at the moment
+  // `final loot = RandomStream.of()` runs there is no `Game` yet to hold
+  // anything. `Game.start` opens a registry ahead of the constructor call and
+  // puts it here afterwards.
+  RandomRegistry _randoms = RandomRegistry();
+
   // Every input action declared through a describeInputs pass this boot, plus
   // the type-level defaults and the one raw device-state buffer they all
   // resolve against. Unlike the buffers and channels above, an action's index
@@ -1061,6 +1051,11 @@ abstract class Game implements RandomOwner {
   /// How many [StateChannel]s this copy has declared - one per [Channel]
   /// field. Same index-is-identity story as [bufferCount].
   int get stateChannelCount => _stateChannels.length;
+
+  /// How many [RandomStream]s this copy has declared - one per
+  /// `RandomStream.of()` field. A stream's index is mixed into its seed, so
+  /// this is part of what makes a run replay.
+  int get randomStreamCount => _randoms.streamCount;
 
   /// How many input actions this copy has declared - see [describeInputs].
   int get inputActionCount => _inputs.actionCount;
@@ -1287,15 +1282,18 @@ abstract class Game implements RandomOwner {
   static G _construct<G extends Game>(G Function() create) {
     final states = _StateDescriptor();
     final inputs = InputRegistry()..source = '$G';
+    final randoms = RandomRegistry();
     final restoreCount = DeclarationContext.gamesConstructed;
     DeclarationContext.gamesConstructed = 0;
     DeclarationContext.pushChannels(states);
     DeclarationContext.pushInputs(inputs);
+    DeclarationContext.pushRandoms(randoms);
     final G game;
     final int built;
     try {
       game = create();
     } finally {
+      DeclarationContext.popRandoms();
       DeclarationContext.popInputs();
       DeclarationContext.popChannels();
       built = DeclarationContext.gamesConstructed;
@@ -1326,6 +1324,7 @@ abstract class Game implements RandomOwner {
     game._requireNotYetDescribed();
     game._states = states;
     game._inputs = inputs;
+    game._randoms = randoms;
     // After the game exists and before anything sizes the raw input block:
     // the contact table's length is the one part of that block a game gets to
     // choose, and the registry has to be open through `create()` for field
@@ -1646,10 +1645,16 @@ abstract class Game implements RandomOwner {
     // it; after it, `_bootAllocate` has a numbered list to allocate storage
     // for.
     _states.resolveInto(this, runtime);
-    // Here for the state channels' reason: this runs on main before the
-    // spawn, so the streams ride the object graph already built and both
-    // copies derive identically without a message.
-    describeRandom(RandomDescriptor(this, randomSeed));
+    // --- random streams: resolve what the fields collected ----------------
+    //
+    // Here for the state channels' reason: this runs on main before the spawn,
+    // so the streams ride the object graph already built and both copies
+    // derive identically without a message. A `RandomStream.of()` on a field
+    // of this game collected into `_randoms` while the constructor ran; this
+    // is where each one takes its index and the seed derived for it from
+    // [randomSeed], which is an overridable getter and so unreadable from the
+    // field initialiser that declared the stream.
+    _randoms.resolveInto(this, randomSeed);
 
     // Before describeBuffers, deliberately: a 2D renderer declares one frame
     // buffer *per declared view*, so the views have to exist by the time

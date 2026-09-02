@@ -853,18 +853,13 @@ class _RandomGame extends _TestGame {
   @override
   final int randomSeed;
 
-  late final RandomStream a;
-  late final RandomStream b;
+  final a = RandomStream.of();
+  final b = RandomStream.of();
 
   @override
-  GameState createState() => _RandomState();
-
-  @override
-  void describeRandom(RandomDescriptor descriptor) {
-    super.describeRandom(descriptor);
+  GameState createState() {
     _randomGame = this;
-    a = descriptor.has();
-    b = descriptor.has();
+    return _RandomState();
   }
 }
 

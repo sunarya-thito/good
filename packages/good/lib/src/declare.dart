@@ -7,6 +7,7 @@ import 'package:good/src/data.dart';
 import 'package:good/src/event.dart';
 import 'package:good/src/event/state.dart';
 import 'package:good/src/input.dart';
+import 'package:good/src/random.dart';
 import 'package:good/src/struct.dart';
 
 /// What `EntityStruct.of` declares against: whoever is registering prefabs
@@ -446,6 +447,43 @@ abstract final class DeclarationContext {
       );
     }
     return _inputs.last;
+  }
+
+  /// The open random registries, innermost last - the tenth level of the
+  /// stack, and the one `RandomStream.of` declares against.
+  ///
+  /// A `Game` is the only thing that declares a stream, and a `Game` is the
+  /// first object the framework builds, so this is either empty or one deep -
+  /// kept a stack anyway, so that "empty" is the same question at every level.
+  static final List<RandomRegistry> _randoms = <RandomRegistry>[];
+
+  /// Opens a registry for the duration of one game's constructor. Paired with
+  /// [popRandoms] in a `finally` - `Game._construct` is the only caller.
+  static void pushRandoms(RandomRegistry registry) => _randoms.add(registry);
+
+  static void popRandoms() => _randoms.removeLast();
+
+  /// The innermost open registry, or a `StateError` naming the two ways to get
+  /// here: constructing the game yourself, and reaching a `RandomStream.of`
+  /// call lazily.
+  static RandomRegistry get randoms {
+    if (_randoms.isEmpty) {
+      throw StateError(
+        'A RandomStream was declared with no game being constructed. '
+        'RandomStream.of reads the registry the framework opens around a '
+        'constructor call, so the framework has to be the one constructing:\n'
+        '  Game.start(MyGame.new)   // not Game.start(MyGame())\n'
+        'A `late final` initialiser lands here too, and that is the point: it '
+        'runs on first read, long after boot derived every declared stream '
+        'from the seed, so a stream declared that way would have no seed and '
+        'no index. Field initialisers here are eager, always.\n'
+        'A Game is the only thing that declares a stream at all - the seed '
+        'every stream is derived from is Game.randomSeed, and it is read once, '
+        'on main, before the spawn. A GameSystem draws from a stream the Game '
+        'declared: `state.game.loot.nextInt(6)`.',
+      );
+    }
+    return _randoms.last;
   }
 
   /// How many `Game`s have finished constructing since whoever is watching

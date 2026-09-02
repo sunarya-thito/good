@@ -2,6 +2,26 @@
 
 ### Added
 
+* **`RandomStream.of()`**, a random stream declared on the field that holds it
+  (#287):
+
+  ```dart
+  class MyGame extends Game {
+    final loot = RandomStream.of();
+    final terrain = RandomStream.of();
+  }
+  ```
+
+  It takes nothing and returns the stream, with no index and no seed. Both
+  arrive at boot, on main, before the spawn: `Game.randomSeed` is an
+  overridable getter, so it is read once every field has declared, and the
+  declaration index is mixed into the seed there. Throws for a `Game` built by
+  hand and for a `late final` that runs on first read, and a stream drawn from
+  before its game has started says so.
+
+* **`Game.randomStreamCount`**, how many streams this copy declared (#287).
+  Sits beside `stateChannelCount` and `bufferCount`.
+
 * **`CameraView.representation()`**, the `IntRepresentation` a camera-view
   column binds to for the scene being brought up (#287):
 
@@ -154,6 +174,29 @@
   own repository; a component in your game's `lib/` is not in it.
 
 ### Breaking
+
+* **`Game.describeRandom` and `RandomDescriptor` are gone** (#287). A stream is
+  declared on the field that holds it:
+
+  ```dart
+  class MyGame extends Game {
+    @override
+    int get randomSeed => 777;
+
+    final loot = RandomStream.of();
+  }
+  ```
+
+  | before | after |
+  |---|---|
+  | `late final RandomStream loot;` plus `loot = descriptor.has()` | `final loot = RandomStream.of()` |
+
+  Declaration order still is a stream's identity, and it is now the order the
+  fields run in: a subclass's initialisers run before its superclass's, so a
+  game that declared streams on both sides of a hierarchy gets a different
+  numbering than the `super`-first hook produced, and therefore different
+  sequences from the same seed. Nothing else moves - one class declaring its
+  own streams in one place keeps the order it had.
 
 * **`MemoryPool.getPage` and `MemoryPage.ownerArchetypeId` are gone, and
   `MemoryPool.allocatePage` no longer takes `ownerArchetypeId`** (#332, #335).
