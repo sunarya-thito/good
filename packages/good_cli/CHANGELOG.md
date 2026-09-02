@@ -2,6 +2,10 @@
 
 ### Breaking
 
+* **The scaffolded 3D game declares its view in a field** (#287). It overrode
+  `describeCameras`, which no longer exists; it carries
+  `final mainView = CameraView.of();` now.
+
 * **The scaffolded `Player` declares its sprite in a field** (#287). It
   overrode `describeSprites`, which no longer exists; it carries
   `final sprite = Sprite.of(width: 64, height: 64, color: 0xFF4FC3F7);` now,

@@ -121,15 +121,11 @@ class _MultiGame extends Game2D {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
-  /// `defaultCamera` is address 0 and comes from `Renderer2D`; this is the
-  /// second one, and calling super is what keeps that ordering.
-  late final CameraView minimap;
-
-  @override
-  void describeCameras(CameraDescriptor descriptor) {
-    super.describeCameras(descriptor);
-    minimap = descriptor.has();
-  }
+  /// The second view, beside the `defaultCamera` `Renderer2D` declares. A
+  /// subclass's field initialisers run before the mixins it applies, so this
+  /// one takes address 0 and `defaultCamera` takes 1 - which nothing reads a
+  /// literal for.
+  final minimap = CameraView.of();
 
   @override
   GameState2D<_MultiGame> createState() => _MultiState();

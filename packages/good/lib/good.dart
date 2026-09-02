@@ -120,7 +120,7 @@ export 'src/input/input_state.dart';
 export 'src/pool.dart';
 export 'src/ring_buffer.dart';
 export 'src/scene.dart';
-export 'src/camera_view.dart' hide GameCameraDescriptor;
+export 'src/camera_view.dart';
 export 'src/scene_handle.dart';
 export 'src/struct.dart';
 export 'src/time.dart';

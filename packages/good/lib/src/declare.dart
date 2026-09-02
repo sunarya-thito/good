@@ -646,6 +646,15 @@ abstract final class DeclarationContext {
   /// The innermost open table, or a `StateError` naming the two ways to get
   /// here: declaring a camera column outside a scene's bring-up, and reaching
   /// the call lazily.
+  /// The innermost open table, or null when nothing is being declared.
+  ///
+  /// Read by `CameraView.of`, which has its own sentence for there being no
+  /// table: the one below is written for the *other* caller of this level,
+  /// `CameraView.representation`, and the two are refused for different
+  /// reasons at different points in a boot.
+  static CameraViewTable? get cameraViewsOrNull =>
+      _cameraViews.isEmpty ? null : _cameraViews.last;
+
   static CameraViewTable get cameraViews {
     if (_cameraViews.isEmpty) {
       throw StateError(

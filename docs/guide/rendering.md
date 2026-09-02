@@ -430,15 +430,14 @@ Declare more when you want split screen, a minimap, or a second window:
 
 ```dart
 class MyGame extends Game2D {
-  late final CameraView minimap;
-
-  @override
-  void describeCameras(CameraDescriptor descriptor) {
-    super.describeCameras(descriptor);
-    minimap = descriptor.has();
-  }
+  final minimap = CameraView.of();
 }
 ```
+
+`CameraView.of()` runs while the game is being constructed, which is where
+every view has to be declared: each one is drawn into shared memory allocated
+before the simulation isolate is spawned. `Game.start(MyGame.new)` is what
+opens that window, so a `Game` built by hand refuses the call.
 
 Each view sizes and allocates its own per-view storage, and **each draws the
 scene its own camera is in** — so two views can be looking at different scenes

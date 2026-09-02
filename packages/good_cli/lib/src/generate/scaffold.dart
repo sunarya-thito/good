@@ -462,21 +462,16 @@ import 'systems/spin_system.dart';
 /// `Game` and not a `Game3D`: there is no such class, because what `Game2D`
 /// gives you over `Game` is a renderer and a default camera view to point it
 /// at, and `goo3d` has no renderer yet (issue #43). Everything a 3D game
-/// declares, it declares here by hand - which is two overrides, both below.
+/// declares, it declares here by hand.
 class $gameClass extends Game {
   /// The view `main.dart` shows, and the one the camera entity in
   /// `MainScene` is pointed at.
   ///
-  /// A view is a place a game is drawn, declared at boot because its storage
-  /// is allocated before the simulation isolate is spawned. `Game2D` declares
-  /// one called `defaultCamera` on your behalf; nothing does that here.
-  late final CameraView mainView;
-
-  @override
-  void describeCameras(CameraDescriptor descriptor) {
-    super.describeCameras(descriptor);
-    mainView = descriptor.has();
-  }
+  /// A view is a place a game is drawn, declared while this class is being
+  /// constructed because its storage is allocated before the simulation
+  /// isolate is spawned. `Game2D` declares one called `defaultCamera` on your
+  /// behalf; nothing does that here.
+  final mainView = CameraView.of();
 
   @override
   GameState<$gameClass> createState() => ${className}State();

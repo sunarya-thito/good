@@ -757,30 +757,6 @@ abstract class Game implements RandomOwner {
   @mustCallSuper
   void describeBuffers(BufferDescriptor descriptor) {}
 
-  /// Declares this game's camera views - the places it can be drawn.
-  ///
-  /// ```dart
-  /// late final CameraView mainCamera;
-  ///
-  /// @override
-  /// void describeCameras(CameraDescriptor descriptor) {
-  ///   super.describeCameras(descriptor);
-  ///   mainCamera = descriptor.has();
-  /// }
-  /// ```
-  ///
-  /// Runs **before** [describeBuffers], and that ordering is what the split
-  /// of responsibility rests on: `good` knows a view exists and how big it is,
-  /// while whatever draws it (`goo2d`'s renderer, a future `goo3d`'s) sizes
-  /// and allocates its own per-view storage in its `describeBuffers`. This
-  /// kernel never learns what a frame is.
-  ///
-  /// A game that declares none draws nothing and is shown with
-  /// `GameView.headless` - a HUD-only or headless-plus-Flutter setup, which
-  /// is a first-class shape here, not a degenerate one.
-  @mustCallSuper
-  void describeCameras(CameraDescriptor descriptor) {}
-
   /// Registers the decoders for every payload type this game loads.
   ///
   /// ```dart
@@ -826,10 +802,31 @@ abstract class Game implements RandomOwner {
     loaders.register<AudioClip>(const AudioLoader());
   }
 
-  /// This game's declared camera views. Empty until [describeCameras] has
-  /// run; both isolate copies see the same table, because it rides the deep
-  /// copy like every other piece of declared state.
-  final CameraViewTable cameraViews = CameraViewTable();
+  /// This game's declared camera views - the places it can be drawn.
+  ///
+  /// One entry per `CameraView.of()` field, in the order the initialisers ran.
+  /// Both isolate copies see the same table, because it rides the deep copy
+  /// like every other piece of declared state.
+  ///
+  /// A game that declares none draws nothing and is shown with
+  /// `GameView.headless` - a HUD-only or headless-plus-Flutter setup, which is
+  /// a first-class shape here, not a degenerate one.
+  ///
+  /// `good` knows a view exists and how big it is; whatever draws it
+  /// (`goo2d`'s renderer, a future `goo3d`'s) sizes and allocates its own
+  /// per-view storage in [describeBuffers], which runs at boot with the whole
+  /// table already in hand. This kernel never learns what a frame is.
+  CameraViewTable get cameraViews => _cameraViews;
+
+  // **Not final**, for [_states]'s reason and replaced at the same moment: a
+  // subclass's field initialisers run before this class's, so at the moment
+  // `final mainCamera = CameraView.of()` runs there is no `Game` yet to hold
+  // a table. `Game.start` opens one ahead of the constructor call and puts it
+  // here afterwards.
+  //
+  // The one created here is what a `Game` constructed some other way gets:
+  // empty, closed, and the game will not boot anyway.
+  CameraViewTable _cameraViews = CameraViewTable();
 
   /// The seed every [RandomStream] this game declares is derived from.
   ///
@@ -1283,16 +1280,19 @@ abstract class Game implements RandomOwner {
     final states = _StateDescriptor();
     final inputs = InputRegistry()..source = '$G';
     final randoms = RandomRegistry();
+    final views = CameraViewTable()..open();
     final restoreCount = DeclarationContext.gamesConstructed;
     DeclarationContext.gamesConstructed = 0;
     DeclarationContext.pushChannels(states);
     DeclarationContext.pushInputs(inputs);
     DeclarationContext.pushRandoms(randoms);
+    DeclarationContext.pushCameraViews(views);
     final G game;
     final int built;
     try {
       game = create();
     } finally {
+      DeclarationContext.popCameraViews();
       DeclarationContext.popRandoms();
       DeclarationContext.popInputs();
       DeclarationContext.popChannels();
@@ -1325,6 +1325,11 @@ abstract class Game implements RandomOwner {
     game._states = states;
     game._inputs = inputs;
     game._randoms = randoms;
+    game._cameraViews = views;
+    // Closes the table and hands every declared view the game it belongs to.
+    // A view is drawn by a `GameView`, which needs to name its game, and a
+    // field initialiser had none to name.
+    views.bindGame(game);
     // After the game exists and before anything sizes the raw input block:
     // the contact table's length is the one part of that block a game gets to
     // choose, and the registry has to be open through `create()` for field
@@ -1532,14 +1537,11 @@ abstract class Game implements RandomOwner {
   // A `Game` instance may be started **once**, and that is the design rather
   // than a limitation waiting to be lifted. Two things say so, and they agree:
   //
-  //  * The declaration passes are not re-runnable, and that follows from the
-  //    API's own shape rather than from any implementation choice. The
-  //    typed-handle rule has every declaration land in a `late final` field
-  //    (`views = descriptor.has()`), and a `late final` is assignable exactly
-  //    once. A second pass throws `LateInitializationError` from inside the
-  //    user's own `describeCameras` - and does it *after* appending a second
-  //    set of views to the declared list, so an unguarded retry leaves the
-  //    instance permanently describing twice the storage it should.
+  //  * The declaration passes are not re-runnable. Every declaration is a
+  //    field initialiser (`final mainView = CameraView.of()`), and a field
+  //    initialiser runs exactly once, when the object is built. There is no
+  //    second pass to run: starting the same instance again would allocate
+  //    storage for the handles the first run is already using.
   //  * A declared handle **is** its run's storage. A `StateChannel` holds the
   //    `TripleBuffer`, a `BufferHandle` the `RingBuffer`, a `GameCommand` the
   //    sender that routes it. That is what keeps every one of them a plain
@@ -1656,10 +1658,9 @@ abstract class Game implements RandomOwner {
     // field initialiser that declared the stream.
     _randoms.resolveInto(this, randomSeed);
 
-    // Before describeBuffers, deliberately: a 2D renderer declares one frame
-    // buffer *per declared view*, so the views have to exist by the time
-    // anything is asked what storage it needs.
-    describeCameras(GameCameraDescriptor(this, cameraViews));
+    // Every camera view was declared while the constructor ran, so the table
+    // is complete before this line: a 2D renderer declares one frame buffer
+    // *per declared view*, and asks how many there are here.
     describeBuffers(_BufferDescriptor(this));
     // The framework's own shipped hasDefaultValue<bool>/<Vector2> are
     // registered here, before any system can declare an action that needs

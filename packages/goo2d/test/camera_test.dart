@@ -581,13 +581,7 @@ class _CamGame extends Game {
 
   final _Scene _scene;
 
-  late final CameraView view;
-
-  @override
-  void describeCameras(CameraDescriptor descriptor) {
-    super.describeCameras(descriptor);
-    view = descriptor.has();
-  }
+  final view = CameraView.of();
 
   @override
   GameState createState() => _CamState(_scene);
@@ -624,15 +618,8 @@ class _BoundGame extends Game {
   @override
   int get pageSize => 4096;
 
-  late final CameraView main;
-  late final CameraView minimap;
-
-  @override
-  void describeCameras(CameraDescriptor descriptor) {
-    super.describeCameras(descriptor);
-    main = descriptor.has();
-    minimap = descriptor.has();
-  }
+  final main = CameraView.of();
+  final minimap = CameraView.of();
 
   @override
   GameState createState() => _BoundState();

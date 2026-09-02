@@ -35,7 +35,7 @@ import 'package:good/src/game.dart';
 /// on the rebuilds Flutter already gives it.
 class GameView extends StatefulWidget {
   /// Shows [camera] - one of the views the game declared in
-  /// [Game.describeCameras].
+  /// [Game.cameraViews].
   ///
   /// The camera is the whole of it: a [CameraView] is issued by one game's
   /// table and knows which (`CameraView.game`), and that game is running

@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:good/good.dart';
-import 'package:good/src/camera_view.dart' show GameCameraDescriptor;
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
@@ -21,15 +20,8 @@ class _TwoCameraGame extends Game {
   @override
   GameState createState() => _State();
 
-  late final CameraView main;
-  late final CameraView minimap;
-
-  @override
-  void describeCameras(CameraDescriptor descriptor) {
-    super.describeCameras(descriptor);
-    main = descriptor.has();
-    minimap = descriptor.has();
-  }
+  final main = CameraView.of();
+  final minimap = CameraView.of();
 }
 
 class _NoCameraGame extends Game {
@@ -58,6 +50,23 @@ class _ViewerScene extends SceneStruct {
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
     viewer = descriptor.has(_Viewer.new);
+  }
+}
+
+/// A prefab that tries to *declare* a view instead of naming one. Its field
+/// initialiser runs while the game's table is on the declaration stack - the
+/// same table `CameraView.representation()` above reads - and closed.
+class _DeclaringViewer extends EntityStruct {
+  final view = CameraView.of();
+}
+
+class _DeclaringScene extends SceneStruct {
+  late final _DeclaringViewer viewer;
+
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
+    viewer = descriptor.has(_DeclaringViewer.new);
   }
 }
 
@@ -262,13 +271,55 @@ void main() {
     });
   });
 
-  test('a view cannot be forged - only the descriptor makes one', () async {
+  test('a prefab cannot declare a view into the game it names', () async {
+    final game = await _start(_TwoCameraGame.new);
+    final scene = _DeclaringScene();
+    final pool = MemoryPool(pageSize: 4096);
+    addTearDown(pool.dispose);
+
+    // The game's own table is on the declaration stack for the whole of a
+    // scene's bring-up, because `CameraView.representation()` reads it there.
+    // Without the closed flag this call would land in it and hand back a view
+    // whose two floats of viewport memory were allocated a phase earlier - a
+    // view that reports zero for the rest of the run.
+    expect(
+      () => scene.initializeScene(pool, cameraViews: game.cameraViews),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          allOf(
+            contains('no game being constructed'),
+            contains('CameraView.representation()'),
+          ),
+        ),
+      ),
+    );
+    expect(
+      game.cameraViews.length,
+      2,
+      reason: 'and it added nothing on the way out',
+    );
+  });
+
+  test('a view cannot be declared once the game is built', () async {
     final game = await _start(_TwoCameraGame.new);
     // `CameraView` has only a private constructor, so the sole way to obtain
-    // one is the declare pass. This asserts the pass is the only producer by
-    // showing the table grows only through it.
+    // one is `CameraView.of()`, and that is closed the moment the constructor
+    // returns - a later view would have no viewport memory, since the table's
+    // is allocated before the spawn.
     final before = game.cameraViews.length;
-    GameCameraDescriptor(game, game.cameraViews).has();
-    expect(game.cameraViews.length, before + 1);
+
+    expect(
+      CameraView.of,
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('no game being constructed'),
+        ),
+      ),
+    );
+    expect(game.cameraViews.length, before);
   });
 }

@@ -48,7 +48,7 @@ mixin GameSystemLifecycleListener on GameListener {
 ///
 /// Most declaration passes do run on both copies, and that is what makes an
 /// index a wire identity: a `Game`'s `Channel.*` fields, `describeBuffers`,
-/// `describeCameras` and `describeCommands` all run on main before the spawn
+/// `CameraView.of` and `describeCommands` all run on main before the spawn
 /// and again on the other side, so a channel or a buffer is the same index to
 /// both. Systems are the exception, and they can be because a system declares
 /// no shared memory of its own: [describeInputs] is the one pass it has, its

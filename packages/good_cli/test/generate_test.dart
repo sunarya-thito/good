@@ -1074,7 +1074,7 @@ flutter:
       expect(game, contains('mainView'));
       expect(
         game,
-        contains('describeCameras'),
+        contains('CameraView.of()'),
         reason: 'Game2D declares a default view for you; plain Game does not',
       );
       expect(

@@ -2,6 +2,18 @@
 
 ### Breaking
 
+* **`Renderer2D.defaultCamera` is the last view a game declares, not the
+  first** (#287). It is a `CameraView.of()` field now, and a mixin's field
+  initialisers run after those of the class applying it, so a game declaring
+  one view of its own takes address 0 and `defaultCamera` takes 1. Nothing
+  here reads an address literally - a frame buffer is found by `view.pack()` -
+  but a game that hard-coded 0 for the default camera has to stop.
+
+* **`Game2D` and any game mixing in `Renderer2D` can only be built by
+  `Game.start`** (#287). `defaultCamera` declares from a field initialiser, so
+  `MyGame()` on its own is refused with the sentence saying which window it
+  needed.
+
 * **`Text2D.textFont` and `Text2D.textCapacity` are gone. A label is declared
   on a field with `TextLabel.of`** (#287):
 

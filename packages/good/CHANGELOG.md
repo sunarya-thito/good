@@ -2,6 +2,23 @@
 
 ### Added
 
+* **`CameraView.of()`**, a camera view declared on the field that holds it
+  (#287):
+
+  ```dart
+  class MyGame extends Game2D {
+    final minimap = CameraView.of();
+  }
+  ```
+
+  It takes nothing - the field name is the identity - and hands back the view,
+  addressed from zero in field order. The game it belongs to is hung on once
+  the constructor returns, so `CameraView.game` answers from that point and
+  `GameView` can show it. Refused outside a game's construction: the table is
+  on the declaration stack for the whole of a scene's bring-up so that
+  `CameraView.representation()` can read it, and a view declared there would
+  have no viewport memory.
+
 * **`RandomStream.of()`**, a random stream declared on the field that holds it
   (#287):
 
@@ -174,6 +191,35 @@
   own repository; a component in your game's `lib/` is not in it.
 
 ### Breaking
+
+* **`Game.describeCameras` and `CameraDescriptor` are gone** (#287). A view is
+  declared on the field that holds it:
+
+  ```dart
+  class MyGame extends Game2D {
+    final minimap = CameraView.of();
+  }
+  ```
+
+  | before | after |
+  |---|---|
+  | `late final CameraView minimap;` plus `minimap = descriptor.has()` | `final minimap = CameraView.of()` |
+
+  **Addresses move.** Field initialisers run most-derived first and a mixin's
+  run after the class applying it, where the hook ran `super` first. A game on
+  `Game2D` declaring one view of its own now holds address 0 while
+  `Renderer2D.defaultCamera` holds 1; under the hook it was the other way
+  round. Nothing in the engine reads a literal address - a frame buffer is
+  found by `view.pack()` - but a game that hard-coded 0 for the default camera
+  has to stop.
+
+  **A `Game2D` can no longer be constructed by hand.** `Renderer2D` declares
+  `defaultCamera` on a field, so `MyGame()` outside `Game.start` is refused the
+  same way a `Channel.*` field already refuses it.
+
+* **`Game.cameraViews` is a getter, not a final field** (#287). It reads the
+  table `Game.start` opened around the constructor. Nothing that only reads it
+  changes.
 
 * **`Game.describeRandom` and `RandomDescriptor` are gone** (#287). A stream is
   declared on the field that holds it:
