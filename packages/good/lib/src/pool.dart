@@ -128,15 +128,20 @@ class MemoryPool {
   final int pageSize;
   final int maxPages;
 
-  /// Allocated pages by index, **tombstoned and not removed** when one is
-  /// freed.
+  /// The pages this pool has handed out and has not been asked to free.
   ///
-  /// The index is an identity, not a position: it is what [getPage] takes,
-  /// and compacting the list would renumber every page after the hole.
-  /// `ArchetypeStorage._pages` tombstones for the same class of reason
-  /// (`Entity.pageIndex` indexes *it*), so the two agree by construction.
-  final List<MemoryPage?> _pages = [];
+  /// [freePage] removes its entry, so the list holds live pages only and its
+  /// length is what [maxPages] caps. Nothing outside this class addresses a
+  /// page by its position here, and a page's position moves whenever an
+  /// earlier one is freed.
+  ///
+  /// `ArchetypeStorage._pages` is a different list and keeps its holes:
+  /// `Entity.pageIndex` indexes *it*, and shifting an entry would repoint
+  /// every handle after the hole.
+  final List<MemoryPage> _pages = [];
 
+  /// How many pages this pool is holding. Goes up on [allocatePage] and down
+  /// on [freePage], and [maxPages] is its ceiling.
   int get pageCount => _pages.length;
 
   /// Bumped whenever any page's read or write base could have moved.
@@ -281,16 +286,6 @@ class MemoryPool {
   /// only meaningful in the writing isolate.
   bool get isTickOpen => _tickOpen;
 
-  /// The page at [page] - the index it was allocated at - or null once that
-  /// page has been freed. The slot is tombstoned, so an index names the same
-  /// page after its neighbours go as it named before.
-  ///
-  /// Throws a `RangeError` for an index no page has ever held, i.e. one at or
-  /// past [pageCount]. Allocating rows in the result belongs to
-  /// `ArchetypeStorage`: a row taken straight from `MemoryPage.allocate()` is
-  /// not an `Entity`, and the query walk over that page yields it anyway.
-  MemoryPage? getPage(int page) => _pages[page];
-
   /// Always allocates a brand-new page (up to [maxPages]) - never searches
   /// for an existing non-full one. Every page gets stride-locked to whichever
   /// archetype's row size calls `allocate()` on it first, so "any non-full
@@ -300,18 +295,20 @@ class MemoryPool {
   /// `ArchetypeStorage`'s job (see archetype.dart) - it keeps its own page
   /// list and only calls this when none of its own pages have room.
   ///
-  /// [ownerArchetypeId] is recorded on the page (see
-  /// [MemoryPage.ownerArchetypeId]); this pool never interprets it.
-  MemoryPage allocatePage({
-    int ownerArchetypeId = -1,
-    int ownerSceneSlot = -1,
-  }) {
+  /// [ownerSceneSlot] is recorded on the page (see
+  /// [MemoryPage.ownerSceneSlot]); this pool never interprets it.
+  ///
+  /// Throws a `StateError` when [maxPages] pages are already live. [freePage]
+  /// returns a slot, so the refusal counts the pages this pool is holding
+  /// now, not the pages it has handed out over its life.
+  MemoryPage allocatePage({int ownerSceneSlot = -1}) {
     if (_pages.length >= maxPages) {
       throw StateError(
-        'MemoryPool exhausted: all $maxPages pages are allocated',
+        'MemoryPool exhausted: $maxPages pages are live, which is maxPages. '
+        'Free a page or raise Game.maxPages.',
       );
     }
-    final page = MemoryPage._(pageSize, ownerArchetypeId, ownerSceneSlot);
+    final page = MemoryPage._(pageSize, ownerSceneSlot);
     _pages.add(page);
     return page;
   }
@@ -325,7 +322,6 @@ class MemoryPool {
     // receipt handler that ran a step (`GameState.stepOnce`).
     _bumpEpoch();
     for (final page in _pages) {
-      if (page == null) continue;
       // Before the write pass, and before any system can run a query: this is
       // the one moment no walk is part-way through, so it is where rows
       // created or freed during last tick's queries become real.
@@ -347,7 +343,7 @@ class MemoryPool {
   /// Call once, after every system has finished writing.
   void commitTick() {
     for (final page in _pages) {
-      page?._buffer.publish();
+      page._buffer.publish();
     }
     // After every publish, not before: the read base each page resolves to has
     // just moved, and presentation reads through the cache.
@@ -357,35 +353,37 @@ class MemoryPool {
     _bumpEpoch();
   }
 
-  /// Frees one page and drops it from this pool.
+  /// Frees one page, releasing its native memory and returning its slot
+  /// against [maxPages].
   ///
   /// The per-scene half of [dispose]: unloading a `Scene` frees exactly the
   /// pages tagged with its slot, and leaves every other page - and therefore
-  /// every live `Entity` handle into them - untouched. Both page lists
-  /// **tombstone** the freed slot instead of removing it. This pool's list
-  /// keeps it because a page index is what [getPage] takes;
-  /// `ArchetypeStorage` keeps its own because `Entity.pageIndex` is an index
-  /// into *that* list, and shifting it would silently repoint every handle
-  /// after the hole.
+  /// every live `Entity` handle into them - untouched.
+  ///
+  /// `ArchetypeStorage` drops its own entry differently: it tombstones,
+  /// because `Entity.pageIndex` is an index into *that* list and shifting an
+  /// entry would silently repoint every handle after the hole. Nothing
+  /// indexes this list, so it closes up.
+  ///
+  /// Does nothing for a page this pool is not holding.
   void freePage(MemoryPage page) {
     _bumpEpoch();
     final index = _pages.indexOf(page);
     if (index < 0) return;
-    // Tombstoned, not removed - see [_pages].
-    _pages[index] = null;
+    _pages.removeAt(index);
     page.dispose();
   }
 
   void dispose() {
     for (final page in _pages) {
-      page?.dispose();
+      page.dispose();
     }
     _pages.clear();
   }
 }
 
 class MemoryPage {
-  MemoryPage._(int capacity, this.ownerArchetypeId, this.ownerSceneSlot)
+  MemoryPage._(int capacity, this.ownerSceneSlot)
     : _buffer = TripleBuffer(capacity),
       _capacity = capacity;
 
@@ -401,14 +399,6 @@ class MemoryPage {
   /// no row-by-row reclamation, and no generation counter on `Entity`, which
   /// has no spare bits for one.
   final int ownerSceneSlot;
-
-  /// The `ArchetypeStorage.archetypeId` that asked [MemoryPool.allocatePage]
-  /// for this page, or -1 if it was allocated without one.
-  ///
-  /// Recorded at allocation and read by nothing in the engine - the archetype
-  /// already holds its own page list. It is here for a caller inspecting a
-  /// pool that wants to attribute a page to an archetype.
-  final int ownerArchetypeId;
 
   int get capacityBytes => _capacity;
 

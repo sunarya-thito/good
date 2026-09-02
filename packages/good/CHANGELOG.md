@@ -132,6 +132,38 @@
 
 ### Breaking
 
+* **`MemoryPool.getPage` and `MemoryPage.ownerArchetypeId` are gone, and
+  `MemoryPool.allocatePage` no longer takes `ownerArchetypeId`** (#332, #335).
+  Both were public and neither was read by the engine or by any test that
+  exercised the pool through its callers.
+
+  A pool page has no stable index any more, so there is nothing for `getPage`
+  to take. Attributing a page to an archetype goes through
+  `ArchetypeStorage.pageAt`, which is where `WorldCensus.of` already gets it:
+  the archetype holds its own page list, so the grouping comes for free.
+  `MemoryPage.ownerSceneSlot` is unchanged and still names the scene.
+
+  | before | after |
+  |---|---|
+  | `pool.getPage(i)` | `storage.pageAt(i)`, per archetype |
+  | `pool.allocatePage(ownerArchetypeId: id, ownerSceneSlot: s)` | `pool.allocatePage(ownerSceneSlot: s)` |
+  | `page.ownerArchetypeId` | the `ArchetypeStorage` the page came from |
+
+* **`Game.maxPages` counts pool pages that are live, not pages allocated over
+  the process's life** (#335). `MemoryPool.freePage` removes the page from the
+  pool instead of leaving a tombstone behind, so unloading a scene returns its
+  budget and `MemoryPool.pageCount` reports what is live.
+
+  Before this, a game that loaded and unloaded scenes for long enough reached
+  the default ceiling of 128 on churn alone while holding a handful of pages,
+  and the refusal read `MemoryPool exhausted: all 128 pages are allocated`
+  with 127 of them freed. The refusal names live pages now, and is reachable
+  only with that many held at once.
+
+  A game that sized `maxPages` around the churn is holding a number larger
+  than it needs. Nothing breaks at a larger value; it caps a live population
+  now.
+
 * **`GameSceneDescriptor.has` takes the constructor, not an instance** (#287):
 
   ```dart

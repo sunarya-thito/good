@@ -353,9 +353,13 @@ abstract class Game implements RandomOwner {
   /// See `ContactBinding` for what reads them.
   int get maxPointerContacts => 10;
 
-  /// The most pages this game's pool will ever allocate. The pool never grows
-  /// past it - exhausting it throws, so a runaway spawn loop reports itself
-  /// instead of taking the machine down.
+  /// How many pool pages this game may hold live at once. Allocating past it
+  /// throws, so a runaway spawn loop reports itself instead of taking the
+  /// machine down.
+  ///
+  /// Unloading a scene frees its pages and returns their slots, so a game
+  /// that loads and unloads scenes all session spends nothing here beyond
+  /// what it is holding at the time.
   int get maxPages => 128;
 
   /// Capacity of **each** command ring buffer. Sized for a burst - a UI frame
