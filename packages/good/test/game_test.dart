@@ -2320,9 +2320,14 @@ void main() {
             'message',
             allOf(
               contains('cycle'),
-              contains('_CycleA'),
-              contains('_CycleB'),
-              contains('_CycleC'),
+              // The loop itself, walked, and every edge attributed to the
+              // call that produced it. A list of the blocked systems was
+              // what this used to say, and it named systems merely
+              // downstream of the loop as though each were on it.
+              contains('_CycleA -> _CycleB -> _CycleC -> _CycleA'),
+              contains('_CycleA.compareTo(_CycleB) answered -1'),
+              contains('_CycleB.compareTo(_CycleC) answered -1'),
+              contains('_CycleC.compareTo(_CycleA) answered -1'),
             ),
           ),
         ),

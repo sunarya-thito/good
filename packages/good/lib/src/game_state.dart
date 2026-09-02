@@ -14,6 +14,7 @@ import 'package:good/src/command/command.dart';
 import 'package:good/src/coroutine/coroutine.dart';
 import 'package:good/src/command/param.dart';
 import 'package:good/src/game.dart';
+import 'package:good/src/order.dart';
 import 'package:good/src/pool.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
@@ -1430,60 +1431,164 @@ abstract class GameState<T extends Game> extends GameListenerBase
   @internal
   bool isSystemEnabledAt(int i) => _systems[i].listensToEvents;
 
-  /// Orders [declaredSystems] so that every constraint `GameSystem.compareTo`
-  /// states is honoured, breaking ties on original declaration index - a system
-  /// that expresses no opinion keeps its declared position relative to every
-  /// other opinion-less system. Runs once, right after [describeSystems].
+  /// Orders [declaredSystems] so that every constraint its systems declare is
+  /// honoured, breaking ties on original declaration index - a system that
+  /// expresses no opinion keeps its declared position relative to every other
+  /// opinion-less system. Runs once, right after [describeSystems], and this
+  /// is the *resolve* half of the engine's declare-then-resolve split: an
+  /// `Order.after<T>()` on a system's field looked nothing up when it ran,
+  /// because half the systems it might name did not exist yet.
   ///
   /// # Why this is a graph and not a `List.sort`
   ///
-  /// `compareTo` is a **partial** order here: most pairs of systems have no
-  /// opinion about each other, and the ones that do usually name a single other
-  /// type (`other is WorldTransformSystem ? -1 : 0`). That is not a comparator.
-  /// It is neither antisymmetric - two systems that each return -1 to
-  /// everything both claim to be first - nor transitive, and `List.sort` is
-  /// only defined for a comparator that is both. Given one that is not, it does
-  /// not merely mis-order the offending pair: it permutes the whole list, and
-  /// unrelated constraints elsewhere are silently dropped.
+  /// What a system states is a **partial** order: most pairs have no opinion
+  /// about each other, and the ones that do name a single other type. That is
+  /// not a comparator. It is neither antisymmetric - two systems that each
+  /// claim to precede everything both want the front - nor transitive, and
+  /// `List.sort` is only defined for a comparator that is both. Given one that
+  /// is not, it does not merely mis-order the offending pair: it permutes the
+  /// whole list, and unrelated constraints elsewhere are silently dropped.
   ///
-  /// That is not hypothetical. The swarm demo declares two profiling markers
-  /// that each return -1 unconditionally, and their contradiction cost
+  /// That is not hypothetical. The swarm demo declared two profiling markers
+  /// that each returned -1 unconditionally, and their contradiction cost
   /// `CritterSystem` its "-1 against `WorldTransformSystem`" - the spawner
   /// sorted *after* the pass that composes what it writes, so every entity it
   /// created was composed a tick late and drew one frame at the world origin
   /// (#5). Asking both directions does not help: the comparator was already
   /// being consulted correctly, and the sort scrambled it anyway.
   ///
-  /// So each unordered pair is asked once, in declaration order, and the answer
-  /// becomes an edge. Kahn's algorithm then emits the systems, always taking
-  /// the lowest declaration index among those whose predecessors have all run,
-  /// which is what keeps unconstrained systems in declared order. A constraint
-  /// no longer competes with anything - it either holds or the graph has a
-  /// cycle and this throws.
+  /// So every stated constraint becomes an edge and Kahn's algorithm emits the
+  /// systems, always taking the lowest declaration index among those whose
+  /// predecessors have all run - which is what keeps unconstrained systems in
+  /// declared order. A constraint no longer competes with anything: it either
+  /// holds, or the graph has a cycle and this throws.
+  ///
+  /// # Three passes, in this order, and the order is the point
+  ///
+  /// 1. **Declared [Order] constraints.** Each `after<T>()`/`before<T>()` is
+  ///    matched against every other declared system by `is`, so a constraint
+  ///    naming a base class holds against a declared subclass. A constraint
+  ///    that matches nothing is rejected by [_unsatisfiedSystemOrder] rather
+  ///    than ignored - an `is` test in a `compareTo` override could not do
+  ///    that, because a test against a type nobody declared is never true and
+  ///    so is indistinguishable from having no opinion.
+  /// 2. **`compareTo` answers**, the older spelling, asked once per unordered
+  ///    pair in declaration order. Both directions, for the reason the old
+  ///    comparator gave: only one of the two calls carries the opinion.
+  /// 3. **[Order.first] and [Order.last]**, which are weak, and are last
+  ///    because that is what makes them weak. A first/last edge is added only
+  ///    between systems that passes 1 and 2 left with no relation at all, so
+  ///    `Box2DPhysicsSystem` saying it runs first and a profiling marker
+  ///    saying it runs `before<Box2DPhysicsSystem>()` are not a contradiction:
+  ///    the marker's targeted edge is already there, and physics's weak claim
+  ///    skips that pair and holds against everything else. Two systems that
+  ///    both claim the front do not contradict each other either - neither
+  ///    edge is added and declaration order settles them.
   ///
   /// O(n^2) comparisons against the old O(n log n), paid once at boot for a
   /// list that holds tens of systems. Nothing here runs per tick.
   @internal
   void sortSystems() {
     final n = _systems.length;
-    if (n < 2) return;
-    final after = List<List<int>>.generate(n, (_) => <int>[], growable: false);
-    final blockedBy = List<int>.filled(n, 0);
+    if (n == 0) return;
+
+    final after = List<Set<int>>.generate(n, (_) => <int>{}, growable: false);
+    // Why each edge exists, keyed `from * n + to`, so a cycle report can name
+    // the declarations that built it rather than just the systems caught in
+    // it. Only ever read on the failure path.
+    final why = <int, String>{};
+    // Pairs that passes 1 and 2 gave an opinion about, in either direction -
+    // what pass 3 checks before adding a weak edge.
+    final related = List<Set<int>>.generate(n, (_) => <int>{}, growable: false);
+
+    void addEdge(int from, int to, String reason) {
+      if (after[from].add(to)) why[from * n + to] = reason;
+    }
+
+    void addStated(int from, int to, String reason) {
+      related[from].add(to);
+      related[to].add(from);
+      addEdge(from, to, reason);
+    }
+
+    // 1. Declared Order constraints.
+    for (var i = 0; i < n; i++) {
+      final system = _systems[i];
+      for (final order in system.declaredOrders) {
+        for (final constraint in order.constraints) {
+          var matched = false;
+          for (var j = 0; j < n; j++) {
+            if (j == i || !constraint.matches(_systems[j])) continue;
+            matched = true;
+            final reason = constraint.describe(system.runtimeType);
+            if (constraint.isAfter) {
+              addStated(j, i, reason);
+            } else {
+              addStated(i, j, reason);
+            }
+          }
+          if (!matched) _unsatisfiedSystemOrder(system, constraint);
+        }
+      }
+    }
+
+    // 2. compareTo answers.
     for (var i = 0; i < n; i++) {
       final si = _systems[i];
       for (var j = i + 1; j < n; j++) {
         final sj = _systems[j];
-        // Both directions, for the reason the old comparator gave: a system
-        // stating its position by overriding `compareTo` may be either operand,
-        // and only one of the two calls carries the opinion. `sj.compareTo(si)`
-        // returning -1 means "j wants to be before i", hence the negation.
         var cmp = si.compareTo(sj);
-        if (cmp == 0) cmp = -sj.compareTo(si);
+        var owner = i;
+        if (cmp == 0) {
+          cmp = -sj.compareTo(si);
+          owner = j;
+        }
         if (cmp == 0) continue; // no opinion either way; declaration order
         final first = cmp < 0 ? i : j;
         final second = cmp < 0 ? j : i;
-        after[first].add(second);
-        blockedBy[second]++;
+        final other = owner == i ? j : i;
+        addStated(
+          first,
+          second,
+          '${_systems[owner].runtimeType}.compareTo('
+          '${_systems[other].runtimeType}) answered '
+          '${owner == i ? cmp : -cmp}',
+        );
+      }
+    }
+
+    // 3. Weak first/last.
+    for (var i = 0; i < n; i++) {
+      final orders = _systems[i].declaredOrders;
+      if (orders.isEmpty) continue;
+      var isFirst = false;
+      var isLast = false;
+      for (final order in orders) {
+        isFirst |= order.isFirst;
+        isLast |= order.isLast;
+      }
+      if (!isFirst && !isLast) continue;
+      for (var j = 0; j < n; j++) {
+        if (j == i || related[i].contains(j)) continue;
+        var otherFirst = false;
+        var otherLast = false;
+        for (final order in _systems[j].declaredOrders) {
+          otherFirst |= order.isFirst;
+          otherLast |= order.isLast;
+        }
+        if (isFirst && !otherFirst) {
+          addEdge(i, j, '${_systems[i].runtimeType} declared Order.first()');
+        }
+        if (isLast && !otherLast) {
+          addEdge(j, i, '${_systems[i].runtimeType} declared Order.last()');
+        }
+      }
+    }
+
+    final blockedBy = List<int>.filled(n, 0);
+    for (var i = 0; i < n; i++) {
+      for (final j in after[i]) {
+        blockedBy[j]++;
       }
     }
     final sorted = <GameSystem>[];
@@ -1498,12 +1603,11 @@ abstract class GameState<T extends Game> extends GameListenerBase
       }
       final i = ready.removeAt(pick);
       sorted.add(_systems[i]);
-      final unblocked = after[i];
-      for (var k = 0; k < unblocked.length; k++) {
-        if (--blockedBy[unblocked[k]] == 0) ready.add(unblocked[k]);
+      for (final j in after[i]) {
+        if (--blockedBy[j] == 0) ready.add(j);
       }
     }
-    if (sorted.length != n) _cyclicSystemOrder(blockedBy);
+    if (sorted.length != n) _cyclicSystemOrder(blockedBy, after, why, n);
     _systems
       ..clear()
       ..addAll(sorted);
@@ -1513,24 +1617,103 @@ abstract class GameState<T extends Game> extends GameListenerBase
     }
   }
 
-  /// Rejects a set of `compareTo` opinions that cannot all be satisfied.
+  /// Rejects an `after`/`before` constraint that names a system this game does
+  /// not declare.
   ///
-  /// Whatever is still blocked when Kahn's algorithm runs dry sits on a cycle
-  /// or downstream of one, so naming those systems names the argument. Every
-  /// pair was resolved to a single edge before this point, so two systems each
-  /// claiming to precede everything cannot land here - it takes three or more
-  /// systems whose stated positions genuinely disagree.
-  Never _cyclicSystemOrder(List<int> blockedBy) {
-    final stuck = <Type>[
-      for (var i = 0; i < blockedBy.length; i++)
-        if (blockedBy[i] > 0) _systems[i].runtimeType,
-    ];
+  /// The whole reason a constraint names a type instead of testing one. An
+  /// `is` test in a `compareTo` override against an absent type is never true,
+  /// which is exactly what "no opinion" looks like, so the typo and the
+  /// forgotten `descriptor.has` both read as a system that simply runs where
+  /// it was declared - and nothing reports either.
+  Never _unsatisfiedSystemOrder(GameSystem system, OrderConstraint constraint) {
     throw StateError(
-      'The systems $stuck cannot be ordered: their GameSystem.compareTo '
-      'results form a cycle, so each one is required to run before another '
-      'that is required to run before it. Ordering is a set of constraints, '
-      'not a ranking - a system should name the specific systems it must run '
-      'before or after and return 0 for the rest.',
+      '${constraint.describe(system.runtimeType)}, but no other system '
+      'declared in $runtimeType.describeSystems is a ${constraint.type}. A '
+      'constraint against a system that is not declared cannot be honoured, '
+      'and ignoring it is not an option either - the system would run '
+      'wherever it happened to be declared, with nothing to say the ordering '
+      'never took effect. Declare ${constraint.type}, or drop the '
+      'constraint.\n'
+      'The match is an `is` test, so a subclass of ${constraint.type} '
+      'satisfies it; nothing that is one is declared here at all.',
+    );
+  }
+
+  /// Rejects a set of constraints that cannot all be satisfied.
+  ///
+  /// Names the cycle itself rather than the systems caught behind it. Whatever
+  /// is still blocked when Kahn's algorithm runs dry sits on a cycle *or
+  /// downstream of one*, and the earlier version of this message listed all of
+  /// them and then asserted of each that it "is required to run before another
+  /// that is required to run before it" - false of the downstream ones, and a
+  /// list of five systems in a deep chain is a puzzle to work through by hand.
+  /// So this walks the residual graph for one real cycle and prints its edges,
+  /// each with the declaration that produced it.
+  Never _cyclicSystemOrder(
+    List<int> blockedBy,
+    List<Set<int>> after,
+    Map<int, String> why,
+    int n,
+  ) {
+    // Every node Kahn emitted has blockedBy 0, and a node it never emitted has
+    // more than 0, so the blocked set is what is left to search - and a cycle
+    // lies entirely inside it.
+    final state = List<int>.filled(n, 0); // 0 unseen, 1 on the path, 2 done
+    final path = <int>[];
+    List<int>? cycle;
+
+    bool visit(int i) {
+      state[i] = 1;
+      path.add(i);
+      for (final j in after[i]) {
+        if (blockedBy[j] == 0) continue;
+        if (state[j] == 1) {
+          cycle = <int>[...path.sublist(path.indexOf(j)), j];
+          return true;
+        }
+        if (state[j] == 0 && visit(j)) return true;
+      }
+      state[i] = 2;
+      path.removeLast();
+      return false;
+    }
+
+    for (var i = 0; i < n && cycle == null; i++) {
+      if (blockedBy[i] > 0 && state[i] == 0) visit(i);
+    }
+
+    final found = cycle;
+    if (found == null) {
+      // Unreachable while Kahn and the search read the same graph, and cheap
+      // insurance against a later edit making them disagree: a report naming
+      // the blocked set is worse than the one below, and far better than none.
+      final stuck = <Type>[
+        for (var i = 0; i < n; i++)
+          if (blockedBy[i] > 0) _systems[i].runtimeType,
+      ];
+      throw StateError(
+        'The systems $stuck cannot be ordered: the constraints they declare '
+        'cannot all hold at once.',
+      );
+    }
+
+    final chain = <String>[for (final i in found) '${_systems[i].runtimeType}']
+        .join(' -> ');
+    final edges = <String>[
+      for (var k = 0; k + 1 < found.length; k++)
+        '  ${_systems[found[k]].runtimeType} -> '
+            '${_systems[found[k + 1]].runtimeType}: '
+            '${why[found[k] * n + found[k + 1]] ?? 'declared'}',
+    ].join('\n');
+    throw StateError(
+      'The systems $chain cannot be ordered: the declared constraints below '
+      'form a cycle, so following them all the way round requires each of '
+      'these systems to run before itself.\n$edges\n'
+      'Drop or reverse one of them. Ordering is a set of constraints, not a '
+      'ranking - a system names the specific systems it must run before or '
+      'after, and Order.first()/Order.last() yield to anything that names '
+      'them, so an unconditional claim on both ends is what usually closes a '
+      'loop like this.',
     );
   }
 

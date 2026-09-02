@@ -7,6 +7,7 @@ import 'package:good/src/event.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/input.dart';
+import 'package:good/src/order.dart';
 import 'package:good/src/struct.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
@@ -17,10 +18,25 @@ mixin GameSystemLifecycleListener on GameListener {
 }
 
 /// Systems run in declaration order by default. A subclass wanting to run
-/// relative to specific other systems overrides [compareTo] and type-checks
-/// [other] (`if (other is PhysicsSystem) return -1;` to sort before it, `1`
-/// to sort after). `compareTo` is invoked once per pair, during `Game`'s boot
-/// pass - never on the tick hot path.
+/// relative to specific other systems declares an [Order] on a field:
+///
+/// ```dart
+/// final order = Order.of().after<PhysicsSystem>().before<Renderer>();
+/// ```
+///
+/// [Order] registers and resolves nothing. `GameState.sortSystems` reads
+/// every system's declarations once, after `describeSystems` has returned and
+/// every system exists, and a constraint naming a system nobody declared
+/// fails the boot rather than doing nothing.
+///
+/// The older spelling is an override of [compareTo] that type-checks [other]
+/// (`if (other is PhysicsSystem) return -1;` to sort before it, `1` to sort
+/// after). It still works and feeds the same graph, so the two mix, but it
+/// cannot say *before everything that has no opinion about me* without
+/// contradicting anything that names it - which is [Order.first] - and it
+/// cannot report a constraint against an absent system, because an `is` test
+/// against a type nobody declared is simply never true. Both are read once
+/// per boot, never on the tick hot path.
 ///
 /// **Name the systems you mean and return 0 for everything else.** An answer
 /// is a constraint, not a rank: `GameState.sortSystems` builds a graph out of
@@ -151,6 +167,19 @@ abstract class GameSystem extends GameListenerBase
 
   @override
   int compareTo(GameSystem other) => 0; // no opinion by default
+
+  List<Order> _orders = const <Order>[];
+
+  /// Every [Order] this system declared on a field, in declaration order.
+  ///
+  /// Filled by `SystemDescriptor.has` from the window it opened, and read
+  /// once by `GameState.sortSystems`. Empty for a system that declares none,
+  /// which is most of them.
+  @internal
+  List<Order> get declaredOrders => _orders;
+
+  @internal
+  void bindOrders(List<Order> orders) => _orders = orders;
 
   /// Called once by the boot pass on the game isolate, before the system's
   /// [inputDefaults] is read. Not part of the user-facing API: a system is

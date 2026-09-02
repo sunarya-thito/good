@@ -120,6 +120,7 @@ export 'src/input/input_axis.dart';
 export 'src/input/input_binding.dart';
 export 'src/input/input_key.dart';
 export 'src/input/input_state.dart';
+export 'src/order.dart' hide OrderConstraint;
 export 'src/pool.dart';
 export 'src/ring_buffer.dart';
 export 'src/scene.dart';

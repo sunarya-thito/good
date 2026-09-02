@@ -8,6 +8,7 @@ import 'package:good/src/data.dart';
 import 'package:good/src/event.dart';
 import 'package:good/src/event/state.dart';
 import 'package:good/src/input.dart';
+import 'package:good/src/order.dart';
 import 'package:good/src/random.dart';
 import 'package:good/src/struct.dart';
 
@@ -655,6 +656,58 @@ abstract final class DeclarationContext {
       );
     }
     return _assets.last;
+  }
+
+  /// The declared orderings of the system being constructed, innermost last -
+  /// the twelfth level of the stack, and the one `Order.of` declares against.
+  ///
+  /// A list per construction, like [_declared] and unlike the levels that
+  /// hold one descriptor: what `Order.of()` hands back is the declaration
+  /// itself, and `SystemDescriptor.has` takes the whole list off this and
+  /// binds it to the system it just built. Nothing here is consulted while
+  /// the constructor runs.
+  ///
+  /// A stack, because a system is free to construct something that declares -
+  /// and because "empty" is then the same question at every level. Systems do
+  /// not nest today: `SystemDescriptor.has` is the only caller, and a `Game`
+  /// built inside a system's constructor is refused before it could open one.
+  static final List<List<Order>> _orders = <List<Order>>[];
+
+  /// Opens a collection for the duration of one system's constructor. Paired
+  /// with [popOrders] in a `finally` - `SystemDescriptor.has` is the only
+  /// caller.
+  static void pushOrders() => _orders.add(<Order>[]);
+
+  static void popOrders() => _orders.removeLast();
+
+  /// What the system being constructed has declared so far. Read once, before
+  /// [popOrders], by `SystemDescriptor.has`.
+  static List<Order> get openOrders => _orders.last;
+
+  /// Records one declaration, or a `StateError` naming the ways to get here.
+  static void addOrder(Order order) {
+    if (_orders.isEmpty) {
+      throw StateError(
+        'An Order was declared with no system being constructed. Order.of '
+        'reads the window the framework opens around a system constructor, '
+        'so the framework has to be the one constructing:\n'
+        '  descriptor.has(CameraFollowSystem.new)   // not '
+        'CameraFollowSystem()\n'
+        'A system a GameState holds on a field of its own and hands over '
+        '(`descriptor.has(() => _follow)`) was constructed before that '
+        'window opened, and lands here - as does a system built by hand to '
+        'read a field off it.\n'
+        'A `late final` initialiser lands here too, and that is the point: '
+        'it runs on first read, after boot resolved the order and froze the '
+        'dispatcher lists, so a constraint declared that way would be read '
+        'by nobody and the system would run where it was declared. Field '
+        'initialisers here are eager, always.\n'
+        'Ordering is declared by the system it is about. A GameState orders '
+        'nothing: it decides what is declared, and declaration order is what '
+        'settles every system that states no opinion.',
+      );
+    }
+    _orders.last.add(order);
   }
 
   /// The open camera-view tables, innermost last - the ninth level of the

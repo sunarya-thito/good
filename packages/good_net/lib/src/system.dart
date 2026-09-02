@@ -152,8 +152,9 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
   /// afterwards has neither - its four dispatchers cannot move onto their
   /// fields.
   ///
-  /// Declared **before** `super.describeSystems`, so that in the absence of
-  /// any `compareTo` opinion it is also first in declaration order.
+  /// Declared **before** `super.describeSystems`, so that it is also first in
+  /// declaration order - which is what settles the tie when something else
+  /// claims the same slot.
   @override
   @mustCallSuper
   void describeSystems(SystemDescriptor descriptor) {
@@ -182,9 +183,9 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
 /// number papers over that, because the outcome is *correct either way*:
 /// whichever runs second sees the other's writes on the next
 /// tick instead of this one, which for traffic that already crossed the
-/// internet is a rounding error. Declaration order breaks the tie
-/// (`GameState.sortSystems` is deterministic about that), and
-/// [MultiplayerState] declares this one first.
+/// internet is a rounding error. Two `Order.first()` claims do not contradict
+/// each other - neither yields to the other, so declaration order breaks the
+/// tie, and [MultiplayerState] declares this one first.
 ///
 /// Outbound is flushed in [onTick] - the presentation pass, which runs once
 /// per *frame*, after however many fixed steps that frame afforded. So three
@@ -294,8 +295,13 @@ class NetworkSystem extends GameSystem
   int _carries(NetChannel channel) =>
       registry.transport?.maxMessageBytes(channel) ?? ParamBatch.unbounded;
 
-  @override
-  int compareTo(GameSystem other) => other is NetworkSystem ? 0 : -1;
+  /// Runs ahead of every system that states no opinion about it, so a tick
+  /// simulates on what has already arrived rather than on last tick's inbox.
+  ///
+  /// Weak: a system that has to run before this one says so with
+  /// `before<NetworkSystem>()` and is honoured, whichever of the two was
+  /// declared first. Read as an absolute the two would contradict.
+  final order = Order.of().first();
 
   // --- session lifecycle -------------------------------------------------
 

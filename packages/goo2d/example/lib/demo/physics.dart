@@ -477,12 +477,12 @@ class Sandbox extends SceneStruct {
 
 /// Stamps the clock immediately before `Box2DPhysicsSystem` runs.
 ///
-/// Says so, but does not enforce it on its own: see the note in
-/// [PhysicsState.describeSystems] for why this has to be *declared* ahead of
-/// the system it names for the constraint to survive at all.
+/// Says so, and that is now the whole of it. Physics declares
+/// `Order.first()`, which yields to anything that names it, so this holds
+/// wherever either of the two is declared. It used to hold only because this
+/// was declared first (#187).
 class _PhysicsPhaseStart extends GameSystem with FixedTickable {
-  @override
-  int compareTo(GameSystem other) => other is Box2DPhysicsSystem ? -1 : 0;
+  final order = Order.of().before<Box2DPhysicsSystem>();
 
   @override
   void onFixedUpdate() {
@@ -503,10 +503,9 @@ class _PhysicsPhaseStart extends GameSystem with FixedTickable {
 /// bodies was it. Naming it keeps the figure to the one system the case is
 /// here to watch.
 class _PhysicsPhaseEnd extends GameSystem with FixedTickable {
-  @override
-  int compareTo(GameSystem other) => other is WorldTransformSystem
-      ? -1
-      : (other is Box2DPhysicsSystem ? 1 : 0);
+  final order = Order.of()
+      .after<Box2DPhysicsSystem>()
+      .before<WorldTransformSystem>();
 
   @override
   void onFixedUpdate() {
@@ -546,8 +545,7 @@ class SandboxSystem extends GameSystem with FixedTickable {
 
   /// After the physics system, so a flash set by a collision this tick is
   /// aged starting next tick rather than immediately.
-  @override
-  int compareTo(GameSystem other) => other is Box2DPhysicsSystem ? 1 : 0;
+  final order = Order.of().after<Box2DPhysicsSystem>();
 
   @override
   void onFixedUpdate() {
@@ -743,21 +741,19 @@ class PhysicsState extends DemoState<PhysicsGame> {
   @override
   void describeSystems(SystemDescriptor descriptor) {
     super.describeSystems(descriptor);
-    // **The start probe is declared before the system it measures, and that
-    // is what makes the measurement real.** `sortSystems` asks the
-    // earlier-declared system of a pair first and takes the first non-zero
-    // answer; `Box2DPhysicsSystem.compareTo` answers -1 for everything that
-    // is not itself, so whenever it is asked first it wins and the other
-    // system's opinion is never read. The start probe says "before physics"
-    // and physics says "before everything", and only declaration order
-    // decides which of those two survives. With physics declared first the
-    // probe stamped the clock *after* the step and the demo's physics figure
-    // was the gap between two adjacent no-ops (#187).
+    // Declaration order no longer decides this. The start probe says
+    // `before<Box2DPhysicsSystem>()` and physics says `Order.first()`, which
+    // is weak - it yields to anything that names it - so the probe brackets
+    // the step from either side of this body. It used to be the other way:
+    // both opinions were `compareTo` answers about one pair, the
+    // earlier-declared system was asked first, and physics answered -1 for
+    // everything that is not itself. Declared first, it won, the probe
+    // stamped the clock *after* the step, and the demo's physics figure was
+    // the gap between two adjacent no-ops (#187).
     //
-    // The end probe needs no such care: "after physics" and "physics first"
-    // agree, so it lands after the step from either side. It is declared
-    // before `SandboxSystem` because those two have no opinion about each
-    // other and the tie breaks on declaration order.
+    // `_PhysicsPhaseEnd` is still declared before `SandboxSystem`, because
+    // those two have no opinion about each other and the tie breaks on
+    // declaration index.
     descriptor.has(_PhysicsPhaseStart.new);
     // Gravity in metres per second squared, and heavier than the -10 default
     // so a big pile settles while you watch it. Negative is down; see
