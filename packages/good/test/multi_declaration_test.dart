@@ -11,6 +11,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:good/src/archetype.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/data/hierarchy.dart';
+import 'package:good/src/game.dart';
+import 'package:good/src/game_state.dart';
 import 'package:good/src/pool.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
@@ -114,6 +116,61 @@ class _Level extends SceneStruct {
     mixed = descriptor.has(_Mixed.new);
     derived = descriptor.has(_Derived.new);
     parent = descriptor.has(_Parent.new);
+  }
+}
+
+/// A scene the framework constructs, holding a prefab that declares.
+///
+/// The headless fixtures above bring a scene up by calling `initializeScene`
+/// on one the test built. This one goes the whole way round:
+/// `GameSceneDescriptor.has(_GameLevel.new)` runs the scene's constructor
+/// inside the declaration window, and `describeScene` registers the prefab
+/// from there.
+class _GameLevel extends SceneStruct {
+  late final _Two two;
+
+  @override
+  void describeScene(SceneDescriptor descriptor) {
+    super.describeScene(descriptor);
+    two = descriptor.has(_Two.new);
+  }
+}
+
+/// Declares a widget from a **scene's** own field initialiser.
+///
+/// A scene is constructed by the framework, with an event binder open around
+/// it, so `final wounded = Event.of(...)` works there. No collection is open,
+/// because a collection belongs to a prefab, and this is what says so.
+class _DeclaringScene extends SceneStruct {
+  final stray = _Gadget.of('scene');
+}
+
+class _SeamState extends GameState<_SeamGame> {}
+
+class _SeamGame extends Game {
+  @override
+  int get pageSize => 4096;
+
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 10);
+
+  late final _GameLevel level;
+
+  @override
+  GameState createState() => _SeamState();
+
+  @override
+  void describeScenes(GameSceneDescriptor descriptor) {
+    super.describeScenes(descriptor);
+    level = descriptor.has(_GameLevel.new);
+  }
+}
+
+class _DeclaringSceneGame extends _SeamGame {
+  @override
+  void describeScenes(GameSceneDescriptor descriptor) {
+    super.describeScenes(descriptor);
+    descriptor.has(_DeclaringScene.new);
   }
 }
 
@@ -246,6 +303,38 @@ void main() {
             contains('_Gadget'),
             contains('descriptor.has(MyStruct.new)'),
           ),
+        ),
+      ),
+    );
+  });
+
+  test('a prefab in a game-declared scene gets its declarations', () async {
+    final game = await Game.startInline(_SeamGame.new);
+    addTearDown(() async {
+      if (game.isRunning) await game.stop();
+    });
+    expect(
+      <String>[for (final w in game.level.two.widgets) w.tag],
+      <String>['first', 'second'],
+      reason:
+          'the scene is constructed inside the declaration window and its '
+          'prefab is registered from describeScene, which is a different '
+          'route in than initializeScene on a scene the test built',
+    );
+  });
+
+  test('a scene declaring one of its own is refused, window or not', () {
+    // A scene is framework-constructed and has an event binder open, so
+    // `Event.of` on a scene field works. A collection belongs to a prefab and
+    // there is none open here, so this has to say so rather than land in
+    // whatever is underneath.
+    expect(
+      Game.startInline(_DeclaringSceneGame.new),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          allOf(contains('_Gadget'), contains('no struct being constructed')),
         ),
       ),
     );
