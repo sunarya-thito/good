@@ -43,6 +43,7 @@ import 'package:good/src/input.dart';
 import 'package:good/src/input/gamepad.dart';
 import 'package:good/src/input/input_binding.dart';
 import 'package:good/src/input/input_state.dart';
+import 'package:good/src/order.dart';
 import 'package:good/src/ring_buffer.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/system.dart';
@@ -3626,10 +3627,21 @@ final class _SystemDescriptor implements SystemDescriptor {
     inputs.source = '$T';
     final T system;
     final int games;
+    final List<Order> orders;
     DeclarationContext.pushInputs(inputs);
+    // A third window, and the only one whose contents are read back here
+    // rather than by the thing they were declared into. An `Order` names
+    // other systems, and while this constructor runs those systems may not
+    // exist yet - half of them are declared after this line. So the
+    // declarations are collected and handed to the system, and
+    // `GameState.sortSystems` resolves every one of them once, after the
+    // whole pass has returned.
+    DeclarationContext.pushOrders();
     try {
       system = EventBinder.open(create);
     } finally {
+      orders = DeclarationContext.openOrders;
+      DeclarationContext.popOrders();
       DeclarationContext.popInputs();
       inputs.source = restore;
       games = DeclarationContext.gamesConstructed;
@@ -3666,6 +3678,7 @@ final class _SystemDescriptor implements SystemDescriptor {
         'order is execution order, so a duplicate has no meaningful position.',
       );
     }
+    system.bindOrders(orders);
     return _state.addDeclaredSystem(system);
   }
 }
