@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:good/src/archetype.dart';
+import 'package:good/src/command/command.dart';
 import 'package:good/src/event/fixed_loop.dart';
 import 'package:good/src/event/state.dart';
 import 'package:good/src/game.dart';
@@ -76,6 +77,26 @@ class _MixedInputGame extends _BareGame {
     const InputDefault<double>(0.75),
     const InputDefault<int>(3),
   ];
+}
+
+// --- a command declared on a field -----------------------------------------
+
+class _First extends SignalCommand {}
+
+class _Second extends SignalCommand {}
+
+/// Two commands of its own, so the numbering the engine's five leave behind is
+/// observable.
+class _CommandFieldGame extends _BareGame {
+  final first = Command.of(_First.new);
+  final second = Command.of(_Second.new);
+}
+
+/// A command written `late`, ahead of the eager one, for [_LateGame]'s reason.
+class _LateCommandGame extends _BareGame {
+  late final lazyCommand = Command.of(_Second.new);
+
+  final eagerCommand = Command.of(_First.new);
 }
 
 // --- a random stream declared on a field -----------------------------------
@@ -512,6 +533,58 @@ void main() {
       );
 
       expect(game.randomStreamCount, 1);
+    });
+  });
+
+  group('a command on a Game field', () {
+    test('numbers after the five the engine declares for itself', () async {
+      final game = await _boot(_CommandFieldGame.new);
+
+      expect(
+        game.commandCount,
+        7,
+        reason:
+            'the engine declares five control commands for every game and '
+            'this one declares two',
+      );
+      expect(
+        <int>[game.first.index, game.second.index],
+        <int>[5, 6],
+        reason:
+            'Game.start declares the five the engine owns into the '
+            'registrar before it calls the constructor, so a game holds '
+            'its own from five - where a super-first hook put them. An index '
+            'is what a record header carries, so this is on the wire',
+      );
+    });
+
+    test('a late command is missing from the declared list', () async {
+      final game = await _boot(_LateCommandGame.new);
+
+      expect(
+        game.commandCount,
+        6,
+        reason:
+            'the eager one declared, so the registrar was open and working '
+            'and the throw below is the closed-window guard',
+      );
+      expect(game.eagerCommand.index, 5);
+
+      expect(
+        () => game.lazyCommand,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('no game being constructed'),
+          ),
+        ),
+        reason:
+            'written first and still not in the list: a late initialiser '
+            'runs on first read, after boot numbered and sealed the list',
+      );
+
+      expect(game.commandCount, 6);
     });
   });
 
