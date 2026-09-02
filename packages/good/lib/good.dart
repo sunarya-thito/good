@@ -46,7 +46,9 @@ export 'src/command/command.dart'
         GameCommandBase,
         SignalCommand,
         SinkCommand,
-        SupplierCommand;
+        SupplierCommand,
+        ValueSink,
+        ValueSupplier;
 // The record layer under both of them. `ParamDescriptor`/`ParamPointer` is
 // how a command declares its fields, `ParamBatch`/`ParamBuffer` is what those
 // fields are written into, and `ParamLayout`/`ParamLayouts` is the packing

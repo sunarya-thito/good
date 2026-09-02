@@ -312,6 +312,43 @@ class _LateParam extends SinkCommand<int> {
   int paramsFromBuffer(ParamBuffer call) => eager[call];
 }
 
+/// The single-value shapes: a field, and no marshalling body anywhere.
+class _SetCount extends ValueSink<int> {
+  @override
+  final value = Param.uint16();
+}
+
+/// The same type argument as [_SetCount] and a different width, which is what
+/// makes the layout comparison below say something.
+class _SetCountWide extends ValueSink<int> {
+  @override
+  final value = Param.uint32();
+}
+
+/// [_SetCount] written out by hand. The two must lay out identically, or
+/// moving a command onto the prebuilt shape would move it on the wire.
+class _SetCountByHand extends SinkCommand<int> {
+  final value = Param.uint16();
+
+  @override
+  void bufferFromParams(ParamBuffer call, int params) => value[call] = params;
+
+  @override
+  int paramsFromBuffer(ParamBuffer call) => value[call];
+}
+
+class _NextValue extends ValueSupplier<int> {
+  @override
+  final value = Param.int32();
+}
+
+/// A blob out. Reading a `Param.bytes` field hands back a view onto the
+/// batch's buffer, so this is the shape that has to copy.
+class _Census extends ValueSupplier<Uint8List> {
+  @override
+  final value = Param.bytes();
+}
+
 /// Declares one command the way a `Game` field does and hands it to this
 /// registry the way boot does.
 ///
@@ -1254,6 +1291,103 @@ void main() {
             'boundaries when its carrier cannot take the whole of it',
       );
       expect(batch.indexAt(1), damage.index);
+    });
+  });
+
+  group('the single-value shapes', () {
+    test('a sink carrying one value has no marshalling body', () async {
+      final r = _registry();
+      final setCount = r.registry.declare(_SetCount.new);
+      final seen = <int>[];
+      GameCommandDescriptor(r.registry).hasSink(setCount, seen.add);
+
+      await setCount(7);
+      await setCount(65535);
+
+      expect(
+        seen,
+        <int>[7, 65535],
+        reason:
+            'the field is the whole declaration - ValueSink provides the '
+            'pair that SinkCommand leaves abstract',
+      );
+    });
+
+    test('a supplier carrying one value has no marshalling body', () async {
+      final r = _registry();
+      final nextValue = r.registry.declare(_NextValue.new);
+      var counter = 0;
+      GameCommandDescriptor(
+        r.registry,
+      ).hasSupplier(nextValue, () => --counter);
+
+      expect(await nextValue(), -1);
+      expect(
+        await nextValue(),
+        -2,
+        reason: 'int32, so the sign has to survive the round trip',
+      );
+    });
+
+    test('the field picks the width, not the type argument', () {
+      final r = _registry().registry;
+      final narrow = r.declare(_SetCount.new);
+      final wide = r.declare(_SetCountWide.new);
+
+      expect(narrow.strideBytes, 2);
+      expect(wide.strideBytes, 4);
+      expect(
+        narrow.layout.signature,
+        isNot(wide.layout.signature),
+        reason:
+            'both are ValueSink<int> and they are different records - one '
+            'Dart int is eleven declarations, and only the field says which',
+      );
+    });
+
+    test('it lays out exactly as the hand-written pair does', () {
+      final r = _registry().registry;
+      final prebuilt = r.declare(_SetCount.new);
+      final byHand = r.declare(_SetCountByHand.new);
+
+      expect(
+        prebuilt.layout.signature,
+        byHand.layout.signature,
+        reason:
+            'the signature is what good_net mixes into its handshake hash, '
+            'so moving a command onto this shape must not move it on the '
+            'wire',
+      );
+      expect(prebuilt.strideBytes, byHand.strideBytes);
+    });
+
+    test('bytes come back copied, not as a view onto the batch', () async {
+      final r = _registry();
+      final census = r.registry.declare(_Census.new);
+      final answer = Uint8List.fromList(<int>[1, 2, 3, 4]);
+      GameCommandDescriptor(r.registry).hasSupplier(census, () => answer);
+
+      // Sent by hand so the ParamBuffer - and through it the batch the reply
+      // landed in - is still in reach after the read.
+      final batch = r.sender.newBatch();
+      final buffer = census.execute(batch);
+      await batch.send();
+      final got = census.resultFromBuffer(buffer);
+      expect(got, <int>[1, 2, 3, 4]);
+
+      // What the transport does next: the batch's buffer is reused. A view
+      // would follow it, and would read as somebody else's record with
+      // nothing anywhere to say so.
+      buffer.batch.bytes.fillRange(0, buffer.batch.bytes.length, 0xAA);
+
+      expect(
+        got,
+        <int>[1, 2, 3, 4],
+        reason:
+            'Param.bytes hands back a Uint8List view onto the batch, so the '
+            'shape copies - a caller that keeps what a supplier gave it is '
+            'not making a mistake',
+      );
     });
   });
 }

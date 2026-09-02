@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
 
@@ -11,6 +12,10 @@ import 'package:good/src/declare.dart';
 /// Not extended directly - pick the shape the call actually is:
 /// [GameCommand] (parameters and a result), [SupplierCommand] (a result),
 /// [SinkCommand] (parameters), [SignalCommand] (neither).
+///
+/// Two of those have a prebuilt form for the case where the record is one
+/// field: [ValueSink] and [ValueSupplier] declare the field and provide the
+/// marshalling, so the command is the field.
 ///
 /// # Where the pointer code lives, and where it does not
 ///
@@ -315,6 +320,30 @@ abstract class SupplierCommand<R> extends GameCommandBase {
       bufferFromResult(call, (handler as R Function())());
 }
 
+/// A [SupplierCommand] whose result is one field, with no marshalling to
+/// write.
+///
+/// ```dart
+/// class SpawnEnemy extends ValueSupplier<Entity> {
+///   @override
+///   final value = Param.entity();
+/// }
+/// ```
+///
+/// The pair [SupplierCommand] leaves abstract is provided in terms of
+/// [value]. See [ValueSink] for what picks the width and when this shape
+/// does not apply.
+abstract class ValueSupplier<R> extends SupplierCommand<R> {
+  /// The field this command's result travels in.
+  ParamPointer<R> get value;
+
+  @override
+  void bufferFromResult(ParamBuffer call, R result) => value[call] = result;
+
+  @override
+  R resultFromBuffer(ParamBuffer call) => _detach(value[call]);
+}
+
 /// A call that takes something and returns nothing: `void Function(P)`.
 ///
 /// The workhorse - "spawn this", "play that", "log this". Still awaitable:
@@ -346,6 +375,68 @@ abstract class SinkCommand<P> extends GameCommandBase {
   void invoke(ParamBuffer call) =>
       (handler as void Function(P))(paramsFromBuffer(call));
 }
+
+/// A [SinkCommand] whose parameter is one field, with no marshalling to
+/// write.
+///
+/// The single-value case, and the shape that stands beside [SignalCommand]:
+/// where a signal carries nothing and is one line, this carries one number,
+/// one flag, one string or one entity and is three.
+///
+/// ```dart
+/// class SetPopulation extends ValueSink<int> {
+///   @override
+///   final value = Param.uint16();
+/// }
+/// ```
+///
+/// # What picks the width
+///
+/// [Param] does, and only the author can. One Dart `int` is eleven
+/// declarations, from [Param.uint1] to [Param.int64], and they are different
+/// records on the wire. The type argument names what the call carries; the
+/// field names how wide it travels.
+///
+/// # When this shape does not apply
+///
+/// [value]'s type is what joins the two halves, so the analyzer refuses the
+/// cases that are not a carry:
+///
+/// - **A conversion.** `Param.uint1()` is a `ParamPointer<int>`, so a
+///   `ValueSink<bool>` will not take it - packing a `bool` into a bit is
+///   `params ? 1 : 0`, which is a marshalling body and belongs in one.
+///   `Param.boolean()` is a `ParamPointer<bool>` and carries a `bool` as it
+///   is, at the same one bit but a different layout signature.
+/// - **More than one field.** Two values are a record, and building a record
+///   names its fields, which is a body.
+///
+/// A command outside both writes [SinkCommand]'s pair itself; nothing here
+/// takes that away.
+///
+/// # Bytes are copied
+///
+/// Reading a [Param.bytes] or [Param.fixedBytes] field hands back a view onto
+/// the batch's own buffer, which the transport reuses. This shape copies, so
+/// a `ValueSink<Uint8List>` hands its handler bytes that outlive the call.
+abstract class ValueSink<P> extends SinkCommand<P> {
+  /// The field this command's parameter travels in.
+  ParamPointer<P> get value;
+
+  @override
+  void bufferFromParams(ParamBuffer call, P params) => value[call] = params;
+
+  @override
+  P paramsFromBuffer(ParamBuffer call) => _detach(value[call]);
+}
+
+/// A value read off a record, safe to keep.
+///
+/// Every pointer but the two byte kinds decodes or widens on the way out and
+/// hands back something of its own. `Param.bytes` and `Param.fixedBytes`
+/// hand back a `Uint8List` view onto the batch's buffer, and the batch is
+/// reused as soon as the call is done with - so what the caller kept reads
+/// as somebody else's record, with no error anywhere to say so.
+T _detach<T>(T read) => read is Uint8List ? Uint8List.fromList(read) as T : read;
 
 /// A call that takes and returns nothing: `void Function()`.
 ///
