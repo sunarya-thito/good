@@ -378,15 +378,9 @@ class _CensusSystem extends GameSystem with FixedTickable {
 /// `archetypeId` crossing the boundary would have made main name an identifier
 /// it has no way to see, which is why the built-in was deleted rather than
 /// kept.
-class _SpawnUnit extends SupplierCommand<Entity> {
-  final spawned = Param.entity();
-
+class _SpawnUnit extends ValueSupplier<Entity> {
   @override
-  void bufferFromResult(ParamBuffer call, Entity result) =>
-      spawned[call] = result;
-
-  @override
-  Entity resultFromBuffer(ParamBuffer call) => spawned[call];
+  final value = Param.entity();
 }
 
 /// The scene, the spawn handler and nothing else. Split out from [_TestState]
@@ -471,14 +465,9 @@ class _BadControlGame extends _TestGame {
 
 /// Registers a command that *returns* something as a control handler, which
 /// has to fail where it is written rather than hang where it is called.
-class _Answering extends SupplierCommand<int> {
+class _Answering extends ValueSupplier<int> {
+  @override
   final value = Param.int32();
-
-  @override
-  void bufferFromResult(ParamBuffer call, int result) => value[call] = result;
-
-  @override
-  int resultFromBuffer(ParamBuffer call) => value[call];
 }
 
 class _AnsweringState extends _FixtureState {
@@ -536,14 +525,9 @@ class _Inspect extends SupplierCommand<({int tick, bool stopped})> {
 
 /// Read-only, and answers with the ordinal of its own arrival - so a caller
 /// can see what order the lane ran things in.
-class _Arrival extends SupplierCommand<int> {
-  final ordinal = Param.int32();
-
+class _Arrival extends ValueSupplier<int> {
   @override
-  void bufferFromResult(ParamBuffer call, int result) => ordinal[call] = result;
-
-  @override
-  int resultFromBuffer(ParamBuffer call) => ordinal[call];
+  final value = Param.int32();
 }
 
 /// Tick-delivered and game-handled: the discriminator. It genuinely needs a
@@ -606,17 +590,12 @@ class _MuteReadOnlyGame extends _TestGame {
 // port callback and a read-only one runs from `advance`, and neither has a
 // write slot behind it.
 
-/// A `SupplierCommand<int>` with its parameter plumbing written once. The
-/// read-only lane only takes shapes that answer, so every probe on it needs
-/// this and none of them needs a different one.
-abstract class _IntAnswer extends SupplierCommand<int> {
-  final answer = Param.int32();
-
+/// A supplier of one `int`, declared once. The read-only lane only takes
+/// shapes that answer, so every probe on it needs this and none of them needs
+/// a different one.
+abstract class _IntAnswer extends ValueSupplier<int> {
   @override
-  void bufferFromResult(ParamBuffer call, int result) => answer[call] = result;
-
-  @override
-  int resultFromBuffer(ParamBuffer call) => answer[call];
+  final value = Param.int32();
 }
 
 class _ControlWrite extends SignalCommand {}
@@ -741,14 +720,9 @@ class _WindowGame extends _TestGame {
 /// The same refusal asked of the **main** descriptor, and through the sink
 /// spelling rather than the signal one - two methods and two descriptors, so
 /// the shared message function is proved wired on both sides.
-class _MuteSink extends SinkCommand<int> {
+class _MuteSink extends ValueSink<int> {
+  @override
   final value = Param.int32();
-
-  @override
-  void bufferFromParams(ParamBuffer call, int params) => value[call] = params;
-
-  @override
-  int paramsFromBuffer(ParamBuffer call) => value[call];
 }
 
 class _MuteReadOnlyMainGame extends _TestGame {

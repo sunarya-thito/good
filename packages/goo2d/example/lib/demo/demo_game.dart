@@ -6,14 +6,9 @@ import 'package:goo2d/goo2d.dart';
 /// responsible for converging on it, spawning to make up a shortfall and
 /// letting expiries take it down. One command shared by every case, because
 /// "hold this many" is the same request in all of them.
-class SetPopulation extends SinkCommand<int> {
-  final count = Param.uint16();
-
+class SetPopulation extends ValueSink<int> {
   @override
-  void bufferFromParams(ParamBuffer call, int params) => count[call] = params;
-
-  @override
-  int paramsFromBuffer(ParamBuffer call) => count[call];
+  final value = Param.uint16();
 }
 
 /// The half of a demo case that lives on the **main** isolate: the channels

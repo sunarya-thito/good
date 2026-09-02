@@ -4250,15 +4250,9 @@ final class _SetPausedCommand extends SinkCommand<bool> {
   bool paramsFromBuffer(ParamBuffer call) => paused[call] == 1;
 }
 
-final class _SetTimeScaleCommand extends SinkCommand<double> {
-  final scale = Param.float64();
-
+final class _SetTimeScaleCommand extends ValueSink<double> {
   @override
-  void bufferFromParams(ParamBuffer call, double params) =>
-      scale[call] = params;
-
-  @override
-  double paramsFromBuffer(ParamBuffer call) => scale[call];
+  final value = Param.float64();
 }
 
 final class _StepOnceCommand extends SignalCommand {}

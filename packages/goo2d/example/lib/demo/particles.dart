@@ -15,7 +15,7 @@ import 'package:goo2d_example/demo/textures.dart';
 /// One command carrying a bitmask rather than two commands carrying a bool
 /// each: the two flags are read together, set together from one overlay, and a
 /// single round trip cannot leave the simulation holding a half-applied pair.
-class SetAblations extends SinkCommand<int> {
+class SetAblations extends ValueSink<int> {
   /// Bit 0 - skip the z sort, so the write pass walks rows in encounter order.
   static const int skipSort = 1;
 
@@ -23,13 +23,8 @@ class SetAblations extends SinkCommand<int> {
   /// unrotated fast path skip both trig calls.
   static const int noRotation = 2;
 
-  final flags = Param.uint2();
-
   @override
-  void bufferFromParams(ParamBuffer call, int params) => flags[call] = params;
-
-  @override
-  int paramsFromBuffer(ParamBuffer call) => flags[call];
+  final value = Param.uint2();
 }
 
 /// Packs HSV to the ARGB integer `Sprite.color` stores.
