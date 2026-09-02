@@ -142,15 +142,9 @@ class _MoverSystem extends GameSystem with FixedTickable {
 ///
 /// Main names the intent; the handler, over on the game isolate, is what turns
 /// that into a prefab. Nothing about an archetype id crosses the boundary.
-class _SpawnMover extends SupplierCommand<Entity> {
-  final spawned = Param.entity();
-
+class _SpawnMover extends ValueSupplier<Entity> {
   @override
-  void bufferFromResult(ParamBuffer call, Entity result) =>
-      spawned[call] = result;
-
-  @override
-  Entity resultFromBuffer(ParamBuffer call) => spawned[call];
+  final value = Param.entity();
 }
 
 /// "Pause the mover" - the prescribed route for a main-triggered system
@@ -822,14 +816,9 @@ class _UnloadGame extends Game {
 
 /// Main-destination and tick-delivered, so its reply comes back over the ring
 /// and only an adopt on the asking side completes it.
-class _AskMain extends SupplierCommand<int> {
-  final answer = Param.int32();
-
+class _AskMain extends ValueSupplier<int> {
   @override
-  void bufferFromResult(ParamBuffer call, int result) => answer[call] = result;
-
-  @override
-  int resultFromBuffer(ParamBuffer call) => answer[call];
+  final value = Param.int32();
 }
 
 /// Game-destination and tick-delivered, sent from the same presentation pass.
@@ -980,14 +969,9 @@ class _ReadPaused extends SupplierCommand<({int tick, bool stopped})> {
 
 /// Read-only, answering with the ordinal of its own arrival - so this side can
 /// see the order the lane ran things in after they have crossed a ring.
-class _ReadOrder extends SupplierCommand<int> {
-  final ordinal = Param.int32();
-
+class _ReadOrder extends ValueSupplier<int> {
   @override
-  void bufferFromResult(ParamBuffer call, int result) => ordinal[call] = result;
-
-  @override
-  int resultFromBuffer(ParamBuffer call) => ordinal[call];
+  final value = Param.int32();
 }
 
 /// Tick-delivered, handled on the game isolate. The discriminator: it needs a
@@ -1121,16 +1105,9 @@ class _SleepySystem extends GameSystem with FixedTickable {
 ///
 /// [resultFromBuffer] copies, because a `hasBytes` read hands back a view onto
 /// the batch's own buffer and the transport reuses those bytes.
-class _TakeWorldCensus extends SupplierCommand<Uint8List> {
-  final blob = Param.bytes();
-
+class _TakeWorldCensus extends ValueSupplier<Uint8List> {
   @override
-  void bufferFromResult(ParamBuffer call, Uint8List result) =>
-      blob[call] = result;
-
-  @override
-  Uint8List resultFromBuffer(ParamBuffer call) =>
-      Uint8List.fromList(blob[call]);
+  final value = Param.bytes();
 }
 
 /// Disables one system on the game isolate, so the enabled bits this side

@@ -198,15 +198,9 @@ class SpinSystem extends GameSystem with FixedTickable {
 /// memory actually are. An engine-supplied `spawnEntity(archetypeId)` used to
 /// live here and was removed for exactly that reason - it made the UI name an
 /// identifier belonging to the other isolate.
-class SpawnEnemy extends SupplierCommand<Entity> {
-  final spawned = Param.entity();
-
+class SpawnEnemy extends ValueSupplier<Entity> {
   @override
-  void bufferFromResult(ParamBuffer call, Entity result) =>
-      spawned[call] = result;
-
-  @override
-  Entity resultFromBuffer(ParamBuffer call) => spawned[call];
+  final value = Param.entity();
 }
 
 /// The simulation half. Everything that mutates the world lives here.

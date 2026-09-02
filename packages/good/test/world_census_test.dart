@@ -71,16 +71,9 @@ class _BetaSystem extends GameSystem with FixedTickable {
 /// own buffer, which the transport reuses - so a command that handed the view
 /// straight to whoever awaited it would hand them bytes that change underneath
 /// them.
-class _TakeCensus extends SupplierCommand<Uint8List> {
-  final blob = Param.bytes();
-
+class _TakeCensus extends ValueSupplier<Uint8List> {
   @override
-  void bufferFromResult(ParamBuffer call, Uint8List result) =>
-      blob[call] = result;
-
-  @override
-  Uint8List resultFromBuffer(ParamBuffer call) =>
-      Uint8List.fromList(blob[call]);
+  final value = Param.bytes();
 }
 
 /// Tick-delivered: the discriminator for the paused test. It genuinely needs a
