@@ -820,23 +820,28 @@ void main() {
         known: <EnginePackage>[...found.packages, ...found.dependencies],
       );
 
+      // The pass has to be able to fail, and these three come first because
+      // each of them makes the finding below meaningless rather than clean: a
+      // run that read no file reports nothing dangling, and so does one whose
+      // parse fell over.
+      //
+      // `unparsed` is the one that was true. Three files used primary
+      // constructors, the parser recovered, and this test passed over trees
+      // holding a fraction of their doc comments (#348) - while also dropping
+      // the names those files declare from the word list, which is why an
+      // analyzer that cannot read them fails here twice over. Empty means
+      // every file under packages/*/lib parsed, so a fourth one the tool's
+      // `analyzer` cannot read fails on this line and names itself, instead of
+      // arriving as a dangling reference somewhere else.
+      expect(scan.unparsed, isEmpty, reason: scan.unparsed.join(', '));
+      expect(scan.files, greaterThan(100));
+      expect(scan.checked, greaterThan(1000));
+
       expect(
         scan.dangling.map(danglingReferenceLine),
         isEmpty,
         reason: danglingReferenceSummary(scan),
       );
-      // The pass has to be able to fail. A run that read no file, or one whose
-      // parse fell over, reports nothing dangling for the wrong reason.
-      //
-      // `unparsed` is the third of those, and it is the one that was true:
-      // three files used primary constructors, the parser recovered, and this
-      // test passed over trees holding a fraction of their doc comments
-      // (#348). Empty means every file under packages/*/lib parsed, so a
-      // fourth one the tool's `analyzer` cannot read fails here rather than
-      // going quiet.
-      expect(scan.unparsed, isEmpty, reason: scan.unparsed.join(', '));
-      expect(scan.files, greaterThan(100));
-      expect(scan.checked, greaterThan(1000));
     });
 
     // The same test for the other generated file (#18), and it carries one
