@@ -1,3 +1,12 @@
+// The pre-`ClassBody` AST - `ClassDeclaration.name`, `.members`,
+// `ExtensionTypeDeclaration.representation`, `NamedCompilationUnitMember` -
+// is deprecated in analyzer 10 and has no public replacement there: the
+// `ClassBody` that supersedes it carries no members on its public interface
+// until analyzer 11, which drops the old names in the same release. So the
+// bump past 11 is a migration and not a constraint edit (#348), and until it
+// happens this is the only spelling that reads a class body at all.
+// ignore_for_file: deprecated_member_use
+
 import 'dart:io';
 
 import 'package:analyzer/dart/analysis/features.dart';
