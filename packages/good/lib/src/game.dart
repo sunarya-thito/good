@@ -864,11 +864,11 @@ abstract class Game implements RandomOwner {
       ? 'a $runtimeType that has not been started'
       : "the main isolate's copy of $runtimeType";
 
-  /// Declares this game's **input actions**, and the default value every
-  /// action of a given type falls back to.
+  /// The type-level fallbacks this game adds, on top of the three the engine
+  /// registers first.
   ///
-  /// Reach for [Input.of] first - a game is framework-built, so an action
-  /// goes on the field that holds it:
+  /// An action itself goes on the field that holds it - a game is
+  /// framework-built, so [Input.of] has a registry to declare into:
   ///
   /// ```dart
   /// class MyGame extends Game {
@@ -879,36 +879,29 @@ abstract class Game implements RandomOwner {
   /// The field name is the action's name, and it has to clear what [Game]
   /// already declares - a field called `pause` collides with [Game.pause].
   ///
-  /// This hook is the other way, and it stays: it is what
-  /// [InputDescriptor.hasDefaultValue] needs, since that hands nothing back
-  /// and so has no field to live on. The framework's own two defaults are
-  /// registered here for exactly that reason. Both forms compose, fields
-  /// first and hook second.
-  ///
-  /// Runs first in the boot pass's `describeInputs` sequence, before every
-  /// declared system's (see `GameSystem.describeInputs`), and all of them
-  /// share one [InputDescriptor] - so a type-level default registered by any
-  /// source is visible to every action, whoever declared it and in whatever
-  /// order.
-  ///
-  /// # The shipped defaults, and why `super` is not optional
-  ///
-  /// The implementation here registers `false` for `bool` and
-  /// `Vector2.zero()` for `Vector2`, which is what makes `TriggerBinding` and
-  /// `Vec2Binding` work with no ceremony. It is [mustCallSuper] because
-  /// dropping them is a *silent* failure: nothing breaks at declaration
-  /// time, and the game runs until the first read of an unbound action, which
-  /// then throws instead of returning `false`. An override that adds a
-  /// default for its own type looks like this:
+  /// A *type-level* fallback hands nothing back, so it has no field to sit on
+  /// and is configuration instead - an overridable getter, like [pageSize] and
+  /// [randomSeed]:
   ///
   /// ```dart
   /// @override
-  /// void describeInputs(InputDescriptor input) {
-  ///   super.describeInputs(input);
-  ///   input.hasDefaultValue<double>(0);
-  ///   throttle = input.has<double>();
-  /// }
+  /// List<InputDefault<Object?>> get inputDefaults => <InputDefault<Object?>>[
+  ///   const InputDefault<double>(0),
+  /// ];
+  ///
+  /// final throttle = Input.of<double>();
   /// ```
+  ///
+  /// The engine's own `false` for `bool`, `Vector2.zero()` for `Vector2` and
+  /// empty `PointerContacts` are registered by boot and are not in this list,
+  /// so an override replacing it wholesale cannot drop them. That is the whole
+  /// reason they are not here: the failure was silent - nothing broke at
+  /// declaration time and the game ran until the first read of an unbound
+  /// action.
+  ///
+  /// Read once, at boot, before every declared system's, and all of them go
+  /// into one registry - so a type-level default from any source is visible to
+  /// every action, whoever declared it and in whatever order.
   ///
   /// # Where the values come from
   ///
@@ -918,12 +911,8 @@ abstract class Game implements RandomOwner {
   /// A game with no `GameView` in the widget tree has nothing feeding it, so
   /// every action reads its default forever - correct, not broken, and spelled
   /// out in `InputDevice`'s doc.
-  @mustCallSuper
-  void describeInputs(InputDescriptor input) {
-    input.hasDefaultValue<bool>(false);
-    input.hasDefaultValue<Vector2>(Vector2.zero());
-    input.hasDefaultValue<PointerContacts>(PointerContacts.empty());
-  }
+  List<InputDefault<Object?>> get inputDefaults =>
+      const <InputDefault<Object?>>[];
 
   // --- declarations -------------------------------------------------------
   //
@@ -994,15 +983,14 @@ abstract class Game implements RandomOwner {
   // puts it here afterwards.
   RandomRegistry _randoms = RandomRegistry();
 
-  // Every input action declared through a describeInputs pass this boot, plus
-  // the type-level defaults and the one raw device-state buffer they all
-  // resolve against. Unlike the buffers and channels above, an action's index
-  // is *not* a wire identity - what crosses the boundary is the fixed-size
-  // block of raw key bits, which is the same 16 bytes whatever a game
-  // declares. Which is why the two copies are allowed to disagree about what
-  // is in here: main runs `Game.describeInputs` and stops, while the
-  // simulating copy also runs every system's and then seals. Empty at spawn
-  // time like every other field here.
+  // Every input action declared this boot, plus the type-level defaults and
+  // the one raw device-state buffer they all resolve against. Unlike the
+  // buffers and channels above, an action's index is *not* a wire identity -
+  // what crosses the boundary is the fixed-size block of raw key bits, which
+  // is the same 16 bytes whatever a game declares. Which is why the two copies
+  // are allowed to disagree about what is in here: main collects the game's
+  // own `Input.of` fields and stops, while the simulating copy also builds
+  // every system and then seals.
   //
   // **Not final**, for [_states]'s reason and replaced at the same moment: an
   // `Input.of` on a field of this game runs before this class's own
@@ -1054,7 +1042,8 @@ abstract class Game implements RandomOwner {
   /// this is part of what makes a run replay.
   int get randomStreamCount => _randoms.streamCount;
 
-  /// How many input actions this copy has declared - see [describeInputs].
+  /// How many input actions this copy has declared - one per [Input.of]
+  /// field, plus every system's on the copy that ticks.
   int get inputActionCount => _inputs.actionCount;
 
   /// Where raw device state is written, on the copy that has Flutter
@@ -1265,8 +1254,8 @@ abstract class Game implements RandomOwner {
   /// `InputRegistry.source` is set from `G`, the tear-off's static type,
   /// because there is no object to ask for a `runtimeType` yet. That is the
   /// type at the call site, which is what a diagnostic naming the declaring
-  /// source wants. `_bootMain` sets it again from `runtimeType` before
-  /// `describeInputs`.
+  /// source wants. `_bootMain` sets it again from `runtimeType` before it
+  /// reads [inputDefaults].
   ///
   /// The pops are in a `finally`: a constructor that throws must not leave
   /// the next declaration writing into a window nobody owns.
@@ -1662,14 +1651,24 @@ abstract class Game implements RandomOwner {
     // is complete before this line: a 2D renderer declares one frame buffer
     // *per declared view*, and asks how many there are here.
     describeBuffers(_BufferDescriptor(this));
-    // The framework's own shipped hasDefaultValue<bool>/<Vector2> are
-    // registered here, before any system can declare an action that needs
-    // them. (Not that the order actually matters for *reading* a default -
-    // defaults are matched to actions at seal(), once every source has spoken
-    // - but a duplicate registration should name the source that came second,
-    // and that reads better when the framework's own is first.)
+    // The framework's own three fallbacks, before any source can register one
+    // of its own. They are the engine's and not the game's, so they are here
+    // and not in [inputDefaults]: an override of that getter cannot drop them,
+    // which is the failure a `super` call used to be the only guard against -
+    // silent, and only visible at the first read of an unbound action.
+    //
+    // (Order does not matter for *reading* a default - defaults are matched to
+    // actions at seal(), once every source has spoken - but a duplicate
+    // registration should name the source that came second, and that reads
+    // better when the framework's own is first.)
+    _inputs.source = 'the engine';
+    const InputDefault<bool>(false).registerInto(_inputs);
+    InputDefault<Vector2>(Vector2.zero()).registerInto(_inputs);
+    InputDefault<PointerContacts>(PointerContacts.empty()).registerInto(
+      _inputs,
+    );
     _inputs.source = '$runtimeType';
-    describeInputs(_inputs);
+    _registerInputDefaults(inputDefaults);
 
     // Every user-supplied declaration has now run against this instance, and
     // none of them may run again - see [_requireNotYetDescribed]. Set before
@@ -1730,16 +1729,16 @@ abstract class Game implements RandomOwner {
       final system = systems[i];
       system.bindState(state);
       _inputs.source = '${system.runtimeType}';
-      system.describeInputs(_inputs);
+      _registerInputDefaults(system.inputDefaults);
     }
     // Closes the input declaration window, and matches each action with the
     // type-level default that applies to it - which cannot happen any earlier
-    // because the *last* system's describeInputs may be what registers it.
+    // because the *last* system's inputDefaults may be what registers it.
     //
-    // On this copy only. Main declared the `Game`'s own actions in [_bootMain]
-    // and never seals, because a system's declarations are not there to be
-    // sealed against: an action is resolved against the raw input block by the
-    // copy that ticks, and main only ever *writes* that block.
+    // On this copy only. Main collected the `Game`'s own actions while the
+    // constructor ran and never seals, because a system's declarations are not
+    // there to be sealed against: an action is resolved against the raw input
+    // block by the copy that ticks, and main only ever *writes* that block.
     _inputs.seal();
 
     // --- events: collect ------------------------------------------------
@@ -1761,6 +1760,17 @@ abstract class Game implements RandomOwner {
     // is the line that brings a scene into being - all of it, on one copy.
     // There is no longer a declarative half on main to leave undone.
     state.mount();
+  }
+
+  /// Puts one source's type-level fallbacks in the registry, in list order.
+  ///
+  /// A loop and not a spread, so the duplicate check in
+  /// `InputRegistry.hasDefaultValue` runs per entry and names the source that
+  /// came second.
+  void _registerInputDefaults(List<InputDefault<Object?>> defaults) {
+    for (var i = 0; i < defaults.length; i++) {
+      defaults[i].registerInto(_inputs);
+    }
   }
 
   /// Phase 2: shared memory, on the copy that owns it.

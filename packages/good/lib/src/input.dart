@@ -11,15 +11,8 @@ import 'package:good/src/triple_buffer.dart';
 ///
 /// ```dart
 /// class PlayerActionSystem extends GameSystem with FixedTickable {
-///   late final Input<Vector2> movement;
-///   late final Input<bool> triggerSkill;
-///
-///   @override
-///   void describeInputs(InputDescriptor input) {
-///     super.describeInputs(input);
-///     movement = input.has<Vector2>(const Vec2Binding(up: .w, down: .s, left: .a, right: .d));
-///     triggerSkill = input.has<bool>(const TriggerBinding(.spacebar));
-///   }
+///   final movement = Input.of(const Vec2Binding(up: .w, down: .s, left: .a, right: .d));
+///   final triggerSkill = Input.of(const TriggerBinding(.spacebar));
 ///
 ///   @override
 ///   void onMounted() {
@@ -35,11 +28,10 @@ import 'package:good/src/triple_buffer.dart';
 /// }
 /// ```
 ///
-/// This is the typed-handle rule applied to input: `describeInputs` hands back
-/// a typed handle you keep in a `late final` field, exactly like a
-/// `StateChannel` and `describeBuffers`' `BufferHandle`.
-/// There is no `getAction('jump')`, so there is no string to misspell and
-/// nothing to search at use time.
+/// This is the typed-handle rule applied to input: [Input.of] hands back a
+/// typed handle the field holds, exactly like `Channel.*`'s `StateChannel` and
+/// `describeBuffers`' `BufferHandle`. There is no `getAction('jump')`, so there
+/// is no string to misspell and nothing to search at use time.
 ///
 /// # Poll or subscribe - both, and they answer different questions
 ///
@@ -93,9 +85,9 @@ import 'package:good/src/triple_buffer.dart';
 ///
 /// The constructor body is the one to reach for: the subscription sits beside
 /// the declaration, which is what the shorter form was wanted for, and it
-/// needs no mixin. `onMounted` is the other, and it is **required** when the
-/// action is declared in `describeInputs` instead of on a field - that makes
-/// it a `late final` the constructor body cannot read yet, which throws.
+/// needs no mixin. `onMounted` is the other, and it is what a listener that
+/// needs the rest of the object - a scene, a query, another system - has to
+/// use, since none of that exists yet while the constructor runs.
 ///
 /// Nothing about the no-closure rule forces any of this - a listener body is
 /// hot, but building one at construction or at mount is boot-time work and
@@ -125,12 +117,12 @@ import 'package:good/src/triple_buffer.dart';
 /// That also means the resolution *only happens on the copy that simulates*.
 /// An action declared by a `GameSystem` is only ever reachable from there -
 /// systems are constructed on that copy and nowhere else - but an action
-/// declared in `Game.describeInputs` is a different matter: that pass runs on
-/// both copies, so main holds its own `Input` object for it. Main's never
-/// resolves. It reads its default forever, and assigning a binding through it
-/// changes nothing in the simulation. Rebind on the simulating side - from a
-/// system's tick, a `GameCommand`, or the `GameState` - like every other
-/// gameplay mutation.
+/// declared on a `Game` field is a different matter: that game is built on
+/// main, before the spawn, so main holds its own `Input` object for it. Main's
+/// never resolves. It reads its default forever, and assigning a binding
+/// through it changes nothing in the simulation. Rebind on the simulating side
+/// - from a system's tick, a `GameCommand`, or the `GameState` - like every
+/// other gameplay mutation.
 ///
 /// # Sub-tick presses are not captured
 ///
@@ -151,7 +143,7 @@ abstract class Input<T> {
   /// `Vector2.copy(movement.value)` if you really need to keep one.
   ///
   /// Throws a [StateError] if the action has never resolved and has no
-  /// default anywhere - see [InputDescriptor.has].
+  /// default anywhere - see [Input.of] and [InputDefault].
   T get value;
 
   /// Whether this action became held on the most recent resolution - true on
@@ -242,13 +234,9 @@ abstract class Input<T> {
   /// `static const` table of defaults wants, since a shorthand call is a
   /// method call and cannot be `const`.
   ///
-  /// The same action [InputDescriptor.has] declares in a `describeInputs`
-  /// body - on a `Game` or on a `GameSystem` - said where it is read. The
-  /// arguments are that method's, positionally and with the same meaning:
   /// [binding] is optional and an action without one is *unbound* until
   /// something assigns `action.binding`; [defaultValue] is this action's own
-  /// fallback and beats the type-level one from
-  /// [InputDescriptor.hasDefaultValue].
+  /// fallback and beats the type-level one from [InputDefault].
   ///
   /// `V` is inferred from [binding]. An unbound action has nothing to infer
   /// from, so it is written: `Input.of<bool>()`.
@@ -265,9 +253,9 @@ abstract class Input<T> {
   /// disagree about it - what crosses the boundary is the fixed-size block of
   /// raw key bits, the same 16 bytes whatever a game declares.
   ///
-  /// [InputDescriptor.hasDefaultValue] has no field form anywhere. It hands
-  /// nothing back, so there is no field to put it on; declare it in
-  /// `describeInputs`, from the `Game` or from a system.
+  /// A type-level fallback hands nothing back, so it has no field to sit on
+  /// and is configuration instead: `Game.inputDefaults` and
+  /// `GameSystem.inputDefaults` are lists of [InputDefault].
   ///
   /// # Eager, always
   ///
@@ -355,52 +343,54 @@ final class InputEventStream<T> {
   }
 }
 
-/// Declares a game's input actions - see `Game.describeInputs` and
-/// `GameSystem.describeInputs`. Same one-pass declarative shape as
-/// `SystemDescriptor`/`BufferDescriptor`/`StateDescriptor`.
+/// The value every action of one type falls back to when it has no default of
+/// its own - what `Game.inputDefaults` and `GameSystem.inputDefaults` are
+/// lists of.
 ///
-/// One descriptor is shared by every `describeInputs` pass in a boot (the
-/// `Game`'s runs first, then every declared system's, in declaration order),
-/// which is what lets a system register a type-level default for a `T` only
-/// it uses and have the actions the `Game` declared see it.
+/// ```dart
+/// class MyGame extends Game {
+///   @override
+///   List<InputDefault<Object?>> get inputDefaults => <InputDefault<Object?>>[
+///     const InputDefault<double>(0),
+///   ];
 ///
-/// **Not available on `SceneStruct` or `Component`**, for exactly the reason
-/// a state channel is not (see `Channel`): a scene is loaded after boot, and
-/// possibly several times over a run, so it can never own a stable
-/// declaration index or have its declarations mirrored on the other isolate
-/// copy. A scene-scoped action is declared by a `GameSystem` instead - the
-/// system outlives the scene and is already where the per-tick work is.
-abstract class InputDescriptor {
-  /// Registers the value every action of type [T] falls back to when it has
-  /// no default of its own.
-  ///
-  /// `Game.describeInputs` ships with `hasDefaultValue<bool>(false)`,
-  /// `hasDefaultValue<Vector2>(Vector2.zero())` and an empty
-  /// `PointerContacts`, so the built-in binding types work out of the box -
-  /// `CursorPosition` is the exception, since a position with no pointer
-  /// behind it is not a place and `MouseBinding` resolves on the first tick
-  /// anyway. Declaring a `T` **twice** in one boot is an
-  /// error, not a silent overwrite: two sources each believing they set the
-  /// fallback for a type is a disagreement, and picking the last one to run
-  /// would make the answer depend on system declaration order.
-  void hasDefaultValue<T>(T value);
+///   final throttle = Input.of<double>();
+/// }
+/// ```
+///
+/// A default is configuration, not a declaration: it hands nothing back, so
+/// there is no handle and no field to hold one. Configuration global to a type
+/// is an overridable getter, and that is where this lives.
+///
+/// The engine registers `false` for `bool`, `Vector2.zero()` for `Vector2` and
+/// an empty `PointerContacts` before any of these, which is what makes
+/// `TriggerBinding`, `Vec2Binding` and `ContactBinding` work with no ceremony.
+/// `CursorPosition` is the exception, since a position with no pointer behind
+/// it is not a place and `MouseBinding` resolves on the first tick anyway.
+///
+/// Registering a `T` **twice** in one boot is an error, not a silent
+/// overwrite: two sources each believing they set the fallback for a type is a
+/// disagreement, and picking the last one to run would make the answer depend
+/// on system declaration order. Pass a per-action default to `Input.of`
+/// instead when only some actions want the other value.
+final class InputDefault<T> {
+  const InputDefault(this.value);
 
-  /// Declares one action and returns the handle to keep in a `late final`
-  /// field.
-  ///
-  /// [binding] is optional - an action declared without one is *unbound*: it
-  /// reads its default and fires nothing until something assigns
-  /// `action.binding`. That is the shape of an action whose key the player
-  /// has not chosen yet, and it is a normal state, not a half-declaration.
-  ///
-  /// [defaultValue] is this action's own fallback, and takes precedence over
-  /// the type-level one from [hasDefaultValue]. If neither exists, reading
-  /// [Input.value] before the action has ever resolved throws a [StateError]
-  /// naming the action. The engine does **not** infer a default from [T]:
-  /// zero and false are real, meaningful values to a game, and
-  /// inventing one turns a forgotten declaration into a number that is
-  /// quietly wrong instead of an error that says so.
-  Input<T> has<T>([InputBinding<T>? binding, T? defaultValue]);
+  /// The fallback every unbound-and-undefaulted `T` action reads.
+  final T value;
+
+  /// The type this answers for.
+  Type get type => T;
+
+  /// Puts [value] in [registry] under `T`. The type argument survives because
+  /// the call dispatches on this object, whatever the list holding it is
+  /// typed as.
+  @internal
+  void registerInto(InputRegistry registry) =>
+      registry.hasDefaultValue<T>(value);
+
+  @override
+  String toString() => 'InputDefault<$T>($value)';
 }
 
 /// Everything the input registry needs from an action without knowing its
@@ -415,14 +405,14 @@ abstract class _ActionSlot {
   void resolve(InputState state);
 }
 
-/// The one [InputDescriptor] implementation, and the owner of everything the
-/// input system allocates: the declared actions, the type-level defaults, the
-/// cross-isolate raw-state buffer, and the read/write ends over it.
+/// The owner of everything the input system allocates: the declared actions,
+/// the type-level defaults, the cross-isolate raw-state buffer, and the
+/// read/write ends over it.
 ///
 /// Internal: a `Game` owns exactly one of these and drives it through boot,
-/// each tick, and shutdown. Users see [InputDescriptor] and [Input].
+/// each tick, and shutdown. Users see [Input] and [InputDefault].
 @internal
-final class InputRegistry implements InputDescriptor {
+final class InputRegistry {
   final List<_ActionSlot> _actions = <_ActionSlot>[];
 
   /// Fallback values by `T`. A `Map<Type, ...>` searched at *declare* time
@@ -487,8 +477,9 @@ final class InputRegistry implements InputDescriptor {
   GamepadCollector? _gamepads;
   bool _sealed = false;
 
-  /// Whose `describeInputs` is currently running, for diagnostics. Set by
-  /// `Game._boot` before each call; a plain label, not the object, because
+  /// Who is declaring right now, for diagnostics. Set by `Game._construct`
+  /// and `SystemDescriptor.has` around a constructor call, and by boot around
+  /// each source's `inputDefaults`; a plain label, not the object, because
   /// that is all an error message wants.
   String _source = 'Game';
 
@@ -512,19 +503,19 @@ final class InputRegistry implements InputDescriptor {
   /// What [source] currently reads, so `SystemDescriptor.has` can put it back
   /// after a system's constructor has run. Without the restore, a field
   /// declaration would leave the label pointing at a system that has finished
-  /// declaring, and the `describeInputs` pass that follows would attribute
-  /// its actions to the wrong one.
+  /// declaring, and the next source to declare would be named wrongly.
   String get currentSource => _source;
 
   // --- declaration --------------------------------------------------------
 
-  @override
+  /// Registers the value every action of type [T] falls back to.
+  /// `InputDefault.registerInto` is the only caller.
   void hasDefaultValue<T>(T value) {
     _checkOpen();
     if (_typeDefaults.containsKey(T)) {
       throw StateError(
         'a default value for $T is registered twice in this game\'s '
-        'describeInputs passes (the second by $_source). One type has one '
+        'inputDefaults (the second by $_source). One type has one '
         'fallback: two sources each setting it disagree about what an '
         'unbound $T action reads, and resolving that by "last one wins" '
         'would make the answer depend on system declaration order. Pass a '
@@ -535,7 +526,20 @@ final class InputRegistry implements InputDescriptor {
     _typeDefaults[T] = value;
   }
 
-  @override
+  /// Declares one action. `Input.of` is the only caller.
+  ///
+  /// [binding] is optional - an action declared without one is *unbound*: it
+  /// reads its default and fires nothing until something assigns
+  /// `action.binding`. That is the shape of an action whose key the player has
+  /// not chosen yet, and it is a normal state, not a half-declaration.
+  ///
+  /// [defaultValue] is this action's own fallback, and takes precedence over
+  /// the type-level one from [InputDefault]. If neither exists, reading
+  /// [Input.value] before the action has ever resolved throws a [StateError]
+  /// naming the action. The engine does **not** infer a default from [T]: zero
+  /// and false are real, meaningful values to a game, and inventing one turns
+  /// a forgotten declaration into a number that is quietly wrong instead of an
+  /// error that says so.
   Input<T> has<T>([InputBinding<T>? binding, T? defaultValue]) {
     _checkOpen();
     assert(
@@ -562,8 +566,9 @@ final class InputRegistry implements InputDescriptor {
     if (_sealed) {
       throw StateError(
         'an input action was declared after boot finished. Inputs are '
-        'declared once, up front, in describeInputs - the raw device-state '
-        'buffer they resolve against is allocated and announced at bring-up, '
+        'declared once, up front, on the field that holds them - the raw '
+        'device-state buffer they resolve against is allocated and announced '
+        'at bring-up, '
         'and both isolate copies have to end up with the same declared set. '
         'Declare the action unbound and assign action.binding at runtime; '
         'that is what rebinding is.',
@@ -572,10 +577,10 @@ final class InputRegistry implements InputDescriptor {
   }
 
   /// Closes the declaration window and gives every action its resolved
-  /// default and its storage. Runs at the end of `Game._boot`, once every
-  /// source has declared, which is the earliest point at which a
-  /// type-level default registered by the *last* system is visible to an
-  /// action declared by the `Game`.
+  /// default and its storage. Runs at the end of `Game._bootGame`, once every
+  /// source has declared, which is the earliest point at which a type-level
+  /// default from the *last* system's `inputDefaults` is visible to an action
+  /// declared by the `Game`.
   void seal() {
     for (var i = 0; i < _actions.length; i++) {
       _actions[i].seal(this);
@@ -676,7 +681,7 @@ final class InputRegistry implements InputDescriptor {
   }
 }
 
-/// The one [Input] implementation - what `describeInputs` hands back.
+/// The one [Input] implementation - what [Input.of] hands back.
 final class _InputAction<T> implements Input<T>, _ActionSlot {
   _InputAction(
     this.index,
@@ -763,14 +768,12 @@ final class _InputAction<T> implements Input<T>, _ActionSlot {
     throw StateError(
       'input action #$index declared by $source (Input<$T>) has no default '
       'value and has not resolved, so there is nothing to read. Give it one '
-      'at the declaration - has<$T>(binding, someDefault) - or a fallback '
-      'for the whole type with hasDefaultValue<$T>(someDefault) in a '
-      'describeInputs pass. The engine will not invent one: for a game, zero '
-      'and false are real values, so guessing here would turn a missing '
-      'declaration into a silently wrong number instead of this message. '
-      '(If $T is bool or Vector2, the likely cause is a describeInputs '
-      'override that does not call super - Game.describeInputs is where the '
-      'built-in fallbacks are registered.)',
+      'at the declaration - Input.of(binding, someDefault) - or a fallback '
+      'for the whole type by adding InputDefault<$T>(someDefault) to the '
+      'declaring object\'s inputDefaults. The engine will not invent one: for '
+      'a game, zero and false are real values, so guessing here would turn a '
+      'missing declaration into a silently wrong number instead of this '
+      'message.',
     );
   }
 

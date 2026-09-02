@@ -23,8 +23,10 @@ import 'package:good/src/system.dart';
 // built while somebody else's window is open is refused rather than
 // declaring into it.
 //
-// `describeInputs` is still here because `hasDefaultValue` hands nothing back
-// and so has no field form. `Channel.*` is the only way to declare a channel.
+// `Channel.*`, `Input.of`, `RandomStream.of` and `CameraView.of` are the only
+// ways to declare their four kinds of thing. A type-level input fallback hands
+// nothing back, so it is configuration - the `inputDefaults` getter - and this
+// file pins that the two halves compose.
 
 abstract class _BareGame extends Game {
   @override
@@ -57,32 +59,18 @@ class _FieldInputGame extends _BareGame {
   final unbound = Input.of<bool>();
 }
 
-class _HookInputGame extends _BareGame {
-  late final Input<bool> fire;
-  late final Input<bool> unbound;
-
-  @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    fire = input.has<bool>(const TriggerBinding(InputKey.spacebar));
-    unbound = input.has<bool>();
-  }
-}
-
-/// The one shape with no field form at all: `hasDefaultValue` hands nothing
-/// back, so there is nothing to hold. It keeps `describeInputs` alive on a
-/// `Game` however much else moves onto fields.
+/// The shape with no field form at all: a type-level fallback hands nothing
+/// back, so there is nothing to hold and it is a getter instead. The action it
+/// applies to is still a field, and the two are declared in different places.
 class _MixedInputGame extends _BareGame {
   final throttleField = Input.of<double>();
 
-  late final Input<double> throttleHook;
+  final secondThrottle = Input.of<double>();
 
   @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    input.hasDefaultValue<double>(0.75);
-    throttleHook = input.has<double>();
-  }
+  List<InputDefault<Object?>> get inputDefaults => <InputDefault<Object?>>[
+    const InputDefault<double>(0.75),
+  ];
 }
 
 // --- a random stream declared on a field -----------------------------------
@@ -307,29 +295,19 @@ void main() {
   });
 
   group('an input on a Game field', () {
-    test('declares the same set the describeInputs hook does', () async {
+    test('declares one action per field, bound and unbound', () async {
       final fields = await _boot(_FieldInputGame.new);
       expect(
         fields.inputActionCount,
         2,
-        reason:
-            'the fields actually declared, so the comparison below means '
-            'something',
+        reason: 'two fields, two actions',
       );
       expect(fields.fire.binding, isNotNull);
       expect(fields.unbound.binding, isNull);
       expect(fields.fire.value, isFalse, reason: 'the shipped bool default');
-      await fields.stop();
-      _reset();
-
-      final hook = await _boot(_HookInputGame.new);
-      expect(hook.inputActionCount, 2);
-      expect(hook.fire.binding, isNotNull);
-      expect(hook.unbound.binding, isNull);
-      expect(hook.fire.value, isFalse);
     });
 
-    test('takes a type default the hook registers after it', () async {
+    test('takes a type default from the getter beside it', () async {
       final game = await _boot(_MixedInputGame.new);
 
       expect(game.inputActionCount, 2);
@@ -337,12 +315,12 @@ void main() {
         game.throttleField.value,
         0.75,
         reason:
-            'the field declared before describeInputs ran at all, and '
-            'defaults are matched at seal() once every source has spoken - '
-            'which is what keeps hasDefaultValue usable from the hook while '
-            'the actions themselves move onto fields',
+            'the field declared while the constructor ran, and defaults are '
+            'matched at seal() once every source has spoken - so an action '
+            'and the fallback for its type do not have to be declared in the '
+            'same place or in any particular order',
       );
-      expect(game.throttleHook.value, 0.75);
+      expect(game.secondThrottle.value, 0.75);
     });
   });
 

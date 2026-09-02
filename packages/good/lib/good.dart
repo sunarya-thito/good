@@ -107,10 +107,10 @@ export 'src/heap_object.dart';
 // vector is going to be added to.
 export 'package:vector_math/vector_math_64.dart' show Vector2;
 
-// InputRegistry is the engine-side plumbing behind InputDescriptor - a Game
-// owns one and drives it through boot, each tick and shutdown. Users declare
-// against InputDescriptor and hold Inputs; nothing outside the kernel has a
-// reason to name it.
+// InputRegistry is the engine-side plumbing behind Input.of - a Game owns one
+// and drives it through boot, each tick and shutdown. Users declare with
+// Input.of and hold Inputs; nothing outside the kernel has a reason to name
+// it.
 export 'src/input.dart' hide InputRegistry;
 export 'src/input/gamepad.dart';
 export 'src/input/input_axis.dart';

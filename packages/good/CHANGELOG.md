@@ -2,6 +2,23 @@
 
 ### Added
 
+* **`InputDefault<T>`, and `inputDefaults` on `Game` and `GameSystem`** (#287).
+  The value every action of a type falls back to, as configuration:
+
+  ```dart
+  class MyGame extends Game {
+    @override
+    List<InputDefault<Object?>> get inputDefaults => <InputDefault<Object?>>[
+      const InputDefault<double>(0),
+    ];
+
+    final throttle = Input.of<double>();
+  }
+  ```
+
+  Order still does not matter: defaults are matched to actions when the
+  registry seals, once every source has spoken.
+
 * **`CameraView.of()`**, a camera view declared on the field that holds it
   (#287):
 
@@ -191,6 +208,29 @@
   own repository; a component in your game's `lib/` is not in it.
 
 ### Breaking
+
+* **`Game.describeInputs`, `GameSystem.describeInputs` and `InputDescriptor`
+  are gone** (#287). An action goes on the field that holds it and a
+  type-level fallback goes in `inputDefaults`:
+
+  | before | after |
+  |---|---|
+  | `late final Input<bool> fire;` plus `fire = input.has<bool>(b)` | `final fire = Input.of<bool>(b)` |
+  | `input.hasDefaultValue<double>(0)` | `InputDefault<double>(0)` in `inputDefaults` |
+
+  `Input.of` has shipped since the field form landed, so most of this is
+  deleting the second spelling.
+
+  **The engine's own three fallbacks moved out of the overridable half.**
+  `bool -> false`, `Vector2 -> zero` and an empty `PointerContacts` are
+  registered by boot, before any source's `inputDefaults` is read. Overriding
+  the getter cannot drop them, which is what the `@mustCallSuper` on the hook
+  was guarding - and that failure was silent: nothing broke at declaration
+  time and the game ran until the first read of an unbound action.
+
+  **A listener subscribed from a constructor body works on every action now.**
+  It was conditional while an action could be a `late final` the hook filled
+  in; a field initialiser has run by the time the constructor body does.
 
 * **`Game.describeCameras` and `CameraDescriptor` are gone** (#287). A view is
   declared on the field that holds it:

@@ -77,7 +77,7 @@ abstract class InputBinding<T> {
   // They live on this class and not on the concrete ones because a dot
   // shorthand resolves against the *context type*, and every context that
   // wants one is an `InputBinding<T>` or an `InputBinding<T>?` -
-  // `Input.of`, `Input.binding`, `InputDescriptor.has`, and a composite's own
+  // `Input.of`, `Input.binding`, and a composite's own
   // sources. A static on `TriggerBinding` would only be reachable from a
   // position already typed `TriggerBinding`, which is no position at all.
   //
@@ -399,9 +399,10 @@ final class Vec2Binding extends InputBinding<Vector2> {
 ///
 /// # There is no default for `double`
 ///
-/// `Game.describeInputs` registers a type-level default for `bool` and
-/// `Vector2` and not for `double`, so an action bound to this needs one of its
-/// own - the `0.0` above - or a `hasDefaultValue<double>(0)` beside it.
+/// The engine registers a type-level default for `bool` and `Vector2` and not
+/// for `double`, so an action bound to this needs one of its own - the `0.0`
+/// above - or an `InputDefault<double>(0)` in the declaring object's
+/// `inputDefaults`.
 /// Reading one that has neither throws. That is the engine refusing to guess,
 /// not an omission: for a game, zero is a real value.
 final class AxisBinding extends InputBinding<double> {
@@ -875,9 +876,9 @@ final class PointerContact {
 final class PointerContacts {
   PointerContacts._();
 
-  /// An empty list, for the type-level default `Game.describeInputs`
-  /// registers so an **unbound** `Input<PointerContacts>` reads "nothing is
-  /// pressing" instead of throwing. It never resolves, so it stays empty; a
+  /// An empty list, for the type-level default the engine registers so an
+  /// **unbound** `Input<PointerContacts>` reads "nothing is pressing" instead
+  /// of throwing. It never resolves, so it stays empty; a
   /// bound action reads its own storage from the first tick onwards.
   @internal
   static PointerContacts empty() => PointerContacts._();
@@ -1083,8 +1084,8 @@ final class ContactBinding extends InputBinding<PointerContacts> {
 /// ```
 ///
 /// Every source is an `InputBinding<T>` for the same `T`, so the composite is
-/// itself one binding of that type and nothing about [Input] or
-/// `InputDescriptor.has` changes. A composite is a legal source of another
+/// itself one binding of that type and nothing about [Input] or `Input.of`
+/// changes. A composite is a legal source of another
 /// composite, and nests to any depth.
 ///
 /// # The edges come out right, with no state of its own
@@ -1118,8 +1119,8 @@ final class ContactBinding extends InputBinding<PointerContacts> {
 /// Every source but the first needs somewhere to resolve into that is not the
 /// action's own storage, and [createStorage] is what makes those: one per
 /// extra source, built in this constructor. So constructing a composite is
-/// **not `const`** - that is the price of the scratch, and it is paid once, in
-/// the `describeInputs` pass. The sources themselves stay `const` values,
+/// **not `const`** - that is the price of the scratch, and it is paid once, by
+/// the field initialiser that declares the action. The sources themselves stay `const` values,
 /// which is where the `const` mattered.
 ///
 /// One consequence worth knowing: the scratch belongs to the composite, not to

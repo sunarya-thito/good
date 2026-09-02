@@ -17,9 +17,9 @@ import 'package:good/src/system.dart';
 // system and two declaration windows are open while its fields initialise:
 // the event binder and the input registry. What this file pins is that a
 // declaration made through a field and the same declaration made another way
-// - an event from the constructor body, an input from `describeInputs` - are
-// one declaration: same set, same order, same delivery. And that the `late`
-// spelling of either cannot quietly get in.
+// - an event from the constructor body - are one declaration: same set, same
+// order, same delivery. And that the `late` spelling of either cannot quietly
+// get in.
 
 /// The listener half of the event tests. Writes into a shared log so *order*
 /// is observable and not just membership.
@@ -137,35 +137,18 @@ class _FieldInputSystem extends GameSystem {
   final unbound = Input.of<bool>();
 }
 
-/// The same three in the hook.
-class _HookInputSystem extends GameSystem {
-  late final Input<bool> fire;
-  late final Input<bool> alt;
-  late final Input<bool> unbound;
-
-  @override
-  void describeInputs(InputDescriptor descriptor) {
-    super.describeInputs(descriptor);
-    fire = descriptor.has<bool>(const TriggerBinding(InputKey.spacebar));
-    alt = descriptor.has<bool>(const TriggerBinding(InputKey.enter));
-    unbound = descriptor.has<bool>();
-  }
-}
-
-/// A field declaration and a hook declaration on one system. The hook also
-/// registers a type-level default, which is the thing that has no field form
-/// and so is the reason this hook survives at all.
+/// An action on a field and a type-level fallback in the getter beside it -
+/// the two halves of input, which are declared in different places because one
+/// hands back a handle and the other hands back nothing.
 class _MixedInputSystem extends GameSystem {
   final fire = Input.of(const TriggerBinding(InputKey.spacebar));
 
-  late final Input<double> throttle;
+  final throttle = Input.of<double>();
 
   @override
-  void describeInputs(InputDescriptor descriptor) {
-    super.describeInputs(descriptor);
-    descriptor.hasDefaultValue<double>(0.25);
-    throttle = descriptor.has<double>();
-  }
+  List<InputDefault<Object?>> get inputDefaults => <InputDefault<Object?>>[
+    const InputDefault<double>(0.25),
+  ];
 }
 
 class _InputState<G extends Game> extends GameState<G> {
@@ -189,11 +172,6 @@ class _FieldInputGame extends _BareGame {
   @override
   GameState createState() =>
       _InputState<_FieldInputGame>(_FieldInputSystem.new);
-}
-
-class _HookInputGame extends _BareGame {
-  @override
-  GameState createState() => _InputState<_HookInputGame>(_HookInputSystem.new);
 }
 
 class _MixedInputGame extends _BareGame {
@@ -338,48 +316,33 @@ void main() {
   });
 
   group('an input on a system field', () {
-    test('declares the same actions the hook declares', () async {
-      final fieldRun = await _boot(_FieldInputGame.new);
-      final fieldCount = fieldRun.inputActionCount;
-      final fieldSource =
-          (fieldRun.state as _InputState<_FieldInputGame>).source
+    test('declares one action per field, in field order', () async {
+      final run = await _boot(_FieldInputGame.new);
+      final source =
+          (run.state as _InputState<_FieldInputGame>).source
               as _FieldInputSystem;
-      final fieldBindings = <InputBinding<bool>?>[
-        fieldSource.fire.binding,
-        fieldSource.alt.binding,
-        fieldSource.unbound.binding,
-      ];
-
-      await fieldRun.stop();
-      _reset();
-
-      final hookRun = await _boot(_HookInputGame.new);
-      final hookSource =
-          (hookRun.state as _InputState<_HookInputGame>).source
-              as _HookInputSystem;
 
       expect(
-        fieldCount,
-        hookRun.inputActionCount,
+        run.inputActionCount,
+        3,
         reason:
-            'three actions either way, on top of whatever the Game declares '
-            'for itself',
+            'three fields, three actions, on top of whatever the Game '
+            'declares for itself - which is none here',
       );
       expect(
-        fieldBindings,
-        <InputBinding<bool>?>[
-          hookSource.fire.binding,
-          hookSource.alt.binding,
-          hookSource.unbound.binding,
+        <InputKey?>[
+          (source.fire.binding! as TriggerBinding).key,
+          (source.alt.binding! as TriggerBinding).key,
         ],
-        reason: 'same bindings in the same order, including the unbound one',
+        <InputKey>[InputKey.spacebar, InputKey.enter],
+        reason:
+            'each field got its own binding, in the order the initialisers '
+            'ran - two actions sharing one would read as a repeat here',
       );
       expect(
-        fieldBindings.first,
-        isNotNull,
-        reason:
-            'and the list is not three nulls, which would make the two equal '
-            'for the wrong reason',
+        source.unbound.binding,
+        isNull,
+        reason: 'and the unbound one is genuinely unbound, not defaulted',
       );
     });
 
@@ -393,13 +356,13 @@ void main() {
         source.unbound.value,
         false,
         reason:
-            'the type-level default Game.describeInputs registers for bool, '
-            'resolved by the seal that runs after every source has declared '
-            '- a field declaration goes through the same seal',
+            'the type-level fallback boot registers for bool, resolved by '
+            'the seal that runs after every source has declared - a field '
+            'declaration goes through the same seal',
       );
     });
 
-    test('a field and a hook compose on one system', () async {
+    test('a system\'s own inputDefaults reaches its own actions', () async {
       final run = await _boot(_MixedInputGame.new);
       final source =
           (run.state as _InputState<_MixedInputGame>).source
@@ -410,9 +373,9 @@ void main() {
         source.throttle.value,
         0.25,
         reason:
-            'hasDefaultValue has no field form, so the hook is what declares '
-            'it - and the seal applied it to an action declared in the same '
-            'hook, on a system whose other action came off a field',
+            'a type-level fallback hands nothing back, so it is a getter and '
+            'not a declaration - and the seal applied it to an action the '
+            'same system declared on a field, which ran first',
       );
     });
   });

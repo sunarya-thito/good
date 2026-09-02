@@ -414,19 +414,19 @@ abstract final class DeclarationContext {
   /// open one, and neither runs inside the other - a system is built on the
   /// game isolate, long after the game itself was. Keeping the shape means
   /// "empty" is the same question at every level.
-  static final List<InputDescriptor> _inputs = <InputDescriptor>[];
+  static final List<InputRegistry> _inputs = <InputRegistry>[];
 
   /// Opens a registry for the duration of one constructor call. Paired with
   /// [popInputs] in a `finally` - `Game.start` and `SystemDescriptor.has`
   /// are the callers.
-  static void pushInputs(InputDescriptor registry) => _inputs.add(registry);
+  static void pushInputs(InputRegistry registry) => _inputs.add(registry);
 
   static void popInputs() => _inputs.removeLast();
 
   /// The innermost open registry, or a `StateError` naming the two ways to
   /// get here: constructing the owner yourself, and reaching an `Input.of`
   /// call lazily.
-  static InputDescriptor get inputs {
+  static InputRegistry get inputs {
     if (_inputs.isEmpty) {
       throw StateError(
         'An Input was declared with no game or system being constructed. '
@@ -438,12 +438,10 @@ abstract final class DeclarationContext {
         'A `late final` initialiser lands here too, and that is the point: '
         'it runs on first read, long after boot sealed the registry, so an '
         'action declared that way is refused outright by the seal. Field '
-        'initialisers here are eager, always. A describeInputs body is the '
-        'other way in: it runs after the constructor, so it declares through '
-        'the InputDescriptor it is handed rather than through Input.of - '
-        'which is where InputDescriptor.hasDefaultValue still has to go, on '
-        'a Game as much as on a system, because it hands nothing back for a '
-        'field to hold.',
+        'initialisers here are eager, always.\n'
+        'A type-level fallback is the other half of input and does not come '
+        'through here at all: it hands nothing back, so it is configuration - '
+        'the inputDefaults getter, on a Game as much as on a system.',
       );
     }
     return _inputs.last;

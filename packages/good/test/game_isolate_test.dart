@@ -456,28 +456,21 @@ class _ChannelGame extends Game {
 // and this isolate reads those back out of shared memory.
 
 class _InputProbeSystem extends GameSystem with FixedTickable {
-  late final Input<bool> fire;
-  late final Input<Vector2> move;
+  final fire = Input.of<bool>(const TriggerBinding(.spacebar));
+  final move = Input.of<Vector2>(
+    const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
+  );
 
-  /// Declared on the `Game`; written here. `describeInputs` below *stays* on
-  /// the system, and the contrast is the point: an action allocates nothing -
-  /// the raw block is a fixed size whatever a game declares, and only this
-  /// copy ever resolves against it - while a channel is native memory main
-  /// reserves before the spawn.
+  /// The channels are declared on the `Game`; the actions above are declared
+  /// here, and the contrast is the point: an action allocates nothing - the
+  /// raw block is a fixed size whatever a game declares, and only this copy
+  /// ever resolves against it - while a channel is native memory main reserves
+  /// before the spawn.
   _InputProbeGame get _own => game as _InputProbeGame;
   StateChannel<bool> get fireHeld => _own.fireHeld;
   StateChannel<int> get presses => _own.presses;
   StateChannel<int> get releases => _own.releases;
   StateChannel<double> get moveX => _own.moveX;
-
-  @override
-  void describeInputs(InputDescriptor input) {
-    super.describeInputs(input);
-    fire = input.has<bool>(const TriggerBinding(.spacebar));
-    move = input.has<Vector2>(
-      const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
-    );
-  }
 
   @override
   void onFixedUpdate() {
