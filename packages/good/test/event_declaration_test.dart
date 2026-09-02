@@ -619,18 +619,35 @@ void main() {
 
   group('a field and a constructor body declare the same thing', () {
     test('the collected lists are the same size', () async {
-      final run = await _boot(_FieldGame.new);
-      final state = run.state as _FieldState;
+      final fieldRun = await _boot(_FieldGame.new);
+      final fieldState = fieldRun.state as _FieldState;
 
       expect(
-        state.alpha.listenerCount,
+        fieldState.alpha.listenerCount,
         5,
         reason:
-            'the state, the one system, the scene and its two prefabs - the '
-            'same composition walk a body-declared dispatcher gets, reached '
-            'through a binder that was open during the constructor',
+            'the state, the one system, the scene and its two prefabs, '
+            'reached through a binder that was open during the constructor',
       );
-      expect(state.beta.listenerCount, state.alpha.listenerCount);
+      expect(fieldState.beta.listenerCount, fieldState.alpha.listenerCount);
+
+      await fieldRun.stop();
+      SceneRegistry.reset();
+      ArchetypeRegistry.reset();
+      ComponentTypeRegistry.reset();
+
+      final bodyRun = await _boot(_BodyGame.new);
+      final bodyState = bodyRun.state as _BodyState;
+
+      expect(
+        bodyState.alpha.listenerCount,
+        fieldState.alpha.listenerCount,
+        reason:
+            'the same composition walk, reached through the owner instead of '
+            'the window. Measured on both games and not asserted of one, or '
+            'a body form that collected nobody would still hold',
+      );
+      expect(bodyState.beta.listenerCount, bodyState.alpha.listenerCount);
     });
 
     test('delivery order is identical, forward and reverse', () async {
