@@ -745,9 +745,24 @@ abstract class Game implements RandomOwner {
   /// (see the class doc's "Two copies of one object"); which end does what
   /// is a convention between the two halves of whoever declared it.
   ///
-  /// Runs on both copies, before the spawn and again after it, so both agree
-  /// on the declared set *and on its order* - which is the handle's identity
-  /// on the wire.
+  /// Runs once, on main, before the spawn: `_bootMain` is main's half of boot
+  /// and the game isolate runs only `_bootGame`. The declared set and its
+  /// order - which is the handle's identity on the wire - reach the other copy
+  /// through the deep copy, already numbered, so there is nothing for the two
+  /// to disagree about.
+  ///
+  /// # Why this is still a hook
+  ///
+  /// Every other declaration a `Game` makes has moved onto the field that
+  /// holds it. A buffer has not, and the reason is `Renderer2D`, the only
+  /// override in any package's `lib`: it declares *one handoff per declared
+  /// camera view*, at a size derived from `spriteBatchBytes`. Both halves are
+  /// reads off `this` - the finished camera table and an overridable getter -
+  /// and a field initialiser has no `this` to read either from. Registering "a
+  /// buffer per view, sized later" and resolving it afterwards would settle
+  /// the count; the size is the half that does not, because it is per-subclass
+  /// configuration and `maxSpritesPerTick` is the documented place to raise
+  /// it.
   ///
   /// **A system cannot declare one**, and there is no
   /// `GameSystem.describeBuffers` to reach for. Systems are constructed on the
@@ -3436,9 +3451,10 @@ abstract class BufferDescriptor {
 /// back and the declarer keeps in a `late final` field.
 ///
 /// This is the typed-handle rule applied to buffers. There is no name and no
-/// registry to search: the handle carries its own declaration index, and both
-/// copies of the `Game` produce the same handles in the same order because
-/// both run the same `describeBuffers` passes. So `drawBuffer.ring` is a
+/// registry to search: the handle carries its own declaration index, and the
+/// pass that assigns it runs once, on main, before the spawn - so the game
+/// isolate inherits the same handles in the same order. So `drawBuffer.ring`
+/// is a
 /// field read plus a null check, the analyzer catches a typo in the field
 /// name immediately, and there is no way to spell a buffer that does not
 /// exist.
@@ -3494,8 +3510,8 @@ final class BufferHandle {
 /// and the declarer keeps in a `late final` field.
 ///
 /// Same discipline as [BufferHandle] (the typed-handle rule): no name, no
-/// registry, and both copies produce the same handles in the same order because
-/// both run the same `describeBuffers` passes.
+/// registry, and one declaration pass on main whose result rides the spawn, so
+/// both copies hold the same handles in the same order.
 final class HandoffHandle {
   HandoffHandle._(this.index, this.slotBytes);
 

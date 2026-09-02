@@ -175,6 +175,25 @@ Things that work but will catch you out:
   column's `initialValue`. `TimelineStruct.describeAnimation` stays as well: a
   clip keys the tracks the timeline holds, so it names sibling fields, and a
   field initialiser cannot.
+- **A game declares in fields; two hooks are left, and each has a reason.**
+  `RandomStream.of`, `CameraView.of`, `Input.of` and `Command.of` replaced
+  `describeRandom`, `describeCameras`, `describeInputs` and the declaring half
+  of `describeCommands`. All four windows are opened by `Game.start` around the
+  constructor, beside the `Channel.*` one, and boot numbers what they collected
+  afterwards — which is what supplies the seed, the owning game, the type-level
+  fallbacks and the command ring, none of which a field initialiser can reach.
+
+  `describeCommands` stays on both `Game` and `GameState`, doing one thing on
+  each: registering the handlers that run on that side. A handler names an
+  instance member twice over — the command on the object and the function on it
+  — and a field initialiser can name neither. A type-level input fallback moved
+  the other way, to configuration: it hands nothing back, so it is the
+  `inputDefaults` getter rather than a declaration.
+
+  `describeBuffers` stays whole. `Renderer2D` declares one handoff buffer per
+  declared camera view, sized from `spriteBatchBytes`, and both the count and
+  the size are reads off `this`.
+
 - **A scene declares its assets in `describeAssets`.** `GameSceneDescriptor.has`
   takes the constructor now, so a declared scene's events go on fields like
   every other owner's. Assets do not: the `AssetDescriptor` is opened inside
