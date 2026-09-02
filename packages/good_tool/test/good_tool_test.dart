@@ -145,6 +145,59 @@ void _write(Directory repo, String path, String contents) =>
       ..parent.createSync(recursive: true)
       ..writeAsStringSync(contents);
 
+/// A repository whose `good` names the registrar, so `--declarations` has a
+/// seed to derive its entry points from.
+///
+/// Not [_runnableRepo]: the shared kernel writes a `Field` that names no
+/// registrar, so a `--declarations` run over it derives no entry point and
+/// reports a clean tree over any code at all. That is the mode's documented
+/// trap and it would make both tests below pass whatever the tool did.
+Directory _declaringRepo({required bool deferred}) => fakeRepo(<FakePackage>[
+  kernelPackage(
+    extra: <String, String>{
+      'src/declare.dart': '''
+abstract final class DeclarationContext {
+  static Object get data => throw UnimplementedError();
+}
+
+abstract final class Column {
+  static Object float64([double initial = 0]) => DeclarationContext.data;
+}
+''',
+    },
+  ),
+  FakePackage(
+    'goo2d',
+    dependencies: const <String>['good'],
+    files: <String, String>{
+      'goo2d.dart': _declaringBarrel,
+      'src/transform.dart': deferred ? _deferredColumn : _eagerColumn,
+    },
+  ),
+]);
+
+const String _declaringBarrel = """
+export 'package:good/good.dart';
+""";
+
+/// The column is `static`, so Dart runs its initialiser on first read.
+const String _deferredColumn = """
+import 'package:good/src/declare.dart';
+
+class Transform2D {
+  static final offsetX = Column.float64();
+}
+""";
+
+/// The same column, eager, which is the shape every correct site has.
+const String _eagerColumn = """
+import 'package:good/src/declare.dart';
+
+class Transform2D {
+  final offsetX = Column.float64();
+}
+""";
+
 void main() {
   group('the generated file runs', () {
     test('and each property reads and writes its own column', () async {
@@ -395,6 +448,50 @@ void main() {
       ]);
       expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
       expect(result.stdout, contains('name something the packages write'));
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('--declarations fails on a deferred declaration and writes nothing',
+        () async {
+      final repo = _declaringRepo(deferred: true);
+
+      final result = await _tool(repo, const <String>[
+        '--dir',
+        'packages',
+        '--declarations',
+      ]);
+      expect(result.exitCode, 65);
+      expect(
+        result.stderr,
+        contains('goo2d/lib/src/transform.dart:4: `offsetX` holds '
+            'Column.float64'),
+      );
+      expect(result.stderr, contains('static'));
+      // The mode reports and writes nothing, for the reason --doc-references
+      // writes nothing: a tree left behind belongs to a failure this did not
+      // cause.
+      expect(
+        File(
+          p.join(repo.path, 'packages/goo2d/lib/src/accessors.g.dart'),
+        ).existsSync(),
+        isFalse,
+      );
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('--declarations passes a tree whose declarations are eager', () async {
+      final repo = _declaringRepo(deferred: false);
+
+      final result = await _tool(repo, const <String>[
+        '--dir',
+        'packages',
+        '--declarations',
+      ]);
+      expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
+      expect(
+        result.stdout,
+        contains('1 declaration(s) in'),
+        reason: 'the eager call was recognised. A run that derived no entry '
+            'point would report zero and exit zero just the same',
+      );
     }, timeout: const Timeout(Duration(minutes: 3)));
 
     test('refuses a colliding column before it writes anything', () async {
