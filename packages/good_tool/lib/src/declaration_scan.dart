@@ -69,6 +69,7 @@ class DeclarationScan {
     required this.files,
     required this.calls,
     required this.entryPoints,
+    required this.unparsed,
   });
 
   /// Every declaration a lazy variable holds, in file then line order.
@@ -82,6 +83,21 @@ class DeclarationScan {
 
   /// How many `Type.member` pairs the run decided are declarations.
   final int entryPoints;
+
+  /// Files the parser could not read, as `<package>/<path>`, sorted.
+  ///
+  /// Reported rather than skipped quietly. A file that does not parse
+  /// contributes no entry point and no call site, so a run that dropped one
+  /// silently would answer "nothing is deferred" without having looked - which
+  /// is the shape of defect #305 opens with. Three files in this repository
+  /// land here today, and they are the three that hold the declaration
+  /// factories: `goo2d/lib/src/data/collider.dart`,
+  /// `goo2d/lib/src/render/render_2d.dart` and
+  /// `goo2d_physics_box2d/lib/src/effector.dart`. All three use primary
+  /// constructors, which `flutter analyze` accepts and the `analyzer` version
+  /// this package resolves does not implement - no `enable-experiment`
+  /// spelling parses them.
+  final List<String> unparsed;
 }
 
 /// Every declaration in [packages] held by a variable Dart initialises lazily.
@@ -133,10 +149,11 @@ class DeclarationScan {
 /// pass would add nothing there.
 ///
 /// **A declaration in a method or getter body.** `Field.array` in
-/// `TextLabel._declare` is correct and 74 sites in this repository's `lib/` are
-/// the same shape, so location alone does not separate a factory from a
-/// mistake. The entry-point closure recognises a factory that is `static`;
-/// an instance getter returning a declaration is not decided here.
+/// `TextLabel._declare` is correct, and 74 sites across this repository's
+/// `lib/` are the same shape - 71 of them in the three files named on
+/// [DeclarationScan.unparsed] - so location alone does not separate a factory
+/// from a mistake. The entry-point closure recognises a factory that is
+/// `static`; an instance getter returning a declaration is not decided here.
 ///
 /// **A call through a variable or a tear-off.** `final make = Field.float64;`
 /// then `make()` reads as neither. The pass matches a `Type.member(...)`
@@ -156,6 +173,7 @@ DeclarationScan scanDeferredDeclarations({
   };
 
   final read = <_ReadFile>[];
+  final unparsed = <String>[];
   final statics = <String, _StaticBody>{};
   for (final MapEntry(key: libDir, value: package) in roots.entries) {
     final dir = Directory(libDir);
@@ -164,14 +182,27 @@ DeclarationScan scanDeferredDeclarations({
       if (file is! File || !file.path.endsWith('.dart')) continue;
       final CompilationUnit unit;
       try {
-        unit = parseString(
+        final parsed = parseString(
           content: file.readAsStringSync(),
           featureSet: _featureSet,
           throwIfDiagnostics: false,
-        ).unit;
+        );
+        if (parsed.errors.isNotEmpty) {
+          // Recovery hands back a tree, and it is not one to read: the members
+          // of a class whose header did not parse do not arrive as members, so
+          // a factory in there is invisible and so is every call site under
+          // it. Named instead, so the run says what it did not look at.
+          unparsed.add(
+            '${package.name}/'
+            '${p.split(p.relative(file.path, from: package.root.path))
+                .join('/')}',
+          );
+          continue;
+        }
+        unit = parsed.unit;
       } on ArgumentError {
-        // Unreadable, or not Dart after all. A file that does not parse holds
-        // no entry point and no call site, which is what skipping it means.
+        // Unreadable, or not Dart after all.
+        unparsed.add(package.name);
         continue;
       }
       final collector = _StaticCollector();
@@ -211,6 +242,7 @@ DeclarationScan scanDeferredDeclarations({
     files: read.length,
     calls: calls,
     entryPoints: entryPoints.length,
+    unparsed: unparsed..sort(),
   );
 }
 
@@ -284,7 +316,7 @@ class _StaticBody {
 /// no call site can reach it through this pass anyway: `RandomRegistry
 /// .declare()` does not compile, and `registry.declare()` reads as the pair
 /// `registry.declare`. Leaving them in cost seven extra entry points over this
-/// repository and reported the same 215 calls and the same nothing deferred.
+/// repository and reported the same 138 calls and the same nothing deferred.
 ///
 /// The enclosing type comes from the member's parent rather than from a visit
 /// per declaration kind. A class member is a direct child of the declaration

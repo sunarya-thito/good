@@ -18,9 +18,10 @@ import '_repo.dart';
 // shape that must pass: an eager field, a `late` field with no initialiser at
 // all, a declaration inside the static factory that exists to make one, a lazy
 // variable holding something that is not a declaration, and a call on a value
-// rather than on a type. Measured against this repository's own tree before
-// any of it was written: 215 declaration calls across 133 files in
-// `packages/*/lib`, and none of them deferred.
+// rather than on a type. Measured against this repository's own tree: 138
+// declaration calls across 130 files in `packages/*/lib`, and none of them
+// deferred. Three more files are named rather than read - see
+// `DeclarationScan.unparsed`.
 //
 // Every fixture is a real package tree, because the scan reads pubspecs and
 // walks lib/.
@@ -121,6 +122,12 @@ DeclarationScan _over(String source) => _scan(<FakePackage>[
   _middle(),
   _game(<String, String>{'demo.dart': source}),
 ], only: <String>['demo']);
+
+/// A class body left open, so the parser recovers instead of reading it.
+const String _brokenSource = """
+class Player {
+  late final x = Field.float64(1)
+""";
 
 void main() {
   group('reports', () {
@@ -328,9 +335,9 @@ class Player {
     });
 
     test('a declaration inside the static factory that exists to make one', () {
-      // 74 sites in this repository's `lib/` are this shape. A rule that read
-      // location instead of what holds the call would report every one of
-      // them.
+      // 74 sites across this repository's `lib/` are this shape. A rule
+      // that read location instead of what holds the call would report every
+      // one of them.
       final scan = _over('''
 import 'package:good/good.dart';
 
@@ -453,6 +460,64 @@ class Player {
 
       final seeing = scanDeferredDeclarations(packages: only, known: found);
       expect(seeing.deferred, hasLength(1));
+    });
+  });
+
+  group('a file it cannot parse', () {
+    test('is named, and is not counted as clean', () {
+      // The parser recovers rather than refusing, and the tree it recovers is
+      // not one to read: a class whose header did not parse does not hand back
+      // its members, so a factory in there is invisible and so is every call
+      // under it. Naming the file is the difference between "nothing is
+      // deferred" and "nothing was looked at".
+      final scan = _over('''
+import 'package:good/good.dart';
+
+class Player {
+  late final speed = Field.float64(3.0)
+''');
+
+      expect(scan.unparsed, <String>['demo/lib/demo.dart']);
+      expect(
+        scan.deferred,
+        isEmpty,
+        reason: 'and it is reported through unparsed rather than through a '
+            'finding invented out of a broken tree',
+      );
+      expect(scan.files, 0);
+    });
+
+    test('does not stop the files around it being read', () {
+      final scan = _scan(<FakePackage>[
+        _kernel(),
+        _middle(),
+        _game(<String, String>{
+          'demo.dart': '''
+import 'package:good/good.dart';
+
+class Player {
+  static final speed = Field.float64(3.0);
+}
+''',
+          'broken.dart': _brokenSource,
+        }),
+      ], only: <String>['demo']);
+
+      expect(scan.unparsed, <String>['demo/lib/broken.dart']);
+      expect(scan.deferred, hasLength(1));
+      expect(scan.deferred.single.holder, 'speed');
+    });
+
+    test('a tree that parses names nothing', () {
+      final scan = _over('''
+import 'package:good/good.dart';
+
+class Player {
+  final speed = Field.float64(3.0);
+}
+''');
+
+      expect(scan.unparsed, isEmpty);
     });
   });
 

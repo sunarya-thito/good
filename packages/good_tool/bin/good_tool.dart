@@ -462,6 +462,7 @@ void _declarations(
     packages: packages,
     known: <EnginePackage>[...packages, ...dependencies],
   );
+  _unparsed(scan);
   if (scan.deferred.isEmpty) {
     stdout.writeln(
       '${scan.calls} declaration(s) in ${scan.files} file(s) are eager, '
@@ -474,6 +475,27 @@ void _declarations(
   }
   stderr.writeln(deferredDeclarationSummary(scan));
   exitCode = 65;
+}
+
+/// Names the files the parser could not read, and does not fail on them.
+///
+/// Not an exit code, because there is nothing the author of the file can do: it
+/// is the `analyzer` version this package resolves, not the source. Not silence
+/// either - a run that skipped a file and then reported a clean tree would be
+/// answering a question it did not ask. See `DeclarationScan.unparsed` for
+/// which three files this is today and why.
+void _unparsed(DeclarationScan scan) {
+  if (scan.unparsed.isEmpty) return;
+  for (final file in scan.unparsed) {
+    stderr.writeln('$file: not parsed, and so not checked');
+  }
+  stderr.writeln(
+    '${scan.unparsed.length} file(s) were not read. Primary constructors are '
+    'the known cause: flutter analyze accepts them and the analyzer this '
+    'package resolves does not implement them, so no enable-experiment '
+    'spelling parses those files.',
+  );
+  stderr.writeln();
 }
 
 /// A generated file named as `<package>/lib/src/<file>`.
