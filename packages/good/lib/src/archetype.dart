@@ -875,12 +875,7 @@ class ArchetypeStorage {
             'generation counter, not a bigger page.',
           );
         }
-        _pages.add(
-          pool.allocatePage(
-            ownerArchetypeId: archetypeId,
-            ownerSceneSlot: sceneSlot,
-          ),
-        );
+        _pages.add(pool.allocatePage(ownerSceneSlot: sceneSlot));
         current = _pages.length - 1;
         _currentPageBySlot[sceneSlot] = current;
       }

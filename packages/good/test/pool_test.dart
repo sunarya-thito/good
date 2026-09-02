@@ -137,7 +137,7 @@ void main() {
       );
     });
 
-    test("the pool keeps the freed page's slot", () {
+    test("the pool drops the freed page's slot", () {
       final pool = MemoryPool(pageSize: 64, maxPages: 8);
       addTearDown(pool.dispose);
 
@@ -150,44 +150,59 @@ void main() {
 
       expect(
         pool.pageCount,
-        3,
+        2,
         reason:
-            'the slot is tombstoned, not removed. A compacted list reports 2 '
-            'and shifts every page after the hole down one index',
+            'pageCount counts pages that are live. A slot left behind as a '
+            'tombstone reports 3 with two pages to show for it',
       );
     });
 
-    test('the pages after it keep the index they had', () {
-      final pool = MemoryPool(pageSize: 64, maxPages: 8);
+    test('its slot goes back to the ceiling, so another page can take it', () {
+      final pool = MemoryPool(pageSize: 64, maxPages: 2);
       addTearDown(pool.dispose);
 
       final first = pool.allocatePage();
-      final second = pool.allocatePage();
-      final third = pool.allocatePage();
-      expect(pool.getPage(2), same(third));
+      pool.allocatePage();
+      expect(
+        pool.allocatePage,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('2 pages are live'),
+          ),
+        ),
+        reason: 'two live pages against a ceiling of two is the real refusal',
+      );
 
-      pool.freePage(second);
+      pool.freePage(first);
 
-      expect(pool.getPage(0), same(first));
-      expect(
-        pool.getPage(1),
-        isNull,
-        reason:
-            'the freed index answers with nothing, not with the page that '
-            'follows it',
-      );
-      expect(
-        pool.getPage(2),
-        same(third),
-        reason:
-            'index 2 named this page before the free and names it after - a '
-            'page index is an identity, and that is what the tombstone keeps',
-      );
-      expect(
-        () => pool.getPage(3),
-        throwsRangeError,
-        reason: 'an index no page has ever held is out of range, not null',
-      );
+      final replacement = pool.allocatePage();
+      expect(replacement, isNot(same(first)));
+      expect(pool.pageCount, 2);
+    });
+
+    test('so allocate/free churn never reaches the ceiling', () {
+      // The population is one page at a time and the ceiling is four, so
+      // nothing here is close to exhausting anything. A pool that spends a
+      // slot per allocation for the life of the process throws on the fifth
+      // pass.
+      final pool = MemoryPool(pageSize: 64, maxPages: 4);
+      addTearDown(pool.dispose);
+
+      for (var pass = 0; pass < 64; pass++) {
+        final page = pool.allocatePage();
+        expect(
+          pool.pageCount,
+          1,
+          reason: 'pass $pass allocated a second page without freeing the '
+              'first',
+        );
+        pool.freePage(page);
+        expect(pool.pageCount, 0, reason: 'pass $pass left its page behind');
+      }
+
+      expect(pool.allocatePage, returnsNormally);
     });
   });
 
