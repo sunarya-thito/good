@@ -183,10 +183,10 @@ class _DeclarerVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitClassDeclaration(ClassDeclaration node) {
     final name = node.name.lexeme;
-    final superName = node.extendsClause?.superclass.name2.lexeme;
+    final superName = node.extendsClause?.superclass.name.lexeme;
     final mixins = <String>[
       for (final type in node.withClause?.mixinTypes ?? const <NamedType>[])
-        type.name2.lexeme,
+        type.name.lexeme,
     ];
     final declarer = _Declarer(
       name,
@@ -203,7 +203,7 @@ class _DeclarerVisitor extends RecursiveAstVisitor<void> {
     final constraints = <String>[
       for (final type
           in node.onClause?.superclassConstraints ?? const <NamedType>[])
-        type.name2.lexeme,
+        type.name.lexeme,
     ];
     // `mixin FieldScene on SceneStruct` *is* a scene's asset declaration, and
     // is how penguincivilwar writes one - so a mixin constrained to
@@ -383,7 +383,7 @@ String? _constructedTypeName(Expression argument) {
     return null;
   }
   if (argument is InstanceCreationExpression) {
-    return argument.constructorName.type.name2.lexeme;
+    return argument.constructorName.type.name.lexeme;
   }
   if (argument is MethodInvocation && argument.target == null) {
     final name = argument.methodName.name;

@@ -86,17 +86,18 @@ class DeclarationScan {
 
   /// Files the parser could not read, as `<package>/<path>`, sorted.
   ///
-  /// Reported rather than skipped quietly. A file that does not parse
+  /// The caller fails on a non-empty list. A file that does not parse
   /// contributes no entry point and no call site, so a run that dropped one
-  /// silently would answer "nothing is deferred" without having looked - which
-  /// is the shape of defect #305 opens with. Three files in this repository
-  /// land here today, and they are the three that hold the declaration
-  /// factories: `goo2d/lib/src/data/collider.dart`,
-  /// `goo2d/lib/src/render/render_2d.dart` and
-  /// `goo2d_physics_box2d/lib/src/effector.dart`. All three use primary
-  /// constructors, which `flutter analyze` accepts and the `analyzer` version
-  /// this package resolves does not implement - no `enable-experiment`
-  /// spelling parses them.
+  /// and then reported "nothing is deferred" would be answering without having
+  /// looked. Naming it under an exit code of 0 was the stopgap #347 shipped,
+  /// and it is the same silence with more words: nothing in CI reads stderr on
+  /// a green run.
+  ///
+  /// The list is empty in this repository. It held three files while the
+  /// `analyzer` constraint was `^7.4.0` - the three that use primary
+  /// constructors, which that version does not implement at any
+  /// `enable-experiment` spelling. See the constraint in `pubspec.yaml` for
+  /// what a future one costs.
   final List<String> unparsed;
 }
 
@@ -194,17 +195,13 @@ DeclarationScan scanDeferredDeclarations({
           // of a class whose header did not parse do not arrive as members, so
           // a factory in there is invisible and so is every call site under
           // it. Named instead, so the run says what it did not look at.
-          unparsed.add(
-            '${package.name}/'
-            '${p.split(p.relative(file.path, from: package.root.path))
-                .join('/')}',
-          );
+          unparsed.add(package.describe(file));
           continue;
         }
         unit = parsed.unit;
       } on ArgumentError {
         // Unreadable, or not Dart after all.
-        unparsed.add(package.name);
+        unparsed.add(package.describe(file));
         continue;
       }
       final collector = _StaticCollector();
@@ -320,11 +317,16 @@ class _StaticBody {
 /// `registry.declare`. Leaving them in cost seven extra entry points over this
 /// repository and reported the same 138 calls and the same nothing deferred.
 ///
-/// The enclosing type comes from the member's parent rather than from a visit
-/// per declaration kind. A class member is a direct child of the declaration
-/// that holds it, and every form that can hold one - class, mixin, enum,
-/// extension type - is a `NamedCompilationUnitMember`, so one test covers all
-/// of them and covers whatever the language adds next.
+/// The enclosing type comes from the member's ancestors rather than from a
+/// visit per declaration kind. Every form that can hold a static member -
+/// class, mixin, enum, extension type - is a `NamedCompilationUnitMember`, so
+/// one test covers all of them and covers whatever the language adds next.
+///
+/// An ancestor and not the immediate parent, because the parent is the body
+/// node: a member of `class C { ... }` hangs off a `ClassBody` under the
+/// declaration, not off the declaration. Reading `node.parent` found no
+/// declaration at all once that node existed, and the pass then reported zero
+/// entry points and zero calls over a repository full of both.
 class _StaticCollector extends RecursiveAstVisitor<void> {
   final statics = <String, _StaticBody>{};
 
@@ -332,8 +334,9 @@ class _StaticCollector extends RecursiveAstVisitor<void> {
   void visitMethodDeclaration(MethodDeclaration node) {
     super.visitMethodDeclaration(node);
     if (!node.isStatic || node.isGetter || node.isSetter) return;
-    final parent = node.parent;
-    if (parent is! NamedCompilationUnitMember) return;
+    // ignore: deprecated_member_use
+    final parent = node.thisOrAncestorOfType<NamedCompilationUnitMember>();
+    if (parent == null) return;
     final body = _BodyVisitor();
     node.body.accept(body);
     statics['${parent.name.lexeme}.${node.name.lexeme}'] = _StaticBody(

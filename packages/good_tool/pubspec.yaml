@@ -16,7 +16,18 @@ dependencies:
   # The doc-reference check parses on its own: what it reads is the token
   # stream and the doc comments hanging off it, and `readSources` keeps
   # neither. The constraints match good_cli's, so one resolution serves both.
-  analyzer: ^7.4.0
+  #
+  # Floor 10.0.0: 7.x does not implement primary constructors at any
+  # `enable-experiment` spelling, and three files in packages/*/lib use them.
+  # `parseString` recovered instead of failing, so both check modes reported
+  # clean runs over trees they had read a fraction of (#348). 9.0.0 parses the
+  # syntax under the name `declaring-constructors`; 10.0.0 is the first that
+  # takes `primary-constructors`, which is what the analysis_options files say.
+  #
+  # Ceiling 11.0.0: that major drops `ClassDeclaration.name`, `.members` and
+  # the rest of the pre-`ClassBody` AST, which is what both packages read. The
+  # bump past it is a migration to `namePart`/`body`, not a constraint edit.
+  analyzer: ">=10.0.0 <11.0.0"
   # A path dependency, not the hosted-constraint-plus-override pattern the
   # published packages use. This one is never resolved from pub.dev by anybody,
   # so the indirection would buy nothing.

@@ -16,7 +16,17 @@ dependencies:
   meta: ^1.15.0
   path: ^1.9.0
   yaml: ^3.1.2
-  analyzer: ^7.4.0
+  # Floor 10.0.0: 7.x does not implement primary constructors at any
+  # `enable-experiment` spelling, and three files in packages/*/lib use them.
+  # `parseString` recovered instead of failing, so both check modes reported
+  # clean runs over trees they had read a fraction of (#348). 9.0.0 parses the
+  # syntax under the name `declaring-constructors`; 10.0.0 is the first that
+  # takes `primary-constructors`, which is what the analysis_options files say.
+  #
+  # Ceiling 11.0.0: that major drops `ClassDeclaration.name`, `.members` and
+  # the rest of the pre-`ClassBody` AST, which is what both packages read. The
+  # bump past it is a migration to `namePart`/`body`, not a constraint edit.
+  analyzer: ">=10.0.0 <11.0.0"
   archive: ^3.6.1
   crypto: ^3.0.6
   cryptography: ^2.7.0

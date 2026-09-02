@@ -431,6 +431,7 @@ void _docReferences(
     packages: packages,
     known: <EnginePackage>[...packages, ...dependencies],
   );
+  if (_unparsed(scan.unparsed)) return;
   if (scan.dangling.isEmpty) {
     stdout.writeln(
       '${scan.checked} of ${scan.references} doc reference(s) in '
@@ -462,7 +463,7 @@ void _declarations(
     packages: packages,
     known: <EnginePackage>[...packages, ...dependencies],
   );
-  _unparsed(scan);
+  if (_unparsed(scan.unparsed)) return;
   if (scan.deferred.isEmpty) {
     stdout.writeln(
       '${scan.calls} declaration(s) in ${scan.files} file(s) are eager, '
@@ -477,25 +478,42 @@ void _declarations(
   exitCode = 65;
 }
 
-/// Names the files the parser could not read, and does not fail on them.
+/// Fails the run over files the parser could not read, and says which.
 ///
-/// Not an exit code, because there is nothing the author of the file can do: it
-/// is the `analyzer` version this package resolves, not the source. Not silence
-/// either - a run that skipped a file and then reported a clean tree would be
-/// answering a question it did not ask. See `DeclarationScan.unparsed` for
-/// which three files this is today and why.
-void _unparsed(DeclarationScan scan) {
-  if (scan.unparsed.isEmpty) return;
-  for (final file in scan.unparsed) {
+/// Answers whether the caller is done, so both modes end on the same line:
+/// `if (_unparsed(scan.unparsed)) return;`, before either of them prints a
+/// count.
+///
+/// **It is an exit code and not a warning, and that is the whole of #348.**
+/// The parser recovers, so a file that fails to parse still hands back a tree
+/// - a shorter one, missing whatever hung off the part it could not read. Both
+/// of these modes then walked that tree, found fewer references and fewer
+/// declarations than the file holds, and printed a summary saying every one of
+/// them was fine. `collider.dart` held 46 doc references and 15 reached the
+/// check; the run exited 0. #347's stopgap wrote the file's name to stderr and
+/// still exited 0, which nothing in CI reads on a green run.
+///
+/// There is nothing the author of such a file can do about it directly, and
+/// that is not a reason to pass: what it means is that the tool's `analyzer`
+/// constraint no longer covers the language the repository is written in, and
+/// somebody has to raise it. Failing is what makes that a task rather than a
+/// line in a log.
+bool _unparsed(List<String> files) {
+  if (files.isEmpty) return false;
+  for (final file in files) {
     stderr.writeln('$file: not parsed, and so not checked');
   }
-  stderr.writeln(
-    '${scan.unparsed.length} file(s) were not read. Primary constructors are '
-    'the known cause: flutter analyze accepts them and the analyzer this '
-    'package resolves does not implement them, so no enable-experiment '
-    'spelling parses those files.',
-  );
   stderr.writeln();
+  stderr.writeln(
+    '${files.length} file(s) did not parse, so this run checked less than it '
+    'was pointed at and cannot say the tree is clean. The parser recovers, '
+    'which is why the counts above a failure like this used to look normal. '
+    'The cause is the `analyzer` constraint in good_tool/pubspec.yaml against '
+    'the language these files use - raise it, or stop using the syntax they '
+    'use.',
+  );
+  exitCode = 65;
+  return true;
 }
 
 /// A generated file named as `<package>/lib/src/<file>`.

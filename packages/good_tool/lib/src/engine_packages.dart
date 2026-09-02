@@ -50,6 +50,14 @@ class EnginePackage {
   /// Its `lib/`, normalised and absolute.
   String get libDir => p.normalize(p.absolute(p.join(root.path, 'lib')));
 
+  /// One of its files named as `goo2d/lib/src/data/collider.dart`.
+  ///
+  /// Relative to the package root and in posix form, so a message reads the
+  /// same on every machine and from whichever directory `--dir` was resolved
+  /// against.
+  String describe(File file) =>
+      '$name/${p.split(p.relative(file.path, from: root.path)).join('/')}';
+
   /// Its entry library - `lib/<name>.dart`.
   File get barrel => File(p.join(libDir, '$name.dart'));
 
