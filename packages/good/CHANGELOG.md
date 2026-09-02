@@ -17,6 +17,32 @@
   isolate assigns every component bit, and main assigns none* in
   `game_isolate_test.dart`.
 
+* **`DataPointer.readPending` on a `float64` column answers the published
+  value outside a tick**, which its own doc has always stated and which
+  `_OptionalField` already did (#258). It reached for the write slot instead,
+  and on a page that has published that trips `_writeRow`'s lost-write
+  assertion - a message about a write, raised by a read that makes none. In a
+  release build it returned the slot's stale contents.
+
+* **`hasBool` names itself when it cannot answer a pending read** (#258). The
+  `bool` wrapper forwarded `readPending` into the one-bit field it wraps,
+  which does not implement it, so the `UnsupportedError` arrived under
+  `_SubByteUintField` - a private class no declaration writes and no caller
+  can act on. The forward is gone, which is what `hasEntity` and `hasEnum`
+  already do and document. Behaviour is unchanged: the call still throws.
+
+* **`DataPointer.readPending`'s reference names the three column kinds that
+  implement it** - `float64`, `optInt64` and `optEntity` (#258). It read as
+  "optional-entity fields and `float64`", which invites `optFloat64`; that is
+  an optional column whose value half cannot answer, and it throws.
+
+* **The declared-children hierarchy tests said they covered a hazard they
+  could not reach** (#258). Both spawn on the first tick, where the page has
+  never published and an ordinary read falls through to the write slot, so
+  they hold whether `_append` reads the pending slot or the published one.
+  Replacing the pending read with `parentLastChild[this]` left them green.
+  A rig spawned after a publish is added beside them, and it fails.
+
 ### Added
 
 * **`Command.of()`**, a command declared on the field that holds it (#287):
