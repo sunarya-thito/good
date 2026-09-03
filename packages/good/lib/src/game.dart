@@ -3613,19 +3613,20 @@ final class _SystemDescriptor implements SystemDescriptor {
   T has<T extends GameSystem>(T Function() create) {
     // Nothing is open around the constructor call. This used to push the
     // input registry, so that an `Input.of` on one of the system's fields
-    // found it; an action reaches nothing where it is written now, and the
-    // registry reads them off the built system below. The event binder went
-    // the same way one step earlier, and the check that a `Game` was not
-    // being constructed in here went with the windows: with nothing ambient,
-    // a `Game` built inside a system's field initialisers declares onto its
-    // own fields, which is where its declarations were always meant to be.
+    // found it; an action reaches nothing where it is written now, and
+    // `Game._bootGame` reads them off the built system, once every system has
+    // been declared. The event binder went the same way one step earlier, and
+    // the check that a `Game` was not being constructed in here went with the
+    // windows: with nothing ambient, a `Game` built inside a system's field
+    // initialisers declares onto its own fields, which is where its
+    // declarations were always meant to be.
     final system = create();
     // After the build, not before: the check is on `runtimeType`, and a
     // tear-off's type argument is the static type - `descriptor.has(() =>
     // pickSystem())` would sail past a check written against `T`. The cost
-    // of building first is that a duplicate's declarations are already in
-    // the registries when this throws, and that costs nothing: the throw
-    // aborts boot.
+    // of building first is one object that is thrown away, and nothing else:
+    // registering a system is this list, so a duplicate's declarations have
+    // reached no registry to be taken back out of.
     final type = system.runtimeType;
     if (_state.systemIndexOf(type) != null) {
       throw StateError(
@@ -3633,18 +3634,6 @@ final class _SystemDescriptor implements SystemDescriptor {
         '.describeSystems. One declaration is one system; declaration '
         'order is execution order, so a duplicate has no meaningful position.',
       );
-    }
-    // `source` is the built system's `runtimeType` and is restored
-    // afterwards, so a declaration made outside any system's collect is not
-    // attributed to the last one that ran. `_bootGame` sets it again before
-    // each `describeInputs`.
-    final inputs = _state.game._inputs;
-    final restore = inputs.currentSource;
-    inputs.source = '$type';
-    try {
-      inputs.declare(collectDeclarations(system));
-    } finally {
-      inputs.source = restore;
     }
     return _state.addDeclaredSystem(system);
   }

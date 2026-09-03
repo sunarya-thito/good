@@ -555,13 +555,6 @@ final class InputRegistry implements InputDescriptor {
 
   set source(String source) => _source = source;
 
-  /// What [source] currently reads, so `SystemDescriptor.has` can put it back
-  /// after a system's constructor has run. Without the restore, a field
-  /// declaration would leave the label pointing at a system that has finished
-  /// declaring, and the `describeInputs` pass that follows would attribute
-  /// its actions to the wrong one.
-  String get currentSource => _source;
-
   // --- declaration --------------------------------------------------------
 
   @override
