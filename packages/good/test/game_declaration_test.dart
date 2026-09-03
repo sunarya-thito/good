@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:good/src/archetype.dart';
 import 'package:good/src/command/command.dart';
+import 'package:good/src/command/param.dart';
 import 'package:good/src/event/fixed_loop.dart';
 import 'package:good/src/event/state.dart';
 import 'package:good/src/game.dart';
@@ -97,6 +98,87 @@ class _LateCommandGame extends _BareGame {
   late final lazyCommand = Command.of(_Second.new);
 
   final eagerCommand = Command.of(_First.new);
+}
+
+// --- a command handler declared on a field --------------------------------
+
+/// The two sides of one game: `first` is handled on this object, `second` on
+/// the state, and nothing but which class the field is on says so.
+class _HandlerGame extends _BareGame {
+  final first = Command.of(_First.new);
+  final second = Command.of(_Second.new);
+
+  int mainRuns = 0;
+
+  final firstHandler = CommandHandler.of(
+    (_HandlerGame game) => game.first.handledBy(() => ++game.mainRuns),
+  );
+
+  @override
+  GameState createState() => _HandlerState();
+}
+
+class _HandlerState extends GameState<_HandlerGame> {
+  @override
+  void onMounted() {}
+
+  int gameRuns = 0;
+
+  final secondHandler = CommandHandler.of(
+    (_HandlerState state) =>
+        state.game.second.handledBy(() => ++state.gameRuns),
+  );
+}
+
+/// A handler written `late`, ahead of the eager command, for
+/// [_LateCommandGame]'s reason.
+class _LateHandlerGame extends _BareGame {
+  final only = Command.of(_First.new);
+
+  late final lazyHandler = CommandHandler.of(
+    (_LateHandlerGame game) => game.only.handledBy(() {}),
+  );
+}
+
+/// A game whose handler closure names a type its owner is not. The command is
+/// declared here and the closure asks for a `_HandlerGame`, so the check fires
+/// on the object the field turned out to be a field of.
+class _WrongOwnerGame extends _BareGame {
+  final only = Command.of(_First.new);
+
+  final wrongHandler = CommandHandler.of(
+    (_HandlerGame other) => other.first.handledBy(() {}),
+  );
+}
+
+/// The virtual-dispatch half: the declaration is on the base, the function it
+/// names is overridden by the subclass, and the closure runs against the built
+/// object - so the subclass's answer is what gets registered.
+class _VirtualBaseState extends GameState<_VirtualGame> {
+  @override
+  void onMounted() {}
+
+  final ranBy = <String>[];
+
+  /// Receipt-delivered so the call completes without a tick: what is under
+  /// test is which function was registered, not which lane carries it.
+  final handler = CommandHandler.of(
+    (_VirtualBaseState state) => state.game.only.handledOnControl(state.onIt),
+  );
+
+  void onIt() => ranBy.add('base');
+}
+
+class _VirtualState extends _VirtualBaseState {
+  @override
+  void onIt() => ranBy.add('subclass');
+}
+
+class _VirtualGame extends _BareGame {
+  final only = Command.of(_First.new);
+
+  @override
+  GameState createState() => _VirtualState();
 }
 
 // --- a random stream declared on a field -----------------------------------
@@ -243,24 +325,27 @@ void main() {
   tearDown(_reset);
 
   group('a channel on a Game field', () {
-    test('declares one channel per field, carrying its initial value', () async {
-      final fields = await _boot(_FieldGame.new);
+    test(
+      'declares one channel per field, carrying its initial value',
+      () async {
+        final fields = await _boot(_FieldGame.new);
 
-      expect(
-        fields.stateChannelCount,
-        3,
-        reason:
-            'three fields, three channels - a shared or dropped declaration '
-            'shows up here before the values below are asked for',
-      );
-      expect(
-        <Object>[fields.score.value, fields.health.value, fields.alive.value],
-        <Object>[3, 1.5, true],
-        reason:
-            'each carrying the initial value its own declaration named, so '
-            'two channels sharing one index would read as a repeat',
-      );
-    });
+        expect(
+          fields.stateChannelCount,
+          3,
+          reason:
+              'three fields, three channels - a shared or dropped declaration '
+              'shows up here before the values below are asked for',
+        );
+        expect(
+          <Object>[fields.score.value, fields.health.value, fields.alive.value],
+          <Object>[3, 1.5, true],
+          reason:
+              'each carrying the initial value its own declaration named, so '
+              'two channels sharing one index would read as a repeat',
+        );
+      },
+    );
 
     test('is storage of its own, not a view onto a neighbour', () async {
       final game = await _boot(_FieldGame.new);
@@ -315,11 +400,7 @@ void main() {
   group('an input on a Game field', () {
     test('declares one action per field, bound and unbound', () async {
       final fields = await _boot(_FieldInputGame.new);
-      expect(
-        fields.inputActionCount,
-        2,
-        reason: 'two fields, two actions',
-      );
+      expect(fields.inputActionCount, 2, reason: 'two fields, two actions');
       expect(fields.fire.binding, isNotNull);
       expect(fields.unbound.binding, isNull);
       expect(fields.fire.value, isFalse, reason: 'the shipped bool default');
@@ -449,10 +530,9 @@ void main() {
             'the same seed and the same declaration order replay identically '
             '- that is the whole contract of a declared stream',
       );
-      expect(
-        <int>[for (var i = 0; i < 8; i++) again.second.nextInt(1000)],
-        second,
-      );
+      expect(<int>[
+        for (var i = 0; i < 8; i++) again.second.nextInt(1000),
+      ], second);
     });
 
     test('a different seed moves both streams', () async {
@@ -577,6 +657,87 @@ void main() {
       );
 
       expect(game.commandCount, 6);
+    });
+  });
+
+  group('a command handler on a field', () {
+    test('the object the field is on is what picks the isolate', () async {
+      final game = await _boot(_HandlerGame.new);
+
+      final toMain = game.createCommandBatch()..signal(game.first);
+      final toGame = game.createCommandBatch()..signal(game.second);
+
+      expect(
+        <HandlerSide?>[toMain.destination, toGame.destination],
+        <HandlerSide>[HandlerSide.main, HandlerSide.game],
+        reason:
+            'the two commands are declared side by side on the same Game and '
+            'differ only in which class their handler field sits on. A batch '
+            "reads the side off the command's registration, so this is the "
+            'routing itself and not a restatement of the declaration',
+      );
+    });
+
+    test('a late handler reaches no pass at all', () async {
+      final game = await _boot(_LateHandlerGame.new);
+
+      expect(
+        game.only.hasHandler,
+        isFalse,
+        reason:
+            'the command declared, so the game booted and the handler window '
+            'was open and working - and the handler still never arrived',
+      );
+      expect(
+        () => game.lazyHandler,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('no Game or GameState being constructed'),
+              contains('eager, always'),
+            ),
+          ),
+        ),
+        reason:
+            'a late initialiser runs on first read, after boot resolved and '
+            'sealed the command list, so there is no pass left to reach',
+      );
+    });
+
+    test('a closure asking for the wrong owner says which two', () async {
+      await expectLater(
+        Game.startInline(_WrongOwnerGame.new),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('CommandHandler.of<_HandlerGame>'),
+              contains('_WrongOwnerGame'),
+            ),
+          ),
+        ),
+        reason:
+            'without the check this is a cast failure from inside the '
+            'framework naming neither the field nor the object it is on',
+      );
+    });
+
+    test('the function is resolved against the built object', () async {
+      final game = await _boot(_VirtualGame.new);
+      await game.only();
+
+      expect(
+        (game.state as _VirtualBaseState).ranBy,
+        <String>['subclass'],
+        reason:
+            'the declaration is a field of the base and names onIt on the '
+            'owner it is handed, so an override still decides which function '
+            'runs - the whole reason the owner is a parameter rather than '
+            'something the initialiser reaches for',
+      );
     });
   });
 

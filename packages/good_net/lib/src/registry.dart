@@ -33,7 +33,7 @@ import 'transport.dart';
 /// ```
 ///
 /// **Messages are declared on the `GameState`, not the `Game`** - the
-/// opposite of `describeCommands`, and for the same reason it holds there.
+/// opposite of a command, and for the same reason it holds there.
 /// A command's index has to mean the same thing on two *isolates*, so it is
 /// declared on the one object both isolates run. A message's index has to
 /// mean the same thing on two *machines*, which run their own copy of the
@@ -55,7 +55,7 @@ abstract class NetDescriptor {
   /// field to keep.
   ///
   /// A tear-off - `descriptor.has(Fire.new, id: 'fire')` - and not an
-  /// instance, for `CommandDescriptor.has`'s reason: a `Param.*` field
+  /// instance, for `Command.of`'s reason: a `Param.*` field
   /// initialiser runs at construction and the record layout has to be open
   /// before it does. [id], [to] and [channel] stay here rather than moving
   /// to a field, because they are facts about the *declaration* and not

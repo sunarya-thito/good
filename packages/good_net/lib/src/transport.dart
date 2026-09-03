@@ -109,7 +109,8 @@ abstract class NetTransport {
   /// # A message is identified by position
   ///
   /// A message's identity on the wire is its **position** in `describeNetwork`
-  /// (the same trick `describeCommands` uses across isolates), which is what
+  /// (the same trick a command's declaration order uses across isolates),
+  /// which is what
   /// makes a message cost two bytes of header instead of a name. Across
   /// isolates that is airtight: both copies are the same program. Across
   /// machines it is not - a player on last week's build has a different

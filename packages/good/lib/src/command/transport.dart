@@ -340,7 +340,7 @@ final class CommandTransport implements CommandSender {
   /// separate queue rather than [_inbox] drained more often - and the reason
   /// it opens `HandlerWindow.readOnly` around each dispatch, so a handler that
   /// writes anyway is refused rather than quietly erased (#245). See
-  /// `CommandDescriptor.hasReadOnlyHandler`.
+  /// `GameCommand.handledReadOnly`.
   ///
   /// Costs one length check on an empty queue, and allocates nothing.
   void runReadOnlyInbox() => _runQueue(_readInbox, HandlerWindow.readOnly);
@@ -387,8 +387,8 @@ final class CommandTransport implements CommandSender {
         // Which queue is a fact about the command, not about the record: a
         // batch is one lane's (`CommandBatch.routeTo` refuses a mixed one), so
         // the first call decides for all of them. Read off the declaration
-        // rather than put on the wire - both copies ran the same
-        // describeCommands pass, so both already agree.
+        // rather than put on the wire - both copies hold the deep copy of
+        // one resolve pass, so both already agree.
         (_isReadOnly(batch) ? _readInbox : _inbox).add(_Inbound(batch, null));
         continue;
       }
@@ -487,11 +487,7 @@ final class CommandTransport implements CommandSender {
     final needed = _idBytes + length;
     if (_scratch.length < needed) _scratch = Uint8List(needed);
     final scratch = _scratch;
-    ByteData.sublistView(
-      scratch,
-      0,
-      _idBytes,
-    ).setUint32(0, id, Endian.little);
+    ByteData.sublistView(scratch, 0, _idBytes).setUint32(0, id, Endian.little);
     scratch.setRange(_idBytes, needed, bytes);
     return ring.tryWrite(recordType, Uint8List.sublistView(scratch, 0, needed));
   }

@@ -404,11 +404,9 @@ class _FixtureState extends GameState<_TestGame> {
     loadScene(level);
   }
 
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    descriptor.hasSupplier(game.spawnUnit, _onSpawnUnit);
-  }
+  final spawnUnitHandler = CommandHandler.of(
+    (_FixtureState state) => state.game.spawnUnit.handledBy(state._onSpawnUnit),
+  );
 
   Entity _onSpawnUnit() => loadedScenes.single.addEntity(level.unit);
 }
@@ -442,14 +440,10 @@ class _BadControlState extends _FixtureState {
   /// published anything - the one time a write outside a tick is legitimate.
   late Entity victim;
 
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    descriptor.hasControlSignal(
-      (game as _BadControlGame).writeOutsideTick,
-      _onWrite,
-    );
-  }
+  final writeOutsideTickHandler = CommandHandler.of(
+    (_BadControlState state) => (state.game as _BadControlGame).writeOutsideTick
+        .handledOnControl(state._onWrite),
+  );
 
   void _onWrite() {
     // A plain column write on an entity that already exists - the guard is
@@ -473,11 +467,10 @@ class _Answering extends ValueSupplier<int> {
 }
 
 class _AnsweringState extends _FixtureState {
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    descriptor.hasControlSupplier((game as _AnsweringGame).answering, () => 1);
-  }
+  final answeringHandler = CommandHandler.of(
+    (_AnsweringState state) =>
+        (state.game as _AnsweringGame).answering.handledOnControl(() => 1),
+  );
 }
 
 class _AnsweringGame extends _TestGame {
@@ -493,11 +486,9 @@ class _AnsweringGame extends _TestGame {
 class _AnsweringMainGame extends _TestGame {
   final answeringMain = Command.of(_Answering.new);
 
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    descriptor.hasControlSupplier(answeringMain, () => 1);
-  }
+  final answeringMainHandler = CommandHandler.of(
+    (_AnsweringMainGame game) => game.answeringMain.handledOnControl(() => 1),
+  );
 }
 
 // --- #165: the read-only command lane --------------------------------------
@@ -541,18 +532,26 @@ class _ReadOnlyState extends _FixtureState {
   int arrivals = 0;
   int tickBoundRuns = 0;
 
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    final game = this.game as _ReadOnlyGame;
-    descriptor
-      ..hasReadOnlySupplier(
-        game.inspect,
-        () => (tick: game.tick, stopped: paused || timeScale == 0),
-      )
-      ..hasReadOnlySupplier(game.arrival, () => ++arrivals)
-      ..hasSignal(game.tickBound, () => tickBoundRuns++);
-  }
+  final inspectHandler = CommandHandler.of(
+    (_ReadOnlyState state) =>
+        (state.game as _ReadOnlyGame).inspect.handledReadOnly(
+          () => (
+            tick: state.game.tick,
+            stopped: state.paused || state.timeScale == 0,
+          ),
+        ),
+  );
+
+  final arrivalHandler = CommandHandler.of(
+    (_ReadOnlyState state) => (state.game as _ReadOnlyGame).arrival
+        .handledReadOnly(() => ++state.arrivals),
+  );
+
+  final tickBoundHandler = CommandHandler.of(
+    (_ReadOnlyState state) => (state.game as _ReadOnlyGame).tickBound.handledBy(
+      () => state.tickBoundRuns++,
+    ),
+  );
 }
 
 class _ReadOnlyGame extends _TestGame {
@@ -570,11 +569,10 @@ class _ReadOnlyGame extends _TestGame {
 class _Mute extends SignalCommand {}
 
 class _MuteReadOnlyState extends _FixtureState {
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    descriptor.hasReadOnlySignal((game as _MuteReadOnlyGame).mute, () {});
-  }
+  final muteHandler = CommandHandler.of(
+    (_MuteReadOnlyState state) =>
+        (state.game as _MuteReadOnlyGame).mute.handledReadOnly(() {}),
+  );
 }
 
 class _MuteReadOnlyGame extends _TestGame {
@@ -650,35 +648,72 @@ class _WindowState extends _FixtureState {
     (_FixtureState state) => _MarkerSystem(state.level),
   );
 
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    final game = this.game as _WindowGame;
-    descriptor
-      ..hasControlSignal(game.controlWrite, _write)
-      ..hasControlSignal(game.controlSpawn, _spawn)
-      ..hasControlSignal(game.controlDestroy, _destroy)
-      ..hasControlSignal(game.controlUnload, _unload)
-      ..hasControlSignal(game.controlChannelWrite, _channel)
-      ..hasControlSignal(game.controlStateWrite, _plainDartState)
-      ..hasReadOnlySupplier(game.readOnlyWrite, () {
-        _write();
-        return 1;
-      })
-      ..hasReadOnlySupplier(game.readOnlySpawn, () {
-        _spawn();
-        return 1;
-      })
-      ..hasReadOnlySupplier(game.readOnlyUnload, () {
-        _unload();
-        return 1;
-      })
-      ..hasReadOnlySupplier(game.readOnlyChannelWrite, () {
-        _channel();
-        return 1;
-      })
-      ..hasReadOnlySupplier(game.readOnlyRead, () => level.unit.marker[victim]);
-  }
+  final controlWriteHandler = CommandHandler.of(
+    (_WindowState state) =>
+        state._game.controlWrite.handledOnControl(state._write),
+  );
+
+  final controlSpawnHandler = CommandHandler.of(
+    (_WindowState state) =>
+        state._game.controlSpawn.handledOnControl(state._spawn),
+  );
+
+  final controlDestroyHandler = CommandHandler.of(
+    (_WindowState state) =>
+        state._game.controlDestroy.handledOnControl(state._destroy),
+  );
+
+  final controlUnloadHandler = CommandHandler.of(
+    (_WindowState state) =>
+        state._game.controlUnload.handledOnControl(state._unload),
+  );
+
+  final controlChannelWriteHandler = CommandHandler.of(
+    (_WindowState state) =>
+        state._game.controlChannelWrite.handledOnControl(state._channel),
+  );
+
+  final controlStateWriteHandler = CommandHandler.of(
+    (_WindowState state) =>
+        state._game.controlStateWrite.handledOnControl(state._plainDartState),
+  );
+
+  final readOnlyWriteHandler = CommandHandler.of(
+    (_WindowState state) => state._game.readOnlyWrite.handledReadOnly(() {
+      state._write();
+      return 1;
+    }),
+  );
+
+  final readOnlySpawnHandler = CommandHandler.of(
+    (_WindowState state) => state._game.readOnlySpawn.handledReadOnly(() {
+      state._spawn();
+      return 1;
+    }),
+  );
+
+  final readOnlyUnloadHandler = CommandHandler.of(
+    (_WindowState state) => state._game.readOnlyUnload.handledReadOnly(() {
+      state._unload();
+      return 1;
+    }),
+  );
+
+  final readOnlyChannelWriteHandler = CommandHandler.of(
+    (_WindowState state) =>
+        state._game.readOnlyChannelWrite.handledReadOnly(() {
+          state._channel();
+          return 1;
+        }),
+  );
+
+  final readOnlyReadHandler = CommandHandler.of(
+    (_WindowState state) => state._game.readOnlyRead.handledReadOnly(
+      () => state.level.unit.marker[state.victim],
+    ),
+  );
+
+  _WindowGame get _game => game as _WindowGame;
 
   /// Plain Dart state, touched by a receipt handler. Nothing in #245 is about
   /// this and the guard must leave it alone - it is what the whole lane is
@@ -728,11 +763,9 @@ class _MuteSink extends ValueSink<int> {
 class _MuteReadOnlyMainGame extends _TestGame {
   final muteSink = Command.of(_MuteSink.new);
 
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    descriptor.hasReadOnlySink(muteSink, (_) {});
-  }
+  final muteSinkHandler = CommandHandler.of(
+    (_MuteReadOnlyMainGame game) => game.muteSink.handledReadOnly((_) {}),
+  );
 }
 
 /// Two independent streams and two systems, one drawing from each, so a test
@@ -827,11 +860,9 @@ class _CommandState extends GameState<_CommandGame> {
     loadScene(_TestScene());
   }
 
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    descriptor.hasSink(game.nudge, _onNudge);
-  }
+  final nudgeHandler = CommandHandler.of(
+    (_CommandState state) => state.game.nudge.handledBy(state._onNudge),
+  );
 
   // The handler is the plain function the command claims to be: no buffer in
   // the signature, no pointer in the body.
@@ -1545,7 +1576,7 @@ void main() {
           isA<StateError>().having(
             (e) => e.message,
             'message',
-            allOf(contains('cannot'), contains('hasSupplier')),
+            allOf(contains('cannot'), contains('handledOnControl')),
           ),
         ),
         reason:
@@ -1563,13 +1594,14 @@ void main() {
           isA<StateError>().having(
             (e) => e.message,
             'message',
-            allOf(contains('cannot'), contains('hasSupplier')),
+            allOf(contains('cannot'), contains('handledOnControl')),
           ),
         ),
         reason:
-            'the two descriptors share one message function, and sharing is '
-            'not the same as both calling it - this is the side the '
-            'game-side test does not reach',
+            'the same refusal, from a handler declared on a field of the Game '
+            'rather than of the state - so it fires only if the Game half of '
+            'the handler resolve runs, which the game-side test above cannot '
+            'say anything about',
       );
     });
   });
@@ -1714,7 +1746,10 @@ void main() {
           isA<StateError>().having(
             (e) => e.message,
             'message',
-            allOf(contains('returns nothing'), contains('hasControlSignal')),
+            allOf(
+              contains('_Mute returns nothing'),
+              contains('handledReadOnly'),
+            ),
           ),
         ),
         reason:
@@ -1724,20 +1759,27 @@ void main() {
       );
     });
 
-    test('the refusal holds on the main descriptor, and on the sink '
-        'spelling', () async {
+    test('the refusal holds for a handler declared on the Game, and for the '
+        'sink shape', () async {
       expect(
         () => _game(_MuteReadOnlyMainGame.new),
         throwsA(
           isA<StateError>().having(
             (e) => e.message,
             'message',
-            allOf(contains('returns nothing'), contains('hasControlSink')),
+            allOf(
+              contains('_MuteSink returns nothing'),
+              contains('handledReadOnly'),
+            ),
           ),
         ),
         reason:
-            'two descriptors and two methods share one message function, and '
-            'sharing is not the same as all four calling it',
+            'two things at once, and the fixture cannot pass on either alone: '
+            'SinkCommand.handledReadOnly calls the shared message function '
+            'the signal shape above proves SignalCommand calls, and the '
+            'declaration is a field of the Game rather than of the state - so '
+            'this throws only if the Game half of the handler resolve runs at '
+            'all',
       );
     });
   });
@@ -2650,17 +2692,20 @@ void main() {
         // A GameState that was never marked as owning the simulation is exactly
         // what the main isolate's handle copy holds after start().
         //
-        // Through both windows `Game._bootMain` opens around `createState`,
-        // because `_TestState()` on its own throws out of its own field
-        // initialisers - it declares dispatchers, which need a binder, and
-        // systems, which need the system window. Constructing it bare would
+        // Through all three windows `Game._bootMain` opens around
+        // `createState`, because `_TestState()` on its own throws out of its
+        // own field initialisers - it declares dispatchers, which need a
+        // binder, systems, which need the system window, and a command
+        // handler, which needs the handler window. Constructing it bare would
         // still throw a StateError and this test would still pass, off the
         // wrong guard entirely.
         DeclarationContext.pushSystems();
+        DeclarationContext.pushHandlers();
         final GameState handle;
         try {
           handle = EventBinder.open(_TestState.new);
         } finally {
+          DeclarationContext.popHandlers();
           DeclarationContext.popSystems();
         }
         expect(() => handle.advance(_step), throwsStateError);

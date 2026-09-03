@@ -39,8 +39,9 @@ import 'package:good/src/triple_buffer.dart';
 ///
 /// Two command lanes run user code outside `beginTick`/`commitTick`: the
 /// receipt-delivered one, dispatched from a control-port callback
-/// (`CommandDescriptor.hasControlSink`), and the read-only one, drained once
-/// per frame from `GameState.advance` (`hasReadOnlyHandler`). Both told the
+/// (`SinkCommand.handledOnControl`), and the read-only one, drained once per
+/// frame from `GameState.advance` (`GameCommand.handledReadOnly`). Both told
+/// the
 /// caller not to write and neither could check it - a component write was
 /// erased by the next tick with an `assert` that a release build compiles out,
 /// and adding an entity, writing a `StateChannel` and unloading a scene were

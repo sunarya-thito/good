@@ -184,16 +184,30 @@ class _IsolateState extends GameState<_IsolateGame> {
     loadScene(level);
   }
 
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    descriptor
-      ..hasSupplier(game.spawnMover, _onSpawnMover)
-      ..hasSink(game.pauseMover, _onPauseMover)
-      ..hasControlSignal(game.resumeByControl, () => paused = false)
-      ..hasControlSignal(game.controlProbe, _onControlProbe)
-      ..hasSignal(game.resumeByTick, () => paused = false);
-  }
+  final spawnMoverHandler = CommandHandler.of(
+    (_IsolateState state) =>
+        state.game.spawnMover.handledBy(state._onSpawnMover),
+  );
+
+  final pauseMoverHandler = CommandHandler.of(
+    (_IsolateState state) =>
+        state.game.pauseMover.handledBy(state._onPauseMover),
+  );
+
+  final resumeByControlHandler = CommandHandler.of(
+    (_IsolateState state) =>
+        state.game.resumeByControl.handledOnControl(() => state.paused = false),
+  );
+
+  final controlProbeHandler = CommandHandler.of(
+    (_IsolateState state) =>
+        state.game.controlProbe.handledOnControl(state._onControlProbe),
+  );
+
+  final resumeByTickHandler = CommandHandler.of(
+    (_IsolateState state) =>
+        state.game.resumeByTick.handledBy(() => state.paused = false),
+  );
 
   Entity _onSpawnMover() => loadedScenes.single.addEntity(level.mover);
 
@@ -670,13 +684,13 @@ class _LateState extends GameState<_LateGame> {
     // load under test happens later and on the other isolate.
   }
 
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    descriptor
-      ..hasSignal(game.loadLate, _load)
-      ..hasSignal(game.unloadLate, _unload);
-  }
+  final loadLateHandler = CommandHandler.of(
+    (_LateState state) => state.game.loadLate.handledBy(state._load),
+  );
+
+  final unloadLateHandler = CommandHandler.of(
+    (_LateState state) => state.game.unloadLate.handledBy(state._unload),
+  );
 
   void _load() {
     // The progress callback runs on *this* isolate, driven by the per-asset
@@ -742,11 +756,9 @@ class _UnloadState extends GameState<_UnloadGame> {
     loadScene(_MoverScene());
   }
 
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    descriptor.hasSignal(game.dropScene, _drop);
-  }
+  final dropSceneHandler = CommandHandler.of(
+    (_UnloadState state) => state.game.dropScene.handledBy(state._drop),
+  );
 
   // Read from `loadedScenes` rather than captured from loadScene's future:
   // `onMounted` runs on **main**, before the spawn, so a `.then` callback
@@ -821,13 +833,15 @@ class _AskingState extends GameState<_AskingGame> {
     // only add pages to this test.
   }
 
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    descriptor
-      ..hasControlSignal(game.startAsking, () => shouldAsk = true)
-      ..hasSignal(game.askGame, () => game.gameAnswered.value = 1);
-  }
+  final startAskingHandler = CommandHandler.of(
+    (_AskingState state) =>
+        state.game.startAsking.handledOnControl(() => state.shouldAsk = true),
+  );
+
+  final askGameHandler = CommandHandler.of(
+    (_AskingState state) =>
+        state.game.askGame.handledBy(() => state.game.gameAnswered.value = 1),
+  );
 
   /// Fires both commands in one presentation pass, so they are queued at the
   /// same moment and differ only in where their handler lives.
@@ -876,14 +890,12 @@ class _AskingGame extends Game {
   @override
   GameState createState() => _AskingState();
 
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    descriptor.hasSupplier(askMain, () {
-      mainHandlerRuns++;
-      return 41 + mainHandlerRuns;
-    });
-  }
+  final askMainHandler = CommandHandler.of(
+    (_AskingGame game) => game.askMain.handledBy(() {
+      game.mainHandlerRuns++;
+      return 41 + game.mainHandlerRuns;
+    }),
+  );
 }
 
 /// One way of stopping the fixed tick, with its undo - so the two routes
@@ -950,17 +962,24 @@ class _PausedAskState extends GameState<_PausedAskGame> {
     // No scene: the question is about the command lanes.
   }
 
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    descriptor
-      ..hasReadOnlySupplier(
-        game.readPaused,
-        () => (tick: game.tick, stopped: paused || timeScale == 0),
-      )
-      ..hasReadOnlySupplier(game.readOrder, () => ++arrivals)
-      ..hasSignal(game.needsTick, () => game.tickRan.value += 1);
-  }
+  final readPausedHandler = CommandHandler.of(
+    (_PausedAskState state) => state.game.readPaused.handledReadOnly(
+      () => (
+        tick: state.game.tick,
+        stopped: state.paused || state.timeScale == 0,
+      ),
+    ),
+  );
+
+  final readOrderHandler = CommandHandler.of(
+    (_PausedAskState state) =>
+        state.game.readOrder.handledReadOnly(() => ++state.arrivals),
+  );
+
+  final needsTickHandler = CommandHandler.of(
+    (_PausedAskState state) =>
+        state.game.needsTick.handledBy(() => state.game.tickRan.value += 1),
+  );
 }
 
 class _PausedAskGame extends Game {
@@ -1090,16 +1109,17 @@ class _CensusIsolateState extends GameState<_CensusIsolateGame> {
   final idleSystem = GameSystem.of(_IdleSystem.new);
   final sleepySystem = GameSystem.of(_SleepySystem.new);
 
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    descriptor
-      ..hasReadOnlySupplier(
-        game.censusBlob,
-        () => WorldCensus.of(this).encode(),
-      )
-      ..hasControlSignal(game.sleepASystem, disableSystem<_SleepySystem>);
-  }
+  final censusHandler = CommandHandler.of(
+    (_CensusIsolateState state) => state.game.censusBlob.handledReadOnly(
+      () => WorldCensus.of(state).encode(),
+    ),
+  );
+
+  final sleepHandler = CommandHandler.of(
+    (_CensusIsolateState state) => state.game.sleepASystem.handledOnControl(
+      state.disableSystem<_SleepySystem>,
+    ),
+  );
 }
 
 class _CensusIsolateGame extends Game {

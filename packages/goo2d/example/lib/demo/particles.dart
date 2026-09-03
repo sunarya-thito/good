@@ -275,13 +275,10 @@ class ParticlesState extends DemoState<ParticlesGame> {
 
   final swirlSystem = GameSystem.of(SwirlSystem.new);
 
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    // The base declares `setPopulation`'s handler; dropping this super call
-    // would silently leave the population slider with nothing to talk to.
-    super.describeCommands(descriptor);
-    descriptor.hasSink(game.setAblations, _onSetAblations);
-  }
+  final setAblationsHandler = CommandHandler.of(
+    (ParticlesState state) =>
+        state.game.setAblations.handledBy(state._onSetAblations),
+  );
 
   void _onSetAblations(int value) {
     ablations = value;

@@ -149,7 +149,7 @@ final class SystemHandle<S extends GameSystem> {
 ///
 /// A `Game`'s declarations all happen on main, before the spawn, and ride the
 /// deep copy: `Channel.*`, `CameraView.of`, `RandomStream.of`,
-/// `describeBuffers` and `describeCommands` are numbered once and the game
+/// `describeBuffers` and `Command.of` are numbered once and the game
 /// isolate inherits the numbering, which is what makes an index a wire
 /// identity. Systems are the exception, and they can be because a system
 /// declares no shared memory of its own: an `Input.of` field resolves against
@@ -1031,8 +1031,7 @@ class _ScopedQuery implements Query {
   bool matches(int signature) => _query.matches(signature);
 
   @override
-  Iterable<QueryGroup> groups([Scene? scene]) =>
-      _query.groups(scene ?? _scene);
+  Iterable<QueryGroup> groups([Scene? scene]) => _query.groups(scene ?? _scene);
 
   @override
   Iterable<Entity> run([Scene? scene]) => _query.run(scene ?? _scene);

@@ -219,7 +219,17 @@ const _strandedFences = <String, Map<String, String>>{
   'docs/guide/systems-and-queries.md': {
     'void describeSystems(': _systemsStranded,
   },
+  'docs/guide/flutter-bridge.md': {
+    'void describeCommands(': _commandsStranded,
+    'descriptor.hasHandler(': _commandsStranded,
+    'descriptor.hasReadOnlySupplier(': _commandsStranded,
+  },
 };
+
+const _commandsStranded =
+    'stranded by #287: describeCommands and CommandDescriptor are gone - a '
+    'handler is declared on a CommandHandler.of field - and the page is '
+    'frozen by #346';
 
 const _systemsStranded =
     'stranded by #287: describeSystems and SystemDescriptor are gone - a '

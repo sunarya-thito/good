@@ -30,17 +30,20 @@ import '../scene_handle.dart';
 /// A census reads and answers, so it belongs on the lane built for that:
 ///
 /// ```dart
-/// // in Game.describeCommands
-/// census = descriptor.has(TakeCensus.new);
+/// // on the Game, which is where a command is declared
+/// final census = Command.of(TakeCensus.new);
 ///
-/// // in GameState.describeCommands
-/// descriptor.hasReadOnlySupplier(game.census, () => WorldCensus.of(this).encode());
+/// // on the GameState, which is the side that holds the world
+/// final censusHandler = CommandHandler.of(
+///   (MyState state) =>
+///       state.game.census.handledReadOnly(() => WorldCensus.of(state).encode()),
+/// );
 /// ```
 ///
 /// That lane is drained once per frame from `GameState.advance`, which runs
 /// on a frame that afforded no fixed step - so the census answers while the
 /// simulation is stopped, which is when a world is usually worth looking at.
-/// See `CommandDescriptor.hasReadOnlySupplier`, and note the promise it makes:
+/// See `SupplierCommand.handledReadOnly`, and note the promise it makes:
 /// a handler there may not write, and the engine throws if it tries. A census
 /// writes nothing.
 ///
@@ -332,7 +335,8 @@ final class SceneCensus {
   final int entityCount;
 
   @override
-  String toString() => 'SceneCensus(#$slot.$generation $typeName: $entityCount)';
+  String toString() =>
+      'SceneCensus(#$slot.$generation $typeName: $entityCount)';
 }
 
 /// One registered archetype.

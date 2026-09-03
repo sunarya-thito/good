@@ -118,11 +118,13 @@ abstract class DemoState<G extends DemoGame> extends GameState2D<G> {
   final renderPhaseEnd = GameSystem.of(_RenderPhaseEnd.new);
   final demoStats = GameSystem.of(DemoStats.new);
 
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    descriptor.hasSink(game.setPopulation, _onSetPopulation);
-  }
+  /// The population slider's handler, declared on a field of the state that
+  /// runs it - which is what makes it run on the game isolate. A subclass adds
+  /// its own beside this one; there is no `super` call to forget.
+  final setPopulationHandler = CommandHandler.of(
+    (DemoState<G> state) =>
+        state.game.setPopulation.handledBy(state._onSetPopulation),
+  );
 
   void _onSetPopulation(int target) => targetPopulation = target;
 }

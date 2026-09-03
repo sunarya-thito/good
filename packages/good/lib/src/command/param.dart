@@ -478,9 +478,9 @@ class ParamBatch {
           'a param batch ran off its own end: record at byte ${at - _base} '
           'claims declaration #$index, whose record is ${end - at} bytes, and '
           'only ${_end - at} remain. The two ends disagree about the '
-          'declaration list - across isolates that means describeCommands did '
-          'not run identically on both copies, and across a network it means '
-          'the two peers are not running the same build.',
+          'declaration list - across isolates that means the two copies were '
+          'built from different source, and across a network it means the two '
+          'peers are not running the same build.',
         );
       }
       _record(maskAt, payloadAt, layout);
@@ -624,8 +624,8 @@ enum HandlerSide { main, game }
 
 /// When a command's handler runs, which decides how its batch travels.
 ///
-/// See `CommandDescriptor.hasControlSink` for what a receipt-delivered
-/// command may and may not do.
+/// See `SinkCommand.handledOnControl` for what a receipt-delivered command
+/// may and may not do.
 enum HandlerDelivery {
   /// The default. The batch rides the command ring and is pumped inside the
   /// tick window, so a handler can write component data and a spawned entity
@@ -657,7 +657,7 @@ enum HandlerDelivery {
   /// The handler runs with no tick open, so it must not write - and is
   /// stopped when it tries. `CommandTransport` opens a `HandlerWindow` around
   /// the dispatch and every mutating path in the engine asks the pool about
-  /// it, in every build (#245). See `CommandDescriptor.hasReadOnlySupplier`.
+  /// it, in every build (#245). See `SupplierCommand.handledReadOnly`.
   frame,
 }
 
@@ -871,8 +871,8 @@ abstract class ParamDescriptor {
 /// first initialiser runs - and an initialiser cannot see `this`, let alone
 /// an argument a later method would have been handed. So the layout goes on
 /// [DeclarationContext] first and the object is built second, which is why
-/// `CommandDescriptor.has` and `NetDescriptor.has` take `SpawnEnemy.new`
-/// and not `SpawnEnemy()`.
+/// `Command.of` and `NetDescriptor.has` take `SpawnEnemy.new` and not
+/// `SpawnEnemy()`.
 ///
 /// # Eager, always
 ///
@@ -1388,8 +1388,12 @@ base class _SubBytePointer extends _Pointer<int> {
 /// `data_layout.dart`'s `_SubByteIntField`, and it means the same thing: a
 /// 1-bit signed field holds -1 or 0.
 final class _SubByteIntPointer extends _SubBytePointer {
-  const _SubByteIntPointer(super.index, super.byte, super.shift,
-      super.bitWidth);
+  const _SubByteIntPointer(
+    super.index,
+    super.byte,
+    super.shift,
+    super.bitWidth,
+  );
 
   @override
   int operator [](ParamBuffer call) {

@@ -93,13 +93,15 @@ class _CensusState extends GameState<_CensusGame> {
   final alphaSystem = GameSystem.of(_AlphaSystem.new);
   final betaSystem = GameSystem.of(_BetaSystem.new);
 
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    descriptor
-      ..hasReadOnlySupplier(game.census, () => WorldCensus.of(this).encode())
-      ..hasSignal(game.needsTick, () => tickBoundRuns++);
-  }
+  final censusHandler = CommandHandler.of(
+    (_CensusState state) =>
+        state.game.census.handledReadOnly(() => WorldCensus.of(state).encode()),
+  );
+
+  final needsTickHandler = CommandHandler.of(
+    (_CensusState state) =>
+        state.game.needsTick.handledBy(() => state.tickBoundRuns++),
+  );
 }
 
 class _CensusGame extends Game {

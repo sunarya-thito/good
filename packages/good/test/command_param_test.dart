@@ -439,16 +439,16 @@ void main() {
       final r = _registry().registry;
       final damage = r.declare(_Damage.new);
 
-      GameCommandDescriptor(r).hasHandler(damage, (p) => 0);
+      damage.handledBy((p) => 0).registerInto(r, HandlerSide.game);
       expect(damage.hasHandler, isTrue);
     });
 
     test('a command can only have one handler', () {
       final r = _registry().registry;
       final damage = r.declare(_Damage.new);
-      MainCommandDescriptor(r).hasHandler(damage, (p) => 0);
+      damage.handledBy((p) => 0).registerInto(r, HandlerSide.main);
       expect(
-        () => GameCommandDescriptor(r).hasHandler(damage, (p) => 0),
+        () => damage.handledBy((p) => 0).registerInto(r, HandlerSide.game),
         throwsStateError,
         reason:
             'a command runs on one isolate - two handlers would be two '
@@ -462,7 +462,7 @@ void main() {
       // succeeds - which is what leaves the refusal to declareHandler rather
       // than to a Param.* initialiser finding no layout open.
       expect(
-        () => MainCommandDescriptor(r).hasSignal(_Ping(), () {}),
+        () => _Ping().handledBy(() {}).registerInto(r, HandlerSide.main),
         throwsStateError,
       );
     });
@@ -530,8 +530,9 @@ void main() {
       // `p` is a _Blow and the return is an int, both inferred - there is no
       // buffer in this signature and no pointer in this body, which is what
       // makes a handler testable as the plain function it is.
-      GameCommandDescriptor(r)
-          .hasHandler(damage, (p) => p.amount * (p.crit ? 2 : 1));
+      damage
+          .handledBy((p) => p.amount * (p.crit ? 2 : 1))
+          .registerInto(r, HandlerSide.game);
       expect(damage.hasHandler, isTrue);
     });
   });
@@ -540,8 +541,9 @@ void main() {
     test('call sites carry no pointers at all', () async {
       final r = _registry();
       final damage = r.registry.declare(_Damage.new);
-      GameCommandDescriptor(r.registry)
-          .hasHandler(damage, (p) => p.amount * (p.crit ? 2 : 1));
+      damage
+          .handledBy((p) => p.amount * (p.crit ? 2 : 1))
+          .registerInto(r.registry, HandlerSide.game);
 
       expect(
         await damage((amount: 30, crit: true)),
@@ -556,7 +558,7 @@ void main() {
       final r = _registry();
       final ping = r.registry.declare(_Ping.new);
       var pinged = 0;
-      GameCommandDescriptor(r.registry).hasSignal(ping, () => pinged++);
+      ping.handledBy(() => pinged++).registerInto(r.registry, HandlerSide.game);
 
       await ping();
       await ping();
@@ -573,7 +575,9 @@ void main() {
       final r = _registry();
       final nextId = r.registry.declare(_NextId.new);
       var counter = 41;
-      GameCommandDescriptor(r.registry).hasSupplier(nextId, () => ++counter);
+      nextId
+          .handledBy(() => ++counter)
+          .registerInto(r.registry, HandlerSide.game);
 
       expect(await nextId(), 42);
       expect(await nextId(), 43);
@@ -583,7 +587,7 @@ void main() {
       final r = _registry();
       final log = r.registry.declare(_Log.new);
       final lines = <String>[];
-      GameCommandDescriptor(r.registry).hasSink(log, lines.add);
+      log.handledBy(lines.add).registerInto(r.registry, HandlerSide.game);
 
       await log('level loaded');
       expect(
@@ -598,7 +602,7 @@ void main() {
     test('reading a result the handler never wrote throws', () async {
       final r = _registry();
       final damage = r.registry.declare(_Damage.new);
-      GameCommandDescriptor(r.registry).hasHandler(damage, (p) => 5);
+      damage.handledBy((p) => 5).registerInto(r.registry, HandlerSide.game);
 
       final batch = r.registry.createCommandBatch();
       final hit = batch.execute(damage, (amount: 1, crit: false));
@@ -617,7 +621,7 @@ void main() {
     test('reading a parameter nobody wrote throws', () {
       final r = _registry();
       final wide = r.registry.declare(_Wide.new);
-      GameCommandDescriptor(r.registry).hasHandler(wide, (p) => p);
+      wide.handledBy((p) => p).registerInto(r.registry, HandlerSide.game);
 
       final call = wide.execute(7);
       expect(
@@ -664,10 +668,12 @@ void main() {
       final r = _registry();
       final damage = r.registry.declare(_Damage.new);
       final order = <int>[];
-      GameCommandDescriptor(r.registry).hasHandler(damage, (p) {
-        order.add(p.amount);
-        return p.amount * 10;
-      });
+      damage
+          .handledBy((p) {
+            order.add(p.amount);
+            return p.amount * 10;
+          })
+          .registerInto(r.registry, HandlerSide.game);
 
       final batch = r.registry.createCommandBatch();
       final first = batch.execute(damage, (amount: 1, crit: false));
@@ -700,10 +706,9 @@ void main() {
       final r = _registry();
       final damage = r.registry.declare(_Damage.new);
       final log = r.registry.declare(_Log.new);
-      final descriptor = GameCommandDescriptor(r.registry);
       final lines = <String>[];
-      descriptor.hasHandler(damage, (p) => 7);
-      descriptor.hasSink(log, lines.add);
+      damage.handledBy((p) => 7).registerInto(r.registry, HandlerSide.game);
+      log.handledBy(lines.add).registerInto(r.registry, HandlerSide.game);
 
       final batch = r.registry.createCommandBatch();
       final hit = batch.execute(damage, (amount: 3, crit: false));
@@ -729,7 +734,7 @@ void main() {
     test('a batch grows past its initial guess without losing calls', () async {
       final r = _registry();
       final wide = r.registry.declare(_Wide.new);
-      GameCommandDescriptor(r.registry).hasHandler(wide, (p) => p + 1);
+      wide.handledBy((p) => p + 1).registerInto(r.registry, HandlerSide.game);
 
       final batch = CommandBatch(1, sender: r.sender, initialBytes: 8);
       final keys = <CommandKey<int>>[];
@@ -752,7 +757,7 @@ void main() {
     test('a key cannot read another batch\'s results', () async {
       final r = _registry();
       final wide = r.registry.declare(_Wide.new);
-      GameCommandDescriptor(r.registry).hasHandler(wide, (p) => p);
+      wide.handledBy((p) => p).registerInto(r.registry, HandlerSide.game);
 
       final first = r.registry.createCommandBatch();
       final key = first.execute(wide, 1);
@@ -785,7 +790,7 @@ void main() {
     test('every field kind round-trips', () async {
       final r = _registry();
       final wide = r.registry.declare(_Wide.new);
-      GameCommandDescriptor(r.registry).hasHandler(wide, (p) => p);
+      wide.handledBy((p) => p).registerInto(r.registry, HandlerSide.game);
 
       final batch = r.registry.createCommandBatch();
       final call = wide.execute(250, batch);
@@ -821,7 +826,7 @@ void main() {
     test('a bool parameter round-trips as a bool', () async {
       final r = _registry();
       final v = r.registry.declare(_Vocabulary.new);
-      GameCommandDescriptor(r.registry).hasHandler(v, (p) => p);
+      v.handledBy((p) => p).registerInto(r.registry, HandlerSide.game);
 
       final batch = r.registry.createCommandBatch();
       final call = v.execute(1, batch);
@@ -838,7 +843,7 @@ void main() {
       // for these three. Only the two-s complement path answers -1, -1, -1.
       final r = _registry();
       final v = r.registry.declare(_Vocabulary.new);
-      GameCommandDescriptor(r.registry).hasHandler(v, (p) => p);
+      v.handledBy((p) => p).registerInto(r.registry, HandlerSide.game);
 
       final call = v.execute(0);
       v.s1[call] = -1;
@@ -854,7 +859,7 @@ void main() {
     test('a uint64 parameter carries the full 64 bits', () {
       final r = _registry();
       final v = r.registry.declare(_Vocabulary.new);
-      GameCommandDescriptor(r.registry).hasHandler(v, (p) => p);
+      v.handledBy((p) => p).registerInto(r.registry, HandlerSide.game);
 
       final call = v.execute(0);
       v.u64[call] = -9000000000000000000;
@@ -875,7 +880,7 @@ void main() {
     test('sub-byte fields share a byte without disturbing each other', () {
       final r = _registry();
       final wide = r.registry.declare(_Wide.new);
-      GameCommandDescriptor(r.registry).hasHandler(wide, (p) => p);
+      wide.handledBy((p) => p).registerInto(r.registry, HandlerSide.game);
 
       final call = wide.execute(0);
       wide.flag[call] = 1;
@@ -890,7 +895,7 @@ void main() {
     test('a string longer than its declared capacity is refused', () {
       final r = _registry();
       final log = r.registry.declare(_Log.new);
-      GameCommandDescriptor(r.registry).hasSink(log, (p) {});
+      log.handledBy((p) {}).registerInto(r.registry, HandlerSide.game);
 
       expect(
         () => log.execute('a message far longer than thirty-two bytes'),
@@ -906,10 +911,12 @@ void main() {
       final r = _registry();
       final order = r.registry.declare(_OrderUnit.new);
       late _Order seen;
-      GameCommandDescriptor(r.registry).hasHandler(order, (p) {
-        seen = p;
-        return Entity.pack(0xF00D, 4, 5);
-      });
+      order
+          .handledBy((p) {
+            seen = p;
+            return Entity.pack(0xF00D, 4, 5);
+          })
+          .registerInto(r.registry, HandlerSide.game);
 
       // An archetype id big enough to reach bit 63, so the handle's `int`
       // value is negative - the case a narrower or unsigned slot would not
@@ -937,7 +944,7 @@ void main() {
     test('an entity field is the int64 path, not a parallel one', () {
       final r = _registry();
       final order = r.registry.declare(_OrderUnit.new);
-      GameCommandDescriptor(r.registry).hasHandler(order, (p) => p.unit);
+      order.handledBy((p) => p.unit).registerInto(r.registry, HandlerSide.game);
 
       final call = order.execute((unit: Entity(1), waypoint: 2));
       expect(
@@ -953,7 +960,7 @@ void main() {
     test('a declaration with no variable-length field carries no tail', () {
       final r = _registry();
       final damage = r.registry.declare(_Damage.new);
-      GameCommandDescriptor(r.registry).hasHandler(damage, (p) => 0);
+      damage.handledBy((p) => 0).registerInto(r.registry, HandlerSide.game);
 
       expect(damage.layout.hasTail, isFalse);
       expect(damage.layout.tailSlotByte, -1);
@@ -975,7 +982,7 @@ void main() {
     test('two calls of one command do not share bytes', () {
       final r = _registry();
       final damage = r.registry.declare(_Damage.new);
-      GameCommandDescriptor(r.registry).hasHandler(damage, (p) => 0);
+      damage.handledBy((p) => 0).registerInto(r.registry, HandlerSide.game);
 
       final batch = r.registry.createCommandBatch();
       final a = damage.execute((amount: 11, crit: false), batch);
@@ -997,10 +1004,12 @@ void main() {
       final r = _registry();
       final publish = r.registry.declare(_Publish.new);
       late _Note seen;
-      GameCommandDescriptor(r.registry).hasHandler(publish, (p) {
-        seen = p;
-        return 'stored';
-      });
+      publish
+          .handledBy((p) {
+            seen = p;
+            return 'stored';
+          })
+          .registerInto(r.registry, HandlerSide.game);
 
       // U+03C0 is two bytes of UTF-8, so this is 180,000 bytes - nearly
       // three times what the *largest declarable* capacity-capped field could
@@ -1036,10 +1045,12 @@ void main() {
       final r = _registry();
       final publish = r.registry.declare(_Publish.new);
       late _Note seen;
-      GameCommandDescriptor(r.registry).hasHandler(publish, (p) {
-        seen = p;
-        return '';
-      });
+      publish
+          .handledBy((p) {
+            seen = p;
+            return '';
+          })
+          .registerInto(r.registry, HandlerSide.game);
 
       final receipt = await publish((body: '', blob: Uint8List(0)));
       expect(seen.body, '');
@@ -1056,7 +1067,7 @@ void main() {
     test('reading a variable-length field nobody wrote throws', () {
       final r = _registry();
       final publish = r.registry.declare(_Publish.new);
-      GameCommandDescriptor(r.registry).hasHandler(publish, (p) => 'x');
+      publish.handledBy((p) => 'x').registerInto(r.registry, HandlerSide.game);
 
       final call = publish.execute((body: 'hi', blob: Uint8List(0)));
       expect(
@@ -1071,7 +1082,7 @@ void main() {
     test('a variable-length field is written once', () {
       final r = _registry();
       final publish = r.registry.declare(_Publish.new);
-      GameCommandDescriptor(r.registry).hasHandler(publish, (p) => 'x');
+      publish.handledBy((p) => 'x').registerInto(r.registry, HandlerSide.game);
 
       final call = publish.execute((body: 'first', blob: Uint8List(0)));
       expect(
@@ -1091,9 +1102,8 @@ void main() {
       final r = _registry();
       final publish = r.registry.declare(_Publish.new);
       final damage = r.registry.declare(_Damage.new);
-      final descriptor = GameCommandDescriptor(r.registry);
-      descriptor.hasHandler(publish, (p) => 'x');
-      descriptor.hasHandler(damage, (p) => 0);
+      publish.handledBy((p) => 'x').registerInto(r.registry, HandlerSide.game);
+      damage.handledBy((p) => 0).registerInto(r.registry, HandlerSide.game);
 
       final batch = r.registry.createCommandBatch();
       final note = publish.execute((body: 'a', blob: Uint8List(0)), batch);
@@ -1121,9 +1131,12 @@ void main() {
       final r = _registry();
       final publish = r.registry.declare(_Publish.new);
       final damage = r.registry.declare(_Damage.new);
-      final descriptor = GameCommandDescriptor(r.registry);
-      descriptor.hasHandler(publish, (p) => 'z' * 50000);
-      descriptor.hasHandler(damage, (p) => p.amount * 10);
+      publish
+          .handledBy((p) => 'z' * 50000)
+          .registerInto(r.registry, HandlerSide.game);
+      damage
+          .handledBy((p) => p.amount * 10)
+          .registerInto(r.registry, HandlerSide.game);
 
       final batch = r.registry.createCommandBatch();
       final note = batch.execute(publish, (
@@ -1156,7 +1169,7 @@ void main() {
       final publish = registry.declare(_Publish.new);
       // Handled on the game isolate, which this copy is not, so the batch has
       // to leave through the ring.
-      GameCommandDescriptor(registry).hasHandler(publish, (p) => 'x');
+      publish.handledBy((p) => 'x').registerInto(registry, HandlerSide.game);
       final ring = RingBuffer(1024);
       addTearDown(ring.dispose);
       transport.outbound = ring;
@@ -1306,7 +1319,7 @@ void main() {
       final r = _registry();
       final setCount = r.registry.declare(_SetCount.new);
       final seen = <int>[];
-      GameCommandDescriptor(r.registry).hasSink(setCount, seen.add);
+      setCount.handledBy(seen.add).registerInto(r.registry, HandlerSide.game);
 
       await setCount(7);
       await setCount(65535);
@@ -1324,9 +1337,9 @@ void main() {
       final r = _registry();
       final nextValue = r.registry.declare(_NextValue.new);
       var counter = 0;
-      GameCommandDescriptor(
-        r.registry,
-      ).hasSupplier(nextValue, () => --counter);
+      nextValue
+          .handledBy(() => --counter)
+          .registerInto(r.registry, HandlerSide.game);
 
       expect(await nextValue(), -1);
       expect(
@@ -1372,7 +1385,7 @@ void main() {
       final r = _registry();
       final census = r.registry.declare(_Census.new);
       final answer = Uint8List.fromList(<int>[1, 2, 3, 4]);
-      GameCommandDescriptor(r.registry).hasSupplier(census, () => answer);
+      census.handledBy(() => answer).registerInto(r.registry, HandlerSide.game);
 
       // Sent by hand so the ParamBuffer - and through it the batch the reply
       // landed in - is still in reach after the read.
@@ -1400,7 +1413,7 @@ void main() {
     test('bytes going the other way are copied too', () async {
       final r = _registry();
       final upload = r.registry.declare(_Upload.new);
-      GameCommandDescriptor(r.registry).hasSink(upload, (_) {});
+      upload.handledBy((_) {}).registerInto(r.registry, HandlerSide.game);
 
       // paramsFromBuffer is what `invoke` hands the handler, read here
       // directly so the record it read from is still in reach.

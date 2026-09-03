@@ -361,8 +361,7 @@ abstract final class DeclarationContext {
   /// Read by `GameListenerBase`, which takes the open window as the owner's
   /// registrar and has an answer for there not being one - an owner the
   /// framework did not construct makes a registrar of its own.
-  static EventBinder? get eventsOrNull =>
-      _events.isEmpty ? null : _events.last;
+  static EventBinder? get eventsOrNull => _events.isEmpty ? null : _events.last;
 
   /// Dispatchers a base class declared on a field, waiting for the object
   /// being constructed to take them.
@@ -508,10 +507,61 @@ abstract final class DeclarationContext {
         'A Game is the only thing that declares a command at all - the ring a '
         'call travels through is allocated on main before the spawn, so only '
         'a declaration that runs there can own an index. A GameState and a '
-        'GameSystem handle commands the Game declared, in describeCommands.',
+        'GameSystem handle commands the Game declared, on a '
+        'CommandHandler.of field.',
       );
     }
     return _commands.last;
+  }
+
+  /// The open handler collections, innermost last - the fourteenth level of
+  /// the stack, and the one `CommandHandler.of` declares against.
+  ///
+  /// A list per construction, like [_systems]: what `CommandHandler.of` hands
+  /// back is the declaration itself, and the site that opened the window takes
+  /// the whole list off this once the constructor has returned.
+  ///
+  /// **Two sites open one, and which one it was is what decides the isolate.**
+  /// `Game._construct` opens it around a game's constructor and the
+  /// declarations it collects are handled on the Flutter isolate;
+  /// `Game._bootMain` opens it around `createState` and those are handled on
+  /// the game isolate. The two never nest - a game has finished constructing
+  /// long before `createState` is called - so the level answers for exactly
+  /// one owner at a time and a declaration cannot be attributed to the other.
+  static final List<List<CommandHandler>> _handlers = <List<CommandHandler>>[];
+
+  /// Opens a collection for the duration of one constructor. Paired with
+  /// [popHandlers] in a `finally` - `Game._construct` and `Game._bootMain` are
+  /// the only callers.
+  static void pushHandlers() => _handlers.add(<CommandHandler>[]);
+
+  static void popHandlers() => _handlers.removeLast();
+
+  /// What the object being constructed has declared so far, in field
+  /// initialiser order. Read once, before [popHandlers], by the site that
+  /// opened the window.
+  static List<CommandHandler> get openHandlers => _handlers.last;
+
+  /// Records one declaration, or a `StateError` naming the ways to get here.
+  static void addHandler(CommandHandler handle) {
+    if (_handlers.isEmpty) {
+      throw StateError(
+        'A command handler was declared with no Game or GameState being '
+        'constructed. CommandHandler.of reads the window the framework opens '
+        'around each of those constructors, so the framework has to be the '
+        'one constructing:\n'
+        '  final run = await Game.start(MyGame.new);\n'
+        'A Game or GameState built by hand declares into nothing, and so does '
+        'a handler declared on a system, a scene or a prefab - a command runs '
+        'on one of the two isolate copies, and those two objects are what name '
+        'them.\n'
+        'A `late final` initialiser lands here too, and that is the point: it '
+        'runs on first read, after boot resolved and sealed the command list, '
+        'so the handler would reach no pass at all. Field initialisers here '
+        'are eager, always.',
+      );
+    }
+    _handlers.last.add(handle);
   }
 
   /// The open random registries, innermost last - the tenth level of the

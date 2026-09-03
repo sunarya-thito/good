@@ -27,10 +27,10 @@ export 'src/audio/audio_mixer.dart';
 export 'src/coroutine/coroutine.dart';
 // The command API's two public layers: the shapes a command can take, and the
 // record its parameters and results live in. What is hidden is the plumbing
-// behind them - the registry a `Game` owns, the two descriptor implementations
-// that decide which isolate handles what, and the transport-facing interfaces.
-// A game declares against `CommandDescriptor` and holds commands; nothing
-// outside the kernel has a reason to name the rest, and `@internal` says so.
+// behind them - the registry a `Game` owns, the sides and lanes a handler is
+// installed on, and the transport-facing interfaces. A game declares commands
+// on `Game` fields and handlers on `CommandHandler.of` fields; nothing outside
+// the kernel has a reason to name the rest, and `@internal` says so.
 //
 // The framework ships no commands of its own. `SpawnEntityCommand` used to be
 // the exception and was deleted: it named a prefab by `archetypeId`, which is
@@ -41,7 +41,8 @@ export 'src/command/command.dart'
     show
         Command,
         CommandBatchCalls,
-        CommandDescriptor,
+        CommandBinding,
+        CommandHandler,
         CommandKey,
         GameCommand,
         GameCommandBase,

@@ -347,42 +347,21 @@ abstract class GameState<T extends Game> extends GameListenerBase
   // having one. Declare it on a field of the [Game] with `Channel.*` and
   // write to it from here through `game.myChannel`.
 
-  /// Registers the handlers that run on the **game** isolate, for commands
-  /// the [Game] declared.
-  ///
-  /// ```dart
-  /// @override
-  /// void describeCommands(CommandDescriptor descriptor) {
-  ///   super.describeCommands(descriptor);
-  ///   descriptor.hasHandler(game.damage, (p) => p.amount * (p.crit ? 2 : 1));
-  ///   descriptor.hasSink(game.spawnWave, _spawnWave);
-  /// }
-  /// ```
-  ///
-  /// **Handles only; it cannot declare.** `descriptor.has(...)` throws here.
-  /// A command's index in the shared declaration order is its identity on the
-  /// wire, and only `Game.describeCommands` runs on both isolate copies in a
-  /// position both agree on - a command declared here would have an index on
-  /// the game isolate and none on the Flutter one, which is the same thing as
-  /// not having one.
-  ///
-  /// Registering a handler here is what makes a command run *here*, and that
-  /// is the whole mechanism: there is no direction to configure and nothing
-  /// to keep in sync with the declaration. A command handled on this side is
-  /// dispatched inside the fixed tick window, before any system runs, so an
-  /// entity it spawns is visible to every system on the tick it lands.
-  ///
-  /// Runs once, on main, immediately after `Game.describeCommands`, against the
-  /// declaration mirror `_bootMain` builds - so the registry that rides the
-  /// spawn already knows which commands have a handler at all, which is what
-  /// lets the sending side refuse a handler-less command without a round
-  /// trip.
-  @mustCallSuper
-  void describeCommands(CommandDescriptor descriptor) {
-    // The engine's own four, registered by the `Game` that declared them so
-    // the fields stay private to the file that owns them (#142).
-    game.describeEngineCommandHandlers(descriptor, this);
-  }
+  // A `GameState` declares no command either, and for the channel's reason
+  // one line up: a command's index in the shared declaration order is its
+  // identity on the wire, and only a `Game` field runs in a position both
+  // isolate copies agree on. What a state does declare is a *handler* - on a
+  // `CommandHandler.of` field, which is what makes the command run here:
+  //
+  //   final spawnWave = CommandHandler.of(
+  //     (MyState state) => state.game.spawnWave.handledBy(state._spawnWave),
+  //   );
+  //
+  // There is no direction to configure and nothing to keep in sync with the
+  // declaration - the object the field is on is what says which side runs it.
+  // A command handled on this side is dispatched inside the fixed tick window,
+  // before any system runs, so an entity it spawns is visible to every system
+  // on the tick it lands.
 
   // --- scene loading ----------------------------------------------------
 
@@ -1218,7 +1197,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // that afforded no step - a paused game, a zero time scale. They promise
     // not to write, and the transport opens a `HandlerWindow` around the
     // dispatch so the pool can hold them to it (#245); see
-    // `CommandDescriptor.hasReadOnlyHandler`.
+    // `GameCommand.handledReadOnly`.
     //
     // After the presentation pass and after the adopt, so a request that
     // arrived on this frame is answered on it: `presentFrame` below is what
@@ -1382,6 +1361,24 @@ abstract class GameState<T extends Game> extends GameListenerBase
   @internal
   void bindSystemDeclarations(List<SystemHandle<GameSystem>> declarations) =>
       _declarations = declarations;
+
+  List<CommandHandler> _handlerDeclarations = const <CommandHandler>[];
+
+  /// Every `CommandHandler.of` declaration this state's fields made, in field
+  /// initialiser order.
+  ///
+  /// Resolved on main, in `Game._bootFinalize`, against this state - the
+  /// declaration mirror `_bootMain` builds - so the registry that rides the
+  /// spawn already knows which commands have a handler at all, which is what
+  /// lets the sending side refuse a handler-less command without a round trip.
+  @internal
+  List<CommandHandler> get handlerDeclarations => _handlerDeclarations;
+
+  /// Takes the declarations off the window `Game._bootMain` opened around
+  /// `createState`. Called once, on main, before the spawn.
+  @internal
+  void bindHandlerDeclarations(List<CommandHandler> declarations) =>
+      _handlerDeclarations = declarations;
 
   final List<GameSystem> _systems = <GameSystem>[];
   final Map<Type, int> _systemIndex = <Type, int>{};

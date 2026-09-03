@@ -228,13 +228,12 @@ class MyGameState extends GameState2D<MyAwesomeGame> {
   // declared.
   final spinSystem = GameSystem.of(SpinSystem.new);
 
-  @override
-  void describeCommands(CommandDescriptor descriptor) {
-    super.describeCommands(descriptor);
-    // `hasSupplier` only *handles* - the declaration itself belongs to the
-    // Game, because that is the side holding the handle the UI calls through.
-    descriptor.hasSupplier(game.spawnEnemy, _onSpawnEnemy);
-  }
+  /// A handler only *handles* - the declaration itself belongs to the Game,
+  /// because that is the side holding the handle the UI calls through. The
+  /// field being on this object is what makes it run here.
+  final spawnEnemyHandler = CommandHandler.of(
+    (MyGameState state) => state.game.spawnEnemy.handledBy(state._onSpawnEnemy),
+  );
 
   /// Runs on the game isolate, inside the tick window and before any system,
   /// so the enemy is visible to the whole simulation on the tick it arrives.

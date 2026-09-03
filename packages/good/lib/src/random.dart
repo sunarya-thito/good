@@ -49,7 +49,7 @@ abstract interface class RandomOwner {
 /// per tick, the tick each command landed on, and something to say about
 /// asset loads finishing at a different moment. Control commands - pause, time
 /// scale, visibility - are explicitly unordered against tick-delivered ones
-/// (see `CommandDescriptor.hasControlSink`), so their arrival is not
+/// (see `SinkCommand.handledOnControl`), so their arrival is not
 /// reproducible either. See #63; this issue is the random numbers and nothing
 /// more.
 final class RandomStream {

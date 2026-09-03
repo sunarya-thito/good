@@ -234,7 +234,7 @@ enum _ControlMessage {
 ///  * The **main-isolate copy** - the one the caller still holds after
 ///    `await game.start()` - is an inert *handle*. Its systems never tick, it
 ///    registers no archetypes and it owns no pages. It exists to (a) send and
-///    handle commands ([describeCommands]), (b) receive tick-complete
+///    handle commands ([CommandHandler]), (b) receive tick-complete
 ///    notifications and state-channel updates, and (c) build widgets
 ///    ([buildView]). It does **not** read component data:
 ///    `Entity.get` on this copy throws saying so. See
@@ -243,7 +243,7 @@ enum _ControlMessage {
 /// Calling a gameplay method on the handle copy does not reach the
 /// simulation. Anything that must cross goes through one of exactly two
 /// channels, split by volume: bulk, per-tick traffic through a shared
-/// `RingBuffer` ([describeCommands], [describeBuffers]), rare control signals
+/// `RingBuffer` ([Command], [describeBuffers]), rare control signals
 /// through a `SendPort` ([stop], tick pings, state-channel addresses).
 ///
 /// The spawn message is why this class must hold no **unsendable** state when
@@ -510,7 +510,7 @@ abstract class Game implements RandomOwner {
   ///
   /// **The constructor, not an instance**, the same as
   /// `GameSystem.of(SpinSystem.new)`, `SceneDescriptor.has(Mote.new)`
-  /// and `CommandDescriptor.has(Damage.new)`. The framework builds the scene
+  /// and `Command.of(Damage.new)`. The framework builds the scene
   /// with a declaration window open around the call, so a scene declares its
   /// own events on a field - `final waveCleared = Event.of(...)` - like every
   /// other owner. See [Event].
@@ -575,55 +575,14 @@ abstract class Game implements RandomOwner {
     return engine;
   }
 
-  /// Registers the handlers that run on the **Flutter** isolate.
+  /// Every `CommandHandler.of` declaration this game's fields made, in field
+  /// initialiser order.
   ///
-  /// The command itself is declared on a field with [Command.of]; this says
-  /// which side runs it:
-  ///
-  /// ```dart
-  /// final damage = Command.of(Damage.new);   // handled on the game isolate
-  /// final save = Command.of(SaveGame.new);
-  ///
-  /// @override
-  /// void describeCommands(CommandDescriptor descriptor) {
-  ///   super.describeCommands(descriptor);
-  ///   descriptor.hasSink(save, _writeSaveFile);  // ...but this one here
-  /// }
-  /// ```
-  ///
-  /// A hook and not a field, because a handler is an instance member named
-  /// twice over - the command on this object and the function on it - and a
-  /// field initialiser can name neither.
-  ///
-  /// Registering the handler here is what makes a command run on the Flutter
-  /// isolate; registering it in `GameState.describeCommands`, which runs
-  /// immediately after this, is what makes it run on the game isolate. Every
-  /// command has exactly one, and the sending side refuses to send one nothing
-  /// handles - no boot-time handshake required.
-  ///
-  /// # Spawning from the Flutter isolate
-  ///
-  /// There is no framework spawn command. A HUD button that adds an enemy is
-  /// the canonical case this lane exists for, and it is written as a command
-  /// that says what it *means*:
-  ///
-  /// ```dart
-  /// final class SpawnEnemy extends GameCommand<Vector2, Entity> { ... }
-  ///
-  /// // ...and handled in GameState.describeCommands, where the scene is:
-  /// descriptor.hasHandler(game.spawnEnemy, (at) {
-  ///   final enemy = loadedScenes.single.addEntity(level.enemy);
-  ///   level.enemy.x[enemy] = at.x;
-  ///   return enemy;
-  /// });
-  /// ```
-  ///
-  /// The framework ships no `spawnEntity(archetypeId)` for this: an archetype
-  /// id is a game-isolate identifier, so handing one to the Flutter isolate
-  /// makes it name something that isolate cannot see. Naming the *intent*
-  /// leaves the prefab lookup on the side that owns the memory.
-  @mustCallSuper
-  void describeCommands(CommandDescriptor descriptor) {}
+  /// Filled by [_construct] off the window it opens around the constructor,
+  /// and resolved in [_bootFinalize] once every command has an index. A field
+  /// of the `Game` handles on the Flutter isolate; the same field on the
+  /// `GameState` handles on the game isolate.
+  List<CommandHandler> _declaredHandlers = const <CommandHandler>[];
 
   void _onSystemDisabledReport(_DisabledSystemReport params) {
     onSystemDisabled(params.systemName, params.error, params.stackTrace);
@@ -685,34 +644,36 @@ abstract class Game implements RandomOwner {
     ));
   }
 
-  /// Registers the game-isolate handlers for the four commands [Game]
-  /// declared above.
+  /// Installs the game-isolate handlers for the four commands [Game] declares
+  /// for itself.
   ///
-  /// Here and not in `GameState.describeCommands`: the commands are private to
-  /// this file and stay that way - a game has no reason to reach them, and
-  /// `Game.pause` is the surface it uses instead.
+  /// Here and not on a `CommandHandler.of` field of `GameState`: the commands
+  /// are private to this file and stay that way - a game has no reason to
+  /// reach them, and `Game.pause` is the surface it uses instead. So this is
+  /// the framework installing against its own commands, not a declaration
+  /// anything overrides.
   ///
   /// All four are **receipt-delivered**. Every one can stop the fixed tick,
   /// and a tick-delivered handler is pumped from `runFixedStep` - so the
   /// message that started the tick again would be waiting on the tick it
   /// stopped. None of them writes component data, which is the rule that
-  /// buys them that delivery; see `CommandDescriptor.hasControlSink`.
-  @internal
-  void describeEngineCommandHandlers(
-    CommandDescriptor descriptor,
+  /// buys them that delivery; see [SinkCommand.handledOnControl].
+  void _installEngineCommandHandlers(
+    CommandRegistry registry,
     GameState<Game> state,
   ) {
-    descriptor
-      ..hasControlSink<bool>(_engine.setVisible, state.setVisible)
-      ..hasControlSink<bool>(
-        _engine.setPaused,
-        (bool value) => state.paused = value,
-      )
-      ..hasControlSink<double>(
-        _engine.setTimeScale,
-        (double value) => state.timeScale = value,
-      )
-      ..hasControlSignal(_engine.stepOnce, state.stepOnce);
+    _engine.setVisible
+        .handledOnControl(state.setVisible)
+        .registerInto(registry, HandlerSide.game);
+    _engine.setPaused
+        .handledOnControl((bool value) => state.paused = value)
+        .registerInto(registry, HandlerSide.game);
+    _engine.setTimeScale
+        .handledOnControl((double value) => state.timeScale = value)
+        .registerInto(registry, HandlerSide.game);
+    _engine.stepOnce
+        .handledOnControl(state.stepOnce)
+        .registerInto(registry, HandlerSide.game);
   }
 
   /// Declares this game's **auxiliary ring buffers** - shared-memory SPSC
@@ -720,7 +681,7 @@ abstract class Game implements RandomOwner {
   /// the same way the command ring and the pool's pages already are.
   ///
   /// `good` knows nothing about what travels through them. The command ring
-  /// ([describeCommands]) is the framework's own, hardcoded, main -> game
+  /// ([Command]) is the framework's own, hardcoded, main -> game
   /// lane; this is the generic escape hatch for every *other* lane-2-shaped
   /// channel a layer above wants - the one that motivated it is
   /// `goo2d_render`'s per-tick draw-command buffer (game -> main), which
@@ -1314,11 +1275,15 @@ abstract class Game implements RandomOwner {
     DeclarationContext.pushRandoms(randoms);
     DeclarationContext.pushCameraViews(views);
     DeclarationContext.pushCommands(commands);
+    DeclarationContext.pushHandlers();
     final G game;
     final int built;
+    final List<CommandHandler> handlers;
     try {
       game = create();
     } finally {
+      handlers = DeclarationContext.openHandlers;
+      DeclarationContext.popHandlers();
       DeclarationContext.popCommands();
       DeclarationContext.popCameraViews();
       DeclarationContext.popRandoms();
@@ -1354,6 +1319,7 @@ abstract class Game implements RandomOwner {
     game._inputs = inputs;
     game._randoms = randoms;
     game._declaredCommands = commands;
+    game._declaredHandlers = handlers;
     game._engineCommands = engine;
     game._cameraViews = views;
     // Closes the table and hands every declared view the game it belongs to.
@@ -1480,8 +1446,8 @@ abstract class Game implements RandomOwner {
       'throw on native, off the same source.\n'
       '\n'
       'Use Game.startInline() for a test or a headless host that drives the '
-      'simulation by hand, or reach the world from a handler registered in '
-      'GameState.describeCommands, which runs where it is.',
+      'simulation by hand, or reach the world from a handler declared on a '
+      'GameState field, which runs where it is.',
     );
   }
 
@@ -1645,10 +1611,11 @@ abstract class Game implements RandomOwner {
   void _bootMain(GameRuntime runtime) {
     // Constructed here, and *only* constructed: its `onMounted` - the pass
     // that loads scenes and so spawns a world - runs in [_bootGame], on the
-    // other copy. This one is a declaration mirror: it exists so that
-    // `describeCommands` below can register the same command handlers in the
-    // same order on both copies, and it never simulates, never mounts and
-    // never holds a scene. It also never gets its systems - [_buildSystem] is
+    // other copy. This one is a declaration mirror: it exists so that the
+    // handler declarations on its fields are resolved once, before the spawn,
+    // and the far copy inherits them through the deep copy rather than
+    // re-deriving them; it never simulates, never mounts and never holds a
+    // scene. It also never gets its systems - [_buildSystem] is
     // called from [_bootGame], so a `GameSystem` is one thing the mirror has
     // no counterpart for. Its handles are here, holding tear-offs.
     // Through `EventBinder.open`, so a dispatcher declared on a field of the
@@ -1658,17 +1625,25 @@ abstract class Game implements RandomOwner {
     //
     // And through the system window, so a `GameSystem.of` field has a list to
     // land in. The list is read off the window and handed to the state, which
-    // carries it across the spawn to the copy that builds from it.
+    // carries it across the spawn to the copy that builds from it. The handler
+    // window beside it is what makes a `CommandHandler.of` field on the state
+    // handle on the game isolate: the two windows are the same shape, and
+    // which one collected a declaration is the whole of the routing.
     final GameState state;
     final List<SystemHandle<GameSystem>> systems;
+    final List<CommandHandler> handlers;
     DeclarationContext.pushSystems();
+    DeclarationContext.pushHandlers();
     try {
       state = EventBinder.open(createState);
     } finally {
+      handlers = DeclarationContext.openHandlers;
+      DeclarationContext.popHandlers();
       systems = DeclarationContext.openSystems;
       DeclarationContext.popSystems();
     }
     state.bindSystemDeclarations(systems);
+    state.bindHandlerDeclarations(handlers);
     runtime.state = state;
     state.bindRuntime(runtime, simulating: runtime.simulates);
 
@@ -1719,9 +1694,8 @@ abstract class Game implements RandomOwner {
     _inputs.source = 'the engine';
     const InputDefault<bool>(false).registerInto(_inputs);
     InputDefault<Vector2>(Vector2.zero()).registerInto(_inputs);
-    InputDefault<PointerContacts>(PointerContacts.empty()).registerInto(
-      _inputs,
-    );
+    InputDefault<PointerContacts>(PointerContacts.empty())
+        .registerInto(_inputs);
     _inputs.source = '$runtimeType';
     _registerInputDefaults(inputDefaults);
 
@@ -1934,17 +1908,25 @@ abstract class Game implements RandomOwner {
     // every declaration has to be in the list before anything asks to handle
     // one.
     _declaredCommands.resolveInto(commands);
-    final main = MainCommandDescriptor(commands);
-    // The engine's own main-side handler, here and not in [describeCommands],
-    // because it names an instance method (`_onSystemDisabledReport`) and a
-    // base implementation a game is asked to `super` through is one more thing
-    // to forget. Before a game's, so a game overriding [onSystemDisabled] is
-    // what changes where a report goes, not the order it registered in.
-    main.hasSink(_engine.reportDisabledSystem, _onSystemDisabledReport);
-    // The Game handles on the Flutter isolate; the GameState handles on the
-    // game isolate. Each command has exactly one handler between the two.
-    describeCommands(main);
-    state.describeCommands(GameCommandDescriptor(commands));
+    // The engine's own main-side handler, installed here rather than declared
+    // on a field, because the command is private to this file and a game has
+    // no reason to name it. Before a game's, so a game overriding
+    // [onSystemDisabled] is what changes where a report goes, not the order it
+    // registered in.
+    _engine.reportDisabledSystem
+        .handledBy(_onSystemDisabledReport)
+        .registerInto(commands, HandlerSide.main);
+    _installEngineCommandHandlers(commands, state);
+    // The Game's fields handle on the Flutter isolate; the GameState's handle
+    // on the game isolate. Each command has exactly one handler between the
+    // two, and which list a declaration is in is what says which.
+    for (var i = 0; i < _declaredHandlers.length; i++) {
+      _declaredHandlers[i].resolveInto(this, commands, HandlerSide.main);
+    }
+    final stateHandlers = state.handlerDeclarations;
+    for (var i = 0; i < stateHandlers.length; i++) {
+      stateHandlers[i].resolveInto(state, commands, HandlerSide.game);
+    }
     commands.seal();
     // Attaches whichever rings this copy already has. Inline has none; the
     // game isolate allocated both in _runOnIsolate before calling this; the
@@ -2629,7 +2611,7 @@ final class GameRuntime {
     if (registry == null) {
       throw StateError(
         '${game.runtimeType} has not been started, so its commands have not '
-        'been declared yet - describeCommands runs during Game.start().',
+        'been numbered yet - Game.start() is what resolves them.',
       );
     }
     return registry.createCommandBatch();
@@ -3519,7 +3501,7 @@ abstract class GameSceneDescriptor {
 
 /// Declares the auxiliary ring buffers a game (or one of its systems) needs
 /// - see [Game.describeBuffers]. Same one-pass declarative shape as
-/// `CommandDescriptor`/`SceneDescriptor`/`StateDescriptor`.
+/// `SceneDescriptor`/`StateDescriptor`.
 abstract class BufferDescriptor {
   /// Declares a buffer of [capacityBytes] and returns the handle to keep in
   /// a field.
@@ -3679,7 +3661,6 @@ final class _GameSceneDescriptor implements GameSceneDescriptor {
     return scene;
   }
 }
-
 
 /// Forwards `Game.describeAssetLoaders` into the per-isolate registry.
 ///
@@ -4210,8 +4191,8 @@ final class _StateDescriptor implements StateDescriptor {
 // a tick-delivered command is pumped from `runFixedStep`, so the message that
 // started the tick again would be waiting on the tick it stopped.
 //
-// Declared by the engine in `Game.describeCommands`, before anything a game
-// declares. Both copies run the same pass in the same order, so the indices
+// Declared by the engine in `Game._construct`, before anything a game
+// declares. Both copies hold the deep copy of one numbering, so the indices
 // agree the way they do for a game's own commands.
 
 /// The five commands the engine declares for every game, built by

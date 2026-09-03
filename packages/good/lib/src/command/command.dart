@@ -36,7 +36,11 @@ import 'package:good/src/declare.dart';
 /// ```
 ///
 /// ```dart
-/// descriptor.hasHandler(damage, (p) => p.amount * (p.crit ? 2 : 1));
+/// final damageHandler = CommandHandler.of(
+///   (MyState state) => state.game.damage.handledBy(
+///     (p) => p.amount * (p.crit ? 2 : 1),
+///   ),
+/// );
 /// ```
 ///
 /// An earlier draft pushed the pointers out to the callers instead
@@ -52,9 +56,10 @@ abstract class GameCommandBase {
   /// Position in the shared declaration order - what a record's header
   /// carries and what routes it back to this command on the other side.
   ///
-  /// Assigned by [CommandDescriptor.has], identical on both isolate copies
-  /// because both run the same pass in the same order. No hand-picked record
-  /// type numbers and no name lookup (the typed-handle rule).
+  /// Assigned by [Command.of], identical on both isolate copies because a
+  /// `Game` is constructed once and its field initialisers run in one order.
+  /// No hand-picked record type numbers and no name lookup (the typed-handle
+  /// rule).
   int get index => _index;
   int _index = -1;
 
@@ -92,7 +97,7 @@ abstract class GameCommandBase {
   ///
   /// Read by the transport to pick which inbox an arriving batch joins, which
   /// is the whole of the routing: the two lanes share a ring and differ only
-  /// in what drains them. See `CommandDescriptor.hasReadOnlyHandler`.
+  /// in what drains them. See [GameCommand.handledReadOnly].
   bool get isReadOnlyDelivered => _handlerDelivery == HandlerDelivery.frame;
   Function? _handler;
 
@@ -109,9 +114,9 @@ abstract class GameCommandBase {
     if (handler == null) {
       throw StateError(
         'a $runtimeType arrived on the isolate that does not handle it. Its '
-        'handler was registered in '
-        '${_handlerSide == HandlerSide.main ? 'Game' : 'GameState'}'
-        '.describeCommands, and this is the other copy.',
+        'handler was declared on a field of the '
+        '${_handlerSide == HandlerSide.main ? 'Game' : 'GameState'}, and this '
+        'is the other copy.',
       );
     }
     return handler;
@@ -186,10 +191,10 @@ abstract class GameCommandBase {
     if (!hasHandler) {
       throw StateError(
         'no handler is registered for $runtimeType, so sending one would be '
-        'a message nothing reads. Register one with '
-        'descriptor.hasHandler(myCommand, _onMyCommand) - in '
-        'Game.describeCommands to run it on the Flutter isolate, or in '
-        'GameState.describeCommands to run it on the game isolate.',
+        'a message nothing reads. Declare one on a field - `final myHandler = '
+        'CommandHandler.of((MyState s) => s.game.myCommand.handledBy('
+        's._onMyCommand))` - on the Game to run it on the Flutter isolate, or '
+        'on the GameState to run it on the game isolate.',
       );
     }
     return sender;
@@ -230,16 +235,19 @@ abstract class GameCommandBase {
 /// ```
 ///
 /// The handler is registered against the command and takes the record, not
-/// the buffer. [CommandDescriptor.hasHandler] wants an `R Function(P)`;
+/// the buffer. [GameCommand.handledBy] wants an `R Function(P)`;
 /// [paramsFromBuffer] and [bufferFromResult] run either side of it, so the
 /// body is the function the command claims to be and nothing more:
 ///
 /// <!-- snippet-setup
-/// final CommandDescriptor descriptor = given();
 /// final Damage damage = given();
 /// -->
 /// ```dart
-/// descriptor.hasHandler(damage, (p) => p.amount * (p.crit ? 2 : 1));
+/// final damageHandler = CommandHandler.of(
+///   (MyState state) => state.game.damage.handledBy(
+///     (p) => p.amount * (p.crit ? 2 : 1),
+///   ),
+/// );
 /// ```
 abstract class GameCommand<P, R> extends GameCommandBase {
   /// Writes [params] into the record. One line per field.
@@ -285,6 +293,91 @@ abstract class GameCommand<P, R> extends GameCommandBase {
     return resultFromBuffer(buffer);
   }
 
+  /// Declares what runs when this command arrives: **the function the command
+  /// claims to be**, with no buffer in its signature and no pointer in its
+  /// body.
+  ///
+  /// ```dart
+  /// final damageHandler = CommandHandler.of(
+  ///   (MyState state) => state.game.damage.handledBy(
+  ///     (p) => p.amount * (p.crit ? 2 : 1),
+  ///   ),
+  /// );
+  /// ```
+  ///
+  /// **Which side runs it is decided by the object the field is on.** A
+  /// `Game` field handles on the Flutter isolate; a `GameState` field handles
+  /// on the game isolate, inside the fixed tick window and before any system,
+  /// so an entity the handler spawns is visible on the tick it lands. Every
+  /// command has exactly one handler between the two, and the sending side
+  /// refuses to send one nothing handles - no boot-time handshake required.
+  ///
+  /// One method per shape rather than one taking any of them, because Dart
+  /// will not let a handler type ride on the command's own type (a type
+  /// parameter cannot appear contravariantly in a superinterface, which
+  /// `GameCommandBase<R Function(P)>` would need). Declaring it on the shape
+  /// is what checks the signature at this line instead of casting on the far
+  /// isolate.
+  CommandBinding handledBy(R Function(P) handler) =>
+      CommandBinding._(this, handler, HandlerDelivery.tick);
+
+  /// [handledBy], but run **once per frame, outside the tick window** - so it
+  /// answers while the fixed tick is stopped.
+  ///
+  /// This is pause-and-inspect. A tick-delivered handler is pumped from
+  /// `GameState.runFixedStep`, so a paused game - or one at a time scale of
+  /// zero - queues the call and answers nothing at all until the tick comes
+  /// back. A pause menu asking the simulation for a number, or an inspector
+  /// reading a world that is deliberately standing still, waits out the pause
+  /// with no error and no timeout. This lane is drained from
+  /// `GameState.advance` instead, which runs on every frame including one that
+  /// afforded no step.
+  ///
+  /// **It keeps the reply leg**, which is what separates it from
+  /// [SinkCommand.handledOnControl]. The batch rides the same command ring a
+  /// tick-delivered call does, so `await` completes when the handler has run
+  /// and its answer has come back - not when the bytes were handed over. That
+  /// is why this lane takes the shapes that return something and the control
+  /// lane refuses them.
+  ///
+  /// **Read-only is a promise you make, and the engine holds you to it.**
+  /// Nothing in Dart makes a closure read-only, so the lane is opened around
+  /// the dispatch instead: `CommandTransport` tells the pool which kind of
+  /// handler is running, and every path that changes anything asks. A write
+  /// from here throws a `StateError` naming the lane, in every build:
+  ///
+  /// - **A component field**, which there is no write slot for - `beginTick`
+  ///   would copy the published bytes back over it on the next step. Refused
+  ///   on a page that has published and on one that has not.
+  /// - **Adding or destroying an entity, loading or unloading a scene.**
+  ///   `unloadScene` frees native pages on the spot, which is the one #245
+  ///   named first.
+  /// - **A `StateChannel`.** Unlike the receipt lane, which publishes on one
+  ///   because it has no reply leg, this lane has a reply - so a write is
+  ///   never how it says something.
+  ///
+  /// So the lane is worth reaching for when the handler reads and returns, and
+  /// it will tell you when it is not. [handledBy] is the one that may write.
+  ///
+  /// **There is no ordering against tick-delivered commands.** They are
+  /// drained from separate inboxes on separate schedules, so two batches sent
+  /// in order can run in either. Ordering *within* this lane is kept - it is
+  /// one FIFO fed by one ring - which is the same guarantee tick delivery
+  /// gives within its own.
+  CommandBinding handledReadOnly(R Function(P) handler) =>
+      CommandBinding._(this, handler, HandlerDelivery.frame);
+
+  /// Always throws. A receipt-delivered command **cannot answer**.
+  ///
+  /// It exists so the name someone reaches for explains itself instead of
+  /// being absent. A control command completes when it reaches the port, and
+  /// its handler runs with no tick and no reply leg - so there is nowhere for
+  /// an `R` to come from. Use [handledBy], which is tick-delivered and does
+  /// reply, or restate the call as a [SinkCommand] and publish the answer
+  /// through a `StateChannel`.
+  CommandBinding handledOnControl(R Function(P) handler) =>
+      _controlCannotAnswer(runtimeType, 'handledOnControl');
+
   @override
   @internal
   void invoke(ParamBuffer call) => bufferFromResult(
@@ -313,6 +406,41 @@ abstract class SupplierCommand<R> extends GameCommandBase {
     await batch.send();
     return resultFromBuffer(buffer);
   }
+
+  /// Declares what runs when this command arrives: takes nothing, returns an
+  /// `R`. See [GameCommand.handledBy].
+  ///
+  /// ```dart
+  /// final spawnHandler = CommandHandler.of(
+  ///   (MyState state) => state.game.spawnEnemy.handledBy(state._onSpawn),
+  /// );
+  /// ```
+  ///
+  /// **Which side runs it is decided by the object the field is on.** A
+  /// `Game` field handles on the Flutter isolate; a `GameState` field handles
+  /// on the game isolate, inside the fixed tick window and before any system,
+  /// so an entity the handler spawns is visible on the tick it lands. Every
+  /// command has exactly one handler between the two, and the sending side
+  /// refuses to send one nothing handles - no boot-time handshake required.
+  ///
+  /// One method per shape rather than one taking any of them, because Dart
+  /// will not let a handler type ride on the command's own type (a type
+  /// parameter cannot appear contravariantly in a superinterface, which
+  /// `GameCommandBase<R Function(P)>` would need). Declaring it on the shape
+  /// is what checks the signature at this line instead of casting on the far
+  /// isolate.
+  CommandBinding handledBy(R Function() handler) =>
+      CommandBinding._(this, handler, HandlerDelivery.tick);
+
+  /// [handledBy] on the read-only lane - see [GameCommand.handledReadOnly] for
+  /// what that lane promises and what it refuses.
+  CommandBinding handledReadOnly(R Function() handler) =>
+      CommandBinding._(this, handler, HandlerDelivery.frame);
+
+  /// Always throws, for [GameCommand.handledOnControl]'s reason: a
+  /// receipt-delivered command has no reply leg to answer down.
+  CommandBinding handledOnControl(R Function() handler) =>
+      _controlCannotAnswer(runtimeType, 'handledOnControl');
 
   @override
   @internal
@@ -369,6 +497,90 @@ abstract class SinkCommand<P> extends GameCommandBase {
     execute(params, batch);
     return batch.send();
   }
+
+  /// Declares what runs when this command arrives: takes a `P`, returns
+  /// nothing. See [GameCommand.handledBy].
+  ///
+  /// ```dart
+  /// final waveHandler = CommandHandler.of(
+  ///   (MyState state) => state.game.spawnWave.handledBy(state._spawnWave),
+  /// );
+  /// ```
+  ///
+  /// **Which side runs it is decided by the object the field is on.** A
+  /// `Game` field handles on the Flutter isolate; a `GameState` field handles
+  /// on the game isolate, inside the fixed tick window and before any system,
+  /// so an entity the handler spawns is visible on the tick it lands. Every
+  /// command has exactly one handler between the two, and the sending side
+  /// refuses to send one nothing handles - no boot-time handshake required.
+  ///
+  /// One method per shape rather than one taking any of them, because Dart
+  /// will not let a handler type ride on the command's own type (a type
+  /// parameter cannot appear contravariantly in a superinterface, which
+  /// `GameCommandBase<R Function(P)>` would need). Declaring it on the shape
+  /// is what checks the signature at this line instead of casting on the far
+  /// isolate.
+  CommandBinding handledBy(void Function(P) handler) =>
+      CommandBinding._(this, handler, HandlerDelivery.tick);
+
+  /// [handledBy], but run **when the message arrives** instead of inside the
+  /// next tick window.
+  ///
+  /// This is what a control signal needs. A tick-delivered command is pumped
+  /// from `GameState.runFixedStep`, so it arrives only if the tick runs -
+  /// which makes it useless for anything that *stops* the tick, because the
+  /// message that starts it again would be waiting on the tick it stopped.
+  /// A receipt-delivered command is carried over the control port and run
+  /// from the port callback, with no tick involved.
+  ///
+  /// ```dart
+  /// final timeScaleHandler = CommandHandler.of(
+  ///   (MyState state) =>
+  ///       state.game.setTimeScale.handledOnControl((s) => state.timeScale = s),
+  /// );
+  /// ```
+  ///
+  /// Four things are true of it that are not true of [handledBy], and all four
+  /// follow from there being no tick:
+  ///
+  /// **The future completes on send, not on execution.** `await` on a control
+  /// command means "handed to the port", not "done". A tick-delivered command
+  /// resolves when the far side has run it and replied; there is no reply leg
+  /// here, because a reply would be pumped by the tick this exists to work
+  /// without.
+  ///
+  /// **The handler must not change the world, and the engine now stops it.**
+  /// There is no open write window outside a tick: `MemoryPool.beginTick`
+  /// copies each page's published bytes over the write slot, so a write
+  /// landing outside one is erased by the next tick with nothing said. Writing
+  /// a component field, adding or destroying an entity, and loading or
+  /// unloading a scene each throw a `StateError` from here - in every build,
+  /// on a page that has published and on one that has not. See `HandlerWindow`
+  /// (#245); until then this was a debug `assert` covering component fields
+  /// alone, silent on an unpublished page, and gone from a release build.
+  ///
+  /// **A `StateChannel` is the exception, deliberately.** It publishes into
+  /// its own `TripleBuffer` on the spot, so nothing erases it, and it is the
+  /// answer leg this lane has instead of a reply - which is what the refusal
+  /// for a control command that returns something tells you to reach for.
+  /// Plain Dart state (a pause flag, a time scale) was never in question.
+  ///
+  /// **There is no ordering against tick-delivered commands.** They travel by
+  /// different carriers, so two calls sent in order can run in either. That
+  /// is inherent to working while the tick is stopped, not a defect.
+  CommandBinding handledOnControl(void Function(P) handler) =>
+      CommandBinding._(this, handler, HandlerDelivery.receipt);
+
+  /// Always throws. A read-only command that returns nothing does nothing.
+  ///
+  /// Here for [GameCommand.handledOnControl]'s reason: the name someone
+  /// reaches for should explain itself rather than be absent. A handler on the
+  /// read-only lane promises not to write and a [SinkCommand] has no answer to
+  /// give, so between the two there is no effect left for it to have. Use
+  /// [handledBy], which is tick-delivered and may write, or
+  /// [handledOnControl], which also runs while the tick is stopped.
+  CommandBinding handledReadOnly(void Function(P) handler) =>
+      _readOnlyDoesNothing(runtimeType, 'handledReadOnly');
 
   @override
   @internal
@@ -436,7 +648,8 @@ abstract class ValueSink<P> extends SinkCommand<P> {
 /// hand back a `Uint8List` view onto the batch's buffer, and the batch is
 /// reused as soon as the call is done with - so what the caller kept reads
 /// as somebody else's record, with no error anywhere to say so.
-T _detach<T>(T read) => read is Uint8List ? Uint8List.fromList(read) as T : read;
+T _detach<T>(T read) =>
+    read is Uint8List ? Uint8List.fromList(read) as T : read;
 
 /// A call that takes and returns nothing: `void Function()`.
 ///
@@ -450,6 +663,42 @@ abstract class SignalCommand extends GameCommandBase {
     execute(batch);
     return batch.send();
   }
+
+  /// Declares what runs when this command arrives: takes and returns nothing.
+  /// See [GameCommand.handledBy].
+  ///
+  /// ```dart
+  /// final pingHandler = CommandHandler.of(
+  ///   (MyState state) => state.game.ping.handledBy(state._onPing),
+  /// );
+  /// ```
+  ///
+  /// **Which side runs it is decided by the object the field is on.** A
+  /// `Game` field handles on the Flutter isolate; a `GameState` field handles
+  /// on the game isolate, inside the fixed tick window and before any system,
+  /// so an entity the handler spawns is visible on the tick it lands. Every
+  /// command has exactly one handler between the two, and the sending side
+  /// refuses to send one nothing handles - no boot-time handshake required.
+  ///
+  /// One method per shape rather than one taking any of them, because Dart
+  /// will not let a handler type ride on the command's own type (a type
+  /// parameter cannot appear contravariantly in a superinterface, which
+  /// `GameCommandBase<R Function(P)>` would need). Declaring it on the shape
+  /// is what checks the signature at this line instead of casting on the far
+  /// isolate.
+  CommandBinding handledBy(void Function() handler) =>
+      CommandBinding._(this, handler, HandlerDelivery.tick);
+
+  /// [handledBy] on the control lane - see [SinkCommand.handledOnControl] for
+  /// what that lane buys and what it costs.
+  CommandBinding handledOnControl(void Function() handler) =>
+      CommandBinding._(this, handler, HandlerDelivery.receipt);
+
+  /// Always throws, for [SinkCommand.handledReadOnly]'s reason: a shape with
+  /// no answer to send back has nothing left to do on a lane that may not
+  /// write.
+  CommandBinding handledReadOnly(void Function() handler) =>
+      _readOnlyDoesNothing(runtimeType, 'handledReadOnly');
 
   @override
   @internal
@@ -524,8 +773,8 @@ extension CommandBatchCalls on CommandBatch {
 /// is the command ring, allocated on main before the spawn, and its index in
 /// the declaration order is what a record's header carries - the same argument
 /// that makes archetype ids agree. A `GameState` and a `GameSystem` are both
-/// built on the game isolate, after that; they *handle* commands, in
-/// `describeCommands`.
+/// built on the game isolate, after that; they *handle* commands, through a
+/// [CommandHandler] field.
 abstract final class Command {
   /// Builds one command with [create], declares it on the game being
   /// constructed, and returns it for the field to keep.
@@ -554,176 +803,116 @@ abstract final class Command {
       DeclarationContext.commands.declare(create);
 }
 
-/// Registers what runs when a command arrives - see `Game.describeCommands`
-/// for the Flutter-isolate side and `GameState.describeCommands` for the game
-/// isolate's.
-abstract class CommandDescriptor {
-  /// Registers what runs when [command] arrives.
-  ///
-  /// Registers what runs when [command] arrives: **the function the command
-  /// claims to be**, with no buffer in its signature and no pointer in its
-  /// body.
-  ///
-  /// <!-- snippet-setup
-  /// final CommandDescriptor descriptor = given();
-  /// final Damage damage = given();
-  /// -->
-  /// ```dart
-  /// descriptor.hasHandler(damage, (p) => p.amount * (p.crit ? 2 : 1));
-  /// ```
-  ///
-  /// One method per shape, not one method for all four, because Dart
-  /// will not let a handler type ride on the command's own type (a type
-  /// parameter cannot appear contravariantly in a superinterface, which
-  /// `GameCommandBase<R Function(P)>` would need). Four names is the price of
-  /// each one being checked at this line instead of casting on the far
-  /// isolate.
-  void hasHandler<P, R>(GameCommand<P, R> command, R Function(P) handler);
+/// One handler, described and not yet installed - what a command's
+/// [GameCommand.handledBy] and the two lane methods beside it hand back.
+///
+/// Opaque on purpose. A binding names three things - the command, the
+/// function, and which lane it is delivered on - and the only thing that
+/// reads it is the boot pass that installs it. It is produced inside a
+/// [CommandHandler.of] closure and consumed by `Game._bootFinalize`; a
+/// binding built anywhere else is a value nothing collects, which is the one
+/// way to make a handler that quietly never runs.
+final class CommandBinding {
+  const CommandBinding._(this._command, this._handler, this._delivery);
 
-  /// Registers a [SupplierCommand]'s handler: takes nothing, returns an `R`.
-  void hasSupplier<R>(SupplierCommand<R> command, R Function() handler);
+  final GameCommandBase _command;
+  final Function _handler;
+  final HandlerDelivery _delivery;
 
-  /// Registers a [SinkCommand]'s handler: takes a `P`, returns nothing.
-  void hasSink<P>(SinkCommand<P> command, void Function(P) handler);
-
-  /// Registers a [SignalCommand]'s handler: takes and returns nothing.
-  void hasSignal(SignalCommand command, void Function() handler);
-
-  /// Registers a [SinkCommand]'s handler to run **when the message arrives**
-  /// instead of inside the next tick window.
-  ///
-  /// This is what a control signal needs. A tick-delivered command is pumped
-  /// from `GameState.runFixedStep`, so it arrives only if the tick runs -
-  /// which makes it useless for anything that *stops* the tick, because the
-  /// message that starts it again would be waiting on the tick it stopped.
-  /// A receipt-delivered command is carried over the control port and run
-  /// from the port callback, with no tick involved.
-  ///
-  /// ```dart
-  /// // in GameState.describeCommands
-  /// descriptor.hasControlSink(setTimeScale, (s) => state.timeScale = s);
-  /// ```
-  ///
-  /// Four things are true of it that are not true of [hasSink], and all four
-  /// follow from there being no tick:
-  ///
-  /// **The future completes on send, not on execution.** `await` on a control
-  /// command means "handed to the port", not "done". A tick-delivered command
-  /// resolves when the far side has run it and replied; there is no reply leg
-  /// here, because a reply would be pumped by the tick this exists to work
-  /// without.
-  ///
-  /// **The handler must not change the world, and the engine now stops it.**
-  /// There is no open write window outside a tick: `MemoryPool.beginTick`
-  /// copies each page's published bytes over the write slot, so a write
-  /// landing outside one is erased by the next tick with nothing said. Writing
-  /// a component field, adding or destroying an entity, and loading or
-  /// unloading a scene each throw a `StateError` from here - in every build,
-  /// on a page that has published and on one that has not. See `HandlerWindow`
-  /// (#245); until then this was a debug `assert` covering component fields
-  /// alone, silent on an unpublished page, and gone from a release build.
-  ///
-  /// **A `StateChannel` is the exception, deliberately.** It publishes into
-  /// its own `TripleBuffer` on the spot, so nothing erases it, and it is the
-  /// answer leg this lane has instead of a reply - which is what the refusal
-  /// for a control command that returns something tells you to reach for.
-  /// Plain Dart state (a pause flag, a time scale) was never in question.
-  ///
-  /// **There is no ordering against tick-delivered commands.** They travel by
-  /// different carriers, so two calls sent in order can run in either. That
-  /// is inherent to working while the tick is stopped, not a defect.
-  void hasControlSink<P>(SinkCommand<P> command, void Function(P) handler);
-
-  /// [hasControlSink] for a [SignalCommand] - takes and returns nothing.
-  void hasControlSignal(SignalCommand command, void Function() handler);
-
-  /// Registers a [GameCommand]'s handler to run **once per frame, outside the
-  /// tick window** - so it answers while the fixed tick is stopped.
-  ///
-  /// This is pause-and-inspect. A tick-delivered command is pumped from
-  /// `GameState.runFixedStep`, so a paused game - or one at a time scale of
-  /// zero - queues it and answers nothing at all until the tick comes back. A
-  /// pause menu asking the simulation for a number, or an inspector reading a
-  /// world that is deliberately standing still, waits out the pause with no
-  /// error and no timeout. This lane is drained from `GameState.advance`
-  /// instead, which runs on every frame including one that afforded no step.
-  ///
-  /// ```dart
-  /// // in GameState.describeCommands
-  /// descriptor.hasReadOnlyHandler(inspect, (id) => _summarise(id));
-  /// ```
-  ///
-  /// **It keeps the reply leg**, which is what separates it from
-  /// [hasControlSink]. The batch rides the same command ring a tick-delivered
-  /// one does, so `await` completes when the handler has run and its answer
-  /// has come back - not when the bytes were handed over. That is why this
-  /// lane takes the shapes that return something and the control lane refuses
-  /// them.
-  ///
-  /// **Read-only is a promise you make, and the engine holds you to it.**
-  /// Nothing in Dart makes a closure read-only, so the lane is opened around
-  /// the dispatch instead: `CommandTransport` tells the pool which kind of
-  /// handler is running, and every path that changes anything asks. A write
-  /// from here throws a `StateError` naming the lane, in every build:
-  ///
-  /// - **A component field**, which there is no write slot for - `beginTick`
-  ///   would copy the published bytes back over it on the next step. Refused
-  ///   on a page that has published and on one that has not.
-  /// - **Adding or destroying an entity, loading or unloading a scene.**
-  ///   `unloadScene` frees native pages on the spot, which is the one #245
-  ///   named first.
-  /// - **A `StateChannel`.** Unlike the receipt lane, which publishes on one
-  ///   because it has no reply leg, this lane has a reply - so a write is
-  ///   never how it says something.
-  ///
-  /// So the lane is worth reaching for when the handler reads and returns, and
-  /// it will tell you when it is not. `hasHandler` is the one that may write.
-  ///
-  /// **There is no ordering against tick-delivered commands.** They are
-  /// drained from separate inboxes on separate schedules, so two batches sent
-  /// in order can run in either. Ordering *within* this lane is kept - it is
-  /// one FIFO fed by one ring - which is the same guarantee tick delivery
-  /// gives within its own.
-  void hasReadOnlyHandler<P, R>(
-    GameCommand<P, R> command,
-    R Function(P) handler,
-  );
-
-  /// [hasReadOnlyHandler] for a [SupplierCommand] - takes nothing, returns an
-  /// `R`.
-  void hasReadOnlySupplier<R>(SupplierCommand<R> command, R Function() handler);
-
-  /// Always throws. A read-only command that returns nothing does nothing.
-  ///
-  /// Here for the same reason [hasControlHandler] is: the name someone reaches
-  /// for should explain itself rather than be absent. A handler on this lane
-  /// promises not to write and a [SinkCommand] has no answer to give, so
-  /// between the two there is no effect left for it to have. Use [hasSink],
-  /// which is tick-delivered and may write, or [hasControlSink], which also
-  /// runs while the tick is stopped.
-  void hasReadOnlySink<P>(SinkCommand<P> command, void Function(P) handler);
-
-  /// Always throws, for the same reason as [hasReadOnlySink].
-  void hasReadOnlySignal(SignalCommand command, void Function() handler);
-
-  /// Always throws. A receipt-delivered command **cannot answer**.
-  ///
-  /// It exists so the name someone reaches for explains itself instead of
-  /// being absent. A control command completes when it reaches the port, and
-  /// its handler runs with no tick and no reply leg - so there is nowhere for
-  /// an `R` to come from. Use [hasHandler], which is tick-delivered and does
-  /// reply, or restate the call as a [SinkCommand] and publish the answer
-  /// through a `StateChannel`.
-  void hasControlHandler<P, R>(
-    GameCommand<P, R> command,
-    R Function(P) handler,
-  );
-
-  /// Always throws, for the same reason as [hasControlHandler].
-  void hasControlSupplier<R>(SupplierCommand<R> command, R Function() handler);
+  /// Installs this binding for [side]. `Game._bootFinalize` is the only
+  /// caller, once every command in the declaration order has an index.
+  @internal
+  void registerInto(CommandRegistry registry, HandlerSide side) =>
+      registry.declareHandler(_command, _handler, side, _delivery);
 }
 
-/// The registry behind [CommandDescriptor], owned by `Game`.
+/// A command handler declared on a field of the object that runs it - what
+/// [CommandHandler.of] hands back.
+///
+/// ```dart
+/// class MyState extends GameState<MyGame> {
+///   final spawnWave = CommandHandler.of(
+///     (MyState state) => state.game.spawnWave.handledBy(state._spawnWave),
+///   );
+///
+///   void _spawnWave(int size) { ... }
+/// }
+/// ```
+///
+/// # Declared on a field, resolved with the owner in hand
+///
+/// A handler names an instance member twice over - the command on the `Game`
+/// and the function on the object handling it - and a field initialiser can
+/// name neither, because it has no `this`
+/// (`implicit_this_reference_in_initializer`). So the owner arrives as the
+/// closure's argument, which is `GameSystem.owned`'s move and buys the same
+/// thing: the closure runs at boot against the *built* object, so an override
+/// of the method it names is what decides which function is registered.
+///
+/// **Which side handles the command is the object the field is on.** A field
+/// of the `Game` registers on the Flutter isolate; a field of the `GameState`
+/// registers on the game isolate. There is no direction to configure and no
+/// second place saying which side wins - the field is where it says so.
+final class CommandHandler {
+  CommandHandler._(this._bind);
+
+  final CommandBinding Function(Object owner) _bind;
+
+  /// Declares a handler on a field, from the constructor of the [Game] or
+  /// [GameState] that runs it.
+  ///
+  /// ```dart
+  /// final saveHandler = CommandHandler.of(
+  ///   (MyGame game) => game.save.handledBy(game._writeSaveFile),
+  /// );
+  /// ```
+  ///
+  /// [O] is checked when the closure runs, at boot, against the object the
+  /// field turned out to be declared on - so a closure annotated with the
+  /// wrong type says so instead of throwing a cast error from inside the
+  /// framework.
+  ///
+  /// **Collect only.** Nothing is registered here: the closure is not called,
+  /// the command has no index yet, and the registry the handler lands in does
+  /// not exist while the object is being constructed. `Game._bootFinalize`
+  /// numbers every command first and then runs every collected closure, which
+  /// is why a handler may name a command declared after it.
+  ///
+  /// # Eager, always
+  ///
+  /// `late final saveHandler = CommandHandler.of(...)` compiles and is wrong.
+  /// The call runs on the first *read*, long after boot collected and sealed
+  /// the list, so the handler would reach no pass at all. It does not get that
+  /// far: `DeclarationContext.addHandler` throws first, naming the shape.
+  static CommandHandler of<O extends Object>(
+    CommandBinding Function(O owner) bind,
+  ) {
+    final handle = CommandHandler._((Object owner) {
+      if (owner is! O) {
+        throw StateError(
+          'a handler declared with CommandHandler.of<$O> is held by a '
+          '${owner.runtimeType}, which is not a $O. The owner a handler '
+          'closure is handed is the Game or the GameState the declaration is '
+          'a field of, so the type argument has to be one that object '
+          'satisfies.',
+        );
+      }
+      return bind(owner);
+    });
+    DeclarationContext.addHandler(handle);
+    return handle;
+  }
+
+  /// Runs the closure against [owner] and installs what it described.
+  ///
+  /// Called once, from `Game._bootFinalize`, with the side decided by which
+  /// window collected this declaration.
+  @internal
+  void resolveInto(Object owner, CommandRegistry registry, HandlerSide side) =>
+      _bind(owner).registerInto(registry, side);
+}
+
+/// The registry every `CommandBinding` installs into, owned by `Game`.
 @internal
 final class CommandRegistry implements ParamLayouts {
   CommandRegistry(this.sender, {required this.simulating, this.inline = false});
@@ -777,7 +966,8 @@ final class CommandRegistry implements ParamLayouts {
     throw StateError(
       'a command record names index $index, and this copy declared only '
       '$length commands. The two isolate copies disagree about the command '
-      'list, which means describeCommands did not run identically on both.',
+      'list, which cannot happen while both hold the deep copy of one Game - '
+      'so one of them was built from different source.',
     );
   }
 
@@ -823,8 +1013,9 @@ final class CommandRegistry implements ParamLayouts {
     if (command.index < 0 || tryAt(command.index) != command) {
       throw StateError(
         '${command.runtimeType} has no handler to register against because it '
-        'was never declared. Commands are declared in Game.describeCommands; '
-        'GameState.describeCommands can only handle them.',
+        'was never declared. A command is declared on a Game field with '
+        'Command.of; a CommandHandler.of field only says what runs when one '
+        'arrives.',
       );
     }
     if (command.hasHandler) {
@@ -836,12 +1027,12 @@ final class CommandRegistry implements ParamLayouts {
     }
     // Installed on **both** copies, unconditionally. It used to be installed
     // only where `handles(side)` was true, which worked when each copy ran its
-    // own declaration pass and so evaluated that for itself. Now main declares
-    // once, before the spawn, with `simulating: false` - so a game-side
-    // handler would be stored nowhere and the game isolate would inherit a
-    // command with no handler at all. Who *dispatches* is still decided by
-    // [handles], in the transport; this only decides who is holding the
-    // function, and a handler that is never dispatched costs one field.
+    // own declaration pass and so evaluated that for itself. Now main resolves
+    // every declaration once, before the spawn, with `simulating: false` - so
+    // a game-side handler would be stored nowhere and the game isolate would
+    // inherit a command with no handler at all. Who *dispatches* is still
+    // decided by [handles], in the transport; this only decides who is holding
+    // the function, and a handler that is never dispatched costs one field.
     command.bindHandler(side, handler, install: true, delivery: delivery);
   }
 
@@ -905,8 +1096,8 @@ final class CommandRegistrar {
   }
 }
 
-/// The message both descriptors give for a control handler on a shape that
-/// returns something. One function so the two sides cannot drift.
+/// The message every shape gives for a control handler that returns
+/// something. One function so the four cannot drift.
 Never _controlCannotAnswer(Type command, String method) {
   throw StateError(
     '$command returns a value, so it cannot be registered with $method. A '
@@ -914,192 +1105,21 @@ Never _controlCannotAnswer(Type command, String method) {
     'the port callback fires, which is what lets it work while the fixed '
     'tick is stopped - and it is also why there is no reply leg: a reply '
     'would be pumped inside the tick window it exists to work without, so '
-    'the caller would wait forever. Register it with hasHandler or '
-    'hasSupplier, which are tick-delivered and do reply, or make it a '
-    'SinkCommand and publish the answer on a StateChannel.',
+    'the caller would wait forever. Register it with handledBy, which is '
+    'tick-delivered and does reply, or make it a SinkCommand and publish the '
+    'answer on a StateChannel.',
   );
 }
 
-/// The message both descriptors give for a read-only handler on a shape that
-/// answers with nothing. One function so the two sides cannot drift.
+/// The message every shape gives for a read-only handler that answers with
+/// nothing. One function so the four cannot drift.
 Never _readOnlyDoesNothing(Type command, String method) {
   throw StateError(
     '$command returns nothing, so registering it with $method would leave it '
     'with no effect at all: the read-only lane is drained outside the tick '
     'window and its handlers promise not to write, so a shape that has no '
-    'answer to send back has nothing left to do. Register it with hasSink or '
-    'hasSignal, which are tick-delivered and may write, or with '
-    'hasControlSink or hasControlSignal, which also run while the fixed tick '
-    'is stopped.',
+    'answer to send back has nothing left to do. Register it with handledBy, '
+    'which is tick-delivered and may write, or with handledOnControl, which '
+    'also runs while the fixed tick is stopped.',
   );
-}
-
-/// `CommandDescriptor` as seen by `Game.describeCommands` - registers handlers
-/// that run on the **Flutter** isolate.
-@internal
-final class MainCommandDescriptor implements CommandDescriptor {
-  MainCommandDescriptor(this._registry);
-
-  final CommandRegistry _registry;
-
-  @override
-  void hasHandler<P, R>(GameCommand<P, R> command, R Function(P) handler) =>
-      _registry.declareHandler(command, handler, HandlerSide.main);
-
-  @override
-  void hasSupplier<R>(SupplierCommand<R> command, R Function() handler) =>
-      _registry.declareHandler(command, handler, HandlerSide.main);
-
-  @override
-  void hasSink<P>(SinkCommand<P> command, void Function(P) handler) =>
-      _registry.declareHandler(command, handler, HandlerSide.main);
-
-  @override
-  void hasSignal(SignalCommand command, void Function() handler) =>
-      _registry.declareHandler(command, handler, HandlerSide.main);
-
-  @override
-  void hasControlSink<P>(SinkCommand<P> command, void Function(P) handler) =>
-      _registry.declareHandler(
-        command,
-        handler,
-        HandlerSide.main,
-        HandlerDelivery.receipt,
-      );
-
-  @override
-  void hasControlSignal(SignalCommand command, void Function() handler) =>
-      _registry.declareHandler(
-        command,
-        handler,
-        HandlerSide.main,
-        HandlerDelivery.receipt,
-      );
-
-  @override
-  void hasReadOnlyHandler<P, R>(
-    GameCommand<P, R> command,
-    R Function(P) handler,
-  ) => _registry.declareHandler(
-    command,
-    handler,
-    HandlerSide.main,
-    HandlerDelivery.frame,
-  );
-
-  @override
-  void hasReadOnlySupplier<R>(
-    SupplierCommand<R> command,
-    R Function() handler,
-  ) => _registry.declareHandler(
-    command,
-    handler,
-    HandlerSide.main,
-    HandlerDelivery.frame,
-  );
-
-  @override
-  void hasReadOnlySink<P>(SinkCommand<P> command, void Function(P) handler) =>
-      _readOnlyDoesNothing(command.runtimeType, 'hasReadOnlySink');
-
-  @override
-  void hasReadOnlySignal(SignalCommand command, void Function() handler) =>
-      _readOnlyDoesNothing(command.runtimeType, 'hasReadOnlySignal');
-
-  @override
-  void hasControlHandler<P, R>(
-    GameCommand<P, R> command,
-    R Function(P) handler,
-  ) => _controlCannotAnswer(command.runtimeType, 'hasControlHandler');
-
-  @override
-  void hasControlSupplier<R>(
-    SupplierCommand<R> command,
-    R Function() handler,
-  ) => _controlCannotAnswer(command.runtimeType, 'hasControlSupplier');
-}
-
-/// `CommandDescriptor` as seen by `GameState.describeCommands` - registers
-/// handlers that run on the **game** isolate.
-@internal
-final class GameCommandDescriptor implements CommandDescriptor {
-  GameCommandDescriptor(this._registry);
-
-  final CommandRegistry _registry;
-
-  @override
-  void hasHandler<P, R>(GameCommand<P, R> command, R Function(P) handler) =>
-      _registry.declareHandler(command, handler, HandlerSide.game);
-
-  @override
-  void hasSupplier<R>(SupplierCommand<R> command, R Function() handler) =>
-      _registry.declareHandler(command, handler, HandlerSide.game);
-
-  @override
-  void hasSink<P>(SinkCommand<P> command, void Function(P) handler) =>
-      _registry.declareHandler(command, handler, HandlerSide.game);
-
-  @override
-  void hasSignal(SignalCommand command, void Function() handler) =>
-      _registry.declareHandler(command, handler, HandlerSide.game);
-
-  @override
-  void hasControlSink<P>(SinkCommand<P> command, void Function(P) handler) =>
-      _registry.declareHandler(
-        command,
-        handler,
-        HandlerSide.game,
-        HandlerDelivery.receipt,
-      );
-
-  @override
-  void hasControlSignal(SignalCommand command, void Function() handler) =>
-      _registry.declareHandler(
-        command,
-        handler,
-        HandlerSide.game,
-        HandlerDelivery.receipt,
-      );
-
-  @override
-  void hasReadOnlyHandler<P, R>(
-    GameCommand<P, R> command,
-    R Function(P) handler,
-  ) => _registry.declareHandler(
-    command,
-    handler,
-    HandlerSide.game,
-    HandlerDelivery.frame,
-  );
-
-  @override
-  void hasReadOnlySupplier<R>(
-    SupplierCommand<R> command,
-    R Function() handler,
-  ) => _registry.declareHandler(
-    command,
-    handler,
-    HandlerSide.game,
-    HandlerDelivery.frame,
-  );
-
-  @override
-  void hasReadOnlySink<P>(SinkCommand<P> command, void Function(P) handler) =>
-      _readOnlyDoesNothing(command.runtimeType, 'hasReadOnlySink');
-
-  @override
-  void hasReadOnlySignal(SignalCommand command, void Function() handler) =>
-      _readOnlyDoesNothing(command.runtimeType, 'hasReadOnlySignal');
-
-  @override
-  void hasControlHandler<P, R>(
-    GameCommand<P, R> command,
-    R Function(P) handler,
-  ) => _controlCannotAnswer(command.runtimeType, 'hasControlHandler');
-
-  @override
-  void hasControlSupplier<R>(
-    SupplierCommand<R> command,
-    R Function() handler,
-  ) => _controlCannotAnswer(command.runtimeType, 'hasControlSupplier');
 }

@@ -90,8 +90,8 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
   ///
   /// [NetDescriptor.hasHandler] and [NetDescriptor.hasSignal] take an instance
   /// member of the state, which a field initialiser cannot name; that is the
-  /// same shape as the handler half of `describeCommands`, and it is the fact
-  /// that holds this pass where it is.
+  /// same shape a command handler has, and it is the fact that holds this
+  /// pass where it is.
   ///
   /// The descriptor being a [NetBinder] over `NetworkSystem.registry` used to
   /// be a second one - the system had to exist before the pass could run, and
@@ -137,13 +137,11 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
   ///
   /// Reverse, matching every other teardown event in the engine: a listener
   /// told late can still read what the earlier ones have been warned about.
-  final peerLeftEvent = Event.of<
-    NetPeerListener,
-    ({NetPeerId peer, NetDisconnectReason reason})
-  >(
-    (listener, left) => listener.onPeerLeft(left.peer, left.reason),
-    reverse: true,
-  );
+  final peerLeftEvent =
+      Event.of<NetPeerListener, ({NetPeerId peer, NetDisconnectReason reason})>(
+        (listener, left) => listener.onPeerLeft(left.peer, left.reason),
+        reverse: true,
+      );
 
   /// A session opened - hosted or joined. See [NetSessionListener].
   final sessionOpenedEvent = Event.of<NetSessionListener, NetSession>(
@@ -155,7 +153,6 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
     (listener, reason) => listener.onSessionClosed(reason),
     reverse: true,
   );
-
 }
 
 /// Carries a game's network messages: drains what arrived at the top of each
