@@ -7,7 +7,6 @@ import 'package:good/src/archetype.dart';
 import 'package:good/src/command/command.dart';
 import 'package:good/src/command/param.dart';
 import 'package:good/src/data.dart';
-import 'package:good/src/event.dart';
 import 'package:good/src/event/fixed_loop.dart';
 import 'package:good/src/event/state.dart';
 import 'package:good/src/event/lifecycle.dart';
