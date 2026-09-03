@@ -11,6 +11,10 @@ import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/struct.dart';
 import 'package:good/src/system.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'event_declaration_test.g.dart';
 
 // Declaring an event on the field that holds it, beside declaring it in
 // `describeEvents`.
@@ -185,6 +189,8 @@ Future<T> _boot<T extends _NotedGame>(T Function() create) async {
 }
 
 void main() {
+  _installDeclarations();
+
   setUp(_Noted.log.clear);
 
   tearDown(() {

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:good/good.dart';
 
+part 'coroutine_test.g.dart';
+
 /// The live run under test.
 late Game run;
 
@@ -65,6 +67,8 @@ Future<_Game> _boot() async {
 CoroutineScheduler _sched() => run.state.coroutines;
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

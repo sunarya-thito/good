@@ -8,6 +8,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:good/good.dart';
 
+part 'world_observation_test.g.dart';
+
 class _Rock extends EntityStruct {}
 
 class _Tree extends EntityStruct {}
@@ -119,6 +121,8 @@ Future<(Game, _Scene)> _boot() async {
 }
 
 void main() {
+  _installDeclarations();
+
   setUp(() {
     _Watched.mounted = 0;
     order.clear();

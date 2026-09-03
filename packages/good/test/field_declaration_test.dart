@@ -5,6 +5,10 @@ import 'package:good/src/pool.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/struct.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'field_declaration_test.g.dart';
 
 /// Declares its columns from the field declarations, with no `describeStruct`
 /// at all.
@@ -96,6 +100,8 @@ _Level _level() {
 }
 
 void main() {
+  _installDeclarations();
+
   setUp(() {
     ArchetypeRegistry.reset();
     ComponentTypeRegistry.reset();

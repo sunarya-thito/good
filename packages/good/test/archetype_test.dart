@@ -8,6 +8,10 @@ import 'package:good/src/pool.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/struct.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'archetype_test.g.dart';
 
 // Mirrors goo2d's Transform2D exactly - five float64 fields declared after
 // a `super.describeStruct(data)` call - so this suite covers the same mixin
@@ -78,6 +82,8 @@ _Level _level({int pageSize = 4096}) {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

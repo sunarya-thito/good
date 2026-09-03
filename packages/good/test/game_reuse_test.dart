@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:good/good.dart';
 
+part 'game_reuse_test.g.dart';
+
 /// **One `Game` instance describes one game and backs one run of it.**
 ///
 /// This is the rule, not a limitation waiting to be lifted, and this file is
@@ -66,6 +68,8 @@ class _Reuse extends Game {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

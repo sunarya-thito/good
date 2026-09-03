@@ -12,6 +12,10 @@ import 'package:good/src/pool.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/struct.dart';
 import 'package:good/src/system.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'game_state_test.g.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
@@ -187,6 +191,8 @@ void _watch(String name, StateChannel<Object?> channel) {
 }
 
 void main() {
+  _installDeclarations();
+
   setUp(changes.clear);
 
   tearDown(() {

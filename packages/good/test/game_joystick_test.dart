@@ -14,6 +14,10 @@ import 'package:good/src/input/input_axis.dart';
 import 'package:good/src/input/input_binding.dart';
 import 'package:good/src/system.dart';
 import 'package:good/src/widget/joystick.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'game_joystick_test.g.dart';
 
 // The on-screen stick (#191): a finger on a widget becoming two virtual axis
 // floats, and coming back to rest on every way a finger can stop.
@@ -122,6 +126,8 @@ Widget _boxed(Widget child, {double width = 400, double height = 400}) =>
 const Offset _middle = Offset(400, 300);
 
 void main() {
+  _installDeclarations();
+
   group('a drag is proportional', () {
     testWidgets('half the travel reads half', (tester) async {
       final game = await _boot();

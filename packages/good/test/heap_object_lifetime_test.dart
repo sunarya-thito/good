@@ -42,6 +42,10 @@ import 'package:good/src/pool.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/struct.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'heap_object_lifetime_test.g.dart';
 
 /// A distinct instance per entity, so one row's slot is never mistaken for
 /// another's.
@@ -157,6 +161,8 @@ Future<_HeapGame> _boot() async {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

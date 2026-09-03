@@ -18,6 +18,10 @@ import 'package:good/src/audio/audio_clip.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/scene_handle.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'asset_loader_hook_test.g.dart';
 
 class _Payload {
   const _Payload(this.mark);
@@ -95,6 +99,8 @@ Future<G> _boot<G extends Game>(G Function() create) async {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

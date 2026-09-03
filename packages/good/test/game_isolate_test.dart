@@ -24,6 +24,10 @@ import 'package:good/src/struct.dart';
 import 'package:good/src/system.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector2;
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'game_isolate_test.g.dart';
 
 /// The live run under test. A `GameHandle`, not an `InlineGameHandle`: every
 /// test in this file spawns a real isolate, so the world is on the other side
@@ -1387,6 +1391,8 @@ class _RegistrarGame extends Game {
 }
 
 void main() {
+  _installDeclarations();
+
   // Registered on *this* isolate only, and that is the point rather than an
   // omission: this is the copy with Flutter attached, so it is the only one
   // that decodes. The spawned game isolate declares the same assets, hands

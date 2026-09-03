@@ -9,6 +9,10 @@ import 'package:good/src/input.dart';
 import 'package:good/src/input/input_binding.dart';
 import 'package:good/src/input/input_key.dart';
 import 'package:good/src/system.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'game_gamepad_test.g.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
@@ -102,6 +106,8 @@ Future<_PadGame> _boot() async {
 }
 
 void main() {
+  _installDeclarations();
+
   group('slots', () {
     test('the first pad heard from takes the first seat', () async {
       final game = await _boot();

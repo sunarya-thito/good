@@ -10,6 +10,10 @@ import 'package:good/src/scene.dart';
 import 'package:good/src/struct.dart';
 import 'package:good/src/system.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'game_buffer_test.g.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
@@ -162,6 +166,8 @@ List<int> _drainTicks(RingBuffer ring) {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

@@ -5,6 +5,10 @@ import 'package:good/src/pool.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/struct.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'column_initial_value_test.g.dart';
 
 enum _Stance { idle, walking, running }
 
@@ -89,6 +93,8 @@ _Squad _squad() {
 }
 
 void main() {
+  _installDeclarations();
+
   setUp(() {
     ArchetypeRegistry.reset();
     ComponentTypeRegistry.reset();

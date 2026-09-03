@@ -19,6 +19,10 @@ import 'package:good/src/system.dart';
 import 'package:flutter/foundation.dart' show FlutterError, FlutterErrorDetails;
 import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'game_test.g.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
@@ -941,6 +945,8 @@ GameState _state(Game game) => run.state;
 const Duration _step = Duration(milliseconds: 10);
 
 void main() {
+  _installDeclarations();
+
   setUp(log.clear);
 
   tearDown(() {

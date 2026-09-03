@@ -15,6 +15,10 @@ import 'package:good/src/game_state.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/struct.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'component_bits_test.g.dart';
 
 mixin _Alpha on Component {
   final alphaValue = Field.float64();
@@ -145,6 +149,8 @@ List<int> _indices(List<Type> types) =>
     <int>[for (final type in types) ComponentTypeRegistry.indexFor(type)];
 
 void main() {
+  _installDeclarations();
+
   setUp(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

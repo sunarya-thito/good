@@ -7,6 +7,10 @@ import 'package:good/src/scene.dart';
 import 'package:good/src/struct.dart';
 import 'package:good/src/system.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'query_test.g.dart';
 
 // Small fixture set covering: a component two archetypes share (_Position),
 // one only some have (_Health), and the hierarchy's Child mixin (already
@@ -86,6 +90,8 @@ _Level _level({int pageSize = 4096}) {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

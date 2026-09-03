@@ -21,6 +21,10 @@ import 'package:good/src/input/input_binding.dart';
 import 'package:good/src/input/input_key.dart';
 import 'package:good/src/input/input_state.dart';
 import 'package:good/src/system.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'game_touch_test.g.dart';
 
 // Contacts, end to end on the single-copy inline path: written through the
 // same InputDevice a GameView writes through, resolved by ContactBinding on a
@@ -131,6 +135,8 @@ List<String> _lastStep() {
 }
 
 void main() {
+  _installDeclarations();
+
   group('one contact, over its life', () {
     test('a press, a move and a lift read began, held, then ended', () async {
       final game = await _boot(_TouchGame.new);

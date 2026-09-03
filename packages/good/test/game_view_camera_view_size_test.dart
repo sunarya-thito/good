@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:good/good.dart';
 
+part 'game_view_camera_view_size_test.g.dart';
+
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
 /// one inline run per isolate means one binding is enough.
@@ -74,6 +76,8 @@ Future<void> _layout(
 );
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

@@ -9,6 +9,10 @@ import 'package:good/src/input/input_binding.dart';
 import 'package:good/src/input/input_key.dart';
 import 'package:good/src/input/input_state.dart';
 import 'package:good/src/system.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'game_composite_input_test.g.dart';
 
 // One action bound to several sources - #215. Driven through
 // Game.startInline(...) the way game_input_test.dart and game_analog_test.dart
@@ -219,6 +223,8 @@ void _releaseAndStep(Game game, List<InputKey> keys) {
 String _xy(Vector2 v) => '${v.x},${v.y}';
 
 void main() {
+  _installDeclarations();
+
   setUp(events.clear);
 
   group('the merge rule', () {

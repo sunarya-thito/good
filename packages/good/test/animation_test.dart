@@ -2,6 +2,8 @@ import 'package:flutter/widgets.dart' show Curves;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:good/good.dart';
 
+part 'animation_test.g.dart';
+
 /// The live run under test.
 late Game run;
 
@@ -130,6 +132,8 @@ Future<_Game> _boot() async {
 _EnemyTimeline _timeline() => run.state.singleScene<_Scene>().enemy.timeline;
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

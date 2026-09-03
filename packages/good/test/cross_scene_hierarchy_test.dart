@@ -9,6 +9,10 @@ import 'package:good/src/game_state.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/struct.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'cross_scene_hierarchy_test.g.dart';
 
 /// The live run under test, bound the way `multi_scene_test.dart` binds it.
 late Game run;
@@ -123,6 +127,8 @@ Matcher _crossesScenes() => throwsA(
 );
 
 void main() {
+  _installDeclarations();
+
   setUp(() {
     _unmounted.clear();
     _parentAtUnmount.clear();

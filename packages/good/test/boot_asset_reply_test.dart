@@ -12,6 +12,10 @@ import 'package:good/src/game_state.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/system.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'boot_asset_reply_test.g.dart';
 
 // The boot window in which main can produce a reply the game isolate is
 // already waiting on.
@@ -214,6 +218,8 @@ class _YieldingGame extends _BootLoadGame {
 late Game _run;
 
 void main() {
+  _installDeclarations();
+
   setUp(() {
     _sceneLoadedHere = 0;
   });

@@ -16,6 +16,10 @@ import 'package:good/src/input/input_binding.dart';
 import 'package:good/src/input/input_axis.dart';
 import 'package:good/src/input/input_key.dart';
 import 'package:good/src/system.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'game_input_test.g.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
@@ -500,6 +504,8 @@ void _releaseAndStep(Game game, List<InputKey> keys) {
 }
 
 void main() {
+  _installDeclarations();
+
   setUp(events.clear);
 
   group('the key table', () {

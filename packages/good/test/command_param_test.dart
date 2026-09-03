@@ -7,6 +7,10 @@ import 'package:good/src/command/param.dart';
 import 'package:good/src/command/transport.dart';
 import 'package:good/src/ring_buffer.dart';
 import 'package:good/src/struct.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'command_param_test.g.dart';
 
 // The command API's two lower layers - the parameter record and the
 // declaration/dispatch registry - exercised with a loopback sender: no
@@ -323,6 +327,8 @@ class _LateParam extends SinkCommand<int> {
 }
 
 void main() {
+  _installDeclarations();
+
   group('declaration', () {
     test('a command gets its index from declaration order', () {
       final r = _registry().registry;

@@ -12,6 +12,10 @@ import 'package:good/src/input/input_binding.dart';
 import 'package:good/src/input/input_key.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/system.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'game_declaration_test.g.dart';
 
 // `Game.start` and `Game.startInline` take a constructor, so the framework
 // builds the game and two declaration windows are open while its fields
@@ -234,6 +238,8 @@ void _reset() {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(_reset);
 
   group('a channel on a Game field', () {

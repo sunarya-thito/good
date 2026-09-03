@@ -15,6 +15,10 @@ import 'package:good/src/game_state.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/system.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'audio_isolate_test.g.dart';
 
 // The half of audio that only a real spawn can show: a clip's **bytes**
 // reaching the game isolate.
@@ -188,6 +192,8 @@ class _IsolateAudioGame extends Game {
 late _IsolateAudioGame run;
 
 void main() {
+  _installDeclarations();
+
   _onMain = true;
 
   tearDown(() {

@@ -12,6 +12,10 @@ import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'audio_mixer_test.g.dart';
 
 // The real backend cannot be driven from here, and that is a property of the
 // backend rather than a gap in these tests. `SoLoudAudioBackend` opens
@@ -212,6 +216,8 @@ Future<_AudioGame> _boot(_FakeBackend? backend, {int voiceCap = 16}) async {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

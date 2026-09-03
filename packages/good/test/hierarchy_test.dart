@@ -7,6 +7,10 @@ import 'package:good/src/pool.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/struct.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'hierarchy_test.g.dart';
 
 mixin _Name on Component {
   final tag = Field.uint16();
@@ -181,6 +185,8 @@ _Level _level() {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

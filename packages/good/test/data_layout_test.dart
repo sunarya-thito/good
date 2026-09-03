@@ -9,6 +9,10 @@ import 'package:good/src/pool.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/struct.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'data_layout_test.g.dart';
 
 /// The payload type. Plain - it is not the addressed thing any more, so it
 /// carries no address, no loaded flag and no base class.
@@ -117,6 +121,8 @@ class _Harness {
 }
 
 void main() {
+  _installDeclarations();
+
   // Both registries are process-global (deliberately - see their docs), so
   // each test gets a clean slate rather than accumulating archetype ids and
   // component bits across the file.

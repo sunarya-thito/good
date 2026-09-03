@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:good/good.dart';
 
+part 'stacked_game_view_test.g.dart';
+
 // #275. Two `GameView`s in a `Stack` - the way a HUD is composed over a world
 // - turned one finger into two live contacts under one id, and let the view
 // behind name itself as the one the cursor is in.
@@ -121,6 +123,8 @@ Future<void> _stack(WidgetTester tester, _StackedGame game) =>
     );
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();

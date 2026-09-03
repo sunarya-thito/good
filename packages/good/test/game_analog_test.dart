@@ -13,6 +13,10 @@ import 'package:good/src/input/input_binding.dart';
 import 'package:good/src/input/input_key.dart';
 import 'package:good/src/input/input_state.dart';
 import 'package:good/src/system.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'game_analog_test.g.dart';
 
 /// The live run under test - one inline run per isolate, as every other input
 /// suite in this directory does.
@@ -135,6 +139,8 @@ Future<_AnalogGame> _boot() async {
 _AnalogSystem get _system => run.state.getSystem<_AnalogSystem>();
 
 void main() {
+  _installDeclarations();
+
   setUp(events.clear);
 
   group('the axis table', () {

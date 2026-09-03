@@ -12,6 +12,10 @@ import 'package:good/src/game_state.dart';
 import 'package:good/src/pool.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/struct.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'asset_test.g.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
@@ -219,6 +223,8 @@ _PropScene _bringUp(_PropScene scene) {
 }
 
 void main() {
+  _installDeclarations();
+
   setUp(() {
     assets = Assets();
     _Counts.resetAll();

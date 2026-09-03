@@ -10,6 +10,8 @@ import 'package:good/src/input/input_key.dart';
 import 'package:good/src/scannable.dart';
 import 'package:good/src/system.dart';
 
+part 'system_input_declaration_test.g.dart';
+
 // One system, one `Input.of` field, booted the way a real one is - through
 // `describeSystems`, which is the only route a system reaches a run by. What
 // this file pins is that the run takes that action exactly once.
@@ -129,6 +131,8 @@ const GeneratedDeclarations _testDeclarations = GeneratedDeclarations(
 );
 
 void main() {
+  _installDeclarations();
+
   late _OneActionGame game;
   late _OneActionSystem system;
 

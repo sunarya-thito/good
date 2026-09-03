@@ -12,6 +12,10 @@ import 'package:good/src/input/input_binding.dart';
 import 'package:good/src/input/input_key.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/system.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'system_declaration_test.g.dart';
 
 // `SystemDescriptor.has` takes a constructor, so the framework builds the
 // system and two declaration windows are open while its fields initialise:
@@ -268,6 +272,8 @@ void _reset() {
 }
 
 void main() {
+  _installDeclarations();
+
   setUp(_Noted.log.clear);
   tearDown(_reset);
 

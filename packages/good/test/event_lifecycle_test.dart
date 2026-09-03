@@ -10,6 +10,10 @@ import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/struct.dart';
 import 'package:good/src/system.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'event_lifecycle_test.g.dart';
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
@@ -304,6 +308,8 @@ Future<_LifecycleGame> _boot() async {
 }
 
 void main() {
+  _installDeclarations();
+
   setUp(log.clear);
 
   tearDown(() {

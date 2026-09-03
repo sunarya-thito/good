@@ -14,6 +14,10 @@ import 'package:good/src/scene_handle.dart';
 import 'package:good/src/struct.dart';
 import 'package:good/src/system.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:good/src/declarations.g.dart';
+import 'package:good/src/scannable.dart';
+
+part 'world_census_test.g.dart';
 
 /// The live run under test. One inline run per isolate, so a file-level
 /// binding is enough - the same shape game_test.dart uses.
@@ -184,6 +188,8 @@ ArchetypeCensus _archetypeNamed(WorldCensus census, String name) =>
     census.archetypes.singleWhere((a) => a.typeName == name);
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();
