@@ -1495,6 +1495,7 @@ class DeclarationScan {
     required this.declarers,
     required this.refusals,
     required this.unresolved,
+    required this.cycles,
     required this.uncollectable,
   });
 
@@ -1514,6 +1515,17 @@ class DeclarationScan {
   /// say what the field holds. Whether that field was a declaration is exactly
   /// what is unknown, so it is reported instead of being answered either way.
   final List<DeclarationRefusal> unresolved;
+
+  /// Rings of structs that declare each other - see [declarationCycleMessage].
+  ///
+  /// A declared child is an ordinary field holding an ordinary constructor
+  /// call, so a struct that declares itself, directly or round a ring, builds
+  /// one of itself while building itself. That does not terminate, and unlike
+  /// every other declaration mistake there is no moment at run time to catch
+  /// it in: nothing of this engine's is on the recursion, so what a run
+  /// produces is Dart's own `StackOverflowError` with no ring named. The ring
+  /// is a fact about the source, so this is where it can be named.
+  final List<DeclarationRefusal> cycles;
 
   /// Declarations that are accepted and that a collector cannot read, keyed
   /// `Class.field`, to why.
@@ -1716,8 +1728,108 @@ DeclarationScan scanDeclarations(ScanSources sources) {
     declarers: declarers,
     refusals: refusals,
     unresolved: unresolved,
+    cycles: _declarationCycles(sources, typesByName),
     uncollectable: uncollectable,
   );
+}
+
+/// Every ring of structs that build each other while being built.
+///
+/// The edge is "an instance of X holds a declaration whose value is an
+/// instance of Y", read off [flattenedDeclarations] so a field a mixin writes
+/// counts for every class applying it. A ring in that graph is a constructor
+/// that calls itself round the loop.
+///
+/// Restricted to [entityStructRoot] values, which is the whole of what can
+/// close one: every other declaration value is a handle its factory built and
+/// handed back, and a handle holds no declarations of its own.
+List<DeclarationRefusal> _declarationCycles(
+  ScanSources sources,
+  Map<String, ScannedType> typesByName,
+) {
+  final found = <DeclarationRefusal>[];
+  final reported = <String>{};
+  final paths = sources.units.keys.toList()..sort();
+  for (final path in paths) {
+    for (final type in sources.units[path]!.types) {
+      if (!isSubtypeOf(type.name, entityStructRoot, typesByName)) continue;
+      final ring = _ringFrom(type.name, typesByName);
+      if (ring == null) continue;
+      final closing = ring.last;
+      // The types the ring passes through, which is what names it. Read off
+      // the walk rather than off each declaration's owner, because a field a
+      // mixin writes is owned by the mixin and the ring goes through the
+      // class applying it.
+      final through = <String>[
+        type.name,
+        for (final step in ring) TypeSource.parse(step.valueType)!.name,
+      ];
+      final ringFrom = through.sublist(through.indexOf(through.last));
+      // Keyed on the ring itself, so one ring is one line however many of its
+      // members the walk starts from - three, for a ring of three.
+      final key = (ringFrom.toSet().toList()..sort()).join(',');
+      if (!reported.add(key)) continue;
+      final owner = typesByName[closing.owner];
+      found.add(
+        DeclarationRefusal(
+          owner: closing.owner,
+          field: closing.name,
+          path: owner?.path ?? path,
+          reason:
+              'it declares ${closing.valueType}, and that closes a ring: '
+              '${ringFrom.join(' -> ')}. Each of those builds the next one in '
+              'its own field initialiser, so constructing any of them does '
+              'not terminate. A struct that owns a variable number of the '
+              'same thing spawns them with '
+              '`scene.addEntity(prefab, parent: ...)` instead, where the '
+              'count is a decision and not a declaration',
+        ),
+      );
+    }
+  }
+  return found;
+}
+
+/// The declarations leading from [name] back to something already on the
+/// path, or null when nothing does.
+///
+/// Depth first over the graph [_declarationCycles] describes, carrying the
+/// declarations walked through so the caller can name the ring rather than
+/// just report that there is one.
+List<ScannedDeclaration>? _ringFrom(
+  String name,
+  Map<String, ScannedType> typesByName, {
+  List<String>? path,
+  List<ScannedDeclaration>? walked,
+}) {
+  final onPath = path ?? <String>[];
+  final steps = walked ?? <ScannedDeclaration>[];
+  final type = typesByName[name];
+  if (type == null) return null;
+  onPath.add(name);
+  for (final declaration in flattenedDeclarations(type, typesByName)) {
+    final parsed = TypeSource.parse(declaration.valueType);
+    if (parsed == null) continue;
+    if (!isSubtypeOf(parsed.name, entityStructRoot, typesByName)) continue;
+    steps.add(declaration);
+    if (onPath.contains(parsed.name)) {
+      onPath.removeLast();
+      return steps;
+    }
+    final deeper = _ringFrom(
+      parsed.name,
+      typesByName,
+      path: onPath,
+      walked: steps,
+    );
+    if (deeper != null) {
+      onPath.removeLast();
+      return deeper;
+    }
+    steps.removeLast();
+  }
+  onPath.removeLast();
+  return null;
 }
 
 /// Every declaration an instance of [type] holds, in the order its
@@ -1819,6 +1931,34 @@ String declarationRefusalMessage(
       'two: one half names the field, and the other runs at a moment nothing '
       'at the declaration mentions, on whichever owner happens to be under '
       'construction when it does.',
+    );
+  return lines.toString();
+}
+
+/// What a run refusing over a ring of structs says.
+///
+/// [display] names files the way [declarationRefusalMessage]'s does.
+String declarationCycleMessage(
+  DeclarationScan scan,
+  String Function(String path) display,
+) {
+  final lines = StringBuffer()
+    ..writeln('A struct declares itself, round a ring of declared children:')
+    ..writeln();
+  for (final refusal in scan.cycles) {
+    lines.writeln(
+      '  ${display(refusal.path)}: ${refusal.owner}.${refusal.field} - '
+      '${refusal.reason}',
+    );
+  }
+  lines
+    ..writeln()
+    ..writeln(
+      'A declared child is a field holding an ordinary constructor call, so a '
+      'ring of them is a constructor that calls itself. Nothing of this '
+      'engine is on that recursion and there is no moment in a run to catch '
+      'it in - what a run produces is a StackOverflowError naming nothing. '
+      'The ring is a fact about the source, so it is named here instead.',
     );
   return lines.toString();
 }

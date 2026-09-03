@@ -463,10 +463,15 @@ void _declarations(
     for (final refusal in scan.unresolved)
       if (own.any((lib) => p.isWithin(lib, refusal.path))) refusal,
   ];
+  final cycles = <DeclarationRefusal>[
+    for (final refusal in scan.cycles)
+      if (own.any((lib) => p.isWithin(lib, refusal.path))) refusal,
+  ];
   final judged = DeclarationScan(
     declarers: scan.declarers,
     refusals: refusals,
     unresolved: unresolved,
+    cycles: cycles,
     uncollectable: scan.uncollectable,
   );
 
@@ -477,17 +482,17 @@ void _declarations(
     }
   }
 
-  if (refusals.isEmpty && unresolved.isEmpty) {
+  if (refusals.isEmpty && unresolved.isEmpty && cycles.isEmpty) {
     stdout.writeln(
       '${scan.declarationCount} declaration(s) on ${scan.declarers.length} '
       'class(es) are each held by the field that declares them.',
     );
     return;
   }
-  // Both, when there are both. They are fixed by different edits - one
-  // rewrites a declaration, the other names a type the walk could not - and a
-  // run that showed the first and hid the second would be asked to run again
-  // to find out about it.
+  // All three, when there are all three. Each is fixed by a different edit -
+  // rewrite a declaration, name a type the walk could not, break a ring - and
+  // a run that showed one and hid the others would be asked to run again to
+  // find out about them.
   if (refusals.isNotEmpty) {
     stderr.writeln(
       declarationRefusalMessage(judged, (path) => _displayPath(packages, path)),
@@ -499,6 +504,11 @@ void _declarations(
         judged,
         (path) => _displayPath(packages, path),
       ),
+    );
+  }
+  if (cycles.isNotEmpty) {
+    stderr.writeln(
+      declarationCycleMessage(judged, (path) => _displayPath(packages, path)),
     );
   }
   exitCode = 65;

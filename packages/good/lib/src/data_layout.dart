@@ -2385,16 +2385,25 @@ final class ArchetypeDataDescriptor extends _ColumnDescriptor {
 
   /// Records the columns a constructed instance's field initialisers
   /// produced, ahead of anything a describe pass goes on to add.
+  void declare(Iterable<ScannableField> declarations) {
+    for (final declaration in declarations) {
+      declareOne(declaration);
+    }
+  }
+
+  /// One declaration, in the position the caller reached it.
+  ///
+  /// Kept apart from [declare] because a declared child's handle column has to
+  /// land between the columns declared either side of it, so the caller that
+  /// reserves one walks the list itself - see `_SceneDescriptor._register`.
   ///
   /// A declaration that is not a column is skipped rather than refused: a
   /// `Query` is a declaration too, and what it resolves against is the
   /// component-bit registry rather than a row layout. This descriptor lays
   /// out rows, and says so by taking only what it can lay out.
-  void declare(Iterable<ScannableField> declarations) {
-    for (final declaration in declarations) {
-      if (declaration is! _Declared) continue;
-      _columns.add(declaration);
-    }
+  void declareOne(ScannableField declaration) {
+    if (declaration is! _Declared) return;
+    _columns.add(declaration);
   }
 
   /// Gives every column its row space and registers it, so `seal` stamps its

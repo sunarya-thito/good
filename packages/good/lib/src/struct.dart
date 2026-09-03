@@ -5,7 +5,6 @@ import 'package:good/src/coroutine/coroutine.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/asset.dart';
 import 'package:good/src/data.dart';
-import 'package:good/src/declare.dart';
 import 'package:good/src/event.dart';
 import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/scannable.dart';
@@ -77,7 +76,7 @@ abstract interface class MultiComponent implements Component {}
 // because .has on the describeType now accepts direct Type as parameter.
 abstract class EntityStruct extends GameListenerBase
     with EventBus, Coroutines, Animations
-    implements MultiComponent {
+    implements MultiComponent, ScannableField {
   /// An entity of **this** struct was created.
   ///
   /// Declared here, so the collect pass fills it from this prefab's own
@@ -221,58 +220,6 @@ abstract class EntityStruct extends GameListenerBase
   @mustCallSuper
   void describeStruct(DataDescriptor data) {}
 
-  /// Declares one entity in whatever declaration scope is open, and returns
-  /// its prefab.
-  ///
-  /// In an `EntityStruct`'s field initialisers the open scope is **this**
-  /// prefab, so what is declared is a child of every entity spawned from it:
-  ///
-  /// ```dart
-  /// class Turret extends EntityStruct with Transform2D, Parent {
-  ///   final barrel = EntityStruct.of(Barrel.new);
-  /// }
-  /// ```
-  ///
-  /// Spawning a `Turret` spawns a `Barrel` and links it under the turret;
-  /// `turretEntity<Parent>()[turret.barrel]` reads which one. Destroying the
-  /// turret destroys the barrel with it, because a declared child is an
-  /// ordinary child.
-  ///
-  /// # Why it takes a constructor
-  ///
-  /// `EntityStruct.of(Barrel.new)`, not `EntityStruct.of<Barrel>()`. Dart has
-  /// no `new T()` - instantiating a type parameter is
-  /// `invocation_of_non_function`, verified on 3.13 - so a type argument
-  /// alone cannot build the prefab, and there is no factory registry to look
-  /// one up in. The tear-off is also what `SceneDescriptor.has` has taken
-  /// since #57, and for the same reason: the child's own field initialisers
-  /// declare columns, so a descriptor has to be open before the object
-  /// exists. A constructor with arguments goes in a closure,
-  /// `EntityStruct.of(() => Barrel(bore: 5))`.
-  ///
-  /// # Why it returns the prefab and not a column
-  ///
-  /// The declaring struct is one instance for the whole archetype, so the
-  /// child *entity* is per-parent-entity state and lives in a column. The
-  /// prefab is not: it is the same object for every turret in the game, and
-  /// it is what `barrel.someField[e]` resolves against. A single static
-  /// return type cannot be the prefab in one scope and a column in another,
-  /// so it is the prefab, and the column is reached by indexing it.
-  ///
-  /// # What is enforced, and when
-  ///
-  /// The bound stays `T extends EntityStruct`, because Dart has no
-  /// intersection bound to write `T extends EntityStruct & Child` with - and
-  /// because a scene-scope declaration is not a `Child` at all. So both
-  /// hierarchy constraints are registration-time errors, raised the first
-  /// time the scene is built: the declarer must mix in `Parent`, and [T] must
-  /// mix in `Child`.
-  ///
-  /// What *is* static is the read: `ParentAccessor.operator []` takes a
-  /// `Child`, so asking a parent for something that could never have been
-  /// declared as a child does not compile.
-  static T of<T extends EntityStruct>(T Function() create) =>
-      DeclarationContext.prefabs.declareChild<T>(create);
 }
 
 /// Declares which component *types* an archetype carries - one `has<T>()` per

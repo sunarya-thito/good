@@ -743,6 +743,19 @@ void main() {
         isEmpty,
         reason: unresolvedInitializerMessage(scan, (path) => path),
       );
+
+      // And nothing declares itself round a ring. This one has no run-time
+      // half at all: a declared child is a field holding a constructor call,
+      // so a ring is a constructor that calls itself and what a run reaches is
+      // a StackOverflowError with nothing named.
+      expect(
+        <String>[
+          for (final refusal in scan.cycles)
+            '${refusal.owner}.${refusal.field}',
+        ],
+        isEmpty,
+        reason: declarationCycleMessage(scan, (path) => path),
+      );
     });
 
     // The doc comments this repository publishes, asked the same way and for

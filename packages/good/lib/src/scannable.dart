@@ -57,7 +57,17 @@ abstract interface class Scannable {}
 ///     the other;
 ///   * `Query`;
 ///   * `EventDispatcher` and `SignalDispatcher`, through the listener set
-///     they share.
+///     they share;
+///   * `Asset`, whose handle carries a key and takes its address when the
+///     scene holding it is brought up;
+///   * `EntityStruct`, so a struct held in another struct's field is that
+///     struct's declared child.
+///
+/// The last one is the one that reads oddly, because an `EntityStruct` is a
+/// whole prefab rather than a handle to something. It is a declaration for
+/// the same reason the rest are: the field holds a value nothing registered,
+/// and the class that holds it is what the registration has to be attributed
+/// to. `_SceneDescriptor._register` is what reads them back off.
 ///
 /// # What a root has to be able to do first
 ///
@@ -75,6 +85,13 @@ abstract interface class Scannable {}
 /// delivery closure and read off the constructed object afterwards -
 /// `EventBinder.bind` does it, exactly as `ArchetypeDataDescriptor.realize`
 /// does for a column.
+///
+/// `Asset` and `EntityStruct` are the two most recent, and both were held
+/// back by the same thing. `Asset.of` reached an ambient asset descriptor and
+/// `EntityStruct.of` an ambient prefab registrar, so neither value could be
+/// produced by a field initialiser alone. Now `Asset.of` builds a handle
+/// carrying a key and `Barrel()` builds a prefab, and the scene addresses and
+/// registers what it finds afterwards.
 ///
 /// `Sprite`, `ColliderBody`, `ParamPointer`, `StateChannel` and `Track` are
 /// declaration values too and are not marked, for the same reason and not a

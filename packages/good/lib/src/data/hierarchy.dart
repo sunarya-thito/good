@@ -32,9 +32,9 @@ mixin Child on Component {
   DataPointer<Entity?>? _declaredIn;
   int _declaredInArchetype = -1;
 
-  /// The column on the archetype that **declared** this prefab with
-  /// `EntityStruct.of`, holding which entity of this prefab one entity of
-  /// that archetype owns.
+  /// The column on the archetype that **declared** this prefab in one of
+  /// its fields, holding which entity of this prefab one entity of that
+  /// archetype owns.
   ///
   /// The reverse of [childParent], and named so the two do not read as the same
   /// thing: [childParent] is a column on *this* row naming the owner; this is a
@@ -57,8 +57,8 @@ mixin Child on Component {
   @internal
   int get declaredInArchetype => _declaredInArchetype;
 
-  /// Records the column `EntityStruct.of` reserved for this prefab on the
-  /// declaring archetype. Called once, by that registration.
+  /// Records the column the declaring archetype reserved for this prefab.
+  /// Called once, by that registration.
   @internal
   void bindDeclaration(DataPointer<Entity?> handle, int archetypeId) {
     _declaredIn = handle;
@@ -66,6 +66,28 @@ mixin Child on Component {
   }
 }
 
+/// Holds children: entities linked under one of this component's entities.
+///
+/// Two ways in, and they answer different questions. `addChild` attaches an
+/// entity that already exists, at whatever moment the game decides. A
+/// **declared** child is structural - every entity of this prefab gets one,
+/// spawned and linked at mount and destroyed with it - and it is written as an
+/// ordinary field holding the child prefab:
+///
+/// ```dart
+/// class Turret extends EntityStruct with Transform2D, Parent {
+///   final barrel = Barrel();
+/// }
+///
+/// final barrelEntity = turretEntity<Parent>()[turret.barrel];
+/// ```
+///
+/// The field holds the *prefab*, which is one object for the whole archetype,
+/// and the entity it stands for is per-parent-entity state living in a column
+/// on this row - which is why the read goes through the parent entity rather
+/// than through the field. `Barrel` has to mix in [Child], and the declarer
+/// has to mix in this; both are registration-time errors rather than static
+/// ones, because Dart has no intersection bound to write them with.
 mixin Parent on Component {
   final parentFirstChild = Field.optEntity();
   final parentLastChild = Field.optEntity();
@@ -79,10 +101,9 @@ mixin Parent on Component {
 
   final List<EntityStruct> _declaredChildren = <EntityStruct>[];
 
-  /// Every child prefab this one declared with `EntityStruct.of`, in
-  /// declaration order - walked by `SceneStruct.addEntityIn` on each spawn.
-  /// Internal: user code holds the prefabs `EntityStruct.of` gave it, never
-  /// this.
+  /// Every child prefab this one declared in a field, in declaration order -
+  /// walked by `SceneStruct.addEntityIn` on each spawn. Internal: user code
+  /// holds the prefabs its own fields hold, never this.
   ///
   /// Here and not on `EntityStruct`, because holding children is what `Parent`
   /// is. A prefab with no hierarchy keeps no list.
@@ -115,12 +136,12 @@ mixin Parent on Component {
 /// crosses one cannot be unloaded correctly, and `unmountEntitiesOf` for what
 /// repairs one that a release build let through.
 extension ParentAccessor on Accessor<Parent> {
-  /// The entity of [child] that this one owns - the other half of what
-  /// `EntityStruct.of` declares.
+  /// The entity of [child] that this one owns - the other half of what a
+  /// declared child field declares.
   ///
   /// ```dart
   /// class Turret extends EntityStruct with Parent {
-  ///   final barrel = EntityStruct.of(Barrel.new);
+  ///   final barrel = Barrel();
   /// }
   ///
   /// final barrelEntity = turretEntity<Parent>()[turret.barrel];
@@ -318,7 +339,7 @@ extension ParentAccessor on Accessor<Parent> {
     if (child.declaredIn == null) {
       throw StateError(
         '${child.runtimeType} was not declared as a child of anything, so no '
-        'entity holds one. `EntityStruct.of(...)` in a prefab\'s field '
+        'entity holds one. A child prefab in a prefab\'s field '
         'initialisers declares a child; the same call in a scene declares a '
         'scene entity, and a scene entity is spawned with '
         '`scene.addEntity(prefab)` rather than held by a parent.',
@@ -434,7 +455,7 @@ extension ParentAccessor on Accessor<Parent> {
     // and the second silently overwrites the first - the parent ends up with
     // one child and the rest are orphaned with no error anywhere. Spawning a
     // character with three attachments from one command is exactly that shape,
-    // and so is one prefab declaring three children with `EntityStruct.of`.
+    // and so is one prefab declaring three children in its own fields.
     // See `DataPointer.readPending`.
     final oldLast = self.parentLastChild.readPending(this);
     childComponent.childPrevSibling[child] = oldLast;

@@ -949,7 +949,7 @@ void main() {
     });
   });
 
-  group('Asset.of', () {
+  group('an asset named in a field', () {
     test('a prefab declares its texture in the field that holds it', () {
       final scene = _AmbientScene(<EntityStruct Function()>[_Ambient.new]);
       _bringUpAmbient(scene);
@@ -969,7 +969,7 @@ void main() {
       );
     });
 
-    test('two prefabs naming one key get the identical handle', () {
+    test('two prefabs naming one key land on one address', () {
       final scene = _AmbientScene(<EntityStruct Function()>[
         _Ambient.new,
         _AmbientTwin.new,
@@ -978,16 +978,29 @@ void main() {
       final first = scene.registered.first as _Ambient;
       final second = scene.registered.last as _AmbientTwin;
 
-      // `identical`, not equality and not "both resolve": an implementation
-      // that declared twice would hand back two handles at two addresses,
-      // both of which resolve and both of which decode. This is the assertion
-      // that fails on that, and it is the whole reason moving the declaration
-      // to the use site does not multiply the asset.
-      expect(identical(first.texture, second.texture), isTrue);
+      // The address, not `identical`. Each field initialiser builds its own
+      // handle - that is what a declaration reaching nothing means - and the
+      // second one is pointed at the first when the scene binds it. So the
+      // handles are two objects and the asset is one, and `pack()` is what
+      // says so. An implementation that declared twice would hand back two
+      // addresses, both of which resolve and both of which decode; this is
+      // the assertion that fails on that.
       expect(
         first.texture.pack(),
         second.texture.pack(),
         reason: 'one address, so one row default and one decode',
+      );
+      expect(
+        identical(assets.tryGet(_sharedKey), first.texture),
+        isTrue,
+        reason: 'the first to name it is the handle the table holds',
+      );
+      expect(
+        identical(assets.tryGet(_sharedKey), second.texture),
+        isFalse,
+        reason:
+            'and the second is its own object - which is why nothing about '
+            'an asset is cached on the handle any more',
       );
       expect(
         scene.declaredAssets.length,
@@ -996,6 +1009,26 @@ void main() {
             "the scene's footprint counts the asset once, however many "
             'prefabs named it',
       );
+    });
+
+    test('a second handle reads the payload the first one decoded', () async {
+      // The failure the delegation exists to stop. Two handles, one address,
+      // one decode - and a payload cached on the handle that decoded would
+      // leave the other one throwing "never loaded on this isolate" for an
+      // asset that is loaded.
+      final scene = _AmbientScene(<EntityStruct Function()>[
+        _Ambient.new,
+        _AmbientTwin.new,
+      ]);
+      _bringUpAmbient(scene);
+      final first = scene.registered.first as _Ambient;
+      final second = scene.registered.last as _AmbientTwin;
+
+      await assets.load(_sharedKey);
+
+      expect(second.texture.isLoaded, isTrue);
+      expect(second.texture.value.byteCount, first.texture.value.byteCount);
+      expect(_sharedKey.decodes, 1);
     });
 
     test('the ambient form and describeAssets name one asset, not two', () {
@@ -1010,13 +1043,13 @@ void main() {
     });
 
     test('a nested declaration does not take the declarer\'s own asset', () {
-      // `_AmbientParent` writes `EntityStruct.of(...)` *before* its own
-      // `Asset.of(...)`, so the child is registered in full while the parent
-      // is still constructing. A model that attributed an asset to an owner
-      // by draining a pending list at each registration would file
-      // `_parentKey` against the child and leave the parent with nothing.
-      // Nothing here does, because one `_AssetDescriptor` serves the whole
-      // scene and no prefab has an asset list of its own.
+      // `_AmbientParent` declares its child *before* its own asset, so the
+      // child is registered in full before the parent's own handle is bound.
+      // A model that attributed an asset to an owner by draining a pending
+      // list at each registration would file `_parentKey` against the child
+      // and leave the parent with nothing. Nothing here does, because one
+      // `_AssetDescriptor` serves the whole scene and no prefab has an asset
+      // list of its own.
       final scene = _AmbientScene(<EntityStruct Function()>[
         _AmbientParent.new,
       ]);
@@ -1040,42 +1073,43 @@ void main() {
       );
     });
 
-    test('declaring with no scene being brought up is refused', () {
-      // Constructed by hand, so no pass is open. Asserted on the *message*:
-      // the guard has to name the window, and `_LazyAmbient` below reaches
-      // the same guard by a different route, so the type alone tells nothing.
+    test('a handle nothing ever declared says so when it is read', () {
+      // Constructed by hand, so no scene ever bound it. Building the handle is
+      // fine and says nothing - a declaration reserves nothing where it is
+      // written - and the read is where it is missing from.
+      final loose = _Ambient();
+
       expect(
-        _Ambient.new,
+        () => loose.texture.pack(),
         throwsA(
           isA<StateError>().having(
             (StateError e) => e.message,
             'message',
-            contains('no scene being brought up'),
+            contains('no scene ever declared it'),
           ),
         ),
       );
     });
 
-    test('a SceneStruct cannot declare from its own field initialiser', () {
-      // A scene is constructed by the caller and only gets its `Assets` at
-      // initializeScene, so its initialisers run before there is anything to
-      // declare into. The same fact `Field.*` and `Event.of` state for scenes.
-      expect(
-        _SceneFieldAmbient.new,
-        throwsA(
-          isA<StateError>().having(
-            (StateError e) => e.message,
-            'message',
-            allOf(
-              contains('no scene being brought up'),
-              contains('describeAssets'),
-            ),
-          ),
-        ),
-      );
+    test('a SceneStruct declares in its own field, like a prefab', () {
+      // It could not before: a scene is constructed by the caller and only
+      // gets its `Assets` at initializeScene, so an initialiser reaching an
+      // ambient descriptor found nothing there. A handle carrying a key
+      // reaches nothing at all, so the field works and initializeScene binds
+      // it.
+      final scene = _SceneFieldAmbient();
+      scene.initializeScene(_pool(), assets: assets);
+      addTearDown(scene.pool.dispose);
+
+      expect(scene.declaredAssets.single.key, same(_sharedKey));
+      expect(scene.texture.pack(), assets.tryGet(_sharedKey)!.pack());
     });
 
-    test('a late final declaration is refused when it finally runs', () {
+    test('a late final declaration is still missing from the footprint', () {
+      // The read runs after the bring-up, so the collector found the field
+      // unassigned and the scene never learned about the asset. It is what
+      // `good_tool --declarations` refuses a `late` declaration over, seen
+      // from the other end.
       final scene = _AmbientScene(<EntityStruct Function()>[_LazyAmbient.new]);
       _bringUpAmbient(scene);
       final prefab = scene.registered.single as _LazyAmbient;
@@ -1083,50 +1117,18 @@ void main() {
       expect(
         scene.declaredAssets,
         isEmpty,
-        reason: 'nothing ran during the pass, which is the defect',
+        reason: 'nothing was there to collect, which is the defect',
       );
       expect(
-        () => prefab.texture,
+        () => prefab.texture.pack(),
         throwsA(
           isA<StateError>().having(
             (StateError e) => e.message,
             'message',
-            contains('no scene being brought up'),
-          ),
-        ),
-        reason:
-            'the read happens after the pass closed, so an asset declared '
-            'this way would be addressed on whichever copy touched it first',
-      );
-    });
-
-    test('a scene that throws mid-pass does not leave the window open', () {
-      expect(
-        () => _ThrowingScene()..initializeScene(_pool(), assets: assets),
-        throwsStateError,
-      );
-
-      // Asserted by declaring with nothing open, not by bringing another
-      // scene up: a leaked pop leaves the dead scene's descriptor *under* the
-      // next one, so every later bring-up still reads its own at the top and
-      // looks perfectly healthy. What the leak actually buys is a declaration
-      // outside any pass silently landing on a scene nothing will load - and
-      // this stack is a static, so it survives into every later test in the
-      // file.
-      expect(
-        _Ambient.new,
-        throwsA(
-          isA<StateError>().having(
-            (StateError e) => e.message,
-            'message',
-            contains('no scene being brought up'),
+            contains('no scene ever declared it'),
           ),
         ),
       );
-
-      final scene = _AmbientScene(<EntityStruct Function()>[_Ambient.new]);
-      _bringUpAmbient(scene);
-      expect(scene.declaredAssets.single.key, same(_sharedKey));
     });
 
     test('a loaded scene decodes what a field initialiser named', () async {
@@ -1186,7 +1188,7 @@ class _AmbientTwin extends EntityStruct {
 /// A nested declaration with the declarer's own asset written **after** it,
 /// which is the ordering an owner-attributed model gets wrong.
 class _AmbientParent extends EntityStruct with Parent {
-  final child = EntityStruct.of(_AmbientChild.new);
+  final child = _AmbientChild();
   final texture = Asset.of(_parentKey);
 }
 
@@ -1194,8 +1196,9 @@ class _AmbientChild extends EntityStruct with Child {
   final texture = Asset.of(_childKey);
 }
 
-/// Declares against the window from a `late final`, so the initialiser runs on
-/// first read - long after the pass both isolate copies run.
+/// Names the asset from a `late final`, so the initialiser runs on first read
+/// - long after the collect pass both isolate copies run, which is why the
+/// scene never hears about it.
 class _LazyAmbient extends EntityStruct {
   late final Asset<_FakePayload> texture = Asset.of(_sharedKey);
 }
@@ -1229,20 +1232,11 @@ class _AmbientScene extends SceneStruct {
   }
 }
 
-/// A scene reaching for the window from its own field initialiser, which runs
-/// at `_SceneFieldAmbient()` - before `initializeScene` gave it an `Assets`.
+/// A scene naming an asset in its own field, which runs at
+/// `_SceneFieldAmbient()` - before `initializeScene` gave it an `Assets`, and
+/// fine, because the handle carries only the key until then.
 class _SceneFieldAmbient extends SceneStruct {
   final texture = Asset.of(_sharedKey);
-}
-
-/// Throws out of `describeScene`, so the window has to be popped by the
-/// `finally` and not by the normal path.
-class _ThrowingScene extends SceneStruct {
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    throw StateError('describeScene failed with the asset window open');
-  }
 }
 
 /// File-level keys, because a field initialiser cannot read `this` and these

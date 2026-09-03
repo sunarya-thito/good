@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart' show FlutterError;
 import 'package:flutter/services.dart' show AssetBundle, rootBundle;
 import 'package:meta/meta.dart';
 import 'package:good/src/data.dart';
-import 'package:good/src/declare.dart';
+import 'package:good/src/scannable.dart';
 
 // ---------------------------------------------------------------------------
 // The three-way split
@@ -282,7 +282,7 @@ class AssetKey<T> {
   /// arguments, so `T` read here is the real one either way.
   Type get payloadType => T;
 
-  /// Builds this key's handle at [address].
+  /// Builds this key's handle, with no address on it yet.
   ///
   /// Lives here and not in [Assets] for the same reason [payloadType] does.
   /// `Assets.adoptAt` receives its key as `AssetKey<Object?>` - the
@@ -291,9 +291,15 @@ class AssetKey<T> {
   /// a handle that `Assets.of<Texture>()` then refuses to unpack, because
   /// `Asset<Object?>` is not an `Asset<Texture>`. Constructed here, `T` is the
   /// instance's reified argument and the handle comes out correctly typed
-  /// whatever the call site's static view of the key.
+  /// whatever the call site's static view of the key. [Asset.of] reads it for
+  /// the same reason from the other side: the field's static type is whatever
+  /// the call site wrote, and the key knows better.
+  ///
+  /// The address is not a parameter because a declaration reserves nothing
+  /// where it is written. [Assets.bind] gives the handle its address, once,
+  /// while the scene holding it is brought up.
   @internal
-  Asset<T> newAsset(int address) => Asset<T>._(this, address);
+  Asset<T> newAsset() => Asset<T>._(this);
 
   /// What turns this key's bytes into a [T].
   ///
@@ -450,12 +456,21 @@ abstract interface class AssetLoaderRegistrar {
 /// copy holds the address and the key, forever, and that is exactly what it
 /// needs: it writes the address into component rows and never draws. Reading
 /// [value] there throws by name instead of null-dereferencing.
-final class Asset<T> implements IntRepresentable {
-  Asset._(this.key, this._address);
+///
+/// # Two handles can name one asset
+///
+/// A field initialiser reaches nothing, so `Asset.of` builds a handle that
+/// holds only the key. [Assets.bind] is what gives it an address, and when
+/// two prefabs name one key the second handle is pointed at the first rather
+/// than addressed again. So `identical` is not the test for "the same asset"
+/// any more - [pack] is. Everything a handle can be asked resolves through
+/// the one that was addressed, so the payload, the address and the info are
+/// one thing however many fields named it.
+final class Asset<T> implements ScannableField, IntRepresentable {
+  Asset._(this.key);
 
-  /// Declares [key] against the scene being brought up and hands back its
-  /// handle, so a prefab names an asset in the field that holds it instead of
-  /// in a `describeAssets` pass and a `late final`.
+  /// Names [key] in the field that holds it, instead of in a `describeAssets`
+  /// pass and a `late final`.
   ///
   /// ```dart
   /// class Player extends EntityStruct with Transform2D, Renderable2D {
@@ -463,43 +478,78 @@ final class Asset<T> implements IntRepresentable {
   /// }
   /// ```
   ///
-  /// This is [AssetDescriptor.has] reached without being handed the
-  /// descriptor - the same call, doing the same registration, so a scene
-  /// loads the asset exactly as it did before. What changes is who writes the
-  /// call, not what it does. `Field.float64` is the same move made for
-  /// columns, and the descriptor it reaches is [DeclarationContext.assets].
+  /// This declares and reserves nothing. It builds a handle carrying the key
+  /// and hands it back, exactly as `Field.float64` builds a column and hands
+  /// it back, and the scene that brings the declarer up reads it off the
+  /// constructed object and addresses it - `_AssetDescriptor.declare`, through
+  /// [Assets.bind]. So it works wherever a field initialiser works: inside a
+  /// prefab, on a `SceneStruct`, on an object built by hand and never
+  /// registered.
   ///
-  /// **Idempotent per identity**, because [AssetDescriptor.has] is: two
-  /// prefabs writing `Asset.of(Textures.player)` get the *identical* handle,
-  /// one address and one decode. That is what stops a declaration moving to
-  /// the use site turning one shared texture into two.
+  /// **Still one asset per identity.** Two prefabs writing
+  /// `Asset.of(Textures.player)` end up at one address, one entry in the
+  /// scene's footprint and one decode; what they no longer share is the
+  /// handle *object*, because each field holds the one its own initialiser
+  /// built. [pack] is what says two handles are the same asset.
   ///
-  /// Throws when nothing is being brought up - a prefab constructed by hand,
-  /// or a `late final` that runs on first read rather than during the pass
-  /// both isolate copies run. A `SceneStruct`'s own field initialisers throw
-  /// too: a scene is constructed by the caller and has no `Assets` until
-  /// `initializeScene`, so a scene declares in `describeAssets`, which is
-  /// handed the same descriptor this reads.
-  static Asset<T> of<T>(AssetKey<T> key) =>
-      DeclarationContext.assets.has<T>(key);
+  /// Reading [value], [info] or [pack] before a scene has bound it throws by
+  /// name. That is the whole of what used to be a construction-time error: a
+  /// handle nothing addressed is a declaration nothing collected, and it says
+  /// so at the read instead of at a moment that depended on what was open.
+  static Asset<T> of<T>(AssetKey<T> key) => key.newAsset();
 
   /// What this asset is. Readable on every copy, loaded or not.
   final AssetKey<T> key;
 
-  final int _address;
+  /// The handle everything about this asset lives on: this one, once an
+  /// [Assets] addressed it, or the handle that already held this identity
+  /// when a second field named the same key. Null until a scene binds it.
+  Asset<Object?>? _declared;
+
+  int _address = -1;
 
   T? _value;
   AssetInfo? _info;
 
+  Asset<Object?> get _resolved {
+    final declared = _declared;
+    if (declared == null) {
+      throw StateError(
+        '${key.debugLabel} was named in a field but no scene ever declared '
+        'it, so it has no address and no payload. A handle is addressed while '
+        'the object holding it is registered - by SceneDescriptor.has for a '
+        'prefab, or by initializeScene for the scene itself - so this one is '
+        'either on an object nothing registered, or on a field the generated '
+        'collector does not list. A private field is not collectable; run '
+        '`dart run good_tool --declarations` to see which fields a collector '
+        'can read.',
+      );
+    }
+    return declared;
+  }
+
+  @internal
+  bool get isDeclared => _declared != null;
+
+  /// Takes [address] and becomes the handle every other one for this identity
+  /// resolves through.
+  void _declareAt(int address) {
+    _address = address;
+    _declared = this;
+  }
+
+  /// Resolves through [declared] instead, which already holds this identity.
+  void _declareAs(Asset<Object?> declared) => _declared = declared;
+
   /// Its address in the [Assets] that declared it. Meaningful only there.
   @override
-  int pack() => _address;
+  int pack() => _resolved._address;
 
   /// Whether this copy has actually decoded the payload.
   ///
   /// False on the game isolate for every asset, always. [pack] is usable
   /// either way, which is the whole point.
-  bool get isLoaded => _value != null;
+  bool get isLoaded => _resolved._value != null;
 
   /// The decoded payload.
   ///
@@ -507,12 +557,13 @@ final class Asset<T> implements IntRepresentable {
   /// isolate always, and the decoding isolate before the asset's scene has
   /// finished loading.
   T get value {
-    final value = _value;
+    final resolved = _resolved;
+    final value = resolved._value;
     if (value == null) {
       throw StateError(
-        '${key.debugLabel} is declared (address $_address) but was never '
-        'loaded on this isolate, so its payload cannot be read. Asset bytes '
-        'are decoded only on the isolate that can decode them (the '
+        '${key.debugLabel} is declared (address ${resolved._address}) but was '
+        'never loaded on this isolate, so its payload cannot be read. Asset '
+        'bytes are decoded only on the isolate that can decode them (the '
         'main/Flutter one); the game isolate holds the address and the key and '
         'nothing else, by design. If this is the decoding isolate, the asset '
         'was never passed to Assets.load - declare it on a prefab or scene '
@@ -520,19 +571,20 @@ final class Asset<T> implements IntRepresentable {
         'set for you.',
       );
     }
-    return value;
+    return value as T;
   }
 
   /// What decoding this asset discovered about it, replicated to every copy -
   /// see [AssetLoader.describe]. Null before the load completes, and null for
   /// a loader that publishes nothing.
-  AssetInfo? get info => _info;
+  AssetInfo? get info => _resolved._info;
 
   /// How diagnostics name this asset.
   String get debugLabel => key.debugLabel;
 
   @override
-  String toString() => 'Asset($debugLabel @$_address)';
+  String toString() =>
+      'Asset($debugLabel @${_declared == null ? 'unbound' : _resolved._address})';
 }
 
 /// Declares [key] and returns the handle to keep in a field - the third
@@ -648,10 +700,45 @@ final class Assets {
     final identity = _identityOf(key);
     final existing = _byIdentity[identity];
     if (existing != null) return existing as Asset<T>;
-    final asset = key.newAsset(_addresses.length);
-    _addresses.add(asset);
-    _byIdentity[identity] = asset;
+    final asset = key.newAsset();
+    _address(asset, _addresses.length);
     return asset;
+  }
+
+  /// Gives [asset] - a handle a field initialiser built and nothing has
+  /// addressed - the address its identity holds, and hands back the handle
+  /// that identity is addressed on.
+  ///
+  /// Two answers, and they are the same declaration either way. The first
+  /// handle for an identity takes the next address and becomes the one every
+  /// later handle resolves through; a second one for the same identity is
+  /// pointed at it and takes no address of its own. That is what stops a
+  /// declaration moving from a `describeAssets` pass onto the field that
+  /// holds it from turning one shared texture into two.
+  ///
+  /// Idempotent, so a scene brought up twice - or an object registered into
+  /// two scenes sharing one [Assets] - binds to what it already had rather
+  /// than to a second address.
+  @internal
+  Asset<Object?> bind(Asset<Object?> asset) {
+    if (asset.isDeclared) return asset._resolved;
+    final identity = _identityOf(asset.key);
+    final existing = _byIdentity[identity];
+    if (existing != null) {
+      asset._declareAs(existing);
+      return existing;
+    }
+    _address(asset, _addresses.length);
+    return asset;
+  }
+
+  void _address(Asset<Object?> asset, int address) {
+    asset._declareAt(address);
+    while (_addresses.length <= address) {
+      _addresses.add(null);
+    }
+    _addresses[address] = asset;
+    _byIdentity[_identityOf(asset.key)] = asset;
   }
 
   /// Declares [key] at an address **chosen elsewhere** - the decoding
@@ -670,12 +757,8 @@ final class Assets {
   Asset<T> adoptAt<T>(int address, AssetKey<T> key) {
     final existing = _at(address);
     if (existing != null) return existing as Asset<T>;
-    final asset = key.newAsset(address);
-    while (_addresses.length <= address) {
-      _addresses.add(null);
-    }
-    _addresses[address] = asset;
-    _byIdentity[_identityOf(key)] = asset;
+    final asset = key.newAsset();
+    _address(asset, address);
     return asset;
   }
 
@@ -911,7 +994,7 @@ mixin EnumAssetKey<T> implements AssetKey<T> {
   Type get payloadType => T;
 
   @override
-  Asset<T> newAsset(int address) => Asset<T>._(this, address);
+  Asset<T> newAsset() => Asset<T>._(this);
 
   @override
   AssetLoader<T> get loader => AssetLoaders.of<T>();
@@ -944,7 +1027,7 @@ mixin LocalEnumAssetKey<T> implements EnumAssetKey<T> {
   Type get payloadType => T;
 
   @override
-  Asset<T> newAsset(int address) => Asset<T>._(this, address);
+  Asset<T> newAsset() => Asset<T>._(this);
 
   @override
   AssetLoader<T> get loader => AssetLoaders.of<T>();

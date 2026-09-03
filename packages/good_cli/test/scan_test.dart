@@ -47,7 +47,7 @@ abstract interface class ScannableAnnotation {}
 
 abstract interface class Component implements Scannable {}
 abstract interface class MultiComponent implements Component {}
-abstract class EntityStruct implements MultiComponent {}
+abstract class EntityStruct implements MultiComponent, ScannableField {}
 abstract class SceneStruct implements Scannable {}
 abstract class GameSystem implements Scannable {}
 
@@ -631,6 +631,72 @@ class Movement extends GameSystem {
       expect(scan.unresolved, isEmpty);
       expect(scan.refusals, isEmpty);
       expect(scan.declarers, isEmpty);
+    });
+
+    // What the registration stack used to answer. A declared child is a field
+    // holding a constructor call, so the recursion is Dart's own and a run
+    // reaches no engine code to report from - it gets a StackOverflowError
+    // naming nothing. The ring is written down in the source, so this is the
+    // only place left that can name it.
+    test('a struct that declares itself is refused, and the ring named', () {
+      final scan = _declarations('''
+class Turret extends EntityStruct {
+  final loop = Turret();
+}
+''');
+
+      expect(scan.cycles, hasLength(1));
+      expect(scan.cycles.single.owner, 'Turret');
+      expect(scan.cycles.single.field, 'loop');
+      expect(scan.cycles.single.reason, contains('Turret -> Turret'));
+    });
+
+    test('a ring through three structs is one refusal, not three', () {
+      final scan = _declarations('''
+class Turret extends EntityStruct {
+  final barrel = Barrel();
+}
+
+class Barrel extends EntityStruct {
+  final tip = Tip();
+}
+
+class Tip extends EntityStruct {
+  final turret = Turret();
+}
+''');
+
+      expect(
+        <String>[for (final cycle in scan.cycles) '${cycle.owner}.${cycle.field}'],
+        <String>['Tip.turret'],
+      );
+      expect(
+        scan.cycles.single.reason,
+        contains('Turret -> Barrel -> Tip -> Turret'),
+      );
+    });
+
+    test('a struct declared twice by different owners is not a ring', () {
+      // Two turrets holding a barrel each is the ordinary shape, and a walk
+      // that treated "seen already" as "cycle" would refuse it.
+      final scan = _declarations('''
+class Turret extends EntityStruct {
+  final barrel = Barrel();
+}
+
+class Tower extends EntityStruct {
+  final barrel = Barrel();
+  final spare = Barrel();
+}
+
+class Barrel extends EntityStruct {}
+''');
+
+      expect(scan.cycles, isEmpty);
+      expect(
+        <String>[for (final declarer in scan.declarers) declarer.type],
+        <String>['Turret', 'Tower'],
+      );
     });
   });
 

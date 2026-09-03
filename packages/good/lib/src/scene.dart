@@ -8,7 +8,6 @@ import 'package:good/src/asset.dart';
 import 'package:good/src/camera_view.dart';
 import 'package:good/src/data/hierarchy.dart';
 import 'package:good/src/data_layout.dart';
-import 'package:good/src/declare.dart';
 import 'package:good/src/event.dart';
 import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/game.dart';
@@ -272,21 +271,19 @@ abstract class SceneStruct extends GameListenerBase
     _pool = pool;
     if (assets != null) _assets = assets;
     if (cameraViews != null) _cameraViews = cameraViews;
+    // One `_AssetDescriptor` for the whole bring-up: this scene's own
+    // `describeAssets`, every asset a prefab holds in a field, and every
+    // prefab `describeScene` registers all reach it. So a texture the scene
+    // names and a texture a prefab names are one declaration, one address and
+    // one decode, which is what makes the footprint below a set.
     final descriptor = _AssetDescriptor(this);
-    // Open around both passes, not around a constructor, because that is the
-    // span the descriptor is valid for: one `_AssetDescriptor` serves this
-    // scene's own `describeAssets` and every prefab `describeScene`
-    // registers. So a prefab's `final texture = Asset.of(Textures.player)`
-    // reaches the same object its `describeAssets` would have been handed -
-    // see `DeclarationContext.assets`, which spells out why this level has no
-    // barrier.
-    DeclarationContext.pushAssets(descriptor);
-    try {
-      describeAssets(descriptor);
-      describeScene(_SceneDescriptor(this, descriptor));
-    } finally {
-      DeclarationContext.popAssets();
-    }
+    // The scene's own asset fields, read off the constructed scene. A
+    // `SceneStruct` is built by the caller, so its initialisers ran long
+    // before this - which is exactly why the handle they built carries a key
+    // and nothing else until here.
+    descriptor.declare(collectDeclarations(this));
+    describeAssets(descriptor);
+    describeScene(_SceneDescriptor(this, descriptor));
     // A scene brought up by hand has no boot pass to bind its events, so it
     // does it now. One brought up by a `Game` waits: a prefab's
     // `collectListeners` may reach for a system (`getSystem<T>()`), and
@@ -360,10 +357,12 @@ abstract class SceneStruct extends GameListenerBase
     // of what addChild writes, so a listener that saw the entity first would
     // be looking at a half-built one.
     if (parent != null) parent<Parent>().addChild(entity);
-    // The children this prefab declared with `EntityStruct.of`, in declaration
+    // The children this prefab declared in its own fields, in declaration
     // order, each one a full spawn of its own - so a child that declares
-    // children gets them, to whatever depth the declarations go. Registration
-    // rejects a cycle, which is what makes that recursion terminate.
+    // children gets them, to whatever depth the declarations go. The depth is
+    // finite because the declarations are: a ring of them is a constructor
+    // that calls itself, so a prefab that closed one never existed to be
+    // spawned. `good_tool --declarations` names the ring.
     //
     // Also before the mount event, and for the same reason as addChild: what
     // a struct declares is part of what its entity *is*, so a listener never
@@ -669,7 +668,7 @@ abstract class SceneDescriptor {
 /// `ArchetypeDataDescriptor.realize`. It is the same order either way, and
 /// that is a requirement on the collector rather than a consequence of when
 /// an initialiser ran.
-final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
+final class _SceneDescriptor implements SceneDescriptor {
   _SceneDescriptor(this._scene, this._assets);
 
   final SceneStruct _scene;
@@ -680,132 +679,78 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
   /// address, exactly as two prefabs sharing one would be.
   final _AssetDescriptor _assets;
 
-  /// The prefab classes whose registration is currently open, outermost
-  /// first - one entry per level of `EntityStruct.of` nesting.
-  ///
-  /// A declared child registers a prefab from inside another prefab's
-  /// constructor, so a struct that declares itself - directly, or round a ring
-  /// of other structs - registers forever and never reaches a spawn to blame.
-  /// The whole graph is known here and nowhere else, so the check belongs
-  /// here.
-  ///
-  /// Classes, not instances, and pushed *before* the constructor runs, not
-  /// after: the recursion happens inside `create()`, so a check against the
-  /// object it returns is a check that never runs. `T` is reified and is what
-  /// the tear-off pins, so it is available in time.
-  final List<Type> _open = <Type>[];
-
-  /// One list per open registration, holding the children declared into it so
-  /// far. A stack because declaring nests: a `Turret` declaring a `Barrel`
-  /// that declares a `Tip` has three open at once, and the `Tip` belongs to
-  /// the `Barrel`.
-  final List<List<EntityStruct>> _children = <List<EntityStruct>>[];
-
-  /// The storage of each open registration, innermost last. `declareChild`
-  /// needs the *declaring* archetype's id, and the declaration runs from that
-  /// struct's constructor, so the innermost entry is it.
-  final List<ArchetypeStorage> _storages = <ArchetypeStorage>[];
-
   @override
-  T has<T extends EntityStruct>(T Function() create) => _register(create);
-
-  @override
-  T declareChild<T extends EntityStruct>(T Function() create) {
-    // The handle column goes on the archetype being declared *now* - the
-    // innermost open data context, which is the declaring struct's, because
-    // this runs from its field initialisers. Declared before the child is
-    // registered so the column lands in field-initialiser order alongside
-    // the declarer's own columns, rather than after everything the child's
-    // registration touches.
-    final handle = DeclarationContext.data.optEntity();
-    // The column belongs to this archetype and addresses something else on
-    // any other, so the child records which one it was declared on - see
-    // `Child.declaredInArchetype`, and the check every read and unlink makes
-    // against it.
-    final declaringArchetype = _storages.last.archetypeId;
-    // Recording the column is what enforces "the declared type mixes in
-    // Child": only `Child` has somewhere to put it. The check is here because
-    // it is a fact about the prefab and there is no reason to wait for a
-    // spawn to report it, and it cannot be a bound on `T` because Dart has no
-    // intersection bound and a scene-scope declaration is not a `Child`.
-    final child = _register(
-      create,
-      validate: (object) {
-        if (object is! Child) {
-          throw ArgumentError.value(
-            object,
-            'create',
-            '${object.runtimeType} does not mix in Child, so it cannot be '
-                'declared as a child of another struct. Add `with Child` to '
-                '${object.runtimeType}.',
-          );
-        }
-        (object as Child).bindDeclaration(handle, declaringArchetype);
-      },
-    );
-    _children.last.add(child);
-    return child;
+  T has<T extends EntityStruct>(T Function() create) {
+    final object = create();
+    _register(object);
+    return object;
   }
 
-  T _register<T extends EntityStruct>(
-    T Function() create, {
-    void Function(T object)? validate,
-  }) {
-    final cycle = _open.indexOf(T);
-    if (cycle >= 0) {
-      throw StateError(
-        'Declaring $T as a child of itself: '
-        '${_open.skip(cycle).join(' -> ')} -> $T. Every entity of the '
-        'archetype would spawn another one, so the mount would not '
-        'terminate. A struct that owns a variable number of the same thing '
-        'spawns them with `scene.addEntity(prefab, parent: ...)` instead, '
-        'where the count is a decision and not a declaration.',
-      );
-    }
-    // Nothing is open around the constructor. `final hp = Field.int32(100)`
-    // and `final wounded = Event.of(...)` reach no descriptor and no binder;
-    // both are read off the object afterwards, the first by `data.realize()`
-    // below and the second by `EventBinder.bind`.
-    //
-    // The storage is still reserved ahead of the call, because `declareChild`
-    // runs from inside the constructor and needs the declaring archetype's id
-    // to record which row the handle column belongs to. It carries no prefab
-    // until the line after; nothing reads one in between.
+  /// Registers [object] - its archetype, its columns, its describe passes -
+  /// and every struct it declared in a field, in the order it declared them.
+  ///
+  /// # Where the declared children come from
+  ///
+  /// A struct that owns another writes it in an ordinary field:
+  ///
+  /// ```dart
+  /// class Turret extends EntityStruct with Transform2D, Parent {
+  ///   final barrel = Barrel();
+  /// }
+  /// ```
+  ///
+  /// so by the time this runs the `Barrel` object already exists - Dart built
+  /// it while it was building the `Turret`. Nothing was open around either
+  /// constructor. What is left is the registration, and this is where it
+  /// happens: the walk below reserves the handle column where the field sits
+  /// in the row, registers the child in full, and records it on the declarer.
+  ///
+  /// # Why the walk is one loop and not three
+  ///
+  /// A row's field order is the order the fields were declared in, and a
+  /// declared child contributes a column of its own - the `Entity?` handle
+  /// saying which child one parent entity has. So that column has to land
+  /// between the columns declared either side of it, which means the pass
+  /// reserving it is the pass walking the list. Handing the whole list to
+  /// `ArchetypeDataDescriptor.declare` first and registering children after
+  /// would put every child handle at the end of the row instead.
+  void _register(EntityStruct object) {
+    // Reserved before anything is read off the object, because a declared
+    // child records the archetype its handle column belongs to and that is
+    // this one - see `Child.declaredInArchetype`. It carries no prefab until
+    // the line below; nothing reads one in between.
     final storage = ArchetypeRegistry.reserve(_scene);
-    final T object;
+    storage.bindPrefab(object);
+    object.bindArchetype(_scene, storage);
+    final data = ArchetypeDataDescriptor(storage);
     final children = <EntityStruct>[];
-    _open.add(T);
-    _children.add(children);
-    _storages.add(storage);
-    DeclarationContext.pushPrefabs(this);
-    try {
-      object = create();
-    } finally {
-      DeclarationContext.popPrefabs();
-      _storages.removeLast();
-      _children.removeLast();
-      _open.removeLast();
+    // What the constructor produced, in the order the class declares it. Read
+    // off the constructed object rather than collected while it was being
+    // built: `Field.float64`, `Asset.of` and a child's own constructor all
+    // reach nothing, so the only record of what a class declared is the
+    // fields it holds.
+    for (final declaration in collectDeclarations(object)) {
+      if (declaration is EntityStruct) {
+        _declareChild(object, declaration, data, storage);
+        children.add(declaration);
+        continue;
+      }
+      // Each descriptor takes the declarations it can act on and leaves the
+      // rest: a column is not an asset and an asset is not a column.
+      data.declareOne(declaration);
+      _assets.declareOne(declaration);
     }
-    validate?.call(object);
     if (children.isNotEmpty) {
       if (object is! Parent) {
         throw StateError(
           '${object.runtimeType} declares ${children.length} '
-          '${children.length == 1 ? 'child' : 'children'} with '
-          'EntityStruct.of, but does not mix in Parent, so it has nowhere to '
-          'link them. Add `with Parent` to ${object.runtimeType}.',
+          '${children.length == 1 ? 'child' : 'children'} in its own fields, '
+          'but does not mix in Parent, so it has nowhere to link them. Add '
+          '`with Parent` to ${object.runtimeType}.',
         );
       }
       (object as Parent).declaredChildren.addAll(children);
     }
-    storage.bindPrefab(object);
-    object.bindArchetype(_scene, storage);
-    final data = ArchetypeDataDescriptor(storage);
-    // The columns the constructor produced, in the order the class declares
-    // them. They are read off the constructed object rather than collected
-    // while it was being built: a `Field.*` static reaches nothing, so the
-    // only record of what a class declared is the fields it holds.
-    data.declare(collectDeclarations(object));
     object.describeType(ArchetypeComponentDescriptor(storage));
     // Before describeStruct, not after: `has` returns an already-addressed
     // instance, so describeStruct can hand one straight to `data.hasObject`
@@ -828,8 +773,8 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
     // so an event declared above reaches every struct the scene can spawn.
     //
     // A declared child lands here before its declarer does, because its whole
-    // registration happens inside the declarer's constructor. Deterministic,
-    // which is all the event order has ever promised.
+    // registration finishes inside the walk above. Deterministic, which is all
+    // the event order has ever promised.
     _scene._prefabs.add(object);
     // There is deliberately no describeState pass here. A prefab used to be
     // able to declare a state channel, threaded through the scene's `game`
@@ -839,7 +784,40 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
     // boot and announced once. Publish scene-derived values from a
     // `GameSystem` instead; see `Game.describeState`.
     storage.seal();
-    return object;
+  }
+
+  /// Reserves [declarer]'s handle column for [child], registers the child, and
+  /// tells it which archetype the column sits on.
+  ///
+  /// The column is reserved *before* the child is registered so it lands in
+  /// declaration order alongside the declarer's own columns, rather than after
+  /// everything the child's registration touches.
+  void _declareChild(
+    EntityStruct declarer,
+    EntityStruct child,
+    ArchetypeDataDescriptor data,
+    ArchetypeStorage storage,
+  ) {
+    // Reserving the column is what enforces "a declared child mixes in
+    // Child": only `Child` has somewhere to put it. Checked here because it is
+    // a fact about the prefab and there is no reason to wait for a spawn to
+    // report it.
+    if (child is! Child) {
+      throw ArgumentError.value(
+        child,
+        'child',
+        '${child.runtimeType} does not mix in Child, so it cannot be declared '
+            'as a child of ${declarer.runtimeType}. Add `with Child` to '
+            '${child.runtimeType}.',
+      );
+    }
+    final handle = data.optEntity();
+    // The column belongs to this archetype and addresses something else on
+    // any other, so the child records which one it was declared on - see
+    // `Child.declaredInArchetype`, and the check every read and unlink makes
+    // against it.
+    (child as Child).bindDeclaration(handle, storage.archetypeId);
+    _register(child);
   }
 }
 
@@ -860,21 +838,48 @@ final class _AssetDescriptor implements AssetDescriptor {
     // one handle and one address, which is what makes a transition between
     // them free of a decode round trip.
     final asset = _scene.assets.declare(key);
+    _record(asset);
+    return asset;
+  }
+
+  /// Addresses every asset a constructed object holds in a field.
+  void declare(Iterable<ScannableField> declarations) {
+    for (final declaration in declarations) {
+      declareOne(declaration);
+    }
+  }
+
+  /// One declaration, in the position the caller reached it - the counterpart
+  /// of `ArchetypeDataDescriptor.declareOne`, and here for the same reason.
+  ///
+  /// A declaration that is not an asset is skipped rather than refused: a
+  /// column and a dispatcher are declarations too, and what they resolve
+  /// against is a row layout and a listener set. This descriptor addresses
+  /// assets, and says so by taking only what it can address.
+  void declareOne(ScannableField declaration) {
+    if (declaration is! Asset<Object?>) return;
+    // `bind` hands back the handle the identity is addressed on, which is
+    // this one the first time and somebody else's the second. The footprint
+    // holds that one, so a texture two prefabs named is one entry.
+    _record(_scene.assets.bind(declaration));
+  }
+
+  void _record(Asset<Object?> asset) {
     final declared = _scene._declaredAssets;
     // Linear scan rather than a Set: this runs once per declaration at scene
     // bring-up over a list of at most a few dozen, and keeping only the list
     // means the order is exactly declaration order with no second structure
     // to keep in sync.
     //
-    // Compared by *handle* identity, not by key. `declare` already collapsed
-    // equal-but-distinct keys - two call sites writing
-    // `AssetKey<Texture>(BundleSource('x'))` - onto one handle, so comparing
-    // keys here would file one asset twice and count its scene claim twice.
+    // Compared by *handle* identity, not by key. `declare` and `bind` have
+    // already collapsed equal-but-distinct keys - two call sites writing
+    // `AssetKey<Texture>(BundleSource('x'))` - onto one addressed handle, so
+    // comparing keys here would file one asset twice and count its scene
+    // claim twice.
     for (var i = 0; i < declared.length; i++) {
-      if (identical(declared[i], asset)) return asset;
+      if (identical(declared[i], asset)) return;
     }
     declared.add(asset);
-    return asset;
   }
 }
 

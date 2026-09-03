@@ -35,7 +35,7 @@ class _Barrel extends EntityStruct with _Name, Child {}
 class _Tip extends EntityStruct with _Name, Child {}
 
 class _Turret extends EntityStruct with _Name, Child, Parent {
-  final barrel = EntityStruct.of(_Barrel.new);
+  final barrel = _Barrel();
 }
 
 /// Three declared children, which is the shape `Parent.addChild`'s
@@ -46,48 +46,28 @@ class _Turret extends EntityStruct with _Name, Child, Parent {
 /// splice comes out right either way. It takes a rig spawned after a publish
 /// to tell the two reads apart.
 class _Rig extends EntityStruct with _Name, Parent {
-  final left = EntityStruct.of(_Barrel.new);
-  final middle = EntityStruct.of(_Barrel.new);
-  final right = EntityStruct.of(_Barrel.new);
+  final left = _Barrel();
+  final middle = _Barrel();
+  final right = _Barrel();
 }
 
 class _DeepBarrel extends EntityStruct with _Name, Child, Parent {
-  final tip = EntityStruct.of(_Tip.new);
+  final tip = _Tip();
 }
 
 class _DeepTurret extends EntityStruct with _Name, Parent {
-  final barrel = EntityStruct.of(_DeepBarrel.new);
+  final barrel = _DeepBarrel();
 }
 
 // Declaration-time errors. Each is registered by `_oneOff` in its own scene,
 // because the failure is registration and a scene only registers once.
 
-class _SelfDeclaring extends EntityStruct with _Name, Child, Parent {
-  final loop = EntityStruct.of(_SelfDeclaring.new);
-}
-
 class _DeclaresANonChild extends EntityStruct with _Name, Parent {
-  final loose = EntityStruct.of(_NoChild.new);
+  final loose = _NoChild();
 }
 
 class _DeclaresWithoutParent extends EntityStruct with _Name, Child {
-  final barrel = EntityStruct.of(_Barrel.new);
-}
-
-/// A child whose `describeStruct` reaches for `Field.*` instead of the
-/// descriptor it was handed. That body runs while its *declarer's*
-/// constructor is still on the declaration stack, so without a barrier the
-/// column would land on the declarer's row.
-class _StrayFieldChild extends EntityStruct with _Name, Child {
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    Field.float64();
-  }
-}
-
-class _DeclaresStrayFieldChild extends EntityStruct with _Name, Parent {
-  final stray = EntityStruct.of(_StrayFieldChild.new);
+  final barrel = _Barrel();
 }
 
 // --- the lifecycle-listener route -----------------------------------------
@@ -616,9 +596,10 @@ void main() {
     });
   });
 
-  // What `EntityStruct.of` declares: a child of every entity of the declaring
-  // prefab, spawned and linked at mount and destroyed with its parent.
-  group('EntityStruct.of', () {
+  // What a struct held in another struct's field declares: a child of every
+  // entity of the declaring prefab, spawned and linked at mount and destroyed
+  // with its parent.
+  group('a declared child', () {
     test('spawning the parent spawns and links the declared child', () {
       final level = _level();
       level.pool.beginTick();
@@ -786,8 +767,8 @@ void main() {
       'reading a column that does not exist',
       () {
         // `_Leaf` mixes in Child, so it type-checks as an argument, but no
-        // prefab ever declared it with `EntityStruct.of` - so there is no
-        // column on anybody's row holding one, and `declaredIn` is null.
+        // prefab ever held one in a field - so there is no column on
+        // anybody's row holding one, and `declaredIn` is null.
         final level = _level();
         level.pool.beginTick();
         final node = level.addEntity(level.node);
@@ -835,18 +816,12 @@ void main() {
       expect(slot[second], isNotNull, reason: 'published on commit');
     });
 
-    test('declaring the declaring struct is a registration error', () {
-      expect(
-        () => _register(_SelfDeclaring.new),
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            allOf(contains('_SelfDeclaring'), contains('->')),
-          ),
-        ),
-      );
-    });
+    // A struct that declares itself has no test here any more, and cannot
+    // have one. A declared child is a field holding a constructor call, so a
+    // ring is a constructor that calls itself: `_SelfDeclaring()` never
+    // returns and no engine code is on the recursion to report from. The
+    // refusal moved to where the ring is written down - `scanDeclarations`,
+    // and `good_cli/test/scan_test.dart` pins it.
 
     test('declaring a struct that does not mix in Child is rejected', () {
       expect(() => _register(_DeclaresANonChild.new), throwsArgumentError);
@@ -865,17 +840,6 @@ void main() {
       );
     });
 
-    // Registration nests now, so "no open declaration context" stopped being
-    // the same thing as "an empty stack". Without the barrier this declares a
-    // column on the *declarer's* row and reads it back from the child's.
-    test('a child reaching for Field.* in describeStruct still reports itself',
-        () {
-      expect(() => _register(_DeclaresStrayFieldChild.new), throwsStateError);
-    });
-
-    test('EntityStruct.of outside a registration reports itself', () {
-      expect(() => EntityStruct.of(_Barrel.new), throwsStateError);
-    });
   });
 
   group('addChild, adopt and cycles', () {
