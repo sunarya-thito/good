@@ -256,9 +256,10 @@ abstract class Input<T> implements ScannableField {
   /// # A Game or a GameSystem
   ///
   /// Both are framework-built - `Game.start(MyGame.new)` and
-  /// `descriptor.has(PlayerSystem.new)` - so in both there is a constructor
-  /// call for the registry to be open around. They declare into the same
-  /// registry in the end, but not at the same moment or on the same isolate:
+  /// `descriptor.has(PlayerSystem.new)` - which is what gives the registry a
+  /// point to read the actions off the built object at. They declare into the
+  /// same registry in the end, but not at the same moment or on the same
+  /// isolate:
   /// a game's actions are declared on main, before the spawn, and ride the
   /// copy; a system's are declared on the copy that ticks. Nothing depends on
   /// the resulting numbering, which is why the two copies are allowed to
@@ -480,9 +481,9 @@ final class InputRegistry implements InputDescriptor {
   /// snapshot, which is what makes a tick's input coherent.
   ///
   /// Built on first use and not in the field initialiser, because its size
-  /// depends on [maxContacts] and the registry is opened before the `Game`
-  /// that answers for it exists - the declaration windows have to be open
-  /// while the game's fields initialise. See `Game._construct`.
+  /// depends on [maxContacts], which is read off the game after it has been
+  /// constructed - the registry belongs to a `Game` that does not exist yet
+  /// while its own fields initialise. See `Game._construct`.
   InputState? _sizedState;
 
   InputState get _state => _sizedState ??= InputState(_maxContacts);

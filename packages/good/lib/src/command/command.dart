@@ -574,12 +574,13 @@ abstract class CommandDescriptor {
   /// Builds one command with [create], declares it, and returns it for the
   /// field to keep.
   ///
-  /// A tear-off - `descriptor.has(Damage.new)` - and not an instance,
-  /// because a `Param.*` field initialiser runs at construction and needs
-  /// the layout to already be open. `ParamLayout.open` puts it there and
-  /// calls [create] inside it; a command that declares through
-  /// `describeParams` instead is built the same way and simply finds
-  /// nothing to do with the open layout.
+  /// A tear-off - `descriptor.has(Damage.new)` - and not an instance, and
+  /// what that is still for is narrower than it was. A `Param.*` field
+  /// initialiser used to need the layout already open, because a field
+  /// reserved its offset where it was written; it reserves nothing there
+  /// now. What the tear-off still buys is that the registration owns the
+  /// command's lifetime: built, its fields read off it, its layout realized
+  /// and sealed, in one call with nothing in between.
   T has<T extends GameCommandBase>(T Function() create);
 
   /// Registers what runs when [command] arrives.

@@ -385,9 +385,9 @@ void main() {
 
     test('handling an undeclared command is refused', () {
       final r = _registry().registry;
-      // _Ping declares no fields, so building one outside a declaration pass
-      // succeeds - which is what leaves the refusal to declareHandler rather
-      // than to a Param.* initialiser finding no layout open.
+      // _Ping declares no fields, and a Param.* reaches no layout anyway, so
+      // building one outside a declaration pass succeeds - which is what
+      // leaves the refusal to declareHandler.
       expect(
         () => MainCommandDescriptor(r).hasSignal(_Ping(), () {}),
         throwsStateError,

@@ -155,11 +155,8 @@ abstract class StateDescriptor {
 ///
 /// # A Game, and nothing else
 ///
-/// `Game.start` and `Game.startInline` take a constructor -
-/// `Game.start(MyGame.new)` - so the framework builds the game and there is a
-/// call for the descriptor to be open around.
-///
-/// Nothing else may declare a channel, and that is older than this shape: a
+/// Nothing else may declare a channel, and the reason has nothing to do with
+/// what is open where - nothing is. It is that a
 /// channel's storage is allocated on **main, before the spawn**, and its
 /// identity across the boundary is its index in that one declaration pass. A
 /// `GameState` and a `GameSystem` are both built on the game isolate, after
