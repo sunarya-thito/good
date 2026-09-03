@@ -162,7 +162,6 @@ class _PhaseEnd extends GameSystem with FixedTickable {
 
 class _BenchState extends GameState<_Bench> {
   final _Field field = _Field();
-  late final _DriftSystem drift;
 
   /// Free-running, never reset - both stamps below are readings of it and only
   /// their difference is ever used.
@@ -175,17 +174,13 @@ class _BenchState extends GameState<_Bench> {
   @override
   void onMounted() => loadScene(field);
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    // The probes have no opinion about `drift` and it has none about them, so
-    // the ties between them break on declaration order - which is why the
-    // control system is still declared first.
-    drift = descriptor.has(_DriftSystem.new);
-    descriptor.has(_PhaseStart.new);
-    descriptor.has(WorldTransformSystem.new);
-    descriptor.has(_PhaseEnd.new);
-  }
+  // The probes have no opinion about `drift` and it has none about them, so
+  // the ties between them break on declaration order - which is why the
+  // control system is still declared first.
+  final drift = GameSystem.of(_DriftSystem.new);
+  final phaseStart = GameSystem.of(_PhaseStart.new);
+  final worldTransformSystem = GameSystem.of(WorldTransformSystem.new);
+  final phaseEnd = GameSystem.of(_PhaseEnd.new);
 }
 
 class _Bench extends Game {
@@ -227,7 +222,7 @@ Future<_Cell> _measure(int count) async {
   for (var i = 0; i < _timedTicks; i++) {
     steps += state.advance(_step);
     world += benchState.worldMicros;
-    drift += benchState.drift.lastMicros;
+    drift += benchState.drift.value.lastMicros;
   }
   // A tick that ran zero steps contributes zero work and would deflate every
   // average below, so the sweep is only meaningful if every advance stepped

@@ -104,11 +104,7 @@ class _StateGameState extends GameState<_StateGame> {
     loadScene(_StateScene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_StateSystem.new);
-  }
+  final stateSystem = GameSystem.of(_StateSystem.new);
 }
 
 /// Source 1: the `Game` itself, declaring two channels.

@@ -738,43 +738,44 @@ class PhysicsState extends DemoState<PhysicsGame> {
   @override
   void onMounted() => loadScene(sandbox);
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    // Declaration order no longer decides this. The start probe says
-    // `before<Box2DPhysicsSystem>()` and physics says `Order.first()`, which
-    // is weak - it yields to anything that names it - so the probe brackets
-    // the step from either side of this body. It used to be the other way:
-    // both opinions were `compareTo` answers about one pair, the
-    // earlier-declared system was asked first, and physics answered -1 for
-    // everything that is not itself. Declared first, it won, the probe
-    // stamped the clock *after* the step, and the demo's physics figure was
-    // the gap between two adjacent no-ops (#187).
-    //
-    // `_PhysicsPhaseEnd` is still declared before `SandboxSystem`, because
-    // those two have no opinion about each other and the tie breaks on
-    // declaration index.
-    descriptor.has(_PhysicsPhaseStart.new);
-    // Gravity in metres per second squared, and heavier than the -10 default
-    // so a big pile settles while you watch it. Negative is down; see
-    // Box2DPhysicsSystem.gravityY.
-    // **Read off the Game, not a top-level.** `describeSystems` runs on the
-    // game isolate, and top-level state does not cross `Isolate.spawn` - a
-    // top-level `physicsWorkerCount` set on main read back as its default of
-    // 1 here, so the world was built single-threaded no matter what the
-    // caller asked for, and the bench dutifully reported that threading
-    // changed nothing. A field on the `Game` travels with the copied object
-    // graph and arrives.
-    descriptor.has(
-      () => Box2DPhysicsSystem(
-        gravityY: -18,
-        workerCount: game.solverWorkerCount,
-      ),
-    );
-    descriptor
-      ..has(_PhysicsPhaseEnd.new)
-      ..has(SandboxSystem.new);
-  }
+  // Declaration order no longer decides this. The start probe says
+  // `before<Box2DPhysicsSystem>()` and physics says `Order.first()`, which
+  // is weak - it yields to anything that names it - so the probe brackets
+  // the step from either side of these fields. It used to be the other way:
+  // both opinions were `compareTo` answers about one pair, the
+  // earlier-declared system was asked first, and physics answered -1 for
+  // everything that is not itself. Declared first, it won, the probe
+  // stamped the clock *after* the step, and the demo's physics figure was
+  // the gap between two adjacent no-ops (#187).
+  //
+  // `_PhysicsPhaseEnd` is still declared before `SandboxSystem`, because
+  // those two have no opinion about each other and the tie breaks on
+  // declaration index.
+  final physicsPhaseStart = GameSystem.of(_PhysicsPhaseStart.new);
+
+  /// Gravity in metres per second squared, and heavier than the -10 default
+  /// so a big pile settles while you watch it. Negative is down; see
+  /// `Box2DPhysicsSystem.gravityY`.
+  ///
+  /// **Read off the Game, not a top-level.** The build closure runs on the
+  /// game isolate, and top-level state does not cross `Isolate.spawn` - a
+  /// top-level `physicsWorkerCount` set on main read back as its default of
+  /// 1 there, so the world was built single-threaded no matter what the
+  /// caller asked for, and the bench dutifully reported that threading
+  /// changed nothing. A field on the `Game` travels with the copied object
+  /// graph and arrives.
+  ///
+  /// `GameSystem.owned` and not `GameSystem.of`, because a field initialiser
+  /// has no `this` to read `game` off. The state arrives as an argument.
+  final physics = GameSystem.owned(
+    (PhysicsState state) => Box2DPhysicsSystem(
+      gravityY: -18,
+      workerCount: state.game.solverWorkerCount,
+    ),
+  );
+
+  final physicsPhaseEnd = GameSystem.of(_PhysicsPhaseEnd.new);
+  final sandboxSystem = GameSystem.of(SandboxSystem.new);
 }
 
 class PhysicsGame extends DemoGame {
@@ -783,8 +784,8 @@ class PhysicsGame extends DemoGame {
   ///
   /// A plain field on the `Game` because that object is deep-copied to the
   /// game isolate, so a value set here arrives where the world is actually
-  /// built. A top-level would not: `describeSystems` runs on the game
-  /// isolate, where top-level state is back at its default.
+  /// built. A top-level would not: a system is built on the game isolate,
+  /// where top-level state is back at its default.
   ///
   /// Not a slider, because `workerCount` is fixed when the Box2D world is
   /// created and a world cannot change it afterwards - a control that

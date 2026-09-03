@@ -49,11 +49,7 @@ Declare what exists and what runs, then show it:
 
 ```dart
 class MyGameState extends GameState2D<MyGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(PlayerSystem.new);
-  }
+  final player = GameSystem.of(PlayerSystem.new);
 
   @override
   void onMounted() => loadScene(MainScene());

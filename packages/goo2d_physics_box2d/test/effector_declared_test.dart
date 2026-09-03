@@ -145,13 +145,9 @@ class _GameState extends GameState<_Game> {
   @override
   void onMounted() => loadScene(_Scene());
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    setup = descriptor.has(_Setup.new);
-    oneShot = descriptor.has(_OneShot.new);
-    physics = descriptor.has(() => Box2DPhysicsSystem(gravityY: _gravityY));
-  }
+  final setup = GameSystem.of(_Setup.new);
+  final oneShot = GameSystem.of(_OneShot.new);
+  final physics = GameSystem.of(() => Box2DPhysicsSystem(gravityY: _gravityY));
 }
 
 class _Game extends Game {
@@ -171,6 +167,12 @@ Future<_Scene> _boot({double gravityY = 0}) async {
   _gravityY = gravityY;
   addTearDown(() => _gravityY = 0);
   run = await Game.startInline(_Game.new);
+  // Read off the state rather than captured at declaration: the declaration
+  // is a field on the state and the system is built on the copy that ticks,
+  // so this is where the object first exists.
+  physics = run.state.getSystem<Box2DPhysicsSystem>();
+  setup = run.state.getSystem<_Setup>();
+  oneShot = run.state.getSystem<_OneShot>();
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });

@@ -11,6 +11,7 @@ import 'package:good/src/input.dart';
 import 'package:good/src/order.dart';
 import 'package:good/src/random.dart';
 import 'package:good/src/struct.dart';
+import 'package:good/src/system.dart';
 
 /// What `EntityStruct.of` declares against: whoever is registering prefabs
 /// right now.
@@ -445,7 +446,7 @@ abstract final class DeclarationContext {
   static final List<InputRegistry> _inputs = <InputRegistry>[];
 
   /// Opens a registry for the duration of one constructor call. Paired with
-  /// [popInputs] in a `finally` - `Game.start` and `SystemDescriptor.has`
+  /// [popInputs] in a `finally` - `Game.start` and `Game._buildSystem`
   /// are the callers.
   static void pushInputs(InputRegistry registry) => _inputs.add(registry);
 
@@ -567,7 +568,7 @@ abstract final class DeclarationContext {
   /// Neither is visible from inside the field initialiser. What *is* visible
   /// is that a second `Game` finished constructing before the first did, and
   /// counting is all it takes to see it. `Game`'s constructor body is the
-  /// only caller; `Game.start` and `SystemDescriptor.has` save, zero and
+  /// only caller; `Game.start` and `Game._buildSystem` save, zero and
   /// restore it around the constructor call they make.
   static int gamesConstructed = 0;
 
@@ -689,25 +690,25 @@ abstract final class DeclarationContext {
   ///
   /// A list per construction, like [_declared] and unlike the levels that
   /// hold one descriptor: what `Order.of()` hands back is the declaration
-  /// itself, and `SystemDescriptor.has` takes the whole list off this and
-  /// binds it to the system it just built. Nothing here is consulted while
-  /// the constructor runs.
+  /// itself, and `Game._buildSystem` takes the whole list off this and binds
+  /// it to the system it just built. Nothing here is consulted while the
+  /// constructor runs.
   ///
   /// A stack, because a system is free to construct something that declares -
   /// and because "empty" is then the same question at every level. Systems do
-  /// not nest today: `SystemDescriptor.has` is the only caller, and a `Game`
+  /// not nest today: `Game._buildSystem` is the only caller, and a `Game`
   /// built inside a system's constructor is refused before it could open one.
   static final List<List<Order>> _orders = <List<Order>>[];
 
   /// Opens a collection for the duration of one system's constructor. Paired
-  /// with [popOrders] in a `finally` - `SystemDescriptor.has` is the only
+  /// with [popOrders] in a `finally` - `Game._buildSystem` is the only
   /// caller.
   static void pushOrders() => _orders.add(<Order>[]);
 
   static void popOrders() => _orders.removeLast();
 
   /// What the system being constructed has declared so far. Read once, before
-  /// [popOrders], by `SystemDescriptor.has`.
+  /// [popOrders], by `Game._buildSystem`.
   static List<Order> get openOrders => _orders.last;
 
   /// Records one declaration, or a `StateError` naming the ways to get here.
@@ -720,7 +721,7 @@ abstract final class DeclarationContext {
         '  descriptor.has(CameraFollowSystem.new)   // not '
         'CameraFollowSystem()\n'
         'A system a GameState holds on a field of its own and hands over '
-        '(`descriptor.has(() => _follow)`) was constructed before that '
+        '(`GameSystem.of(() => _follow)`) was constructed before that '
         'window opened, and lands here - as does a system built by hand to '
         'read a field off it.\n'
         'A `late final` initialiser lands here too, and that is the point: '
@@ -734,6 +735,57 @@ abstract final class DeclarationContext {
       );
     }
     _orders.last.add(order);
+  }
+
+  /// The declared systems of the `GameState` being constructed, innermost
+  /// last - the thirteenth level of the stack, and the one `GameSystem.of`
+  /// declares against.
+  ///
+  /// A list per construction, like [_orders]: what `GameSystem.of` hands back
+  /// is the declaration itself, and `Game._bootMain` takes the whole list off
+  /// this once `createState` has returned.
+  ///
+  /// **Nothing here is built while the initialisers run, and that is the
+  /// whole point of the level.** `createState` is called from `_bootMain`,
+  /// which runs before the spawn, so a `GameState` field initialiser runs on
+  /// **main** - and a system's own fields call `Query.all`, which numbers
+  /// itself out of a `ComponentTypeRegistry` main never fills. A handle
+  /// carries a tear-off across the spawn and `_bootGame` calls it on the copy
+  /// that ticks, which is the copy whose table the archetypes are numbered
+  /// in.
+  static final List<List<SystemHandle<GameSystem>>> _systems =
+      <List<SystemHandle<GameSystem>>>[];
+
+  /// Opens a collection for the duration of one `createState`. Paired with
+  /// [popSystems] in a `finally` - `Game._bootMain` is the only caller.
+  static void pushSystems() => _systems.add(<SystemHandle<GameSystem>>[]);
+
+  static void popSystems() => _systems.removeLast();
+
+  /// What the state being constructed has declared so far, in field
+  /// initialiser order. Read once, before [popSystems], by `Game._bootMain`.
+  static List<SystemHandle<GameSystem>> get openSystems => _systems.last;
+
+  /// Records one declaration, or a `StateError` naming the ways to get here.
+  static void addSystem(SystemHandle<GameSystem> handle) {
+    if (_systems.isEmpty) {
+      throw StateError(
+        'A system was declared with no GameState being constructed. '
+        'GameSystem.of reads the window the framework opens around '
+        'createState, so the framework has to be the one constructing:\n'
+        '  final run = await Game.start(MyGame.new);\n'
+        'A GameState built by hand declares into nothing, and so does a '
+        'system declared on a Game, a scene or a prefab - a system belongs '
+        'to the state, which is the object that only ever ticks on the game '
+        'isolate.\n'
+        'A `late final` initialiser lands here too, and that is the point: '
+        'it runs on first read, after the state has been handed to the '
+        'isolate that would have built the system, so the declaration would '
+        'reach no boot pass at all. Field initialisers here are eager, '
+        'always.',
+      );
+    }
+    _systems.last.add(handle);
   }
 
   /// The open camera-view tables, innermost last - the ninth level of the

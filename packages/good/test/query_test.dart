@@ -490,7 +490,7 @@ void main() {
   // The query pass reads `ComponentTypeRegistry` for one bit per named type
   // and never reaches `ArchetypeRegistry`. Four comments in `game.dart` and
   // `scene.dart` said the opposite and made it the reason `describeScenes`
-  // has to run before `describeSystems` (#225). These pin the mechanism the
+  // has to run before the systems are built (#225). These pin the mechanism the
   // comments now describe: compiling a query is independent of what is
   // registered when it runs, in both directions.
   group('a compiled query resolves archetypes after the fact', () {

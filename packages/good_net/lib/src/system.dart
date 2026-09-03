@@ -81,30 +81,48 @@ mixin NetSessionListener on GameListener {
 mixin MultiplayerState<G extends Game> on GameState<G> {
   /// Declares this game's messages and its backend - see [NetDescriptor].
   ///
-  /// Runs once, at boot, from [describeSystems] - and so on the simulating
-  /// copy only, because that is the one place `describeSystems` is invoked.
+  /// Runs once, at boot, from the [NetworkSystem] constructor - and so on the
+  /// simulating copy only, because that is the one copy a system is built on.
   /// The main-isolate copy of the state never runs it and never builds a
   /// transport, so there is no second socket to keep shut.
   ///
   /// # A hook and not a field
   ///
-  /// Two facts hold it here. The descriptor is a [NetBinder] over
-  /// `NetworkSystem.registry`, so it exists only once the system does, and a
-  /// system exists only on the copy that ticks - see
-  /// `GameState.describeSystems` for why that copy is not the one that runs a
-  /// `GameState` field initialiser. And [NetDescriptor.hasHandler] and
-  /// [NetDescriptor.hasSignal] take an instance member of the state, which a
-  /// field initialiser cannot name; that is the same shape as the handler half
-  /// of `describeCommands`.
+  /// [NetDescriptor.hasHandler] and [NetDescriptor.hasSignal] take an instance
+  /// member of the state, which a field initialiser cannot name; that is the
+  /// same shape as the handler half of `describeCommands`, and it is the fact
+  /// that holds this pass where it is.
+  ///
+  /// The descriptor being a [NetBinder] over `NetworkSystem.registry` used to
+  /// be a second one - the system had to exist before the pass could run, and
+  /// it only exists on the copy that ticks. That is no longer a reason to be a
+  /// hook, only a reason to be *called* where it is: [networkSystem] declares
+  /// the system on a field, and the framework builds it on the copy that
+  /// ticks, so by the time this runs the registry is there.
   void describeNetwork(NetDescriptor descriptor);
+
+  /// The system carrying this game's traffic.
+  ///
+  /// [GameSystem.owned] and not [GameSystem.of], because the system has to be
+  /// handed the state it belongs to: its constructor runs [describeNetwork]
+  /// into its own registry and seals it, which is one pass and not three - a
+  /// message binds to the thing that will send it at declare time, so the
+  /// system has to exist before the pass runs, and the pass has to have run
+  /// before the registry can be sealed and hashed. A field initialiser has no
+  /// `this`, so the state arrives as the closure's argument.
+  ///
+  /// This is a declaration, not a lookup, so it is the definition of the
+  /// system rather than a read of one somebody else declared. [network] is
+  /// what a game reads.
+  final networkSystem = GameSystem.owned(
+    (MultiplayerState<G> state) => NetworkSystem._(state),
+  );
 
   /// The system carrying this game's traffic - `network.host(...)`,
   /// `network.join(code)`, `network.session`.
   ///
-  /// A read of what [describeSystems] declared, not a second declaration of
-  /// it: the system is named once, by `descriptor.has(NetworkSystem.new)`, and
-  /// this looks that one up.
-  NetworkSystem get network => getSystem<NetworkSystem>();
+  /// A read of what [networkSystem] declared, not a second declaration of it.
+  NetworkSystem get network => networkSystem.value;
 
   /// A peer joined the session. See [NetPeerListener].
   final peerJoinedEvent = Event.of<NetPeerListener, NetPeerId>(
@@ -138,31 +156,6 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
     reverse: true,
   );
 
-  /// Declares the system, runs [describeNetwork] into it, and seals what that
-  /// declared.
-  ///
-  /// The order is one pass and not three: a message binds to the thing that
-  /// will send it at declare time, so the system has to exist before the pass
-  /// runs, and the pass has to have run before the registry can be sealed and
-  /// hashed.
-  ///
-  /// The declaration is what builds it, so it comes first. `SystemDescriptor
-  /// .has` opens the event binder and the input registry around the
-  /// constructor call, and a `NetworkSystem` built beside it and handed over
-  /// afterwards has neither - its four dispatchers cannot move onto their
-  /// fields.
-  ///
-  /// Declared **before** `super.describeSystems`, so that it is also first in
-  /// declaration order - which is what settles the tie when something else
-  /// claims the same slot.
-  @override
-  @mustCallSuper
-  void describeSystems(SystemDescriptor descriptor) {
-    final system = descriptor.has(NetworkSystem.new);
-    describeNetwork(NetBinder(system.registry, system));
-    system.registry.seal();
-    super.describeSystems(descriptor);
-  }
 }
 
 /// Carries a game's network messages: drains what arrived at the top of each
@@ -185,7 +178,9 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
 /// tick instead of this one, which for traffic that already crossed the
 /// internet is a rounding error. Two `Order.first()` claims do not contradict
 /// each other - neither yields to the other, so declaration order breaks the
-/// tie, and [MultiplayerState] declares this one first.
+/// tie, and declaration order is field initialiser order: a state's own
+/// fields run before the mixins it applies, so a game declaring physics on a
+/// field of its own gets physics first and this second.
 ///
 /// Outbound is flushed in [onTick] - the presentation pass, which runs once
 /// per *frame*, after however many fixed steps that frame afforded. So three
@@ -194,9 +189,18 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
 class NetworkSystem extends GameSystem
     with FixedTickable, Tickable, GameSystemLifecycleListener
     implements NetSender, NetListener {
-  /// Built by [MultiplayerState.describeSystems].
-  @internal
-  NetworkSystem();
+  /// Built by `MultiplayerState.networkSystem`, on the copy that ticks, and
+  /// never by hand.
+  ///
+  /// Runs `describeNetwork` into its own registry and seals it, here rather
+  /// than at the declaration, because the declaration is made on main and this
+  /// runs on the game isolate - and because a message binds to its sender at
+  /// declare time, which means `this`. Sealing last is what fixes the list the
+  /// handshake hashes.
+  NetworkSystem._(MultiplayerState<Game> state) {
+    state.describeNetwork(NetBinder(registry, this));
+    registry.seal();
+  }
 
   /// The messages and backend `describeNetwork` declared.
   @internal

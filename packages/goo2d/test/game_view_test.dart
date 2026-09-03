@@ -64,7 +64,7 @@ class _ViewGame extends Game2D {
   @override
   GameState2D<_ViewGame> createState() => _ViewState();
 
-  // No describeSystems at all: `extends Game2D` + `extends GameState2D` is
+  // No system declarations at all: `extends Game2D` + `extends GameState2D` is
   // the entire opt-in, and WorldTransformSystem/GameRenderer2D come with the
   // second one. Note it cannot be forgotten: `createState` is narrowed to
   // GameState2D, so a plain GameState here would not compile.

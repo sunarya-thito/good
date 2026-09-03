@@ -7,6 +7,7 @@ import 'package:good/src/archetype.dart';
 import 'package:good/src/command/command.dart';
 import 'package:good/src/command/param.dart';
 import 'package:good/src/data.dart';
+import 'package:good/src/declare.dart';
 import 'package:good/src/event.dart';
 import 'package:good/src/event/fixed_loop.dart';
 import 'package:good/src/event/state.dart';
@@ -101,12 +102,8 @@ class _BothPhases extends GameSystem with FixedTickable, Tickable {
 /// rather than [_TestState]. The *state* is what varies; the `Game` only has
 /// to say which one to build.
 class _PhaseState extends _FixtureState {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_PresentSystem.new);
-    descriptor.has(_BothPhases.new);
-  }
+  final presentSystem = GameSystem.of(_PresentSystem.new);
+  final bothPhases = GameSystem.of(_BothPhases.new);
 }
 
 class _PhaseGame extends _TestGame {
@@ -116,6 +113,14 @@ class _PhaseGame extends _TestGame {
 
 /// Throws once, on the tick named by [throwOnTick].
 class _ThrowingSystem extends GameSystem with FixedTickable {
+  // Publishes itself so the tests below can reach it without a state
+  // reference. The declaration is the field on the state; this is a
+  // fixture convenience, and it runs exactly once because the framework
+  // builds a declared system exactly once.
+  _ThrowingSystem() {
+    _thrower = this;
+  }
+
   int ran = 0;
   int throwOnTick = 1;
   String throwMessage = 'system boom';
@@ -130,6 +135,14 @@ class _ThrowingSystem extends GameSystem with FixedTickable {
 /// Declared *after* the thrower, so "one bad listener must not skip the
 /// others" is a property this can actually observe.
 class _AfterThrowerSystem extends GameSystem with FixedTickable {
+  // Publishes itself so the tests below can reach it without a state
+  // reference. The declaration is the field on the state; this is a
+  // fixture convenience, and it runs exactly once because the framework
+  // builds a declared system exactly once.
+  _AfterThrowerSystem() {
+    _afterThrower = this;
+  }
+
   int ran = 0;
 
   @override
@@ -140,12 +153,8 @@ late _ThrowingSystem _thrower;
 late _AfterThrowerSystem _afterThrower;
 
 class _ThrowState extends _FixtureState {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    _thrower = descriptor.has(_ThrowingSystem.new);
-    _afterThrower = descriptor.has(_AfterThrowerSystem.new);
-  }
+  final thrower = GameSystem.of(_ThrowingSystem.new);
+  final afterThrower = GameSystem.of(_AfterThrowerSystem.new);
 }
 
 class _ThrowGame extends _TestGame {
@@ -180,6 +189,14 @@ class _BadReportGame extends _ThrowGame {
 /// Records the visibility hooks so a test can assert they arrived, and in
 /// which order relative to the tick stopping.
 class _VisibilitySystem extends GameSystem with AppVisibilityListener {
+  // Publishes itself so the tests below can reach it without a state
+  // reference. The declaration is the field on the state; this is a
+  // fixture convenience, and it runs exactly once because the framework
+  // builds a declared system exactly once.
+  _VisibilitySystem() {
+    _visibility = this;
+  }
+
   final List<Duration> shown = <Duration>[];
   int hidden = 0;
 
@@ -193,11 +210,7 @@ class _VisibilitySystem extends GameSystem with AppVisibilityListener {
 late _VisibilitySystem _visibility;
 
 class _VisibilityState extends _FixtureState {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    _visibility = descriptor.has(_VisibilitySystem.new);
-  }
+  final visibility = GameSystem.of(_VisibilitySystem.new);
 }
 
 class _VisibilityGame extends _TestGame {
@@ -291,22 +304,20 @@ class _Spawner extends GameSystem with FixedTickable {
   void onFixedUpdate() => log.add('spawn');
 }
 
-/// Extends the base fixture's set rather than replacing it - the `super` call
-/// is what makes declaration order (and therefore execution order) the thing
-/// under test.
+/// Extends the base fixture's set rather than replacing it - inheriting a
+/// second set of declarations is what makes declaration order (and therefore
+/// execution order) the thing under test.
 class _OrderingState extends _TestState {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    // Declaration order: A, InertSystem, B, CensusSystem, Indifferent1,
-    // Indifferent2, SortsFirst, AlsoSortsFirst, Composer, Spawner.
-    super.describeSystems(descriptor);
-    descriptor.has(_Indifferent1.new);
-    descriptor.has(_Indifferent2.new);
-    descriptor.has(_SortsFirst.new);
-    descriptor.has(_AlsoSortsFirst.new);
-    descriptor.has(_Composer.new);
-    descriptor.has(_Spawner.new);
-  }
+  // Declaration order: Indifferent1, Indifferent2, SortsFirst,
+  // AlsoSortsFirst, Composer, Spawner, then _TestState's A, InertSystem, B,
+  // CensusSystem - a subclass's field initialisers run before its
+  // superclass's.
+  final indifferent1 = GameSystem.of(_Indifferent1.new);
+  final indifferent2 = GameSystem.of(_Indifferent2.new);
+  final sortsFirst = GameSystem.of(_SortsFirst.new);
+  final alsoSortsFirst = GameSystem.of(_AlsoSortsFirst.new);
+  final composer = GameSystem.of(_Composer.new);
+  final spawner = GameSystem.of(_Spawner.new);
 }
 
 /// Three systems whose stated positions genuinely cannot all hold.
@@ -335,13 +346,9 @@ class _CycleC extends GameSystem with FixedTickable {
 }
 
 class _CyclicState extends _FixtureState {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_CycleA.new);
-    descriptor.has(_CycleB.new);
-    descriptor.has(_CycleC.new);
-  }
+  final cycleA = GameSystem.of(_CycleA.new);
+  final cycleB = GameSystem.of(_CycleB.new);
+  final cycleC = GameSystem.of(_CycleC.new);
 }
 
 class _CyclicGame extends _TestGame {
@@ -385,9 +392,8 @@ class _SpawnUnit extends ValueSupplier<Entity> {
 
 /// The scene, the spawn handler and nothing else. Split out from [_TestState]
 /// so a fixture wanting a different system set inherits the setup without
-/// inheriting systems it would then have to drop - dropping them means an
-/// override that skips `super.describeSystems`, which is the one thing
-/// `@mustCallSuper` is here to stop.
+/// inheriting systems it would then have to drop - and a field on a base class
+/// cannot be dropped by a subclass at all.
 class _FixtureState extends GameState<_TestGame> {
   /// Held rather than looked up: the handler needs the prefab, and this is the
   /// side that has it.
@@ -408,14 +414,10 @@ class _FixtureState extends GameState<_TestGame> {
 }
 
 class _TestState extends _FixtureState {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_SystemA.new);
-    descriptor.has(_InertSystem.new);
-    descriptor.has(_SystemB.new);
-    descriptor.has(_CensusSystem.new);
-  }
+  final systemA = GameSystem.of(_SystemA.new);
+  final inertSystem = GameSystem.of(_InertSystem.new);
+  final systemB = GameSystem.of(_SystemB.new);
+  final censusSystem = GameSystem.of(_CensusSystem.new);
 }
 
 class _TestGame extends Game {
@@ -642,13 +644,11 @@ class _WindowState extends _FixtureState {
   /// page has published is the whole of one of these cases.
   late Entity victim;
 
-  late final _MarkerSystem marker;
-
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    marker = descriptor.has(() => _MarkerSystem(level));
-  }
+  /// `owned`, because the system is handed a scene the state holds and a
+  /// field initialiser has no `this` to read it off.
+  final marker = GameSystem.owned(
+    (_FixtureState state) => _MarkerSystem(state.level),
+  );
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
@@ -738,6 +738,14 @@ class _MuteReadOnlyMainGame extends _TestGame {
 /// Two independent streams and two systems, one drawing from each, so a test
 /// can disable one and watch the other (#125).
 class _DrawsFromA extends GameSystem with FixedTickable {
+  // Publishes itself so the tests below can reach it without a state
+  // reference. The declaration is the field on the state; this is a
+  // fixture convenience, and it runs exactly once because the framework
+  // builds a declared system exactly once.
+  _DrawsFromA() {
+    _drawsA = this;
+  }
+
   final List<int> drawn = <int>[];
 
   @override
@@ -745,6 +753,14 @@ class _DrawsFromA extends GameSystem with FixedTickable {
 }
 
 class _DrawsFromB extends GameSystem with FixedTickable {
+  // Publishes itself so the tests below can reach it without a state
+  // reference. The declaration is the field on the state; this is a
+  // fixture convenience, and it runs exactly once because the framework
+  // builds a declared system exactly once.
+  _DrawsFromB() {
+    _drawsB = this;
+  }
+
   final List<int> drawn = <int>[];
 
   @override
@@ -756,12 +772,8 @@ late _DrawsFromB _drawsB;
 late _RandomGame _randomGame;
 
 class _RandomState extends _FixtureState {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    _drawsA = descriptor.has(_DrawsFromA.new);
-    _drawsB = descriptor.has(_DrawsFromB.new);
-  }
+  final drawsA = GameSystem.of(_DrawsFromA.new);
+  final drawsB = GameSystem.of(_DrawsFromB.new);
 }
 
 class _RandomGame extends _TestGame {
@@ -841,12 +853,8 @@ class _BadCommandGame extends _TestGame {
 }
 
 class _DuplicateSystemState extends _TestState {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    // `_TestState` already declared a `_SystemA`; this is the second.
-    super.describeSystems(descriptor);
-    descriptor.has(_SystemA.new);
-  }
+  // `_TestState` already declared a `_SystemA`; this is the second.
+  final secondSystemA = GameSystem.of(_SystemA.new);
 }
 
 class _DuplicateSystemGame extends _TestGame {
@@ -1453,7 +1461,7 @@ void main() {
     group('what the guard must not break', () {
       test('a system writing inside the tick still writes', () async {
         final state = await boot(publish: true);
-        state.marker.target = state.victim;
+        state.marker.value.target = state.victim;
 
         state.advance(_step * 2);
 
@@ -1476,7 +1484,7 @@ void main() {
       test('stepOnce runs a fixed step from inside a receipt handler', () async {
         final state = await boot(publish: true);
         final game = state.game as _WindowGame;
-        state.marker.target = state.victim;
+        state.marker.value.target = state.victim;
 
         game.stepOnce();
 
@@ -2282,14 +2290,17 @@ void main() {
         _state(game).advance(_step);
         expect(
           log,
-          ['C', 'D', 'A', 'B', '1', '2', 'spawn', 'compose'],
+          ['C', 'D', '1', '2', 'spawn', 'compose', 'A', 'B'],
           reason:
-              'declaration order was A, B, Indifferent1, Indifferent2, '
-              'SortsFirst, AlsoSortsFirst, Composer, Spawner '
+              'declaration order is field initialiser order, and Dart runs '
+              'the subclass first: Indifferent1, Indifferent2, SortsFirst, '
+              'AlsoSortsFirst, Composer, Spawner from _OrderingState, then '
+              'A, InertSystem, B, CensusSystem from _TestState '
               '(InertSystem/CensusSystem are not FixedTickable and do not '
               'log). C and D both claim to be first, so they take the front '
               'in declaration order; Spawner crosses Composer; everything '
-              'else stays where it was declared',
+              'else stays where it was declared. The base class systems ran '
+              'first while this was a super-first hook chain, and last now',
         );
       },
     );
@@ -2639,13 +2650,19 @@ void main() {
         // A GameState that was never marked as owning the simulation is exactly
         // what the main isolate's handle copy holds after start().
         //
-        // Through `EventBinder.open` because `_TestState()` on its own now
-        // throws out of its own field initialisers - `GameState` declares its
-        // dispatchers there and they need a binder open around the call, which
-        // `Game._bootMain` is what normally provides. Constructing it bare
-        // would still throw a StateError and this test would still pass, off
-        // the wrong guard entirely.
-        final handle = EventBinder.open(_TestState.new);
+        // Through both windows `Game._bootMain` opens around `createState`,
+        // because `_TestState()` on its own throws out of its own field
+        // initialisers - it declares dispatchers, which need a binder, and
+        // systems, which need the system window. Constructing it bare would
+        // still throw a StateError and this test would still pass, off the
+        // wrong guard entirely.
+        DeclarationContext.pushSystems();
+        final GameState handle;
+        try {
+          handle = EventBinder.open(_TestState.new);
+        } finally {
+          DeclarationContext.popSystems();
+        }
         expect(() => handle.advance(_step), throwsStateError);
         expect(handle.runFixedStep, throwsStateError);
       },
@@ -2732,11 +2749,7 @@ class _UndeclaredSystem extends GameSystem {}
 
 /// The "no world yet" configuration: a GameState that declares no scene.
 class _ScenelessState extends GameState<_ScenelessGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_SystemA.new);
-  }
+  final systemA = GameSystem.of(_SystemA.new);
 }
 
 class _ScenelessGame extends Game {

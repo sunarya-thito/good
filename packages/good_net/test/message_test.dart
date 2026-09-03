@@ -288,13 +288,7 @@ class _CollidingGame extends _NetGame {
 }
 
 class _WatchedState extends _NetState {
-  late final _Watcher watcher;
-
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    watcher = descriptor.has(_Watcher.new);
-  }
+  final watcher = GameSystem.of(_Watcher.new);
 }
 
 class _WatchedGame extends _NetGame {
@@ -579,8 +573,8 @@ void main() {
     await stateOf(client).network.join(SessionId('GGGGGG'));
     exchange(<Game>[host, client]);
 
-    final hostWatcher = (host.state as _WatchedState).watcher;
-    final clientWatcher = (client.state as _WatchedState).watcher;
+    final hostWatcher = (host.state as _WatchedState).watcher.value;
+    final clientWatcher = (client.state as _WatchedState).watcher.value;
     final joined = stateOf(client).network.session!.localPeer;
 
     expect(hostWatcher.log, <String>['open GGGGGG', 'joined ${joined.slot}']);
@@ -822,7 +816,7 @@ void main() {
   });
 
   // #287. `network` is a read of the one declaration
-  // `MultiplayerState.describeSystems` makes, not a field the pass fills in
+  // `MultiplayerState.networkSystem` makes, not a field a pass fills in
   // afterwards.
   group('the network handle', () {
     test('is the declared system itself', () async {
@@ -844,7 +838,7 @@ void main() {
           isA<ArgumentError>().having(
             (error) => error.message,
             'message',
-            contains('describeSystems'),
+            contains('GameSystem.of'),
           ),
         ),
         reason:

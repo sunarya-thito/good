@@ -91,8 +91,8 @@ abstract class NetDescriptor {
 }
 
 /// The registry behind [NetDescriptor]. A field on `NetworkSystem`, built with
-/// it: `MultiplayerState.describeSystems` declares the system and then runs
-/// `describeNetwork` into this.
+/// it: `MultiplayerState.networkSystem` declares the system and the system's
+/// constructor runs `describeNetwork` into this.
 ///
 /// Implements [ParamLayouts] so `ParamBatch` can walk a batch of records that
 /// arrived as bytes - the same interface `CommandRegistry` implements for the

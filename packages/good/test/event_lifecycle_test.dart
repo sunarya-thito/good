@@ -247,14 +247,10 @@ class _LifecycleState extends GameState<_LifecycleGame> {
     loadScene(game.observer);
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_Watcher.new);
-    descriptor.has(_Census.new);
-    descriptor.has(_Bystander.new);
-    descriptor.has(_Deaf.new);
-  }
+  final watcher = GameSystem.of(_Watcher.new);
+  final census = GameSystem.of(_Census.new);
+  final bystander = GameSystem.of(_Bystander.new);
+  final deaf = GameSystem.of(_Deaf.new);
 }
 
 class _LifecycleGame extends Game {
@@ -270,9 +266,9 @@ class _LifecycleGame extends Game {
   late final _TrackedScene trackedScene;
 
   /// Reached through the state, because that is where systems live. They were
-  /// `late final` fields on this class, assigned during `describeSystems` -
-  /// which is a `GameState` pass now, so a field here would be written on a
-  /// copy that no longer runs it.
+  /// `late final` fields on this class, filled in by a pass this `Game` no
+  /// longer has - a system is declared on a `GameState` field, and built on
+  /// the copy that ticks.
   _Watcher get watcher => run.state.getSystem<_Watcher>();
   _Census get census => run.state.getSystem<_Census>();
   _Deaf get deaf => run.state.getSystem<_Deaf>();

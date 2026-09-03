@@ -71,11 +71,7 @@ class _TouchSystem extends GameSystem with FixedTickable {
 }
 
 class _TouchState extends GameState<_TouchGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_TouchSystem.new);
-  }
+  final touchSystem = GameSystem.of(_TouchSystem.new);
 }
 
 class _TouchGame extends Game {

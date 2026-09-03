@@ -332,7 +332,7 @@ abstract class EventDescriptor {
 /// `Game.createState` for a [GameState],
 /// `GameSceneDescriptor.has(MainScene.new)` for a [SceneStruct],
 /// `SceneDescriptor.has(Mote.new)` or `EntityStruct.of(Barrel.new)` for an
-/// [EntityStruct], `SystemDescriptor.has(SpinSystem.new)` for a [GameSystem].
+/// [EntityStruct], `GameSystem.of(SpinSystem.new)` for a [GameSystem].
 /// Each is a constructor call for the binder to be open around.
 ///
 /// An owner the caller builds has no binder open while its fields initialise,
@@ -498,8 +498,9 @@ final class EventBinder implements EventDescriptor, ListenerCollector {
         'so its dispatchers collect the other owner composition - every '
         'sibling system, every scene, every prefab - instead of its own.\n'
         'Build it where it is declared:\n'
-        '  descriptor.has(Spawner.new)\n'
-        '  descriptor.has(() => Spawner(rate: 3))\n'
+        '  final spawner = GameSystem.of(Spawner.new);\n'
+        '  final spawner = GameSystem.of(() => Spawner(rate: 3));\n'
+        '  descriptor.has(MainScene.new)\n'
         'A prefab a fixture built with nothing open above it is fine to hand '
         'over: Event.* throws on an empty stack, so it declared nothing '
         'anywhere else.',

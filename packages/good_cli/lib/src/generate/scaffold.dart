@@ -479,16 +479,12 @@ class $gameClass extends Game {
 
 /// The **game isolate** half: what the game *does*.
 class ${className}State extends GameState<$gameClass> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    // Composes every entity's local `Transform3D` against its ancestors into
-    // its `WorldTransform3D`, once per tick. Without it a child never moves
-    // with its parent - and again, `Game2D` declares the 2D twin of this for
-    // you while nothing declares this one.
-    descriptor.has(WorldTransform3DSystem.new);
-    descriptor.has(SpinSystem.new);
-  }
+  // Composes every entity's local `Transform3D` against its ancestors into
+  // its `WorldTransform3D`, once per tick. Without it a child never moves
+  // with its parent - and again, `Game2D` declares the 2D twin of this for
+  // you while nothing declares this one.
+  final worldTransform = GameSystem.of(WorldTransform3DSystem.new);
+  final spin = GameSystem.of(SpinSystem.new);
 
   @override
   void onMounted() {

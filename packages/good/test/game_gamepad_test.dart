@@ -65,11 +65,7 @@ class _PadSystem extends GameSystem with FixedTickable {
 }
 
 class _PadGameState extends GameState<_PadGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_PadSystem.new);
-  }
+  final padSystem = GameSystem.of(_PadSystem.new);
 }
 
 class _PadGame extends Game {

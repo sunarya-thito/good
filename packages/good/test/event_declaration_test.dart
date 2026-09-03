@@ -86,11 +86,7 @@ class _FieldState extends GameState<_FieldGame> with _Noted {
     reverse: true,
   );
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_NotedSystem.new);
-  }
+  final notedSystem = GameSystem.of(_NotedSystem.new);
 }
 
 /// The same two dispatchers, both from the constructor body.
@@ -109,11 +105,7 @@ class _BodyState extends GameState<_BodyGame> with _Noted {
   late final EventDispatcher<_Noted, String> alpha;
   late final EventDispatcher<_Noted, String> beta;
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_NotedSystem.new);
-  }
+  final notedSystem = GameSystem.of(_NotedSystem.new);
 }
 
 /// One of each, on one owner: `alpha` on a field, `beta` in the body.
@@ -131,11 +123,7 @@ class _MixedState extends GameState<_MixedGame> with _Noted {
 
   late final EventDispatcher<_Noted, String> beta;
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_NotedSystem.new);
-  }
+  final notedSystem = GameSystem.of(_NotedSystem.new);
 }
 
 /// A scene the state holds in a field, so it is constructed while the state's
@@ -172,12 +160,8 @@ class _HeldState extends GameState<_HeldGame> with _Noted {
     (listener, scene) => listener.onSceneMounted(scene),
   );
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_SceneEarA.new);
-    descriptor.has(_SceneEarB.new);
-  }
+  final sceneEarA = GameSystem.of(_SceneEarA.new);
+  final sceneEarB = GameSystem.of(_SceneEarB.new);
 
   @override
   void onMounted() {
@@ -287,11 +271,7 @@ class _SweptState extends GameState<_SweptGame> with _Noted {
   /// A second `_Noted` in the state composition and not the scene's, so a
   /// dispatcher that had landed on the state collects a different number
   /// from one that landed on the scene.
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_NotedSystem.new);
-  }
+  final notedSystem = GameSystem.of(_NotedSystem.new);
 
   @override
   void onMounted() {
@@ -352,11 +332,7 @@ class _RuntimeState extends GameState<_RuntimeGame> with _Noted {
 
   final _RuntimeScene level = _RuntimeScene();
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_NotedSystem.new);
-  }
+  final notedSystem = GameSystem.of(_NotedSystem.new);
 
   @override
   void onMounted() {
@@ -428,16 +404,20 @@ class _Prebuilt extends GameSystem with _Noted {
 }
 
 class _PrebuiltState extends GameState<_PrebuiltGame> with _Noted {
+  /// Takes the system already built, so the closure below hands over rather
+  /// than constructs.
+  ///
+  /// A field initialiser cannot read a sibling field, so the shape this
+  /// fixture is about - a state holding its own system and handing it to the
+  /// declaration - has to come in through a parameter. `_Prebuilt()` is
+  /// constructed inside `createState`, which is where this state's own event
+  /// binder is open, and that is the window its dispatcher lands in.
+  _PrebuiltState(_Prebuilt spawner) : spawner = GameSystem.of(() => spawner);
+
   @override
   String get noted => 'state';
 
-  final _spawner = _Prebuilt();
-
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(() => _spawner);
-  }
+  final SystemHandle<_Prebuilt> spawner;
 }
 
 class _PrebuiltGame extends Game {
@@ -445,7 +425,7 @@ class _PrebuiltGame extends Game {
   int get pageSize => 4096;
 
   @override
-  GameState createState() => _PrebuiltState();
+  GameState createState() => _PrebuiltState(_Prebuilt());
 }
 
 /// A prefab declared from another prefab's field initialiser, so its
@@ -546,11 +526,7 @@ class _EarSystem extends GameSystem with GameSystemLifecycleListener {
 }
 
 class _EarState extends GameState<_EarGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_EarSystem.new);
-  }
+  final earSystem = GameSystem.of(_EarSystem.new);
 }
 
 class _EarGame extends Game {
@@ -914,7 +890,7 @@ void main() {
             'message',
             allOf(
               contains('_Prebuilt was built inside another owner'),
-              contains('descriptor.has(Spawner.new)'),
+              contains('GameSystem.of(Spawner.new)'),
             ),
           ),
         ),
@@ -934,7 +910,7 @@ void main() {
             'message',
             allOf(
               contains('_InnerScene was built inside another owner'),
-              contains('descriptor.has(Spawner.new)'),
+              contains('descriptor.has(MainScene.new)'),
             ),
           ),
         ),

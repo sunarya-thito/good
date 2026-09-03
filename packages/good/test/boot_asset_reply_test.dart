@@ -150,11 +150,7 @@ class _Reporter extends GameSystem with FixedTickable {
 }
 
 class _BootLoadState extends GameState<_BootLoadGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_Reporter.new);
-  }
+  final reporter = GameSystem.of(_Reporter.new);
 
   @override
   void onMounted() {

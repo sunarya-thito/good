@@ -38,11 +38,7 @@ Declare the system once, and that is the whole opt-in. Bodies appear as
 entities spawn and go away as they despawn:
 
 ```dart
-@override
-void describeSystems(SystemDescriptor descriptor) {
-  super.describeSystems(descriptor);
-  descriptor.has(() => Box2DPhysicsSystem(gravityY: 10));
-}
+final physics = GameSystem.of(() => Box2DPhysicsSystem(gravityY: 10));
 ```
 
 Push a body around, or change what kind of body it is:

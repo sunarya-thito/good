@@ -221,16 +221,12 @@ class MyGameState extends GameState2D<MyAwesomeGame> {
     loadScene(level);
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    // super first: GameState2D declares WorldTransformSystem and
-    // GameRenderer2D itself, so this game only declares what is actually its
-    // own. Ordering between them is not positional anyway - GameRenderer2D's
-    // compareTo puts it after WorldTransformSystem wherever either is
-    // declared.
-    super.describeSystems(descriptor);
-    descriptor.has(SpinSystem.new);
-  }
+  // super first: GameState2D declares WorldTransformSystem and
+  // GameRenderer2D itself, so this game only declares what is actually its
+  // own. Ordering between them is not positional anyway - GameRenderer2D's
+  // compareTo puts it after WorldTransformSystem wherever either is
+  // declared.
+  final spinSystem = GameSystem.of(SpinSystem.new);
 
   @override
   void describeCommands(CommandDescriptor descriptor) {

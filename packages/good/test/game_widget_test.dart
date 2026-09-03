@@ -34,11 +34,7 @@ class _BareState extends GameState<Game> {
     loadScene(_BareScene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_TickingSystem.new);
-  }
+  final tickingSystem = GameSystem.of(_TickingSystem.new);
 }
 
 class _BareScene extends SceneStruct {
@@ -84,6 +80,14 @@ class _SilentGame extends Game {
 /// "the command arrived" apart from "a tick ran and carried it".
 class _VisibilitySystem extends GameSystem
     with AppVisibilityListener, FixedTickable {
+  // Publishes itself so the tests below can reach it without a state
+  // reference. The declaration is the field on the state; this is a
+  // fixture convenience, and it runs exactly once because the framework
+  // builds a declared system exactly once.
+  _VisibilitySystem() {
+    _visibility = this;
+  }
+
   int hidden = 0;
   final List<Duration> shown = <Duration>[];
   int steps = 0;
@@ -99,8 +103,8 @@ class _VisibilitySystem extends GameSystem
 }
 
 /// The system of the live run, bound the same way [run] is and for the same
-/// reason: the declaration pass owns the instance, so a test cannot hold one
-/// it made itself.
+/// reason: the framework owns the instance, so a test cannot hold one it made
+/// itself.
 late _VisibilitySystem _visibility;
 
 class _VisibilityState extends GameState<Game> {
@@ -109,11 +113,7 @@ class _VisibilityState extends GameState<Game> {
     loadScene(_BareScene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    _visibility = descriptor.has(_VisibilitySystem.new);
-  }
+  final visibility = GameSystem.of(_VisibilitySystem.new);
 }
 
 class _VisibilityGame extends Game {

@@ -4,7 +4,9 @@
 import 'package:flutter_test/flutter_test.dart' hide EventDispatcher;
 
 import 'package:good/src/archetype.dart';
+import 'package:good/src/declare.dart';
 import 'package:good/src/event.dart';
+import 'package:good/src/event/fixed_loop.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/input.dart';
@@ -13,7 +15,7 @@ import 'package:good/src/input/input_key.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/system.dart';
 
-// `SystemDescriptor.has` takes a constructor, so the framework builds the
+// `GameSystem.of` takes a constructor, so the framework builds the
 // system and two declaration windows are open while its fields initialise:
 // the event binder and the input registry. What this file pins is that a
 // declaration made through a field and the same declaration made another way
@@ -95,22 +97,19 @@ class _MixedSystem extends GameSystem with _Noted {
 }
 
 class _EventState<G extends Game> extends GameState<G> {
-  _EventState(this._source);
+  /// The tear-off comes in as a constructor parameter and the declaration is
+  /// made in the initialiser list, because a field initialiser cannot read a
+  /// sibling field. It is still eager, which is what puts it inside the
+  /// window `_bootMain` opens around `createState`.
+  _EventState(GameSystem Function() source) : source = GameSystem.of(source);
 
-  final GameSystem Function() _source;
+  final SystemHandle<GameSystem> source;
 
-  late final GameSystem source;
+  final earA = GameSystem.of(_EarA.new);
+  final earB = GameSystem.of(_EarB.new);
 
   @override
   void onMounted() {}
-
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    source = descriptor.has(_source);
-    descriptor.has(_EarA.new);
-    descriptor.has(_EarB.new);
-  }
 }
 
 class _FieldEventGame extends _BareGame {
@@ -152,20 +151,12 @@ class _MixedInputSystem extends GameSystem {
 }
 
 class _InputState<G extends Game> extends GameState<G> {
-  _InputState(this._source);
+  _InputState(GameSystem Function() source) : source = GameSystem.of(source);
 
-  final GameSystem Function() _source;
-
-  late final GameSystem source;
+  final SystemHandle<GameSystem> source;
 
   @override
   void onMounted() {}
-
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    source = descriptor.has(_source);
-  }
 }
 
 class _FieldInputGame extends _BareGame {
@@ -206,21 +197,132 @@ class _LateSystem extends GameSystem with _Noted {
 }
 
 class _LateState extends GameState<_LateGame> {
-  late final _LateSystem source;
+  final source = GameSystem.of(_LateSystem.new);
 
   @override
   void onMounted() {}
-
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    source = descriptor.has(_LateSystem.new);
-  }
 }
 
 class _LateGame extends _BareGame {
   @override
   GameState createState() => _LateState();
+}
+
+// --- who declares, and in what order -------------------------------------
+
+/// Logged in execution order, so the ordering assertions read the tick and not
+/// a list some resolve pass returned.
+final List<String> ran = <String>[];
+
+class _BaseSystem extends GameSystem with FixedTickable {
+  @override
+  void onFixedUpdate() => ran.add('base');
+}
+
+class _MixedInSystem extends GameSystem with FixedTickable {
+  @override
+  void onFixedUpdate() => ran.add('mixin');
+}
+
+class _SubSystem extends GameSystem with FixedTickable {
+  @override
+  void onFixedUpdate() => ran.add('sub');
+}
+
+class _InheritedBaseState extends GameState<_InheritedGame> {
+  final base = GameSystem.of(_BaseSystem.new);
+
+  @override
+  void onMounted() {}
+}
+
+mixin _ContributingState on GameState<_InheritedGame> {
+  final mixedIn = GameSystem.of(_MixedInSystem.new);
+}
+
+class _InheritedState extends _InheritedBaseState with _ContributingState {
+  final sub = GameSystem.of(_SubSystem.new);
+}
+
+class _InheritedGame extends _BareGame {
+  @override
+  Duration get fixedTimeStep => const Duration(milliseconds: 10);
+
+  @override
+  GameState createState() => _InheritedState();
+}
+
+// --- the owner a build closure is handed ---------------------------------
+
+/// What a `GameSystem.owned` closure built, so the test can tell which
+/// override decided it.
+class _OwnedSystem extends GameSystem {
+  _OwnedSystem(this.tag);
+
+  final String tag;
+}
+
+class _OwnerState extends GameState<_OwnerGame> {
+  /// Names the *state*, not `this`: the closure has no receiver, so the owner
+  /// is what makes [pick] dispatch on the subclass below.
+  final owned = GameSystem.owned((_OwnerState state) => state.pick());
+
+  _OwnedSystem pick() => _OwnedSystem('base');
+
+  @override
+  void onMounted() {}
+}
+
+class _OverridingState extends _OwnerState {
+  @override
+  _OwnedSystem pick() => _OwnedSystem('override');
+}
+
+class _OwnerGame extends _BareGame {
+  @override
+  GameState createState() => _OwnerState();
+}
+
+class _OverridingGame extends _OwnerGame {
+  @override
+  GameState createState() => _OverridingState();
+}
+
+/// A `GameSystem.owned` whose declared owner type the state does not satisfy.
+mixin _WrongOwner on GameState<Game> {}
+
+class _MismatchState extends GameState<_MismatchGame> {
+  final owned = GameSystem.owned(
+    (_WrongOwner owner) => _OwnedSystem('unreachable'),
+  );
+
+  @override
+  void onMounted() {}
+}
+
+class _MismatchGame extends _BareGame {
+  @override
+  GameState createState() => _MismatchState();
+}
+
+/// A state whose *field initialiser* throws, for the window-cleanup test.
+///
+/// The system is declared first, so the window is not merely opened when the
+/// throw happens - it has something in it.
+class _ThrowingState extends GameState<_ThrowingGame> {
+  final ear = GameSystem.of(_EarA.new);
+
+  final boom = _explode();
+
+  @override
+  void onMounted() {}
+}
+
+int _explode() => throw StateError('while the state was being built');
+
+class _ThrowingGame extends _BareGame {
+  @override
+  GameState createState() => _ThrowingState();
 }
 
 abstract class _BareGame extends Game {
@@ -233,11 +335,7 @@ abstract class _BareGame extends Game {
 class _Undeclared extends GameSystem {}
 
 class _NamingState extends GameState<_NamingGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_EarA.new);
-  }
+  final earA = GameSystem.of(_EarA.new);
 }
 
 class _NamingGame extends Game {
@@ -267,7 +365,7 @@ void main() {
     test('collects the system composition and not the state one', () async {
       final run = await _boot(_FieldEventGame.new);
       final source =
-          (run.state as _EventState<_FieldEventGame>).source as _FieldSystem;
+          (run.state as _EventState<_FieldEventGame>).source.value as _FieldSystem;
 
       expect(
         source.alpha.listenerCount,
@@ -284,7 +382,7 @@ void main() {
     test('delivery is identical to the body form, both directions', () async {
       final fieldRun = await _boot(_FieldEventGame.new);
       final fieldSource =
-          (fieldRun.state as _EventState<_FieldEventGame>).source
+          (fieldRun.state as _EventState<_FieldEventGame>).source.value
               as _FieldSystem;
       fieldSource.alpha('alpha');
       fieldSource.beta('beta');
@@ -296,7 +394,7 @@ void main() {
 
       final bodyRun = await _boot(_BodyEventGame.new);
       final bodySource =
-          (bodyRun.state as _EventState<_BodyEventGame>).source as _BodySystem;
+          (bodyRun.state as _EventState<_BodyEventGame>).source.value as _BodySystem;
       bodySource.alpha('alpha');
       bodySource.beta('beta');
 
@@ -319,7 +417,7 @@ void main() {
     test('one system can use both forms at once', () async {
       final run = await _boot(_MixedEventGame.new);
       final source =
-          (run.state as _EventState<_MixedEventGame>).source as _MixedSystem;
+          (run.state as _EventState<_MixedEventGame>).source.value as _MixedSystem;
 
       expect(
         source.beta.listenerCount,
@@ -336,7 +434,7 @@ void main() {
     test('declares one action per field, in field order', () async {
       final run = await _boot(_FieldInputGame.new);
       final source =
-          (run.state as _InputState<_FieldInputGame>).source
+          (run.state as _InputState<_FieldInputGame>).source.value
               as _FieldInputSystem;
 
       expect(
@@ -366,7 +464,7 @@ void main() {
     test('an unbound field action still reads its default', () async {
       final run = await _boot(_FieldInputGame.new);
       final source =
-          (run.state as _InputState<_FieldInputGame>).source
+          (run.state as _InputState<_FieldInputGame>).source.value
               as _FieldInputSystem;
 
       expect(
@@ -382,7 +480,7 @@ void main() {
     test('a system\'s own inputDefaults reaches its own actions', () async {
       final run = await _boot(_MixedInputGame.new);
       final source =
-          (run.state as _InputState<_MixedInputGame>).source
+          (run.state as _InputState<_MixedInputGame>).source.value
               as _MixedInputSystem;
 
       expect(source.fire.binding, isNotNull);
@@ -400,7 +498,7 @@ void main() {
   group('the initialisers are eager', () {
     test('a late event is missing from the collected list', () async {
       final run = await _boot(_LateGame.new);
-      final source = (run.state as _LateState).source;
+      final source = (run.state as _LateState).source.value;
 
       expect(
         source.eagerEvent.listenerCount,
@@ -428,7 +526,7 @@ void main() {
 
     test('a late input is missing from the declared actions', () async {
       final run = await _boot(_LateGame.new);
-      final source = (run.state as _LateState).source;
+      final source = (run.state as _LateState).source.value;
       final declared = run.inputActionCount;
 
       expect(
@@ -460,6 +558,144 @@ void main() {
     });
   });
 
+  group('declaration order is field initialiser order', () {
+    test('a base class runs after the subclass that inherits it', () async {
+      ran.clear();
+      final run = await _boot(_InheritedGame.new);
+      run.state.advance(const Duration(milliseconds: 10));
+
+      expect(
+        ran,
+        <String>['sub', 'mixin', 'base'],
+        reason:
+            'Dart runs the most derived class initialisers, then its mixins '
+            'in reverse `with` order, then the superclass. Declaration order '
+            'is execution order for systems that state no opinion, so a base '
+            "class's systems run last - the reverse of the base-first super "
+            'chain the describeSystems hook produced. A system that cares '
+            'says so with Order.of()',
+      );
+    });
+  });
+
+  group('the declaration window', () {
+    test('refuses a system declared with no state being built', () {
+      expect(
+        () => GameSystem.of(_EarA.new),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('no GameState being constructed'),
+              contains('createState'),
+            ),
+          ),
+        ),
+        reason:
+            'the window is opened around createState and nowhere else, so a '
+            'system named on a Game, a scene or a prefab reports itself '
+            'rather than landing on whatever ran last',
+      );
+    });
+
+    test('closes even when createState throws', () async {
+      await expectLater(
+        Game.startInline(_ThrowingGame.new),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('while the state was being built'),
+          ),
+        ),
+      );
+      _reset();
+
+      // The window is popped in a `finally`, so the stack is empty again and
+      // the refusal above still fires. Popped outside one, the dead game's
+      // level stays on the stack - and because the level a declaration lands
+      // in is the innermost, a system named anywhere at all would quietly
+      // join a state that never finished being built and never runs.
+      expect(
+        () => GameSystem.of(_EarB.new),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('no GameState being constructed'),
+          ),
+        ),
+      );
+    });
+  });
+
+  group('a declaration with nothing built behind it', () {
+    test('says so rather than handing back a system', () {
+      // A state built the way `_bootMain` builds one, and stopped there. That
+      // is the presentation copy exactly: the declarations were made, the
+      // spawn carried them, and `_bootGame` - which is what calls a
+      // tear-off - only ever runs on the other side.
+      DeclarationContext.pushSystems();
+      final _NamingState mirror;
+      try {
+        mirror = EventBinder.open(_NamingState.new);
+      } finally {
+        DeclarationContext.popSystems();
+      }
+
+      expect(mirror.earA.isBuilt, isFalse);
+      expect(
+        () => mirror.earA.value,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('declared but not built on this copy'),
+          ),
+        ),
+        reason:
+            'a system built where this handle was declared would carry a '
+            'query numbered out of a component table nothing over there fills',
+      );
+    });
+  });
+
+  group('a build closure handed the owner', () {
+    test('is handed the state the declaration is a field of', () async {
+      final run = await _boot(_OwnerGame.new);
+      expect(
+        run.state.getSystem<_OwnedSystem>().tag,
+        'base',
+      );
+    });
+
+    test('dispatches on the state runtime type, so an override wins', () async {
+      final run = await _boot(_OverridingGame.new);
+      expect(
+        run.state.getSystem<_OwnedSystem>().tag,
+        'override',
+        reason:
+            'this is what a bare tear-off cannot do - a field initialiser has '
+            'no `this` to call an override point on, and passing the owner in '
+            'is what keeps the call virtual',
+      );
+    });
+
+    test('names both types when the state is not the declared owner', () async {
+      await expectLater(
+        Game.startInline(_MismatchGame.new),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('_WrongOwner'), contains('_MismatchState')),
+          ),
+        ),
+      );
+    });
+  });
+
   group('asking for a system nobody declared', () {
     test('names the state that holds the pass, not the game', () async {
       final run = await _boot(_NamingGame.new);
@@ -474,15 +710,15 @@ void main() {
             (e) => e.message,
             'message',
             allOf(
-              contains('_Undeclared is not declared in'),
-              contains('_NamingState.describeSystems'),
-              isNot(contains('_NamingGame.describeSystems')),
+              contains('_Undeclared is not declared by'),
+              contains('_NamingState'),
+              isNot(contains('_NamingGame')),
             ),
           ),
         ),
         reason:
-            'describeSystems is declared on GameState. A message naming the '
-            'Game sends a reader to a class that has no such method',
+            'a system is declared on a GameState field. A message naming the '
+            'Game sends a reader to a class that declares none',
       );
 
       expect(
@@ -491,7 +727,7 @@ void main() {
           isA<ArgumentError>().having(
             (e) => e.message,
             'message',
-            contains('_NamingState.describeSystems'),
+            contains('_NamingState'),
           ),
         ),
       );
@@ -505,8 +741,8 @@ void main() {
             (e) => e.message,
             'message',
             allOf(
-              contains('GameState.describeSystems'),
-              isNot(contains('Game.describeSystems')),
+              contains('GameSystem.of'),
+              isNot(contains('Game.of')),
             ),
           ),
         ),

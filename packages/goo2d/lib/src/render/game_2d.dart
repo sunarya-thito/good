@@ -24,7 +24,7 @@ import 'package:goo2d/src/render/texture.dart';
 /// }
 /// ```
 ///
-/// That is the whole opt-in - [Renderer2DState.describeSystems] brings
+/// That is the whole opt-in - [Renderer2DState] declares
 /// `WorldTransformSystem` and `GameRenderer2D` with it, so there is no
 /// second thing to remember and no way to end up with a `Game2D` that
 /// silently paints nothing.
@@ -80,18 +80,30 @@ abstract class GameState2D<G extends Game2D> extends GameState<G>
 /// Declares [WorldTransformSystem] and the renderer, for a state whose base
 /// class is already something else.
 mixin Renderer2DState<G extends Game2D> on GameState<G> {
-  /// A game that declares its own systems overrides this and calls
-  /// `super.describeSystems(descriptor)`.
-  @override
-  @mustCallSuper
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(WorldTransformSystem.new);
-    descriptor.has(createRenderer);
-  }
+  /// Composes the hierarchy every tick, so a child moves with its parent.
+  ///
+  /// A game declaring systems of its own declares them on its own fields.
+  /// Those run **first** - a subclass's field initialisers run before the
+  /// mixins it applies - so these two are last in declaration order, which
+  /// puts the renderer behind whatever the game does this tick rather than in
+  /// front of it. Nothing here depends on that: [GameRenderer2D] states its
+  /// position against [WorldTransformSystem] outright.
+  final worldTransformSystem = GameSystem.of(WorldTransformSystem.new);
+
+  /// The renderer, built from [createRenderer] on the state that ends up
+  /// holding it.
+  ///
+  /// [GameSystem.owned] and not [GameSystem.of], because a field initialiser
+  /// has no `this` and [createRenderer] is an override point: the state
+  /// arrives as an argument and the call dispatches on its runtime type, so a
+  /// subclass overriding [createRenderer] still decides which renderer is
+  /// declared without having to take the declaration over.
+  final renderer = GameSystem.owned(
+    (Renderer2DState<G> state) => state.createRenderer(),
+  );
 
   /// The renderer to declare. Override to return a `GameRenderer2D` subclass
-  /// without having to take over [describeSystems] to do it.
+  /// without having to take the [renderer] declaration over to do it.
   ///
   /// Note the *budget* is not here: `maxSpritesPerTick` sizes native memory,
   /// so it lives on [Renderer2D], on the copy that allocates it.
@@ -113,7 +125,7 @@ mixin Renderer2D on Game {
   /// The view a 2D game draws into when it declares none of its own -
   /// `GameView(camera: game.defaultCamera)` is the zero-configuration path.
   ///
-  /// Declared for the same reason [Renderer2DState.describeSystems] declares
+  /// Declared for the same reason [Renderer2DState] declares
   /// the renderer: `extends Game2D` is meant to be the whole opt-in, and a
   /// game that had to remember a second declaration before anything appeared
   /// would hit exactly the black screen that arrangement exists to prevent.

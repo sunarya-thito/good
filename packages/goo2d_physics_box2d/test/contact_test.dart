@@ -103,11 +103,7 @@ class _GameState extends GameState<_Game> {
   @override
   void onMounted() => loadScene(_Scene());
 
-  @override
-  void describeSystems(SystemDescriptor d) {
-    super.describeSystems(d);
-    physics = d.has(Box2DPhysicsSystem.new);
-  }
+  final physics = GameSystem.of(Box2DPhysicsSystem.new);
 }
 
 class _Game extends Game {
@@ -125,6 +121,10 @@ const Duration _step = Duration(microseconds: 16667);
 
 Future<_Scene> _boot() async {
   run = await Game.startInline(_Game.new);
+  // Read off the state rather than captured at declaration: the declaration
+  // is a field on the state and the system is built on the copy that ticks,
+  // so this is where the object first exists.
+  physics = run.state.getSystem<Box2DPhysicsSystem>();
   addTearDown(() async {
     if (run.isRunning) await run.stop();
     physics.dispose();
