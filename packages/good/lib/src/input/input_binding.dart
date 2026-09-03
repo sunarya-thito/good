@@ -1149,7 +1149,7 @@ final class ContactBinding extends InputBinding<PointerContacts> {
 final class CompositeBinding<T> extends InputBinding<T> {
   /// Two to ten sources, known where they are written.
   ///
-  /// Ten positional parameters for the reason `_QueryBuilder._mask` gives:
+  /// Ten positional parameters for the reason `_QueryBuilder._add` gives:
   /// Dart has no varargs, and `withAll`/`withOptional` already stop at ten.
   /// Sugar over [CompositeBinding.fromList] - see that constructor for why
   /// there is one storage shape and not two.
@@ -1193,7 +1193,7 @@ final class CompositeBinding<T> extends InputBinding<T> {
   /// # Why the positional form is sugar over this, and not a second shape
   ///
   /// Ten nullable fields would keep the common case off a `List`, which is the
-  /// trade `_QueryBuilder._mask` makes. It buys nothing here. The scratch is a
+  /// trade `_QueryBuilder._add` makes. It buys nothing here. The scratch is a
   /// list in a field that [resolve] walks whatever the constructor looked
   /// like, so the hot path already has one; the list a positional call
   /// allocates is allocated once, at declare time, beside that scratch; and

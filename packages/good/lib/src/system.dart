@@ -346,13 +346,17 @@ abstract class Query implements ScannableField {
   /// Same query `descriptor.query().withAll(...).build()` builds in a
   /// `GameSystem.describeQuery` body, declared where it is read instead of
   /// four lines away in a hook. Ten positional types, for the reason
-  /// `_QueryBuilder._mask` gives: Dart has no varargs, and a `List<Type>`
+  /// `_QueryBuilder._add` gives: Dart has no varargs, and a `List<Type>`
   /// per call site is an allocation for nothing.
   ///
-  /// Nothing here needs a live declaration pass. A query holds masks and
-  /// resolves archetypes lazily in [groups], which rebuilds whenever
-  /// `ArchetypeRegistry.count` moves, so one built during a system's
-  /// construction picks up every archetype a scene registers afterwards.
+  /// Nothing here needs a live declaration pass, and nothing here is
+  /// numbered. The types named are held as they were written, and the resolve
+  /// pass `Game._bootGame` runs turns them into component bits on the copy
+  /// whose `ComponentTypeRegistry` the archetype signatures are numbered in -
+  /// see [ArchetypeQueryDescriptor.resolve]. Archetypes stay lazy on top of
+  /// that: [groups] rebuilds whenever `ArchetypeRegistry.count` moves, so a
+  /// query picks up every archetype a scene registers afterwards.
+  ///
   /// That is also why the initialiser must be eager - `late final motes =
   /// Query.all(...)` compiles and defers the call to the first read, and the
   /// engine's declaration rules forbid that shape everywhere.
@@ -371,9 +375,10 @@ abstract class Query implements ScannableField {
     Type? i,
     Type? j,
   ]) => _ArchetypeQuery(
-    _QueryBuilder._mask(a, b, c, d, e, f, g, h, i, j),
-    0,
-    const <int>[],
+    _QueryBuilder._add(const <Type>[], a, b, c, d, e, f, g, h, i, j),
+    const <Type>[],
+    const <List<Type>>[],
+    const <Type>[],
   );
 
   /// A query requiring exactly [T], named once - the field form of
@@ -492,8 +497,11 @@ abstract class QueryDescriptor {
 /// (`withAll(Transform2D)`, not `With<Transform2D>()`), so one flat call can
 /// name any number of them. The cost, stated plainly: the analyzer no
 /// longer checks that what you pass is a `Component`, so `withAll(String)`
-/// compiles. `_QueryBuilder._add` asserts against that in debug builds,
-/// which is as much as can be recovered once the type argument is gone.
+/// compiles. `_QueryBuilder._named` asserts against that in debug builds,
+/// which is as much as can be recovered once the type argument is gone. It
+/// asserts at the call that named the type and not at the resolve that
+/// numbers it, because a resolve walking a list of types can no longer say
+/// which call passed the wrong one.
 abstract class QueryBuilder {
   /// Every listed component must be present. Repeatable; each call ORs into
   /// the same required mask.
@@ -575,22 +583,39 @@ final class _QueryBuilder implements QueryBuilder {
   /// than reached statically so the descriptor stays the only thing that
   /// knows about `ArchetypeRegistry`.
   final _ArchetypeQuery Function(
-    int required,
-    int forbidden,
-    List<int> anyGroups,
+    List<Type> required,
+    List<Type> forbidden,
+    List<List<Type>> anyGroups,
+    List<Type> optional,
   )
   _storageOf;
 
-  int _required = 0;
-  int _forbidden = 0;
+  /// The types each constraint names, not their bits.
+  ///
+  /// A bit is a fact about the isolate whose `ComponentTypeRegistry` assigned
+  /// it, and that registry is a per-isolate static main's copy never fills. A
+  /// query written as a field is built wherever its owner is built, so it
+  /// cannot be the thing that numbers anything: it records the names, and
+  /// [_ArchetypeQuery.resolve] turns them into bits on the copy that ticks.
+  ///
+  /// Each list starts as a shared const and only becomes a real one when
+  /// something uses it - this is describe-time, but a per-query empty list
+  /// for a constraint nobody wrote is still waste worth not paying.
+  List<Type> _required = const <Type>[];
+  List<Type> _forbidden = const <Type>[];
+  List<List<Type>> _anyGroups = const <List<Type>>[];
 
-  /// One mask per `withAny` call. Almost always empty, so it starts as a
-  /// shared const and only becomes a real list when something uses it -
-  /// this is describe-time, but a per-query empty list for a feature nobody
-  /// used is still waste worth not paying.
-  List<int> _anyGroups = const <int>[];
+  /// Named by [withOptional], which narrows nothing. Kept because taking the
+  /// bit is the one effect naming a type there has, and that bit waits for
+  /// the resolve along with every other.
+  List<Type> _optional = const <Type>[];
 
-  static int _bitOf(Type type) {
+  /// Refuses a `Type` no component could be, at the call that named it.
+  ///
+  /// Only the *bit* waits for the resolve. The name does not, and must not: a
+  /// resolve pass reading a list of types can say what is wrong with one but
+  /// not which call wrote it.
+  static Type _named(Type type) {
     assert(
       type != String && type != int && type != double && type != bool,
       'a query names Component types, and $type is not one. Passing a bare '
@@ -598,13 +623,18 @@ final class _QueryBuilder implements QueryBuilder {
       'doc) - the bit would be allocated to $type and quietly consume one of '
       'ComponentTypeRegistry\'s 64 slots.',
     );
-    return ComponentTypeRegistry.bitFor(type);
+    return type;
   }
 
-  /// ORs every non-null argument's bit together. Ten explicit parameters, not
-  /// a `List<Type>` at each call site: Dart has no varargs, and this keeps
-  /// `withAll(A, B)` from allocating a list per call.
-  static int _mask(
+  /// Appends every non-null argument to [into], checking each, and hands back
+  /// the list to keep - a real one in place of the shared const empty the
+  /// first time a type arrives.
+  ///
+  /// Ten explicit parameters, not a `List<Type>` at each call site: Dart has
+  /// no varargs, and this keeps `withAll(A, B)` from allocating a list per
+  /// call. The one list built here is per constraint, not per call.
+  static List<Type> _add(
+    List<Type> into,
     Type a,
     Type? b,
     Type? c,
@@ -616,17 +646,18 @@ final class _QueryBuilder implements QueryBuilder {
     Type? i,
     Type? j,
   ) {
-    var mask = _bitOf(a);
-    if (b != null) mask |= _bitOf(b);
-    if (c != null) mask |= _bitOf(c);
-    if (d != null) mask |= _bitOf(d);
-    if (e != null) mask |= _bitOf(e);
-    if (f != null) mask |= _bitOf(f);
-    if (g != null) mask |= _bitOf(g);
-    if (h != null) mask |= _bitOf(h);
-    if (i != null) mask |= _bitOf(i);
-    if (j != null) mask |= _bitOf(j);
-    return mask;
+    final names = into.isEmpty ? <Type>[] : into;
+    names.add(_named(a));
+    if (b != null) names.add(_named(b));
+    if (c != null) names.add(_named(c));
+    if (d != null) names.add(_named(d));
+    if (e != null) names.add(_named(e));
+    if (f != null) names.add(_named(f));
+    if (g != null) names.add(_named(g));
+    if (h != null) names.add(_named(h));
+    if (i != null) names.add(_named(i));
+    if (j != null) names.add(_named(j));
+    return names;
   }
 
   @override
@@ -642,7 +673,7 @@ final class _QueryBuilder implements QueryBuilder {
     Type? i,
     Type? j,
   ]) {
-    _required |= _mask(a, b, c, d, e, f, g, h, i, j);
+    _required = _add(_required, a, b, c, d, e, f, g, h, i, j);
     return this;
   }
 
@@ -659,7 +690,7 @@ final class _QueryBuilder implements QueryBuilder {
     Type? i,
     Type? j,
   ]) {
-    _forbidden |= _mask(a, b, c, d, e, f, g, h, i, j);
+    _forbidden = _add(_forbidden, a, b, c, d, e, f, g, h, i, j);
     return this;
   }
 
@@ -676,8 +707,8 @@ final class _QueryBuilder implements QueryBuilder {
     Type? i,
     Type? j,
   ]) {
-    if (_anyGroups.isEmpty) _anyGroups = <int>[];
-    _anyGroups.add(_mask(a, b, c, d, e, f, g, h, i, j));
+    if (_anyGroups.isEmpty) _anyGroups = <List<Type>>[];
+    _anyGroups.add(_add(const <Type>[], a, b, c, d, e, f, g, h, i, j));
     return this;
   }
 
@@ -694,15 +725,16 @@ final class _QueryBuilder implements QueryBuilder {
     Type? i,
     Type? j,
   ]) {
-    // Computed and discarded: naming a type here still registers its bit
-    // (and runs the assert above), which is the only side effect optional
-    // components have. Matching is deliberately untouched.
-    _mask(a, b, c, d, e, f, g, h, i, j);
+    // Kept rather than computed and discarded, which is all the deferral
+    // changed here: naming a type still registers its bit and nothing else,
+    // but the bit is taken at the resolve, so the name has to survive until
+    // then. Matching is deliberately untouched.
+    _optional = _add(_optional, a, b, c, d, e, f, g, h, i, j);
     return this;
   }
 
   @override
-  Query build() => _storageOf(_required, _forbidden, _anyGroups);
+  Query build() => _storageOf(_required, _forbidden, _anyGroups, _optional);
 }
 
 /// Concrete `Query`: matches archetypes against a compiled [QueryBuilder]
@@ -721,14 +753,85 @@ final class _QueryBuilder implements QueryBuilder {
 ///    engine. The `Iterable`/`Iterator` themselves are the one allocation,
 ///    made once per call to `run()`, not once per entity.
 class _ArchetypeQuery implements Query {
-  _ArchetypeQuery(this._required, this._forbidden, this._anyGroups);
+  _ArchetypeQuery(
+    this._requiredTypes,
+    this._forbiddenTypes,
+    this._anyGroupTypes,
+    this._optionalTypes,
+  );
 
-  final int _required;
-  final int _forbidden;
+  /// The types each constraint names, held as they were written.
+  ///
+  /// Not their bits. `ComponentTypeRegistry` is a per-isolate static and
+  /// main's copy never fills, so a bit taken where a query is *written* is a
+  /// number out of a table nothing ever compares anything against. A query is
+  /// a declaration and declares nothing where it stands; [resolve] is the
+  /// other half.
+  final List<Type> _requiredTypes;
+  final List<Type> _forbiddenTypes;
+  final List<List<Type>> _anyGroupTypes;
+
+  /// The types `withOptional` named. They narrow nothing, and are kept for
+  /// the one thing naming a type there does: the type holds a bit.
+  final List<Type> _optionalTypes;
+
+  int _required = 0;
+  int _forbidden = 0;
 
   /// One mask per `withAny` group; empty in every query the engine itself
   /// currently writes, so [matches] usually never enters the loop at all.
-  final List<int> _anyGroups;
+  List<int> _anyGroups = const <int>[];
+
+  /// Whether [resolve] has run.
+  ///
+  /// Read by an assert and by [resolve] itself, and by nothing on the
+  /// matching path: the masks stay plain ints, so a match is the two compares
+  /// it has always been and neither a null check nor a lazy initialiser sits
+  /// between an archetype and its answer.
+  bool _resolved = false;
+
+  /// Turns every named type into its bit, on the isolate that will compare
+  /// the result against archetype signatures.
+  ///
+  /// The second half of a declaration, and the same split
+  /// `ArchetypeDataDescriptor.realize` makes for a column and
+  /// `EventBinder.bind` for a dispatcher: nothing is reserved or numbered
+  /// where a declaration is written, and one pass at the end settles all of
+  /// them at once. `Game._bootGame` runs that pass, after every system has
+  /// declared and on the copy whose `ComponentTypeRegistry` the archetype
+  /// signatures are numbered in - see [ArchetypeQueryDescriptor.resolve].
+  ///
+  /// Idempotent, because a query can arrive twice: one assigned to a field
+  /// inside `describeQuery` comes from the descriptor that built it and from
+  /// the collector that reads the field, and both would ask one registry the
+  /// same question.
+  void resolve() {
+    if (_resolved) return;
+    _resolved = true;
+    _required = _bits(_requiredTypes);
+    _forbidden = _bits(_forbiddenTypes);
+    if (_anyGroupTypes.isNotEmpty) {
+      final groups = <int>[];
+      for (var i = 0; i < _anyGroupTypes.length; i++) {
+        groups.add(_bits(_anyGroupTypes[i]));
+      }
+      _anyGroups = groups;
+    }
+    // Computed and discarded. An optional type narrows nothing, so taking its
+    // bit is the whole of what naming it does.
+    _bits(_optionalTypes);
+  }
+
+  /// Every type's bit, ORed together. Assigns one to a type nothing has named
+  /// yet, which is what lets a query name a component no loaded scene carries
+  /// and still mean it.
+  static int _bits(List<Type> types) {
+    var mask = 0;
+    for (var i = 0; i < types.length; i++) {
+      mask |= ComponentTypeRegistry.bitFor(types[i]);
+    }
+    return mask;
+  }
 
   /// Whether an archetype with this signature satisfies every constraint.
   ///
@@ -736,8 +839,24 @@ class _ArchetypeQuery implements Query {
   /// indexed `for` and not `_anyGroups.every(...)`: this runs once per
   /// archetype per query per tick, and a closure here is exactly the hot-path
   /// allocation the no-allocation, hot-event and no-closure rules forbid.
+  ///
+  /// The assert is the only line the deferral added here, and it is an assert
+  /// for the same reason `_QueryBuilder._named` is one: it costs a release
+  /// build nothing, and what it replaces is the silence this engine keeps
+  /// paying for. An unresolved required mask is zero, so a query no pass ever
+  /// collected would match every archetype there is and say nothing about
+  /// it.
   @override
   bool matches(int signature) {
+    assert(
+      _resolved,
+      'this query still holds the types it named and no bits. A query is a '
+      'declaration: it is read off the object holding it and given its masks '
+      'by ArchetypeQueryDescriptor.resolve, which Game._bootGame runs once '
+      'every system has declared. Reaching one no pass resolved means nothing '
+      'collected it - the field is `late` or `static`, or its owner is not a '
+      'declared system.',
+    );
     if (signature & _required != _required) return false;
     if (signature & _forbidden != 0) return false;
     for (var i = 0; i < _anyGroups.length; i++) {
@@ -842,8 +961,10 @@ class _ArchetypeQuery implements Query {
 /// component named once.
 final class _ArchetypeSingleQuery<T extends Component> extends _ArchetypeQuery
     implements SingleQuery<T> {
+  /// [T] goes in unchecked, because the bound already did the checking
+  /// `_QueryBuilder._named` has to do by hand for a bare `Type`.
   _ArchetypeSingleQuery()
-    : super(ComponentTypeRegistry.bitFor(T), 0, const <int>[]);
+    : super(<Type>[T], const <Type>[], const <List<Type>>[], const <Type>[]);
 
   @override
   SingleQuery<T> inScene(Scene scene) {
@@ -895,14 +1016,69 @@ final class _ScopedSingleQuery<T extends Component> extends _ScopedQuery
   }
 }
 
-/// Concrete [QueryDescriptor] - built once per `GameSystem.describeQuery`
-/// call (see `Game`'s system bootstrap, a later phase).
+/// Concrete [QueryDescriptor], and the pass that gives every query its masks.
+///
+/// One per boot, not one per system: `Game._bootGame` builds it, walks the
+/// declared systems offering each one's fields and running its
+/// `describeQuery`, and calls [resolve] once at the end. That is
+/// `ArchetypeDataDescriptor`'s shape - collect from both sources, settle them
+/// together afterwards - and it is what a query needs, because the bits it
+/// resolves against belong to the isolate running this pass and not to the
+/// one that built the system.
 final class ArchetypeQueryDescriptor implements QueryDescriptor {
-  @override
-  SingleQuery<T> has<T extends Component>() => _ArchetypeSingleQuery<T>();
+  /// Every query this pass has seen, from either source, in arrival order.
+  final List<_ArchetypeQuery> _queries = <_ArchetypeQuery>[];
 
   @override
-  QueryBuilder query() => _QueryBuilder(_ArchetypeQuery.new);
+  SingleQuery<T> has<T extends Component>() {
+    final query = _ArchetypeSingleQuery<T>();
+    _queries.add(query);
+    return query;
+  }
+
+  @override
+  QueryBuilder query() => _QueryBuilder(_record);
+
+  /// What a builder opened here hands its constraints to, so a query written
+  /// through the hook is collected by the same act that builds it.
+  /// [Query.where] passes `_ArchetypeQuery.new` instead, and what it builds is
+  /// collected off the field that holds it.
+  _ArchetypeQuery _record(
+    List<Type> required,
+    List<Type> forbidden,
+    List<List<Type>> anyGroups,
+    List<Type> optional,
+  ) {
+    final query = _ArchetypeQuery(required, forbidden, anyGroups, optional);
+    _queries.add(query);
+    return query;
+  }
+
+  /// Records the queries a constructed system's field initialisers produced,
+  /// ahead of anything its `describeQuery` body goes on to add.
+  ///
+  /// A declaration that is not a query is skipped: a column and a dispatcher
+  /// are declarations too, and what they resolve against is a row layout and
+  /// an owner's composition. This pass resolves component bits, and says so
+  /// by taking only what is numbered in them.
+  void declare(Iterable<ScannableField> declarations) {
+    for (final declaration in declarations) {
+      if (declaration is! _ArchetypeQuery) continue;
+      _queries.add(declaration);
+    }
+  }
+
+  /// Gives every collected query its masks, in one pass at the end.
+  ///
+  /// After all of them and not one at a time, for the reason every other
+  /// resolve pass here runs last: a query may name a component no scene has
+  /// registered, and the type takes its bit here rather than at whichever
+  /// declaration happened to run first.
+  void resolve() {
+    for (var i = 0; i < _queries.length; i++) {
+      _queries[i].resolve();
+    }
+  }
 }
 
 /// One matching archetype inside a [Query], and the rows it holds.

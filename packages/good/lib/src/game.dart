@@ -1759,14 +1759,14 @@ abstract class Game implements RandomOwner, Scannable {
   ///    Running the pass here is what saves hand-carrying the registries
   ///    across in a snapshot: one registrar means there is no second numbering
   ///    to keep in agreement.
-  ///  * `describeQuery` runs against the system objects, and those are
-  ///    constructed here because only this copy ticks them. It reads
-  ///    `ComponentTypeRegistry` to turn each named type into a bit, and
-  ///    nothing else: a compiled query holds masks, and resolves archetypes
-  ///    lazily in `Query.groups`, which rebuilds whenever
-  ///    `ArchetypeRegistry.count` moves. So it carries no ordering
-  ///    requirement of its own against [describeScenes], and a query still
-  ///    picks up a scene loaded at runtime, long after this pass has run.
+  ///  * the query pass reads `ComponentTypeRegistry` to turn each named type
+  ///    into a bit, and nothing else. A query is a declaration and takes no
+  ///    bit where it is written, which is what lets a system be built on
+  ///    either copy while its masks are numbered only here; archetypes stay
+  ///    lazy on top of that, resolved in `Query.groups`, which rebuilds
+  ///    whenever `ArchetypeRegistry.count` moves. So the pass carries no
+  ///    ordering requirement of its own against [describeScenes], and a query
+  ///    still picks up a scene loaded at runtime, long after it has run.
   ///
   /// Inline runs this immediately after [_bootMain], on the one copy that does
   /// both jobs.
@@ -1800,11 +1800,23 @@ abstract class Game implements RandomOwner, Scannable {
     for (var i = 0; i < systems.length; i++) {
       final system = systems[i];
       system.bindState(state);
+      // Read once and offered to both passes. Fields first and the hook
+      // second, which is the order they are written in; a query and an action
+      // are two of the things a system's field initialisers produce, and
+      // nothing was open while they ran.
+      final declarations = collectDeclarations(system);
+      queries.declare(declarations);
       system.describeQuery(queries);
       _inputs.source = '${system.runtimeType}';
-      _inputs.declare(collectDeclarations(system));
+      _inputs.declare(declarations);
       system.describeInputs(_inputs);
     }
+    // Every query from either source now takes its bits, in one pass and only
+    // after both sources have finished. This is the copy those bits have to
+    // come from: `ComponentTypeRegistry` is a per-isolate static, and a
+    // system whose fields were built on main would otherwise carry a mask
+    // numbered in a table nothing here ever compares a signature against.
+    queries.resolve();
     // Closes the input declaration window, and matches each action with the
     // type-level default that applies to it - which cannot happen any earlier
     // because the *last* system's describeInputs may be what registers it.
