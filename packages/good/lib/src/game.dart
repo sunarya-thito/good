@@ -411,6 +411,38 @@ abstract class Game implements RandomOwner, Scannable {
   List<GeneratedComponentBits> get componentBits =>
       const <GeneratedComponentBits>[];
 
+  /// The generated collector tables this game's packages ship, and its own
+  /// (#353), which are what let a registration read what a constructed object
+  /// declared.
+  ///
+  /// ```dart
+  /// @override
+  /// List<GeneratedDeclarations> get declarations =>
+  ///     const <GeneratedDeclarations>[goo2dDeclarations, myGameDeclarations];
+  /// ```
+  ///
+  /// A declaration is a field holding its own value, with nothing open around
+  /// it, so the only record of what a class declared is the fields it holds -
+  /// and a class's field list is the one thing a running program cannot ask
+  /// for. `collectDeclarations` reads it off a table generated from the
+  /// source, and throws for a class no table names.
+  ///
+  /// So this is unlike [componentBits] in the one way that matters: an empty
+  /// list there is today's behaviour, and an empty list here means every
+  /// registration throws. **The game's own table is the one that cannot be
+  /// left out**, because a prefab, a scene and a state are classes the game
+  /// writes; an engine package's table holds only the classes that package
+  /// itself instantiates, which is a handful of systems.
+  ///
+  /// # Why a getter, and why installing is a merge
+  ///
+  /// A getter for [componentBits]' reason: it is read on each isolate rather
+  /// than copied across with the `Game`. A merge because a collector is a
+  /// function looked up by the class it reads, with no numbering to disagree
+  /// about - see `DeclarationRegistry.installGenerated`.
+  List<GeneratedDeclarations> get declarations =>
+      const <GeneratedDeclarations>[];
+
   // --- declaration hooks ------------------------------------------------
 
   /// Builds this game's [GameState] - the simulation-side half. Called once
@@ -1066,22 +1098,25 @@ abstract class Game implements RandomOwner, Scannable {
 
   // Every channel this game declared, in declaration order - fields first,
   // then whatever `describeState` added. Same index-is-identity story as the
-  // buffers. Filled in one go by `_StateDescriptor.resolveInto`, from
-  // [_bootMain]; empty until then, because a channel collected from a field
-  // initialiser has no index to take yet.
-  final List<_ChannelSlot> _stateChannels = <_ChannelSlot>[];
-
-  // Where `Channel.*` on a field of this game landed, and where
-  // `describeState` adds to it. **Not final**, and not created here either:
-  // a subclass's field initialisers run *before* this class's, so at the
-  // moment `final score = Channel.int32()` runs there is no `Game` yet to
-  // hold anything. `Game.start` opens a descriptor ahead of the constructor
-  // call and puts it here afterwards.
+  // buffers. Filled in one go by `StateChannelRegistry.resolveInto`, from
+  // [_bootMain]; empty until then, because a channel read off a field has no
+  // index to take yet.
   //
-  // The one created here is what a `Game` constructed some other way gets:
-  // empty, and the game will not boot anyway, because `start` is the only
-  // thing that boots one.
-  _StateDescriptor _states = _StateDescriptor();
+  // Internal, and named without an underscore only because the registry that
+  // fills it lives in `event/state.dart` beside the channels themselves.
+  @internal
+  final List<ChannelSlot> stateChannels = <ChannelSlot>[];
+
+  // Where the `Channel.*` fields of this game are collected into, and where
+  // `describeState` adds to them.
+  //
+  // An ordinary final field now. It used to be replaced by `Game.start`,
+  // because `Channel.*` reached an ambient descriptor and a subclass's field
+  // initialisers run before this class's - so at the moment
+  // `final score = Channel.int32()` ran there was no `Game` to hold one. A
+  // channel reaches nothing where it is written any more: it is built inert
+  // and read off the constructed game by [_bootMain].
+  final StateChannelRegistry _states = StateChannelRegistry();
 
   // Every input action declared through a describeInputs pass this boot, plus
   // the type-level defaults and the one raw device-state buffer they all
@@ -1136,7 +1171,7 @@ abstract class Game implements RandomOwner, Scannable {
 
   /// How many [StateChannel]s this copy has declared - one per [Channel]
   /// field. Same index-is-identity story as [bufferCount].
-  int get stateChannelCount => _stateChannels.length;
+  int get stateChannelCount => stateChannels.length;
 
   /// How many input actions this copy has declared - see [describeInputs].
   int get inputActionCount => _inputs.actionCount;
@@ -1345,18 +1380,20 @@ abstract class Game implements RandomOwner, Scannable {
     return game;
   }
 
-  /// Builds [create]'s game with the two declaration windows a `Game` field
-  /// initialiser needs open, and hangs both on the object afterwards.
+  /// Builds [create]'s game with the one declaration window a `Game` field
+  /// initialiser still needs open, and hangs it on the object afterwards.
   ///
-  /// The windows are a `_StateDescriptor`, which `Channel.*` reads, and an
-  /// `InputRegistry`, which `Input.of` reads. Neither can be the game's own
-  /// field, and that is not a choice: a subclass's field initialisers run
-  /// *before* `Game`'s, so at the moment `final score = Channel.int32()` runs
-  /// there is no `Game` object at all. So the framework makes both first,
-  /// pushes them, constructs, and then puts them on the game it got back.
+  /// The window is an `InputRegistry`, which `Input.of` reads. It cannot be
+  /// the game's own field, and that is not a choice: a subclass's field
+  /// initialisers run *before* `Game`'s, so at the moment
+  /// `final fire = Input.of(...)` runs there is no `Game` object at all. So
+  /// the framework makes one first, pushes it, constructs, and then puts it
+  /// on the game it got back.
   ///
-  /// The `Game`'s own fields overwrite nothing: they run during `create()`
-  /// and are simply replaced here, both of them empty and untouched.
+  /// A `_StateDescriptor` was the second window and is gone. `Channel.*`
+  /// builds a channel that reaches nothing, and `_bootMain` reads the
+  /// channels off the constructed game - so there is nothing for a window to
+  /// have been open around.
   ///
   /// `InputRegistry.source` is set from `G`, the tear-off's static type,
   /// because there is no object to ask for a `runtimeType` yet. That is the
@@ -1367,17 +1404,15 @@ abstract class Game implements RandomOwner, Scannable {
   /// The pops are in a `finally`: a constructor that throws must not leave
   /// the next declaration writing into a window nobody owns.
   ///
-  /// [_requireNotYetDescribed] is checked here, between the call and the two
-  /// assignments, and that position is load-bearing. A closure may hand back
-  /// a game that is already running, and putting two empty windows on it
-  /// would throw away the registry the running game's actions live in - the
-  /// refusal has to land before anything is written.
+  /// [_requireNotYetDescribed] is checked here, between the call and the
+  /// assignment, and that position is load-bearing. A closure may hand back a
+  /// game that is already running, and putting an empty registry on it would
+  /// throw away the one the running game's actions live in - the refusal has
+  /// to land before anything is written.
   static G _construct<G extends Game>(G Function() create) {
-    final states = _StateDescriptor();
     final inputs = InputRegistry()..source = '$G';
     final restoreCount = DeclarationContext.gamesConstructed;
     DeclarationContext.gamesConstructed = 0;
-    DeclarationContext.pushChannels(states);
     DeclarationContext.pushInputs(inputs);
     final G game;
     final int built;
@@ -1385,7 +1420,6 @@ abstract class Game implements RandomOwner, Scannable {
       game = create();
     } finally {
       DeclarationContext.popInputs();
-      DeclarationContext.popChannels();
       built = DeclarationContext.gamesConstructed;
       DeclarationContext.gamesConstructed = restoreCount;
     }
@@ -1412,7 +1446,6 @@ abstract class Game implements RandomOwner, Scannable {
       );
     }
     game._requireNotYetDescribed();
-    game._states = states;
     game._inputs = inputs;
     // After the game exists and before anything sizes the raw input block:
     // the contact table's length is the one part of that block a game gets to
@@ -1698,6 +1731,12 @@ abstract class Game implements RandomOwner, Scannable {
   /// whose anchor spanned the adjacent line. Re-read the phase you touched, in
   /// full, after touching it.
   void _bootMain(GameRuntime runtime) {
+    // Before the state is built, because binding its events reads its
+    // declarations off it and a collector has to be installed by then. A
+    // merge, so this copy and the game isolate's both doing it is one table -
+    // see [declarations].
+    DeclarationRegistry.installGenerated(declarations);
+
     // Constructed here, and *only* constructed: its `onMounted` - the pass
     // that loads scenes and so spawns a world - runs in [_bootGame], on the
     // other copy. This one is a declaration mirror: it exists so that
@@ -1731,10 +1770,12 @@ abstract class Game implements RandomOwner, Scannable {
     // dropped earlier for the neighbouring reason (loaded after boot, possibly
     // repeatedly). See [describeState].
     //
-    // The owner has two ways in, and `_states` already holds the first: a
-    // `Channel.*` on a field of this game collected into it while the
-    // constructor ran, back in `Game.start`. This adds the hook's to the same
-    // list, after them.
+    // The owner has two ways in, and this is the first: every `Channel.*`
+    // field of this game, read off the constructed object in the order the
+    // class declares them. Nothing was open while it was being built, so this
+    // is the only record of what it declared.
+    _states.declare(collectDeclarations(this));
+    // And the second, added to the same list after them.
     describeState(_states);
     // Resolve, and the second half of what the two-step buys. Every channel
     // from either source now takes its index and its run in one pass, in
@@ -1797,7 +1838,11 @@ abstract class Game implements RandomOwner, Scannable {
   void _bootGame(GameRuntime runtime) {
     final state = runtime.state!;
 
-    // First, ahead of everything: the generated component bits (#18). This is
+    // The collectors, first on this copy too: this is where scenes register
+    // and every registration reads declarations off a constructed object.
+    DeclarationRegistry.installGenerated(declarations);
+
+    // Then the generated component bits (#18). This is
     // the copy that registers archetypes and compiles queries, and seeding
     // has to finish before the first of either - a type that already took a
     // bit at run time cannot be given a different one. Empty unless the game
@@ -1901,8 +1946,8 @@ abstract class Game implements RandomOwner, Scannable {
       // out immediately, here - which is also the entire single-copy
       // (inline) story, since there is no second copy to announce to and
       // this one both writes and reads its own channels.
-      for (var i = 0; i < _stateChannels.length; i++) {
-        _stateChannels[i].allocateAndSeed();
+      for (var i = 0; i < stateChannels.length; i++) {
+        stateChannels[i].allocateAndSeed();
       }
       // And the raw input block, on the same schedule and for the same
       // reason: the copy that owns the simulation owns every shared
@@ -1965,7 +2010,7 @@ abstract class Game implements RandomOwner, Scannable {
     // descriptor past this point is trying to declare a channel at runtime,
     // which cannot work - its storage would exist on neither copy and its
     // index would not match the other side's.
-    _states._seal();
+    _states.seal();
     // `_inputs.seal()` is deliberately *not* here: a system may still declare
     // an action, and systems are declared on the game isolate. It closes at
     // the end of [_bootGame] instead.
@@ -2720,7 +2765,7 @@ final class GameRuntime {
   /// Costs one null check per declared channel on a copy that declared none,
   /// which is the overwhelmingly common case.
   void _pollStateChannels() {
-    final channels = game._stateChannels;
+    final channels = game.stateChannels;
     for (var i = 0; i < channels.length; i++) {
       channels[i].pollChanged();
     }
@@ -2933,7 +2978,7 @@ final class GameRuntime {
     // handles users hold in their `late final` fields) survives; only the
     // storage goes, so a read after stop() reports "not connected" rather
     // than reading freed memory.
-    final channels = game._stateChannels;
+    final channels = game.stateChannels;
     for (var i = 0; i < channels.length; i++) {
       channels[i].release(owned: owns);
     }
@@ -2983,7 +3028,7 @@ final class GameRuntime {
     // the same address, but a `ByteData` built from one and kept in a field is
     // deep-copied *by value* - the copy would write into detached Dart heap
     // memory that main never sees. Verified in tool/spawn_inherit_spike.dart.
-    final channels = game._stateChannels;
+    final channels = game.stateChannels;
     for (var i = 0; i < channels.length; i++) {
       channels[i].reattach();
     }
@@ -3718,509 +3763,6 @@ final class _BufferDescriptor implements BufferDescriptor {
     final handle = HandoffHandle._(_game._handoffHandles.length, slotBytes);
     _game._handoffHandles.add(handle);
     return handle;
-  }
-}
-
-/// Everything `Game` needs from a state channel without knowing its `T`.
-///
-/// A non-generic interface, not `_StateChannelBase<Object?>` in the list: the
-/// whole point of these operations is that they are type-erased plumbing
-/// (allocate, poll, free), and none of them wants to expose or launder the
-/// channel's value type.
-abstract class _ChannelSlot {
-  int get encodedBytes;
-
-  /// Gives this channel its declaration index and the run its storage belongs
-  /// to - the resolve half of the collect-then-resolve split.
-  ///
-  /// A channel is created by a field initialiser, which runs while the `Game`
-  /// that owns it is still being constructed: there is no runtime to bind to
-  /// and no list to be numbered in yet. So creation appends and nothing else,
-  /// and this is where the two facts arrive. Called once, from
-  /// `_StateDescriptor.resolveInto`, before anything allocates.
-  void resolve(GameRuntime runtime, int index);
-
-  /// Simulating copy: allocate the triple buffer and publish the initial
-  /// value.
-  void allocateAndSeed();
-
-  /// Rebuilds the cached `ByteData` views from the pointers they came from.
-  ///
-  /// Called once on the spawned copy. The views are built by [_attach] from
-  /// `Pointer.asTypedList`, and while the `Pointer` crosses the spawn at the
-  /// same address, a typed-data view stored in a field is deep-copied **by
-  /// value** - so without this the spawned copy would read and write a
-  /// detached Dart heap buffer that the other copy never sees. Verified in
-  /// `tool/spawn_inherit_spike.dart`.
-  void reattach();
-
-  void pollChanged();
-
-  void release({required bool owned});
-}
-
-/// The fixed-width formats a [StateChannel] can carry - the same set
-/// `DataDescriptor` offers for component fields, for the same reason: a
-/// channel is a fixed number of bytes in shared memory, and a width is all
-/// the information needed to read and write it.
-enum _ChannelFormat {
-  uint8(1),
-  int8(1),
-  uint16(2),
-  int16(2),
-  uint32(4),
-  int32(4),
-  uint64(8),
-  int64(8),
-  float32(4),
-  float64(8),
-  boolean(1);
-
-  const _ChannelFormat(this.bytes);
-
-  final int bytes;
-}
-
-/// Shared body of every channel: the declaration (index, format, initial
-/// value), the cached `ByteData` views over the three slots, the read and
-/// write paths, and change notification.
-///
-/// One class for both isolate roles, not a read-only subclass and a writable
-/// one: `StateChannel` has a setter on both sides, and the split is enforced
-/// by [owned] and an `assert` (the assert-not-print rule) instead of by the
-/// type system. That trade buys one declared type usable from Flutter on the
-/// main isolate, which is what `ValueListenable` requires. A write from there
-/// is a programmer error, not something a caller should be handed two types to
-/// reason about.
-abstract class _StateChannelBase<T>
-    with ChangeNotifier
-    implements StateChannel<T>, _ChannelSlot {
-  _StateChannelBase({required this.format, required this.initialValue})
-    : _lastSeen = initialValue;
-
-  /// Position in the shared declaration order, and what this channel's error
-  /// messages name it by.
-  ///
-  /// Both isolate copies run the same declarations and so number the channels
-  /// the same way. Correspondence across the boundary comes from that shared
-  /// order; nothing sends this field.
-  ///
-  /// `-1` until [resolve], which is not a state a caller can observe: a
-  /// channel is numbered in `Game._bootMain`, before the storage exists and
-  /// so before any read or write can succeed.
-  int index = -1;
-  final _ChannelFormat format;
-  final T initialValue;
-
-  /// The **run** this channel's storage belongs to - held instead of two
-  /// booleans, because the two questions it answers (who owns the storage, who
-  /// may write) have different answers here.
-  ///
-  /// Null between the field initialiser that created this channel and
-  /// [resolve]. It cannot be `final`, because the object that owns the run
-  /// does not exist yet while its own fields are initialising - which is the
-  /// whole reason declaration and resolution are two steps here.
-  GameRuntime? _runtime;
-
-  @override
-  void resolve(GameRuntime runtime, int index) {
-    _runtime = runtime;
-    this.index = index;
-  }
-
-  GameRuntime get _run {
-    final runtime = _runtime;
-    if (runtime != null) return runtime;
-    throw StateError(
-      'a state channel was reached before the game that declared it '
-      'started. Channel.* hands back a declaration, and it becomes a live '
-      'channel when Game.start (or Game.startInline) binds it to a run and '
-      'allocates its storage - so `await` the start before reading or '
-      'writing one.',
-    );
-  }
-
-  /// Whether this copy allocated the storage, and so must free it. Main, in
-  /// the spawned configuration.
-  bool get owned => _run.owns;
-
-  /// Whether this copy may *write*. The simulating one - which after the boot
-  /// inversion is a different copy from the one that owns the memory.
-  ///
-  /// A `TripleBuffer` requires one writer, not a particular isolate, so
-  /// allocate-here/write-there is legal; `InputDevice` has always been the
-  /// mirror image of it.
-  bool get _mayWrite => _run.simulates;
-
-  TripleBuffer? _buffer;
-
-  // Built once, when storage is attached: one ByteData per slot, each
-  // exactly encodedBytes long, wrapping that slot's native memory.
-  //
-  // Two jobs. It keeps both the read and the write path allocation-free -
-  // `Pointer.asTypedList` plus `ByteData.sublistView` per access would be
-  // two objects per read, 60 times a second, which is exactly what
-  // Game._commandScratch already exists to avoid on the command path. And
-  // because each view is *exactly* encodedBytes long, a write past the
-  // declared width hits the view's own bounds check instead of silently
-  // scribbling into whatever native memory follows.
-  List<int> _slotAddresses = const <int>[];
-  List<ByteData> _slotViews = const <ByteData>[];
-
-  // The last value *this copy* saw, seeded with initialValue because that is
-  // provably what the first read returns (it is published the instant storage
-  // is allocated). So listeners never fire for the initial value, and never
-  // fire on a tick where nothing new was published.
-  T _lastSeen;
-
-  @override
-  int get encodedBytes => format.bytes;
-
-  /// Reads this channel's value out of [view], which is exactly
-  /// [encodedBytes] long.
-  T readFrom(ByteData view);
-
-  /// Writes [value] into [view], which is exactly [encodedBytes] long.
-  void writeTo(ByteData view, T value);
-
-  void _attach(TripleBuffer buffer) {
-    _buffer = buffer;
-    final addresses = buffer.slotAddresses;
-    _slotAddresses = addresses;
-    _slotViews = <ByteData>[
-      for (final address in addresses)
-        ByteData.sublistView(
-          Pointer<Uint8>.fromAddress(address).asTypedList(encodedBytes),
-        ),
-    ];
-  }
-
-  @override
-  void reattach() {
-    final buffer = _buffer;
-    if (buffer != null) _attach(buffer);
-  }
-
-  @override
-  void allocateAndSeed() {
-    assert(owned, 'only the owning copy allocates channel storage');
-    _attach(TripleBuffer(encodedBytes));
-    // Immediately, not on the first tick: until this lands, latestView() is
-    // null and hasPublished is false, and no reader on either copy may
-    // observe that state.
-    _publish(initialValue);
-  }
-
-  /// The cached view for the slot [pointer] names. Three addresses, compared
-  /// as ints - no map, no allocation.
-  ByteData _viewFor(Pointer<Uint8> pointer) {
-    final address = pointer.address;
-    for (var i = 0; i < _slotAddresses.length; i++) {
-      if (_slotAddresses[i] == address) return _slotViews[i];
-    }
-    throw StateError(
-      'state channel #$index resolved a triple-buffer slot it has no view '
-      'for - the channel was attached to different storage than it is being '
-      'read through.',
-    );
-  }
-
-  @override
-  T get value {
-    final buffer = _buffer;
-    if (buffer == null) {
-      throw StateError(
-        'state channel #$index is declared but not connected on this copy of '
-        'Game. Call start() (and await it) first - the simulating copy '
-        'allocates the storage and announces its address, and a handle copy '
-        'only has a view once that message has landed.',
-      );
-    }
-    final slot = buffer.latestView();
-    if (slot == null) {
-      // Unreachable in normal operation: allocateAndSeed() publishes the
-      // initial value before this channel is announced, so latestView() is
-      // non-null from the moment either copy can reach it. Stated loudly
-      // rather than papered over with a fallback, because a null here means
-      // the seed publish was skipped - a bootstrap bug, not a missing value.
-      throw StateError(
-        'state channel #$index has storage but nothing published in it. The '
-        'declared initial value is published as soon as the storage is '
-        'allocated, so this should be unreachable.',
-      );
-    }
-    return readFrom(_viewFor(slot));
-  }
-
-  @override
-  set value(T newValue) {
-    if (!_mayWrite) {
-      assert(
-        false,
-        'state channel #$index was written on the Game copy that does not '
-        'simulate. A state channel is written by the copy that runs the tick '
-        'loop (the game isolate, or the single copy under '
-        'start(inline: true)) and read by both; a write from the handle the '
-        'main isolate holds after start() would be invisible to the '
-        'simulation. Send a GameCommand instead. See the class doc on '
-        'StateChannel.',
-      );
-      return;
-    }
-    // The read-only lane promised to answer through its reply and write
-    // nothing, and this is a write. The receipt lane is deliberately *not*
-    // held to it: publishing on a channel is the answer leg a control command
-    // has instead of a reply, which is what `_controlCannotAnswer` tells a
-    // caller to reach for. See `HandlerWindow` (#245).
-    _run.state?.pool.requireChannelWritable();
-    _publish(newValue);
-  }
-
-  void _publish(T newValue) {
-    final buffer = _buffer;
-    if (buffer == null) {
-      throw StateError(
-        'state channel #$index has no storage yet - written before the Game '
-        'has finished booting.',
-      );
-    }
-    // copyFromLatest: false. `true` exists for in-place partial mutation -
-    // a writer that touches some fields of last tick's snapshot and leaves
-    // the rest (which is how MemoryPool's pages are written). A channel write
-    // is the opposite: it hands over a complete new value and writeTo is
-    // contracted to write all of it, so copying the previous slot forward
-    // first would be a full memcpy of every channel, every tick, whose every
-    // byte is then overwritten.
-    final slot = buffer.beginWrite(copyFromLatest: false);
-    writeTo(_viewFor(slot), newValue);
-    buffer.publish();
-    // Synchronously, because the writer is right here: this is the game
-    // isolate's half of the two-speed notification described on StateChannel.
-    // The other copy cannot know anything happened until the tick message
-    // lands, and reconciles in pollChanged().
-    if (newValue == _lastSeen) return;
-    _lastSeen = newValue;
-    notifyListeners();
-  }
-
-  /// Re-baselines [_lastSeen] the moment anyone starts caring.
-  ///
-  /// Without this, [pollChanged] would have to decode this channel every
-  /// single tick even when nothing listens, purely so that a listener added
-  /// later had something honest to compare against - a decode per declared
-  /// channel per tick, forever, for nobody (the hot-path rules). Doing it
-  /// here instead makes the no-listener case free and gives a late-arriving
-  /// listener exactly the same guarantee: it is told about changes that
-  /// happen *after* it started listening, never about one that predates it.
-  @override
-  void addListener(VoidCallback listener) {
-    if (_buffer != null) _lastSeen = value;
-    super.addListener(listener);
-  }
-
-  @override
-  void pollChanged() {
-    // Two field reads on a channel nobody listens to, which is the
-    // overwhelmingly common case. The simulating copy keeps _lastSeen fresh
-    // in _publish anyway; this exists for the handle copy, which cannot know
-    // a write happened until the tick message lands.
-    if (_buffer == null || !hasListeners) return;
-    final current = value;
-    if (current == _lastSeen) return;
-    _lastSeen = current;
-    notifyListeners();
-  }
-
-  @override
-  void release({required bool owned}) {
-    if (owned) _buffer?.dispose();
-    _buffer = null;
-    _slotAddresses = const <int>[];
-    _slotViews = const <ByteData>[];
-  }
-}
-
-/// Every integer width, in one class: the format is a field, so a channel of
-/// each width is one object and not one class per width.
-final class _IntStateChannel extends _StateChannelBase<int> {
-  _IntStateChannel({required super.format, required super.initialValue});
-
-  @override
-  int readFrom(ByteData view) => switch (format) {
-    _ChannelFormat.uint8 => view.getUint8(0),
-    _ChannelFormat.int8 => view.getInt8(0),
-    _ChannelFormat.uint16 => view.getUint16(0, Endian.little),
-    _ChannelFormat.int16 => view.getInt16(0, Endian.little),
-    _ChannelFormat.uint32 => view.getUint32(0, Endian.little),
-    _ChannelFormat.int32 => view.getInt32(0, Endian.little),
-    _ChannelFormat.uint64 => view.getUint64(0, Endian.little),
-    _ => view.getInt64(0, Endian.little),
-  };
-
-  @override
-  void writeTo(ByteData view, int value) {
-    switch (format) {
-      case _ChannelFormat.uint8:
-        view.setUint8(0, value);
-      case _ChannelFormat.int8:
-        view.setInt8(0, value);
-      case _ChannelFormat.uint16:
-        view.setUint16(0, value, Endian.little);
-      case _ChannelFormat.int16:
-        view.setInt16(0, value, Endian.little);
-      case _ChannelFormat.uint32:
-        view.setUint32(0, value, Endian.little);
-      case _ChannelFormat.int32:
-        view.setInt32(0, value, Endian.little);
-      case _ChannelFormat.uint64:
-        view.setUint64(0, value, Endian.little);
-      default:
-        view.setInt64(0, value, Endian.little);
-    }
-  }
-}
-
-final class _DoubleStateChannel extends _StateChannelBase<double> {
-  _DoubleStateChannel({required super.format, required super.initialValue});
-
-  @override
-  double readFrom(ByteData view) => format == _ChannelFormat.float32
-      ? view.getFloat32(0, Endian.little)
-      : view.getFloat64(0, Endian.little);
-
-  @override
-  void writeTo(ByteData view, double value) {
-    if (format == _ChannelFormat.float32) {
-      view.setFloat32(0, value, Endian.little);
-    } else {
-      view.setFloat64(0, value, Endian.little);
-    }
-  }
-}
-
-/// One byte, not one bit: a channel is its own allocation, never a field
-/// packed into a shared row, so there is nothing to save by sub-byte packing
-/// and a whole byte to gain in read/write simplicity.
-final class _BoolStateChannel extends _StateChannelBase<bool> {
-  _BoolStateChannel({required super.initialValue})
-    : super(format: _ChannelFormat.boolean);
-
-  @override
-  bool readFrom(ByteData view) => view.getUint8(0) != 0;
-
-  @override
-  void writeTo(ByteData view, bool value) => view.setUint8(0, value ? 1 : 0);
-}
-
-/// Collects a game's state channels, from both the fields that declare one
-/// and the `describeState` body that does.
-///
-/// **Collect only.** Every method here creates a channel with no index, no
-/// run and no storage and appends it to [_collected]; [resolveInto] numbers
-/// the lot afterwards and hands them to the game, and `_bootAllocate`
-/// allocates a step after that. That split is not tidiness - a field
-/// initialiser runs while the `Game` is still being constructed, so at the
-/// moment `Channel.int32()` is called there is no game to be numbered in and
-/// no `GameRuntime` to bind to. Making declaration a list-append means a
-/// declaration cannot fail, whichever way in it came.
-///
-/// One descriptor per game, not one per source, because a channel's identity
-/// across the isolate boundary is its index in a single order. Fields first
-/// and the hook second, which is the order they run in.
-final class _StateDescriptor implements StateDescriptor {
-  final List<_ChannelSlot> _collected = <_ChannelSlot>[];
-
-  /// The game this descriptor collected for, from [resolveInto] onwards. Only
-  /// a diagnostic reads it - the descriptor is created before the game is.
-  Game? _game;
-  bool _sealed = false;
-
-  /// Numbers every collected channel, binds it to [runtime] and hands it to
-  /// [game], in declaration order. Called once, from `Game._bootMain`, after
-  /// both declaring sources have spoken and before anything allocates.
-  void resolveInto(Game game, GameRuntime runtime) {
-    _game = game;
-    final channels = game._stateChannels;
-    for (var i = 0; i < _collected.length; i++) {
-      final channel = _collected[i];
-      channel.resolve(runtime, channels.length);
-      channels.add(channel);
-    }
-  }
-
-  void _seal() => _sealed = true;
-
-  void _checkOpen() {
-    if (!_sealed) return;
-    final owner = _game?.runtimeType.toString() ?? 'this game';
-    throw StateError(
-      'a state channel was declared after $owner\'s boot finished. State '
-      'channels are declared once, up front - on a field of the Game, or in '
-      'describeState - because their storage is allocated and announced at '
-      'bring-up and their index has to match the other isolate copy\'s.',
-    );
-  }
-
-  StateChannel<int> _int(_ChannelFormat format, int initial) {
-    _checkOpen();
-    final channel = _IntStateChannel(format: format, initialValue: initial);
-    _collected.add(channel);
-    return channel;
-  }
-
-  StateChannel<double> _float(_ChannelFormat format, double initial) {
-    _checkOpen();
-    final channel = _DoubleStateChannel(format: format, initialValue: initial);
-    _collected.add(channel);
-    return channel;
-  }
-
-  @override
-  StateChannel<int> hasUint8([int initial = 0]) =>
-      _int(_ChannelFormat.uint8, initial);
-
-  @override
-  StateChannel<int> hasInt8([int initial = 0]) =>
-      _int(_ChannelFormat.int8, initial);
-
-  @override
-  StateChannel<int> hasUint16([int initial = 0]) =>
-      _int(_ChannelFormat.uint16, initial);
-
-  @override
-  StateChannel<int> hasInt16([int initial = 0]) =>
-      _int(_ChannelFormat.int16, initial);
-
-  @override
-  StateChannel<int> hasUint32([int initial = 0]) =>
-      _int(_ChannelFormat.uint32, initial);
-
-  @override
-  StateChannel<int> hasInt32([int initial = 0]) =>
-      _int(_ChannelFormat.int32, initial);
-
-  @override
-  StateChannel<int> hasUint64([int initial = 0]) =>
-      _int(_ChannelFormat.uint64, initial);
-
-  @override
-  StateChannel<int> hasInt64([int initial = 0]) =>
-      _int(_ChannelFormat.int64, initial);
-
-  @override
-  StateChannel<double> hasFloat32([double initial = 0]) =>
-      _float(_ChannelFormat.float32, initial);
-
-  @override
-  StateChannel<double> hasFloat64([double initial = 0]) =>
-      _float(_ChannelFormat.float64, initial);
-
-  @override
-  StateChannel<bool> hasBool([bool initial = false]) {
-    _checkOpen();
-    final channel = _BoolStateChannel(initialValue: initial);
-    _collected.add(channel);
-    return channel;
   }
 }
 
