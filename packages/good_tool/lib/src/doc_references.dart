@@ -1,10 +1,13 @@
 // The pre-`ClassBody` AST - `ClassDeclaration.name`, `.members`,
-// `ExtensionTypeDeclaration.representation`, `NamedCompilationUnitMember` -
-// is deprecated in analyzer 10 and has no public replacement there: the
-// `ClassBody` that supersedes it carries no members on its public interface
-// until analyzer 11, which drops the old names in the same release. So the
-// bump past 11 is a migration and not a constraint edit (#348), and until it
-// happens this is the only spelling that reads a class body at all.
+// `ExtensionTypeDeclaration.representation`, `NamedCompilationUnitMember` - is
+// deprecated in analyzer 10, and only some of it has a replacement there.
+// `BlockClassBody.members` and `ClassDeclaration.namePart` are public in
+// 10.2.0; `MixinDeclaration.namePart` is not - probed, "The getter 'namePart'
+// isn't defined for the type 'MixinDeclaration'". So the tree cannot be read
+// through one spelling until the analyzer 11 bump, which drops the old names
+// in the release that finishes the new ones. That bump is a migration and not
+// a constraint edit (#348). `scan.dart` carries the same note for the same
+// reason.
 // ignore_for_file: deprecated_member_use
 
 import 'dart:io';

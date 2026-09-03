@@ -5,7 +5,7 @@ import 'package:good_cli/src/command.dart';
 import 'package:good_cli/src/generate/assets.dart';
 import 'package:good_cli/src/generate/bundle.dart';
 import 'package:good_cli/src/generate/engine_dependency.dart';
-import 'package:good_cli/src/generate/struct_scan.dart';
+import 'package:good_cli/src/generate/scan.dart';
 import 'package:good_cli/src/generate/templates.dart';
 import 'package:good_cli/src/verbosable.dart';
 import 'package:meta/meta.dart';

@@ -1,19 +1,17 @@
 import 'dart:io';
 
 // good_cli's `lib/src` is private by convention and this reaches into it, for
-// the reason `accessor_scan.dart` states beside its own copy of this line. One
-// `readSources` here, shared by both scans, because both ask about the same
-// trees and neither has any reason to parse the same packages a second time.
+// the reason `imports.dart` states beside its own copy of this line. One
+// `readSources` here, shared by every question below, because they all ask
+// about the same trees and none has a reason to parse them a second time.
 // ignore: implementation_imports
-import 'package:good_cli/src/generate/struct_scan.dart';
+import 'package:good_cli/src/generate/scan.dart';
 import 'package:good_tool/src/accessor_emit.dart';
-import 'package:good_tool/src/accessor_scan.dart';
 import 'package:good_tool/src/component_emit.dart';
-import 'package:good_tool/src/component_scan.dart';
-import 'package:good_tool/src/declaration_scan.dart';
 import 'package:good_tool/src/doc_references.dart';
 import 'package:good_tool/src/engine_packages.dart';
 import 'package:good_tool/src/imports.dart';
+import 'package:good_tool/src/scan.dart';
 import 'package:path/path.dart' as p;
 
 /// The code generator for a package built on this engine.
@@ -24,7 +22,6 @@ import 'package:path/path.dart' as p;
 /// $ dart run good_tool --dir ../../packages --check    # fail if stale
 /// $ dart run good_tool --dir ../../packages --verbose  # say what got nothing
 /// $ dart run good_tool --dir ../../packages --doc-references
-/// $ dart run good_tool --dir ../../packages --declarations
 /// ```
 ///
 /// `--doc-references` generates nothing. It reads the doc comments in the
@@ -32,12 +29,17 @@ import 'package:path/path.dart' as p;
 /// written nowhere in the packages read. [scanDocReferences] states the rule
 /// and what it leaves alone.
 ///
-/// `--declarations` generates nothing either. It fails on a declaration held by
-/// a variable Dart initialises lazily - a `late` field, a `static` field, a
-/// top-level variable - because the declaration then lands on whichever owner
-/// is under construction when the variable is first read rather than on the one
-/// that wrote it. [scanDeferredDeclarations] states the rule and the four
-/// things it does not decide.
+/// There was a third mode, `--declarations`, and it is gone. It refused a
+/// declaration held by a `late` field, a `static` field or a top-level
+/// variable, and the reason it gave was that such a declaration lands on
+/// whichever owner is *under construction* when the initialiser finally runs.
+/// That owner was the ambient declaration window, and the window has been
+/// deleted (#353). The rule it enforced survives the window and the check does
+/// not: with declarations collected off a constructed instance instead, a
+/// `late` one fails as an unassigned `late final` rather than as a
+/// misattribution, and that is a different check against a different mechanism.
+/// Rebuilding it here against the window's leftovers would have written the
+/// window's assumption back into the tool.
 ///
 /// From a package's own directory, because `dart run <package>` resolves
 /// packages from the working directory.
@@ -102,9 +104,8 @@ import 'package:path/path.dart' as p;
 /// component-bit table would not fit a query signature, `--check` found a
 /// committed file that is not what would be written now, or
 /// `--doc-references` found a doc comment naming something that is written
-/// nowhere, or `--declarations` found a declaration held by a lazy variable.
-/// None of them reprint the usage: the invocation was right, so answering it
-/// with the invocation answers a question nobody asked.
+/// nowhere. None of them reprint the usage: the invocation was right, so
+/// answering it with the invocation answers a question nobody asked.
 ///
 /// The seam between the two runs through the pair that look alike. A `--dir`
 /// that does not exist is 64 and a `--dir` holding no engine package is 65,
@@ -112,7 +113,6 @@ import 'package:path/path.dart' as p;
 Future<void> main(List<String> arguments) async {
   final check = arguments.contains('--check');
   final docReferences = arguments.contains('--doc-references');
-  final declarations = arguments.contains('--declarations');
   final verbose = arguments.contains('--verbose') || arguments.contains('-v');
   final directories = <String>[];
   final unknown = <String>[];
@@ -133,7 +133,6 @@ Future<void> main(List<String> arguments) async {
     }
     if (argument == '--check' ||
         argument == '--doc-references' ||
-        argument == '--declarations' ||
         argument == '--verbose' ||
         argument == '-v') {
       continue;
@@ -199,11 +198,6 @@ Future<void> main(List<String> arguments) async {
 
   if (docReferences) {
     _docReferences(packages, scan.dependencies);
-    return;
-  }
-
-  if (declarations) {
-    _declarations(packages, scan.dependencies);
     return;
   }
 
@@ -333,7 +327,7 @@ Future<void> main(List<String> arguments) async {
 void _usage() {
   stderr.writeln(
     'Usage: dart run good_tool --dir <directory> [--dir <directory>] '
-    '[--check] [--doc-references] [--declarations] [--verbose]',
+    '[--check] [--doc-references] [--verbose]',
   );
   stderr.writeln(
     '  --dir .              the package in this directory\n'
@@ -446,52 +440,19 @@ void _docReferences(
   exitCode = 65;
 }
 
-/// A separate mode and not a step inside [_docReferences], for the reason that
-/// one is separate from [_check]: the two read different things and are fixed
-/// by different edits, and one exit code over both would name the wrong fix.
-///
-/// [dependencies] are read and never reported on, and here they carry more than
-/// they do for doc references. The entry points a call site is matched against
-/// are derived from the packages read, and `Field`, `Event` and `Component`
-/// live in `good` - a scan holding only the package under it would find no
-/// entry points and report a clean run over code full of them.
-void _declarations(
-  List<EnginePackage> packages,
-  List<EnginePackage> dependencies,
-) {
-  final scan = scanDeferredDeclarations(
-    packages: packages,
-    known: <EnginePackage>[...packages, ...dependencies],
-  );
-  if (_unparsed(scan.unparsed)) return;
-  if (scan.deferred.isEmpty) {
-    stdout.writeln(
-      '${scan.calls} declaration(s) in ${scan.files} file(s) are eager, '
-      'against ${scan.entryPoints} declaring member(s).',
-    );
-    return;
-  }
-  for (final deferred in scan.deferred) {
-    stderr.writeln(deferredDeclarationLine(deferred));
-  }
-  stderr.writeln(deferredDeclarationSummary(scan));
-  exitCode = 65;
-}
-
 /// Fails the run over files the parser could not read, and says which.
 ///
-/// Answers whether the caller is done, so both modes end on the same line:
-/// `if (_unparsed(scan.unparsed)) return;`, before either of them prints a
-/// count.
+/// Answers whether the caller is done, so the mode that has one ends on the
+/// line `if (_unparsed(scan.unparsed)) return;`, before it prints a count.
 ///
 /// **It is an exit code and not a warning, and that is the whole of #348.**
 /// The parser recovers, so a file that fails to parse still hands back a tree
-/// - a shorter one, missing whatever hung off the part it could not read. Both
-/// of these modes then walked that tree, found fewer references and fewer
-/// declarations than the file holds, and printed a summary saying every one of
-/// them was fine. `collider.dart` held 46 doc references and 15 reached the
-/// check; the run exited 0. #347's stopgap wrote the file's name to stderr and
-/// still exited 0, which nothing in CI reads on a green run.
+/// - a shorter one, missing whatever hung off the part it could not read. The
+/// mode then walked that tree, found fewer references than the file holds, and
+/// printed a summary saying every one of them was fine. `collider.dart` held 46
+/// doc references and 15 reached the check; the run exited 0. #347's stopgap
+/// wrote the file's name to stderr and still exited 0, which nothing in CI
+/// reads on a green run.
 ///
 /// There is nothing the author of such a file can do about it directly, and
 /// that is not a reason to pass: what it means is that the tool's `analyzer`

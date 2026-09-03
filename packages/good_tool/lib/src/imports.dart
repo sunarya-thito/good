@@ -13,7 +13,7 @@ import 'package:path/path.dart' as p;
 // good_cli's `lib/src` is private by convention and this reaches into it, for
 // the reason `accessor_scan.dart` states beside its own copy of this line.
 // ignore: implementation_imports
-import 'package:good_cli/src/generate/struct_scan.dart';
+import 'package:good_cli/src/generate/scan.dart';
 
 /// The package whose `lib/` holds [file].
 EnginePackage? packageOf(String file, Map<String, EnginePackage> byLibDir) {

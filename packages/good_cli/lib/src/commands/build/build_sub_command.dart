@@ -10,7 +10,7 @@ import 'package:good_cli/src/config.dart';
 import 'package:good_cli/src/generate/assets.dart';
 import 'package:good_cli/src/generate/bundle.dart';
 import 'package:good_cli/src/generate/run.dart';
-import 'package:good_cli/src/generate/scene_scan.dart';
+import 'package:good_cli/src/generate/scan.dart';
 import 'package:good_cli/src/command.dart';
 import 'package:good_cli/src/parsers.dart';
 import 'package:good_cli/src/verbosable.dart';

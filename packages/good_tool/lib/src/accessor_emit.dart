@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:good_tool/src/accessor_scan.dart';
 import 'package:good_tool/src/engine_packages.dart';
+import 'package:good_tool/src/scan.dart';
 import 'package:meta/meta.dart';
 
 /// One file the tool would write, and what it would hold.
