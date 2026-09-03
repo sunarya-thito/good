@@ -324,6 +324,46 @@ class AssetKey<T> {
 abstract class AssetLoader<T> {
   const AssetLoader();
 
+  /// Declares [create] as this game's decoder for the payload type it builds
+  /// a loader for, on a `Game` field.
+  ///
+  /// ```dart
+  /// class MyGame extends Game2D {
+  ///   final dialogue = AssetLoader.of(DialogueLoader.new);
+  /// }
+  /// ```
+  ///
+  /// The payload type is read off what [create] returns, so there is no type
+  /// argument to get wrong and no way to file a decoder under a type it
+  /// cannot decode.
+  ///
+  /// **A constructor, not an instance**, for `GameSystem.of`'s reason turned
+  /// one isolate over. Every member of an [AssetLoader] runs on the copy that
+  /// decodes and on no other, and a `Game` field rides the deep copy into the
+  /// game isolate - so a loader built here would be an object that exists on
+  /// a copy that must never call it, and would have to be sendable to get
+  /// there. The tear-off rides instead, and [AssetLoaders] on the decoding
+  /// copy is where the object comes into being. A loader taking arguments
+  /// goes through a closure, `AssetLoader.of(() => DialogueLoader(locale))`,
+  /// with the same warning attached: what the closure captures crosses.
+  ///
+  /// **The most derived declaration wins.** A field of the game outranks one
+  /// on a mixin it applies, which outranks one on its superclass, so
+  /// substituting a decoder for a type the layer below already covers is
+  /// declaring one - see [AssetLoaders.register] for the rule underneath and
+  /// `Game._bootMain` for the order it is applied in. There is no `super`
+  /// call to put first, and so none to forget.
+  ///
+  /// **Collect only.** Nothing is registered here: the registry is a
+  /// per-isolate static and this runs while the game is being constructed, on
+  /// whichever isolate did that. `Game._bootMain` calls [create] and registers
+  /// what it hands back, on main, before anything is loaded.
+  static LoaderHandle<P> of<P>(AssetLoader<P> Function() create) {
+    final handle = LoaderHandle<P>._(create);
+    DeclarationContext.addLoader(handle);
+    return handle;
+  }
+
   /// Reads [key]'s source and produces the decoded payload.
   ///
   /// Called at most once per asset - [Assets] records the result and collapses
@@ -375,10 +415,12 @@ final class AssetLoaders {
   /// previous registration.
   ///
   /// **Replaces, so the last registration for a type wins.** That is what
-  /// makes `Game.describeAssetLoaders` work the way the rest of the `describeX`
-  /// family does: a subclass calls `super` first and then registers, so its own
-  /// decoder for a type the engine already covers takes over. Overriding an
-  /// engine decoder is a supported thing to do, and this is how.
+  /// makes the most derived [AssetLoader.of] declaration the one that answers:
+  /// field initialisers run subclass first, then mixins, then the superclass,
+  /// and `Game._bootMain` installs them back to front - so a game's own
+  /// decoder for a type the engine already covers is registered last and takes
+  /// over. Overriding an engine decoder is a supported thing to do, and this
+  /// is how.
   static void register<T>(AssetLoader<T> loader) => _loaders[T] = loader;
 
   /// Whether a decoder for [T] is registered on this isolate.
@@ -409,19 +451,42 @@ final class AssetLoaders {
   static void reset() => _loaders.clear();
 }
 
-/// What `Game.describeAssetLoaders` hands each layer to register into.
+/// A decoder a `Game` declared on a field - what [AssetLoader.of] hands back.
 ///
-/// A one-method view of [AssetLoaders], for the reason every other `describeX`
-/// pass takes a descriptor: the hook is a declaration, and what it declares
-/// into is the framework's business. It also keeps the pass honest - a hook
-/// that was handed the static registry directly could just as easily read it,
-/// reset it, or run at a moment nothing constrains.
-abstract interface class AssetLoaderRegistrar {
-  /// Registers [loader] as this game's decoder for payload type [T].
-  ///
-  /// Later wins, so a subclass registering after its `super` call replaces
-  /// whatever the layer below registered for [T]. See [AssetLoaders.register].
-  void register<T>(AssetLoader<T> loader);
+/// ```dart
+/// class MyGame extends Game2D {
+///   final dialogue = AssetLoader.of(DialogueLoader.new);
+/// }
+/// ```
+///
+/// # Declared on one copy, answering on one copy
+///
+/// The declaration is made wherever the `Game` was constructed and the
+/// decoder is built on the copy that decodes, which is main. So the handle
+/// exists on both copies and [value] answers on one - reading it on the game
+/// isolate throws, naming the isolate, exactly as `AssetLoaders.of` does.
+///
+/// [value] answers **for the payload type**, not for this declaration: it is
+/// whichever decoder won, so a game that substituted its own reads the same
+/// object through the engine's handle and through its own. That is the
+/// question worth being able to ask - a handle that answered with the loader
+/// it was handed could only ever restate its own argument.
+final class LoaderHandle<T> {
+  LoaderHandle._(this._create);
+
+  final AssetLoader<T> Function() _create;
+
+  /// Whether a decoder for [T] is registered on this isolate.
+  bool get isRegistered => AssetLoaders.isRegistered<T>();
+
+  /// The decoder answering for [T] on this isolate, or a `StateError` naming
+  /// what is missing - see [AssetLoaders.of].
+  AssetLoader<T> get value => AssetLoaders.of<T>();
+
+  /// Builds the decoder and files it under [T]. `Game._bootMain` is the only
+  /// caller, on the copy that decodes.
+  @internal
+  void registerInto() => AssetLoaders.register<T>(_create());
 }
 
 /// A declared asset: its identity, its address, and - on the copy that loaded

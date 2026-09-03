@@ -175,11 +175,7 @@ abstract class _BootLoadGame extends Game {
   /// Written on the game isolate, read here.
   final loaded = Channel.int32(0);
 
-  @override
-  void describeAssetLoaders(AssetLoaderRegistrar loaders) {
-    super.describeAssetLoaders(loaders);
-    loaders.register<_Blob>(const _BlobLoader());
-  }
+  final blobLoader = AssetLoader.of(_BlobLoader.new);
 
   @override
   GameState createState() => _BootLoadState();

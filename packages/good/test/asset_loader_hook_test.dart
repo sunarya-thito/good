@@ -1,15 +1,17 @@
-// #123: who registers an asset decoder, and where.
+// #123: who declares an asset decoder, and where it is built.
 //
 // `AssetLoaders` is a per-isolate static map, so a decoder has to be
-// registered on the isolate that decodes, before anything is loaded. Until
-// this hook existed the only registration in the whole repository was
-// `Texture`'s, inside `DrawCanvas2D`'s constructor - so a game that built no
-// canvas decoded no textures, and `AudioClip`'s loader, which has no canvas to
-// hang on, was never registered at all. Every `Audios.x` load threw.
+// registered on the isolate that decodes, before anything is loaded. Before
+// #123 the only registration in the whole repository was `Texture`'s, inside
+// `DrawCanvas2D`'s constructor - so a game that built no canvas decoded no
+// textures, and `AudioClip`'s loader, which has no canvas to hang on, was
+// never registered at all. Every `Audios.x` load threw.
 //
-// These cases pin the hook's semantics on one isolate. The property that
-// cannot be tested here - that the *game* isolate registers nothing - needs a
-// real spawn and lives in `game_isolate_test.dart`.
+// These cases pin `AssetLoader.of`'s semantics on one isolate: that a
+// declaration is built and filed by boot, that the most derived one wins, and
+// that a game declaring none still gets the kernel's. The property that cannot
+// be tested here - that the *game* isolate registers nothing - needs a real
+// spawn and lives in `game_isolate_test.dart`.
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:good/src/archetype.dart';
@@ -66,23 +68,23 @@ class _BareGame extends Game {
   GameState createState() => _BareState();
 }
 
-/// The engine layer: registers one decoder.
+/// The engine layer: declares one decoder.
 class _EngineGame extends _BareGame {
-  @override
-  void describeAssetLoaders(AssetLoaderRegistrar loaders) {
-    super.describeAssetLoaders(loaders);
-    loaders.register<_Payload>(const _MarkLoader('engine'));
-  }
+  final payload = AssetLoader.of(() => const _MarkLoader('engine'));
 }
 
 /// A game on top of it, adding its own and replacing the engine's.
 class _UserGame extends _EngineGame {
-  @override
-  void describeAssetLoaders(AssetLoaderRegistrar loaders) {
-    super.describeAssetLoaders(loaders);
-    loaders.register<_Other>(const _OtherLoader());
-    loaders.register<_Payload>(const _MarkLoader('game'));
-  }
+  final other = AssetLoader.of(_OtherLoader.new);
+  final ownPayload = AssetLoader.of(() => const _MarkLoader('game'));
+}
+
+/// A decoder written `late`, ahead of the eager one, for the same reason every
+/// other declaration has a case like it.
+class _LateLoaderGame extends _BareGame {
+  late final lazyPayload = AssetLoader.of(() => const _MarkLoader('late'));
+
+  final other = AssetLoader.of(_OtherLoader.new);
 }
 
 Future<G> _boot<G extends Game>(G Function() create) async {
@@ -122,27 +124,71 @@ void main() {
       AssetLoaders.isRegistered<_Payload>(),
       isFalse,
       reason:
-          'the hook is opt-in, and nothing registers a decoder a game never '
-          'asked for',
+          'a declaration is opt-in, and nothing registers a decoder a game '
+          'never asked for',
     );
   });
 
-  test('a subclass registering after super replaces what it found', () async {
-    // The ordering rule stated on AssetLoaders.register: later wins. It is
-    // what lets a game substitute its own decoder for one the engine ships,
-    // and it only reads that way because every layer calls super first.
-    await _boot(_UserGame.new);
-    expect(
-      (AssetLoaders.of<_Payload>() as _MarkLoader).mark,
-      'game',
-      reason: 'the game registered the same type after its super call',
-    );
+  test('a late decoder reaches no pass at all', () async {
+    final game = await _boot(_LateLoaderGame.new);
+
     expect(
       AssetLoaders.isRegistered<_Other>(),
       isTrue,
-      reason: 'and the type only it declared is registered too',
+      reason:
+          'the eager one registered, so the window was open and working and '
+          'the throw below is the closed-window guard',
+    );
+    expect(
+      AssetLoaders.isRegistered<_Payload>(),
+      isFalse,
+      reason:
+          'written first and still not registered: a late initialiser runs on '
+          'first read, after boot built and filed the declared decoders',
+    );
+    expect(
+      () => game.lazyPayload,
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          allOf(
+            contains('no game being constructed'),
+            contains('eager, always'),
+          ),
+        ),
+      ),
     );
   });
+
+  test(
+    'the most derived declaration for a type is the one that answers',
+    () async {
+      // The ordering rule stated on AssetLoaders.register: later wins, and boot
+      // installs back to front so "later" comes out as "more derived". It is
+      // what lets a game substitute its own decoder for one the engine ships,
+      // and there is no super call for it to depend on.
+      final game = await _boot(_UserGame.new);
+      expect(
+        (AssetLoaders.of<_Payload>() as _MarkLoader).mark,
+        'game',
+        reason: 'the subclass declared the same payload type as its base',
+      );
+      expect(
+        ((game.payload.value) as _MarkLoader).mark,
+        'game',
+        reason:
+            'and the base class handle answers with the winner too, because a '
+            'handle answers for the payload type rather than restating the '
+            'loader it was handed',
+      );
+      expect(
+        AssetLoaders.isRegistered<_Other>(),
+        isTrue,
+        reason: 'and the type only it declared is registered too',
+      );
+    },
+  );
 
   test('the kernel registers its own payload type unasked', () async {
     // `AudioClip` is the one payload the kernel ships - bytes and a container
@@ -154,24 +200,24 @@ void main() {
     expect(AssetLoaders.isRegistered<AudioClip>(), isTrue);
   });
 
+  test('a game declaring its own still inherits the kernel decoder', () async {
+    await _boot(_UserGame.new);
+    expect(
+      AssetLoaders.isRegistered<AudioClip>(),
+      isTrue,
+      reason:
+          'the kernel files its own ahead of every declaration, so there is '
+          'nothing a game can do to drop it - the failure this replaces was '
+          'an override that forgot its super call',
+    );
+  });
+
   test(
-    'a game that overrides the hook still inherits the kernel decoder',
+    'the engine layer still contributes when the game adds its own',
     () async {
       await _boot(_UserGame.new);
-      expect(
-        AssetLoaders.isRegistered<AudioClip>(),
-        isTrue,
-        reason: 'the super chain reaches Game, which registers it',
-      );
+      expect(AssetLoaders.isRegistered<_Payload>(), isTrue);
+      expect(AssetLoaders.isRegistered<_Other>(), isTrue);
     },
   );
-
-  test('the engine layer still contributes when the game adds its own', () async {
-    // The failure this guards is a subclass that overrides the hook and forgets
-    // super - which #64's checker now fails the build over, and which this
-    // asserts the consequence of.
-    await _boot(_UserGame.new);
-    expect(AssetLoaders.isRegistered<_Payload>(), isTrue);
-    expect(AssetLoaders.isRegistered<_Other>(), isTrue);
-  });
 }

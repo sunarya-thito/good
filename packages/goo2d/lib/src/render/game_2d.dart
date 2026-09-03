@@ -136,7 +136,7 @@ mixin Renderer2D on Game {
   /// table by a literal: a frame buffer is looked up by `view.pack()`.
   final defaultCamera = CameraView.of();
 
-  /// Registers the texture decoder, since a 2D renderer is what makes a
+  /// Declares the texture decoder, since a 2D renderer is what makes a
   /// texture something worth decoding.
   ///
   /// On the mixin and not on [Game2D], so a game whose base class is already
@@ -145,12 +145,11 @@ mixin Renderer2D on Game {
   /// hand that game a renderer that draws nothing, which is the shape of the
   /// bug this registration was moved out of `DrawCanvas2D`'s constructor to
   /// stop (#123).
-  @override
-  @mustCallSuper
-  void describeAssetLoaders(AssetLoaderRegistrar loaders) {
-    super.describeAssetLoaders(loaders);
-    loaders.register<Texture>(const TextureLoader());
-  }
+  ///
+  /// A game wanting a different texture decoder declares one on a field of its
+  /// own: those initialise before a mixin's, and the most derived declaration
+  /// for a payload type is the one that answers - see [AssetLoader.of].
+  final textureLoader = AssetLoader.of(TextureLoader.new);
 
   /// Draw records past this many in a single tick are dropped. A hard bound
   /// on the batch: the byte scratch and the handoff slots are both sized from

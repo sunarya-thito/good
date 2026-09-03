@@ -569,9 +569,9 @@ final class VertexBatch2D {
 /// instead of grouping the frame by texture. See its class doc for the trade
 /// that buys and the alternating-texture case that pays for it.
 final class DrawCanvas2D {
-  // No loader registration here: `Renderer2D.describeAssetLoaders` registers
-  // `Texture`'s, from `Game._bootMain`, which runs on the decoding isolate
-  // before anything is loaded and never on the game isolate.
+  // No loader registration here: `Renderer2D.textureLoader` declares
+  // `Texture`'s, and `Game._bootMain` builds and files it - on the decoding
+  // isolate, before anything is loaded, and never on the game isolate.
   //
   // Registering it in this constructor instead covers only a game that builds
   // a canvas. Build none and every texture load fails at boot with a

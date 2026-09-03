@@ -564,6 +564,48 @@ abstract final class DeclarationContext {
     _handlers.last.add(handle);
   }
 
+  /// The open decoder collections, innermost last - the fifteenth level of the
+  /// stack, and the one `AssetLoader.of` declares against.
+  ///
+  /// A list per construction, like [_handlers]: `Game._construct` opens one
+  /// around a game's constructor and `Game._bootMain` builds and registers
+  /// what it collected, **back to front**, so the most derived declaration for
+  /// a payload type is the last one filed and the one that answers.
+  static final List<List<LoaderHandle<Object?>>> _loaders =
+      <List<LoaderHandle<Object?>>>[];
+
+  /// Opens a collection for the duration of one game's constructor. Paired
+  /// with [popLoaders] in a `finally` - `Game._construct` is the only caller.
+  static void pushLoaders() => _loaders.add(<LoaderHandle<Object?>>[]);
+
+  static void popLoaders() => _loaders.removeLast();
+
+  /// What the game being constructed has declared so far, in field initialiser
+  /// order. Read once, before [popLoaders], by `Game._construct`.
+  static List<LoaderHandle<Object?>> get openLoaders => _loaders.last;
+
+  /// Records one declaration, or a `StateError` naming the ways to get here.
+  static void addLoader(LoaderHandle<Object?> handle) {
+    if (_loaders.isEmpty) {
+      throw StateError(
+        'An asset loader was declared with no game being constructed. '
+        'AssetLoader.of reads the window the framework opens around a '
+        'constructor call, so the framework has to be the one constructing:\n'
+        '  Game.start(MyGame.new)   // not Game.start(MyGame())\n'
+        'A Game is the only thing that declares a decoder. AssetLoaders is a '
+        'per-isolate static map and only the copy that decodes fills it, so a '
+        'decoder declared on a GameState, a system or a scene would be '
+        'declared on the copy that never decodes anything.\n'
+        'A `late final` initialiser lands here too, and that is the point: it '
+        'runs on first read, after boot registered the declared decoders, so '
+        'the loader would reach no pass at all - and the load that wanted it '
+        'would have already failed naming a missing decoder. Field '
+        'initialisers here are eager, always.',
+      );
+    }
+    _loaders.last.add(handle);
+  }
+
   /// The open random registries, innermost last - the tenth level of the
   /// stack, and the one `RandomStream.of` declares against.
   ///

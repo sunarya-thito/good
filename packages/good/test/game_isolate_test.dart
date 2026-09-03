@@ -1139,12 +1139,12 @@ class _CensusIsolateGame extends Game {
 // --- #123: which isolate registers an asset decoder ------------------------
 //
 // `AssetLoaders` is a per-isolate static map, so the question "who registers"
-// is really "on which copy". `describeAssetLoaders` is called from
-// `Game._bootMain`, which main runs before the spawn and the game isolate
-// never runs at all - so the decoder exists exactly where decoding happens and
-// nowhere else. That is asserted from both sides below, because a hook wired
-// into the declaration passes *both* copies run would still look right from
-// main.
+// is really "on which copy". An `AssetLoader.of` field declares a tear-off and
+// `Game._bootMain` is what builds it and files it - and main runs that before
+// the spawn while the game isolate never runs it at all, so the decoder exists
+// exactly where decoding happens and nowhere else. That is asserted from both
+// sides below, because a declaration wired into the passes *both* copies run
+// would still look right from main.
 
 class _LoaderProbe {}
 
@@ -1274,11 +1274,7 @@ class _RegistrarGame extends Game {
 
   final registeredHere = Channel.int32(-1);
 
-  @override
-  void describeAssetLoaders(AssetLoaderRegistrar loaders) {
-    super.describeAssetLoaders(loaders);
-    loaders.register<_LoaderProbe>(const _LoaderProbeLoader());
-  }
+  final probeLoader = AssetLoader.of(_LoaderProbeLoader.new);
 
   @override
   GameState createState() => _RegistrarState();
@@ -2517,8 +2513,9 @@ void main() {
       AssetLoaders.isRegistered<_LoaderProbe>(),
       isTrue,
       reason:
-          'this copy ran _bootMain, which is the only call site of '
-          'describeAssetLoaders, and this copy is the one that decodes',
+          'this copy ran _bootMain, which is the only place a declared '
+          'decoder is built and registered, and this copy is the one that '
+          'decodes',
     );
 
     expect(await _waitUntil(run, () => game.registeredHere.value >= 0), isTrue);

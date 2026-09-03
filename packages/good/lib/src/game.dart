@@ -738,50 +738,34 @@ abstract class Game implements RandomOwner {
   @mustCallSuper
   void describeBuffers(BufferDescriptor descriptor) {}
 
-  /// Registers the decoders for every payload type this game loads.
+  /// Every `AssetLoader.of` declaration this game's fields made, in field
+  /// initialiser order.
   ///
-  /// ```dart
-  /// @override
-  /// void describeAssetLoaders(AssetLoaderRegistrar loaders) {
-  ///   super.describeAssetLoaders(loaders);
-  ///   loaders.register<Dialogue>(const DialogueLoader());
-  /// }
-  /// ```
+  /// Filled by [_construct] off the window it opens around the constructor,
+  /// and registered in reverse by [_bootMain] - see [AssetLoader.of] for why
+  /// the reverse is what "the most derived wins" comes out as.
   ///
-  /// Each layer contributes its own and chains, so a game adds a decoder
-  /// without knowing what the engine below it registered. Registering a type
-  /// the layer below already covers replaces it, which is how a game
-  /// substitutes its own decoder for an engine one - see
-  /// [AssetLoaders.register].
+  /// # Registered on the copy that decodes, and on no other
   ///
-  /// # Where this runs, and why it is not with the others
+  /// `AssetLoaders` is a per-isolate static map and the game isolate holds
+  /// payload-free declarations, so a decoder there would answer for nothing;
+  /// its own `StateError` says as much. [_bootMain] is what installs them,
+  /// which main runs before the spawn and which the game isolate never runs at
+  /// all - so the declarations ride the copy as tear-offs and no loader object
+  /// is ever built over there.
   ///
-  /// On the isolate that **decodes**, once, before anything is loaded - and
-  /// never on the game isolate. `AssetLoaders` is a per-isolate static map and
-  /// the game isolate holds payload-free declarations, so a decoder there
-  /// would answer for nothing; its own `StateError` says as much. That makes
-  /// this the one `describeX` pass outside the shared declaration sequence both
-  /// copies run. It is called from [_bootMain], which main runs before the
-  /// spawn and which the game isolate never runs at all.
+  /// # Declared on the Game, not from some object's constructor
   ///
-  /// # Register here, not from a constructor
-  ///
-  /// A decoder registered from some object's constructor exists only if that
-  /// object gets built, and when it does not, the asset load fails at boot
-  /// with an error naming the missing loader instead of the cause. `Texture`
-  /// was registered from `DrawCanvas2D`'s constructor - a canvas is built only
-  /// where Flutter is attached, and always before anything it draws is decoded
-  /// - and that left the example suite red for sixty commits (#83). Audio has
-  /// no canvas to hang on at all.
-  @mustCallSuper
-  void describeAssetLoaders(AssetLoaderRegistrar loaders) {
-    // The kernel ships one payload type, so the kernel registers its decoder.
-    // `AudioClip` is bytes and a container name - no canvas, no device, no
-    // dimension - which is why it sits here rather than in a renderer package
-    // and why a 3D game gets sound loading without goo3d declaring anything
-    // (#93). Reading the bytes is all this buys: nothing here plays them.
-    loaders.register<AudioClip>(const AudioLoader());
-  }
+  /// A decoder registered from an arbitrary object's constructor exists only
+  /// if that object gets built, and when it does not, the asset load fails at
+  /// boot with an error naming the missing loader instead of the cause.
+  /// `Texture` was registered from `DrawCanvas2D`'s constructor - a canvas is
+  /// built only where Flutter is attached, and always before anything it draws
+  /// is decoded - and that left the example suite red for sixty commits (#83).
+  /// Audio has no canvas to hang on at all. A `Game` field is the one
+  /// constructor a run cannot skip.
+  List<LoaderHandle<Object?>> _declaredLoaders =
+      const <LoaderHandle<Object?>>[];
 
   /// This game's declared camera views - the places it can be drawn.
   ///
@@ -1276,12 +1260,16 @@ abstract class Game implements RandomOwner {
     DeclarationContext.pushCameraViews(views);
     DeclarationContext.pushCommands(commands);
     DeclarationContext.pushHandlers();
+    DeclarationContext.pushLoaders();
     final G game;
     final int built;
     final List<CommandHandler> handlers;
+    final List<LoaderHandle<Object?>> loaders;
     try {
       game = create();
     } finally {
+      loaders = DeclarationContext.openLoaders;
+      DeclarationContext.popLoaders();
       handlers = DeclarationContext.openHandlers;
       DeclarationContext.popHandlers();
       DeclarationContext.popCommands();
@@ -1320,6 +1308,7 @@ abstract class Game implements RandomOwner {
     game._randoms = randoms;
     game._declaredCommands = commands;
     game._declaredHandlers = handlers;
+    game._declaredLoaders = loaders;
     game._engineCommands = engine;
     game._cameraViews = views;
     // Closes the table and hands every declared view the game it belongs to.
@@ -1647,10 +1636,32 @@ abstract class Game implements RandomOwner {
     runtime.state = state;
     state.bindRuntime(runtime, simulating: runtime.simulates);
 
+    // --- asset decoders: register what the fields collected ---------------
+    //
     // First, and on this copy only: a decoder has to exist before anything is
-    // loaded, and nothing below here loads. See [describeAssetLoaders] for why
+    // loaded, and nothing below here loads. See [_declaredLoaders] for why
     // this pass is not one of the two both copies run.
-    describeAssetLoaders(const _LoaderRegistrar());
+    //
+    // The kernel's own goes in ahead of everything a game declared, so a game
+    // declaring its own decoder for `AudioClip` outranks it. Here and not on a
+    // field of this class, for the reason the engine's five commands are
+    // declared by [_construct] rather than by fields: a declaration field on
+    // `Game` would make constructing one outside `Game.start` throw about a
+    // decoder, whichever guard the caller was actually about to trip.
+    //
+    // `AudioClip` is bytes and a container name - no canvas, no device, no
+    // dimension - which is why the kernel ships it at all, and why a 3D game
+    // gets sound loading without goo3d declaring anything (#93). Reading the
+    // bytes is all it buys: nothing here plays them.
+    AssetLoaders.register<AudioClip>(const AudioLoader());
+    // Then the game's, backwards, and that is the whole substitution rule.
+    // Field initialisers run subclass first, then mixins in reverse `with`
+    // order, then the superclass - so the most derived declaration is at index
+    // 0 and installing back to front leaves it registered last, which is the
+    // one `AssetLoaders.register` keeps.
+    for (var i = _declaredLoaders.length - 1; i >= 0; i--) {
+      _declaredLoaders[i].registerInto();
+    }
 
     // --- state channels: resolve what the fields collected ----------------
     //
@@ -3660,18 +3671,6 @@ final class _GameSceneDescriptor implements GameSceneDescriptor {
     _game._declaredScenes.add(scene);
     return scene;
   }
-}
-
-/// Forwards `Game.describeAssetLoaders` into the per-isolate registry.
-///
-/// `const`, holding nothing: the registry it writes to is a static, and giving
-/// the hook an object to talk to instead of the static itself is what keeps
-/// the pass a declaration - see [AssetLoaderRegistrar].
-final class _LoaderRegistrar implements AssetLoaderRegistrar {
-  const _LoaderRegistrar();
-
-  @override
-  void register<T>(AssetLoader<T> loader) => AssetLoaders.register<T>(loader);
 }
 
 final class _BufferDescriptor implements BufferDescriptor {
