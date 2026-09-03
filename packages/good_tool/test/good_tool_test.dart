@@ -2,14 +2,13 @@ import 'dart:convert';
 import 'dart:io';
 
 // ignore: implementation_imports
-import 'package:good_cli/src/generate/struct_scan.dart';
+import 'package:good_cli/src/generate/scan.dart';
 import 'package:good_tool/src/accessor_emit.dart';
-import 'package:good_tool/src/accessor_scan.dart';
 import 'package:good_tool/src/component_emit.dart';
-import 'package:good_tool/src/component_scan.dart';
 import 'package:good_tool/src/doc_references.dart';
 import 'package:good_tool/src/engine_packages.dart';
 import 'package:good_tool/src/imports.dart';
+import 'package:good_tool/src/scan.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -19,7 +18,7 @@ import '_repo.dart';
 // stays fixed once committed - asked of the VM and of the tool's own `--check`,
 // not of a string.
 //
-// `accessor_scan_test.dart` covers what the generator decides, and every
+// `good_cli`'s `scan_test.dart` covers what the scan decides, and every
 // assertion there is about text. Text assertions only catch the mistakes
 // somebody already thought of: they cannot tell `component.transformOffsetX`
 // from a line that compiles into a read of the wrong pointer, and they cannot
@@ -144,59 +143,6 @@ void _write(Directory repo, String path, String contents) =>
     File(p.join(repo.path, path))
       ..parent.createSync(recursive: true)
       ..writeAsStringSync(contents);
-
-/// A repository whose `good` names the registrar, so `--declarations` has a
-/// seed to derive its entry points from.
-///
-/// Not [_runnableRepo]: the shared kernel writes a `Field` that names no
-/// registrar, so a `--declarations` run over it derives no entry point and
-/// reports a clean tree over any code at all. That is the mode's documented
-/// trap and it would make both tests below pass whatever the tool did.
-Directory _declaringRepo({required bool deferred}) => fakeRepo(<FakePackage>[
-  kernelPackage(
-    extra: <String, String>{
-      'src/declare.dart': '''
-abstract final class DeclarationContext {
-  static Object get data => throw UnimplementedError();
-}
-
-abstract final class Column {
-  static Object float64([double initial = 0]) => DeclarationContext.data;
-}
-''',
-    },
-  ),
-  FakePackage(
-    'goo2d',
-    dependencies: const <String>['good'],
-    files: <String, String>{
-      'goo2d.dart': _declaringBarrel,
-      'src/transform.dart': deferred ? _deferredColumn : _eagerColumn,
-    },
-  ),
-]);
-
-const String _declaringBarrel = """
-export 'package:good/good.dart';
-""";
-
-/// The column is `static`, so Dart runs its initialiser on first read.
-const String _deferredColumn = """
-import 'package:good/src/declare.dart';
-
-class Transform2D {
-  static final offsetX = Column.float64();
-}
-""";
-
-/// The same column, eager, which is the shape every correct site has.
-const String _eagerColumn = """
-import 'package:good/src/declare.dart';
-
-class Transform2D {
-  final offsetX = Column.float64();
-}
-""";
 
 void main() {
   group('the generated file runs', () {
@@ -450,9 +396,9 @@ void main() {
       expect(result.stdout, contains('name something the packages write'));
     }, timeout: const Timeout(Duration(minutes: 3)));
 
-    // #348. Both modes used to walk whatever the parser recovered out of a
-    // file it could not finish, and print a count over it. The count is the
-    // part that made it dangerous: it looked like an answer.
+    // #348. The mode used to walk whatever the parser recovered out of a file
+    // it could not finish, and print a count over it. The count is the part
+    // that made it dangerous: it looked like an answer.
     test('--doc-references fails on a file it could not parse', () async {
       final repo = _runnableRepo();
       _write(
@@ -477,76 +423,6 @@ void main() {
         result.stdout,
         isNot(contains('name something the packages write')),
         reason: 'the count is the thing that read as success',
-      );
-    }, timeout: const Timeout(Duration(minutes: 3)));
-
-    test('--declarations fails on a file it could not parse', () async {
-      final repo = _declaringRepo(deferred: false);
-      _write(
-        repo,
-        'packages/goo2d/lib/src/broken.dart',
-        'class Player {\n'
-        '  int speed = 0\n',
-      );
-
-      final result = await _tool(repo, const <String>[
-        '--dir',
-        'packages',
-        '--declarations',
-      ]);
-      expect(result.exitCode, 65);
-      expect(
-        result.stderr,
-        contains('goo2d/lib/src/broken.dart: not parsed, and so not checked'),
-      );
-      expect(
-        result.stdout,
-        isNot(contains('declaration(s) in')),
-        reason: 'the count is the thing that read as success',
-      );
-    }, timeout: const Timeout(Duration(minutes: 3)));
-
-    test('--declarations fails on a deferred declaration and writes nothing',
-        () async {
-      final repo = _declaringRepo(deferred: true);
-
-      final result = await _tool(repo, const <String>[
-        '--dir',
-        'packages',
-        '--declarations',
-      ]);
-      expect(result.exitCode, 65);
-      expect(
-        result.stderr,
-        contains('goo2d/lib/src/transform.dart:4: `offsetX` holds '
-            'Column.float64'),
-      );
-      expect(result.stderr, contains('static'));
-      // The mode reports and writes nothing, for the reason --doc-references
-      // writes nothing: a tree left behind belongs to a failure this did not
-      // cause.
-      expect(
-        File(
-          p.join(repo.path, 'packages/goo2d/lib/src/accessors.g.dart'),
-        ).existsSync(),
-        isFalse,
-      );
-    }, timeout: const Timeout(Duration(minutes: 3)));
-
-    test('--declarations passes a tree whose declarations are eager', () async {
-      final repo = _declaringRepo(deferred: false);
-
-      final result = await _tool(repo, const <String>[
-        '--dir',
-        'packages',
-        '--declarations',
-      ]);
-      expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
-      expect(
-        result.stdout,
-        contains('1 declaration(s) in'),
-        reason: 'the eager call was recognised. A run that derived no entry '
-            'point would report zero and exit zero just the same',
       );
     }, timeout: const Timeout(Duration(minutes: 3)));
 

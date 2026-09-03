@@ -89,16 +89,12 @@ Directory fakeRepo(List<FakePackage> packages) {
 /// `Entity`, `Accessor` and `Field`, and a fixture importing the real ones
 /// would be testing this suite's package config instead of the scan. It is also
 /// a working implementation, so a fixture can be compiled and run.
-FakePackage kernelPackage({
-  String name = 'good',
-  Map<String, String> extra = const <String, String>{},
-}) => FakePackage(
+FakePackage kernelPackage({String name = 'good'}) => FakePackage(
   name,
   files: <String, String>{
     '$name.dart': "export 'src/struct.dart';\nexport 'src/data.dart';\n",
     'src/struct.dart': kernelStruct,
     'src/data.dart': kernelData,
-    ...extra,
   },
 );
 

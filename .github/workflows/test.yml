@@ -165,18 +165,6 @@ jobs:
           set -e
           (cd packages/good_tool && dart run good_tool --doc-references --dir ../../packages)
 
-      # A declaration lands on whichever owner is under construction when its
-      # initialiser runs, so a `late` field, a `static` field or a top-level
-      # variable holding one lands it on the wrong owner or on nobody. The
-      # registrar throws when nothing at all is being constructed, which covers
-      # the deferred read that happens between boots; it cannot cover the one
-      # that happens inside somebody else's window, where the call succeeds
-      # against a registrar that is open and is not its own.
-      - name: Check that no declaration is held by a lazy variable
-        run: |
-          set -e
-          (cd packages/good_tool && dart run good_tool --declarations --dir ../../packages)
-
       # ffigen's function filter is a regex nothing re-runs, so it can stop
       # matching with nothing going red. `good.*` matched none of the shim's 60
       # symbols, and regenerating produced 19 lines - three constants, no
