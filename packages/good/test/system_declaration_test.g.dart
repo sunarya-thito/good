@@ -18,6 +18,11 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// A generic fixture also gets an `is` test. Nothing at run
+// time can take the type arguments off a `Type`, so the
+// literal in the table below never equals an instance's
+// `runtimeType` - the test is what matches the two.
 part of 'system_declaration_test.dart';
 
 List<ScannableField> _collect$EarA(Object object) {
@@ -193,6 +198,12 @@ List<ScannableField> _collect$LateGame(Object object) {
   return const <ScannableField>[];
 }
 
+/// Whether an object is a _EventState, whatever its type arguments are.
+bool _is$EventState(Object object) => object is _EventState;
+
+/// Whether an object is a _InputState, whatever its type arguments are.
+bool _is$InputState(Object object) => object is _InputState;
+
 /// Every fixture this library declares, and how to read one.
 ///
 /// It carries the package's own generated table as a
@@ -207,14 +218,22 @@ const GeneratedDeclarations _systemDeclarationTestDeclarations =
         DeclarationCollector(_FieldSystem, _collect$FieldSystem),
         DeclarationCollector(_HookSystem, _collect$HookSystem),
         DeclarationCollector(_MixedSystem, _collect$MixedSystem),
-        DeclarationCollector(_EventState, _collect$EventState),
+        DeclarationCollector.generic(
+          _EventState,
+          _collect$EventState,
+          _is$EventState,
+        ),
         DeclarationCollector(_FieldEventGame, _collect$FieldEventGame),
         DeclarationCollector(_HookEventGame, _collect$HookEventGame),
         DeclarationCollector(_MixedEventGame, _collect$MixedEventGame),
         DeclarationCollector(_FieldInputSystem, _collect$FieldInputSystem),
         DeclarationCollector(_HookInputSystem, _collect$HookInputSystem),
         DeclarationCollector(_MixedInputSystem, _collect$MixedInputSystem),
-        DeclarationCollector(_InputState, _collect$InputState),
+        DeclarationCollector.generic(
+          _InputState,
+          _collect$InputState,
+          _is$InputState,
+        ),
         DeclarationCollector(_FieldInputGame, _collect$FieldInputGame),
         DeclarationCollector(_HookInputGame, _collect$HookInputGame),
         DeclarationCollector(_MixedInputGame, _collect$MixedInputGame),

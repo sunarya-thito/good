@@ -622,10 +622,15 @@ class DeclarationCollectorEntry {
     required this.path,
     required this.imports,
     required this.fields,
+    required this.isGeneric,
   });
 
   /// The class it reads - `GameRenderer2D`.
   final String type;
+
+  /// Whether the class takes type parameters, and so needs the type test
+  /// `DeclarationCollector.generic` is given.
+  final bool isGeneric;
 
   /// The package whose table it goes in.
   final String package;
@@ -654,6 +659,14 @@ class DeclarationCollectorEntry {
   ///
   /// Private, because nothing names it but the table three lines below it.
   String get functionName => '_${type[0].toLowerCase()}${type.substring(1)}';
+
+  /// `_is$GameRenderer2D`, the type test's name, written only when
+  /// [isGeneric].
+  ///
+  /// A `$` for the reason `AccessorExtension.extensionName` has one: it
+  /// cannot appear in a class name, so this can never land on the same name
+  /// as some other class's [functionName].
+  String get matcherName => '_is\$$type';
 }
 
 /// Every collector one run would write, and what it left out.
@@ -804,6 +817,7 @@ DeclarationCollectorScan scanDeclarationCollectors({
           path: path,
           imports: <String>{...resolved.imports, ...field.imports},
           fields: fields,
+          isGeneric: type.typeParameters.isNotEmpty,
         ),
       );
     }
@@ -833,10 +847,19 @@ class FixtureCollector {
     required this.type,
     required this.functionName,
     required this.fields,
+    required this.isGeneric,
   });
 
   /// The class it reads - `_Level`, private like most of them.
   final String type;
+
+  /// Whether the class takes type parameters, and so needs the type test
+  /// `DeclarationCollector.generic` is given.
+  ///
+  /// This is where it bites first: no class in any `lib/` here is generic,
+  /// and `_OneOff<T>`, `_EventState<G>` and `_InputState<G>` under `test/`
+  /// are.
+  final bool isGeneric;
 
   /// Every declaration an instance holds, in the order its initialisers
   /// would have run.
@@ -850,6 +873,12 @@ class FixtureCollector {
   /// library that differ only by that underscore would land on one name, so
   /// [scanFixtures] appends a `$` until the name is free.
   final String functionName;
+
+  /// `_is$Level`, the type test's name, written only when [isGeneric].
+  ///
+  /// Built off [functionName] rather than off [type] so that it inherits the
+  /// `$` [scanFixtures] appended to keep that one unique.
+  String get matcherName => '_is${functionName.substring('_collect'.length)}';
 }
 
 /// One test or example library, and the collectors it needs.
@@ -1026,6 +1055,7 @@ FixtureScan scanFixtures({
           FixtureCollector(
             type: type.name,
             functionName: functionName,
+            isGeneric: type.typeParameters.isNotEmpty,
             fields: <CollectedDeclaration>[
               for (final declaration in flattenedDeclarations(
                 type,

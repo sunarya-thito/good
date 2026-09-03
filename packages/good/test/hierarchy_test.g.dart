@@ -18,6 +18,11 @@
 // package's lib/ holds privately. That is another library,
 // so nothing here can read it - it keeps its place so that
 // what the row is missing, and where, is visible.
+//
+// A generic fixture also gets an `is` test. Nothing at run
+// time can take the type arguments off a `Type`, so the
+// literal in the table below never equals an instance's
+// `runtimeType` - the test is what matches the two.
 part of 'hierarchy_test.dart';
 
 List<ScannableField> _collect$Node(Object object) {
@@ -223,6 +228,9 @@ List<ScannableField> _collect$OneOff(Object object) {
   ];
 }
 
+/// Whether an object is a _OneOff, whatever its type arguments are.
+bool _is$OneOff(Object object) => object is _OneOff;
+
 /// Every fixture this library declares, and how to read one.
 ///
 /// It carries the package's own generated table as a
@@ -248,7 +256,7 @@ const GeneratedDeclarations _hierarchyTestDeclarations =
         DeclarationCollector(_ProbedSuperLast, _collect$ProbedSuperLast),
         DeclarationCollector(_ProbedNoSuper, _collect$ProbedNoSuper),
         DeclarationCollector(_Level, _collect$Level),
-        DeclarationCollector(_OneOff, _collect$OneOff),
+        DeclarationCollector.generic(_OneOff, _collect$OneOff, _is$OneOff),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,

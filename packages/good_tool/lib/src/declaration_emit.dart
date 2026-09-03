@@ -115,8 +115,16 @@ String emitDeclarations(
     ..writeln('// A commented-out line is a declaration held by a private')
     ..writeln('// field. Dart privacy is per library and this is a different')
     ..writeln('// one, so nothing here can read it - it keeps its place so')
-    ..writeln('// that what the row is missing, and where, is visible.')
-    ..writeln();
+    ..writeln('// that what the row is missing, and where, is visible.');
+  if (entries.any((entry) => entry.isGeneric)) {
+    buffer
+      ..writeln('//')
+      ..writeln('// A generic class also gets an `is` test. Nothing at run')
+      ..writeln('// time can take the type arguments off a `Type`, so the')
+      ..writeln('// literal in the table below never equals an instance\'s')
+      ..writeln('// `runtimeType` - the test is what matches the two.');
+  }
+  buffer.writeln();
   for (final import in imports) {
     buffer.writeln("import '$import';");
   }
@@ -164,6 +172,25 @@ String emitDeclarations(
       ..writeln();
   }
 
+  for (final entry in entries) {
+    if (!entry.isGeneric) continue;
+    // A generic class is keyed by nothing a lookup can present: the literal
+    // below is `Foo<Bound>` and an instance's `runtimeType` is `Foo<Enemy>`,
+    // and a `Type` cannot have its arguments taken off at run time. So the
+    // test the run cannot make is written here instead. Bare, no type
+    // arguments, so it is true of every instantiation.
+    buffer
+      ..writeln(
+        '/// Whether an object is a ${entry.type}, whatever its type '
+        'arguments are.',
+      )
+      ..writeln(
+        'bool ${entry.matcherName}(Object object) => '
+        'object is ${entry.type};',
+      )
+      ..writeln();
+  }
+
   buffer
     ..writeln(
       "/// Every class `package:${package.name}` can instantiate that holds a",
@@ -192,9 +219,26 @@ String emitDeclarations(
     ..writeln("$indent  package: '${package.name}',")
     ..writeln('$indent  collectors: <$declarationCollectorType>[');
   for (final entry in entries) {
+    if (!entry.isGeneric) {
+      buffer.writeln(
+        '$indent    $declarationCollectorType(${entry.type}, '
+        '${entry.functionName}),',
+      );
+      continue;
+    }
+    final line =
+        '$indent    $declarationCollectorType.generic(${entry.type}, '
+        '${entry.functionName}, ${entry.matcherName}),';
+    // Wrapped only when it has to be, the way the accessor emitter wraps a
+    // setter. `dart format` is not run over a generated file.
     buffer.writeln(
-      '$indent    $declarationCollectorType(${entry.type}, '
-      '${entry.functionName}),',
+      line.length <= 80
+          ? line
+          : '$indent    $declarationCollectorType.generic(\n'
+                '$indent      ${entry.type},\n'
+                '$indent      ${entry.functionName},\n'
+                '$indent      ${entry.matcherName},\n'
+                '$indent    ),',
     );
   }
   buffer.writeln('$indent  ],');

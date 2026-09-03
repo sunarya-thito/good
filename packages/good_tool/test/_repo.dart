@@ -161,10 +161,13 @@ class GeneratedDeclarations {
 }
 
 class DeclarationCollector {
-  const DeclarationCollector(this.type, this.collect);
+  const DeclarationCollector(this.type, this.collect) : matches = null;
+
+  const DeclarationCollector.generic(this.type, this.collect, this.matches);
 
   final Type type;
   final List<ScannableField> Function(Object) collect;
+  final bool Function(Object)? matches;
 }
 ''';
 

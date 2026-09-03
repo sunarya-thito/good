@@ -58,7 +58,16 @@ String emitFixtureDeclarations(FixtureLibrary library) {
     ..writeln('// A commented-out line is a declaration a mixin from a')
     ..writeln("// package's lib/ holds privately. That is another library,")
     ..writeln('// so nothing here can read it - it keeps its place so that')
-    ..writeln('// what the row is missing, and where, is visible.')
+    ..writeln('// what the row is missing, and where, is visible.');
+  if (library.collectors.any((collector) => collector.isGeneric)) {
+    buffer
+      ..writeln('//')
+      ..writeln('// A generic fixture also gets an `is` test. Nothing at run')
+      ..writeln('// time can take the type arguments off a `Type`, so the')
+      ..writeln('// literal in the table below never equals an instance\'s')
+      ..writeln('// `runtimeType` - the test is what matches the two.');
+  }
+  buffer
     ..writeln("part of '${p.basename(library.path)}';")
     ..writeln();
 
@@ -92,6 +101,26 @@ String emitFixtureDeclarations(FixtureLibrary library) {
       ..writeln();
   }
 
+  for (final collector in library.collectors) {
+    if (!collector.isGeneric) continue;
+    // A generic class is keyed by nothing a lookup can present: the literal
+    // in the table below is `_OneOff<EntityStruct>` and an instance's
+    // `runtimeType` is `_OneOff<_Level>`, and a `Type` cannot have its
+    // arguments taken off at run time. So the test the run cannot make is
+    // written here instead. Bare, no type arguments, so it is true of every
+    // instantiation.
+    buffer
+      ..writeln(
+        '/// Whether an object is a ${collector.type}, whatever its type '
+        'arguments are.',
+      )
+      ..writeln(
+        'bool ${collector.matcherName}(Object object) => '
+        'object is ${collector.type};',
+      )
+      ..writeln();
+  }
+
   buffer
     ..writeln('/// Every fixture this library declares, and how to read one.')
     ..writeln('///')
@@ -105,9 +134,26 @@ String emitFixtureDeclarations(FixtureLibrary library) {
     ..writeln("      package: '${library.tableKey}',")
     ..writeln('      collectors: <$declarationCollectorType>[');
   for (final collector in library.collectors) {
+    if (!collector.isGeneric) {
+      buffer.writeln(
+        '        $declarationCollectorType(${collector.type}, '
+        '${collector.functionName}),',
+      );
+      continue;
+    }
+    final line =
+        '        $declarationCollectorType.generic(${collector.type}, '
+        '${collector.functionName}, ${collector.matcherName}),';
+    // Wrapped only when it has to be, the way the accessor emitter wraps a
+    // setter. `dart format` is not run over a generated file.
     buffer.writeln(
-      '        $declarationCollectorType(${collector.type}, '
-      '${collector.functionName}),',
+      line.length <= 80
+          ? line
+          : '        $declarationCollectorType.generic(\n'
+                '          ${collector.type},\n'
+                '          ${collector.functionName},\n'
+                '          ${collector.matcherName},\n'
+                '        ),',
     );
   }
   buffer

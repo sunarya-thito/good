@@ -250,7 +250,7 @@ const DeclaredChild child = DeclaredChild._();
 /// all. It reached a table with no line for it, and `_bootMain` threw on a
 /// class that had been scanned and had nothing to say.
 List<ScannableField> collectDeclarations(Object object) {
-  final collect = DeclarationRegistry.collectorFor(object.runtimeType);
+  final collect = DeclarationRegistry.collectorForInstance(object);
   if (collect == null) {
     throw StateError(
       'No generated collector for ${object.runtimeType}. Its declarations are '
@@ -310,21 +310,68 @@ class GeneratedDeclarations {
 
 /// One class's collector: the class, and the function that reads it.
 ///
-/// A pair in a list rather than a `Map<Type, ...>` literal, so a generated
+/// An entry in a list rather than a `Map<Type, ...>` literal, so a generated
 /// table reads in a diff the way `GeneratedComponentBits.types` does - one
 /// line per class, in a fixed order - and so the registry is the one place
 /// that decides what two tables claiming one class means.
+///
+/// Two constructors, because a `Type` answers for a class with no type
+/// parameters and cannot answer for one that has them. See
+/// [DeclarationCollector.generic].
 @immutable
 class DeclarationCollector {
-  const DeclarationCollector(this.type, this.collect);
+  /// A class with no type parameters, matched against `runtimeType` exactly.
+  ///
+  /// A subclass gets its own entry, holding its own fields as well as these,
+  /// so exact is the whole of the match.
+  const DeclarationCollector(this.type, this.collect) : matches = null;
 
-  /// The class this reads. Matched against a value's `runtimeType` exactly: a
-  /// subclass gets its own entry, holding its own fields as well as these.
+  /// A generic class, matched against every instantiation of it.
+  ///
+  /// # Why a type test and not a key
+  ///
+  /// `Type` is opaque at run time - it compares and it prints, and there is
+  /// no way to take type arguments off one. So for
+  /// `class Spawner<T extends EntityStruct> extends EntityStruct`, the
+  /// literal `Spawner` this table is keyed by is `Spawner<EntityStruct>`
+  /// (instantiate-to-bounds) and an instance's `runtimeType` is
+  /// `Spawner<Enemy>`. They never compare equal, so every generic scanned
+  /// class missed its own collector and threw.
+  ///
+  /// What the run cannot obtain, the generator writes down: [matches] is
+  /// `(object) => object is Spawner`, emitted beside the collector. Dart
+  /// generics are covariant, so that is true of every legal instantiation
+  /// and of nothing else with that class above it - which is the same answer
+  /// stripping the type arguments would have given.
+  ///
+  /// # What one entry per class costs
+  ///
+  /// Nothing, because a collector reads *field names* and a class's field
+  /// list does not vary by type argument - `Spawner<Enemy>` and
+  /// `Spawner<Pickup>` declare the same fields in the same order. Keying per
+  /// instantiation would need the generator to enumerate instantiations
+  /// across every library that writes one, which it cannot see.
+  ///
+  /// # The one thing this widens
+  ///
+  /// A subclass of a generic class answers `is` too. A *scanned* one has its
+  /// own entry and is found by the exact match first, so it never reaches
+  /// here. One the generator never read does reach here, and now collects
+  /// its superclass's declarations instead of throwing "never scanned". That
+  /// is the trade: it is only ever a class no generator saw, which is what
+  /// `good_tool --check` in CI is for.
+  const DeclarationCollector.generic(this.type, this.collect, this.matches);
+
+  /// The class this reads.
   final Type type;
 
   /// Reads that class's declarations off an instance of it, in declaration
   /// order. It casts, so handing it anything else throws.
   final List<ScannableField> Function(Object object) collect;
+
+  /// Whether an object is an instantiation of a generic [type], or null for
+  /// a class with no type parameters. See [DeclarationCollector.generic].
+  final bool Function(Object object)? matches;
 }
 
 /// Every installed collector, keyed by the class it reads.
@@ -335,6 +382,21 @@ class DeclarationCollector {
 /// scope, and a scene brought up headlessly never has one at all.
 abstract final class DeclarationRegistry {
   static final Map<Type, List<ScannableField> Function(Object)> _collectors =
+      <Type, List<ScannableField> Function(Object)>{};
+
+  /// The entries for generic classes, which no `runtimeType` ever equals.
+  ///
+  /// Walked only when the exact map misses, so a class with no type
+  /// parameters pays one map lookup and nothing else.
+  static final List<DeclarationCollector> _generic = <DeclarationCollector>[];
+
+  /// What [_generic] answered for a `runtimeType`, so the walk runs once per
+  /// instantiation rather than once per registration.
+  ///
+  /// Kept apart from [_collectors] so that installing a table later cannot
+  /// find one of these sitting in the place its own entry belongs; the whole
+  /// cache is dropped whenever anything is installed.
+  static final Map<Type, List<ScannableField> Function(Object)> _matched =
       <Type, List<ScannableField> Function(Object)>{};
 
   /// The packages installed so far.
@@ -362,6 +424,7 @@ abstract final class DeclarationRegistry {
           );
         }
         _collectors[collector.type] = collector.collect;
+        if (collector.matches != null) _generic.add(collector);
       }
       for (final dependency in table.dependencies) {
         walk(dependency);
@@ -371,11 +434,45 @@ abstract final class DeclarationRegistry {
     for (final table in tables) {
       walk(table);
     }
+    _matched.clear();
   }
 
-  /// The collector for [type], or null when nothing installed holds one.
-  static List<ScannableField> Function(Object)? collectorFor(Type type) =>
-      _collectors[type];
+  /// The collector that reads [object], or null when nothing installed holds
+  /// one.
+  ///
+  /// It takes the object and not its `runtimeType`, and that is the whole of
+  /// what a generic class needed. A `Type` can be compared and printed and
+  /// nothing else - there is no run-time way to take `<Enemy>` off
+  /// `Spawner<Enemy>` - so a table keyed by the literal `Spawner` was
+  /// unreachable from any instance of it. What answers instead is a type test
+  /// the generator wrote, which needs the value rather than its type. See
+  /// [DeclarationCollector.generic].
+  static List<ScannableField> Function(Object)? collectorForInstance(
+    Object object,
+  ) {
+    final type = object.runtimeType;
+    final exact = _collectors[type];
+    if (exact != null) return exact;
+    final cached = _matched[type];
+    if (cached != null) return cached;
+    DeclarationCollector? found;
+    for (final candidate in _generic) {
+      if (!candidate.matches!(object)) continue;
+      if (found != null) {
+        throw StateError(
+          '$type is an instantiation of both ${found.type} and '
+          '${candidate.type}, so two collectors claim it and they read '
+          'different field lists. One of those classes extends the other, '
+          'and picking between them needs a most-derived-first order that a '
+          'merge of tables from several packages does not have. Give the '
+          'more derived one a non-generic subclass to register instead.',
+        );
+      }
+      found = candidate;
+    }
+    if (found == null) return null;
+    return _matched[type] = found.collect;
+  }
 
   /// Forgets everything installed.
   ///
@@ -385,6 +482,8 @@ abstract final class DeclarationRegistry {
   @visibleForTesting
   static void reset() {
     _collectors.clear();
+    _generic.clear();
+    _matched.clear();
     _packages.clear();
   }
 }

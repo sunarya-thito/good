@@ -283,6 +283,7 @@ class ScannedType {
   const ScannedType({
     required this.name,
     required this.path,
+    required this.typeParameters,
     required this.supertypes,
     required this.superclass,
     required this.mixins,
@@ -295,6 +296,15 @@ class ScannedType {
   });
 
   final String name;
+
+  /// Its own type parameter names, in order, and empty when it has none.
+  ///
+  /// What separates `_OneOff<T>` from `_OneOff` at the one place it matters:
+  /// a generated table keyed by the type literal `_OneOff` holds
+  /// `_OneOff<EntityStruct>`, and an instance's `runtimeType` is
+  /// `_OneOff<Barrel>`, so the two never compare equal. See
+  /// `DeclarationCollector.generic`.
+  final List<String> typeParameters;
 
   /// The file it is declared in, normalised and absolute.
   final String path;
@@ -574,12 +584,19 @@ ScannedUnit _readUnit(String path, CompilationUnit unit) {
 
 ScannedType? _readType(String path, CompilationUnitMember declaration) {
   final String name;
+  final typeParameters = <String>[];
   final supertypes = <String>[];
   final mixins = <String>[];
   String? superclass;
   var isAbstract = false;
   final List<ClassMember> members;
   String? representation;
+
+  void addTypeParameters(TypeParameterList? list) {
+    for (final parameter in list?.typeParameters ?? const <TypeParameter>[]) {
+      typeParameters.add(parameter.name.lexeme);
+    }
+  }
 
   void addAll(Iterable<NamedType> named) {
     for (final type in named) {
@@ -595,6 +612,7 @@ ScannedType? _readType(String path, CompilationUnitMember declaration) {
 
   if (declaration is ClassDeclaration) {
     name = declaration.name.lexeme;
+    addTypeParameters(declaration.typeParameters);
     isAbstract =
         declaration.abstractKeyword != null ||
         declaration.sealedKeyword != null;
@@ -609,12 +627,14 @@ ScannedType? _readType(String path, CompilationUnitMember declaration) {
     members = _members(declaration.body);
   } else if (declaration is MixinDeclaration) {
     name = declaration.name.lexeme;
+    addTypeParameters(declaration.typeParameters);
     isAbstract = true;
     addAll(declaration.onClause?.superclassConstraints ?? const <NamedType>[]);
     addAll(declaration.implementsClause?.interfaces ?? const <NamedType>[]);
     members = _members(declaration.body);
   } else if (declaration is EnumDeclaration) {
     name = declaration.name.lexeme;
+    addTypeParameters(declaration.typeParameters);
     addMixins(declaration.withClause?.mixinTypes ?? const <NamedType>[]);
     addAll(declaration.withClause?.mixinTypes ?? const <NamedType>[]);
     addAll(declaration.implementsClause?.interfaces ?? const <NamedType>[]);
@@ -623,6 +643,7 @@ ScannedType? _readType(String path, CompilationUnitMember declaration) {
     members = declaration.body.members;
   } else if (declaration is ExtensionTypeDeclaration) {
     name = declaration.name.lexeme;
+    addTypeParameters(declaration.typeParameters);
     addAll(declaration.implementsClause?.interfaces ?? const <NamedType>[]);
     members = _members(declaration.body);
     representation = declaration.representation.fieldName.lexeme;
@@ -662,6 +683,7 @@ ScannedType? _readType(String path, CompilationUnitMember declaration) {
   return ScannedType(
     name: name,
     path: path,
+    typeParameters: typeParameters,
     supertypes: supertypes,
     superclass: superclass,
     mixins: mixins,

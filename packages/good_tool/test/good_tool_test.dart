@@ -5,8 +5,10 @@ import 'dart:io';
 import 'package:good_cli/src/generate/scan.dart';
 import 'package:good_tool/src/accessor_emit.dart';
 import 'package:good_tool/src/component_emit.dart';
+import 'package:good_tool/src/declaration_emit.dart';
 import 'package:good_tool/src/doc_references.dart';
 import 'package:good_tool/src/engine_packages.dart';
+import 'package:good_tool/src/fixture_emit.dart';
 import 'package:good_tool/src/imports.dart';
 import 'package:good_tool/src/scan.dart';
 import 'package:path/path.dart' as p;
@@ -926,6 +928,124 @@ class Turret extends EntityStruct {
         <String>[for (final field in turret.fields) field.name],
         <String>['barrel'],
       );
+    });
+
+    // The table is keyed by a `Type`, and the literal `Spawner` written into
+    // it is `Spawner<EntityStruct>` while every instance's `runtimeType` is
+    // `Spawner<something>`. Nothing at run time can take the arguments off
+    // either, so a table with only the literal in it is one no instance can
+    // reach - which is what every generic scanned class hit, and what no text
+    // comparison could see, since the generator was writing exactly the entry
+    // it meant to.
+    test('gives a generic class a type test, and a plain one none', () async {
+      final repo = fakeRepo(<FakePackage>[
+        declarationKernel(),
+        FakePackage(
+          'demo',
+          dependencies: <String>['good'],
+          files: <String, String>{
+            'demo.dart': "export 'src/spawner.dart';\n",
+            'src/spawner.dart': '''
+import 'package:good/good.dart';
+
+class Enemy extends EntityStruct {
+  final hp = Field.int32(3);
+}
+
+class Spawner<T extends EntityStruct> extends EntityStruct {
+  final rate = Field.float64(2);
+}
+''',
+          },
+        ),
+      ]);
+      final packages = repoPackages(repo);
+      final scan = scanDeclarationCollectors(packages: packages);
+      final spawner = scan.entries.singleWhere((e) => e.type == 'Spawner');
+      final enemy = scan.entries.singleWhere((e) => e.type == 'Enemy');
+      expect(spawner.isGeneric, isTrue);
+      expect(enemy.isGeneric, isFalse);
+
+      final demo = packages.singleWhere((p) => p.name == 'demo');
+      final imports = Imports(
+        declaredIn: declaredIn(readPackageSources(packages)),
+        byLibDir: <String, EnginePackage>{
+          for (final package in packages) package.libDir: package,
+        },
+        units: readPackageSources(packages).units,
+        packages: packages,
+      );
+      final written = emitDeclarations(
+        scan.byPackage['demo']!,
+        package: demo,
+        tableImports: imports
+            .importFor(generatedDeclarationsType, demo)
+            .imports,
+        dependencies: const <EnginePackage>[],
+      );
+      expect(
+        written,
+        contains('bool _is\$Spawner(Object object) => object is Spawner;'),
+      );
+      expect(
+        written,
+        contains(
+          'DeclarationCollector.generic(Spawner, _spawner, _is\$Spawner),',
+        ),
+      );
+      // The plain form keeps two arguments. A type test on every entry would
+      // make the fallback walk answer for a subclass nothing ever scanned,
+      // which is the silence the throw exists for.
+      expect(written, contains('DeclarationCollector(Enemy, _enemy),'));
+      expect(written, isNot(contains('_is\$Enemy')));
+    });
+
+    // The same question down the fixture path, which is where it bites: no
+    // class in any `lib/` here takes a type parameter and three under `test/`
+    // do.
+    test('gives a generic fixture a type test', () async {
+      final repo = fakeRepo(<FakePackage>[declarationKernel()]);
+      final root = p.join(repo.path, 'packages', 'good');
+      File(p.join(root, 'test', 'spawner_test.dart'))
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync('''
+import 'package:good/good.dart';
+
+class _Enemy extends EntityStruct {
+  final hp = Field.int32(3);
+}
+
+class _Spawner<T extends EntityStruct> extends EntityStruct {
+  final rate = Field.float64(2);
+}
+''');
+      final packages = repoPackages(repo);
+      final scan = scanFixtures(
+        packages: packages,
+        sources: readFixtureSources(packages, packages),
+      );
+      final library = scan.libraries.single;
+      expect(
+        <String>[
+          for (final collector in library.collectors)
+            if (collector.isGeneric) collector.type,
+        ],
+        <String>['_Spawner'],
+      );
+
+      final written = emitFixtureDeclarations(library);
+      expect(
+        written,
+        contains('bool _is\$Spawner(Object object) => object is _Spawner;'),
+      );
+      expect(
+        written,
+        contains(
+          'DeclarationCollector.generic(_Spawner, _collect\$Spawner, '
+          '_is\$Spawner),',
+        ),
+      );
+      expect(written, isNot(contains('_is\$Enemy')));
     });
 
     // A column made public with `@internal` so a collector in another library
