@@ -26,6 +26,7 @@ import 'package:goo3d/src/data/camera.dart';
 import 'package:goo3d/src/data/transform.dart';
 import 'package:goo3d/src/data/world_transform.dart';
 import 'package:good/good.dart';
+import 'package:meta/meta.dart';
 
 /// Camera3D's columns, one property each - for code
 /// touching **one** entity.
@@ -231,7 +232,9 @@ extension Accessor$WorldTransform3D on Accessor<WorldTransform3D> {
   ///
   /// One entity. A system walking many indexes
   /// `component.worldCachedOffsetX` instead.
+  @internal
   double get worldCachedOffsetX => component.worldCachedOffsetX[entity];
+  @internal
   set worldCachedOffsetX(double newValue) =>
       component.worldCachedOffsetX[entity] = newValue;
 
@@ -239,7 +242,9 @@ extension Accessor$WorldTransform3D on Accessor<WorldTransform3D> {
   ///
   /// One entity. A system walking many indexes
   /// `component.worldCachedOffsetY` instead.
+  @internal
   double get worldCachedOffsetY => component.worldCachedOffsetY[entity];
+  @internal
   set worldCachedOffsetY(double newValue) =>
       component.worldCachedOffsetY[entity] = newValue;
 
@@ -247,7 +252,9 @@ extension Accessor$WorldTransform3D on Accessor<WorldTransform3D> {
   ///
   /// One entity. A system walking many indexes
   /// `component.worldCachedOffsetZ` instead.
+  @internal
   double get worldCachedOffsetZ => component.worldCachedOffsetZ[entity];
+  @internal
   set worldCachedOffsetZ(double newValue) =>
       component.worldCachedOffsetZ[entity] = newValue;
 
@@ -255,7 +262,9 @@ extension Accessor$WorldTransform3D on Accessor<WorldTransform3D> {
   ///
   /// One entity. A system walking many indexes
   /// `component.worldCachedRotationX` instead.
+  @internal
   double get worldCachedRotationX => component.worldCachedRotationX[entity];
+  @internal
   set worldCachedRotationX(double newValue) =>
       component.worldCachedRotationX[entity] = newValue;
 
@@ -263,7 +272,9 @@ extension Accessor$WorldTransform3D on Accessor<WorldTransform3D> {
   ///
   /// One entity. A system walking many indexes
   /// `component.worldCachedRotationY` instead.
+  @internal
   double get worldCachedRotationY => component.worldCachedRotationY[entity];
+  @internal
   set worldCachedRotationY(double newValue) =>
       component.worldCachedRotationY[entity] = newValue;
 
@@ -271,7 +282,9 @@ extension Accessor$WorldTransform3D on Accessor<WorldTransform3D> {
   ///
   /// One entity. A system walking many indexes
   /// `component.worldCachedRotationZ` instead.
+  @internal
   double get worldCachedRotationZ => component.worldCachedRotationZ[entity];
+  @internal
   set worldCachedRotationZ(double newValue) =>
       component.worldCachedRotationZ[entity] = newValue;
 
@@ -279,7 +292,9 @@ extension Accessor$WorldTransform3D on Accessor<WorldTransform3D> {
   ///
   /// One entity. A system walking many indexes
   /// `component.worldCachedRotationW` instead.
+  @internal
   double get worldCachedRotationW => component.worldCachedRotationW[entity];
+  @internal
   set worldCachedRotationW(double newValue) =>
       component.worldCachedRotationW[entity] = newValue;
 
@@ -287,7 +302,9 @@ extension Accessor$WorldTransform3D on Accessor<WorldTransform3D> {
   ///
   /// One entity. A system walking many indexes
   /// `component.worldCachedScaleX` instead.
+  @internal
   double get worldCachedScaleX => component.worldCachedScaleX[entity];
+  @internal
   set worldCachedScaleX(double newValue) =>
       component.worldCachedScaleX[entity] = newValue;
 
@@ -295,7 +312,9 @@ extension Accessor$WorldTransform3D on Accessor<WorldTransform3D> {
   ///
   /// One entity. A system walking many indexes
   /// `component.worldCachedScaleY` instead.
+  @internal
   double get worldCachedScaleY => component.worldCachedScaleY[entity];
+  @internal
   set worldCachedScaleY(double newValue) =>
       component.worldCachedScaleY[entity] = newValue;
 
@@ -303,7 +322,9 @@ extension Accessor$WorldTransform3D on Accessor<WorldTransform3D> {
   ///
   /// One entity. A system walking many indexes
   /// `component.worldCachedScaleZ` instead.
+  @internal
   double get worldCachedScaleZ => component.worldCachedScaleZ[entity];
+  @internal
   set worldCachedScaleZ(double newValue) =>
       component.worldCachedScaleZ[entity] = newValue;
 
@@ -311,7 +332,9 @@ extension Accessor$WorldTransform3D on Accessor<WorldTransform3D> {
   ///
   /// One entity. A system walking many indexes
   /// `component.worldCachedParent` instead.
+  @internal
   Entity? get worldCachedParent => component.worldCachedParent[entity];
+  @internal
   set worldCachedParent(Entity? newValue) =>
       component.worldCachedParent[entity] = newValue;
 }

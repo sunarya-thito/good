@@ -126,19 +126,29 @@ String emitAccessors(
         )
         ..writeln('  ///')
         ..writeln('  /// One entity. A system walking many indexes')
-        ..writeln('  /// `component.${property.column}` instead.')
-        ..writeln(
-          '  ${property.type} get ${property.name} => '
-          'component.${property.column}[entity];',
-        )
-        // Wrapped only when it has to be. `dart format` is not run over a
-        // generated file, so the width is this emitter's to keep.
-        ..writeln(
-          setter.length <= 80
-              ? setter
-              : '  set ${property.name}(${property.type} newValue) =>\n'
-                    '      component.${property.column}[entity] = newValue;',
-        );
+        ..writeln('  /// `component.${property.column}` instead.');
+      // On both halves, because a getter and a setter are two elements and
+      // the analyzer answers about each separately - `@internal` on the
+      // getter alone leaves the write open, which is the half that matters
+      // for a cache column.
+      for (final annotation in property.annotations) {
+        buffer.writeln('  $annotation');
+      }
+      buffer.writeln(
+        '  ${property.type} get ${property.name} => '
+        'component.${property.column}[entity];',
+      );
+      for (final annotation in property.annotations) {
+        buffer.writeln('  $annotation');
+      }
+      // Wrapped only when it has to be. `dart format` is not run over a
+      // generated file, so the width is this emitter's to keep.
+      buffer.writeln(
+        setter.length <= 80
+            ? setter
+            : '  set ${property.name}(${property.type} newValue) =>\n'
+                  '      component.${property.column}[entity] = newValue;',
+      );
     }
     buffer.writeln('}');
   }

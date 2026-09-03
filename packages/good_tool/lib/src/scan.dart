@@ -58,6 +58,7 @@ class AccessorProperty {
     required this.name,
     required this.type,
     required this.column,
+    this.annotations = const <String>[],
   });
 
   /// What it is called on the accessor - `offsetX`.
@@ -68,7 +69,31 @@ class AccessorProperty {
 
   /// The field on the component the property reads - `transformOffsetX`.
   final String column;
+
+  /// The column's annotations that the property inherits - see
+  /// [narrowingColumnAnnotations]. Written as they were, `@` included.
+  final List<String> annotations;
 }
+
+/// The annotations a column hands down to the property generated off it.
+///
+/// A property is a second name for one column, so an annotation saying who
+/// may write the first has to say it about the second - otherwise the
+/// generator is what widens the audience, and it does it silently. That is
+/// what happened to `WorldTransform2D`'s six change-detection columns: they
+/// were made public with `@internal` so a collector in another library could
+/// read them, and shipped as undecorated public setters into a cache.
+///
+/// The test for adding a name here is that leaving it off would make the
+/// property reachable where the column is not. `@override` and `@child` fail
+/// it - neither says anything about who may name the field - and a
+/// documentation annotation fails it too.
+///
+/// Written without the `@`, the way `annotationName` hands them back.
+const Set<String> narrowingColumnAnnotations = <String>{'internal'};
+
+/// The import a carried annotation needs in the generated file.
+const String metaImport = 'package:meta/meta.dart';
 
 /// One `extension Accessor$X on Accessor<X>`, and everything it needs.
 @immutable
@@ -247,12 +272,19 @@ AccessorScan scanAccessors({
           );
           continue;
         }
+        final carried = <String>[
+          for (final annotation in field.annotations)
+            if (narrowingColumnAnnotations.contains(annotationName(annotation)))
+              '@$annotation',
+        ];
         needed.addAll(resolved.imports);
+        if (carried.isNotEmpty) needed.add(metaImport);
         properties.add(
           AccessorProperty(
             name: property,
             type: valueType,
             column: field.name,
+            annotations: carried,
           ),
         );
       }

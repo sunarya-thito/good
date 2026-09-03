@@ -928,6 +928,74 @@ class Turret extends EntityStruct {
       );
     });
 
+    // A column made public with `@internal` so a collector in another library
+    // can read it still has to be internal on the property generated off it -
+    // otherwise the generator is what publishes it, and it publishes a setter
+    // into a change-detection cache. `@internal` on the getter alone is not
+    // enough: the analyzer answers about a getter and a setter separately, and
+    // the write is the half that matters here.
+    test('carries @internal from a column onto both halves', () async {
+      final repo = fakeRepo(<FakePackage>[
+        kernelPackage(),
+        const FakePackage(
+          'demo',
+          dependencies: <String>['good'],
+          files: <String, String>{
+            'demo.dart': "export 'src/cached.dart';\n",
+            'src/cached.dart': '''
+import 'package:good/good.dart';
+import 'package:meta/meta.dart';
+
+mixin Cached on Component {
+  final cachedOpen = Field.float64();
+  @internal
+  final cachedShut = Field.float64();
+}
+''',
+          },
+        ),
+      ]);
+      final packages = repoPackages(repo);
+      final scan = scanAccessors(packages: packages);
+      final cached = scan.extensions.singleWhere(
+        (extension) => extension.component == 'Cached',
+      );
+      expect(
+        <String, List<String>>{
+          for (final property in cached.properties)
+            property.name: property.annotations,
+        },
+        <String, List<String>>{
+          'open': <String>[],
+          'shut': <String>['@internal'],
+        },
+      );
+
+      final written = emitAccessors(
+        <AccessorExtension>[cached],
+        package: 'demo',
+      );
+      expect(written, contains("import 'package:meta/meta.dart';"));
+      expect(
+        written,
+        contains(
+          '  @internal\n'
+          '  double get shut => component.cachedShut[entity];\n'
+          '  @internal\n'
+          '  set shut(double newValue) => component.cachedShut[entity] = '
+          'newValue;',
+        ),
+      );
+      expect(
+        written,
+        contains(
+          '  double get open => component.cachedOpen[entity];\n'
+          '  set open(double newValue) => component.cachedOpen[entity] = '
+          'newValue;',
+        ),
+      );
+    });
+
     test('has the component-bit table the generator would write', () async {
       final root = _actualRepoRoot();
       final packages = repoPackages(root);
