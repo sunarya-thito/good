@@ -179,13 +179,31 @@ class _Page {
   List<String> get scopeDeclarations => _declarations(scope);
 }
 
+/// Pages whose fences name API this repository has removed, and the removal
+/// that stranded them.
+///
+/// `docs/` is closed to edits until it is rewritten from scratch (#346), so a
+/// page a removal broke cannot be corrected in place, and leaving it in would
+/// fail the analyze step on every unrelated change. The page is skipped with
+/// the reason printed beside every other skip - a known hole rather than a
+/// silent one - and the count says what is not being checked.
+///
+/// A page belongs here only while the freeze does. Delete the entry with the
+/// rewrite of the page; delete the map with the last of them.
+const _strandedPages = <String, String>{
+  'docs/guide/coroutines-and-animation.md':
+      'stranded by #287: TimelineStruct.describeAnimation and '
+      'TimelineAnimationDescriptor are gone, and the page is frozen by #346',
+};
+
 final _fenceStart = RegExp(r'^(\s*)```dart\b(.*)$');
 final _tag = RegExp(r'^\s*<!--\s*snippet:\s*(.*?)\s*-->\s*$');
 final _scopeOpen = RegExp(r'^\s*<!--\s*snippet-(scope|setup)\s*$');
 final _pageSkip = RegExp(r'^\s*<!--\s*snippet-page:\s*skip\s+(.*?)\s*-->\s*$');
 
 _Page _parse(String relPath, String libraryName, List<String> lines) {
-  final page = _Page(relPath, libraryName);
+  final page = _Page(relPath, libraryName)
+    ..skipReason = _strandedPages[relPath];
   String? pendingTag;
   var pendingTagLine = 0;
   var pendingSetup = <String>[];

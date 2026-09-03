@@ -2,12 +2,13 @@
 /// scenes, fixed-tick loop, hierarchy, and the generic asset registry.
 library;
 
-// Timelines and the coroutine runtime they are driven by. Both are reached
-// through members every `EntityStruct`, `SceneStruct`, `GameSystem` and
-// `GameState` already has - `startCoroutine`, `describeAnimation` - so a game
-// never imports either file, but it does have to be able to *spell* what they
-// hand back: a `Track<double>` field, a `TimelineAnimation`, a
-// `CoroutineFuture` to await.
+// Timelines and the coroutine runtime they are driven by. Coroutines are
+// reached through `startCoroutine`, which every `EntityStruct`, `SceneStruct`,
+// `GameSystem` and `GameState` already has; a timeline is declared on a field
+// and its clips are classes of the game's own. Either way a game never imports
+// these files, but it does have to be able to *spell* what they hand back: a
+// `Track<double>` field, a `TimelineAnimation` to extend, a `CoroutineFuture`
+// to await.
 //
 // `CoroutineScheduler` comes along because `GameState.coroutines` is public and
 // a type you cannot name is a type you cannot hold.
