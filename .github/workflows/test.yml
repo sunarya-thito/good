@@ -161,6 +161,11 @@ jobs:
       # current" and this one means "the files its suites compile against
       # are". A generated file nobody checks drifts, and a fresh clone has to
       # analyze before anything is run.
+      #
+      # `--dir ../../packages/good` and not `../../packages`, because good is
+      # the only package whose test libraries carry their part yet. Widen it
+      # as each of the others is wired; `--tests --check` over a package that
+      # is not names every library it would have to touch.
       - name: Check the generated test collectors are what good_tool would write
         run: |
           set -e
