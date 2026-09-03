@@ -16,7 +16,13 @@ late Game run;
 
 class _Sprite extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  final quad = Sprite.of(width: 10, height: 10);
+  late final Sprite quad;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    quad = descriptor.has(width: 10, height: 10);
+  }
 }
 
 class _Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
@@ -35,8 +41,20 @@ class _Target extends EntityStruct
         Collider2D,
         PointerReceiver,
         HoverReceiver {
-  final quad = Sprite.of(width: 40, height: 40);
-  final hitArea = BoxBody.of(halfWidth: 20, halfHeight: 20);
+  late final Sprite quad;
+  late final BoxBody hitArea;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    quad = descriptor.has(width: 40, height: 40);
+  }
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    hitArea = descriptor.hasBoxCollider(halfWidth: 20, halfHeight: 20);
+  }
 
   @override
   void onHoverEnter(PointerPickEvent event) => events.add('enter');
@@ -107,7 +125,11 @@ class _MultiState extends GameState2D<_MultiGame> {
     loadScene(overlay);
   }
 
-  final pointerPickingSystem = GameSystem.of(PointerPickingSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(PointerPickingSystem.new);
+  }
 }
 
 class _MultiGame extends Game2D {
@@ -117,11 +139,15 @@ class _MultiGame extends Game2D {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
-  /// The second view, beside the `defaultCamera` `Renderer2D` declares. A
-  /// subclass's field initialisers run before the mixins it applies, so this
-  /// one takes address 0 and `defaultCamera` takes 1 - which nothing reads a
-  /// literal for.
-  final minimap = CameraView.of();
+  /// `defaultCamera` is address 0 and comes from `Renderer2D`; this is the
+  /// second one, and calling super is what keeps that ordering.
+  late final CameraView minimap;
+
+  @override
+  void describeCameras(CameraDescriptor descriptor) {
+    super.describeCameras(descriptor);
+    minimap = descriptor.has();
+  }
 
   @override
   GameState2D<_MultiGame> createState() => _MultiState();

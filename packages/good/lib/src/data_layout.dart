@@ -2,7 +2,6 @@ import 'dart:ffi';
 
 import 'package:good/src/archetype.dart';
 import 'package:good/src/data.dart';
-import 'package:good/src/declare.dart';
 import 'package:good/src/heap_object.dart';
 import 'package:good/src/struct.dart';
 
@@ -2038,69 +2037,20 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
   }
 }
 
-/// Collects the query-signature bits for one archetype while its prefab is
-/// being constructed, and refuses a pair of components that declared they
-/// cannot share one.
-///
-/// Open for the length of the constructor call, which is what puts every
-/// `Component.type` field initialiser inside it. [declareSelf] and
-/// [checkConflicts] run after, from `SceneDescriptor.has`, and are the two
-/// things that need the built object.
-final class ArchetypeComponentDescriptor implements ComponentRegistrar {
+/// Collects the query-signature bits for one archetype during its
+/// `describeType` pass.
+final class ArchetypeComponentDescriptor implements ComponentDescriptor {
   ArchetypeComponentDescriptor(this._storage);
 
   final ArchetypeStorage _storage;
 
-  /// Each declared conflict, as the component that declared it and the
-  /// sentence it gave. Keyed by the type refused, so [checkConflicts] can
-  /// name both halves.
-  final Map<Type, (Type, String)> _refused = <Type, (Type, String)>{};
-
   @override
-  int declareComponent(Type type, Map<Type, String> conflictsWith) {
-    final bit = ComponentTypeRegistry.bitFor(type);
-    _storage.componentSignature |= bit;
-    for (final MapEntry(key: other, value: reason) in conflictsWith.entries) {
-      _refused[other] = (type, reason);
-    }
-    return bit;
-  }
-
-  /// ORs in the prefab's own type.
-  ///
-  /// The framework's line, not the user's: a prefab's type is `runtimeType`,
-  /// which a field initialiser cannot reach and which only the running
-  /// program knows. It is the one bit in a signature that stays a run-time
-  /// assignment however much of the rest is generated.
-  void declareSelf(Type prefabType) {
-    _storage.componentSignature |= ComponentTypeRegistry.bitFor(prefabType);
-  }
-
-  /// Fails the registration if the finished signature carries both halves of
-  /// a declared conflict.
-  ///
-  /// After construction rather than inside [declareComponent], because mixin
-  /// field initialisers run in reverse `with` order: at the moment
-  /// `ScreenTransform2D` declares that it refuses `WorldTransform2D`, that
-  /// bit may not be in the signature yet. Every declaration first, one check
-  /// afterwards.
-  ///
-  /// An `assert`, so it costs nothing in release, and it guards a
-  /// combination that is refused rather than corrected - a game reaching
-  /// release with one has been drawing the wrong picture the whole way.
-  void checkConflicts(Type prefabType) {
-    assert(() {
-      for (final MapEntry(key: other, value: (declarer, reason))
-          in _refused.entries) {
-        final otherBit = ComponentTypeRegistry.declaredBitFor(other);
-        if (_storage.componentSignature & otherBit == 0) {
-          continue;
-        }
-        throw StateError(
-          '$prefabType mixes in both $declarer and $other. $reason',
-        );
-      }
-      return true;
-    }());
+  void has<T extends Component>({Type? type}) {
+    // Two spellings, one bit. A component *mixin* knows its own type
+    // statically and says `has<Renderable2D>()`; an `EntityStruct` cannot,
+    // because it no longer carries a type parameter naming itself, so it says
+    // `has(type: runtimeType)`. `type` wins when both are available - passing
+    // it is the deliberate act, while `T` merely falls back to its bound.
+    _storage.componentSignature |= ComponentTypeRegistry.bitFor(type ?? T);
   }
 }

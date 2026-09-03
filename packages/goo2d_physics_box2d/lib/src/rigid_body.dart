@@ -79,9 +79,10 @@ enum BodyType2D {
 /// }
 /// ```
 ///
-/// There is no `RigidBody2D.of` to go with `BoxBody.of`. A collider declares
-/// however many shapes the prefab has, and only the prefab knows how many; a
-/// body is six values, and a column default carries each of them.
+/// There is no `describeRigidBody` hook to go with `describeCollider`. A
+/// collider declares however many shapes the prefab has, and only the prefab
+/// knows how many; a body is six values, and a column default carries each of
+/// them.
 ///
 /// # How a body gets created
 ///
@@ -222,7 +223,11 @@ mixin RigidBody2D on Component {
     BodyType2D.dynamicBody,
   );
 
-  final rigidBody2DType = Component.type<RigidBody2D>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<RigidBody2D>();
+  }
 
   // --- forces ---------------------------------------------------------------
   //

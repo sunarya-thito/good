@@ -99,10 +99,15 @@ class _GameState extends GameState<_Game> {
     loadScene(_Scene());
   }
 
-  final worldTransformSystem = GameSystem.of(WorldTransformSystem.new);
-
   /// Inert in every test that does not arm it.
-  final spawner = GameSystem.of(_Spawner.new);
+  late final _Spawner spawner;
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(WorldTransformSystem.new);
+    spawner = descriptor.has(_Spawner.new);
+  }
 }
 
 class _Game extends Game {
@@ -563,11 +568,11 @@ void main() {
       run.state.advance(_step);
 
       final state = run.state as _GameState;
-      state.spawner.value.armed = true;
+      state.spawner.armed = true;
       run.state.advance(_step);
 
       expect(
-        scene.node.worldX[state.spawner.value.child!],
+        scene.node.worldX[state.spawner.child!],
         110,
         reason:
             'the pass walks `Parent.parentFirstChild` through published '

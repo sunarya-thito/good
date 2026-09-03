@@ -38,7 +38,11 @@ late Game run;
 mixin _Marked on Component {
   final mark = Field.uint8(7);
 
-  final markedType = Component.type<_Marked>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<_Marked>();
+  }
 }
 
 class _Unit extends EntityStruct with _Marked {}
@@ -247,10 +251,14 @@ class _LifecycleState extends GameState<_LifecycleGame> {
     loadScene(game.observer);
   }
 
-  final watcher = GameSystem.of(_Watcher.new);
-  final census = GameSystem.of(_Census.new);
-  final bystander = GameSystem.of(_Bystander.new);
-  final deaf = GameSystem.of(_Deaf.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_Watcher.new);
+    descriptor.has(_Census.new);
+    descriptor.has(_Bystander.new);
+    descriptor.has(_Deaf.new);
+  }
 }
 
 class _LifecycleGame extends Game {
@@ -266,9 +274,9 @@ class _LifecycleGame extends Game {
   late final _TrackedScene trackedScene;
 
   /// Reached through the state, because that is where systems live. They were
-  /// `late final` fields on this class, filled in by a pass this `Game` no
-  /// longer has - a system is declared on a `GameState` field, and built on
-  /// the copy that ticks.
+  /// `late final` fields on this class, assigned during `describeSystems` -
+  /// which is a `GameState` pass now, so a field here would be written on a
+  /// copy that no longer runs it.
   _Watcher get watcher => run.state.getSystem<_Watcher>();
   _Census get census => run.state.getSystem<_Census>();
   _Deaf get deaf => run.state.getSystem<_Deaf>();
@@ -279,10 +287,10 @@ class _LifecycleGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    level = descriptor.has(_Level.new);
-    observer = descriptor.has(_Observer.new);
-    nosyScene = descriptor.has(_NosyScene.new);
-    trackedScene = descriptor.has(_TrackedScene.new);
+    level = descriptor.has(_Level());
+    observer = descriptor.has(_Observer());
+    nosyScene = descriptor.has(_NosyScene());
+    trackedScene = descriptor.has(_TrackedScene());
   }
 }
 

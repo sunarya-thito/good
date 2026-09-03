@@ -136,7 +136,11 @@ class _Reporter extends GameSystem with FixedTickable {
 }
 
 class _IsolateAudioState extends GameState<_IsolateAudioGame> {
-  final reporter = GameSystem.of(_Reporter.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_Reporter.new);
+  }
 
   @override
   void onMounted() {
@@ -159,7 +163,13 @@ class _IsolateAudioGame extends Game {
   late final _MusicScene music;
 
   /// Written on the game isolate, read here. The only way a number gets back.
-  final uploaded = Channel.int32(-1);
+  late final StateChannel<int> uploaded;
+
+  @override
+  void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
+    uploaded = descriptor.hasInt32(-1);
+  }
 
   @override
   GameState createState() => _IsolateAudioState();
@@ -170,7 +180,7 @@ class _IsolateAudioGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    music = descriptor.has(_MusicScene.new);
+    music = descriptor.has(_MusicScene());
   }
 }
 

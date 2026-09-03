@@ -18,8 +18,15 @@ Declaring what a thing looks like leaves that decision where it belongs.
 ```dart
 class Crate extends EntityStruct
     with Transform3D, WorldTransform3D, Renderable3D {
-  final mesh = Asset.of(Meshes.crate);
-  final material = Asset.of(Materials.woodCrate);
+  late final MeshAsset mesh;
+  late final MaterialAsset material;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    mesh = descriptor.has(Meshes.crate);
+    material = descriptor.has(Materials.woodCrate);
+  }
 
   @override
   void describeMesh(MeshDescriptor descriptor) {

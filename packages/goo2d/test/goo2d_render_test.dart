@@ -25,7 +25,13 @@ final Uint8List _png2x1 = base64Decode(
 
 class _Sprite extends EntityStruct
     with Transform2D, WorldTransform2D, Child, Parent, Renderable2D {
-  final quad = Sprite.of();
+  late final Sprite quad;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    quad = descriptor.has();
+  }
 }
 
 /// Two sprites off one texture and one off none, at three depths - the shape
@@ -37,12 +43,26 @@ class _Billboard extends EntityStruct
     MemorySource(_png2x1, name: 'tile.png'),
   );
 
-  final tile = Asset.of(tileAsset);
-  // Declared out of depth order, so the run order below is the *sort's*
-  // output rather than the declaration's.
-  final front = Sprite.of(texture: Asset.of(tileAsset), width: 2, height: 2, zIndex: 2);
-  final middle = Sprite.of(width: 2, height: 2, color: 0xFFFF0000, zIndex: 1);
-  final back = Sprite.of(texture: Asset.of(tileAsset), width: 2, height: 2, zIndex: 0);
+  late final TextureAsset tile;
+  late final Sprite front;
+  late final Sprite middle;
+  late final Sprite back;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    tile = descriptor.has(tileAsset);
+  }
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    // Declared out of depth order, so the run order below is the *sort's*
+    // output rather than the declaration's.
+    front = descriptor.has(texture: tile, width: 2, height: 2, zIndex: 2);
+    back = descriptor.has(texture: tile, width: 2, height: 2, zIndex: 0);
+    middle = descriptor.has(width: 2, height: 2, color: 0xFFFF0000, zIndex: 1);
+  }
 }
 
 class _Scene extends SceneStruct {

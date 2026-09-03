@@ -15,7 +15,7 @@ import 'rigid_body.dart';
 /// gameplay state that no entity owns.
 ///
 /// For a *standing* effector, declare one instead: see `Effector2D` and
-/// `AreaEffector.of` in `effector.dart`. The region lives on the entity's own
+/// `describeEffector` in `effector.dart`. The region lives on the entity's own
 /// collider, so it travels with the entity, every knob becomes a per-entity
 /// field, and `Box2DPhysicsSystem` walks it before its own step - so the
 /// `compareTo` below stops being something each game has to get right.
@@ -26,8 +26,8 @@ import 'rigid_body.dart';
 /// # Calling these directly: from a fixed step, before physics
 ///
 /// A force applied outside a tick window is discarded, and one applied after
-/// `Box2DPhysicsSystem` has run lands a step late. Give the calling system an
-/// `Order` that puts it before the physics system.
+/// `Box2DPhysicsSystem` has run lands a step late. Give the calling system a
+/// `compareTo` that sorts it before the physics system.
 ///
 /// Each call also names the scene to search - the handle `loadScene` returned.
 /// There is no default, because a query that fell back to the one loaded scene
@@ -37,7 +37,9 @@ import 'rigid_body.dart';
 /// class Shockwave extends GameSystem with FixedTickable {
 ///   late Scene arena;
 ///
-///   final order = Order.of().before<Box2DPhysicsSystem>();
+///   @override
+///   int compareTo(GameSystem other) =>
+///       other is Box2DPhysicsSystem ? -1 : 0;
 ///
 ///   @override
 ///   void onFixedUpdate() {

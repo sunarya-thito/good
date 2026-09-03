@@ -129,7 +129,11 @@ mixin PointerReceiver on Component implements PointerListener {
   @override
   void onPointerUp(PointerPickEvent event) {}
 
-  final pointerReceiverType = Component.type<PointerReceiver>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<PointerReceiver>();
+  }
 }
 
 /// Makes a prefab respond to a pointer that is over it without pressing:
@@ -158,7 +162,11 @@ mixin HoverReceiver on Component implements HoverListener {
   @override
   void onHoverExit(PointerPickEvent event) {}
 
-  final hoverReceiverType = Component.type<HoverReceiver>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<HoverReceiver>();
+  }
 }
 
 /// Answers "what is a pointer over, and what just happened to it".

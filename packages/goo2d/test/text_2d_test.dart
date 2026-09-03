@@ -58,42 +58,62 @@ const double _cell = 8;
 /// order, which is what an equal-`zIndex` tie would fall back on.
 class _Back extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  final quad = Sprite.of(
-    width: 8,
-    height: 8,
-    color: _backColor,
-    zIndex: -10,
-  );
+  late final Sprite quad;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    quad = descriptor.has(
+      width: 8,
+      height: 8,
+      color: _backColor,
+      zIndex: -10,
+    );
+  }
 }
 
 /// The thing a damage number goes over. 16x16 at the world origin puts its
 /// top edge at view y 292.
 class _Enemy extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  final quad = Sprite.of(width: 16, height: 16, color: _enemyColor);
+  late final Sprite quad;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    quad = descriptor.has(width: 16, height: 16, color: _enemyColor);
+  }
 }
 
-/// How many `BitmapFont`s [_Damage] has built. Building one allocates, so a
-/// frame that reached for a font instead of reading the declared one would
-/// move this once per archetype per frame.
-int fontBuilds = 0;
-
-BitmapFont _damageFont() {
-  fontBuilds++;
-  return BitmapFont(
-    texture: Asset.of(_atlasKey),
-    columns: _columns,
-    rows: _rows,
-    glyphCount: _glyphs,
-  );
-}
-
-/// The label. Eight code units of capacity, which is small on purpose - the
+/// The label. Eight code units of capacity, which is deliberately small - the
 /// overflow tests need a capacity a test string can reach.
 class _Damage extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
-  final atlas = Asset.of(_atlasKey);
+  late final TextureAsset atlas;
 
-  final label = TextLabel.of(font: _damageFont(), capacity: 8);
+  @override
+  int get textCapacity => 8;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    atlas = descriptor.has(_atlasKey);
+  }
+
+  /// How many times [textFont] has been read. The override builds a font, so
+  /// a read allocates one, and a frame that reached the getter would allocate
+  /// one per archetype per frame.
+  int fontReads = 0;
+
+  @override
+  BitmapFont get textFont {
+    fontReads++;
+    return BitmapFont(
+      texture: atlas,
+      columns: _columns,
+      rows: _rows,
+      glyphCount: _glyphs,
+    );
+  }
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -120,7 +140,13 @@ class _Silent extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
 /// In front of the label.
 class _Front extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  final quad = Sprite.of(width: 4, height: 4, color: _frontColor, zIndex: 20);
+  late final Sprite quad;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    quad = descriptor.has(width: 4, height: 4, color: _frontColor, zIndex: 20);
+  }
 }
 
 class _Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
@@ -321,17 +347,16 @@ void main() {
       expect(_renderer.lastRecordCount, 6);
     });
 
-    test('the font is built while the archetype is described, and no '
+    test('the font is read while the archetype is described, and no '
         'more', () async {
-      fontBuilds = 0;
       final game = await _game();
       final scene = _scene();
       _eyeAt(game, scene);
       _labelAt(scene, '-24', y: 20);
       _labelAt(scene, '99', x: 40);
-      final described = fontBuilds;
+      final described = scene.damage.fontReads;
       expect(described, 1, reason: 'once for the archetype, not per entity');
-      final resolved = scene.damage.textLabel.font;
+      final resolved = scene.damage.textFontResolved;
       expect(resolved, isNotNull);
 
       run.state.advance(_step);
@@ -339,14 +364,13 @@ void main() {
 
       expect(_batch(game), hasLength(5), reason: 'both labels drew');
       expect(
-        fontBuilds,
+        scene.damage.fontReads,
         described,
         reason:
-            'the write pass reads the font the declaration built, and asking '
-            'the prefab for one would build a BitmapFont per archetype per '
-            'frame',
+            'the write pass reads textFontResolved, and reaching the getter '
+            'would build a BitmapFont per archetype per frame',
       );
-      expect(scene.damage.textLabel.font, same(resolved));
+      expect(scene.damage.textFontResolved, same(resolved));
     });
 
     test('the glyphs sit above the entity they label', () async {
@@ -560,40 +584,6 @@ void main() {
   });
 
   group('capacity', () {
-    test('the declared capacity is the row storage', () async {
-      await _game();
-      final scene = _scene();
-      expect(scene.damage.textLabel.capacity, 8);
-      expect(scene.damage.textLabel.codeUnits.length, 8);
-    });
-
-    test('a prefab that declares no label gets 32 units and no font', () async {
-      await _game();
-      final scene = _scene();
-      expect(scene.silent.textLabel.capacity, 32);
-      expect(scene.silent.textLabel.codeUnits.length, 32);
-      expect(scene.silent.textLabel.font, isNull);
-    });
-
-    test('a capacity outside 1..65535 is refused where it is declared', () {
-      expect(
-        () {
-          TextLabel.of(capacity: 0);
-        },
-        throwsA(
-          isA<ArgumentError>()
-              .having((e) => e.name, 'name', 'capacity')
-              .having((e) => e.message, 'message', contains('65535')),
-        ),
-      );
-      expect(
-        () {
-          TextLabel.of(capacity: 0x10000);
-        },
-        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'capacity')),
-      );
-    });
-
     test('a string past capacity trips the assert', () async {
       await _game();
       final scene = _scene();

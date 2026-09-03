@@ -3,6 +3,7 @@ import 'package:good/src/animation/animatable.dart';
 import 'package:good/src/archetype.dart';
 import 'package:good/src/coroutine/coroutine.dart';
 import 'package:good/src/game_state.dart';
+import 'package:good/src/asset.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/declare.dart';
 import 'package:good/src/event.dart';
@@ -11,109 +12,23 @@ import 'package:good/src/scene.dart';
 import 'package:good/src/system.dart';
 
 abstract interface class Component {
-  /// Declares that whatever is being constructed carries the component type
-  /// [T], and hands back the handle for it.
-  ///
-  /// Written once, in a field of the component mixin itself:
-  ///
-  /// ```dart
-  /// mixin Health on Component {
-  ///   final healthType = Component.type<Health>();
-  ///
-  ///   final healthHp = Field.int32(100);
-  /// }
-  /// ```
-  ///
-  /// Every prefab that writes `with Health` runs that initialiser, so the bit
-  /// reaches the archetype's signature with nothing for the prefab to write
-  /// and nothing for it to forget. `withAll(Health)` matches exactly the
-  /// archetypes that mix `Health` in, and the two facts cannot drift apart
-  /// because there is only one of them.
-  ///
-  /// The bit is [ComponentTypeRegistry.bitFor]'s, and the signature it lands
-  /// in is `ArchetypeStorage.componentSignature`. `Field.float64` and
-  /// `Asset.of` are the same move made for columns and for assets, and the
-  /// registrar this reaches is `DeclarationContext.components`.
-  ///
-  /// # Refusing a combination
-  ///
-  /// [conflictsWith] maps each component type this one cannot share an
-  /// archetype with to the sentence explaining the pair:
-  ///
-  /// ```dart
-  /// mixin ScreenTransform2D on Component {
-  ///   final screenTransform2DType = Component.type<ScreenTransform2D>(
-  ///     conflictsWith: <Type, String>{
-  ///       WorldTransform2D: 'They mean two different things by an offset.',
-  ///     },
-  ///   );
-  /// }
-  /// ```
-  ///
-  /// The pair is checked once the prefab is built, not when this runs: mixin
-  /// field initialisers run in reverse `with` order, so at the moment a
-  /// conflict is declared the other component may not have declared itself
-  /// yet. Declaring it on either of the two is enough, and declaring it on
-  /// both says the same thing twice.
-  ///
-  /// Throws when nothing is being constructed - a prefab built by hand, or a
-  /// `late final` that runs on first read rather than during the pass that
-  /// lays the archetype out.
-  static ComponentType<T> type<T extends Component>({
-    Map<Type, String> conflictsWith = const <Type, String>{},
-  }) => ComponentType<T>._(
-    T,
-    DeclarationContext.components.declareComponent(T, conflictsWith),
-  );
+  void describeType(ComponentDescriptor component);
 
-  /// Records [declaration] against the prefab being constructed and hands it
-  /// back, so the call site keeps the typed handle in its field.
+  /// Declares every asset this component needs, and keeps each returned
+  /// handle in a field - the third declare-time pass, chained through mixins
+  /// with `@mustCallSuper` exactly like [describeType] and [describeStruct].
   ///
-  /// Called by the declaration itself - `Sprite.of`, `BoxBody.of`,
-  /// `TextLabel.of` - and never by a prefab. The component that owns the kind
-  /// takes it back with [declared], or with [MultiComponent.declared] where
-  /// an entity carries several.
+  /// Runs between the other two, not after them: a declared
+  /// [GameAssetInstance] is already addressed by the time it returns, so
+  /// [describeStruct] can use it as a row default
+  /// (`data.hasObject(playerTexture)`) without a second pass or a late
+  /// patch-up.
   ///
-  /// Throws when nothing is being constructed: a prefab built by hand, or a
-  /// `late final` that runs on first read rather than during the pass that
-  /// lays the archetype out.
-  static T declare<T extends Object>(T declaration) {
-    DeclarationContext.addDeclared(declaration);
-    return declaration;
-  }
-
-  /// The one [T] the prefab being constructed declared, or null if it
-  /// declared none, and removes it from the collection.
-  ///
-  /// The single-instance twin of [MultiComponent.declared], for a component
-  /// that holds one field rather than a list:
-  ///
-  /// ```dart
-  /// mixin Text2D on Component {
-  ///   final textLabel = TextLabel.declared();
-  /// }
-  /// ```
-  ///
-  /// Belongs in a field initialiser of the component mixin itself, which is
-  /// where it runs late enough to see the whole prefab - a mixin's own
-  /// initialisers run after the applying class's. Anything a prefab declares
-  /// that no component takes fails the registration by name.
-  ///
-  /// Two declarations of one kind is refused here. The component has one
-  /// field to keep them in, so the second would be stored nowhere and read by
-  /// nothing; a second of anything is a second entity.
-  static T? declared<T extends Object>() {
-    final taken = DeclarationContext.takeDeclared<T>();
-    if (taken.length > 1) {
-      throw StateError(
-        'A prefab declares ${taken.length} ${T}s, and a component holds one. '
-        'Only the first would ever be read, so the rest would draw nothing '
-        'and answer nothing. Declare one, and spawn a second entity for a '
-        'second.',
-      );
-    }
-    return taken.isEmpty ? null : taken.first;
-  }
+  /// Runs on **both** isolate copies, in the same order, on every prefab a
+  /// scene registers - that ordering is what assigns each asset its address,
+  /// so it must never be made conditional on which copy is running. Only the
+  /// *decode* is main-isolate-only; see [GameAssets].
+  void describeAssets(AssetDescriptor descriptor);
 
   void describeStruct(DataDescriptor data);
 
@@ -133,46 +48,16 @@ abstract interface class Component {
 
 /// A stricter [Component]: opts a mixin into declaring *several* named,
 /// independently-addressable instances of itself on one entity (several
-/// sprites, several colliders) instead of exactly one.
-///
-/// Each instance is a field on the prefab, declared the way every other
-/// field is:
-///
-/// ```dart
-/// class Player extends EntityStruct with Transform2D, Renderable2D {
-///   final body = Sprite.of(width: 32, height: 48);
-///   final hat = Sprite.of(width: 20, height: 8, zIndex: 1);
-/// }
-/// ```
-///
-/// The component also needs all of them in one list - a renderer walks every
-/// sprite an entity has and cannot know this prefab's field names. That list
-/// is not built by the fields that fill it, because a mixin's own
-/// initialisers run **after** the applying class's: `class Sub extends Base
-/// with M1, M2` runs `Sub`, then `M2`, then `M1`, then `Base`, so the
-/// prefab's two `Sprite.of` calls happen while `Renderable2D` has no fields.
-/// Each call records itself with [Component.declare] instead, and the
-/// component takes its own kind back with [declared]:
-///
-/// ```dart
-/// mixin Renderable2D on MultiComponent {
-///   final List<Sprite> sprites = MultiComponent.declared<Sprite>();
-/// }
-/// ```
-///
-/// [Component] is the marker for the single-instance case, and
-/// [Component.declared] is how one of those takes its own declaration back -
-/// one value where this hands back a list.
-abstract interface class MultiComponent implements Component {
-  /// Every [T] the prefab being constructed has declared so far, in
-  /// declaration order, and removes them from the collection.
-  ///
-  /// Belongs in a field initialiser of the component mixin itself, which is
-  /// where it runs late enough to see the whole prefab. Anything a prefab
-  /// declares that no component takes fails the registration by name.
-  static List<T> declared<T extends Object>() =>
-      DeclarationContext.takeDeclared<T>();
-}
+/// sprites, several colliders) instead of exactly one. Dart disallows mixing
+/// in the same mixin twice (`with Renderable2D, Renderable2D`), so a
+/// multi-instance mixin doesn't declare its fields directly the way a
+/// single-instance one does - it declares its own dedicated hook (see
+/// `Renderable2D.describeSprites`/`Collider2D.describeCollider`, `goo2d`/
+/// `goo2d_render`), called once from its own `describeStruct` override, and
+/// every `has()`-style call inside that hook allocates one more instance's
+/// worth of fields. Both markers are pure - no members of their own beyond
+/// what [Component] already declares.
+abstract interface class MultiComponent implements Component {}
 
 // game object is just a structure of data, it doesn't hold the actual data it
 // describes the data structure of the game object, and let the framework
@@ -186,8 +71,9 @@ abstract interface class MultiComponent implements Component {
 // the game, and one declared *here* reach this prefab and nothing else, which
 // is the scoping that makes a per-struct mount hook possible at all.
 
-// Carries no type parameter naming itself. A prefab's own bit comes from
-// `runtimeType`, which the framework ORs in once the object is built.
+// NOTE: No longer carries <T>
+// <T> was used to describe the type of the prefab, but it is no longer needed
+// because .has on the describeType now accepts direct Type as parameter.
 abstract class EntityStruct extends GameListenerBase
     with EventBus, Coroutines, Animations
     implements MultiComponent {
@@ -206,33 +92,42 @@ abstract class EntityStruct extends GameListenerBase
   /// every entity in the game mixes in `EntitySpawnListener`, which
   /// `GameState` declares - the scope is decided by which dispatcher collects
   /// the listener, not by which method it overrides.
-  ///
-  /// Declared through `Event.inherited`, where `GameState`'s ten use
-  /// `Event.of`. The difference is that an `EntityStruct` does not have to be
-  /// built by the framework: `SceneDescriptor.has` takes a `T Function()` and
-  /// a closure may hand back an object that already existed -
-  /// `descriptor.has(() => _prefab)` is how a fixture keeps a reference to the
-  /// prefab it is about to register, and how a prefab taking a constructor
-  /// argument gets one. `archetype_test`'s `_Rock().archetype` pins the
-  /// sharper version: an `EntityStruct` with no scene at all is a supported
-  /// state with its own error message, and it has to stay reachable.
-  /// `Event.of` reads the declaration window and would throw for every one of
-  /// them; `Event.inherited` reads nothing, and the object takes the pair when
-  /// its construction finishes.
-  ///
-  /// A prefab the framework *does* build - `descriptor.has(Mote.new)`,
-  /// `EntityStruct.of(Barrel.new)` - has a window open around it, so
-  /// `Event.of` on a subclass's own field works and is the shape to reach for.
-  final mountedEvent = Event.inherited<EntityLifecycleListener, Entity>(
-    (listener, entity) => listener.onEntityMounted(entity),
-  );
+  late final EventDispatcher<EntityLifecycleListener, Entity> mountedEvent;
 
   /// An entity of this struct is going away, because `Entity.destroy()` was
   /// called on it or because the scene holding it is being unloaded - both
   /// paths fire this. Its row is still readable during dispatch.
-  final unmountedEvent = Event.inherited<EntityLifecycleListener, Entity>(
-    (listener, entity) => listener.onEntityUnmounted(entity),
-  );
+  late final EventDispatcher<EntityLifecycleListener, Entity> unmountedEvent;
+
+  // These two stay in the hook while `GameState`'s ten moved onto their
+  // fields, and the reason is that an `EntityStruct` does not have to be
+  // built by the framework.
+  //
+  // `SceneDescriptor.has` takes a `T Function()`, and a closure may hand back
+  // an object that already existed - `descriptor.has(() => _prefab)` is how a
+  // fixture keeps a reference to the prefab it is about to register, and how a
+  // prefab taking a constructor argument gets one. No binder is open around
+  // that construction, so a dispatcher declared on a field of this class would
+  // throw for every one of them. `archetype_test`'s `_Rock().archetype`
+  // pins the sharper version: an `EntityStruct` with no scene at all is a
+  // supported state with its own error message, and it has to stay reachable.
+  //
+  // A prefab the framework *does* build - `descriptor.has(Mote.new)`,
+  // `EntityStruct.of(Barrel.new)` - has a binder open around it, so `Event.*`
+  // on a subclass's field works and is the shape to reach for. It is only
+  // this base pair, which every struct inherits however it was built, that
+  // cannot assume one.
+  @override
+  @mustCallSuper
+  void describeEvents(EventDescriptor descriptor) {
+    super.describeEvents(descriptor);
+    mountedEvent = descriptor.has(
+      (listener, entity) => listener.onEntityMounted(entity),
+    );
+    unmountedEvent = descriptor.has(
+      (listener, entity) => listener.onEntityUnmounted(entity),
+    );
+  }
 
   late SceneStruct _associatedScene; // <- scene holds memory pool
   late ArchetypeStorage _archetype;
@@ -283,9 +178,9 @@ abstract class EntityStruct extends GameListenerBase
   int get archetypeId => archetype.archetypeId;
 
   /// Called once by `SceneDescriptor.has`, immediately before the
-  /// `describeStruct` pass runs against [storage]. Not part of the
-  /// user-facing API: a struct is bound by registering it with a scene,
-  /// never by hand.
+  /// `describeType`/`describeStruct` passes run against [storage]. Not
+  /// part of the user-facing API: a struct is bound by registering it with
+  /// a scene, never by hand.
   @internal
   void bindArchetype(SceneStruct scene, ArchetypeStorage storage) {
     if (_bound) {
@@ -320,6 +215,19 @@ abstract class EntityStruct extends GameListenerBase
     }
     return true;
   }
+
+  @override
+  @mustCallSuper
+  void describeType(ComponentDescriptor component) {
+    component.has(type: runtimeType);
+  }
+
+  /// No-op base of the `describeAssets` chain - a prefab with no assets
+  /// overrides nothing, and one with assets calls `super.describeAssets(...)`
+  /// first, exactly as with [describeType]/[describeStruct].
+  @override
+  @mustCallSuper
+  void describeAssets(AssetDescriptor descriptor) {}
 
   // helps find the length of the game object
   @override
@@ -380,32 +288,19 @@ abstract class EntityStruct extends GameListenerBase
       DeclarationContext.prefabs.declareChild<T>(create);
 }
 
-/// What [Component.type] hands back: one component type's place in the query
-/// signature, held in the field that declared it.
+/// Declares which component *types* an archetype carries - one `has<T>()` per
+/// type, each ORing that type's bit into the archetype's signature, which is
+/// the whole of what a query matches on.
 ///
-/// There is no per-component enable toggle to reach for. An archetype *is* its
-/// component set: switching a component off across the whole archetype just
-/// describes a different archetype, and switching it off for one entity needs
-/// a bit in every row plus a query that consults it, which is a different
-/// feature entirely. The enable/disable that does exist works at the level
-/// where it means something: whole systems, via `GameState.enableSystem`.
-final class ComponentType<T extends Component> {
-  const ComponentType._(this.type, this.bit);
-
-  /// The type declared, which is [T]. Carried as a value so it can be passed
-  /// to `withAll` and the rest, which take a `Type`.
-  final Type type;
-
-  /// The single-bit mask this type holds in every signature in this process -
-  /// [ComponentTypeRegistry.bitFor]'s answer for [type], read once at declare
-  /// time.
-  ///
-  /// A mask, not an index, because every use of it is an AND or an OR against
-  /// `ArchetypeStorage.componentSignature`.
-  final int bit;
-
-  @override
-  String toString() => 'ComponentType<$type>(bit ${bit.toRadixString(2)})';
+/// Returns nothing, and there is no per-component enable toggle to reach for.
+/// An archetype *is* its component set: switching a component off across the
+/// whole archetype just describes a different archetype, and switching it off
+/// for one entity needs a bit in every row plus a query that consults it, which
+/// is a different feature entirely. The enable/disable that does exist works at
+/// the level where it means something: whole systems, via
+/// `GameState.enableSystem`.
+abstract class ComponentDescriptor {
+  void has<T extends Component>({Type? type});
 }
 
 /// A handle to one row of component data, packed into a single 64-bit int:
@@ -500,9 +395,9 @@ extension type const Entity(int value) implements int {
   ///
   /// It is a question about the *archetype*, not the row: every entity of one
   /// archetype answers the same, because an archetype is its component set
-  /// (see [Component.type], which is what declares the membership this reads
-  /// back). Hoist it out of a loop over one group rather than asking per
-  /// entity.
+  /// (see [ComponentDescriptor], whose own `has<T>()` is what declares the
+  /// membership this reads back). Hoist it out of a loop over one group rather
+  /// than asking per entity.
   ///
   /// Reading through [T] costs a second resolve, so a guard followed by a use
   /// resolves twice. That is the price of the branch; a system that wants one
@@ -530,7 +425,13 @@ extension type const Entity(int value) implements int {
 ///
 /// ```dart
 /// mixin Health on Component {
-///   final healthHp = Field.int32(100);
+///   late final DataPointer<int> healthHp;
+///
+///   @override
+///   void describeStruct(DataDescriptor data) {
+///     super.describeStruct(data);
+///     healthHp = data.hasInt32(100);
+///   }
 /// }
 ///
 /// extension HealthAccessor on Accessor<Health> {

@@ -20,7 +20,13 @@ late Box2DPhysicsSystem physics;
 late _Scene _declaration;
 
 class _Slab extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  final box = BoxBody.of(halfWidth: 2, halfHeight: 0.5);
+  late final BoxBody box;
+
+  @override
+  void describeCollider(ColliderDescriptor d) {
+    super.describeCollider(d);
+    box = d.hasBoxCollider(halfWidth: 2, halfHeight: 0.5);
+  }
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -64,8 +70,12 @@ class _GameState extends GameState<_Game> {
   @override
   void onMounted() {}
 
-  final physics = GameSystem.of(Box2DPhysicsSystem.new);
-  final turner = GameSystem.of(_Turner.new);
+  @override
+  void describeSystems(SystemDescriptor d) {
+    super.describeSystems(d);
+    physics = d.has(Box2DPhysicsSystem.new);
+    _turner = d.has(_Turner.new);
+  }
 }
 
 class _Game extends Game {
@@ -77,7 +87,7 @@ class _Game extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    arena = descriptor.has(_Scene.new);
+    arena = descriptor.has(_Scene());
   }
 
   @override
@@ -93,11 +103,6 @@ void _step([int times = 1]) {
 Future<Scene> _boot() async {
   final game = await Game.startInline(_Game.new);
   run = game;
-  // Read off the state rather than captured at declaration: the declaration
-  // is a field on the state and the system is built on the copy that ticks,
-  // so this is where the object first exists.
-  physics = run.state.getSystem<Box2DPhysicsSystem>();
-  _turner = run.state.getSystem<_Turner>();
   _declaration = game.arena;
   addTearDown(() async {
     if (run.isRunning) await run.stop();

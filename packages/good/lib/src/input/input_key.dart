@@ -939,8 +939,8 @@ final class GamepadButton {
 /// `InputKey.padA` usable *as a value* and `InputKey.padA(1)` usable as the
 /// same button on another slot - the second is calling the first. The one
 /// cost: `InputKey.padA(1)` is a method call, so a binding built from it
-/// cannot be `const`. That is one allocation while the declaring object is
-/// constructed, which happens once at boot.
+/// cannot be `const`. That is one allocation during `describeInputs`, which
+/// runs once at boot.
 ///
 /// # Ids
 ///

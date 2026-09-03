@@ -742,10 +742,6 @@ abstract interface class ParamLayouts {
 /// [hasFixedBytes] have no counterpart on `DataDescriptor`, and cannot: a row
 /// is reached by multiplying a stride, so it has no tail to grow into. See
 /// this class's note above on why a record does.
-/// The registrar [Param] declares against, and the record width vocabulary
-/// it spells. `CommandRegistry.declare` and `NetRegistry.declare` open one
-/// around a constructor call through [ParamLayout.open], and every `Param.*`
-/// field initialiser lands in it.
 abstract class ParamDescriptor {
   /// A boolean flag - one bit of the record's head, the same storage
   /// [hasUint1] takes, with a type on it.
@@ -885,6 +881,9 @@ abstract class ParamDescriptor {
 /// [DeclarationContext.params] and [ParamLayout.seal], which catch the two
 /// halves of it.
 ///
+/// `describeParams` is not going anywhere; a command may declare through
+/// either, and one that declares through both gets its fields first and its
+/// hook's second.
 abstract final class Param {
   /// See [ParamDescriptor.hasBool]. Named for the Dart type and not the
   /// width, the way `Field.boolean` and `Channel.boolean` are.
@@ -968,9 +967,9 @@ abstract final class Param {
 /// Builds one command's layout, then serves as the accessor for it.
 ///
 /// Sealed off behind [ParamDescriptor] for the same reason
-/// `ArchetypeDataDescriptor` is: the descriptor is alive only for the
-/// constructor call it was opened around, while the pointers it hands back
-/// live as long as the thing that declared them does.
+/// `ArchetypeDataDescriptor` is: the descriptor is alive only during the one
+/// `describeParams` pass, while the pointers it hands back live as long as
+/// the thing that declared them does.
 ///
 /// Public because it is not command machinery - it is *record* machinery, and a
 /// network message declares its fields with the identical vocabulary (see
@@ -1026,8 +1025,8 @@ final class ParamLayout implements ParamDescriptor {
     final bytes = _signatureBytes;
     if (bytes == null) {
       throw StateError(
-        'a layout signature is only settled once its declaring constructor '
-        'has run, and seal() has not been called on this one yet.',
+        'a layout signature is only settled once its describeParams pass has '
+        'run, and seal() has not been called on this one yet.',
       );
     }
     return bytes;
@@ -1104,8 +1103,8 @@ final class ParamLayout implements ParamDescriptor {
   int _declare(int bitWidth) {
     if (_sealed) {
       throw StateError(
-        'a command\'s fields can only be declared while its constructor runs '
-        '- this descriptor is sealed.',
+        'a command\'s fields can only be declared during its one-time '
+        'describeParams pass - this descriptor is sealed.',
       );
     }
     if (bitWidth >= 8 || (_bitCursor & 7) + bitWidth > 8) {

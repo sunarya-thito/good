@@ -1,109 +1,5 @@
 ## Unreleased
 
-### Breaking
-
-* **`Renderer2D.defaultCamera` is the last view a game declares, not the
-  first** (#287). It is a `CameraView.of()` field now, and a mixin's field
-  initialisers run after those of the class applying it, so a game declaring
-  one view of its own takes address 0 and `defaultCamera` takes 1. Nothing
-  here reads an address literally - a frame buffer is found by `view.pack()` -
-  but a game that hard-coded 0 for the default camera has to stop.
-
-* **`Game2D` and any game mixing in `Renderer2D` can only be built by
-  `Game.start`** (#287). `defaultCamera` declares from a field initialiser, so
-  `MyGame()` on its own is refused with the sentence saying which window it
-  needed.
-
-* **`Text2D.textFont` and `Text2D.textCapacity` are gone. A label is declared
-  on a field with `TextLabel.of`** (#287):
-
-  ```dart
-  class DamageNumber extends EntityStruct
-      with Transform2D, WorldTransform2D, Text2D {
-    final label = TextLabel.of(
-      font: BitmapFont(texture: Asset.of(fontKey), columns: 16, rows: 6),
-      capacity: 8,
-    );
-  }
-  ```
-
-  | before | after |
-  |---|---|
-  | `@override BitmapFont get textFont => ...` | `TextLabel.of(font: ...)` |
-  | `@override int get textCapacity => 8` | `TextLabel.of(capacity: 8)` |
-  | `text.textFontResolved` | `text.textLabel.font` |
-  | `text.textCodeUnits` | `text.textLabel.codeUnits` |
-
-  `Text2D.describeStruct` goes with them. The capacity sizes a column, which
-  makes it a declaration and not configuration - it is `PolygonBody.of`'s
-  `maxPoints`, and it is now spelled the same way. The font is built once, by
-  the initialiser that declares it, instead of once per archetype by a getter
-  the framework called; a prefab that declares no label gets 32 code units and
-  no font, which draws nothing, exactly as an unset `textFont` did. A capacity
-  outside `1..65535` is refused where it is written.
-
-  A prefab may declare one label. Two is refused by name at registration - a
-  second label is a second entity, or a child.
-
-* **`Camera.cameraView` is declared on its field.** `Camera.describeStruct` is
-  gone (#287). The column binds to the same table it always did, named with
-  `CameraView.representation()` in `package:good` instead of read off the scene
-  through `getScene`. Nothing at a use site changes: `cameraView[entity]` and
-  `entity<Camera>().view` are unchanged.
-
-* **`describeSprites` and `describeCollider` are gone. A sprite and a collider
-  go on the fields that hold them** (#287):
-
-  ```dart
-  class Player extends EntityStruct with Transform2D, Renderable2D, Collider2D {
-    final body = Sprite.of(width: 64, height: 64, color: 0xFF4FC3F7);
-    final hat = Sprite.of(width: 20, height: 8, zIndex: 1);
-    final hitbox = CircleBody.of(radius: 32);
-  }
-  ```
-
-  | before | after |
-  |---|---|
-  | `void describeSprites(SpriteDescriptor d) { s = d.has(...); }` | `final s = Sprite.of(...);` |
-  | `d.hasCircleCollider(...)` | `CircleBody.of(...)` |
-  | `d.hasBoxCollider(...)` | `BoxBody.of(...)` |
-  | `d.hasCapsuleCollider(...)` | `CapsuleBody.of(...)` |
-  | `d.hasPolygonCollider(...)` | `PolygonBody.of(...)` |
-
-  `SpriteDescriptor` and `ColliderDescriptor` go with them, and so do
-  `Renderable2D`'s and `Collider2D`'s `describeStruct` overrides. Every named
-  parameter, every default and every returned handle is unchanged.
-  `Renderable2D.sprites` and `Collider2D.bodies` still hold every declaration
-  in declaration order; they are taken from the prefab's own fields now - see
-  `MultiComponent.declared` in `package:good`.
-
-  A sprite's texture is named where the sprite is, and a field initialiser
-  cannot read a sibling field, so a prefab that kept the handle in one passes
-  the key instead:
-
-  ```dart
-  final sprite = Sprite.of(texture: Asset.of(Textures.player), width: 64);
-  ```
-
-  `Asset.of` is idempotent per identity, so naming one key twice still gives
-  one handle, one address and one decode.
-
-  A prefab declaring a `Sprite` without `with Renderable2D`, or a body without
-  `with Collider2D`, fails its registration by name.
-
-* **The `describeType` overrides are gone; each component declares its type in
-  a field** (#287). `Transform2D`, `WorldTransform2D`, `ScreenTransform2D`,
-  `Camera`, `Collider2D`, `Renderable2D`, `Text2D`, `PointerReceiver` and
-  `HoverReceiver` each carry one `Component.type<Self>()` field instead. A
-  prefab writes nothing either way, so a game only sees this if it wrote a
-  `describeType` override of its own.
-
-  `ScreenTransform2D` and `Text2D` refused a component each with an
-  `assert(this is! Other)` inside that hook. They declare the refusal now:
-  `ScreenTransform2D` refuses `WorldTransform2D` and `Text2D` refuses
-  `ScreenTransform2D`, and both are still checked when a scene registers the
-  prefab, with the same sentences in the message.
-
 ### Added
 
 * **`goo2dComponentBits`**, generated by `good_tool` into
@@ -186,6 +82,7 @@
   on a read (#210). `Text2D`, `Camera2D` and every other component here are
   reached through it, and nothing about the columns themselves moves - names,
   order, widths and `strideBytes` are unchanged.
+
 
 ### Fixed
 

@@ -22,7 +22,13 @@ late Game run;
 final List<String> seen = <String>[];
 
 class _ContactSystem extends GameSystem with FixedTickable {
-  final contacts = Input.of<PointerContacts>(const ContactBinding());
+  late final Input<PointerContacts> contacts;
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    contacts = input.has<PointerContacts>(const ContactBinding());
+  }
 
   @override
   void onFixedUpdate() {
@@ -43,7 +49,11 @@ class _ContactSystem extends GameSystem with FixedTickable {
 }
 
 class _StackedState extends GameState<_StackedGame> {
-  final contactSystem = GameSystem.of(_ContactSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_ContactSystem.new);
+  }
 }
 
 class _StackedGame extends Game {
@@ -54,10 +64,17 @@ class _StackedGame extends Game {
   GameState createState() => _StackedState();
 
   /// The world layer, drawn first and so furthest back.
-  final world = CameraView.of();
+  late final CameraView world;
 
   /// The layer a HUD would live on, drawn over [world].
-  final hud = CameraView.of();
+  late final CameraView hud;
+
+  @override
+  void describeCameras(CameraDescriptor descriptor) {
+    super.describeCameras(descriptor);
+    world = descriptor.has();
+    hud = descriptor.has();
+  }
 
   /// A surface with a size. `GameView` wraps whatever this returns in its
   /// `Listener`, so a view that builds nothing is a zero-sized hit target and

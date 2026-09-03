@@ -28,13 +28,21 @@ late Game run;
 mixin _Grounded on Component {
   final weight = Field.uint16(3);
 
-  final groundedType = Component.type<_Grounded>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<_Grounded>();
+  }
 }
 
 mixin _Winged on Component {
   final span = Field.uint8(1);
 
-  final wingedType = Component.type<_Winged>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<_Winged>();
+  }
 }
 
 class _Rock extends EntityStruct with _Grounded {}
@@ -71,9 +79,15 @@ class _BetaSystem extends GameSystem with FixedTickable {
 /// own buffer, which the transport reuses - so a command that handed the view
 /// straight to whoever awaited it would hand them bytes that change underneath
 /// them.
-class _TakeCensus extends ValueSupplier<Uint8List> {
+class _TakeCensus extends SupplierCommand<Uint8List> {
+  final blob = Param.bytes();
+
   @override
-  final value = Param.bytes();
+  void bufferFromResult(ParamBuffer call, Uint8List result) =>
+      blob[call] = result;
+
+  @override
+  Uint8List resultFromBuffer(ParamBuffer call) => Uint8List.fromList(blob[call]);
 }
 
 /// Tick-delivered: the discriminator for the paused test. It genuinely needs a
@@ -90,14 +104,21 @@ class _CensusState extends GameState<_CensusGame> {
     // wrote rather than one the fixture happened to boot with.
   }
 
-  final alphaSystem = GameSystem.of(_AlphaSystem.new);
-  final betaSystem = GameSystem.of(_BetaSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_AlphaSystem.new);
+    descriptor.has(_BetaSystem.new);
+  }
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
     descriptor
-      ..hasReadOnlySupplier(game.census, () => WorldCensus.of(this).encode())
+      ..hasReadOnlySupplier(
+        game.census,
+        () => WorldCensus.of(this).encode(),
+      )
       ..hasSignal(game.needsTick, () => tickBoundRuns++);
   }
 }
@@ -110,8 +131,8 @@ class _CensusGame extends Game {
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
   late final _Habitat habitat;
-  final census = Command.of(_TakeCensus.new);
-  final needsTick = Command.of(_NeedsTick.new);
+  late final _TakeCensus census;
+  late final _NeedsTick needsTick;
 
   @override
   GameState createState() => _CensusState();
@@ -119,7 +140,14 @@ class _CensusGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    habitat = descriptor.has(_Habitat.new);
+    habitat = descriptor.has(_Habitat());
+  }
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    census = descriptor.has(_TakeCensus.new);
+    needsTick = descriptor.has(_NeedsTick.new);
   }
 }
 
@@ -193,19 +221,16 @@ void main() {
             'a page records `ownerSceneSlot` and nothing else, so which scene '
             'a row belongs to is read off the page it sits in',
       );
-      expect(census.scenes.map((s) => s.generation), [
-        0,
-        0,
-      ], reason: 'first load of each slot');
+      expect(
+        census.scenes.map((s) => s.generation),
+        [0, 0],
+        reason: 'first load of each slot',
+      );
 
       final rocks = _archetypeNamed(census, '_Rock');
       final birds = _archetypeNamed(census, '_Bird');
       expect(census.archetypes.length, 2);
-      expect(
-        rocks.entityCount,
-        5,
-        reason: 'three in one scene, two in the other',
-      );
+      expect(rocks.entityCount, 5, reason: 'three in one scene, two in the other');
       expect(birds.entityCount, 4);
       expect(
         rocks.pageCount,
@@ -214,11 +239,7 @@ void main() {
             'two loaded scenes never share a page, which is what makes one '
             'individually unloadable',
       );
-      expect(
-        rocks.strideBytes,
-        2,
-        reason: 'one uint16 field, rounded to bytes',
-      );
+      expect(rocks.strideBytes, 2, reason: 'one uint16 field, rounded to bytes');
       expect(birds.strideBytes, 1);
       expect(
         rocks.componentSignature & birds.componentSignature,
@@ -230,10 +251,11 @@ void main() {
       );
       expect(rocks.componentSignature, isNot(0));
       expect(birds.componentSignature, isNot(0));
-      expect(census.archetypes.map((a) => a.archetypeId), [
-        0,
-        1,
-      ], reason: 'ids in registration order, which is what an Entity packs');
+      expect(
+        census.archetypes.map((a) => a.archetypeId),
+        [0, 1],
+        reason: 'ids in registration order, which is what an Entity packs',
+      );
     });
 
     test('reports every declared system and its enabled bit', () async {
@@ -241,8 +263,7 @@ void main() {
       final state = run.state;
 
       expect(
-        WorldCensus.of(state).systems
-            .map((s) => (s.index, s.typeName, s.enabled)),
+        WorldCensus.of(state).systems.map((s) => (s.index, s.typeName, s.enabled)),
         [(0, '_AlphaSystem', true), (1, '_BetaSystem', true)],
       );
 
@@ -255,10 +276,11 @@ void main() {
             'disabling a system pauses it and leaves it declared, so it stays '
             'in the list with its bit down',
       );
-      expect(after.map((s) => s.typeName), [
-        '_AlphaSystem',
-        '_BetaSystem',
-      ], reason: 'and it keeps its place in execution order');
+      expect(
+        after.map((s) => s.typeName),
+        ['_AlphaSystem', '_BetaSystem'],
+        reason: 'and it keeps its place in execution order',
+      );
     });
 
     test('an unloaded scene leaves its archetypes at zero', () async {
@@ -357,18 +379,10 @@ void main() {
       final read = WorldCensus.decode(taken.encode());
 
       expect(read.tick, taken.tick);
+      expect(read.tick, 2, reason: 'and the tick it names is the one it ran on');
       expect(
-        read.tick,
-        2,
-        reason: 'and the tick it names is the one it ran on',
-      );
-      expect(
-        read.scenes.map(
-          (s) => (s.slot, s.generation, s.typeName, s.entityCount),
-        ),
-        taken.scenes.map(
-          (s) => (s.slot, s.generation, s.typeName, s.entityCount),
-        ),
+        read.scenes.map((s) => (s.slot, s.generation, s.typeName, s.entityCount)),
+        taken.scenes.map((s) => (s.slot, s.generation, s.typeName, s.entityCount)),
       );
       expect(
         read.archetypes.map(
@@ -419,10 +433,8 @@ void main() {
         systems: const [],
       ).encode();
 
-      expect(
-        WorldCensus.decode(blob).archetypes.single.componentSignature,
-        signature,
-      );
+      expect(WorldCensus.decode(blob).archetypes.single.componentSignature,
+          signature);
     });
 
     test('refuses bytes it did not write', () async {
@@ -438,13 +450,11 @@ void main() {
             contains('left over'),
           ),
         ),
-        reason:
-            'a census is diagnostic output; a wrong answer beats no answer '
+        reason: 'a census is diagnostic output; a wrong answer beats no answer '
             'for nobody',
       );
       expect(
-        () =>
-            WorldCensus.decode(Uint8List.sublistView(good, 0, good.length - 1)),
+        () => WorldCensus.decode(Uint8List.sublistView(good, 0, good.length - 1)),
         throwsA(
           isA<FormatException>().having(
             (e) => e.message,

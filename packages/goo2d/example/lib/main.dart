@@ -25,46 +25,61 @@ const int _wingmanColor = 0xFFFFEE58;
 /// Sampling it is `animate()` plus a lookup, both allocation-free, which is why
 /// a system can do it per entity per tick without thinking about it.
 class Breath extends TimelineStruct {
-  final scale = Track.of<double>(1.0);
-  final pulse = TimelineAnimation.of(PulseAnimation.new);
-}
+  late final Track<double> scale;
 
-/// One clip of [Breath], as its own class.
-///
-/// `TimelineAnimation.of(PulseAnimation.new)` above is a constructor tear-off,
-/// so the field initialiser names no sibling and nothing is filled in
-/// afterwards - which is what a body keying `timeline.scale` would otherwise
-/// force.
-class PulseAnimation extends TimelineAnimation<Breath> {
+  late final TimelineAnimation pulse;
+
   @override
-  void describeAnimation(AnimationDescriptor descriptor) {
+  void describeTrack(TimelineDescriptor descriptor) {
+    scale = descriptor.has<double>(1.0);
+  }
+
+  @override
+  void describeAnimation(TimelineAnimationDescriptor descriptor) {
     // Half a second up. `WrapMode.pingPong` at sample time plays it back down
     // again, so the shape is authored once rather than twice and cannot go
     // asymmetric when someone edits one half.
-    descriptor.track(timeline.scale).key(1.0).key(1.12, Seconds(0.5));
+    pulse = descriptor.has()..track(scale).key(1.0).key(1.12, Seconds(0.5));
   }
 }
 
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Child, Parent, Renderable2D {
-  // Every field is a declared archetype default, so there is no onMounted
-  // here at all - these values are stamped into the row when the entity is
-  // created, by the storage layer, not by a write on the creation tick.
-  final body = Sprite.of(width: 64, height: 64, color: _playerColor);
-  final visor = Sprite.of(
-    width: 28,
-    height: 12,
-    color: _visorColor,
-    zIndex: 1,
-    // Sitting the visor above the body's centre: half a body-height up is
-    // not expressible as a fraction of the *visor's* own bounds, which is
-    // why the pivot carries an absolute offset alongside its fraction.
-    pivot: const RelativeOffset2D(fractionX: 0.5, fractionY: 0.5, offsetY: 18),
-  );
+  late final Sprite body;
+  late final Sprite visor;
 
-  /// Declared with no `with Animations` in sight: every `EntityStruct` can
-  /// hold a timeline, and a prefab with none declares nothing.
-  final breath = TimelineStruct.of(Breath());
+  /// Declared with no `with Animations` in sight: every `EntityStruct` has
+  /// `describeAnimation`, defaulting to declaring nothing.
+  late final Breath breath;
+
+  @override
+  void describeAnimation(AnimationTypeDescriptor descriptor) {
+    super.describeAnimation(descriptor);
+    breath = descriptor.has(Breath());
+  }
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    // Every field is a declared archetype default, so there is no onMounted
+    // here at all - these values are stamped into the row when the entity is
+    // created, by the storage layer, not by a write on the creation tick.
+    body = descriptor.has(width: 64, height: 64, color: _playerColor);
+    visor = descriptor.has(
+      width: 28,
+      height: 12,
+      color: _visorColor,
+      zIndex: 1,
+      // Sitting the visor above the body's centre: half a body-height up is
+      // not expressible as a fraction of the *visor's* own bounds, which is
+      // why the pivot carries an absolute offset alongside its fraction.
+      pivot: const RelativeOffset2D(
+        fractionX: 0.5,
+        fractionY: 0.5,
+        offsetY: 18,
+      ),
+    );
+  }
 }
 
 class Enemy extends EntityStruct
@@ -74,12 +89,18 @@ class Enemy extends EntityStruct
         Child,
         Renderable2D,
         EntityLifecycleListener {
-  final body = Sprite.of(width: 36, height: 36, color: _enemyColor);
+  late final Sprite body;
 
   /// Plain Dart state on the prefab, which lives on the game isolate and is
   /// never shared - the cheap way to fan spawns out instead of stacking every
   /// one of them on the same pixel.
   int _spawned = 0;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    body = descriptor.has(width: 36, height: 36, color: _enemyColor);
+  }
 
   @override
   void onEntityMounted(Entity entity) {
@@ -107,7 +128,13 @@ class Wingman extends EntityStruct
         Child,
         Renderable2D,
         EntityLifecycleListener {
-  final body = Sprite.of(width: 28, height: 28, color: _wingmanColor);
+  late final Sprite body;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    body = descriptor.has(width: 28, height: 28, color: _wingmanColor);
+  }
 
   @override
   void onEntityMounted(Entity entity) {
@@ -221,12 +248,16 @@ class MyGameState extends GameState2D<MyAwesomeGame> {
     loadScene(level);
   }
 
-  // super first: GameState2D declares WorldTransformSystem and
-  // GameRenderer2D itself, so this game only declares what is actually its
-  // own. Ordering between them is not positional anyway - GameRenderer2D's
-  // compareTo puts it after WorldTransformSystem wherever either is
-  // declared.
-  final spinSystem = GameSystem.of(SpinSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    // super first: GameState2D declares WorldTransformSystem and
+    // GameRenderer2D itself, so this game only declares what is actually its
+    // own. Ordering between them is not positional anyway - GameRenderer2D's
+    // compareTo puts it after WorldTransformSystem wherever either is
+    // declared.
+    super.describeSystems(descriptor);
+    descriptor.has(SpinSystem.new);
+  }
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
@@ -249,10 +280,16 @@ class MyGameState extends GameState2D<MyAwesomeGame> {
 class MyAwesomeGame extends Game2D {
   /// Declared here, handled in [MyGameState]: the declaration site is whoever
   /// has to *hold* the handle, and it is the UI that calls this one.
-  final spawnEnemy = Command.of(SpawnEnemy.new);
+  late final SpawnEnemy spawnEnemy;
 
   @override
   GameState2D<MyAwesomeGame> createState() => MyGameState();
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    spawnEnemy = descriptor.has(SpawnEnemy.new);
+  }
 }
 
 void main() {

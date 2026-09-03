@@ -29,8 +29,20 @@ class _Button extends EntityStruct
         Collider2D,
         PointerReceiver,
         HoverReceiver {
-  final sprite = Sprite.of(width: 40, height: 40);
-  final hitArea = CircleBody.of(radius: 20);
+  late final Sprite sprite;
+  late final CircleBody hitArea;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    sprite = descriptor.has(width: 40, height: 40);
+  }
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    hitArea = descriptor.hasCircleCollider(radius: 20);
+  }
 
   @override
   void onHoverEnter(PointerPickEvent event) =>
@@ -59,11 +71,23 @@ class _Panel extends EntityStruct
         Collider2D,
         PointerReceiver,
         HoverReceiver {
-  final sprite = Sprite.of(width: 200, height: 100, zIndex: 10);
-  final hitArea = BoxBody.of(halfWidth: 100, halfHeight: 50);
+  late final Sprite sprite;
+  late final BoxBody hitArea;
 
   double lastWorldX = double.nan;
   double lastWorldY = double.nan;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    sprite = descriptor.has(width: 200, height: 100, zIndex: 10);
+  }
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    hitArea = descriptor.hasBoxCollider(halfWidth: 100, halfHeight: 50);
+  }
 
   @override
   void onHoverEnter(PointerPickEvent event) {
@@ -84,7 +108,13 @@ class _Zone extends EntityStruct
         Collider2D,
         PointerReceiver,
         HoverReceiver {
-  final hitArea = BoxBody.of(halfWidth: 50, halfHeight: 50);
+  late final BoxBody hitArea;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    hitArea = descriptor.hasBoxCollider(halfWidth: 50, halfHeight: 50);
+  }
 
   @override
   void onHoverEnter(PointerPickEvent event) => events.add('zone enter');
@@ -110,11 +140,17 @@ class _Satellite extends EntityStruct
         Collider2D,
         PointerReceiver,
         HoverReceiver {
-  final hitArea = BoxBody.of(
-    halfWidth: 10,
-    halfHeight: 10,
-    offsetX: 100,
-  );
+  late final BoxBody hitArea;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    hitArea = descriptor.hasBoxCollider(
+      halfWidth: 10,
+      halfHeight: 10,
+      offsetX: 100,
+    );
+  }
 }
 
 /// Two circles, far apart, on one entity - so a bound taken from the first
@@ -127,8 +163,15 @@ class _Compound extends EntityStruct
         Collider2D,
         PointerReceiver,
         HoverReceiver {
-  final near = CircleBody.of(radius: 5);
-  final far = CircleBody.of(radius: 5, offsetY: 150);
+  late final CircleBody near;
+  late final CircleBody far;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    near = descriptor.hasCircleCollider(radius: 5);
+    far = descriptor.hasCircleCollider(radius: 5, offsetY: 150);
+  }
 }
 
 /// Pressable and nothing else - no `HoverReceiver` at all. The prefab a
@@ -136,7 +179,7 @@ class _Compound extends EntityStruct
 /// cursor parked somewhere else entirely.
 class _Pad extends EntityStruct
     with Transform2D, WorldTransform2D, Collider2D, PointerReceiver {
-  final hitArea = BoxBody.of(halfWidth: 20, halfHeight: 20);
+  late final BoxBody hitArea;
 
   /// What the last event said, recorded field by field: the borrowed event is
   /// re-pointed before the next callback, so nothing here keeps it.
@@ -146,6 +189,12 @@ class _Pad extends EntityStruct
   double lastWorldX = double.nan;
   double lastWorldY = double.nan;
   double lastViewX = double.nan;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    hitArea = descriptor.hasBoxCollider(halfWidth: 20, halfHeight: 20);
+  }
 
   void _record(PointerPickEvent event) {
     lastPointerId = event.pointerId;
@@ -179,8 +228,20 @@ class _Glass extends EntityStruct
         Renderable2D,
         Collider2D,
         HoverReceiver {
-  final sprite = Sprite.of(width: 60, height: 60, zIndex: 50);
-  final hitArea = BoxBody.of(halfWidth: 30, halfHeight: 30);
+  late final Sprite sprite;
+  late final BoxBody hitArea;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    sprite = descriptor.has(width: 60, height: 60, zIndex: 50);
+  }
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    hitArea = descriptor.hasBoxCollider(halfWidth: 30, halfHeight: 30);
+  }
 
   @override
   void onHoverEnter(PointerPickEvent event) => events.add('glass enter');
@@ -238,16 +299,26 @@ class _GameState extends GameState<_Game> {
     loadScene(_Scene());
   }
 
-  final pointerPickingSystem = GameSystem.of(PointerPickingSystem.new);
-  // Declared *after* the picker, so the ordering that makes picking read
-  // resolved transforms has to come from compareTo rather than from the
-  // order these two are written in.
-  final worldTransformSystem = GameSystem.of(WorldTransformSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(PointerPickingSystem.new);
+    // Declared *after* the picker, so the ordering that makes picking read
+    // resolved transforms has to come from compareTo rather than from the
+    // order these two are written in.
+    descriptor.has(WorldTransformSystem.new);
+  }
 }
 
 class _Game extends Game {
   /// Picking projects through a declared view, so this fixture declares one.
-  final view = CameraView.of();
+  late final CameraView view;
+
+  @override
+  void describeCameras(CameraDescriptor descriptor) {
+    super.describeCameras(descriptor);
+    view = descriptor.has();
+  }
 
   @override
   int get pageSize => 4096;

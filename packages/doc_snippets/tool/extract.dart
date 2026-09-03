@@ -157,7 +157,7 @@ class _Fence {
   /// `snippet: body <header>`; null means `GameSystem` for a body fence.
   final String? memberHeader;
 
-  String? skipReason;
+  final String? skipReason;
 }
 
 class _Page {
@@ -179,62 +179,13 @@ class _Page {
   List<String> get scopeDeclarations => _declarations(scope);
 }
 
-/// Pages whose fences name API this repository has removed, and the removal
-/// that stranded them.
-///
-/// `docs/` is closed to edits until it is rewritten from scratch (#346), so a
-/// page a removal broke cannot be corrected in place, and leaving it in would
-/// fail the analyze step on every unrelated change. The page is skipped with
-/// the reason printed beside every other skip - a known hole rather than a
-/// silent one - and the count says what is not being checked.
-///
-/// A page belongs here only while the freeze does. Delete the entry with the
-/// rewrite of the page; delete the map with the last of them.
-const _strandedPages = <String, String>{
-  'docs/guide/coroutines-and-animation.md':
-      'stranded by #287: TimelineStruct.describeAnimation and '
-      'TimelineAnimationDescriptor are gone, and the page is frozen by #346',
-};
-
-/// The same thing at fence granularity: a page a removal broke in two or three
-/// places, where skipping the whole page would stop checking dozens of fences
-/// that are still correct.
-///
-/// Keyed by page, then by a substring the broken fence contains. Every fence
-/// holding that substring is skipped with the reason beside it.
-///
-/// **A marker that matches no fence is an error, not a no-op.** That is the
-/// difference between this and a list of exclusions: an entry left behind by a
-/// page rewrite, or a typo in the substring, silently stops checking nothing
-/// and reads exactly like an entry that is doing its job. The freeze is why
-/// the substrings can be relied on at all - the pages do not move under them.
-///
-/// Same lifetime as [_strandedPages]: an entry goes with the rewrite of its
-/// page, and the map goes with the last of them.
-const _strandedFences = <String, Map<String, String>>{
-  'docs/getting-started/your-first-game.md': {
-    'void describeSystems(': _systemsStranded,
-  },
-  'docs/guide/physics.md': {'void describeSystems(': _systemsStranded},
-  'docs/guide/systems-and-queries.md': {
-    'void describeSystems(': _systemsStranded,
-  },
-};
-
-const _systemsStranded =
-    'stranded by #287: describeSystems and SystemDescriptor are gone - a '
-    'system is declared on a GameState field - and the page is frozen by #346';
-
 final _fenceStart = RegExp(r'^(\s*)```dart\b(.*)$');
 final _tag = RegExp(r'^\s*<!--\s*snippet:\s*(.*?)\s*-->\s*$');
 final _scopeOpen = RegExp(r'^\s*<!--\s*snippet-(scope|setup)\s*$');
 final _pageSkip = RegExp(r'^\s*<!--\s*snippet-page:\s*skip\s+(.*?)\s*-->\s*$');
 
 _Page _parse(String relPath, String libraryName, List<String> lines) {
-  final page = _Page(relPath, libraryName)
-    ..skipReason = _strandedPages[relPath];
-  final stranded = _strandedFences[relPath] ?? const <String, String>{};
-  final unmatched = stranded.keys.toSet();
+  final page = _Page(relPath, libraryName);
   String? pendingTag;
   var pendingTagLine = 0;
   var pendingSetup = <String>[];
@@ -304,11 +255,6 @@ _Page _parse(String relPath, String libraryName, List<String> lines) {
 
     final fence = _fence(page, relPath, i + 1, code, pendingTag, pendingTagLine)
       ..setup = pendingSetup;
-    for (final marker in stranded.keys) {
-      if (!code.any((line) => line.contains(marker))) continue;
-      unmatched.remove(marker);
-      fence.skipReason ??= stranded[marker];
-    }
     pendingTag = null;
     pendingSetup = <String>[];
     page.fences.add(fence);
@@ -317,12 +263,6 @@ _Page _parse(String relPath, String libraryName, List<String> lines) {
   if (pendingTag != null) {
     page.errors.add(
       '$relPath:$pendingTagLine: `snippet:` tag is not above a ```dart fence',
-    );
-  }
-  for (final marker in unmatched) {
-    page.errors.add(
-      '$relPath: no fence contains `$marker`, so the _strandedFences entry '
-      'for it skips nothing. Delete it, or fix the substring',
     );
   }
   return page;

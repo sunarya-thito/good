@@ -56,7 +56,7 @@ const List<int> _counts = <int>[5000, 20000];
 /// all under the cursor - the control leg, where nothing can be rejected.
 const List<double> _spreads = <double>[0, 40];
 
-/// Set before the scene is described, read by [_Target]'s collider. A
+/// Set before the scene is described, read by [_Target.describeCollider]. A
 /// global because the prefab is built inside `describeScene` and the point is
 /// to vary it between runs, each of which resets the registries anyway.
 double _colliderOffset = 0;
@@ -71,11 +71,17 @@ class _Target extends EntityStruct
         Collider2D,
         PointerReceiver,
         HoverReceiver {
-  final hitArea = CircleBody.of(
-    radius: 20,
-    offsetX: _colliderOffset,
-    offsetY: _colliderOffset,
-  );
+  late final CircleBody hitArea;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    hitArea = descriptor.hasCircleCollider(
+      radius: 20,
+      offsetX: _colliderOffset,
+      offsetY: _colliderOffset,
+    );
+  }
 }
 
 class _Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
@@ -101,12 +107,22 @@ class _BenchState extends GameState<_BenchGame> {
   @override
   void onMounted() => loadScene(_Scene());
 
-  final worldTransformSystem = GameSystem.of(WorldTransformSystem.new);
-  final pointerPickingSystem = GameSystem.of(PointerPickingSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(WorldTransformSystem.new);
+    descriptor.has(PointerPickingSystem.new);
+  }
 }
 
 class _BenchGame extends Game {
-  final view = CameraView.of();
+  late final CameraView view;
+
+  @override
+  void describeCameras(CameraDescriptor descriptor) {
+    super.describeCameras(descriptor);
+    view = descriptor.has();
+  }
 
   @override
   int get pageSize => 1 << 20;

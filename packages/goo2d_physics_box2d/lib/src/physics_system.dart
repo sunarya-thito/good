@@ -15,16 +15,20 @@ import 'rigid_body.dart';
 /// Box2D body per `RigidBody2D` entity and one Box2D shape per
 /// `ColliderBody` that entity declared.
 ///
-/// Declared like any other system, on a field of the `GameState`:
+/// Declared like any other system:
 ///
 /// ```dart
-/// final physics = GameSystem.of(Box2DPhysicsSystem.new);
+/// @override
+/// void describeSystems(SystemDescriptor descriptor) {
+///   super.describeSystems(descriptor);
+///   physics = descriptor.has(Box2DPhysicsSystem.new);
+/// }
 /// ```
 ///
 /// # Where the native state lives
 ///
 /// The world handle is created **lazily, on first use**, and never during a
-/// declare pass. `Game` runs its declarations on the main isolate and then
+/// declare pass. `Game` runs every `describe*` on the main isolate and then
 /// hands the whole object graph to the game isolate by deep copy, so a world
 /// created at declare time would be created by the copy that never simulates
 /// and then inherited - leaving two copies believing they own one world, and
@@ -469,21 +473,8 @@ class Box2DPhysicsSystem extends GameSystem
     }
   }
 
-  /// Runs ahead of every system that states no opinion about it: what a
-  /// fixed step is for is that the rest of the tick sees the world the solver
-  /// has already left.
-  ///
-  /// Weak, and it has to be. A profiling probe that stamps the clock
-  /// immediately before the step says `before<Box2DPhysicsSystem>()`, and
-  /// read as an absolute this would contradict it and the game would not
-  /// boot. `Order.first()` means *before everything that does not name me*,
-  /// so the probe wins its own pair and this still precedes everything else.
-  ///
-  /// The `other is Box2DPhysicsSystem ? 0 : -1` override this replaces said
-  /// the same thing but could not be weak: it was one opinion in a pair, and
-  /// which of the two opinions survived depended on which was declared first
-  /// (#187).
-  final order = Order.of().first();
+  @override
+  int compareTo(GameSystem other) => other is Box2DPhysicsSystem ? 0 : -1;
 
   /// The Box2D world [scene]'s bodies live in, created on first use.
   ///

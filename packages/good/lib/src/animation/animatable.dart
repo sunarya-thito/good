@@ -1,3 +1,5 @@
+import 'package:meta/meta.dart';
+
 import 'package:good/src/animation/struct.dart';
 import 'package:good/src/coroutine/coroutine.dart';
 import 'package:good/src/time.dart';
@@ -5,7 +7,8 @@ import 'package:good/src/time.dart';
 /// Timelines, on every `EntityStruct`.
 ///
 /// **Nothing to mix in** - `EntityStruct` has it, the same way it has
-/// `Coroutines`. A prefab with no timelines declares none and costs nothing.
+/// `Coroutines`. [describeAnimation] defaults to declaring nothing, so a prefab
+/// with no timelines costs one empty call at registration and nothing after.
 ///
 /// `on Coroutines` works here where it could not for `Coroutines` itself: an
 /// `on` bound is checked against the applying class's superclass, and by the
@@ -14,9 +17,15 @@ import 'package:good/src/time.dart';
 /// coroutine.
 ///
 /// ```dart
-/// class Enemy extends EntityStruct with Transform2D {
-///   final timeline = TimelineStruct.of(EnemyTimeline());
-///   final startedAt = Field.float64();
+/// class Enemy extends EntityStruct with Transform2D, Animations {
+///   late final EnemyTimeline timeline;
+///   late final DataPointer<double> startedAt;
+///
+///   @override
+///   void describeAnimation(AnimationTypeDescriptor descriptor) {
+///     super.describeAnimation(descriptor);
+///     timeline = descriptor.has(EnemyTimeline());
+///   }
 ///
 ///   void enter(Entity self) =>
 ///       startedAt[self] = simulationState.time.inSeconds;
@@ -45,6 +54,15 @@ import 'package:good/src/time.dart';
 /// wants, when it wants it, and two systems sampling the same track in one tick
 /// agree by construction.
 mixin Animations on Coroutines {
+  /// Declares this struct's timelines. Runs once, at registration.
+  ///
+  /// Empty by default and not abstract, which is what lets `EntityStruct`
+  /// mix this in for everyone: an abstract member here would make every prefab
+  /// in every game implement it, including the overwhelming majority that
+  /// animate nothing.
+  @mustCallSuper
+  void describeAnimation(AnimationTypeDescriptor descriptor) {}
+
   /// Plays [animation] into [bindings], as a coroutine, and completes when it
   /// finishes.
   ///
@@ -86,4 +104,11 @@ mixin Animations on Coroutines {
   /// Bound tracks retain whatever value the last tick wrote.
   void stopAnimations(TimelineAnimation animation) =>
       simulationState.coroutines.stopAllOf(animation);
+}
+
+/// Declares the timelines a struct owns - see [Animations.describeAnimation].
+abstract class AnimationTypeDescriptor {
+  /// Declares [struct] and returns it, for the `late final` field to keep
+  /// (rule 6).
+  T has<T extends TimelineStruct>(T struct);
 }

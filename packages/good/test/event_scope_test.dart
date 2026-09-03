@@ -21,7 +21,7 @@ late Game run;
 // Dispatch used to be a *walk*: from object to object at runtime, type-testing
 // every candidate on the way, so a class that could never accept an event was
 // still visited and still checked, every single time one was fired. The walk
-// now happens once, at boot - the constructor creates the dispatchers and
+// now happens once, at boot - `describeEvents` creates the dispatchers and
 // `collectListeners` fills them - so by the time an event is dispatched the
 // receiver list is already correct and dispatch is an indexed `for`.
 //
@@ -73,8 +73,12 @@ class _PingScene extends SceneStruct with _Ping {
 class _PingState extends GameState<_PingGame> with _Ping {
   final ping = Event.signal<_Ping>((listener) => listener.onPing());
 
-  final pingSystem = GameSystem.of(_PingSystem.new);
-  final deafSystem = GameSystem.of(_DeafSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_PingSystem.new);
+    descriptor.has(_DeafSystem.new);
+  }
 }
 
 class _PingGame extends Game {
@@ -86,7 +90,7 @@ class _PingGame extends Game {
 
   late final _PingScene level;
 
-  /// Reached through the state - a system is declared on a `GameState`.
+  /// Reached through the state - `describeSystems` is a `GameState` pass now.
   _PingSystem get pinger => run.state.getSystem<_PingSystem>();
 
   @override
@@ -95,7 +99,7 @@ class _PingGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    level = descriptor.has(_PingScene.new);
+    level = descriptor.has(_PingScene());
   }
 }
 

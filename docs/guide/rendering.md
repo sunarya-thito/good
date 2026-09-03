@@ -47,7 +47,13 @@ Two mixins and one declaration:
 ```dart
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  final sprite = Sprite.of(width: 64, height: 64, color: 0xFF4FC3F7);
+  late final Sprite sprite;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    sprite = descriptor.has(width: 64, height: 64, color: 0xFF4FC3F7);
+  }
 }
 ```
 
@@ -56,12 +62,12 @@ ones.
 
 ## `Sprite`
 
-Everything `Sprite.of` takes becomes a **column**, so every one of these is
+Everything `descriptor.has` takes becomes a **column**, so every one of these is
 per-entity and writable at run time:
 
 <!-- snippet: skip a signature, not a call -->
 ```dart
-static Sprite of({
+Sprite has({
   TextureAsset? texture,
   TextureFilter filter = TextureFilter.mipmap,
   SpriteFrame frame = SpriteFrame.full,
@@ -138,16 +144,20 @@ box.offsetY[entity] = 20; // matches, and +20 is up for both
 
 `Renderable2D` is a multi-component, so a prefab can declare more than one:
 
+<!-- snippet: in EntityStruct with Renderable2D -->
+<!-- snippet-setup
+late Sprite body;
+late Sprite muzzleFlash;
+late TextureAsset bodyTexture;
+late TextureAsset flashTexture;
+-->
 ```dart
-class Turret extends EntityStruct
-    with Transform2D, WorldTransform2D, Renderable2D {
-  final body = Sprite.of(
-    width: 64, height: 64, texture: Asset.of(Textures.spritesPlayer),
-  );
-  final muzzleFlash = Sprite.of(
-    width: 32, height: 32, texture: Asset.of(Textures.uiButton),
-    visible: false, zIndex: 10,
-  );
+@override
+void describeSprites(SpriteDescriptor descriptor) {
+  super.describeSprites(descriptor);
+  body = descriptor.has(width: 64, height: 64, texture: bodyTexture);
+  muzzleFlash = descriptor.has(width: 32, height: 32, texture: flashTexture,
+                               visible: false, zIndex: 10);
 }
 ```
 
@@ -156,24 +166,33 @@ destroying an entity.
 
 ## Textures
 
-A texture comes from the generated asset enum. Declare the asset where the
-sprite names it:
+A texture comes from the generated asset enum. Declare the asset, then hand the
+handle to the sprite:
 
 ```dart
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  final sprite = Sprite.of(
-    width: 64,
-    height: 64,
-    texture: Asset.of(Textures.spritesPlayer),
-  );
+  late final TextureAsset texture;
+  late final Sprite sprite;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    texture = descriptor.has(Textures.spritesPlayer);
+  }
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    sprite = descriptor.has(width: 64, height: 64, texture: texture);
+  }
 }
 ```
 
-Declare the asset on **whatever uses it**. `Asset.of` is idempotent per
-identity and prefabs share their scene's descriptor, so declaring the same
-texture in a prefab and its scene yields the identical handle — one address,
-one decode. See [Assets](assets.md).
+Declare the asset on **whatever uses it**. `has` is idempotent per identity and
+prefabs share their scene's descriptor, so declaring the same texture in a
+prefab and its scene yields the identical handle — one address, one decode. See
+[Assets](assets.md).
 
 ### Atlases and sprite sheets
 
@@ -220,7 +239,7 @@ class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   final animTime = Field.float64();
 
-  final sprite = Sprite.of(width: 64, height: 64);
+  late final Sprite sprite;
 
   static const List<SpriteFrame> walkCycle = <SpriteFrame>[
     SpriteFrame.grid(columns: 8, rows: 4, index: 0),
@@ -228,10 +247,16 @@ class Player extends EntityStruct
     SpriteFrame.grid(columns: 8, rows: 4, index: 2),
     SpriteFrame.grid(columns: 8, rows: 4, index: 3),
   ];
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    sprite = descriptor.has(width: 64, height: 64);
+  }
 }
 ```
 
-`width` and `height` on `Sprite.of` are **world units**, not pixels, so they are not
+`width` and `height` on `has` are **world units**, not pixels, so they are not
 the texture's size and `TextureSize` does not belong there. Drawing a sprite at
 its native pixel size is `TextureSize.spritesPlayerWidth * unitsPerPixel` for
 whatever scale the game uses.
@@ -264,15 +289,20 @@ moves and scales it like anything else.
 ```dart
 class DamageNumber extends EntityStruct
     with Transform2D, WorldTransform2D, Text2D {
-  final label = TextLabel.of(
-    font: BitmapFont(
-      texture: Asset.of(fontKey),
-      columns: 16,
-      rows: 6,
-      glyphCount: 95,
-    ),
-    capacity: 8,
-  );
+  late final TextureAsset atlas;
+
+  @override
+  int get textCapacity => 8;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    atlas = descriptor.has(fontKey);
+  }
+
+  @override
+  BitmapFont get textFont =>
+      BitmapFont(texture: atlas, columns: 16, rows: 6, glyphCount: 95);
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -282,11 +312,6 @@ class DamageNumber extends EntityStruct
   }
 }
 ```
-
-`TextLabel.of` is the declaration, on a field, the way `Sprite.of` and
-`BoxBody.of` are. `Text2D` takes it back into `textLabel`, so the prefab that
-names the font and the renderer that reads it hold one object. A prefab that
-declares no label gets 32 code units and no font, and draws nothing.
 
 Then write the text per entity:
 
@@ -321,17 +346,15 @@ ordinary texture asset and goes through the same pipeline as every other image.
 **The engine ships no font.** Supply your own PNG grid — one texture, one
 `TextureKey`, and the three numbers above.
 
-The font belongs to the prefab, not to the row: the `BitmapFont` is built once,
-by the field initialiser that declares the label, and the renderer reads it from
-`textLabel.font` once per archetype per frame. Two fonts in one scene are two
-prefabs.
+The font belongs to the prefab, not to the row: `textFont` is read once per
+archetype, when the archetype is described, and the renderer draws from the
+stored answer in `textFontResolved`. Two fonts in one scene are two prefabs.
 
 ### Capacity is storage, not a limit you can bend
 
-`TextLabel.of`'s `capacity` reserves that many UTF-16 code units in **every row
-of the archetype**, the same way `PolygonBody.of`'s `maxPoints` does. Pick it
-for the longest text that prefab will ever show. It is `1..65535`, and a number
-outside that is refused where it is written.
+`textCapacity` reserves that many UTF-16 code units in **every row of the
+archetype**, the same way `hasPolygonCollider`'s `maxPoints` does. Pick it for
+the longest text that prefab will ever show.
 
 A string that does not fit is a programming error, so a debug run stops on it.
 A release build has no assert to stop it: it keeps what fits and adds the rest
@@ -365,8 +388,7 @@ suggests, and a label is admitted all or nothing: one that does not fit closes
 the budget for everything behind it. A code unit the font has no cell for is
 charged nothing, and an empty label is not a candidate at all.
 
-The row stays small — the declared capacity in code units and about fifty
-more bytes,
+The row stays small — `textCapacity` code units and about fifty more bytes,
 because the font, its metrics and the atlas address are on the component. The
 same sixteen glyphs declared as sixteen sprites would be a 2.5 KiB row, which is
 ten times the row size that already cost this renderer 42% of its write pass.
@@ -430,14 +452,15 @@ Declare more when you want split screen, a minimap, or a second window:
 
 ```dart
 class MyGame extends Game2D {
-  final minimap = CameraView.of();
+  late final CameraView minimap;
+
+  @override
+  void describeCameras(CameraDescriptor descriptor) {
+    super.describeCameras(descriptor);
+    minimap = descriptor.has();
+  }
 }
 ```
-
-`CameraView.of()` runs while the game is being constructed, which is where
-every view has to be declared: each one is drawn into shared memory allocated
-before the simulation isolate is spawned. `Game.start(MyGame.new)` is what
-opens that window, so a `Game` built by hand refuses the call.
 
 Each view sizes and allocates its own per-view storage, and **each draws the
 scene its own camera is in** — so two views can be looking at different scenes
@@ -470,7 +493,7 @@ it, and the camera's position stops moving it.
 ```dart
 class Backdrop extends EntityStruct
     with Transform2D, ScreenTransform2D, Renderable2D {
-  final fill = Sprite.of(width: 1, height: 1, color: 0xFF203040);
+  late final Sprite fill;
 
   @override
   final screenLayer = ScreenLayer.behind;
@@ -480,6 +503,12 @@ class Backdrop extends EntityStruct
 
   @override
   final screenHeightAxis = ScreenAxis.fraction;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    fill = descriptor.has(width: 1, height: 1, color: 0xFF203040);
+  }
 }
 ```
 
@@ -822,8 +851,20 @@ class Button extends EntityStruct
         Collider2D,
         PointerReceiver,
         HoverReceiver {
-  final sprite = Sprite.of(width: 64, height: 64);
-  final hitArea = CircleBody.of(radius: 32);
+  late final Sprite sprite;
+  late final CircleBody hitArea;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    sprite = descriptor.has(width: 64, height: 64);
+  }
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    hitArea = descriptor.hasCircleCollider(radius: 32);
+  }
 
   @override
   void onPointerDown(PointerPickEvent event) { }

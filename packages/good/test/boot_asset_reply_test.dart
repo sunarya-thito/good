@@ -150,7 +150,11 @@ class _Reporter extends GameSystem with FixedTickable {
 }
 
 class _BootLoadState extends GameState<_BootLoadGame> {
-  final reporter = GameSystem.of(_Reporter.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_Reporter.new);
+  }
 
   @override
   void onMounted() {
@@ -173,7 +177,13 @@ abstract class _BootLoadGame extends Game {
   late final SceneStruct scene;
 
   /// Written on the game isolate, read here.
-  final loaded = Channel.int32(0);
+  late final StateChannel<int> loaded;
+
+  @override
+  void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
+    loaded = descriptor.hasInt32(0);
+  }
 
   @override
   void describeAssetLoaders(AssetLoaderRegistrar loaders) {
@@ -189,7 +199,7 @@ class _SynchronousGame extends _BootLoadGame {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    scene = descriptor.has(_SynchronousScene.new);
+    scene = descriptor.has(_SynchronousScene());
   }
 }
 
@@ -197,7 +207,7 @@ class _YieldingGame extends _BootLoadGame {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    scene = descriptor.has(_YieldingScene.new);
+    scene = descriptor.has(_YieldingScene());
   }
 }
 

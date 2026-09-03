@@ -83,10 +83,10 @@ music = state.audio.play(singleScene<MusicScene>().theme, AudioBus.music);
 state.unloadScene(state.loadedScenes.first); // the music keeps playing
 ```
 
-That matters more than it looks. A `Game` declares no asset of its own — a
-prefab field and a scene's `describeAssets` are the only places one can be
-declared — so **a scene is the only asset lifetime the engine has**, and every
-clip is declared by a scene that will eventually unload. Without the voice's claim, a
+That matters more than it looks. There is no game-level `describeAssets` —
+`SceneStruct` and `Component` are the only places an asset can be declared — so
+**a scene is the only asset lifetime the engine has**, and every clip is
+declared by a scene that will eventually unload. Without the voice's claim, a
 backend would be left holding a source whose bytes were freed underneath it,
 which is not a silent degradation: the handle simply goes invalid.
 

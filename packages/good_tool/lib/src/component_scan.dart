@@ -83,9 +83,8 @@ class ComponentBitScan {
 /// # What this is
 ///
 /// The component half of #18. `ComponentTypeRegistry` hands each component
-/// type a bit the first time a `Component.type<T>()` field initialiser names
-/// it, and the order that produces is the order scenes happen to declare
-/// things in. That
+/// type a bit the first time `ComponentDescriptor.has<T>()` names it, and the
+/// order that produces is the order scenes happen to declare things in. That
 /// is fine inside one process and meaningless outside it, which is why
 /// `archetype.dart` says not to persist a signature. Assigning the same bits
 /// here instead makes the assignment a property of the source rather than of a
@@ -94,7 +93,7 @@ class ComponentBitScan {
 ///
 /// # What it reads, and what it deliberately does not
 ///
-/// The `T` of every `Component.type<T>()` field initialiser in a published
+/// The `T` of every `has<T>()` inside a `describeType` body in a published
 /// package. Those are exactly the types `bitFor` is called with, and matching
 /// that set exactly is the point: a table over some other set would be a
 /// different numbering wearing the same name.
@@ -103,19 +102,19 @@ class ComponentBitScan {
 /// `Component` that registers nothing, and a bit for it would spend one of
 /// sixty-four slots on a type no archetype signature ever carries.
 ///
-/// It is also not a prefab's own type. That bit is ORed in by the framework
-/// from `runtimeType` once the object is built, so it is the value of an
-/// expression and is assigned when the program runs and always will be - see
-/// [ComponentBitScan.skipped] for what that costs, which is nothing.
+/// It is also not `EntityStruct`'s own `has(type: runtimeType)`. A prefab's
+/// type is the value of an expression, so its bit is assigned when the program
+/// runs and always will be - see [ComponentBitScan.skipped] for what that
+/// costs, which is nothing.
 ///
 /// # No offset is produced here either
 ///
 /// The same reason `accessor_scan.dart` gives. An offset is the running total
-/// of a `declareField` sequence that reads values only a run can supply - a
-/// prefab declares its own sprites, `TextLabel.of` sizes an array from the
-/// capacity the prefab passed it, and `hasEnum` widens by `values.length`. A
-/// bit index depends on none of those: it is a position in a sorted list of
-/// names.
+/// of a `declareField` sequence that reads values only a run can supply -
+/// `describeSprites` is prefab-overridden, `Text2D.describeStruct` reads an
+/// overridable `textCapacity`, `hasPacked` reads an instance getter and
+/// `hasEnum` widens by `values.length`. A bit index depends on none of those:
+/// it is a position in a sorted list of names.
 ComponentBitScan scanComponentBits(
 {
   required List<EnginePackage> packages,
@@ -136,7 +135,7 @@ ComponentBitScan scanComponentBits(
     for (final target in packages) target.libDir: target,
   };
 
-  // Every type any scanned field initialiser names, deduplicated and sorted
+  // Every type any scanned `describeType` names, deduplicated and sorted
   // before anything is decided about it. Sorted so that the skip notes come
   // out in one order too - `--verbose` is read by a person.
   final named = <String>{};
@@ -167,8 +166,8 @@ ComponentBitScan scanComponentBits(
     if (owners.length > 1) {
       // The case `struct_scan` already reports as `unresolved` rather than
       // guessing. A generated table has to emit a Dart type reference, and a
-      // parsed scan cannot tell which library `Component.type<Velocity>()`
-      // meant, so this produces no entry and the run-time path keeps the type.
+      // parsed scan cannot tell which library `has<Velocity>()` meant, so this
+      // produces no entry and the run-time path keeps the type.
       skipped[type] =
           'declared in more than one library, and a parsed scan cannot tell '
           'which one an import would reach';

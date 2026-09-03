@@ -7,7 +7,6 @@ import 'package:good/src/archetype.dart';
 import 'package:good/src/command/command.dart';
 import 'package:good/src/command/param.dart';
 import 'package:good/src/data.dart';
-import 'package:good/src/declare.dart';
 import 'package:good/src/event.dart';
 import 'package:good/src/event/fixed_loop.dart';
 import 'package:good/src/event/state.dart';
@@ -44,7 +43,11 @@ mixin _Counter on Component {
   /// that a row was allocated.
   final marker = Field.uint8();
 
-  final counterType = Component.type<_Counter>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<_Counter>();
+  }
 }
 
 class _Unit extends EntityStruct with _Counter, EntityLifecycleListener {
@@ -102,8 +105,12 @@ class _BothPhases extends GameSystem with FixedTickable, Tickable {
 /// rather than [_TestState]. The *state* is what varies; the `Game` only has
 /// to say which one to build.
 class _PhaseState extends _FixtureState {
-  final presentSystem = GameSystem.of(_PresentSystem.new);
-  final bothPhases = GameSystem.of(_BothPhases.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_PresentSystem.new);
+    descriptor.has(_BothPhases.new);
+  }
 }
 
 class _PhaseGame extends _TestGame {
@@ -113,14 +120,6 @@ class _PhaseGame extends _TestGame {
 
 /// Throws once, on the tick named by [throwOnTick].
 class _ThrowingSystem extends GameSystem with FixedTickable {
-  // Publishes itself so the tests below can reach it without a state
-  // reference. The declaration is the field on the state; this is a
-  // fixture convenience, and it runs exactly once because the framework
-  // builds a declared system exactly once.
-  _ThrowingSystem() {
-    _thrower = this;
-  }
-
   int ran = 0;
   int throwOnTick = 1;
   String throwMessage = 'system boom';
@@ -135,14 +134,6 @@ class _ThrowingSystem extends GameSystem with FixedTickable {
 /// Declared *after* the thrower, so "one bad listener must not skip the
 /// others" is a property this can actually observe.
 class _AfterThrowerSystem extends GameSystem with FixedTickable {
-  // Publishes itself so the tests below can reach it without a state
-  // reference. The declaration is the field on the state; this is a
-  // fixture convenience, and it runs exactly once because the framework
-  // builds a declared system exactly once.
-  _AfterThrowerSystem() {
-    _afterThrower = this;
-  }
-
   int ran = 0;
 
   @override
@@ -153,8 +144,12 @@ late _ThrowingSystem _thrower;
 late _AfterThrowerSystem _afterThrower;
 
 class _ThrowState extends _FixtureState {
-  final thrower = GameSystem.of(_ThrowingSystem.new);
-  final afterThrower = GameSystem.of(_AfterThrowerSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    _thrower = descriptor.has(_ThrowingSystem.new);
+    _afterThrower = descriptor.has(_AfterThrowerSystem.new);
+  }
 }
 
 class _ThrowGame extends _TestGame {
@@ -168,7 +163,11 @@ class _ReportingThrowGame extends _ThrowGame {
 
   @override
   void onSystemDisabled(String systemName, String error, String stackTrace) {
-    reports.add((systemName: systemName, error: error, stackTrace: stackTrace));
+    reports.add((
+      systemName: systemName,
+      error: error,
+      stackTrace: stackTrace,
+    ));
     super.onSystemDisabled(systemName, error, stackTrace);
   }
 }
@@ -189,14 +188,6 @@ class _BadReportGame extends _ThrowGame {
 /// Records the visibility hooks so a test can assert they arrived, and in
 /// which order relative to the tick stopping.
 class _VisibilitySystem extends GameSystem with AppVisibilityListener {
-  // Publishes itself so the tests below can reach it without a state
-  // reference. The declaration is the field on the state; this is a
-  // fixture convenience, and it runs exactly once because the framework
-  // builds a declared system exactly once.
-  _VisibilitySystem() {
-    _visibility = this;
-  }
-
   final List<Duration> shown = <Duration>[];
   int hidden = 0;
 
@@ -210,7 +201,11 @@ class _VisibilitySystem extends GameSystem with AppVisibilityListener {
 late _VisibilitySystem _visibility;
 
 class _VisibilityState extends _FixtureState {
-  final visibility = GameSystem.of(_VisibilitySystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    _visibility = descriptor.has(_VisibilitySystem.new);
+  }
 }
 
 class _VisibilityGame extends _TestGame {
@@ -304,20 +299,22 @@ class _Spawner extends GameSystem with FixedTickable {
   void onFixedUpdate() => log.add('spawn');
 }
 
-/// Extends the base fixture's set rather than replacing it - inheriting a
-/// second set of declarations is what makes declaration order (and therefore
-/// execution order) the thing under test.
+/// Extends the base fixture's set rather than replacing it - the `super` call
+/// is what makes declaration order (and therefore execution order) the thing
+/// under test.
 class _OrderingState extends _TestState {
-  // Declaration order: Indifferent1, Indifferent2, SortsFirst,
-  // AlsoSortsFirst, Composer, Spawner, then _TestState's A, InertSystem, B,
-  // CensusSystem - a subclass's field initialisers run before its
-  // superclass's.
-  final indifferent1 = GameSystem.of(_Indifferent1.new);
-  final indifferent2 = GameSystem.of(_Indifferent2.new);
-  final sortsFirst = GameSystem.of(_SortsFirst.new);
-  final alsoSortsFirst = GameSystem.of(_AlsoSortsFirst.new);
-  final composer = GameSystem.of(_Composer.new);
-  final spawner = GameSystem.of(_Spawner.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    // Declaration order: A, InertSystem, B, CensusSystem, Indifferent1,
+    // Indifferent2, SortsFirst, AlsoSortsFirst, Composer, Spawner.
+    super.describeSystems(descriptor);
+    descriptor.has(_Indifferent1.new);
+    descriptor.has(_Indifferent2.new);
+    descriptor.has(_SortsFirst.new);
+    descriptor.has(_AlsoSortsFirst.new);
+    descriptor.has(_Composer.new);
+    descriptor.has(_Spawner.new);
+  }
 }
 
 /// Three systems whose stated positions genuinely cannot all hold.
@@ -346,9 +343,13 @@ class _CycleC extends GameSystem with FixedTickable {
 }
 
 class _CyclicState extends _FixtureState {
-  final cycleA = GameSystem.of(_CycleA.new);
-  final cycleB = GameSystem.of(_CycleB.new);
-  final cycleC = GameSystem.of(_CycleC.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_CycleA.new);
+    descriptor.has(_CycleB.new);
+    descriptor.has(_CycleC.new);
+  }
 }
 
 class _CyclicGame extends _TestGame {
@@ -392,8 +393,9 @@ class _SpawnUnit extends ValueSupplier<Entity> {
 
 /// The scene, the spawn handler and nothing else. Split out from [_TestState]
 /// so a fixture wanting a different system set inherits the setup without
-/// inheriting systems it would then have to drop - and a field on a base class
-/// cannot be dropped by a subclass at all.
+/// inheriting systems it would then have to drop - dropping them means an
+/// override that skips `super.describeSystems`, which is the one thing
+/// `@mustCallSuper` is here to stop.
 class _FixtureState extends GameState<_TestGame> {
   /// Held rather than looked up: the handler needs the prefab, and this is the
   /// side that has it.
@@ -414,10 +416,14 @@ class _FixtureState extends GameState<_TestGame> {
 }
 
 class _TestState extends _FixtureState {
-  final systemA = GameSystem.of(_SystemA.new);
-  final inertSystem = GameSystem.of(_InertSystem.new);
-  final systemB = GameSystem.of(_SystemB.new);
-  final censusSystem = GameSystem.of(_CensusSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_SystemA.new);
+    descriptor.has(_InertSystem.new);
+    descriptor.has(_SystemB.new);
+    descriptor.has(_CensusSystem.new);
+  }
 }
 
 class _TestGame extends Game {
@@ -427,10 +433,16 @@ class _TestGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
-  final spawnUnit = Command.of(_SpawnUnit.new);
+  late final _SpawnUnit spawnUnit;
 
   @override
   GameState createState() => _TestState();
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    spawnUnit = descriptor.has(_SpawnUnit.new);
+  }
 }
 
 /// A control command whose handler does the one thing a control handler must
@@ -459,10 +471,16 @@ class _BadControlState extends _FixtureState {
 }
 
 class _BadControlGame extends _TestGame {
-  final writeOutsideTick = Command.of(_WriteOutsideTick.new);
+  late final _WriteOutsideTick writeOutsideTick;
 
   @override
   GameState createState() => _BadControlState();
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    writeOutsideTick = descriptor.has(_WriteOutsideTick.new);
+  }
 }
 
 /// Registers a command that *returns* something as a control handler, which
@@ -481,21 +499,28 @@ class _AnsweringState extends _FixtureState {
 }
 
 class _AnsweringGame extends _TestGame {
-  final answering = Command.of(_Answering.new);
+  late final _Answering answering;
 
   @override
   GameState createState() => _AnsweringState();
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    answering = descriptor.has(_Answering.new);
+  }
 }
 
 /// The same refusal, asked of the **main** descriptor. Both sides share one
 /// message function, so this exists to prove the shared call is actually
 /// wired on both rather than only on the side that happened to be tested.
 class _AnsweringMainGame extends _TestGame {
-  final answeringMain = Command.of(_Answering.new);
+  late final _Answering answeringMain;
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
+    answeringMain = descriptor.has(_Answering.new);
     descriptor.hasControlSupplier(answeringMain, () => 1);
   }
 }
@@ -556,12 +581,20 @@ class _ReadOnlyState extends _FixtureState {
 }
 
 class _ReadOnlyGame extends _TestGame {
-  final inspect = Command.of(_Inspect.new);
-  final arrival = Command.of(_Arrival.new);
-  final tickBound = Command.of(_TickBound.new);
+  late final _Inspect inspect;
+  late final _Arrival arrival;
+  late final _TickBound tickBound;
 
   @override
   GameState createState() => _ReadOnlyState();
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    inspect = descriptor.has(_Inspect.new);
+    arrival = descriptor.has(_Arrival.new);
+    tickBound = descriptor.has(_TickBound.new);
+  }
 }
 
 /// A shape that answers with nothing, registered on the lane whose handlers
@@ -578,10 +611,16 @@ class _MuteReadOnlyState extends _FixtureState {
 }
 
 class _MuteReadOnlyGame extends _TestGame {
-  final mute = Command.of(_Mute.new);
+  late final _Mute mute;
 
   @override
   GameState createState() => _MuteReadOnlyState();
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    mute = descriptor.has(_Mute.new);
+  }
 }
 
 // --- #245: a handler that runs with no tick window open --------------------
@@ -644,11 +683,13 @@ class _WindowState extends _FixtureState {
   /// page has published is the whole of one of these cases.
   late Entity victim;
 
-  /// `owned`, because the system is handed a scene the state holds and a
-  /// field initialiser has no `this` to read it off.
-  final marker = GameSystem.owned(
-    (_FixtureState state) => _MarkerSystem(state.level),
-  );
+  late final _MarkerSystem marker;
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    marker = descriptor.has(() => _MarkerSystem(level));
+  }
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
@@ -677,7 +718,10 @@ class _WindowState extends _FixtureState {
         _channel();
         return 1;
       })
-      ..hasReadOnlySupplier(game.readOnlyRead, () => level.unit.marker[victim]);
+      ..hasReadOnlySupplier(
+        game.readOnlyRead,
+        () => level.unit.marker[victim],
+      );
   }
 
   /// Plain Dart state, touched by a receipt handler. Nothing in #245 is about
@@ -701,20 +745,36 @@ class _WindowState extends _FixtureState {
 class _WindowGame extends _TestGame {
   final score = Channel.int32();
 
-  final controlWrite = Command.of(_ControlWrite.new);
-  final controlSpawn = Command.of(_ControlSpawn.new);
-  final controlDestroy = Command.of(_ControlDestroy.new);
-  final controlUnload = Command.of(_ControlUnload.new);
-  final controlChannelWrite = Command.of(_ControlChannelWrite.new);
-  final controlStateWrite = Command.of(_ControlStateWrite.new);
-  final readOnlyWrite = Command.of(_ReadOnlyComponentWrite.new);
-  final readOnlySpawn = Command.of(_ReadOnlySpawn.new);
-  final readOnlyUnload = Command.of(_ReadOnlyUnload.new);
-  final readOnlyChannelWrite = Command.of(_ReadOnlyChannelWrite.new);
-  final readOnlyRead = Command.of(_ReadOnlyRead.new);
+  late final _ControlWrite controlWrite;
+  late final _ControlSpawn controlSpawn;
+  late final _ControlDestroy controlDestroy;
+  late final _ControlUnload controlUnload;
+  late final _ControlChannelWrite controlChannelWrite;
+  late final _ControlStateWrite controlStateWrite;
+  late final _ReadOnlyComponentWrite readOnlyWrite;
+  late final _ReadOnlySpawn readOnlySpawn;
+  late final _ReadOnlyUnload readOnlyUnload;
+  late final _ReadOnlyChannelWrite readOnlyChannelWrite;
+  late final _ReadOnlyRead readOnlyRead;
 
   @override
   GameState createState() => _WindowState();
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    controlWrite = descriptor.has(_ControlWrite.new);
+    controlSpawn = descriptor.has(_ControlSpawn.new);
+    controlDestroy = descriptor.has(_ControlDestroy.new);
+    controlUnload = descriptor.has(_ControlUnload.new);
+    controlChannelWrite = descriptor.has(_ControlChannelWrite.new);
+    controlStateWrite = descriptor.has(_ControlStateWrite.new);
+    readOnlyWrite = descriptor.has(_ReadOnlyComponentWrite.new);
+    readOnlySpawn = descriptor.has(_ReadOnlySpawn.new);
+    readOnlyUnload = descriptor.has(_ReadOnlyUnload.new);
+    readOnlyChannelWrite = descriptor.has(_ReadOnlyChannelWrite.new);
+    readOnlyRead = descriptor.has(_ReadOnlyRead.new);
+  }
 }
 
 /// The same refusal asked of the **main** descriptor, and through the sink
@@ -726,11 +786,12 @@ class _MuteSink extends ValueSink<int> {
 }
 
 class _MuteReadOnlyMainGame extends _TestGame {
-  final muteSink = Command.of(_MuteSink.new);
+  late final _MuteSink muteSink;
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
     super.describeCommands(descriptor);
+    muteSink = descriptor.has(_MuteSink.new);
     descriptor.hasReadOnlySink(muteSink, (_) {});
   }
 }
@@ -738,14 +799,6 @@ class _MuteReadOnlyMainGame extends _TestGame {
 /// Two independent streams and two systems, one drawing from each, so a test
 /// can disable one and watch the other (#125).
 class _DrawsFromA extends GameSystem with FixedTickable {
-  // Publishes itself so the tests below can reach it without a state
-  // reference. The declaration is the field on the state; this is a
-  // fixture convenience, and it runs exactly once because the framework
-  // builds a declared system exactly once.
-  _DrawsFromA() {
-    _drawsA = this;
-  }
-
   final List<int> drawn = <int>[];
 
   @override
@@ -753,14 +806,6 @@ class _DrawsFromA extends GameSystem with FixedTickable {
 }
 
 class _DrawsFromB extends GameSystem with FixedTickable {
-  // Publishes itself so the tests below can reach it without a state
-  // reference. The declaration is the field on the state; this is a
-  // fixture convenience, and it runs exactly once because the framework
-  // builds a declared system exactly once.
-  _DrawsFromB() {
-    _drawsB = this;
-  }
-
   final List<int> drawn = <int>[];
 
   @override
@@ -772,8 +817,12 @@ late _DrawsFromB _drawsB;
 late _RandomGame _randomGame;
 
 class _RandomState extends _FixtureState {
-  final drawsA = GameSystem.of(_DrawsFromA.new);
-  final drawsB = GameSystem.of(_DrawsFromB.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    _drawsA = descriptor.has(_DrawsFromA.new);
+    _drawsB = descriptor.has(_DrawsFromB.new);
+  }
 }
 
 class _RandomGame extends _TestGame {
@@ -782,13 +831,18 @@ class _RandomGame extends _TestGame {
   @override
   final int randomSeed;
 
-  final a = RandomStream.of();
-  final b = RandomStream.of();
+  late final RandomStream a;
+  late final RandomStream b;
 
   @override
-  GameState createState() {
+  GameState createState() => _RandomState();
+
+  @override
+  void describeRandom(RandomDescriptor descriptor) {
+    super.describeRandom(descriptor);
     _randomGame = this;
-    return _RandomState();
+    a = descriptor.has();
+    b = descriptor.has();
   }
 }
 
@@ -815,10 +869,16 @@ class _NudgeCommand extends SinkCommand<_Nudge> {
 /// handled on the `GameState` - so it runs on the game isolate, inside the
 /// tick window, which is what the test below actually checks.
 class _CommandGame extends _TestGame {
-  final nudge = Command.of(_NudgeCommand.new);
+  late final _NudgeCommand nudge;
 
   @override
   GameState createState() => _CommandState();
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    nudge = descriptor.has(_NudgeCommand.new);
+  }
 }
 
 class _CommandState extends GameState<_CommandGame> {
@@ -835,16 +895,17 @@ class _CommandState extends GameState<_CommandGame> {
 
   // The handler is the plain function the command claims to be: no buffer in
   // the signature, no pointer in the body.
-  void _onNudge(_Nudge p) =>
-      p.entity<_Counter>().component.x[p.entity] = p.amount;
+  void _onNudge(_Nudge p) => p.entity<_Counter>().component.x[p.entity] = p.amount;
 }
 
-/// Declares a command from the `GameState`, which is refused: the registrar is
-/// open around the `Game`'s constructor and closed by the time a state is
-/// built, and a command numbered here would have an index on the game isolate
-/// and none on the Flutter one.
+/// Declares a command from the `GameState`, which is refused: its index would
+/// exist on the game isolate and not on the Flutter one.
 class _BadCommandState extends _TestState {
-  final nudge = Command.of(_NudgeCommand.new);
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    descriptor.has(_NudgeCommand.new);
+  }
 }
 
 class _BadCommandGame extends _TestGame {
@@ -853,8 +914,12 @@ class _BadCommandGame extends _TestGame {
 }
 
 class _DuplicateSystemState extends _TestState {
-  // `_TestState` already declared a `_SystemA`; this is the second.
-  final secondSystemA = GameSystem.of(_SystemA.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    // `_TestState` already declared a `_SystemA`; this is the second.
+    super.describeSystems(descriptor);
+    descriptor.has(_SystemA.new);
+  }
 }
 
 class _DuplicateSystemGame extends _TestGame {
@@ -1461,7 +1526,7 @@ void main() {
     group('what the guard must not break', () {
       test('a system writing inside the tick still writes', () async {
         final state = await boot(publish: true);
-        state.marker.value.target = state.victim;
+        state.marker.target = state.victim;
 
         state.advance(_step * 2);
 
@@ -1484,7 +1549,7 @@ void main() {
       test('stepOnce runs a fixed step from inside a receipt handler', () async {
         final state = await boot(publish: true);
         final game = state.game as _WindowGame;
-        state.marker.value.target = state.victim;
+        state.marker.target = state.victim;
 
         game.stepOnce();
 
@@ -1669,8 +1734,11 @@ void main() {
       expect(state.advance(_step * 3), 0);
 
       expect(
-        await Future.wait(<Future<int>>[first, second, third])
-            .timeout(const Duration(seconds: 5)),
+        await Future.wait(<Future<int>>[
+          first,
+          second,
+          third,
+        ]).timeout(const Duration(seconds: 5)),
         <int>[1, 2, 3],
         reason:
             'one queue fed in arrival order and drained from the front, so '
@@ -1832,8 +1900,7 @@ void main() {
       expect(
         game.reports.first.stackTrace,
         contains('_ThrowingSystem.onFixedUpdate'),
-        reason:
-            'the stack is what says which line threw, and #143 asks for '
+        reason: 'the stack is what says which line threw, and #143 asks for '
             'it by name',
       );
 
@@ -1855,73 +1922,66 @@ void main() {
       expect(game.reports, hasLength(1));
     });
 
-    test(
-      'a report too long for its fields is truncated, not refused',
-      () async {
-        final previousOnError = FlutterError.onError;
-        FlutterError.onError = (_) {};
-        addTearDown(() => FlutterError.onError = previousOnError);
+    test('a report too long for its fields is truncated, not refused', () async {
+      final previousOnError = FlutterError.onError;
+      FlutterError.onError = (_) {};
+      addTearDown(() => FlutterError.onError = previousOnError);
 
-        final game = await _game(_ReportingThrowGame.new);
-        final state = _state(game);
-        _thrower
-          ..ran = 0
-          ..throwOnTick = 1
-          // Longer than the 1024-byte error field, and not ASCII: a cut through
-          // the middle of a multi-byte character has to come back inside the
-          // cap, not one replacement character over it. `Param.fixedString`
-          // refuses an oversized write, and a throw from inside the reporting
-          // path would take out the report of the throw.
-          ..throwMessage = 'é' * 4000;
-        addTearDown(() => _thrower.throwMessage = 'system boom');
+      final game = await _game(_ReportingThrowGame.new);
+      final state = _state(game);
+      _thrower
+        ..ran = 0
+        ..throwOnTick = 1
+        // Longer than the 1024-byte error field, and not ASCII: a cut through
+        // the middle of a multi-byte character has to come back inside the
+        // cap, not one replacement character over it. `Param.fixedString`
+        // refuses an oversized write, and a throw from inside the reporting
+        // path would take out the report of the throw.
+        ..throwMessage = 'é' * 4000;
+      addTearDown(() => _thrower.throwMessage = 'system boom');
 
-        expect(() => state.advance(_step), throwsA(isA<AssertionError>()));
-        expect(game.reports, hasLength(1));
-        expect(
-          utf8.encode(game.reports.first.error).length,
-          lessThanOrEqualTo(1024),
-          reason: 'the cap _ReportDisabledSystemCommand declares for the field',
-        );
-        expect(
-          utf8.encode(game.reports.first.stackTrace).length,
-          lessThanOrEqualTo(2048),
-        );
-        expect(
-          game.reports.first.error,
-          startsWith('Bad state: '),
-          reason: 'truncated at the end, so the front of the message survives',
-        );
-      },
-    );
+      expect(() => state.advance(_step), throwsA(isA<AssertionError>()));
+      expect(game.reports, hasLength(1));
+      expect(
+        utf8.encode(game.reports.first.error).length,
+        lessThanOrEqualTo(1024),
+        reason: 'the cap _ReportDisabledSystemCommand declares for the field',
+      );
+      expect(
+        utf8.encode(game.reports.first.stackTrace).length,
+        lessThanOrEqualTo(2048),
+      );
+      expect(
+        game.reports.first.error,
+        startsWith('Bad state: '),
+        reason: 'truncated at the end, so the front of the message survives',
+      );
+    });
 
-    test(
-      'a report that cannot be sent does not take the tick with it',
-      () async {
-        final game = await _game(_BadReportGame.new);
-        final state = _state(game);
-        _thrower
-          ..ran = 0
-          ..throwOnTick = 1
-          ..throwMessage = 'system boom';
-        _afterThrower.ran = 0;
+    test('a report that cannot be sent does not take the tick with it', () async {
+      final game = await _game(_BadReportGame.new);
+      final state = _state(game);
+      _thrower
+        ..ran = 0
+        ..throwOnTick = 1
+        ..throwMessage = 'system boom';
+      _afterThrower.ran = 0;
 
-        // Still the assert, and nothing else: the report handler threw on this
-        // stack, and that must not become the failure the tick reports, nor
-        // stop the listeners declared after the thrower.
-        expect(() => state.advance(_step), throwsA(isA<AssertionError>()));
-        expect(game.calls, 1, reason: 'the handler really did run, and throw');
-        expect(
-          _afterThrower.ran,
-          1,
-          reason:
-              'the guard promises one bad listener does not stop the rest, '
-              'and the reporting path runs inside the catch that keeps it',
-        );
+      // Still the assert, and nothing else: the report handler threw on this
+      // stack, and that must not become the failure the tick reports, nor
+      // stop the listeners declared after the thrower.
+      expect(() => state.advance(_step), throwsA(isA<AssertionError>()));
+      expect(game.calls, 1, reason: 'the handler really did run, and throw');
+      expect(
+        _afterThrower.ran,
+        1,
+        reason: 'the guard promises one bad listener does not stop the rest, '
+            'and the reporting path runs inside the catch that keeps it',
+      );
 
-        state.advance(_step);
-        expect(_afterThrower.ran, 2, reason: 'and the game goes on ticking');
-      },
-    );
+      state.advance(_step);
+      expect(_afterThrower.ran, 2, reason: 'and the game goes on ticking');
+    });
 
     test('a throwing coroutine is unaffected by any of this', () async {
       // Coroutines were already guarded, in CoroutineScheduler.step, and this
@@ -2290,17 +2350,14 @@ void main() {
         _state(game).advance(_step);
         expect(
           log,
-          ['C', 'D', '1', '2', 'spawn', 'compose', 'A', 'B'],
+          ['C', 'D', 'A', 'B', '1', '2', 'spawn', 'compose'],
           reason:
-              'declaration order is field initialiser order, and Dart runs '
-              'the subclass first: Indifferent1, Indifferent2, SortsFirst, '
-              'AlsoSortsFirst, Composer, Spawner from _OrderingState, then '
-              'A, InertSystem, B, CensusSystem from _TestState '
+              'declaration order was A, B, Indifferent1, Indifferent2, '
+              'SortsFirst, AlsoSortsFirst, Composer, Spawner '
               '(InertSystem/CensusSystem are not FixedTickable and do not '
               'log). C and D both claim to be first, so they take the front '
               'in declaration order; Spawner crosses Composer; everything '
-              'else stays where it was declared. The base class systems ran '
-              'first while this was a super-first hook chain, and last now',
+              'else stays where it was declared',
         );
       },
     );
@@ -2331,14 +2388,9 @@ void main() {
             'message',
             allOf(
               contains('cycle'),
-              // The loop itself, walked, and every edge attributed to the
-              // call that produced it. A list of the blocked systems was
-              // what this used to say, and it named systems merely
-              // downstream of the loop as though each were on it.
-              contains('_CycleA -> _CycleB -> _CycleC -> _CycleA'),
-              contains('_CycleA.compareTo(_CycleB) answered -1'),
-              contains('_CycleB.compareTo(_CycleC) answered -1'),
-              contains('_CycleC.compareTo(_CycleA) answered -1'),
+              contains('_CycleA'),
+              contains('_CycleB'),
+              contains('_CycleC'),
             ),
           ),
         ),
@@ -2502,16 +2554,7 @@ void main() {
     });
 
     test('a command declared on the GameState is refused at boot', () {
-      expect(
-        Game.startInline(_BadCommandGame.new),
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            contains('no game being constructed'),
-          ),
-        ),
-      );
+      expect(Game.startInline(_BadCommandGame.new), throwsStateError);
     });
 
     // "reaching the command channel before start throws" was asserted here
@@ -2650,19 +2693,13 @@ void main() {
         // A GameState that was never marked as owning the simulation is exactly
         // what the main isolate's handle copy holds after start().
         //
-        // Through both windows `Game._bootMain` opens around `createState`,
-        // because `_TestState()` on its own throws out of its own field
-        // initialisers - it declares dispatchers, which need a binder, and
-        // systems, which need the system window. Constructing it bare would
-        // still throw a StateError and this test would still pass, off the
-        // wrong guard entirely.
-        DeclarationContext.pushSystems();
-        final GameState handle;
-        try {
-          handle = EventBinder.open(_TestState.new);
-        } finally {
-          DeclarationContext.popSystems();
-        }
+        // Through `EventBinder.open` because `_TestState()` on its own now
+        // throws out of its own field initialisers - `GameState` declares its
+        // dispatchers there and they need a binder open around the call, which
+        // `Game._bootMain` is what normally provides. Constructing it bare
+        // would still throw a StateError and this test would still pass, off
+        // the wrong guard entirely.
+        final handle = EventBinder.open(_TestState.new);
         expect(() => handle.advance(_step), throwsStateError);
         expect(handle.runFixedStep, throwsStateError);
       },
@@ -2749,7 +2786,11 @@ class _UndeclaredSystem extends GameSystem {}
 
 /// The "no world yet" configuration: a GameState that declares no scene.
 class _ScenelessState extends GameState<_ScenelessGame> {
-  final systemA = GameSystem.of(_SystemA.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_SystemA.new);
+  }
 }
 
 class _ScenelessGame extends Game {

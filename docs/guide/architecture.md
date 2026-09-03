@@ -49,10 +49,9 @@ build widgets. Numbers it shows arrive through a state channel or a buffer; an
 
 ### How both copies agree without negotiating
 
-Main builds the `Game` — which is where its `Channel.*` fields declare — then
-runs `createState()`, `describeBuffers` and
-`describeCommands` before the spawn, and the game isolate inherits the result
-in the deep copy rather than re-deriving it. That is how the two sides
+Main runs `createState()`, `describeState`, `describeBuffers`, `describeCameras`
+and `describeCommands` before the spawn, and the game isolate inherits the
+result in the deep copy rather than re-deriving it. That is how the two sides
 agree on every id **without negotiating one**:
 
 - a command's index is its position in the declaration pass;
@@ -67,20 +66,12 @@ Channel.int32()` — is an eager `final` and never a `late final`: a `late`
 initialiser runs on first *read*, so the order would be whatever order
 something happened to touch the fields in.
 
-**Two passes are not on that list.** `describeScenes` registers archetypes and
-component bits into statics, which do not survive `Isolate.spawn` — so it runs
-on the game isolate only, and there is one registrar rather than two numberings
-to keep level. `describeSystems` follows it there: systems are constructed on
-the copy that ticks them and nowhere else, so the main-isolate copy holds no
-system, no query and no network transport.
-
-That second fact is also what holds `describeSystems` in a hook while a game's
-randoms, cameras, inputs and commands are fields. A `GameState` field
-initialiser runs inside `createState`, on main, before the spawn. A system's
-own fields call `Query.all`, which turns each named type into a bit through
-`ComponentTypeRegistry` and bakes the mask into the query — and that table is
-filled on the game isolate. A mask taken from main's empty table matches no
-archetype numbered over there, and nothing reports it.
+**Two passes are deliberately not on that list.** `describeScenes` registers
+archetypes and component bits into statics, which do not survive `Isolate.spawn`
+— so it runs on the game isolate only, and there is one registrar rather than
+two numberings to keep level. `describeSystems` follows it there: systems are
+constructed on the copy that ticks them and nowhere else, so the main-isolate
+copy holds no system, no query and no network transport.
 
 ## The four lanes across the boundary
 

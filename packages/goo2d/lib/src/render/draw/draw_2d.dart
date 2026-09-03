@@ -102,10 +102,10 @@ abstract class DrawData2D {
 /// **The texture is an address, never a `ui.Image`.** The producer runs on the
 /// game isolate, which has no Flutter engine and whose `Texture` copies are
 /// declared-but-never-decoded (see `Texture`'s own doc). What crosses the ring
-/// is the address the texture holds in [DrawCanvas2D.assets] - the same
-/// integer on both isolates, because both ran the same asset declarations in
-/// the same order - and [DrawCanvas2D] turns it back into a live `Texture`
-/// with `Assets.of<Texture>().unpack` at replay time.
+/// is the `GlobalObject` registry address - the same integer on both isolates,
+/// because both ran the same `describeAssets` pass in the same order - and
+/// [DrawCanvas2D] turns it back into a live `Texture` with
+/// the asset table's `resolve` at replay time.
 ///
 /// Corners and UVs are stored as `float32`, not the `float64` the transform
 /// fields use: `Vertices.raw` takes `Float32List`s, so anything wider would be
@@ -119,9 +119,9 @@ final class DrawSpriteData2D extends DrawData2D {
   /// The texture-address value meaning "this quad samples nothing - draw the
   /// flat colour".
   ///
-  /// **`-1`, not `0`.** [Assets] hands out addresses
+  /// **`-1`, not `0`.** An `ObjectTable` hands out addresses
   /// from a plain append-only list starting at zero, so `0` is the address of
-  /// whichever asset a run declared first - a perfectly ordinary,
+  /// whichever asset a process declared first - a perfectly ordinary,
   /// resolvable texture. Using it as "none" would make the first texture ever
   /// declared invisible, and the failure would look like an asset bug and not
   /// an encoding one. `-1` is never handed out (the registry only ever

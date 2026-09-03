@@ -24,7 +24,11 @@ late Game run;
 mixin _Marked on Component {
   final mark = Field.uint8(3);
 
-  final markedType = Component.type<_Marked>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<_Marked>();
+  }
 }
 
 class _Unit extends EntityStruct with _Marked {}
@@ -32,7 +36,11 @@ class _Unit extends EntityStruct with _Marked {}
 mixin _Unmarked on Component {
   final tag = Field.uint8(7);
 
-  final unmarkedType = Component.type<_Unmarked>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<_Unmarked>();
+  }
 }
 
 class _Prop extends EntityStruct with _Unmarked {}
@@ -64,11 +72,18 @@ class _Mixed extends SceneStruct {
   }
 }
 
-/// The same census in a game that declares no scene, so the query is built
-/// against an empty `ArchetypeRegistry`.
-class _EarlyCensusSystem extends GameSystem with FixedTickable {
-  final marked = Query.where().withAll(_Marked).build();
+/// The same census through the `describeQuery` hook. `_bootGame` runs that
+/// hook once, and `_HookGame` declares no scene, so it runs against an empty
+/// `ArchetypeRegistry`.
+class _HookCensusSystem extends GameSystem with FixedTickable {
+  late final Query marked;
   int seen = 0;
+
+  @override
+  void describeQuery(QueryDescriptor descriptor) {
+    super.describeQuery(descriptor);
+    marked = descriptor.query().withAll(_Marked).build();
+  }
 
   @override
   void onFixedUpdate() {
@@ -80,11 +95,15 @@ class _EarlyCensusSystem extends GameSystem with FixedTickable {
   }
 }
 
-class _EarlyState extends GameState<_EarlyGame> {
-  final earlyCensusSystem = GameSystem.of(_EarlyCensusSystem.new);
+class _HookState extends GameState<_HookGame> {
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_HookCensusSystem.new);
+  }
 }
 
-class _EarlyGame extends Game {
+class _HookGame extends Game {
   @override
   int get pageSize => 4096;
 
@@ -92,7 +111,7 @@ class _EarlyGame extends Game {
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
   @override
-  GameState createState() => _EarlyState();
+  GameState createState() => _HookState();
 }
 
 /// A prefab with no `Field.*` initialisers, so it can be constructed
@@ -118,7 +137,11 @@ class _CensusSystem extends GameSystem with FixedTickable {
 }
 
 class _DeclaringState extends GameState<_DeclaringGame> {
-  final censusSystem = GameSystem.of(_CensusSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_CensusSystem.new);
+  }
 }
 
 class _DeclaringGame extends Game {
@@ -137,18 +160,18 @@ class _DeclaringGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    level = descriptor.has(_Level.new);
-    menu = descriptor.has(_Menu.new);
+    level = descriptor.has(_Level());
+    menu = descriptor.has(_Menu());
   }
 }
 
-/// Declares the same scene type twice - one declaration is one scene.
+/// Declares the same scene type twice - one instance is one declaration.
 class _DoubleDeclaringGame extends _DeclaringGame {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     // `_DeclaringGame` already declared a `_Level`; this is the second.
     super.describeScenes(descriptor);
-    descriptor.has(_Level.new);
+    descriptor.has(_Level());
   }
 }
 
@@ -303,7 +326,7 @@ void main() {
 
   test('scenes are declared before systems build their queries', () async {
     // _CensusSystem's query is built in a field initialiser, so it exists
-    // the moment boot constructs the system - before any of this
+    // the moment describeSystems constructs the system - before any of this
     // scene's rows do. It counts them anyway: groups() resolves archetypes on
     // the first walk and rebuilds whenever the registry grows.
     final game = await _boot(_DeclaringGame.new);
@@ -315,20 +338,20 @@ void main() {
   });
 
   // What orders the boot passes is `collectListeners` reaching for a system,
-  // not a query reaching for an archetype (#225). Building one reads
+  // not the query pass reaching for an archetype (#225). `describeQuery` reads
   // `ComponentTypeRegistry` for a bit per named type and resolves archetypes
   // lazily, so it carries no requirement that `describeScenes` precede it.
   test(
-    'a query built with the registry empty matches archetypes registered later',
+    'a hook-built query matches archetypes registered after the query pass',
     () async {
-      await _boot(_EarlyGame.new);
-      final system = run.state.getSystem<_EarlyCensusSystem>();
+      await _boot(_HookGame.new);
+      final system = run.state.getSystem<_HookCensusSystem>();
       expect(
         ArchetypeRegistry.count,
         0,
         reason:
-            'this game declares no scene, so the system built its query '
-            'against an empty registry',
+            'this game declares no scene, so describeQuery ran against an '
+            'empty registry',
       );
 
       final struct = _Mixed();

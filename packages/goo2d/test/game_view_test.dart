@@ -24,7 +24,13 @@ class _Sprite extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   /// Declared unsized, so each test states the extent it cares about - this
   /// file is about the widget-side plumbing, not about geometry.
-  final quad = Sprite.of();
+  late final Sprite quad;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    quad = descriptor.has();
+  }
 }
 
 class _Scene extends SceneStruct {
@@ -64,7 +70,7 @@ class _ViewGame extends Game2D {
   @override
   GameState2D<_ViewGame> createState() => _ViewState();
 
-  // No system declarations at all: `extends Game2D` + `extends GameState2D` is
+  // No describeSystems at all: `extends Game2D` + `extends GameState2D` is
   // the entire opt-in, and WorldTransformSystem/GameRenderer2D come with the
   // second one. Note it cannot be forgotten: `createState` is narrowed to
   // GameState2D, so a plain GameState here would not compile.
@@ -264,16 +270,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a Game that is not running is refused with a reason', (
+  testWidgets('a Game that has not started is refused with a reason', (
     tester,
   ) async {
-    // Started and stopped rather than never started: a Game2D declares a
-    // camera view on a field, so one built outside `Game.start` is refused at
-    // the constructor. To this guard the two are the same game - neither has
-    // the frame buffers a view paints from.
-    final game = await _start(_ViewGame.new);
-    await game.stop();
-
+    _ViewGame();
     await tester.pumpWidget(GameView.headless(game: run));
     final error = tester.takeException();
     expect(error, isStateError);

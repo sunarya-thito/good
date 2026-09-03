@@ -30,56 +30,67 @@ final List<String> events = <String>[];
 /// A composite of each shape: two keyboards, an analog stick beside a
 /// keyboard, a key beside a mouse button, and two axes.
 class _CompositeSystem extends GameSystem {
-  _CompositeSystem() {
+  /// WASD or the arrow keys - the case #215 was raised with.
+  late final Input<Vector2> keyboards;
+
+  /// The left stick or WASD, which is the analog-or-digital case: the two
+  /// sources are a `StickBinding` and a `Vec2Binding`, and both are
+  /// `InputBinding<Vector2>`.
+  late final Input<Vector2> mixed;
+
+  /// Space or left click, one action with one pair of edges.
+  late final Input<bool> attack;
+
+  /// Two axes, so the `double` rule has something to disagree about.
+  late final Input<double> throttle;
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    keyboards = input.has<Vector2>(
+      CompositeBinding(
+        const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
+        const Vec2Binding(
+          up: .arrowUp,
+          down: .arrowDown,
+          left: .arrowLeft,
+          right: .arrowRight,
+        ),
+      ),
+    );
+    mixed = input.has<Vector2>(
+      CompositeBinding(
+        const StickBinding(x: .virtualLeftStickX, y: .virtualLeftStickY),
+        const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
+      ),
+    );
+    attack = input.has<bool>(
+      CompositeBinding(
+        const TriggerBinding(.spacebar),
+        const TriggerBinding(.leftMouseButton),
+      ),
+    );
+    throttle = input.has<double>(
+      CompositeBinding(
+        const AxisBinding(.virtualLeftStickX),
+        const AxisBinding(.virtualRightStickX),
+      ),
+      0.0,
+    );
+
     attack.pressed += (event) => events.add('attack pressed');
     attack.released += (event) => events.add('attack released');
     keyboards.pressed += (event) => events.add('move pressed');
     keyboards.released += (event) => events.add('move released');
   }
-
-  /// WASD or the arrow keys - the case #215 was raised with.
-  final keyboards = Input.of<Vector2>(
-    CompositeBinding(
-      const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
-      const Vec2Binding(
-        up: .arrowUp,
-        down: .arrowDown,
-        left: .arrowLeft,
-        right: .arrowRight,
-      ),
-    ),
-  );
-
-  /// The left stick or WASD, which is the analog-or-digital case: the two
-  /// sources are a `StickBinding` and a `Vec2Binding`, and both are
-  /// `InputBinding<Vector2>`.
-  final mixed = Input.of<Vector2>(
-    CompositeBinding(
-      const StickBinding(x: .virtualLeftStickX, y: .virtualLeftStickY),
-      const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
-    ),
-  );
-
-  /// Space or left click, one action with one pair of edges.
-  final attack = Input.of<bool>(
-    CompositeBinding(
-      const TriggerBinding(.spacebar),
-      const TriggerBinding(.leftMouseButton),
-    ),
-  );
-
-  /// Two axes, so the `double` rule has something to disagree about.
-  final throttle = Input.of<double>(
-    CompositeBinding(
-      const AxisBinding(.virtualLeftStickX),
-      const AxisBinding(.virtualRightStickX),
-    ),
-    0.0,
-  );
 }
 
 class _CompositeGameState extends GameState<_CompositeGame> {
-  final compositeSystem = GameSystem.of(_CompositeSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_CompositeSystem.new);
+  }
 }
 
 class _CompositeGame extends Game {
@@ -96,11 +107,21 @@ class _CompositeGame extends Game {
 /// An action declared unbound, so a composite restored from JSON has somewhere
 /// to be assigned - the rebinding-screen path.
 class _RestoreSystem extends GameSystem {
-  final attack = Input.of<bool>();
+  late final Input<bool> attack;
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    attack = input.has<bool>();
+  }
 }
 
 class _RestoreGameState extends GameState<_RestoreGame> {
-  final restoreSystem = GameSystem.of(_RestoreSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_RestoreSystem.new);
+  }
 }
 
 class _RestoreGame extends Game {

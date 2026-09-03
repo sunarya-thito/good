@@ -2,13 +2,12 @@
 /// scenes, fixed-tick loop, hierarchy, and the generic asset registry.
 library;
 
-// Timelines and the coroutine runtime they are driven by. Coroutines are
-// reached through `startCoroutine`, which every `EntityStruct`, `SceneStruct`,
-// `GameSystem` and `GameState` already has; a timeline is declared on a field
-// and its clips are classes of the game's own. Either way a game never imports
-// these files, but it does have to be able to *spell* what they hand back: a
-// `Track<double>` field, a `TimelineAnimation` to extend, a `CoroutineFuture`
-// to await.
+// Timelines and the coroutine runtime they are driven by. Both are reached
+// through members every `EntityStruct`, `SceneStruct`, `GameSystem` and
+// `GameState` already has - `startCoroutine`, `describeAnimation` - so a game
+// never imports either file, but it does have to be able to *spell* what they
+// hand back: a `Track<double>` field, a `TimelineAnimation`, a
+// `CoroutineFuture` to await.
 //
 // `CoroutineScheduler` comes along because `GameState.coroutines` is public and
 // a type you cannot name is a type you cannot hold.
@@ -39,7 +38,6 @@ export 'src/coroutine/coroutine.dart';
 // both sides.
 export 'src/command/command.dart'
     show
-        Command,
         CommandBatchCalls,
         CommandDescriptor,
         CommandKey,
@@ -83,7 +81,7 @@ export 'src/data/hierarchy.dart';
 export 'src/event.dart' hide EventBinder;
 export 'src/event/fixed_loop.dart';
 export 'src/event/lifecycle.dart';
-export 'src/random.dart' hide RandomOwner, RandomRegistry;
+export 'src/random.dart' hide RandomOwner;
 export 'src/event/state.dart';
 export 'src/event/tick_loop.dart';
 // `GameRuntime` is hidden rather than exported: it is one run's internals -
@@ -111,21 +109,20 @@ export 'src/heap_object.dart';
 // vector is going to be added to.
 export 'package:vector_math/vector_math_64.dart' show Vector2;
 
-// InputRegistry is the engine-side plumbing behind Input.of - a Game owns one
-// and drives it through boot, each tick and shutdown. Users declare with
-// Input.of and hold Inputs; nothing outside the kernel has a reason to name
-// it.
+// InputRegistry is the engine-side plumbing behind InputDescriptor - a Game
+// owns one and drives it through boot, each tick and shutdown. Users declare
+// against InputDescriptor and hold Inputs; nothing outside the kernel has a
+// reason to name it.
 export 'src/input.dart' hide InputRegistry;
 export 'src/input/gamepad.dart';
 export 'src/input/input_axis.dart';
 export 'src/input/input_binding.dart';
 export 'src/input/input_key.dart';
 export 'src/input/input_state.dart';
-export 'src/order.dart' hide OrderConstraint;
 export 'src/pool.dart';
 export 'src/ring_buffer.dart';
 export 'src/scene.dart';
-export 'src/camera_view.dart';
+export 'src/camera_view.dart' hide GameCameraDescriptor;
 export 'src/scene_handle.dart';
 export 'src/struct.dart';
 export 'src/time.dart';

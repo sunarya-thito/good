@@ -34,7 +34,13 @@ void record(String phase, Collision2DEvent event) {
 /// A falling crate that reports what it touches.
 class _Crate extends EntityStruct
     with Transform2D, Collider2D, RigidBody2D, CollisionListener {
-  final box = BoxBody.of(halfWidth: 0.5, halfHeight: 0.5);
+  late final BoxBody box;
+
+  @override
+  void describeCollider(ColliderDescriptor d) {
+    super.describeCollider(d);
+    box = d.hasBoxCollider(halfWidth: 0.5, halfHeight: 0.5);
+  }
 
   @override
   void onCollisionEnter2D(Collision2DEvent event) => record('enter', event);
@@ -58,7 +64,13 @@ class _Crate extends EntityStruct
 
 /// A static floor that says nothing - so a test can tell which side heard.
 class _Floor extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  final box = BoxBody.of(halfWidth: 50, halfHeight: 1);
+  late final BoxBody box;
+
+  @override
+  void describeCollider(ColliderDescriptor d) {
+    super.describeCollider(d);
+    box = d.hasBoxCollider(halfWidth: 50, halfHeight: 1);
+  }
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -69,7 +81,13 @@ class _Floor extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
 /// A static trigger volume.
 class _Zone extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  final box = BoxBody.of(halfWidth: 5, halfHeight: 0.5, isTrigger: true);
+  late final BoxBody box;
+
+  @override
+  void describeCollider(ColliderDescriptor d) {
+    super.describeCollider(d);
+    box = d.hasBoxCollider(halfWidth: 5, halfHeight: 0.5, isTrigger: true);
+  }
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -103,7 +121,11 @@ class _GameState extends GameState<_Game> {
   @override
   void onMounted() => loadScene(_Scene());
 
-  final physics = GameSystem.of(Box2DPhysicsSystem.new);
+  @override
+  void describeSystems(SystemDescriptor d) {
+    super.describeSystems(d);
+    physics = d.has(Box2DPhysicsSystem.new);
+  }
 }
 
 class _Game extends Game {
@@ -121,10 +143,6 @@ const Duration _step = Duration(microseconds: 16667);
 
 Future<_Scene> _boot() async {
   run = await Game.startInline(_Game.new);
-  // Read off the state rather than captured at declaration: the declaration
-  // is a field on the state and the system is built on the copy that ticks,
-  // so this is where the object first exists.
-  physics = run.state.getSystem<Box2DPhysicsSystem>();
   addTearDown(() async {
     if (run.isRunning) await run.stop();
     physics.dispose();

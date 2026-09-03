@@ -30,7 +30,13 @@ late _PhysScene _declaration;
 
 /// Static, one unit half-height, so its top face is at y = +1.
 class _Wall extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  final box = BoxBody.of(halfWidth: 4, halfHeight: 1);
+  late final BoxBody box;
+
+  @override
+  void describeCollider(ColliderDescriptor d) {
+    super.describeCollider(d);
+    box = d.hasBoxCollider(halfWidth: 4, halfHeight: 1);
+  }
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -41,7 +47,13 @@ class _Wall extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
 /// Dynamic, half a unit high, so it comes to rest at y = 1.5 on the wall.
 class _Ball extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  final box = BoxBody.of(halfWidth: 0.5, halfHeight: 0.5);
+  late final BoxBody box;
+
+  @override
+  void describeCollider(ColliderDescriptor d) {
+    super.describeCollider(d);
+    box = d.hasBoxCollider(halfWidth: 0.5, halfHeight: 0.5);
+  }
 }
 
 class _PhysScene extends SceneStruct {
@@ -60,7 +72,11 @@ class _GameState extends GameState<_Game> {
   @override
   void onMounted() {}
 
-  final physics = GameSystem.of(Box2DPhysicsSystem.new);
+  @override
+  void describeSystems(SystemDescriptor d) {
+    super.describeSystems(d);
+    physics = d.has(Box2DPhysicsSystem.new);
+  }
 }
 
 class _Game extends Game {
@@ -72,7 +88,7 @@ class _Game extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    arena = descriptor.has(_PhysScene.new);
+    arena = descriptor.has(_PhysScene());
   }
 
   @override
@@ -88,10 +104,6 @@ void _settle([int steps = 150]) {
 Future<GameState> _boot() async {
   final game = await Game.startInline(_Game.new);
   run = game;
-  // Read off the state rather than captured at declaration: the declaration
-  // is a field on the state and the system is built on the copy that ticks,
-  // so this is where the object first exists.
-  physics = run.state.getSystem<Box2DPhysicsSystem>();
   _declaration = game.arena;
   addTearDown(() async {
     if (run.isRunning) await run.stop();

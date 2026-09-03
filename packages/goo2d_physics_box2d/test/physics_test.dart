@@ -27,12 +27,24 @@ late Box2DPhysicsSystem physics;
 
 /// A dynamic crate: a box collider on a simulated body.
 class _Crate extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  final box = BoxBody.of(halfWidth: 0.5, halfHeight: 0.5);
+  late final BoxBody box;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    box = descriptor.hasBoxCollider(halfWidth: 0.5, halfHeight: 0.5);
+  }
 }
 
 /// A static floor.
 class _Floor extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  final box = BoxBody.of(halfWidth: 50, halfHeight: 1);
+  late final BoxBody box;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    box = descriptor.hasBoxCollider(halfWidth: 50, halfHeight: 1);
+  }
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -43,13 +55,25 @@ class _Floor extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
 /// A bouncy ball, covering the circle shape and restitution.
 class _Ball extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  final circle = CircleBody.of(radius: 0.5, restitution: 0.8);
+  late final CircleBody circle;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    circle = descriptor.hasCircleCollider(radius: 0.5, restitution: 0.8);
+  }
 }
 
 /// A kinematic moving platform: gameplay sets its velocity, the solver
 /// integrates it.
 class _Platform extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  final box = BoxBody.of(halfWidth: 4, halfHeight: 0.5);
+  late final BoxBody box;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    box = descriptor.hasBoxCollider(halfWidth: 4, halfHeight: 0.5);
+  }
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -60,7 +84,13 @@ class _Platform extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
 
 /// A body that never rotates.
 class _Pinned extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  final circle = CircleBody.of(radius: 0.5);
+  late final CircleBody circle;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    circle = descriptor.hasCircleCollider(radius: 0.5);
+  }
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -154,8 +184,12 @@ class _GameState extends GameState<_Game> {
     loadScene(_Scene());
   }
 
-  final gameplaySystem = GameSystem.of(_GameplaySystem.new);
-  final physics = GameSystem.of(() => Box2DPhysicsSystem(workerCount: _workers));
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_GameplaySystem.new);
+    physics = descriptor.has(() => Box2DPhysicsSystem(workerCount: _workers));
+  }
 }
 
 class _Game extends Game {
@@ -176,18 +210,14 @@ class _Game extends Game {
 const Duration _step = Duration(microseconds: 16667);
 
 /// Worker threads the fixture's physics system is built with. A file-level
-/// binding because the build closure on the state's field takes no arguments
-/// and a field initialiser cannot read a sibling.
+/// binding because the system is constructed inside `describeSystems`, which
+/// the Game calls and which takes no arguments.
 int _workers = 1;
 
 Future<_Scene> _boot({int workers = 1}) async {
   _workers = workers;
   final game = await Game.startInline(_Game.new);
   run = game;
-  // Read off the state rather than captured at declaration: the declaration
-  // is a field on the state and the system is built on the copy that ticks,
-  // so this is where the object first exists.
-  physics = run.state.getSystem<Box2DPhysicsSystem>();
   addTearDown(() async {
     // Stop FIRST, then dispose. Stopping unloads the scenes, which unmounts
     // every entity and destroys its Box2D body - so disposing first would

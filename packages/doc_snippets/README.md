@@ -68,7 +68,7 @@ the same name:
 
 ```markdown
 <!-- snippet-setup
-final camera = given<CameraProjection>();
+final descriptor = given<SpriteDescriptor>();
 -->
 ```
 

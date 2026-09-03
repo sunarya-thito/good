@@ -16,7 +16,11 @@ mixin Transform2D on Component {
 
   final transformRotation = Field.float64();
 
-  final transform2DType = Component.type<Transform2D>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<Transform2D>();
+  }
 
   // --- Unity-Transform-inspired helpers -----------------------------------
   //

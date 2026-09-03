@@ -90,9 +90,9 @@ class MyGame extends Game2D {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    level1 = descriptor.has(Level1.new);
-    level2 = descriptor.has(Level2.new);
-    hud = descriptor.has(HudScene.new);
+    level1 = descriptor.has(Level1());
+    level2 = descriptor.has(Level2());
+    hud = descriptor.has(HudScene());
   }
 }
 ```
@@ -105,16 +105,9 @@ freely at runtime**: archetype ids are process-global and never recycled, so a
 scene registered afresh on every load would leak ids and leave every unloaded
 scene's archetypes in the registry for queries to keep walking.
 
-The descriptor takes the **constructor**, not an instance, the same as every
-other `has`. The framework builds the scene with a declaration window open
-around the call, which is what lets a scene declare its own events on a field —
-see [Events and listeners](events.md#a-dispatcher-is-a-field).
-
 Passing an *undeclared* scene to `loadScene` still works and registers lazily,
 so `describeScenes` is additive, not an obligation — the scaffold's
-`loadScene(MainScene())` is fine for a game with one scene. A scene built that
-way has no window, so its own events come off `EventBus.events` in its
-constructor body.
+`loadScene(MainScene())` is fine for a game with one scene.
 
 ## Loading and unloading
 

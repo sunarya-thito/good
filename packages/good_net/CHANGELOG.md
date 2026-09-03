@@ -2,18 +2,6 @@
 
 ### Changed
 
-* **`MultiplayerState.network` is a getter over the declared system** (#287).
-  It was a `late final` field that `describeSystems` filled in after declaring
-  the system, which named one system twice. `descriptor.has(NetworkSystem.new)`
-  is the declaration; `network` looks it up. A read before the pass has run now
-  reports the pass by name instead of a `LateInitializationError`.
-
-* **`describeNetwork` documents why it is a hook.** Its descriptor is a binder
-  over `NetworkSystem.registry`, so it exists only once that system does, and a
-  system exists only on the copy that ticks — which is not the copy that runs a
-  `GameState` field initialiser. `hasHandler` and `hasSignal` also name an
-  instance member of the state, which a field initialiser cannot.
-
 * **`MultiplayerState` declares its `NetworkSystem` before describing it.**
   `describeSystems` used to build the system, run `describeNetwork` into it
   and hand the finished object to `descriptor.has`. `SystemDescriptor.has`
@@ -22,43 +10,6 @@
   handle (#91). Nothing about a game's own `describeNetwork` changes.
 
 ### Breaking
-
-* **`MultiplayerState.describeEvents` is gone. Its four dispatchers are
-  fields** (#287):
-
-  ```dart
-  final peerJoinedEvent = Event.of<NetPeerListener, NetPeerId>(
-    (listener, peer) => listener.onPeerJoined(peer),
-  );
-  ```
-
-  `peerJoinedEvent`, `peerLeftEvent`, `sessionOpenedEvent` and
-  `sessionClosedEvent` are `final` rather than `late final`, and stop being
-  assigned from a hook the kernel no longer drives. `MultiplayerState` mixes
-  into a `GameState`, which `Game.createState` builds inside a declaration
-  window, so `Event.of` on one of its fields declares into that state's binder
-  - the same binder the hook wrote to. Same listeners, same order, same
-  delivery.
-
-* **`NetMessageBase.describeParams` is gone. A message declares its fields on
-  the fields that hold them** (#287):
-
-  ```dart
-  class Fire extends NetMessage<({double angle, int weapon})> {
-    final angle = Param.float32();
-    final weapon = Param.uint4();
-  }
-  ```
-
-  | before | after |
-  |---|---|
-  | `void describeParams(ParamDescriptor d) { angle = d.hasFloat32(); }` | `final angle = Param.float32();` |
-
-  `NetRegistry.declare` already opened the layout around the constructor, so
-  the fields were always declared before the hook ran and the record they
-  produce is unchanged - a build's schema hash is the same on both sides of
-  this. Deleted together with `GameCommandBase.describeParams` in `good`,
-  because the two share one record vocabulary and one `ParamLayout`.
 
 * **`NetDescriptor.has` takes a constructor, not an instance.**
   `descriptor.has(Fire(), id: 'fire')` becomes

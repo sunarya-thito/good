@@ -71,7 +71,7 @@ abstract class DemoGame extends Game2D {
   /// like the renderer getting slower unless you can see it.
   final spritesDrawn = Channel.int32();
 
-  final setPopulation = Command.of(SetPopulation.new);
+  late final SetPopulation setPopulation;
 
   /// A megabyte per page - big enough that a 20k-entity case is a handful of
   /// pages rather than hundreds, small enough that a case holding one camera
@@ -81,6 +81,12 @@ abstract class DemoGame extends Game2D {
 
   @override
   int get maxSpritesPerTick => 24000;
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    setPopulation = descriptor.has(SetPopulation.new);
+  }
 
   @override
   DemoState createState();
@@ -107,16 +113,21 @@ abstract class DemoState<G extends DemoGame> extends GameState2D<G> {
   /// engine. Read by [DemoStats], which is the last thing in the advance.
   final DemoProfile profile = DemoProfile();
 
-  // Declaration order matters for the two render probes and for nothing
-  // else here: they agree about `GameRenderer2D` and have no opinion about
-  // each other, so the tie between them breaks on the order they were
-  // declared in. Every other probe states its position outright.
-  final fixedPhaseStart = GameSystem.of(_FixedPhaseStart.new);
-  final fixedPhaseEnd = GameSystem.of(_FixedPhaseEnd.new);
-  final presentPhaseStart = GameSystem.of(_PresentPhaseStart.new);
-  final renderPhaseStart = GameSystem.of(_RenderPhaseStart.new);
-  final renderPhaseEnd = GameSystem.of(_RenderPhaseEnd.new);
-  final demoStats = GameSystem.of(DemoStats.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    // Declaration order matters for the two render probes and for nothing
+    // else here: they agree about `GameRenderer2D` and have no opinion about
+    // each other, so the tie between them breaks on the order they were
+    // declared in. Every other probe states its position outright.
+    descriptor
+      ..has(_FixedPhaseStart.new)
+      ..has(_FixedPhaseEnd.new)
+      ..has(_PresentPhaseStart.new)
+      ..has(_RenderPhaseStart.new)
+      ..has(_RenderPhaseEnd.new)
+      ..has(DemoStats.new);
+  }
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
@@ -333,9 +344,8 @@ class DemoStats extends GameSystem with Tickable {
       ..bestSystemMicros.value = profile.bestSystemMicros
       // Zero on a frame that ran no step, rather than a stamp difference
       // against a `stepEndedAt` left over from the last frame that did.
-      ..stepMicros.value = profile.steps == 0
-          ? 0
-          : profile.stepEndedAt - profile.frameStartedAt
+      ..stepMicros.value =
+          profile.steps == 0 ? 0 : profile.stepEndedAt - profile.frameStartedAt
       ..presentMicros.value = now - profile.presentStartedAt
       ..renderMicros.value = profile.renderMicros
       ..advanceMicros.value = now - profile.frameStartedAt

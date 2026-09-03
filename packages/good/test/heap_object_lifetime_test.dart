@@ -61,7 +61,11 @@ mixin _Holder on Component {
     maybe = data.optHeapObject<List<int>>();
   }
 
-  final holderType = Component.type<_Holder>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<_Holder>();
+  }
 }
 
 class _Thing extends EntityStruct with _Holder, Child, Parent {}
@@ -139,7 +143,7 @@ class _HeapGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    level = descriptor.has(_GameLevel.new);
+    level = descriptor.has(_GameLevel());
   }
 }
 

@@ -4,10 +4,14 @@
 // The component the movement example walks, and the systems the enable /
 // disable example names.
 mixin Velocity on Component {
-  final velocityType = Component.type<Velocity>();
-
   final velocityX = Field.float64();
   final velocityY = Field.float64();
+
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<Velocity>();
+  }
 }
 
 class AiSystem extends GameSystem {}
@@ -253,8 +257,8 @@ class PlayerSystem extends GameSystem with FixedTickable {
 
 Keeping the action beside the loop that reads it is usually better than
 declaring every input on the `Game` — the declaration and its only consumer stay
-in one file. See [input](input.md) for where a type-level fallback goes, which
-is the one part of input that is not a field.
+in one file. See [input](input.md) for when the `describeInputs` hook is still
+the answer.
 
 ## Lifecycle
 

@@ -12,7 +12,7 @@ import 'package:good/good.dart';
 /// It looks down its own **-Z**, because -Z is forward; see `Transform3D`.
 ///
 /// A prefab that wants different clip planes or a different field of view
-/// sets the column defaults in its own `describeStruct`:
+/// overrides the column defaults in its own `describeStruct`:
 ///
 /// ```dart
 /// class Eye extends EntityStruct with Transform3D, WorldTransform3D, Camera3D {
@@ -55,18 +55,26 @@ mixin Camera3D on Component {
   /// Typed, not an int: [CameraView] is an [IntRepresentable], so a stray
   /// integer does not compile here.
   ///
-  /// The table it is declared against is the declaring game's own, not a
-  /// shared registry: an address read out of this field means nothing except
-  /// against that table. [CameraView.representation] is how a field
-  /// initialiser names it - the table is opened over a scene's declaration
-  /// passes, the way the asset table is.
+  /// The one field here that needs [describeStruct]: the view table it is
+  /// declared against comes from `getScene`, an instance method a field
+  /// initialiser cannot reach.
   ///
   /// More than one camera on one view has no meaning - a view has one origin
   /// - and nothing here checks for it. `goo2d` makes that check in
   /// `ActiveCameraResolver`.
-  final cameraView = Field.optPacked<CameraView>(
-    CameraView.representation(),
-  );
+  late final DataPointer<CameraView?> cameraView;
 
-  final camera3DType = Component.type<Camera3D>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<Camera3D>();
+  }
+
+  @override
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    // The declaring game's own view table - not a shared registry. An address
+    // read out of this field means nothing except against this table.
+    cameraView = data.optPacked(getScene<SceneStruct>().cameraViews);
+  }
 }

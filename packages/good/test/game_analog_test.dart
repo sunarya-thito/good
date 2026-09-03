@@ -70,38 +70,46 @@ pads.NormalizedGamepadEvent _event(
 /// side is what makes "thresholded, not proportional" a failing assertion
 /// rather than a passing one.
 class _AnalogSystem extends GameSystem with FixedTickable {
-  _AnalogSystem() {
+  late final Input<Vector2> stick;
+  late final Input<Vector2> thresholded;
+  late final Input<Vector2> touch;
+  late final Input<double> throttle;
+  late final Input<double> pull;
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    stick = input.has<Vector2>(
+      const StickBinding(x: .padLeftStickX, y: .padLeftStickY),
+    );
+    thresholded = input.has<Vector2>(
+      const Vec2Binding(
+        up: .padLeftStickUp,
+        down: .padLeftStickDown,
+        left: .padLeftStickLeft,
+        right: .padLeftStickRight,
+      ),
+    );
+    touch = input.has<Vector2>(
+      const StickBinding(x: .virtualLeftStickX, y: .virtualLeftStickY),
+    );
+    throttle = input.has<double>(const AxisBinding(.padRightTrigger), 0.0);
+    pull = input.has<double>(const AxisBinding(.padLeftTrigger), 0.0);
+
     stick.pressed += (event) => events.add('stick pressed');
     stick.released += (event) => events.add('stick released');
   }
-
-  final stick = Input.of<Vector2>(
-    const StickBinding(x: .padLeftStickX, y: .padLeftStickY),
-  );
-
-  final thresholded = Input.of<Vector2>(
-    const Vec2Binding(
-      up: .padLeftStickUp,
-      down: .padLeftStickDown,
-      left: .padLeftStickLeft,
-      right: .padLeftStickRight,
-    ),
-  );
-
-  final touch = Input.of<Vector2>(
-    const StickBinding(x: .virtualLeftStickX, y: .virtualLeftStickY),
-  );
-
-  final throttle = Input.of<double>(const AxisBinding(.padRightTrigger), 0.0);
-
-  final pull = Input.of<double>(const AxisBinding(.padLeftTrigger), 0.0);
 
   @override
   void onFixedUpdate() {}
 }
 
 class _AnalogGameState extends GameState<_AnalogGame> {
-  final analogSystem = GameSystem.of(_AnalogSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_AnalogSystem.new);
+  }
 }
 
 class _AnalogGame extends Game {

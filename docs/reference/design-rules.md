@@ -127,8 +127,8 @@ Two things this buys that the first spelling cannot:
   and "don't import both" is no answer when they are in one package.
 
 !!! info "What stays where it is"
-    - **Declarations.** `Component.type`, `describeStruct`, `Sprite.of` and
-      `BoxBody.of` act on the *archetype*, take no entity, and belong
+    - **Declaration hooks.** `describeType`, `describeStruct`, `describeSprites`
+      and `describeCollider` act on the *archetype*, take no entity, and belong
       on the mixin. That is the same test, answered the other way, and it is
       why `EntityStruct.of` returns a prefab rather than something per-entity.
     - **Listener callbacks.** `onEntityMounted`, `onEntitySpawned` and their
@@ -221,9 +221,9 @@ entity<Transform3D>().upZ;
     source. It is emphatically *not* the pass that computes the row layout,
     which no scan can be — a byte offset is the running total of a
     `declareField` sequence that depends on values only available at run time.
-    `TextLabel.of` sizes an array from the capacity the prefab passed it;
-    `Sprite.of` declares twenty-one columns per call and a prefab declares as
-    many sprites as it likes; `hasEnum` widens by `values.length`. Offsets are
+    `Text2D.describeStruct` reads `textCapacity`, an overridable getter;
+    `SpriteDescriptor.has` declares twenty-one columns per call and prefabs
+    override `describeSprites`; `hasEnum` widens by `values.length`. Offsets are
     unobtainable and are not wanted here.
 
     What it cannot generate for, it leaves alone, and the omission is a compile

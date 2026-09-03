@@ -229,28 +229,36 @@ is a **compile error**, not a missing texture at runtime.
 
 Declare the asset on the prefab and hand it to the sprite:
 
-```dart title="lib/game/prefabs/player.dart" hl_lines="4 9 10 11 12 13"
+```dart title="lib/game/prefabs/player.dart" hl_lines="4 10 11 12 13 14 20"
 import 'package:goo2d/goo2d.dart';
 
 import 'package:my_game_bundle/textures.dart';
 
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
+  late final TextureAsset texture;
+  late final Sprite sprite;
   final speed = Field.float64(220);
 
-  final sprite = Sprite.of(
-    width: 64,
-    height: 64,
-    texture: Asset.of(Textures.spritesPlayer),
-  );
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    texture = descriptor.has(Textures.spritesPlayer);
+  }
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    sprite = descriptor.has(width: 64, height: 64, texture: texture);
+  }
 }
 ```
 
-!!! tip "Declare the asset where the sprite names it"
-    A field initialiser cannot read a sibling field, so the asset is declared
-    inside the call that uses it. `Asset.of` is idempotent per identity and
-    prefabs share their scene's descriptor, so naming one key twice — here and
-    in the scene — still gives one handle, one address and one decode.
+!!! tip "Declare the asset wherever you use it"
+    A prefab that reads a texture must declare it, even if its scene declares
+    the same one. `has` is idempotent per identity and prefabs share their
+    scene's descriptor, so both fields end up the identical handle — one
+    address, one decode.
 
 Run it: your image, moving with `WASD`.
 

@@ -1,11 +1,11 @@
 import 'package:meta/meta.dart';
 
 import 'package:good/src/coroutine/coroutine.dart';
+import 'package:good/src/animation/animatable.dart';
 import 'package:good/src/animation/struct.dart';
 import 'package:good/src/archetype.dart';
 import 'package:good/src/asset.dart';
 import 'package:good/src/camera_view.dart';
-import 'package:good/src/data.dart';
 import 'package:good/src/data/hierarchy.dart';
 import 'package:good/src/data_layout.dart';
 import 'package:good/src/declare.dart';
@@ -32,43 +32,43 @@ abstract class SceneStruct extends GameListenerBase
   ///
   /// The payload is still the [Scene], because one `SceneStruct` backs however
   /// many loaded instances: "which of mine" is a real question even here.
-  ///
-  /// Declared through `Event.inherited`, which reads no declaration window.
-  /// A scene the framework builds - `descriptor.has(MainScene.new)` - has one,
-  /// and `Event.of` on a subclass's own field is the shape to reach for there.
-  /// A scene the caller builds and hands to [GameState.loadScene] has none.
-  /// This pair is inherited by every scene however it was built, and the scene
-  /// takes it when its construction finishes.
-  final mountedEvent = Event.inherited<SceneLifecycleListener, Scene>(
-    (listener, scene) => listener.onSceneMounted(scene),
-  );
+  late final EventDispatcher<SceneLifecycleListener, Scene> mountedEvent;
 
   /// An instance of this scene is being unloaded, while its entities are still
   /// readable. Same scope as [mountedEvent].
-  ///
-  /// `reverse: true` is what lets the owning struct stop being a separate
-  /// virtual. One collect pass offers this scene *first* and its prefabs
-  /// after, so at mount the scene's own `onSceneMounted` runs before anything
-  /// it composes - a listener still finds the starting entities already
-  /// spawned. Reading the same list backwards at unmount puts the scene
-  /// *last*, so it can still read the world when everything below it has been
-  /// told. Two orders, one list.
-  final unmountedEvent = Event.inherited<SceneLifecycleListener, Scene>(
-    (listener, scene) => listener.onSceneUnmounted(scene),
-    reverse: true,
-  );
+  late final EventDispatcher<SceneLifecycleListener, Scene> unmountedEvent;
+
+  @override
+  @mustCallSuper
+  void describeEvents(EventDescriptor descriptor) {
+    super.describeEvents(descriptor);
+    mountedEvent = descriptor.has(
+      (listener, scene) => listener.onSceneMounted(scene),
+    );
+    // `reverse: true` is what lets the owning struct stop being a
+    // separate virtual. One collect pass offers this scene *first* and
+    // its prefabs after, so at mount the scene's own onSceneMounted runs
+    // before anything it composes - a listener still finds the starting
+    // entities already spawned. Reading the same list backwards at
+    // unmount puts the scene *last*, so it can still read the world when
+    // everything below it has been told. Two orders, one list.
+    unmountedEvent = descriptor.has(
+      (listener, scene) => listener.onSceneUnmounted(scene),
+      reverse: true,
+    );
+  }
 
   /// Every prefab [describeScene] registered, in declaration order.
   ///
   /// Typed as [EventBus], not `EntityStruct`, because that is exactly the
   /// capability this list exists to serve: the prefabs in it are collected as
-  /// listeners and get their own collect pass. Nothing here needs them to be
-  /// entity structs specifically.
+  /// listeners and get their own `describeEvents` pass. Nothing here needs them
+  /// to be entity structs specifically.
   final List<EventBus> _prefabs = <EventBus>[];
 
   /// [_prefabs] - the live list, walked at boot by `Game._bindEvents` so each
-  /// prefab gets its own collect pass. Internal: user code holds the typed
-  /// instances `describeScene` gave it, never this.
+  /// prefab gets its own `describeEvents` pass. Internal: user code holds the
+  /// typed instances `describeScene` gave it, never this.
   @internal
   List<EventBus> get declaredPrefabs => _prefabs;
 
@@ -118,7 +118,7 @@ abstract class SceneStruct extends GameListenerBase
   /// scenes possible at once: a `SceneStruct` is a *declaration* that may back
   /// many loaded [Scene]s, so it cannot own the storage those instances
   /// allocate out of. Pool identity therefore says nothing about scene
-  /// identity - see the check inside [addEntityIn].
+  /// identity - see the check inside [addToSceneById].
   ///
   /// Still injectable, just one level up: `Game.pageSize`/`Game.maxPages`
   /// configure it, and a test or headless harness that brings a scene up by
@@ -207,9 +207,9 @@ abstract class SceneStruct extends GameListenerBase
 
   /// Every asset declared while this scene was initialized, in declaration
   /// order: this scene's own [describeAssets] first, then each registered
-  /// prefab's `Asset.of` fields, in `describeScene` order. Deduplicated - two
-  /// prefabs sharing a texture contribute one entry, because they share one
-  /// handle and one address.
+  /// prefab's, in `describeScene` order. Deduplicated - two prefabs sharing a
+  /// texture contribute one entry, because they share one handle and one
+  /// address.
   ///
   /// Handles, not keys, because everything downstream wants one: a
   /// scene transition needs each asset's address to send across the isolate
@@ -224,7 +224,7 @@ abstract class SceneStruct extends GameListenerBase
 
   /// [_declaredAssets] - the live list, walked by index at scene-transition
   /// time. Internal because it is transition plumbing; user code holds the
-  /// typed handles the declaration gave it, never this.
+  /// typed handles `describeAssets` gave it, never this.
   @internal
   List<Asset<Object?>> get declaredAssets => _declaredAssets;
 
@@ -234,13 +234,9 @@ abstract class SceneStruct extends GameListenerBase
   void describeScene(SceneDescriptor descriptor) {}
 
   /// Declares the assets this scene needs that belong to no prefab -
-  /// background music, UI chrome, a loading backdrop.
-  ///
-  /// A prefab declares its own with `Asset.of` on the field that holds the
-  /// handle. A scene cannot: it has no [Assets] until [initializeScene], which
-  /// runs after the constructor returns, so its field initialisers run before
-  /// there is anything to declare into. This hook is handed the same
-  /// descriptor `Asset.of` reads, at the point where one exists.
+  /// background music, UI chrome, a loading backdrop. The same hook
+  /// `Component.describeAssets` gives a prefab, for the same reason and with
+  /// the same handle-in-a-field discipline (the typed-handle rule).
   ///
   /// A scene's full asset footprint is the **union** of this and every prefab
   /// it registers, which is what `GameState.loadScene` loads and later
@@ -253,9 +249,9 @@ abstract class SceneStruct extends GameListenerBase
 
   /// Drives the one-time declaration passes: this scene's own
   /// [describeAssets], then [describeScene], where each `descriptor.has(...)`
-  /// registers an archetype, constructs the struct with the descriptors open
-  /// around it - which is where its `Asset.of` fields declare - then walks its
-  /// `describeStruct` chain to finish the layout and freezes it.
+  /// registers an archetype, walks the struct's `describeType`/
+  /// `describeAssets`/`describeStruct` chain to build its layout, and freezes
+  /// it.
   ///
   /// The scene's own assets come first so the whole ordering is one readable
   /// sequence - and, like every other declaration order in this engine, it
@@ -287,27 +283,20 @@ abstract class SceneStruct extends GameListenerBase
     // span the descriptor is valid for: one `_AssetDescriptor` serves this
     // scene's own `describeAssets` and every prefab `describeScene`
     // registers. So a prefab's `final texture = Asset.of(Textures.player)`
-    // and a texture the scene names itself land in the same object - see
-    // `DeclarationContext.assets`, which spells out why this level has no
+    // reaches the same object its `describeAssets` would have been handed -
+    // see `DeclarationContext.assets`, which spells out why this level has no
     // barrier.
     DeclarationContext.pushAssets(descriptor);
-    // The camera-view table is opened over the same span and for the same
-    // reason: it belongs to the game, one of it serves every prefab this
-    // pass registers, and a `Camera` component's
-    // `Field.optPacked(CameraView.representation())` reads it from a field
-    // initialiser inside `describeScene`.
-    DeclarationContext.pushCameraViews(this.cameraViews);
     try {
       describeAssets(descriptor);
-      describeScene(_SceneDescriptor(this));
+      describeScene(_SceneDescriptor(this, descriptor));
     } finally {
-      DeclarationContext.popCameraViews();
       DeclarationContext.popAssets();
     }
     // A scene brought up by hand has no boot pass to bind its events, so it
     // does it now. One brought up by a `Game` waits: a prefab's
     // `collectListeners` may reach for a system (`getSystem<T>()`), and
-    // `Game._bootGame` runs `describeScenes` before it builds systems, so no
+    // `Game._bootGame` runs `describeScenes` before `describeSystems`, so no
     // system exists at this point. `Game` calls [bindEvents] once every
     // declaration exists.
     if (_state == null) bindEvents();
@@ -674,9 +663,15 @@ abstract class SceneDescriptor {
 /// the layout is rebuilt from scratch on every run and never persisted.
 /// Changing a struct's mixin list changes its layout, and always did.
 final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
-  _SceneDescriptor(this._scene);
+  _SceneDescriptor(this._scene, this._assets);
 
   final SceneStruct _scene;
+
+  /// The scene's one `AssetDescriptor`, shared with the scene's own
+  /// [SceneStruct.describeAssets] pass - so a texture the scene declares and a
+  /// texture a prefab declares are the same declaration, one instance and one
+  /// address, exactly as two prefabs sharing one would be.
+  final _AssetDescriptor _assets;
 
   /// The prefab classes whose registration is currently open, outermost
   /// first - one entry per level of `EntityStruct.of` nesting.
@@ -770,40 +765,17 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
     // is a declaration too, and it has to reach the binder [bindEvents] will
     // hand the collect pass however much later.
     final storage = ArchetypeRegistry.reserve(_scene.pool);
-    final components = ArchetypeComponentDescriptor(storage);
     final T object;
     final children = <EntityStruct>[];
     _open.add(T);
     _children.add(children);
     _storages.add(storage);
     DeclarationContext.pushData(ArchetypeDataDescriptor(storage));
-    DeclarationContext.pushComponents(components);
     DeclarationContext.pushPrefabs(this);
-    // Opened around the whole registration and not only the constructor: a
-    // multi-instance component takes its own declarations from inside the
-    // constructor, and what nothing took is read one line after it returns.
-    DeclarationContext.pushDeclared();
-    final List<TimelineStruct> timelines;
     try {
       object = EventBinder.open(create);
-      // Taken before the leftover check, because `Animations` is on every
-      // prefab and has no field of its own to take them with - a timeline
-      // belongs to the prefab, not to one component of it.
-      timelines = DeclarationContext.takeDeclared<TimelineStruct>();
-      final leftover = DeclarationContext.undeclaredLeftovers;
-      if (leftover.isNotEmpty) {
-        throw StateError(
-          '$T declares a ${leftover.first.runtimeType} that no component '
-          'takes. A multi-instance declaration is collected by the component '
-          'mixin that owns it while the prefab is being constructed, so this '
-          'prefab is missing that mixin - a Sprite needs `with Renderable2D`, '
-          'a ColliderBody needs `with Collider2D`.',
-        );
-      }
     } finally {
-      DeclarationContext.popDeclared();
       DeclarationContext.popPrefabs();
-      DeclarationContext.popComponents();
       DeclarationContext.popData();
       _storages.removeLast();
       _children.removeLast();
@@ -823,54 +795,41 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
     }
     storage.bindPrefab(object);
     object.bindArchetype(_scene, storage);
-    // The prefab's own type, and the framework's line rather than the user's:
-    // `runtimeType` is not reachable from a field initialiser, and it is the
-    // one bit in a signature only a run can know. Then the pairs a component
-    // refused, once every `Component.type` field has run.
-    components
-      ..declareSelf(object.runtimeType)
-      ..checkConflicts(object.runtimeType);
     // Barrier, not a descriptor: these passes are not constructors, so
     // `Field.*` inside one has always been an error - and once registration
     // nests, "no context" is no longer the same as "an empty stack". Without
     // it a child's describeStruct body would declare onto its parent's row.
-    // `Component.type` is barriered with it, for the same reason and against
-    // the same mistake one level over: a bit on the declarer's signature.
     DeclarationContext.pushBarrier();
-    DeclarationContext.pushComponentBarrier();
     try {
-      // A prefab's own assets are already declared and already addressed:
-      // `Asset.of` runs from a field initialiser, inside the constructor
-      // above, and the descriptor it reaches is the scene's. So describeStruct
-      // can hand one straight to `data.hasPacked` as this archetype's default
-      // row value.
+      object.describeType(ArchetypeComponentDescriptor(storage));
+      // Before describeStruct, not after: `has` returns an already-addressed
+      // instance, so describeStruct can hand one straight to `data.hasObject`
+      // as this archetype's default row value.
+      object.describeAssets(_assets);
       object.describeStruct(ArchetypeDataDescriptor(storage));
       // Timelines last, because keying a clip is pure declaration and depends
-      // on nothing above it. This is the scene reaching a declaration that
-      // was made before there was a scene to reach: `TimelineStruct.of` runs
-      // in a field initialiser and records the timeline, and the clock it
-      // samples against is settled here.
-      for (var i = 0; i < timelines.length; i++) {
-        timelines[i].initializeTimeline(_scene);
-      }
+      // on nothing above it. Unconditional and with no `is Animations` test:
+      // every `EntityStruct` has `Animations`, and its default declares
+      // nothing.
+      object.describeAnimation(_AnimationTypeDescriptor(_scene));
     } finally {
-      DeclarationContext.popComponents();
       DeclarationContext.popData();
     }
-    // Recorded for the event pass: `Game._bindEvents` collects into each
-    // prefab's own dispatchers, and `SceneStruct.collectListeners` walks this
-    // list so an event declared above reaches every struct the scene can
-    // spawn.
+    // Recorded for the event passes: `Game._bindEvents` gives each prefab its
+    // own `describeEvents`, and `SceneStruct.collectListeners` walks this list
+    // so an event declared above reaches every struct the scene can spawn.
     //
     // A declared child lands here before its declarer does, because its whole
     // registration happens inside the declarer's constructor. Deterministic,
     // which is all the event order has ever promised.
     _scene._prefabs.add(object);
-    // A prefab declares no state channel. A channel's index has to be fixed
-    // at boot and announced once, and a scene is loaded from
-    // `GameState.loadScene`, after boot and possibly several times over a
-    // run. Publish scene-derived values from a `GameSystem` instead; see
-    // `Channel`.
+    // There is deliberately no describeState pass here. A prefab used to be
+    // able to declare a state channel, threaded through the scene's `game`
+    // back-reference into the boot pass's shared descriptor - and it stopped
+    // working the moment scene loading moved out of boot and into
+    // `GameState.loadScene`, because a channel's index has to be fixed at
+    // boot and announced once. Publish scene-derived values from a
+    // `GameSystem` instead; see `Game.describeState`.
     storage.seal();
     return object;
   }
@@ -879,17 +838,13 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
 /// The one and only asset declaration point, and the collector of one
 /// scene's asset footprint.
 ///
-/// One instance per [SceneStruct.initializeScene] call, reached by the
-/// scene's own `describeAssets` and by the `Asset.of` fields of every prefab
-/// `_SceneDescriptor.has` registers, so the whole scene contributes to a
-/// single deduplicated, ordered list.
+/// One instance per [SceneStruct.initializeScene] call, shared by the scene's
+/// own `describeAssets` and by every prefab `_SceneDescriptor.has` registers,
+/// so the whole scene contributes to a single deduplicated, ordered list.
 final class _AssetDescriptor implements AssetDescriptor {
   _AssetDescriptor(this._scene);
 
   final SceneStruct _scene;
-
-  @override
-  IntRepresentation<Asset<T>> representationOf<T>() => _scene.assets.of<T>();
 
   @override
   Asset<T> has<T>(AssetKey<T> key) {
@@ -916,6 +871,21 @@ final class _AssetDescriptor implements AssetDescriptor {
 }
 
 /// Runs each declared timeline's own two passes and binds it to the clock.
+final class _AnimationTypeDescriptor implements AnimationTypeDescriptor {
+  _AnimationTypeDescriptor(this._scene);
+
+  /// The **scene**, not its `GameState`: a scene can legitimately be brought
+  /// up without one (see `SceneStruct.initializeScene`), and a timeline that
+  /// grabbed the clock here would make declaring one impossible headlessly.
+  final SceneStruct _scene;
+
+  @override
+  T has<T extends TimelineStruct>(T struct) {
+    struct.initializeTimeline(_scene);
+    return struct;
+  }
+}
+
 /// Destroying an entity, which is a property of the **entity** and not a
 /// choice of scene.
 ///

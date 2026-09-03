@@ -33,7 +33,7 @@ import 'package:goo2d/goo2d.dart';
 
 /// A stand-in for something a fragment is handed by the code around it.
 ///
-/// `final camera = given<CameraProjection>();` in a `<!-- snippet-setup -->`
+/// `final descriptor = given<SpriteDescriptor>();` in a `<!-- snippet-setup -->`
 /// block gives the fence a correctly typed local without a page of
 /// construction. Typed and never `dynamic`, so the call inside the fence is
 /// still checked against the real class.
@@ -120,15 +120,29 @@ enum Audios with LocalEnumAssetKey<AudioClip> {
 
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D, Collider2D {
-  final texture = Asset.of(Textures.spritesPlayer);
-  final sprite = Sprite.of(
-    texture: Asset.of(Textures.spritesPlayer),
-    width: 64,
-    height: 64,
-  );
-  final hitbox = CircleBody.of(radius: 0.5);
+  late final TextureAsset texture;
+  late final Sprite sprite;
+  late final CircleBody hitbox;
   final speed = Field.float64(120);
   final shielded = Field.boolean();
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    texture = descriptor.has(Textures.spritesPlayer);
+  }
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    sprite = descriptor.has(texture: texture, width: 64, height: 64);
+  }
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    hitbox = descriptor.hasCircleCollider(radius: 0.5);
+  }
 }
 
 class Enemy() extends EntityStruct
@@ -137,13 +151,20 @@ class Enemy() extends EntityStruct
 class Eye() extends EntityStruct with Transform2D, WorldTransform2D, Camera;
 
 class MyGame extends Game2D {
-  /// The two state channels the guide publishes to. A page declaring its own
-  /// shadows these.
-  final score = Channel.int32();
-  final contactCount = Channel.int32();
+  /// The two state channels the guide publishes to. A page that teaches
+  /// `describeState` declares its own and shadows this one.
+  late final StateChannel<int> score;
+  late final StateChannel<int> contactCount;
 
   @override
   MyState createState() => MyState();
+
+  @override
+  void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
+    score = descriptor.hasInt32();
+    contactCount = descriptor.hasInt32();
+  }
 }
 
 class MyState extends GameState2D<MyGame> {

@@ -88,7 +88,13 @@ class _OriginProbe extends GameSystem with Tickable {
 }
 
 class _ProbedState extends SceneGraphState {
-  final probe = GameSystem.of(_OriginProbe.new);
+  late final _OriginProbe probe;
+
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    probe = descriptor.has(_OriginProbe.new);
+  }
 }
 
 class _ProbedGame extends SceneGraphGame {
@@ -133,7 +139,7 @@ void main() {
         game.state.advance(_step);
       }
 
-      final probe = game.probedState.probe.value;
+      final probe = game.probedState.probe;
       expect(
         probe.sightings,
         isEmpty,

@@ -42,7 +42,13 @@ const int _lineColor = 0xFF00FFFF;
 /// somewhere else.
 class _Box extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  final quad = Sprite.of(width: 16, height: 16, color: _spriteColor);
+  late final Sprite quad;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    quad = descriptor.has(width: 16, height: 16, color: _spriteColor);
+  }
 }
 
 class _Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
@@ -81,7 +87,11 @@ class _Painter extends GameSystem with FixedTickable {
 }
 
 class _State extends GameState2D<_DebugGame> {
-  final painter = GameSystem.of(_Painter.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_Painter.new);
+  }
 
   @override
   void onMounted() {

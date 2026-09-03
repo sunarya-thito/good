@@ -105,7 +105,7 @@ FakePackage kernelPackage({
 /// The `good` stand-in a component-bit fixture needs.
 ///
 /// [kernelPackage] plus the two declarations table generation reads:
-/// `Component.type`, which a component's field initialiser calls, and
+/// `ComponentDescriptor`, which a `describeType` body takes, and
 /// `GeneratedComponentBits`, which the generated table is an instance of.
 /// Separate from [kernelPackage] so the accessor fixtures keep reading exactly
 /// what they always read.
@@ -141,18 +141,15 @@ class GeneratedComponentBits {
   final List<GeneratedComponentBits> dependencies;
 }
 
+abstract class ComponentDescriptor {
+  void has<T extends Component>({Type? type});
+}
 ''';
 
 const String kernelStruct = '''
 import 'data.dart';
 
-abstract interface class Component {
-  static ComponentType<T> type<T extends Component>({
-    Map<Type, String> conflictsWith = const <Type, String>{},
-  }) => ComponentType<T>();
-}
-
-class ComponentType<T extends Component> {}
+abstract interface class Component {}
 
 abstract class Prefab implements Component {}
 

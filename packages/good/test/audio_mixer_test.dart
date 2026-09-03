@@ -189,9 +189,9 @@ class _AudioGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    music = descriptor.has(_MusicScene.new);
-    alsoMusic = descriptor.has(_AlsoMusicScene.new);
-    effects = descriptor.has(_EffectScene.new);
+    music = descriptor.has(_MusicScene());
+    alsoMusic = descriptor.has(_AlsoMusicScene());
+    effects = descriptor.has(_EffectScene());
   }
 }
 

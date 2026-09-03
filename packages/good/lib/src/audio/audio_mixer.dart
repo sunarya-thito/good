@@ -115,8 +115,8 @@ final class Voice {
 /// an asset when the count reaches zero. A playing voice takes a claim of the
 /// same kind, so a scene unloading while its music is still sounding drops
 /// the scene's claim and finds the voice's, and the bytes survive. Without
-/// that, a track cannot outlive the scene that declared it - and a `Game`
-/// declares no asset of its own, so *some* scene declared it and every scene
+/// that, a track cannot outlive the scene that declared it - and there is no
+/// game-level `describeAssets`, so *some* scene declared it and every scene
 /// eventually unloads.
 ///
 /// This is not politeness. A backend does not keep a voice alive over its

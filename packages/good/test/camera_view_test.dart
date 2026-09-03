@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:good/good.dart';
+import 'package:good/src/camera_view.dart' show GameCameraDescriptor;
 
 /// The live run under test. A file-level binding: the bring-up helper
 /// returns the `Game` (the description) while tests also need the run, and
@@ -20,8 +21,15 @@ class _TwoCameraGame extends Game {
   @override
   GameState createState() => _State();
 
-  final main = CameraView.of();
-  final minimap = CameraView.of();
+  late final CameraView main;
+  late final CameraView minimap;
+
+  @override
+  void describeCameras(CameraDescriptor descriptor) {
+    super.describeCameras(descriptor);
+    main = descriptor.has();
+    minimap = descriptor.has();
+  }
 }
 
 class _NoCameraGame extends Game {
@@ -33,42 +41,6 @@ class _NoCameraGame extends Game {
 }
 
 class _State extends GameState<Game> {}
-
-/// A prefab holding a camera-view column, declared from a field initialiser.
-/// `good` has no camera component of its own - `goo2d`'s `Camera` and
-/// `goo3d`'s `Camera3D` are this line - so the fixture is the column.
-class _Viewer extends EntityStruct {
-  final view = Field.optPacked<CameraView>(CameraView.representation());
-}
-
-class _ViewerScene extends SceneStruct {
-  late final Scene handle;
-
-  late final _Viewer viewer;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    viewer = descriptor.has(_Viewer.new);
-  }
-}
-
-/// A prefab that tries to *declare* a view instead of naming one. Its field
-/// initialiser runs while the game's table is on the declaration stack - the
-/// same table `CameraView.representation()` above reads - and closed.
-class _DeclaringViewer extends EntityStruct {
-  final view = CameraView.of();
-}
-
-class _DeclaringScene extends SceneStruct {
-  late final _DeclaringViewer viewer;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    viewer = descriptor.has(_DeclaringViewer.new);
-  }
-}
 
 Future<T> _start<T extends Game>(T Function() create) async {
   final game = await Game.startInline(create);
@@ -209,117 +181,13 @@ void main() {
     });
   });
 
-  group('the table a column binds to', () {
-    test('is the one initializeScene was handed', () {
-      final table = CameraViewTable();
-      table.declareDetached();
-      final second = table.declareDetached();
-      final scene = _ViewerScene()
-        ..initializeScene(MemoryPool(pageSize: 4096), cameraViews: table);
-      scene.handle = SceneRegistry.register(scene);
-      addTearDown(scene.pool.dispose);
-
-      final entity = scene.handle.addEntity(scene.viewer);
-      scene.pool.beginTick();
-      scene.viewer.view[entity] = second;
-      scene.pool.commitTick();
-
-      expect(
-        scene.viewer.view[entity],
-        same(second),
-        reason:
-            'the row holds an address, and an address only unpacks against '
-            'the table that issued it - a column bound to any other table '
-            'reads back null here',
-      );
-    });
-
-    test('outside a scene bring-up it names the pass that opens one', () {
-      expect(
-        () {
-          CameraView.representation();
-        },
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            allOf(
-              contains('no scene being brought up'),
-              contains('initializeScene'),
-            ),
-          ),
-        ),
-      );
-    });
-
-    test('the window closes again when initializeScene returns', () {
-      final scene = _ViewerScene()
-        ..initializeScene(MemoryPool(pageSize: 4096));
-      addTearDown(scene.pool.dispose);
-      SceneRegistry.register(scene);
-
-      expect(
-        () {
-          CameraView.representation();
-        },
-        throwsStateError,
-        reason:
-            'a table left on the stack would be read by whatever declared '
-            'next, and a second scene would bind its cameras to the first '
-            "scene's table",
-      );
-    });
-  });
-
-  test('a prefab cannot declare a view into the game it names', () async {
-    final game = await _start(_TwoCameraGame.new);
-    final scene = _DeclaringScene();
-    final pool = MemoryPool(pageSize: 4096);
-    addTearDown(pool.dispose);
-
-    // The game's own table is on the declaration stack for the whole of a
-    // scene's bring-up, because `CameraView.representation()` reads it there.
-    // Without the closed flag this call would land in it and hand back a view
-    // whose two floats of viewport memory were allocated a phase earlier - a
-    // view that reports zero for the rest of the run.
-    expect(
-      () => scene.initializeScene(pool, cameraViews: game.cameraViews),
-      throwsA(
-        isA<StateError>().having(
-          (e) => e.message,
-          'message',
-          allOf(
-            contains('no game being constructed'),
-            contains('CameraView.representation()'),
-          ),
-        ),
-      ),
-    );
-    expect(
-      game.cameraViews.length,
-      2,
-      reason: 'and it added nothing on the way out',
-    );
-  });
-
-  test('a view cannot be declared once the game is built', () async {
+  test('a view cannot be forged - only the descriptor makes one', () async {
     final game = await _start(_TwoCameraGame.new);
     // `CameraView` has only a private constructor, so the sole way to obtain
-    // one is `CameraView.of()`, and that is closed the moment the constructor
-    // returns - a later view would have no viewport memory, since the table's
-    // is allocated before the spawn.
+    // one is the declare pass. This asserts the pass is the only producer by
+    // showing the table grows only through it.
     final before = game.cameraViews.length;
-
-    expect(
-      CameraView.of,
-      throwsA(
-        isA<StateError>().having(
-          (e) => e.message,
-          'message',
-          contains('no game being constructed'),
-        ),
-      ),
-    );
-    expect(game.cameraViews.length, before);
+    GameCameraDescriptor(game, game.cameraViews).has();
+    expect(game.cameraViews.length, before + 1);
   });
 }

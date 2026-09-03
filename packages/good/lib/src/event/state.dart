@@ -78,14 +78,12 @@ abstract class StateChannel<T> implements ValueListenable<T> {
   set value(T newValue);
 }
 
-/// The registrar [Channel] declares against - `Game.start` opens one around
-/// the game's constructor and every `Channel.*` field initialiser lands in
-/// it.
-///
-/// The same *width* vocabulary as `DataDescriptor`: a state channel is a
-/// fixed-width slot in shared memory exactly as a component field is a
-/// fixed-width slice of a row, so it is declared the same way and needs no
-/// codec.
+/// Declares published state - see `Game.describeState`. Same one-pass
+/// declarative shape as `SystemDescriptor`/`BufferDescriptor`/
+/// `CommandDescriptor`/`SceneDescriptor`, and the same *width* vocabulary as
+/// `DataDescriptor`: a state channel is a fixed-width slot in
+/// shared memory exactly as a component field is a fixed-width slice of a
+/// row, so it is declared the same way and needs no codec.
 ///
 /// Each method takes the initial value the channel holds from bring-up until
 /// something writes to it. It is published as soon as the storage exists -
@@ -145,40 +143,27 @@ abstract class StateDescriptor {
 /// `GameView` in a layout imports that. This one pairs with [StateChannel],
 /// which is the type it hands back.
 ///
-/// # The lane this is
-///
-/// Published state is the "one scalar value, read by the UI" lane, and it is
-/// not any of the three that already exist:
-///
-///  * component data (lane 1) is per-entity and lives in the pool's pages;
-///  * commands and their rings (lane 2) are bulk, and run both ways;
-///  * `SendPort` control messages (lane 3) are rare and unordered relative to
-///    ticks.
-///
-/// One value, coherent per tick, with no per-read message and no string-keyed
-/// lookup. What comes back is a typed [StateChannel] kept in a field, exactly
-/// like `describeStruct`'s `DataPointer`s, a `Query` and `describeBuffers`'
-/// `BufferHandle`.
-///
 /// # A Game, and nothing else
 ///
 /// `Game.start` and `Game.startInline` take a constructor -
 /// `Game.start(MyGame.new)` - so the framework builds the game and there is a
 /// call for the descriptor to be open around.
 ///
-/// Nothing else may declare a channel: a channel's storage is allocated on
-/// **main, before the spawn**, and its identity across the boundary is its
-/// index in that one declaration pass. A `GameState` and a `GameSystem` are
-/// both built on the game isolate, after that allocation, and a `SceneStruct`
-/// is loaded after boot and possibly more than once. Publish scene-derived
-/// and system-derived values from the `Game` and write through
-/// `state.game.myChannel`.
+/// Nothing else may declare a channel, and that is older than this shape: a
+/// channel's storage is allocated on **main, before the spawn**, and its
+/// identity across the boundary is its index in that one declaration pass. A
+/// `GameState` and a `GameSystem` are both built on the game isolate, after
+/// that allocation, and a `SceneStruct` is loaded after boot and possibly
+/// more than once. Publish from the `Game` and write through
+/// `state.game.myChannel`, which is what `GameSystem.describeState` was
+/// deleted in favour of.
 ///
 /// # Collect, then resolve
 ///
-/// A channel comes back with no storage, no index and no run behind it,
-/// because none of those exist yet - the `Game` this field belongs to is
-/// still being constructed, and a `GameRuntime` needs the finished object. It is appended to a list and nothing else happens, which is what
+/// A channel declared here comes back with no storage, no index and no run
+/// behind it, because none of those exist yet - the `Game` this field belongs
+/// to is still being constructed, and a `GameRuntime` needs the finished
+/// object. It is appended to a list and nothing else happens, which is what
 /// makes a declaration unable to fail. `Game.start` numbers the collected
 /// channels and binds them to the run a step later, and the storage is
 /// allocated a step after that, where it always was.

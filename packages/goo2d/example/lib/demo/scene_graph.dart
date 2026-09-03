@@ -22,8 +22,8 @@ class Critter extends EntityStruct
         Parent,
         Renderable2D,
         EntityLifecycleListener {
-  final body = Sprite.of(width: 22, height: 22, texture: Asset.of(discTexture));
-  final texture = Asset.of(discTexture);
+  late final Sprite body;
+  late final TextureAsset texture;
 
   final angle = Field.float64();
   final radius = Field.float64();
@@ -35,6 +35,18 @@ class Critter extends EntityStruct
   final life = Field.float64();
 
   int _spawned = 0;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    texture = descriptor.has(discTexture);
+  }
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    body = descriptor.has(width: 22, height: 22, texture: texture);
+  }
 
   @override
   void onEntityMounted(Entity entity) {
@@ -81,10 +93,22 @@ class Limb extends EntityStruct
         Child,
         Renderable2D,
         EntityLifecycleListener {
-  final body = Sprite.of(width: 11, height: 11, texture: Asset.of(discTexture));
-  final texture = Asset.of(discTexture);
+  late final Sprite body;
+  late final TextureAsset texture;
 
   int _spawned = 0;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    texture = descriptor.has(discTexture);
+  }
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    body = descriptor.has(width: 11, height: 11, texture: texture);
+  }
 
   @override
   void onEntityMounted(Entity entity) {
@@ -230,7 +254,11 @@ class SceneGraphState extends DemoState<SceneGraphGame> {
   @override
   void onMounted() => loadScene(swarm);
 
-  final critterSystem = GameSystem.of(CritterSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(CritterSystem.new);
+  }
 
   /// One critter and its three limbs, **all in the same tick**.
   ///

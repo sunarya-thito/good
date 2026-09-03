@@ -54,14 +54,6 @@ class _Scene extends SceneStruct {
 
 /// A system watching the whole world.
 class _Observer extends GameSystem with EntitySpawnListener, SceneLoadListener {
-  // Publishes itself so the tests below can reach it without a state
-  // reference. The declaration is `_GameState.observer`; this is a fixture
-  // convenience, and it runs exactly once because the framework builds a
-  // declared system exactly once.
-  _Observer() {
-    observer = this;
-  }
-
   final List<Entity> spawned = <Entity>[];
   final List<Entity> despawned = <Entity>[];
   final List<Scene> loaded = <Scene>[];
@@ -103,7 +95,11 @@ class _GameState extends GameState<_Game> {
   @override
   void onMounted() => loadScene(_Scene());
 
-  final observer = GameSystem.of(_Observer.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    observer = descriptor.has(_Observer.new);
+  }
 }
 
 class _Game extends Game {

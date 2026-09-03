@@ -1,82 +1,6 @@
 ## Unreleased
 
-### Breaking
-
-* **The scaffolded 3D game declares its view in a field** (#287). It overrode
-  `describeCameras`, which no longer exists; it carries
-  `final mainView = CameraView.of();` now.
-
-* **The scaffolded `Player` declares its sprite in a field** (#287). It
-  overrode `describeSprites`, which no longer exists; it carries
-  `final sprite = Sprite.of(width: 64, height: 64, color: 0xFF4FC3F7);` now,
-  and its comment shows a texture as `Sprite.of(texture: Asset.of(...))`.
-
-* **`good generate` checks only `describeStruct` for a missing `super`**
-  (#287). `describeType` and then a component's `describeAssets` both left the
-  set, because what they declared moved onto a field initialiser and no chain
-  runs through one, so the defect the check exists for cannot be written.
-
-* **An asset key `good build` cannot read is named where it was written**
-  (#287). A prefab declaring `Asset.of(keys[i])` is reported as
-  `Plane.Asset.of` rather than `Plane.describeAssets`, which no longer exists
-  on a prefab. A scene's hook is still reported as `S.describeAssets`.
-
-* **The scaffolded `lib/game.dart` teaches `Asset.of`** (#287). Its comment
-  showed a `describeAssets` override; it shows the field now.
-
-  The component-type scan reads `Component.type<T>()` field initialisers
-  instead of `has<T>()` calls inside a `describeType` body. It matches on the
-  receiver name `Component`, exactly as the column check matches on `Field`,
-  with the same liability: a declaration static on some other type is invisible
-  until that is edited.
-
-### Added
-
-* **`textures.dart` carries each image's pixel size.** `good generate` reads it
-  out of the file's header - PNG, WebP, GIF, BMP and JPEG, chosen by the leading
-  bytes and not by the extension, with nothing decoded - and emits it twice:
-
-  ```dart
-  enum Textures with LocalEnumAssetKey<Texture> {
-    sheet('assets/sheet.webp', 512, 256);
-    // ...
-  }
-
-  abstract final class TextureSize {
-    static const int sheetWidth = 512;
-    static const int sheetHeight = 256;
-  }
-  ```
-
-  The two forms are not interchangeable. Field access on an enum value is never
-  a constant expression, so `Textures.sheet.width` cannot go in the
-  `static const List<SpriteFrame>` table the rendering guide teaches;
-  `TextureSize.sheetWidth` can. Pass the constants to `SpriteFrame.pixels` and
-  `NineSliceBorder.pixels` and re-exporting the art at another size needs no
-  source change (#111).
-
-  Two consequences. A texture whose path generates the identifier `width` or
-  `height` - `assets/width.png`, `assets/ui/height.png` - is refused at generate
-  time with the path in the message, because those two names are now the enum's
-  own fields; the reserved set is exactly those two and does not grow with what
-  a project ships. And a file whose header states no size generates `0` for both
-  and is named in the run's output.
-
 ### Changed
-
-* **A texture key is typed from the dependency graph, not from a package
-  name.** The payload type was `package == 'goo2d' ? 'Texture' : 'Object?'`, so
-  a project whose engine package is a renderer built on `goo2d` got `Object?`
-  for keys whose payload is the `Texture` that renderer exports - keys that
-  compile, and lose their static type. `Texture` is declared in `goo2d`, so the
-  test is now whether the engine package is `goo2d` or reaches it through its
-  `dependencies:`, read from `.dart_tool/package_config.json` (#312).
-
-  A `goo2d` project and a `goo3d` project generate what they generated before.
-  A project on a third-party renderer gets `Texture` where it got `Object?`; a
-  cast that is now unnecessary still compiles. An entry package added since the
-  last `flutter pub get` is in no package config and answers `Object?`, so
-  resolve the project and run `good generate` again.
 
 * **The scene scan reads field initialisers, not only method bodies.** It kept
   `describeAssets` and `describeScene` bodies and skipped everything else, so
@@ -217,46 +141,6 @@
   offers (#91).
 
 ### Fixed
-
-* **The generated bundle is not a candidate for the project's entry package.**
-  `good generate` records the bundle under the project's `dependencies:`, and
-  the bundle depends on the engine. A resolved project therefore offered it as
-  a direct dependency that reaches `package:good` and that nothing else depends
-  on - the narrowest candidate - so the bundle's own pubspec listed the bundle.
-  The run that wrote it exited 0, because the bundle already resolved and there
-  was no `pub get` left to run. The next resolve is where it landed:
-  `flutter pub get` answered `A package may not list itself as a dependency`
-  and stopped, and so did every Flutter command that resolves, `good build`
-  among them. The first `good generate` on a project was clean and every one
-  after it left the project unbuildable.
-
-  A dependency whose directory carries a `.good_bundle` marker is dropped from
-  the candidate set. The marker and not the package name, so a bundle
-  generated for another project and reached through a `path:` dependency is
-  dropped as well, and a package that merely carries the recorded name is read
-  like any other dependency. A project already in this state is repaired by one
-  `good generate` - the bundle's pubspec is written end to end on every run
-  (#320).
-
-* **Each generated file imports the package that declares the names in it.**
-  `good generate` wrote one import for the entry package and named every engine
-  type through it, which holds only where that package re-exports what it is
-  built on. `goo2d_physics_box2d` exports its own `src/` and re-exports neither
-  `goo2d` nor the kernel, and a project declaring it beside `goo2d` resolves it
-  as the entry package (#309) - so the bundle failed to resolve at `AssetKey`,
-  which is every asset kind and not the textures alone.
-
-  `audios.dart` and `good.dart` import `package:good`, whatever the project
-  renders with. `textures.dart` imports `package:goo2d` where its keys carry a
-  `Texture` and `package:good` where they carry `Object?`; `goo2d` re-exports
-  the kernel, so that file writes one import and not two. The bundle's pubspec
-  declares both of those beside the entry package, each version copied from the
-  project's own pubspec (#316).
-
-  A `goo2d` project generates the imports it generated before. A `goo3d`
-  project's three files name `package:good` where they named `package:goo3d`,
-  and resolve the same declarations through it. A project on a package that
-  re-exports nothing generates a bundle that compiles.
 
 * **The `.good_bundle` marker is written before anything else in the generated
   package.** `good generate` created the package's `lib/` first, so a run that

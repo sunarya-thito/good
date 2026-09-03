@@ -19,7 +19,13 @@ late Game run;
 late Box2DPhysicsSystem physics;
 
 class _Box extends EntityStruct with Transform2D, Collider2D, RigidBody2D {
-  final box = BoxBody.of(halfWidth: 0.5, halfHeight: 0.5);
+  late final BoxBody box;
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    box = descriptor.hasBoxCollider(halfWidth: 0.5, halfHeight: 0.5);
+  }
 }
 
 class _Scene extends SceneStruct {
@@ -70,11 +76,15 @@ class _GameState extends GameState<_Game> {
   @override
   void onMounted() => loadScene(_Scene());
 
-  final effectors = GameSystem.of(_EffectorSystem.new);
-  // No gravity, so each test measures its effector and nothing else. The
-  // buoyancy test puts gravity back by hand, because floating against
-  // nothing is not a test of buoyancy.
-  final physics = GameSystem.of(() => Box2DPhysicsSystem(gravityY: 0));
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    effectors = descriptor.has(_EffectorSystem.new);
+    // No gravity, so each test measures its effector and nothing else. The
+    // buoyancy test puts gravity back by hand, because floating against
+    // nothing is not a test of buoyancy.
+    physics = descriptor.has(() => Box2DPhysicsSystem(gravityY: 0));
+  }
 }
 
 class _Game extends Game {
@@ -92,11 +102,6 @@ const Duration _step = Duration(microseconds: 16667);
 
 Future<_Scene> _boot() async {
   run = await Game.startInline(_Game.new);
-  // Read off the state rather than captured at declaration: the declaration
-  // is a field on the state and the system is built on the copy that ticks,
-  // so this is where the object first exists.
-  physics = run.state.getSystem<Box2DPhysicsSystem>();
-  effectors = run.state.getSystem<_EffectorSystem>();
   addTearDown(() async {
     if (run.isRunning) await run.stop();
   });

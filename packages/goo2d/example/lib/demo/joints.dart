@@ -60,16 +60,27 @@ const int _spokeColor = 0xFF1E88E5;
 /// integrates it and treats it as infinite mass.
 class Anchor extends EntityStruct
     with Transform2D, Renderable2D, Collider2D, RigidBody2D {
-  final body = Sprite.of(width: 1.2, height: 0.4, color: _anchorColor);
+  late final Sprite body;
+  late final BoxBody box;
 
-  // Layer 1, excluded by everything else below: an anchor is scenery, and a
-  // chain that collides with its own anchor jitters against it forever.
-  final box = BoxBody.of(
-    halfWidth: 0.6,
-    halfHeight: 0.2,
-    layer: 1,
-    excludeLayers: -1,
-  );
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    body = descriptor.has(width: 1.2, height: 0.4, color: _anchorColor);
+  }
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    // Layer 1, excluded by everything else below: an anchor is scenery, and a
+    // chain that collides with its own anchor jitters against it forever.
+    box = descriptor.hasBoxCollider(
+      halfWidth: 0.6,
+      halfHeight: 0.2,
+      layer: 1,
+      excludeLayers: -1,
+    );
+  }
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -81,79 +92,113 @@ class Anchor extends EntityStruct
 /// One link of a chain.
 class Link extends EntityStruct
     with Transform2D, Renderable2D, Collider2D, RigidBody2D {
-  final body = Sprite.of(
-    width: _linkHalfWidth * 2,
-    height: _linkHalfHeight * 2,
-    color: _linkColor,
-  );
+  late final Sprite body;
+  late final BoxBody box;
 
-  // Layer 2, colliding with nothing: links are held together by joints, and
-  // letting neighbours collide as well makes a chain buzz rather than hang.
-  // That is the standard way to build a rope in Box2D, not a shortcut.
-  final box = BoxBody.of(
-    halfWidth: _linkHalfWidth,
-    halfHeight: _linkHalfHeight,
-    layer: 2,
-    excludeLayers: -1,
-  );
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    body = descriptor.has(
+      width: _linkHalfWidth * 2,
+      height: _linkHalfHeight * 2,
+      color: _linkColor,
+    );
+  }
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    // Layer 2, colliding with nothing: links are held together by joints, and
+    // letting neighbours collide as well makes a chain buzz rather than hang.
+    // That is the standard way to build a rope in Box2D, not a shortcut.
+    box = descriptor.hasBoxCollider(
+      halfWidth: _linkHalfWidth,
+      halfHeight: _linkHalfHeight,
+      layer: 2,
+      excludeLayers: -1,
+    );
+  }
 }
 
 /// A heavy mass on the end of a chain, so the breakable one has something to
 /// break under.
 class Weight extends EntityStruct
     with Transform2D, Renderable2D, Collider2D, RigidBody2D {
-  final body = Sprite.of(width: 1.6, height: 1.6, color: _weightColor);
+  late final Sprite body;
+  late final BoxBody box;
 
-  // Density 12 against the links' default 1 - the whole point of this one is
-  // to load the chain above it hard enough to tear.
-  final box = BoxBody.of(
-    halfWidth: 0.8,
-    halfHeight: 0.8,
-    density: 12,
-    layer: 2,
-    excludeLayers: -1,
-  );
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    body = descriptor.has(width: 1.6, height: 1.6, color: _weightColor);
+  }
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    // Density 12 against the links' default 1 - the whole point of this one
+    // is to load the chain above it hard enough to tear.
+    box = descriptor.hasBoxCollider(
+      halfWidth: 0.8,
+      halfHeight: 0.8,
+      density: 12,
+      layer: 2,
+      excludeLayers: -1,
+    );
+  }
 }
 
 /// A motorised wheel, pinned to a static hub by a revolute joint.
 class Wheel extends EntityStruct
     with Transform2D, Renderable2D, Collider2D, RigidBody2D {
-  final disc = Asset.of(discTexture);
+  late final Sprite body;
+  late final Sprite spoke;
+  late final CircleBody circle;
+  late final TextureAsset disc;
 
-  // **Textured, because a sprite is a quad.** goo2d draws rectangles; the
-  // collider below is a *circle*, and an untextured square sprite over it
-  // means the picture disagrees with the physics. Nothing collides with this
-  // wheel today so the lie costs nothing yet - which is exactly how that
-  // class of bug survives until the day something does.
-  //
-  // `Asset.of` again rather than the field above, because a field
-  // initialiser cannot read a sibling field. It is idempotent per key, so
-  // both spellings name one handle and one address.
-  final body = Sprite.of(
-    texture: Asset.of(discTexture),
-    width: 3.4,
-    height: 3.4,
-    color: _wheelColor,
-  );
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    disc = descriptor.has(discTexture);
+  }
 
-  // A second sprite on the same entity, pivoted at its **bottom edge** so it
-  // reads as one spoke from hub to rim rather than a bar across the whole
-  // wheel.
-  //
-  // That is not decoration. A plain disc spinning about its centre looks
-  // completely static, and a full diameter bar looks identical every half
-  // turn - so it appears to flicker between two positions and gives no sense
-  // of direction. A single spoke is the smallest thing that shows both that
-  // the wheel turns and which way.
-  final spoke = Sprite.of(
-    width: 0.35,
-    height: 1.7,
-    color: _spokeColor,
-    zIndex: 1,
-    pivot: const RelativeOffset2D(fractionX: 0.5, fractionY: 1),
-  );
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    // **Textured, because a sprite is a quad.** goo2d draws rectangles; the
+    // collider below is a *circle*, and an untextured square sprite over it
+    // means the picture disagrees with the physics. Nothing collides with
+    // this wheel today so the lie costs nothing yet - which is exactly how
+    // that class of bug survives until the day something does.
+    body = descriptor.has(
+      texture: disc,
+      width: 3.4,
+      height: 3.4,
+      color: _wheelColor,
+    );
+    // A second sprite on the same entity, pivoted at its **bottom edge** so
+    // it reads as one spoke from hub to rim rather than a bar across the
+    // whole wheel.
+    //
+    // That is not decoration. A plain disc spinning about its centre looks
+    // completely static, and a full diameter bar looks identical every half
+    // turn - so it appears to flicker between two positions and gives no
+    // sense of direction. A single spoke is the smallest thing that shows
+    // both that the wheel turns and which way.
+    spoke = descriptor.has(
+      width: 0.35,
+      height: 1.7,
+      color: _spokeColor,
+      zIndex: 1,
+      pivot: const RelativeOffset2D(fractionX: 0.5, fractionY: 1),
+    );
+  }
 
-  final circle = CircleBody.of(radius: 1.7, layer: 3);
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    circle = descriptor.hasCircleCollider(radius: 1.7, layer: 3);
+  }
 }
 
 class Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
@@ -501,9 +546,13 @@ class JointState extends DemoState<JointGame> {
   @override
   void onMounted() => loadScene(sandbox);
 
-  final box2DPhysicsSystem = GameSystem.of(Box2DPhysicsSystem.new);
-  final jointSystem = GameSystem.of(JointSystem.new);
-  final jointStats = GameSystem.of(_JointStats.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(Box2DPhysicsSystem.new);
+    descriptor.has(JointSystem.new);
+    descriptor.has(_JointStats.new);
+  }
 }
 
 /// Publishes this case's own numbers, after the fixed step - the same shape

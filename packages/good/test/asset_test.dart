@@ -134,40 +134,35 @@ class _FakeAsset extends AssetKey<_FakePayload> {
 }
 
 /// A prefab that declares [key] and keeps the handle - the shape the
-/// typed-handle rule asks for.
-///
-/// The declaration is in the initializer list and not in a field initialiser,
-/// because it needs the constructor argument and a field initialiser cannot
-/// see one. Field initialisers run first and the initializer list after them,
-/// so this prefab's asset is declared after any column it declares - which
-/// only has to be deterministic, and is.
+/// typed-handle rule asks for, and what every "did describeAssets run"
+/// assertion below inspects.
 class _Prop extends EntityStruct {
-  _Prop(_FakeAsset key) : key = key, texture = Asset.of(key) {
-    constructions++;
-  }
-
-  /// How many `_Prop`s have been built since the last reset. A prefab the
-  /// scene registered twice would declare twice, and dedup would hide it in
-  /// every address assertion below.
-  static int constructions = 0;
+  _Prop(this.key);
 
   final _FakeAsset key;
 
-  final Asset<_FakePayload> texture;
+  int describeAssetsCalls = 0;
+  late final Asset<_FakePayload> texture;
   late final DataPointer<Asset<_FakePayload>> spriteField;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    describeAssetsCalls++;
+    texture = descriptor.has(key);
+  }
 
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    // The payoff of declaring the asset in the constructor: the handle is
-    // already addressed by the time this runs, so it can be this archetype's
-    // default row value.
+    // The payoff of running describeAssets before describeStruct: the handle
+    // is already addressed, so it can be this archetype's default row value.
     spriteField = data.hasPacked(assets.of<_FakePayload>(), texture);
   }
 }
 
-/// A prefab with no assets at all - proves a prefab declaring none costs
-/// nothing.
+/// A prefab with no assets at all - proves the chained no-op base still runs
+/// and costs nothing.
 class _Bare extends EntityStruct {}
 
 class _PropScene extends SceneStruct {
@@ -181,16 +176,10 @@ class _PropScene extends SceneStruct {
 
   // A small pool by default: these tests never spawn much, and the 64 MiB
   // default page costs three times that in the pool's triple-buffered slots.
-  _PropScene(this.propKeys, {this.sceneKey});
+  _PropScene(this.prefabs, {this.sceneKey});
 
-  /// One `_Prop` per key, constructed by [describeScene]. The prefabs cannot
-  /// be handed in already built: `Asset.of` reads the descriptor
-  /// `initializeScene` opens, so a `_Prop` built before the scene comes up
-  /// has nothing to declare into.
-  final List<_FakeAsset> propKeys;
+  final List<_Prop> prefabs;
   final _FakeAsset? sceneKey;
-
-  final List<_Prop> prefabs = <_Prop>[];
 
   int describeAssetsCalls = 0;
   Asset<_FakePayload>? music;
@@ -206,8 +195,8 @@ class _PropScene extends SceneStruct {
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    for (final key in propKeys) {
-      prefabs.add(descriptor.has(() => _Prop(key)));
+    for (final prefab in prefabs) {
+      descriptor.has(() => prefab);
     }
   }
 }
@@ -243,15 +232,11 @@ void main() {
     ComponentTypeRegistry.reset();
   });
 
-  group('asset declaration', () {
-    test('the scene declares once and every registered prefab once', () {
-      _Prop.constructions = 0;
-      final scene = _bringUp(
-        _PropScene([
-          _FakeAsset('a'),
-          _FakeAsset('b'),
-        ], sceneKey: _FakeAsset('music')),
-      );
+  group('describeAssets', () {
+    test('runs once for the scene and once for every registered prefab', () {
+      final a = _Prop(_FakeAsset('a'));
+      final b = _Prop(_FakeAsset('b'));
+      final scene = _bringUp(_PropScene([a, b], sceneKey: _FakeAsset('music')));
 
       expect(
         scene.describeAssetsCalls,
@@ -261,12 +246,13 @@ void main() {
             'chrome) exactly once, from initializeScene',
       );
       expect(
-        _Prop.constructions,
-        2,
+        a.describeAssetsCalls,
+        1,
         reason:
-            'two prefabs, each built once - a prefab built twice would '
-            'declare twice, and dedup would leave the count below unchanged',
+            'every prefab the scene registers gets the pass too - and '
+            'exactly once, or the same key would be declared twice',
       );
+      expect(b.describeAssetsCalls, 1);
       expect(
         scene.declaredAssets.length,
         3,
@@ -278,7 +264,7 @@ void main() {
 
     test('the scene\'s own assets are declared before any prefab\'s', () {
       final scene = _bringUp(
-        _PropScene([_FakeAsset('prop')], sceneKey: _FakeAsset('music')),
+        _PropScene([_Prop(_FakeAsset('prop'))], sceneKey: _FakeAsset('music')),
       );
 
       expect(
@@ -291,7 +277,7 @@ void main() {
       );
     });
 
-    test('a prefab that declares nothing consumes no address', () {
+    test('a prefab that declares nothing still chains the no-op base', () {
       final host = _BareScene(_Bare());
       final pool = _pool();
       addTearDown(pool.dispose);
@@ -301,14 +287,14 @@ void main() {
         host.declaredAssets,
         isEmpty,
         reason:
-            'no declaration means no address consumed - a prefab with no '
-            'assets costs nothing at all',
+            'no declaration means no address consumed - the pass costs a '
+            'prefab with no assets nothing at all',
       );
     });
 
     test('the returned handle is addressable, and the key is not', () {
       final key = _FakeAsset('typed');
-      final scene = _bringUp(_PropScene([key]));
+      final scene = _bringUp(_PropScene([_Prop(key)]));
       final handle = scene.prefabs.first.texture;
 
       expect(
@@ -322,15 +308,15 @@ void main() {
         key,
         isNot(isA<IntRepresentable>()),
         reason:
-            'and the raw undeclared key is a different type, so '
-            '`field[e] = key` cannot compile - the whole reason every asset '
-            'goes through a declaration',
+            'and the raw undeclared key is deliberately a different type, '
+            'so `field[e] = key` cannot compile - the whole reason every '
+            'asset is routed through describeAssets',
       );
     });
 
     test('the declared handle works as a row default and resolves back', () {
       final key = _FakeAsset('default');
-      final scene = _bringUp(_PropScene([key]));
+      final scene = _bringUp(_PropScene([_Prop(key)]));
       final prop = scene.prefabs.first;
       final entity = scene.handle.addEntity(prop);
 
@@ -348,9 +334,9 @@ void main() {
   group('sharing', () {
     test('two prefabs declaring one key get the identical instance', () {
       final shared = _FakeAsset('shared');
-      final scene = _bringUp(_PropScene([shared, shared]));
-      final a = scene.prefabs[0];
-      final b = scene.prefabs[1];
+      final a = _Prop(shared);
+      final b = _Prop(shared);
+      final scene = _bringUp(_PropScene([a, b]));
 
       expect(
         identical(a.texture, b.texture),
@@ -379,8 +365,8 @@ void main() {
 
     test('a scene and a prefab declaring one key share it too', () {
       final shared = _FakeAsset('shared');
-      final scene = _bringUp(_PropScene([shared], sceneKey: shared));
-      final prop = scene.prefabs.first;
+      final prop = _Prop(shared);
+      final scene = _bringUp(_PropScene([prop], sceneKey: shared));
 
       expect(identical(scene.music, prop.texture), isTrue);
       expect(
@@ -393,11 +379,9 @@ void main() {
     });
 
     test('two separately-constructed keys for one file are one asset', () {
-      final scene = _bringUp(
-        _PropScene([_FakeAsset('same-bytes'), _FakeAsset('same-bytes')]),
-      );
-      final a = scene.prefabs[0];
-      final b = scene.prefabs[1];
+      final a = _Prop(_FakeAsset('same-bytes'));
+      final b = _Prop(_FakeAsset('same-bytes'));
+      final scene = _bringUp(_PropScene([a, b]));
 
       // This assertion is inverted from what it used to be, deliberately.
       // Keys were identity-compared, so two keys naming one file were two
@@ -441,8 +425,8 @@ void main() {
       // cross-isolate-agreement tests do.
       List<int> run() {
         final scene = _PropScene([
-          _FakeAsset('a'),
-          _FakeAsset('b'),
+          _Prop(_FakeAsset('a')),
+          _Prop(_FakeAsset('b')),
         ], sceneKey: _FakeAsset('music'));
         scene.initializeScene(_pool(), assets: assets);
         final addresses = <int>[
@@ -549,7 +533,7 @@ void main() {
         () => assets.of<_FakePayload>().unpack(0),
         throwsStateError,
         reason:
-            'an int that never went through a declaration '
+            'an int that never went through a describeAssets pass '
             'has nothing for a DataPointer row to point at, and address 0 is '
             'a legitimate other asset',
       );
@@ -750,7 +734,7 @@ void main() {
       final prop = _FakeAsset('prop');
       final unused = _FakeAsset('unused');
       await _boot(
-        () => _DiffGame(() => _PropScene([prop], sceneKey: music)),
+        () => _DiffGame(() => _PropScene([_Prop(prop)], sceneKey: music)),
       );
 
       expect(music.decodes, 1, reason: "the scene's own prefab-less asset");
@@ -771,14 +755,14 @@ void main() {
       final onlyB = _FakeAsset('only-b');
 
       await _boot(
-        () => _DiffGame(() => _PropScene([onlyA], sceneKey: shared)),
+        () => _DiffGame(() => _PropScene([_Prop(onlyA)], sceneKey: shared)),
       );
       expect(shared.decodes, 1);
       expect(onlyA.decodes, 1);
 
       // Loading no longer *replaces*: both scenes are resident now, and both
       // hold a claim on `shared`.
-      await run.state.loadScene(_PropScene([onlyB], sceneKey: shared));
+      await run.state.loadScene(_PropScene([_Prop(onlyB)], sceneKey: shared));
 
       expect(
         shared.decodes,
@@ -807,11 +791,11 @@ void main() {
       final onlyA = _FakeAsset('only-a');
       final onlyB = _FakeAsset('only-b');
       await _boot(
-        () => _DiffGame(() => _PropScene([onlyA], sceneKey: shared)),
+        () => _DiffGame(() => _PropScene([_Prop(onlyA)], sceneKey: shared)),
       );
       final first = run.state.loadedScenes.single;
       final second = await run.state.loadScene(
-        _PropScene([onlyB], sceneKey: shared),
+        _PropScene([_Prop(onlyB)], sceneKey: shared),
       );
 
       run.state.unloadScene(first);
@@ -853,7 +837,7 @@ void main() {
       final reports = <SceneLoadProgress>[];
       await run.state.loadScene(
         _PropScene([
-          for (var i = 1; i < keys.length; i++) keys[i],
+          for (var i = 1; i < keys.length; i++) _Prop(keys[i]),
         ], sceneKey: keys.first),
         onProgress: reports.add,
       );
@@ -910,7 +894,7 @@ void main() {
       'loading one declaration twice gives two scenes sharing its assets',
       () async {
         final key = _FakeAsset('same-scene');
-        await _boot(() => _DiffGame(() => _PropScene([key])));
+        await _boot(() => _DiffGame(() => _PropScene([_Prop(key)])));
         final struct = run.state.scene!;
         final first = run.state.loadedScenes.single;
 
@@ -941,7 +925,7 @@ void main() {
       // An async function runs synchronously up to its own first await, which
       // is what makes that observable at all.
       final starting = Game.startInline(
-        () => _DiffGame(() => _PropScene([_FakeAsset('sync')])),
+        () => _DiffGame(() => _PropScene([_Prop(_FakeAsset('sync'))])),
       );
 
       // Asserted through the archetype registry rather than through the state.
@@ -975,8 +959,8 @@ void main() {
         identical(scene.declaredAssets.single, prefab.texture),
         isTrue,
         reason:
-            'the field declares into the scene, so the scene has to load '
-            'exactly the handle the field holds',
+            'the ambient form performs the same registration describeAssets '
+            'did - the scene has to load exactly the handle the field holds',
       );
       expect(
         identical(assets.tryGet(_sharedKey), prefab.texture),
@@ -1014,7 +998,7 @@ void main() {
       );
     });
 
-    test('a prefab field and a scene hook name one asset, not two', () {
+    test('the ambient form and describeAssets name one asset, not two', () {
       final scene = _AmbientScene(<EntityStruct Function()>[
         _Ambient.new,
       ], sceneKey: _sharedKey);
@@ -1179,15 +1163,15 @@ void main() {
 }
 
 /// Brings an [_AmbientScene] up with no `Game`, the way `_bringUp` does for
-/// the `_PropScene` fixtures.
+/// the `describeAssets` fixtures.
 void _bringUpAmbient(_AmbientScene scene) {
   scene.initializeScene(_pool(), assets: assets);
   SceneRegistry.register(scene);
   addTearDown(scene.pool.dispose);
 }
 
-/// The #194 shape: the texture is named in the field that holds it, eagerly
-/// and with no `late final`.
+/// The #194 shape: the texture is named in the field that holds it, with no
+/// `describeAssets` override and no `late final`.
 class _Ambient extends EntityStruct {
   final texture = Asset.of(_sharedKey);
 }

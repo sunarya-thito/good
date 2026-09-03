@@ -66,7 +66,7 @@ class _CrossGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    level = descriptor.has(_Level.new);
+    level = descriptor.has(_Level());
   }
 }
 

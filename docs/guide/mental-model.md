@@ -9,8 +9,20 @@ class Player extends EntityStruct
   final shielded = Field.boolean();
   final shieldEnergy = Field.float64();
 
-  final sprite = Sprite.of(width: 64, height: 64);
-  final hitbox = CircleBody.of(radius: 0.5);
+  late final Sprite sprite;
+  late final CircleBody hitbox;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    sprite = descriptor.has(width: 64, height: 64);
+  }
+
+  @override
+  void describeCollider(ColliderDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    hitbox = descriptor.hasCircleCollider(radius: 0.5);
+  }
 }
 
 late Player player;
@@ -21,6 +33,7 @@ class Bullet() extends EntityStruct with Transform2D, Renderable2D;
 
 class HomingBullet() extends EntityStruct with Transform2D, Renderable2D;
 
+late QueryDescriptor descriptor;
 late Query homing;
 late Query allBullets;
 -->
@@ -146,8 +159,8 @@ prefabs are two archetypes, each with exactly the fields it needs, and a query
 can match either or both:
 
 ```dart
-homing = Query.where().withAll(Transform2D, HomingBullet).build();
-allBullets = Query.where().withAny(Bullet, HomingBullet).build();
+homing = descriptor.query().withAll(Transform2D, HomingBullet).build();
+allBullets = descriptor.query().withAny(Bullet, HomingBullet).build();
 ```
 
 The rule of thumb: **a flag for a state an entity moves in and out of; a prefab

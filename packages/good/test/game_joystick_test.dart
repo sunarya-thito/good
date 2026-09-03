@@ -55,20 +55,30 @@ Future<void> _recordingRebuilds(Future<void> Function() body) async {
 }
 
 class _StickSystem extends GameSystem with FixedTickable {
-  final move = Input.of<Vector2>(
-    const StickBinding(x: .virtualLeftStickX, y: .virtualLeftStickY),
-  );
+  late final Input<Vector2> move;
+  late final Input<Vector2> aim;
 
-  final aim = Input.of<Vector2>(
-    const StickBinding(x: .virtualRightStickX, y: .virtualRightStickY),
-  );
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    move = input.has<Vector2>(
+      const StickBinding(x: .virtualLeftStickX, y: .virtualLeftStickY),
+    );
+    aim = input.has<Vector2>(
+      const StickBinding(x: .virtualRightStickX, y: .virtualRightStickY),
+    );
+  }
 
   @override
   void onFixedUpdate() {}
 }
 
 class _StickState extends GameState<_StickGame> {
-  final stickSystem = GameSystem.of(_StickSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_StickSystem.new);
+  }
 }
 
 class _StickGame extends Game {

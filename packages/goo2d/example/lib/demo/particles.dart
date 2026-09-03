@@ -65,8 +65,8 @@ int _hsv(double hue, double saturation, double value) {
 /// scene-graph case, which does use one.
 class Mote extends EntityStruct
     with Transform2D, Renderable2D, EntityLifecycleListener {
-  final body = Sprite.of(width: 14, height: 14, texture: Asset.of(discTexture));
-  final texture = Asset.of(discTexture);
+  late final Sprite body;
+  late final TextureAsset texture;
 
   /// Polar coordinates, kept per entity because the movement is a function of
   /// them and of time - so a tick reads four fields and writes three, and no
@@ -92,6 +92,18 @@ class Mote extends EntityStruct
   /// Plain Dart state on the prefab: it lives on the game isolate and is never
   /// shared, so it costs nothing across the boundary.
   int _spawned = 0;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    texture = descriptor.has(discTexture);
+  }
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    body = descriptor.has(width: 14, height: 14, texture: texture);
+  }
 
   @override
   void onEntityMounted(Entity entity) {
@@ -273,7 +285,11 @@ class ParticlesState extends DemoState<ParticlesGame> {
   @override
   void onMounted() => loadScene(galaxy);
 
-  final swirlSystem = GameSystem.of(SwirlSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(SwirlSystem.new);
+  }
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
@@ -293,7 +309,13 @@ class ParticlesState extends DemoState<ParticlesGame> {
 }
 
 class ParticlesGame extends DemoGame {
-  final setAblations = Command.of(SetAblations.new);
+  late final SetAblations setAblations;
+
+  @override
+  void describeCommands(CommandDescriptor descriptor) {
+    super.describeCommands(descriptor);
+    setAblations = descriptor.has(SetAblations.new);
+  }
 
   @override
   ParticlesState createState() => ParticlesState();

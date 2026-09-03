@@ -28,7 +28,13 @@ class _CameraGame extends Game {
   @override
   GameState createState() => _State();
 
-  final main = CameraView.of();
+  late final CameraView main;
+
+  @override
+  void describeCameras(CameraDescriptor descriptor) {
+    super.describeCameras(descriptor);
+    main = descriptor.has();
+  }
 
   @override
   Widget? buildView(BuildContext context, CameraView? camera) => null;

@@ -93,8 +93,12 @@ class _GameState extends GameState<_Game> {
     loadScene(_Scene());
   }
 
-  final worldTransform3DSystem = GameSystem.of(WorldTransform3DSystem.new);
-  final spawner = GameSystem.of(_Spawner.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(WorldTransform3DSystem.new);
+    descriptor.has(_Spawner.new);
+  }
 }
 
 class _Game extends Game {

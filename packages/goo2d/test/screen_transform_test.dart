@@ -56,7 +56,13 @@ final TextureKey _textureKey = TextureKey(
 /// same frame that could have.
 class _World extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  final quad = Sprite.of(width: 10, height: 10, color: _worldColor);
+  late final Sprite quad;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    quad = descriptor.has(width: 10, height: 10, color: _worldColor);
+  }
 }
 
 class _Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
@@ -65,14 +71,26 @@ class _Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
 /// turns, and can be a parent.
 class _Rig extends EntityStruct
     with Transform2D, WorldTransform2D, Parent, Renderable2D {
-  final quad = Sprite.of(width: 10, height: 10, color: _rigColor);
+  late final Sprite quad;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    quad = descriptor.has(width: 10, height: 10, color: _rigColor);
+  }
 }
 
 /// The plain screen-space case: every getter left at its default, so the
 /// anchor is the middle of the view and both sizes are view units.
 class _Pinned extends EntityStruct
     with Transform2D, ScreenTransform2D, Child, Renderable2D {
-  final quad = Sprite.of(width: 20, height: 10, color: _pinnedColor);
+  late final Sprite quad;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    quad = descriptor.has(width: 20, height: 10, color: _pinnedColor);
+  }
 }
 
 /// Anchored to the bottom-right and pivoted on its own top-left corner, so
@@ -82,22 +100,28 @@ class _Corner extends EntityStruct
   static const double width = 8;
   static const double height = 4;
 
-  final quad = Sprite.of(
-    width: width,
-    height: height,
-    color: _cornerColor,
-    pivot: RelativeOffset2D.zero,
-  );
+  late final Sprite quad;
 
   @override
   final screenAnchor = ScreenAnchor.bottomRight;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    quad = descriptor.has(
+      width: width,
+      height: height,
+      color: _cornerColor,
+      pivot: RelativeOffset2D.zero,
+    );
+  }
 }
 
 /// A viewport-filling backdrop: both axes sized as a fraction, `1` on each,
 /// centred, behind every world sprite.
 class _Backdrop extends EntityStruct
     with Transform2D, ScreenTransform2D, Renderable2D {
-  final fill = Sprite.of(width: 1, height: 1, color: _backdropColor);
+  late final Sprite fill;
 
   @override
   final screenLayer = ScreenLayer.behind;
@@ -107,24 +131,36 @@ class _Backdrop extends EntityStruct
 
   @override
   final screenHeightAxis = ScreenAxis.fraction;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    fill = descriptor.has(width: 1, height: 1, color: _backdropColor);
+  }
 }
 
 /// Half the view wide and a fixed twenty units tall - the non-uniform case
 /// two independent axes exist for.
 class _Banner extends EntityStruct
     with Transform2D, ScreenTransform2D, Renderable2D {
-  final quad = Sprite.of(
-    width: 0.5,
-    height: 20,
-    color: _pinnedColor,
-    pivot: RelativeOffset2D.zero,
-  );
+  late final Sprite quad;
 
   @override
   final screenAnchor = ScreenAnchor.topLeft;
 
   @override
   final screenWidthAxis = ScreenAxis.fraction;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    quad = descriptor.has(
+      width: 0.5,
+      height: 20,
+      color: _pinnedColor,
+      pivot: RelativeOffset2D.zero,
+    );
+  }
 }
 
 /// A nine-sliced screen-space panel. The sliced path reads the row again in
@@ -132,24 +168,36 @@ class _Banner extends EntityStruct
 /// the one place a sprite can be filled in one space and drawn in another.
 class _Panel extends EntityStruct
     with Transform2D, ScreenTransform2D, Renderable2D {
-  final skin = Asset.of(_textureKey);
-  final frame = Sprite.of(
-    texture: Asset.of(_textureKey),
-    // Half the view wide, so the write pass has to know this sprite was
-    // filled against the view: read as view units it would be half a pixel
-    // and collapse to nothing.
-    width: 0.5,
-    height: 40,
-    color: _panelColor,
-    pivot: RelativeOffset2D.zero,
-    nineSliceBorder: const NineSliceBorder.all(4, sourceSize: 16),
-  );
+  late final TextureAsset skin;
+  late final Sprite frame;
 
   @override
   final screenAnchor = ScreenAnchor.topLeft;
 
   @override
   final screenWidthAxis = ScreenAxis.fraction;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    skin = descriptor.has(_textureKey);
+  }
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    frame = descriptor.has(
+      texture: skin,
+      // Half the view wide, so the write pass has to know this sprite was
+      // filled against the view: read as view units it would be half a pixel
+      // and collapse to nothing.
+      width: 0.5,
+      height: 40,
+      color: _panelColor,
+      pivot: RelativeOffset2D.zero,
+      nineSliceBorder: const NineSliceBorder.all(4, sourceSize: 16),
+    );
+  }
 }
 
 /// A screen-space entity that turns. Its own rotation has to reach the quad,
@@ -157,23 +205,32 @@ class _Panel extends EntityStruct
 /// implementation that threw every rotation away.
 class _Spinner extends EntityStruct
     with Transform2D, ScreenTransform2D, Renderable2D {
-  final quad = Sprite.of(width: 10, height: 10, color: _spinColor);
+  late final Sprite quad;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    quad = descriptor.has(width: 10, height: 10, color: _spinColor);
+  }
 }
 
 /// A world-space label sorted above every sprite in the world, so the layer
 /// split is measured against a label that would otherwise draw last.
 class _Label extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
-  final atlas = Asset.of(_textureKey);
+  late final TextureAsset atlas;
 
-  final label = TextLabel.of(
-    font: BitmapFont(
-      texture: Asset.of(_textureKey),
-      columns: 16,
-      rows: 6,
-      glyphCount: 95,
-    ),
-    capacity: 8,
-  );
+  @override
+  int get textCapacity => 8;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    atlas = descriptor.has(_textureKey);
+  }
+
+  @override
+  BitmapFont get textFont =>
+      BitmapFont(texture: atlas, columns: 16, rows: 6, glyphCount: 95);
 
   @override
   void describeStruct(DataDescriptor data) {
@@ -235,10 +292,15 @@ class _StageGame extends Game2D {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
-  /// The second view, beside the `defaultCamera` `Renderer2D` declares. A
-  /// subclass's field initialisers run before the mixins it applies, so this
-  /// one takes address 0 and `defaultCamera` takes 1.
-  final mini = CameraView.of();
+  /// `defaultCamera` is address 0 and comes from `Renderer2D`; this is the
+  /// second view, and calling super is what keeps that ordering.
+  late final CameraView mini;
+
+  @override
+  void describeCameras(CameraDescriptor descriptor) {
+    super.describeCameras(descriptor);
+    mini = descriptor.has();
+  }
 
   @override
   GameState2D<_StageGame> createState() => _StageState();
@@ -593,7 +655,7 @@ void main() {
     );
 
     test('ScreenTransform2D and WorldTransform2D cannot both be mixed in', () {
-      // Declared headless: the refusal is checked when a scene declares the
+      // Declared headless: `describeType` runs when a scene declares the
       // prefab, which is inside `initializeScene`, so this is the failure a
       // game would hit at boot with no game to boot.
       Object? caught;
@@ -818,7 +880,11 @@ void main() {
 /// A prefab asking for both transform spaces at once.
 class _Clash extends EntityStruct
     with Transform2D, WorldTransform2D, ScreenTransform2D, Renderable2D {
-  final quad = Sprite.of(width: 1, height: 1);
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    descriptor.has(width: 1, height: 1);
+  }
 }
 
 /// A prefab asking for screen-space text.

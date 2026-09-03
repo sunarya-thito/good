@@ -79,12 +79,16 @@ time.**
 <!-- snippet: skip two alternatives, one per prefab, not one class -->
 ```dart
 // yes
-final playerSprite = Sprite.of(texture: playerTexture, width: 64, height: 64);
+late final Sprite playerSprite;
+
+void describeSprites(SpriteDescriptor d) {
+  playerSprite = d.has(texture: playerTexture, width: 64, height: 64);
+}
 
 void use(Entity e) { playerSprite.color[e] = 0xFFFF0000; }
 
 // no
-void declare() { sprites.add('playerSprite'); }
+void describeSprites(SpriteDescriptor d) { d.has('playerSprite'); }
 void use() { sprites['playerSprite']; }
 ```
 

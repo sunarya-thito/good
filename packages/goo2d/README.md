@@ -22,7 +22,13 @@ import 'package:goo2d/goo2d.dart';
 class Player extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
   final speed = Field.float64(220);
-  final sprite = Sprite.of(width: 64, height: 64, color: 0xFFCC8844);
+  late final Sprite sprite;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    sprite = descriptor.has(width: 64, height: 64, color: 0xFFCC8844);
+  }
 }
 ```
 
@@ -49,7 +55,11 @@ Declare what exists and what runs, then show it:
 
 ```dart
 class MyGameState extends GameState2D<MyGame> {
-  final player = GameSystem.of(PlayerSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(PlayerSystem.new);
+  }
 
   @override
   void onMounted() => loadScene(MainScene());

@@ -39,20 +39,20 @@ final List<String> events = <String>[];
 /// The shape from the design sketch: a movement vector, a trigger, an
 /// unbound action, and one action of each type that nothing ever binds.
 ///
-/// Subscriptions happen in `onMounted`, which is one of the two places
-/// `Input.pressed` says they go. `GameState.mount` calls `mountEvent` on every
-/// system, and mixing in `GameSystemLifecycleListener` is all it takes to hear
-/// it.
+/// Subscriptions happen in `onMounted`, which is where `Input.pressed` says
+/// they go. An earlier version of this fixture subscribed from
+/// `describeInputs` and said it had to, because "a `GameSystem` does not
+/// currently receive `MountEvent`" - that was wrong when it was written and
+/// is wrong now: `GameState.mount` calls `mountEvent` on every system, and
+/// mixing in `GameSystemLifecycleListener` is all it takes to hear it.
 /// 'a system hears its own onMounted' pins that so the claim cannot come
 /// back.
 class _PlayerSystem extends GameSystem
     with FixedTickable, GameSystemLifecycleListener {
-  final movement = Input.of<Vector2>(
-    const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
-  );
-  final triggerSkill = Input.of<bool>(const TriggerBinding(.spacebar));
-  final ping = Input.of<bool>();
-  final aim = Input.of<Vector2>();
+  late final Input<Vector2> movement;
+  late final Input<bool> triggerSkill;
+  late final Input<bool> ping;
+  late final Input<Vector2> aim;
 
   /// What [movement] read the last time this system actually ticked, and how
   /// many ticks it has seen - together these are how the tests check that
@@ -65,6 +65,17 @@ class _PlayerSystem extends GameSystem
   /// subscription that a test asserting "the listener fired" cannot tell
   /// apart from the listener itself being broken.
   bool mountedRan = false;
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    movement = input.has<Vector2>(
+      const Vec2Binding(up: .w, down: .s, left: .a, right: .d),
+    );
+    triggerSkill = input.has<bool>(const TriggerBinding(.spacebar));
+    ping = input.has<bool>();
+    aim = input.has<Vector2>();
+  }
 
   @override
   void onMounted() {
@@ -91,7 +102,11 @@ class _PlayerSystem extends GameSystem
 }
 
 class _InputGameState extends GameState<_InputGame> {
-  final playerSystem = GameSystem.of(_PlayerSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_PlayerSystem.new);
+  }
 }
 
 class _InputGame extends Game {
@@ -101,8 +116,18 @@ class _InputGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
+  /// The live descriptor, captured mid-boot so a test can try to declare
+  /// against it *after* boot - see 'declaring after boot is refused'.
+  InputDescriptor? capturedDescriptor;
+
   @override
   GameState createState() => _InputGameState();
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    capturedDescriptor = input;
+  }
 }
 
 // --- what a listener is (#221) --------------------------------------------
@@ -126,8 +151,14 @@ class _InputGame extends Game {
 /// list instead of being swallowed by a shared collector.
 class _ListenerSystemA extends GameSystem with GameSystemLifecycleListener {
   final List<String> heard = <String>[];
-  final fire = Input.of<bool>(const TriggerBinding(.spacebar));
+  late final Input<bool> fire;
   bool mountedRan = false;
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    fire = input.has<bool>(const TriggerBinding(.spacebar));
+  }
 
   @override
   void onMounted() {
@@ -143,7 +174,13 @@ class _ListenerSystemA extends GameSystem with GameSystemLifecycleListener {
 
 class _ListenerSystemB extends GameSystem with GameSystemLifecycleListener {
   final List<String> heard = <String>[];
-  final fire = Input.of<bool>(const TriggerBinding(.enter));
+  late final Input<bool> fire;
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    fire = input.has<bool>(const TriggerBinding(.enter));
+  }
 
   @override
   void onMounted() {
@@ -155,8 +192,12 @@ class _ListenerSystemB extends GameSystem with GameSystemLifecycleListener {
 }
 
 class _ListenerState extends GameState<_ListenerGame> {
-  final listenerSystemA = GameSystem.of(_ListenerSystemA.new);
-  final listenerSystemB = GameSystem.of(_ListenerSystemB.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_ListenerSystemA.new);
+    descriptor.has(_ListenerSystemB.new);
+  }
 }
 
 class _ListenerGame extends Game {
@@ -206,7 +247,11 @@ class _ShorthandSystem extends GameSystem with GameSystemLifecycleListener {
 }
 
 class _ShorthandState extends GameState<_ShorthandGame> {
-  final shorthandSystem = GameSystem.of(_ShorthandSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_ShorthandSystem.new);
+  }
 }
 
 class _ShorthandGame extends Game {
@@ -254,9 +299,39 @@ class _CtorSubOldSpelling extends GameSystem {
   void onJump(InputEvent<bool> event) => heard.add('jump');
 }
 
+/// The counter-case, and the reason the recommendation is conditional: an
+/// action declared in `describeInputs` is a `late final` field that has not
+/// been assigned when the constructor body runs.
+class _LateFieldCtorSystem extends GameSystem {
+  late final Input<bool> fire;
+
+  Object? constructionError;
+
+  _LateFieldCtorSystem() {
+    try {
+      fire.pressed += onFire;
+    } catch (error) {
+      constructionError = error;
+    }
+  }
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    fire = input.has<bool>(const TriggerBinding(.spacebar));
+  }
+
+  void onFire(InputEvent<bool> event) {}
+}
+
 class _CtorSubState extends GameState<_CtorSubGame> {
-  final ctorSubSystem = GameSystem.of(_CtorSubSystem.new);
-  final ctorSubOldSpelling = GameSystem.of(_CtorSubOldSpelling.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_CtorSubSystem.new);
+    descriptor.has(_CtorSubOldSpelling.new);
+    descriptor.has(_LateFieldCtorSystem.new);
+  }
 }
 
 class _CtorSubGame extends Game {
@@ -272,26 +347,34 @@ class _CtorSubGame extends Game {
 
 // --- default-value fixtures ----------------------------------------------
 
-/// A game with an action of a type nothing has a fallback for, so the first
-/// read of it throws rather than inventing a number.
-class _NoDefaultGame extends Game {
+/// A game that **forgets `super.describeInputs`**, which is the silent
+/// failure `@mustCallSuper` exists to catch: nothing complains at boot, and
+/// the first read of an unbound action throws instead of reading `false`.
+class _NoSuperGame extends Game {
   @override
   int get pageSize => 4096;
 
-  /// `double` is the type the engine ships no fallback for, so an unbound
-  /// action of it has nothing to read at all.
-  final orphan = Input.of<double>();
-
-  final ownDefault = Input.of<double>(null, 0.5);
+  late final Input<bool> orphan;
+  late final Input<bool> ownDefault;
 
   @override
-  GameState createState() => _NoDefaultState();
+  GameState createState() => _NoSuperState();
+
+  @override
+  // ignore: must_call_super
+  void describeInputs(InputDescriptor input) {
+    // Deliberately no super.describeInputs(input) - that is the whole point
+    // of this fixture. The analyzer flags it, which is why the ignore above
+    // has to be written out by hand.
+    orphan = input.has<bool>();
+    ownDefault = input.has<bool>(null, true);
+  }
 }
 
-class _NoDefaultState extends GameState<_NoDefaultGame> {}
+class _NoSuperState extends GameState<_NoSuperGame> {}
 
-/// Registers a `bool` fallback on top of the one the engine already shipped -
-/// a declare-time error, not a silent overwrite.
+/// Registers a `bool` default on top of the one `Game.describeInputs` already
+/// shipped - a declare-time error, not a silent overwrite.
 class _DuplicateDefaultGame extends Game {
   @override
   int get pageSize => 4096;
@@ -300,9 +383,10 @@ class _DuplicateDefaultGame extends Game {
   GameState createState() => _DuplicateDefaultState();
 
   @override
-  List<InputDefault<Object?>> get inputDefaults => <InputDefault<Object?>>[
-    const InputDefault<bool>(true),
-  ];
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    input.hasDefaultValue<bool>(true);
+  }
 }
 
 class _DuplicateDefaultState extends GameState<_DuplicateDefaultGame> {}
@@ -312,25 +396,36 @@ class _DuplicateDefaultState extends GameState<_DuplicateDefaultGame> {}
 /// that type picking it up even though the Game declared first.
 class _LateDefaultSystem extends GameSystem {
   @override
-  List<InputDefault<Object?>> get inputDefaults => <InputDefault<Object?>>[
-    const InputDefault<double>(0.25),
-  ];
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    input.hasDefaultValue<double>(0.25);
+  }
 }
 
 class _SharedDescriptorGame extends Game {
   @override
   int get pageSize => 4096;
 
-  /// Declared *before* `_LateDefaultSystem` registers the double fallback -
-  /// defaults are matched to actions at seal(), not at declaration.
-  final throttle = Input.of<double>();
+  late final Input<double> throttle;
 
   @override
   GameState createState() => _SharedDescriptorState();
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    // Declared *before* _LateDefaultSystem registers the double default -
+    // defaults are matched to actions at seal(), not at has().
+    throttle = input.has<double>();
+  }
 }
 
 class _SharedDescriptorState extends GameState<_SharedDescriptorGame> {
-  final lateDefaultSystem = GameSystem.of(_LateDefaultSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_LateDefaultSystem.new);
+  }
 }
 
 // --- pointer fixtures -----------------------------------------------------
@@ -339,19 +434,28 @@ class _SharedDescriptorState extends GameState<_SharedDescriptorGame> {
 /// of "the mouse", which are deliberately different kinds of thing: the
 /// button is one bit like any key, the position is not.
 class _CursorSystem extends GameSystem {
-  _CursorSystem() {
+  late final Input<CursorPosition> cursor;
+  late final Input<bool> click;
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    cursor = input.has<CursorPosition>(const MouseBinding());
+    click = input.has<bool>(const TriggerBinding(.leftMouseButton));
+
     cursor.pressed += (event) => events.add('cursor pressed');
     cursor.released += (event) => events.add('cursor released');
     click.pressed += (event) => events.add('click pressed');
     click.released += (event) => events.add('click released');
   }
-
-  final cursor = Input.of<CursorPosition>(const MouseBinding());
-  final click = Input.of<bool>(const TriggerBinding(.leftMouseButton));
 }
 
 class _MouseGameState extends GameState<_MouseGame> {
-  final cursorSystem = GameSystem.of(_CursorSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_CursorSystem.new);
+  }
 }
 
 class _MouseGame extends Game {
@@ -869,6 +973,31 @@ void main() {
       expect(system.heard, isNotEmpty);
     });
 
+    test('a describeInputs action cannot be reached from there', () async {
+      await _boot(_CtorSubGame.new);
+      final system = run.state.getSystem<_LateFieldCtorSystem>();
+
+      expect(
+        system.constructionError,
+        isA<Error>(),
+        reason:
+            'an action declared in describeInputs is a late final field, and '
+            'the hook runs long after the constructor body - so the two '
+            'spellings are not interchangeable, which is why the guide '
+            'recommends the constructor body only for the field form',
+      );
+      expect(
+        system.constructionError.toString(),
+        contains('fire'),
+        reason:
+            'the diagnostic has to name the field: asserting only that some '
+            'Error was thrown would pass on any unrelated failure in the '
+            'constructor body',
+      );
+      // And the action itself is fine - only the early subscription failed.
+      expect(system.fire.pressed.hasListeners, isFalse);
+      expect(system.fire.value, isFalse);
+    });
   });
 
   group('binding shorthands', () {
@@ -1247,19 +1376,19 @@ void main() {
       expect(
         system.ping.value,
         isFalse,
-        reason: 'boot registers InputDefault<bool>(false) before any source',
+        reason: 'Game.describeInputs registers hasDefaultValue<bool>(false)',
       );
       expect(
         system.aim.value,
         Vector2.zero(),
         reason:
-            'and InputDefault<Vector2>(Vector2.zero()), which is what makes '
-            'the two shipped binding types work with no ceremony',
+            'and hasDefaultValue<Vector2>(Vector2.zero()), which is '
+            'what makes the two shipped binding types work with no ceremony',
       );
     });
 
     test('an action with no default anywhere throws, naming itself', () async {
-      final game = await _boot(_NoDefaultGame.new);
+      final game = await _boot(_NoSuperGame.new);
 
       Object? thrown;
       try {
@@ -1279,8 +1408,8 @@ void main() {
         thrown.toString(),
         allOf(
           contains('#0'),
-          contains('_NoDefaultGame'),
-          contains('Input<double>'),
+          contains('_NoSuperGame'),
+          contains('Input<bool>'),
         ),
         reason:
             'the message has to identify which action - there is no '
@@ -1291,15 +1420,30 @@ void main() {
     });
 
     test('a per-action default is enough on its own', () async {
-      final game = await _boot(_NoDefaultGame.new);
+      final game = await _boot(_NoSuperGame.new);
       expect(
         game.ownDefault.value,
-        0.5,
+        isTrue,
         reason:
-            'declared with Input.of<double>(null, 0.5) - the action\'s own '
+            'declared with has<bool>(null, true) - the action\'s own '
             'default needs no type-level fallback behind it',
       );
     });
+
+    test(
+      'forgetting super.describeInputs loses the shipped defaults',
+      () async {
+        final game = await _boot(_NoSuperGame.new);
+        expect(
+          () => game.orphan.value,
+          throwsStateError,
+          reason:
+              'worth its own test precisely because it is silent: nothing '
+              'fails at boot, and the game runs until something reads an '
+              'unbound action. That is what @mustCallSuper is guarding',
+        );
+      },
+    );
 
     test('a per-action default wins over the type-level one', () async {
       final game = await _boot(_PrecedenceGame.new);
@@ -1455,17 +1599,16 @@ void main() {
   });
 
   group('declaration window', () {
-    test('declaring an input outside a constructor is refused', () async {
+    test('declaring an input after boot is refused', () async {
       final game = await _boot(_InputGame.new);
-
+      // The *real* descriptor, kept from the boot pass.
+      final descriptor = game.capturedDescriptor!;
+      expect(() => descriptor.has<bool>(), throwsStateError);
       expect(
-        Input.of<bool>,
+        () => descriptor.has<bool>(const TriggerBinding(.f1)),
         throwsStateError,
-        reason:
-            'the registry is open around a Game or GameSystem constructor '
-            'and around nothing else, so there is no window to declare into '
-            'once boot has finished',
       );
+      expect(() => descriptor.hasDefaultValue<int>(0), throwsStateError);
       expect(
         game.inputActionCount,
         4,
@@ -1474,29 +1617,6 @@ void main() {
             'must end up with the same one, and the other one is no longer '
             'listening',
       );
-    });
-
-    test('a sealed registry refuses a declaration it is handed', () {
-      // The registry directly, because nothing hands one out any more: it is
-      // opened around a constructor call and closed again, so the only way to
-      // hold a sealed one is to have made it. Both halves are guarded, and an
-      // action reaching a sealed registry would take an index the other copy
-      // never issued.
-      final registry = InputRegistry()..seal();
-
-      expect(
-        () => registry.has<bool>(),
-        throwsStateError,
-        reason: 'an action declared after boot has no storage to resolve into',
-      );
-      expect(
-        () => registry.hasDefaultValue<int>(0),
-        throwsStateError,
-        reason:
-            'and a fallback registered after seal() would apply to no action '
-            '- every one of them took its default at seal()',
-      );
-      expect(registry.actionCount, 0);
     });
   });
 
@@ -2025,11 +2145,18 @@ class _PrecedenceGame extends Game {
   @override
   int get pageSize => 4096;
 
-  final loud = Input.of<bool>(null, true);
-  final quiet = Input.of<bool>();
+  late final Input<bool> loud;
+  late final Input<bool> quiet;
 
   @override
   GameState createState() => _PrecedenceState();
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    loud = input.has<bool>(null, true);
+    quiet = input.has<bool>();
+  }
 }
 
 class _PrecedenceState extends GameState<_PrecedenceGame> {}

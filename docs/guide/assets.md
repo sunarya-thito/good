@@ -46,45 +46,48 @@ class Player extends EntityStruct
 }
 ```
 
-`Asset.of` reads the descriptor a scene's bring-up opens, and the scene
-registers the asset there and then. A prefab that needs a constructor argument
-to decide what to declare puts the call in the initializer list, where the
-argument is in scope:
+`Asset.of` is the same registration `describeAssets` makes, reached without
+being handed the descriptor — a scene loads the asset either way. The hook is
+still there, and a prefab that wants the handle before its own fields run, or
+that decides what to declare from something it was constructed with, uses it:
 
 ```dart
-class Prop extends EntityStruct with Transform2D, Renderable2D {
-  Prop(TextureKey skin) : texture = Asset.of(skin);
+class Player extends EntityStruct
+    with Transform2D, WorldTransform2D, Renderable2D {
+  late final TextureAsset texture;
 
-  final TextureAsset texture;
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    texture = descriptor.has(Textures.spritesPlayer);
+  }
 }
 ```
 
-A prefab built that way has to be built by the scene — `descriptor.has(() =>
-Prop(Textures.crate))` — because the window is open only for the duration of
-that call. Handing back a prefab built earlier throws.
+Scenes declare assets the same way, and **prefabs share their scene's
+descriptor**. `has` is idempotent per identity, so declaring the same texture in
+a prefab and in its scene produces the identical handle — one address, one
+decode. That is what makes naming a shared texture in three prefabs cost one
+decode rather than three.
 
-**Prefabs share their scene's descriptor.** `Asset.of` is idempotent per
-identity, so declaring the same texture in a prefab and in its scene produces
-the identical handle — one address, one decode. That is what makes naming a
-shared texture in three prefabs cost one decode rather than three.
+!!! note "A scene declares in the hook, not in a field"
+    `Asset.of` reads the descriptor a scene's bring-up opens, and a
+    `SceneStruct` is constructed by you — before it has an `Assets` to declare
+    into. So a scene's own field initialiser throws and a scene uses
+    `describeAssets`. A prefab is constructed by the scene's pass, which is why
+    its fields are inside the window. The same fact governs `Field.*` and
+    `Event.of`.
 
-!!! note "A scene declares assets in a hook, not in a field"
-    A `SceneStruct` has no `Assets` until `initializeScene`, which runs after
-    the constructor returns. So a scene's own field initialiser throws and a
-    scene uses `describeAssets`, which is handed the same descriptor `Asset.of`
-    reads. A prefab is constructed by the scene's pass, so its fields are
-    inside the window. `Event.of` is not in this bucket: the event binder *is*
-    open around a declared scene's construction, so a scene's own events go on
-    fields.
-
-    A `late final` throws too: it would run on first read, long after the pass
-    that both isolate copies replay in the same order, so the asset would be
-    addressed on whichever copy happened to touch it first.
+    A `late final` throws too, and that is deliberate: it would run on first
+    read, long after the pass that both isolate copies replay in the same
+    order, so the asset would be addressed on whichever copy happened to touch
+    it first.
 
 !!! danger "Declare it wherever you read it"
     A prefab that uses a texture must declare it, even if its scene already
-    does. The scene declaring it does not fill *your* field. Declaring in both
-    places costs nothing, because `Asset.of` is idempotent per identity.
+    does. The scene declaring it does not assign *your* field, and a field read
+    in `describeSprites` that nothing assigned is a `LateInitializationError` on
+    mount. Declaring in both places costs nothing.
 
 ## The generated enums
 
@@ -197,13 +200,13 @@ exactly where it is most useful.
 
 ### Textures
 
-<!-- snippet: in EntityStruct with Renderable2D -->
+<!-- snippet-setup
+final descriptor = given<SpriteDescriptor>();
+late Sprite sprite;
+final texture = given<TextureAsset>();
+-->
 ```dart
-final sprite = Sprite.of(
-  texture: Asset.of(Textures.spritesPlayer),
-  width: 64,
-  height: 64,
-);
+sprite = descriptor.has(texture: texture, width: 64, height: 64);
 ```
 
 `TextureFilter` chooses sampling — `mipmap` by default, and the crisp option for

@@ -462,16 +462,21 @@ import 'systems/spin_system.dart';
 /// `Game` and not a `Game3D`: there is no such class, because what `Game2D`
 /// gives you over `Game` is a renderer and a default camera view to point it
 /// at, and `goo3d` has no renderer yet (issue #43). Everything a 3D game
-/// declares, it declares here by hand.
+/// declares, it declares here by hand - which is two overrides, both below.
 class $gameClass extends Game {
   /// The view `main.dart` shows, and the one the camera entity in
   /// `MainScene` is pointed at.
   ///
-  /// A view is a place a game is drawn, declared while this class is being
-  /// constructed because its storage is allocated before the simulation
-  /// isolate is spawned. `Game2D` declares one called `defaultCamera` on your
-  /// behalf; nothing does that here.
-  final mainView = CameraView.of();
+  /// A view is a place a game is drawn, declared at boot because its storage
+  /// is allocated before the simulation isolate is spawned. `Game2D` declares
+  /// one called `defaultCamera` on your behalf; nothing does that here.
+  late final CameraView mainView;
+
+  @override
+  void describeCameras(CameraDescriptor descriptor) {
+    super.describeCameras(descriptor);
+    mainView = descriptor.has();
+  }
 
   @override
   GameState<$gameClass> createState() => ${className}State();
@@ -479,12 +484,16 @@ class $gameClass extends Game {
 
 /// The **game isolate** half: what the game *does*.
 class ${className}State extends GameState<$gameClass> {
-  // Composes every entity's local `Transform3D` against its ancestors into
-  // its `WorldTransform3D`, once per tick. Without it a child never moves
-  // with its parent - and again, `Game2D` declares the 2D twin of this for
-  // you while nothing declares this one.
-  final worldTransform = GameSystem.of(WorldTransform3DSystem.new);
-  final spin = GameSystem.of(SpinSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    // Composes every entity's local `Transform3D` against its ancestors into
+    // its `WorldTransform3D`, once per tick. Without it a child never moves
+    // with its parent - and again, `Game2D` declares the 2D twin of this for
+    // you while nothing declares this one.
+    descriptor.has(WorldTransform3DSystem.new);
+    descriptor.has(SpinSystem.new);
+  }
 
   @override
   void onMounted() {
@@ -576,10 +585,17 @@ import 'package:$package/$package.dart';
 /// final speed = Field.float64(220);   // read and written as speed[entity]
 /// ```
 ///
-/// To give it a texture, declare one where the sprite names it:
+/// To give it a texture, declare one in `describeAssets` and hand the handle
+/// to the sprite:
 ///
 /// ```dart
-/// final sprite = Sprite.of(texture: Asset.of(Textures.yourAsset));
+/// late final TextureAsset texture;
+///
+/// @override
+/// void describeAssets(AssetDescriptor descriptor) {
+///   super.describeAssets(descriptor);
+///   texture = descriptor.has(Textures.yourAsset);
+/// }
 /// ```
 ///
 /// `Textures` comes from `package:$bundle/textures.dart`, which is
@@ -587,9 +603,15 @@ import 'package:$package/$package.dart';
 /// in the pubspec, and run `good generate`. Everything good writes lands in
 /// that package; every file under `lib/` here is one you wrote.
 class Player extends EntityStruct with Transform2D, WorldTransform2D, Renderable2D {
-  // Untextured to start with: a flat colour is one branch in the renderer and
-  // needs no asset, so a new project draws something on the first run.
-  final sprite = Sprite.of(width: 64, height: 64, color: 0xFF4FC3F7);
+  late final Sprite sprite;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    // Untextured to start with: a flat colour is one branch in the renderer
+    // and needs no asset, so a new project draws something on the first run.
+    sprite = descriptor.has(width: 64, height: 64, color: 0xFF4FC3F7);
+  }
 }
 ''';
 

@@ -1074,7 +1074,7 @@ flutter:
       expect(game, contains('mainView'));
       expect(
         game,
-        contains('CameraView.of()'),
+        contains('describeCameras'),
         reason: 'Game2D declares a default view for you; plain Game does not',
       );
       expect(
@@ -1399,8 +1399,8 @@ class Player extends EntityStruct with Velocity, Momentum {}
 
     test('fails rather than generating over a broken describeX chain', () {
       // The same refusal as the two above. A mixin that stops chaining
-      // contributes no columns, and every mixin applied before it is cut off
-      // too - with nothing said at run time.
+      // contributes no columns and no query bit, and every mixin applied
+      // before it is cut off too - with nothing said at run time.
       final dir = _project(_pubspecWithAssets, <String>[]);
       File('${dir.path}/lib/game.dart')
         ..parent.createSync(recursive: true)
@@ -1409,8 +1409,8 @@ mixin Velocity on Component {
   final speed = Field.float64();
 
   @override
-  void describeStruct(DataDescriptor data) {
-    speed = data.hasFloat64();
+  void describeType(ComponentDescriptor component) {
+    component.has<Velocity>();
   }
 }
 ''');
@@ -1428,8 +1428,8 @@ mixin Velocity on Component {
             'message',
             allOf(
               contains(
-                'Velocity.describeStruct does not call '
-                'super.describeStruct()',
+                'Velocity.describeType does not call '
+                'super.describeType()',
               ),
               contains('game.dart'),
             ),

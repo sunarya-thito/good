@@ -43,7 +43,11 @@ mixin Transform3D on Component {
   final transformRotationZ = Field.float64();
   final transformRotationW = Field.float64(1);
 
-  final transform3DType = Component.type<Transform3D>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<Transform3D>();
+  }
 }
 
 /// What a game does with a [Transform3D], on the **entity** and not on the

@@ -260,7 +260,13 @@ class MainScene extends SceneStruct {
 
 ```dart
 class Player extends EntityStruct with Transform2D, WorldTransform2D, Renderable2D {
-  final sprite = Sprite.of(width: 64, height: 64, color: 0xFF4FC3F7);
+  late final Sprite sprite;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    sprite = descriptor.has(width: 64, height: 64, color: 0xFF4FC3F7);
+  }
 }
 ```
 

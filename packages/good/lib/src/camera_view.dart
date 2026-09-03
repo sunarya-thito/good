@@ -4,7 +4,6 @@ import 'package:ffi/ffi.dart';
 import 'package:meta/meta.dart';
 
 import 'package:good/src/data.dart';
-import 'package:good/src/declare.dart';
 import 'package:good/src/game.dart';
 
 /// One addressable place a game is drawn - what a `GameView` shows and what a
@@ -12,16 +11,23 @@ import 'package:good/src/game.dart';
 ///
 /// ```dart
 /// class MyGame extends Game2D {
-///   final mainCamera = CameraView.of();
-///   final minimapCamera = CameraView.of();
+///   late final CameraView mainCamera;
+///   late final CameraView minimapCamera;
+///
+///   @override
+///   void describeCameras(CameraDescriptor descriptor) {
+///     super.describeCameras(descriptor);
+///     mainCamera    = descriptor.has();
+///     minimapCamera = descriptor.has();
+///   }
 /// }
 ///
 /// GameView(camera: game.mainCamera)
 /// ```
 ///
-/// [of] takes no argument because there is nothing to tell it: the field name
-/// is the identity (the typed-handle rule), so a camera is never addressed by
-/// a name repeated at the use site.
+/// [CameraDescriptor.has] takes no argument because there is nothing to tell
+/// it: the field name is the identity (the typed-handle rule), so a camera is
+/// never addressed by a name repeated at the use site.
 ///
 /// # Why declared at boot
 ///
@@ -43,74 +49,16 @@ import 'package:good/src/game.dart';
 ///
 /// # Nothing here is settable
 ///
-/// Every member is a getter and the constructor is private, so a view can only
-/// come from [of] - there is no way to forge one whose address collides with a
-/// declared view, and no way to repoint one at another game. That last part is
-/// why `GameView` needs no `game` parameter: with only one reference there is
-/// nothing for a second to disagree with.
+/// Every member is a getter and the constructor is private, so a view can
+/// only come from [CameraDescriptor.has] - there is no way to forge one whose
+/// address collides with a declared view, and no way to repoint one at
+/// another game. That last part is why `GameView` needs no `game` parameter:
+/// with only one reference there is nothing for a second to disagree with.
 final class CameraView implements IntRepresentable {
-  CameraView._(this._index);
-
-  /// Declares one view on the game being constructed, and returns the handle
-  /// the field holds:
-  ///
-  /// ```dart
-  /// class MyGame extends Game {
-  ///   final mainCamera = CameraView.of();
-  /// }
-  /// ```
-  ///
-  /// Takes nothing, for the reason the class doc gives, and hands back a view
-  /// whose address is its position in the game's [CameraViewTable]. Which game
-  /// it belongs to is settled once the constructor returns, so [game] answers
-  /// from that point on and throws before it.
-  ///
-  /// The number of views is fixed at construction: each is drawn into shared
-  /// memory allocated before `Isolate.spawn`, so a view declared later would
-  /// have no storage. Declaring one from a prefab, a scene or a system is
-  /// refused with the sentence saying so - `CameraView.representation()` is
-  /// what a prefab wants, and it names the table rather than adding to it.
-  ///
-  /// # Eager, always
-  ///
-  /// `late final mainCamera = CameraView.of()` compiles and is wrong. The call
-  /// runs on the first *read*, after the table has been closed and its storage
-  /// allocated, and is refused there.
-  static CameraView of() {
-    final table = DeclarationContext.cameraViewsOrNull;
-    if (table == null) CameraViewTable.refuseDeclaration();
-    return table.declare();
-  }
-
-  /// The [IntRepresentation] a camera-view column binds to, for the scene
-  /// being brought up.
-  ///
-  /// A row stores a view as its address, and an address only means anything
-  /// against the table that issued it - so a component holding one names the
-  /// table:
-  ///
-  /// ```dart
-  /// mixin Camera on Component {
-  ///   final cameraView = Field.optPacked(CameraView.representation());
-  /// }
-  /// ```
-  ///
-  /// The table belongs to the game, not to the prefab, so there is one of
-  /// them for a whole scene's bring-up and every camera component binds to
-  /// the same object. `Asset.representation` is the same move for the asset
-  /// table.
-  ///
-  /// Throws outside a scene's declaration passes - a prefab constructed by
-  /// hand, or a `late final` that runs on first read.
-  static IntRepresentation<CameraView> representation() =>
-      DeclarationContext.cameraViews;
+  CameraView._(this._index, this._game);
 
   final int _index;
-
-  /// The game that declared this view, hung on once its constructor returns -
-  /// a field initialiser runs before there is a `Game` to name. Stays null for
-  /// [CameraViewTable.declareDetached].
-  Game? _game;
+  final Game? _game;
 
   /// Its index in the declaring game's [CameraViewTable]. Meaningful only
   /// against that table.
@@ -127,12 +75,10 @@ final class CameraView implements IntRepresentable {
     final game = _game;
     if (game == null) {
       throw StateError(
-        '$this belongs to no Game, so there is nothing for a GameView to '
-        'show. Either it came from CameraViewTable.declareDetached - a '
-        'headless fixture\'s view, which exists to be named by a camera '
-        'component - or the game that declared it is still being constructed. '
-        'A `CameraView.of()` field on a Game is displayable from the moment '
-        'that constructor returns.',
+        '$this was created detached (CameraViewTable.declareDetached) and '
+        'belongs to no Game, so there is nothing for a GameView to show. '
+        'Declare views in Game.describeCameras for anything that has to be '
+        'displayed.',
       );
     }
     return game;
@@ -202,6 +148,14 @@ final class CameraView implements IntRepresentable {
   String toString() => 'CameraView#$_index';
 }
 
+/// Declares a game's camera views - one [has] call per view, each returning
+/// the handle to keep in a `late final` field.
+abstract class CameraDescriptor {
+  /// Declares one view. Takes nothing: the field it is assigned to is the
+  /// identity, and its size comes from the `GameView` that shows it.
+  CameraView has();
+}
+
 /// A game's camera views, numbered from zero.
 ///
 /// Its own [IntRepresentation], not a tenant in the asset table: a camera view
@@ -218,11 +172,11 @@ final class CameraViewTable implements IntRepresentation<CameraView> {
   /// The view at [address] - declaration order.
   CameraView operator [](int address) => _views[address];
 
-  /// Eight bits, not thirty-two. A game declares its views on fields and they
-  /// are counted on the fingers of one hand - a split-screen four-player game
-  /// has four - so a `DataPointer<CameraView>` costs a row one byte instead of
-  /// four. [declare] enforces the ceiling instead of letting the 257th view
-  /// silently alias the first.
+  /// Eight bits, not thirty-two. A game declares its views in
+  /// `describeCameras` and they are counted on the fingers of one hand - a
+  /// split-screen four-player game has four - so a `DataPointer<CameraView>`
+  /// costs a row one byte instead of four. [declare] enforces the ceiling
+  /// instead of letting the 257th view silently alias the first.
   @override
   int get bitWidth => 8;
 
@@ -240,7 +194,7 @@ final class CameraViewTable implements IntRepresentation<CameraView> {
     if (view == null) {
       throw StateError(
         'No camera view at address $bits - this game declared '
-        '${_views.length} view(s). A row holding an '
+        '${_views.length} view(s) in describeCameras. A row holding an '
         'address this table never issued is either stale or came from a '
         'different table; addresses are only meaningful against the table '
         'that issued them.',
@@ -249,7 +203,7 @@ final class CameraViewTable implements IntRepresentation<CameraView> {
     return view;
   }
 
-  CameraView _add() {
+  CameraView _add(Game? game) {
     if (_views.length >= _maxViews) {
       throw StateError(
         'A game may declare at most $_maxViews camera views; this one '
@@ -258,68 +212,20 @@ final class CameraViewTable implements IntRepresentation<CameraView> {
         'game genuinely needs more.',
       );
     }
-    final view = CameraView._(_views.length);
+    final view = CameraView._(_views.length, game);
     _views.add(view);
     return view;
   }
 
-  /// Whether [declare] is accepting views. True only while the `Game` that
-  /// owns this table is being constructed - `Game._construct` opens it before
-  /// the call and closes it in [bindGame].
-  ///
-  /// It is what makes `CameraView.of()` outside that window a refusal rather
-  /// than a view with no storage: the table is also on the declaration stack
-  /// for the whole of a scene's bring-up, where `CameraView.representation()`
-  /// reads it, and a `CameraView.of()` there would otherwise land in a table
-  /// whose memory was allocated a phase earlier.
-  bool _open = false;
-
   @internal
-  void open() => _open = true;
-
-  /// The one refusal for declaring a view outside a game's constructor -
-  /// whether the stack is empty or the table on it has been closed.
-  @internal
-  static Never refuseDeclaration() {
-    throw StateError(
-      'A camera view was declared with no game being constructed. '
-      'CameraView.of reads the table Game.start opens around a constructor '
-      'call, so the framework has to be the one constructing:\n'
-      '  Game.start(MyGame.new)   // not Game.start(MyGame())\n'
-      'A `late final` initialiser lands here too, and that is the point: it '
-      'runs on first read, after the table was closed and every view\'s two '
-      'floats of shared memory allocated, so the view would have nowhere to '
-      'report its size. Field initialisers here are eager, always.\n'
-      'A Game is the only thing that declares a view - the storage is '
-      'allocated on main before the spawn, so only a pass that runs there can '
-      'own an address. A prefab naming a view holds an address in a column: '
-      '`Field.optPacked(CameraView.representation())`.',
-    );
-  }
-
-  /// Adds one view. `CameraView.of` is the only caller.
-  @internal
-  CameraView declare() {
-    if (!_open) refuseDeclaration();
-    return _add();
-  }
-
-  /// Hands every declared view its game and closes the table. Called once, by
-  /// `Game._construct`, as soon as the constructor returns.
-  @internal
-  void bindGame(Game game) {
-    _open = false;
-    for (var i = 0; i < _views.length; i++) {
-      _views[i]._game = game;
-    }
-  }
+  CameraView declare(Game game) => _add(game);
 
   /// A view belonging to no game, for a headless fixture that brings a scene
   /// up without one - public for exactly the reason `SceneRegistry.register`
   /// and `SceneStruct.initializeScene` are. It can be stored in a `Camera`'s
   /// `view` field and resolved through this table; it cannot be shown.
   @visibleForTesting
-  CameraView declareDetached() => _add();
+  CameraView declareDetached() => _add(null);
 
   @internal
   void allocate() {
@@ -334,4 +240,15 @@ final class CameraViewTable implements IntRepresentation<CameraView> {
       _views[i].release(owns: owns);
     }
   }
+}
+
+@internal
+final class GameCameraDescriptor implements CameraDescriptor {
+  GameCameraDescriptor(this._game, this._table);
+
+  final Game _game;
+  final CameraViewTable _table;
+
+  @override
+  CameraView has() => _table.declare(_game);
 }

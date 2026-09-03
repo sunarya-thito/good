@@ -58,7 +58,11 @@ mixin WorldTransform3D on Component {
   final _cachedScaleZ = Field.float64(double.nan);
   final _cachedParent = Field.optEntity();
 
-  final worldTransform3DType = Component.type<WorldTransform3D>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<WorldTransform3D>();
+  }
 }
 
 /// Keeps every [WorldTransform3D] current, once per fixed tick.

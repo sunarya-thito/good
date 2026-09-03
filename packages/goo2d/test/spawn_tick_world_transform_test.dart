@@ -66,14 +66,6 @@ class _Scene extends SceneStruct {
 
 /// Spawns and destroys from inside a tick, as a real game does.
 class _Spawner extends GameSystem with FixedTickable {
-  // Publishes itself so the tests below can reach it without a state
-  // reference. The declaration is the field on the state; this is a fixture
-  // convenience, and it runs exactly once because the framework builds a
-  // declared system exactly once.
-  _Spawner() {
-    spawner = this;
-  }
-
   Entity? spawned;
   double? spawnX;
   double? spawnY;
@@ -130,8 +122,12 @@ class _GameState extends GameState<_Game> {
   @override
   void onMounted() => loadScene(_Scene());
 
-  final spawner = GameSystem.of(_Spawner.new);
-  final worldTransformSystem = GameSystem.of(WorldTransformSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    spawner = descriptor.has(_Spawner.new);
+    descriptor.has(WorldTransformSystem.new);
+  }
 }
 
 // ignore: library_private_types_in_public_api

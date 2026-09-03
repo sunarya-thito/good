@@ -40,19 +40,22 @@ final List<String> seen = <String>[];
 final List<String> edges = <String>[];
 
 class _TouchSystem extends GameSystem with FixedTickable {
-  _TouchSystem() {
-    contacts.pressed += (event) => edges.add('pressed');
-    contacts.released += (event) => edges.add('released');
-  }
-
-  final contacts = Input.of<PointerContacts>(const ContactBinding());
-
-  final cursor = Input.of<CursorPosition>(const MouseBinding());
+  late final Input<PointerContacts> contacts;
+  late final Input<CursorPosition> cursor;
 
   /// The list object handed out on the last step, and the contact object at
   /// index 0 - both are meant to be the same instances every tick.
   PointerContacts? lastList;
   PointerContact? lastFirst;
+
+  @override
+  void describeInputs(InputDescriptor input) {
+    super.describeInputs(input);
+    contacts = input.has<PointerContacts>(const ContactBinding());
+    cursor = input.has<CursorPosition>(const MouseBinding());
+    contacts.pressed += (event) => edges.add('pressed');
+    contacts.released += (event) => edges.add('released');
+  }
 
   @override
   void onFixedUpdate() {
@@ -71,7 +74,11 @@ class _TouchSystem extends GameSystem with FixedTickable {
 }
 
 class _TouchState extends GameState<_TouchGame> {
-  final touchSystem = GameSystem.of(_TouchSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_TouchSystem.new);
+  }
 }
 
 class _TouchGame extends Game {
@@ -641,9 +648,9 @@ void main() {
         system.contacts.value.count,
         0,
         reason:
-            'boot registers the type-level fallback, so an unbound action '
-            'reads "nothing is pressing" instead of throwing on a value '
-            'nobody outside the framework can construct',
+            'Game.describeInputs registers the type-level default, so an '
+            'unbound action reads "nothing is pressing" instead of throwing '
+            'on a value nobody outside the framework can construct',
       );
     });
   });

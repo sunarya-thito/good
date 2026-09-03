@@ -18,7 +18,7 @@ import 'package:good/src/system.dart';
 /// one inline run per isolate means one binding is enough.
 late Game run;
 
-// Single-copy coverage for Channel/StateChannel, driven through
+// Single-copy coverage for describeState/StateChannel, driven through
 // Game.startInline(...) exactly as game_test.dart does:
 // one copy doing both jobs, no timer, runFixedStep() by hand. The two-isolate
 // half - where the read and the write genuinely happen on different heaps,
@@ -38,7 +38,7 @@ final List<String> changes = <String>[];
 // spawn and its index in that one pass is its identity on the wire, so the
 // declarer has to be something main itself runs. The GameState is built on
 // the game isolate; a scene is loaded (and re-loaded) after boot via
-// GameState.loadScene. See Channel.
+// GameState.loadScene. See Game.describeState.
 
 /// A plain prefab. It has no state channel of its own - a Component cannot
 /// declare one (see the note above); the system publishes on its behalf.
@@ -87,9 +87,9 @@ class _StateSystem extends GameSystem with FixedTickable {
     final g = nextGameCount;
     if (g != null) (game as _StateGame).gameCount.value = g;
     final t = nextStateCount;
-    // Declared on the Game and written from the game isolate. A GameState
-    // cannot declare one: it is built after main has already allocated the
-    // channels.
+    // Declared on the Game and written from the game isolate - the pattern
+    // that replaced `GameState.describeState`, which cannot exist now that
+    // the state is built after main has already allocated the channels.
     if (t != null) (game as _StateGame).stateCount.value = t;
     final p = nextProbeCount;
     // A prefab cannot own a channel, so a per-prefab value is published
@@ -104,7 +104,11 @@ class _StateGameState extends GameState<_StateGame> {
     loadScene(_StateScene());
   }
 
-  final stateSystem = GameSystem.of(_StateSystem.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_StateSystem.new);
+  }
 }
 
 /// Source 1: the `Game` itself, declaring two channels.
@@ -115,21 +119,37 @@ class _StateGame extends Game {
   @override
   Duration get fixedTimeStep => const Duration(milliseconds: 10);
 
-  final gameCount = Channel.int32(7);
+  late final StateChannel<int> gameCount;
 
   /// A second channel on the same source, at a different width, written by the
   /// system on the game isolate.
-  final stateCount = Channel.int64(-5);
+  late final StateChannel<int> stateCount;
 
   /// Declared here on behalf of `_StateSystem`, which writes them. One source
   /// declares; the game isolate writes.
-  final health = Channel.int32(100);
-  final probeCount = Channel.uint16(300);
-  final mana = Channel.float32(0.5);
-  final alive = Channel.boolean(true);
+  late final StateChannel<int> health;
+  late final StateChannel<int> probeCount;
+  late final StateChannel<double> mana;
+  late final StateChannel<bool> alive;
+
+  /// The live descriptor, captured mid-boot so a test can try to declare
+  /// against it *after* boot - see 'declaring after boot is refused'.
+  StateDescriptor? capturedDescriptor;
 
   @override
   GameState createState() => _StateGameState();
+
+  @override
+  void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
+    capturedDescriptor = descriptor;
+    gameCount = descriptor.hasInt32(7);
+    stateCount = descriptor.hasInt64(-5);
+    health = descriptor.hasInt32(100);
+    probeCount = descriptor.hasUint16(300);
+    mana = descriptor.hasFloat32(0.5);
+    alive = descriptor.hasBool(true);
+  }
 }
 
 // --- fixtures for the failure/validation cases ---------------------------
@@ -225,11 +245,28 @@ void main() {
       );
     });
 
-    // Declaring after boot is refused by `DeclarationContext.channels`, which
-    // finds an empty stack once `Game._construct` has popped the window. The
-    // shape that reaches it is `late final score = Channel.int32()`, and
-    // `game_declaration_test.dart` pins it. There is no descriptor to hold on
-    // to any more, so there is nothing else to reach the closed window with.
+    test('declaring after boot is refused', () async {
+      final game = await _boot(_StateGame.new);
+      // The *real* descriptor, kept from the boot pass. It is sealed at the
+      // end of _boot(); a declaration now would have storage on neither copy
+      // and an index matching nothing on the other side.
+      final descriptor = game.capturedDescriptor!;
+      expect(() => descriptor.hasInt32(), throwsStateError);
+      expect(() => descriptor.hasFloat64(), throwsStateError);
+      expect(() => descriptor.hasBool(), throwsStateError);
+      expect(
+        game.stateChannelCount,
+        6,
+        reason: 'and nothing was appended to the declared set',
+      );
+    });
+
+    // `Game.bootStateDescriptor` used to be here, with a test that it threw
+    // outside a boot pass. Both are gone: the descriptor is a local in
+    // `_bootMain` now, so there is nothing to reach for and nothing to
+    // diagnose. The `_sealed` check above is what survives, and it is the
+    // stronger of the two - it catches holding on to a descriptor you were
+    // legitimately handed, which is the mistake that could actually happen.
   });
 
   group('width vocabulary', () {
@@ -451,18 +488,34 @@ class _WidthGame extends Game {
   @override
   int get pageSize => 4096;
 
-  final u8 = Channel.uint8();
-  final i8 = Channel.int8();
-  final u16 = Channel.uint16();
-  final i16 = Channel.int16();
-  final u32 = Channel.uint32();
-  final i32 = Channel.int32();
-  final u64 = Channel.uint64();
-  final i64 = Channel.int64();
-  final f32 = Channel.float32();
-  final f64 = Channel.float64();
-  final flag = Channel.boolean(true);
+  late final StateChannel<int> u8;
+  late final StateChannel<int> i8;
+  late final StateChannel<int> u16;
+  late final StateChannel<int> i16;
+  late final StateChannel<int> u32;
+  late final StateChannel<int> i32;
+  late final StateChannel<int> u64;
+  late final StateChannel<int> i64;
+  late final StateChannel<double> f32;
+  late final StateChannel<double> f64;
+  late final StateChannel<bool> flag;
 
   @override
   GameState createState() => _WidthState();
+
+  @override
+  void describeState(StateDescriptor descriptor) {
+    super.describeState(descriptor);
+    u8 = descriptor.hasUint8();
+    i8 = descriptor.hasInt8();
+    u16 = descriptor.hasUint16();
+    i16 = descriptor.hasInt16();
+    u32 = descriptor.hasUint32();
+    i32 = descriptor.hasInt32();
+    u64 = descriptor.hasUint64();
+    i64 = descriptor.hasInt64();
+    f32 = descriptor.hasFloat32();
+    f64 = descriptor.hasFloat64();
+    flag = descriptor.hasBool(true);
+  }
 }

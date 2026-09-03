@@ -14,12 +14,11 @@ import '_repo.dart';
 // What gets a build-time bit, and what is left to the run-time registry (#18).
 //
 // The distinction this turns on is not "is it a component". It is "does some
-// field initialiser in this repository say `Component.type<T>()`" - because
-// those are exactly the types `ComponentTypeRegistry.bitFor` is called with,
-// and a table over any other set would be a numbering with the same name and
-// different contents. A mixin on `Component` that declares no type has no bit
-// here, and a bit for it would be one of sixty-four spent on a type no
-// signature carries.
+// `describeType` in this repository call `has<T>()` on it" - because those are
+// exactly the types `ComponentTypeRegistry.bitFor` is called with, and a table
+// over any other set would be a numbering with the same name and different
+// contents. A mixin on `Component` that registers nothing has no bit here, and
+// a bit for it would be one of sixty-four spent on a type no signature carries.
 
 /// A mixin that registers itself, which is what almost every one does.
 String _mixin(String name) =>
@@ -29,7 +28,11 @@ import 'package:good/good.dart';
 mixin $name on Component {
   final ${name.toLowerCase()}Value = Field.float64();
 
-  final ${name.toLowerCase()}Type = Component.type<$name>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<$name>();
+  }
 }
 ''';
 
@@ -73,7 +76,7 @@ String _emit(Directory repo, String package) {
 
 void main() {
   group('a bit is generated', () {
-    test('for every type a field declares, ordered so a diff is stable', () {
+    test('for every type a describeType names, ordered so a diff is stable', () {
       final scan = _scan(
         _repo(<String, String>{
           'goo2d.dart':
@@ -100,11 +103,19 @@ void main() {
 import 'package:good/good.dart';
 
 mixin Zeta on Component {
-  final zetaType = Component.type<Zeta>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<Zeta>();
+  }
 }
 
 mixin Alpha on Component {
-  final alphaType = Component.type<Alpha>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<Alpha>();
+  }
 }
 ''',
         }),
@@ -127,7 +138,11 @@ import 'package:good/good.dart';
 mixin Transform2D on Component {
   final transformOffsetX = Field.float64();
 
-  final transform2DType = Component.type<Transform2D>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<Transform2D>();
+  }
 }
 
 mixin CollisionListener on Component {
@@ -139,10 +154,7 @@ mixin CollisionListener on Component {
       expect(_types(scan), <String>['Transform2D']);
     });
 
-    test('and not for a prefab, whose type only a run knows', () {
-      // A prefab declares no component type of its own. The framework ORs in
-      // `runtimeType` once the object is built, and no source anywhere names
-      // it, so there is nothing here to write a bit for.
+    test('and not for has(type: runtimeType), which only a run knows', () {
       final scan = _scan(
         _repo(<String, String>{
           'goo2d.dart': "export 'src/data.dart';\n",
@@ -150,8 +162,10 @@ mixin CollisionListener on Component {
               '''
 import 'package:good/good.dart';
 
-class Player extends Prefab {
-  final hp = Field.float64();
+class Prefab implements Component {
+  void describeType(ComponentDescriptor component) {
+    component.has(type: runtimeType);
+  }
 }
 ''',
         }),
@@ -186,8 +200,12 @@ class Player extends Prefab {
 import 'package:good/good.dart';
 
 mixin Transform2D on Component {
-  final transform2DType = Component.type<Transform2D>();
-  final elsewhereType = Component.type<FromSomewhereElse>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<Transform2D>();
+    component.has<FromSomewhereElse>();
+  }
 }
 ''',
         }),
@@ -219,8 +237,12 @@ import 'package:good/good.dart';
 import 'package:internal/internal.dart';
 
 mixin Transform2D on Component {
-  final transform2DType = Component.type<Transform2D>();
-  final hiddenType = Component.type<Hidden>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<Transform2D>();
+    component.has<Hidden>();
+  }
 }
 ''',
           },
@@ -310,7 +332,11 @@ import 'struct.dart';
 import 'archetype.dart';
 
 mixin Child on Component {
-  final childType = Component.type<Child>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<Child>();
+  }
 }
 ''',
             },
@@ -368,6 +394,10 @@ const String _hiddenMixin = '''
 import 'package:good/good.dart';
 
 mixin Hidden on Component {
-  final hiddenType = Component.type<Hidden>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<Hidden>();
+  }
 }
 ''';

@@ -20,9 +20,16 @@ person.
 ```dart
 class Crate extends EntityStruct
     with Transform3D, WorldTransform3D, Renderable3D, Collider3D, RigidBody3D {
-  final box = CubeBody.of(
-    halfWidth: 0.5, halfHeight: 0.5, halfDepth: 0.5, friction: 0.4,
-  );
+  late final CubeBody box;
+
+  @override
+  void describeCollider(Collider3DDescriptor descriptor) {
+    super.describeCollider(descriptor);
+    box = descriptor.hasCubeCollider(
+      halfWidth: 0.5, halfHeight: 0.5, halfDepth: 0.5, friction: 0.4,
+    );
+  }
+
 }
 ```
 
@@ -86,10 +93,10 @@ body.setVelocity(entity, 3, 0, 0);
 Cube, sphere, capsule and convex hull cover nearly everything that moves:
 
 ```dart
-final cube   = CubeBody.of(halfWidth: 0.5, halfHeight: 0.5, halfDepth: 0.5);
-final sphere = SphereBody.of(radius: 0.5);
-final pill   = CapsuleBody.of(radius: 0.25, halfHeight: 0.5);
-final hull   = HullBody.of(points: [...]);
+cube   = descriptor.hasCubeCollider(halfWidth: 0.5, halfHeight: 0.5, halfDepth: 0.5);
+sphere = descriptor.hasSphereCollider(radius: 0.5);
+pill   = descriptor.hasCapsuleCollider(radius: 0.25, halfHeight: 0.5);
+hull   = descriptor.hasHullCollider(points: [...]);
 ```
 
 Each returns its own body type — `CubeBody`, `SphereBody`, `CapsuleBody`,

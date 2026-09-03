@@ -23,7 +23,11 @@ late Game run;
 mixin _Marked on Component {
   final mark = Field.uint16(3);
 
-  final markedType = Component.type<_Marked>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<_Marked>();
+  }
 }
 
 class _Unit extends EntityStruct with _Marked {}
@@ -73,7 +77,11 @@ class _Census extends GameSystem with FixedTickable {
 }
 
 class _MultiState extends GameState<_MultiGame> {
-  final census = GameSystem.of(_Census.new);
+  @override
+  void describeSystems(SystemDescriptor descriptor) {
+    super.describeSystems(descriptor);
+    descriptor.has(_Census.new);
+  }
 }
 
 class _MultiGame extends Game {
@@ -91,7 +99,7 @@ class _MultiGame extends Game {
   @override
   void describeScenes(GameSceneDescriptor descriptor) {
     super.describeScenes(descriptor);
-    level = descriptor.has(_Level.new);
+    level = descriptor.has(_Level());
   }
 }
 

@@ -65,7 +65,11 @@ mixin _Position on Component {
   final x = Field.float64();
   final y = Field.float64();
 
-  final positionType = Component.type<_Position>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<_Position>();
+  }
 }
 
 class _Mote extends EntityStruct with _Position {}
@@ -216,7 +220,8 @@ void main() {
   }
   print('');
 
-  final query = Query.where().withAll(_Position).build();
+  final descriptor = ArchetypeQueryDescriptor();
+  final query = descriptor.query().withAll(_Position).build();
 
   // Correctness first. A benchmark whose passes disagree is timing three
   // different walks, and the fastest of those is the one doing least.

@@ -104,7 +104,13 @@ const String _fittingFrameGolden =
 /// One plain quad, `zIndex` 0, registered first.
 class _First extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  final quad = Sprite.of(width: 8, height: 8, color: _firstColor);
+  late final Sprite quad;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    quad = descriptor.has(width: 8, height: 8, color: _firstColor);
+  }
 }
 
 /// One plain quad on top of [_First], registered second.
@@ -116,20 +122,38 @@ class _First extends EntityStruct
 /// player the last thing to go.
 class _Second extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  final quad = Sprite.of(width: 8, height: 8, color: _secondColor, zIndex: 10);
+  late final Sprite quad;
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    quad = descriptor.has(width: 8, height: 8, color: _secondColor, zIndex: 10);
+  }
 }
 
 /// One nine-sliced sprite: one sprite, nine records.
 class _Panel extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  final skin = Asset.of(_panelTextureKey);
-  final frame = Sprite.of(
-    texture: Asset.of(_panelTextureKey),
-    width: 40,
-    height: 40,
-    color: _panelColor,
-    nineSliceBorder: NineSliceBorder.all(4, sourceSize: 16),
-  );
+  late final TextureAsset skin;
+  late final Sprite frame;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    skin = descriptor.has(_panelTextureKey);
+  }
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    frame = descriptor.has(
+      texture: skin,
+      width: 40,
+      height: 40,
+      color: _panelColor,
+      nineSliceBorder: NineSliceBorder.all(4, sourceSize: 16),
+    );
+  }
 }
 
 /// Sliced on the horizontal axis only - a capsule button, a progress bar, a
@@ -140,19 +164,31 @@ class _Panel extends EntityStruct
 /// The whole of #252 is that the fill pass charged this nine.
 class _Bar extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  final skin = Asset.of(_panelTextureKey);
-  final bar = Sprite.of(
-    texture: Asset.of(_panelTextureKey),
-    width: 40,
-    height: 40,
-    color: _barColor,
-    nineSliceBorder: const NineSliceBorder(
-      left: 0.25,
-      right: 0.25,
-      insetLeft: 4,
-      insetRight: 4,
-    ),
-  );
+  late final TextureAsset skin;
+  late final Sprite bar;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    skin = descriptor.has(_panelTextureKey);
+  }
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    bar = descriptor.has(
+      texture: skin,
+      width: 40,
+      height: 40,
+      color: _barColor,
+      nineSliceBorder: const NineSliceBorder(
+        left: 0.25,
+        right: 0.25,
+        insetLeft: 4,
+        insetRight: 4,
+      ),
+    );
+  }
 }
 
 /// The same shape turned ninety degrees: sliced top and bottom only, so it is
@@ -161,19 +197,31 @@ class _Bar extends EntityStruct
 /// both would pass [_Bar] and fail this.
 class _Column extends EntityStruct
     with Transform2D, WorldTransform2D, Renderable2D {
-  final skin = Asset.of(_panelTextureKey);
-  final bar = Sprite.of(
-    texture: Asset.of(_panelTextureKey),
-    width: 40,
-    height: 40,
-    color: _columnColor,
-    nineSliceBorder: const NineSliceBorder(
-      top: 0.25,
-      bottom: 0.25,
-      insetTop: 4,
-      insetBottom: 4,
-    ),
-  );
+  late final TextureAsset skin;
+  late final Sprite bar;
+
+  @override
+  void describeAssets(AssetDescriptor descriptor) {
+    super.describeAssets(descriptor);
+    skin = descriptor.has(_panelTextureKey);
+  }
+
+  @override
+  void describeSprites(SpriteDescriptor descriptor) {
+    super.describeSprites(descriptor);
+    bar = descriptor.has(
+      texture: skin,
+      width: 40,
+      height: 40,
+      color: _columnColor,
+      nineSliceBorder: const NineSliceBorder(
+        top: 0.25,
+        bottom: 0.25,
+        insetTop: 4,
+        insetBottom: 4,
+      ),
+    );
+  }
 }
 
 class _BudgetScene extends SceneStruct {

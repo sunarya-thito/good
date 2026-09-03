@@ -2,7 +2,11 @@
 
 <!-- snippet-scope
 mixin Inventory on Component {
-  final inventoryType = Component.type<Inventory>();
+  @override
+  void describeType(ComponentDescriptor component) {
+    super.describeType(component);
+    component.has<Inventory>();
+  }
 }
 -->
 

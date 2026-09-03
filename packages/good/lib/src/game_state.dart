@@ -14,7 +14,6 @@ import 'package:good/src/command/command.dart';
 import 'package:good/src/coroutine/coroutine.dart';
 import 'package:good/src/command/param.dart';
 import 'package:good/src/game.dart';
-import 'package:good/src/order.dart';
 import 'package:good/src/pool.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
@@ -57,8 +56,8 @@ import 'package:good/src/time.dart';
 /// every command applied during it, sees one input snapshot instead of one
 /// that shifts underneath them (see `Input`).
 ///
-/// Ordering starts from declaration order - the order the `GameSystem.of`
-/// fields declaring them initialised in - and is then constrained by
+/// Ordering starts from declaration order - the order the systems were
+/// declared in `Game.describeSystems` - and is then constrained by
 /// whatever `GameSystem.compareTo` states. "Run me after physics" is spelled
 /// there, as `other is PhysicsSystem ? 1 : 0`, and it is a constraint, not a
 /// rank: [sortSystems] collects every pair's answer into a graph and
@@ -72,7 +71,7 @@ import 'package:good/src/time.dart';
 /// `GameState` is a [GameListener], and it lives where the tick loop does -
 /// an isolate with no Flutter engine attached. So it can be `FixedTickable`
 /// and `LifecycleListener`, and it builds no widgets: the whole Flutter-facing
-/// surface is `Game.buildView`, on the other copy. See [EventDispatcher].
+/// surface is `Game.buildView`, on the other copy. See `GameEvent`'s doc.
 abstract class GameState<T extends Game> extends GameListenerBase
     with EventBus, Coroutines {
   /// The simulation tick, dispatched once per fixed step to every declared
@@ -152,8 +151,8 @@ abstract class GameState<T extends Game> extends GameListenerBase
   ///
   /// The explicit composition walk: the event API does not know a `GameState`
   /// has systems, so this says so. A system that is a `FixedTickable` lands in
-  /// [fixedTickEvent]; one that is a `Tickable` lands in [tickEvent]; one
-  /// that is neither lands nowhere and is never visited again.
+  /// [fixedTick]; one that is a `Tickable` lands in [tick]; one that is
+  /// neither lands nowhere and is never visited again.
   @override
   void collectListeners(ListenerCollector collector) {
     super.collectListeners(collector);
@@ -338,14 +337,53 @@ abstract class GameState<T extends Game> extends GameListenerBase
 
   // --- declaration hooks ------------------------------------------------
 
-  // A `GameState` declares no state channel, and that is not an oversight. A
-  // channel's storage is allocated on the main isolate before the spawn, and
-  // its identity on the wire is its index in that one declaration pass; a
-  // `GameState` is built *on the game isolate*, after that pass has already
-  // run and its memory been claimed, so a channel declared here would have an
-  // index on one copy and none on the other - which is the same thing as not
-  // having one. Declare it on a field of the [Game] with `Channel.*` and
-  // write to it from here through `game.myChannel`.
+  // There is deliberately no `describeState` here, and it is not an oversight
+  // - it used to exist and was removed. A channel's storage is allocated on
+  // the main isolate before the spawn, and its identity on the wire is its
+  // index in that one declaration pass; a `GameState` is built *on the game
+  // isolate*, after that pass has already run and its memory been claimed, so
+  // a channel declared here would have an index on one copy and none on the
+  // other - which is the same thing as not having one. Declare it on the
+  // [Game] and write to it from here through `game.myChannel`. See
+  // `Game.describeState`.
+
+  /// Declares every `GameSystem` this game runs - once, up front, before the
+  /// fixed-tick loop starts.
+  ///
+  /// ```dart
+  /// @override
+  /// void describeSystems(SystemDescriptor descriptor) {
+  ///   super.describeSystems(descriptor);
+  ///   descriptor.has(MovementSystem.new);
+  ///   descriptor.has(CombatSystem.new);
+  /// }
+  /// ```
+  ///
+  /// Declaration order is execution order, unless a system states an opinion
+  /// (see `GameSystem.compareTo`). Systems are not registered piecemeal at
+  /// runtime - [enableSystem]/[disableSystem] only pause and resume one that
+  /// was declared here.
+  ///
+  /// # Why here and not on `Game`
+  ///
+  /// It was on `Game` until the systems themselves moved to this isolate, and
+  /// the argument for keeping it there was real: a `Game` *mixin* has to be
+  /// able to contribute a system, or `extends Game2D` stops being a single
+  /// opt-in for rendering and forgetting the second half paints nothing. But
+  /// "which object declares it" and "which isolate holds it" were being
+  /// answered by one placement, and only the second is a hard constraint. A
+  /// system is created here, ticks here, and is reachable from nowhere else -
+  /// so this is where the pass belongs.
+  ///
+  /// The mixin case is served by narrowing instead: `Game2D.createState()`
+  /// returns a `GameState2D`, which declares the two systems 2D rendering
+  /// needs. A `Game2D` whose state is a plain `GameState` is a **compile
+  /// error**, which is strictly better than the silent black screen the old
+  /// arrangement was guarding against.
+  ///
+  /// Runs on the simulating copy only, from `Game._bootGame`.
+  @mustCallSuper
+  void describeSystems(SystemDescriptor descriptor) {}
 
   /// Registers the handlers that run on the **game** isolate, for commands
   /// the [Game] declared.
@@ -372,11 +410,9 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// dispatched inside the fixed tick window, before any system runs, so an
   /// entity it spawns is visible to every system on the tick it lands.
   ///
-  /// Runs once, on main, immediately after `Game.describeCommands`, against the
-  /// declaration mirror `_bootMain` builds - so the registry that rides the
-  /// spawn already knows which commands have a handler at all, which is what
-  /// lets the sending side refuse a handler-less command without a round
-  /// trip.
+  /// Runs on both copies, immediately after `Game.describeCommands`, so both
+  /// agree about which commands have a handler at all - which is what lets
+  /// the sending side refuse a handler-less command without a round trip.
   @mustCallSuper
   void describeCommands(CommandDescriptor descriptor) {
     // The engine's own four, registered by the `Game` that declared them so
@@ -427,8 +463,8 @@ abstract class GameState<T extends Game> extends GameListenerBase
   ///
   /// The registration half above also declares every asset the incoming scene
   /// needs - its own `SceneStruct.describeAssets` plus every registered
-  /// prefab's `Asset.of` fields - which is what assigns each one its address
-  /// in the run's [Assets] table, identically on both copies. The
+  /// prefab's `Component.describeAssets` - which is what assigns each one its
+  /// process-global address, identically on both copies (see `GameAssets`). The
   /// asynchronous half then reconciles the two scenes' footprints:
   ///
   ///  * an asset **both** scenes declare stays loaded, untouched - a UI atlas
@@ -539,7 +575,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
     // dispatcher: only this scene and its prefabs are told.
     // Dispatched in reverse collection order, so the scene itself is told
     // last and can still read what its prefabs have already been warned
-    // about - see `SceneStruct.unmountedEvent`.
+    // about - see `SceneStruct.describeEvents`.
     sceneUnloadedEvent.call(scene);
     struct.unmountedEvent.call(scene);
     // Innermost last: the scene has said its piece, now each entity in it
@@ -804,8 +840,8 @@ abstract class GameState<T extends Game> extends GameListenerBase
       throw StateError(
         '${clip.debugLabel} is declared but not loaded, so there is nothing '
         'to play. An audio clip is loaded by the scene that declares it: put '
-        "it on a prefab field with Asset.of, or in a SceneStruct's "
-        'describeAssets, and play it from a scene that is loaded.',
+        "it in a SceneStruct's or a Component's describeAssets and play it "
+        'from a scene that is loaded.',
       );
     }
     return clip.value.bytes;
@@ -887,7 +923,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
 
   /// The game is going down. The pool is disposed immediately afterwards.
   ///
-  /// Runs *after* [gameUnmountedEvent] has been dispatched and after every
+  /// Runs *after* [GameUnmountedEvent] has been dispatched and after every
   /// loaded scene has come down, so the world is already gone by here. A
   /// listener that needs to read something out of it wants
   /// [GameLifecycleListener.onGameUnmounted].
@@ -1346,57 +1382,30 @@ abstract class GameState<T extends Game> extends GameListenerBase
 
   // --- systems ----------------------------------------------------------
   //
-  // Declared on this object's own fields with `GameSystem.of`, and held here
-  // once the copy that ticks has built them. A library contributes a system by
-  // mixing into the *state* - `Renderer2DState` is the 2D renderer's half, and
-  // `Game2D.createState()` is narrowed to `GameState2D` so that `extends
-  // Game2D` stays a single opt-in. The build pass runs inside
+  // Declared by `Game.describeSystems` and held here, which is the split the
+  // whole isolate design turns on: *where a pass is written* is an API
+  // question (a `Game` mixin has to be able to contribute a system - that is
+  // what makes `extends Game2D` the whole opt-in for rendering), while *where
+  // its results live* is an isolate question. The pass runs inside
   // `Game._bootGame`, so every system object exists on this copy and on no
-  // other, and `Game` has no `getSystem`: on the presentation isolate it would
-  // compile, read as though it worked, and find nothing.
-  //
-  // Two lists, because the declaration and the object are made on two
-  // different isolates. [systemDeclarations] is filled on main by the field
-  // initialisers and rides the spawn; [_systems] is filled on the game
-  // isolate, from those, and is what everything else here reads.
-
-  List<SystemHandle<GameSystem>> _declarations =
-      const <SystemHandle<GameSystem>>[];
-
-  /// Every `GameSystem.of` declaration this state's fields made, in field
-  /// initialiser order.
-  ///
-  /// Which is **subclass first**: Dart runs the most derived class's
-  /// initialisers, then its mixins in reverse `with` order, then the
-  /// superclass's. Declaration order is execution order for systems that
-  /// state no opinion (see [sortSystems]), so a base class's opinion-less
-  /// systems run *after* a subclass's - the reverse of what the
-  /// base-first `super` chain of the hook this replaced produced. A
-  /// system that cares says so with `Order.of()`, which is read after every
-  /// declaration is in hand and does not depend on this order at all.
-  @internal
-  List<SystemHandle<GameSystem>> get systemDeclarations => _declarations;
-
-  /// Takes the declarations off the window `Game._bootMain` opened around
-  /// `createState`. Called once, on main, before the spawn.
-  @internal
-  void bindSystemDeclarations(List<SystemHandle<GameSystem>> declarations) =>
-      _declarations = declarations;
+  // other. A `Game` has no `getSystem` at all any more: on the presentation
+  // isolate it would have compiled, read as though it worked, and found
+  // nothing.
 
   final List<GameSystem> _systems = <GameSystem>[];
   final Map<Type, int> _systemIndex = <Type, int>{};
 
-  /// Every built system, in post-sort execution order. The live list, not
+  /// Every declared system, in post-sort execution order. The live list, not
   /// a copy.
   @internal
   List<GameSystem> get declaredSystems => _systems;
 
   /// Where [type] sits in execution order, or null if it was never declared -
-  /// what `Game._buildSystem` checks a duplicate against.
+  /// what `GameSystemDescriptor` checks a duplicate against.
   @internal
   int? systemIndexOf(Type type) => _systemIndex[type];
 
-  /// Appends a freshly built system. Called once per declaration.
+  /// Appends a freshly declared system. Called once per `descriptor.has(...)`.
   @internal
   S addDeclaredSystem<S extends GameSystem>(S system) {
     _systemIndex[system.runtimeType] = _systems.length;
@@ -1408,164 +1417,60 @@ abstract class GameState<T extends Game> extends GameListenerBase
   @internal
   bool isSystemEnabledAt(int i) => _systems[i].listensToEvents;
 
-  /// Orders [declaredSystems] so that every constraint its systems declare is
-  /// honoured, breaking ties on original declaration index - a system that
-  /// expresses no opinion keeps its declared position relative to every other
-  /// opinion-less system. Runs once, right after the systems are built, and this
-  /// is the *resolve* half of the engine's declare-then-resolve split: an
-  /// `Order.after<T>()` on a system's field looked nothing up when it ran,
-  /// because half the systems it might name did not exist yet.
+  /// Orders [declaredSystems] so that every constraint `GameSystem.compareTo`
+  /// states is honoured, breaking ties on original declaration index - a system
+  /// that expresses no opinion keeps its declared position relative to every
+  /// other opinion-less system. Runs once, right after `Game.describeSystems`.
   ///
   /// # Why this is a graph and not a `List.sort`
   ///
-  /// What a system states is a **partial** order: most pairs have no opinion
-  /// about each other, and the ones that do name a single other type. That is
-  /// not a comparator. It is neither antisymmetric - two systems that each
-  /// claim to precede everything both want the front - nor transitive, and
-  /// `List.sort` is only defined for a comparator that is both. Given one that
-  /// is not, it does not merely mis-order the offending pair: it permutes the
-  /// whole list, and unrelated constraints elsewhere are silently dropped.
+  /// `compareTo` is a **partial** order here: most pairs of systems have no
+  /// opinion about each other, and the ones that do usually name a single other
+  /// type (`other is WorldTransformSystem ? -1 : 0`). That is not a comparator.
+  /// It is neither antisymmetric - two systems that each return -1 to
+  /// everything both claim to be first - nor transitive, and `List.sort` is
+  /// only defined for a comparator that is both. Given one that is not, it does
+  /// not merely mis-order the offending pair: it permutes the whole list, and
+  /// unrelated constraints elsewhere are silently dropped.
   ///
-  /// That is not hypothetical. The swarm demo declared two profiling markers
-  /// that each returned -1 unconditionally, and their contradiction cost
+  /// That is not hypothetical. The swarm demo declares two profiling markers
+  /// that each return -1 unconditionally, and their contradiction cost
   /// `CritterSystem` its "-1 against `WorldTransformSystem`" - the spawner
   /// sorted *after* the pass that composes what it writes, so every entity it
   /// created was composed a tick late and drew one frame at the world origin
   /// (#5). Asking both directions does not help: the comparator was already
   /// being consulted correctly, and the sort scrambled it anyway.
   ///
-  /// So every stated constraint becomes an edge and Kahn's algorithm emits the
-  /// systems, always taking the lowest declaration index among those whose
-  /// predecessors have all run - which is what keeps unconstrained systems in
-  /// declared order. A constraint no longer competes with anything: it either
-  /// holds, or the graph has a cycle and this throws.
-  ///
-  /// # Three passes, in this order, and the order is the point
-  ///
-  /// 1. **Declared [Order] constraints.** Each `after<T>()`/`before<T>()` is
-  ///    matched against every other declared system by `is`, so a constraint
-  ///    naming a base class holds against a declared subclass. A constraint
-  ///    that matches nothing is rejected by [_unsatisfiedSystemOrder] rather
-  ///    than ignored - an `is` test in a `compareTo` override could not do
-  ///    that, because a test against a type nobody declared is never true and
-  ///    so is indistinguishable from having no opinion.
-  /// 2. **`compareTo` answers**, the older spelling, asked once per unordered
-  ///    pair in declaration order. Both directions, for the reason the old
-  ///    comparator gave: only one of the two calls carries the opinion.
-  /// 3. **[Order.first] and [Order.last]**, which are weak, and are last
-  ///    because that is what makes them weak. A first/last edge is added only
-  ///    between systems that passes 1 and 2 left with no relation at all, so
-  ///    `Box2DPhysicsSystem` saying it runs first and a profiling marker
-  ///    saying it runs `before<Box2DPhysicsSystem>()` are not a contradiction:
-  ///    the marker's targeted edge is already there, and physics's weak claim
-  ///    skips that pair and holds against everything else. Two systems that
-  ///    both claim the front do not contradict each other either - neither
-  ///    edge is added and declaration order settles them.
+  /// So each unordered pair is asked once, in declaration order, and the answer
+  /// becomes an edge. Kahn's algorithm then emits the systems, always taking
+  /// the lowest declaration index among those whose predecessors have all run,
+  /// which is what keeps unconstrained systems in declared order. A constraint
+  /// no longer competes with anything - it either holds or the graph has a
+  /// cycle and this throws.
   ///
   /// O(n^2) comparisons against the old O(n log n), paid once at boot for a
   /// list that holds tens of systems. Nothing here runs per tick.
   @internal
   void sortSystems() {
     final n = _systems.length;
-    if (n == 0) return;
-
-    final after = List<Set<int>>.generate(n, (_) => <int>{}, growable: false);
-    // Why each edge exists, keyed `from * n + to`, so a cycle report can name
-    // the declarations that built it rather than just the systems caught in
-    // it. Only ever read on the failure path.
-    final why = <int, String>{};
-    // Pairs that passes 1 and 2 gave an opinion about, in either direction -
-    // what pass 3 checks before adding a weak edge.
-    final related = List<Set<int>>.generate(n, (_) => <int>{}, growable: false);
-
-    void addEdge(int from, int to, String reason) {
-      if (after[from].add(to)) why[from * n + to] = reason;
-    }
-
-    void addStated(int from, int to, String reason) {
-      related[from].add(to);
-      related[to].add(from);
-      addEdge(from, to, reason);
-    }
-
-    // 1. Declared Order constraints.
-    for (var i = 0; i < n; i++) {
-      final system = _systems[i];
-      for (final order in system.declaredOrders) {
-        for (final constraint in order.constraints) {
-          var matched = false;
-          for (var j = 0; j < n; j++) {
-            if (j == i || !constraint.matches(_systems[j])) continue;
-            matched = true;
-            final reason = constraint.describe(system.runtimeType);
-            if (constraint.isAfter) {
-              addStated(j, i, reason);
-            } else {
-              addStated(i, j, reason);
-            }
-          }
-          if (!matched) _unsatisfiedSystemOrder(system, constraint);
-        }
-      }
-    }
-
-    // 2. compareTo answers.
+    if (n < 2) return;
+    final after = List<List<int>>.generate(n, (_) => <int>[], growable: false);
+    final blockedBy = List<int>.filled(n, 0);
     for (var i = 0; i < n; i++) {
       final si = _systems[i];
       for (var j = i + 1; j < n; j++) {
         final sj = _systems[j];
+        // Both directions, for the reason the old comparator gave: a system
+        // stating its position by overriding `compareTo` may be either operand,
+        // and only one of the two calls carries the opinion. `sj.compareTo(si)`
+        // returning -1 means "j wants to be before i", hence the negation.
         var cmp = si.compareTo(sj);
-        var owner = i;
-        if (cmp == 0) {
-          cmp = -sj.compareTo(si);
-          owner = j;
-        }
+        if (cmp == 0) cmp = -sj.compareTo(si);
         if (cmp == 0) continue; // no opinion either way; declaration order
         final first = cmp < 0 ? i : j;
         final second = cmp < 0 ? j : i;
-        final other = owner == i ? j : i;
-        addStated(
-          first,
-          second,
-          '${_systems[owner].runtimeType}.compareTo('
-          '${_systems[other].runtimeType}) answered '
-          '${owner == i ? cmp : -cmp}',
-        );
-      }
-    }
-
-    // 3. Weak first/last.
-    for (var i = 0; i < n; i++) {
-      final orders = _systems[i].declaredOrders;
-      if (orders.isEmpty) continue;
-      var isFirst = false;
-      var isLast = false;
-      for (final order in orders) {
-        isFirst |= order.isFirst;
-        isLast |= order.isLast;
-      }
-      if (!isFirst && !isLast) continue;
-      for (var j = 0; j < n; j++) {
-        if (j == i || related[i].contains(j)) continue;
-        var otherFirst = false;
-        var otherLast = false;
-        for (final order in _systems[j].declaredOrders) {
-          otherFirst |= order.isFirst;
-          otherLast |= order.isLast;
-        }
-        if (isFirst && !otherFirst) {
-          addEdge(i, j, '${_systems[i].runtimeType} declared Order.first()');
-        }
-        if (isLast && !otherLast) {
-          addEdge(j, i, '${_systems[i].runtimeType} declared Order.last()');
-        }
-      }
-    }
-
-    final blockedBy = List<int>.filled(n, 0);
-    for (var i = 0; i < n; i++) {
-      for (final j in after[i]) {
-        blockedBy[j]++;
+        after[first].add(second);
+        blockedBy[second]++;
       }
     }
     final sorted = <GameSystem>[];
@@ -1580,11 +1485,12 @@ abstract class GameState<T extends Game> extends GameListenerBase
       }
       final i = ready.removeAt(pick);
       sorted.add(_systems[i]);
-      for (final j in after[i]) {
-        if (--blockedBy[j] == 0) ready.add(j);
+      final unblocked = after[i];
+      for (var k = 0; k < unblocked.length; k++) {
+        if (--blockedBy[unblocked[k]] == 0) ready.add(unblocked[k]);
       }
     }
-    if (sorted.length != n) _cyclicSystemOrder(blockedBy, after, why, n);
+    if (sorted.length != n) _cyclicSystemOrder(blockedBy);
     _systems
       ..clear()
       ..addAll(sorted);
@@ -1594,118 +1500,34 @@ abstract class GameState<T extends Game> extends GameListenerBase
     }
   }
 
-  /// Rejects an `after`/`before` constraint that names a system this game does
-  /// not declare.
+  /// Rejects a set of `compareTo` opinions that cannot all be satisfied.
   ///
-  /// The whole reason a constraint names a type instead of testing one. An
-  /// `is` test in a `compareTo` override against an absent type is never true,
-  /// which is exactly what "no opinion" looks like, so the typo and the
-  /// forgotten `GameSystem.of` both read as a system that simply runs where
-  /// it was declared - and nothing reports either.
-  Never _unsatisfiedSystemOrder(GameSystem system, OrderConstraint constraint) {
+  /// Whatever is still blocked when Kahn's algorithm runs dry sits on a cycle
+  /// or downstream of one, so naming those systems names the argument. Every
+  /// pair was resolved to a single edge before this point, so two systems each
+  /// claiming to precede everything cannot land here - it takes three or more
+  /// systems whose stated positions genuinely disagree.
+  Never _cyclicSystemOrder(List<int> blockedBy) {
+    final stuck = <Type>[
+      for (var i = 0; i < blockedBy.length; i++)
+        if (blockedBy[i] > 0) _systems[i].runtimeType,
+    ];
     throw StateError(
-      '${constraint.describe(system.runtimeType)}, but no other system '
-      'declared by $runtimeType is a ${constraint.type}. A '
-      'constraint against a system that is not declared cannot be honoured, '
-      'and ignoring it is not an option either - the system would run '
-      'wherever it happened to be declared, with nothing to say the ordering '
-      'never took effect. Declare ${constraint.type}, or drop the '
-      'constraint.\n'
-      'The match is an `is` test, so a subclass of ${constraint.type} '
-      'satisfies it; nothing that is one is declared here at all.',
+      'The systems $stuck cannot be ordered: their GameSystem.compareTo '
+      'results form a cycle, so each one is required to run before another '
+      'that is required to run before it. Ordering is a set of constraints, '
+      'not a ranking - a system should name the specific systems it must run '
+      'before or after and return 0 for the rest.',
     );
   }
 
-  /// Rejects a set of constraints that cannot all be satisfied.
-  ///
-  /// Names the cycle itself rather than the systems caught behind it. Whatever
-  /// is still blocked when Kahn's algorithm runs dry sits on a cycle *or
-  /// downstream of one*, and the earlier version of this message listed all of
-  /// them and then asserted of each that it "is required to run before another
-  /// that is required to run before it" - false of the downstream ones, and a
-  /// list of five systems in a deep chain is a puzzle to work through by hand.
-  /// So this walks the residual graph for one real cycle and prints its edges,
-  /// each with the declaration that produced it.
-  Never _cyclicSystemOrder(
-    List<int> blockedBy,
-    List<Set<int>> after,
-    Map<int, String> why,
-    int n,
-  ) {
-    // Every node Kahn emitted has blockedBy 0, and a node it never emitted has
-    // more than 0, so the blocked set is what is left to search - and a cycle
-    // lies entirely inside it.
-    final state = List<int>.filled(n, 0); // 0 unseen, 1 on the path, 2 done
-    final path = <int>[];
-    List<int>? cycle;
-
-    bool visit(int i) {
-      state[i] = 1;
-      path.add(i);
-      for (final j in after[i]) {
-        if (blockedBy[j] == 0) continue;
-        if (state[j] == 1) {
-          cycle = <int>[...path.sublist(path.indexOf(j)), j];
-          return true;
-        }
-        if (state[j] == 0 && visit(j)) return true;
-      }
-      state[i] = 2;
-      path.removeLast();
-      return false;
-    }
-
-    for (var i = 0; i < n && cycle == null; i++) {
-      if (blockedBy[i] > 0 && state[i] == 0) visit(i);
-    }
-
-    final found = cycle;
-    if (found == null) {
-      // Unreachable while Kahn and the search read the same graph, and cheap
-      // insurance against a later edit making them disagree: a report naming
-      // the blocked set is worse than the one below, and far better than none.
-      final stuck = <Type>[
-        for (var i = 0; i < n; i++)
-          if (blockedBy[i] > 0) _systems[i].runtimeType,
-      ];
-      throw StateError(
-        'The systems $stuck cannot be ordered: the constraints they declare '
-        'cannot all hold at once.',
-      );
-    }
-
-    final chain = <String>[for (final i in found) '${_systems[i].runtimeType}']
-        .join(' -> ');
-    final edges = <String>[
-      for (var k = 0; k + 1 < found.length; k++)
-        '  ${_systems[found[k]].runtimeType} -> '
-            '${_systems[found[k + 1]].runtimeType}: '
-            '${why[found[k] * n + found[k + 1]] ?? 'declared'}',
-    ].join('\n');
-    throw StateError(
-      'The systems $chain cannot be ordered: the declared constraints below '
-      'form a cycle, so following them all the way round requires each of '
-      'these systems to run before itself.\n$edges\n'
-      'Drop or reverse one of them. Ordering is a set of constraints, not a '
-      'ranking - a system names the specific systems it must run before or '
-      'after, and Order.first()/Order.last() yield to anything that names '
-      'them, so an unconditional claim on both ends is what usually closes a '
-      'loop like this.',
-    );
-  }
-
-  /// A system some state field declared with `GameSystem.of`.
-  ///
-  /// The declaring field is the direct handle - `movement.value` - and this is
-  /// what a caller that did not declare the system uses: a scene reaching a
-  /// system, or a mixin reaching one a sibling mixin contributed.
+  /// A system declared in `Game.describeSystems`.
   S getSystem<S extends GameSystem>() {
     final index = _systemIndex[S];
     if (index == null) {
       throw ArgumentError(
-        '$S is not declared by $runtimeType - a system is declared on a '
-        'GameState field, `final movement = GameSystem.of($S.new);`, once '
-        'and up front, and cannot be added at runtime.',
+        '$S is not declared in ${game.runtimeType}.describeSystems - systems '
+        'are declared once, up front, and cannot be added at runtime.',
       );
     }
     return _systems[index] as S;
@@ -1722,7 +1544,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   bool isSystemEnabled<S extends GameSystem>() =>
       _systems[_requireSystemIndex(S)].listensToEvents;
 
-  /// Resumes a system a `GameSystem.of` field already declared - a runtime
+  /// Resumes a system already declared in `Game.describeSystems` - a runtime
   /// pause/resume toggle, not registration.
   ///
   /// **Synchronous, and no wire index.** This runs on the isolate that holds
@@ -1731,7 +1553,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// this in the handler.
   void enableSystem<S extends GameSystem>() => setSystemEnabled(S, true);
 
-  /// Pauses a system a `GameSystem.of` field already declared - it stops
+  /// Pauses a system already declared in `Game.describeSystems` - it stops
   /// ticking until re-enabled, but is not removed from the declared set.
   void disableSystem<S extends GameSystem>() => setSystemEnabled(S, false);
 
@@ -1757,8 +1579,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
     final index = _systemIndex[type];
     if (index == null) {
       throw ArgumentError(
-        '$type is not declared by $runtimeType - a system is declared on a '
-        'GameState field, `final movement = GameSystem.of($type.new);`.',
+        '$type is not declared in ${game.runtimeType}.describeSystems.',
       );
     }
     return index;
@@ -1793,7 +1614,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
 class SceneLoadProgress {
   const SceneLoadProgress(this.label, this.progress);
 
-  /// What is being loaded right now - an asset's [AssetKey.debugLabel]
+  /// What is being loaded right now - an asset's `GameAsset.debugLabel`
   /// while assets are decoding, the scene's own type name on the terminal
   /// report. Diagnostics and loading-screen text; nothing keys off it.
   final String label;
