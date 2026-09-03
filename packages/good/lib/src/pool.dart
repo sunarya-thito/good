@@ -41,8 +41,7 @@ import 'package:good/src/triple_buffer.dart';
 /// receipt-delivered one, dispatched from a control-port callback
 /// (`SinkCommand.handledOnControl`), and the read-only one, drained once per
 /// frame from `GameState.advance` (`GameCommand.handledReadOnly`). Both told
-/// the
-/// caller not to write and neither could check it - a component write was
+/// the caller not to write and neither could check it - a component write was
 /// erased by the next tick with an `assert` that a release build compiles out,
 /// and adding an entity, writing a `StateChannel` and unloading a scene were
 /// not guarded at all (#245).

@@ -361,7 +361,8 @@ abstract final class DeclarationContext {
   /// Read by `GameListenerBase`, which takes the open window as the owner's
   /// registrar and has an answer for there not being one - an owner the
   /// framework did not construct makes a registrar of its own.
-  static EventBinder? get eventsOrNull => _events.isEmpty ? null : _events.last;
+  static EventBinder? get eventsOrNull =>
+      _events.isEmpty ? null : _events.last;
 
   /// Dispatchers a base class declared on a field, waiting for the object
   /// being constructed to take them.

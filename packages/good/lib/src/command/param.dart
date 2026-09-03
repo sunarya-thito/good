@@ -1388,12 +1388,8 @@ base class _SubBytePointer extends _Pointer<int> {
 /// `data_layout.dart`'s `_SubByteIntField`, and it means the same thing: a
 /// 1-bit signed field holds -1 or 0.
 final class _SubByteIntPointer extends _SubBytePointer {
-  const _SubByteIntPointer(
-    super.index,
-    super.byte,
-    super.shift,
-    super.bitWidth,
-  );
+  const _SubByteIntPointer(super.index, super.byte, super.shift,
+      super.bitWidth);
 
   @override
   int operator [](ParamBuffer call) {

@@ -509,9 +509,9 @@ abstract class Game implements RandomOwner {
   /// handle type.
   ///
   /// **The constructor, not an instance**, the same as
-  /// `GameSystem.of(SpinSystem.new)`, `SceneDescriptor.has(Mote.new)`
-  /// and `Command.of(Damage.new)`. The framework builds the scene
-  /// with a declaration window open around the call, so a scene declares its
+  /// `GameSystem.of(SpinSystem.new)`, `SceneDescriptor.has(Mote.new)` and
+  /// `Command.of(Damage.new)`. The framework builds the scene with a
+  /// declaration window open around the call, so a scene declares its
   /// own events on a field - `final waveCleared = Event.of(...)` - like every
   /// other owner. See [Event].
   ///
@@ -681,9 +681,9 @@ abstract class Game implements RandomOwner {
   /// the same way the command ring and the pool's pages already are.
   ///
   /// `good` knows nothing about what travels through them. The command ring
-  /// ([Command]) is the framework's own, hardcoded, main -> game
-  /// lane; this is the generic escape hatch for every *other* lane-2-shaped
-  /// channel a layer above wants - the one that motivated it is
+  /// ([Command]) is the framework's own, hardcoded, main -> game lane; this
+  /// is the generic escape hatch for every *other* lane-2-shaped channel a
+  /// layer above wants - the one that motivated it is
   /// `goo2d_render`'s per-tick draw-command buffer (game -> main), which
   /// must not put a Flutter- or renderer-specific field on this class.
   ///

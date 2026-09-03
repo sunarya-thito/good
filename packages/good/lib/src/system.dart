@@ -1031,7 +1031,8 @@ class _ScopedQuery implements Query {
   bool matches(int signature) => _query.matches(signature);
 
   @override
-  Iterable<QueryGroup> groups([Scene? scene]) => _query.groups(scene ?? _scene);
+  Iterable<QueryGroup> groups([Scene? scene]) =>
+      _query.groups(scene ?? _scene);
 
   @override
   Iterable<Entity> run([Scene? scene]) => _query.run(scene ?? _scene);

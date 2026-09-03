@@ -853,6 +853,30 @@ final class CommandBinding {
 /// of the `Game` registers on the Flutter isolate; a field of the `GameState`
 /// registers on the game isolate. There is no direction to configure and no
 /// second place saying which side wins - the field is where it says so.
+///
+/// # Spawning from the Flutter isolate
+///
+/// There is no framework spawn command. A HUD button that adds an enemy is the
+/// canonical case this lane exists for, and it is written as a command that
+/// says what it *means*:
+///
+/// ```dart
+/// final class SpawnEnemy extends GameCommand<Vector2, Entity> { ... }
+///
+/// // ...and handled on the GameState, where the scene is:
+/// final spawnEnemy = CommandHandler.of(
+///   (MyState state) => state.game.spawnEnemy.handledBy((at) {
+///     final enemy = state.loadedScenes.single.addEntity(state.level.enemy);
+///     state.level.enemy.x[enemy] = at.x;
+///     return enemy;
+///   }),
+/// );
+/// ```
+///
+/// The framework ships no `spawnEntity(archetypeId)` for this: an archetype id
+/// is a game-isolate identifier, so handing one to the Flutter isolate makes
+/// it name something that isolate cannot see. Naming the *intent* leaves the
+/// prefab lookup on the side that owns the memory.
 final class CommandHandler {
   CommandHandler._(this._bind);
 

@@ -137,11 +137,13 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
   ///
   /// Reverse, matching every other teardown event in the engine: a listener
   /// told late can still read what the earlier ones have been warned about.
-  final peerLeftEvent =
-      Event.of<NetPeerListener, ({NetPeerId peer, NetDisconnectReason reason})>(
-        (listener, left) => listener.onPeerLeft(left.peer, left.reason),
-        reverse: true,
-      );
+  final peerLeftEvent = Event.of<
+    NetPeerListener,
+    ({NetPeerId peer, NetDisconnectReason reason})
+  >(
+    (listener, left) => listener.onPeerLeft(left.peer, left.reason),
+    reverse: true,
+  );
 
   /// A session opened - hosted or joined. See [NetSessionListener].
   final sessionOpenedEvent = Event.of<NetSessionListener, NetSession>(
