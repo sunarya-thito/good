@@ -74,9 +74,12 @@ class _OneActionGame extends Game {
   /// count every source ended up contributing to.
   InputRegistry? registry;
 
+  /// Named here as well as installed in `main`, because the two reach
+  /// different isolates: `main` runs on this one and a spawned copy reads
+  /// this getter. The table carries `goodDeclarations` as a dependency.
   @override
   List<GeneratedDeclarations> get declarations =>
-      const <GeneratedDeclarations>[goodDeclarations, _testDeclarations];
+      const <GeneratedDeclarations>[_systemInputDeclarationTestDeclarations];
 
   @override
   GameState createState() => _OneActionState();
@@ -87,48 +90,6 @@ class _OneActionGame extends Game {
     registry = input as InputRegistry;
   }
 }
-
-// --- the collectors -------------------------------------------------------
-//
-// Written by hand rather than generated: `good_tool` reads `lib/`, so a class
-// declared in a test has no table, and `collectDeclarations` throws for one
-// it cannot find. The lists are what the generator would write - the class's
-// own fields in source order, then the superclass's.
-
-List<ScannableField> _collectOneActionSystem(Object object) {
-  final owner = object as _OneActionSystem;
-  return <ScannableField>[owner.fire, owner.mountEvent, owner.unmountEvent];
-}
-
-List<ScannableField> _collectOneActionGame(Object object) {
-  object as _OneActionGame;
-  return const <ScannableField>[];
-}
-
-List<ScannableField> _collectOneActionState(Object object) {
-  final owner = object as _OneActionState;
-  return <ScannableField>[
-    owner.fixedTickEvent,
-    owner.tickEvent,
-    owner.gameMountedEvent,
-    owner.gameUnmountedEvent,
-    owner.appHiddenEvent,
-    owner.appShownEvent,
-    owner.entitySpawnedEvent,
-    owner.entityDespawnedEvent,
-    owner.sceneLoadedEvent,
-    owner.sceneUnloadedEvent,
-  ];
-}
-
-const GeneratedDeclarations _testDeclarations = GeneratedDeclarations(
-  package: 'good_test_system_input_declaration',
-  collectors: <DeclarationCollector>[
-    DeclarationCollector(_OneActionSystem, _collectOneActionSystem),
-    DeclarationCollector(_OneActionGame, _collectOneActionGame),
-    DeclarationCollector(_OneActionState, _collectOneActionState),
-  ],
-);
 
 void main() {
   _installDeclarations();
