@@ -115,6 +115,59 @@ FakePackage componentKernel({String name = 'good'}) => FakePackage(
   },
 );
 
+/// The `good` stand-in a collector fixture needs.
+///
+/// [componentKernel] plus the three scan markers and the `@child` const. What
+/// decides whether a field reaches a collector is read off this source - the
+/// supertype walk finds `ScannableField` above `EntityStruct`, and the const's
+/// written type is what makes `@child` a marker - so a fixture spelling any of
+/// them differently gets a different answer with nothing hard-coded.
+FakePackage declarationKernel({String name = 'good'}) => FakePackage(
+  name,
+  files: <String, String>{
+    '$name.dart': "$_componentBarrel export 'src/scannable.dart';\n",
+    'src/struct.dart': kernelStruct,
+    'src/data.dart': kernelData,
+    'src/archetype.dart': kernelArchetype,
+    'src/scannable.dart': kernelScannable,
+  },
+);
+
+const String kernelScannable = '''
+import 'struct.dart';
+
+abstract interface class Scannable {}
+abstract interface class ScannableField {}
+abstract interface class ScannableAnnotation {}
+
+abstract class EntityStruct implements Component, Scannable, ScannableField {}
+
+class DeclaredChild implements ScannableAnnotation {
+  const DeclaredChild._();
+}
+
+const DeclaredChild child = DeclaredChild._();
+
+class GeneratedDeclarations {
+  const GeneratedDeclarations({
+    required this.package,
+    required this.collectors,
+    this.dependencies = const <GeneratedDeclarations>[],
+  });
+
+  final String package;
+  final List<DeclarationCollector> collectors;
+  final List<GeneratedDeclarations> dependencies;
+}
+
+class DeclarationCollector {
+  const DeclarationCollector(this.type, this.collect);
+
+  final Type type;
+  final List<ScannableField> Function(Object) collect;
+}
+''';
+
 /// What [componentKernel]'s entry library exports.
 const String _componentBarrel = '''
 export 'src/struct.dart';

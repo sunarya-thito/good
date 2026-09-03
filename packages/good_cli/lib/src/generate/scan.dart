@@ -1173,6 +1173,46 @@ const String scannableFieldRoot = 'ScannableField';
 /// The marker an annotation carries to be written into generated output.
 const String scannableAnnotationRoot = 'ScannableAnnotation';
 
+/// Every name that can be written as a marker annotation on a declaration.
+///
+/// Two kinds, and a pass holding only the first finds nothing. `@LoadBefore(X)`
+/// names the class directly, so the supertype walk answers it. `@child` names
+/// a **const variable** - `const DeclaredChild child = DeclaredChild._();` -
+/// and `typesByName['child']` is null, because `child` is not a type. So the
+/// variable's written type is what gets walked, and the variable's own name is
+/// what goes in the set.
+///
+/// A set of names rather than a test run per annotation, because the answer is
+/// the same for every field in the repository and the walk that produces it is
+/// over every unit.
+Set<String> scannableAnnotationNames(ScanSources sources) {
+  final typesByName = sources.typesByName;
+  final names = <String>{};
+  final paths = sources.units.keys.toList()..sort();
+  for (final path in paths) {
+    final unit = sources.units[path]!;
+    for (final type in unit.types) {
+      if (isSubtypeOf(type.name, scannableAnnotationRoot, typesByName)) {
+        names.add(type.name);
+      }
+    }
+    for (final variable in unit.variables) {
+      // The written type and not the initialiser: a marker is a const with
+      // its type spelled out, which is what makes `@child` resolvable by a
+      // parse at all. One written `const child = DeclaredChild._();` is not
+      // found here, and the type it is declared with is where it says so.
+      final declared = variable.typeSource;
+      if (declared == null) continue;
+      final parsed = TypeSource.parse(declared);
+      if (parsed == null) continue;
+      if (isSubtypeOf(parsed.name, scannableAnnotationRoot, typesByName)) {
+        names.add(variable.name);
+      }
+    }
+  }
+  return names;
+}
+
 /// What a field's initialiser turned out to hold, or why the walk stopped.
 ///
 /// Null - the return of [resolveValueType] rather than a state of this class -
@@ -1409,6 +1449,60 @@ bool isDeclarationField(
   return isSubtypeOf(parsed.name, scannableFieldRoot, typesByName);
 }
 
+/// Whether [field]'s initialiser starts with a plain constructor call.
+///
+/// `Enemy()` does; `Field.float64()`, `Query.all(A)` and `Asset.of(k)` do not,
+/// and neither does anything with no initialiser or one that is not a call.
+/// The test is the same one [_headValueType] makes - a head with no dot whose
+/// name is a class the walk read - because a parse cannot otherwise tell
+/// `Enemy()` from a call to a top-level function.
+///
+/// Read only where a chain *starts*. `Turret().tuned()` is still a
+/// constructor call to whoever reads the line, and the marker rule is about
+/// what the line looks like.
+bool isBareConstructorField(
+  ScannedField field,
+  Map<String, ScannedType> typesByName,
+) {
+  final chain = field.initializer;
+  if (chain.isEmpty) return false;
+  final head = chain.first;
+  if (head.name.contains('.')) return false;
+  return typesByName.containsKey(head.name);
+}
+
+/// Whether a generated collector reads [field] back off a constructed
+/// instance.
+///
+/// The rule the owner settled: **shape tells, or annotation tells.** A
+/// declaration written as a dotted static says so where it is written, and a
+/// bare constructor call does not, so a bare one carries a marker:
+///
+/// ```dart
+/// final hp   = Field.float64();   // collected, no marker
+/// @child final enemy = Enemy();   // collected, the marker says so
+/// final spare = Enemy();          // not collected, and legal
+/// ```
+///
+/// The last line is why this decides at build time and reports rather than
+/// refuses. Holding a spare instance of a declarable type is ordinary code -
+/// the whole reason a marker exists is that the two shapes are told apart -
+/// so what happens to it is that it is named, in
+/// [DeclarationScan.unmarked], and left out of the collector.
+///
+/// [markers] is [scannableAnnotationNames] over the same walk.
+bool isCollectedDeclarationField(
+  ScannedField field,
+  Map<String, ScannedType> typesByName,
+  Set<String> markers,
+) {
+  if (!isDeclarationField(field, typesByName)) return false;
+  if (!isBareConstructorField(field, typesByName)) return true;
+  return field.annotations.any(
+    (annotation) => markers.contains(annotationName(annotation)),
+  );
+}
+
 /// One declaration a scanned class holds, as codegen and a collector need it.
 ///
 /// Both halves of "two artifacts, not one" are here: [name] and [valueType]
@@ -1423,6 +1517,7 @@ class ScannedDeclaration {
     required this.valueType,
     required this.annotations,
     required this.isPrivate,
+    required this.isCollected,
   });
 
   /// The class that writes the field - `Transform2D`, not whichever class
@@ -1447,6 +1542,17 @@ class ScannedDeclaration {
   final List<String> annotations;
 
   final bool isPrivate;
+
+  /// Whether the generator writes it into a collector - see
+  /// [isCollectedDeclarationField].
+  ///
+  /// False is a bare constructor call with no marker on it, and it is carried
+  /// here rather than filtered out at the walk because two passes want
+  /// different answers. A collector wants the fields that are declarations; the
+  /// cycle check wants every field whose initialiser *constructs* one, marker
+  /// or not, because `final spare = Turret();` inside `Turret` recurses in
+  /// Dart before anything of this engine's is reached.
+  final bool isCollected;
 }
 
 /// One scanned class and the declarations it holds, in declaration order.
@@ -1497,6 +1603,7 @@ class DeclarationScan {
     required this.unresolved,
     required this.cycles,
     required this.uncollectable,
+    required this.unmarked,
   });
 
   /// Classes holding at least one declaration, in path order.
@@ -1553,6 +1660,22 @@ class DeclarationScan {
   /// anywhere else either.
   final Map<String, String> uncollectable;
 
+  /// Fields holding a declaration that nothing at the line says is one, keyed
+  /// `Class.field`, to why - the third thing a field can end up being.
+  ///
+  /// A bare constructor call with no marker on it. The type is a
+  /// [scannableFieldRoot], so the *scanner* knows what it is; the reader does
+  /// not, and `final spare = Enemy();` is spelled exactly like a field holding
+  /// an ordinary object.
+  ///
+  /// Reported and never refused, which is the difference between this and
+  /// [refusals]. A refusal says the source is written a way this engine does
+  /// not accept. This says the field is legal and is not collected: holding a
+  /// spare of a declarable type is ordinary code, and the marker exists so
+  /// that shape and the declaring one can be told apart at all. Refusing here
+  /// would delete the shape the marker was introduced to make writable.
+  final Map<String, String> unmarked;
+
   int get declarationCount {
     var count = 0;
     for (final declarer in declarers) {
@@ -1576,6 +1699,12 @@ class DeclarationScan {
 /// **No initialiser at all.** The same thing with the word missing - the
 /// field is filled in from somewhere else, and the declaration does not say
 /// where.
+///
+/// # What is reported and not refused
+///
+/// A bare constructor call with no marker - `final spare = Enemy();`. It is
+/// legal, it declares nothing, and it lands in [DeclarationScan.unmarked]; see
+/// [isCollectedDeclarationField].
 ///
 /// **`static`, and a top-level variable.** Both initialise lazily - the first
 /// read runs the initialiser - so the value lands on whichever owner happens
@@ -1602,6 +1731,8 @@ DeclarationScan scanDeclarations(ScanSources sources) {
   final refusals = <DeclarationRefusal>[];
   final unresolved = <DeclarationRefusal>[];
   final uncollectable = <String, String>{};
+  final unmarked = <String, String>{};
+  final markers = scannableAnnotationNames(sources);
 
   final paths = sources.units.keys.toList()..sort();
   for (final path in paths) {
@@ -1689,6 +1820,14 @@ DeclarationScan scanDeclarations(ScanSources sources) {
           );
           continue;
         }
+        if (!isCollectedDeclarationField(field, typesByName, markers)) {
+          unmarked['${type.name}.${field.name}'] =
+              'a bare constructor call holds it and nothing at the line says '
+              'it declares anything - `$valueType()` is spelled the way a '
+              'field holding an ordinary object is. Write `@child` on it to '
+              'declare it, or leave it as it is if it is a spare';
+          continue;
+        }
         if (field.isPrivate) {
           uncollectable['${type.name}.${field.name}'] =
               'it is private, and a collector is generated into another '
@@ -1702,14 +1841,10 @@ DeclarationScan scanDeclarations(ScanSources sources) {
             valueType: valueType,
             annotations: <String>[
               for (final annotation in field.annotations)
-                if (isSubtypeOf(
-                  annotationName(annotation),
-                  scannableAnnotationRoot,
-                  typesByName,
-                ))
-                  annotation,
+                if (markers.contains(annotationName(annotation))) annotation,
             ],
             isPrivate: field.isPrivate,
+            isCollected: true,
           ),
         );
       }
@@ -1728,8 +1863,9 @@ DeclarationScan scanDeclarations(ScanSources sources) {
     declarers: declarers,
     refusals: refusals,
     unresolved: unresolved,
-    cycles: _declarationCycles(sources, typesByName),
+    cycles: _declarationCycles(sources, typesByName, markers),
     uncollectable: uncollectable,
+    unmarked: unmarked,
   );
 }
 
@@ -1746,6 +1882,7 @@ DeclarationScan scanDeclarations(ScanSources sources) {
 List<DeclarationRefusal> _declarationCycles(
   ScanSources sources,
   Map<String, ScannedType> typesByName,
+  Set<String> markers,
 ) {
   final found = <DeclarationRefusal>[];
   final reported = <String>{};
@@ -1753,7 +1890,7 @@ List<DeclarationRefusal> _declarationCycles(
   for (final path in paths) {
     for (final type in sources.units[path]!.types) {
       if (!isSubtypeOf(type.name, entityStructRoot, typesByName)) continue;
-      final ring = _ringFrom(type.name, typesByName);
+      final ring = _ringFrom(type.name, typesByName, markers);
       if (ring == null) continue;
       final closing = ring.last;
       // The types the ring passes through, which is what names it. Read off
@@ -1796,9 +1933,14 @@ List<DeclarationRefusal> _declarationCycles(
 /// Depth first over the graph [_declarationCycles] describes, carrying the
 /// declarations walked through so the caller can name the ring rather than
 /// just report that there is one.
+///
+/// Every constructed child is an edge, marked or not. `@child` decides whether
+/// a field is *collected*; it decides nothing about whether Dart builds the
+/// object, and it is the building that does not terminate.
 List<ScannedDeclaration>? _ringFrom(
   String name,
-  Map<String, ScannedType> typesByName, {
+  Map<String, ScannedType> typesByName,
+  Set<String> markers, {
   List<String>? path,
   List<ScannedDeclaration>? walked,
 }) {
@@ -1807,7 +1949,11 @@ List<ScannedDeclaration>? _ringFrom(
   final type = typesByName[name];
   if (type == null) return null;
   onPath.add(name);
-  for (final declaration in flattenedDeclarations(type, typesByName)) {
+  for (final declaration in flattenedDeclarations(
+    type,
+    typesByName,
+    markers: markers,
+  )) {
     final parsed = TypeSource.parse(declaration.valueType);
     if (parsed == null) continue;
     if (!isSubtypeOf(parsed.name, entityStructRoot, typesByName)) continue;
@@ -1819,6 +1965,7 @@ List<ScannedDeclaration>? _ringFrom(
     final deeper = _ringFrom(
       parsed.name,
       typesByName,
+      markers,
       path: onPath,
       walked: steps,
     );
@@ -1865,9 +2012,17 @@ List<ScannedDeclaration>? _ringFrom(
 /// package that was not read holds whatever it holds, and this reports what
 /// it can see rather than guessing - which is why `good_tool` reads a
 /// package's engine dependencies even when it writes into only one of them.
+/// # What is in it that a collector does not write
+///
+/// Every field whose *type* is a declaration, including the bare-constructor
+/// ones with no marker on them. Each carries
+/// [ScannedDeclaration.isCollected], and a caller emitting a collector filters
+/// on it. The cycle walk deliberately does not: an unmarked child is still
+/// constructed, so it still closes a ring.
 List<ScannedDeclaration> flattenedDeclarations(
   ScannedType type,
   Map<String, ScannedType> typesByName, {
+  required Set<String> markers,
   Set<String>? seen,
 }) {
   final visited = seen ?? <String>{};
@@ -1881,26 +2036,36 @@ List<ScannedDeclaration> flattenedDeclarations(
           valueType: declaredValueType(field, typesByName)!,
           annotations: <String>[
             for (final annotation in field.annotations)
-              if (isSubtypeOf(
-                annotationName(annotation),
-                scannableAnnotationRoot,
-                typesByName,
-              ))
-                annotation,
+              if (markers.contains(annotationName(annotation))) annotation,
           ],
           isPrivate: field.isPrivate,
+          isCollected: isCollectedDeclarationField(field, typesByName, markers),
         ),
   ];
   for (final mixin in type.mixins.reversed) {
     final applied = typesByName[mixin];
     if (applied == null) continue;
-    flattened.addAll(flattenedDeclarations(applied, typesByName, seen: visited));
+    flattened.addAll(
+      flattenedDeclarations(
+        applied,
+        typesByName,
+        markers: markers,
+        seen: visited,
+      ),
+    );
   }
   final superclass = type.superclass;
   if (superclass != null) {
     final above = typesByName[superclass];
     if (above != null) {
-      flattened.addAll(flattenedDeclarations(above, typesByName, seen: visited));
+      flattened.addAll(
+        flattenedDeclarations(
+          above,
+          typesByName,
+          markers: markers,
+          seen: visited,
+        ),
+      );
     }
   }
   return flattened;

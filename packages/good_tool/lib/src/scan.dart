@@ -693,6 +693,7 @@ DeclarationCollectorScan scanDeclarationCollectors({
     packages: packages,
   );
   final typesByName = read.typesByName;
+  final markers = scannableAnnotationNames(read);
 
   final entries = <DeclarationCollectorEntry>[];
   final skipped = <String, String>{};
@@ -714,7 +715,11 @@ DeclarationCollectorScan scanDeclarationCollectors({
       // every other command - reached a table that had no line for it, and
       // the throw meant for "this class was never scanned" fired on a class
       // that was scanned and had nothing to say.
-      final declarations = flattenedDeclarations(type, typesByName);
+      final declarations = flattenedDeclarations(
+        type,
+        typesByName,
+        markers: markers,
+      );
       if (type.name.startsWith('_')) {
         // The same wall a private field runs into, one level up: this file is
         // another library, so it cannot name the class either - not to cast
@@ -732,6 +737,12 @@ DeclarationCollectorScan scanDeclarationCollectors({
 
       final fields = <CollectedDeclaration>[];
       for (final declaration in declarations) {
+        // Not a hole in the row, so not a commented-out line either. A bare
+        // constructor call with no `@child` on it declares nothing at all -
+        // no column is reserved for it and none is missing - and writing a
+        // placeholder here would say a column went astray. What names it is
+        // `--declarations`.
+        if (!declaration.isCollected) continue;
         if (declaration.isPrivate) {
           skipped['${declaration.owner}.${declaration.name}'] =
               'it is private, and this file is a different library from the '
@@ -939,6 +950,10 @@ FixtureScan scanFixtures({
   required ScanSources sources,
 }) {
   final libTypes = <String, ScannedType>{};
+  // Over every unit and not per library: a marker is a const in an engine
+  // package's `lib/`, so the set is the same whichever fixture is being
+  // walked.
+  final markers = scannableAnnotationNames(sources);
   final libDirs = <String>[for (final package in packages) package.libDir];
   final paths = sources.units.keys.toList()..sort();
   for (final path in paths) {
@@ -980,18 +995,23 @@ FixtureScan scanFixtures({
             type: type.name,
             functionName: functionName,
             fields: <CollectedDeclaration>[
-              for (final declaration in flattenedDeclarations(type, scope))
-                CollectedDeclaration(
-                  owner: declaration.owner,
-                  name: declaration.name,
-                  // Private is not the question a part asks. A field this
-                  // library declares is reachable however it is named; one a
-                  // `lib/` mixin declares privately is not, and that is the
-                  // same wall `declarations.g.dart` runs into.
-                  isPrivate:
-                      declaration.isPrivate &&
-                      !declaredHere.contains(declaration.owner),
-                ),
+              for (final declaration in flattenedDeclarations(
+                type,
+                scope,
+                markers: markers,
+              ))
+                if (declaration.isCollected)
+                  CollectedDeclaration(
+                    owner: declaration.owner,
+                    name: declaration.name,
+                    // Private is not the question a part asks. A field this
+                    // library declares is reachable however it is named; one a
+                    // `lib/` mixin declares privately is not, and that is the
+                    // same wall `declarations.g.dart` runs into.
+                    isPrivate:
+                        declaration.isPrivate &&
+                        !declaredHere.contains(declaration.owner),
+                  ),
             ],
           ),
         );

@@ -578,12 +578,21 @@ void _declarations(
     unresolved: unresolved,
     cycles: cycles,
     uncollectable: scan.uncollectable,
+    unmarked: scan.unmarked,
   );
 
   if (verbose) {
     final keys = scan.uncollectable.keys.toList()..sort();
     for (final key in keys) {
       stdout.writeln('No collector entry: $key - ${scan.uncollectable[key]}');
+    }
+    // Separate lines from the ones above, because the two are separate
+    // answers. A private declaration is a column the row is missing; one of
+    // these is a field that was never a declaration, and either leaving it
+    // alone or writing `@child` on it is a correct thing to do.
+    final unmarked = scan.unmarked.keys.toList()..sort();
+    for (final key in unmarked) {
+      stdout.writeln('Not a declaration: $key - ${scan.unmarked[key]}');
     }
   }
 

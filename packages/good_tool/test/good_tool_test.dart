@@ -849,6 +849,85 @@ void main() {
       expect(step.package, 'good');
     });
 
+    // Asked of a fixture and not of this repository, because every
+    // bare-constructor declaration here now carries `@child` - so deleting
+    // the filter below changes not one byte of the 43 committed parts or of
+    // the 13 `.g.dart` files, and `--check` passes either way. A guard whose
+    // removal nothing notices is not a guard.
+    test('leaves an unmarked bare constructor out of the collector', () async {
+      final repo = fakeRepo(<FakePackage>[
+        declarationKernel(),
+        FakePackage(
+          'demo',
+          dependencies: <String>['good'],
+          files: <String, String>{
+            'demo.dart': "export 'src/turret.dart';\n",
+            'src/turret.dart': '''
+import 'package:good/good.dart';
+
+class Barrel extends EntityStruct {}
+
+class Turret extends EntityStruct {
+  @child
+  final barrel = Barrel();
+  final spare = Barrel();
+}
+''',
+          },
+        ),
+      ]);
+      final packages = repoPackages(repo);
+      final scan = scanDeclarationCollectors(packages: packages);
+      final turret = scan.entries.singleWhere(
+        (entry) => entry.type == 'Turret',
+      );
+
+      // `spare` is absent outright rather than commented out. A private field
+      // keeps its place because the row is missing a column there; this one
+      // reserves nothing, so a placeholder would report a hole that is not
+      // one.
+      expect(
+        <String>[for (final field in turret.fields) field.name],
+        <String>['barrel'],
+      );
+      expect(scan.skipped, isNot(contains('Turret.spare')));
+    });
+
+    // The same rule down the other path. A fixture collector is a `part` of
+    // the library it reads, which reaches a private class and a private field
+    // that `declarations.g.dart` cannot - so it is a second walk with a second
+    // filter, and the two agreeing is a fact to check rather than to assume.
+    test('leaves an unmarked bare constructor out of a fixture part', () async {
+      final repo = fakeRepo(<FakePackage>[declarationKernel()]);
+      final root = p.join(repo.path, 'packages', 'good');
+      File(p.join(root, 'test', 'turret_test.dart'))
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync('''
+import 'package:good/good.dart';
+
+class _Barrel extends EntityStruct {}
+
+class Turret extends EntityStruct {
+  @child
+  final barrel = _Barrel();
+  final spare = _Barrel();
+}
+''');
+      final packages = repoPackages(repo);
+      final scan = scanFixtures(
+        packages: packages,
+        sources: readFixtureSources(packages, packages),
+      );
+      final turret = scan.libraries.single.collectors.singleWhere(
+        (collector) => collector.type == 'Turret',
+      );
+
+      expect(
+        <String>[for (final field in turret.fields) field.name],
+        <String>['barrel'],
+      );
+    });
+
     test('has the component-bit table the generator would write', () async {
       final root = _actualRepoRoot();
       final packages = repoPackages(root);

@@ -143,7 +143,11 @@ void main() {
       final leaf = typesByName['Leaf'];
       expect(leaf, isNotNull);
 
-      final flattened = flattenedDeclarations(leaf!, typesByName);
+      final flattened = flattenedDeclarations(
+        leaf!,
+        typesByName,
+        markers: scannableAnnotationNames(read),
+      );
       expect(
         <String>[
           for (final declaration in flattened)
@@ -178,6 +182,7 @@ void main() {
           for (final declaration in flattenedDeclarations(
             typesByName['First']!,
             typesByName,
+            markers: scannableAnnotationNames(read),
           ))
             declaration.name,
         ],

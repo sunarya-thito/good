@@ -70,6 +70,12 @@ class LoadBefore implements ScannableAnnotation {
   final Type other;
 }
 
+class DeclaredChild implements ScannableAnnotation {
+  const DeclaredChild._();
+}
+
+const DeclaredChild child = DeclaredChild._();
+
 abstract final class Field {
   static InitialPointer<double> float64([double initialValue = 0.0]) =>
       throw UnimplementedError();
@@ -491,6 +497,102 @@ class Player extends EntityStruct {
       expect(scan.declarers, isEmpty);
     });
 
+    // The three answers a field holding a ScannableField is allowed to end
+    // in. Every one of them is checked, because the pair that matters is the
+    // last two: a gate that collected the unmarked field as well would still
+    // pass the first two, and this repository has shipped tests that could
+    // not fail.
+    test('a dotted static is collected with no marker on it', () {
+      // The shape half of "shape tells, or annotation tells". Nothing is
+      // written on any of these and all three are declarations, because
+      // `Field.float64(`, `Query.all(` and the rest say so where they are
+      // written.
+      final scan = _declarations('''
+class Player extends EntityStruct {
+  final speed = Field.float64(220);
+}
+
+class Movement extends GameSystem {
+  final movers = Query.all(Player);
+  final roots = Query.where().withAll(Player).build();
+}
+''');
+
+      expect(scan.unmarked, isEmpty);
+      expect(scan.declarationCount, 3);
+      expect(
+        <String>[
+          for (final declarer in scan.declarers)
+            for (final declaration in declarer.declarations) declaration.name,
+        ],
+        <String>['speed', 'movers', 'roots'],
+      );
+    });
+
+    test('a marked bare constructor is collected', () {
+      final scan = _declarations('''
+class Turret extends EntityStruct {
+  @child
+  final barrel = Barrel();
+}
+
+class Barrel extends EntityStruct {}
+''');
+
+      expect(scan.unmarked, isEmpty);
+      expect(scan.refusals, isEmpty);
+      final declaration = scan.declarers.single.declarations.single;
+      expect(declaration.name, 'barrel');
+      expect(declaration.isCollected, isTrue);
+      // The marker is a const variable and not a class, so a walk that only
+      // looked types up in `typesByName` finds nothing under `child` and
+      // carries no annotation at all.
+      expect(declaration.annotations, <String>['child']);
+    });
+
+    test('an unmarked bare constructor is reported and stays legal', () {
+      // `final spare = Barrel();` holding a prototype is ordinary code, and
+      // keeping it legal is half the reason the marker exists. So it is named
+      // rather than refused, and it is not collected: it declares nothing, it
+      // reserves no column, and the row is not missing one.
+      final scan = _declarations('''
+class Turret extends EntityStruct {
+  @child
+  final barrel = Barrel();
+  final spare = Barrel();
+}
+
+class Barrel extends EntityStruct {}
+''');
+
+      expect(scan.refusals, isEmpty);
+      expect(scan.unresolved, isEmpty);
+      expect(scan.unmarked.keys, <String>['Turret.spare']);
+      expect(
+        <String>[
+          for (final declaration in scan.declarers.single.declarations)
+            declaration.name,
+        ],
+        <String>['barrel'],
+      );
+    });
+
+    test('an unmarked bare constructor still closes a ring', () {
+      // The marker decides what a collector reads. It decides nothing about
+      // whether Dart builds the object, and it is the building that does not
+      // terminate - so a walk that filtered the cycle graph on it would go
+      // quiet on the one failure a run cannot report from at all.
+      final scan = _declarations('''
+class Turret extends EntityStruct {
+  final loop = Turret();
+}
+''');
+
+      expect(scan.unmarked.keys, <String>['Turret.loop']);
+      expect(scan.cycles, hasLength(1));
+      expect(scan.cycles.single.reason, contains('Turret -> Turret'));
+    });
+
     test('every ScannableField root counts, not just DataPointer', () {
       // The array root is separate - a DataArrayPointer is not a DataPointer -
       // so a pass testing one root drops every array column with nothing said.
@@ -654,14 +756,17 @@ class Turret extends EntityStruct {
     test('a ring through three structs is one refusal, not three', () {
       final scan = _declarations('''
 class Turret extends EntityStruct {
+  @child
   final barrel = Barrel();
 }
 
 class Barrel extends EntityStruct {
+  @child
   final tip = Tip();
 }
 
 class Tip extends EntityStruct {
+  @child
   final turret = Turret();
 }
 ''');
@@ -681,11 +786,14 @@ class Tip extends EntityStruct {
       // that treated "seen already" as "cycle" would refuse it.
       final scan = _declarations('''
 class Turret extends EntityStruct {
+  @child
   final barrel = Barrel();
 }
 
 class Tower extends EntityStruct {
+  @child
   final barrel = Barrel();
+  @child
   final spare = Barrel();
 }
 

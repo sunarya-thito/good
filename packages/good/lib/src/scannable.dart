@@ -129,6 +129,67 @@ abstract interface class ScannableField {}
 abstract interface class ScannableAnnotation {}
 
 // ---------------------------------------------------------------------------
+// The markers a reader needs
+// ---------------------------------------------------------------------------
+
+/// The type of [child]. Written `@child`, never `@DeclaredChild()`.
+///
+/// Public because the generator keys a table by it and a type argument cannot
+/// be a private name; constructed only here, so there is one spelling of the
+/// annotation and no way to write a second.
+///
+/// Named apart from the `Child` mixin it goes with, which is the thing the
+/// prefab being declared has to mix in. Two names because they say two
+/// different things: the mixin gives a struct somewhere to keep its parent
+/// handle, and this says the field holding it declares one.
+class DeclaredChild implements ScannableAnnotation {
+  const DeclaredChild._();
+}
+
+/// Says the field it is written on declares a child prefab.
+///
+/// ```dart
+/// class Turret extends EntityStruct with Transform2D, Parent {
+///   @child final barrel = Barrel();   // declares a prefab
+///   final spare = Barrel();           // declares nothing
+/// }
+/// ```
+///
+/// # Why the type is not enough
+///
+/// It is enough for the *scanner*: `EntityStruct` is a [ScannableField], so a
+/// walk over the source can tell what the field holds. It is not enough for
+/// whoever reads the file. `final barrel = Barrel();` is spelled exactly like
+/// a field holding an ordinary object, and nothing at the line says that
+/// bringing the scene up registers an archetype for it, runs its describe
+/// passes and reserves a column in this struct's row for the handle.
+///
+/// So the rule is **shape tells, or annotation tells**:
+///
+/// ```dart
+/// final hp   = Field.float64();   // a dotted static - the shape tells
+/// final near = Query.all(A, B);   // a dotted static - the shape tells
+/// final tex  = Asset.of(k);       // a dotted static - the shape tells
+/// @child final enemy = Enemy();   // a bare constructor - nothing tells
+/// ```
+///
+/// A field the reader cannot tell about is the one that carries a marker, and
+/// that does not stop being true if the tooling gets better at reading.
+///
+/// # It is read at build time and never at run time
+///
+/// `good_tool` reads this off the source and leaves an unmarked
+/// bare-constructor field out of the generated collector. Nothing looks the
+/// annotation up while a game runs, and [collectDeclarations] never sees the
+/// difference - it is handed the list the generator wrote.
+///
+/// An unmarked field is **reported and not refused**: holding a spare
+/// instance of a declarable type is ordinary code, and half the reason this
+/// marker exists is that such a field stays legal. `good_tool --declarations
+/// --verbose` names every one of them.
+const DeclaredChild child = DeclaredChild._();
+
+// ---------------------------------------------------------------------------
 // The collectors
 // ---------------------------------------------------------------------------
 
