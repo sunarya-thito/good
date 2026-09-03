@@ -79,6 +79,21 @@ class _UserGame extends _EngineGame {
   final ownPayload = AssetLoader.of(() => const _MarkLoader('game'));
 }
 
+/// A game substituting its own decoder for the one payload type the kernel
+/// ships, which is the case the kernel's own registration has to be ordered
+/// ahead of rather than behind.
+class _OwnAudioGame extends _BareGame {
+  final audio = AssetLoader.of(_OwnAudioLoader.new);
+}
+
+class _OwnAudioLoader extends AssetLoader<AudioClip> {
+  const _OwnAudioLoader();
+
+  @override
+  Future<AudioClip> load(AssetKey<AudioClip> key) async =>
+      throw UnimplementedError();
+}
+
 /// A decoder written `late`, ahead of the eager one, for the same reason every
 /// other declaration has a case like it.
 class _LateLoaderGame extends _BareGame {
@@ -209,6 +224,18 @@ void main() {
           'the kernel files its own ahead of every declaration, so there is '
           'nothing a game can do to drop it - the failure this replaces was '
           'an override that forgot its super call',
+    );
+  });
+
+  test('a game outranks the kernel for the type the kernel ships', () async {
+    await _boot(_OwnAudioGame.new);
+    expect(
+      AssetLoaders.of<AudioClip>(),
+      isA<_OwnAudioLoader>(),
+      reason:
+          'the kernel files AudioClip ahead of every declaration precisely so '
+          'a game can take it over - which is only true of that order, since '
+          'the last registration for a type is the one kept',
     );
   });
 
