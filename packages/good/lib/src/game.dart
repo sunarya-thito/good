@@ -1,17 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ffi';
 import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart'
-    show
-        ChangeNotifier,
-        ErrorDescription,
-        FlutterError,
-        FlutterErrorDetails,
-        VoidCallback,
-        kIsWeb;
+    show ErrorDescription, FlutterError, FlutterErrorDetails, kIsWeb;
 import 'package:flutter/widgets.dart'
     show
         AppLifecycleState,
@@ -46,7 +39,6 @@ import 'package:good/src/ring_buffer.dart';
 import 'package:good/src/scannable.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/system.dart';
-import 'package:good/src/triple_buffer.dart';
 
 /*
 GameState and everything simulation-side must be called under our

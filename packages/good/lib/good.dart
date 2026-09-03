@@ -82,7 +82,10 @@ export 'src/event.dart' hide EventBinder;
 export 'src/event/fixed_loop.dart';
 export 'src/event/lifecycle.dart';
 export 'src/random.dart' hide RandomOwner;
-export 'src/event/state.dart';
+// `ChannelSlot` and `StateChannelRegistry` are the channel machinery `Game`
+// drives; they are public only because they live in a different library from
+// the code that drives them, and a private name does not cross one.
+export 'src/event/state.dart' hide ChannelSlot, StateChannelRegistry;
 export 'src/event/tick_loop.dart';
 // `GameRuntime` is hidden rather than exported: it is one run's internals -
 // the isolate roles, the ports, the command registry, and the inline-versus-
@@ -96,8 +99,23 @@ export 'src/event/tick_loop.dart';
 // was the main-side half of a design where a `Game` could back several runs,
 // and once one instance meant one run it had nothing left to hold that `Game`
 // itself could not.
+//
+// The five engine control commands and the record one of them carries are
+// hidden for the reason they are public: a generated collector in another
+// library has to name them to read their `Param.*` fields back off. Being
+// nameable inside the package is the whole requirement; being published is
+// not part of it.
 export 'src/game.dart'
-    hide GameRuntime, focusedInLifecycleState, visibleInLifecycleState;
+    hide
+        DisabledSystemReport,
+        GameRuntime,
+        ReportDisabledSystemCommand,
+        SetPausedCommand,
+        SetTimeScaleCommand,
+        SetVisibleCommand,
+        StepOnceCommand,
+        focusedInLifecycleState,
+        visibleInLifecycleState;
 export 'src/game_state.dart';
 export 'src/handoff_buffer.dart';
 export 'src/heap_object.dart';
