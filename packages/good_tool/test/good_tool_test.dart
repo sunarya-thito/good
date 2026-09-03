@@ -680,6 +680,58 @@ void main() {
       );
     });
 
+    // Every declaration in this repository, asked the same way. The shapes
+    // this refuses are invisible at run time: the value arrives, and arrives
+    // attributed to whichever owner was under construction when the
+    // initialiser finally ran, which on a second isolate is a different one.
+    test('holds every declaration on the field that declares it', () async {
+      final root = _actualRepoRoot();
+      final found = enginePackages(<Directory>[
+        Directory(p.join(root.path, 'packages')),
+      ]);
+      final readable = <EnginePackage>[
+        ...found.packages,
+        ...found.dependencies,
+      ];
+      final sources = readPackageSources(readable);
+      final scan = scanDeclarations(sources);
+
+      // The pass has to be able to fail. A walk that read nothing reports no
+      // refusals, and so does one that found no declarations to refuse - and
+      // the marker being missing from the roots is exactly the way this would
+      // silently become vacuous, since every answer here rests on the
+      // supertype walk reaching `ScannableField`.
+      expect(sources.unparsed, isEmpty, reason: sources.unparsed.join(', '));
+      expect(
+        sources.typesByName.keys,
+        containsAll(<String>[
+          scannableRoot,
+          scannableFieldRoot,
+          scannableAnnotationRoot,
+        ]),
+      );
+      expect(scan.declarationCount, greaterThan(60));
+      expect(
+        <String>[for (final declarer in scan.declarers) declarer.type],
+        containsAll(<String>[
+          'Camera',
+          'Text2D',
+          'Transform2D',
+          'Child',
+          'PointerPickingSystem',
+        ]),
+      );
+
+      expect(
+        <String>[
+          for (final refusal in scan.refusals)
+            '${refusal.owner}.${refusal.field}',
+        ],
+        isEmpty,
+        reason: declarationRefusalMessage(scan, (path) => path),
+      );
+    });
+
     // The doc comments this repository publishes, asked the same way and for
     // the same reason (#330). `comment_references` is not enabled anywhere:
     // most of what it reports is a name the package declares and the file

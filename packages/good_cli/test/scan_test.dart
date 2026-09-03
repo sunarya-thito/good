@@ -41,14 +41,27 @@ ScanSources _scan(Directory project) => readSources(project);
 /// that spells the factory differently gets a different answer with nothing
 /// hard-coded anywhere.
 const String _kernel = '''
-abstract interface class Component {}
+abstract interface class Scannable {}
+abstract interface class ScannableField {}
+abstract interface class ScannableAnnotation {}
+
+abstract interface class Component implements Scannable {}
 abstract interface class MultiComponent implements Component {}
 abstract class EntityStruct implements MultiComponent {}
-abstract class SceneStruct {}
+abstract class SceneStruct implements Scannable {}
+abstract class GameSystem implements Scannable {}
 
-class DataPointer<T> {}
+class DataPointer<T> implements ScannableField {}
 class InitialPointer<T> extends DataPointer<T> {}
-class DataArrayPointer<T> {}
+class DataArrayPointer<T> implements ScannableField {}
+class Query implements ScannableField {
+  static Query all(Type a) => throw UnimplementedError();
+}
+
+class LoadBefore implements ScannableAnnotation {
+  const LoadBefore(this.other);
+  final Type other;
+}
 
 abstract final class Field {
   static InitialPointer<double> float64([double initialValue = 0.0]) =>
@@ -61,6 +74,19 @@ abstract final class Field {
       throw UnimplementedError();
 }
 ''';
+
+/// A declaration scan over one `game.dart` written against [_kernel].
+DeclarationScan _declarations(String source) => scanDeclarations(
+  _scan(
+    _project(<String, String>{'kernel.dart': _kernel, 'game.dart': source}),
+  ),
+);
+
+/// The refusals as `Owner.field`, so a test names what it expects rather than
+/// matching a sentence that is free to be rewritten.
+List<String> _refused(DeclarationScan scan) => <String>[
+  for (final refusal in scan.refusals) '${refusal.owner}.${refusal.field}',
+];
 
 void main() {
   group('the walk', () {
@@ -370,6 +396,156 @@ void main() {
         scanStructRules(project).unresolved.keys,
         contains('SomethingElsewhere'),
       );
+    });
+  });
+
+  // The check the deleted declaration window used to carry, rebuilt on
+  // `ScannableField` instead. A declaration is one because its value type says
+  // so, which is a fact about the source; the old one asked whether a lazily
+  // initialised declaration would land on the wrong owner, which was a fact
+  // about the window.
+  group('scanDeclarations', () {
+    test('an eager field is a declaration, named and typed', () {
+      final scan = _declarations('''
+class Player extends EntityStruct {
+  final speed = Field.float64(220);
+}
+''');
+
+      expect(scan.refusals, isEmpty);
+      expect(scan.declarers.single.type, 'Player');
+      final declaration = scan.declarers.single.declarations.single;
+      expect(declaration.name, 'speed');
+      // The field name and the written type, which is the half of the answer
+      // a collected *value* cannot carry: a DataPointer has no name member.
+      expect(declaration.valueType, 'InitialPointer<double>');
+    });
+
+    test('a late declaration is refused, whether or not it is assigned', () {
+      // The Camera.cameraView shape - the field declared here, the value
+      // assigned from a describe pass - and the `late final x = ...` shape,
+      // which defers the initialiser to the first read instead.
+      final scan = _declarations('''
+class Player extends EntityStruct {
+  late final DataPointer<double> filled;
+  late final deferred = Field.float64();
+}
+''');
+
+      expect(_refused(scan), <String>['Player.filled', 'Player.deferred']);
+      expect(scan.declarers, isEmpty);
+      expect(scan.refusals.first.reason, contains('freshly constructed'));
+    });
+
+    test('a declaration with no initialiser at all is refused', () {
+      final scan = _declarations('''
+class Player extends EntityStruct {
+  DataPointer<double> filled;
+}
+''');
+
+      expect(_refused(scan), <String>['Player.filled']);
+      expect(scan.refusals.single.reason, contains('no initialiser'));
+    });
+
+    test('a static declaration is refused', () {
+      final scan = _declarations('''
+class Player extends EntityStruct {
+  static final speed = Field.float64(220);
+}
+''');
+
+      expect(_refused(scan), <String>['Player.speed']);
+      expect(scan.refusals.single.reason, contains('lazily'));
+    });
+
+    test('a top-level declaration is refused, named by its file', () {
+      final scan = _declarations('''
+final speed = Field.float64(220);
+''');
+
+      expect(_refused(scan), <String>['game.dart.speed']);
+      expect(scan.refusals.single.reason, contains('top-level'));
+    });
+
+    test('a nullable handle is a binding, not a declaration', () {
+      // `Child._declaredIn` in `good/lib/src/data/hierarchy.dart`: a column on
+      // somebody *else's* archetype, handed over at registration and null
+      // until then. A column cannot be declared conditionally, so a nullable
+      // handle is never a declaration - which is what keeps this off the
+      // refusal list rather than on it with no way to satisfy it.
+      final scan = _declarations('''
+class Player extends EntityStruct {
+  DataPointer<double>? bound;
+}
+''');
+
+      expect(scan.refusals, isEmpty);
+      expect(scan.declarers, isEmpty);
+    });
+
+    test('every ScannableField root counts, not just DataPointer', () {
+      // The array root is separate - a DataArrayPointer is not a DataPointer -
+      // so a pass testing one root drops every array column with nothing said.
+      final scan = _declarations('''
+class Player extends EntityStruct {
+  final letters = Field.array(1, 32);
+}
+
+class Movement extends GameSystem {
+  final movers = Query.all(Player);
+}
+''');
+
+      expect(scan.refusals, isEmpty);
+      expect(
+        <String>[for (final declarer in scan.declarers) declarer.type],
+        <String>['Player', 'Movement'],
+      );
+      expect(scan.declarationCount, 2);
+    });
+
+    test('a class that is not Scannable declares nothing', () {
+      final scan = _declarations('''
+class Helper {
+  final speed = Field.float64(220);
+}
+''');
+
+      expect(scan.refusals, isEmpty);
+      expect(scan.declarers, isEmpty);
+    });
+
+    test('a private declaration is accepted and listed as uncollectable', () {
+      // Not refused. A collector cannot read it, and saying so is the whole
+      // point; whether the engine's 28 private cache columns become public is
+      // a separate call, and refusing here would be making it.
+      final scan = _declarations('''
+class Player extends EntityStruct {
+  final _cached = Field.float64();
+}
+''');
+
+      expect(scan.refusals, isEmpty);
+      expect(scan.declarers.single.declarations.single.isPrivate, isTrue);
+      expect(scan.uncollectable.keys, <String>['Player._cached']);
+    });
+
+    test('only a marked annotation is carried', () {
+      final scan = _declarations('''
+class Player extends EntityStruct {
+  @override
+  @Deprecated('no')
+  @LoadBefore(Player)
+  final speed = Field.float64(220);
+}
+''');
+
+      // Whole source, arguments included: a name alone cannot say what
+      // LoadBefore(Player) meant, and the table has to write it back out.
+      expect(scan.declarers.single.declarations.single.annotations, <String>[
+        'LoadBefore(Player)',
+      ]);
     });
   });
 

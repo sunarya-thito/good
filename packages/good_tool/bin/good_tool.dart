@@ -29,17 +29,20 @@ import 'package:path/path.dart' as p;
 /// written nowhere in the packages read. [scanDocReferences] states the rule
 /// and what it leaves alone.
 ///
-/// There was a third mode, `--declarations`, and it is gone. It refused a
-/// declaration held by a `late` field, a `static` field or a top-level
-/// variable, and the reason it gave was that such a declaration lands on
-/// whichever owner is *under construction* when the initialiser finally runs.
-/// That owner was the ambient declaration window, and the window has been
-/// deleted (#353). The rule it enforced survives the window and the check does
-/// not: with declarations collected off a constructed instance instead, a
-/// `late` one fails as an unassigned `late final` rather than as a
-/// misattribution, and that is a different check against a different mechanism.
-/// Rebuilding it here against the window's leftovers would have written the
-/// window's assumption back into the tool.
+/// `--declarations` generates nothing either. It refuses a declaration held by
+/// a `late` field, a `static` field or a top-level variable - see
+/// [scanDeclarations] for what each of those does at run time.
+///
+/// It is not the check of the same name that the declaration window carried.
+/// That one asked whether a declaration would be *misattributed*: the window
+/// was ambient, so a lazily-initialised declaration landed on whichever owner
+/// happened to be under construction when the initialiser finally ran. The
+/// window is deleted, and with declarations read off a constructed instance
+/// instead, the same shapes fail a different way - a `late final` a collect
+/// pass reaches is simply unassigned. So the rule survived its mechanism and
+/// the check did not, and this one is keyed on `ScannableField` rather than on
+/// anything the window knew: a field is a declaration because its *value type*
+/// says so, which is a fact about the source and not about a live pass.
 ///
 /// From a package's own directory, because `dart run <package>` resolves
 /// packages from the working directory.
@@ -113,6 +116,7 @@ import 'package:path/path.dart' as p;
 Future<void> main(List<String> arguments) async {
   final check = arguments.contains('--check');
   final docReferences = arguments.contains('--doc-references');
+  final declarations = arguments.contains('--declarations');
   final verbose = arguments.contains('--verbose') || arguments.contains('-v');
   final directories = <String>[];
   final unknown = <String>[];
@@ -133,6 +137,7 @@ Future<void> main(List<String> arguments) async {
     }
     if (argument == '--check' ||
         argument == '--doc-references' ||
+        argument == '--declarations' ||
         argument == '--verbose' ||
         argument == '-v') {
       continue;
@@ -198,6 +203,11 @@ Future<void> main(List<String> arguments) async {
 
   if (docReferences) {
     _docReferences(packages, scan.dependencies);
+    return;
+  }
+
+  if (declarations) {
+    _declarations(packages, scan.dependencies, verbose: verbose);
     return;
   }
 
@@ -327,7 +337,7 @@ Future<void> main(List<String> arguments) async {
 void _usage() {
   stderr.writeln(
     'Usage: dart run good_tool --dir <directory> [--dir <directory>] '
-    '[--check] [--doc-references] [--verbose]',
+    '[--check] [--doc-references] [--declarations] [--verbose]',
   );
   stderr.writeln(
     '  --dir .              the package in this directory\n'
@@ -403,6 +413,58 @@ void _check(
     for (final directory in directories) '--dir $directory',
   ].join(' ');
   stderr.writeln('\nRun `dart run good_tool $where` and commit the result.');
+  exitCode = 65;
+}
+
+/// Fails when a declaration is held by something that initialises it lazily.
+///
+/// A separate mode for the reason [_docReferences] is one: it is fixed by
+/// editing the declaration, not by running the generator, and a run reporting
+/// both under one exit code would tell whoever read it to regenerate.
+///
+/// Only the packages being generated into are judged, and their dependencies
+/// are read for the supertype walk alone - the same split [_docReferences]
+/// makes. A `late` declaration in an upstream package is that package's to
+/// fix, and a run over one package is not the place to raise it.
+void _declarations(
+  List<EnginePackage> packages,
+  List<EnginePackage> dependencies, {
+  required bool verbose,
+}) {
+  final readable = <EnginePackage>[...packages, ...dependencies];
+  final sources = readPackageSources(readable);
+  if (_unparsed(sources.unparsed)) return;
+  final own = <String>{for (final package in packages) package.libDir};
+  final scan = scanDeclarations(sources);
+  final refusals = <DeclarationRefusal>[
+    for (final refusal in scan.refusals)
+      if (own.any((lib) => p.isWithin(lib, refusal.path))) refusal,
+  ];
+
+  if (verbose) {
+    final keys = scan.uncollectable.keys.toList()..sort();
+    for (final key in keys) {
+      stdout.writeln('No collector entry: $key - ${scan.uncollectable[key]}');
+    }
+  }
+
+  if (refusals.isEmpty) {
+    stdout.writeln(
+      '${scan.declarationCount} declaration(s) on ${scan.declarers.length} '
+      'class(es) are each held by the field that declares them.',
+    );
+    return;
+  }
+  stderr.writeln(
+    declarationRefusalMessage(
+      DeclarationScan(
+        declarers: scan.declarers,
+        refusals: refusals,
+        uncollectable: scan.uncollectable,
+      ),
+      (path) => _displayPath(packages, path),
+    ),
+  );
   exitCode = 65;
 }
 
@@ -483,8 +545,12 @@ bool _unparsed(List<String> files) {
 /// working directory is now whichever one `--dir` was resolved from and a path
 /// through `../` says nothing a reader wants. This form is the same on every
 /// machine and in every invocation, which is what the printed name is for.
-String _display(List<EnginePackage> packages, File file) {
-  final full = p.normalize(p.absolute(file.path));
+String _display(List<EnginePackage> packages, File file) =>
+    _displayPath(packages, file.path);
+
+/// [_display] for a path that never had a `File` around it.
+String _displayPath(List<EnginePackage> packages, String path) {
+  final full = p.normalize(p.absolute(path));
   for (final package in packages) {
     final root = p.normalize(p.absolute(package.root.path));
     if (p.isWithin(root, full)) {

@@ -165,6 +165,17 @@ jobs:
           set -e
           (cd packages/good_tool && dart run good_tool --doc-references --dir ../../packages)
 
+      # A declaration is a field with its value on it. The shapes this refuses
+      # - `late`, `static`, a top-level variable - each split that in two, and
+      # the half that runs does so at a moment nothing at the declaration
+      # mentions. None of them is visible at run time: the value arrives, and
+      # arrives attributed to whichever owner was under construction when the
+      # initialiser finally ran.
+      - name: Check that every declaration is held by the field that declares it
+        run: |
+          set -e
+          (cd packages/good_tool && dart run good_tool --declarations --dir ../../packages)
+
       # ffigen's function filter is a regex nothing re-runs, so it can stop
       # matching with nothing going red. `good.*` matched none of the shim's 60
       # symbols, and regenerating produced 19 lines - three constants, no

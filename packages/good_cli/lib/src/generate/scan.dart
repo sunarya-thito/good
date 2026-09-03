@@ -138,7 +138,10 @@ class ScannedField {
     required this.factory,
     required this.factoryTypeArguments,
     required this.factoryArguments,
+    required this.annotations,
     required this.isStatic,
+    required this.isLate,
+    required this.hasInitializer,
   });
 
   final String name;
@@ -156,9 +159,44 @@ class ScannedField {
   /// The source of each positional argument, in order.
   final List<String> factoryArguments;
 
+  /// The annotations written on it, in source order, each as it was written -
+  /// `system`, `LoadBefore(PhysicsSystem)`.
+  ///
+  /// Whole source and not just the name: an annotation the scan carries into
+  /// generated output has to be re-emitted, arguments included, and a name
+  /// alone cannot say what `@LoadBefore(PhysicsSystem)` meant. [annotationName]
+  /// takes the head back off when only that is wanted.
+  final List<String> annotations;
+
   final bool isStatic;
 
+  /// Whether it is written `late`.
+  ///
+  /// Read because a declaration held by a `late` field is refused, and
+  /// nothing else in the walk can tell one from an ordinary field: both are
+  /// `DataPointer<CameraView?> cameraView` with an initialiser somewhere
+  /// else. It was removed once as dead and is here again for the check that
+  /// needs it - see `declarationRefusals`.
+  final bool isLate;
+
+  /// Whether it has an initialiser at its declaration.
+  ///
+  /// A `late final X x;` with no initialiser is the half of a double
+  /// declaration this walk can see; the other half is a statement in a
+  /// `describeX` body, which it deliberately does not go looking for. One
+  /// half is enough to refuse.
+  final bool hasInitializer;
+
   bool get isPrivate => name.startsWith('_');
+}
+
+/// The head of an annotation as it was written - `LoadBefore` out of
+/// `LoadBefore(PhysicsSystem)`, `system` out of `system`.
+String annotationName(String annotation) {
+  final open = annotation.indexOf('(');
+  final head = open < 0 ? annotation : annotation.substring(0, open);
+  final dot = head.indexOf('.');
+  return (dot < 0 ? head : head.substring(0, dot)).trim();
 }
 
 /// One method, reduced to what the generators ask about.
@@ -272,6 +310,7 @@ class ScannedUnit {
     required this.declaredNames,
     required this.exports,
     required this.types,
+    required this.variables,
   });
 
   /// The file, normalised and absolute.
@@ -282,6 +321,16 @@ class ScannedUnit {
 
   final List<ScannedExport> exports;
   final List<ScannedType> types;
+
+  /// Its top-level variables, read the same way a field is.
+  ///
+  /// Recorded because a declaration held by one is refused, and refusing it
+  /// needs the same three facts a field's refusal does - the written type, the
+  /// factory that produced the value, and whether it is `late`. A top-level
+  /// variable is `late` whether or not the word is written: Dart initialises
+  /// every one of them lazily, so the first read is what runs the initialiser,
+  /// and that is a different moment on every isolate.
+  final List<ScannedField> variables;
 }
 
 /// Everything one walk read.
@@ -408,6 +457,7 @@ ScannedUnit _readUnit(String path, CompilationUnit unit) {
   final declaredNames = <String>{};
   final exports = <ScannedExport>[];
   final types = <ScannedType>[];
+  final variables = <ScannedField>[];
 
   for (final directive in unit.directives) {
     if (directive is! ExportDirective) continue;
@@ -432,8 +482,21 @@ ScannedUnit _readUnit(String path, CompilationUnit unit) {
       final name = declaration.name;
       if (name != null) declaredNames.add(name.lexeme);
     } else if (declaration is TopLevelVariableDeclaration) {
+      final annotations = <String>[
+        for (final annotation in declaration.metadata)
+          annotation.toSource().substring(1),
+      ];
       for (final variable in declaration.variables.variables) {
         declaredNames.add(variable.name.lexeme);
+        variables.add(
+          _readVariable(
+            variable,
+            typeSource: declaration.variables.type?.toSource(),
+            annotations: annotations,
+            isStatic: true,
+            isLate: true,
+          ),
+        );
       }
     }
 
@@ -446,6 +509,7 @@ ScannedUnit _readUnit(String path, CompilationUnit unit) {
     declaredNames: declaredNames,
     exports: exports,
     types: types,
+    variables: variables,
   );
 }
 
@@ -493,12 +557,18 @@ ScannedType? _readType(String path, CompilationUnitMember declaration) {
   final methods = <String, ScannedMethod>{};
   for (final member in members) {
     if (member is FieldDeclaration) {
+      final annotations = <String>[
+        for (final annotation in member.metadata)
+          annotation.toSource().substring(1),
+      ];
       for (final variable in member.fields.variables) {
         fields.add(
           _readVariable(
             variable,
             typeSource: member.fields.type?.toSource(),
+            annotations: annotations,
             isStatic: member.isStatic,
+            isLate: member.fields.lateKeyword != null,
           ),
         );
       }
@@ -538,7 +608,9 @@ List<ClassMember> _members(ClassBody body) =>
 ScannedField _readVariable(
   VariableDeclaration variable, {
   required String? typeSource,
+  required List<String> annotations,
   required bool isStatic,
+  required bool isLate,
 }) {
   final initializer = variable.initializer;
   String? factory;
@@ -564,7 +636,10 @@ ScannedField _readVariable(
     factory: factory,
     factoryTypeArguments: typeArguments,
     factoryArguments: arguments,
+    annotations: annotations,
     isStatic: isStatic,
+    isLate: isLate,
+    hasInitializer: initializer != null,
   );
 }
 
@@ -978,6 +1053,412 @@ const Set<String> intMembers = <String>{
   'truncate',
   'truncateToDouble',
 };
+
+// ---------------------------------------------------------------------------
+// Declarations
+// ---------------------------------------------------------------------------
+
+/// The marker a class carries to be scanned at all - see `Scannable` in
+/// `good/lib/src/scannable.dart`.
+const String scannableRoot = 'Scannable';
+
+/// The marker a *value* carries for a field holding it to be a declaration.
+///
+/// `DataPointer`, `DataArrayPointer` and `Query` implement it today. Nothing
+/// here holds a list of those names: the test is the supertype walk through
+/// what was read, so a fourth root marked in `good` is found by this pass
+/// without an edit here, and a name this walk never saw is simply not one.
+const String scannableFieldRoot = 'ScannableField';
+
+/// The marker an annotation carries to be written into generated output.
+const String scannableAnnotationRoot = 'ScannableAnnotation';
+
+/// The type of the value [field] holds, as far as the source says.
+///
+/// The written annotation when there is one, and otherwise the declared
+/// return type of the static factory the initialiser calls - the same two
+/// shapes [columnValueType] reads, kept apart from it because they answer
+/// different questions. [columnValueType] wants what one entity's *value* is
+/// (`double`, `CameraView?`), which is what a generated property returns.
+/// This wants what the *field* holds (`InitialPointer<double>`,
+/// `DataPointer<CameraView?>`), which is what decides whether the field is a
+/// declaration at all and what a collector would hand back.
+///
+/// Null when neither is written. `final x = someHelper();` on a helper this
+/// walk did not read is not a declaration as far as anything here can tell,
+/// and saying so rather than guessing is the point.
+///
+/// # What the type arguments say, and where they do not
+///
+/// A factory's return type is written against the factory's own type
+/// parameters, so `Field.enumOf<BodyType2D>(...)` declares
+/// `PackedPointer<E>` and the `E` is filled in from the call - the same two
+/// ways [columnValueType] fills one in, and no third. Where neither way
+/// reaches, the parameter is left standing: `Field.array(.uint16, 32)`
+/// answers `DataArrayPointer<T>`, because `T` is inferred from a
+/// `DataElement<T>` argument written as a dot shorthand and nothing here
+/// resolves one.
+///
+/// That is enough to decide whether a field is a declaration, which is only
+/// ever the head of the type. It is **not** enough for an emitter that has to
+/// write the type out, and a caller doing that has to say what it does with a
+/// type argument still spelled `T`.
+String? declaredValueType(
+  ScannedField field,
+  Map<String, ScannedType> typesByName,
+) {
+  final annotation = field.typeSource;
+  if (annotation != null) return annotation;
+  final factory = field.factory;
+  if (factory == null) return null;
+  final dot = factory.lastIndexOf('.');
+  if (dot <= 0) return null;
+  final owner = typesByName[factory.substring(0, dot)];
+  if (owner == null) return null;
+  final method = owner.methods[factory.substring(dot + 1)];
+  if (method == null || !method.isStatic) return null;
+  final returnType = method.returnTypeSource;
+  if (returnType == null) return null;
+  if (method.typeParameters.isEmpty) return returnType;
+  final parsed = TypeSource.parse(returnType);
+  if (parsed == null || parsed.arguments.isEmpty) return returnType;
+  final arguments = <String>[];
+  for (final argument in parsed.arguments) {
+    final nullable = argument.endsWith('?');
+    final head = nullable
+        ? argument.substring(0, argument.length - 1)
+        : argument;
+    if (!method.typeParameters.contains(head)) {
+      arguments.add(argument);
+      continue;
+    }
+    final inferred = _inferTypeArgument(field, method, head);
+    arguments.add(
+      inferred == null ? argument : '$inferred${nullable ? '?' : ''}',
+    );
+  }
+  return '${parsed.name}<${arguments.join(', ')}>'
+      '${parsed.isNullable ? '?' : ''}';
+}
+
+/// Whether [field] holds a declaration - a value marked [scannableFieldRoot].
+///
+/// By the head of the type alone. `DataPointer<CameraView?>` and
+/// `InitialPointer<double>` are both declarations and their arguments have
+/// nothing to do with it: the marker is on the value's own type, not on what
+/// it wraps.
+///
+/// # A nullable handle is a reference to somebody else's column
+///
+/// `DataPointer<CameraView?>` is a declaration whose *value* may be absent.
+/// `DataPointer<Entity?>?` - the handle itself nullable - is not a declaration
+/// at all, because a column cannot be declared conditionally: there is no
+/// shape in which a class declares half a column and holds null instead. What
+/// a nullable handle holds is a column somebody else declared, bound
+/// afterwards, and `Child._declaredIn` (`good/lib/src/data/hierarchy.dart`) is
+/// one - a column on the *parent's* archetype, handed over by
+/// `bindDeclaration` at registration and null until then.
+///
+/// Found by this check reporting it, which is the outcome to want from a rule
+/// derived off a type: the type said declaration, the field is a binding, and
+/// the difference is written in the nullability rather than in a comment.
+bool isDeclarationField(
+  ScannedField field,
+  Map<String, ScannedType> typesByName,
+) {
+  final declared = declaredValueType(field, typesByName);
+  if (declared == null) return false;
+  final parsed = TypeSource.parse(declared);
+  if (parsed == null || parsed.isNullable) return false;
+  return isSubtypeOf(parsed.name, scannableFieldRoot, typesByName);
+}
+
+/// One declaration a scanned class holds, as codegen and a collector need it.
+///
+/// Both halves of "two artifacts, not one" are here: [name] and [valueType]
+/// are what an emitter reads and what a runtime value cannot carry - a
+/// `DataPointer` has no `name` member, and `CameraView?` is not recoverable
+/// from a `Type` - and [annotations] are what a generated const table holds.
+@immutable
+class ScannedDeclaration {
+  const ScannedDeclaration({
+    required this.name,
+    required this.valueType,
+    required this.annotations,
+    required this.isPrivate,
+  });
+
+  /// The Dart field name - `cameraView`, `transformOffsetX`.
+  final String name;
+
+  /// The type of the value it holds, exactly as [declaredValueType] found it.
+  final String valueType;
+
+  /// The annotations written on it that carry into generated output.
+  ///
+  /// Only the ones marked [scannableAnnotationRoot]. Every other annotation
+  /// on the field - `override`, `internal`, `pragma` - is read here and
+  /// dropped, rather than serialised into a table that ships.
+  final List<String> annotations;
+
+  final bool isPrivate;
+}
+
+/// One scanned class and the declarations it holds, in declaration order.
+@immutable
+class ScannedDeclarer {
+  const ScannedDeclarer({
+    required this.type,
+    required this.path,
+    required this.declarations,
+  });
+
+  /// The class - `Camera`, `Transform2D`, `Player`.
+  final String type;
+
+  /// The file it is declared in, normalised and absolute.
+  final String path;
+
+  final List<ScannedDeclaration> declarations;
+}
+
+/// One declaration this engine will not accept, and why.
+@immutable
+class DeclarationRefusal {
+  const DeclarationRefusal({
+    required this.owner,
+    required this.field,
+    required this.path,
+    required this.reason,
+  });
+
+  /// The class holding it, or the file name when it is a top-level variable.
+  final String owner;
+
+  final String field;
+
+  /// The file it is written in, normalised and absolute.
+  final String path;
+
+  final String reason;
+}
+
+/// Every scanned class's declarations, and every one that is refused.
+@immutable
+class DeclarationScan {
+  const DeclarationScan({
+    required this.declarers,
+    required this.refusals,
+    required this.uncollectable,
+  });
+
+  /// Classes holding at least one declaration, in path order.
+  final List<ScannedDeclarer> declarers;
+
+  /// What refuses a run - see [declarationRefusalMessage].
+  final List<DeclarationRefusal> refusals;
+
+  /// Declarations that are accepted and that a collector cannot read, keyed
+  /// `Class.field`, to why.
+  ///
+  /// Private ones, and today that is all of them. A collector is generated
+  /// into another library and a private field is `undefined_getter` there, so
+  /// these contribute nothing to a collect pass - which is exactly the shape
+  /// this engine keeps being bitten by, and exactly why it is listed rather
+  /// than swallowed. It is not a refusal: whether the engine's own cache
+  /// columns become public (28 of them, and every one would then generate a
+  /// public accessor property) is an open call, and a check that decided it
+  /// by refusing would be making it.
+  final Map<String, String> uncollectable;
+
+  int get declarationCount {
+    var count = 0;
+    for (final declarer in declarers) {
+      count += declarer.declarations.length;
+    }
+    return count;
+  }
+}
+
+/// Every declaration in [sources], and what is wrong with the ones that are.
+///
+/// # What is refused, and why none of it is a style rule
+///
+/// **`late`.** A `late final DataPointer<CameraView?> cameraView;` filled in
+/// from a `describeStruct` body is one declaration written twice, and the
+/// second half runs at a moment nothing at the declaration says. It is also
+/// what a collector trips over first: a collect pass reads declarations off a
+/// freshly constructed instance, and an unassigned `late final` throws there
+/// instead of yielding anything.
+///
+/// **No initialiser at all.** The same thing with the word missing - the
+/// field is filled in from somewhere else, and the declaration does not say
+/// where.
+///
+/// **`static`, and a top-level variable.** Both initialise lazily - the first
+/// read runs the initialiser - so the value lands on whichever owner happens
+/// to be under construction at that moment. A top-level variable is refused
+/// whether or not `late` is written, because Dart makes every one of them
+/// lazy regardless.
+///
+/// # What it does not look at
+///
+/// The other half of a double declaration - the `x = descriptor.has(...)`
+/// statement in a hook body. It is not needed: the field alone says the
+/// declaration is deferred, and a rule that had to find both halves would
+/// pass whenever the assignment moved somewhere this pass does not read.
+///
+/// # What it reads, and what that costs
+///
+/// Only what a class writes itself. A mixin's declarations belong to the
+/// mixin, and are refused where the mixin is written rather than once per
+/// class that applies it - so one bad declaration is one line of output, not
+/// one per user of it.
+DeclarationScan scanDeclarations(ScanSources sources) {
+  final typesByName = sources.typesByName;
+  final declarers = <ScannedDeclarer>[];
+  final refusals = <DeclarationRefusal>[];
+  final uncollectable = <String, String>{};
+
+  final paths = sources.units.keys.toList()..sort();
+  for (final path in paths) {
+    final unit = sources.units[path]!;
+    for (final variable in unit.variables) {
+      if (!isDeclarationField(variable, typesByName)) continue;
+      refusals.add(
+        DeclarationRefusal(
+          owner: p.split(path).last,
+          field: variable.name,
+          path: path,
+          reason:
+              'a top-level variable holds it. Dart initialises one lazily, so '
+              'the declaration runs on the first read - whenever that is - '
+              'instead of while the class that owns it is being built. Move '
+              'it onto a field of the class it belongs to',
+        ),
+      );
+    }
+    for (final type in unit.types) {
+      if (!isSubtypeOf(type.name, scannableRoot, typesByName)) continue;
+      final declarations = <ScannedDeclaration>[];
+      for (final field in type.fields) {
+        if (!isDeclarationField(field, typesByName)) continue;
+        final valueType = declaredValueType(field, typesByName)!;
+        if (field.isStatic) {
+          refusals.add(
+            DeclarationRefusal(
+              owner: type.name,
+              field: field.name,
+              path: path,
+              reason:
+                  'a static field holds it, and a static initialises lazily. '
+                  'The declaration would run on the first read and land on '
+                  'whichever instance is under construction then, which is '
+                  'one instance in a process that has many. Make it an '
+                  'instance field',
+            ),
+          );
+          continue;
+        }
+        if (field.isLate) {
+          refusals.add(
+            DeclarationRefusal(
+              owner: type.name,
+              field: field.name,
+              path: path,
+              reason:
+                  'it is late, so the value is assigned somewhere else - a '
+                  'describe pass, a constructor body - and the declaration is '
+                  'written twice. A collect pass reads declarations off a '
+                  'freshly constructed instance and finds this one '
+                  'unassigned. Give the field its initialiser',
+            ),
+          );
+          continue;
+        }
+        if (!field.hasInitializer) {
+          refusals.add(
+            DeclarationRefusal(
+              owner: type.name,
+              field: field.name,
+              path: path,
+              reason:
+                  'it has no initialiser, so whatever assigns it does so '
+                  'somewhere the declaration does not say. Give the field its '
+                  'initialiser',
+            ),
+          );
+          continue;
+        }
+        if (field.isPrivate) {
+          uncollectable['${type.name}.${field.name}'] =
+              'it is private, and a collector is generated into another '
+              'library - a private field is not reachable from one, and user '
+              'code is never edited to add a part directive';
+        }
+        declarations.add(
+          ScannedDeclaration(
+            name: field.name,
+            valueType: valueType,
+            annotations: <String>[
+              for (final annotation in field.annotations)
+                if (isSubtypeOf(
+                  annotationName(annotation),
+                  scannableAnnotationRoot,
+                  typesByName,
+                ))
+                  annotation,
+            ],
+            isPrivate: field.isPrivate,
+          ),
+        );
+      }
+      if (declarations.isEmpty) continue;
+      declarers.add(
+        ScannedDeclarer(
+          type: type.name,
+          path: path,
+          declarations: declarations,
+        ),
+      );
+    }
+  }
+
+  return DeclarationScan(
+    declarers: declarers,
+    refusals: refusals,
+    uncollectable: uncollectable,
+  );
+}
+
+/// What a run refusing over a deferred declaration says.
+///
+/// [display] names the file the way the caller names files - a package-
+/// relative path from `good_tool`, a project-relative one from `good`.
+String declarationRefusalMessage(
+  DeclarationScan scan,
+  String Function(String path) display,
+) {
+  final lines = StringBuffer()
+    ..writeln('A declaration is not held by the field that declares it:')
+    ..writeln();
+  for (final refusal in scan.refusals) {
+    lines.writeln(
+      '  ${display(refusal.path)}: ${refusal.owner}.${refusal.field} - '
+      '${refusal.reason}',
+    );
+  }
+  lines
+    ..writeln()
+    ..writeln(
+      'A declaration is a field with its value on it, and the line that '
+      'declares it is the line that says so. Every shape above splits that in '
+      'two: one half names the field, and the other runs at a moment nothing '
+      'at the declaration mentions, on whichever owner happens to be under '
+      'construction when it does.',
+    );
+  return lines.toString();
+}
 
 // ---------------------------------------------------------------------------
 // What `good generate` refuses over
