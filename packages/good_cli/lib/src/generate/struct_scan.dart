@@ -1,3 +1,12 @@
+// The pre-`ClassBody` AST - `ClassDeclaration.name`, `.members`,
+// `ExtensionTypeDeclaration.representation`, `NamedCompilationUnitMember` -
+// is deprecated in analyzer 10 and has no public replacement there: the
+// `ClassBody` that supersedes it carries no members on its public interface
+// until analyzer 11, which drops the old names in the same release. So the
+// bump past 11 is a migration and not a constraint edit (#348), and until it
+// happens this is the only spelling that reads a class body at all.
+// ignore_for_file: deprecated_member_use
+
 import 'dart:io';
 
 import 'package:analyzer/dart/analysis/utilities.dart';
@@ -965,7 +974,7 @@ String? _componentTypeOf(VariableDeclaration variable) {
   final arguments = initializer.typeArguments?.arguments;
   if (arguments == null || arguments.length != 1) return null;
   final argument = arguments.single;
-  return argument is NamedType ? argument.name2.lexeme : null;
+  return argument is NamedType ? argument.name.lexeme : null;
 }
 
 /// Collects declarations and the fields they declare.
@@ -998,7 +1007,7 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitExtensionDeclaration(ExtensionDeclaration node) {
     final onType = node.onClause?.extendedType;
-    if (onType is NamedType && onType.name2.lexeme == 'Accessor') {
+    if (onType is NamedType && onType.name.lexeme == 'Accessor') {
       final arguments = onType.typeArguments?.arguments;
       if (arguments != null && arguments.length == 1) {
         final argument = arguments.single;
@@ -1006,7 +1015,7 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
           // The nullable spelling names the same component: `Accessor<Health?>`
           // and `Accessor<Health>` differ in what `component` hands back, not
           // in which extensions apply.
-          final component = argument.name2.lexeme;
+          final component = argument.name.lexeme;
           final into = accessorExtensions.putIfAbsent(
             component,
             () => <String>{},
@@ -1031,10 +1040,10 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
 
   @override
   void visitClassDeclaration(ClassDeclaration node) {
-    final superName = node.extendsClause?.superclass.name2.lexeme;
+    final superName = node.extendsClause?.superclass.name.lexeme;
     final owner = Owner(node.name.lexeme, _file)..superName = superName;
     for (final type in node.withClause?.mixinTypes ?? const <NamedType>[]) {
-      owner.mixes.add(type.name2.lexeme);
+      owner.mixes.add(type.name.lexeme);
     }
     _readFields(node.members, owner);
     _readHooks(node.members, owner);
@@ -1086,7 +1095,7 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
     final owner = Owner(node.name.lexeme, _file)..isMixin = true;
     for (final type
         in node.onClause?.superclassConstraints ?? const <NamedType>[]) {
-      owner.onConstraints.add(type.name2.lexeme);
+      owner.onConstraints.add(type.name.lexeme);
     }
     _readFields(node.members, owner);
     _readHooks(node.members, owner);
@@ -1184,7 +1193,7 @@ bool _isColumn(VariableDeclaration variable, TypeAnnotation? declaredType) {
       // form was falling through this check entirely.
       'InitialPointer',
     };
-    if (columnTypes.contains(declaredType.name2.lexeme)) return true;
+    if (columnTypes.contains(declaredType.name.lexeme)) return true;
   }
   return false;
 }
@@ -1244,7 +1253,7 @@ String? columnValueType(
       'InitialPointer',
       'PackedPointer',
     };
-    if (!pointers.contains(declaredType.name2.lexeme)) return null;
+    if (!pointers.contains(declaredType.name.lexeme)) return null;
     final arguments = declaredType.typeArguments?.arguments;
     if (arguments == null || arguments.length != 1) return null;
     return arguments.single.toSource();

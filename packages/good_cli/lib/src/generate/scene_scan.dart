@@ -1,3 +1,12 @@
+// The pre-`ClassBody` AST - `ClassDeclaration.name`, `.members`,
+// `ExtensionTypeDeclaration.representation`, `NamedCompilationUnitMember` -
+// is deprecated in analyzer 10 and has no public replacement there: the
+// `ClassBody` that supersedes it carries no members on its public interface
+// until analyzer 11, which drops the old names in the same release. So the
+// bump past 11 is a migration and not a constraint edit (#348), and until it
+// happens this is the only spelling that reads a class body at all.
+// ignore_for_file: deprecated_member_use
+
 import 'dart:io';
 
 import 'package:analyzer/dart/analysis/analysis_context_collection.dart';
@@ -183,10 +192,10 @@ class _DeclarerVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitClassDeclaration(ClassDeclaration node) {
     final name = node.name.lexeme;
-    final superName = node.extendsClause?.superclass.name2.lexeme;
+    final superName = node.extendsClause?.superclass.name.lexeme;
     final mixins = <String>[
       for (final type in node.withClause?.mixinTypes ?? const <NamedType>[])
-        type.name2.lexeme,
+        type.name.lexeme,
     ];
     final declarer = _Declarer(
       name,
@@ -203,7 +212,7 @@ class _DeclarerVisitor extends RecursiveAstVisitor<void> {
     final constraints = <String>[
       for (final type
           in node.onClause?.superclassConstraints ?? const <NamedType>[])
-        type.name2.lexeme,
+        type.name.lexeme,
     ];
     // `mixin FieldScene on SceneStruct` *is* a scene's asset declaration, and
     // is how penguincivilwar writes one - so a mixin constrained to
@@ -383,7 +392,7 @@ String? _constructedTypeName(Expression argument) {
     return null;
   }
   if (argument is InstanceCreationExpression) {
-    return argument.constructorName.type.name2.lexeme;
+    return argument.constructorName.type.name.lexeme;
   }
   if (argument is MethodInvocation && argument.target == null) {
     final name = argument.methodName.name;

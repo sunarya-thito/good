@@ -1,3 +1,12 @@
+// The pre-`ClassBody` AST - `ClassDeclaration.name`, `.members`,
+// `ExtensionTypeDeclaration.representation`, `NamedCompilationUnitMember` -
+// is deprecated in analyzer 10 and has no public replacement there: the
+// `ClassBody` that supersedes it carries no members on its public interface
+// until analyzer 11, which drops the old names in the same release. So the
+// bump past 11 is a migration and not a constraint edit (#348), and until it
+// happens this is the only spelling that reads a class body at all.
+// ignore_for_file: deprecated_member_use
+
 import 'dart:io';
 
 import 'package:analyzer/dart/analysis/features.dart';
@@ -49,6 +58,7 @@ class DocReferenceScan {
     required this.references,
     required this.checked,
     required this.names,
+    required this.unparsed,
   });
 
   /// Every reference that names nothing, in file then line order.
@@ -68,6 +78,21 @@ class DocReferenceScan {
 
   /// How many distinct identifiers the packages read write in code.
   final int names;
+
+  /// Every file the parser reported an error on, named `goo2d/lib/...`.
+  ///
+  /// A file in here contributed nothing: not its references, not its names.
+  /// The parser recovers and hands back a tree either way, and the tree it
+  /// hands back is missing whichever doc comments hung off the part it could
+  /// not read - so a run that read it would check some of its references and
+  /// report the rest as checked too. That is what #348 was: `collider.dart`
+  /// held 46 references and 15 of them reached this pass, under a summary
+  /// counting the run as clean.
+  ///
+  /// The caller fails on a non-empty list. There is no useful answer to give
+  /// over a tree this pass could not read, and the alternative - saying so on
+  /// stderr under an exit code of 0 - is the same silence with more words.
+  final List<String> unparsed;
 }
 
 /// Every doc reference in [packages] that names nothing anywhere in [known].
@@ -120,6 +145,7 @@ DocReferenceScan scanDocReferences({
   final written = <String>{};
   final declared = <String>{};
   final read = <_ReadFile>[];
+  final unparsed = <String>[];
   for (final MapEntry(key: libDir, value: package) in roots.entries) {
     final dir = Directory(libDir);
     if (!dir.existsSync()) continue;
@@ -127,14 +153,19 @@ DocReferenceScan scanDocReferences({
       if (file is! File || !file.path.endsWith('.dart')) continue;
       final CompilationUnit unit;
       try {
-        unit = parseString(
+        final parsed = parseString(
           content: file.readAsStringSync(),
           featureSet: _featureSet,
           throwIfDiagnostics: false,
-        ).unit;
+        );
+        if (parsed.errors.isNotEmpty) {
+          unparsed.add(package.describe(file));
+          continue;
+        }
+        unit = parsed.unit;
       } on ArgumentError {
-        // Unreadable, or not Dart after all. Nothing to add either way, and a
-        // reference to a name only that file wrote reports as dangling.
+        // Unreadable, or not Dart after all.
+        unparsed.add(package.describe(file));
         continue;
       }
       for (var token = unit.beginToken; !token.isEof; token = token.next!) {
@@ -190,6 +221,7 @@ DocReferenceScan scanDocReferences({
     references: references,
     checked: checked,
     names: written.length,
+    unparsed: unparsed..sort(),
   );
 }
 
