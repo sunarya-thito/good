@@ -72,17 +72,12 @@ class _Lieutenant extends EntityStruct with _Body {
 class _Squad extends SceneStruct {
   late final Scene handle;
 
-  late final _Grunt grunt;
-  late final _Captain captain;
-  late final _Lieutenant lieutenant;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    grunt = descriptor.has(_Grunt.new);
-    captain = descriptor.has(_Captain.new);
-    lieutenant = descriptor.has(_Lieutenant.new);
-  }
+  @child
+  final grunt = _Grunt();
+  @child
+  final captain = _Captain();
+  @child
+  final lieutenant = _Lieutenant();
 }
 
 _Squad _squad() {

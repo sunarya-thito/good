@@ -36,22 +36,17 @@ final List<String> order = <String>[];
 
 class _Scene extends SceneStruct {
   late Scene handle;
-  late final _Rock rock;
-  late final _Tree tree;
-  late final _Node node;
-  late final _Watched watched;
+  @child
+  final rock = _Rock();
+  @child
+  final tree = _Tree();
+  @child
+  final node = _Node();
+  @child
+  final watched = _Watched();
 
   @override
   void onSceneMounted(Scene scene) => handle = scene;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    rock = descriptor.has(_Rock.new);
-    tree = descriptor.has(_Tree.new);
-    node = descriptor.has(_Node.new);
-    watched = descriptor.has(_Watched.new);
-  }
 }
 
 /// A system watching the whole world.

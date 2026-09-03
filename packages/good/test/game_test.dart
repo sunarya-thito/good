@@ -72,13 +72,8 @@ class _TestScene extends SceneStruct {
 
   _TestScene();
 
-  late final _Unit unit;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    unit = descriptor.has(_Unit.new);
-  }
+  @child
+  final unit = _Unit();
 }
 
 /// Presentation-phase system: records the delta it was handed, so the tests

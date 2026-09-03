@@ -129,9 +129,13 @@ class Hub extends EntityStruct with Transform2D, WorldTransform2D, Parent {}
 class Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
 
 class Swarm extends SceneStruct {
+  @child
   final critter = Critter();
+  @child
   final limb = Limb();
+  @child
   final hub = Hub();
+  @child
   final eye = Eye();
 
   /// The one entity this scene creates itself, so spawns have something to

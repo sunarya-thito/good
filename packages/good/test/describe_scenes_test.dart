@@ -50,13 +50,8 @@ mixin _Unmarked on Component {
 class _Prop extends EntityStruct with _Unmarked {}
 
 class _Level extends SceneStruct {
-  late final _Unit unit;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    unit = descriptor.has(_Unit.new);
-  }
+  @child
+  final unit = _Unit();
 }
 
 class _Menu extends SceneStruct {}
@@ -65,15 +60,10 @@ class _Menu extends SceneStruct {}
 /// census query matches and one it must not - a scene with a single archetype
 /// could not tell "matched the right one" from "matched everything".
 class _Mixed extends SceneStruct {
-  late final _Unit unit;
-  late final _Prop prop;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    unit = descriptor.has(_Unit.new);
-    prop = descriptor.has(_Prop.new);
-  }
+  @child
+  final unit = _Unit();
+  @child
+  final prop = _Prop();
 }
 
 /// The same census through the `describeQuery` hook. `_bootGame` runs that

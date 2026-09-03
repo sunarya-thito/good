@@ -37,7 +37,8 @@ mixin _Marked on Component {
 class _Unit extends EntityStruct with _Marked {}
 
 class _Level extends SceneStruct {
-  late final _Unit unit;
+  @child
+  final unit = _Unit();
 
   /// How many times this declaration has been mounted - one per loaded scene,
   /// which is the point: a `SceneStruct` is a declaration, not an instance.
@@ -49,12 +50,6 @@ class _Level extends SceneStruct {
   /// runs once per loaded copy against this one object, so the second load
   /// overwrites what the first stored and nothing is raised.
   Entity? cachedEntity;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    unit = descriptor.has(_Unit.new);
-  }
 
   @override
   void onSceneMounted(Scene scene) {

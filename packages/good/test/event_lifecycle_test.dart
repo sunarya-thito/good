@@ -109,14 +109,9 @@ class _Deaf extends GameSystem
 }
 
 class _Level extends SceneStruct {
-  late final _Unit unit;
+  @child
+  final unit = _Unit();
   Entity? spawned;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    unit = descriptor.has(_Unit.new);
-  }
 
   @override
   void onSceneMounted(Scene scene) {
@@ -166,21 +161,16 @@ class _Nosy extends EntityStruct with GameLifecycleListener {
 }
 
 class _NosyScene extends SceneStruct {
-  late final _Nosy nosy;
-  late final _SceneAware aware;
+  @child
+  final nosy = _Nosy();
+  @child
+  final aware = _SceneAware();
 
   @override
   void onSceneMounted(Scene scene) => log.add('scene.mounted');
 
   @override
   void onSceneUnmounted(Scene scene) => log.add('scene.unmounted');
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    nosy = descriptor.has(_Nosy.new);
-    aware = descriptor.has(_SceneAware.new);
-  }
 }
 
 /// A struct hearing its **own** entities.
@@ -237,15 +227,10 @@ class _Census extends GameSystem with EntityLifecycleListener {
 }
 
 class _TrackedScene extends SceneStruct {
-  late final _Tracked tracked;
-  late final _Indexed indexed;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    tracked = descriptor.has(_Tracked.new);
-    indexed = descriptor.has(_Indexed.new);
-  }
+  @child
+  final tracked = _Tracked();
+  @child
+  final indexed = _Indexed();
 }
 
 class _LifecycleState extends GameState<_LifecycleGame> {

@@ -27,13 +27,8 @@ class _Mover extends EntityStruct {
 }
 
 class _Scene extends SceneStruct {
-  late final _Mover mover;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    mover = descriptor.has(_Mover.new);
-  }
+  @child
+  final mover = _Mover();
 }
 
 class _State extends GameState<_Game> {

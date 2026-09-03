@@ -39,6 +39,7 @@ class _Barrel extends EntityStruct with _Name, Child {}
 class _Tip extends EntityStruct with _Name, Child {}
 
 class _Turret extends EntityStruct with _Name, Child, Parent {
+  @child
   final barrel = _Barrel();
 }
 
@@ -50,16 +51,21 @@ class _Turret extends EntityStruct with _Name, Child, Parent {
 /// splice comes out right either way. It takes a rig spawned after a publish
 /// to tell the two reads apart.
 class _Rig extends EntityStruct with _Name, Parent {
+  @child
   final left = _Barrel();
+  @child
   final middle = _Barrel();
+  @child
   final right = _Barrel();
 }
 
 class _DeepBarrel extends EntityStruct with _Name, Child, Parent {
+  @child
   final tip = _Tip();
 }
 
 class _DeepTurret extends EntityStruct with _Name, Parent {
+  @child
   final barrel = _DeepBarrel();
 }
 
@@ -67,10 +73,12 @@ class _DeepTurret extends EntityStruct with _Name, Parent {
 // because the failure is registration and a scene only registers once.
 
 class _DeclaresANonChild extends EntityStruct with _Name, Parent {
+  @child
   final loose = _NoChild();
 }
 
 class _DeclaresWithoutParent extends EntityStruct with _Name, Child {
+  @child
   final barrel = _Barrel();
 }
 
@@ -129,31 +137,26 @@ class _Level extends SceneStruct {
 
   _Level();
 
-  late final _Node node;
-  late final _Leaf leaf;
-  late final _NoChild noChild;
-  late final _BareNode bareNode;
-  late final _Turret turret;
-  late final _Rig rig;
-  late final _DeepTurret deepTurret;
-  late final _Probed probed;
-  late final _ProbedSuperLast probedSuperLast;
-  late final _ProbedNoSuper probedNoSuper;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    node = descriptor.has(_Node.new);
-    leaf = descriptor.has(_Leaf.new);
-    noChild = descriptor.has(_NoChild.new);
-    bareNode = descriptor.has(_BareNode.new);
-    turret = descriptor.has(_Turret.new);
-    rig = descriptor.has(_Rig.new);
-    deepTurret = descriptor.has(_DeepTurret.new);
-    probed = descriptor.has(_Probed.new);
-    probedSuperLast = descriptor.has(_ProbedSuperLast.new);
-    probedNoSuper = descriptor.has(_ProbedNoSuper.new);
-  }
+  @child
+  final node = _Node();
+  @child
+  final leaf = _Leaf();
+  @child
+  final noChild = _NoChild();
+  @child
+  final bareNode = _BareNode();
+  @child
+  final turret = _Turret();
+  @child
+  final rig = _Rig();
+  @child
+  final deepTurret = _DeepTurret();
+  @child
+  final probed = _Probed();
+  @child
+  final probedSuperLast = _ProbedSuperLast();
+  @child
+  final probedNoSuper = _ProbedNoSuper();
 }
 
 /// Registers one prefab in a scene of its own, for the cases where

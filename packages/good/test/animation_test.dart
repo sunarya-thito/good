@@ -72,13 +72,8 @@ class _Bare extends TimelineStruct {
 }
 
 class _Scene extends SceneStruct {
-  late final _Enemy enemy;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    enemy = descriptor.has(_Enemy.new);
-  }
+  @child
+  final enemy = _Enemy();
 }
 
 class _State extends GameState<_Game> {

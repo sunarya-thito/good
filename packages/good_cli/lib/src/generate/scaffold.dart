@@ -514,7 +514,10 @@ import '../prefabs/player.dart';
 /// loads.
 class MainScene extends SceneStruct {
   // Declares the prefab: bringing the scene up registers its archetype and
-  // runs its describe passes. The field is the handle to spawn from.
+  // runs its describe passes. The field is the handle to spawn from, and
+  // `@child` is what says the line does any of that - without it the field
+  // holds a spare Player and declares nothing.
+  @child
   final player = Player();
 
   @override
@@ -536,8 +539,12 @@ import '../prefabs/player.dart';
 /// loads.
 class MainScene extends SceneStruct {
   // Declares the prefabs: bringing the scene up registers each archetype and
-  // runs its describe passes. The fields are the handles to spawn from.
+  // runs its describe passes. The fields are the handles to spawn from, and
+  // `@child` is what says the lines do any of that - without it a field holds
+  // a spare and declares nothing.
+  @child
   final player = Player();
+  @child
   final eye = Eye();
 
   @override

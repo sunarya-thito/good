@@ -32,13 +32,8 @@ part 'game_reuse_test.g.dart';
 class _Thing extends EntityStruct {}
 
 class _Level extends SceneStruct {
-  late final _Thing thing;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    thing = descriptor.has(_Thing.new);
-  }
+  @child
+  final thing = _Thing();
 }
 
 class _ReuseState extends GameState<_Reuse> {

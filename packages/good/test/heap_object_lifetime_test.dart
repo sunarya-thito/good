@@ -77,13 +77,8 @@ class _Thing extends EntityStruct with _Holder, Child, Parent {}
 class _Level extends SceneStruct {
   late final Scene handle;
 
-  late final _Thing thing;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    thing = descriptor.has(_Thing.new);
-  }
+  @child
+  final thing = _Thing();
 
   Entity add({Entity? parent}) => handle.addEntity(thing, parent: parent);
 }
@@ -108,15 +103,10 @@ bool _registerGrewTable() {
 late Game run;
 
 class _GameLevel extends SceneStruct {
-  late final _Thing thing;
+  @child
+  final thing = _Thing();
 
   static const int spawnPerMount = 3;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    thing = descriptor.has(_Thing.new);
-  }
 
   @override
   void onSceneMounted(Scene scene) {

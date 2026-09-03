@@ -62,7 +62,8 @@ class _After extends EntityStruct {
 /// declaration stack unwound.
 class _Broken extends SceneStruct {
   Object? thrown;
-  late final _After after;
+  @child
+  final after = _After();
 
   @override
   void describeScene(SceneDescriptor descriptor) {
@@ -72,24 +73,18 @@ class _Broken extends SceneStruct {
     } catch (e) {
       thrown = e;
     }
-    after = descriptor.has(_After.new);
   }
 }
 
 class _Level extends SceneStruct {
   late final Scene handle;
 
-  late final _Declared declared;
-  late final _Mixed mixed;
-  late final _Twin twin;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    declared = descriptor.has(_Declared.new);
-    mixed = descriptor.has(_Mixed.new);
-    twin = descriptor.has(_Twin.new);
-  }
+  @child
+  final declared = _Declared();
+  @child
+  final mixed = _Mixed();
+  @child
+  final twin = _Twin();
 }
 
 _Level _level() {

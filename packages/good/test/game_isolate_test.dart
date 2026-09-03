@@ -94,13 +94,8 @@ class _MoverScene extends SceneStruct {
 
   _MoverScene();
 
-  late final _Mover mover;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    mover = descriptor.has(_Mover.new);
-  }
+  @child
+  final mover = _Mover();
 
   @override
   void onSceneMounted(Scene scene) {
@@ -650,13 +645,8 @@ class _TexturedScene extends SceneStruct {
 
   _TexturedScene();
 
-  late final _Textured textured;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    textured = descriptor.has(_Textured.new);
-  }
+  @child
+  final textured = _Textured();
 
   @override
   void onSceneMounted(Scene scene) {
@@ -755,13 +745,8 @@ class _LateProp extends EntityStruct {
 }
 
 class _LateScene extends SceneStruct {
-  late final _LateProp prop;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    prop = descriptor.has(_LateProp.new);
-  }
+  @child
+  final prop = _LateProp();
 
   @override
   void onSceneMounted(Scene scene) {
@@ -1225,13 +1210,8 @@ mixin _Counted on Component {
 class _Pebble extends EntityStruct with _Counted {}
 
 class _CensusScene extends SceneStruct {
-  late final _Pebble pebble;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    pebble = descriptor.has(_Pebble.new);
-  }
+  @child
+  final pebble = _Pebble();
 
   @override
   void onSceneMounted(Scene scene) {

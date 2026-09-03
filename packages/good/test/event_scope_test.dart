@@ -63,15 +63,10 @@ class _SelfishUnit extends EntityStruct with _Ping {
 }
 
 class _PingScene extends SceneStruct with _Ping {
-  late final _PingUnit unit;
-  late final _SelfishUnit selfish;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    unit = descriptor.has(_PingUnit.new);
-    selfish = descriptor.has(_SelfishUnit.new);
-  }
+  @child
+  final unit = _PingUnit();
+  @child
+  final selfish = _SelfishUnit();
 }
 
 class _PingState extends GameState<_PingGame> with _Ping {

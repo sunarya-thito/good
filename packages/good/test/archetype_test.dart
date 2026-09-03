@@ -63,15 +63,10 @@ class _Level extends SceneStruct {
 
   _Level();
 
-  late final _Player player;
-  late final _Enemy enemy;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    player = descriptor.has(_Player.new);
-    enemy = descriptor.has(_Enemy.new);
-  }
+  @child
+  final player = _Player();
+  @child
+  final enemy = _Enemy();
 }
 
 _Level _level({int pageSize = 4096}) {

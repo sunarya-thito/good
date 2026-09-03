@@ -62,15 +62,10 @@ class _NotedScene extends SceneStruct with _Noted {
   @override
   String get noted => 'scene';
 
-  late final _UnitA a;
-  late final _UnitB b;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    a = descriptor.has(_UnitA.new);
-    b = descriptor.has(_UnitB.new);
-  }
+  @child
+  final a = _UnitA();
+  @child
+  final b = _UnitB();
 }
 
 /// Every dispatcher on a field.

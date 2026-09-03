@@ -56,15 +56,10 @@ class _Bird extends EntityStruct with _Winged {}
 /// Two prefabs, so a census has two archetypes to tell apart and two
 /// signatures that must not come back equal.
 class _Habitat extends SceneStruct {
-  late final _Rock rock;
-  late final _Bird bird;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    rock = descriptor.has(_Rock.new);
-    bird = descriptor.has(_Bird.new);
-  }
+  @child
+  final rock = _Rock();
+  @child
+  final bird = _Bird();
 }
 
 class _AlphaSystem extends GameSystem with FixedTickable {

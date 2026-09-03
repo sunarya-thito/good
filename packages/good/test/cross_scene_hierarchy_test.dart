@@ -44,13 +44,8 @@ final List<Entity> _unmounted = <Entity>[];
 final Map<Entity, Entity?> _parentAtUnmount = <Entity, Entity?>{};
 
 class _Level extends SceneStruct {
-  late final _Body body;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    body = descriptor.has(_Body.new);
-  }
+  @child
+  final body = _Body();
 }
 
 class _CrossState extends GameState<_CrossGame> {}

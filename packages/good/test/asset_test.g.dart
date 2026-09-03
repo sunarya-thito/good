@@ -67,7 +67,7 @@ List<ScannableField> _collect$AmbientTwin(Object object) {
 List<ScannableField> _collect$AmbientParent(Object object) {
   final owner = object as _AmbientParent;
   return <ScannableField>[
-    owner.child,
+    owner.nested,
     owner.texture,
     owner.parentFirstChild,
     owner.parentLastChild,

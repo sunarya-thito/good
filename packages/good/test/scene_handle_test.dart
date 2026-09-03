@@ -45,13 +45,8 @@ class _Level extends SceneStruct {
 
   _Level();
 
-  late final _Unit unit;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    unit = descriptor.has(_Unit.new);
-  }
+  @child
+  final unit = _Unit();
 }
 
 class _LevelState extends GameState<_LevelGame> {

@@ -54,13 +54,8 @@ class _Probe extends EntityStruct {
 class _StateScene extends SceneStruct {
   _StateScene();
 
-  late final _Probe probe;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    probe = descriptor.has(_Probe.new);
-  }
+  @child
+  final probe = _Probe();
 }
 
 /// A `GameSystem` - and the only thing in this fixture that runs per tick,

@@ -450,10 +450,15 @@ class Sandbox extends SceneStruct {
   /// on mount and spawning goes through it.
   late Scene handle;
 
+  @child
   final crate = Crate();
+  @child
   final ball = Ball();
+  @child
   final ground = Ground();
+  @child
   final wall = Wall();
+  @child
   final eye = Eye();
 
 
