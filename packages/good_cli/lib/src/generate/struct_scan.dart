@@ -1,3 +1,12 @@
+// The pre-`ClassBody` AST - `ClassDeclaration.name`, `.members`,
+// `ExtensionTypeDeclaration.representation`, `NamedCompilationUnitMember` -
+// is deprecated in analyzer 10 and has no public replacement there: the
+// `ClassBody` that supersedes it carries no members on its public interface
+// until analyzer 11, which drops the old names in the same release. So the
+// bump past 11 is a migration and not a constraint edit (#348), and until it
+// happens this is the only spelling that reads a class body at all.
+// ignore_for_file: deprecated_member_use
+
 import 'dart:io';
 
 import 'package:analyzer/dart/analysis/utilities.dart';
@@ -49,7 +58,7 @@ class MissingSuperCall {
   /// The mixin whose override drops the call.
   final String mixin;
 
-  /// `describeType`, `describeAssets` or `describeStruct`.
+  /// Which pass the override drops - `describeStruct` today.
   final String hook;
 
   final String file;
@@ -561,9 +570,13 @@ bool _isComponentRoot(String name) =>
 /// analyzer enforces it for anything that overrides them - a user's own struct
 /// subclass is already covered. It cannot be made to cover a component mixin:
 /// `@mustCallSuper` reports only where there is a concrete super implementation
-/// to point at, and `Component` declares all three hooks with no body. So the
+/// to point at, and `Component` declares both hooks with no body. So the
 /// annotation is inert exactly where mixins chain, which is the whole of the
 /// gap and the reason this is here.
+///
+/// `describeType` is not in the set any more and needs nothing here: a
+/// component declares its type in a field initialiser, which no chain runs
+/// through and so none can be left out of.
 ///
 /// A mixin that never overrides a hook is fine and is not mentioned. Only an
 /// override that leaves the call out is a defect, and the engine's own eleven
@@ -883,20 +896,21 @@ class Owner {
   /// The declare-time hooks this declaration overrides with a body.
   final List<HookOverride> hooks = <HookOverride>[];
 
-  /// The type arguments of every `has<T>()` call inside this declaration's
-  /// `describeType` body, in source order.
+  /// The `T` of every `Component.type<T>()` field initialiser in this
+  /// declaration, in source order.
   ///
   /// These are exactly the types `ComponentTypeRegistry.bitFor` is called
   /// with, which is what `good_tool` writes the generated bit table from
-  /// (#18). Read from the hook body rather than from [isComponentMixin],
+  /// (#18). Read from the initialisers rather than from [isComponentMixin],
   /// because the two sets are not the same: `CollisionListener` is a mixin on
-  /// `Component` that registers no bit, and giving it one would spend a slot
+  /// `Component` that declares no type, and giving it a bit would spend a slot
   /// out of sixty-four on a type no signature ever carries.
   ///
-  /// `has(type: runtimeType)` contributes nothing here and cannot - the type
-  /// is the value of an expression, so only the running program knows it. That
-  /// is `EntityStruct`'s own line, and it is why a prefab's bit stays a
-  /// run-time assignment however much of this is generated.
+  /// A prefab's own type contributes nothing here and cannot: it is
+  /// `runtimeType`, the value of an expression, so only the running program
+  /// knows it. The framework adds that bit once the prefab is built, and that
+  /// is why a prefab's bit stays a run-time assignment however much of this is
+  /// generated.
   final List<String> componentTypes = <String>[];
 }
 
@@ -911,17 +925,18 @@ class HookOverride {
 
 /// The declare-time passes a component contributes to, each chained through
 /// every mixin on the entity.
-const Set<String> _describeHooks = <String>{
-  'describeType',
-  'describeAssets',
-  'describeStruct',
-};
+///
+/// One member, and it stays a set: `describeType` left it in #314 and
+/// `describeAssets` in the stage after, both because the thing they declared
+/// moved onto a field initialiser, which nothing chains through and so
+/// nothing can leave out.
+const Set<String> _describeHooks = <String>{'describeStruct'};
 
 /// Looks for `super.<hook>(...)` anywhere in one method body.
 ///
 /// Matched on the AST and not the text, so a mention inside a comment or a
-/// string is not a call, and `super.describeStruct(data)` inside a
-/// `describeType` body does not count as chaining `describeType`.
+/// string is not a call, and a `super.somethingElse(data)` inside a
+/// `describeStruct` body does not count as chaining `describeStruct`.
 class _SuperCallVisitor extends RecursiveAstVisitor<void> {
   _SuperCallVisitor(this._hook);
 
@@ -937,25 +952,29 @@ class _SuperCallVisitor extends RecursiveAstVisitor<void> {
   }
 }
 
-/// Collects the `T` of every `has<T>()` in one `describeType` body.
+/// The `T` of a `Component.type<T>()` field initialiser, or `null` for
+/// anything else.
 ///
-/// Matched on the AST: one type argument, spelled as a name. Nothing here is
-/// resolved, so a name two libraries both declare is left for the caller to
-/// reject - the same treatment every other name in this pass gets.
-class _ComponentTypeVisitor extends RecursiveAstVisitor<void> {
-  final List<String> types = <String>[];
-
-  @override
-  void visitMethodInvocation(MethodInvocation node) {
-    if (node.methodName.name == 'has') {
-      final arguments = node.typeArguments?.arguments;
-      if (arguments != null && arguments.length == 1) {
-        final argument = arguments.single;
-        if (argument is NamedType) types.add(argument.name2.lexeme);
-      }
-    }
-    super.visitMethodInvocation(node);
-  }
+/// Matched on the AST: the receiver is the identifier `Component`, the method
+/// is `type`, and there is exactly one type argument spelled as a name.
+/// Nothing here is resolved, so a name two libraries both declare is left for
+/// the caller to reject - the same treatment every other name in this pass
+/// gets.
+///
+/// **This matches on the receiver's name**, exactly as [_isColumn] does and
+/// with the same liability: a declaration static added to some other type is
+/// invisible here until this is edited, and a spelling that dropped the
+/// receiver would have no name to match at all.
+String? _componentTypeOf(VariableDeclaration variable) {
+  final initializer = variable.initializer;
+  if (initializer is! MethodInvocation) return null;
+  final target = initializer.target;
+  if (target is! SimpleIdentifier || target.name != 'Component') return null;
+  if (initializer.methodName.name != 'type') return null;
+  final arguments = initializer.typeArguments?.arguments;
+  if (arguments == null || arguments.length != 1) return null;
+  final argument = arguments.single;
+  return argument is NamedType ? argument.name.lexeme : null;
 }
 
 /// Collects declarations and the fields they declare.
@@ -988,7 +1007,7 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
   @override
   void visitExtensionDeclaration(ExtensionDeclaration node) {
     final onType = node.onClause?.extendedType;
-    if (onType is NamedType && onType.name2.lexeme == 'Accessor') {
+    if (onType is NamedType && onType.name.lexeme == 'Accessor') {
       final arguments = onType.typeArguments?.arguments;
       if (arguments != null && arguments.length == 1) {
         final argument = arguments.single;
@@ -996,7 +1015,7 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
           // The nullable spelling names the same component: `Accessor<Health?>`
           // and `Accessor<Health>` differ in what `component` hands back, not
           // in which extensions apply.
-          final component = argument.name2.lexeme;
+          final component = argument.name.lexeme;
           final into = accessorExtensions.putIfAbsent(
             component,
             () => <String>{},
@@ -1021,10 +1040,10 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
 
   @override
   void visitClassDeclaration(ClassDeclaration node) {
-    final superName = node.extendsClause?.superclass.name2.lexeme;
+    final superName = node.extendsClause?.superclass.name.lexeme;
     final owner = Owner(node.name.lexeme, _file)..superName = superName;
     for (final type in node.withClause?.mixinTypes ?? const <NamedType>[]) {
-      owner.mixes.add(type.name2.lexeme);
+      owner.mixes.add(type.name.lexeme);
     }
     _readFields(node.members, owner);
     _readHooks(node.members, owner);
@@ -1076,7 +1095,7 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
     final owner = Owner(node.name.lexeme, _file)..isMixin = true;
     for (final type
         in node.onClause?.superclassConstraints ?? const <NamedType>[]) {
-      owner.onConstraints.add(type.name2.lexeme);
+      owner.onConstraints.add(type.name.lexeme);
     }
     _readFields(node.members, owner);
     _readHooks(node.members, owner);
@@ -1101,11 +1120,6 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
       final visitor = _SuperCallVisitor(hook);
       body.accept(visitor);
       owner.hooks.add(HookOverride(hook, callsSuper: visitor.found));
-      if (hook == 'describeType') {
-        final registrations = _ComponentTypeVisitor();
-        body.accept(registrations);
-        owner.componentTypes.addAll(registrations.types);
-      }
     }
   }
 
@@ -1124,6 +1138,8 @@ class _OwnerVisitor extends RecursiveAstVisitor<void> {
             valueType: columnValueType(variable, member.fields.type),
           ),
         );
+        final componentType = _componentTypeOf(variable);
+        if (componentType != null) owner.componentTypes.add(componentType);
       }
     }
   }
@@ -1177,7 +1193,7 @@ bool _isColumn(VariableDeclaration variable, TypeAnnotation? declaredType) {
       // form was falling through this check entirely.
       'InitialPointer',
     };
-    if (columnTypes.contains(declaredType.name2.lexeme)) return true;
+    if (columnTypes.contains(declaredType.name.lexeme)) return true;
   }
   return false;
 }
@@ -1237,7 +1253,7 @@ String? columnValueType(
       'InitialPointer',
       'PackedPointer',
     };
-    if (!pointers.contains(declaredType.name2.lexeme)) return null;
+    if (!pointers.contains(declaredType.name.lexeme)) return null;
     final arguments = declaredType.typeArguments?.arguments;
     if (arguments == null || arguments.length != 1) return null;
     return arguments.single.toSource();
