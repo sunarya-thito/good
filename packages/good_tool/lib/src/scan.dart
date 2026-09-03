@@ -701,6 +701,20 @@ DeclarationCollectorScan scanDeclarationCollectors({
       if (!isSubtypeOf(type.name, scannableRoot, typesByName)) continue;
       final declarations = flattenedDeclarations(type, typesByName);
       if (declarations.isEmpty) continue;
+      if (type.name.startsWith('_')) {
+        // The same wall a private field runs into, one level up: this file is
+        // another library, so it cannot name the class either - not to cast
+        // to it and not to key the table by it. Skipped rather than emitted
+        // half-written, because a collector that cannot name its own class
+        // does not compile.
+        skipped[type.name] =
+            'the class is private, and this file is another library - it can '
+            'neither cast to it nor name it in the table. Nothing can collect '
+            'declarations off it, so `collectDeclarations` throws when one is '
+            'registered. Give the class a public name, marked @internal if it '
+            'is not part of the package API';
+        continue;
+      }
 
       final fields = <CollectedDeclaration>[];
       for (final declaration in declarations) {

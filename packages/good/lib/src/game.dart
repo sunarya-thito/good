@@ -569,13 +569,13 @@ abstract class Game implements RandomOwner, Scannable {
 
   /// The engine's own control commands, declared so both copies agree about
   /// them before a game declares anything of its own. See
-  /// [_SetVisibleCommand] for why the four that reach the tick are
+  /// [SetVisibleCommand] for why the four that reach the tick are
   /// receipt-delivered.
-  late final _SetVisibleCommand _setVisibleCommand;
-  late final _SetPausedCommand _setPausedCommand;
-  late final _SetTimeScaleCommand _setTimeScaleCommand;
-  late final _StepOnceCommand _stepOnceCommand;
-  late final _ReportDisabledSystemCommand _reportDisabledSystemCommand;
+  late final SetVisibleCommand _setVisibleCommand;
+  late final SetPausedCommand _setPausedCommand;
+  late final SetTimeScaleCommand _setTimeScaleCommand;
+  late final StepOnceCommand _stepOnceCommand;
+  late final ReportDisabledSystemCommand _reportDisabledSystemCommand;
 
   /// Declares every command this game understands, and registers the handlers
   /// that run on the **Flutter** isolate.
@@ -631,12 +631,12 @@ abstract class Game implements RandomOwner, Scannable {
   /// leaves the prefab lookup on the side that owns the memory.
   @mustCallSuper
   void describeCommands(CommandDescriptor descriptor) {
-    _setVisibleCommand = descriptor.has(_SetVisibleCommand.new);
-    _setPausedCommand = descriptor.has(_SetPausedCommand.new);
-    _setTimeScaleCommand = descriptor.has(_SetTimeScaleCommand.new);
-    _stepOnceCommand = descriptor.has(_StepOnceCommand.new);
+    _setVisibleCommand = descriptor.has(SetVisibleCommand.new);
+    _setPausedCommand = descriptor.has(SetPausedCommand.new);
+    _setTimeScaleCommand = descriptor.has(SetTimeScaleCommand.new);
+    _stepOnceCommand = descriptor.has(StepOnceCommand.new);
     _reportDisabledSystemCommand = descriptor.has(
-      _ReportDisabledSystemCommand.new,
+      ReportDisabledSystemCommand.new,
     );
     descriptor.hasSink(
       _reportDisabledSystemCommand,
@@ -644,7 +644,7 @@ abstract class Game implements RandomOwner, Scannable {
     );
   }
 
-  void _onSystemDisabledReport(_DisabledSystemReport params) {
+  void _onSystemDisabledReport(DisabledSystemReport params) {
     onSystemDisabled(params.systemName, params.error, params.stackTrace);
   }
 
@@ -688,7 +688,7 @@ abstract class Game implements RandomOwner, Scannable {
   /// Fire-and-forget: this is called from inside the guard, on a tick that has
   /// already gone wrong, so it must not be able to fail.
   /// The three strings are cut to fit their fields by
-  /// [_ReportDisabledSystemCommand.bufferFromParams] - one place, because an
+  /// [ReportDisabledSystemCommand.bufferFromParams] - one place, because an
   /// oversized write is refused and a throw from the reporting path would
   /// take out the report of the throw.
   @internal
@@ -3699,8 +3699,15 @@ final class _BufferDescriptor implements BufferDescriptor {
 // Declared by the engine in `Game.describeCommands`, before anything a game
 // declares. Both copies run the same pass in the same order, so the indices
 // agree the way they do for a game's own commands.
+//
+// Public names with `@internal` on them, and that is not a preference. Each
+// declares `Param.*` fields, so each needs a generated collector to read them
+// back off - and a collector lives in another library, which cannot name a
+// private class either to cast to it or to key the table by it. `@internal`
+// is what keeps them out of the package's API while leaving them nameable.
 
-final class _SetVisibleCommand extends SinkCommand<bool> {
+@internal
+final class SetVisibleCommand extends SinkCommand<bool> {
   final visible = Param.uint1();
 
   @override
@@ -3711,7 +3718,8 @@ final class _SetVisibleCommand extends SinkCommand<bool> {
   bool paramsFromBuffer(ParamBuffer call) => visible[call] == 1;
 }
 
-final class _SetPausedCommand extends SinkCommand<bool> {
+@internal
+final class SetPausedCommand extends SinkCommand<bool> {
   final paused = Param.uint1();
 
   @override
@@ -3722,21 +3730,27 @@ final class _SetPausedCommand extends SinkCommand<bool> {
   bool paramsFromBuffer(ParamBuffer call) => paused[call] == 1;
 }
 
-final class _SetTimeScaleCommand extends ValueSink<double> {
+@internal
+final class SetTimeScaleCommand extends ValueSink<double> {
   @override
   final value = Param.float64();
 }
 
-final class _StepOnceCommand extends SignalCommand {}
+@internal
+final class StepOnceCommand extends SignalCommand {}
 
-typedef _DisabledSystemReport = ({
+/// Public for the reason the commands below are: it is the parameter type of
+/// one of them, and a public class cannot take a private type.
+@internal
+typedef DisabledSystemReport = ({
   String systemName,
   String error,
   String stackTrace,
 });
 
-final class _ReportDisabledSystemCommand
-    extends SinkCommand<_DisabledSystemReport> {
+@internal
+final class ReportDisabledSystemCommand
+    extends SinkCommand<DisabledSystemReport> {
   static const int maxSystemNameBytes = 256;
   static const int maxErrorBytes = 1024;
   static const int maxStackTraceBytes = 2048;
@@ -3753,7 +3767,7 @@ final class _ReportDisabledSystemCommand
   final stackTrace = Param.fixedString(maxStackTraceBytes);
 
   @override
-  void bufferFromParams(ParamBuffer call, _DisabledSystemReport params) {
+  void bufferFromParams(ParamBuffer call, DisabledSystemReport params) {
     systemName[call] = _truncateToUtf8Bytes(
       params.systemName,
       maxSystemNameBytes,
@@ -3766,7 +3780,7 @@ final class _ReportDisabledSystemCommand
   }
 
   @override
-  _DisabledSystemReport paramsFromBuffer(ParamBuffer call) => (
+  DisabledSystemReport paramsFromBuffer(ParamBuffer call) => (
     systemName: systemName[call],
     error: error[call],
     stackTrace: stackTrace[call],

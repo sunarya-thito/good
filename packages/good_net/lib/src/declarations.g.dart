@@ -46,4 +46,7 @@ const GeneratedDeclarations goodNetDeclarations = GeneratedDeclarations(
   collectors: <DeclarationCollector>[
     DeclarationCollector(NetworkSystem, _networkSystem),
   ],
+  dependencies: <GeneratedDeclarations>[
+    goodDeclarations,
+  ],
 );

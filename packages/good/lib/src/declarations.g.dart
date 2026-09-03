@@ -23,30 +23,52 @@
 // one, so nothing here can read it - it keeps its place so
 // that what the row is missing, and where, is visible.
 
-import 'package:goo3d/src/data/world_transform.dart';
-import 'package:good/good.dart';
+import 'package:good/src/game.dart';
+import 'package:good/src/scannable.dart';
 
-List<ScannableField> _worldTransform3DSystem(Object object) {
-  final owner = object as WorldTransform3DSystem;
+List<ScannableField> _reportDisabledSystemCommand(Object object) {
+  final owner = object as ReportDisabledSystemCommand;
   return <ScannableField>[
-    owner.mountEvent,
-    owner.unmountEvent,
+    owner.systemName,
+    owner.error,
+    owner.stackTrace,
   ];
 }
 
-/// Every class `package:goo3d` can instantiate that holds a
+List<ScannableField> _setPausedCommand(Object object) {
+  final owner = object as SetPausedCommand;
+  return <ScannableField>[
+    owner.paused,
+  ];
+}
+
+List<ScannableField> _setTimeScaleCommand(Object object) {
+  final owner = object as SetTimeScaleCommand;
+  return <ScannableField>[
+    owner.value,
+  ];
+}
+
+List<ScannableField> _setVisibleCommand(Object object) {
+  final owner = object as SetVisibleCommand;
+  return <ScannableField>[
+    owner.visible,
+  ];
+}
+
+/// Every class `package:good` can instantiate that holds a
 /// declaration, and how to read one.
 ///
 /// Pass this to `Game.declarations` - together with the table
 /// of every other engine package the game uses, and the one
 /// generated for the game itself - so a registration can read
 /// what a constructed object declared.
-const GeneratedDeclarations goo3dDeclarations = GeneratedDeclarations(
-  package: 'goo3d',
+const GeneratedDeclarations goodDeclarations = GeneratedDeclarations(
+  package: 'good',
   collectors: <DeclarationCollector>[
-    DeclarationCollector(WorldTransform3DSystem, _worldTransform3DSystem),
-  ],
-  dependencies: <GeneratedDeclarations>[
-    goodDeclarations,
+    DeclarationCollector(ReportDisabledSystemCommand, _reportDisabledSystemCommand),
+    DeclarationCollector(SetPausedCommand, _setPausedCommand),
+    DeclarationCollector(SetTimeScaleCommand, _setTimeScaleCommand),
+    DeclarationCollector(SetVisibleCommand, _setVisibleCommand),
   ],
 );

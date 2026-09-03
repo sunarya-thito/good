@@ -60,7 +60,7 @@ enum NetTarget {
 /// network result needs a timeout, a cancellation and a "peer left" path
 /// before it means anything. Write a reply as a second message going the other
 /// way, which is also what shipped netcode overwhelmingly does.
-abstract class NetMessageBase {
+abstract class NetMessageBase implements Scannable {
   /// Declares this message's fields. Identical in shape and vocabulary to
   /// `GameCommandBase.describeParams` - same descriptor, same packing rule,
   /// and the same relationship to `Param.*`: a field declares first, this
@@ -165,10 +165,12 @@ abstract class NetMessageBase {
     _target = target;
     _channel = channel;
     _layout = layout;
-    // [layout] arrives holding whatever this message's `Param.*` field
-    // initialisers put in it - `NetRegistry.declare` opened it around the
-    // constructor - so [describeParams] appends behind them.
+    // [layout] arrives empty. This message's `Param.*` fields are read off
+    // it - nothing was open while it was being built - and [describeParams]
+    // appends behind them, then one pass reserves the lot in that order.
+    layout.declare(collectDeclarations(this));
     describeParams(layout);
+    layout.realize();
     layout.seal();
     _sender = sender;
   }

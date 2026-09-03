@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
 
-import 'package:good/src/declare.dart';
+import 'package:good/src/scannable.dart';
 import 'package:good/src/struct.dart';
 
 /// One field of one command's parameter block - the command-side twin of
@@ -18,7 +18,7 @@ import 'package:good/src/struct.dart';
 /// The index is a [ParamBuffer], not an `Entity`: a byte range inside a batch
 /// is what a command has in place of a row. Reading a field nobody wrote
 /// throws instead of reporting zero - see [ParamBuffer].
-abstract class ParamPointer<T> {
+abstract class ParamPointer<T> implements ScannableField {
   /// Reads this field out of [call].
   T operator [](ParamBuffer call);
 
@@ -860,26 +860,27 @@ abstract class ParamDescriptor {
 /// read as noise once the declaration moved to the field - the same trade
 /// `Field` made for a component column.
 ///
-/// # Why the framework has to construct the command
+/// # Why the framework still constructs the command
 ///
-/// A [ParamLayout] is a bit cursor. Every field takes its offset from where
-/// the one before it stopped, so the layout has to be *open* before the
-/// first initialiser runs - and an initialiser cannot see `this`, let alone
-/// an argument a later method would have been handed. So the layout goes on
-/// [DeclarationContext] first and the object is built second, which is why
-/// `CommandDescriptor.has` and `NetDescriptor.has` take `SpawnEnemy.new`
-/// and not `SpawnEnemy()`.
+/// It no longer has to for the layout's sake. A [ParamLayout] is a bit
+/// cursor, and while it reserved a field's offset where the field was
+/// written, it had to be open before the first initialiser ran - which is
+/// what an ambient window was for. A `Param.*` reserves nothing now: it
+/// builds a pointer that knows its own width and kind and holds no offset,
+/// and `GameCommandBase.bind` reads the pointers off the constructed object
+/// and reserves the lot in one pass.
+///
+/// What the tear-off still buys is that the registration owns the object's
+/// lifetime: the command is built, its declarations read off it, its layout
+/// realized and sealed, in one call with nothing in between.
 ///
 /// # Eager, always
 ///
-/// `late final flags = Param.uint2()` compiles and is wrong twice over. The
-/// call runs on the first *read*, so the bit offsets follow whatever order
-/// something happened to touch the fields; two builds that touch them
-/// differently lay the record out differently and the two ends disagree
-/// about where a parameter is, silently, on bytes that still parse. It is
-/// also outside the window the framework opened, so it throws - see
-/// [DeclarationContext.params] and [ParamLayout.seal], which catch the two
-/// halves of it.
+/// `late final flags = Param.uint2()` compiles and is wrong. The call runs on
+/// the first *read*, by which point the collect pass has been and gone and
+/// the layout is sealed - so the field would hold a pointer with no offset,
+/// and every read and write through it would throw. `good_tool
+/// --declarations` refuses the shape rather than waiting for that.
 ///
 /// `describeParams` is not going anywhere; a command may declare through
 /// either, and one that declares through both gets its fields first and its
@@ -887,81 +888,81 @@ abstract class ParamDescriptor {
 abstract final class Param {
   /// See [ParamDescriptor.hasBool]. Named for the Dart type and not the
   /// width, the way `Field.boolean` and `Channel.boolean` are.
-  static ParamPointer<bool> boolean() => DeclarationContext.params.hasBool();
+  static ParamPointer<bool> boolean() => declaredParams.hasBool();
 
   /// See [ParamDescriptor.hasUint1].
-  static ParamPointer<int> uint1() => DeclarationContext.params.hasUint1();
+  static ParamPointer<int> uint1() => declaredParams.hasUint1();
 
   /// See [ParamDescriptor.hasInt1].
-  static ParamPointer<int> int1() => DeclarationContext.params.hasInt1();
+  static ParamPointer<int> int1() => declaredParams.hasInt1();
 
   /// See [ParamDescriptor.hasInt2].
-  static ParamPointer<int> int2() => DeclarationContext.params.hasInt2();
+  static ParamPointer<int> int2() => declaredParams.hasInt2();
 
   /// See [ParamDescriptor.hasInt4].
-  static ParamPointer<int> int4() => DeclarationContext.params.hasInt4();
+  static ParamPointer<int> int4() => declaredParams.hasInt4();
 
   /// See [ParamDescriptor.hasUint64].
-  static ParamPointer<int> uint64() => DeclarationContext.params.hasUint64();
+  static ParamPointer<int> uint64() => declaredParams.hasUint64();
 
   /// See [ParamDescriptor.hasUint2].
-  static ParamPointer<int> uint2() => DeclarationContext.params.hasUint2();
+  static ParamPointer<int> uint2() => declaredParams.hasUint2();
 
   /// See [ParamDescriptor.hasUint4].
-  static ParamPointer<int> uint4() => DeclarationContext.params.hasUint4();
+  static ParamPointer<int> uint4() => declaredParams.hasUint4();
 
   /// See [ParamDescriptor.hasUint8].
-  static ParamPointer<int> uint8() => DeclarationContext.params.hasUint8();
+  static ParamPointer<int> uint8() => declaredParams.hasUint8();
 
   /// See [ParamDescriptor.hasUint16].
-  static ParamPointer<int> uint16() => DeclarationContext.params.hasUint16();
+  static ParamPointer<int> uint16() => declaredParams.hasUint16();
 
   /// See [ParamDescriptor.hasUint32].
-  static ParamPointer<int> uint32() => DeclarationContext.params.hasUint32();
+  static ParamPointer<int> uint32() => declaredParams.hasUint32();
 
   /// See [ParamDescriptor.hasInt8].
-  static ParamPointer<int> int8() => DeclarationContext.params.hasInt8();
+  static ParamPointer<int> int8() => declaredParams.hasInt8();
 
   /// See [ParamDescriptor.hasInt16].
-  static ParamPointer<int> int16() => DeclarationContext.params.hasInt16();
+  static ParamPointer<int> int16() => declaredParams.hasInt16();
 
   /// See [ParamDescriptor.hasInt32].
-  static ParamPointer<int> int32() => DeclarationContext.params.hasInt32();
+  static ParamPointer<int> int32() => declaredParams.hasInt32();
 
   /// See [ParamDescriptor.hasInt64].
-  static ParamPointer<int> int64() => DeclarationContext.params.hasInt64();
+  static ParamPointer<int> int64() => declaredParams.hasInt64();
 
   /// See [ParamDescriptor.hasFloat32].
   static ParamPointer<double> float32() =>
-      DeclarationContext.params.hasFloat32();
+      declaredParams.hasFloat32();
 
   /// See [ParamDescriptor.hasFloat64].
   static ParamPointer<double> float64() =>
-      DeclarationContext.params.hasFloat64();
+      declaredParams.hasFloat64();
 
   /// See [ParamDescriptor.hasEntity], including its warning that a stored
   /// handle outlives the entity it names.
-  static ParamPointer<Entity> entity() => DeclarationContext.params.hasEntity();
+  static ParamPointer<Entity> entity() => declaredParams.hasEntity();
 
   /// See [ParamDescriptor.hasString], including its rule that a record's
   /// tail is written once.
   static ParamPointer<String> string({Encoding encoding = utf8}) =>
-      DeclarationContext.params.hasString(encoding: encoding);
+      declaredParams.hasString(encoding: encoding);
 
   /// See [ParamDescriptor.hasFixedString].
   static ParamPointer<String> fixedString(
     int maxBytes, {
     Encoding encoding = utf8,
-  }) => DeclarationContext.params.hasFixedString(maxBytes, encoding: encoding);
+  }) => declaredParams.hasFixedString(maxBytes, encoding: encoding);
 
   /// See [ParamDescriptor.hasBytes], including its rule that reading one
   /// hands back a view onto the batch's own buffer.
   static ParamPointer<Uint8List> bytes() =>
-      DeclarationContext.params.hasBytes();
+      declaredParams.hasBytes();
 
   /// See [ParamDescriptor.hasFixedBytes].
   static ParamPointer<Uint8List> fixedBytes(int maxBytes) =>
-      DeclarationContext.params.hasFixedBytes(maxBytes);
+      declaredParams.hasFixedBytes(maxBytes);
 }
 
 /// Builds one command's layout, then serves as the accessor for it.
@@ -976,13 +977,166 @@ abstract final class Param {
 /// [ParamBatch]). One packing rule, one implementation of it: two would be two
 /// mental models for one idea, and the one-fact-one-place rule is about exactly
 /// that.
-final class ParamLayout implements ParamDescriptor {
+/// The two halves of [ParamDescriptor], with the one difference between them
+/// left open: what becomes of a pointer once it has been built.
+///
+/// Every `has` here builds a pointer holding its own width, kind and
+/// capacity - everything a reservation needs except where it lands - and
+/// hands it to [_declared].
+abstract base class _ParamDescriptor implements ParamDescriptor {
+  const _ParamDescriptor();
+
+  /// [declaredParams] hands the pointer straight back; a [ParamLayout]
+  /// records it, to be reserved at [ParamLayout.realize].
+  ParamPointer<T> _declared<T>(ParamPointer<T> pointer);
+
+  ParamPointer<int> _int(int bitWidth, bool signed, [int? kind]) {
+    final noted = kind ?? (signed ? _FieldKind.sint : _FieldKind.uint);
+    return _declared(
+      bitWidth < 8
+          ? (signed
+                ? _SubByteIntPointer(bitWidth, noted)
+                : _SubBytePointer(bitWidth, noted))
+          : _IntPointer(bitWidth, signed, noted),
+    );
+  }
+
+  @override
+  ParamPointer<bool> hasBool() =>
+      _declared(_BoolPointer(_SubBytePointer(1, _FieldKind.boolean)));
+
+  @override
+  ParamPointer<int> hasUint1() => _int(1, false);
+  @override
+  ParamPointer<int> hasUint2() => _int(2, false);
+  @override
+  ParamPointer<int> hasUint4() => _int(4, false);
+  @override
+  ParamPointer<int> hasUint8() => _int(8, false);
+  @override
+  ParamPointer<int> hasUint16() => _int(16, false);
+  @override
+  ParamPointer<int> hasUint32() => _int(32, false);
+  @override
+  ParamPointer<int> hasUint64() => _int(64, false);
+  @override
+  ParamPointer<int> hasInt1() => _int(1, true);
+  @override
+  ParamPointer<int> hasInt2() => _int(2, true);
+  @override
+  ParamPointer<int> hasInt4() => _int(4, true);
+  @override
+  ParamPointer<int> hasInt8() => _int(8, true);
+  @override
+  ParamPointer<int> hasInt16() => _int(16, true);
+  @override
+  ParamPointer<int> hasInt32() => _int(32, true);
+  @override
+  ParamPointer<int> hasInt64() => _int(64, true);
+
+  @override
+  ParamPointer<double> hasFloat32() => _declared(_FloatPointer(32));
+
+  @override
+  ParamPointer<double> hasFloat64() => _declared(_FloatPointer(64));
+
+  /// Signed 64-bit, like [hasInt64] and for its reason: `Entity.pack` shifts
+  /// the archetype id up into the sign position, so only a signed slot
+  /// round-trips every handle unchanged.
+  @override
+  ParamPointer<Entity> hasEntity() => _declared(
+    _EntityPointer(_IntPointer(64, true, _FieldKind.entity)),
+  );
+
+  @override
+  ParamPointer<String> hasString({Encoding encoding = utf8}) =>
+      _declared(_TailStringPointer(encoding));
+
+  @override
+  ParamPointer<Uint8List> hasBytes() => _declared(_TailBytesPointer());
+
+  @override
+  ParamPointer<String> hasFixedString(
+    int maxBytes, {
+    Encoding encoding = utf8,
+  }) => _declared(_StringPointer(maxBytes, encoding));
+
+  @override
+  ParamPointer<Uint8List> hasFixedBytes(int maxBytes) =>
+      _declared(_BytesPointer(maxBytes));
+}
+
+/// The descriptor a `Param.*` static declares against.
+///
+/// `const`, holding nothing and reaching nothing: `Param.uint2()` builds a
+/// pointer with no offset and hands it back, so a field initialiser on a
+/// command or a message needs no layout open around it. That is the whole
+/// difference between this and the window it replaced - there is no stack, so
+/// a field cannot be reserved in whichever layout happens to be open when a
+/// lazy initialiser finally runs.
+///
+/// What it costs is that nothing here knows the field exists. A record's
+/// fields reach its layout by being read off the constructed object and
+/// handed to [ParamLayout.declare].
+const ParamDescriptor declaredParams = _DeclaredParams();
+
+final class _DeclaredParams extends _ParamDescriptor {
+  const _DeclaredParams();
+
+  @override
+  ParamPointer<T> _declared<T>(ParamPointer<T> pointer) => pointer;
+}
+
+final class ParamLayout extends _ParamDescriptor {
   int _bitCursor = 0;
   int _fieldCount = 0;
   bool _sealed = false;
   int _tailSlotByte = -1;
   final List<int> _signature = <int>[];
   Uint8List? _signatureBytes;
+
+  /// Every field this record declares, in the order it declared them, which
+  /// is the order of the head - collected ones first, then whatever
+  /// `describeParams` added.
+  final List<_Declared> _fields = <_Declared>[];
+
+  @override
+  ParamPointer<T> _declared<T>(ParamPointer<T> pointer) {
+    _requireOpen();
+    _fields.add(pointer as _Declared);
+    return pointer;
+  }
+
+  /// Records the fields a constructed record's initialisers produced, ahead
+  /// of anything its `describeParams` body goes on to add.
+  ///
+  /// A declaration that is not a field of this record is skipped rather than
+  /// refused: a column, a channel and an event are declarations too, and what
+  /// they resolve against is a row layout, a shared index and an owner's
+  /// listeners. This layout packs a record, and says so by taking only what
+  /// it can pack.
+  void declare(Iterable<ScannableField> declarations) {
+    for (final declaration in declarations) {
+      if (declaration is! _Declared) continue;
+      _requireOpen();
+      _fields.add(declaration);
+    }
+  }
+
+  /// Gives every field its place in the head and its entry in [signature].
+  ///
+  /// One pass at the end rather than one reservation per declaration, which
+  /// is what lets a `Param.*` reach nothing where it is written. Called once,
+  /// after `describeParams` and before [seal].
+  ///
+  /// The order is the order of [_fields], and that order is on the wire: it
+  /// decides every offset in the head and the sequence [signature] is built
+  /// from, which `good_net` mixes into its handshake hash.
+  void realize() {
+    for (final field in _fields) {
+      field.realize(this);
+    }
+  }
 
   /// The record's fixed head, in bytes, rounded up from the bit cursor.
   ///
@@ -1038,27 +1192,6 @@ final class ParamLayout implements ParamDescriptor {
     _signatureBytes = Uint8List.fromList(_signature);
   }
 
-  /// Builds [create]'s object with this layout open, so the `Param.*` calls
-  /// in its field initialisers declare into it, and hands the object back.
-  ///
-  /// The one place the window is opened. `CommandRegistry.declare` and
-  /// `good_net`'s `NetRegistry.declare` both come through here rather than
-  /// touching [DeclarationContext] themselves - a command crossing an
-  /// isolate and a message crossing a socket are the same record, and two
-  /// copies of "when is a layout open" is exactly the drift this file's
-  /// one-packing-rule note is about.
-  ///
-  /// The pop is in a `finally`: a constructor that throws must not leave the
-  /// next declaration writing into a layout nobody owns.
-  T open<T>(T Function() create) {
-    DeclarationContext.pushParams(this);
-    try {
-      return create();
-    } finally {
-      DeclarationContext.popParams();
-    }
-  }
-
   /// Records what the field just declared is, for [signature].
   void _note(int kind, int detail) {
     _signature
@@ -1100,13 +1233,16 @@ final class ParamLayout implements ParamDescriptor {
   /// The same packing rule `ArchetypeStorage.declareField` uses, and it has
   /// to be the same: two descriptors that packed differently would be two
   /// mental models for one idea.
+  void _requireOpen() {
+    if (!_sealed) return;
+    throw StateError(
+      'a command\'s fields can only be declared during its one-time '
+      'describeParams pass - this descriptor is sealed.',
+    );
+  }
+
   int _declare(int bitWidth) {
-    if (_sealed) {
-      throw StateError(
-        'a command\'s fields can only be declared during its one-time '
-        'describeParams pass - this descriptor is sealed.',
-      );
-    }
+    _requireOpen();
     if (bitWidth >= 8 || (_bitCursor & 7) + bitWidth > 8) {
       _bitCursor = (_bitCursor + 7) & -8;
     }
@@ -1115,126 +1251,10 @@ final class ParamLayout implements ParamDescriptor {
     return offset;
   }
 
-  ParamPointer<int> _int(int bitWidth, bool signed, [int? kind]) {
-    final bitOffset = _declare(bitWidth);
-    _note(kind ?? (signed ? _FieldKind.sint : _FieldKind.uint), bitWidth);
-    final index = _fieldCount++;
-    if (bitWidth < 8) {
-      final byte = bitOffset >> 3;
-      final shift = bitOffset & 7;
-      return signed
-          ? _SubByteIntPointer(index, byte, shift, bitWidth)
-          : _SubBytePointer(index, byte, shift, bitWidth);
-    }
-    return _IntPointer(index, bitOffset >> 3, bitWidth, signed);
-  }
-
-  @override
-  ParamPointer<bool> hasBool() {
-    final bitOffset = _declare(1);
-    _note(_FieldKind.boolean, 1);
-    return _BoolPointer(
-      _SubBytePointer(_fieldCount++, bitOffset >> 3, bitOffset & 7, 1),
-    );
-  }
-
-  @override
-  ParamPointer<int> hasUint1() => _int(1, false);
-  @override
-  ParamPointer<int> hasUint2() => _int(2, false);
-  @override
-  ParamPointer<int> hasUint4() => _int(4, false);
-  @override
-  ParamPointer<int> hasUint8() => _int(8, false);
-  @override
-  ParamPointer<int> hasUint16() => _int(16, false);
-  @override
-  ParamPointer<int> hasUint32() => _int(32, false);
-  @override
-  ParamPointer<int> hasUint64() => _int(64, false);
-  @override
-  ParamPointer<int> hasInt1() => _int(1, true);
-  @override
-  ParamPointer<int> hasInt2() => _int(2, true);
-  @override
-  ParamPointer<int> hasInt4() => _int(4, true);
-  @override
-  ParamPointer<int> hasInt8() => _int(8, true);
-  @override
-  ParamPointer<int> hasInt16() => _int(16, true);
-  @override
-  ParamPointer<int> hasInt32() => _int(32, true);
-  @override
-  ParamPointer<int> hasInt64() => _int(64, true);
-
-  @override
-  ParamPointer<double> hasFloat32() {
-    final byte = _declare(32) >> 3;
-    _note(_FieldKind.float, 32);
-    return _FloatPointer(_fieldCount++, byte, 32);
-  }
-
-  @override
-  ParamPointer<double> hasFloat64() {
-    final byte = _declare(64) >> 3;
-    _note(_FieldKind.float, 64);
-    return _FloatPointer(_fieldCount++, byte, 64);
-  }
-
-  /// Signed 64-bit, like [hasInt64] and for its reason: `Entity.pack` shifts
-  /// the archetype id up into the sign position, so only a signed slot
-  /// round-trips every handle unchanged.
-  @override
-  ParamPointer<Entity> hasEntity() =>
-      _EntityPointer(_int(64, true, _FieldKind.entity));
-
-  @override
-  ParamPointer<String> hasString({Encoding encoding = utf8}) {
-    final slot = _declareTailSlots();
-    _note(_FieldKind.stringTail, 0);
-    _noteEncoding(encoding);
-    return _TailStringPointer(_fieldCount++, slot, encoding);
-  }
-
-  @override
-  ParamPointer<Uint8List> hasBytes() {
-    final slot = _declareTailSlots();
-    _note(_FieldKind.bytesTail, 0);
-    return _TailBytesPointer(_fieldCount++, slot);
-  }
-
-  @override
-  ParamPointer<String> hasFixedString(
-    int maxBytes, {
-    Encoding encoding = utf8,
-  }) {
-    final lengthByte = _declareInline(maxBytes, 'hasFixedString');
-    _note(_FieldKind.stringFixed, maxBytes);
-    _noteEncoding(encoding);
-    return _StringPointer(_fieldCount++, lengthByte, maxBytes, encoding);
-  }
-
-  @override
-  ParamPointer<Uint8List> hasFixedBytes(int maxBytes) {
-    final lengthByte = _declareInline(maxBytes, 'hasFixedBytes');
-    _note(_FieldKind.bytesFixed, maxBytes);
-    return _BytesPointer(_fieldCount++, lengthByte, maxBytes);
-  }
-
   /// A 16-bit length followed by [maxBytes] reserved bytes, and the head
   /// offset of that length. Both are byte-aligned because the length is
   /// declared as a 16-bit field, which forces alignment first.
-  int _declareInline(int maxBytes, String at) {
-    if (maxBytes <= 0 || maxBytes > 0xFFFF) {
-      throw ArgumentError.value(
-        maxBytes,
-        'maxBytes',
-        'a $at field reserves this many bytes in every record of this '
-            'declaration, so it has to be a positive number that fits its own '
-            '16-bit length prefix. For a field with no real bound, declare it '
-            'with hasString() or hasBytes() and let it live in the tail',
-      );
-    }
+  int _declareInline(int maxBytes) {
     final lengthByte = _declare(16) >> 3;
     for (var i = 0; i < maxBytes; i++) {
       _declare(8);
@@ -1265,12 +1285,33 @@ abstract final class _FieldKind {
   static const int boolean = 8;
 }
 
+/// What a [ParamLayout] can reserve, which is not every [ParamPointer] a
+/// caller could write - the same split `data_layout.dart` makes between
+/// `DataPointer` and its own `_Declared`.
+///
+/// [realize] is the second half of declare-then-reserve: a `Param.*` builds a
+/// pointer holding its own width, kind and capacity and nothing about where
+/// it lands, and this is where the bit cursor is moved, the signature entry
+/// appended and the written-mask index taken.
+abstract interface class _Declared implements ScannableField {
+  void realize(ParamLayout layout);
+}
+
 /// Shared bookkeeping: every pointer knows its own index in the written-mask
 /// and refuses to read a field nobody has written.
-abstract class _Pointer<T> implements ParamPointer<T> {
-  const _Pointer(this.index);
+abstract class _Pointer<T> implements ParamPointer<T>, _Declared {
+  _Pointer();
 
-  final int index;
+  /// This field's position in the written-mask, from [realize].
+  ///
+  /// `-1` until then, which is not a state anything reads through: an
+  /// unrealized pointer belongs to no record, and every read and write below
+  /// goes through a [ParamBuffer] that only a realized layout can produce.
+  int index = -1;
+
+  /// Takes the written-mask index. Every subclass calls it from [realize]
+  /// last, after its own reservation, so the numbering is the head order.
+  void _number(ParamLayout layout) => index = layout._fieldCount++;
 
   void _requireWritten(ParamBuffer call) {
     if (call._isWritten(index)) return;
@@ -1285,11 +1326,20 @@ abstract class _Pointer<T> implements ParamPointer<T> {
 }
 
 final class _IntPointer extends _Pointer<int> {
-  const _IntPointer(super.index, this.byte, this.bitWidth, this.signed);
+  _IntPointer(this.bitWidth, this.signed, this._kind);
 
-  final int byte;
   final int bitWidth;
   final bool signed;
+  final int _kind;
+
+  int byte = -1;
+
+  @override
+  void realize(ParamLayout layout) {
+    byte = layout._declare(bitWidth) >> 3;
+    layout._note(_kind, bitWidth);
+    _number(layout);
+  }
 
   @override
   int operator [](ParamBuffer call) {
@@ -1344,10 +1394,15 @@ final class _IntPointer extends _Pointer<int> {
 /// `Entity` is an extension type over `int`, so it erases: the value handed
 /// back is the very `int` the field read, and `Entity(...)` compiles to
 /// nothing. The wrapper costs one virtual call per access and no allocation.
-final class _EntityPointer implements ParamPointer<Entity> {
+final class _EntityPointer implements ParamPointer<Entity>, _Declared {
   const _EntityPointer(this._raw);
 
-  final ParamPointer<int> _raw;
+  final _IntPointer _raw;
+
+  /// Realizing this realizes the field it wraps and adds nothing of its own -
+  /// there is one field here, read two ways.
+  @override
+  void realize(ParamLayout layout) => _raw.realize(layout);
 
   @override
   Entity operator [](ParamBuffer call) => Entity(_raw[call]);
@@ -1357,11 +1412,22 @@ final class _EntityPointer implements ParamPointer<Entity> {
 }
 
 base class _SubBytePointer extends _Pointer<int> {
-  const _SubBytePointer(super.index, this.byte, this.shift, this.bitWidth);
+  _SubBytePointer(this.bitWidth, this._kind);
 
-  final int byte;
-  final int shift;
   final int bitWidth;
+  final int _kind;
+
+  int byte = -1;
+  int shift = 0;
+
+  @override
+  void realize(ParamLayout layout) {
+    final bitOffset = layout._declare(bitWidth);
+    byte = bitOffset >> 3;
+    shift = bitOffset & 7;
+    layout._note(_kind, bitWidth);
+    _number(layout);
+  }
 
   int get _mask => ((1 << bitWidth) - 1) << shift;
 
@@ -1387,8 +1453,7 @@ base class _SubBytePointer extends _Pointer<int> {
 /// `data_layout.dart`'s `_SubByteIntField`, and it means the same thing: a
 /// 1-bit signed field holds -1 or 0.
 final class _SubByteIntPointer extends _SubBytePointer {
-  const _SubByteIntPointer(super.index, super.byte, super.shift,
-      super.bitWidth);
+  _SubByteIntPointer(super.bitWidth, super.kind);
 
   @override
   int operator [](ParamBuffer call) {
@@ -1404,10 +1469,15 @@ final class _SubByteIntPointer extends _SubBytePointer {
 /// reason: the byte offset, the read-modify-write of the shared byte and the
 /// written-mask bookkeeping are already right in the [_SubBytePointer] this
 /// wraps.
-final class _BoolPointer implements ParamPointer<bool> {
+final class _BoolPointer implements ParamPointer<bool>, _Declared {
   const _BoolPointer(this._raw);
 
-  final ParamPointer<int> _raw;
+  final _SubBytePointer _raw;
+
+  /// Realizing this realizes the one-bit field it wraps, for
+  /// [_EntityPointer]'s reason.
+  @override
+  void realize(ParamLayout layout) => _raw.realize(layout);
 
   @override
   bool operator [](ParamBuffer call) => _raw[call] != 0;
@@ -1417,10 +1487,18 @@ final class _BoolPointer implements ParamPointer<bool> {
 }
 
 final class _FloatPointer extends _Pointer<double> {
-  const _FloatPointer(super.index, this.byte, this.bitWidth);
+  _FloatPointer(this.bitWidth);
 
-  final int byte;
   final int bitWidth;
+
+  int byte = -1;
+
+  @override
+  void realize(ParamLayout layout) {
+    byte = layout._declare(bitWidth) >> 3;
+    layout._note(_FieldKind.float, bitWidth);
+    _number(layout);
+  }
 
   @override
   double operator [](ParamBuffer call) {
@@ -1447,15 +1525,41 @@ final class _FloatPointer extends _Pointer<double> {
 /// length at [lengthByte], then [maxBytes] bytes of room behind it, written
 /// or not.
 abstract class _InlinePointer<T> extends _Pointer<T> {
-  const _InlinePointer(super.index, this.lengthByte, this.maxBytes);
+  _InlinePointer(this.maxBytes) {
+    // At the declaration and not at the reservation, because this is a fact
+    // about the argument: `Param.fixedBytes(0)` is wrong where it is written,
+    // and waiting until the record is registered would report it away from
+    // the line that has to change.
+    if (maxBytes <= 0 || maxBytes > 0xFFFF) {
+      throw ArgumentError.value(
+        maxBytes,
+        'maxBytes',
+        'a $declaredBy field reserves this many bytes in every record of '
+            'this declaration, so it has to be a positive number that fits '
+            'its own 16-bit length prefix. For a field with no real bound, '
+            'declare it with $insteadOf() and let it live in the tail',
+      );
+    }
+  }
 
-  final int lengthByte;
   final int maxBytes;
+
+  int lengthByte = -1;
 
   /// Which declaration to name when a value will not fit, and which
   /// length-free declaration to point at instead.
   String get declaredBy;
   String get insteadOf;
+
+  /// The signature entry this field kind writes, past the shared reservation.
+  void _noteInto(ParamLayout layout);
+
+  @override
+  void realize(ParamLayout layout) {
+    lengthByte = layout._declareInline(maxBytes);
+    _noteInto(layout);
+    _number(layout);
+  }
 
   int _length(ParamBuffer call) =>
       call._data.getUint16(call.offset + lengthByte, Endian.little);
@@ -1486,12 +1590,7 @@ abstract class _InlinePointer<T> extends _Pointer<T> {
 }
 
 final class _StringPointer extends _InlinePointer<String> {
-  const _StringPointer(
-    super.index,
-    super.lengthByte,
-    super.maxBytes,
-    this.encoding,
-  );
+  _StringPointer(super.maxBytes, this.encoding);
 
   final Encoding encoding;
 
@@ -1499,6 +1598,12 @@ final class _StringPointer extends _InlinePointer<String> {
   String get declaredBy => 'hasFixedString';
   @override
   String get insteadOf => 'hasString';
+
+  @override
+  void _noteInto(ParamLayout layout) {
+    layout._note(_FieldKind.stringFixed, maxBytes);
+    layout._noteEncoding(encoding);
+  }
 
   @override
   String operator [](ParamBuffer call) {
@@ -1517,12 +1622,16 @@ final class _StringPointer extends _InlinePointer<String> {
 }
 
 final class _BytesPointer extends _InlinePointer<Uint8List> {
-  const _BytesPointer(super.index, super.lengthByte, super.maxBytes);
+  _BytesPointer(super.maxBytes);
 
   @override
   String get declaredBy => 'hasFixedBytes';
   @override
   String get insteadOf => 'hasBytes';
+
+  @override
+  void _noteInto(ParamLayout layout) =>
+      layout._note(_FieldKind.bytesFixed, maxBytes);
 
   @override
   Uint8List operator [](ParamBuffer call) {
@@ -1545,9 +1654,19 @@ final class _BytesPointer extends _InlinePointer<Uint8List> {
 /// tail, not from the batch, so it stays correct when a record in front of
 /// this one grows and pushes this one along.
 abstract class _TailPointer<T> extends _Pointer<T> {
-  const _TailPointer(super.index, this.slotByte);
+  _TailPointer();
 
-  final int slotByte;
+  int slotByte = -1;
+
+  /// The signature entry this field kind writes, past the shared reservation.
+  void _noteInto(ParamLayout layout);
+
+  @override
+  void realize(ParamLayout layout) {
+    slotByte = layout._declareTailSlots();
+    _noteInto(layout);
+    _number(layout);
+  }
 
   int _payloadAt(ParamBuffer call) =>
       call.tailAt + call._data.getUint32(call.offset + slotByte, Endian.little);
@@ -1583,9 +1702,15 @@ abstract class _TailPointer<T> extends _Pointer<T> {
 }
 
 final class _TailStringPointer extends _TailPointer<String> {
-  const _TailStringPointer(super.index, super.slotByte, this.encoding);
+  _TailStringPointer(this.encoding);
 
   final Encoding encoding;
+
+  @override
+  void _noteInto(ParamLayout layout) {
+    layout._note(_FieldKind.stringTail, 0);
+    layout._noteEncoding(encoding);
+  }
 
   @override
   String operator [](ParamBuffer call) {
@@ -1604,7 +1729,10 @@ final class _TailStringPointer extends _TailPointer<String> {
 }
 
 final class _TailBytesPointer extends _TailPointer<Uint8List> {
-  const _TailBytesPointer(super.index, super.slotByte);
+  _TailBytesPointer();
+
+  @override
+  void _noteInto(ParamLayout layout) => layout._note(_FieldKind.bytesTail, 0);
 
   @override
   Uint8List operator [](ParamBuffer call) {

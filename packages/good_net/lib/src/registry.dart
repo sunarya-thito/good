@@ -221,7 +221,7 @@ final class NetRegistry implements ParamLayouts {
     // reason: they read `runtimeType`, which a tear-off's static type
     // argument does not pin down.
     final layout = ParamLayout();
-    final message = layout.open(create);
+    final message = create();
     for (var i = 0; i < _messages.length; i++) {
       if (_messages[i].runtimeType == message.runtimeType) {
         throw StateError(

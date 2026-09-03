@@ -73,4 +73,7 @@ const GeneratedDeclarations goo2dDeclarations = GeneratedDeclarations(
     DeclarationCollector(PointerPickingSystem, _pointerPickingSystem),
     DeclarationCollector(GameRenderer2D, _gameRenderer2D),
   ],
+  dependencies: <GeneratedDeclarations>[
+    goodDeclarations,
+  ],
 );

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:meta/meta.dart';
 
 import 'package:good/src/command/param.dart';
+import 'package:good/src/scannable.dart';
 
 /// What every command shape has in common: an identity on the wire, a record
 /// layout, and somewhere to send to.
@@ -47,7 +48,7 @@ import 'package:good/src/command/param.dart';
 /// the typed call site but left the *handler* reading pointers; that is the
 /// same mistake in miniature, since a handler that has to know the wire
 /// format is a handler that cannot be tested as the function it is.
-abstract class GameCommandBase {
+abstract class GameCommandBase implements Scannable {
   /// Declares this command's fields - the parameters *and* the results, in
   /// one record, since they are the same bytes travelling in both directions.
   ///
@@ -138,16 +139,22 @@ abstract class GameCommandBase {
   /// Fixes this command's place in the declaration list and closes its
   /// layout.
   ///
-  /// [descriptor] arrives with whatever the `Param.*` field initialisers
-  /// already put in it - `CommandRegistry.declare` opens it around the
-  /// constructor - so [describeParams] appends behind them. A command that
-  /// uses both forms therefore gets its fields first and its hook's second,
-  /// which is the order they are written in.
+  /// [descriptor] arrives empty. The `Param.*` fields are read off this
+  /// command - nothing was open while it was being built, so the fields it
+  /// holds are the only record of what it declared - and [describeParams]
+  /// appends behind them, so a command using both forms gets its fields
+  /// first and its hook's second, which is the order they are written in.
+  ///
+  /// Then one reservation pass. Every field takes its offset and its
+  /// signature entry in [ParamLayout.realize], in that one order, which is
+  /// what lets a `Param.*` reserve nothing where it is written.
   @internal
   void bind(int index, ParamLayout descriptor, CommandSender sender) {
     _index = index;
     _layout = descriptor;
+    descriptor.declare(collectDeclarations(this));
     describeParams(descriptor);
+    descriptor.realize();
     descriptor.seal();
     _sender = sender;
   }
@@ -829,7 +836,7 @@ final class CommandRegistry implements ParamLayouts {
     // constructed and then rejected costs one throwaway layout on a path
     // that ends in a throw.
     final layout = ParamLayout();
-    final command = layout.open(create);
+    final command = create();
     for (var i = 0; i < _commands.length; i++) {
       if (_commands[i].runtimeType == command.runtimeType) {
         throw StateError(
