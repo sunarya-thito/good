@@ -153,6 +153,19 @@ jobs:
           set -e
           (cd packages/good_tool && dart run good_tool --check --dir ../../packages)
 
+      # The same question about the collectors generated for the classes a
+      # test declares. They are a separate mode and a separate step because
+      # they are a separate artifact set: a fixture's collector is a part
+      # beside the test that declares it and never lands in a lib/, so the
+      # step above keeps meaning "the files this repository publishes are
+      # current" and this one means "the files its suites compile against
+      # are". A generated file nobody checks drifts, and a fresh clone has to
+      # analyze before anything is run.
+      - name: Check the generated test collectors are what good_tool would write
+        run: |
+          set -e
+          (cd packages/good_tool && dart run good_tool --tests --check --dir ../../packages/good)
+
       # Doc comments are the published API reference, and nothing resolves the
       # `[Reference]` links in them. `comment_references` reports 97 sites over
       # these packages and 90 of them name something the package declares and
