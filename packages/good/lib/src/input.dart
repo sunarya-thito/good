@@ -1,9 +1,9 @@
 import 'package:meta/meta.dart';
 
-import 'package:good/src/declare.dart';
 import 'package:good/src/input/gamepad.dart';
 import 'package:good/src/input/input_binding.dart';
 import 'package:good/src/input/input_state.dart';
+import 'package:good/src/scannable.dart';
 import 'package:good/src/triple_buffer.dart';
 
 /// One declared **action**: a named thing the player can do, its current
@@ -139,7 +139,7 @@ import 'package:good/src/triple_buffer.dart';
 /// is never seen. At a 60Hz tick that is a press shorter than ~16ms, which is
 /// shorter than a human press; a synthetic input source that can produce one (a
 /// replay, a bot) should hold the key for at least a tick.
-abstract class Input<T> {
+abstract class Input<T> implements ScannableField {
   /// This action's value as of the most recent resolution.
   ///
   /// **Read-only, and do not hold it past the tick.** For a `T` with
@@ -272,11 +272,12 @@ abstract class Input<T> {
   /// # Eager, always
   ///
   /// `late final fire = Input.of(...)` compiles and is wrong. The call runs
-  /// on the first *read*, by which point boot has sealed the registry and the
-  /// action is refused outright. It does not get that far:
-  /// `DeclarationContext.inputs` throws first, naming the shape.
+  /// on the first *read*, by which point the collect pass has been and gone,
+  /// so the action would exist, be bound to nothing, resolve against nothing
+  /// and read its default forever. `good_tool --declarations` refuses the
+  /// shape rather than waiting for the silence.
   static Input<V> of<V>([InputBinding<V>? binding, V? defaultValue]) =>
-      DeclarationContext.inputs.has<V>(binding, defaultValue);
+      declaredInputs.has<V>(binding, defaultValue);
 }
 
 /// What a [pressed]/[released] listener is handed: the action's value at the
@@ -406,7 +407,11 @@ abstract class InputDescriptor {
 /// `T` - the same type-erasure trick `_ChannelSlot` uses for state channels,
 /// and for the same reason: sealing and resolving are plumbing that has no
 /// business laundering the value type.
-abstract class _ActionSlot {
+abstract class _ActionSlot implements ScannableField {
+  /// Takes the index and the declaring source, when the registry collects
+  /// this action - see `InputRegistry._take`.
+  void collect(int index, String source);
+
   /// Resolves each action's own default now that every source has had its
   /// chance to register one, and gives it the storage its binding wants.
   void seal(InputRegistry registry);
@@ -414,8 +419,49 @@ abstract class _ActionSlot {
   void resolve(InputState state);
 }
 
-/// The one [InputDescriptor] implementation, and the owner of everything the
-/// input system allocates: the declared actions, the type-level defaults, the
+/// The descriptor an `Input.of` declares against.
+///
+/// `const`, holding nothing and reaching nothing: `Input.of(...)` builds an
+/// unnumbered action bound to nothing and hands it back, so a field
+/// initialiser on a `Game` or a `GameSystem` needs no registry open around
+/// it. That is the whole difference between this and the window it replaced -
+/// there is no stack, so an action cannot be attributed to whichever owner
+/// happens to be under construction when a lazy initialiser finally runs.
+///
+/// What it costs is that nothing here knows the action exists. An owner's
+/// actions reach the run by being read off the constructed instance and
+/// handed to [InputRegistry.declare].
+const InputDescriptor declaredInputs = _DeclaredInputs();
+
+final class _DeclaredInputs implements InputDescriptor {
+  const _DeclaredInputs();
+
+  @override
+  Input<T> has<T>([InputBinding<T>? binding, T? defaultValue]) {
+    assert(
+      null is! T,
+      'Input<$T> has a nullable value type, which this system cannot '
+      'represent: null is how "no default was declared" is spelled, so a '
+      'null default and a missing one would be the same thing. Declare the '
+      'non-nullable type.',
+    );
+    return _InputAction<T>(binding, defaultValue, defaultValue != null);
+  }
+
+  /// A type-level default is not a declaration: it hands nothing back, so
+  /// there is no field for it to be held by and nothing to read it off. It
+  /// stays a `describeInputs` statement, which is where [InputDescriptor]
+  /// already says it lives.
+  @override
+  void hasDefaultValue<T>(T value) => throw UnsupportedError(
+    'hasDefaultValue has no field form: it hands nothing back, so there is '
+    'no field to hold it and nothing for a collect pass to read it off. '
+    'Register it in describeInputs, from the Game or from a system.',
+  );
+}
+
+/// The one [InputDescriptor] a run collects into, and the owner of everything
+/// the input system allocates: the declared actions, the type-level defaults, the
 /// cross-isolate raw-state buffer, and the read/write ends over it.
 ///
 /// Internal: a `Game` owns exactly one of these and drives it through boot,
@@ -537,24 +583,39 @@ final class InputRegistry implements InputDescriptor {
   @override
   Input<T> has<T>([InputBinding<T>? binding, T? defaultValue]) {
     _checkOpen();
-    assert(
-      null is! T,
-      'Input<$T> has a nullable value type, which this system cannot '
-      'represent: null is how "no default was declared" is spelled, so a '
-      'null default and a missing one would be the same thing. Declare the '
-      'non-nullable type.',
-    );
-    // Positional, because a private field's initializing formal cannot be a
-    // named parameter: index, declaring source, binding, default, has-default.
-    final action = _InputAction<T>(
-      _actions.length,
-      _source,
-      binding,
-      defaultValue,
-      defaultValue != null,
-    );
-    _actions.add(action);
+    final action = declaredInputs.has<T>(binding, defaultValue);
+    _take(action as _ActionSlot);
     return action;
+  }
+
+  /// Records the actions a constructed owner's field initialisers produced,
+  /// ahead of anything its `describeInputs` body goes on to add.
+  ///
+  /// A declaration that is not an action is skipped rather than refused: a
+  /// column, a channel and an event are declarations too, and what they
+  /// resolve against is a row layout, a shared index and an owner's
+  /// listeners. This registry resolves actions against the raw input block,
+  /// and says so by taking only what resolves against it.
+  void declare(Iterable<ScannableField> declarations) {
+    for (final declaration in declarations) {
+      if (declaration is! _ActionSlot) continue;
+      _checkOpen();
+      _take(declaration);
+    }
+  }
+
+  /// Numbers an action and records who declared it - the two facts a
+  /// declaration cannot carry, because neither exists where it is written.
+  ///
+  /// Neither is a wire identity. What crosses the isolate boundary is the
+  /// fixed-size block of raw key bits, the same 16 bytes whatever a game
+  /// declares, so the two copies are allowed to number differently; the index
+  /// and [_source] are what a diagnostic names an action by, there being no
+  /// user-supplied name and a field name not being something the framework
+  /// can see.
+  void _take(_ActionSlot action) {
+    action.collect(_actions.length, _source);
+    _actions.add(action);
   }
 
   void _checkOpen() {
@@ -677,22 +738,26 @@ final class InputRegistry implements InputDescriptor {
 
 /// The one [Input] implementation - what `describeInputs` hands back.
 final class _InputAction<T> implements Input<T>, _ActionSlot {
-  _InputAction(
-    this.index,
-    this.source,
-    this._binding,
-    this._default,
-    this._hasDefault,
-  );
+  _InputAction(this._binding, this._default, this._hasDefault);
 
-  /// Position in the shared declaration order, and what diagnostics name this
-  /// action by together with [source]. There is no user-supplied name to use
-  /// instead - the whole point of rule 6 is that the field name is the name,
-  /// and a field name is not something the framework can see.
-  final int index;
+  /// Position in the declaration order, and what diagnostics name this action
+  /// by together with [source]. There is no user-supplied name to use instead
+  /// - the whole point of rule 6 is that the field name is the name, and a
+  /// field name is not something the framework can see.
+  ///
+  /// `-1` between the initialiser that built this action and [collect], which
+  /// is not a state anything can read a value through: an unclaimed action is
+  /// in no registry, so nothing resolves it.
+  int index = -1;
 
-  /// The `runtimeType` of whatever declared this action.
-  final String source;
+  /// The `runtimeType` of whatever declared this action, from [collect].
+  String source = 'an owner that has not been collected';
+
+  @override
+  void collect(int index, String source) {
+    this.index = index;
+    this.source = source;
+  }
 
   final InputEventStream<T> _pressed = InputEventStream<T>._();
   final InputEventStream<T> _released = InputEventStream<T>._();

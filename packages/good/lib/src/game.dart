@@ -29,7 +29,6 @@ import 'package:good/src/audio/audio_clip.dart';
 import 'package:good/src/camera_view.dart';
 import 'package:good/src/command/command.dart';
 import 'package:good/src/command/param.dart';
-import 'package:good/src/declare.dart';
 import 'package:good/src/command/transport.dart';
 import 'package:good/src/event.dart';
 import 'package:good/src/event/state.dart';
@@ -275,20 +274,6 @@ enum _ControlMessage {
 /// `GameSystem`. What `Game` does for Flutter it does through a plain method,
 /// [buildView]. See [EventDispatcher].
 abstract class Game implements RandomOwner, Scannable {
-  /// A body, on a class that wanted no constructor at all, for one reason:
-  /// this is the moment a `Game` has finished being built, and it is the only
-  /// moment from which the two windows `Game.start` opens can be told apart
-  /// from windows opened for somebody else.
-  ///
-  /// A subclass's field initialisers run before this - that is what lets
-  /// `final score = Channel.int32()` work - and a `Game` constructed inside
-  /// another object's field initialiser runs this before the object that
-  /// owns the window does. So a count is enough: see
-  /// [DeclarationContext.gamesConstructed], and the two places that read it.
-  Game() {
-    DeclarationContext.noteGameConstructed();
-  }
-
   // --- configuration ----------------------------------------------------
 
   /// The simulation step. Wall-clock time accumulates and is spent in whole
@@ -1132,7 +1117,7 @@ abstract class Game implements RandomOwner, Scannable {
   // `Input.of` on a field of this game runs before this class's own
   // initialisers do, so it declares into a registry `Game.start` opened ahead
   // of the constructor and put here once the object existed.
-  InputRegistry _inputs = InputRegistry();
+  final InputRegistry _inputs = InputRegistry();
 
   /// This game's assets - **instance state, not a global static**.
   ///
@@ -1380,78 +1365,32 @@ abstract class Game implements RandomOwner, Scannable {
     return game;
   }
 
-  /// Builds [create]'s game with the one declaration window a `Game` field
-  /// initialiser still needs open, and hangs it on the object afterwards.
+  /// Builds [create]'s game and hands it back.
   ///
-  /// The window is an `InputRegistry`, which `Input.of` reads. It cannot be
-  /// the game's own field, and that is not a choice: a subclass's field
-  /// initialisers run *before* `Game`'s, so at the moment
-  /// `final fire = Input.of(...)` runs there is no `Game` object at all. So
-  /// the framework makes one first, pushes it, constructs, and then puts it
-  /// on the game it got back.
+  /// It used to open the two declaration windows a `Game` field initialiser
+  /// needed - a `_StateDescriptor` for `Channel.*` and an `InputRegistry` for
+  /// `Input.of` - because neither could be the game's own field: a subclass's
+  /// field initialisers run *before* `Game`'s, so at the moment
+  /// `final score = Channel.int32()` ran there was no `Game` object at all.
   ///
-  /// A `_StateDescriptor` was the second window and is gone. `Channel.*`
-  /// builds a channel that reaches nothing, and `_bootMain` reads the
-  /// channels off the constructed game - so there is nothing for a window to
-  /// have been open around.
+  /// Nothing is open around the call now. A channel and an action are both
+  /// built inert and read off the constructed object afterwards, so the
+  /// question of what was open while a field initialised does not arise, and
+  /// with it goes the count that policed it: a `Game` constructed inside
+  /// another `Game`'s field initialiser used to declare into the outer game's
+  /// windows, and now declares onto its own fields wherever it is built.
   ///
-  /// `InputRegistry.source` is set from `G`, the tear-off's static type,
-  /// because there is no object to ask for a `runtimeType` yet. That is the
-  /// type at the call site, which is what a diagnostic naming the declaring
-  /// source wants. `_bootMain` sets it again from `runtimeType` before
-  /// `describeInputs`.
+  /// [_requireNotYetDescribed] still runs, and still before anything is
+  /// written to the game: a closure may hand back a game that is already
+  /// running, and a second boot would declare everything twice.
   ///
-  /// The pops are in a `finally`: a constructor that throws must not leave
-  /// the next declaration writing into a window nobody owns.
-  ///
-  /// [_requireNotYetDescribed] is checked here, between the call and the
-  /// assignment, and that position is load-bearing. A closure may hand back a
-  /// game that is already running, and putting an empty registry on it would
-  /// throw away the one the running game's actions live in - the refusal has
-  /// to land before anything is written.
+  /// `maxPointerContacts` is read here, after the game exists and before
+  /// anything sizes the raw input block - the contact table's length is the
+  /// one part of that block a game gets to choose.
   static G _construct<G extends Game>(G Function() create) {
-    final inputs = InputRegistry()..source = '$G';
-    final restoreCount = DeclarationContext.gamesConstructed;
-    DeclarationContext.gamesConstructed = 0;
-    DeclarationContext.pushInputs(inputs);
-    final G game;
-    final int built;
-    try {
-      game = create();
-    } finally {
-      DeclarationContext.popInputs();
-      built = DeclarationContext.gamesConstructed;
-      DeclarationContext.gamesConstructed = restoreCount;
-    }
-    // Exactly one Game may finish constructing inside these windows, and the
-    // count is the only way to know. Zero is fine and is what a closure
-    // handing back an object built earlier produces - that game declared
-    // nothing here and its own fields would have thrown at the time. Two or
-    // more is a Game built inside another Game's field initialisers, which
-    // reads windows it does not own: measured before this refused, the outer
-    // game came out holding 2 channels and 1 action and the inner one holding
-    // none of either, booting and running with the inner game's handles
-    // pointing into storage that belongs to the outer.
-    if (built > 1) {
-      throw StateError(
-        '$built games finished constructing while ${game.runtimeType} was '
-        'being built. A Game constructed inside another Game - held as a '
-        'field, or built in one of its field initialisers - declares its '
-        'channels and actions into the windows the outer game opened, '
-        'because those are the ones open at that moment. Nothing about the '
-        'result looks wrong: it boots, it ticks, and the inner handles read '
-        'storage the outer game owns.\n'
-        'A Game is not a component of another Game. Two games are two '
-        'Game.start calls, each with its own isolate and its own registries.',
-      );
-    }
+    final game = create();
     game._requireNotYetDescribed();
-    game._inputs = inputs;
-    // After the game exists and before anything sizes the raw input block:
-    // the contact table's length is the one part of that block a game gets to
-    // choose, and the registry has to be open through `create()` for field
-    // initialisers to declare into, so it cannot have been asked earlier.
-    inputs.maxContacts = game.maxPointerContacts;
+    game._inputs.maxContacts = game.maxPointerContacts;
     return game;
   }
 
@@ -1800,6 +1739,10 @@ abstract class Game implements RandomOwner, Scannable {
     // - but a duplicate registration should name the source that came second,
     // and that reads better when the framework's own is first.)
     _inputs.source = '$runtimeType';
+    // Fields first and the hook second, which is the order they are written
+    // in. Every `Input.of` on a field of this game, read off the constructed
+    // object; nothing was open while it was being built.
+    _inputs.declare(collectDeclarations(this));
     describeInputs(_inputs);
 
     // Every user-supplied declaration has now run against this instance, and
@@ -1867,6 +1810,7 @@ abstract class Game implements RandomOwner, Scannable {
       system.bindState(state);
       system.describeQuery(queries);
       _inputs.source = '${system.runtimeType}';
+      _inputs.declare(collectDeclarations(system));
       system.describeInputs(_inputs);
     }
     // Closes the input declaration window, and matches each action with the
@@ -3663,48 +3607,15 @@ final class _SystemDescriptor implements SystemDescriptor {
 
   @override
   T has<T extends GameSystem>(T Function() create) {
-    // One window around the constructor call: the input registry. An action
-    // is appended to a list here and read back off the returned handle, so
-    // the registry only has to be reachable while the initialisers run. The
-    // event binder used to be a second one and is not: a system's dispatchers
-    // are built by their own initialisers and read off the system afterwards.
-    //
-    // `source` is the static type argument rather than `runtimeType`, since
-    // there is no object to ask yet. That is the type at the declaration
-    // site, which is what a diagnostic naming the declaring source wants.
-    final inputs = _state.game._inputs;
-    final restore = inputs.currentSource;
-    final restoreCount = DeclarationContext.gamesConstructed;
-    DeclarationContext.gamesConstructed = 0;
-    inputs.source = '$T';
-    final T system;
-    final int games;
-    DeclarationContext.pushInputs(inputs);
-    try {
-      system = create();
-    } finally {
-      DeclarationContext.popInputs();
-      inputs.source = restore;
-      games = DeclarationContext.gamesConstructed;
-      DeclarationContext.gamesConstructed = restoreCount;
-    }
-    // A Game built in here reads this system's registry, because that is what
-    // is open, and `Input.of` on one of its fields lands on the host game
-    // instead. Measured: a Game holding one action, constructed in a system
-    // constructor, put that action on the host and kept none of its own, and
-    // the run booted. Nothing in the input path notices - an action is a
-    // handle read straight off the object, and the object it came from is not
-    // recorded anywhere.
-    if (games > 0) {
-      throw StateError(
-        'a Game was constructed while $T was being built. The declaration '
-        'windows open here belong to the system, so an Input.of on a field '
-        'of that Game declares an action on '
-        '${_state.game.runtimeType} rather than on itself - and the run '
-        'boots and ticks with the action attached to the wrong owner.\n'
-        'A Game is started, not constructed: Game.start(MyGame.new).',
-      );
-    }
+    // Nothing is open around the constructor call. This used to push the
+    // input registry, so that an `Input.of` on one of the system's fields
+    // found it; an action reaches nothing where it is written now, and the
+    // registry reads them off the built system below. The event binder went
+    // the same way one step earlier, and the check that a `Game` was not
+    // being constructed in here went with the windows: with nothing ambient,
+    // a `Game` built inside a system's field initialisers declares onto its
+    // own fields, which is where its declarations were always meant to be.
+    final system = create();
     // After the build, not before: the check is on `runtimeType`, and a
     // tear-off's type argument is the static type - `descriptor.has(() =>
     // pickSystem())` would sail past a check written against `T`. The cost
@@ -3718,6 +3629,18 @@ final class _SystemDescriptor implements SystemDescriptor {
         '.describeSystems. One declaration is one system; declaration '
         'order is execution order, so a duplicate has no meaningful position.',
       );
+    }
+    // `source` is the built system's `runtimeType` and is restored
+    // afterwards, so a declaration made outside any system's collect is not
+    // attributed to the last one that ran. `_bootGame` sets it again before
+    // each `describeInputs`.
+    final inputs = _state.game._inputs;
+    final restore = inputs.currentSource;
+    inputs.source = '$type';
+    try {
+      inputs.declare(collectDeclarations(system));
+    } finally {
+      inputs.source = restore;
     }
     return _state.addDeclaredSystem(system);
   }

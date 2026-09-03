@@ -39,6 +39,9 @@ List<ScannableField> _worldTransformSystem(Object object) {
 List<ScannableField> _pointerPickingSystem(Object object) {
   final owner = object as PointerPickingSystem;
   return <ScannableField>[
+    owner.cursor,
+    owner.click,
+    owner.contacts,
     // PointerPickingSystem._pressables: private, unreachable.
     // PointerPickingSystem._hoverables: private, unreachable.
     // PointerPickingSystem._cameras: private, unreachable.
