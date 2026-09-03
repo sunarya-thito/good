@@ -1162,16 +1162,16 @@ class _RegistrarState extends GameState<_RegistrarGame> {
 //
 // `ComponentTypeRegistry` is a per-isolate static, and the pass that fills it
 // is `Game._bootGame`: the generated tables first, then the archetypes
-// `describeScenes` registers, then the queries `describeSystems` compiles. All
-// three run on the game isolate, so main's table stays empty for the life of
-// the game.
+// `describeScenes` registers, then the queries the systems it builds compile.
+// All three run on the game isolate, so main's table stays empty for the life
+// of the game.
 //
-// That is what holds `describeSystems` in a hook. A `GameState` field
-// initialiser runs inside `createState`, which `_bootMain` calls before
-// `Isolate.spawn` - so a system declared on a field would be *built* on main,
-// and `Query.all` would take its mask from an empty table while the archetype
-// signatures it is matched against are numbered over here. The masks ride the
-// deep copy already baked, nothing throws, and every query matches nothing.
+// That is what keeps a `GameSystem.of` field holding a tear-off rather than a
+// system. The initialiser runs inside `createState`, which `_bootMain` calls
+// before `Isolate.spawn` - so a system *built* there would take its query mask
+// from an empty table while the archetype signatures it is matched against are
+// numbered over here. The masks would ride the deep copy already baked,
+// nothing would throw, and every query would match nothing.
 //
 // Asserted from both sides, for the reason the asset-decoder pair above is:
 // main reporting zero is also what a game that never declared anything
@@ -2085,8 +2085,8 @@ void main() {
 
       // The whole ordering claim in Game.describeBuffers, asserted directly:
       // start() has returned, so the announcement has already landed - even
-      // though the buffer is declared by a *system*, whose declaration only
-      // exists after describeSystems ran on the far side.
+      // though the buffer is declared by a *system*, which only exists once
+      // boot built it on the far side.
       expect(game.bufferCount, 1);
       final handle = game.pings;
       expect(handle.isConnected, isTrue);

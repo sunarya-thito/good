@@ -392,9 +392,8 @@ class _SpawnUnit extends ValueSupplier<Entity> {
 
 /// The scene, the spawn handler and nothing else. Split out from [_TestState]
 /// so a fixture wanting a different system set inherits the setup without
-/// inheriting systems it would then have to drop - dropping them means an
-/// override that skips `super.describeSystems`, which is the one thing
-/// `@mustCallSuper` is here to stop.
+/// inheriting systems it would then have to drop - and a field on a base class
+/// cannot be dropped by a subclass at all.
 class _FixtureState extends GameState<_TestGame> {
   /// Held rather than looked up: the handler needs the prefab, and this is the
   /// side that has it.

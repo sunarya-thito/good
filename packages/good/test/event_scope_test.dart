@@ -86,7 +86,7 @@ class _PingGame extends Game {
 
   late final _PingScene level;
 
-  /// Reached through the state - `describeSystems` is a `GameState` pass now.
+  /// Reached through the state - a system is declared on a `GameState`.
   _PingSystem get pinger => run.state.getSystem<_PingSystem>();
 
   @override

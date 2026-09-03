@@ -176,8 +176,8 @@ class _Game extends Game {
 const Duration _step = Duration(microseconds: 16667);
 
 /// Worker threads the fixture's physics system is built with. A file-level
-/// binding because the system is constructed inside `describeSystems`, which
-/// the Game calls and which takes no arguments.
+/// binding because the build closure on the state's field takes no arguments
+/// and a field initialiser cannot read a sibling.
 int _workers = 1;
 
 Future<_Scene> _boot({int workers = 1}) async {

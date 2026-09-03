@@ -670,7 +670,7 @@ void main() {
             'message',
             allOf(
               contains('GameSystem.of'),
-              isNot(contains('Game.describeSystems')),
+              isNot(contains('Game.of')),
             ),
           ),
         ),

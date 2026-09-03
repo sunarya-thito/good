@@ -303,7 +303,7 @@ void main() {
 
   test('scenes are declared before systems build their queries', () async {
     // _CensusSystem's query is built in a field initialiser, so it exists
-    // the moment describeSystems constructs the system - before any of this
+    // the moment boot constructs the system - before any of this
     // scene's rows do. It counts them anyway: groups() resolves archetypes on
     // the first walk and rebuilds whenever the registry grows.
     final game = await _boot(_DeclaringGame.new);

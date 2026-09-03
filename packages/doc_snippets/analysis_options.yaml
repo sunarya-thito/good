@@ -31,8 +31,8 @@ analyzer:
     body_might_complete_normally: ignore
     body_might_complete_normally_nullable: ignore
 
-    # `class MyGame extends Game2D` on a page about systems shows
-    # `describeSystems` and nothing else, because `createState` is not what the
+    # `class MyGame extends Game2D` on a page about systems shows the system
+    # declarations and nothing else, because `createState` is not what the
     # page is about. Requiring it would put four lines of noise in every example
     # to catch a rename that the pages which *do* override the member already
     # catch, through override_on_non_overriding_member.

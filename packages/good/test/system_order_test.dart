@@ -426,7 +426,7 @@ void main() {
 
     test('a system that declares an order but is not built by the '
         'framework is refused', () {
-      // The window `SystemDescriptor.has` opens is what `Order.of` reads, so
+      // The window `Game._buildSystem` opens is what `Order.of` reads, so
       // a system constructed by hand has nothing to declare into - the same
       // refusal `Event.of` and `Input.of` give, and for the same reason.
       expect(
