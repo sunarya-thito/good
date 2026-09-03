@@ -17,6 +17,7 @@ import 'package:good/src/game.dart';
 import 'package:good/src/pool.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
+import 'package:good/src/scannable.dart';
 import 'package:good/src/struct.dart';
 import 'package:good/src/system.dart';
 import 'package:good/src/time.dart';
@@ -73,7 +74,8 @@ import 'package:good/src/time.dart';
 /// and `LifecycleListener`, and it builds no widgets: the whole Flutter-facing
 /// surface is `Game.buildView`, on the other copy. See `GameEvent`'s doc.
 abstract class GameState<T extends Game> extends GameListenerBase
-    with EventBus, Coroutines {
+    with EventBus, Coroutines
+    implements Scannable {
   /// The simulation tick, dispatched once per fixed step to every declared
   /// `FixedTickable` system.
   ///

@@ -57,23 +57,18 @@ mixin Camera on Component {
   /// Typed, and not an int: [CameraView] is an [IntRepresentable], so a
   /// stray integer does not compile here.
   ///
-  /// The one field here that still needs [describeStruct]: the view table it
-  /// is declared against comes from `getScene`, an instance method a field
-  /// initialiser cannot reach.
-  late final DataPointer<CameraView?> cameraView;
+  /// [Field.optCameraView] and not `Field.optPacked`, because the table an
+  /// address here is answered against belongs to the game the scene was
+  /// loaded into - not to this declaration, and not to a shared registry.
+  /// Naming the column kind is what lets the declaration stay on its field:
+  /// see `DataDescriptor.optCameraView` for why the table is resolution
+  /// rather than a declaration input.
+  final cameraView = Field.optCameraView();
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<Camera>();
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    // The declaring game's own view table - not a shared registry. An address
-    // read out of this field means nothing except against this table.
-    cameraView = data.optPacked(getScene<SceneStruct>().cameraViews);
   }
 }
 

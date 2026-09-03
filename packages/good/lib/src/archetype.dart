@@ -4,6 +4,7 @@ import 'package:ffi/ffi.dart';
 import 'package:meta/meta.dart';
 
 import 'package:good/src/pool.dart';
+import 'package:good/src/scene.dart';
 import 'package:good/src/struct.dart';
 
 /// Assigns every distinct `Component` type (a concrete `EntityStruct`
@@ -318,7 +319,32 @@ abstract final class ArchetypeRegistry {
   /// they declare into has to exist first. The prefab is attached with
   /// [ArchetypeStorage.bindPrefab] the moment construction returns, before
   /// anything can read it.
-  static ArchetypeStorage reserve(MemoryPool pool) {
+  ///
+  /// The **scene** and not the pool, and that is what makes a column whose
+  /// resolution lives on the scene declarable from a field initialiser. The
+  /// registering scene is known here, one call before the prefab exists; the
+  /// prefab is not, and `getScene()` is therefore unreachable from a
+  /// constructor. So anything a declaration needs off the scene comes through
+  /// here, and [ArchetypeStorage.scene] is the only place it has to be looked
+  /// for - see `DataDescriptor.optCameraView`.
+  static ArchetypeStorage reserve(SceneStruct scene) =>
+      _add(scene.pool, scene);
+
+  /// Storage belonging to no scene, with its prefab already attached.
+  ///
+  /// The archetype-level counterpart of `CameraViewTable.declareDetached`, and
+  /// there for the same reason: field widths, sealing and row allocation are
+  /// storage's own behaviour, and exercising them needs a pool and nothing
+  /// else. A declaration that reads something off the scene - the camera-view
+  /// column - is what such a storage cannot serve, and [ArchetypeStorage.scene]
+  /// says so rather than handing back a table nobody issued.
+  @visibleForTesting
+  static ArchetypeStorage registerDetached(
+    MemoryPool pool,
+    EntityStruct prefab,
+  ) => _add(pool, null)..bindPrefab(prefab);
+
+  static ArchetypeStorage _add(MemoryPool pool, SceneStruct? scene) {
     if (_storages.length >= maxArchetypes) {
       throw StateError(
         'ArchetypeRegistry is full: $maxArchetypes archetypes have been '
@@ -327,15 +353,10 @@ abstract final class ArchetypeRegistry {
         'recycled on scene unload.',
       );
     }
-    final storage = ArchetypeStorage._(_storages.length, pool);
+    final storage = ArchetypeStorage._(_storages.length, pool, scene);
     _storages.add(storage);
     return storage;
   }
-
-  /// [reserve] plus [ArchetypeStorage.bindPrefab], for a caller that already
-  /// holds the prefab.
-  static ArchetypeStorage register(MemoryPool pool, EntityStruct prefab) =>
-      reserve(pool)..bindPrefab(prefab);
 
   /// Resolves an archetype id - the hot path behind `entity<T>().component`. A
   /// plain list index, no map, no allocation.
@@ -390,11 +411,39 @@ abstract final class ArchetypeRegistry {
 /// set, so a query touches one contiguous page instead of N - is a real
 /// optimization and is not attempted here.
 class ArchetypeStorage {
-  ArchetypeStorage._(this.archetypeId, this.pool);
+  ArchetypeStorage._(this.archetypeId, this.pool, this._scene);
 
   /// Index into [ArchetypeRegistry]; packed into the top 16 bits of every
   /// `Entity` this storage hands out.
   final int archetypeId;
+
+  final SceneStruct? _scene;
+
+  /// The scene that registered this archetype.
+  ///
+  /// Known before the prefab is, which is the whole reason it is held here:
+  /// a column declared in a field initialiser has no prefab to ask, so a
+  /// declaration needing something the scene owns - the camera-view table -
+  /// reads it off this instead of off `getScene()`. [prefab] is the same fact
+  /// one statement later and is not a substitute; it is unassigned while the
+  /// constructor that declares the columns is still running.
+  ///
+  /// Throws for storage from [ArchetypeRegistry.registerDetached], which is a
+  /// fixture's and belongs to no scene.
+  SceneStruct get scene {
+    final scene = _scene;
+    if (scene == null) {
+      throw StateError(
+        'This archetype was registered detached '
+        '(ArchetypeRegistry.registerDetached) and belongs to no scene, so '
+        'there is nothing here for a declaration to read a scene-owned table '
+        'off - a camera-view column has no table to answer addresses against. '
+        'Register the prefab with a scene (SceneDescriptor.has) for anything '
+        'that declares one.',
+      );
+    }
+    return scene;
+  }
 
   final MemoryPool pool;
 

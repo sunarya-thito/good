@@ -1,6 +1,7 @@
 import 'dart:ffi';
 
 import 'package:good/src/archetype.dart';
+import 'package:good/src/camera_view.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/heap_object.dart';
 import 'package:good/src/struct.dart';
@@ -2012,6 +2013,9 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     IntRepresentation<T> repr, [
     T? initialValue,
   ]) => _optPacked(repr, initialValue);
+  @override
+  DataPointer<CameraView?> optCameraView([CameraView? initialValue]) =>
+      _optPacked(_storage.scene.cameraViews, initialValue);
   @override
   DataPointer<T> hasHeapObject<T>(T Function() initialValue) {
     final byte = _storage.declareField(32) >> 3;

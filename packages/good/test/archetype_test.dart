@@ -192,7 +192,7 @@ void main() {
       final pool = MemoryPool(pageSize: 256);
       addTearDown(pool.dispose);
       final owner = _Level();
-      final storage = ArchetypeRegistry.register(pool, shared);
+      final storage = ArchetypeRegistry.registerDetached(pool, shared);
       shared.bindArchetype(owner, storage);
       expect(() => shared.bindArchetype(owner, storage), throwsStateError);
     });

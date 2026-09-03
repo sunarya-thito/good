@@ -122,7 +122,10 @@ final class BitmapFont {
 ///   late final TextureAsset atlas;
 ///
 ///   @override
-///   int get textCapacity => 8;
+///   void describeStruct(DataDescriptor data) {
+///     super.describeStruct(data);
+///     textCodeUnits.length = 8;
+///   }
 ///
 ///   @override
 ///   void describeAssets(AssetDescriptor descriptor) {
@@ -165,10 +168,10 @@ final class BitmapFont {
 ///
 /// # What a label costs
 ///
-/// The row holds [textCapacity] `uint16` code units and about fifty more
-/// bytes; the font, its metrics and the atlas address are on the component,
-/// which is per archetype. So a 16-character label is roughly a 220-byte row.
-/// Declared as sixteen sprites it would be a 2.5 KiB row, and
+/// The row holds `textCodeUnits.length` `uint16` code units and about fifty
+/// more bytes; the font, its metrics and the atlas address are on the
+/// component, which is per archetype. So a 16-character label is roughly a
+/// 220-byte row. Declared as sixteen sprites it would be a 2.5 KiB row, and
 /// `_SpriteDrawQueue`'s own doc records what rows that size did to the write
 /// pass on a device.
 ///
@@ -204,15 +207,6 @@ mixin Text2D on Component {
   /// per frame and never calls [textFont].
   BitmapFont? textFontResolved;
 
-  /// The most UTF-16 code units a label of this prefab holds, `1..65535`.
-  /// Override it; the default is 32.
-  ///
-  /// This is storage, reserved in every row of the archetype whether or not
-  /// an entity uses it, so it is `describeCollider`'s `maxPoints` and not a
-  /// soft limit. [Text2DAccessor.setText] asserts on a longer string in
-  /// debug and truncates in release - see there.
-  int get textCapacity => 32;
-
   /// The label's characters, as UTF-16 code units, `textLength` of them
   /// live. Written through [Text2DAccessor.setText].
   ///
@@ -220,7 +214,27 @@ mixin Text2D on Component {
   /// 255, so writing one would have to either corrupt it silently or refuse
   /// text a game legitimately has. At two bytes a code unit the whole BMP
   /// stores exactly, and the font decides what draws.
-  late final DataArrayPointer<int> textCodeUnits;
+  ///
+  /// Its `length` is the most code units a label of this prefab holds, and it
+  /// is storage - reserved in every row of the archetype whether or not an
+  /// entity uses it, so it is `describeCollider`'s `maxPoints` and not a soft
+  /// limit. [Text2DAccessor.setText] asserts on a longer string in debug and
+  /// truncates in release. A prefab that wants a different one moves it in
+  /// its own `describeStruct`, `1..65535`:
+  ///
+  /// ```dart
+  /// @override
+  /// void describeStruct(DataDescriptor data) {
+  ///   super.describeStruct(data);
+  ///   textCodeUnits.length = 8;
+  /// }
+  /// ```
+  ///
+  /// It was an overridable `int get textCapacity` and is not one any more:
+  /// a value that sizes a column is a declaration, and it belongs on the
+  /// declaration rather than four lines away in a getter this component then
+  /// had to read back while filling in a `late final`.
+  final textCodeUnits = Field.array(.uint16, 32);
 
   /// How many of [textCodeUnits] are the label. Zero is an empty label, which
   /// draws nothing and costs no record.
@@ -276,15 +290,15 @@ mixin Text2D on Component {
   final textPivotOffsetY = Field.float64(0);
 
   /// How many code units [Text2DAccessor.setText] has dropped for want of
-  /// [textCapacity], summed over every entity of this archetype since the run
-  /// started.
+  /// `textCodeUnits.length`, summed over every entity of this archetype since
+  /// the run started.
   ///
   /// Overflow is a programming error and trips an assert, but an assert is
   /// compiled out of the build people ship, so the count is here as well:
   /// zero means no label has ever been cut, and anything else is how much
-  /// text is missing and by how much [textCapacity] is short. Same reason
-  /// `GameRenderer2D.lastRecordsOverBudget` reports instead of dropping
-  /// quietly.
+  /// text is missing and by how much `textCodeUnits.length` is short. Same
+  /// reason `GameRenderer2D.lastRecordsOverBudget` reports instead of
+  /// dropping quietly.
   int textCodeUnitsDropped = 0;
 
   @override
@@ -310,23 +324,14 @@ mixin Text2D on Component {
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    final capacity = textCapacity;
-    if (capacity < 1 || capacity > 0xFFFF) {
-      throw ArgumentError.value(
-        capacity,
-        'textCapacity',
-        'must be between 1 and 65535 - it is storage reserved in every row',
-      );
-    }
-    textCodeUnits = data.hasArray(.uint16, capacity);
     textFontResolved = textFont;
   }
 }
 
 /// Reading and writing one entity's label.
 extension Text2DAccessor on Accessor<Text2D> {
-  /// Replaces this label with [value], keeping its first `textCapacity` code
-  /// units if it is longer.
+  /// Replaces this label with [value], keeping its first
+  /// `textCodeUnits.length` code units if it is longer.
   ///
   /// **Overflow is a programming error.** The capacity is declared on the
   /// prefab, so a string that does not fit means the prefab reserved too
@@ -358,9 +363,9 @@ extension Text2DAccessor on Accessor<Text2D> {
       assert(
         false,
         'a label of $capacity code units cannot hold "$value" ($length). '
-        'Raise textCapacity on the prefab - it is storage reserved per row. '
-        'A release build keeps the first $capacity and counts the rest in '
-        'Text2D.textCodeUnitsDropped.',
+        'Raise textCodeUnits.length on the prefab - it is storage reserved '
+        'per row. A release build keeps the first $capacity and counts the '
+        'rest in Text2D.textCodeUnitsDropped.',
       );
     }
   }
@@ -406,9 +411,10 @@ extension Text2DAccessor on Accessor<Text2D> {
       // After the write, for the reason [setText] gives.
       assert(
         false,
-        'a label of $capacity code units cannot hold $value ($length). Raise '
-        'textCapacity on the prefab. A release build keeps the first '
-        '$capacity and counts the rest in Text2D.textCodeUnitsDropped.',
+        'a label of $capacity code units cannot hold $value ($length). '
+        'Raise textCodeUnits.length on the prefab. A release build keeps '
+        'the first $capacity and counts the rest in '
+        'Text2D.textCodeUnitsDropped.',
       );
     }
   }

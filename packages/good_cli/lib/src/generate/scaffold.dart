@@ -603,14 +603,17 @@ import 'package:$package/$package.dart';
 /// in the pubspec, and run `good generate`. Everything good writes lands in
 /// that package; every file under `lib/` here is one you wrote.
 class Player extends EntityStruct with Transform2D, WorldTransform2D, Renderable2D {
-  late final Sprite sprite;
-
   @override
   void describeSprites(SpriteDescriptor descriptor) {
     super.describeSprites(descriptor);
     // Untextured to start with: a flat colour is one branch in the renderer
     // and needs no asset, so a new project draws something on the first run.
-    sprite = descriptor.has(width: 64, height: 64, color: 0xFF4FC3F7);
+    //
+    // The handle `has` returns is not kept here, because nothing in this file
+    // reads it back and a `late final Sprite sprite;` filled in from this body
+    // is a declaration written twice - the one shape this engine's
+    // declaration rules refuse everywhere.
+    descriptor.has(width: 64, height: 64, color: 0xFF4FC3F7);
   }
 }
 ''';

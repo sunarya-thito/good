@@ -44,6 +44,7 @@ import 'package:good/src/input/gamepad.dart';
 import 'package:good/src/input/input_binding.dart';
 import 'package:good/src/input/input_state.dart';
 import 'package:good/src/ring_buffer.dart';
+import 'package:good/src/scannable.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/system.dart';
 import 'package:good/src/triple_buffer.dart';
@@ -273,7 +274,7 @@ enum _ControlMessage {
 /// time - so put the tick on the [GameState], a `SceneStruct` or a
 /// `GameSystem`. What `Game` does for Flutter it does through a plain method,
 /// [buildView]. See [EventDispatcher].
-abstract class Game implements RandomOwner {
+abstract class Game implements RandomOwner, Scannable {
   /// A body, on a class that wanted no constructor at all, for one reason:
   /// this is the moment a `Game` has finished being built, and it is the only
   /// moment from which the two windows `Game.start` opens can be told apart

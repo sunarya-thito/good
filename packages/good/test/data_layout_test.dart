@@ -330,7 +330,7 @@ void main() {
       // do.
       final pool = MemoryPool(pageSize: 64);
       addTearDown(pool.dispose);
-      final storage = ArchetypeRegistry.register(pool, _AdHoc((_) {}));
+      final storage = ArchetypeRegistry.registerDetached(pool, _AdHoc((_) {}));
       expect(() => storage.declareField(3), throwsArgumentError);
       expect(() => storage.declareField(0), throwsArgumentError);
       expect(() => storage.declareField(128), throwsArgumentError);

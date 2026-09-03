@@ -1,4 +1,6 @@
+import 'package:good/src/camera_view.dart';
 import 'package:good/src/declare.dart';
+import 'package:good/src/scannable.dart';
 import 'package:good/src/struct.dart';
 
 // note: we used to support DataPointer<Matrix4>, and etc but we removed them
@@ -265,6 +267,30 @@ abstract class DataDescriptor {
     T? initialValue,
   ]);
 
+  /// The camera-view column: [optPacked] against the table the registering
+  /// scene owns, without the declaration having to name it.
+  ///
+  /// It exists because that table is the one representation in the engine
+  /// that a declaration cannot be handed. Every other packed column names its
+  /// [IntRepresentation] at the declare site - `hasPacked(const
+  /// SpriteFrames(), ...)` - and that works because the representation is a
+  /// value the writer of the line already has. A [CameraViewTable] is not:
+  /// there is one per game, it reaches a component through the scene, and a
+  /// field initialiser has no scene. `late final DataPointer<CameraView?>
+  /// cameraView;` filled in from `describeStruct` was the shape that fell out
+  /// of that, and it is a double declaration - the thing this engine's
+  /// declaration rules forbid.
+  ///
+  /// Nothing about the table is a declaration input. It contributes no width
+  /// ([CameraViewTable.bitWidth] is 8, a constant on the class, not a
+  /// property of the instance) and no initial value, and a *write* never
+  /// consults it - [CameraView.pack] is its own index. Only a read does. So
+  /// the table is the resolution environment and not part of what is being
+  /// declared, and naming the column kind is enough: the table comes from
+  /// `ArchetypeStorage.scene`, which the registering scene set one call
+  /// before the prefab's constructor ran.
+  DataPointer<CameraView?> optCameraView([CameraView? initialValue]);
+
   // -----
   // Heap objects are the unconstrained cousin of hasPacked/optPacked: any
   // Dart object at all, including a closure, a `List`, or an instance of a
@@ -497,6 +523,12 @@ abstract final class Field {
     T? initialValue,
   ]) => DeclarationContext.data.optPacked<T>(repr, initialValue);
 
+  /// See [DataDescriptor.optCameraView] - the one packed column whose
+  /// representation the declaration does not name, because it belongs to the
+  /// scene rather than to the field.
+  static DataPointer<CameraView?> optCameraView([CameraView? initialValue]) =>
+      DeclarationContext.data.optCameraView(initialValue);
+
   /// See [DataDescriptor.hasHeapObject], including why the value it stores
   /// means nothing on a second isolate.
   static DataPointer<T> heapObject<T>(T Function() initialValue) =>
@@ -508,7 +540,7 @@ abstract final class Field {
 
 }
 
-abstract class DataPointer<T> {
+abstract class DataPointer<T> implements ScannableField {
   const DataPointer();
 
   T operator [](Entity instance);
@@ -707,9 +739,28 @@ class _DataBinding<T> implements DataBinding<T> {
 /// two integers to a method on the one long-lived pointer object that already
 /// holds the layout. There is no two-step subscript here, and no plan for
 /// one.
-abstract class DataArrayPointer<T> {
-  /// Number of elements per entity, fixed when the field is declared.
+abstract class DataArrayPointer<T> implements ScannableField {
+  /// Number of elements per entity.
+  ///
+  /// Settable for the same span and for the same reason
+  /// [InitialPointer.initialValue] is: reading it never throws, and writing
+  /// it throws once the archetype is sealed, which happens as soon as
+  /// `describeStruct` has returned. Until then the row layout is still being
+  /// decided, so a component can declare a length its prefabs adjust:
+  ///
+  /// ```dart
+  /// final textCodeUnits = Field.array(.uint16, 32);   // in the component
+  /// textCodeUnits.length = 8;                         // in a prefab
+  /// ```
+  ///
+  /// That is what a length has instead of an override point. A `int get
+  /// textCapacity => 8` a component read back while declaring would be
+  /// configuration that sizes a column, and a value that sizes a column is a
+  /// declaration - it belongs on the declaration, where a reader finds it
+  /// next to the storage it costs, and where a field initialiser (which
+  /// cannot reach `this`) does not have to.
   int get length;
+  set length(int newLength);
 
   /// Element [index] of [instance]'s array. Throws [RangeError] if [index]
   /// is outside `0 ..< length`.

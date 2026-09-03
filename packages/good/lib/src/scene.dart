@@ -14,11 +14,13 @@ import 'package:good/src/event/lifecycle.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/pool.dart';
+import 'package:good/src/scannable.dart';
 import 'package:good/src/scene_handle.dart';
 import 'package:good/src/struct.dart';
 
 abstract class SceneStruct extends GameListenerBase
-    with EventBus, SceneLifecycleListener, Coroutines {
+    with EventBus, SceneLifecycleListener, Coroutines
+    implements Scannable {
   /// An instance of **this** scene was loaded.
   ///
   /// Declared here and not on `GameState`, and that placement is the whole
@@ -764,7 +766,7 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
     // through `EventBinder.open`: `final wounded = Event.of(...)` on a prefab
     // is a declaration too, and it has to reach the binder [bindEvents] will
     // hand the collect pass however much later.
-    final storage = ArchetypeRegistry.reserve(_scene.pool);
+    final storage = ArchetypeRegistry.reserve(_scene);
     final T object;
     final children = <EntityStruct>[];
     _open.add(T);

@@ -55,26 +55,18 @@ mixin Camera3D on Component {
   /// Typed, not an int: [CameraView] is an [IntRepresentable], so a stray
   /// integer does not compile here.
   ///
-  /// The one field here that needs [describeStruct]: the view table it is
-  /// declared against comes from `getScene`, an instance method a field
-  /// initialiser cannot reach.
+  /// [Field.optCameraView] and not `Field.optPacked`, because the table an
+  /// address here is answered against belongs to the game the scene was
+  /// loaded into - see `DataDescriptor.optCameraView`.
   ///
   /// More than one camera on one view has no meaning - a view has one origin
   /// - and nothing here checks for it. `goo2d` makes that check in
   /// `ActiveCameraResolver`.
-  late final DataPointer<CameraView?> cameraView;
+  final cameraView = Field.optCameraView();
 
   @override
   void describeType(ComponentDescriptor component) {
     super.describeType(component);
     component.has<Camera3D>();
-  }
-
-  @override
-  void describeStruct(DataDescriptor data) {
-    super.describeStruct(data);
-    // The declaring game's own view table - not a shared registry. An address
-    // read out of this field means nothing except against this table.
-    cameraView = data.optPacked(getScene<SceneStruct>().cameraViews);
   }
 }

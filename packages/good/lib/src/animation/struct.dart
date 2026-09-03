@@ -4,6 +4,7 @@ import 'package:meta/meta.dart';
 
 import 'package:good/src/data.dart';
 import 'package:good/src/game_state.dart';
+import 'package:good/src/scannable.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/time.dart';
 
@@ -357,7 +358,7 @@ abstract class TimelineAnimationDescriptor {
 /// shared by every entity of that archetype - exactly like the struct itself.
 /// Per-entity progress is one `double` of start time in the entity's own row;
 /// see [TimelineAnimation.animate].
-abstract class TimelineStruct {
+abstract class TimelineStruct implements Scannable {
   void describeTrack(TimelineDescriptor descriptor);
   void describeAnimation(TimelineAnimationDescriptor descriptor);
 

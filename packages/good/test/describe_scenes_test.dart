@@ -317,7 +317,7 @@ void main() {
       // stamped from a prototype that does not exist.
       final pool = MemoryPool(pageSize: 4096);
       addTearDown(pool.dispose);
-      final storage = ArchetypeRegistry.register(pool, _Bare());
+      final storage = ArchetypeRegistry.registerDetached(pool, _Bare());
 
       expect(storage.isSealed, isFalse);
       expect(() => storage.allocateRow(-1), throwsStateError);

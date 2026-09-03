@@ -7,6 +7,7 @@ import 'package:good/src/event.dart';
 import 'package:good/src/game.dart';
 import 'package:good/src/game_state.dart';
 import 'package:good/src/input.dart';
+import 'package:good/src/scannable.dart';
 import 'package:good/src/struct.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/scene_handle.dart';
@@ -63,7 +64,7 @@ mixin GameSystemLifecycleListener on GameListener {
 /// [EventDispatcher].
 abstract class GameSystem extends GameListenerBase
     with EventBus, Coroutines
-    implements Comparable<GameSystem> {
+    implements Comparable<GameSystem>, Scannable {
   GameState? _state;
 
   bool _enabled = true;
@@ -346,7 +347,7 @@ abstract class GameSystem extends GameListenerBase
 ///  * and again when a walk starts, because a [QueryGroup] and a lazy [run]
 ///    both outlive the call that made them, and the scene under one can be
 ///    unloaded in between.
-abstract class Query {
+abstract class Query implements ScannableField {
   /// Declares a query on the field that holds it, requiring every listed
   /// component:
   ///

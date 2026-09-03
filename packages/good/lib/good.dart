@@ -121,6 +121,7 @@ export 'src/input/input_key.dart';
 export 'src/input/input_state.dart';
 export 'src/pool.dart';
 export 'src/ring_buffer.dart';
+export 'src/scannable.dart';
 export 'src/scene.dart';
 export 'src/camera_view.dart' hide GameCameraDescriptor;
 export 'src/scene_handle.dart';

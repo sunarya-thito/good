@@ -8,10 +8,11 @@ import 'package:good/src/data.dart';
 import 'package:good/src/declare.dart';
 import 'package:good/src/event.dart';
 import 'package:good/src/event/lifecycle.dart';
+import 'package:good/src/scannable.dart';
 import 'package:good/src/scene.dart';
 import 'package:good/src/system.dart';
 
-abstract interface class Component {
+abstract interface class Component implements Scannable {
   void describeType(ComponentDescriptor component);
 
   /// Declares every asset this component needs, and keeps each returned

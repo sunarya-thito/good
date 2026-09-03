@@ -220,7 +220,10 @@ class _Label extends EntityStruct with Transform2D, WorldTransform2D, Text2D {
   late final TextureAsset atlas;
 
   @override
-  int get textCapacity => 8;
+  void describeStruct(DataDescriptor data) {
+    super.describeStruct(data);
+    textCodeUnits.length = 8;
+  }
 
   @override
   void describeAssets(AssetDescriptor descriptor) {
