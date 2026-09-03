@@ -136,6 +136,54 @@ extension Accessor$WorldTransform2D on Accessor<WorldTransform2D> {
   double get worldRotation => component.worldRotation[entity];
   set worldRotation(double newValue) =>
       component.worldRotation[entity] = newValue;
+
+  /// `cachedOffsetX` on this entity, from the published snapshot.
+  ///
+  /// One entity. A system walking many indexes
+  /// `component.cachedOffsetX` instead.
+  double get cachedOffsetX => component.cachedOffsetX[entity];
+  set cachedOffsetX(double newValue) =>
+      component.cachedOffsetX[entity] = newValue;
+
+  /// `cachedOffsetY` on this entity, from the published snapshot.
+  ///
+  /// One entity. A system walking many indexes
+  /// `component.cachedOffsetY` instead.
+  double get cachedOffsetY => component.cachedOffsetY[entity];
+  set cachedOffsetY(double newValue) =>
+      component.cachedOffsetY[entity] = newValue;
+
+  /// `cachedRotation` on this entity, from the published snapshot.
+  ///
+  /// One entity. A system walking many indexes
+  /// `component.cachedRotation` instead.
+  double get cachedRotation => component.cachedRotation[entity];
+  set cachedRotation(double newValue) =>
+      component.cachedRotation[entity] = newValue;
+
+  /// `cachedScaleX` on this entity, from the published snapshot.
+  ///
+  /// One entity. A system walking many indexes
+  /// `component.cachedScaleX` instead.
+  double get cachedScaleX => component.cachedScaleX[entity];
+  set cachedScaleX(double newValue) =>
+      component.cachedScaleX[entity] = newValue;
+
+  /// `cachedScaleY` on this entity, from the published snapshot.
+  ///
+  /// One entity. A system walking many indexes
+  /// `component.cachedScaleY` instead.
+  double get cachedScaleY => component.cachedScaleY[entity];
+  set cachedScaleY(double newValue) =>
+      component.cachedScaleY[entity] = newValue;
+
+  /// `cachedParent` on this entity, from the published snapshot.
+  ///
+  /// One entity. A system walking many indexes
+  /// `component.cachedParent` instead.
+  Entity? get cachedParent => component.cachedParent[entity];
+  set cachedParent(Entity? newValue) =>
+      component.cachedParent[entity] = newValue;
 }
 
 /// Text2D's columns, one property each - for code

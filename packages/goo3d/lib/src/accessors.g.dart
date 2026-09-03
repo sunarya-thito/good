@@ -226,4 +226,92 @@ extension Accessor$WorldTransform3D on Accessor<WorldTransform3D> {
   double get worldRotationW => component.worldRotationW[entity];
   set worldRotationW(double newValue) =>
       component.worldRotationW[entity] = newValue;
+
+  /// `cachedOffsetX` on this entity, from the published snapshot.
+  ///
+  /// One entity. A system walking many indexes
+  /// `component.cachedOffsetX` instead.
+  double get cachedOffsetX => component.cachedOffsetX[entity];
+  set cachedOffsetX(double newValue) =>
+      component.cachedOffsetX[entity] = newValue;
+
+  /// `cachedOffsetY` on this entity, from the published snapshot.
+  ///
+  /// One entity. A system walking many indexes
+  /// `component.cachedOffsetY` instead.
+  double get cachedOffsetY => component.cachedOffsetY[entity];
+  set cachedOffsetY(double newValue) =>
+      component.cachedOffsetY[entity] = newValue;
+
+  /// `cachedOffsetZ` on this entity, from the published snapshot.
+  ///
+  /// One entity. A system walking many indexes
+  /// `component.cachedOffsetZ` instead.
+  double get cachedOffsetZ => component.cachedOffsetZ[entity];
+  set cachedOffsetZ(double newValue) =>
+      component.cachedOffsetZ[entity] = newValue;
+
+  /// `cachedRotationX` on this entity, from the published snapshot.
+  ///
+  /// One entity. A system walking many indexes
+  /// `component.cachedRotationX` instead.
+  double get cachedRotationX => component.cachedRotationX[entity];
+  set cachedRotationX(double newValue) =>
+      component.cachedRotationX[entity] = newValue;
+
+  /// `cachedRotationY` on this entity, from the published snapshot.
+  ///
+  /// One entity. A system walking many indexes
+  /// `component.cachedRotationY` instead.
+  double get cachedRotationY => component.cachedRotationY[entity];
+  set cachedRotationY(double newValue) =>
+      component.cachedRotationY[entity] = newValue;
+
+  /// `cachedRotationZ` on this entity, from the published snapshot.
+  ///
+  /// One entity. A system walking many indexes
+  /// `component.cachedRotationZ` instead.
+  double get cachedRotationZ => component.cachedRotationZ[entity];
+  set cachedRotationZ(double newValue) =>
+      component.cachedRotationZ[entity] = newValue;
+
+  /// `cachedRotationW` on this entity, from the published snapshot.
+  ///
+  /// One entity. A system walking many indexes
+  /// `component.cachedRotationW` instead.
+  double get cachedRotationW => component.cachedRotationW[entity];
+  set cachedRotationW(double newValue) =>
+      component.cachedRotationW[entity] = newValue;
+
+  /// `cachedScaleX` on this entity, from the published snapshot.
+  ///
+  /// One entity. A system walking many indexes
+  /// `component.cachedScaleX` instead.
+  double get cachedScaleX => component.cachedScaleX[entity];
+  set cachedScaleX(double newValue) =>
+      component.cachedScaleX[entity] = newValue;
+
+  /// `cachedScaleY` on this entity, from the published snapshot.
+  ///
+  /// One entity. A system walking many indexes
+  /// `component.cachedScaleY` instead.
+  double get cachedScaleY => component.cachedScaleY[entity];
+  set cachedScaleY(double newValue) =>
+      component.cachedScaleY[entity] = newValue;
+
+  /// `cachedScaleZ` on this entity, from the published snapshot.
+  ///
+  /// One entity. A system walking many indexes
+  /// `component.cachedScaleZ` instead.
+  double get cachedScaleZ => component.cachedScaleZ[entity];
+  set cachedScaleZ(double newValue) =>
+      component.cachedScaleZ[entity] = newValue;
+
+  /// `cachedParent` on this entity, from the published snapshot.
+  ///
+  /// One entity. A system walking many indexes
+  /// `component.cachedParent` instead.
+  Entity? get cachedParent => component.cachedParent[entity];
+  set cachedParent(Entity? newValue) =>
+      component.cachedParent[entity] = newValue;
 }

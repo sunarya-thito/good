@@ -497,7 +497,7 @@ void main() {
 
       // Re-parent to the *same* parent, with every local field identical to
       // what the cache last recorded. Every field-by-field comparison in
-      // `_resolve` compares equal, so only the cleared `_cachedParent` stands
+      // `_resolve` compares equal, so only the cleared `cachedParent` stands
       // between this and reading back the uncomposed 10.
       run.state.pool.beginTick();
       parent<Parent>().addChild(child);

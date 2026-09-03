@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:good/good.dart';
+import 'package:meta/meta.dart';
 
 import 'package:goo2d/src/data/transform.dart';
 
@@ -39,12 +40,24 @@ mixin WorldTransform2D on Component {
   // rotation) so the very first resolve for a freshly-spawned entity always
   // sees "changed" (NaN never compares equal to anything, including
   // itself) without a separate "have I ever run" flag.
-  final _cachedOffsetX = Field.float64(double.nan);
-  final _cachedOffsetY = Field.float64(double.nan);
-  final _cachedRotation = Field.float64(double.nan);
-  final _cachedScaleX = Field.float64(double.nan);
-  final _cachedScaleY = Field.float64(double.nan);
-  final _cachedParent = Field.optEntity();
+  //
+  // Public with `@internal` because a column has to be named to be collected,
+  // and the collector for a struct mixing this in is generated into that
+  // struct's own library. Private, these six reached no collector, so they
+  // were absent from the row and every read below addressed a column that was
+  // never reserved.
+  @internal
+  final cachedOffsetX = Field.float64(double.nan);
+  @internal
+  final cachedOffsetY = Field.float64(double.nan);
+  @internal
+  final cachedRotation = Field.float64(double.nan);
+  @internal
+  final cachedScaleX = Field.float64(double.nan);
+  @internal
+  final cachedScaleY = Field.float64(double.nan);
+  @internal
+  final cachedParent = Field.optEntity();
 
   @override
   void describeType(ComponentDescriptor component) {
@@ -363,7 +376,7 @@ class WorldTransformSystem extends GameSystem
   /// method overwrites `world` with the *local* transform and says nothing),
   /// then re-parent it to the same parent without touching its offsets, and
   /// [_resolve] would compare equal on every field, conclude nothing changed,
-  /// and read back a `world` that was never composed. Clearing [_cachedParent]
+  /// and read back a `world` that was never composed. Clearing [cachedParent]
   /// makes that impossible - a row leaving this method always looks reparented
   /// to [_resolve], because it is. One flag-bit write, only for archetypes
   /// that can be parented at all.
@@ -387,7 +400,7 @@ class WorldTransformSystem extends GameSystem
         continue; // not a root - reached via its real root's recursion
       }
       _composeRoot(entity, local, world);
-      world._cachedParent[entity] = null;
+      world.cachedParent[entity] = null;
     }
   }
 
@@ -474,12 +487,12 @@ class WorldTransformSystem extends GameSystem
     final changed =
         world == null ||
         parentChanged ||
-        world._cachedParent[entity] != parent ||
-        world._cachedOffsetX[entity] != offsetX ||
-        world._cachedOffsetY[entity] != offsetY ||
-        world._cachedRotation[entity] != rotation ||
-        world._cachedScaleX[entity] != scaleX ||
-        world._cachedScaleY[entity] != scaleY;
+        world.cachedParent[entity] != parent ||
+        world.cachedOffsetX[entity] != offsetX ||
+        world.cachedOffsetY[entity] != offsetY ||
+        world.cachedRotation[entity] != rotation ||
+        world.cachedScaleX[entity] != scaleX ||
+        world.cachedScaleY[entity] != scaleY;
 
     // This entity's resolved world transform, as local variables - what
     // gets passed down to children as their parentWorld* arguments. Either
@@ -525,12 +538,12 @@ class WorldTransformSystem extends GameSystem
         world.worldRotation[entity] = thisWorldRotation;
         world.worldScaleX[entity] = thisWorldScaleX;
         world.worldScaleY[entity] = thisWorldScaleY;
-        world._cachedParent[entity] = parent;
-        world._cachedOffsetX[entity] = offsetX;
-        world._cachedOffsetY[entity] = offsetY;
-        world._cachedRotation[entity] = rotation;
-        world._cachedScaleX[entity] = scaleX;
-        world._cachedScaleY[entity] = scaleY;
+        world.cachedParent[entity] = parent;
+        world.cachedOffsetX[entity] = offsetX;
+        world.cachedOffsetY[entity] = offsetY;
+        world.cachedRotation[entity] = rotation;
+        world.cachedScaleX[entity] = scaleX;
+        world.cachedScaleY[entity] = scaleY;
       }
     } else {
       // `changed` is forced true when `world` is null, so reaching here means

@@ -1,4 +1,5 @@
 import 'package:good/good.dart';
+import 'package:meta/meta.dart';
 
 import 'package:goo3d/src/data/transform.dart';
 
@@ -46,17 +47,34 @@ mixin WorldTransform3D on Component {
   // first resolve for a freshly-spawned entity always sees "changed" (NaN
   // never compares equal to anything, including itself) without a separate
   // "have I ever run" flag.
-  final _cachedOffsetX = Field.float64(double.nan);
-  final _cachedOffsetY = Field.float64(double.nan);
-  final _cachedOffsetZ = Field.float64(double.nan);
-  final _cachedRotationX = Field.float64(double.nan);
-  final _cachedRotationY = Field.float64(double.nan);
-  final _cachedRotationZ = Field.float64(double.nan);
-  final _cachedRotationW = Field.float64(double.nan);
-  final _cachedScaleX = Field.float64(double.nan);
-  final _cachedScaleY = Field.float64(double.nan);
-  final _cachedScaleZ = Field.float64(double.nan);
-  final _cachedParent = Field.optEntity();
+  //
+  // Public with `@internal` because a column has to be named to be collected,
+  // and the collector for a struct mixing this in is generated into that
+  // struct's own library. Private, these eleven reached no collector, so they
+  // were absent from the row and every read below addressed a column that was
+  // never reserved.
+  @internal
+  final cachedOffsetX = Field.float64(double.nan);
+  @internal
+  final cachedOffsetY = Field.float64(double.nan);
+  @internal
+  final cachedOffsetZ = Field.float64(double.nan);
+  @internal
+  final cachedRotationX = Field.float64(double.nan);
+  @internal
+  final cachedRotationY = Field.float64(double.nan);
+  @internal
+  final cachedRotationZ = Field.float64(double.nan);
+  @internal
+  final cachedRotationW = Field.float64(double.nan);
+  @internal
+  final cachedScaleX = Field.float64(double.nan);
+  @internal
+  final cachedScaleY = Field.float64(double.nan);
+  @internal
+  final cachedScaleZ = Field.float64(double.nan);
+  @internal
+  final cachedParent = Field.optEntity();
 
   @override
   void describeType(ComponentDescriptor component) {
@@ -489,7 +507,7 @@ class WorldTransform3DSystem extends GameSystem
   /// nothing), then re-parent it to the same parent without touching its
   /// offsets, and [_resolve] would compare equal on every field, conclude
   /// nothing changed, and read back a `world` that was never composed.
-  /// Clearing [WorldTransform3D._cachedParent] makes that impossible.
+  /// Clearing [WorldTransform3D.cachedParent] makes that impossible.
   void _resolveChildless(
     Iterable<Entity> group,
     Transform3D local,
@@ -510,7 +528,7 @@ class WorldTransform3DSystem extends GameSystem
         continue; // not a root - reached via its real root's recursion
       }
       _composeRoot(entity, local, world);
-      world._cachedParent[entity] = null;
+      world.cachedParent[entity] = null;
     }
   }
 
@@ -608,17 +626,17 @@ class WorldTransform3DSystem extends GameSystem
     final changed =
         world == null ||
         parentChanged ||
-        world._cachedParent[entity] != parent ||
-        world._cachedOffsetX[entity] != offsetX ||
-        world._cachedOffsetY[entity] != offsetY ||
-        world._cachedOffsetZ[entity] != offsetZ ||
-        world._cachedRotationX[entity] != rotationX ||
-        world._cachedRotationY[entity] != rotationY ||
-        world._cachedRotationZ[entity] != rotationZ ||
-        world._cachedRotationW[entity] != rotationW ||
-        world._cachedScaleX[entity] != scaleX ||
-        world._cachedScaleY[entity] != scaleY ||
-        world._cachedScaleZ[entity] != scaleZ;
+        world.cachedParent[entity] != parent ||
+        world.cachedOffsetX[entity] != offsetX ||
+        world.cachedOffsetY[entity] != offsetY ||
+        world.cachedOffsetZ[entity] != offsetZ ||
+        world.cachedRotationX[entity] != rotationX ||
+        world.cachedRotationY[entity] != rotationY ||
+        world.cachedRotationZ[entity] != rotationZ ||
+        world.cachedRotationW[entity] != rotationW ||
+        world.cachedScaleX[entity] != scaleX ||
+        world.cachedScaleY[entity] != scaleY ||
+        world.cachedScaleZ[entity] != scaleZ;
 
     // This entity's resolved world transform, as local variables - what gets
     // passed down to children as their parentWorld* arguments. Either freshly
@@ -697,17 +715,17 @@ class WorldTransform3DSystem extends GameSystem
         world.worldScaleX[entity] = thisWorldScaleX;
         world.worldScaleY[entity] = thisWorldScaleY;
         world.worldScaleZ[entity] = thisWorldScaleZ;
-        world._cachedParent[entity] = parent;
-        world._cachedOffsetX[entity] = offsetX;
-        world._cachedOffsetY[entity] = offsetY;
-        world._cachedOffsetZ[entity] = offsetZ;
-        world._cachedRotationX[entity] = rotationX;
-        world._cachedRotationY[entity] = rotationY;
-        world._cachedRotationZ[entity] = rotationZ;
-        world._cachedRotationW[entity] = rotationW;
-        world._cachedScaleX[entity] = scaleX;
-        world._cachedScaleY[entity] = scaleY;
-        world._cachedScaleZ[entity] = scaleZ;
+        world.cachedParent[entity] = parent;
+        world.cachedOffsetX[entity] = offsetX;
+        world.cachedOffsetY[entity] = offsetY;
+        world.cachedOffsetZ[entity] = offsetZ;
+        world.cachedRotationX[entity] = rotationX;
+        world.cachedRotationY[entity] = rotationY;
+        world.cachedRotationZ[entity] = rotationZ;
+        world.cachedRotationW[entity] = rotationW;
+        world.cachedScaleX[entity] = scaleX;
+        world.cachedScaleY[entity] = scaleY;
+        world.cachedScaleZ[entity] = scaleZ;
       }
     } else {
       // `changed` is forced true when `world` is null, so reaching here means
