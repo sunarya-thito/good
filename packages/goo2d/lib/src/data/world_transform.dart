@@ -47,17 +47,17 @@ mixin WorldTransform2D on Component {
   // were absent from the row and every read below addressed a column that was
   // never reserved.
   @internal
-  final cachedOffsetX = Field.float64(double.nan);
+  final worldCachedOffsetX = Field.float64(double.nan);
   @internal
-  final cachedOffsetY = Field.float64(double.nan);
+  final worldCachedOffsetY = Field.float64(double.nan);
   @internal
-  final cachedRotation = Field.float64(double.nan);
+  final worldCachedRotation = Field.float64(double.nan);
   @internal
-  final cachedScaleX = Field.float64(double.nan);
+  final worldCachedScaleX = Field.float64(double.nan);
   @internal
-  final cachedScaleY = Field.float64(double.nan);
+  final worldCachedScaleY = Field.float64(double.nan);
   @internal
-  final cachedParent = Field.optEntity();
+  final worldCachedParent = Field.optEntity();
 
   @override
   void describeType(ComponentDescriptor component) {
@@ -376,10 +376,10 @@ class WorldTransformSystem extends GameSystem
   /// method overwrites `world` with the *local* transform and says nothing),
   /// then re-parent it to the same parent without touching its offsets, and
   /// [_resolve] would compare equal on every field, conclude nothing changed,
-  /// and read back a `world` that was never composed. Clearing [cachedParent]
-  /// makes that impossible - a row leaving this method always looks reparented
-  /// to [_resolve], because it is. One flag-bit write, only for archetypes
-  /// that can be parented at all.
+  /// and read back a `world` that was never composed. Clearing
+  /// [worldCachedParent] makes that impossible - a row leaving this method
+  /// always looks reparented to [_resolve], because it is. One flag-bit
+  /// write, only for archetypes that can be parented at all.
   void _resolveChildless(
     Iterable<Entity> group,
     Transform2D local,
@@ -400,7 +400,7 @@ class WorldTransformSystem extends GameSystem
         continue; // not a root - reached via its real root's recursion
       }
       _composeRoot(entity, local, world);
-      world.cachedParent[entity] = null;
+      world.worldCachedParent[entity] = null;
     }
   }
 
@@ -487,12 +487,12 @@ class WorldTransformSystem extends GameSystem
     final changed =
         world == null ||
         parentChanged ||
-        world.cachedParent[entity] != parent ||
-        world.cachedOffsetX[entity] != offsetX ||
-        world.cachedOffsetY[entity] != offsetY ||
-        world.cachedRotation[entity] != rotation ||
-        world.cachedScaleX[entity] != scaleX ||
-        world.cachedScaleY[entity] != scaleY;
+        world.worldCachedParent[entity] != parent ||
+        world.worldCachedOffsetX[entity] != offsetX ||
+        world.worldCachedOffsetY[entity] != offsetY ||
+        world.worldCachedRotation[entity] != rotation ||
+        world.worldCachedScaleX[entity] != scaleX ||
+        world.worldCachedScaleY[entity] != scaleY;
 
     // This entity's resolved world transform, as local variables - what
     // gets passed down to children as their parentWorld* arguments. Either
@@ -538,12 +538,12 @@ class WorldTransformSystem extends GameSystem
         world.worldRotation[entity] = thisWorldRotation;
         world.worldScaleX[entity] = thisWorldScaleX;
         world.worldScaleY[entity] = thisWorldScaleY;
-        world.cachedParent[entity] = parent;
-        world.cachedOffsetX[entity] = offsetX;
-        world.cachedOffsetY[entity] = offsetY;
-        world.cachedRotation[entity] = rotation;
-        world.cachedScaleX[entity] = scaleX;
-        world.cachedScaleY[entity] = scaleY;
+        world.worldCachedParent[entity] = parent;
+        world.worldCachedOffsetX[entity] = offsetX;
+        world.worldCachedOffsetY[entity] = offsetY;
+        world.worldCachedRotation[entity] = rotation;
+        world.worldCachedScaleX[entity] = scaleX;
+        world.worldCachedScaleY[entity] = scaleY;
       }
     } else {
       // `changed` is forced true when `world` is null, so reaching here means

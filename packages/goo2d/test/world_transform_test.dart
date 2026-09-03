@@ -510,8 +510,9 @@ void main() {
 
       // Re-parent to the *same* parent, with every local field identical to
       // what the cache last recorded. Every field-by-field comparison in
-      // `_resolve` compares equal, so only the cleared `cachedParent` stands
-      // between this and reading back the uncomposed 10 the fast path wrote.
+      // `_resolve` compares equal, so only the cleared `worldCachedParent`
+      // stands between this and reading back the uncomposed 10 the fast path
+      // wrote.
       run.state.pool.beginTick();
       parent<Parent>().addChild(child);
       run.state.pool.commitTick();
