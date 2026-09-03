@@ -1330,9 +1330,15 @@ class DeclarationScan {
   /// into another library and a private field is `undefined_getter` there, so
   /// these contribute nothing to a collect pass - which is exactly the shape
   /// this engine keeps being bitten by, and exactly why it is listed rather
-  /// than swallowed. It is not a refusal: whether the engine's own cache
-  /// columns become public (28 of them, and every one would then generate a
-  /// public accessor property) is an open call, and a check that decided it
+  /// than swallowed.
+  ///
+  /// Twenty-two in this repository, counted rather than remembered: five
+  /// `Query` fields on three systems, which nothing collects at run time and
+  /// which cost nothing by being missing, and seventeen `WorldTransform2D`
+  /// and `WorldTransform3D` cache columns, which are missing from the row of
+  /// every struct that mixes either in. It is not a refusal: whether those
+  /// seventeen become public - and every one of them would then generate a
+  /// public accessor property - is an open call, and a check that decided it
   /// by refusing would be making it.
   final Map<String, String> uncollectable;
 
