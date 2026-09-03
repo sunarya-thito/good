@@ -380,18 +380,25 @@ abstract class DataDescriptor {
 /// member named `bool` hides the *type* `bool` inside this class body, so its
 /// own signature stops compiling.
 ///
-/// # When a field still needs `describeStruct`
+/// # What `describeStruct` is still for
 ///
-/// A field initialiser cannot read another field, so a column whose default
-/// comes from a handle declared in an earlier pass - an asset from
-/// `describeAssets`, a sprite built from a texture - keeps its `describeStruct`
-/// body. The two forms coexist: constructor-time declarations run first, then
-/// the passes `SceneDescriptor.has` drives, in the order they already ran.
+/// Moving a value, not declaring a name. A prefab that wants a *different*
+/// default for a column one of its mixins declared sets
+/// [InitialPointer.initialValue] there, and one that wants a different number
+/// of slots sets [DataArrayPointer.length]; both are readable and writable
+/// until the columns are realized, which is after that pass. Declaring the
+/// name a second time would not do either of them - it allocates a second
+/// column and leaves the first unreachable.
 ///
-/// A prefab that wants a *different* default for a column one of its mixins
-/// declared also uses `describeStruct`, but to move the default, not to
-/// declare anything - see [InitialPointer.initialValue]. Declaring the name a
-/// second time would not do it.
+/// **A column whose default is another field's value has no spelling.** A
+/// field initialiser cannot read another field, so a sprite column defaulting
+/// to a texture handle the same class declares cannot be written here - and
+/// it cannot be written as `late final DataPointer<T> x;` filled in from
+/// `describeStruct` either, because that is a declaration written twice and
+/// `good_tool --declarations` refuses it. What the tree does instead is route
+/// it through a type that is not a declaration value: `goo2d`'s `Sprite` and
+/// `ColliderBody` are held by ordinary fields and hand out their columns from
+/// a hook. That is a gap, not a design - see #353.
 ///
 /// # Two mixins declaring the same field name are silent here
 ///

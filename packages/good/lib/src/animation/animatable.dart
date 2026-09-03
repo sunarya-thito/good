@@ -18,8 +18,9 @@ import 'package:good/src/time.dart';
 ///
 /// ```dart
 /// class Enemy extends EntityStruct with Transform2D, Animations {
+///   final startedAt = Field.float64();
+///
 ///   late final EnemyTimeline timeline;
-///   late final DataPointer<double> startedAt;
 ///
 ///   @override
 ///   void describeAnimation(AnimationTypeDescriptor descriptor) {

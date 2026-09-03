@@ -440,8 +440,7 @@ abstract interface class AssetLoaderRegistrar {
 /// ```dart
 /// typedef TextureAsset = Asset<Texture>;
 ///
-/// late final TextureAsset texture;                // Asset<Texture>
-/// late final DataPointer<TextureAsset> sprite;
+/// final texture = Asset.of(Textures.player);   // Asset<Texture>, not Texture
 /// ```
 ///
 /// # It is normal for this to hold no payload
@@ -541,35 +540,23 @@ final class Asset<T> implements IntRepresentable {
 /// typed-handle rule applied to assets.
 ///
 /// There is no asset name and nothing to look up at use time: [has] returns
-/// the handle, the declarer keeps it in a `late final` field, and that field
-/// is the only thing an asset-typed component field will accept.
+/// the handle, the declarer keeps it in the field that declared it, and that
+/// field is the only thing an asset-typed component field will accept.
 ///
 /// ```dart
 /// class Player extends EntityStruct with Renderable2D {
 ///   static const playerTexture = AssetKey<Texture>(BundleSource('player.png'));
 ///
-///   late final TextureAsset texture;
-///   late final DataPointer<TextureAsset> sprite;
-///
-///   @override
-///   void describeAssets(AssetDescriptor descriptor) {
-///     super.describeAssets(descriptor);
-///     texture = descriptor.has(playerTexture);   // typed handle, kept
-///   }
-///
-///   @override
-///   void describeStruct(DataDescriptor data) {
-///     super.describeStruct(data);
-///     sprite = data.hasPacked(assets.of<Texture>(), texture);
-///   }
+///   final texture = Asset.of(playerTexture);   // typed handle, kept
 /// }
 /// ```
 ///
 /// The two types are distinct: `playerTexture` is an
 /// `AssetKey<Texture>` (identity - which asset) and `texture` is an
-/// `Asset<Texture>` (the addressed handle a row can point at). So
-/// `sprite[e] = playerTexture` does not compile and `sprite[e] = texture`
-/// does, which is the whole point of routing every asset through this pass.
+/// `Asset<Texture>` (the addressed handle a row can point at). So a column
+/// declared against the asset table takes `texture` and refuses
+/// `playerTexture`, which is the whole point of routing every asset through
+/// this pass.
 abstract class AssetDescriptor {
   /// Declares [key] and returns its handle.
   ///
