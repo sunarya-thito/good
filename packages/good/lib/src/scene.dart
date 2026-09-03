@@ -762,14 +762,15 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
         'where the count is a decision and not a declaration.',
       );
     }
-    // The storage first, because the constructor's field initialisers declare
-    // into it - `final hp = Field.int32(100)` has no descriptor to reach
-    // except the one open around the call. It carries no prefab until the
-    // line after; nothing reads one in between.
+    // Nothing is open around the constructor. `final hp = Field.int32(100)`
+    // and `final wounded = Event.of(...)` reach no descriptor and no binder;
+    // both are read off the object afterwards, the first by `data.realize()`
+    // below and the second by `EventBinder.bind`.
     //
-    // Nothing is open around the call itself. `final wounded = Event.of(...)`
-    // on a prefab is a declaration too, and it is read off the object the same
-    // way its columns are - see `EventBinder.bind`.
+    // The storage is still reserved ahead of the call, because `declareChild`
+    // runs from inside the constructor and needs the declaring archetype's id
+    // to record which row the handle column belongs to. It carries no prefab
+    // until the line after; nothing reads one in between.
     final storage = ArchetypeRegistry.reserve(_scene);
     final T object;
     final children = <EntityStruct>[];

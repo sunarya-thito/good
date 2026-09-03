@@ -124,30 +124,22 @@ abstract class GameSystem extends GameListenerBase
     reverse: true,
   );
 
-  // These two stay in the hook while a subclass's events move onto their
-  // fields, and the reason is sharper than the matching one on `EntityStruct`
-  // (struct.dart:95-129).
+  // These two stayed in `describeEvents` for as long as a dispatcher had to be
+  // created inside somebody's binder, and the failure was worse here than
+  // anywhere else. `SystemDescriptor.has` takes a `T Function()`, and a
+  // closure may hand back a system that already existed -
+  // `descriptor.has(() => _spawner)`, where `_spawner` is a field of the
+  // `GameState`. A prefab written that way threw, because nothing was open
+  // above it. A system did not: the state's own binder was open while its
+  // field initialisers ran, so the system's dispatcher was created against
+  // the state and collected the state's entire composition - every sibling
+  // system, every scene, every prefab. Measured, not reasoned: two listeners
+  // belonging to two unrelated systems, and none of its own.
   //
-  // `SystemDescriptor.has` takes a `T Function()`, and a closure may hand
-  // back a system that already existed - `descriptor.has(() => _spawner)`,
-  // where `_spawner` is a field of the `GameState`. For a prefab that shape
-  // throws, because nothing is open above it and `DeclarationContext.events`
-  // finds an empty stack. For a system it does not throw: a `GameState` is
-  // itself framework-constructed now, so its *own* binder is open while its
-  // field initialisers run, and a dispatcher declared by a system built there
-  // is created against the state. It then collects the state's entire
-  // composition - every sibling system, every scene, every prefab - where the
-  // system's own binder would have offered it only the system.
-  //
-  // A pair on this base class is inherited by every system however it was
-  // built, so it cannot assume a binder of its own. Measured, not reasoned:
-  // a system holding `Event.signal` on a field, built in a `GameState` field
-  // initialiser and handed over through a closure, collected two listeners
-  // that belonged to two unrelated systems and none of its own.
-  //
-  // A system the framework *does* build - `descriptor.has(SpinSystem.new)`,
-  // or a closure that constructs inside itself - has its own binder open, so
-  // `Event.*` on a subclass field works and is the shape to reach for.
+  // Nothing is open around a construction now. A dispatcher is built by the
+  // field initialiser that declares it and read off the system it belongs to,
+  // so the audience is decided by which object holds the field and cannot be
+  // decided by anything else.
   @override
   int compareTo(GameSystem other) => 0; // no opinion by default
 
