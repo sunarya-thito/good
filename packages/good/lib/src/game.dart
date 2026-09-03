@@ -1360,9 +1360,9 @@ abstract class Game implements RandomOwner, Scannable {
   /// Builds [create]'s game and hands it back.
   ///
   /// It used to open the two declaration windows a `Game` field initialiser
-  /// needed - a `_StateDescriptor` for `Channel.*` and an `InputRegistry` for
-  /// `Input.of` - because neither could be the game's own field: a subclass's
-  /// field initialisers run *before* `Game`'s, so at the moment
+  /// needed - a `StateChannelRegistry` for `Channel.*` and an `InputRegistry`
+  /// for `Input.of` - because neither could be the game's own field: a
+  /// subclass's field initialisers run *before* `Game`'s, so at the moment
   /// `final score = Channel.int32()` ran there was no `Game` object at all.
   ///
   /// Nothing is open around the call now. A channel and an action are both

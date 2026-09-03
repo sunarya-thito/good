@@ -405,7 +405,7 @@ abstract class InputDescriptor {
 }
 
 /// Everything the input registry needs from an action without knowing its
-/// `T` - the same type-erasure trick `_ChannelSlot` uses for state channels,
+/// `T` - the same type-erasure trick `ChannelSlot` uses for state channels,
 /// and for the same reason: sealing and resolving are plumbing that has no
 /// business laundering the value type.
 abstract class _ActionSlot implements ScannableField {
