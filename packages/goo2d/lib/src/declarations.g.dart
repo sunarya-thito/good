@@ -31,6 +31,7 @@ import 'package:good/good.dart';
 List<ScannableField> _worldTransformSystem(Object object) {
   final owner = object as WorldTransformSystem;
   return <ScannableField>[
+    // WorldTransformSystem._roots: private, unreachable.
     owner.mountEvent,
     owner.unmountEvent,
   ];
@@ -53,6 +54,9 @@ List<ScannableField> _pointerPickingSystem(Object object) {
 List<ScannableField> _gameRenderer2D(Object object) {
   final owner = object as GameRenderer2D;
   return <ScannableField>[
+    // GameRenderer2D._renderables: private, unreachable.
+    // GameRenderer2D._screenRenderables: private, unreachable.
+    // GameRenderer2D._labels: private, unreachable.
     // GameRenderer2D._cameras: private, unreachable.
     owner.mountEvent,
     owner.unmountEvent,

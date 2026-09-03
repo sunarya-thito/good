@@ -56,6 +56,13 @@ class InitialPointer<T> extends DataPointer<T> {}
 class DataArrayPointer<T> implements ScannableField {}
 class Query implements ScannableField {
   static Query all(Type a) => throw UnimplementedError();
+  static QueryBuilder where() => throw UnimplementedError();
+}
+
+abstract class QueryBuilder {
+  QueryBuilder withAll(Type a);
+  QueryBuilder withOptional(Type a);
+  Query build();
 }
 
 class LoadBefore implements ScannableAnnotation {
@@ -546,6 +553,84 @@ class Player extends EntityStruct {
       expect(scan.declarers.single.declarations.single.annotations, <String>[
         'LoadBefore(Player)',
       ]);
+    });
+
+    // The three states a field holding a declaration is allowed to end in.
+    // Nothing else is: a field that lands in none of them is missing from the
+    // collector, from the row it would have sat in, and from every list a
+    // reader could check, which is the one outcome this design exists to stop.
+    test('a builder chain is followed to what it builds', () {
+      // `Query.where().withAll(...).build()` is what `Query.where`'s own doc
+      // teaches, and nothing about the first call says the field holds a
+      // Query. A walk reading only the outermost call asks about `build` on a
+      // receiver it never named; one reading a flattened dotted string looks
+      // up a class called `Query.where().withAll(Player)`.
+      final scan = _declarations('''
+class Movement extends GameSystem {
+  final roots = Query.where().withAll(Player).withOptional(Player).build();
+}
+
+class Player extends EntityStruct {}
+''');
+
+      expect(_refused(scan), isEmpty);
+      expect(scan.unresolved, isEmpty);
+      final declaration = scan.declarers.single.declarations.single;
+      expect(declaration.name, 'roots');
+      expect(declaration.valueType, 'Query');
+    });
+
+    test('a private builder chain is listed, not dropped', () {
+      // The six `Query.where()` fields in the engine. They were neither
+      // collected nor listed while the walk stopped at the first call, so the
+      // count of what a row is missing was six short and read as exact.
+      final scan = _declarations('''
+class Movement extends GameSystem {
+  final _roots = Query.where().withAll(Player).build();
+}
+
+class Player extends EntityStruct {}
+''');
+
+      expect(scan.uncollectable.keys, <String>['Movement._roots']);
+    });
+
+    test('a chain into a class that was read and has no such call is said', () {
+      final scan = _declarations('''
+class Movement extends GameSystem {
+  final roots = Query.where().withEverything(Player).build();
+}
+
+class Player extends EntityStruct {}
+''');
+
+      expect(
+        <String>[
+          for (final refusal in scan.unresolved)
+            '${refusal.owner}.${refusal.field}',
+        ],
+        <String>['Movement.roots'],
+      );
+      expect(scan.unresolved.single.reason, contains('withEverything'));
+      expect(scan.declarers, isEmpty);
+    });
+
+    test('a call on nothing this walk read stays quiet', () {
+      // The other side of the same rule, and the reason the one above is not
+      // simply "report every field whose type is unknown". Most fields on a
+      // scanned class hold ordinary values built by code from outside the read
+      // set, and a pass that named each of them would be read as noise and
+      // then ignored - which is how a real one gets missed.
+      final scan = _declarations('''
+class Movement extends GameSystem {
+  final clock = Stopwatch();
+  final label = helper().trim();
+}
+''');
+
+      expect(scan.unresolved, isEmpty);
+      expect(scan.refusals, isEmpty);
+      expect(scan.declarers, isEmpty);
     });
   });
 

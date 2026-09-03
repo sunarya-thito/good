@@ -122,10 +122,35 @@ class ScannedExport {
   final Set<String> hidden;
 }
 
+/// One call in a field initialiser, as it is written.
+///
+/// A chain is a list of these, head first: `Query.where().withAll(A).build()`
+/// is `Query.where`, then `withAll`, then `build`. The head carries whatever
+/// was written before the first pair of brackets - `Field.float64`, `Query.of`
+/// - and every link after it carries a bare member name, because its receiver
+/// is whatever the previous call answered.
+@immutable
+class ScannedCall {
+  const ScannedCall({
+    required this.name,
+    required this.typeArguments,
+    required this.arguments,
+  });
+
+  /// The callee - `Field.float64` at the head, `withAll` in a link.
+  final String name;
+
+  /// The call's explicit type arguments, if it was given any.
+  final List<String> typeArguments;
+
+  /// The source of each positional argument, in order.
+  final List<String> arguments;
+}
+
 /// One field or top-level variable, as it is written.
 ///
 /// Everything here is syntax. [typeSource] is the annotation if there is one
-/// and null if there is not; [factory] is the dotted name of the call its
+/// and null if there is not; [initializer] is the chain of calls its
 /// initialiser is, if it is a call at all. Whether either of them makes this a
 /// column is [columnValueType]'s question and not this class's - a field is
 /// recorded whatever it holds, because several passes ask about different
@@ -135,9 +160,7 @@ class ScannedField {
   const ScannedField({
     required this.name,
     required this.typeSource,
-    required this.factory,
-    required this.factoryTypeArguments,
-    required this.factoryArguments,
+    required this.initializer,
     required this.annotations,
     required this.isStatic,
     required this.isLate,
@@ -149,15 +172,16 @@ class ScannedField {
   /// The written type annotation - `DataPointer<CameraView?>` - or null.
   final String? typeSource;
 
-  /// The dotted name of the initialiser's callee - `Field.float64` - or null
-  /// when the initialiser is absent or is not a plain call.
-  final String? factory;
-
-  /// The call's explicit type arguments, if it was given any.
-  final List<String> factoryTypeArguments;
-
-  /// The source of each positional argument, in order.
-  final List<String> factoryArguments;
+  /// The initialiser's calls, head first, or empty when the initialiser is
+  /// absent or is not a call at all.
+  ///
+  /// A chain and not a single call, because a declaration is free to be
+  /// written as one: `Query.where().withAll(...).build()` is a `Query` and
+  /// nothing about the first call says so. A pass reading only the outermost
+  /// call sees `build` on a receiver it cannot name, and one reading only a
+  /// flattened dotted string sees an owner called `Query.where().withAll(...)`
+  /// - both of which answer "not a declaration" about a declaration.
+  final List<ScannedCall> initializer;
 
   /// The annotations written on it, in source order, each as it was written -
   /// `system`, `LoadBefore(PhysicsSystem)`.
@@ -661,6 +685,42 @@ ScannedType? _readType(String path, CompilationUnitMember declaration) {
 List<ClassMember> _members(ClassBody body) =>
     body is BlockClassBody ? body.members : const <ClassMember>[];
 
+/// The calls [expression] is, head first, or none when it is not a call.
+///
+/// Written as a walk down the targets and reversed, because the AST nests the
+/// other way round: `a().b().c()` is a `c` whose target is a `b` whose target
+/// is an `a`. Only [MethodInvocation] links are followed - a cascade, a
+/// property access, an operator - because a link this cannot name is a chain
+/// this cannot resolve, and half a chain answers about the wrong type.
+List<ScannedCall> _readCallChain(Expression? expression) {
+  final calls = <ScannedCall>[];
+  var current = expression;
+  while (current is MethodInvocation) {
+    final target = current.target;
+    calls.add(
+      ScannedCall(
+        // The head keeps whatever was written before it - `Field.float64`,
+        // `Barrel` - and a link keeps only its own name, because its receiver
+        // is the call before it rather than anything written.
+        name: target is MethodInvocation || target == null
+            ? current.methodName.name
+            : '${target.toSource()}.${current.methodName.name}',
+        typeArguments: <String>[
+          for (final argument
+              in current.typeArguments?.arguments ?? const <TypeAnnotation>[])
+            argument.toSource(),
+        ],
+        arguments: <String>[
+          for (final argument in current.argumentList.arguments)
+            if (argument is! NamedExpression) argument.toSource(),
+        ],
+      ),
+    );
+    current = target;
+  }
+  return calls.reversed.toList();
+}
+
 ScannedField _readVariable(
   VariableDeclaration variable, {
   required String? typeSource,
@@ -669,29 +729,10 @@ ScannedField _readVariable(
   required bool isLate,
 }) {
   final initializer = variable.initializer;
-  String? factory;
-  final typeArguments = <String>[];
-  final arguments = <String>[];
-  if (initializer is MethodInvocation) {
-    final target = initializer.target;
-    factory = target == null
-        ? initializer.methodName.name
-        : '${target.toSource()}.${initializer.methodName.name}';
-    for (final argument
-        in initializer.typeArguments?.arguments ?? const <TypeAnnotation>[]) {
-      typeArguments.add(argument.toSource());
-    }
-    for (final argument in initializer.argumentList.arguments) {
-      if (argument is NamedExpression) continue;
-      arguments.add(argument.toSource());
-    }
-  }
   return ScannedField(
     name: variable.name.lexeme,
     typeSource: typeSource,
-    factory: factory,
-    factoryTypeArguments: typeArguments,
-    factoryArguments: arguments,
+    initializer: _readCallChain(initializer),
     annotations: annotations,
     isStatic: isStatic,
     isLate: isLate,
@@ -931,13 +972,16 @@ ColumnResolution? columnValueType(
     return _fromPointer(parsed);
   }
 
-  final factory = field.factory;
-  if (factory == null) return null;
-  final dot = factory.lastIndexOf('.');
+  // One call and no chain. A column is declared by a `Field.*` static and
+  // nothing else, so a builder chain is somebody else's declaration and this
+  // has nothing to say about it.
+  if (field.initializer.length != 1) return null;
+  final call = field.initializer.single;
+  final dot = call.name.lastIndexOf('.');
   if (dot <= 0) return null;
-  final owner = typesByName[factory.substring(0, dot)];
+  final owner = typesByName[call.name.substring(0, dot)];
   if (owner == null) return null;
-  final method = owner.methods[factory.substring(dot + 1)];
+  final method = owner.methods[call.name.substring(dot + 1)];
   if (method == null || !method.isStatic) return null;
   final returnType = method.returnTypeSource;
   if (returnType == null) return null;
@@ -952,7 +996,7 @@ ColumnResolution? columnValueType(
       : value;
   if (!method.typeParameters.contains(variable)) return resolved;
 
-  final inferred = _inferTypeArgument(field, method, variable);
+  final inferred = _inferTypeArgument(call, method, variable);
   if (inferred == null) {
     return ColumnResolution.problem(
       'its value type is the `$variable` of ${owner.name}.${method.name}, and '
@@ -984,23 +1028,23 @@ ColumnResolution? _fromPointer(TypeSource parsed) {
 /// generates a property that reads the column as something it is not, and that
 /// compiles.
 String? _inferTypeArgument(
-  ScannedField field,
+  ScannedCall call,
   ScannedMethod method,
   String variable,
 ) {
   final index = method.typeParameters.indexOf(variable);
-  if (field.factoryTypeArguments.length == method.typeParameters.length) {
-    return field.factoryTypeArguments[index];
+  if (call.typeArguments.length == method.typeParameters.length) {
+    return call.typeArguments[index];
   }
   for (var i = 0; i < method.parameterNames.length; i++) {
-    if (i >= field.factoryArguments.length) break;
+    if (i >= call.arguments.length) break;
     final declared = method.parameters[method.parameterNames[i]];
     if (declared == null) continue;
     final parsed = TypeSource.parse(declared);
     if (parsed == null) continue;
     if (parsed.name != 'List' || parsed.arguments.length != 1) continue;
     if (parsed.arguments.single != variable) continue;
-    final argument = field.factoryArguments[i];
+    final argument = call.arguments[i];
     if (!argument.endsWith('.values')) continue;
     final head = argument.substring(0, argument.length - '.values'.length);
     if (!_namePattern.hasMatch(head)) continue;
@@ -1129,20 +1173,57 @@ const String scannableFieldRoot = 'ScannableField';
 /// The marker an annotation carries to be written into generated output.
 const String scannableAnnotationRoot = 'ScannableAnnotation';
 
+/// What a field's initialiser turned out to hold, or why the walk stopped.
+///
+/// Null - the return of [resolveValueType] rather than a state of this class -
+/// is the third answer and the only one that is allowed to be quiet: nothing
+/// the walk read names the type, so it has nothing to say about the field.
+/// `final clock = Stopwatch();` is that, and so is a helper in a package this
+/// run never opened.
+///
+/// [problem] is the answer that is **not** allowed to be quiet. The walk read
+/// the class the call is made on and could not follow the call, so it knows
+/// enough to know it does not know - and a field it half-read is exactly the
+/// one that disappears from every list without a line anywhere.
+@immutable
+class ValueTypeResolution {
+  const ValueTypeResolution.type(String this.type) : problem = null;
+  const ValueTypeResolution.problem(String this.problem) : type = null;
+
+  /// The type of the value the field holds - `InitialPointer<double>`.
+  final String? type;
+
+  /// Why the walk could not carry the initialiser to a type, or null.
+  final String? problem;
+}
+
 /// The type of the value [field] holds, as far as the source says.
 ///
-/// The written annotation when there is one, and otherwise the declared
-/// return type of the static factory the initialiser calls - the same two
-/// shapes [columnValueType] reads, kept apart from it because they answer
-/// different questions. [columnValueType] wants what one entity's *value* is
-/// (`double`, `CameraView?`), which is what a generated property returns.
-/// This wants what the *field* holds (`InitialPointer<double>`,
-/// `DataPointer<CameraView?>`), which is what decides whether the field is a
-/// declaration at all and what a collector would hand back.
+/// The written annotation when there is one, and otherwise what the
+/// initialiser's calls answer, followed one link at a time.
 ///
-/// Null when neither is written. `final x = someHelper();` on a helper this
-/// walk did not read is not a declaration as far as anything here can tell,
-/// and saying so rather than guessing is the point.
+/// Kept apart from [columnValueType] because the two answer different
+/// questions. [columnValueType] wants what one entity's *value* is (`double`,
+/// `CameraView?`), which is what a generated property returns. This wants what
+/// the *field* holds (`InitialPointer<double>`, `Query`), which is what
+/// decides whether the field is a declaration at all and what a collector
+/// would hand back.
+///
+/// # Why a chain and not a call
+///
+/// A declaration is free to be written as a builder:
+///
+/// ```dart
+/// final roots = Query.where().withAll(WorldTransform2D).build();
+/// ```
+///
+/// which is the shape `Query.where`'s own doc teaches. Reading only the
+/// outermost call finds `build` on a receiver nothing named; reading only a
+/// flattened dotted string finds an owner called `Query.where().withAll(...)`.
+/// Both answer "not a declaration" about a declaration, and a field that is
+/// not a declaration is neither collected nor listed - which is the silence
+/// this design exists to prevent. So the head is resolved, and every link
+/// after it is looked up on what the link before it returned.
 ///
 /// # What the type arguments say, and where they do not
 ///
@@ -1162,16 +1243,90 @@ const String scannableAnnotationRoot = 'ScannableAnnotation';
 String? declaredValueType(
   ScannedField field,
   Map<String, ScannedType> typesByName,
+) => resolveValueType(field, typesByName)?.type;
+
+/// [declaredValueType], with the reason kept when there is one.
+///
+/// Null means the walk read nothing that names the type. Every other answer
+/// is either a type or a problem somebody has to be told about; see
+/// [ValueTypeResolution].
+ValueTypeResolution? resolveValueType(
+  ScannedField field,
+  Map<String, ScannedType> typesByName,
 ) {
   final annotation = field.typeSource;
-  if (annotation != null) return annotation;
-  final factory = field.factory;
-  if (factory == null) return null;
-  final dot = factory.lastIndexOf('.');
-  if (dot <= 0) return null;
-  final owner = typesByName[factory.substring(0, dot)];
+  if (annotation != null) return ValueTypeResolution.type(annotation);
+  final chain = field.initializer;
+  if (chain.isEmpty) return null;
+
+  var current = _headValueType(chain.first, typesByName);
+  if (current == null) return null;
+
+  for (final call in chain.skip(1)) {
+    final parsed = TypeSource.parse(current!);
+    if (parsed == null) {
+      return ValueTypeResolution.problem(
+        'the call before `.${call.name}(...)` answers `$current`, which this '
+        'walk cannot read as a type',
+      );
+    }
+    final receiver = typesByName[parsed.name];
+    // Not read at all, so nothing here has an opinion - the same answer a
+    // helper from an unresolved package gets, and for the same reason.
+    if (receiver == null) return null;
+    final method = _methodOn(receiver, call.name, typesByName);
+    if (method == null || method.isStatic) {
+      return ValueTypeResolution.problem(
+        '`${parsed.name}` was read and declares no instance method '
+        '`${call.name}`, so what `.${call.name}(...)` hands back cannot be '
+        'named. A declaration whose type cannot be named is neither collected '
+        'nor listed as uncollectable, which is why this is said out loud',
+      );
+    }
+    final returnType = method.returnTypeSource;
+    if (returnType == null) {
+      return ValueTypeResolution.problem(
+        '`${parsed.name}.${call.name}` has no written return type, so the '
+        'chain stops there and what the field holds is unnamed. Write the '
+        'return type',
+      );
+    }
+    if (method.typeParameters.contains(returnType)) {
+      return ValueTypeResolution.problem(
+        '`${parsed.name}.${call.name}` returns its own `$returnType`, and '
+        'nothing at the call site says what it was. Write the type argument, '
+        'or annotate the field',
+      );
+    }
+    current = returnType;
+  }
+  return ValueTypeResolution.type(current!);
+}
+
+/// The type the first call in a chain answers, or null when nothing read
+/// names it.
+///
+/// Two shapes, because two are written. `Field.float64(220)` is a static on a
+/// class the walk read, and its declared return type is the answer. `Barrel()`
+/// is a constructor, and the class is the answer - there is no return type to
+/// read, and a parse cannot tell a constructor from a function call except by
+/// finding the name in the classes it read.
+String? _headValueType(ScannedCall call, Map<String, ScannedType> typesByName) {
+  final dot = call.name.lastIndexOf('.');
+  if (dot < 0) {
+    final type = typesByName[call.name];
+    if (type == null) return null;
+    return call.typeArguments.isEmpty
+        ? type.name
+        : '${type.name}<${call.typeArguments.join(', ')}>';
+  }
+  if (dot == 0) return null;
+  final owner = typesByName[call.name.substring(0, dot)];
   if (owner == null) return null;
-  final method = owner.methods[factory.substring(dot + 1)];
+  // A named constructor lands here too - `Entity.pack(...)` - and is left
+  // alone rather than guessed at: the walk records methods and not
+  // constructors, so it cannot tell one from a static it never read.
+  final method = owner.methods[call.name.substring(dot + 1)];
   if (method == null || !method.isStatic) return null;
   final returnType = method.returnTypeSource;
   if (returnType == null) return null;
@@ -1188,13 +1343,38 @@ String? declaredValueType(
       arguments.add(argument);
       continue;
     }
-    final inferred = _inferTypeArgument(field, method, head);
+    final inferred = _inferTypeArgument(call, method, head);
     arguments.add(
       inferred == null ? argument : '$inferred${nullable ? '?' : ''}',
     );
   }
   return '${parsed.name}<${arguments.join(', ')}>'
       '${parsed.isNullable ? '?' : ''}';
+}
+
+/// [name] as [type] or anything above it declares it, or null.
+///
+/// Through the supertypes because a builder's methods are declared where the
+/// builder's interface is - `QueryBuilder.build`, not on whatever implements
+/// it - and a lookup that read only the receiver's own body would call an
+/// inherited call unresolvable and refuse a chain that is fine.
+ScannedMethod? _methodOn(
+  ScannedType type,
+  String name,
+  Map<String, ScannedType> typesByName, {
+  Set<String>? seen,
+}) {
+  final visited = seen ?? <String>{};
+  if (!visited.add(type.name)) return null;
+  final own = type.methods[name];
+  if (own != null) return own;
+  for (final supertype in type.supertypes) {
+    final above = typesByName[supertype];
+    if (above == null) continue;
+    final found = _methodOn(above, name, typesByName, seen: visited);
+    if (found != null) return found;
+  }
+  return null;
 }
 
 /// Whether [field] holds a declaration - a value marked [scannableFieldRoot].
@@ -1314,6 +1494,7 @@ class DeclarationScan {
   const DeclarationScan({
     required this.declarers,
     required this.refusals,
+    required this.unresolved,
     required this.uncollectable,
   });
 
@@ -1322,6 +1503,17 @@ class DeclarationScan {
 
   /// What refuses a run - see [declarationRefusalMessage].
   final List<DeclarationRefusal> refusals;
+
+  /// Fields whose initialiser this walk could see into and could not finish -
+  /// see [unresolvedInitializerMessage].
+  ///
+  /// A separate list from [refusals] because it is a separate statement about
+  /// a separate thing. A refusal says the source is written a way this engine
+  /// does not accept and names the edit. This says the *walk* stopped: it read
+  /// the class the call is made on, found no member to follow, and so cannot
+  /// say what the field holds. Whether that field was a declaration is exactly
+  /// what is unknown, so it is reported instead of being answered either way.
+  final List<DeclarationRefusal> unresolved;
 
   /// Declarations that are accepted and that a collector cannot read, keyed
   /// `Class.field`, to why.
@@ -1332,14 +1524,21 @@ class DeclarationScan {
   /// this engine keeps being bitten by, and exactly why it is listed rather
   /// than swallowed.
   ///
-  /// Twenty-two in this repository, counted rather than remembered: five
-  /// `Query` fields on three systems, which nothing collects at run time and
-  /// which cost nothing by being missing, and seventeen `WorldTransform2D`
-  /// and `WorldTransform3D` cache columns, which are missing from the row of
-  /// every struct that mixes either in. It is not a refusal: whether those
-  /// seventeen become public - and every one of them would then generate a
-  /// public accessor property - is an open call, and a check that decided it
-  /// by refusing would be making it.
+  /// Twenty-eight in this repository: eleven `Query` fields on five systems,
+  /// which nothing collects at run time and which cost nothing by being
+  /// missing, and seventeen `WorldTransform2D` and `WorldTransform3D` cache
+  /// columns - six and eleven - which are missing from the row of every struct
+  /// that mixes either in. It is not a refusal: whether those seventeen become
+  /// public, and every one of them would then generate a public accessor
+  /// property, is an open call, and a check that decided it by refusing would
+  /// be making it.
+  ///
+  /// A count taken while [resolveValueType] read only a single call put it at
+  /// twenty-two, which is the seventeen plus the five queries written
+  /// `Query.all(...)`. The other six are written `Query.where()...build()`,
+  /// and a walk that stopped at the first call could not name them - so they
+  /// were not listed here, not commented into the generated file, and not
+  /// anywhere else either.
   final Map<String, String> uncollectable;
 
   int get declarationCount {
@@ -1389,6 +1588,7 @@ DeclarationScan scanDeclarations(ScanSources sources) {
   final typesByName = sources.typesByName;
   final declarers = <ScannedDeclarer>[];
   final refusals = <DeclarationRefusal>[];
+  final unresolved = <DeclarationRefusal>[];
   final uncollectable = <String, String>{};
 
   final paths = sources.units.keys.toList()..sort();
@@ -1413,8 +1613,24 @@ DeclarationScan scanDeclarations(ScanSources sources) {
       if (!isSubtypeOf(type.name, scannableRoot, typesByName)) continue;
       final declarations = <ScannedDeclaration>[];
       for (final field in type.fields) {
+        // Before the declaration test, because the declaration test is what
+        // cannot be answered. A field whose initialiser stopped half way is
+        // reported whatever it turns out to hold: going quiet here is how a
+        // declaration disappears from every list at once.
+        final resolution = resolveValueType(field, typesByName);
+        if (resolution != null && resolution.problem != null) {
+          unresolved.add(
+            DeclarationRefusal(
+              owner: type.name,
+              field: field.name,
+              path: path,
+              reason: resolution.problem!,
+            ),
+          );
+          continue;
+        }
         if (!isDeclarationField(field, typesByName)) continue;
-        final valueType = declaredValueType(field, typesByName)!;
+        final valueType = resolution!.type!;
         if (field.isStatic) {
           refusals.add(
             DeclarationRefusal(
@@ -1499,6 +1715,7 @@ DeclarationScan scanDeclarations(ScanSources sources) {
   return DeclarationScan(
     declarers: declarers,
     refusals: refusals,
+    unresolved: unresolved,
     uncollectable: uncollectable,
   );
 }
@@ -1602,6 +1819,34 @@ String declarationRefusalMessage(
       'two: one half names the field, and the other runs at a moment nothing '
       'at the declaration mentions, on whichever owner happens to be under '
       'construction when it does.',
+    );
+  return lines.toString();
+}
+
+/// What a run stopping over an initialiser it could not follow says.
+///
+/// [display] names files the way [declarationRefusalMessage]'s does.
+String unresolvedInitializerMessage(
+  DeclarationScan scan,
+  String Function(String path) display,
+) {
+  final lines = StringBuffer()
+    ..writeln('An initialiser was read part of the way and then stopped:')
+    ..writeln();
+  for (final refusal in scan.unresolved) {
+    lines.writeln(
+      '  ${display(refusal.path)}: ${refusal.owner}.${refusal.field} - '
+      '${refusal.reason}',
+    );
+  }
+  lines
+    ..writeln()
+    ..writeln(
+      'Each of these is a field whose type this walk cannot name, on a class '
+      'it does scan. It cannot say whether the field is a declaration, so it '
+      'says that instead of picking an answer: a field it guessed was not one '
+      'would be left out of the collector, out of the row, and out of the '
+      'uncollectable list, with nothing anywhere to read.',
     );
   return lines.toString();
 }

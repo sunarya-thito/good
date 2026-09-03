@@ -459,6 +459,16 @@ void _declarations(
     for (final refusal in scan.refusals)
       if (own.any((lib) => p.isWithin(lib, refusal.path))) refusal,
   ];
+  final unresolved = <DeclarationRefusal>[
+    for (final refusal in scan.unresolved)
+      if (own.any((lib) => p.isWithin(lib, refusal.path))) refusal,
+  ];
+  final judged = DeclarationScan(
+    declarers: scan.declarers,
+    refusals: refusals,
+    unresolved: unresolved,
+    uncollectable: scan.uncollectable,
+  );
 
   if (verbose) {
     final keys = scan.uncollectable.keys.toList()..sort();
@@ -467,23 +477,30 @@ void _declarations(
     }
   }
 
-  if (refusals.isEmpty) {
+  if (refusals.isEmpty && unresolved.isEmpty) {
     stdout.writeln(
       '${scan.declarationCount} declaration(s) on ${scan.declarers.length} '
       'class(es) are each held by the field that declares them.',
     );
     return;
   }
-  stderr.writeln(
-    declarationRefusalMessage(
-      DeclarationScan(
-        declarers: scan.declarers,
-        refusals: refusals,
-        uncollectable: scan.uncollectable,
+  // Both, when there are both. They are fixed by different edits - one
+  // rewrites a declaration, the other names a type the walk could not - and a
+  // run that showed the first and hid the second would be asked to run again
+  // to find out about it.
+  if (refusals.isNotEmpty) {
+    stderr.writeln(
+      declarationRefusalMessage(judged, (path) => _displayPath(packages, path)),
+    );
+  }
+  if (unresolved.isNotEmpty) {
+    stderr.writeln(
+      unresolvedInitializerMessage(
+        judged,
+        (path) => _displayPath(packages, path),
       ),
-      (path) => _displayPath(packages, path),
-    ),
-  );
+    );
+  }
   exitCode = 65;
 }
 

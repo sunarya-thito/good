@@ -29,6 +29,7 @@ import 'package:goo2d_physics_box2d/src/physics_system.dart';
 List<ScannableField> _box2DPhysicsSystem(Object object) {
   final owner = object as Box2DPhysicsSystem;
   return <ScannableField>[
+    // Box2DPhysicsSystem._bodies: private, unreachable.
     // Box2DPhysicsSystem._effectorZones: private, unreachable.
     owner.mountEvent,
     owner.unmountEvent,

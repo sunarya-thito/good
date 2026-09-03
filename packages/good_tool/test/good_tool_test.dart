@@ -730,6 +730,19 @@ void main() {
         isEmpty,
         reason: declarationRefusalMessage(scan, (path) => path),
       );
+
+      // Nothing in the tree is half-read. This is the outcome the counts
+      // above cannot show: a field whose initialiser the walk stops in the
+      // middle of contributes no declaration and no refusal, so
+      // `declarationCount` goes down by one and nothing says why.
+      expect(
+        <String>[
+          for (final refusal in scan.unresolved)
+            '${refusal.owner}.${refusal.field}',
+        ],
+        isEmpty,
+        reason: unresolvedInitializerMessage(scan, (path) => path),
+      );
     });
 
     // The doc comments this repository publishes, asked the same way and for
