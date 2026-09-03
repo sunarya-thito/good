@@ -5,11 +5,12 @@ import 'package:good_tool/src/scan.dart';
 
 /// The files [scan] would have this repository carry.
 ///
-/// One per package that can instantiate a class holding a declaration, and
-/// none for a package that cannot. `good` is the interesting case of the
-/// second kind: its six declarers are four abstract roots and two mixins, so
-/// nothing is ever an instance of exactly one of them and there is nothing
-/// for a table to be keyed by.
+/// One per package that can instantiate a scanned class, and none for a
+/// package that cannot - a package whose scanned types are all abstract roots
+/// and mixins has nothing that is ever a `runtimeType`, so there is nothing
+/// for a table to be keyed by. What decides an entry is that the class can be
+/// instantiated, not that it declares anything: see [scanDeclarationCollectors]
+/// for why an empty entry has to be written.
 ///
 /// [known] is every package the scan read, where [packages] is the subset
 /// being written into - the same split [componentBitsFiles] makes, and for the
@@ -125,7 +126,25 @@ String emitDeclarations(
     buffer.writeln(
       'List<$scannableFieldType> ${entry.functionName}(Object object) {',
     );
-    buffer.writeln('  final owner = object as ${entry.type};');
+    // `final owner =` only where something reads it. A class that declares
+    // nothing, and one whose declarations are all private, both leave every
+    // line below a comment - and a bound name nothing reads does not compile
+    // clean. The cast stays either way: it is what makes handing this
+    // function the wrong object an error rather than an empty answer.
+    buffer.writeln(
+      entry.fields.any((field) => !field.isPrivate)
+          ? '  final owner = object as ${entry.type};'
+          : '  object as ${entry.type};',
+    );
+    if (entry.fields.isEmpty) {
+      // Nothing to lay out and nothing to comment: a const empty list rather
+      // than an empty literal spread over two lines.
+      buffer
+        ..writeln('  return const <$scannableFieldType>[];')
+        ..writeln('}')
+        ..writeln();
+      continue;
+    }
     buffer.writeln('  return <$scannableFieldType>[');
     for (final field in entry.fields) {
       // A private one keeps its place, commented out. Written into the file

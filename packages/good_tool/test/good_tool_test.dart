@@ -803,6 +803,52 @@ void main() {
     // so it is written out rather than derived. A regeneration that moved
     // anything fails here, in the commit that moved it, instead of arriving
     // as two peers disagreeing about what a signature meant.
+    // The other half of "a miss means one thing". The refusals above say
+    // every declaration sits on the field that declares it; this says every
+    // class a run can hand to `collectDeclarations` has a line to find,
+    // including the ones with nothing to say.
+    test('has a collector for every class it can instantiate', () async {
+      final root = _actualRepoRoot();
+      final packages = repoPackages(root);
+      final sources = readPackageSources(packages);
+      final scan = scanDeclarationCollectors(
+        packages: packages,
+        sources: sources,
+      );
+      final typesByName = sources.typesByName;
+
+      final emitted = <String>{for (final entry in scan.entries) entry.type};
+      final missing = <String>[];
+      for (final unit in sources.units.values) {
+        for (final type in unit.types) {
+          if (type.isAbstract) continue;
+          if (type.name.startsWith('_')) continue;
+          if (!isSubtypeOf(type.name, scannableRoot, typesByName)) continue;
+          if (emitted.contains(type.name)) continue;
+          if (scan.skipped.containsKey(type.name)) continue;
+          missing.add(type.name);
+        }
+      }
+      expect(
+        missing,
+        isEmpty,
+        reason:
+            'each of these can be a runtimeType handed to collectDeclarations, '
+            'and the lookup throws on a miss - so a class left out of the '
+            'table stops a boot instead of contributing nothing',
+      );
+
+      // Named, because this is the class the rule was derived from. A
+      // parameterless SignalCommand declares nothing at all, so a generator
+      // that emitted only the classes with something to say left it out, and
+      // `Game._bootMain` threw on it.
+      final step = scan.entries.singleWhere(
+        (entry) => entry.type == 'StepOnceCommand',
+      );
+      expect(step.fields, isEmpty);
+      expect(step.package, 'good');
+    });
+
     test('has the component-bit table the generator would write', () async {
       final root = _actualRepoRoot();
       final packages = repoPackages(root);

@@ -170,12 +170,24 @@ abstract interface class ScannableAnnotation {}
 ///
 /// # What a missing collector means
 ///
-/// It throws, and it has to. Every `EntityStruct` inherits two dispatchers
-/// and every `SceneStruct` two more, so no scanned class declares nothing; a
-/// lookup that missed and answered "none" would give an archetype an empty
-/// row and a scene an event nobody is ever told about, and say nothing about
-/// either. That silence is the failure this engine keeps paying for, so the
-/// miss is loud instead.
+/// It throws, and it has to. A lookup that answered "none" on a miss would
+/// give an archetype an empty row and a scene an event nobody is ever told
+/// about, and say nothing about either - the silence this engine keeps
+/// paying for.
+///
+/// What makes that throw safe is the generator, not the class: `good_tool`
+/// writes an entry for **every** instantiable scanned class, holding an empty
+/// list where the class declares nothing. So a miss has exactly one meaning -
+/// this class was never scanned - and "declares nothing" and "never generated
+/// for" are two different answers rather than one.
+///
+/// An earlier version of this paragraph argued the other way, that no scanned
+/// class declares nothing because every `EntityStruct` inherits two
+/// dispatchers and every `SceneStruct` two more. That is true of structs and
+/// false of commands: `GameCommandBase` is scanned too, and
+/// `final class StepOnceCommand extends SignalCommand {}` declares nothing at
+/// all. It reached a table with no line for it, and `_bootMain` threw on a
+/// class that had been scanned and had nothing to say.
 List<ScannableField> collectDeclarations(Object object) {
   final collect = DeclarationRegistry.collectorFor(object.runtimeType);
   if (collect == null) {

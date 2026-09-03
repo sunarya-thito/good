@@ -56,6 +56,11 @@ List<ScannableField> _setVisibleCommand(Object object) {
   ];
 }
 
+List<ScannableField> _stepOnceCommand(Object object) {
+  object as StepOnceCommand;
+  return const <ScannableField>[];
+}
+
 /// Every class `package:good` can instantiate that holds a
 /// declaration, and how to read one.
 ///
@@ -70,5 +75,6 @@ const GeneratedDeclarations goodDeclarations = GeneratedDeclarations(
     DeclarationCollector(SetPausedCommand, _setPausedCommand),
     DeclarationCollector(SetTimeScaleCommand, _setTimeScaleCommand),
     DeclarationCollector(SetVisibleCommand, _setVisibleCommand),
+    DeclarationCollector(StepOnceCommand, _stepOnceCommand),
   ],
 );

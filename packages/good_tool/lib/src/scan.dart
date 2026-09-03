@@ -651,8 +651,17 @@ class DeclarationCollectorScan {
   final Map<String, String> skipped;
 }
 
-/// Every class in [packages] that can be a `runtimeType` and has a
-/// declaration anywhere above it.
+/// Every class in [packages] that can be a `runtimeType`, whether or not it
+/// declares anything.
+///
+/// # Why a class that declares nothing is in it
+///
+/// Because `collectDeclarations` throws on a miss, and that throw is only
+/// worth anything if a miss means one thing. Leaving out the classes that
+/// declare nothing made it mean two - never scanned, or scanned and empty -
+/// and `final class StepOnceCommand extends SignalCommand {}` is the second,
+/// registered like every other command and absent from the table. So an
+/// entry is written for every one of them, holding an empty list.
 ///
 /// # Why abstract classes and mixins are not in it
 ///
@@ -660,9 +669,7 @@ class DeclarationCollectorScan {
 /// instance of exactly `Transform2D` or exactly `EntityStruct`. An entry for
 /// one would be a line in a committed file that nothing can reach. What
 /// carries a mixin's columns is the entry of each class that applies it,
-/// which holds them flattened in place - so `good` itself, whose declarers
-/// are four abstract roots and two mixins, writes no table at all, and every
-/// column they declare still reaches a row through the game's own.
+/// which holds them flattened in place.
 ///
 /// # The order everything comes out in
 ///
@@ -699,8 +706,15 @@ DeclarationCollectorScan scanDeclarationCollectors({
     for (final type in types) {
       if (type.isAbstract) continue;
       if (!isSubtypeOf(type.name, scannableRoot, typesByName)) continue;
+      // No `if (declarations.isEmpty) continue` here, and that omission is
+      // the whole of what makes the miss in `collectDeclarations` mean one
+      // thing. A class that declares nothing still gets an entry, holding an
+      // empty list. Without it, `final class StepOnceCommand extends
+      // SignalCommand {}` - which declares nothing and is registered like
+      // every other command - reached a table that had no line for it, and
+      // the throw meant for "this class was never scanned" fired on a class
+      // that was scanned and had nothing to say.
       final declarations = flattenedDeclarations(type, typesByName);
-      if (declarations.isEmpty) continue;
       if (type.name.startsWith('_')) {
         // The same wall a private field runs into, one level up: this file is
         // another library, so it cannot name the class either - not to cast
