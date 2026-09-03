@@ -772,13 +772,11 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
     _open.add(T);
     _children.add(children);
     _storages.add(storage);
-    DeclarationContext.pushData(ArchetypeDataDescriptor(storage));
     DeclarationContext.pushPrefabs(this);
     try {
       object = EventBinder.open(create);
     } finally {
       DeclarationContext.popPrefabs();
-      DeclarationContext.popData();
       _storages.removeLast();
       _children.removeLast();
       _open.removeLast();
@@ -797,26 +795,29 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
     }
     storage.bindPrefab(object);
     object.bindArchetype(_scene, storage);
-    // Barrier, not a descriptor: these passes are not constructors, so
-    // `Field.*` inside one has always been an error - and once registration
-    // nests, "no context" is no longer the same as "an empty stack". Without
-    // it a child's describeStruct body would declare onto its parent's row.
-    DeclarationContext.pushBarrier();
-    try {
-      object.describeType(ArchetypeComponentDescriptor(storage));
-      // Before describeStruct, not after: `has` returns an already-addressed
-      // instance, so describeStruct can hand one straight to `data.hasObject`
-      // as this archetype's default row value.
-      object.describeAssets(_assets);
-      object.describeStruct(ArchetypeDataDescriptor(storage));
-      // Timelines last, because keying a clip is pure declaration and depends
-      // on nothing above it. Unconditional and with no `is Animations` test:
-      // every `EntityStruct` has `Animations`, and its default declares
-      // nothing.
-      object.describeAnimation(_AnimationTypeDescriptor(_scene));
-    } finally {
-      DeclarationContext.popData();
-    }
+    final data = ArchetypeDataDescriptor(storage);
+    // The columns the constructor produced, in the order the class declares
+    // them. They are read off the constructed object rather than collected
+    // while it was being built: a `Field.*` static reaches nothing, so the
+    // only record of what a class declared is the fields it holds.
+    data.declare(collectDeclarations(object));
+    object.describeType(ArchetypeComponentDescriptor(storage));
+    // Before describeStruct, not after: `has` returns an already-addressed
+    // instance, so describeStruct can hand one straight to `data.hasObject`
+    // as this archetype's default row value.
+    object.describeAssets(_assets);
+    object.describeStruct(data);
+    // Timelines last, because keying a clip is pure declaration and depends
+    // on nothing above it. Unconditional and with no `is Animations` test:
+    // every `EntityStruct` has `Animations`, and its default declares
+    // nothing.
+    object.describeAnimation(_AnimationTypeDescriptor(_scene));
+    // One reservation pass, after everything that declares and before
+    // anything that reads a layout. Row order is unchanged - the field
+    // initialisers' columns, then the describe passes' - and what moves is
+    // *when* the bits are taken, which is what leaves an array length
+    // adjustable and a camera-view table resolvable up to this line.
+    data.realize();
     // Recorded for the event passes: `Game._bindEvents` gives each prefab its
     // own `describeEvents`, and `SceneStruct.collectListeners` walks this list
     // so an event declared above reaches every struct the scene can spawn.

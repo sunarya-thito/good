@@ -1,5 +1,5 @@
 import 'package:good/src/camera_view.dart';
-import 'package:good/src/declare.dart';
+import 'package:good/src/data_layout.dart';
 import 'package:good/src/scannable.dart';
 import 'package:good/src/struct.dart';
 
@@ -282,7 +282,7 @@ abstract class DataDescriptor {
   /// declaration rules forbid.
   ///
   /// Nothing about the table is a declaration input. It contributes no width
-  /// ([CameraViewTable.bitWidth] is 8, a constant on the class, not a
+  /// ([CameraViewTable.viewBitWidth] is 8, a constant on the class, not a
   /// property of the instance) and no initial value, and a *write* never
   /// consults it - [CameraView.pack] is its own index. Only a read does. So
   /// the table is the resolution environment and not part of what is being
@@ -339,11 +339,26 @@ abstract class DataDescriptor {
 /// it. The name is written once.
 ///
 /// Every method here is the matching [DataDescriptor] `has*`/`opt*` with the
-/// prefix dropped, returns exactly what that returns, and reaches the
-/// descriptor through [DeclarationContext] - so `speed[entity]` is the same
-/// read it was when the field was a `late final` assigned in
+/// prefix dropped and returns exactly what that returns, so `speed[entity]`
+/// is the same read it was when the field was a `late final` assigned in
 /// `describeStruct`. There is no wrapper object and nothing extra on the read
 /// path.
+///
+/// # Nothing is open around the call
+///
+/// A `Field.*` static reaches no archetype, no scene and no allocation
+/// cursor. It builds the column and hands it back; the row space is reserved
+/// afterwards, once the whole set of a class's declarations is known. Two
+/// things depend on that being the order: [optCameraView] names a table that
+/// belongs to the scene, which a field initialiser cannot reach, and
+/// [DataArrayPointer.length] can still move.
+///
+/// It also leaves the declaration nowhere to be misattributed to. These used
+/// to reach an ambient descriptor, so an initialiser that ran late - a `late`
+/// field, a `static`, a top-level variable - declared its column onto
+/// whichever owner happened to be under construction at that moment. There is
+/// no innermost entry to land on now: what a class declares is what its own
+/// fields hold.
 ///
 /// # Statics on a class, not top-level functions
 ///
@@ -395,92 +410,92 @@ abstract class DataDescriptor {
 abstract final class Field {
   /// See [DataDescriptor.hasBool].
   static InitialPointer<bool> boolean([bool initialValue = false]) =>
-      DeclarationContext.data.hasBool(initialValue);
+      declaredColumns.hasBool(initialValue);
 
   static InitialPointer<int> uint1([int initialValue = 0]) =>
-      DeclarationContext.data.hasUint1(initialValue);
+      declaredColumns.hasUint1(initialValue);
   static InitialPointer<int> int1([int initialValue = 0]) =>
-      DeclarationContext.data.hasInt1(initialValue);
+      declaredColumns.hasInt1(initialValue);
   static InitialPointer<int> uint2([int initialValue = 0]) =>
-      DeclarationContext.data.hasUint2(initialValue);
+      declaredColumns.hasUint2(initialValue);
   static InitialPointer<int> int2([int initialValue = 0]) =>
-      DeclarationContext.data.hasInt2(initialValue);
+      declaredColumns.hasInt2(initialValue);
   static InitialPointer<int> uint4([int initialValue = 0]) =>
-      DeclarationContext.data.hasUint4(initialValue);
+      declaredColumns.hasUint4(initialValue);
   static InitialPointer<int> int4([int initialValue = 0]) =>
-      DeclarationContext.data.hasInt4(initialValue);
+      declaredColumns.hasInt4(initialValue);
   static InitialPointer<int> uint8([int initialValue = 0]) =>
-      DeclarationContext.data.hasUint8(initialValue);
+      declaredColumns.hasUint8(initialValue);
   static InitialPointer<int> int8([int initialValue = 0]) =>
-      DeclarationContext.data.hasInt8(initialValue);
+      declaredColumns.hasInt8(initialValue);
   static InitialPointer<int> uint16([int initialValue = 0]) =>
-      DeclarationContext.data.hasUint16(initialValue);
+      declaredColumns.hasUint16(initialValue);
   static InitialPointer<int> int16([int initialValue = 0]) =>
-      DeclarationContext.data.hasInt16(initialValue);
+      declaredColumns.hasInt16(initialValue);
   static InitialPointer<int> uint32([int initialValue = 0]) =>
-      DeclarationContext.data.hasUint32(initialValue);
+      declaredColumns.hasUint32(initialValue);
   static InitialPointer<int> int32([int initialValue = 0]) =>
-      DeclarationContext.data.hasInt32(initialValue);
+      declaredColumns.hasInt32(initialValue);
   static InitialPointer<int> uint64([int initialValue = 0]) =>
-      DeclarationContext.data.hasUint64(initialValue);
+      declaredColumns.hasUint64(initialValue);
   static InitialPointer<int> int64([int initialValue = 0]) =>
-      DeclarationContext.data.hasInt64(initialValue);
+      declaredColumns.hasInt64(initialValue);
 
   /// See [DataDescriptor.hasEntity], including its warning that a stored
   /// handle outlives the entity it names.
   static InitialPointer<Entity> entity([Entity? initialValue]) =>
-      DeclarationContext.data.hasEntity(initialValue);
+      declaredColumns.hasEntity(initialValue);
 
   /// See [DataDescriptor.hasEnum]. Named `enumOf` because `enum` is a
   /// keyword.
   static InitialPointer<E> enumOf<E extends Enum>(
     List<E> values, [
     E? initialValue,
-  ]) => DeclarationContext.data.hasEnum<E>(values, initialValue);
+  ]) => declaredColumns.hasEnum<E>(values, initialValue);
 
   static InitialPointer<double> float32([double initialValue = 0.0]) =>
-      DeclarationContext.data.hasFloat32(initialValue);
+      declaredColumns.hasFloat32(initialValue);
   static InitialPointer<double> float64([double initialValue = 0.0]) =>
-      DeclarationContext.data.hasFloat64(initialValue);
+      declaredColumns.hasFloat64(initialValue);
 
   static InitialPointer<int?> optUint1([int? initialValue]) =>
-      DeclarationContext.data.optUint1(initialValue);
+      declaredColumns.optUint1(initialValue);
   static InitialPointer<int?> optInt1([int? initialValue]) =>
-      DeclarationContext.data.optInt1(initialValue);
+      declaredColumns.optInt1(initialValue);
   static InitialPointer<int?> optUint2([int? initialValue]) =>
-      DeclarationContext.data.optUint2(initialValue);
+      declaredColumns.optUint2(initialValue);
   static InitialPointer<int?> optInt2([int? initialValue]) =>
-      DeclarationContext.data.optInt2(initialValue);
+      declaredColumns.optInt2(initialValue);
   static InitialPointer<int?> optUint4([int? initialValue]) =>
-      DeclarationContext.data.optUint4(initialValue);
+      declaredColumns.optUint4(initialValue);
   static InitialPointer<int?> optInt4([int? initialValue]) =>
-      DeclarationContext.data.optInt4(initialValue);
+      declaredColumns.optInt4(initialValue);
   static InitialPointer<int?> optUint8([int? initialValue]) =>
-      DeclarationContext.data.optUint8(initialValue);
+      declaredColumns.optUint8(initialValue);
   static InitialPointer<int?> optInt8([int? initialValue]) =>
-      DeclarationContext.data.optInt8(initialValue);
+      declaredColumns.optInt8(initialValue);
   static InitialPointer<int?> optUint16([int? initialValue]) =>
-      DeclarationContext.data.optUint16(initialValue);
+      declaredColumns.optUint16(initialValue);
   static InitialPointer<int?> optInt16([int? initialValue]) =>
-      DeclarationContext.data.optInt16(initialValue);
+      declaredColumns.optInt16(initialValue);
   static InitialPointer<int?> optUint32([int? initialValue]) =>
-      DeclarationContext.data.optUint32(initialValue);
+      declaredColumns.optUint32(initialValue);
   static InitialPointer<int?> optInt32([int? initialValue]) =>
-      DeclarationContext.data.optInt32(initialValue);
+      declaredColumns.optInt32(initialValue);
   static InitialPointer<int?> optUint64([int? initialValue]) =>
-      DeclarationContext.data.optUint64(initialValue);
+      declaredColumns.optUint64(initialValue);
   static InitialPointer<int?> optInt64([int? initialValue]) =>
-      DeclarationContext.data.optInt64(initialValue);
+      declaredColumns.optInt64(initialValue);
 
   /// See [DataDescriptor.optEntity] - the spelling a link that may be absent
   /// wants.
   static InitialPointer<Entity?> optEntity([Entity? initialValue]) =>
-      DeclarationContext.data.optEntity(initialValue);
+      declaredColumns.optEntity(initialValue);
 
   static InitialPointer<double?> optFloat32([double? initialValue]) =>
-      DeclarationContext.data.optFloat32(initialValue);
+      declaredColumns.optFloat32(initialValue);
   static InitialPointer<double?> optFloat64([double? initialValue]) =>
-      DeclarationContext.data.optFloat64(initialValue);
+      declaredColumns.optFloat64(initialValue);
 
   /// See [DataDescriptor.hasArray] - a fixed-length run of [element], with
   /// the element named as an argument.
@@ -493,7 +508,7 @@ abstract final class Field {
     DataElement<T> element,
     int length, [
     T? initialValue,
-  ]) => DeclarationContext.data.hasArray<T>(element, length, initialValue);
+  ]) => declaredColumns.hasArray<T>(element, length, initialValue);
 
   /// See [DataDescriptor.hasArrayOf] - element `i` starts at
   /// `initialValues[i]`.
@@ -501,42 +516,42 @@ abstract final class Field {
     DataElement<T> element,
     int length,
     List<T> initialValues,
-  ) => DeclarationContext.data.hasArrayOf<T>(element, length, initialValues);
+  ) => declaredColumns.hasArrayOf<T>(element, length, initialValues);
 
   /// See [DataDescriptor.optArray].
   static DataArrayPointer<T?> optArray<T>(
     DataElement<T> element,
     int length, [
     T? initialValue,
-  ]) => DeclarationContext.data.optArray<T>(element, length, initialValue);
+  ]) => declaredColumns.optArray<T>(element, length, initialValue);
 
   /// See [DataDescriptor.hasPacked] - a value stored as the int its
   /// [IntRepresentation] packs it into.
   static PackedPointer<T> packed<T extends IntRepresentable>(
     IntRepresentation<T> repr,
     T initialValue,
-  ) => DeclarationContext.data.hasPacked<T>(repr, initialValue);
+  ) => declaredColumns.hasPacked<T>(repr, initialValue);
 
   /// See [DataDescriptor.optPacked].
   static DataPointer<T?> optPacked<T extends IntRepresentable>(
     IntRepresentation<T> repr, [
     T? initialValue,
-  ]) => DeclarationContext.data.optPacked<T>(repr, initialValue);
+  ]) => declaredColumns.optPacked<T>(repr, initialValue);
 
   /// See [DataDescriptor.optCameraView] - the one packed column whose
   /// representation the declaration does not name, because it belongs to the
   /// scene rather than to the field.
   static DataPointer<CameraView?> optCameraView([CameraView? initialValue]) =>
-      DeclarationContext.data.optCameraView(initialValue);
+      declaredColumns.optCameraView(initialValue);
 
   /// See [DataDescriptor.hasHeapObject], including why the value it stores
   /// means nothing on a second isolate.
   static DataPointer<T> heapObject<T>(T Function() initialValue) =>
-      DeclarationContext.data.hasHeapObject<T>(initialValue);
+      declaredColumns.hasHeapObject<T>(initialValue);
 
   /// See [DataDescriptor.optHeapObject].
   static DataPointer<T?> optHeapObject<T>() =>
-      DeclarationContext.data.optHeapObject<T>();
+      declaredColumns.optHeapObject<T>();
 
 }
 
@@ -742,18 +757,24 @@ class _DataBinding<T> implements DataBinding<T> {
 abstract class DataArrayPointer<T> implements ScannableField {
   /// Number of elements per entity.
   ///
-  /// Settable for the same span and for the same reason
-  /// [InitialPointer.initialValue] is: reading it never throws, and writing
-  /// it throws once the archetype is sealed, which happens as soon as
-  /// `describeStruct` has returned. Until then the row layout is still being
-  /// decided, so a component can declare a length its prefabs adjust:
+  /// Settable in the same window [InitialPointer.initialValue] is settable
+  /// in: reading it never throws, and writing it throws once the column has
+  /// been given its row space, which happens after the describe passes have
+  /// run and before the archetype is sealed. Until then nothing has been
+  /// reserved, so a component can declare a length its prefabs adjust:
   ///
   /// ```dart
   /// final textCodeUnits = Field.array(.uint16, 32);   // in the component
   /// textCodeUnits.length = 8;                         // in a prefab
   /// ```
   ///
-  /// That is what a length has instead of an override point. A `int get
+  /// A length sizes the column, so this is only implementable because a
+  /// declaration reserves nothing where it is written - see `Field`. While
+  /// `Field.array` took its elements from the row cursor on the spot, there
+  /// was nothing left to move: the slots were already spoken for and the next
+  /// column sat immediately behind them.
+  ///
+  /// That is also what a length has instead of an override point. A `int get
   /// textCapacity => 8` a component read back while declaring would be
   /// configuration that sizes a column, and a value that sizes a column is a
   /// declaration - it belongs on the declaration, where a reader finds it

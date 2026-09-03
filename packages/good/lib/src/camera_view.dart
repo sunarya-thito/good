@@ -177,10 +177,23 @@ final class CameraViewTable implements IntRepresentation<CameraView> {
   /// split-screen four-player game has four - so a `DataPointer<CameraView>`
   /// costs a row one byte instead of four. [declare] enforces the ceiling
   /// instead of letting the 257th view silently alias the first.
+  ///
+  /// A constant of the class and not a property of the instance, which is
+  /// what lets `optCameraView` reserve the column's bits from a declaration
+  /// that has no table yet - see [viewBitWidth].
   @override
-  int get bitWidth => 8;
+  int get bitWidth => viewBitWidth;
 
-  static const int _maxViews = 1 << 8;
+  /// [bitWidth] as a constant, reachable without a table.
+  ///
+  /// `optCameraView` is declared where no `CameraViewTable` exists: the table
+  /// belongs to the scene, and the column is realized against it later. The
+  /// width is the one thing about the column that has to be known while it is
+  /// being declared, because that is when the row space is reserved, so it
+  /// lives here rather than only on an instance.
+  static const int viewBitWidth = 8;
+
+  static const int _maxViews = 1 << viewBitWidth;
 
   @override
   CameraView? tryUnpack(int bits) {

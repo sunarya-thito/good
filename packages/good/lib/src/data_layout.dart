@@ -4,6 +4,7 @@ import 'package:good/src/archetype.dart';
 import 'package:good/src/camera_view.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/heap_object.dart';
+import 'package:good/src/scannable.dart';
 import 'package:good/src/struct.dart';
 
 /// Concrete `DataDescriptor`/`DataPointer` layer over [ArchetypeStorage].
@@ -181,10 +182,104 @@ int _writeRow(ArchetypeStorage storage, Entity entity) {
   return row;
 }
 
-abstract base class _Field<T> extends DataPointer<T> implements ArchetypeField {
-  _Field(this._storage);
+/// A column a declaration produced, before it has any row space.
+///
+/// `final speed = Field.float64(3)` runs in a field initialiser, where there
+/// is no archetype, no scene and no allocation cursor - so it builds the
+/// column object and stops. [realize] is the other half: it runs once the
+/// whole set of a class's declarations is known, in the order they were
+/// declared, and is where the bits are reserved and the column is bound to
+/// the storage that holds them.
+///
+/// Two things the engine could not do while a declaration reserved its row
+/// space on the spot fall out of the split, and both were breakages until it
+/// existed. A `DataArrayPointer`'s `length` can move, because nothing has
+/// been reserved for it yet - see [DataArrayPointer.length]. And
+/// `optCameraView` can name a table that belongs to the scene, because
+/// `ArchetypeStorage.scene` is reachable here and is not reachable from a
+/// field initialiser - see [_CameraViewField].
+///
+/// Nothing here is ambient. A declaration reaches no descriptor while it is
+/// being made, so there is no stack to push, nothing to pop on the way out,
+/// and no way for a value produced in one place to land on whichever owner
+/// happened to be under construction somewhere else.
+abstract interface class _Declared {
+  /// Reserves this column's row space on [storage], binds it, and registers
+  /// whatever stamps a fresh row's initial value.
+  void realize(ArchetypeStorage storage);
+}
 
-  final ArchetypeStorage _storage;
+abstract base class _Field<T> extends DataPointer<T>
+    implements ArchetypeField, _Declared {
+  /// The storage this column was given at [realize].
+  ///
+  /// `late final` rather than a plain field, and it is the only sentinel on
+  /// the access path. Two things come out of it and neither has a cheaper
+  /// spelling: realizing a column twice throws on the reassignment instead of
+  /// silently re-pointing it at a second archetype, and an access to a column
+  /// nothing ever realized throws naming the field instead of reading
+  /// whatever sits at byte offset 0.
+  ///
+  /// Every accessor resolves its row through [_read] or [_write] before it
+  /// adds an offset, so this one check covers the offsets too - which is why
+  /// each field's `_byte`, `_flagByte` and the rest stay plain mutable ints
+  /// and cost the read path nothing of their own.
+  late final ArchetypeStorage _storage;
+
+  /// Whether [realize] has run.
+  ///
+  /// The guards ask this rather than reading [_storage], which does not exist
+  /// before then: a default moved from a `describeStruct` body is set while
+  /// every column is still unrealized, and `_storage.isSealed` would throw
+  /// there instead of answering.
+  bool _realized = false;
+
+  @override
+  void realize(ArchetypeStorage storage) {
+    attach(storage);
+    storage.registerField(this);
+  }
+
+  /// [realize] without the registration - what a wrapper calls on the column
+  /// it owns, so the wrapper's own [writeInitialValue] stays the only thing
+  /// that stamps the row.
+  void attach(ArchetypeStorage storage) {
+    _storage = storage;
+    _realized = true;
+    _reserve(storage);
+  }
+
+  /// Reserves this column's bits. [attach] has already set [_storage], so an
+  /// implementation only has to record where its bits landed.
+  void _reserve(ArchetypeStorage storage);
+
+  /// Rejects a default set after [ArchetypeStorage.seal] has already stamped
+  /// the prototype row.
+  ///
+  /// The message names both spellings on purpose. `near.initialValue = 10`
+  /// and `near[entity] = 10` are one keystroke apart and mean entirely
+  /// different things, and a caller who reaches here has almost certainly
+  /// typed the first while meaning the second.
+  ///
+  /// An unrealized column always passes: nothing has been reserved for it and
+  /// nothing has been stamped from it, which is exactly the window a prefab's
+  /// `describeStruct` body moves a default in.
+  void _requireUnsealed() {
+    if (!_realized || !_storage.isSealed) return;
+    throw StateError(
+      'A column default was set after ${_storage.prefab.runtimeType}\'s '
+      'archetype was sealed, so it can no longer take effect. Defaults are '
+      'stamped once: seal() builds a prototype row holding every column\'s '
+      'default and copies it into each row allocated after that, and nothing '
+      'consults the default again.\n'
+      '  near.initialValue = 10;  // declare time - a field initialiser, or a '
+      'prefab\'s describeStruct\n'
+      '  near[entity] = 10;       // run time - this one entity, right now\n'
+      'If you meant to change what new entities of this prefab start with, '
+      'set it while the struct is being described. If you meant to change one '
+      'entity, subscript the column with it.',
+    );
+  }
 
   /// This field's value in an already-resolved row.
   ///
@@ -220,7 +315,7 @@ abstract base class _Field<T> extends DataPointer<T> implements ArchetypeField {
 /// for.
 abstract base class _ValueField<T> extends _Field<T>
     implements InitialPointer<T> {
-  _ValueField(super.storage, this._default);
+  _ValueField(this._default);
 
   /// What [writeInitialValue] stamps. Held here rather than once per width so the
   /// setter and its guard are written once, and so [_DefaultableOptionalField]
@@ -232,33 +327,9 @@ abstract base class _ValueField<T> extends _Field<T>
 
   @override
   set initialValue(T newValue) {
-    _requireUnsealed(_storage);
+    _requireUnsealed();
     _default = newValue;
   }
-}
-
-/// Rejects a default set after [ArchetypeStorage.seal] has already stamped
-/// the prototype row.
-///
-/// The message names both spellings on purpose. `near.initialValue = 10` and
-/// `near[entity] = 10` are one keystroke apart and mean entirely different
-/// things, and a caller who reaches here has almost certainly typed the
-/// first while meaning the second.
-void _requireUnsealed(ArchetypeStorage storage) {
-  if (!storage.isSealed) return;
-  throw StateError(
-    'A column default was set after ${storage.prefab.runtimeType}\'s '
-    'archetype was sealed, so it can no longer take effect. Defaults are '
-    'stamped once: seal() builds a prototype row holding every column\'s '
-    'default and copies it into each row allocated after that, and nothing '
-    'consults the default again.\n'
-    '  near.initialValue = 10;  // declare time - a field initialiser, or a '
-    'prefab\'s describeStruct\n'
-    '  near[entity] = 10;       // run time - this one entity, right now\n'
-    'If you meant to change what new entities of this prefab start with, '
-    'set it while the struct is being described. If you meant to change one '
-    'entity, subscript the column with it.',
-  );
 }
 
 /// A `bool` view over a one-bit field.
@@ -279,10 +350,16 @@ void _requireUnsealed(ArchetypeStorage storage) {
 /// implement it, so forwarding reported the failure under
 /// `_SubByteUintField`, a class no declaration names and no caller asks for.
 /// [_EntityHandleField] and [_EnumField] leave it alone for the same reason.
-class _BoolField extends InitialPointer<bool> {
+class _BoolField extends InitialPointer<bool> implements _Declared {
   const _BoolField(this._raw);
 
-  final InitialPointer<int> _raw;
+  final _ValueField<int> _raw;
+
+  /// The wrapped column is the one with bits and the one that stamps the
+  /// row, so realizing this realizes that and adds nothing of its own -
+  /// exactly as every other member here delegates.
+  @override
+  void realize(ArchetypeStorage storage) => _raw.realize(storage);
 
   @override
   bool operator [](Entity entity) => _raw[entity] != 0;
@@ -315,10 +392,14 @@ class _BoolField extends InitialPointer<bool> {
 /// `readPending` is not delegated - `_Int64Field` does not implement it, so
 /// forwarding would only move the `UnsupportedError` to a message naming the
 /// wrong class.
-class _EntityHandleField extends InitialPointer<Entity> {
+class _EntityHandleField extends InitialPointer<Entity>
+    implements _Declared {
   const _EntityHandleField(this._raw);
 
-  final InitialPointer<int> _raw;
+  final _ValueField<int> _raw;
+
+  @override
+  void realize(ArchetypeStorage storage) => _raw.realize(storage);
 
   @override
   Entity operator [](Entity entity) => Entity(_raw[entity]);
@@ -349,10 +430,14 @@ class _EntityHandleField extends InitialPointer<Entity> {
 /// than relabelling an `UnsupportedError`. `data/hierarchy.dart` splices its
 /// child lists through it, so this path is load-bearing: two `addChild`
 /// calls in one tick need the second to see the link the first wrote.
-class _OptionalEntityHandleField extends InitialPointer<Entity?> {
+class _OptionalEntityHandleField extends InitialPointer<Entity?>
+    implements _Declared {
   const _OptionalEntityHandleField(this._raw);
 
-  final InitialPointer<int?> _raw;
+  final _DefaultableOptionalField<int> _raw;
+
+  @override
+  void realize(ArchetypeStorage storage) => _raw.realize(storage);
 
   @override
   Entity? get initialValue {
@@ -393,11 +478,15 @@ class _OptionalEntityHandleField extends InitialPointer<Entity?> {
 /// `readPending` is not delegated - the narrow int fields this wraps do not
 /// implement it, so forwarding would only move the `UnsupportedError` to a
 /// message naming the wrong class.
-class _EnumField<E extends Enum> extends InitialPointer<E> {
+class _EnumField<E extends Enum> extends InitialPointer<E>
+    implements _Declared {
   const _EnumField(this._raw, this._values);
 
-  final InitialPointer<int> _raw;
+  final _ValueField<int> _raw;
   final List<E> _values;
+
+  @override
+  void realize(ArchetypeStorage storage) => _raw.realize(storage);
 
   @override
   E operator [](Entity entity) => _values[_raw[entity]];
@@ -412,26 +501,6 @@ class _EnumField<E extends Enum> extends InitialPointer<E> {
   set initialValue(E newValue) => _raw.initialValue = newValue.index;
 }
 
-/// The narrowest unsigned width that can index [count] members.
-///
-/// Widths are in *bits*, so a three-member enum answers 2 - the two bits
-/// callers spent on `hasUint2` when they packed the index by hand.
-///
-/// The ladder stops at 32: Dart evaluates `1 << 64` to 0, so a 64-bit rung
-/// could not state its own bound. An enum big enough to need one cannot be
-/// written down, so the throw is what an out-of-range [count] hits rather
-/// than silently truncating to a width that cannot hold it.
-int _enumIndexWidth(int count) {
-  for (final width in const [1, 2, 4, 8, 16, 32]) {
-    if (count <= 1 << width) return width;
-  }
-  throw ArgumentError.value(
-    count,
-    'values.length',
-    'more members than a 32-bit index column can address',
-  );
-}
-
 // --- sub-byte fields ---------------------------------------------------
 //
 // 1/2/4-bit fields never span a byte (see ArchetypeStorage.declareField),
@@ -440,28 +509,36 @@ int _enumIndexWidth(int count) {
 // field's bits in place; `_valueMask` is them at bit 0.
 
 base class _SubByteUintField extends _ValueField<int> {
-  _SubByteUintField(
-    super.storage,
-    int bitOffset,
-    int bitWidth,
-    super.initialValue,
-  ) : _byte = bitOffset >> 3,
-      _shift = bitOffset & 7,
+  _SubByteUintField(int bitWidth, super.initialValue)
+    : _bitWidth = bitWidth,
       _valueMask = (1 << bitWidth) - 1,
-      _byteMask = ((1 << bitWidth) - 1) << (bitOffset & 7),
       _signBit = 1 << (bitWidth - 1),
       _range = 1 << bitWidth;
 
-  final int _byte;
-  final int _shift;
+  /// A constructor argument here and a constant of the class everywhere
+  /// else, because this is the one family whose width is not fixed by the
+  /// class: 1, 2 and 4 bits share every line of the access path.
+  final int _bitWidth;
+
   final int _valueMask;
-  final int _byteMask;
+
+  int _byte = 0;
+  int _shift = 0;
+  int _byteMask = 0;
 
   // Only [_SubByteIntField] reads these; they live here so the signed
   // variant can be a plain super-parameter subclass instead of restating
-  // the whole constructor to get at `bitWidth`.
+  // the whole constructor to get at `_bitWidth`.
   final int _signBit;
   final int _range;
+
+  @override
+  void _reserve(ArchetypeStorage storage) {
+    final bitOffset = storage.declareField(_bitWidth);
+    _byte = bitOffset >> 3;
+    _shift = bitOffset & 7;
+    _byteMask = _valueMask << _shift;
+  }
 
   @override
   int operator [](Entity entity) =>
@@ -486,12 +563,7 @@ base class _SubByteUintField extends _ValueField<int> {
 /// is what a 1-bit two's-complement integer means - it is not a bool with
 /// values 0/1 (`hasUint1` is that).
 final class _SubByteIntField extends _SubByteUintField {
-  _SubByteIntField(
-    super.storage,
-    super.bitOffset,
-    super.bitWidth,
-    super.initialValue,
-  );
+  _SubByteIntField(super.bitWidth, super.initialValue);
 
   @override
   int operator [](Entity entity) {
@@ -506,9 +578,34 @@ final class _SubByteIntField extends _SubByteUintField {
 // declareField) load or store through a cast pointer. `row + _byte`
 // advances a Pointer<Uint8> by bytes, so the cast lands where it should.
 
-final class _Uint8Field extends _ValueField<int> {
-  _Uint8Field(super.storage, this._byte, super.initialValue);
-  final int _byte;
+/// A column that occupies one whole run of bytes, reserved at [realize] and
+/// addressed from the byte it starts at.
+///
+/// The width is a constant of the class and not a constructor argument:
+/// [_Uint16Field] is sixteen bits and could never be anything else, so
+/// holding it as a getter is what lets every width below share one
+/// [_reserve] instead of repeating the same two lines ten times. The
+/// sub-byte family is the exception and says why on its own `_bitWidth`.
+abstract base class _ByteAlignedField<T> extends _ValueField<T> {
+  _ByteAlignedField(super.initialValue);
+
+  /// Byte offset of this column in the row. A plain field and not `late`:
+  /// see [_Field._storage] for the one sentinel that covers it.
+  int _byte = 0;
+
+  int get _bitWidth;
+
+  @override
+  void _reserve(ArchetypeStorage storage) {
+    _byte = storage.declareField(_bitWidth) >> 3;
+  }
+}
+
+final class _Uint8Field extends _ByteAlignedField<int> {
+  _Uint8Field(super.initialValue);
+
+  @override
+  int get _bitWidth => 8;
 
   @override
   int operator [](Entity entity) =>
@@ -523,9 +620,11 @@ final class _Uint8Field extends _ValueField<int> {
       Pointer<Uint8>.fromAddress(row + _byte).value = _default;
 }
 
-final class _Int8Field extends _ValueField<int> {
-  _Int8Field(super.storage, this._byte, super.initialValue);
-  final int _byte;
+final class _Int8Field extends _ByteAlignedField<int> {
+  _Int8Field(super.initialValue);
+
+  @override
+  int get _bitWidth => 8;
 
   @override
   int operator [](Entity entity) =>
@@ -540,9 +639,11 @@ final class _Int8Field extends _ValueField<int> {
       Pointer<Int8>.fromAddress(row + _byte).value = _default;
 }
 
-final class _Uint16Field extends _ValueField<int> {
-  _Uint16Field(super.storage, this._byte, super.initialValue);
-  final int _byte;
+final class _Uint16Field extends _ByteAlignedField<int> {
+  _Uint16Field(super.initialValue);
+
+  @override
+  int get _bitWidth => 16;
 
   @override
   int operator [](Entity entity) =>
@@ -557,9 +658,11 @@ final class _Uint16Field extends _ValueField<int> {
       Pointer<Uint16>.fromAddress(row + _byte).value = _default;
 }
 
-final class _Int16Field extends _ValueField<int> {
-  _Int16Field(super.storage, this._byte, super.initialValue);
-  final int _byte;
+final class _Int16Field extends _ByteAlignedField<int> {
+  _Int16Field(super.initialValue);
+
+  @override
+  int get _bitWidth => 16;
 
   @override
   int operator [](Entity entity) =>
@@ -574,9 +677,11 @@ final class _Int16Field extends _ValueField<int> {
       Pointer<Int16>.fromAddress(row + _byte).value = _default;
 }
 
-final class _Uint32Field extends _ValueField<int> {
-  _Uint32Field(super.storage, this._byte, super.initialValue);
-  final int _byte;
+final class _Uint32Field extends _ByteAlignedField<int> {
+  _Uint32Field(super.initialValue);
+
+  @override
+  int get _bitWidth => 32;
 
   @override
   int operator [](Entity entity) =>
@@ -591,9 +696,11 @@ final class _Uint32Field extends _ValueField<int> {
       Pointer<Uint32>.fromAddress(row + _byte).value = _default;
 }
 
-final class _Int32Field extends _ValueField<int> {
-  _Int32Field(super.storage, this._byte, super.initialValue);
-  final int _byte;
+final class _Int32Field extends _ByteAlignedField<int> {
+  _Int32Field(super.initialValue);
+
+  @override
+  int get _bitWidth => 32;
 
   @override
   int operator [](Entity entity) =>
@@ -614,9 +721,11 @@ final class _Int32Field extends _ValueField<int> {
 // Dart's own (signed, twos-complement) `int` already uses, so this is a
 // plain aligned load/store exactly like the narrower widths, no different
 // handling needed for values that "look negative".
-final class _Uint64Field extends _ValueField<int> {
-  _Uint64Field(super.storage, this._byte, super.initialValue);
-  final int _byte;
+final class _Uint64Field extends _ByteAlignedField<int> {
+  _Uint64Field(super.initialValue);
+
+  @override
+  int get _bitWidth => 64;
 
   @override
   int operator [](Entity entity) =>
@@ -631,9 +740,11 @@ final class _Uint64Field extends _ValueField<int> {
       Pointer<Uint64>.fromAddress(row + _byte).value = _default;
 }
 
-final class _Int64Field extends _ValueField<int> {
-  _Int64Field(super.storage, this._byte, super.initialValue);
-  final int _byte;
+final class _Int64Field extends _ByteAlignedField<int> {
+  _Int64Field(super.initialValue);
+
+  @override
+  int get _bitWidth => 64;
 
   @override
   int operator [](Entity entity) =>
@@ -655,9 +766,11 @@ final class _Int64Field extends _ValueField<int> {
 }
 
 // dart:ffi names the IEEE-754 types Float/Double, not Float32/Float64.
-final class _Float32Field extends _ValueField<double> {
-  _Float32Field(super.storage, this._byte, super.initialValue);
-  final int _byte;
+final class _Float32Field extends _ByteAlignedField<double> {
+  _Float32Field(super.initialValue);
+
+  @override
+  int get _bitWidth => 32;
 
   @override
   double operator [](Entity entity) =>
@@ -672,9 +785,11 @@ final class _Float32Field extends _ValueField<double> {
       Pointer<Float>.fromAddress(row + _byte).value = _default;
 }
 
-final class _Float64Field extends _ValueField<double> {
-  _Float64Field(super.storage, this._byte, super.initialValue);
-  final int _byte;
+final class _Float64Field extends _ByteAlignedField<double> {
+  _Float64Field(super.initialValue);
+
+  @override
+  int get _bitWidth => 64;
 
   @override
   @pragma('vm:prefer-inline')
@@ -729,7 +844,7 @@ final class _Float64Field extends _ValueField<double> {
 // The bits themselves are delegated to an ordinary integer field rather than
 // hardcoding `Pointer<Uint32>`, which is what lets a representation pick its
 // own width: every rung of the 1..64 ladder, sub-byte included, comes for
-// free because `_declareInt` already built them.
+// free because `_intColumn` already built them.
 
 /// The bits, the packing and the unpacking, with **no bound on [T]**.
 ///
@@ -742,15 +857,28 @@ final class _Float64Field extends _ValueField<double> {
 /// `IntRepresentation<X>` is. Nothing constructs one except the two declare
 /// paths that already checked the element is a representation, so the two
 /// casts here cannot fail.
-base class _PackedField<T> extends _Field<T> {
-  _PackedField(super.storage, this._bits, this._repr);
+abstract base class _PackedField<T> extends _Field<T> {
+  _PackedField(this._bits);
 
   /// The integer field holding the packed bits. Declared and owned here, and
   /// deliberately **not** registered with the storage itself - this field's
   /// own [writeInitialValue] drives it, so registering both would stamp the
-  /// initial value twice.
+  /// initial value twice. Which is also why [_reserve] binds it rather than
+  /// realizing it.
   final _Field<int> _bits;
-  final IntRepresentation<IntRepresentable> _repr;
+
+  /// The representation the stored ints mean something against.
+  ///
+  /// A getter and not a stored value, because one column in the engine does
+  /// not have one at the declare site. `optCameraView` is packed against a
+  /// table the scene owns, and a field initialiser cannot reach a scene -
+  /// see [_CameraViewField]. Every other packed column names its
+  /// representation where the field is written, which is what
+  /// [_DeclaredPackedField] holds.
+  IntRepresentation<IntRepresentable> get _repr;
+
+  @override
+  void _reserve(ArchetypeStorage storage) => _bits.attach(storage);
 
   @override
   T operator [](Entity entity) => _repr.unpack(_bits[entity]) as T;
@@ -763,15 +891,47 @@ base class _PackedField<T> extends _Field<T> {
   void writeInitialValue(int row) => _bits.writeInitialValue(row);
 }
 
+/// [_PackedField] against the representation the declaration named - which
+/// is every packed column except the camera view.
+base class _DeclaredPackedField<T> extends _PackedField<T> {
+  _DeclaredPackedField(super.bits, this._declaredRepr);
+
+  final IntRepresentation<IntRepresentable> _declaredRepr;
+
+  @override
+  IntRepresentation<IntRepresentable> get _repr => _declaredRepr;
+}
+
+/// `optCameraView`'s value half: a packed column whose representation is the
+/// table the registering scene owns.
+///
+/// It reads the table off the storage instead of holding one, and that is the
+/// whole of why the column can be declared from a field initialiser. A
+/// `CameraViewTable` is the one representation in this engine a declaration
+/// cannot be handed - there is one per game, it is reached through the scene,
+/// and a field initialiser has no scene. `ArchetypeStorage.scene` does have
+/// one, and [_Field.realize] runs where that is reachable.
+///
+/// Nothing about the table sizes the column: the width is
+/// `CameraViewTable.viewBitWidth`, a constant, so the bits are reserved from
+/// the declaration exactly as every other packed column's are. Only a *read*
+/// consults the table, which is why resolving it later costs nothing.
+final class _CameraViewField extends _PackedField<CameraView> {
+  _CameraViewField(super.bits);
+
+  @override
+  IntRepresentation<IntRepresentable> get _repr => _storage.scene.cameraViews;
+}
+
 /// [_PackedField] with the bound back on, which is what lets it be the
 /// [PackedPointer] `hasPacked` hands out. `packedAt` lives here and not on
 /// the base because only the scalar declaration exposes it - an array
 /// element is read through `DataArrayPointer`, which has no such escape
 /// hatch.
 final class _PackedPointerField<T extends IntRepresentable>
-    extends _PackedField<T>
+    extends _DeclaredPackedField<T>
     implements PackedPointer<T> {
-  _PackedPointerField(super.storage, super.bits, super.repr);
+  _PackedPointerField(super.bits, super.repr);
 
   @override
   int packedAt(Entity entity) => _bits[entity];
@@ -811,8 +971,14 @@ final class _PackedPointerField<T extends IntRepresentable>
 /// make the default per-entity.
 final class _HeapObjectField<T> extends _Field<T>
     implements HeapArchetypeField {
-  _HeapObjectField(super.storage, this._byte, this._initialFactory);
-  final int _byte;
+  _HeapObjectField(this._initialFactory);
+
+  int _byte = 0;
+
+  @override
+  void _reserve(ArchetypeStorage storage) {
+    _byte = storage.declareField(32) >> 3;
+  }
 
   /// `null` for the `optHeapObject` case, whose wrapper never asks for a
   /// default (its has-bit defaults to clear, i.e. `null`).
@@ -864,17 +1030,42 @@ final class _HeapObjectField<T> extends _Field<T>
 /// `null` write to a single byte read-modify-write instead of also zeroing
 /// up to 8 bytes.
 base class _OptionalField<T> extends _Field<T?> {
-  _OptionalField(
-    super.storage,
-    int flagBitOffset,
-    this._value,
-    this._initialPresent,
-  ) : _flagByte = flagBitOffset >> 3,
-      _flagMask = 1 << (flagBitOffset & 7);
+  _OptionalField(this._value, this._initialPresent);
 
-  final int _flagByte;
-  final int _flagMask;
+  int _flagByte = 0;
+  int _flagMask = 0;
   final _Field<T> _value;
+
+  @override
+  void _reserve(ArchetypeStorage storage) {
+    // Flag first, then the value - but the flag takes a bit an earlier
+    // field's byte-rounding stranded when there is one, so it usually costs
+    // the row nothing (see `ArchetypeStorage.declareFlagBit`). The value
+    // still comes from the cursor, so its own alignment rule is unchanged.
+    final flagBit = storage.declareFlagBit();
+    _flagByte = flagBit >> 3;
+    _flagMask = 1 << (flagBit & 7);
+    // Bound and not realized: this wrapper's has-bit decides whether the
+    // value's default is stamped at all, so the value must not be registered
+    // as a field of its own.
+    _value.attach(storage);
+  }
+
+  /// Registers the value half for teardown when it owns something outside
+  /// the row.
+  ///
+  /// `optHeapObject` is the only case, and it needs both halves declared
+  /// through two calls: what stamps the row is this wrapper, and what holds
+  /// the registry slot is the heap field inside it. See
+  /// `ArchetypeStorage.registerHeapField`.
+  @override
+  void realize(ArchetypeStorage storage) {
+    super.realize(storage);
+    final value = _value;
+    if (value is HeapArchetypeField) {
+      storage.registerHeapField(value as HeapArchetypeField);
+    }
+  }
 
   /// Whether a fresh row starts with the flag set. Not `final` because
   /// [_DefaultableOptionalField] moves it - a nullable column's default has
@@ -948,12 +1139,10 @@ base class _OptionalField<T> extends _Field<T?> {
 final class _DefaultableOptionalField<T> extends _OptionalField<T>
     implements InitialPointer<T?> {
   _DefaultableOptionalField(
-    ArchetypeStorage storage,
-    int flagBitOffset,
     this._defaultableValue,
     // ignore: avoid_positional_boolean_parameters
     bool defaultPresent,
-  ) : super(storage, flagBitOffset, _defaultableValue, defaultPresent);
+  ) : super(_defaultableValue, defaultPresent);
 
   /// The same object `_OptionalField._value` holds, typed so its own default
   /// is reachable.
@@ -967,7 +1156,7 @@ final class _DefaultableOptionalField<T> extends _OptionalField<T>
 
   @override
   set initialValue(T? newValue) {
-    _requireUnsealed(_storage);
+    _requireUnsealed();
     _initialPresent = newValue != null;
     if (newValue != null) _defaultableValue._default = newValue;
   }
@@ -977,7 +1166,7 @@ final class _DefaultableOptionalField<T> extends _OptionalField<T>
 //
 // An array field is `length` consecutive scalar fields declared back to
 // back, addressed by arithmetic instead of by storing `length` offsets.
-// `ArchetypeDataDescriptor._declareElements` reserves them by calling
+// `_ArrayField._reserveElements` reserves them by calling
 // `ArchetypeStorage.declareField(bitWidth)` `length` times in a row and
 // keeping only the first offset; element `i` then sits at exactly
 // `baseBit + i * bitWidth`, with no gaps, in every supported case:
@@ -985,7 +1174,7 @@ final class _DefaultableOptionalField<T> extends _OptionalField<T>
 //  * Sub-byte widths (1/2/4) all divide 8, so once the array's base is a
 //    multiple of the element width, declareField's "jump to the next byte if
 //    this one can't fit the field" rule never fires mid-array - a byte
-//    boundary always coincides with an element boundary. `_declareElements`
+//    boundary always coincides with an element boundary. `_reserveElements`
 //    pads the cursor up to that multiple first; read its doc for why
 //    skipping that step silently corrupts sub-byte arrays that happen to be
 //    declared after an odd number of flag bits.
@@ -1002,13 +1191,104 @@ final class _DefaultableOptionalField<T> extends _OptionalField<T>
 // rather than an inheritance chain.
 
 abstract base class _ArrayField<T>
-    implements DataArrayPointer<T>, ArchetypeField {
-  _ArrayField(this._storage, this.length);
+    implements DataArrayPointer<T>, ArchetypeField, _Declared {
+  _ArrayField(this._length);
 
-  final ArchetypeStorage _storage;
+  /// See [_Field._storage]: the same late-bound storage, for the same two
+  /// reasons, on a root that is deliberately not a `_Field`.
+  late final ArchetypeStorage _storage;
+
+  /// Whether [realize] has run, which is what the [length] setter asks.
+  bool _realized = false;
+
+  int _length;
 
   @override
-  final int length;
+  int get length => _length;
+
+  /// Settable until this column is realized.
+  ///
+  /// A length sizes the column, and while a declaration reserved its row
+  /// space on the spot there was nothing left to move: the elements were
+  /// already taken from the cursor and the next column sat immediately behind
+  /// them. Reserving after the whole set of declarations is collected is what
+  /// makes this implementable at all - nothing has been reserved when a
+  /// prefab writes `textCodeUnits.length = 8`, so shortening the array simply
+  /// reserves eight slots instead of thirty-two.
+  ///
+  /// After [realize] it throws, and says which window the caller missed.
+  /// Answering with a silent no-op is the failure this engine keeps paying
+  /// for elsewhere: the array would be the length the component chose and
+  /// every read would agree with itself.
+  @override
+  set length(int newLength) {
+    if (_realized) {
+      throw StateError(
+        'An array column\'s length was set after its row space had been '
+        'reserved, so it can no longer take effect. A length decides how '
+        'many elements the row holds, and the elements are reserved once - '
+        'after the declaring class\'s whole set of declarations is known, and '
+        'before the archetype is sealed.\n'
+        '  textCodeUnits.length = 8;   // declare time - a prefab\'s '
+        'describeStruct\n'
+        'Anything later is resizing a row that has already been laid out.',
+      );
+    }
+    _checkArrayLength(newLength);
+    _length = newLength;
+  }
+
+  @override
+  void realize(ArchetypeStorage storage) {
+    attach(storage);
+    storage.registerField(this);
+  }
+
+  /// [realize] without the registration - see [_Field.attach].
+  void attach(ArchetypeStorage storage) {
+    _storage = storage;
+    _realized = true;
+    _reserve(storage);
+  }
+
+  void _reserve(ArchetypeStorage storage);
+
+  /// Reserves [length] consecutive [bitWidth]-bit elements and returns the
+  /// *first* one's bit offset - the whole array's base. The rest is
+  /// arithmetic; see the packing note above for why no gaps can appear
+  /// between the elements.
+  ///
+  /// **The leading `while` is load-bearing, not defensive.** "Sub-byte
+  /// widths divide 8, so `declareField`'s byte-rounding never fires
+  /// mid-array" is only true once the array's *base* is a multiple of the
+  /// element width. It is not true in general: `hasUint1()` followed by
+  /// `hasArray(.uint4, 4)` leaves the cursor at bit 1, so element 0 lands at
+  /// bit 1 (1 + 4 <= 8, no rounding) but element 1 would need bits 5..8,
+  /// straddles the byte, and gets pushed to bit 8 - a 3-bit gap that
+  /// `baseBit + i * bitWidth` does not know about. Every later element would
+  /// then be read and written at the wrong offset, aliasing its neighbours
+  /// and, for the last one, corrupting whatever follows the array.
+  ///
+  /// Padding the cursor up to a multiple of [bitWidth] first removes the
+  /// possibility: every element offset is then a multiple of [bitWidth],
+  /// [bitWidth] divides 8, so `(offset & 7) + bitWidth <= 8` holds for all
+  /// of them and the rounding branch never fires inside the array. The cost
+  /// is at most 3 wasted bits, once, and only when the array does not
+  /// already start aligned. `declareField(1)` is the padding tool because it
+  /// is the only width that never itself rounds - it always advances the
+  /// cursor by exactly one bit, so the loop terminates.
+  int _reserveElements(ArchetypeStorage storage, int bitWidth) {
+    if (bitWidth < 8) {
+      while (storage.bitLength % bitWidth != 0) {
+        storage.declareField(1);
+      }
+    }
+    final baseBit = storage.declareField(bitWidth);
+    for (var i = 1; i < length; i++) {
+      storage.declareField(bitWidth);
+    }
+    return baseBit;
+  }
 
   int _read(Entity entity) {
     assert(_ownsRow(_storage, entity, this));
@@ -1040,26 +1320,101 @@ abstract base class _ArrayField<T>
   }
 }
 
+/// An array of a native width, holding whatever the declaration said every
+/// element starts at.
+///
+/// The two spellings are kept apart until [_reserve] rather than expanded at
+/// the declaration, and that is what a movable [length] costs: `hasArray`
+/// broadcasts one value to however many elements the array turns out to have,
+/// so expanding it while the count can still change fills the wrong number of
+/// slots.
+abstract base class _NativeArrayField<T> extends _ArrayField<T> {
+  _NativeArrayField(super.length, this._broadcast, this._perElement);
+
+  /// The one value every element starts at, from `hasArray`. `null` asks for
+  /// [_zero].
+  final T? _broadcast;
+
+  /// One value per element, from `hasArrayOf`, covering the first elements
+  /// and no more than [length] of them.
+  final List<T>? _perElement;
+
+  /// One entry per element, built at [_reserve] and read once at seal.
+  List<T> _defaults = <T>[];
+
+  /// The element's own unwritten value - `0` or `0.0`.
+  T get _zero;
+
+  /// Records where this array's bits landed. Called after [_defaults] is
+  /// built.
+  void _reserveBits(ArchetypeStorage storage);
+
+  @override
+  void _reserve(ArchetypeStorage storage) {
+    final perElement = _perElement;
+    if (perElement == null) {
+      _defaults = List<T>.filled(length, _broadcast ?? _zero);
+    } else {
+      // More values than the array holds can only be a caller mistake, and
+      // each extra one names a slot that was never reserved. Checked here
+      // and not at the declaration because a prefab may have shortened the
+      // array since, and this is the first moment the count is final.
+      if (perElement.length > length) {
+        throw ArgumentError.value(
+          perElement.length,
+          'initialValues',
+          'is more values than the array holds ($length)',
+        );
+      }
+      _defaults = List<T>.filled(length, _zero)
+        ..setRange(0, perElement.length, perElement);
+    }
+    _reserveBits(storage);
+  }
+}
+
+/// An array whose elements are a whole number of bytes each, addressed from
+/// the byte the array starts at - [_ByteAlignedField]'s shape, one element
+/// stride out.
+abstract base class _ByteAlignedArrayField<T> extends _NativeArrayField<T> {
+  _ByteAlignedArrayField(super.length, super.broadcast, super.perElement);
+
+  int _baseByte = 0;
+
+  int get _bitWidth;
+
+  @override
+  void _reserveBits(ArchetypeStorage storage) {
+    _baseByte = _reserveElements(storage, _bitWidth) >> 3;
+  }
+}
+
 /// Sub-byte (1/2/4-bit) unsigned element array. Element `i` never straddles
 /// a byte - see the packing note above - so each access stays a single-byte
 /// load/shift/mask, exactly like [_SubByteUintField].
-base class _SubByteUintArrayField extends _ArrayField<int> {
+base class _SubByteUintArrayField extends _NativeArrayField<int> {
   _SubByteUintArrayField(
-    super.storage,
+    int bitWidth,
     super.length,
-    this._baseBit,
-    this._bitWidth,
-    this._defaults,
-  ) : _valueMask = (1 << _bitWidth) - 1,
-      _signBit = 1 << (_bitWidth - 1),
-      _range = 1 << _bitWidth;
+    super.broadcast,
+    super.perElement,
+  ) : _bitWidth = bitWidth,
+      _valueMask = (1 << bitWidth) - 1,
+      _signBit = 1 << (bitWidth - 1),
+      _range = 1 << bitWidth;
 
-  final int _baseBit;
   final int _bitWidth;
   final int _valueMask;
 
-  /// One entry per element, exactly as in [_Float64ArrayField].
-  final List<int> _defaults;
+  int _baseBit = 0;
+
+  @override
+  int get _zero => 0;
+
+  @override
+  void _reserveBits(ArchetypeStorage storage) {
+    _baseBit = _reserveElements(storage, _bitWidth);
+  }
 
   // Only [_SubByteIntArrayField] reads these; same arrangement as the
   // scalar pair, so the signed variant stays a super-parameter subclass.
@@ -1103,11 +1458,10 @@ base class _SubByteUintArrayField extends _ArrayField<int> {
 /// [_SubByteIntField] on what a 1-bit signed element means (-1 or 0).
 final class _SubByteIntArrayField extends _SubByteUintArrayField {
   _SubByteIntArrayField(
-    super.storage,
-    super.length,
-    super.baseBit,
     super.bitWidth,
-    super.defaults,
+    super.length,
+    super.broadcast,
+    super.perElement,
   );
 
   @override
@@ -1122,12 +1476,14 @@ final class _SubByteIntArrayField extends _SubByteUintArrayField {
 // `[]` scales the index by the element size, which is precisely the
 // `baseByte + i * elementBytes` layout declareField produced.
 
-final class _Uint8ArrayField extends _ArrayField<int> {
-  _Uint8ArrayField(super.storage, super.length, this._baseByte, this._defaults);
-  final int _baseByte;
+final class _Uint8ArrayField extends _ByteAlignedArrayField<int> {
+  _Uint8ArrayField(super.length, super.broadcast, super.perElement);
 
-  /// One entry per element, exactly as in [_Float64ArrayField].
-  final List<int> _defaults;
+  @override
+  int get _zero => 0;
+
+  @override
+  int get _bitWidth => 8;
 
   @override
   int get(Entity entity, int index) {
@@ -1150,12 +1506,14 @@ final class _Uint8ArrayField extends _ArrayField<int> {
   }
 }
 
-final class _Int8ArrayField extends _ArrayField<int> {
-  _Int8ArrayField(super.storage, super.length, this._baseByte, this._defaults);
-  final int _baseByte;
+final class _Int8ArrayField extends _ByteAlignedArrayField<int> {
+  _Int8ArrayField(super.length, super.broadcast, super.perElement);
 
-  /// One entry per element, exactly as in [_Float64ArrayField].
-  final List<int> _defaults;
+  @override
+  int get _zero => 0;
+
+  @override
+  int get _bitWidth => 8;
 
   @override
   int get(Entity entity, int index) {
@@ -1178,12 +1536,14 @@ final class _Int8ArrayField extends _ArrayField<int> {
   }
 }
 
-final class _Uint16ArrayField extends _ArrayField<int> {
-  _Uint16ArrayField(super.storage, super.length, this._baseByte, this._defaults);
-  final int _baseByte;
+final class _Uint16ArrayField extends _ByteAlignedArrayField<int> {
+  _Uint16ArrayField(super.length, super.broadcast, super.perElement);
 
-  /// One entry per element, exactly as in [_Float64ArrayField].
-  final List<int> _defaults;
+  @override
+  int get _zero => 0;
+
+  @override
+  int get _bitWidth => 16;
 
   @override
   int get(Entity entity, int index) {
@@ -1206,12 +1566,14 @@ final class _Uint16ArrayField extends _ArrayField<int> {
   }
 }
 
-final class _Int16ArrayField extends _ArrayField<int> {
-  _Int16ArrayField(super.storage, super.length, this._baseByte, this._defaults);
-  final int _baseByte;
+final class _Int16ArrayField extends _ByteAlignedArrayField<int> {
+  _Int16ArrayField(super.length, super.broadcast, super.perElement);
 
-  /// One entry per element, exactly as in [_Float64ArrayField].
-  final List<int> _defaults;
+  @override
+  int get _zero => 0;
+
+  @override
+  int get _bitWidth => 16;
 
   @override
   int get(Entity entity, int index) {
@@ -1234,12 +1596,14 @@ final class _Int16ArrayField extends _ArrayField<int> {
   }
 }
 
-final class _Uint32ArrayField extends _ArrayField<int> {
-  _Uint32ArrayField(super.storage, super.length, this._baseByte, this._defaults);
-  final int _baseByte;
+final class _Uint32ArrayField extends _ByteAlignedArrayField<int> {
+  _Uint32ArrayField(super.length, super.broadcast, super.perElement);
 
-  /// One entry per element, exactly as in [_Float64ArrayField].
-  final List<int> _defaults;
+  @override
+  int get _zero => 0;
+
+  @override
+  int get _bitWidth => 32;
 
   @override
   int get(Entity entity, int index) {
@@ -1262,12 +1626,14 @@ final class _Uint32ArrayField extends _ArrayField<int> {
   }
 }
 
-final class _Int32ArrayField extends _ArrayField<int> {
-  _Int32ArrayField(super.storage, super.length, this._baseByte, this._defaults);
-  final int _baseByte;
+final class _Int32ArrayField extends _ByteAlignedArrayField<int> {
+  _Int32ArrayField(super.length, super.broadcast, super.perElement);
 
-  /// One entry per element, exactly as in [_Float64ArrayField].
-  final List<int> _defaults;
+  @override
+  int get _zero => 0;
+
+  @override
+  int get _bitWidth => 32;
 
   @override
   int get(Entity entity, int index) {
@@ -1290,19 +1656,14 @@ final class _Int32ArrayField extends _ArrayField<int> {
   }
 }
 
-final class _Float32ArrayField extends _ArrayField<double> {
-  _Float32ArrayField(
-    super.storage,
-    super.length,
-    this._baseByte,
-    this._defaults,
-  );
-  final int _baseByte;
+final class _Float32ArrayField extends _ByteAlignedArrayField<double> {
+  _Float32ArrayField(super.length, super.broadcast, super.perElement);
 
-  /// One entry per element, so [DataDescriptor.hasArrayOf] can start each
-  /// element at its own value; the broadcast form fills this with `length`
-  /// copies of the one default. Built once at declare time and read once at seal.
-  final List<double> _defaults;
+  @override
+  double get _zero => 0.0;
+
+  @override
+  int get _bitWidth => 32;
 
   @override
   double get(Entity entity, int index) {
@@ -1325,17 +1686,14 @@ final class _Float32ArrayField extends _ArrayField<double> {
   }
 }
 
-final class _Float64ArrayField extends _ArrayField<double> {
-  _Float64ArrayField(
-    super.storage,
-    super.length,
-    this._baseByte,
-    this._defaults,
-  );
-  final int _baseByte;
+final class _Float64ArrayField extends _ByteAlignedArrayField<double> {
+  _Float64ArrayField(super.length, super.broadcast, super.perElement);
 
-  /// Per element, exactly as in [_Float32ArrayField].
-  final List<double> _defaults;
+  @override
+  double get _zero => 0.0;
+
+  @override
+  int get _bitWidth => 64;
 
   @override
   double get(Entity entity, int index) {
@@ -1370,10 +1728,24 @@ final class _Float64ArrayField extends _ArrayField<double> {
 /// [T] is unbounded here for [_PackedField]'s reason, and the two casts
 /// cannot fail for the same one.
 final class _PackedArrayField<T> extends _ArrayField<T> {
-  _PackedArrayField(super.storage, super.length, this._bits, this._repr);
+  _PackedArrayField(_ArrayField<int> bits, this._repr)
+    : _bits = bits,
+      super(bits.length);
 
   final _ArrayField<int> _bits;
   final IntRepresentation<IntRepresentable> _repr;
+
+  /// Both halves delegated, so the two can never disagree about how many
+  /// elements there are: the integer array underneath is what reserves them,
+  /// and a length moved on this one has to reach it.
+  @override
+  int get length => _bits.length;
+
+  @override
+  set length(int newLength) => _bits.length = newLength;
+
+  @override
+  void _reserve(ArchetypeStorage storage) => _bits.attach(storage);
 
   @override
   T get(Entity entity, int index) {
@@ -1407,23 +1779,39 @@ final class _PackedArrayField<T> extends _ArrayField<T> {
 /// Value bits are don't-care while the flag is clear, exactly as for the
 /// scalar case: writing `null` clears one bit and leaves the payload alone.
 final class _OptionalArrayField<T> extends _ArrayField<T?> {
-  _OptionalArrayField(
-    super.storage,
-    super.length,
-    this._flagBits,
-    this._values,
-    this._initialPresent,
-  );
+  _OptionalArrayField(super.length, this._element, this._initialValue);
 
-  /// Bit offset of element `i`'s has-flag.
-  final List<int> _flagBits;
+  /// What one element holds. Kept rather than expanded at the declaration,
+  /// because the per-element fields below cannot be built before the count
+  /// is final - see [DataArrayPointer.length].
+  final DataElement<T> _element;
 
-  /// Element `i`'s value accessor. Registered with the storage only through
-  /// this wrapper - never on their own - so the flag decides whether an
-  /// element's value default gets stamped at all.
-  final List<_Field<T>> _values;
+  final T? _initialValue;
 
-  final bool _initialPresent;
+  /// Bit offset of element `i`'s has-flag, built at [_reserve].
+  List<int> _flagBits = const <int>[];
+
+  /// Element `i`'s value accessor. Attached through this wrapper and never
+  /// registered on their own, so the flag decides whether an element's value
+  /// default gets stamped at all.
+  List<_Field<T>> _values = <_Field<T>>[];
+
+  bool get _initialPresent => _initialValue != null;
+
+  /// The nullable case reserves per element - flag, then value - which is why
+  /// it cannot share [_reserveElements]: the two widths interleave, so the
+  /// elements are not evenly spaced.
+  @override
+  void _reserve(ArchetypeStorage storage) {
+    _flagBits = List<int>.filled(length, 0);
+    _values = <_Field<T>>[];
+    for (var i = 0; i < length; i++) {
+      _flagBits[i] = storage.declareFlagBit();
+      final value = _elementColumn<T>(_element, _initialValue);
+      value.attach(storage);
+      _values.add(value);
+    }
+  }
 
   @override
   T? get(Entity entity, int index) {
@@ -1472,136 +1860,308 @@ final class _OptionalArrayField<T> extends _ArrayField<T?> {
   }
 }
 
-/// Builds one archetype's field layout. Created and discarded by
-/// `SceneDescriptor.has`; see the library doc at the top of this file.
-final class ArchetypeDataDescriptor implements DataDescriptor {
-  ArchetypeDataDescriptor(this._storage);
+// ---------------------------------------------------------------------------
+// Declaring a column
+// ---------------------------------------------------------------------------
+//
+// Everything from here to `_ColumnDescriptor` builds a column and reserves
+// nothing. A declaration runs in a field initialiser, where there is no
+// archetype and no allocation cursor to take bits from, so the row space is
+// taken afterwards - see [_Declared].
 
-  final ArchetypeStorage _storage;
-
-  _ValueField<int> _declareInt(int bitWidth, bool signed, int initialValue) {
-    final bitOffset = _storage.declareField(bitWidth);
-    if (bitWidth < 8) {
-      return signed
-          ? _SubByteIntField(_storage, bitOffset, bitWidth, initialValue)
-          : _SubByteUintField(_storage, bitOffset, bitWidth, initialValue);
-    }
-    final byte = bitOffset >> 3;
-    return switch ((bitWidth, signed)) {
-      (8, false) => _Uint8Field(_storage, byte, initialValue),
-      (8, true) => _Int8Field(_storage, byte, initialValue),
-      (16, false) => _Uint16Field(_storage, byte, initialValue),
-      (16, true) => _Int16Field(_storage, byte, initialValue),
-      (32, false) => _Uint32Field(_storage, byte, initialValue),
-      (32, true) => _Int32Field(_storage, byte, initialValue),
-      (64, false) => _Uint64Field(_storage, byte, initialValue),
-      (64, true) => _Int64Field(_storage, byte, initialValue),
-      _ => throw ArgumentError('unsupported integer bit width $bitWidth'),
-    };
+/// A zero- or negative-length array is rejected rather than quietly accepted:
+/// every index into it would be out of range, so it can only be a caller
+/// mistake, and catching it where the length is written beats a `RangeError`
+/// out of every access at runtime.
+void _checkArrayLength(int length) {
+  if (length < 1) {
+    throw ArgumentError.value(length, 'length', 'must be at least 1');
   }
+}
 
-  _ValueField<double> _declareFloat(int bitWidth, double initialValue) {
-    final byte = _storage.declareField(bitWidth) >> 3;
-    return bitWidth == 32
-        ? _Float32Field(_storage, byte, initialValue)
-        : _Float64Field(_storage, byte, initialValue);
-  }
-
-  InitialPointer<int> _has(int bitWidth, bool signed, int initialValue) {
-    final field = _declareInt(bitWidth, signed, initialValue);
-    _storage.registerField(field);
-    return field;
-  }
-
-  InitialPointer<double> _hasFloat(int bitWidth, double initialValue) {
-    final field = _declareFloat(bitWidth, initialValue);
-    _storage.registerField(field);
-    return field;
-  }
-
-  InitialPointer<int?> _opt(int bitWidth, bool signed, int? initialValue) {
-    // Flag first, then the value - but the flag takes a bit an earlier
-    // field's byte-rounding stranded when there is one, so it usually costs
-    // the row nothing (see `ArchetypeStorage.declareFlagBit`). The value
-    // still comes from the cursor, so its own alignment rule is unchanged.
-    final flagBit = _storage.declareFlagBit();
-    final value = _declareInt(bitWidth, signed, initialValue ?? 0);
-    final field = _DefaultableOptionalField<int>(
-      _storage,
-      flagBit,
-      value,
-      initialValue != null,
+/// Rejects a width the row cannot hold, before it becomes silent truncation.
+///
+/// A representation's width is a declare-time constant, so this fires once per
+/// field at bring-up and never on a hot path.
+int _checkBitWidth(IntRepresentation<Object?> repr) {
+  final bitWidth = repr.bitWidth;
+  if (bitWidth < 1 || bitWidth > 64) {
+    throw ArgumentError.value(
+      bitWidth,
+      'bitWidth',
+      '${repr.runtimeType} declares a width outside 1..64. A packed field is '
+          'one integer in the row, so anything wider has no representation '
+          'there - use separate fields instead.',
     );
-    _storage.registerField(field);
-    return field;
   }
+  return bitWidth;
+}
 
-  InitialPointer<double?> _optFloat(int bitWidth, double? initialValue) {
-    final flagBit = _storage.declareFlagBit();
-    final value = _declareFloat(bitWidth, initialValue ?? 0.0);
-    final field = _DefaultableOptionalField<double>(
-      _storage,
-      flagBit,
-      value,
-      initialValue != null,
-    );
-    _storage.registerField(field);
-    return field;
+/// The integer column of [bitWidth] bits, unreserved.
+///
+/// One `switch` and no second table of widths: `_ByteAlignedField` carries
+/// each width as a constant of its own class, so adding a rung is a class and
+/// a case, not a third place to keep in step.
+_ValueField<int> _intColumn(int bitWidth, bool signed, int initialValue) {
+  if (bitWidth < 8) {
+    return signed
+        ? _SubByteIntField(bitWidth, initialValue)
+        : _SubByteUintField(bitWidth, initialValue);
   }
+  return switch ((bitWidth, signed)) {
+    (8, false) => _Uint8Field(initialValue),
+    (8, true) => _Int8Field(initialValue),
+    (16, false) => _Uint16Field(initialValue),
+    (16, true) => _Int16Field(initialValue),
+    (32, false) => _Uint32Field(initialValue),
+    (32, true) => _Int32Field(initialValue),
+    (64, false) => _Uint64Field(initialValue),
+    (64, true) => _Int64Field(initialValue),
+    _ => throw ArgumentError('unsupported integer bit width $bitWidth'),
+  };
+}
+
+_ValueField<double> _floatColumn(int bitWidth, double initialValue) =>
+    bitWidth == 32
+    ? _Float32Field(initialValue)
+    : _Float64Field(initialValue);
+
+/// [_intColumn] behind a presence flag, so "no value" is a state of its own.
+_DefaultableOptionalField<int> _optIntColumn(
+  int bitWidth,
+  bool signed,
+  int? initialValue,
+) => _DefaultableOptionalField<int>(
+  _intColumn(bitWidth, signed, initialValue ?? 0),
+  initialValue != null,
+);
+
+_DefaultableOptionalField<double> _optFloatColumn(
+  int bitWidth,
+  double? initialValue,
+) => _DefaultableOptionalField<double>(
+  _floatColumn(bitWidth, initialValue ?? 0.0),
+  initialValue != null,
+);
+
+_NativeArrayField<int> _intArrayColumn(
+  int length,
+  int bitWidth,
+  bool signed,
+  int? broadcast,
+  List<int>? perElement,
+) {
+  if (bitWidth < 8) {
+    return signed
+        ? _SubByteIntArrayField(bitWidth, length, broadcast, perElement)
+        : _SubByteUintArrayField(bitWidth, length, broadcast, perElement);
+  }
+  return switch ((bitWidth, signed)) {
+    (8, false) => _Uint8ArrayField(length, broadcast, perElement),
+    (8, true) => _Int8ArrayField(length, broadcast, perElement),
+    (16, false) => _Uint16ArrayField(length, broadcast, perElement),
+    (16, true) => _Int16ArrayField(length, broadcast, perElement),
+    (32, false) => _Uint32ArrayField(length, broadcast, perElement),
+    (32, true) => _Int32ArrayField(length, broadcast, perElement),
+    _ => throw ArgumentError('unsupported integer bit width $bitWidth'),
+  };
+}
+
+_NativeArrayField<double> _floatArrayColumn(
+  int length,
+  int bitWidth,
+  double? broadcast,
+  List<double>? perElement,
+) => bitWidth == 32
+    ? _Float32ArrayField(length, broadcast, perElement)
+    : _Float64ArrayField(length, broadcast, perElement);
+
+/// The single place `hasArray`, `hasArrayOf` and `optArray`'s element decide
+/// what an element *is*.
+///
+/// An exhaustive `switch` and not an `is` chain: [DataElement] is sealed, so a
+/// fourth element kind is a compile error here instead of a case that falls
+/// through. The representation case is spelled
+/// `IntRepresentation<IntRepresentable>()`, because a bare
+/// `IntRepresentation()` does not satisfy exhaustiveness against an unbounded
+/// `DataElement<T>`.
+///
+/// [broadcast] is one value for every element and [perElement] is one each;
+/// both `null` asks for the element's own zero - which a native width has and
+/// a representation does not, so the representation branch refuses it by name.
+_ArrayField<T> _arrayColumn<T>(
+  DataElement<T> element,
+  int length,
+  T? broadcast,
+  List<T>? perElement,
+) {
+  _checkArrayLength(length);
+  switch (element) {
+    case IntElement(:final bitWidth, :final signed):
+      return _intArrayColumn(
+            length,
+            bitWidth,
+            signed,
+            broadcast as int?,
+            perElement as List<int>?,
+          )
+          as _ArrayField<T>;
+    case FloatElement(:final bitWidth):
+      return _floatArrayColumn(
+            length,
+            bitWidth,
+            broadcast as double?,
+            perElement as List<double>?,
+          )
+          as _ArrayField<T>;
+    case IntRepresentation<IntRepresentable>():
+      final repr = element as IntRepresentation<IntRepresentable>;
+      if (broadcast == null && perElement == null) {
+        throw ArgumentError.value(
+          null,
+          'initialValue',
+          'a ${repr.runtimeType} array needs one. The bits an unwritten '
+              'element holds are 0, which a representation is under no '
+              'obligation to have a value for, so the first read would throw '
+              'out of unpack. Pass the value every element starts at, or '
+              'declare the column with optArray and let unwritten elements '
+              'read null.',
+        );
+      }
+      return _PackedArrayField<T>(
+        _intArrayColumn(
+          length,
+          _checkBitWidth(repr),
+          false,
+          (broadcast as IntRepresentable?)?.pack(),
+          perElement == null
+              ? null
+              : <int>[
+                  for (final value in perElement)
+                    (value as IntRepresentable).pack(),
+                ],
+        ),
+        repr,
+      );
+  }
+}
+
+/// One element of an `optArray`, as a scalar column.
+///
+/// The value bits are don't-care while the element's flag is clear, so an
+/// absent [initialValue] is the element's zero here and a representation needs
+/// no value of its own - which is why this switch has no counterpart to the
+/// refusal in [_arrayColumn].
+_Field<T> _elementColumn<T>(DataElement<T> element, T? initialValue) {
+  switch (element) {
+    case IntElement(:final bitWidth, :final signed):
+      return _intColumn(bitWidth, signed, (initialValue as int?) ?? 0)
+          as _Field<T>;
+    case FloatElement(:final bitWidth):
+      return _floatColumn(bitWidth, (initialValue as double?) ?? 0.0)
+          as _Field<T>;
+    case IntRepresentation<IntRepresentable>():
+      final repr = element as IntRepresentation<IntRepresentable>;
+      return _DeclaredPackedField<T>(
+        _intColumn(
+          _checkBitWidth(repr),
+          false,
+          (initialValue as IntRepresentable?)?.pack() ?? 0,
+        ),
+        repr,
+      );
+  }
+}
+
+/// The narrowest unsigned width that can index [count] enum members.
+///
+/// Widths are in *bits*, so a three-member enum answers 2 - the two bits
+/// callers spent on `hasUint2` when they packed the index by hand.
+///
+/// The ladder stops at 32: Dart evaluates `1 << 64` to 0, so a 64-bit rung
+/// could not state its own bound. An enum big enough to need one cannot be
+/// written down, so the throw is what an out-of-range [count] hits rather than
+/// silently truncating to a width that cannot hold it.
+int _enumIndexWidth(int count) {
+  for (final width in const [1, 2, 4, 8, 16, 32]) {
+    if (count <= 1 << width) return width;
+  }
+  throw ArgumentError.value(
+    count,
+    'values.length',
+    'more members than a 32-bit index column can address',
+  );
+}
+
+/// Every `DataDescriptor` method, answered by building the column and handing
+/// it to [_declared].
+///
+/// The two descriptors below differ by exactly that one step - a `Field.*`
+/// static keeps nothing, and a describe pass records what it declared so the
+/// archetype can realize it with everything else - so the vocabulary is
+/// written once here and each of them says only what [_declared] does with a
+/// column.
+abstract base class _ColumnDescriptor implements DataDescriptor {
+  const _ColumnDescriptor();
+
+  /// Called with each column as it is built, and returns it - which is what
+  /// keeps every method below one expression.
+  D _declared<D extends ScannableField>(D column);
 
   @override
   InitialPointer<bool> hasBool([bool initialValue = false]) =>
-      _BoolField(_has(1, false, initialValue ? 1 : 0));
+      _declared(_BoolField(_intColumn(1, false, initialValue ? 1 : 0)));
 
   @override
   InitialPointer<int> hasUint1([int initialValue = 0]) =>
-      _has(1, false, initialValue);
+      _declared(_intColumn(1, false, initialValue));
   @override
   InitialPointer<int> hasInt1([int initialValue = 0]) =>
-      _has(1, true, initialValue);
+      _declared(_intColumn(1, true, initialValue));
   @override
   InitialPointer<int> hasUint2([int initialValue = 0]) =>
-      _has(2, false, initialValue);
+      _declared(_intColumn(2, false, initialValue));
   @override
   InitialPointer<int> hasInt2([int initialValue = 0]) =>
-      _has(2, true, initialValue);
+      _declared(_intColumn(2, true, initialValue));
   @override
   InitialPointer<int> hasUint4([int initialValue = 0]) =>
-      _has(4, false, initialValue);
+      _declared(_intColumn(4, false, initialValue));
   @override
   InitialPointer<int> hasInt4([int initialValue = 0]) =>
-      _has(4, true, initialValue);
+      _declared(_intColumn(4, true, initialValue));
   @override
   InitialPointer<int> hasUint8([int initialValue = 0]) =>
-      _has(8, false, initialValue);
+      _declared(_intColumn(8, false, initialValue));
   @override
   InitialPointer<int> hasInt8([int initialValue = 0]) =>
-      _has(8, true, initialValue);
+      _declared(_intColumn(8, true, initialValue));
   @override
   InitialPointer<int> hasUint16([int initialValue = 0]) =>
-      _has(16, false, initialValue);
+      _declared(_intColumn(16, false, initialValue));
   @override
   InitialPointer<int> hasInt16([int initialValue = 0]) =>
-      _has(16, true, initialValue);
+      _declared(_intColumn(16, true, initialValue));
   @override
   InitialPointer<int> hasUint32([int initialValue = 0]) =>
-      _has(32, false, initialValue);
+      _declared(_intColumn(32, false, initialValue));
   @override
   InitialPointer<int> hasInt32([int initialValue = 0]) =>
-      _has(32, true, initialValue);
+      _declared(_intColumn(32, true, initialValue));
   @override
   InitialPointer<int> hasUint64([int initialValue = 0]) =>
-      _has(64, false, initialValue);
+      _declared(_intColumn(64, false, initialValue));
   @override
   InitialPointer<int> hasInt64([int initialValue = 0]) =>
-      _has(64, true, initialValue);
+      _declared(_intColumn(64, true, initialValue));
 
   /// Signed 64-bit, like [hasInt64] and for its reason: `Entity.pack` shifts
   /// the archetype id up into the sign position, so only a signed slot
   /// round-trips every handle unchanged.
   @override
-  InitialPointer<Entity> hasEntity([Entity? initialValue]) =>
-      _EntityHandleField(_has(64, true, initialValue?.value ?? 0));
+  InitialPointer<Entity> hasEntity([Entity? initialValue]) => _declared(
+    _EntityHandleField(_intColumn(64, true, initialValue?.value ?? 0)),
+  );
 
   /// Unsigned, and as narrow as the member count allows - see
   /// [_enumIndexWidth].
@@ -1622,284 +2182,96 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
       'values list the enum declares.',
     );
 
-    return _EnumField<E>(
-      _has(_enumIndexWidth(values.length), false, initialValue?.index ?? 0),
-      values,
+    return _declared(
+      _EnumField<E>(
+        _intColumn(
+          _enumIndexWidth(values.length),
+          false,
+          initialValue?.index ?? 0,
+        ),
+        values,
+      ),
     );
   }
 
   @override
   InitialPointer<double> hasFloat32([double initialValue = 0.0]) =>
-      _hasFloat(32, initialValue);
+      _declared(_floatColumn(32, initialValue));
   @override
   InitialPointer<double> hasFloat64([double initialValue = 0.0]) =>
-      _hasFloat(64, initialValue);
+      _declared(_floatColumn(64, initialValue));
 
   @override
   InitialPointer<int?> optUint1([int? initialValue]) =>
-      _opt(1, false, initialValue);
+      _declared(_optIntColumn(1, false, initialValue));
   @override
   InitialPointer<int?> optInt1([int? initialValue]) =>
-      _opt(1, true, initialValue);
+      _declared(_optIntColumn(1, true, initialValue));
   @override
   InitialPointer<int?> optUint2([int? initialValue]) =>
-      _opt(2, false, initialValue);
+      _declared(_optIntColumn(2, false, initialValue));
   @override
   InitialPointer<int?> optInt2([int? initialValue]) =>
-      _opt(2, true, initialValue);
+      _declared(_optIntColumn(2, true, initialValue));
   @override
   InitialPointer<int?> optUint4([int? initialValue]) =>
-      _opt(4, false, initialValue);
+      _declared(_optIntColumn(4, false, initialValue));
   @override
   InitialPointer<int?> optInt4([int? initialValue]) =>
-      _opt(4, true, initialValue);
+      _declared(_optIntColumn(4, true, initialValue));
   @override
   InitialPointer<int?> optUint8([int? initialValue]) =>
-      _opt(8, false, initialValue);
+      _declared(_optIntColumn(8, false, initialValue));
   @override
   InitialPointer<int?> optInt8([int? initialValue]) =>
-      _opt(8, true, initialValue);
+      _declared(_optIntColumn(8, true, initialValue));
   @override
   InitialPointer<int?> optUint16([int? initialValue]) =>
-      _opt(16, false, initialValue);
+      _declared(_optIntColumn(16, false, initialValue));
   @override
   InitialPointer<int?> optInt16([int? initialValue]) =>
-      _opt(16, true, initialValue);
+      _declared(_optIntColumn(16, true, initialValue));
   @override
   InitialPointer<int?> optUint32([int? initialValue]) =>
-      _opt(32, false, initialValue);
+      _declared(_optIntColumn(32, false, initialValue));
   @override
   InitialPointer<int?> optInt32([int? initialValue]) =>
-      _opt(32, true, initialValue);
+      _declared(_optIntColumn(32, true, initialValue));
   @override
   InitialPointer<int?> optUint64([int? initialValue]) =>
-      _opt(64, false, initialValue);
+      _declared(_optIntColumn(64, false, initialValue));
   @override
   InitialPointer<int?> optInt64([int? initialValue]) =>
-      _opt(64, true, initialValue);
+      _declared(_optIntColumn(64, true, initialValue));
 
   /// Signed 64-bit beside a presence flag, the signedness for [hasEntity]'s
   /// reason.
   @override
-  InitialPointer<Entity?> optEntity([Entity? initialValue]) =>
-      _OptionalEntityHandleField(_opt(64, true, initialValue?.value));
+  InitialPointer<Entity?> optEntity([Entity? initialValue]) => _declared(
+    _OptionalEntityHandleField(_optIntColumn(64, true, initialValue?.value)),
+  );
 
   @override
   InitialPointer<double?> optFloat32([double? initialValue]) =>
-      _optFloat(32, initialValue);
+      _declared(_optFloatColumn(32, initialValue));
   @override
   InitialPointer<double?> optFloat64([double? initialValue]) =>
-      _optFloat(64, initialValue);
-
-  // --- array declaration helpers ---------------------------------------
-
-  /// A zero- or negative-length array is rejected rather than quietly
-  /// accepted: every index into it would be out of range, so it can only be
-  /// a caller mistake, and catching it here (at describe time, once) beats
-  /// a `RangeError` from every access at runtime.
-  void _checkArrayLength(int length) {
-    if (length < 1) {
-      throw ArgumentError.value(length, 'length', 'must be at least 1');
-    }
-  }
-
-  /// Reserves [length] consecutive [bitWidth]-bit elements and returns the
-  /// *first* one's bit offset - the whole array's base. The rest is
-  /// arithmetic; see the packing note above [_ArrayField] for why no gaps
-  /// can appear between the elements.
-  ///
-  /// **The leading `while` is load-bearing, not defensive.** "Sub-byte
-  /// widths divide 8, so `declareField`'s byte-rounding never fires
-  /// mid-array" is only true once the array's *base* is a multiple of the
-  /// element width. It is not true in general: `hasUint1()` followed by
-  /// `hasArray(.uint4, 4)` leaves the cursor at bit 1, so element 0 lands at
-  /// bit 1 (1 + 4 <= 8, no rounding) but element 1 would need bits 5..8,
-  /// straddles the byte, and gets pushed to bit 8 - a 3-bit gap that
-  /// `baseBit + i * bitWidth` does not know about. Every later element would
-  /// then be read and written at the wrong offset, aliasing its neighbours
-  /// and, for the last one, corrupting whatever follows the array.
-  ///
-  /// Padding the cursor up to a multiple of [bitWidth] first removes the
-  /// possibility: every element offset is then a multiple of [bitWidth],
-  /// [bitWidth] divides 8, so `(offset & 7) + bitWidth <= 8` holds for all
-  /// of them and the rounding branch never fires inside the array. The cost
-  /// is at most 3 wasted bits, once, and only when the array does not
-  /// already start aligned. `declareField(1)` is the padding tool because it
-  /// is the only width that never itself rounds - it always advances the
-  /// cursor by exactly one bit, so the loop terminates.
-  int _declareElements(int length, int bitWidth) {
-    if (bitWidth < 8) {
-      while (_storage.bitLength % bitWidth != 0) {
-        _storage.declareField(1);
-      }
-    }
-    final baseBit = _storage.declareField(bitWidth);
-    for (var i = 1; i < length; i++) {
-      _storage.declareField(bitWidth);
-    }
-    return baseBit;
-  }
-
-  _ArrayField<int> _declareIntArray(
-    int length,
-    int bitWidth,
-    bool signed,
-    List<int> defaults,
-  ) {
-    final baseBit = _declareElements(length, bitWidth);
-    if (bitWidth < 8) {
-      return signed
-          ? _SubByteIntArrayField(_storage, length, baseBit, bitWidth, defaults)
-          : _SubByteUintArrayField(
-              _storage,
-              length,
-              baseBit,
-              bitWidth,
-              defaults,
-            );
-    }
-    final byte = baseBit >> 3;
-    return switch ((bitWidth, signed)) {
-      (8, false) => _Uint8ArrayField(_storage, length, byte, defaults),
-      (8, true) => _Int8ArrayField(_storage, length, byte, defaults),
-      (16, false) => _Uint16ArrayField(_storage, length, byte, defaults),
-      (16, true) => _Int16ArrayField(_storage, length, byte, defaults),
-      (32, false) => _Uint32ArrayField(_storage, length, byte, defaults),
-      (32, true) => _Int32ArrayField(_storage, length, byte, defaults),
-      _ => throw ArgumentError('unsupported integer bit width $bitWidth'),
-    };
-  }
-
-  /// Reserves the elements and registers the field. [defaults] holds one
-  /// entry per element already, so both spellings of the initial value meet
-  /// here.
-  DataArrayPointer<double> _declareFloatArray(
-    int length,
-    int bitWidth,
-    List<double> defaults,
-  ) {
-    final byte = _declareElements(length, bitWidth) >> 3;
-    final field = bitWidth == 32
-        ? _Float32ArrayField(_storage, length, byte, defaults)
-        : _Float64ArrayField(_storage, length, byte, defaults);
-    _storage.registerField(field);
-    return field;
-  }
-
-  /// One entry per element, from whichever of the two spellings the caller
-  /// used: [initialValues] covers the first elements and the rest fall back
-  /// to [zero], the element's own unwritten value.
-  ///
-  /// More values than the array holds is an error, for [_checkArrayLength]'s
-  /// reason: it can only be a caller mistake, and each extra one names a slot
-  /// that was never reserved.
-  List<V> _elementDefaults<V>(int length, List<V> initialValues, V zero) {
-    if (initialValues.length > length) {
-      throw ArgumentError.value(
-        initialValues.length,
-        'initialValues',
-        'is more values than the array holds ($length)',
-      );
-    }
-    final defaults = List<V>.filled(length, zero);
-    defaults.setRange(0, initialValues.length, initialValues);
-    return defaults;
-  }
-
-  /// The single place [hasArray] and [hasArrayOf] decide what an element
-  /// *is*.
-  ///
-  /// An exhaustive `switch` and not an `is` chain: [DataElement] is sealed,
-  /// so a fourth element kind is a compile error here instead of a case that
-  /// falls through. The representation case is spelled
-  /// `IntRepresentation<IntRepresentable>()`, because a bare
-  /// `IntRepresentation()` does not satisfy exhaustiveness against an
-  /// unbounded `DataElement<T>`.
-  ///
-  /// [initials] holds one value per element already. `null` reaches here only
-  /// from [hasArray] with no initial value given, and asks for the element's
-  /// own zero - which a native width has and a representation does not, so
-  /// the representation branch refuses it by name.
-  DataArrayPointer<T> _declareArray<T>(
-    DataElement<T> element,
-    int length,
-    List<T>? initials,
-  ) {
-    switch (element) {
-      case IntElement(:final bitWidth, :final signed):
-        final defaults = _elementDefaults<int>(
-          length,
-          (initials as List<int>?) ?? const <int>[],
-          0,
-        );
-        final field = _declareIntArray(length, bitWidth, signed, defaults);
-        _storage.registerField(field);
-        return field as DataArrayPointer<T>;
-      case FloatElement(:final bitWidth):
-        final defaults = _elementDefaults<double>(
-          length,
-          (initials as List<double>?) ?? const <double>[],
-          0.0,
-        );
-        return _declareFloatArray(length, bitWidth, defaults)
-            as DataArrayPointer<T>;
-      case IntRepresentation<IntRepresentable>():
-        final repr = element as IntRepresentation<IntRepresentable>;
-        if (initials == null) {
-          throw ArgumentError.value(
-            null,
-            'initialValue',
-            'a ${repr.runtimeType} array needs one. The bits an unwritten '
-                'element holds are 0, which a representation is under no '
-                'obligation to have a value for, so the first read would '
-                'throw out of unpack. Pass the value every element starts '
-                'at, or declare the column with optArray and let unwritten '
-                'elements read null.',
-          );
-        }
-        final bits = _declareIntArray(
-          length,
-          _checkBitWidth(repr),
-          false,
-          _elementDefaults<int>(
-            length,
-            <int>[for (final v in initials) (v as IntRepresentable).pack()],
-            0,
-          ),
-        );
-        final field = _PackedArrayField<T>(_storage, length, bits, repr);
-        _storage.registerField(field);
-        return field;
-    }
-  }
+      _declared(_optFloatColumn(64, initialValue));
 
   @override
   DataArrayPointer<T> hasArray<T>(
     DataElement<T> element,
     int length, [
     T? initialValue,
-  ]) {
-    _checkArrayLength(length);
-    return _declareArray<T>(
-      element,
-      length,
-      initialValue == null ? null : List<T>.filled(length, initialValue),
-    );
-  }
+  ]) => _declared(_arrayColumn<T>(element, length, initialValue, null));
 
   @override
   DataArrayPointer<T> hasArrayOf<T>(
     DataElement<T> element,
     int length,
     List<T> initialValues,
-  ) {
-    _checkArrayLength(length);
-    return _declareArray<T>(element, length, initialValues);
-  }
+  ) => _declared(_arrayColumn<T>(element, length, null, initialValues));
 
-  /// The nullable case declares per element - flag, then value - which is
-  /// why it cannot share [_declareElements]: the two widths interleave, so
-  /// the elements are not evenly spaced. See [_OptionalArrayField].
   @override
   DataArrayPointer<T?> optArray<T>(
     DataElement<T> element,
@@ -1907,137 +2279,138 @@ final class ArchetypeDataDescriptor implements DataDescriptor {
     T? initialValue,
   ]) {
     _checkArrayLength(length);
-    final flagBits = List<int>.filled(length, 0);
-    final values = <_Field<T>>[];
-    for (var i = 0; i < length; i++) {
-      flagBits[i] = _storage.declareFlagBit();
-      values.add(_declareElement<T>(element, initialValue));
-    }
-    final field = _OptionalArrayField<T>(
-      _storage,
-      length,
-      flagBits,
-      values,
-      initialValue != null,
-    );
-    _storage.registerField(field);
-    return field;
-  }
-
-  /// One element of an [optArray], as a scalar field.
-  ///
-  /// The value bits are don't-care while the element's flag is clear, so an
-  /// absent [initialValue] is the element's zero here and a representation
-  /// needs no value of its own - which is why this switch has no counterpart
-  /// to the refusal in [_declareArray].
-  _Field<T> _declareElement<T>(DataElement<T> element, T? initialValue) {
-    switch (element) {
-      case IntElement(:final bitWidth, :final signed):
-        return _declareInt(bitWidth, signed, (initialValue as int?) ?? 0)
-            as _Field<T>;
-      case FloatElement(:final bitWidth):
-        return _declareFloat(bitWidth, (initialValue as double?) ?? 0.0)
-            as _Field<T>;
-      case IntRepresentation<IntRepresentable>():
-        final repr = element as IntRepresentation<IntRepresentable>;
-        return _PackedField<T>(
-          _storage,
-          _declareInt(
-            _checkBitWidth(repr),
-            false,
-            (initialValue as IntRepresentable?)?.pack() ?? 0,
-          ),
-          repr,
-        );
-    }
-  }
-  /// Rejects a width the row cannot hold, before it becomes silent
-  /// truncation. A representation's width is a declare-time constant, so this
-  /// fires once per field at bring-up and never on a hot path.
-  int _checkBitWidth(IntRepresentation<Object?> repr) {
-    final bitWidth = repr.bitWidth;
-    if (bitWidth < 1 || bitWidth > 64) {
-      throw ArgumentError.value(
-        bitWidth,
-        'bitWidth',
-        '${repr.runtimeType} declares a width outside 1..64. A packed field is '
-            'one integer in the row, so anything wider has no representation '
-            'there - use separate fields instead.',
-      );
-    }
-    return bitWidth;
-  }
-
-  PackedPointer<T> _hasPacked<T extends IntRepresentable>(
-    IntRepresentation<T> repr,
-    T initialValue,
-  ) {
-    final bits = _declareInt(_checkBitWidth(repr), false, initialValue.pack());
-    final field = _PackedPointerField<T>(_storage, bits, repr);
-    _storage.registerField(field);
-    return field;
-  }
-
-  DataPointer<T?> _optPacked<T extends IntRepresentable>(
-    IntRepresentation<T> repr,
-    T? initialValue,
-  ) {
-    // Flag first, then the value - but the flag takes a bit an earlier
-    // field's byte-rounding stranded when there is one, so it usually costs
-    // the row nothing (see `ArchetypeStorage.declareFlagBit`). The value
-    // still comes from the cursor, so its own alignment rule is unchanged.
-    final flagBit = _storage.declareFlagBit();
-    final bits = _declareInt(
-      _checkBitWidth(repr),
-      false,
-      initialValue?.pack() ?? 0,
-    );
-    final value = _PackedField<T>(_storage, bits, repr);
-    final field = _OptionalField<T>(
-      _storage,
-      flagBit,
-      value,
-      initialValue != null,
-    );
-    _storage.registerField(field);
-    return field;
+    return _declared(_OptionalArrayField<T>(length, element, initialValue));
   }
 
   @override
   PackedPointer<T> hasPacked<T extends IntRepresentable>(
     IntRepresentation<T> repr,
     T initialValue,
-  ) => _hasPacked(repr, initialValue);
+  ) => _declared(
+    _PackedPointerField<T>(
+      _intColumn(_checkBitWidth(repr), false, initialValue.pack()),
+      repr,
+    ),
+  );
+
   @override
   DataPointer<T?> optPacked<T extends IntRepresentable>(
     IntRepresentation<T> repr, [
     T? initialValue,
-  ]) => _optPacked(repr, initialValue);
+  ]) => _declared(
+    _OptionalField<T>(
+      _DeclaredPackedField<T>(
+        _intColumn(_checkBitWidth(repr), false, initialValue?.pack() ?? 0),
+        repr,
+      ),
+      initialValue != null,
+    ),
+  );
+
+  /// The width is a constant and the table is not, which is the whole shape
+  /// of this column: `CameraViewTable.viewBitWidth` reserves the bits from
+  /// the declaration, and [_CameraViewField] reads the scene's table at
+  /// realize, where a scene is reachable.
   @override
   DataPointer<CameraView?> optCameraView([CameraView? initialValue]) =>
-      _optPacked(_storage.scene.cameraViews, initialValue);
-  @override
-  DataPointer<T> hasHeapObject<T>(T Function() initialValue) {
-    final byte = _storage.declareField(32) >> 3;
-    final field = _HeapObjectField<T>(_storage, byte, initialValue);
-    _storage.registerField(field);
-    return field;
-  }
+      _declared(
+        _OptionalField<CameraView>(
+          _CameraViewField(
+            _intColumn(
+              CameraViewTable.viewBitWidth,
+              false,
+              initialValue?.pack() ?? 0,
+            ),
+          ),
+          initialValue != null,
+        ),
+      );
 
   @override
-  DataPointer<T?> optHeapObject<T>() {
-    final flagBit = _storage.declareFlagBit();
-    final byte = _storage.declareField(32) >> 3;
-    // No default factory: the wrapper's has-bit defaults to clear, so
-    // `_OptionalField.writeInitialValue` never asks the value field for one and
-    // a fresh entity reads `null`.
-    final value = _HeapObjectField<T>(_storage, byte, null);
-    final field = _OptionalField<T>(_storage, flagBit, value, false);
-    _storage.registerField(field);
-    // The wrapper carries the default; the value field carries the registry
-    // slot. Teardown has to reach the latter - see `registerHeapField`.
-    _storage.registerHeapField(value);
-    return field;
+  DataPointer<T> hasHeapObject<T>(T Function() initialValue) =>
+      _declared(_HeapObjectField<T>(initialValue));
+
+  @override
+  DataPointer<T?> optHeapObject<T>() =>
+      // No default factory: the wrapper's has-bit defaults to clear, so
+      // `_OptionalField.writeInitialValue` never asks the value field for one
+      // and a fresh entity reads `null`.
+      _declared(_OptionalField<T>(_HeapObjectField<T>(null), false));
+}
+
+/// The descriptor a `Field.*` static declares against.
+///
+/// It is `const`, holds nothing and reaches nothing: `Field.float64(3)` builds
+/// a column and hands it straight back, so a field initialiser needs no
+/// archetype, no scene and no pass open around it. That is the whole
+/// difference between this and the ambient window it replaced - there is no
+/// stack, so there is no innermost entry for a declaration to be attributed
+/// to, and a lazily-initialised one cannot land on whichever owner happens to
+/// be under construction when it finally runs.
+///
+/// What it costs is that nothing here knows the column exists. A class's
+/// declarations reach its archetype by being read off the constructed
+/// instance and handed to [ArchetypeDataDescriptor.declare].
+const DataDescriptor declaredColumns = _DeclaredColumns();
+
+final class _DeclaredColumns extends _ColumnDescriptor {
+  const _DeclaredColumns();
+
+  @override
+  D _declared<D extends ScannableField>(D column) => column;
+}
+
+/// Builds one archetype's field layout. Created and discarded by
+/// `SceneDescriptor.has`; see the library doc at the top of this file.
+///
+/// It answers the same vocabulary [declaredColumns] does and additionally
+/// **records** what it handed out, because a `describeStruct` body's
+/// declarations are not held by any field a collector could read them off.
+/// [realize] then gives every column - the collected ones and these - its row
+/// space, in one pass and in declaration order.
+final class ArchetypeDataDescriptor extends _ColumnDescriptor {
+  ArchetypeDataDescriptor(this._storage);
+
+  final ArchetypeStorage _storage;
+
+  /// Every column this archetype declares, in the order it declared them,
+  /// which is the order of the row.
+  final List<_Declared> _columns = <_Declared>[];
+
+  @override
+  D _declared<D extends ScannableField>(D column) {
+    _columns.add(column as _Declared);
+    return column;
+  }
+
+  /// Records the columns a constructed instance's field initialisers
+  /// produced, ahead of anything a describe pass goes on to add.
+  ///
+  /// A declaration that is not a column is skipped rather than refused: a
+  /// `Query` is a declaration too, and what it resolves against is the
+  /// component-bit registry rather than a row layout. This descriptor lays
+  /// out rows, and says so by taking only what it can lay out.
+  void declare(Iterable<ScannableField> declarations) {
+    for (final declaration in declarations) {
+      // Cast rather than promote, the shape `ArchetypeStorage.registerField`
+      // spells out: `_Declared` is not a subtype of `ScannableField`, so `is`
+      // leaves the static type alone and the cast is the only spelling.
+      if (declaration is! _Declared) continue;
+      _columns.add(declaration as _Declared);
+    }
+  }
+
+  /// Gives every column its row space and registers it, so `seal` stamps its
+  /// default.
+  ///
+  /// One pass at the end rather than one reservation per declaration, and
+  /// that is what leaves an array's length movable and a camera view's table
+  /// resolvable right up to this line. Called once, after the describe
+  /// passes and before `ArchetypeStorage.seal`.
+  void realize() {
+    for (final column in _columns) {
+      column.realize(_storage);
+    }
   }
 }
 
