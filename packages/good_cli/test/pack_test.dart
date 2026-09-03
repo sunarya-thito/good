@@ -100,6 +100,81 @@ void main() {
     });
   });
 
+  // Scene-aware grouping. The `byScene` map is what attributes an asset to a
+  // scene; how that map is built is the scan's business, not packing's, so it
+  // is passed in literally here.
+  group('planPack, grouped by scene', () {
+    test('an asset used by one scene goes in that scene chunk', () {
+      final plan = planPack(
+        ['assets/a.webp', 'assets/b.webp'],
+        assetRoot: 'assets/',
+        byScene: {
+          'MenuScene': {'assets/a.webp'},
+          'FieldScene': {'assets/b.webp'},
+        },
+      );
+      expect(plan.chunks.map((c) => c.name), [
+        'chunk_fieldscene.dat',
+        'chunk_menuscene.dat',
+      ]);
+      expect(
+        plan.chunks.firstWhere((c) => c.name == 'chunk_menuscene.dat').members,
+        ['assets/a.webp'],
+      );
+    });
+
+    test('an asset used by two scenes goes in the shared chunk', () {
+      final plan = planPack(
+        ['assets/shared.webp'],
+        assetRoot: 'assets/',
+        byScene: {
+          'A': {'assets/shared.webp'},
+          'B': {'assets/shared.webp'},
+        },
+      );
+      expect(plan.chunks.single.name, 'chunk_shared.dat');
+    });
+
+    test('an unattributed asset still ships, in the shared chunk', () {
+      // The important one. An asset this pass could not attribute may be
+      // loaded by code it cannot read; dropping it would produce a build that
+      // simply fails, which is far worse than one that reads an extra chunk.
+      final plan = planPack(
+        ['assets/orphan.webp'],
+        assetRoot: 'assets/',
+        byScene: {'A': <String>{}},
+      );
+      expect(plan.assetCount, 1);
+      expect(plan.chunks.single.name, 'chunk_shared.dat');
+    });
+
+    test('the report says it grouped by scene, and how much is shared', () {
+      final plan = planPack(
+        ['assets/a.webp', 'assets/s.webp'],
+        assetRoot: 'assets/',
+        byScene: {
+          'A': {'assets/a.webp', 'assets/s.webp'},
+          'B': {'assets/s.webp'},
+        },
+      );
+      expect(plan.grouping, contains('grouped by scene'));
+      expect(plan.grouping, contains('2 scene(s)'));
+      expect(plan.grouping, contains('1 asset(s) shared'));
+    });
+
+    test('no scene information falls back to directory grouping', () {
+      final plan = planPack(
+        ['assets/a.webp', 'assets/ui/b.webp'],
+        assetRoot: 'assets/',
+        byScene: const <String, Set<String>>{},
+      );
+      expect(plan.chunks.map((c) => c.name), [
+        'chunk_root.dat',
+        'chunk_ui.dat',
+      ]);
+    });
+  });
+
   group('chunk body', () {
     test('round-trips every member, bytes intact', () {
       final members = <String, Uint8List>{
