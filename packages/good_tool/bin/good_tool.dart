@@ -8,6 +8,7 @@ import 'dart:io';
 import 'package:good_cli/src/generate/scan.dart';
 import 'package:good_tool/src/accessor_emit.dart';
 import 'package:good_tool/src/component_emit.dart';
+import 'package:good_tool/src/declaration_emit.dart';
 import 'package:good_tool/src/doc_references.dart';
 import 'package:good_tool/src/engine_packages.dart';
 import 'package:good_tool/src/imports.dart';
@@ -233,10 +234,15 @@ Future<void> main(List<String> arguments) async {
     exclude: <String>{
       for (final package in packages) package.accessorFile.path,
       for (final package in packages) package.componentBitsFile.path,
+      for (final package in packages) package.declarationsFile.path,
     },
   );
   final accessors = scanAccessors(packages: readable, sources: sources);
   final bits = scanComponentBits(packages: readable, sources: sources);
+  final collectors = scanDeclarationCollectors(
+    packages: readable,
+    sources: sources,
+  );
 
   if (verbose) {
     final skipped = accessors.skipped.keys.toList()..sort();
@@ -246,6 +252,12 @@ Future<void> main(List<String> arguments) async {
     final unbitted = bits.skipped.keys.toList()..sort();
     for (final key in unbitted) {
       stdout.writeln('No generated bit: $key - ${bits.skipped[key]}');
+    }
+    final uncollected = collectors.skipped.keys.toList()..sort();
+    for (final key in uncollected) {
+      stdout.writeln(
+        'No collector entry: $key - ${collectors.skipped[key]}',
+      );
     }
   }
 
@@ -287,6 +299,7 @@ Future<void> main(List<String> arguments) async {
   final files = <GeneratedFile>[
     ...accessorFiles(accessors, packages),
     ...componentBitsFiles(bits, packages, imports, known: readable),
+    ...declarationFiles(collectors, packages, imports, known: readable),
   ];
   final absent = <EnginePackage, String>{
     for (final package in missingExports(
@@ -299,6 +312,11 @@ Future<void> main(List<String> arguments) async {
       packages,
     ))
       package: package.componentBitsExport,
+    for (final package in missingDeclarationExports(
+      declarationFiles(collectors, packages, imports, known: readable),
+      packages,
+    ))
+      package: package.declarationsExport,
   };
 
   if (check) {
@@ -324,8 +342,9 @@ Future<void> main(List<String> arguments) async {
   });
   stdout.writeln(
     '${accessors.propertyCount} propert(ies) over '
-    '${accessors.extensions.length} component(s), and ${bits.bits.length} '
-    'component bit(s), in ${files.length} file(s) across '
+    '${accessors.extensions.length} component(s), ${bits.bits.length} '
+    'component bit(s), and ${collectors.entries.length} declaration '
+    'collector(s), in ${files.length} file(s) across '
     '${packages.length} package(s).',
   );
 }

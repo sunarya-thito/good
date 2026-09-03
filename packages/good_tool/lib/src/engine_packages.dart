@@ -86,18 +86,44 @@ class EnginePackage {
   /// package's table names this one as a dependency.
   String get componentBitsExport => "export 'src/component_bits.g.dart';";
 
+  /// Where this package's generated declaration collectors go (#353).
+  ///
+  /// Beside [componentBitsFile] and written the same way. It holds one
+  /// function per class the package can instantiate that declares anything,
+  /// reading that class's declarations off an instance in the order its field
+  /// initialisers would have run - see `collectDeclarations` in `good`.
+  File get declarationsFile =>
+      File(p.join(libDir, 'src', 'declarations.g.dart'));
+
+  /// The `export` line [barrel] has to carry for [declarationsFile] to be
+  /// reachable.
+  ///
+  /// From outside the package, like the component-bit table and for the same
+  /// reason: a game names this table to `Game.declarations`, and a downstream
+  /// package's table names it as a dependency.
+  String get declarationsExport => "export 'src/declarations.g.dart';";
+
+  /// What this package's generated collector table is called -
+  /// `goo2dDeclarations`.
+  String get declarationsName => '${_camelName}Declarations';
+
   /// What this package's generated table is called - `goo2dComponentBits`.
   ///
   /// Derived from the package name, so it is unique across one run by
   /// construction and needs no list to keep in step.
-  String get componentBitsName {
+  String get componentBitsName => '${_camelName}ComponentBits';
+
+  /// The package name as one lower-camel word - `goo2dPhysicsBox2d`.
+  ///
+  /// Derived from the package name, so every table named off it is unique
+  /// across one run by construction and needs no list to keep in step.
+  String get _camelName {
     final words = name.split('_');
-    final camel = <String>[
+    return <String>[
       words.first,
       for (final word in words.skip(1))
         if (word.isNotEmpty) word[0].toUpperCase() + word.substring(1),
     ].join();
-    return '${camel}ComponentBits';
   }
 }
 

@@ -43,6 +43,7 @@ ScanSources readPackageSources(List<EnginePackage> packages) => readSources(
   exclude: <String>{
     for (final package in packages) package.accessorFile.path,
     for (final package in packages) package.componentBitsFile.path,
+    for (final package in packages) package.declarationsFile.path,
   },
 );
 
@@ -539,4 +540,213 @@ String componentBitCeilingMessage(ComponentBitScan scan, int max) {
       'is fewer component types in the packages this run read.',
     );
   return lines.toString();
+}
+
+// ---------------------------------------------------------------------------
+// Declaration collectors
+// ---------------------------------------------------------------------------
+
+/// The type a generated table is an instance of.
+const String generatedDeclarationsType = 'GeneratedDeclarations';
+
+/// The type one entry of that table is.
+const String declarationCollectorType = 'DeclarationCollector';
+
+/// The bound every collected value carries, and the element type of the list
+/// a collector hands back.
+const String scannableFieldType = 'ScannableField';
+
+/// One declaration a collector would read, in the position it holds.
+///
+/// A private one is here too, and that is the point of the class. It is not
+/// dropped from the list and mentioned in a log somewhere else: it keeps its
+/// place among the fields that surround it, so the generated file can say
+/// where the hole is rather than only that there is one.
+@immutable
+class CollectedDeclaration {
+  const CollectedDeclaration({
+    required this.owner,
+    required this.name,
+    required this.isPrivate,
+  });
+
+  /// The class that writes the field - `WorldTransform2D`, not whichever
+  /// class applies it.
+  final String owner;
+
+  /// The Dart field name.
+  final String name;
+
+  /// Whether it is private, and so unreachable from the generated file.
+  final bool isPrivate;
+}
+
+/// One class's collector: what it reads, and off what.
+@immutable
+class DeclarationCollectorEntry {
+  const DeclarationCollectorEntry({
+    required this.type,
+    required this.package,
+    required this.path,
+    required this.imports,
+    required this.fields,
+  });
+
+  /// The class it reads - `GameRenderer2D`.
+  final String type;
+
+  /// The package whose table it goes in.
+  final String package;
+
+  /// The file the class is declared in, normalised and absolute.
+  final String path;
+
+  /// Every `package:` URI the generated file needs for this entry.
+  final Set<String> imports;
+
+  /// Every declaration an instance holds, in the order its initialisers
+  /// would have run - see [flattenedDeclarations]. Private ones included,
+  /// keeping their place.
+  final List<CollectedDeclaration> fields;
+
+  /// Whether any of [fields] can actually be read.
+  ///
+  /// False leaves a collector that hands back an empty list, which is a
+  /// truthful answer to "what can be read off this" and a false one to "what
+  /// does this declare". Nothing in this repository is such a class - every
+  /// `Scannable` root declares at least one public dispatcher - and a run
+  /// that produced one would be worth stopping over rather than emitting.
+  bool get hasReadableField => fields.any((field) => !field.isPrivate);
+
+  /// `_gameRenderer2D`, the collector function's name.
+  ///
+  /// Private, because nothing names it but the table three lines below it.
+  String get functionName => '_${type[0].toLowerCase()}${type.substring(1)}';
+}
+
+/// Every collector one run would write, and what it left out.
+@immutable
+class DeclarationCollectorScan {
+  const DeclarationCollectorScan({
+    required this.byPackage,
+    required this.entries,
+    required this.skipped,
+  });
+
+  /// Entries keyed by the package they are written into, in table order.
+  final Map<String, List<DeclarationCollectorEntry>> byPackage;
+
+  /// Every entry, over every package read.
+  final List<DeclarationCollectorEntry> entries;
+
+  /// Every declaration that reached no collector, keyed `Class.field`, to
+  /// why.
+  ///
+  /// Reported under `--verbose` and not fatal, for the reason
+  /// `DeclarationScan.uncollectable` gives: today every one of them is a
+  /// private field, and whether the engine's own cache columns become public
+  /// is an open call that a generator refusing would be making. What is *not*
+  /// left to the reader is whether the omission is visible - each one is
+  /// written into the generated file beside the fields that did reach it.
+  final Map<String, String> skipped;
+}
+
+/// Every class in [packages] that can be a `runtimeType` and has a
+/// declaration anywhere above it.
+///
+/// # Why abstract classes and mixins are not in it
+///
+/// A collector is looked up by `object.runtimeType`, and nothing is ever an
+/// instance of exactly `Transform2D` or exactly `EntityStruct`. An entry for
+/// one would be a line in a committed file that nothing can reach. What
+/// carries a mixin's columns is the entry of each class that applies it,
+/// which holds them flattened in place - so `good` itself, whose declarers
+/// are four abstract roots and two mixins, writes no table at all, and every
+/// column they declare still reaches a row through the game's own.
+///
+/// # The order everything comes out in
+///
+/// Entries by where the class is declared - file path, then name within a
+/// file - exactly as the accessor extensions are, and for the same reason:
+/// the file is committed and read in a diff. The *fields* inside an entry are
+/// in construction order, which is the one order here that is load-bearing
+/// rather than tidy.
+DeclarationCollectorScan scanDeclarationCollectors({
+  required List<EnginePackage> packages,
+  ScanSources? sources,
+}) {
+  final read = sources ?? readPackageSources(packages);
+  final byLibDir = <String, EnginePackage>{
+    for (final package in packages) package.libDir: package,
+  };
+  final imports = Imports(
+    declaredIn: declaredIn(read),
+    byLibDir: byLibDir,
+    units: read.units,
+    packages: packages,
+  );
+  final typesByName = read.typesByName;
+
+  final entries = <DeclarationCollectorEntry>[];
+  final skipped = <String, String>{};
+
+  final paths = read.units.keys.toList()..sort();
+  for (final path in paths) {
+    final owner = packageOf(path, byLibDir);
+    if (owner == null) continue;
+    final types = read.units[path]!.types.toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    for (final type in types) {
+      if (type.isAbstract) continue;
+      if (!isSubtypeOf(type.name, scannableRoot, typesByName)) continue;
+      final declarations = flattenedDeclarations(type, typesByName);
+      if (declarations.isEmpty) continue;
+
+      final fields = <CollectedDeclaration>[];
+      for (final declaration in declarations) {
+        if (declaration.isPrivate) {
+          skipped['${declaration.owner}.${declaration.name}'] =
+              'it is private, and this file is a different library from the '
+              'one that declares it - a collector reading it would not '
+              'compile, and user code is never edited to add a part '
+              'directive';
+        }
+        fields.add(
+          CollectedDeclaration(
+            owner: declaration.owner,
+            name: declaration.name,
+            isPrivate: declaration.isPrivate,
+          ),
+        );
+      }
+
+      final resolved = imports.importFor(type.name, owner);
+      final field = imports.importFor(scannableFieldType, owner);
+      if (resolved.problem != null || field.problem != null) {
+        skipped[type.name] = resolved.problem ?? field.problem!;
+        continue;
+      }
+      entries.add(
+        DeclarationCollectorEntry(
+          type: type.name,
+          package: owner.name,
+          path: path,
+          imports: <String>{...resolved.imports, ...field.imports},
+          fields: fields,
+        ),
+      );
+    }
+  }
+
+  final byPackage = <String, List<DeclarationCollectorEntry>>{};
+  for (final entry in entries) {
+    byPackage
+        .putIfAbsent(entry.package, () => <DeclarationCollectorEntry>[])
+        .add(entry);
+  }
+  return DeclarationCollectorScan(
+    byPackage: byPackage,
+    entries: entries,
+    skipped: skipped,
+  );
 }

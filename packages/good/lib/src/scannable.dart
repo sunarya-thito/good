@@ -1,3 +1,5 @@
+import 'package:meta/meta.dart';
+
 // The three things a scan is allowed to look at, each one opt-in and each one
 // a compile error to get wrong.
 //
@@ -108,3 +110,191 @@ abstract interface class ScannableField {}
 /// that decides what gets emitted and is then finished with - needs nothing
 /// here, because it is never written into the output for anything to look up.
 abstract interface class ScannableAnnotation {}
+
+// ---------------------------------------------------------------------------
+// The collectors
+// ---------------------------------------------------------------------------
+
+/// Reads every declaration [object] holds, in the order its class declares
+/// them.
+///
+/// This is the whole of what replaced the ambient window. A declaration
+/// reaches nothing where it is written - `Field.float64(3)` builds a column
+/// and hands it back, `Event.of(...)` builds a dispatcher and hands it back -
+/// so the only record of what a class declared is the fields it holds, and
+/// this is what reads them back off. `ArchetypeDataDescriptor.declare` and
+/// `EventBinder.declare` each take what comes out and keep the part they can
+/// use.
+///
+/// # The order, and why it is a requirement rather than a description
+///
+/// A row's field order is the order its columns were declared in, so the list
+/// this hands back *is* the layout of every entity of that archetype. It is:
+///
+///  1. the class's own fields, in source order;
+///  2. then each mixin application's, **last in the `with` clause first**;
+///  3. then the superclass's, the same way, recursively.
+///
+/// That is what Dart itself does with the same `with` clause - a class's own
+/// field initialisers run before its superclass constructor, and a mixin
+/// application is a superclass - so for as long as the window collected
+/// declarations while those initialisers ran, this order was a consequence of
+/// the mechanism. It is not one any more: nothing runs at a declaration, so
+/// the generator is what has to hand them over in that order, and `good_tool`
+/// does it by walking the `extends` and `with` clauses it read.
+///
+/// # Why it is generated
+///
+/// A run cannot ask an object what fields it has. That is the whole of the
+/// reason - not that reflection would be slow, but that AOT Dart has none at
+/// all. So the field list is read out of the source at build time and written
+/// into `lib/src/declarations.g.dart`, the same way the component-bit table
+/// is; see [GeneratedDeclarations].
+///
+/// # What a missing collector means
+///
+/// It throws, and it has to. Every `EntityStruct` inherits two dispatchers
+/// and every `SceneStruct` two more, so no scanned class declares nothing; a
+/// lookup that missed and answered "none" would give an archetype an empty
+/// row and a scene an event nobody is ever told about, and say nothing about
+/// either. That silence is the failure this engine keeps paying for, so the
+/// miss is loud instead.
+List<ScannableField> collectDeclarations(Object object) {
+  final collect = DeclarationRegistry.collectorFor(object.runtimeType);
+  if (collect == null) {
+    throw StateError(
+      'No generated collector for ${object.runtimeType}. Its declarations are '
+      'fields it holds, and nothing at run time can list a class\'s fields - '
+      'so the list is read out of the source at build time and installed '
+      'before anything registers.\n'
+      '\n'
+      'Either the table holding ${object.runtimeType} was never named to '
+      '`Game.declarations` - a scene brought up without a `Game` names it '
+      'itself, through `DeclarationRegistry.installGenerated` - or the '
+      'generator never read the file ${object.runtimeType} is written in. Run '
+      '`dart run good_tool --dir <directory>` and commit what it writes.',
+    );
+  }
+  return collect(object);
+}
+
+/// One package's generated collectors, keyed by the class each one reads.
+///
+/// Written by `good_tool` into `lib/src/declarations.g.dart` in each package
+/// that declares anything, and reached through that package's entry library -
+/// `goodDeclarations`, `goo2dDeclarations`. A game names the ones it uses to
+/// `Game.declarations`; importing one installs nothing.
+///
+/// # Why it names its dependencies
+///
+/// The same reason `GeneratedComponentBits` does: a game on `goo2d` gets
+/// `Child`, `Parent` and every `good` root collected without having to know
+/// that `goo2d` is built on `good`.
+///
+/// # Why installing it is nothing like seeding component bits
+///
+/// A component bit is a *number*, so seeding twice, or in a different order,
+/// renumbers types that already hold one and every signature built so far
+/// stops matching. A collector is a function looked up by the class it reads.
+/// There is no numbering, so installing is a merge: any order, any number of
+/// times. The one thing that can go wrong is two tables claiming one class,
+/// which is a build holding two versions of a package and throws saying so.
+@immutable
+class GeneratedDeclarations {
+  const GeneratedDeclarations({
+    required this.package,
+    required this.collectors,
+    this.dependencies = const <GeneratedDeclarations>[],
+  });
+
+  /// The package this table was generated for, and the key it is installed
+  /// once under.
+  final String package;
+
+  /// Its collectors, one per class with a declaration anywhere above it.
+  final List<DeclarationCollector> collectors;
+
+  /// The tables of the packages this one is built on.
+  final List<GeneratedDeclarations> dependencies;
+}
+
+/// One class's collector: the class, and the function that reads it.
+///
+/// A pair in a list rather than a `Map<Type, ...>` literal, so a generated
+/// table reads in a diff the way `GeneratedComponentBits.types` does - one
+/// line per class, in a fixed order - and so the registry is the one place
+/// that decides what two tables claiming one class means.
+@immutable
+class DeclarationCollector {
+  const DeclarationCollector(this.type, this.collect);
+
+  /// The class this reads. Matched against a value's `runtimeType` exactly: a
+  /// subclass gets its own entry, holding its own fields as well as these.
+  final Type type;
+
+  /// Reads that class's declarations off an instance of it, in declaration
+  /// order. It casts, so handing it anything else throws.
+  final List<ScannableField> Function(Object object) collect;
+}
+
+/// Every installed collector, keyed by the class it reads.
+///
+/// Process-global and per-isolate, exactly as `ComponentTypeRegistry` is and
+/// for the same reason: [collectDeclarations] is reached from a scene
+/// registration and from an event bind, neither of which has a `Game` in
+/// scope, and a scene brought up headlessly never has one at all.
+abstract final class DeclarationRegistry {
+  static final Map<Type, List<ScannableField> Function(Object)> _collectors =
+      <Type, List<ScannableField> Function(Object)>{};
+
+  /// The packages installed so far.
+  static final Set<String> _packages = <String>{};
+
+  /// Installs [tables] and, transitively, everything they depend on.
+  ///
+  /// Idempotent and order-independent - see [GeneratedDeclarations] for why
+  /// that is not the concession it would be for a bit table. Installing one
+  /// package twice is a no-op; installing two different builds of it throws,
+  /// because a collector reading the wrong field list is a row that silently
+  /// holds the wrong columns.
+  static void installGenerated(Iterable<GeneratedDeclarations> tables) {
+    void walk(GeneratedDeclarations table) {
+      if (!_packages.add(table.package)) return;
+      for (final collector in table.collectors) {
+        final existing = _collectors[collector.type];
+        if (existing != null) {
+          throw StateError(
+            'Two generated tables both hold a collector for '
+            '${collector.type}. One is from another build of the package '
+            'that declares it, and whichever of them was asked would read '
+            'the other one\'s field list. Regenerate, or depend on one '
+            'version of it.',
+          );
+        }
+        _collectors[collector.type] = collector.collect;
+      }
+      for (final dependency in table.dependencies) {
+        walk(dependency);
+      }
+    }
+
+    for (final table in tables) {
+      walk(table);
+    }
+  }
+
+  /// The collector for [type], or null when nothing installed holds one.
+  static List<ScannableField> Function(Object)? collectorFor(Type type) =>
+      _collectors[type];
+
+  /// Forgets everything installed.
+  ///
+  /// For a test that installs a table and must not leak it into the next one.
+  /// A game never calls it: the collectors are facts about the program, and
+  /// dropping them mid-run leaves the next registration with nothing.
+  @visibleForTesting
+  static void reset() {
+    _collectors.clear();
+    _packages.clear();
+  }
+}

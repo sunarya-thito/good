@@ -260,6 +260,9 @@ class ScannedType {
     required this.name,
     required this.path,
     required this.supertypes,
+    required this.superclass,
+    required this.mixins,
+    required this.isAbstract,
     required this.fields,
     required this.methods,
     required this.referencedNames,
@@ -274,10 +277,42 @@ class ScannedType {
 
   /// Every name in its `extends`, `on`, `with` and `implements` clauses.
   ///
-  /// Flattened into one list because nothing here distinguishes them: the
-  /// question asked is only ever "does `Component` sit above this", and all
-  /// four clauses carry that upwards.
+  /// Flattened into one list because the question asked of it is only ever
+  /// "does `Component` sit above this", and all four clauses carry that
+  /// upwards. [superclass] and [mixins] are those same names again, kept
+  /// apart, for the one question that does distinguish them.
   final List<String> supertypes;
+
+  /// The name written in `extends`, or null.
+  ///
+  /// Held apart from [supertypes] because construction order is not a set.
+  /// Dart runs a class's own field initialisers first, then each mixin
+  /// application's - last in the `with` clause first - then the superclass's,
+  /// recursively; `collectDeclarations` has to hand a class's declarations
+  /// over in exactly that order, because that order is the row layout. See
+  /// `_SceneDescriptor`'s doc in `good`.
+  ///
+  /// A mixin's `on` clause is not this. It constrains what the mixin may be
+  /// applied to, and the type named there is initialised by the applying
+  /// class's own chain rather than by the mixin - which is why
+  /// `mixin WorldTransform2D on Component` contributes its own fields and
+  /// none of `Component`'s.
+  final String? superclass;
+
+  /// The names written in the `with` clause, in the order they are written.
+  ///
+  /// Written order and not construction order: reversing it is the reader's
+  /// job, and doing it here would leave a list whose name says one thing and
+  /// whose contents say another.
+  final List<String> mixins;
+
+  /// Whether nothing can ever be an instance of exactly this.
+  ///
+  /// True for `abstract` and `sealed` classes and for every `mixin`, which is
+  /// the same question as "can this be a `runtimeType`". A collector is
+  /// looked up by one, so a table holding an entry for `Transform2D` would
+  /// hold a line nothing can reach.
+  final bool isAbstract;
 
   final List<ScannedField> fields;
   final Map<String, ScannedMethod> methods;
@@ -516,6 +551,9 @@ ScannedUnit _readUnit(String path, CompilationUnit unit) {
 ScannedType? _readType(String path, CompilationUnitMember declaration) {
   final String name;
   final supertypes = <String>[];
+  final mixins = <String>[];
+  String? superclass;
+  var isAbstract = false;
   final List<ClassMember> members;
   String? representation;
 
@@ -525,20 +563,35 @@ ScannedType? _readType(String path, CompilationUnitMember declaration) {
     }
   }
 
+  void addMixins(Iterable<NamedType> named) {
+    for (final type in named) {
+      mixins.add(type.name.lexeme);
+    }
+  }
+
   if (declaration is ClassDeclaration) {
     name = declaration.name.lexeme;
+    isAbstract =
+        declaration.abstractKeyword != null ||
+        declaration.sealedKeyword != null;
     final extendsClause = declaration.extendsClause;
-    if (extendsClause != null) addAll(<NamedType>[extendsClause.superclass]);
+    if (extendsClause != null) {
+      superclass = extendsClause.superclass.name.lexeme;
+      addAll(<NamedType>[extendsClause.superclass]);
+    }
+    addMixins(declaration.withClause?.mixinTypes ?? const <NamedType>[]);
     addAll(declaration.withClause?.mixinTypes ?? const <NamedType>[]);
     addAll(declaration.implementsClause?.interfaces ?? const <NamedType>[]);
     members = _members(declaration.body);
   } else if (declaration is MixinDeclaration) {
     name = declaration.name.lexeme;
+    isAbstract = true;
     addAll(declaration.onClause?.superclassConstraints ?? const <NamedType>[]);
     addAll(declaration.implementsClause?.interfaces ?? const <NamedType>[]);
     members = _members(declaration.body);
   } else if (declaration is EnumDeclaration) {
     name = declaration.name.lexeme;
+    addMixins(declaration.withClause?.mixinTypes ?? const <NamedType>[]);
     addAll(declaration.withClause?.mixinTypes ?? const <NamedType>[]);
     addAll(declaration.implementsClause?.interfaces ?? const <NamedType>[]);
     // An `EnumBody` and not a `ClassBody`, and an enum always has a block, so
@@ -586,6 +639,9 @@ ScannedType? _readType(String path, CompilationUnitMember declaration) {
     name: name,
     path: path,
     supertypes: supertypes,
+    superclass: superclass,
+    mixins: mixins,
+    isAbstract: isAbstract,
     fields: fields,
     methods: methods,
     referencedNames: referenced,
@@ -1182,11 +1238,20 @@ bool isDeclarationField(
 @immutable
 class ScannedDeclaration {
   const ScannedDeclaration({
+    required this.owner,
     required this.name,
     required this.valueType,
     required this.annotations,
     required this.isPrivate,
   });
+
+  /// The class that writes the field - `Transform2D`, not whichever class
+  /// applies it.
+  ///
+  /// Carried because a flattened list holds declarations from several
+  /// classes at once and an emitter has to be able to say where each came
+  /// from; see [flattenedDeclarations].
+  final String owner;
 
   /// The Dart field name - `cameraView`, `transformOffsetX`.
   final String name;
@@ -1398,6 +1463,7 @@ DeclarationScan scanDeclarations(ScanSources sources) {
         }
         declarations.add(
           ScannedDeclaration(
+            owner: type.name,
             name: field.name,
             valueType: valueType,
             annotations: <String>[
@@ -1429,6 +1495,80 @@ DeclarationScan scanDeclarations(ScanSources sources) {
     refusals: refusals,
     uncollectable: uncollectable,
   );
+}
+
+/// Every declaration an instance of [type] holds, in the order its
+/// initialisers would have run.
+///
+/// The order is the whole of what this exists for, and it is not the order
+/// the names come out of a supertype walk in. Dart runs a class's own
+/// instance field initialisers first, then each mixin application's - a
+/// mixin application *is* a superclass, so the **last** name in the `with`
+/// clause runs first - then the superclass's, the same way, all the way up.
+/// Verified rather than assumed: the fixture in
+/// `good_tool/test/good_tool_test.dart` builds that shape and reads back the
+/// order Dart actually used.
+///
+/// That order is a row layout. `_SceneDescriptor` hands what
+/// `collectDeclarations` returns to `ArchetypeDataDescriptor.declare`, which
+/// reserves in the order it is given - so this walk is what decides where
+/// every column of every archetype sits, and a walk that visited the mixins
+/// the other way round would silently lay every row out differently.
+///
+/// # What is not walked
+///
+/// A mixin's `on` clause. It constrains what the mixin may be applied to,
+/// and the type it names is initialised by the applying class's own chain -
+/// so `mixin WorldTransform2D on Component` contributes its own six columns
+/// and nothing of `Component`'s, and a walk that followed `on` would hand
+/// `Component`'s over once per mixin that names it.
+///
+/// An `implements` clause, for the same reason and more obviously: it
+/// carries no fields at all.
+///
+/// A name this walk never read stops it. A class extending something from a
+/// package that was not read holds whatever it holds, and this reports what
+/// it can see rather than guessing - which is why `good_tool` reads a
+/// package's engine dependencies even when it writes into only one of them.
+List<ScannedDeclaration> flattenedDeclarations(
+  ScannedType type,
+  Map<String, ScannedType> typesByName, {
+  Set<String>? seen,
+}) {
+  final visited = seen ?? <String>{};
+  if (!visited.add(type.name)) return const <ScannedDeclaration>[];
+  final flattened = <ScannedDeclaration>[
+    for (final field in type.fields)
+      if (!field.isStatic && isDeclarationField(field, typesByName))
+        ScannedDeclaration(
+          owner: type.name,
+          name: field.name,
+          valueType: declaredValueType(field, typesByName)!,
+          annotations: <String>[
+            for (final annotation in field.annotations)
+              if (isSubtypeOf(
+                annotationName(annotation),
+                scannableAnnotationRoot,
+                typesByName,
+              ))
+                annotation,
+          ],
+          isPrivate: field.isPrivate,
+        ),
+  ];
+  for (final mixin in type.mixins.reversed) {
+    final applied = typesByName[mixin];
+    if (applied == null) continue;
+    flattened.addAll(flattenedDeclarations(applied, typesByName, seen: visited));
+  }
+  final superclass = type.superclass;
+  if (superclass != null) {
+    final above = typesByName[superclass];
+    if (above != null) {
+      flattened.addAll(flattenedDeclarations(above, typesByName, seen: visited));
+    }
+  }
+  return flattened;
 }
 
 /// What a run refusing over a deferred declaration says.
