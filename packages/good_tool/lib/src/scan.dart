@@ -778,3 +778,235 @@ DeclarationCollectorScan scanDeclarationCollectors({
     skipped: skipped,
   );
 }
+
+// ---------------------------------------------------------------------------
+// Fixture collectors
+// ---------------------------------------------------------------------------
+
+/// One class declared outside a package's `lib/` that a collector reads.
+@immutable
+class FixtureCollector {
+  const FixtureCollector({
+    required this.type,
+    required this.functionName,
+    required this.fields,
+  });
+
+  /// The class it reads - `_Level`, private like most of them.
+  final String type;
+
+  /// Every declaration an instance holds, in the order its initialisers
+  /// would have run.
+  final List<CollectedDeclaration> fields;
+
+  /// The collector function's name - `_collect$Level` for `_Level`.
+  ///
+  /// The leading underscore of a private fixture is dropped rather than kept,
+  /// because `non_constant_identifier_names` reads `_collect$_Level` as not
+  /// lower-camel and this file has to analyze clean. Two classes in one
+  /// library that differ only by that underscore would land on one name, so
+  /// [scanFixtures] appends a `$` until the name is free.
+  final String functionName;
+}
+
+/// One test or example library, and the collectors it needs.
+@immutable
+class FixtureLibrary {
+  const FixtureLibrary({
+    required this.package,
+    required this.path,
+    required this.collectors,
+  });
+
+  /// The package the library belongs to - where its table's key comes from,
+  /// and whose generated table it depends on.
+  final EnginePackage package;
+
+  /// The library's own file, normalised and absolute.
+  final String path;
+
+  /// Its collectors, in the order the classes are declared in.
+  final List<FixtureCollector> collectors;
+
+  /// The library itself.
+  File get file => File(path);
+
+  /// The part beside it - `archetype_test.g.dart`.
+  ///
+  /// Not `_test.dart`, so the test runner's own glob does not pick the part
+  /// up as a suite with no tests in it.
+  File get generated =>
+      File('${path.substring(0, path.length - '.dart'.length)}.g.dart');
+
+  /// The line [file] has to carry for [generated] to be compiled at all.
+  String get partDirective => "part '${p.basename(generated.path)}';";
+
+  /// What the table is called - `_archetypeTestDeclarations`.
+  String get tableName {
+    final words = p.basenameWithoutExtension(path).split('_');
+    return <String>[
+      '_',
+      words.first,
+      for (final word in words.skip(1))
+        if (word.isNotEmpty) word[0].toUpperCase() + word.substring(1),
+      'Declarations',
+    ].join();
+  }
+
+  /// The key the table is installed once under - `good/test/archetype_test.dart`.
+  ///
+  /// A path rather than a package name, because a package has one `lib/`
+  /// table and as many of these as it has files that declare a fixture, and
+  /// `DeclarationRegistry` installs a table once per key.
+  String get tableKey => package.describe(file);
+}
+
+/// [readPackageSources] widened to the trees `--tests` reads.
+///
+/// The `lib/` of every package read, so the supertype walk can see that
+/// `EntityStruct` is a `Scannable` at all, plus the `test/` and `example/` of
+/// the packages being written into. Their own generated parts are left out
+/// for the reason the three `lib/` files are: a generator that read its own
+/// output back would be reading a copy of the answer it is computing.
+ScanSources readFixtureSources(
+  List<EnginePackage> packages,
+  List<EnginePackage> readable,
+) {
+  final roots = <String>[
+    for (final package in readable) package.libDir,
+    for (final package in packages)
+      for (final root in package.fixtureRoots) root.path,
+  ];
+  final generated = <String>{
+    for (final package in readable) package.accessorFile.path,
+    for (final package in readable) package.componentBitsFile.path,
+    for (final package in readable) package.declarationsFile.path,
+  };
+  for (final package in packages) {
+    for (final root in package.fixtureRoots) {
+      for (final entry in root.listSync(recursive: true)) {
+        if (entry is File && entry.path.endsWith('.g.dart')) {
+          generated.add(entry.path);
+        }
+      }
+    }
+  }
+  return readSources(
+    Directory.current,
+    rootOverride: roots,
+    exclude: generated,
+  );
+}
+
+/// Every fixture library one run would write a part for.
+@immutable
+class FixtureScan {
+  const FixtureScan({required this.libraries, required this.collectorCount});
+
+  /// The libraries, sorted by path.
+  final List<FixtureLibrary> libraries;
+
+  /// How many collectors they hold between them.
+  final int collectorCount;
+}
+
+/// Every class declared under a package's `test/` or `example/` that a
+/// collector has to be able to read.
+///
+/// # Why this is not [scanDeclarationCollectors] pointed somewhere else
+///
+/// Two things about a fixture are different from a class in a `lib/`, and
+/// each of them changes the answer rather than the path.
+///
+/// **It is almost always private.** 678 of the 737 instantiable scanned
+/// classes under this repository's `test/` directories are `_Level`,
+/// `_Scene`, `_Game`. A generated library in another file can neither cast to
+/// one nor name it in a table, so what is written here is a **part** of the
+/// library that declares them - which reaches a private class and a private
+/// field the way any other part of that library does. The rule that user code
+/// is never edited to add a `part` is about a user's code; a test in this
+/// repository is ours.
+///
+/// **Its name is not unique.** `_Scene` is declared in 23 files here and
+/// `_Game` in 17. [ScanSources.typesByName] keeps one of each, so a supertype
+/// walk through it would flatten one file's `_Scene` using another file's
+/// mixins and hand back a row that belongs to neither. So each library is
+/// walked against its own types laid over the `lib/` ones, and nothing from a
+/// second test file is ever in scope - which is also what Dart says, since no
+/// test file here imports another.
+FixtureScan scanFixtures({
+  required List<EnginePackage> packages,
+  required ScanSources sources,
+}) {
+  final libTypes = <String, ScannedType>{};
+  final libDirs = <String>[for (final package in packages) package.libDir];
+  final paths = sources.units.keys.toList()..sort();
+  for (final path in paths) {
+    if (!libDirs.any((lib) => p.isWithin(lib, path))) continue;
+    for (final type in sources.units[path]!.types) {
+      libTypes.putIfAbsent(type.name, () => type);
+    }
+  }
+
+  final libraries = <FixtureLibrary>[];
+  var collectorCount = 0;
+  for (final package in packages) {
+    final roots = <String>[
+      for (final root in package.fixtureRoots) root.path,
+    ];
+    if (roots.isEmpty) continue;
+    for (final path in paths) {
+      if (!roots.any((root) => p.isWithin(root, path))) continue;
+      final unit = sources.units[path]!;
+      // The library's own types win. A fixture named after something in a
+      // `lib/` - and there are several - is the one this file declares.
+      final scope = <String, ScannedType>{
+        ...libTypes,
+        for (final type in unit.types) type.name: type,
+      };
+      final declaredHere = <String>{for (final type in unit.types) type.name};
+
+      final collectors = <FixtureCollector>[];
+      final taken = <String>{};
+      for (final type in unit.types) {
+        if (type.isAbstract) continue;
+        if (!isSubtypeOf(type.name, scannableRoot, scope)) continue;
+        var functionName = '_collect\$${type.name.replaceFirst('_', '')}';
+        while (!taken.add(functionName)) {
+          functionName = '$functionName\$';
+        }
+        collectors.add(
+          FixtureCollector(
+            type: type.name,
+            functionName: functionName,
+            fields: <CollectedDeclaration>[
+              for (final declaration in flattenedDeclarations(type, scope))
+                CollectedDeclaration(
+                  owner: declaration.owner,
+                  name: declaration.name,
+                  // Private is not the question a part asks. A field this
+                  // library declares is reachable however it is named; one a
+                  // `lib/` mixin declares privately is not, and that is the
+                  // same wall `declarations.g.dart` runs into.
+                  isPrivate:
+                      declaration.isPrivate &&
+                      !declaredHere.contains(declaration.owner),
+                ),
+            ],
+          ),
+        );
+      }
+      if (collectors.isEmpty) continue;
+      collectorCount += collectors.length;
+      libraries.add(
+        FixtureLibrary(
+          package: package,
+          path: path,
+          collectors: collectors,
+        ),
+      );
+    }
+  }
+  libraries.sort((a, b) => a.path.compareTo(b.path));
+  return FixtureScan(libraries: libraries, collectorCount: collectorCount);
+}

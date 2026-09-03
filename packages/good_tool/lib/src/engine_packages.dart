@@ -103,6 +103,19 @@ class EnginePackage {
   /// package's table names it as a dependency.
   String get declarationsExport => "export 'src/declarations.g.dart';";
 
+  /// The directories holding classes this package declares outside its
+  /// `lib/` - `test/` and `example/`, whichever exist.
+  ///
+  /// Read by `--tests` and by nothing else. A fixture is a class like any
+  /// other and needs a collector like any other, but the file holding that
+  /// collector must not ship: `lib/` is what a published package carries,
+  /// and test scaffolding inside it would be part of the API.
+  List<Directory> get fixtureRoots => <Directory>[
+    for (final name in const <String>['test', 'example'])
+      if (Directory(p.join(root.path, name)).existsSync())
+        Directory(p.normalize(p.absolute(p.join(root.path, name)))),
+  ];
+
   /// What this package's generated collector table is called -
   /// `goo2dDeclarations`.
   String get declarationsName => '${_camelName}Declarations';

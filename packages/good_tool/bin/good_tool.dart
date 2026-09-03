@@ -11,6 +11,7 @@ import 'package:good_tool/src/component_emit.dart';
 import 'package:good_tool/src/declaration_emit.dart';
 import 'package:good_tool/src/doc_references.dart';
 import 'package:good_tool/src/engine_packages.dart';
+import 'package:good_tool/src/fixture_emit.dart';
 import 'package:good_tool/src/imports.dart';
 import 'package:good_tool/src/scan.dart';
 import 'package:path/path.dart' as p;
@@ -118,6 +119,7 @@ Future<void> main(List<String> arguments) async {
   final check = arguments.contains('--check');
   final docReferences = arguments.contains('--doc-references');
   final declarations = arguments.contains('--declarations');
+  final tests = arguments.contains('--tests');
   final verbose = arguments.contains('--verbose') || arguments.contains('-v');
   final directories = <String>[];
   final unknown = <String>[];
@@ -139,6 +141,7 @@ Future<void> main(List<String> arguments) async {
     if (argument == '--check' ||
         argument == '--doc-references' ||
         argument == '--declarations' ||
+        argument == '--tests' ||
         argument == '--verbose' ||
         argument == '-v') {
       continue;
@@ -208,7 +211,17 @@ Future<void> main(List<String> arguments) async {
   }
 
   if (declarations) {
-    _declarations(packages, scan.dependencies, verbose: verbose);
+    _declarations(
+      packages,
+      scan.dependencies,
+      verbose: verbose,
+      tests: tests,
+    );
+    return;
+  }
+
+  if (tests) {
+    _tests(packages, scan.dependencies, directories, check: check);
     return;
   }
 
@@ -356,7 +369,7 @@ Future<void> main(List<String> arguments) async {
 void _usage() {
   stderr.writeln(
     'Usage: dart run good_tool --dir <directory> [--dir <directory>] '
-    '[--check] [--doc-references] [--declarations] [--verbose]',
+    '[--check] [--doc-references] [--declarations] [--tests] [--verbose]',
   );
   stderr.writeln(
     '  --dir .              the package in this directory\n'
@@ -435,6 +448,85 @@ void _check(
   exitCode = 65;
 }
 
+/// Writes a collector part beside every test or example library that
+/// declares a fixture.
+///
+/// # Why this is a mode and not part of the run above
+///
+/// What it writes must not land in a `lib/`. A published package carries what
+/// is in its `lib/`, and a table of test scaffolding there would be part of
+/// the API - so the default run's file set stays exactly the artifacts that
+/// ship, and `--check` without `--tests` keeps meaning "the published files
+/// are current".
+///
+/// The parts are committed and checked too, for the same reason the shipped
+/// ones are: a generated file nobody verifies drifts, and a fresh clone has
+/// to analyze before anything is run. `--tests --check` is the second CI
+/// step that says so.
+void _tests(
+  List<EnginePackage> packages,
+  List<EnginePackage> dependencies,
+  List<String> directories, {
+  required bool check,
+}) {
+  final readable = <EnginePackage>[...packages, ...dependencies];
+  final sources = readFixtureSources(packages, readable);
+  if (_unparsed(sources.unparsed)) return;
+  final scan = scanFixtures(packages: packages, sources: sources);
+  final files = fixtureFiles(scan);
+  final absent = missingPartDirectives(scan.libraries);
+
+  if (check) {
+    final stale = files.where((file) => !file.isCurrent).toList();
+    if (stale.isEmpty && absent.isEmpty) {
+      stdout.writeln('${files.length} generated part(s) are up to date.');
+      return;
+    }
+    for (final file in stale) {
+      stderr.writeln(
+        file.file.existsSync()
+            ? 'Stale: ${_display(packages, file.file)}'
+            : 'Missing: ${_display(packages, file.file)}',
+      );
+    }
+    for (final library in absent) {
+      stderr.writeln(
+        'No part directive: ${_display(packages, library.file)} does not '
+        'carry `${library.partDirective}`',
+      );
+    }
+    final where = <String>[
+      for (final directory in directories) '--dir $directory',
+    ].join(' ');
+    stderr.writeln(
+      '\nRun `dart run good_tool $where --tests` and commit the result.',
+    );
+    exitCode = 65;
+    return;
+  }
+
+  for (final file in files) {
+    if (file.isCurrent) {
+      stdout.writeln('Unchanged ${_display(packages, file.file)}');
+      continue;
+    }
+    file.file.writeAsStringSync(file.contents);
+    stdout.writeln('Wrote ${_display(packages, file.file)}');
+  }
+  for (final library in absent) {
+    stdout.writeln(
+      'Add `${library.partDirective}` to ${_display(packages, library.file)} '
+      'and call `$installName();` first thing in its `main` - the part is not '
+      'compiled until the directive is there, and nothing installs a table on '
+      'its own.',
+    );
+  }
+  stdout.writeln(
+    '${scan.collectorCount} fixture collector(s) in ${files.length} part(s) '
+    'across ${packages.length} package(s).',
+  );
+}
+
 /// Fails when a declaration is held by something that initialises it lazily.
 ///
 /// A separate mode for the reason [_docReferences] is one: it is fixed by
@@ -449,11 +541,24 @@ void _declarations(
   List<EnginePackage> packages,
   List<EnginePackage> dependencies, {
   required bool verbose,
+  required bool tests,
 }) {
   final readable = <EnginePackage>[...packages, ...dependencies];
-  final sources = readPackageSources(readable);
+  final sources = tests
+      ? readFixtureSources(packages, readable)
+      : readPackageSources(readable);
   if (_unparsed(sources.unparsed)) return;
-  final own = <String>{for (final package in packages) package.libDir};
+  // With `--tests` the judged trees are the fixture roots and not the `lib/`
+  // beside them, because a `lib/` was judged by the run without it and
+  // reporting the same refusal under two invocations makes neither of them
+  // the one to fix it.
+  final own = <String>{
+    for (final package in packages)
+      if (tests)
+        for (final root in package.fixtureRoots) root.path
+      else
+        package.libDir,
+  };
   final scan = scanDeclarations(sources);
   final refusals = <DeclarationRefusal>[
     for (final refusal in scan.refusals)
