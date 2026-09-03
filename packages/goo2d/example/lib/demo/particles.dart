@@ -66,7 +66,7 @@ int _hsv(double hue, double saturation, double value) {
 class Mote extends EntityStruct
     with Transform2D, Renderable2D, EntityLifecycleListener {
   late final Sprite body;
-  late final TextureAsset texture;
+  final texture = Asset.of(discTexture);
 
   /// Polar coordinates, kept per entity because the movement is a function of
   /// them and of time - so a tick reads four fields and writes three, and no
@@ -93,11 +93,6 @@ class Mote extends EntityStruct
   /// shared, so it costs nothing across the boundary.
   int _spawned = 0;
 
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    texture = descriptor.has(discTexture);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -157,15 +152,9 @@ class Mote extends EntityStruct
 class Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
 
 class Galaxy extends SceneStruct {
-  late final Mote mote;
-  late final Eye eye;
+  final mote = Mote();
+  final eye = Eye();
 
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    mote = descriptor.has(Mote.new);
-    eye = descriptor.has(Eye.new);
-  }
 
   @override
   void onSceneMounted(Scene scene) => scene.addEntity(eye);

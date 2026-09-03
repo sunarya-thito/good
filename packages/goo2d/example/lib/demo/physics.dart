@@ -450,21 +450,12 @@ class Sandbox extends SceneStruct {
   /// on mount and spawning goes through it.
   late Scene handle;
 
-  late final Crate crate;
-  late final Ball ball;
-  late final Ground ground;
-  late final Wall wall;
-  late final Eye eye;
+  final crate = Crate();
+  final ball = Ball();
+  final ground = Ground();
+  final wall = Wall();
+  final eye = Eye();
 
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    crate = descriptor.has(Crate.new);
-    ball = descriptor.has(Ball.new);
-    ground = descriptor.has(Ground.new);
-    wall = descriptor.has(Wall.new);
-    eye = descriptor.has(Eye.new);
-  }
 
   /// The camera. Held so [SandboxSystem] can rezoom it when the arena
   /// resizes.

@@ -23,7 +23,7 @@ class Critter extends EntityStruct
         Renderable2D,
         EntityLifecycleListener {
   late final Sprite body;
-  late final TextureAsset texture;
+  final texture = Asset.of(discTexture);
 
   final angle = Field.float64();
   final radius = Field.float64();
@@ -36,11 +36,6 @@ class Critter extends EntityStruct
 
   int _spawned = 0;
 
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    texture = descriptor.has(discTexture);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -94,15 +89,10 @@ class Limb extends EntityStruct
         Renderable2D,
         EntityLifecycleListener {
   late final Sprite body;
-  late final TextureAsset texture;
+  final texture = Asset.of(discTexture);
 
   int _spawned = 0;
 
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    texture = descriptor.has(discTexture);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -139,24 +129,16 @@ class Hub extends EntityStruct with Transform2D, WorldTransform2D, Parent {}
 class Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
 
 class Swarm extends SceneStruct {
-  late final Critter critter;
-  late final Limb limb;
-  late final Hub hub;
-  late final Eye eye;
+  final critter = Critter();
+  final limb = Limb();
+  final hub = Hub();
+  final eye = Eye();
 
   /// The one entity this scene creates itself, so spawns have something to
   /// parent to. Scene *content* rather than a handle - which is why it lives
   /// here and the `Scene` does not.
   late Entity hubEntity;
 
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    critter = descriptor.has(Critter.new);
-    limb = descriptor.has(Limb.new);
-    hub = descriptor.has(Hub.new);
-    eye = descriptor.has(Eye.new);
-  }
 
   @override
   void onSceneMounted(Scene scene) {

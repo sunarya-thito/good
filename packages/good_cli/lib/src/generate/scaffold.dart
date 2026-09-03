@@ -513,15 +513,9 @@ import '../prefabs/player.dart';
 /// One scene: which prefabs can be spawned in it, and what exists when it
 /// loads.
 class MainScene extends SceneStruct {
-  late final Player player;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    // Declares the prefab: registers its archetype and runs its describe
-    // passes. Returns the handle to spawn from.
-    player = descriptor.has(Player.new);
-  }
+  // Declares the prefab: bringing the scene up registers its archetype and
+  // runs its describe passes. The field is the handle to spawn from.
+  final player = Player();
 
   @override
   void onSceneMounted(Scene scene) {
@@ -541,17 +535,10 @@ import '../prefabs/player.dart';
 /// One scene: which prefabs can be spawned in it, and what exists when it
 /// loads.
 class MainScene extends SceneStruct {
-  late final Player player;
-  late final Eye eye;
-
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    // Declares the prefab: registers its archetype and runs its describe
-    // passes. Returns the handle to spawn from.
-    player = descriptor.has(Player.new);
-    eye = descriptor.has(Eye.new);
-  }
+  // Declares the prefabs: bringing the scene up registers each archetype and
+  // runs its describe passes. The fields are the handles to spawn from.
+  final player = Player();
+  final eye = Eye();
 
   @override
   void onSceneMounted(Scene scene) {

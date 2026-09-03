@@ -277,13 +277,23 @@ abstract class SceneStruct extends GameListenerBase
     // names and a texture a prefab names are one declaration, one address and
     // one decode, which is what makes the footprint below a set.
     final descriptor = _AssetDescriptor(this);
-    // The scene's own asset fields, read off the constructed scene. A
+    final scene = _SceneDescriptor(this, descriptor);
+    // What the scene itself declared, read off the constructed scene. A
     // `SceneStruct` is built by the caller, so its initialisers ran long
-    // before this - which is exactly why the handle they built carries a key
-    // and nothing else until here.
-    descriptor.declare(collectDeclarations(this));
+    // before this - which is exactly why an asset handle they built carries a
+    // key and nothing else, and a prefab they built has no archetype, until
+    // here.
+    final declarations = collectDeclarations(this);
+    // Four passes, and the order is the footprint's. The scene's own assets
+    // before its prefabs', so a texture the scene names is the first entry
+    // whichever prefab also names it; and within each kind, the fields before
+    // the hook, which is the order every other declaration takes.
+    descriptor.declare(declarations);
     describeAssets(descriptor);
-    describeScene(_SceneDescriptor(this, descriptor));
+    for (final declaration in declarations) {
+      if (declaration is EntityStruct) scene.register(declaration);
+    }
+    describeScene(scene);
     // A scene brought up by hand has no boot pass to bind its events, so it
     // does it now. One brought up by a `Game` waits: a prefab's
     // `collectListeners` may reach for a system (`getSystem<T>()`), and
@@ -383,7 +393,7 @@ abstract class SceneStruct extends GameListenerBase
     // type is unrelated to the tested mixin - `EntityStruct` is not a
     // supertype of `Parent` - so the analyzer leaves it alone and the cast is
     // the only spelling. Verified; the same shape appears below in
-    // `_SceneDescriptor.declareChild`.
+    // `_SceneDescriptor._declareChild`.
     if (prefab is Parent) {
       final declared = (prefab as Parent).declaredChildren;
       for (var i = 0; i < declared.length; i++) {
@@ -626,6 +636,20 @@ abstract class SceneStruct extends GameListenerBase
 abstract class SceneDescriptor {
   /// Declares one prefab and returns it, for the field that keeps it.
   ///
+  /// The hook spelling. The shorter one is a field on the scene, which
+  /// [SceneStruct.initializeScene] registers the same way:
+  ///
+  /// ```dart
+  /// class MainScene extends SceneStruct {
+  ///   final player = Player();
+  /// }
+  /// ```
+  ///
+  /// and it is the one to write when there is nothing to compute. This is for
+  /// a prefab a loop or a condition decides on - a scene that registers a list
+  /// of them, a fixture handed its prefabs from outside - which is a
+  /// *statement*, and a field initialiser is not one.
+  ///
   /// Takes a `T Function()` rather than an instance, and what that is still
   /// for is narrower than it was. It used to be the whole mechanism: a
   /// struct's field initialisers declared into descriptors that had to be
@@ -682,7 +706,7 @@ final class _SceneDescriptor implements SceneDescriptor {
   @override
   T has<T extends EntityStruct>(T Function() create) {
     final object = create();
-    _register(object);
+    register(object);
     return object;
   }
 
@@ -714,7 +738,7 @@ final class _SceneDescriptor implements SceneDescriptor {
   /// reserving it is the pass walking the list. Handing the whole list to
   /// `ArchetypeDataDescriptor.declare` first and registering children after
   /// would put every child handle at the end of the row instead.
-  void _register(EntityStruct object) {
+  void register(EntityStruct object) {
     // Reserved before anything is read off the object, because a declared
     // child records the archetype its handle column belongs to and that is
     // this one - see `Child.declaredInArchetype`. It carries no prefab until
@@ -817,7 +841,7 @@ final class _SceneDescriptor implements SceneDescriptor {
     // `Child.declaredInArchetype`, and the check every read and unlink makes
     // against it.
     (child as Child).bindDeclaration(handle, storage.archetypeId);
-    _register(child);
+    register(child);
   }
 }
 

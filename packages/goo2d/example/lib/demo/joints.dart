@@ -154,13 +154,8 @@ class Wheel extends EntityStruct
   late final Sprite body;
   late final Sprite spoke;
   late final CircleBody circle;
-  late final TextureAsset disc;
+  final disc = Asset.of(discTexture);
 
-  @override
-  void describeAssets(AssetDescriptor descriptor) {
-    super.describeAssets(descriptor);
-    disc = descriptor.has(discTexture);
-  }
 
   @override
   void describeSprites(SpriteDescriptor descriptor) {
@@ -206,11 +201,11 @@ class Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
 class JointScene extends SceneStruct {
   late Scene handle;
 
-  late final Anchor anchor;
-  late final Link link;
-  late final Weight weight;
-  late final Wheel wheel;
-  late final Eye eye;
+  final anchor = Anchor();
+  final link = Link();
+  final weight = Weight();
+  final wheel = Wheel();
+  final eye = Eye();
 
   /// The three chains, top link first, so [JointSystem] can stitch each run
   /// together once their bodies exist.
@@ -225,15 +220,6 @@ class JointScene extends SceneStruct {
 
   late Entity camera;
 
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    anchor = descriptor.has(Anchor.new);
-    link = descriptor.has(Link.new);
-    weight = descriptor.has(Weight.new);
-    wheel = descriptor.has(Wheel.new);
-    eye = descriptor.has(Eye.new);
-  }
 
   @override
   void onSceneMounted(Scene scene) {

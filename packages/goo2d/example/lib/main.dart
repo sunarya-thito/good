@@ -148,19 +148,11 @@ class Wingman extends EntityStruct
 class Eye extends EntityStruct with Transform2D, WorldTransform2D, Camera {}
 
 class MainScene extends SceneStruct {
-  late final Player playerPrefab;
-  late final Enemy enemyPrefab;
-  late final Wingman wingmanPrefab;
-  late final Eye eyePrefab;
+  final playerPrefab = Player();
+  final enemyPrefab = Enemy();
+  final wingmanPrefab = Wingman();
+  final eyePrefab = Eye();
 
-  @override
-  void describeScene(SceneDescriptor descriptor) {
-    super.describeScene(descriptor);
-    playerPrefab = descriptor.has(Player.new);
-    enemyPrefab = descriptor.has(Enemy.new);
-    wingmanPrefab = descriptor.has(Wingman.new);
-    eyePrefab = descriptor.has(Eye.new);
-  }
 
   /// Runs on the game isolate before the first tick. Writing component data
   /// here is safe specifically because nothing has been published yet, so the
