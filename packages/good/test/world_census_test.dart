@@ -90,12 +90,8 @@ class _CensusState extends GameState<_CensusGame> {
     // wrote rather than one the fixture happened to boot with.
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_AlphaSystem.new);
-    descriptor.has(_BetaSystem.new);
-  }
+  final alphaSystem = GameSystem.of(_AlphaSystem.new);
+  final betaSystem = GameSystem.of(_BetaSystem.new);
 
   @override
   void describeCommands(CommandDescriptor descriptor) {

@@ -57,8 +57,8 @@ import 'package:good/src/time.dart';
 /// every command applied during it, sees one input snapshot instead of one
 /// that shifts underneath them (see `Input`).
 ///
-/// Ordering starts from declaration order - the order the systems were
-/// declared in [describeSystems] - and is then constrained by
+/// Ordering starts from declaration order - the order the `GameSystem.of`
+/// fields declaring them initialised in - and is then constrained by
 /// whatever `GameSystem.compareTo` states. "Run me after physics" is spelled
 /// there, as `other is PhysicsSystem ? 1 : 0`, and it is a constraint, not a
 /// rank: [sortSystems] collects every pair's answer into a graph and
@@ -346,58 +346,6 @@ abstract class GameState<T extends Game> extends GameListenerBase
   // index on one copy and none on the other - which is the same thing as not
   // having one. Declare it on a field of the [Game] with `Channel.*` and
   // write to it from here through `game.myChannel`.
-
-  /// Declares every `GameSystem` this game runs - once, up front, before the
-  /// fixed-tick loop starts.
-  ///
-  /// ```dart
-  /// @override
-  /// void describeSystems(SystemDescriptor descriptor) {
-  ///   super.describeSystems(descriptor);
-  ///   descriptor.has(MovementSystem.new);
-  ///   descriptor.has(CombatSystem.new);
-  /// }
-  /// ```
-  ///
-  /// Declaration order is execution order, unless a system states an opinion
-  /// (see `GameSystem.compareTo`). Systems are not registered piecemeal at
-  /// runtime - [enableSystem]/[disableSystem] only pause and resume one that
-  /// was declared here.
-  ///
-  /// # Here and not on `Game`
-  ///
-  /// A system is created here, ticks here, and is reachable from nowhere else.
-  /// A library that has to contribute one mixes into the *state*:
-  /// `Game2D.createState()` is narrowed to `GameState2D`, so `extends Game2D`
-  /// is a single opt-in for rendering and a `Game2D` whose state is a plain
-  /// `GameState` is a compile error rather than a black screen.
-  ///
-  /// # A hook and not a field
-  ///
-  /// The rest of a game's declarations are fields - `Channel.*`,
-  /// `RandomStream.of`, `CameraView.of`, `Input.of`, `Command.of`. This one is
-  /// not, and the fact that stops it is which copy runs a field initialiser.
-  /// `createState` is called from `Game._bootMain`, before `Isolate.spawn`, so
-  /// every `GameState` field initialiser runs on **main**. A system's own
-  /// field initialisers call `Query.all` and `Query.has`, which resolve each
-  /// named `Type` through `ComponentTypeRegistry.bitFor` and bake the mask
-  /// into the query. That registry is a per-isolate static seeded on the game
-  /// isolate by `installGenerated` and `describeScenes`; main's stays empty
-  /// (see `ComponentTypeRegistry`). A mask taken from main's table and an
-  /// archetype signature taken from the game isolate's share no numbering, so
-  /// every query would match nothing and no line would report it.
-  ///
-  /// Two more facts stand behind that one. `Renderer2DState` declares its
-  /// renderer with `descriptor.has(createRenderer)`, and `createRenderer` is
-  /// an instance member, which a field initialiser cannot name. And field
-  /// initialisers run subclass-first, then mixins in reverse `with` order,
-  /// then the superclass - the reverse of what `super.describeSystems(...)`
-  /// spells - so a base class's systems would always be declared last, and
-  /// declaration order is execution order (see [sortSystems]).
-  ///
-  /// Runs on the simulating copy only, from `Game._bootGame`.
-  @mustCallSuper
-  void describeSystems(SystemDescriptor descriptor) {}
 
   /// Registers the handlers that run on the **game** isolate, for commands
   /// the [Game] declared.
@@ -1398,28 +1346,57 @@ abstract class GameState<T extends Game> extends GameListenerBase
 
   // --- systems ----------------------------------------------------------
   //
-  // Declared by [describeSystems] and held here. A library contributes a
-  // system by mixing into the *state* - `Renderer2DState` is the 2D renderer's
-  // half, and `Game2D.createState()` is narrowed to `GameState2D` so that
-  // `extends Game2D` stays a single opt-in. The pass runs inside
+  // Declared on this object's own fields with `GameSystem.of`, and held here
+  // once the copy that ticks has built them. A library contributes a system by
+  // mixing into the *state* - `Renderer2DState` is the 2D renderer's half, and
+  // `Game2D.createState()` is narrowed to `GameState2D` so that `extends
+  // Game2D` stays a single opt-in. The build pass runs inside
   // `Game._bootGame`, so every system object exists on this copy and on no
   // other, and `Game` has no `getSystem`: on the presentation isolate it would
   // compile, read as though it worked, and find nothing.
+  //
+  // Two lists, because the declaration and the object are made on two
+  // different isolates. [systemDeclarations] is filled on main by the field
+  // initialisers and rides the spawn; [_systems] is filled on the game
+  // isolate, from those, and is what everything else here reads.
+
+  List<SystemHandle<GameSystem>> _declarations =
+      const <SystemHandle<GameSystem>>[];
+
+  /// Every `GameSystem.of` declaration this state's fields made, in field
+  /// initialiser order.
+  ///
+  /// Which is **subclass first**: Dart runs the most derived class's
+  /// initialisers, then its mixins in reverse `with` order, then the
+  /// superclass's. Declaration order is execution order for systems that
+  /// state no opinion (see [sortSystems]), so a base class's opinion-less
+  /// systems run *after* a subclass's - the reverse of what the
+  /// base-first `super` chain of the hook this replaced produced. A
+  /// system that cares says so with `Order.of()`, which is read after every
+  /// declaration is in hand and does not depend on this order at all.
+  @internal
+  List<SystemHandle<GameSystem>> get systemDeclarations => _declarations;
+
+  /// Takes the declarations off the window `Game._bootMain` opened around
+  /// `createState`. Called once, on main, before the spawn.
+  @internal
+  void bindSystemDeclarations(List<SystemHandle<GameSystem>> declarations) =>
+      _declarations = declarations;
 
   final List<GameSystem> _systems = <GameSystem>[];
   final Map<Type, int> _systemIndex = <Type, int>{};
 
-  /// Every declared system, in post-sort execution order. The live list, not
+  /// Every built system, in post-sort execution order. The live list, not
   /// a copy.
   @internal
   List<GameSystem> get declaredSystems => _systems;
 
   /// Where [type] sits in execution order, or null if it was never declared -
-  /// what [SystemDescriptor] checks a duplicate against.
+  /// what `Game._buildSystem` checks a duplicate against.
   @internal
   int? systemIndexOf(Type type) => _systemIndex[type];
 
-  /// Appends a freshly declared system. Called once per `descriptor.has(...)`.
+  /// Appends a freshly built system. Called once per declaration.
   @internal
   S addDeclaredSystem<S extends GameSystem>(S system) {
     _systemIndex[system.runtimeType] = _systems.length;
@@ -1434,7 +1411,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// Orders [declaredSystems] so that every constraint its systems declare is
   /// honoured, breaking ties on original declaration index - a system that
   /// expresses no opinion keeps its declared position relative to every other
-  /// opinion-less system. Runs once, right after [describeSystems], and this
+  /// opinion-less system. Runs once, right after the systems are built, and this
   /// is the *resolve* half of the engine's declare-then-resolve split: an
   /// `Order.after<T>()` on a system's field looked nothing up when it ran,
   /// because half the systems it might name did not exist yet.
@@ -1623,12 +1600,12 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// The whole reason a constraint names a type instead of testing one. An
   /// `is` test in a `compareTo` override against an absent type is never true,
   /// which is exactly what "no opinion" looks like, so the typo and the
-  /// forgotten `descriptor.has` both read as a system that simply runs where
+  /// forgotten `GameSystem.of` both read as a system that simply runs where
   /// it was declared - and nothing reports either.
   Never _unsatisfiedSystemOrder(GameSystem system, OrderConstraint constraint) {
     throw StateError(
       '${constraint.describe(system.runtimeType)}, but no other system '
-      'declared in $runtimeType.describeSystems is a ${constraint.type}. A '
+      'declared by $runtimeType is a ${constraint.type}. A '
       'constraint against a system that is not declared cannot be honoured, '
       'and ignoring it is not an option either - the system would run '
       'wherever it happened to be declared, with nothing to say the ordering '
@@ -1717,13 +1694,18 @@ abstract class GameState<T extends Game> extends GameListenerBase
     );
   }
 
-  /// A system declared in [describeSystems].
+  /// A system some state field declared with `GameSystem.of`.
+  ///
+  /// The declaring field is the direct handle - `movement.value` - and this is
+  /// what a caller that did not declare the system uses: a scene reaching a
+  /// system, or a mixin reaching one a sibling mixin contributed.
   S getSystem<S extends GameSystem>() {
     final index = _systemIndex[S];
     if (index == null) {
       throw ArgumentError(
-        '$S is not declared in $runtimeType.describeSystems - systems '
-        'are declared once, up front, and cannot be added at runtime.',
+        '$S is not declared by $runtimeType - a system is declared on a '
+        'GameState field, `final movement = GameSystem.of($S.new);`, once '
+        'and up front, and cannot be added at runtime.',
       );
     }
     return _systems[index] as S;
@@ -1740,7 +1722,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   bool isSystemEnabled<S extends GameSystem>() =>
       _systems[_requireSystemIndex(S)].listensToEvents;
 
-  /// Resumes a system already declared in [describeSystems] - a runtime
+  /// Resumes a system a `GameSystem.of` field already declared - a runtime
   /// pause/resume toggle, not registration.
   ///
   /// **Synchronous, and no wire index.** This runs on the isolate that holds
@@ -1749,7 +1731,7 @@ abstract class GameState<T extends Game> extends GameListenerBase
   /// this in the handler.
   void enableSystem<S extends GameSystem>() => setSystemEnabled(S, true);
 
-  /// Pauses a system already declared in [describeSystems] - it stops
+  /// Pauses a system a `GameSystem.of` field already declared - it stops
   /// ticking until re-enabled, but is not removed from the declared set.
   void disableSystem<S extends GameSystem>() => setSystemEnabled(S, false);
 
@@ -1775,7 +1757,8 @@ abstract class GameState<T extends Game> extends GameListenerBase
     final index = _systemIndex[type];
     if (index == null) {
       throw ArgumentError(
-        '$type is not declared in $runtimeType.describeSystems.',
+        '$type is not declared by $runtimeType - a system is declared on a '
+        'GameState field, `final movement = GameSystem.of($type.new);`.',
       );
     }
     return index;

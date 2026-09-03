@@ -81,11 +81,7 @@ class _Painter extends GameSystem with FixedTickable {
 }
 
 class _State extends GameState2D<_DebugGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_Painter.new);
-  }
+  final painter = GameSystem.of(_Painter.new);
 
   @override
   void onMounted() {

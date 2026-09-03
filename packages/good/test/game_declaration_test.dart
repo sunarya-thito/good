@@ -177,11 +177,7 @@ class _SystemHostState extends GameState<_SystemHostGame> {
   @override
   void onMounted() {}
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_GameBuildingSystem.new);
-  }
+  final gameBuildingSystem = GameSystem.of(_GameBuildingSystem.new);
 }
 
 // --- the isolate-crossing fixture -----------------------------------------
@@ -209,11 +205,7 @@ class _CrossingState extends GameState<_CrossingGame> {
   @override
   void onMounted() {}
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_CrossingSystem.new);
-  }
+  final crossingSystem = GameSystem.of(_CrossingSystem.new);
 }
 
 class _CrossingSystem extends GameSystem with FixedTickable {

@@ -501,13 +501,9 @@ class JointState extends DemoState<JointGame> {
   @override
   void onMounted() => loadScene(sandbox);
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(Box2DPhysicsSystem.new);
-    descriptor.has(JointSystem.new);
-    descriptor.has(_JointStats.new);
-  }
+  final box2DPhysicsSystem = GameSystem.of(Box2DPhysicsSystem.new);
+  final jointSystem = GameSystem.of(JointSystem.new);
+  final jointStats = GameSystem.of(_JointStats.new);
 }
 
 /// Publishes this case's own numbers, after the fixed step - the same shape

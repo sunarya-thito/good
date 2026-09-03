@@ -107,21 +107,16 @@ abstract class DemoState<G extends DemoGame> extends GameState2D<G> {
   /// engine. Read by [DemoStats], which is the last thing in the advance.
   final DemoProfile profile = DemoProfile();
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    // Declaration order matters for the two render probes and for nothing
-    // else here: they agree about `GameRenderer2D` and have no opinion about
-    // each other, so the tie between them breaks on the order they were
-    // declared in. Every other probe states its position outright.
-    descriptor
-      ..has(_FixedPhaseStart.new)
-      ..has(_FixedPhaseEnd.new)
-      ..has(_PresentPhaseStart.new)
-      ..has(_RenderPhaseStart.new)
-      ..has(_RenderPhaseEnd.new)
-      ..has(DemoStats.new);
-  }
+  // Declaration order matters for the two render probes and for nothing
+  // else here: they agree about `GameRenderer2D` and have no opinion about
+  // each other, so the tie between them breaks on the order they were
+  // declared in. Every other probe states its position outright.
+  final fixedPhaseStart = GameSystem.of(_FixedPhaseStart.new);
+  final fixedPhaseEnd = GameSystem.of(_FixedPhaseEnd.new);
+  final presentPhaseStart = GameSystem.of(_PresentPhaseStart.new);
+  final renderPhaseStart = GameSystem.of(_RenderPhaseStart.new);
+  final renderPhaseEnd = GameSystem.of(_RenderPhaseEnd.new);
+  final demoStats = GameSystem.of(DemoStats.new);
 
   @override
   void describeCommands(CommandDescriptor descriptor) {

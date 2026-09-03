@@ -15,7 +15,7 @@ import 'package:good/src/system.dart';
 /// ```
 ///
 /// The field name is not read and does not matter - `Order.of()` registers
-/// against the window `SystemDescriptor.has` opens around the constructor,
+/// against the window `Game._buildSystem` opens around the constructor,
 /// the same window `Event.of`, `Input.of` and a `Query` field read. What the
 /// field is for is holding the object alive so the expression is not dead
 /// code; a system may declare several and they merge.
@@ -27,8 +27,8 @@ import 'package:good/src/system.dart';
 /// none of them looks a system up, because at the moment a system's fields
 /// initialise the systems it names may not be declared yet.
 /// `GameState.sortSystems` reads every registered constraint once, after
-/// `describeSystems` has returned and every system exists, and turns them
-/// into the edges of the graph it sorts.
+/// every declared system has been built, and turns them into the edges of the
+/// graph it sorts.
 ///
 /// That is also why the result is reported at boot rather than at build time:
 /// nothing generated can reach it. `good_tool` writes into this repository's
@@ -60,8 +60,8 @@ final class Order {
 
   /// Registers an ordering declaration for the system being constructed.
   ///
-  /// Reads the window `SystemDescriptor.has` opens, so the system has to be
-  /// one the framework builds - `descriptor.has(SpinSystem.new)`. See
+  /// Reads the window `Game._buildSystem` opens, so the system has to be
+  /// one the framework builds - `GameSystem.of(SpinSystem.new)`. See
   /// [DeclarationContext.addOrder] for what a caller outside one is told.
   static Order of() {
     final order = Order._();

@@ -230,11 +230,7 @@ class SceneGraphState extends DemoState<SceneGraphGame> {
   @override
   void onMounted() => loadScene(swarm);
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(CritterSystem.new);
-  }
+  final critterSystem = GameSystem.of(CritterSystem.new);
 
   /// One critter and its three limbs, **all in the same tick**.
   ///

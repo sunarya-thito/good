@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 
 import 'package:good/src/coroutine/coroutine.dart';
+import 'package:good/src/declare.dart';
 import 'package:good/src/archetype.dart';
 import 'package:good/src/pool.dart';
 import 'package:good/src/event.dart';
@@ -17,6 +18,89 @@ mixin GameSystemLifecycleListener on GameListener {
   void onUnmounted() {}
 }
 
+/// A system a `GameState` declared on a field - what [GameSystem.of] hands
+/// back, and the only handle on a system that exists before boot.
+///
+/// ```dart
+/// class MyState extends GameState<MyGame> {
+///   final movement = GameSystem.of(MovementSystem.new);
+///
+///   @override
+///   void onMounted() => movement.value.warmUp();
+/// }
+/// ```
+///
+/// # Declared on one copy, built on the other
+///
+/// This is the typed-handle rule with the isolate split running through the
+/// middle of it. The declaration is made on **main**, in a `GameState` field
+/// initialiser that `Game._bootMain` runs before the spawn; the system is
+/// built on the **game isolate**, by `Game._bootGame`, from the tear-off this
+/// carries. So the handle exists on both copies and [value] answers on one -
+/// see [GameSystem.of] for why building on main would silently produce
+/// queries that match nothing.
+///
+/// There is no name and no registry to search: the field *is* the reference,
+/// the analyzer catches a typo in it immediately, and there is no way to
+/// spell a system that was never declared. `GameState.getSystem` still
+/// answers for a system some other class declared, which is what a library's
+/// mixin contributes through.
+final class SystemHandle<S extends GameSystem> {
+  SystemHandle._(this._create);
+
+  /// Builds the system, given the state the declaration is a field of.
+  ///
+  /// `GameSystem.of` ignores the argument; `GameSystem.owned` is the reason
+  /// there is one.
+  final S Function(GameState owner) _create;
+
+  S? _system;
+
+  /// Whether this copy has built the system yet.
+  ///
+  /// False on main for the whole life of the game, and false on the game
+  /// isolate until `_bootGame` reaches the systems.
+  bool get isBuilt => _system != null;
+
+  /// The declared system.
+  ///
+  /// Available from the moment `Game._bootGame` has built it, which is before
+  /// any system's `onMounted` and before `GameState.onMounted` - so a scene
+  /// loaded there can already reach it.
+  S get value {
+    final system = _system;
+    if (system == null) {
+      throw StateError(
+        'this $S is declared but not built on this copy of the game. A '
+        'system is constructed by Game._bootGame, on the isolate that ticks, '
+        'so the presentation copy holds the declaration and nothing behind '
+        'it - reading one there would find an object whose queries were '
+        'numbered against an empty component table.\n'
+        'Inside the game isolate this reads before boot has reached the '
+        'systems: a GameState field initialiser, or a Game constructor.',
+      );
+    }
+    return system;
+  }
+
+  /// Builds the system for [owner]. Called once, by `Game._buildSystem`, with
+  /// the declaration windows already open around it.
+  @internal
+  S build(GameState owner) => _create(owner);
+
+  /// Keeps what `Game._buildSystem` built, once it has passed the duplicate
+  /// check and been added to the state's list.
+  @internal
+  void bind(GameSystem system) => _system = system as S;
+
+  /// The static type the declaration was written with - `'SpinSystem'`.
+  ///
+  /// Read by the boot pass for the input source and for the diagnostics that
+  /// name a system before there is an object to ask for its `runtimeType`.
+  @internal
+  String get declaredName => '$S';
+}
+
 /// Systems run in declaration order by default. A subclass wanting to run
 /// relative to specific other systems declares an [Order] on a field:
 ///
@@ -25,9 +109,9 @@ mixin GameSystemLifecycleListener on GameListener {
 /// ```
 ///
 /// [Order] registers and resolves nothing. `GameState.sortSystems` reads
-/// every system's declarations once, after `describeSystems` has returned and
-/// every system exists, and a constraint naming a system nobody declared
-/// fails the boot rather than doing nothing.
+/// every system's declarations once, after every system has been built, and a
+/// constraint naming a system nobody declared fails the boot rather than
+/// doing nothing.
 ///
 /// The older spelling is an override of [compareTo] that type-checks [other]
 /// (`if (other is PhysicsSystem) return -1;` to sort before it, `1` to sort
@@ -55,12 +139,13 @@ mixin GameSystemLifecycleListener on GameListener {
 /// # One isolate, and no mirror
 ///
 /// A `GameSystem` is a [GameListener] and nothing else: it lives where the
-/// tick loop does, and only there. `GameState.describeSystems` is *declared*
+/// tick loop does, and only there. The `GameSystem.of` declarations are made
 /// on both copies - the state object itself is built on each, so `Game2D`'s
 /// `Renderer2DState` can contribute the two systems 2D rendering needs - but
-/// it is **invoked** from exactly one place, the boot phase that runs on the
-/// copy that ticks. Main never calls it, so no system object is ever
-/// constructed there. There is no twin to hold anything.
+/// each holds a tear-off, and it is **called** from exactly one place, the
+/// boot phase that runs on the copy that ticks. Main builds nothing, so no
+/// system object is ever constructed there. There is no twin to hold
+/// anything.
 ///
 /// A `Game`'s declarations all happen on main, before the spawn, and ride the
 /// deep copy: `Channel.*`, `CameraView.of`, `RandomStream.of`,
@@ -81,6 +166,83 @@ mixin GameSystemLifecycleListener on GameListener {
 abstract class GameSystem extends GameListenerBase
     with EventBus, Coroutines
     implements Comparable<GameSystem> {
+  /// Declares a system on a `GameState` field, from its constructor.
+  ///
+  /// ```dart
+  /// class MyState extends GameState<MyGame> {
+  ///   final movement = GameSystem.of(MovementSystem.new);
+  ///   final combat = GameSystem.of(CombatSystem.new);
+  /// }
+  /// ```
+  ///
+  /// A **constructor**, not an instance, and the reason is which copy runs
+  /// what. A `GameState` field initialiser runs inside `Game._bootMain`, on
+  /// main, before the spawn; a system's own fields call `Query.all`, which
+  /// numbers its mask out of `ComponentTypeRegistry` - a per-isolate static
+  /// that main's copy never fills. A system *built* here would bake main's
+  /// empty numbering into a mask and match nothing over there, with nothing
+  /// to report it. So this registers the tear-off and builds nothing: the
+  /// handle rides the spawn, and `Game._bootGame` calls it on the copy that
+  /// ticks, where the archetypes are numbered.
+  ///
+  /// A system taking constructor arguments goes through a closure:
+  /// `GameSystem.of(() => Box2DPhysicsSystem(gravityY: -10))`. The
+  /// declaration windows a system's fields read - `Event.of`, `Event.signal`,
+  /// `Input.of`, `Order.of` - are open while that closure runs, so that shape
+  /// declares on fields too. What does *not* work is a closure handing back
+  /// an object built earlier - `GameSystem.of(() => _spawner)` - because
+  /// nothing was open around **that** construction, and a field initialiser
+  /// on the state has no way to build one anyway.
+  ///
+  /// A closure needing the state it is declared on takes [owned] instead: a
+  /// field initialiser has no `this`, and this one is handed nothing.
+  static SystemHandle<S> of<S extends GameSystem>(S Function() create) {
+    final handle = SystemHandle<S>._((_) => create());
+    DeclarationContext.addSystem(handle);
+    return handle;
+  }
+
+  /// [of], for a system whose construction needs the state that declares it.
+  ///
+  /// ```dart
+  /// mixin Renderer2DState<G extends Game2D> on GameState<G> {
+  ///   final renderer = GameSystem.owned(
+  ///     (Renderer2DState<G> state) => state.createRenderer(),
+  ///   );
+  ///
+  ///   GameRenderer2D createRenderer() => GameRenderer2D();
+  /// }
+  /// ```
+  ///
+  /// The owner arrives as an argument for `Event.of`'s reason: a field
+  /// initialiser has no `this`, so what it needs is passed in rather than
+  /// reached for. What that buys over a plain tear-off is **virtual
+  /// dispatch** - `state.createRenderer()` is resolved against the state's
+  /// runtime type, so a subclass overriding it still decides which renderer
+  /// is declared, and the mixin does not have to hand the whole declaration
+  /// over to be overridden.
+  ///
+  /// [O] is checked when the closure is called, at boot on the game isolate,
+  /// against the state the field is declared on. The build itself happens
+  /// exactly where [of]'s does and inside the same windows.
+  static SystemHandle<S> owned<O extends GameState, S extends GameSystem>(
+    S Function(O owner) create,
+  ) {
+    final handle = SystemHandle<S>._((owner) {
+      if (owner is! O) {
+        throw StateError(
+          'a $S declared with GameSystem.owned<$O, $S> is held by a '
+          '${owner.runtimeType}, which is not a $O. The owner a build closure '
+          'is handed is the state the declaration is a field of, so the type '
+          'argument has to be one that state satisfies.',
+        );
+      }
+      return create(owner);
+    });
+    DeclarationContext.addSystem(handle);
+    return handle;
+  }
+
   GameState? _state;
 
   bool _enabled = true;
@@ -135,10 +297,11 @@ abstract class GameSystem extends GameListenerBase
   /// This system was mounted. See [GameSystemLifecycleListener].
   ///
   /// Declared through `Event.inherited`, for `EntityStruct`'s reason
-  /// (struct.dart) with a sharper edge. `SystemDescriptor.has` takes a
-  /// `T Function()`, and a closure may hand back a system that already
-  /// existed - `descriptor.has(() => _spawner)`, where `_spawner` is a field
-  /// of the `GameState`. A prefab in that shape has nothing open above it. A
+  /// (struct.dart) with a sharper edge. [GameSystem.of] takes an
+  /// `S Function()`, and a closure may hand back a system that already
+  /// existed - `GameSystem.of(() => spawner)`, where `spawner` came in as a
+  /// constructor parameter of the `GameState`. A prefab in that shape has
+  /// nothing open above it. A
   /// system does: a `GameState` is itself framework-constructed, so its own
   /// window is open while its field initialisers run. `Event.inherited` reads
   /// neither, so the pair lands on this system whichever way it was built.
@@ -150,7 +313,7 @@ abstract class GameSystem extends GameListenerBase
   /// field initialiser and handed over through a closure, collected the state,
   /// itself and two unrelated systems, and firing it reached all four.
   ///
-  /// A system the framework *does* build - `descriptor.has(SpinSystem.new)`,
+  /// A system the framework *does* build - `GameSystem.of(SpinSystem.new)`,
   /// or a closure that constructs inside itself - owns the window, so
   /// `Event.of` on a subclass field works and is the shape to reach for.
   final mountEvent = Event.inheritedSignal<GameSystemLifecycleListener>(
@@ -172,7 +335,7 @@ abstract class GameSystem extends GameListenerBase
 
   /// Every [Order] this system declared on a field, in declaration order.
   ///
-  /// Filled by `SystemDescriptor.has` from the window it opened, and read
+  /// Filled by `Game._buildSystem` from the window it opened, and read
   /// once by `GameState.sortSystems`. Empty for a system that declares none,
   /// which is most of them.
   @internal
@@ -183,7 +346,7 @@ abstract class GameSystem extends GameListenerBase
 
   /// Called once by the boot pass on the game isolate, before the system's
   /// [inputDefaults] is read. Not part of the user-facing API: a system is
-  /// bound by declaring it in [GameState.describeSystems], never by hand.
+  /// bound by declaring it with [GameSystem.of], never by hand.
   @internal
   void bindState(GameState state) => _state = state;
 
@@ -199,9 +362,10 @@ abstract class GameSystem extends GameListenerBase
     final state = _state;
     if (state == null) {
       throw StateError(
-        '$runtimeType is not bound to a GameState. Declare it in '
-        'GameState.describeSystems - a system constructed by hand has no '
-        'scene to query and no tick to run on.',
+        '$runtimeType is not bound to a GameState. Declare it on a '
+        'GameState field - `final mine = GameSystem.of($runtimeType.new);` - '
+        'a system constructed by hand has no scene to query and no tick to '
+        'run on.',
       );
     }
     return state;
@@ -250,7 +414,7 @@ abstract class GameSystem extends GameListenerBase
   // `StateChannel` and a `BufferHandle` are backed by native memory that the
   // **main isolate** allocates before the spawn and frees on stop, and their
   // identity across the boundary is their index in that one declaration
-  // pass. A system is not present for it: `describeSystems` runs on the game
+  // pass. A system is not present for it: a system is built on the game
   // isolate, so a system's declaration would have an index on one copy and
   // none on the other, which is the same thing as not having one.
   //
@@ -302,7 +466,7 @@ abstract class GameSystem extends GameListenerBase
   List<InputDefault<Object?>> get inputDefaults =>
       const <InputDefault<Object?>>[];
 
-  /// A sibling system declared in the same `describeSystems`. Reaching one
+  /// A sibling system the same state declared. Reaching one
   /// directly is the escape hatch for cross-system state; note it says
   /// nothing about ordering, which is declaration order and nothing else.
   ///

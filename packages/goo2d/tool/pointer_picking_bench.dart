@@ -101,12 +101,8 @@ class _BenchState extends GameState<_BenchGame> {
   @override
   void onMounted() => loadScene(_Scene());
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(WorldTransformSystem.new);
-    descriptor.has(PointerPickingSystem.new);
-  }
+  final worldTransformSystem = GameSystem.of(WorldTransformSystem.new);
+  final pointerPickingSystem = GameSystem.of(PointerPickingSystem.new);
 }
 
 class _BenchGame extends Game {

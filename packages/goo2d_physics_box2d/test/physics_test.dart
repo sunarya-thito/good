@@ -154,12 +154,8 @@ class _GameState extends GameState<_Game> {
     loadScene(_Scene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_GameplaySystem.new);
-    physics = descriptor.has(() => Box2DPhysicsSystem(workerCount: _workers));
-  }
+  final gameplaySystem = GameSystem.of(_GameplaySystem.new);
+  final physics = GameSystem.of(() => Box2DPhysicsSystem(workerCount: _workers));
 }
 
 class _Game extends Game {
@@ -188,6 +184,10 @@ Future<_Scene> _boot({int workers = 1}) async {
   _workers = workers;
   final game = await Game.startInline(_Game.new);
   run = game;
+  // Read off the state rather than captured at declaration: the declaration
+  // is a field on the state and the system is built on the copy that ticks,
+  // so this is where the object first exists.
+  physics = run.state.getSystem<Box2DPhysicsSystem>();
   addTearDown(() async {
     // Stop FIRST, then dispose. Stopping unloads the scenes, which unmounts
     // every entity and destroys its Box2D body - so disposing first would

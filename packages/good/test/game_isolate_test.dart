@@ -217,11 +217,7 @@ class _IsolateState extends GameState<_IsolateGame> {
     }
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_MoverSystem.new);
-  }
+  final moverSystem = GameSystem.of(_MoverSystem.new);
 }
 
 /// A system that throws on its third tick, on the game isolate, with a real
@@ -240,11 +236,7 @@ class _DyingState extends GameState<_DyingGame> {
   @override
   void onMounted() {}
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_DyingSystem.new);
-  }
+  final dyingSystem = GameSystem.of(_DyingSystem.new);
 }
 
 class _DyingGame extends Game {
@@ -272,11 +264,7 @@ class _RandomIsolateState extends GameState<_RandomIsolateGame> {
   @override
   void onMounted() {}
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_RandomReporter.new);
-  }
+  final randomReporter = GameSystem.of(_RandomReporter.new);
 }
 
 class _RandomIsolateGame extends Game {
@@ -356,11 +344,7 @@ class _PingState extends GameState<_PingGame> {
     loadScene(_MoverScene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_PingSystem.new);
-  }
+  final pingSystem = GameSystem.of(_PingSystem.new);
 }
 
 class _PingGame extends Game {
@@ -407,11 +391,7 @@ class _ChannelState extends GameState<_ChannelGame> {
     loadScene(_MoverScene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_CounterSystem.new);
-  }
+  final counterSystem = GameSystem.of(_CounterSystem.new);
 }
 
 class _ChannelGame extends Game {
@@ -471,11 +451,7 @@ class _InputProbeState extends GameState<_InputProbeGame> {
     loadScene(_MoverScene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_InputProbeSystem.new);
-  }
+  final inputProbeSystem = GameSystem.of(_InputProbeSystem.new);
 }
 
 class _InputProbeGame extends Game {
@@ -624,11 +600,7 @@ class _TexturedState extends GameState<_TexturedGame> {
     loadScene(_TexturedScene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_TexturedSystem.new);
-  }
+  final texturedSystem = GameSystem.of(_TexturedSystem.new);
 }
 
 class _TexturedGame extends Game {
@@ -785,11 +757,7 @@ class _UnloadState extends GameState<_UnloadGame> {
     if (loadedScenes.isNotEmpty) unloadScene(loadedScenes.first);
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_MoverSystem.new);
-  }
+  final moverSystem = GameSystem.of(_MoverSystem.new);
 }
 
 class _UnloadGame extends Game {
@@ -879,11 +847,7 @@ class _AskingState extends GameState<_AskingGame> {
     unawaited(game.askGame().catchError((Object _) {}));
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_AskingSystem.new);
-  }
+  final askingSystem = GameSystem.of(_AskingSystem.new);
 }
 
 class _AskingGame extends Game {
@@ -1123,12 +1087,8 @@ class _CensusIsolateState extends GameState<_CensusIsolateGame> {
     loadScene(level);
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_IdleSystem.new);
-    descriptor.has(_SleepySystem.new);
-  }
+  final idleSystem = GameSystem.of(_IdleSystem.new);
+  final sleepySystem = GameSystem.of(_SleepySystem.new);
 
   @override
   void describeCommands(CommandDescriptor descriptor) {
@@ -1195,11 +1155,7 @@ class _RegistrarSystem extends GameSystem with FixedTickable {
 }
 
 class _RegistrarState extends GameState<_RegistrarGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_RegistrarSystem.new);
-  }
+  final registrarSystem = GameSystem.of(_RegistrarSystem.new);
 }
 
 // --- #287: which copy assigns a component bit -----------------------------
@@ -1272,11 +1228,7 @@ class _BitCountState extends GameState<_BitCountGame> {
     loadScene(level);
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_BitCountSystem.new);
-  }
+  final bitCountSystem = GameSystem.of(_BitCountSystem.new);
 }
 
 class _BitCountGame extends Game {

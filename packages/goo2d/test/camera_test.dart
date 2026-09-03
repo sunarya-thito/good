@@ -566,11 +566,7 @@ class _CamState extends GameState<_CamGame> {
     loadScene(_scene);
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_CameraQuerySystem.new);
-  }
+  final cameraQuerySystem = GameSystem.of(_CameraQuerySystem.new);
 }
 
 class _CamGame extends Game {

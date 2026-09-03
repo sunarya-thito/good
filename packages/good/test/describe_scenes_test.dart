@@ -81,11 +81,7 @@ class _EarlyCensusSystem extends GameSystem with FixedTickable {
 }
 
 class _EarlyState extends GameState<_EarlyGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_EarlyCensusSystem.new);
-  }
+  final earlyCensusSystem = GameSystem.of(_EarlyCensusSystem.new);
 }
 
 class _EarlyGame extends Game {
@@ -122,11 +118,7 @@ class _CensusSystem extends GameSystem with FixedTickable {
 }
 
 class _DeclaringState extends GameState<_DeclaringGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_CensusSystem.new);
-  }
+  final censusSystem = GameSystem.of(_CensusSystem.new);
 }
 
 class _DeclaringGame extends Game {

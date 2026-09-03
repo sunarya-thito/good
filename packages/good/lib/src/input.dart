@@ -477,7 +477,7 @@ final class InputRegistry {
   bool _sealed = false;
 
   /// Who is declaring right now, for diagnostics. Set by `Game._construct`
-  /// and `SystemDescriptor.has` around a constructor call, and by boot around
+  /// and `Game._buildSystem` around a constructor call, and by boot around
   /// each source's `inputDefaults`; a plain label, not the object, because
   /// that is all an error message wants.
   String _source = 'Game';
@@ -499,7 +499,7 @@ final class InputRegistry {
 
   set source(String source) => _source = source;
 
-  /// What [source] currently reads, so `SystemDescriptor.has` can put it back
+  /// What [source] currently reads, so `Game._buildSystem` can put it back
   /// after a system's constructor has run. Without the restore, a field
   /// declaration would leave the label pointing at a system that has finished
   /// declaring, and the next source to declare would be named wrongly.

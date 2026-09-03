@@ -143,11 +143,7 @@ class _BenchState extends GameState2D<_Bench> {
   @override
   void onMounted() => loadScene(galaxy);
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_Probe.new);
-  }
+  final probe = GameSystem.of(_Probe.new);
 }
 
 class _Bench extends Game2D {

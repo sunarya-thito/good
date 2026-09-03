@@ -15,20 +15,16 @@ import 'rigid_body.dart';
 /// Box2D body per `RigidBody2D` entity and one Box2D shape per
 /// `ColliderBody` that entity declared.
 ///
-/// Declared like any other system:
+/// Declared like any other system, on a field of the `GameState`:
 ///
 /// ```dart
-/// @override
-/// void describeSystems(SystemDescriptor descriptor) {
-///   super.describeSystems(descriptor);
-///   physics = descriptor.has(Box2DPhysicsSystem.new);
-/// }
+/// final physics = GameSystem.of(Box2DPhysicsSystem.new);
 /// ```
 ///
 /// # Where the native state lives
 ///
 /// The world handle is created **lazily, on first use**, and never during a
-/// declare pass. `Game` runs every `describe*` on the main isolate and then
+/// declare pass. `Game` runs its declarations on the main isolate and then
 /// hands the whole object graph to the game isolate by deep copy, so a world
 /// created at declare time would be created by the copy that never simulates
 /// and then inherited - leaving two copies believing they own one world, and

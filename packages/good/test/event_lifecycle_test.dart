@@ -247,14 +247,10 @@ class _LifecycleState extends GameState<_LifecycleGame> {
     loadScene(game.observer);
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_Watcher.new);
-    descriptor.has(_Census.new);
-    descriptor.has(_Bystander.new);
-    descriptor.has(_Deaf.new);
-  }
+  final watcher = GameSystem.of(_Watcher.new);
+  final census = GameSystem.of(_Census.new);
+  final bystander = GameSystem.of(_Bystander.new);
+  final deaf = GameSystem.of(_Deaf.new);
 }
 
 class _LifecycleGame extends Game {

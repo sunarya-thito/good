@@ -107,11 +107,7 @@ class _MultiState extends GameState2D<_MultiGame> {
     loadScene(overlay);
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(PointerPickingSystem.new);
-  }
+  final pointerPickingSystem = GameSystem.of(PointerPickingSystem.new);
 }
 
 class _MultiGame extends Game2D {

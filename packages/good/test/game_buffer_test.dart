@@ -68,11 +68,7 @@ class _BufferState extends GameState<_BufferGame> {
     loadScene(_EmptyScene());
   }
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_PingSystem.new);
-  }
+  final pingSystem = GameSystem.of(_PingSystem.new);
 }
 
 class _BufferGame extends Game {

@@ -73,12 +73,8 @@ class _PingScene extends SceneStruct with _Ping {
 class _PingState extends GameState<_PingGame> with _Ping {
   final ping = Event.signal<_Ping>((listener) => listener.onPing());
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_PingSystem.new);
-    descriptor.has(_DeafSystem.new);
-  }
+  final pingSystem = GameSystem.of(_PingSystem.new);
+  final deafSystem = GameSystem.of(_DeafSystem.new);
 }
 
 class _PingGame extends Game {

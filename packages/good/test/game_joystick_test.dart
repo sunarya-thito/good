@@ -68,11 +68,7 @@ class _StickSystem extends GameSystem with FixedTickable {
 }
 
 class _StickState extends GameState<_StickGame> {
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(_StickSystem.new);
-  }
+  final stickSystem = GameSystem.of(_StickSystem.new);
 }
 
 class _StickGame extends Game {

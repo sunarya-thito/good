@@ -273,11 +273,7 @@ class ParticlesState extends DemoState<ParticlesGame> {
   @override
   void onMounted() => loadScene(galaxy);
 
-  @override
-  void describeSystems(SystemDescriptor descriptor) {
-    super.describeSystems(descriptor);
-    descriptor.has(SwirlSystem.new);
-  }
+  final swirlSystem = GameSystem.of(SwirlSystem.new);
 
   @override
   void describeCommands(CommandDescriptor descriptor) {

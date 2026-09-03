@@ -307,7 +307,7 @@ abstract class SceneStruct extends GameListenerBase
     // A scene brought up by hand has no boot pass to bind its events, so it
     // does it now. One brought up by a `Game` waits: a prefab's
     // `collectListeners` may reach for a system (`getSystem<T>()`), and
-    // `Game._bootGame` runs `describeScenes` before `describeSystems`, so no
+    // `Game._bootGame` runs `describeScenes` before it builds systems, so no
     // system exists at this point. `Game` calls [bindEvents] once every
     // declaration exists.
     if (_state == null) bindEvents();
