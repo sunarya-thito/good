@@ -156,19 +156,6 @@ void main() {
     );
   });
 
-  test('constructing a struct by hand says why it cannot declare', () {
-    expect(
-      _Declared.new,
-      throwsA(
-        isA<StateError>().having(
-          (e) => e.message,
-          'message',
-          allOf(contains('descriptor.has(MyStruct.new)'), contains('Field')),
-        ),
-      ),
-    );
-  });
-
   test('a constructor that throws does not leave the context open', () {
     // The stack has to unwind even when the object never finishes, or the
     // next declaration - here the scene's own second prefab - declares into

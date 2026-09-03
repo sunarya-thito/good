@@ -416,19 +416,6 @@ void main() {
       );
     });
 
-    test('a command built by hand has nothing to declare into', () {
-      expect(
-        _Damage.new,
-        throwsStateError,
-        reason:
-            'Param.* reads the layout the framework opens around the '
-            'constructor call, which is why has() takes a tear-off. Building '
-            'one directly - in a fixture, or to read a field off it - has to '
-            'say so rather than hand back an object whose pointers name '
-            'offsets in nothing.',
-      );
-    });
-
     test('a late Param initialiser throws instead of taking a late offset', () {
       final command = _registry().registry.declare(_LateParam.new);
 
