@@ -53,9 +53,11 @@
 // the shadowed-column refusal is tested against is a `game.dart` that imports
 // nothing at all.
 //
-// Cost is the second argument and not the first: resolution measured about ten
-// times the wall clock per file here, and `--check` is on the inner loop of
-// every CI run.
+// Cost is the second argument and not the first. Measured over this
+// repository: this walk parses 123 files in 0.9s, and an
+// `AnalysisContextCollection` resolves the 79 under the four packages that
+// declare components in 14.1s - 7ms a file against 178ms, and `--check` is on
+// the inner loop of every CI run.
 //
 // What resolution would have bought is bought another way. Everything this
 // needs to know about the engine is *in the read set*: `Field`'s static
