@@ -305,6 +305,26 @@ class _MismatchGame extends _BareGame {
   GameState createState() => _MismatchState();
 }
 
+/// A state whose *field initialiser* throws, for the window-cleanup test.
+///
+/// The system is declared first, so the window is not merely opened when the
+/// throw happens - it has something in it.
+class _ThrowingState extends GameState<_ThrowingGame> {
+  final ear = GameSystem.of(_EarA.new);
+
+  final boom = _explode();
+
+  @override
+  void onMounted() {}
+}
+
+int _explode() => throw StateError('while the state was being built');
+
+class _ThrowingGame extends _BareGame {
+  @override
+  GameState createState() => _ThrowingState();
+}
+
 abstract class _BareGame extends Game {
   @override
   int get pageSize => 4096;
@@ -554,6 +574,58 @@ void main() {
             "class's systems run last - the reverse of the base-first super "
             'chain the describeSystems hook produced. A system that cares '
             'says so with Order.of()',
+      );
+    });
+  });
+
+  group('the declaration window', () {
+    test('refuses a system declared with no state being built', () {
+      expect(
+        () => GameSystem.of(_EarA.new),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('no GameState being constructed'),
+              contains('createState'),
+            ),
+          ),
+        ),
+        reason:
+            'the window is opened around createState and nowhere else, so a '
+            'system named on a Game, a scene or a prefab reports itself '
+            'rather than landing on whatever ran last',
+      );
+    });
+
+    test('closes even when createState throws', () async {
+      await expectLater(
+        Game.startInline(_ThrowingGame.new),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('while the state was being built'),
+          ),
+        ),
+      );
+      _reset();
+
+      // The window is popped in a `finally`, so the stack is empty again and
+      // the refusal above still fires. Popped outside one, the dead game's
+      // level stays on the stack - and because the level a declaration lands
+      // in is the innermost, a system named anywhere at all would quietly
+      // join a state that never finished being built and never runs.
+      expect(
+        () => GameSystem.of(_EarB.new),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('no GameState being constructed'),
+          ),
+        ),
       );
     });
   });
