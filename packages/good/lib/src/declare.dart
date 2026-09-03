@@ -247,6 +247,32 @@ abstract final class DeclarationContext {
   /// it raises, which is the only thing this is for.
   static List<Object> get undeclaredLeftovers => _declared.last;
 
+  /// Clips waiting for the timeline whose field initialisers made them.
+  ///
+  /// A flat buffer and not a stack, because the window it spans is not a
+  /// registration: `TimelineAnimation.of` runs in a `TimelineStruct`'s field
+  /// initialiser, and a superclass constructor runs *after* the subclass's
+  /// field initialisers, so `TimelineStruct`'s own constructor is the first
+  /// line of code after them and takes the lot.
+  ///
+  /// Deliberately not [addDeclared], which requires a struct to be under
+  /// construction. A timeline declares nothing outside itself, so it can be
+  /// built by hand - a headless fixture does exactly that - and a clip has to
+  /// reach it there too.
+  static final List<Object> _clips = <Object>[];
+
+  /// Records one clip against the timeline being constructed.
+  static void addClip(Object clip) => _clips.add(clip);
+
+  /// Every clip declared since the last timeline took its own, in declaration
+  /// order - which is clip-id order.
+  static List<Object> takeClips() {
+    if (_clips.isEmpty) return const <Object>[];
+    final taken = List<Object>.of(_clips);
+    _clips.clear();
+    return taken;
+  }
+
   /// The open prefab registrations, innermost last - the second level of the
   /// stack, and the one `EntityStruct.of` declares against.
   static final List<PrefabRegistrar> _prefabs = <PrefabRegistrar>[];

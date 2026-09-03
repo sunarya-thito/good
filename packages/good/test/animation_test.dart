@@ -17,23 +17,32 @@ class _EnemyTimeline extends TimelineStruct {
   final y = Track.of<double>(-1);
   final frame = Track.of<int>(0);
 
-  late final TimelineAnimation entrance;
-  late final TimelineAnimation blink;
+  final entrance = TimelineAnimation.of(_Entrance.new);
+  final blink = TimelineAnimation.of(_Blink.new);
+}
 
+class _Entrance extends TimelineAnimation<_EnemyTimeline> {
   @override
-  void describeAnimation(TimelineAnimationDescriptor descriptor) {
+  void describeAnimation(AnimationDescriptor descriptor) {
     // 0 -> 100 over one second, hold two, back to 0 over one. Four seconds.
-    entrance = descriptor.has()
-      ..track(x)
-          .key(0.0)
-          .key(100.0, Seconds(1.0))
-          .hold(Seconds(2.0))
-          .key(0.0, Seconds(1.0));
-    // A second clip over the *same* struct's tracks. `y` is keyed here and
-    // nowhere in `entrance`, which is what the default-value fallback is for.
-    blink = descriptor.has()
-      ..track(y).key(0.0).key(10.0, Seconds(1.0))
-      ..track(frame).key(0).key(3, Seconds(1.0));
+    descriptor
+        .track(timeline.x)
+        .key(0.0)
+        .key(100.0, Seconds(1.0))
+        .hold(Seconds(2.0))
+        .key(0.0, Seconds(1.0));
+  }
+}
+
+/// A second clip over the *same* struct's tracks. `y` is keyed here and
+/// nowhere in `_Entrance`, which is what the default-value fallback is for -
+/// and the two clips reach `timeline.y` through the one `_EnemyTimeline` that
+/// declared them, not through a copy of their own.
+class _Blink extends TimelineAnimation<_EnemyTimeline> {
+  @override
+  void describeAnimation(AnimationDescriptor descriptor) {
+    descriptor.track(timeline.y).key(0.0).key(10.0, Seconds(1.0));
+    descriptor.track(timeline.frame).key(0).key(3, Seconds(1.0));
   }
 }
 
@@ -45,12 +54,26 @@ class _Enemy extends EntityStruct {
 
 /// A timeline whose clip is declared and never keyed.
 class _Bare extends TimelineStruct {
-  late final TimelineAnimation empty;
+  final empty = TimelineAnimation.of(_Empty.new);
+}
 
+class _Empty extends TimelineAnimation<_Bare> {
   @override
-  void describeAnimation(TimelineAnimationDescriptor descriptor) {
-    empty = descriptor.has();
-  }
+  void describeAnimation(AnimationDescriptor descriptor) {}
+}
+
+/// A timeline declaring a clip that animates somebody else's tracks.
+class _Mismatched extends TimelineStruct {
+  final wrong = TimelineAnimation.of(_Entrance.new);
+}
+
+/// Filled by the test before it constructs [_Thief], so a field initialiser
+/// can hand back a clip that already has an owner - which is what a
+/// constructor tear-off exists to make impossible by accident.
+late TimelineAnimation _stolen;
+
+class _Thief extends TimelineStruct {
+  final taken = TimelineAnimation.of(() => _stolen);
 }
 
 class _Scene extends SceneStruct {
@@ -230,6 +253,98 @@ void main() {
       expect(
         () => timeline.blink.track(timeline.x).hold(Seconds(1.0)),
         throwsStateError,
+      );
+    });
+  });
+
+  group('a clip is a class, and the tracks stay the timelines', () {
+    test('two clips key one struct, not a copy each', () async {
+      run = await _boot();
+      final timeline = _timeline();
+      // The reason a mixin carrying the tracks was rejected: each clip would
+      // get its own `x`, `y` and `frame`, and `timeline.y` - what an entity
+      // actually reads - would be a fourth copy nothing keys. Identity, so
+      // this fails on a copy that happens to hold equal values.
+      expect(identical(timeline.entrance.timeline, timeline), isTrue);
+      expect(identical(timeline.blink.timeline, timeline), isTrue);
+      expect(identical(timeline.entrance.timeline.y, timeline.y), isTrue);
+      expect(identical(timeline.blink.timeline.y, timeline.y), isTrue);
+    });
+
+    test('a clip declared on a timeline it does not animate is refused', () {
+      // `_Entrance extends TimelineAnimation<_EnemyTimeline>` on a
+      // `_Mismatched` field. Nothing downstream would notice: the clip would
+      // key `_Mismatched`'s clip id against `_EnemyTimeline`'s tracks and the
+      // reads would silently come back as defaults.
+      expect(
+        _Mismatched.new,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('_Entrance animates a _EnemyTimeline'),
+              contains('was declared on _Mismatched'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('a clip another timeline already owns is refused', () async {
+      run = await _boot();
+      _stolen = _timeline().entrance;
+      // Two timelines holding one clip instance means one clip id used
+      // against two sets of tracks, and the second timeline's keys would
+      // overwrite the first's.
+      expect(
+        _Thief.new,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('_Entrance is already a clip of _EnemyTimeline'),
+              contains('one clip id'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('a clip built by hand has no timeline to key', () {
+      // `_Entrance()` rather than `TimelineAnimation.of(_Entrance.new)`: the
+      // clip exists but no timeline adopted it, so there is nothing for
+      // `timeline.x` in its body to resolve against.
+      final orphan = _Entrance();
+      expect(
+        () => orphan.timeline,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains(
+                '_Entrance.timeline was read before any timeline '
+                'adopted this clip',
+              ),
+              contains('TimelineAnimation.of(_Entrance.new)'),
+            ),
+          ),
+        ),
+      );
+      expect(
+        () => orphan.clipId,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('_Entrance.clipId was read before'),
+          ),
+        ),
+        reason:
+            'clip id 0 would key an unowned clip over clip 0 of whatever '
+            'timeline the track belongs to',
       );
     });
   });

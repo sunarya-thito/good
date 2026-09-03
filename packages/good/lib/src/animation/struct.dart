@@ -177,25 +177,102 @@ final class TrackBinding<T> {
 
 /// One animation clip: a set of tracks with keyframes, and a length.
 ///
-/// Declared in [TimelineStruct.describeAnimation] and keyed there:
+/// **A class, extended once per clip**, and held on a [TimelineStruct] field
+/// by [of]:
 ///
 /// ```dart
-/// toTheLeft = descriptor.has()
-///   ..track(positionX)
-///       .key(0)
-///       .key(100, Seconds(1.0), Curves.easeIn)
-///       .hold(Seconds(2.0))
-///       .key(0, Seconds(1.0), Curves.easeOut);
+/// class Breath extends TimelineStruct {
+///   final scale = Track.of<double>(1.0);
+///   final pulse = TimelineAnimation.of(PulseAnimation.new);
+/// }
+///
+/// class PulseAnimation extends TimelineAnimation<Breath> {
+///   @override
+///   void describeAnimation(AnimationDescriptor descriptor) {
+///     descriptor.track(timeline.scale).key(1.0).key(1.12, Seconds(0.5));
+///   }
+/// }
 /// ```
-final class TimelineAnimation {
-  @internal
-  TimelineAnimation(this.clipId, this._owner);
+///
+/// The clip keys tracks the *timeline* owns, so its body has to name members
+/// of another object - which is why [of] takes a constructor tear-off rather
+/// than a closure over the timeline's fields. A field initialiser has no
+/// `this`, so `PulseAnimation.new` names no sibling and nothing has to be
+/// filled in afterwards.
+///
+/// [T] is the timeline this clip animates. It is checked when the timeline
+/// adopts the clip, so `timeline` below is the concrete type and not a cast
+/// the reader has to trust.
+abstract class TimelineAnimation<T extends TimelineStruct> {
+  /// Declares a clip on the timeline being constructed and hands back the
+  /// instance, so the timeline keeps it in a field.
+  ///
+  /// Takes the constructor, not an instance: `TimelineAnimation.of(Pulse())`
+  /// would work too, and reads as though the clip were already attached to
+  /// something. It is not - the timeline picks it up in its own constructor,
+  /// one line after the field initialiser that made it.
+  static C of<C extends TimelineAnimation>(C Function() create) {
+    final clip = create();
+    DeclarationContext.addClip(clip);
+    return clip;
+  }
+
+  TimelineStruct? _owner;
+
+  int _clipId = -1;
 
   /// Position in the declaring timeline's clip list - what a [TimelineSample]
   /// carries, and what a [Track] indexes its keys by.
-  final int clipId;
+  int get clipId {
+    _requireOwner('clipId');
+    return _clipId;
+  }
 
-  final TimelineStruct _owner;
+  /// The timeline whose tracks this clip keys - what a [describeAnimation]
+  /// body reaches its keys through.
+  T get timeline {
+    _requireOwner('timeline');
+    return _owner! as T;
+  }
+
+  /// Keys this clip's tracks. Runs once, when the owning timeline is bound to
+  /// a scene, and is the one hook left on this path: a clip's body names
+  /// tracks on *another* object, which no field initialiser can do.
+  void describeAnimation(AnimationDescriptor descriptor);
+
+  void _requireOwner(String member) {
+    if (_owner != null) return;
+    throw StateError(
+      '$runtimeType.$member was read before any timeline adopted this clip. '
+      'A clip is adopted by the TimelineStruct whose field declares it - '
+      '`final pulse = TimelineAnimation.of($runtimeType.new);` - so one built '
+      'with `$runtimeType()` belongs to no timeline and has no tracks to key.',
+    );
+  }
+
+  void _adopt(TimelineStruct owner, int clipId) {
+    if (_owner != null) {
+      throw StateError(
+        '$runtimeType is already a clip of ${_owner.runtimeType}. A clip '
+        'instance belongs to one timeline - `TimelineAnimation.of` takes a '
+        'constructor so that each declaration gets its own, and handing back '
+        'an existing clip instead gives two timelines one clip id.',
+      );
+    }
+    if (owner is! T) {
+      throw StateError(
+        '$runtimeType animates a $T, but was declared on '
+        '${owner.runtimeType}. A clip keys the tracks of the timeline it is '
+        'declared on, so `class $runtimeType extends '
+        'TimelineAnimation<${owner.runtimeType}>` is what belongs on a '
+        '${owner.runtimeType} field. A clip declared anywhere other than a '
+        'TimelineStruct field lands here too, on whichever timeline is built '
+        'next.',
+      );
+    }
+    _owner = owner;
+    _clipId = clipId;
+  }
 
   int _lengthMicros = 0;
 
@@ -209,15 +286,16 @@ final class TimelineAnimation {
   /// Called once per track per clip at declare time. Keying the same track
   /// twice in one clip would produce two overlapping key lists with no
   /// defensible blend, so it throws instead of picking one.
-  TrackAnimator<T> track<T>(Track<T> track) {
-    final keys = track._keysFor(clipId);
+  TrackAnimator<K> track<K>(Track<K> track) {
+    final id = clipId;
+    final keys = track._keysFor(id);
     if (keys.isNotEmpty) {
       throw StateError(
-        'this track is already keyed in clip $clipId. One track has one curve '
+        'this track is already keyed in clip $id. One track has one curve '
         'per clip - to blend two shapes, declare two clips and sample both.',
       );
     }
-    return TrackAnimator<T>._(this, keys);
+    return TrackAnimator<K>._(this, keys);
   }
 
   void _grewTo(int micros) {
@@ -248,7 +326,7 @@ final class TimelineAnimation {
         : _lengthMicros;
     if (lengthMicros <= 0) return TimelineSample.pack(clipId, 0);
 
-    var micros = (_owner.state.time + offset).inMicroseconds;
+    var micros = (timeline.state.time + offset).inMicroseconds;
     switch (wrapMode) {
       case WrapMode.clamp:
         if (micros < 0) micros = 0;
@@ -281,10 +359,10 @@ final class TimelineAnimation {
     required WrapMode wrapMode,
     required bool reverse,
   }) sync* {
-    final startedAt = _owner.state.time;
+    final startedAt = timeline.state.time;
     final length = duration > Seconds.zero ? duration : this.length;
     while (true) {
-      final elapsed = _owner.state.time - startedAt;
+      final elapsed = timeline.state.time - startedAt;
       final sample = animate(
         offset: -startedAt,
         duration: duration,
@@ -355,9 +433,14 @@ final class TrackAnimator<T> {
   }
 }
 
-/// Declares a timeline's clips - see [TimelineStruct.describeAnimation].
-abstract class TimelineAnimationDescriptor {
-  TimelineAnimation has();
+/// Keys one clip's tracks - see [TimelineAnimation.describeAnimation].
+///
+/// One method, and the tracks it takes belong to the clip's own
+/// [TimelineAnimation.timeline]. Passing anything else is a compile error, so
+/// a clip cannot key a track it does not animate.
+abstract class AnimationDescriptor {
+  /// Starts keying [track] in this clip, from time zero.
+  TrackAnimator<T> track<T>(Track<T> track);
 }
 
 /// A set of tracks and the clips that animate them.
@@ -370,16 +453,39 @@ abstract class TimelineAnimationDescriptor {
 /// ```dart
 /// class EnemyTimeline extends TimelineStruct {
 ///   final x = Track.of(0.0);
+///   final entrance = TimelineAnimation.of(EntranceAnimation.new);
+/// }
 ///
-///   late final TimelineAnimation entrance;
-///
+/// class EntranceAnimation extends TimelineAnimation<EnemyTimeline> {
 ///   @override
-///   void describeAnimation(TimelineAnimationDescriptor descriptor) {
-///     entrance = descriptor.has()..track(x).key(0).key(100, Seconds(1));
+///   void describeAnimation(AnimationDescriptor descriptor) {
+///     descriptor.track(timeline.x).key(0).key(100, Seconds(1));
 ///   }
 /// }
 /// ```
+///
+/// The tracks are the *timeline's*, and every clip keys the same ones - which
+/// is what lets an entity read `timeline.x[at]` without knowing which clip is
+/// playing, and what makes a track no clip keys report its declared default.
 abstract class TimelineStruct {
+  /// Adopts the clips this timeline's field initialisers just declared, in
+  /// declaration order.
+  ///
+  /// A superclass constructor runs after the subclass's field initialisers,
+  /// so this is the first line of code after them and the buffer holds
+  /// exactly this timeline's clips.
+  TimelineStruct() {
+    final declared = DeclarationContext.takeClips();
+    for (var i = 0; i < declared.length; i++) {
+      // Cast rather than a type test: the buffer is written by
+      // `TimelineAnimation.of` and nothing else, so anything else in it is a
+      // bug in this file and should say so rather than be skipped.
+      final clip = declared[i] as TimelineAnimation;
+      clip._adopt(this, _clips.length);
+      _clips.add(clip);
+    }
+  }
+
   /// Declares [timeline] on the prefab being constructed and returns it, so
   /// the prefab keeps the typed handle in its field.
   ///
@@ -400,8 +506,6 @@ abstract class TimelineStruct {
     DeclarationContext.addDeclared(timeline);
     return timeline;
   }
-
-  void describeAnimation(TimelineAnimationDescriptor descriptor);
 
   SceneStruct? _scene;
 
@@ -433,13 +537,18 @@ abstract class TimelineStruct {
   @internal
   List<TimelineAnimation> get clips => _clips;
 
-  /// Runs both declaration passes. Called once, when the owning struct is
-  /// registered.
+  /// Keys every clip. Called once, when the owning struct is registered.
+  ///
+  /// The clips are already here - they were adopted in the constructor. What
+  /// this adds is the scene, and therefore the clock, which is why keying
+  /// waits for it rather than happening at adoption.
   @internal
   void initializeTimeline(SceneStruct scene) {
     if (_scene != null) return;
     _scene = scene;
-    describeAnimation(_AnimationDescriptor(this));
+    for (var i = 0; i < _clips.length; i++) {
+      _clips[i].describeAnimation(_AnimationDescriptor(_clips[i]));
+    }
   }
 }
 
@@ -463,15 +572,11 @@ TimelineLerp<T>? _defaultLerp<T>() {
   return null;
 }
 
-final class _AnimationDescriptor implements TimelineAnimationDescriptor {
-  _AnimationDescriptor(this._owner);
+final class _AnimationDescriptor implements AnimationDescriptor {
+  _AnimationDescriptor(this._clip);
 
-  final TimelineStruct _owner;
+  final TimelineAnimation _clip;
 
   @override
-  TimelineAnimation has() {
-    final clip = TimelineAnimation(_owner._clips.length, _owner);
-    _owner._clips.add(clip);
-    return clip;
-  }
+  TrackAnimator<T> track<T>(Track<T> track) => _clip.track<T>(track);
 }

@@ -26,15 +26,22 @@ const int _wingmanColor = 0xFFFFEE58;
 /// a system can do it per entity per tick without thinking about it.
 class Breath extends TimelineStruct {
   final scale = Track.of<double>(1.0);
+  final pulse = TimelineAnimation.of(PulseAnimation.new);
+}
 
-  late final TimelineAnimation pulse;
-
+/// One clip of [Breath], as its own class.
+///
+/// `TimelineAnimation.of(PulseAnimation.new)` above is a constructor tear-off,
+/// so the field initialiser names no sibling and nothing is filled in
+/// afterwards - which is what a body keying `timeline.scale` would otherwise
+/// force.
+class PulseAnimation extends TimelineAnimation<Breath> {
   @override
-  void describeAnimation(TimelineAnimationDescriptor descriptor) {
+  void describeAnimation(AnimationDescriptor descriptor) {
     // Half a second up. `WrapMode.pingPong` at sample time plays it back down
     // again, so the shape is authored once rather than twice and cannot go
     // asymmetric when someone edits one half.
-    pulse = descriptor.has()..track(scale).key(1.0).key(1.12, Seconds(0.5));
+    descriptor.track(timeline.scale).key(1.0).key(1.12, Seconds(0.5));
   }
 }
 
