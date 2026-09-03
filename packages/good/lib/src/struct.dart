@@ -18,16 +18,15 @@ abstract interface class Component implements Scannable {
   /// handle in a field - the third declare-time pass, chained through mixins
   /// with `@mustCallSuper` exactly like [describeType] and [describeStruct].
   ///
-  /// Runs between the other two, not after them: a declared
-  /// [GameAssetInstance] is already addressed by the time it returns, so
-  /// [describeStruct] can use it as a row default
-  /// (`data.hasObject(playerTexture)`) without a second pass or a late
-  /// patch-up.
+  /// Runs between the other two, not after them: a declared [Asset] is
+  /// already addressed by the time it returns, so [describeStruct] can use it
+  /// as a row default (`data.optPacked(assets, playerTexture)`) without a
+  /// second pass or a late patch-up.
   ///
   /// Runs on **both** isolate copies, in the same order, on every prefab a
   /// scene registers - that ordering is what assigns each asset its address,
   /// so it must never be made conditional on which copy is running. Only the
-  /// *decode* is main-isolate-only; see [GameAssets].
+  /// *decode* is main-isolate-only; see [Assets].
   void describeAssets(AssetDescriptor descriptor);
 
   void describeStruct(DataDescriptor data);

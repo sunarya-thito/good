@@ -111,7 +111,8 @@ abstract class SceneStruct extends GameListenerBase
   /// scenes possible at once: a `SceneStruct` is a *declaration* that may back
   /// many loaded [Scene]s, so it cannot own the storage those instances
   /// allocate out of. Pool identity therefore says nothing about scene
-  /// identity - see the check inside [addToSceneById].
+  /// identity - see the scene check inside [addEntityIn], which compares the
+  /// declarations themselves rather than the pages they allocate from.
   ///
   /// Still injectable, just one level up: `Game.pageSize`/`Game.maxPages`
   /// configure it, and a test or headless harness that brings a scene up by
@@ -777,8 +778,8 @@ final class _SceneDescriptor implements SceneDescriptor {
     }
     object.describeType(ArchetypeComponentDescriptor(storage));
     // Before describeStruct, not after: `has` returns an already-addressed
-    // instance, so describeStruct can hand one straight to `data.hasObject`
-    // as this archetype's default row value.
+    // instance, so describeStruct can hand one straight to
+    // `data.optPacked(assets, ...)` as this archetype's default row value.
     object.describeAssets(_assets);
     object.describeStruct(data);
     // Timelines last, because keying a clip is pure declaration and depends

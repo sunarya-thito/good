@@ -1230,7 +1230,7 @@ abstract class Game implements RandomOwner, Scannable {
   }
 
   /// The **one** `StateDescriptor` shared by every `describeState` pass in
-  /// the current [_boot] call.
+  /// the current [_bootMain] call.
   ///
   /// One instance per boot, not one per declaring source, because a
   /// channel's identity across the isolate boundary is its declaration
