@@ -47,10 +47,39 @@ abstract interface class Scannable {}
 /// A value a declaration produces, and therefore a value a collector may
 /// hand back.
 ///
-/// The roots that implement it: [DataPointer] (so `InitialPointer` and
-/// `PackedPointer` come with it), `DataArrayPointer` - a **separate** root,
-/// not a `DataPointer`, which is why it has to say so here rather than being
-/// caught by one test on the other - and `Query`.
+/// The roots that implement it:
+///
+///   * [DataPointer], so `InitialPointer` and `PackedPointer` come with it;
+///   * `DataArrayPointer` - a **separate** root, not a `DataPointer`, which
+///     is why it has to say so here rather than being caught by one test on
+///     the other;
+///   * `Query`;
+///   * `EventDispatcher` and `SignalDispatcher`, through the listener set
+///     they share.
+///
+/// # What a root has to be able to do first
+///
+/// Marking a type here says every field of it is a declaration, and
+/// `good_tool --declarations` then refuses each one that is `late`, `static`
+/// or filled in from somewhere else. So a root can only be marked once its
+/// values can be *produced by the field initialiser* - which means the type
+/// has nothing ambient to reach for while it is being built.
+///
+/// `EventDispatcher` could not, and the reason was written down: a dispatcher
+/// had to be created with a binder open around the constructor, and
+/// `SceneDescriptor.has` takes a `T Function()` that may hand back an object
+/// built long before. That reason is gone. A declaration reserves nothing and
+/// resolves nothing where it is written, so a dispatcher is built with its
+/// delivery closure and read off the constructed object afterwards -
+/// `EventBinder.bind` does it, exactly as `ArchetypeDataDescriptor.realize`
+/// does for a column.
+///
+/// `Sprite`, `ColliderBody`, `ParamPointer`, `StateChannel` and `Track` are
+/// declaration values too and are not marked, for the same reason and not a
+/// different one: each is still handed out by a descriptor inside a hook, so
+/// every field holding one is `late` and marking the type would refuse them
+/// all. Each becomes a root with the change that gives it a `Field.*`-shaped
+/// spelling, not before.
 ///
 /// A field whose type is not one of these is not a declaration:
 ///

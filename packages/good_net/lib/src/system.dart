@@ -92,47 +92,34 @@ mixin MultiplayerState<G extends Game> on GameState<G> {
   late final NetworkSystem network;
 
   /// A peer joined the session. See [NetPeerListener].
-  late final EventDispatcher<NetPeerListener, NetPeerId> peerJoinedEvent;
+  final peerJoinedEvent = Event.of<NetPeerListener, NetPeerId>(
+    (listener, peer) => listener.onPeerJoined(peer),
+  );
 
   /// A peer left. See [NetPeerListener].
   ///
   /// The payload is a record because the event genuinely carries two facts,
   /// and a peer leaving happens at human rate - a handful of times a session
   /// - so the one allocation is not on any path the no-allocation rule is about.
-  late final EventDispatcher<
-    NetPeerListener,
-    ({NetPeerId peer, NetDisconnectReason reason})
-  >
-  peerLeftEvent;
+  /// Reverse, matching every other teardown event in the engine: a listener
+  /// told late can still read what the earlier ones have been warned about.
+  final peerLeftEvent =
+      Event.of<NetPeerListener, ({NetPeerId peer, NetDisconnectReason reason})>(
+        (listener, left) => listener.onPeerLeft(left.peer, left.reason),
+        reverse: true,
+      );
 
   /// A session opened - hosted or joined. See [NetSessionListener].
-  late final EventDispatcher<NetSessionListener, NetSession> sessionOpenedEvent;
+  final sessionOpenedEvent = Event.of<NetSessionListener, NetSession>(
+    (listener, session) => listener.onSessionOpened(session),
+  );
 
   /// The session ended. See [NetSessionListener].
-  late final EventDispatcher<NetSessionListener, NetDisconnectReason>
-  sessionClosedEvent;
-
-  @override
-  @mustCallSuper
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    peerJoinedEvent = descriptor.has(
-      (listener, peer) => listener.onPeerJoined(peer),
-    );
-    // Reverse, matching every other teardown event in the engine: a listener
-    // told late can still read what the earlier ones have been warned about.
-    peerLeftEvent = descriptor.has(
-      (listener, left) => listener.onPeerLeft(left.peer, left.reason),
-      reverse: true,
-    );
-    sessionOpenedEvent = descriptor.has(
-      (listener, session) => listener.onSessionOpened(session),
-    );
-    sessionClosedEvent = descriptor.has(
-      (listener, reason) => listener.onSessionClosed(reason),
-      reverse: true,
-    );
-  }
+  final sessionClosedEvent =
+      Event.of<NetSessionListener, NetDisconnectReason>(
+        (listener, reason) => listener.onSessionClosed(reason),
+        reverse: true,
+      );
 
   /// Declares the system, runs [describeNetwork] into it, and seals what that
   /// declared.

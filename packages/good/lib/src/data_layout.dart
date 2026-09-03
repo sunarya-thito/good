@@ -203,7 +203,7 @@ int _writeRow(ArchetypeStorage storage, Entity entity) {
 /// being made, so there is no stack to push, nothing to pop on the way out,
 /// and no way for a value produced in one place to land on whichever owner
 /// happened to be under construction somewhere else.
-abstract interface class _Declared {
+abstract interface class _Declared implements ScannableField {
   /// Reserves this column's row space on [storage], binds it, and registers
   /// whatever stamps a fresh row's initial value.
   void realize(ArchetypeStorage storage);
@@ -2392,11 +2392,8 @@ final class ArchetypeDataDescriptor extends _ColumnDescriptor {
   /// out rows, and says so by taking only what it can lay out.
   void declare(Iterable<ScannableField> declarations) {
     for (final declaration in declarations) {
-      // Cast rather than promote, the shape `ArchetypeStorage.registerField`
-      // spells out: `_Declared` is not a subtype of `ScannableField`, so `is`
-      // leaves the static type alone and the cast is the only spelling.
       if (declaration is! _Declared) continue;
-      _columns.add(declaration as _Declared);
+      _columns.add(declaration);
     }
   }
 

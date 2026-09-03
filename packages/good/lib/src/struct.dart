@@ -93,42 +93,28 @@ abstract class EntityStruct extends GameListenerBase
   /// every entity in the game mixes in `EntitySpawnListener`, which
   /// `GameState` declares - the scope is decided by which dispatcher collects
   /// the listener, not by which method it overrides.
-  late final EventDispatcher<EntityLifecycleListener, Entity> mountedEvent;
+  ///
+  /// These two were the last pair in the engine still declared from the hook,
+  /// and the reason they were is gone. `SceneDescriptor.has` takes a
+  /// `T Function()` and a closure may hand back an object that already
+  /// existed - `descriptor.has(() => _prefab)` is how a fixture keeps a
+  /// reference to the prefab it is about to register - so no binder was open
+  /// around that construction and a dispatcher on a field here would have
+  /// thrown for every one of them. Nothing is open around a declaration now:
+  /// `Event.of` builds the dispatcher, and `EventBinder.bind` reads it off
+  /// whatever object it was given. `archetype_test`'s `_Rock().archetype`,
+  /// an `EntityStruct` with no scene at all, is unaffected for the same
+  /// reason - a dispatcher nobody bound holds no listeners and says so.
+  final mountedEvent = Event.of<EntityLifecycleListener, Entity>(
+    (listener, entity) => listener.onEntityMounted(entity),
+  );
 
   /// An entity of this struct is going away, because `Entity.destroy()` was
   /// called on it or because the scene holding it is being unloaded - both
   /// paths fire this. Its row is still readable during dispatch.
-  late final EventDispatcher<EntityLifecycleListener, Entity> unmountedEvent;
-
-  // These two stay in the hook while `GameState`'s ten moved onto their
-  // fields, and the reason is that an `EntityStruct` does not have to be
-  // built by the framework.
-  //
-  // `SceneDescriptor.has` takes a `T Function()`, and a closure may hand back
-  // an object that already existed - `descriptor.has(() => _prefab)` is how a
-  // fixture keeps a reference to the prefab it is about to register, and how a
-  // prefab taking a constructor argument gets one. No binder is open around
-  // that construction, so a dispatcher declared on a field of this class would
-  // throw for every one of them. `archetype_test`'s `_Rock().archetype`
-  // pins the sharper version: an `EntityStruct` with no scene at all is a
-  // supported state with its own error message, and it has to stay reachable.
-  //
-  // A prefab the framework *does* build - `descriptor.has(Mote.new)`,
-  // `EntityStruct.of(Barrel.new)` - has a binder open around it, so `Event.*`
-  // on a subclass's field works and is the shape to reach for. It is only
-  // this base pair, which every struct inherits however it was built, that
-  // cannot assume one.
-  @override
-  @mustCallSuper
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    mountedEvent = descriptor.has(
-      (listener, entity) => listener.onEntityMounted(entity),
-    );
-    unmountedEvent = descriptor.has(
-      (listener, entity) => listener.onEntityUnmounted(entity),
-    );
-  }
+  final unmountedEvent = Event.of<EntityLifecycleListener, Entity>(
+    (listener, entity) => listener.onEntityUnmounted(entity),
+  );
 
   late SceneStruct _associatedScene; // <- scene holds memory pool
   late ArchetypeStorage _archetype;

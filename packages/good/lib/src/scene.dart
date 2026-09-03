@@ -34,31 +34,23 @@ abstract class SceneStruct extends GameListenerBase
   ///
   /// The payload is still the [Scene], because one `SceneStruct` backs however
   /// many loaded instances: "which of mine" is a real question even here.
-  late final EventDispatcher<SceneLifecycleListener, Scene> mountedEvent;
+  final mountedEvent = Event.of<SceneLifecycleListener, Scene>(
+    (listener, scene) => listener.onSceneMounted(scene),
+  );
 
   /// An instance of this scene is being unloaded, while its entities are still
   /// readable. Same scope as [mountedEvent].
-  late final EventDispatcher<SceneLifecycleListener, Scene> unmountedEvent;
-
-  @override
-  @mustCallSuper
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    mountedEvent = descriptor.has(
-      (listener, scene) => listener.onSceneMounted(scene),
-    );
-    // `reverse: true` is what lets the owning struct stop being a
-    // separate virtual. One collect pass offers this scene *first* and
-    // its prefabs after, so at mount the scene's own onSceneMounted runs
-    // before anything it composes - a listener still finds the starting
-    // entities already spawned. Reading the same list backwards at
-    // unmount puts the scene *last*, so it can still read the world when
-    // everything below it has been told. Two orders, one list.
-    unmountedEvent = descriptor.has(
-      (listener, scene) => listener.onSceneUnmounted(scene),
-      reverse: true,
-    );
-  }
+  /// `reverse: true` is what lets the owning struct stop being a separate
+  /// virtual. One collect pass offers this scene *first* and its prefabs
+  /// after, so at mount the scene's own `onSceneMounted` runs before anything
+  /// it composes - a listener still finds the starting entities already
+  /// spawned. Reading the same list backwards at unmount puts the scene
+  /// *last*, so it can still read the world when everything below it has been
+  /// told. Two orders, one list.
+  final unmountedEvent = Event.of<SceneLifecycleListener, Scene>(
+    (listener, scene) => listener.onSceneUnmounted(scene),
+    reverse: true,
+  );
 
   /// Every prefab [describeScene] registered, in declaration order.
   ///
@@ -635,12 +627,18 @@ abstract class SceneStruct extends GameListenerBase
 abstract class SceneDescriptor {
   /// Declares one prefab and returns it, for the field that keeps it.
   ///
-  /// Takes the **constructor**, not an instance: a struct's fields declare
-  /// their own columns from their initialisers (`final hp = Field.int32(100)`),
-  /// and those run during construction, so the descriptor they declare against
-  /// has to be open before the object exists. `descriptor.has(Mote())` builds
-  /// it too early and no longer compiles; `descriptor.has(Mote.new)` is the
-  /// spelling. A prefab whose constructor takes arguments passes a closure -
+  /// Takes a `T Function()` rather than an instance, and what that is still
+  /// for is narrower than it was. It used to be the whole mechanism: a
+  /// struct's field initialisers declared into descriptors that had to be
+  /// open around the constructor, so the framework had to be the one calling
+  /// it. Nothing is open around it now - a declaration reaches nothing where
+  /// it is written - and the registration reads what the object holds
+  /// afterwards, so *when* it was built no longer changes what it declares.
+  ///
+  /// What the closure still buys is that the registration owns the object's
+  /// lifetime: the archetype is reserved, the object built, and its
+  /// declarations realized into that archetype, in one call with nothing in
+  /// between. A prefab whose constructor takes arguments passes a closure -
   /// `descriptor.has(() => Bullet(speed: 5))`.
   T has<T extends EntityStruct>(T Function() create);
 }
@@ -650,7 +648,7 @@ abstract class SceneDescriptor {
 /// A row's field order is the order the columns were declared in, and there
 /// are now two stretches of that order:
 ///
-///  1. **Construction.** Dart runs a class's own field initialisers before its
+///  1. **The fields.** Dart runs a class's own field initialisers before its
 ///     superclass constructor, and a mixin application *is* a superclass - so
 ///     `class Player extends EntityStruct with Transform2D, Child` lays out
 ///     `Player`'s own `Field.*` columns first, then `Child`'s, then
@@ -664,6 +662,13 @@ abstract class SceneDescriptor {
 /// the same `with` clause. What matters is that they are *deterministic*, since
 /// the layout is rebuilt from scratch on every run and never persisted.
 /// Changing a struct's mixin list changes its layout, and always did.
+///
+/// The first stretch is now the order the collect pass hands the fields over
+/// in, rather than the order they happened to run in: a column reserves
+/// nothing where it is written, so what fixes the row is
+/// `ArchetypeDataDescriptor.realize`. It is the same order either way, and
+/// that is a requirement on the collector rather than a consequence of when
+/// an initialiser ran.
 final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
   _SceneDescriptor(this._scene, this._assets);
 
@@ -762,10 +767,9 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
     // except the one open around the call. It carries no prefab until the
     // line after; nothing reads one in between.
     //
-    // An event binder is open around the same call, for the same reason and
-    // through `EventBinder.open`: `final wounded = Event.of(...)` on a prefab
-    // is a declaration too, and it has to reach the binder [bindEvents] will
-    // hand the collect pass however much later.
+    // Nothing is open around the call itself. `final wounded = Event.of(...)`
+    // on a prefab is a declaration too, and it is read off the object the same
+    // way its columns are - see `EventBinder.bind`.
     final storage = ArchetypeRegistry.reserve(_scene);
     final T object;
     final children = <EntityStruct>[];
@@ -774,7 +778,7 @@ final class _SceneDescriptor implements SceneDescriptor, PrefabRegistrar {
     _storages.add(storage);
     DeclarationContext.pushPrefabs(this);
     try {
-      object = EventBinder.open(create);
+      object = create();
     } finally {
       DeclarationContext.popPrefabs();
       _storages.removeLast();

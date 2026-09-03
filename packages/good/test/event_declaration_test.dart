@@ -173,13 +173,6 @@ class _Pair extends GameListenerBase with EventBus, _Noted {
   @override
   String get noted => 'pair';
 
-  /// Declared first and `late`, which is the shape the engine forbids. If a
-  /// `late` initialiser ran when the field was written rather than when it is
-  /// read, this one would be in the binder ahead of [eager].
-  late final lazy = Event.signal<_Noted>(
-    (listener) => listener.onNoted('lazy'),
-  );
-
   final eager = Event.signal<_Noted>((listener) => listener.onNoted('eager'));
 }
 
@@ -289,76 +282,35 @@ void main() {
     });
   });
 
-  group('the initialiser has to be eager', () {
-    test('a late field is missing from the collected list', () {
-      final pair = EventBinder.open(_Pair.new);
+  group('who may declare', () {
+    // Two tests stood here and both were about the binder window: one that a
+    // `late` dispatcher was missing from the collected list because its
+    // initialiser ran after the window closed, and one that a bare `_Pair()`
+    // threw because no window was open around it. Neither has a subject any
+    // more. A declaration reaches nothing where it is written, so an owner
+    // nobody wrapped declares exactly what one the framework built declares,
+    // and the `late` rule is a build-time refusal - see
+    // `good_cli/test/scan_test.dart`'s 'a late declaration is refused'.
+    test('an owner the framework did not construct declares the same', () {
+      final pair = _Pair();
       EventBinder.bind(pair);
 
       expect(
         pair.eager.listenerCount,
         1,
         reason:
-            'the eager sibling declared and was collected, so the binder was '
-            'open and working during the constructor - which is what makes '
-            'the throw below the closed-window guard and not some earlier '
-            'failure that took the whole object down',
+            'nothing was open around `_Pair()`, and the dispatcher its field '
+            'initialiser built was read off it by bind all the same',
       );
 
       pair.eager.call();
-      expect(
-        _Noted.log,
-        <String>['eager:pair'],
-        reason:
-            'one dispatcher delivered, and there is no second one to deliver '
-            'from: `lazy` was declared first and is still not in the list',
-      );
-
-      expect(
-        () => pair.lazy,
-        throwsA(
-          isA<StateError>().having(
-            (error) => error.message,
-            'message',
-            contains('An Event was declared'),
-          ),
-        ),
-        reason:
-            'reading it is the first time its initialiser runs, and by then '
-            'the binder is closed. A dispatcher built there would hold an '
-            'empty list forever and deliver to nobody',
-      );
-
-      expect(
-        pair.eager.listenerCount,
-        1,
-        reason: 'and the failed read added nothing to the owner it failed in',
-      );
-    });
-
-    test('an owner the framework did not construct says so', () {
-      expect(
-        _Pair.new,
-        throwsA(
-          isA<StateError>().having(
-            (error) => error.message,
-            'message',
-            allOf(
-              contains('An Event was declared'),
-              contains('descriptor.has(Mote.new)'),
-            ),
-          ),
-        ),
-        reason:
-            'the eager field runs during the constructor, and there is no '
-            'binder open around a bare `_Pair()` - the same rule Field.* and '
-            'Param.* state, said in the same place',
-      );
+      expect(_Noted.log, <String>['eager:pair']);
     });
   });
 
   group('binding is once', () {
     test('a second collect pass is refused rather than doubling a list', () {
-      final pair = EventBinder.open(_Pair.new);
+      final pair = _Pair();
       EventBinder.bind(pair);
 
       expect(

@@ -2693,13 +2693,12 @@ void main() {
         // A GameState that was never marked as owning the simulation is exactly
         // what the main isolate's handle copy holds after start().
         //
-        // Through `EventBinder.open` because `_TestState()` on its own now
-        // throws out of its own field initialisers - `GameState` declares its
-        // dispatchers there and they need a binder open around the call, which
-        // `Game._bootMain` is what normally provides. Constructing it bare
-        // would still throw a StateError and this test would still pass, off
-        // the wrong guard entirely.
-        final handle = EventBinder.open(_TestState.new);
+        // Constructed bare, which is now what it looks like: `GameState`
+        // declares its dispatchers on its own fields and nothing has to be
+        // open around the call for them to be built. The StateError below is
+        // therefore the guard this test is about and not one from a window
+        // that was never opened.
+        final handle = _TestState();
         expect(() => handle.advance(_step), throwsStateError);
         expect(handle.runFixedStep, throwsStateError);
       },

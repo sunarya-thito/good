@@ -1076,8 +1076,7 @@ abstract class Game implements RandomOwner, Scannable {
   // a subclass's field initialisers run *before* this class's, so at the
   // moment `final score = Channel.int32()` runs there is no `Game` yet to
   // hold anything. `Game.start` opens a descriptor ahead of the constructor
-  // call and puts it here afterwards - the same move `EventBinder.open`
-  // makes with the binder it hangs on the bus it just built.
+  // call and puts it here afterwards.
   //
   // The one created here is what a `Game` constructed some other way gets:
   // empty, and the game will not boot anyway, because `start` is the only
@@ -1354,8 +1353,7 @@ abstract class Game implements RandomOwner, Scannable {
   /// field, and that is not a choice: a subclass's field initialisers run
   /// *before* `Game`'s, so at the moment `final score = Channel.int32()` runs
   /// there is no `Game` object at all. So the framework makes both first,
-  /// pushes them, constructs, and then puts them on the game it got back -
-  /// the same move `EventBinder.open` makes with its binder.
+  /// pushes them, constructs, and then puts them on the game it got back.
   ///
   /// The `Game`'s own fields overwrite nothing: they run during `create()`
   /// and are simply replaced here, both of them empty and untouched.
@@ -1708,11 +1706,11 @@ abstract class Game implements RandomOwner, Scannable {
     // never holds a scene. It also never gets its systems - `describeSystems`
     // is called from [_bootGame], so a `GameSystem` is one thing the mirror
     // has no counterpart for.
-    // Through `EventBinder.open`, so a dispatcher declared on a field of the
-    // state - `final waveCleared = Event.of(...)` - has a binder to land in.
-    // The binder rides along on the state and `_bindEvents` picks it up on
-    // the far side; see `EventBinder.open`.
-    final state = EventBinder.open(createState);
+    // Nothing is open around this call. A dispatcher declared on a field of
+    // the state - `final waveCleared = Event.of(...)` - is built with the
+    // state and read off it by `_bindEvents` on the far side; see
+    // `EventBinder.bind`.
+    final state = createState();
     runtime.state = state;
     state.bindRuntime(runtime, simulating: runtime.simulates);
 
@@ -3620,13 +3618,11 @@ final class _SystemDescriptor implements SystemDescriptor {
 
   @override
   T has<T extends GameSystem>(T Function() create) {
-    // Two windows around the one constructor call, and a system's field
-    // initialisers may use both. The inner one is the event binder, which
-    // outlives the call - `EventBinder.open` hangs it on the system so that
-    // `_bindEvents` picks up the same one later. The outer one is the input
-    // registry, which does not: an action is appended to a list here and
-    // read back off the returned handle, so the registry only has to be
-    // reachable while the initialisers run.
+    // One window around the constructor call: the input registry. An action
+    // is appended to a list here and read back off the returned handle, so
+    // the registry only has to be reachable while the initialisers run. The
+    // event binder used to be a second one and is not: a system's dispatchers
+    // are built by their own initialisers and read off the system afterwards.
     //
     // `source` is the static type argument rather than `runtimeType`, since
     // there is no object to ask yet. That is the type at the declaration
@@ -3640,7 +3636,7 @@ final class _SystemDescriptor implements SystemDescriptor {
     final int games;
     DeclarationContext.pushInputs(inputs);
     try {
-      system = EventBinder.open(create);
+      system = create();
     } finally {
       DeclarationContext.popInputs();
       inputs.source = restore;

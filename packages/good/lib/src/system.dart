@@ -116,8 +116,13 @@ abstract class GameSystem extends GameListenerBase
     }
   }
 
-  late final SignalDispatcher<GameSystemLifecycleListener> mountEvent;
-  late final SignalDispatcher<GameSystemLifecycleListener> unmountEvent;
+  final mountEvent = Event.signal<GameSystemLifecycleListener>(
+    (listener) => listener.onMounted(),
+  );
+  final unmountEvent = Event.signal<GameSystemLifecycleListener>(
+    (listener) => listener.onUnmounted(),
+    reverse: true,
+  );
 
   // These two stay in the hook while a subclass's events move onto their
   // fields, and the reason is sharper than the matching one on `EntityStruct`
@@ -143,17 +148,6 @@ abstract class GameSystem extends GameListenerBase
   // A system the framework *does* build - `descriptor.has(SpinSystem.new)`,
   // or a closure that constructs inside itself - has its own binder open, so
   // `Event.*` on a subclass field works and is the shape to reach for.
-  @override
-  @mustCallSuper
-  void describeEvents(EventDescriptor descriptor) {
-    super.describeEvents(descriptor);
-    mountEvent = descriptor.hasSignal((dispatcher) => dispatcher.onMounted());
-    unmountEvent = descriptor.hasSignal(
-      (dispatcher) => dispatcher.onUnmounted(),
-      reverse: true,
-    );
-  }
-
   @override
   int compareTo(GameSystem other) => 0; // no opinion by default
 
