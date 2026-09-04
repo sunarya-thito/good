@@ -6,6 +6,8 @@ import 'package:goo2d_example/demo/demo.dart';
 import 'package:goo2d_example/demo/demo_game.dart';
 import 'package:goo2d_example/demo/textures.dart';
 
+part 'scene_graph.g.dart';
+
 /// A body with orbiting limbs - the shape a character, a vehicle or anything
 /// with attachments has.
 ///
@@ -264,6 +266,11 @@ class SceneGraphState extends DemoState<SceneGraphGame> {
 }
 
 class SceneGraphGame extends DemoGame {
+  /// This file's collectors - see `DemoGame`'s constructor.
+  SceneGraphGame() {
+    _installDeclarations();
+  }
+
   @override
   SceneGraphState createState() => SceneGraphState();
 }

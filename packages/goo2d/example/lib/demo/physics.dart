@@ -8,6 +8,8 @@ import 'package:goo2d_physics_box2d/goo2d_physics_box2d.dart';
 import 'package:goo2d_example/demo/demo.dart';
 import 'package:goo2d_example/demo/demo_game.dart';
 
+part 'physics.g.dart';
+
 /// **Units are metres, and the camera is what converts.**
 ///
 /// Box2D is tuned for metres, kilograms and seconds, and behaves best with
@@ -822,6 +824,11 @@ class PhysicsState extends DemoState<PhysicsGame> {
 }
 
 class PhysicsGame extends DemoGame {
+  /// This file's collectors - see `DemoGame`'s constructor.
+  PhysicsGame() {
+    _installDeclarations();
+  }
+
   /// Threads the solver may spread a step across, set **before**
   /// `Game.start`.
   ///

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:goo2d/goo2d.dart';
 
+part 'main.g.dart';
+
 // Solid-colour quads, not textures: this demo leaves every sprite's texture
 // unset, so each DrawSpriteData2D record carries a colour and a world-space
 // quad and nothing else. See draw_2d.dart's doc on DrawSpriteData2D.
@@ -289,6 +291,7 @@ class MyAwesomeGame extends Game2D {
 }
 
 void main() {
+  _installDeclarations();
   runApp(const MyApp());
 }
 

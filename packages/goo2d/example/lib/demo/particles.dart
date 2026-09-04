@@ -6,6 +6,8 @@ import 'package:goo2d_example/demo/demo.dart';
 import 'package:goo2d_example/demo/demo_game.dart';
 import 'package:goo2d_example/demo/textures.dart';
 
+part 'particles.g.dart';
+
 /// Turns the two write-pass ablations on and off, together.
 ///
 /// **A measuring instrument, not a feature.** Each flag deliberately makes the
@@ -300,6 +302,11 @@ class ParticlesState extends DemoState<ParticlesGame> {
 }
 
 class ParticlesGame extends DemoGame {
+  /// This file's collectors - see `DemoGame`'s constructor.
+  ParticlesGame() {
+    _installDeclarations();
+  }
+
   late final SetAblations setAblations;
 
   @override

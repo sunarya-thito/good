@@ -162,25 +162,16 @@ jobs:
       # are". A generated file nobody checks drifts, and a fresh clone has to
       # analyze before anything is run.
       #
-      # Four packages named and not `../../packages`, because goo2d is not
-      # wired yet: six libraries under goo2d/example/lib and the one test
-      # beside them still carry no part. goo2d_physics_box2d is wired and is
-      # still absent, because its fixtures are walked through goo2d's lib/ -
-      # name it without goo2d in the same run and the parts written for it are
-      # different ones. So the set has to be closed under what each package's
-      # fixtures are built on, and goo2d closes over its own example.
-      #
-      # Widen it to `../../packages` once the example carries its parts;
-      # `--tests --check` over a package that is not wired names every library
-      # it would have to touch.
+      # `../../packages` and not a list of them, because the set has to be
+      # closed under what each package's fixtures are built on: box2d's are
+      # walked through goo2d's lib/, and goo2d's own example declares fixtures
+      # too, so naming any of the three without the others writes different
+      # parts than a whole-repository run would.
       - name: Check the generated test collectors are what good_tool would write
         run: |
           set -e
           (cd packages/good_tool && dart run good_tool --tests --check \
-            --dir ../../packages/good \
-            --dir ../../packages/goo3d \
-            --dir ../../packages/good_net \
-            --dir ../../packages/good_net_p2p)
+            --dir ../../packages)
 
       # Doc comments are the published API reference, and nothing resolves the
       # `[Reference]` links in them. `comment_references` reports 97 sites over

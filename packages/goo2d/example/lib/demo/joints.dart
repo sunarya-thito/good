@@ -5,6 +5,8 @@ import 'package:goo2d_example/demo/demo.dart';
 import 'package:goo2d_example/demo/demo_game.dart';
 import 'package:goo2d_example/demo/textures.dart';
 
+part 'joints.g.dart';
+
 /// Box2D joints, made visible.
 ///
 /// Three things a joint is actually for, side by side:
@@ -560,6 +562,11 @@ class _JointStats extends GameSystem with Tickable {
 }
 
 class JointGame extends DemoGame {
+  /// This file's collectors - see `DemoGame`'s constructor.
+  JointGame() {
+    _installDeclarations();
+  }
+
   final intactJoints = Channel.int32();
   final brokenJoints = Channel.int32();
 

@@ -1,5 +1,7 @@
 import 'package:goo2d/goo2d.dart';
 
+part 'demo_game.g.dart';
+
 /// Sets how many entities the case should keep alive.
 ///
 /// A *target*, not a delta, and that is the interesting part: the case is
@@ -19,6 +21,16 @@ class SetPopulation extends ValueSink<int> {
 /// running. A case adds its own commands and channels on top; it does not
 /// re-declare any of these.
 abstract class DemoGame extends Game2D {
+  /// Installs the collectors this library's fixtures are read through.
+  ///
+  /// A test installs its own first thing in `main`; a library with no `main`
+  /// installs them where it is entered instead, and every case is entered by
+  /// constructing its game. Each case file does the same for its own, because
+  /// the table a part declares is private to the library that declares it.
+  DemoGame() {
+    _installDeclarations();
+  }
+
   /// Microseconds the case's *own* systems spent in the last fixed step -
   /// whatever it chose to time, and nothing else. Published by [DemoStats]
   /// from [DemoState.caseMicros].

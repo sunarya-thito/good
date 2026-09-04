@@ -51,6 +51,8 @@ import 'package:goo2d/goo2d.dart';
 
 import 'package:goo2d_example/demo/scene_graph.dart';
 
+part 'swarm_origin_flash_test.g.dart';
+
 const Duration _step = Duration(microseconds: 16667);
 
 /// Records any entity drawn at the world origin that has no business being
@@ -105,6 +107,8 @@ class _ProbedGame extends SceneGraphGame {
 }
 
 void main() {
+  _installDeclarations();
+
   tearDown(() {
     SceneRegistry.reset();
     ArchetypeRegistry.reset();
