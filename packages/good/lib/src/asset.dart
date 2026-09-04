@@ -671,6 +671,19 @@ final class Assets {
   static Object _identityOf(AssetKey<Object?> key) =>
       (key.payloadType, key.source);
 
+  /// How wide an asset column is, as a constant reachable without a table.
+  ///
+  /// Four bytes. An asset address indexes a table a game fills at declare
+  /// time; unlike a camera view there is no small ceiling worth betting a
+  /// game's content budget on.
+  ///
+  /// `DataDescriptor.hasAsset` is declared where no [Assets] exists - the
+  /// table belongs to the scene, and the column is realized against it later
+  /// - so the width has to be knowable from the class. It is the one thing
+  /// about the column that must be settled while it is being declared,
+  /// because that is when the row space is reserved.
+  static const int addressBitWidth = 32;
+
   /// The [IntRepresentation] a `DataPointer<Asset<T>>` field binds to.
   ///
   /// This table is not itself a representation, and cannot be: it holds
@@ -953,11 +966,8 @@ final class _AssetsView<T> implements IntRepresentation<Asset<T>> {
 
   final Assets _assets;
 
-  /// Four bytes. An asset address indexes a table a game fills at declare
-  /// time; unlike a camera view there is no small ceiling worth betting a
-  /// game's content budget on.
   @override
-  int get bitWidth => 32;
+  int get bitWidth => Assets.addressBitWidth;
 
   @override
   Asset<T>? tryUnpack(int bits) {

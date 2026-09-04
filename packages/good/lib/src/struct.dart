@@ -20,8 +20,9 @@ abstract interface class Component implements Scannable {
   ///
   /// Runs between the other two, not after them: a declared [Asset] is
   /// already addressed by the time it returns, so [describeStruct] can use it
-  /// as a row default (`data.optPacked(assets, playerTexture)`) without a
-  /// second pass or a late patch-up.
+  /// as a row default (`data.optPacked(assets.of<Texture>(), playerTexture)`)
+  /// without a second pass or a late patch-up. A column named by its key
+  /// instead - `data.hasAsset(key)` - needs no ordering at all.
   ///
   /// Runs on **both** isolate copies, in the same order, on every prefab a
   /// scene registers - that ordering is what assigns each asset its address,

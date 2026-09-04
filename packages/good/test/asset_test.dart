@@ -1170,6 +1170,95 @@ void main() {
       );
     });
 
+    test('the int a packed asset column holds is the asset address', () {
+      final scene = _AmbientScene(<EntityStruct Function()>[
+        _AmbientPacked.new,
+      ]);
+      final handle = _bringUpAmbient(scene);
+      final prefab = scene.registered.single as _AmbientPacked;
+      final entity = handle.addEntity(prefab);
+
+      expect(
+        prefab.sprite.packedAt(entity),
+        assets.tryGet(_packedKey)!.pack(),
+        reason:
+            'the column is packed against the Assets the registering scene '
+            'owns and nothing else. Against another representation the same '
+            'int would name a different value, or nothing at all',
+      );
+    });
+
+    test('the keyless nullable spelling reads null and takes a write', () {
+      final scene = _AmbientScene(<EntityStruct Function()>[
+        _AmbientPacked.new,
+      ]);
+      final handle = _bringUpAmbient(scene);
+      final prefab = scene.registered.single as _AmbientPacked;
+      final entity = handle.addEntity(prefab);
+
+      expect(
+        prefab.emptySprite[entity],
+        isNull,
+        reason: 'no key, so no default and nothing offered to the asset pass',
+      );
+
+      final written = assets.tryGet(_packedKey)!;
+      scene.pool.beginTick();
+      prefab.emptySprite[entity] = written;
+      scene.pool.commitTick();
+      expect(
+        prefab.emptySprite[entity],
+        same(written),
+        reason:
+            'and it still resolves through the table the registering scene '
+            'owns, which is the only place a column declared from a field '
+            'initialiser can get one',
+      );
+    });
+
+    test('a column resolves against the table the registering scene owns', () {
+      // The scene is given a table that is not the file-level `assets` the
+      // rest of this file uses, and address 0 of that global is occupied by
+      // something else - so a column resolving anywhere but the scene answers
+      // with the decoy rather than failing, which is what makes this sharper
+      // than a mismatch that throws.
+      //
+      // Naming the table where the field is written could not meet this: an
+      // initialiser reaches neither `Game.assets` nor `Scene.assets`, both
+      // instance state, so the only table it can name is one that has nothing
+      // to do with the scene the prefab is later registered into.
+      final decoy = assets.declare(_FakeAsset('decoy'));
+      final owned = Assets();
+      final scene = _AmbientScene(<EntityStruct Function()>[
+        _AmbientPacked.new,
+      ]);
+      scene.initializeScene(_pool(), assets: owned);
+      final handle = SceneRegistry.register(scene);
+      addTearDown(scene.pool.dispose);
+      final prefab = scene.registered.single as _AmbientPacked;
+      final entity = handle.addEntity(prefab);
+
+      expect(
+        decoy.pack(),
+        owned.tryGet(_packedKey)!.pack(),
+        reason: 'independent tables number from zero, so both hold address 0',
+      );
+      expect(
+        prefab.sprite[entity],
+        same(owned.tryGet(_packedKey)),
+        reason:
+            'the key names the column and the registering scene names the '
+            'table, so the two cannot disagree',
+      );
+      expect(
+        prefab.sprite[entity],
+        isNot(same(decoy)),
+        reason:
+            'and the read is not answered by whatever else happens to sit at '
+            'the same address in another table',
+      );
+    });
+
     test('a SceneStruct declares in its own field, like a prefab', () {
       // It could not before: a scene is constructed by the caller and only
       // gets its `Assets` at initializeScene, so an initialiser reaching an
@@ -1244,23 +1333,23 @@ class _AmbientTwin extends EntityStruct {
 /// holds the column.
 ///
 /// Two halves make the line legal, and it threw out of the constructor
-/// without either. `hasPacked` packs its default at the reservation pass
-/// rather than where the column is written, so the handle does not have to
-/// have an address yet; and a column carrying an asset offers it to the asset
-/// pass the way a field holding one does, so it gets an address and a place
-/// in the scene's footprint. Nothing else names these two keys, which is what
-/// makes the footprint assertion below say something.
+/// without either. The default is packed at the reservation pass rather than
+/// where the column is written, so the handle does not have to have an
+/// address yet; and a column carrying an asset offers it to the asset pass
+/// the way a field holding one does, so it gets an address and a place in the
+/// scene's footprint. Nothing else names these two keys, which is what makes
+/// the footprint assertion below say something.
 class _AmbientPacked extends EntityStruct {
-  final sprite = Field.packed(assets.of<_FakePayload>(), Asset.of(_packedKey));
+  final sprite = Field.asset(_packedKey);
 
   /// The nullable spelling, which reaches the same default through
-  /// `_OptionalField` - the wrapper a field actually holds for an
-  /// `optPacked`, and the one real code writes (`_data.optPacked(_assets,
-  /// texture)` in goo2d's sprite descriptor).
-  final optionalSprite = Field.optPacked(
-    assets.of<_FakePayload>(),
-    Asset.of(_optionalPackedKey),
-  );
+  /// `_OptionalField` - the wrapper a field actually holds for an `optAsset`.
+  final optionalSprite = Field.optAsset(_optionalPackedKey);
+
+  /// The keyless form. There is no key for `T` to come from, so it is
+  /// written, and the column declares no asset at all - which is what keeps
+  /// the two-key set above exact.
+  final emptySprite = Field.optAsset<_FakePayload>();
 }
 
 /// A nested declaration with the declarer's own asset written **after** it,

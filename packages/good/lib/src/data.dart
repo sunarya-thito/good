@@ -1,3 +1,4 @@
+import 'package:good/src/asset.dart';
 import 'package:good/src/camera_view.dart';
 import 'package:good/src/data_layout.dart';
 import 'package:good/src/scannable.dart';
@@ -261,12 +262,12 @@ abstract class DataDescriptor {
   ///
   /// [initialValue] is packed at the reservation pass and not where the
   /// column is written, so a value that is not worth an `int` yet can still
-  /// be one. `Field.packed(assets.of<Texture>(), Asset.of(key))` in a field
-  /// initialiser is the case that needs it: the handle carries a key and no
-  /// address until the scene registering its owner binds it, which happens
-  /// after the collect pass has read the field. Packing at the declaration
-  /// threw out of the constructor. Nothing about a default sizes the column,
-  /// so the deferral moves no bits.
+  /// be one. An asset default ([hasAsset], which builds one of these) is the
+  /// case that needs it: the handle carries a key and no address until the
+  /// scene registering its owner binds it, which happens after the collect
+  /// pass has read the field. Packing at the declaration threw out of the
+  /// constructor. Nothing about a default sizes the column, so the deferral
+  /// moves no bits.
   ///
   /// A handle the column defaults to is itself declared - it takes an address
   /// and a place in the scene's footprint the same way one a field holds
@@ -283,13 +284,13 @@ abstract class DataDescriptor {
   /// The camera-view column: [optPacked] against the table the registering
   /// scene owns, without the declaration having to name it.
   ///
-  /// It exists because that table is the one representation in the engine
-  /// that a declaration cannot be handed. Every other packed column names its
-  /// [IntRepresentation] at the declare site - `hasPacked(const
-  /// SpriteFrames(), ...)` - and that works because the representation is a
-  /// value the writer of the line already has. A [CameraViewTable] is not:
-  /// there is one per game, it reaches a component through the scene, and a
-  /// field initialiser has no scene.
+  /// It exists because that table is one of the two representations in the
+  /// engine a declaration cannot be handed - [hasAsset] is the other. A
+  /// packed column ordinarily names its [IntRepresentation] at the declare
+  /// site - `hasPacked(const SpriteFrames(), ...)` - and that works because
+  /// the representation is a value the writer of the line already has. A
+  /// [CameraViewTable] is not: there is one per game, it reaches a component
+  /// through the scene, and a field initialiser has no scene.
   /// `late final DataPointer<CameraView?> cameraView;` filled in from
   /// `describeStruct` was the shape that fell out of that, and it is a
   /// double declaration - the thing this engine's declaration rules forbid.
@@ -303,6 +304,30 @@ abstract class DataDescriptor {
   /// `ArchetypeStorage.scene`, which the registering scene set one call
   /// before the prefab's constructor ran.
   DataPointer<CameraView?> optCameraView([CameraView? initialValue]);
+
+  /// An asset column: [hasPacked] against the [Assets] the registering scene
+  /// owns, with [key] the only thing the declaration names.
+  ///
+  /// The table is the other one a declaration cannot be handed, for the same
+  /// reason [optCameraView]'s is: there is one per game, it is reached
+  /// through the scene, and a field initialiser has no scene. So the spelling
+  /// this replaces - `hasPacked(assets.of<Texture>(), Asset.of(key))` - could
+  /// only be written where an [Assets] was already in hand, which a field
+  /// initialiser never is. [Assets.addressBitWidth] is a constant, so the row
+  /// space is still reserved from the declaration and only a read consults
+  /// the table.
+  ///
+  /// An [AssetKey] carries its payload type, so `T` comes from [key] and the
+  /// representation follows from `T`. Neither is written a second time.
+  ///
+  /// The handle the column defaults to is itself a declaration - it takes an
+  /// address and a place in the scene's footprint the same way one a field
+  /// holds does - so the scene loads the asset a column plainly names.
+  PackedPointer<Asset<T>> hasAsset<T>(AssetKey<T> key);
+
+  /// [hasAsset]'s nullable form: the row reads `null` until something writes
+  /// it, or starts at [key]'s handle when a key is given.
+  DataPointer<Asset<T>?> optAsset<T>([AssetKey<T>? key]);
 
   // -----
   // Heap objects are the unconstrained cousin of hasPacked/optPacked: any
@@ -547,6 +572,14 @@ abstract final class Field {
 
   /// See [DataDescriptor.hasPacked] - a value stored as the int its
   /// [IntRepresentation] packs it into.
+  ///
+  /// This is the escape hatch and not the ordinary spelling. A type `good`
+  /// declares gets a named factory here instead - [asset] and [optCameraView]
+  /// are those - and a type another package declares cannot get one: Dart has
+  /// no static extension, so a `static` written inside an `extension on
+  /// Field` belongs to the extension and is unreachable as `Field.x`. `goo2d`
+  /// declares `SpriteFrame`, so `SpriteFrame` names its representation here,
+  /// and that is what this stays public for.
   static PackedPointer<T> packed<T extends IntRepresentable>(
     IntRepresentation<T> repr,
     T initialValue,
@@ -558,11 +591,25 @@ abstract final class Field {
     T? initialValue,
   ]) => declaredColumns.optPacked<T>(repr, initialValue);
 
-  /// See [DataDescriptor.optCameraView] - the one packed column whose
+  /// See [DataDescriptor.optCameraView] - a packed column whose
   /// representation the declaration does not name, because it belongs to the
-  /// scene rather than to the field.
+  /// scene rather than to the field. [asset] is the other one.
   static DataPointer<CameraView?> optCameraView([CameraView? initialValue]) =>
       declaredColumns.optCameraView(initialValue);
+
+  /// See [DataDescriptor.hasAsset] - a column holding an [Asset], named by
+  /// its key alone.
+  ///
+  /// ```dart
+  /// final texture = Field.asset(Textures.player);
+  /// ```
+  static PackedPointer<Asset<T>> asset<T>(AssetKey<T> key) =>
+      declaredColumns.hasAsset<T>(key);
+
+  /// See [DataDescriptor.optAsset]. With no key the payload type has nothing
+  /// to come from, so write it: `Field.optAsset<Texture>()`.
+  static DataPointer<Asset<T>?> optAsset<T>([AssetKey<T>? key]) =>
+      declaredColumns.optAsset<T>(key);
 
   /// See [DataDescriptor.hasHeapObject], including why the value it stores
   /// means nothing on a second isolate.
