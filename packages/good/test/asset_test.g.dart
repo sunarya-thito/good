@@ -88,15 +88,6 @@ List<ScannableField> _collect$AmbientChild(Object object) {
   ];
 }
 
-List<ScannableField> _collect$LazyAmbient(Object object) {
-  final owner = object as _LazyAmbient;
-  return <ScannableField>[
-    owner.texture,
-    owner.mountedEvent,
-    owner.unmountedEvent,
-  ];
-}
-
 List<ScannableField> _collect$AmbientScene(Object object) {
   final owner = object as _AmbientScene;
   return <ScannableField>[
@@ -117,7 +108,6 @@ List<ScannableField> _collect$SceneFieldAmbient(Object object) {
 List<ScannableField> _collect$BareScene(Object object) {
   final owner = object as _BareScene;
   return <ScannableField>[
-    owner._prefab,
     owner.mountedEvent,
     owner.unmountedEvent,
   ];
@@ -168,7 +158,6 @@ const GeneratedDeclarations _assetTestDeclarations =
         DeclarationCollector(_AmbientTwin, _collect$AmbientTwin),
         DeclarationCollector(_AmbientParent, _collect$AmbientParent),
         DeclarationCollector(_AmbientChild, _collect$AmbientChild),
-        DeclarationCollector(_LazyAmbient, _collect$LazyAmbient),
         DeclarationCollector(_AmbientScene, _collect$AmbientScene),
         DeclarationCollector(_SceneFieldAmbient, _collect$SceneFieldAmbient),
         DeclarationCollector(_BareScene, _collect$BareScene),

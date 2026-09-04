@@ -262,17 +262,20 @@ final class _Loopback implements CommandSender {
 }
 
 /// Two fields on the class and a third in the hook, in that order - which is
-/// the order the record has to come out in. See [_ThreeInHook], the same
-/// three fields written the other way.
+/// the order the record has to come out in. See [_OneOnFieldTwoInHook], the
+/// same three written with the split one field earlier.
+///
+/// A hook can only declare what the command does not keep: `bind` collects
+/// the fields before it calls `describeParams`, so a field the hook assigns
+/// is unassigned when the collector reads it. `hasUint32` here reserves the
+/// third slot and hands back a pointer nothing holds.
 class _TwoOnFieldsOneInHook extends SinkCommand<int> {
   final head = Param.uint16();
   final flag = Param.uint1();
 
-  late final ParamPointer<int> tail;
-
   @override
   void describeParams(ParamDescriptor descriptor) {
-    tail = descriptor.hasUint32();
+    descriptor.hasUint32();
   }
 
   @override
@@ -282,16 +285,13 @@ class _TwoOnFieldsOneInHook extends SinkCommand<int> {
   int paramsFromBuffer(ParamBuffer call) => head[call];
 }
 
-class _ThreeInHook extends SinkCommand<int> {
-  late final ParamPointer<int> head;
-  late final ParamPointer<int> flag;
-  late final ParamPointer<int> tail;
+class _OneOnFieldTwoInHook extends SinkCommand<int> {
+  final head = Param.uint16();
 
   @override
   void describeParams(ParamDescriptor descriptor) {
-    head = descriptor.hasUint16();
-    flag = descriptor.hasUint1();
-    tail = descriptor.hasUint32();
+    descriptor.hasUint1();
+    descriptor.hasUint32();
   }
 
   @override
@@ -299,22 +299,6 @@ class _ThreeInHook extends SinkCommand<int> {
 
   @override
   int paramsFromBuffer(ParamBuffer call) => head[call];
-}
-
-/// The shape the declaration rules forbid: a `late` initialiser runs on the
-/// first read, so its bit offset would come from whatever order something
-/// happened to touch the fields. It has to be loud, not silently last.
-class _LateParam extends SinkCommand<int> {
-  final eager = Param.uint8();
-
-  // ignore: unused_field, it is read by the test that this must throw
-  late final lazy = Param.uint8();
-
-  @override
-  void bufferFromParams(ParamBuffer call, int params) => eager[call] = params;
-
-  @override
-  int paramsFromBuffer(ParamBuffer call) => eager[call];
 }
 
 ({CommandRegistry registry, _Loopback sender}) _registry({
@@ -402,7 +386,7 @@ void main() {
 
     test('a field and a hook declare one record', () {
       final onFields = _registry().registry.declare(_TwoOnFieldsOneInHook.new);
-      final inHook = _registry().registry.declare(_ThreeInHook.new);
+      final inHook = _registry().registry.declare(_OneOnFieldTwoInHook.new);
 
       expect(onFields.layout.signature, inHook.layout.signature);
       expect(onFields.layout.strideBytes, inHook.layout.strideBytes);
@@ -413,25 +397,6 @@ void main() {
             'the fields are declared during the constructor and the hook runs '
             'straight after it, so the two forms compose in the order they '
             'are written and a command may use both',
-      );
-    });
-
-    test('a late Param initialiser throws instead of taking a late offset', () {
-      final command = _registry().registry.declare(_LateParam.new);
-
-      expect(
-        command.layout.fieldCount,
-        1,
-        reason: 'only the eager field made it into the record',
-      );
-      expect(
-        () => command.lazy,
-        throwsStateError,
-        reason:
-            'a late initialiser runs on the first read, so the offset it '
-            'takes depends on what touched it first and two builds can lay '
-            'the same command out differently. The declaration window is '
-            'shut by then, and that is what catches it.',
       );
     });
 

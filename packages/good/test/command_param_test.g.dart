@@ -124,24 +124,13 @@ List<ScannableField> _collect$TwoOnFieldsOneInHook(Object object) {
   return <ScannableField>[
     owner.head,
     owner.flag,
-    owner.tail,
   ];
 }
 
-List<ScannableField> _collect$ThreeInHook(Object object) {
-  final owner = object as _ThreeInHook;
+List<ScannableField> _collect$OneOnFieldTwoInHook(Object object) {
+  final owner = object as _OneOnFieldTwoInHook;
   return <ScannableField>[
     owner.head,
-    owner.flag,
-    owner.tail,
-  ];
-}
-
-List<ScannableField> _collect$LateParam(Object object) {
-  final owner = object as _LateParam;
-  return <ScannableField>[
-    owner.eager,
-    owner.lazy,
   ];
 }
 
@@ -166,8 +155,7 @@ const GeneratedDeclarations _commandParamTestDeclarations =
         DeclarationCollector(_Publish, _collect$Publish),
         DeclarationCollector(_Unhandled, _collect$Unhandled),
         DeclarationCollector(_TwoOnFieldsOneInHook, _collect$TwoOnFieldsOneInHook),
-        DeclarationCollector(_ThreeInHook, _collect$ThreeInHook),
-        DeclarationCollector(_LateParam, _collect$LateParam),
+        DeclarationCollector(_OneOnFieldTwoInHook, _collect$OneOnFieldTwoInHook),
       ],
       dependencies: <GeneratedDeclarations>[
         goodDeclarations,

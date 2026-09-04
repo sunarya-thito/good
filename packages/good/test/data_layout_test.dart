@@ -88,14 +88,18 @@ class _AdHocScene extends SceneStruct {
   Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
-  _AdHocScene(this._prefab);
+  _AdHocScene(this._prefabOf);
 
-  final _AdHoc _prefab;
+  /// A tear-off rather than the prefab itself, because a field typed as an
+  /// `EntityStruct` is a declaration and a declaration is the field's own
+  /// initialiser. This scene does not declare its prefab - the harness built
+  /// it, and the scene registers the one it was handed.
+  final _AdHoc Function() _prefabOf;
 
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    descriptor.has(() => _prefab);
+    descriptor.has(_prefabOf);
   }
 }
 
@@ -104,7 +108,7 @@ class _Harness {
   _Harness(void Function(DataDescriptor data) build, {int pageSize = 4096})
     : pool = MemoryPool(pageSize: pageSize),
       prefab = _AdHoc(build) {
-    scene = _AdHocScene(prefab)..initializeScene(pool, assets: assets);
+    scene = _AdHocScene(() => prefab)..initializeScene(pool, assets: assets);
     scene.handle = SceneRegistry.register(scene);
   }
 

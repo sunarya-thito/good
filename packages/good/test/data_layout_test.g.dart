@@ -31,7 +31,6 @@ List<ScannableField> _collect$AdHoc(Object object) {
 List<ScannableField> _collect$AdHocScene(Object object) {
   final owner = object as _AdHocScene;
   return <ScannableField>[
-    owner._prefab,
     owner.mountedEvent,
     owner.unmountedEvent,
   ];

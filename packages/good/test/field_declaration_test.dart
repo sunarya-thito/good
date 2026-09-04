@@ -18,21 +18,31 @@ class _Declared extends EntityStruct {
   final alive = Field.boolean(true);
 }
 
-/// The old form, untouched, so the two can be compared in one archetype.
+/// A column declared from the hook rather than from a field.
+///
+/// It reserves a byte and hands the pointer back to nobody: the collect pass
+/// reads a struct's fields before `describeStruct` runs, so a field this hook
+/// assigned would be unassigned when the collector reached it. What the hook
+/// still does is take space, which is what [_Mixed] is about.
 mixin _Legacy on Component {
-  late final DataPointer<int> legacy;
-
   @override
   void describeStruct(DataDescriptor data) {
     super.describeStruct(data);
-    legacy = data.hasUint8(7);
+    data.hasUint8(7);
   }
 }
 
 /// Both forms on one struct. The field initialisers run during construction,
 /// the mixin's `describeStruct` runs in the pass after it, so `own` is at a
-/// lower offset than `legacy` however the mixin list is written.
+/// lower offset than the byte the hook reserves, however the mixin list is
+/// written.
 class _Mixed extends EntityStruct with _Legacy {
+  final own = Field.uint8(9);
+}
+
+/// [_Mixed] without the mixin, so the byte the hook reserves is the whole of
+/// the difference between the two rows.
+class _OwnOnly extends EntityStruct {
   final own = Field.uint8(9);
 }
 
@@ -84,6 +94,8 @@ class _Level extends SceneStruct {
   @sub
   final mixed = _Mixed();
   @sub
+  final ownOnly = _OwnOnly();
+  @sub
   final twin = _Twin();
 }
 
@@ -117,17 +129,21 @@ void main() {
     expect(level.declared.alive[e], isFalse);
   });
 
-  test('constructor-time declarations come before the describeStruct pass', () {
+  test('the describeStruct pass reserves behind the fields', () {
     final level = _level();
-    // Both are one byte wide, so this is offset order and nothing else.
-    expect(level.mixed.own, isNot(same(level.mixed.legacy)));
     final e = level.handle.addEntity(level.mixed);
     expect(level.mixed.own[e], 9);
-    expect(level.mixed.legacy[e], 7);
-    // The two forms address different bytes of the same row rather than
-    // aliasing.
+
+    // The mixin's hook declares a second byte, and `own` still addresses the
+    // first: a hook that had reserved *ahead* of the field initialisers would
+    // leave `own` reading the byte the hook seeded.
+    expect(
+      level.mixed.archetype.bitLength,
+      level.ownOnly.archetype.bitLength + 8,
+      reason: 'the hook took a byte of its own rather than aliasing `own`',
+    );
     level.mixed.own[e] = 1;
-    expect(level.mixed.legacy[e], 7);
+    expect(level.mixed.own[e], 1);
   });
 
   test('two structs declaring the same fields get the same layout', () {

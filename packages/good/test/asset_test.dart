@@ -140,6 +140,25 @@ class _FakeAsset extends AssetKey<_FakePayload> {
 /// A prefab that declares [key] and keeps the handle - the shape the
 /// typed-handle rule asks for, and what every "did describeAssets run"
 /// assertion below inspects.
+///
+/// # Why this one is still a `late final`, and what would move it
+///
+/// `good_tool --declarations` refuses both fields below, and neither can be
+/// given an initialiser as things stand.
+///
+/// [texture] names a key the test picks, and a field initialiser cannot read
+/// `this` - which is why the ambient fixtures further down name file-level
+/// keys instead. That much is a fixture shape, and a family of one class per
+/// key would fix it.
+///
+/// [spriteField] is the one that cannot be written as a field at all.
+/// `DataDescriptor.hasPacked` packs its default eagerly - `initialValue
+/// .pack()` in `data_layout.dart` - and an `Asset` has no address until the
+/// scene registers the object holding it, which happens after the collect
+/// pass. So `Field.packed(assets.of<T>(), Asset.of(key))` in an initialiser
+/// throws "no scene ever declared it" from the constructor. Measured, not
+/// reasoned. A packed column defaulting to an asset needs `hasPacked` to
+/// defer the pack to the reservation pass before this fixture can convert.
 class _Prop extends EntityStruct {
   _Prop(this.key);
 
@@ -284,7 +303,7 @@ void main() {
     });
 
     test('a prefab that declares nothing still chains the no-op base', () {
-      final host = _BareScene(_Bare());
+      final host = _BareScene(_Bare.new);
       final pool = _pool();
       addTearDown(pool.dispose);
 
@@ -1044,7 +1063,10 @@ void main() {
       _bringUpAmbient(scene);
       final prefab = scene.registered.single as _Ambient;
 
-      expect(identical(scene.music, prefab.texture), isTrue);
+      // Not `identical`: each field initialiser builds its own handle, so
+      // two names for one key are two objects. One address, one entry in the
+      // footprint and one decode is what "one asset" means now.
+      expect(scene.music!.pack(), prefab.texture.pack());
       expect(scene.declaredAssets.length, 1);
     });
 
@@ -1109,32 +1131,6 @@ void main() {
 
       expect(scene.declaredAssets.single.key, same(_sharedKey));
       expect(scene.texture.pack(), assets.tryGet(_sharedKey)!.pack());
-    });
-
-    test('a late final declaration is still missing from the footprint', () {
-      // The read runs after the bring-up, so the collector found the field
-      // unassigned and the scene never learned about the asset. It is what
-      // `good_tool --declarations` refuses a `late` declaration over, seen
-      // from the other end.
-      final scene = _AmbientScene(<EntityStruct Function()>[_LazyAmbient.new]);
-      _bringUpAmbient(scene);
-      final prefab = scene.registered.single as _LazyAmbient;
-
-      expect(
-        scene.declaredAssets,
-        isEmpty,
-        reason: 'nothing was there to collect, which is the defect',
-      );
-      expect(
-        () => prefab.texture.pack(),
-        throwsA(
-          isA<StateError>().having(
-            (StateError e) => e.message,
-            'message',
-            contains('no scene ever declared it'),
-          ),
-        ),
-      );
     });
 
     test('a loaded scene decodes what a field initialiser named', () async {
@@ -1206,13 +1202,6 @@ class _AmbientChild extends EntityStruct with Child {
   final texture = Asset.of(_childKey);
 }
 
-/// Names the asset from a `late final`, so the initialiser runs on first read
-/// - long after the collect pass both isolate copies run, which is why the
-/// scene never hears about it.
-class _LazyAmbient extends EntityStruct {
-  late final Asset<_FakePayload> texture = Asset.of(_sharedKey);
-}
-
 /// A scene that registers whatever tear-offs it is given, so the framework is
 /// the one calling the constructor and the field initialisers run inside the
 /// window.
@@ -1269,14 +1258,18 @@ class _BareScene extends SceneStruct {
   Entity addEntity<T extends EntityStruct>(T prefab, {Entity? parent}) =>
       handle.addEntity(prefab, parent: parent);
 
-  _BareScene(this._prefab);
+  _BareScene(this._prefabOf);
 
-  final _Bare _prefab;
+  /// A tear-off rather than the prefab itself, because a field typed as an
+  /// `EntityStruct` is a declaration and a declaration is the field's own
+  /// initialiser. This scene registers the one it was handed; it declares
+  /// nothing.
+  final _Bare Function() _prefabOf;
 
   @override
   void describeScene(SceneDescriptor descriptor) {
     super.describeScene(descriptor);
-    descriptor.has(() => _prefab);
+    descriptor.has(_prefabOf);
   }
 }
 

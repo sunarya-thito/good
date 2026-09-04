@@ -35,7 +35,15 @@ List<ScannableField> _collect$Mixed(Object object) {
   final owner = object as _Mixed;
   return <ScannableField>[
     owner.own,
-    owner.legacy,
+    owner.mountedEvent,
+    owner.unmountedEvent,
+  ];
+}
+
+List<ScannableField> _collect$OwnOnly(Object object) {
+  final owner = object as _OwnOnly;
+  return <ScannableField>[
+    owner.own,
     owner.mountedEvent,
     owner.unmountedEvent,
   ];
@@ -84,6 +92,7 @@ List<ScannableField> _collect$Level(Object object) {
   return <ScannableField>[
     owner.declared,
     owner.mixed,
+    owner.ownOnly,
     owner.twin,
     owner.mountedEvent,
     owner.unmountedEvent,
@@ -101,6 +110,7 @@ const GeneratedDeclarations _fieldDeclarationTestDeclarations =
       collectors: <DeclarationCollector>[
         DeclarationCollector(_Declared, _collect$Declared),
         DeclarationCollector(_Mixed, _collect$Mixed),
+        DeclarationCollector(_OwnOnly, _collect$OwnOnly),
         DeclarationCollector(_Twin, _collect$Twin),
         DeclarationCollector(_Throws, _collect$Throws),
         DeclarationCollector(_After, _collect$After),
