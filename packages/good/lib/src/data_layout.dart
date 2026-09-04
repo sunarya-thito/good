@@ -1,6 +1,7 @@
 import 'dart:ffi';
 
 import 'package:good/src/archetype.dart';
+import 'package:good/src/asset.dart';
 import 'package:good/src/camera_view.dart';
 import 'package:good/src/data.dart';
 import 'package:good/src/heap_object.dart';
@@ -211,13 +212,12 @@ abstract interface class _Declared implements ScannableField {
 
 /// A declaration whose **initial value** is itself a declaration.
 ///
-/// `Field.packed(assets.of<Texture>(), Asset.of(key))` is the one shape that
-/// is: the field holds the column, and the handle inside it is an asset
-/// declaration no field of its own holds. A pass that resolves the outer one
-/// does not resolve the inner, so without this the asset would never be
-/// addressed and never be part of the scene's footprint - the column would
-/// stamp an address nothing issued, and the scene would not load the texture
-/// it plainly names.
+/// `Field.asset(key)` is the one shape that is: the field holds the column,
+/// and the handle inside it is an asset declaration no field of its own
+/// holds. A pass that resolves the outer one does not resolve the inner, so
+/// without this the asset would never be addressed and never be part of the
+/// scene's footprint - the column would stamp an address nothing issued, and
+/// the scene would not load the texture it plainly names.
 ///
 /// Only the pass that can act on the inner declaration asks for it, the way
 /// `ArchetypeDataDescriptor` and `_AssetDescriptor` each take the
@@ -892,13 +892,13 @@ abstract base class _PackedField<T> extends _Field<T>
   /// bits. Null for a column that was given none.
   ///
   /// Packed at [_reserve] and not where the column is built, because a value
-  /// is not always worth an int yet at that point. `Asset.of(key)` carries a
-  /// key and nothing else until the scene registering its owner binds it,
-  /// and that happens after the collect pass reads the field and before the
-  /// reservation pass runs - so packing at the declaration threw
-  /// "no scene ever declared it" out of the constructor. Nothing about a
-  /// default sizes the column ([IntRepresentation.bitWidth] does), so
-  /// deferring it moves no bits and no row.
+  /// is not always worth an int yet at that point. An asset handle - what
+  /// `hasAsset` defaults to - carries a key and nothing else until the scene
+  /// registering its owner binds it, and that happens after the collect pass
+  /// reads the field and before the reservation pass runs, so packing at the
+  /// declaration threw "no scene ever declared it" out of the constructor.
+  /// Nothing about a default sizes the column ([IntRepresentation.bitWidth]
+  /// does), so deferring it moves no bits and no row.
   ///
   /// Only the scalar packed columns defer. `hasArray` against a
   /// representation still packs its `initialValue` where the array is
@@ -908,12 +908,12 @@ abstract base class _PackedField<T> extends _Field<T>
 
   /// The representation the stored ints mean something against.
   ///
-  /// A getter and not a stored value, because one column in the engine does
-  /// not have one at the declare site. `optCameraView` is packed against a
-  /// table the scene owns, and a field initialiser cannot reach a scene -
-  /// see [_CameraViewField]. Every other packed column names its
-  /// representation where the field is written, which is what
-  /// [_DeclaredPackedField] holds.
+  /// A getter and not a stored value, because two columns in the engine do
+  /// not have one at the declare site. `optCameraView` and `hasAsset` are
+  /// each packed against a table the scene owns, and a field initialiser
+  /// cannot reach a scene - see [_CameraViewField] and [_AssetField]. Every
+  /// other packed column names its representation where the field is
+  /// written, which is what [_DeclaredPackedField] holds.
   IntRepresentation<IntRepresentable> get _repr;
 
   /// The asset, or whatever else declares itself, that this column's default
@@ -948,7 +948,7 @@ abstract base class _PackedField<T> extends _Field<T>
 }
 
 /// [_PackedField] against the representation the declaration named - which
-/// is every packed column except the camera view.
+/// is every packed column except the camera view and the asset.
 base class _DeclaredPackedField<T> extends _PackedField<T> {
   _DeclaredPackedField(super.bits, super.initialValue, this._declaredRepr);
 
@@ -963,10 +963,11 @@ base class _DeclaredPackedField<T> extends _PackedField<T> {
 ///
 /// It reads the table off the storage instead of holding one, and that is the
 /// whole of why the column can be declared from a field initialiser. A
-/// `CameraViewTable` is the one representation in this engine a declaration
-/// cannot be handed - there is one per game, it is reached through the scene,
-/// and a field initialiser has no scene. `ArchetypeStorage.scene` does have
-/// one, and [_Field.realize] runs where that is reachable.
+/// `CameraViewTable` is one of the two representations in this engine a
+/// declaration cannot be handed - there is one per game, it is reached
+/// through the scene, and a field initialiser has no scene.
+/// `ArchetypeStorage.scene` does have one, and [_Field.realize] runs where
+/// that is reachable. [_AssetField] is the other.
 ///
 /// Nothing about the table sizes the column: the width is
 /// `CameraViewTable.viewBitWidth`, a constant, so the bits are reserved from
@@ -977,6 +978,42 @@ final class _CameraViewField extends _PackedField<CameraView> {
 
   @override
   IntRepresentation<IntRepresentable> get _repr => _storage.scene.cameraViews;
+}
+
+/// `hasAsset`/`optAsset`'s value half: a packed column whose representation
+/// is the [Assets] the registering scene owns.
+///
+/// The same shape as [_CameraViewField] and for the same reason - there is
+/// one [Assets] per game, it is reached through the scene, and a field
+/// initialiser has no scene, so `Field.packed(assets.of<T>(), ...)` could
+/// only ever be written somewhere that already had one in hand. The width is
+/// [Assets.addressBitWidth], a constant, so the bits are reserved from the
+/// declaration exactly as every other packed column's are.
+///
+/// Resolved once and held rather than read per access, which is where this
+/// diverges from [_CameraViewField]'s plain getter: `scene.cameraViews` is a
+/// field read, while [Assets.of] is a `putIfAbsent` whose miss closure is
+/// allocated on every call, hit or miss - a per-read allocation on a path
+/// that must not have one.
+///
+/// The cache cannot go stale, and both halves of that are checked rather
+/// than assumed. [_PackedField._repr] has exactly one reader, `operator []`,
+/// so the first resolve is a row read and [_Field._storage] is set at attach
+/// long before it - and were something to read it earlier, `_storage` is
+/// itself `late final` and throws by name rather than resolving against
+/// nothing. `Scene._assets` is assigned once: `Scene.initializeScene`
+/// refuses a second call outright, so no scene swaps its table under a
+/// column that has already realized.
+final class _AssetField<T> extends _PackedField<Asset<T>>
+    implements PackedPointer<Asset<T>> {
+  _AssetField(super.bits, super.initialValue);
+
+  @override
+  late final IntRepresentation<IntRepresentable> _repr = _storage.scene.assets
+      .of<T>();
+
+  @override
+  int packedAt(Entity entity) => _bits[entity];
 }
 
 /// [_PackedField] with the bound back on, which is what lets it be the
@@ -2389,6 +2426,31 @@ abstract base class _ColumnDescriptor implements DataDescriptor {
           initialValue != null,
         ),
       );
+
+  /// The same split as [optCameraView]: [Assets.addressBitWidth] reserves the
+  /// bits here, and [_AssetField] reads the registering scene's table at
+  /// realize. `Asset.of` builds an inert handle, so this reaches no game.
+  @override
+  PackedPointer<Asset<T>> hasAsset<T>(AssetKey<T> key) => _declared(
+    _AssetField<T>(
+      _intColumn(Assets.addressBitWidth, false, 0),
+      Asset.of(key),
+    ),
+  );
+
+  @override
+  DataPointer<Asset<T>?> optAsset<T>([AssetKey<T>? key]) {
+    final initialValue = key == null ? null : Asset.of(key);
+    return _declared(
+      _OptionalField<Asset<T>>(
+        _AssetField<T>(
+          _intColumn(Assets.addressBitWidth, false, 0),
+          initialValue,
+        ),
+        initialValue != null,
+      ),
+    );
+  }
 
   @override
   DataPointer<T> hasHeapObject<T>(T Function() initialValue) =>

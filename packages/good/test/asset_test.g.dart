@@ -67,6 +67,7 @@ List<ScannableField> _collect$AmbientPacked(Object object) {
   return <ScannableField>[
     owner.sprite,
     owner.optionalSprite,
+    owner.emptySprite,
     owner.mountedEvent,
     owner.unmountedEvent,
   ];

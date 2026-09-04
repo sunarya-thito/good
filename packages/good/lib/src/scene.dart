@@ -779,7 +779,8 @@ final class _SceneDescriptor implements SceneDescriptor {
     object.describeType(ArchetypeComponentDescriptor(storage));
     // Before describeStruct, not after: `has` returns an already-addressed
     // instance, so describeStruct can hand one straight to
-    // `data.optPacked(assets, ...)` as this archetype's default row value.
+    // `data.optPacked(assets.of<T>(), ...)` as this archetype's default row
+    // value.
     object.describeAssets(_assets);
     object.describeStruct(data);
     // Timelines last, because keying a clip is pure declaration and depends
@@ -883,9 +884,9 @@ final class _AssetDescriptor implements AssetDescriptor {
   /// assets, and says so by taking only what it can address.
   void declareOne(ScannableField declaration) {
     // A packed column defaulting to an asset holds a handle no field of its
-    // own holds - `Field.packed(assets.of<T>(), Asset.of(key))` - and that
-    // handle is an asset declaration like any other. Taken before the type
-    // test below, because the column itself is not an asset and would
+    // own holds - `Field.asset(key)` - and that handle is an asset
+    // declaration like any other. Taken before the type test below, because
+    // the column itself is not an asset and would
     // otherwise be skipped with its default unaddressed: the pack deferred to
     // the reservation pass would then throw, and the scene would not load a
     // texture it plainly names.
